@@ -151,3 +151,12 @@ The old graph beats the zero predictor on the rewired panel (MSE 0.013 vs 0.018)
 - **Human-data reanalyses** (RES-05) were not re-fetched.
 - **Real panel dynamics.** Earlier-setup recognition depends on attaching an observation stream (`nsf epoch stream`), and it has only been validated on simulated dynamics.
 - **GRA-01b** (edge branch and delay fields) is not implemented (ADR-010). **OPS-10** (device latency budget) needs the owner's budget.
+
+## 8. Final verification run
+
+| Gate | Command | Result at `56752b8` |
+|---|---|---|
+| Lint, unit and integration, JavaScript checks, reproduction | `bash scripts/check.sh` | exit 0. **303 passed**, 31 subtests, 0 skipped. Reproduce 8/8. |
+| Browser e2e and accessibility | `bash scripts/e2e.sh` | exit 0. **25 passed**. |
+| Acceptance | `nsf acceptance --all` | exit 0. **7/7 scenarios pass** (`docs/quality/evidence/acceptance.json`). |
+| Orphaned server processes | `pgrep` | 0 |

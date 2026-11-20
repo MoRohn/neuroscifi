@@ -19,7 +19,7 @@
         "priors_published": true,
         "zero_personal_episodes": true
       },
-      "elapsed_seconds": 0.024,
+      "elapsed_seconds": 0.026,
       "metrics": {
         "action_semantics": {
           "0": "commanded direction A, as declared by the owner",
@@ -116,7 +116,7 @@
         "storage_pressure_regulation_reports_pause": true,
         "zero_failed_observations_idle_and_under_consolidation": true
       },
-      "elapsed_seconds": 1.267,
+      "elapsed_seconds": 1.164,
       "metrics": {
         "checkpoint": {
           "bytes": 13622,
@@ -150,37 +150,37 @@
           },
           "label": "host = this DGX Spark (aarch64, GB10)",
           "latency_ms": {
-            "max": 2.562980051152408,
-            "mean": 1.8037247052416205,
+            "max": 2.5981159415096045,
+            "mean": 1.7945161741226912,
             "n": 200,
-            "p50": 2.0897709764540195,
-            "p95": 2.193130273371935,
-            "p99": 2.216224066214636
+            "p50": 2.0798599580302835,
+            "p95": 2.1824177354574203,
+            "p99": 2.217706860974431
           }
         },
         "loop_under_consolidation": {
           "background": {
-            "cpu_seconds": 1.445204624,
+            "cpu_seconds": 1.358044608,
             "errors": {
               "busy": 0,
               "writes_paused": 0
             },
             "operation_ms": {
               "checkpoint": {
-                "max": 113.98673057556152,
-                "mean": 113.98673057556152,
+                "max": 102.61082649230957,
+                "mean": 102.61082649230957,
                 "n": 1,
-                "p50": 113.98673057556152,
-                "p95": 113.98673057556152,
-                "p99": 113.98673057556152
+                "p50": 102.61082649230957,
+                "p95": 102.61082649230957,
+                "p99": 102.61082649230957
               },
               "learn": {
-                "max": 534.0688228607178,
-                "mean": 534.0688228607178,
+                "max": 434.02743339538574,
+                "mean": 434.02743339538574,
                 "n": 1,
-                "p50": 534.0688228607178,
-                "p95": 534.0688228607178,
-                "p99": 534.0688228607178
+                "p50": 434.02743339538574,
+                "p95": 434.02743339538574,
+                "p99": 434.02743339538574
               }
             },
             "operations": {
@@ -202,14 +202,14 @@
           "final_decision": "act",
           "label": "host = this DGX Spark (aarch64, GB10)",
           "latency_ms": {
-            "max": 5.544551997445524,
-            "mean": 2.159778120694682,
+            "max": 3.172102151438594,
+            "mean": 1.8098101182840765,
             "n": 200,
-            "p50": 2.1344440174289048,
-            "p95": 2.7448871347587556,
-            "p99": 3.278051171218967
+            "p50": 2.0949315512552857,
+            "p95": 2.1997822797857225,
+            "p99": 2.3451366089284393
           },
-          "loop_seconds": 0.43209195137023926
+          "loop_seconds": 0.36202430725097656
         },
         "restart": {
           "evidence": 200,
@@ -250,7 +250,7 @@
         "offered_segment_is_original_camera_segment_at_least_80_percent": true,
         "older_skill_retention_at_least_90_percent": true
       },
-      "elapsed_seconds": 54.945,
+      "elapsed_seconds": 54.68,
       "metrics": {
         "attribution_rate": 0.92,
         "bits_only_arm_report_only": {
@@ -288,20 +288,20 @@
         },
         "compute_cpu_seconds_per_lifetime": {
           "episodic_lookup": {
-            "max": 5.926400000078047e-05,
-            "mean": 1.7269919999165497e-05
+            "max": 7.908800000677729e-05,
+            "mean": 1.712175999969645e-05
           },
           "fixed_wiring": {
-            "max": 0.13363550399999724,
-            "mean": 0.11765642783999994
+            "max": 0.1239400000000046,
+            "mean": 0.11577888591999909
           },
           "product": {
-            "max": 0.583809888000001,
-            "mean": 0.21550223631999949
+            "max": 0.5325722079999987,
+            "mean": 0.2120985113600007
           },
           "recurrent_replay": {
-            "max": 0.0007541439999982913,
-            "mean": 0.000512215359999999
+            "max": 0.0007291040000012572,
+            "mean": 0.0004983625599999186
           }
         },
         "earlier_setup_recognition": {
@@ -645,7 +645,7 @@
         "fork-2_true_edges_matter_more_than_weak": true,
         "fork-2_within_10_percent_of_dense": true
       },
-      "elapsed_seconds": 0.071,
+      "elapsed_seconds": 0.073,
       "metrics": {
         "cross_test": {
           "fork-1_graph_on_fork-1_heldout": 0.004615302155992765,
@@ -738,7 +738,7 @@
         "unchanged_coverage_at_least_80_percent": true,
         "unchanged_task_loss_at_most_2_points": true
       },
-      "elapsed_seconds": 64.355,
+      "elapsed_seconds": 64.386,
       "metrics": {
         "arms": {
           "detecting": "product flow: the owner confirms or rejects the executive's change question; one epoch per lifetime",
@@ -999,7 +999,7 @@
         "unknown_context_opens_a_question": true,
         "unrelated_world_is_unknown_context": true
       },
-      "elapsed_seconds": 0.098,
+      "elapsed_seconds": 0.1,
       "metrics": {
         "lookup_disabled": {
           "readable_datasets": [
@@ -1107,7 +1107,7 @@
         "nothing_expired_after_a_day": true,
         "second_partner_correct_after_a_day": true
       },
-      "elapsed_seconds": 0.283,
+      "elapsed_seconds": 0.254,
       "metrics": {
         "day_later_clock_advance_seconds": 86400.0,
         "day_later_decision": "act",
