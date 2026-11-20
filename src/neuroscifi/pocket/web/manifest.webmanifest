@@ -1,0 +1,17 @@
+{
+  "name": "NeuroSciFi Pocket",
+  "short_name": "Pocket",
+  "description": "Phone interface to one NeuroSciFi instance. Sensors stay off until you start them.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f7f5",
+  "theme_color": "#184e42",
+  "icons": [{"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}],
+  "shortcuts": [
+    {"name": "Ask / field session", "short_name": "Field", "url": "/#workspace", "icons": [{"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml"}]},
+    {"name": "Mark an activity", "short_name": "Mark", "url": "/#mark", "icons": [{"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml"}]},
+    {"name": "Sense", "short_name": "Sense", "url": "/#sensor", "icons": [{"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml"}]}
+  ]
+}

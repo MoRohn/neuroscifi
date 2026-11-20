@@ -16,9 +16,13 @@ const ctx=vm.createContext({self:{addEventListener:(k,fn)=>callbacks[k]=fn,async
   fetch(){throw Error("Network offline");}});
 vm.runInContext(readFileSync(new URL("../../src/neuroscifi/pocket/web/sw.js",import.meta.url),"utf8"),ctx);
 async function lifecycle(name){let work;callbacks[name]({waitUntil:p=>work=p});await work;}
-await lifecycle("install");await lifecycle("activate");
-assert(stores.has("unrelated"));assert(!stores.has("neuroscifi-pocket-shell-old"));
 async function read(path,method="GET"){let answer;callbacks.fetch({request:{url:"https://example.test"+path,method},respondWith:p=>answer=p});return answer;}
+await lifecycle("install");await lifecycle("activate");
+const installed=[...stores.get("neuroscifi-pocket-shell-5").keys()];
+// Plan p.20 names six shell assets; the manifest and its icon make eight (documented deviation).
+assert.equal(installed.length,8);assert(installed.includes("/manifest.webmanifest")&&installed.includes("/icon.svg"));
+assert.equal(JSON.parse(await read("/manifest.webmanifest")).shortcuts.length,3);assert.match(await read("/icon.svg"),/<svg/);
+assert(stores.has("unrelated"));assert(!stores.has("neuroscifi-pocket-shell-old"));
 assert.match(await read("/"),/Field session/);assert.match(await read("/field-ui.mjs"),/restore|restored/i);
 assert.equal(await read("/api/episodes","POST"),undefined);assert.equal(await read("/?code=example"),undefined);
-console.log("Passed deterministic offline asset replay, cache upgrade, private API exclusion and URL query exclusion.");
+console.log("Passed deterministic offline asset replay, eight-asset shell with manifest and icon, cache upgrade, private API exclusion and URL query exclusion.");

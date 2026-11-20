@@ -6,9 +6,9 @@ import vm from "node:vm";
 const ui=readFileSync(new URL("../../src/neuroscifi/pocket/web/mobile.js",import.meta.url),"utf8");
 const markup=readFileSync(new URL("../../src/neuroscifi/pocket/web/index.html",import.meta.url),"utf8");
 const nodes=new Map(), listeners={}, intervals=new Map(), timeouts=new Map(), network=[], tracks=[];
-let now=0, seq=0, pendingGrant=null;
+let now=0, seq=0, pendingGrant=null, respond=null;
 function element(){
-  return {textContent:"",disabled:false,checked:false,hidden:false,dataset:{},append(){},replaceChildren(){},
+  return {focus(){},textContent:"",disabled:false,checked:false,hidden:false,dataset:{},kids:[],append(...c){this.kids.push(...c);},replaceChildren(){this.kids=[];},
     getContext(){return {drawImage(){},getImageData(){return {data:[45,45,45,255]};}};},async play(){},pause(){}};
 }
 for(const m of markup.matchAll(/\bid="([^"]+)"/g)) nodes.set(m[1],element());
@@ -30,6 +30,7 @@ const ctx=vm.createContext({document,window,AudioContext,Float32Array,crypto:{ra
   setTimeout:(f,d)=>(timeouts.set(++seq,{f,due:now+d}),seq),clearTimeout:id=>timeouts.delete(id),
   fetch:async(path,options)=>{
     const data=JSON.parse(options.body);network.push([path,data]);
+    const answer=respond&&respond(path,data);if(answer)return answer;
     return {ok:true,json:async()=>path==="/api/pair"?{key:"test"}:{records:[],prediction:{}}};
   }});
 vm.runInContext(ui,ctx);
@@ -79,5 +80,30 @@ await n("speak").onclick();recognition.onresult(result("Walk."));assert.equal(n(
 assert.equal(n("learn").checked,false);
 await n("speak").onclick();const lateResult=recognition.onresult;n("stop").onclick();lateResult(result("rest"));assert.match(n("draft").textContent,/No observation/);
 assert.equal(network.length,before);
+// Evening review: sensor time, waiting draft, paused learning, forget this session, per-pattern mute.
+assert.notEqual(n("lastactive").textContent,"none since this page opened");assert.notEqual(n("lastactive").textContent,"active now");
+assert(!network.some(([path,body])=>JSON.stringify(body).includes("lastactive")));
+n("drop").onclick();assert.equal(n("waiting").textContent,"nothing");
+assert.equal(n("evenbridge").hidden,false);
+const findButton=(list,text)=>list.kids.flatMap(li=>li.kids).find(k=>k.textContent===text);
+respond=(path,body)=>path==="/api/state"?{ok:true,json:async()=>({records:[{id:"a",channel:"sound",value:"soft",learn:true},{id:"b",channel:"light",value:"dim",learn:false}],prediction:{},muted:["activity"]})}:null;
+await n("refresh").onclick();
+assert.equal(n("changed").kids.length,1);assert(findButton(n("changed"),"Forget this"));
+assert.equal(n("patterns").kids.length,2);
+respond=(path,body)=>path==="/api/mute"?{ok:true,json:async()=>({unlearned:1})}:path==="/api/state"?{ok:true,json:async()=>({records:[],prediction:{},muted:["sound"]})}:null;
+const mark=network.length;await findButton(n("patterns"),"Stop learning this pattern").onclick();
+assert.deepEqual(network[mark],["/api/mute",{channel:"sound"}]);assert.match(n("message").textContent,/paused for sound. 1 observation/);
+respond=path=>path==="/api/save"?{ok:false,status:423,json:async()=>({})}:null;
+await n("sound").onclick();await tick(1700);n("learn").checked=true;await n("save").onclick();
+assert.match(n("message").textContent,/Learning is paused for sound/);
+let failing=true;const forgot=[];
+respond=(path,body)=>{if(path==="/api/forget"||path==="/api/forget_episode"){forgot.push(body.id);if(failing&&forgot.length===2)return {ok:false,status:500,json:async()=>({})};}return null;};
+await n("forgetsession").onclick();
+assert.match(n("sessionprogress").textContent,/^Forgot \d+ of \d+\. 1 could not be confirmed/);
+failing=false;forgot.length=0;await n("forgetsession").onclick();
+assert.equal(forgot.length,1);assert.match(n("sessionprogress").textContent,/^Forgot all 1 items/);
+await n("forgetsession").onclick();assert.match(n("sessionprogress").textContent,/Nothing shared/);
+window.pocketSetPair("");assert.equal(n("evenbridge").hidden,true);
+console.log("Passed evening review: sensor time, waiting draft, pattern mute and resume labels, paused-learning message, partial and complete forget this session.");
 console.log("Passed local-only speech feature gate, unavailable pack, third-party name rejection, approved label review and late-result suppression.");
 console.log("Passed synthetic sound/light, local-only default, reviewed share, opt-in automatic share, session deadline, stop, hidden pending permission, route mute and wire schema.");

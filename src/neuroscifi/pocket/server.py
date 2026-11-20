@@ -19,7 +19,9 @@ WEB = Path(__file__).resolve().parent / "web"
 VOCAB = {"sound": ("soft", "moderate", "strong"), "light": ("dim", "midrange", "bright"),
          "dynamics": ("steady","variable","wide"), "activity": ("focus", "walk", "rest", "other")}
 ASSETS = {"/": ("index.html", "text/html; charset=utf-8"), "/mobile.js": ("mobile.js", "text/javascript"),
-          "/style.css": ("style.css", "text/css")}
+          "/style.css": ("style.css", "text/css"),
+          "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
+          "/icon.svg": ("icon.svg", "image/svg+xml")}
 for asset in ("field-model.mjs","field-ui.mjs","sw.js"):
     ASSETS["/"+asset]=(asset,"text/javascript")
 FIELD = {
@@ -88,6 +90,8 @@ class Store:
                 END;
                 CREATE TABLE IF NOT EXISTS retired(
                   device TEXT REFERENCES devices(key) ON DELETE CASCADE,id TEXT,PRIMARY KEY(device,id));
+                CREATE TABLE IF NOT EXISTS muted(
+                  device TEXT REFERENCES devices(key) ON DELETE CASCADE,ch TEXT,PRIMARY KEY(device,ch));
             """)
 
     def pair(self, sponsor=None):
@@ -166,8 +170,12 @@ class Store:
                 if db.execute("SELECT 1 FROM retired WHERE device=? AND id=?", args).fetchone():
                     return 410, {}
                 row = db.execute("SELECT ch,val,learn FROM events WHERE device=? AND id=?", args).fetchone()
+                is_muted = db.execute("SELECT 1 FROM muted WHERE device=? AND ch=?", (key, channel)).fetchone()
                 if row is not None:
-                    return (200 if row == (channel, value, learn) else 409), {}
+                    # Muting turned learning off after storage, so a retry of the original request still matches.
+                    return (200 if row == (channel, value, learn) or (is_muted and learn and row[:2] == (channel, value)) else 409), {}
+                if learn and is_muted:
+                    return 423, {}
                 if db.execute("SELECT count(*) FROM events WHERE device=?", (key,)).fetchone()[0] >= 128:
                     return 429, {}
                 db.execute("INSERT INTO events VALUES (?,?,?,?,?,?)", (key, ident, channel, value, learn, now + DAY))
@@ -178,6 +186,15 @@ class Store:
                     db.execute("INSERT OR IGNORE INTO retired VALUES (?,?)", args)
                     db.execute("DELETE FROM events WHERE device=? AND id=?", args)
                 return 200, {}
+            if operation in {"mute", "unmute"} and set(data) == {"channel"}:
+                channel = data["channel"]
+                if not isinstance(channel, str) or channel not in VOCAB:
+                    raise ValueError()
+                if operation == "unmute":
+                    db.execute("DELETE FROM muted WHERE device=? AND ch=?", (key, channel))
+                    return 200, {}
+                db.execute("INSERT OR IGNORE INTO muted VALUES (?,?)", (key, channel))
+                return 200, {"unlearned": db.execute("UPDATE events SET learn=0 WHERE device=? AND ch=? AND learn=1", (key, channel)).rowcount}
             if operation == "unpair" and not data:
                 db.execute("DELETE FROM devices WHERE key=?", (key,))
                 return 200, {}
@@ -191,7 +208,8 @@ class Store:
                     n = sum(counts[channel, v] for v in values)
                     if n:
                         prediction[channel] = {v: (counts[channel,v]+1)/(n+len(values)) for v in values}
-                return 200, {"records": records, "prediction": prediction}
+                muted = [c for (c,) in db.execute("SELECT ch FROM muted WHERE device=? ORDER BY ch", (key,))]
+                return 200, {"records": records, "prediction": prediction, "muted": muted}
             raise ValueError()
 
 
@@ -208,7 +226,7 @@ class Handler(BaseHTTPRequestHandler):
             "Content-Type": mime, "Content-Length": str(len(body)), "Cache-Control": "no-store",
             "Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff",
             "Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
-            "Content-Security-Policy": "default-src 'none'; worker-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; media-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+            "Content-Security-Policy": "default-src 'none'; worker-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; manifest-src 'self'; img-src 'self'; media-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
         }.items():
             self.send_header(name, value)
         self.end_headers()
@@ -223,7 +241,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = self.path.removeprefix("/api/")
-        if self.path != "/api/" + route or route not in {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link"}:
+        if self.path != "/api/" + route or route not in {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link","mute","unmute"}:
             return self.reply(404)
         origin = self.headers.get("Origin")
         scheme = "https://" if isinstance(self.connection, ssl.SSLSocket) else "http://"

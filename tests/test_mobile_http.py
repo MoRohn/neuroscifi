@@ -1,5 +1,5 @@
 from pathlib import Path
-from http.client import HTTPSConnection
+from http.client import HTTPConnection, HTTPSConnection
 import json
 import shutil
 import ssl
@@ -68,3 +68,62 @@ class MobileTLS(unittest.TestCase):
                 self.assertEqual(req("state",{},token)[0],403)
             finally:
                 server.shutdown()
+
+
+class PocketPlainHTTP(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        server = bridge.ThreadingHTTPServer(("127.0.0.1", 0), bridge.Handler)
+        server.store = bridge.Store(Path(self.tmp.name) / "db")
+        server.invitation, server.pair_lock = "test", threading.Lock()
+        server.invitation_deadline = time.monotonic() + 30
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        self.server = server
+
+    def fetch(self, method, path, data=None, token=""):
+        c = HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = "Bearer " + token
+        c.request(method, path, json.dumps(data) if data is not None else None, headers)
+        resp = c.getresponse()
+        body = resp.read()
+        headers = dict(resp.getheaders())
+        c.close()
+        return resp.status, body, headers
+
+    def test_manifest_icon_and_csp(self):
+        status, body, headers = self.fetch("GET", "/manifest.webmanifest")
+        self.assertEqual((status, headers["Content-Type"]), (200, "application/manifest+json"))
+        manifest = json.loads(body)
+        self.assertEqual([s["url"] for s in manifest["shortcuts"]], ["/#workspace", "/#mark", "/#sensor"])
+        self.assertTrue(all(i["src"].startswith("/") for i in manifest["icons"]))
+        status, icon, headers = self.fetch("GET", "/icon.svg")
+        self.assertEqual((status, headers["Content-Type"]), (200, "image/svg+xml"))
+        self.assertNotIn(b"http", icon.replace(b"http://www.w3.org/2000/svg", b""))
+        csp = headers["Content-Security-Policy"]
+        for directive in ("default-src 'none'", "manifest-src 'self'", "img-src 'self'", "connect-src 'self'"):
+            self.assertIn(directive, csp)
+        self.assertNotIn("unsafe", csp)
+        html = self.fetch("GET", "/")[1]
+        self.assertIn(b'id="mark"', html)
+        self.assertIn(b'rel="manifest"', html)
+
+    def test_mute_routes(self):
+        self.assertEqual(self.fetch("POST", "/api/mute", {"channel": "sound"})[0], 403)
+        token = json.loads(self.fetch("POST", "/api/pair", {"code": "test"})[1])["key"]
+        self.assertEqual(self.fetch("POST", "/api/mute", {"channel": "photo"}, token)[0], 400)
+        self.assertEqual(self.fetch("POST", "/api/mute", {"channel": "sound", "x": 1}, token)[0], 400)
+        event = dict(id=str(uuid4()), channel="sound", value="soft", learn=True)
+        self.assertEqual(self.fetch("POST", "/api/save", event, token)[0], 201)
+        status, body, _ = self.fetch("POST", "/api/mute", {"channel": "sound"}, token)
+        self.assertEqual((status, json.loads(body)), (200, {"unlearned": 1}))
+        self.assertEqual(self.fetch("POST", "/api/save", event, token)[0], 200)
+        self.assertEqual(self.fetch("POST", "/api/save", dict(event, id=str(uuid4())), token)[0], 423)
+        state = json.loads(self.fetch("POST", "/api/state", {}, token)[1])
+        self.assertEqual((state["muted"], state["prediction"]), (["sound"], {}))
+        self.assertEqual(self.fetch("POST", "/api/unmute", {"channel": "sound"}, token)[0], 200)
+        self.assertEqual(self.fetch("POST", "/api/save", dict(event, id=str(uuid4())), token)[0], 201)

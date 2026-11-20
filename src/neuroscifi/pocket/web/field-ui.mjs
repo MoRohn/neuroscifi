@@ -23,8 +23,8 @@ function paint(){
    const li=document.createElement("li"), block=document.createElement("div");
    block.textContent=(r.features.goal?.[0]||"Episode")+" → "+r.outcome;
    const detail=document.createElement("small");detail.textContent=describe(r.features)+(r.learn?" · Learning enabled":" · Memory only")+(r.keep==="week"?" · 7 days locally":" · 24 hours");block.append(detail);
-   const forget=document.createElement("button");forget.textContent="Forget here";forget.onclick=()=>mutate(list=>list.filter(x=>x.id!==r.id && !(x.pending?.ids.includes(r.id)))).then(()=>{if(prediction?.ids.includes(r.id))reset();}).catch(report);
-   const send=document.createElement("button");send.textContent="Share episode";send.onclick=async()=>{
+   const forget=document.createElement("button");forget.textContent="Forget here";forget.ariaLabel="Forget here: "+(r.features.goal?.[0]||"episode")+" → "+r.outcome;forget.onclick=()=>mutate(list=>list.filter(x=>x.id!==r.id && !(x.pending?.ids.includes(r.id)))).then(()=>{if(prediction?.ids.includes(r.id))reset();}).catch(report);
+   const send=document.createElement("button");send.textContent="Share episode";send.ariaLabel="Share episode: "+(r.features.goal?.[0]||"episode")+" → "+r.outcome;send.onclick=async()=>{
      if(!confirm("Share these categories, outcome and learning choice with the paired Spark for up to 24 hours?"))return;
      try{await window.pocketBridge("episode",{id:r.id,features:r.features,outcome:r.outcome,learn:r.learn});
        msg("Spark received episode. Manage its copy under Your Spark.");await window.pocketHistory();}catch{msg("Sharing unconfirmed. Pair or reconnect, then retry the same episode.");}
@@ -123,6 +123,7 @@ $("predict").onclick=async()=>{
  const ticket=epoch, features=structuredClone(context), useSpark=$("withSpark").checked;
  try{
    let all=liveRows(rows);
+   if(useSpark && !window.pocketToken()){msg("Pair with your Spark first, or turn off linked devices.");return;}
    if(useSpark){
      const response=await window.pocketBridge("episodes",{});
      const known=new Set(all.map(x=>x.id));

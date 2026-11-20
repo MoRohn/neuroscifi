@@ -37,6 +37,8 @@ nsf pocket erase-pairing LABEL --db /path/on/encrypted-volume/mobile.sqlite
 - **Listening session.** Start up to five minutes in the foreground. Review-only is the default. While the page stays visible a separate, per-session opt-in can send a coarse sound band roughly once per minute and enable learning on those events. This samples the most recent window at that point; it is not a minute-long acoustic average. Stop, hiding the page, input interruption, expiry, or a failed automatic share ends capture. A request already sent may finish. The user can inspect its receipt and forget it. No automatic retry queue. Permission prompts and input acquisition count against the session deadline.
 - **Single readings.** A random v4 event ID, channel, one fixed categorical value, and a learning boolean. Unknown fields, arbitrary text and media are rejected. HTTPS and authorization headers carry transport metadata. A receiver necessarily sees a connection address and time. The prototype avoids application access logs. Infrastructure under the operator's control may keep separate logs.
 - **Single-reading estimator.** For each channel, each retained opted-in observation adds one count. The predictor uses a uniform Dirichlet prior of one per category. Review the next-observation distribution via state or its highest-probability values in the UI. Selection and placement bias limit interpretation. Deleting or expiring evidence removes its contribution immediately on the next read. No weights are exported.
+- **Evening review.** Shows the last time a sensor was active (kept in this tab's memory and never sent), the observation waiting for approval, and the shared observations that are changing the forecast. **Forget this** removes one item. **Forget this session** loops the existing forget calls over the IDs this tab shared since pairing, shows progress, and reports a partial failure with a count instead of hiding it. **Stop learning this pattern** calls `mute` for a channel: its existing observations stop learning, the forecast recomputes, and a new save with learning on that channel returns 423 until **Resume learning** (`unmute`). Muted channels are stored per pairing, hold no observation, and are erased with the pairing. An identical retry of an already stored event still returns 200.
+- **Home screen.** `/manifest.webmanifest` and `/icon.svg` let a phone install Pocket with shortcuts to the field session, Mark an activity, and Sense. Both are in the offline shell (eight assets; the plan counted six before the manifest and icon). Chromium may want PNG icons before it offers an install prompt; the SVG is the only icon shipped.
 - **Expiry.** Records expire 24 hours after receipt. A running server sweeps each minute and before reads/writes, and sweeps at startup. Duplicate delivery never extends expiry. Random ID tombstones remain per pairing to prevent replay; unpairing deletes those IDs and invalidates the credential. SQLite secure deletion is enabled. Backups and storage-device remnants are outside the demonstrated erasure scope.
 - **Offline.** Once the program cache is ready, the field workspace can reopen without the Spark in browsers supporting service workers. Vault persistence also requires Web Crypto, Web Locks, storage, and a passphrase. The browser may evict data. No automatic upload queue or background browser sensing is used. Free-form dialogue and native prolonged listening remain design work.
 
@@ -60,16 +62,10 @@ nsf pocket erase-pairing LABEL --db /path/on/encrypted-volume/mobile.sqlite
 
 ~~~sh
 pytest -q --ignore=tests/e2e
-node tests/js/sensor_check.mjs
-node tests/js/field_check.mjs
-node tests/js/offline_check.mjs
-node tests/js/field_benchmark.mjs
+for f in tests/js/*.mjs; do node $f; done
+bash scripts/e2e.sh
 ~~~
 
-The HTTP integration test builds a disposable certificate and checks a hostname-verified TLS connection. It skips if OpenSSL is unavailable. The Node check exercises the shipped sensor controller with synthetic media and time. An additional browser integration check targets fake microphone/camera input and requires Python Playwright with a working Chromium browser:
+The HTTP integration test builds a disposable certificate and checks a hostname-verified TLS connection. It skips if OpenSSL is unavailable. The Node checks exercise the shipped sensor controller, the service worker and the field model with synthetic media and time.
 
-~~~sh
-python tests/e2e/browser_check.py --chromium /path/to/chromium
-~~~
-
-The browser check is provided for reproduction. Browser execution was blocked by this build host's Chromium socket restriction. Native iPhone/Android capture, hardware power usage and real-world masking have not been validated.
+`scripts/e2e.sh` runs the browser tests in `tests/e2e` (`npm ci` installs the dev-only axe-core on first use). They drive Chromium with a fake microphone and camera against an in-process bridge on a free port and temporary database: the prototype journey, field session and vault, evening review, offline cold open, phone and tablet layouts, axe-core accessibility (no serious or critical findings), keyboard focus, and device handoff. Playwright's bundled Chromium is used by default; set `NSF_CHROMIUM=/usr/bin/chromium` to use a system browser. Screenshots of both layouts are written to `test-results/`. Native iPhone/Android capture, hardware power usage and real-world masking have not been validated.
