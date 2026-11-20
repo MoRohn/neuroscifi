@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#184e42"><meta name="referrer" content="no-referrer"><link rel="icon" href="/icon.svg" type="image/svg+xml"><title>NeuroSciFi · Owner console</title><link rel="stylesheet" href="/console.css"><script type="module" src="/console.js"></script></head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="brandline"><span class="brand">NeuroSciFi</span><span class="product">Owner console</span></div>
+  <dl class="meta" aria-label="Instance status">
+    <div><dt>Instance</dt><dd><code id="instanceId">—</code></dd></div>
+    <div><dt>State version</dt><dd id="stateVersion">—</dd></div>
+    <div><dt>Writes</dt><dd><span id="writes" class="badge neutral">unknown</span></dd></div>
+  </dl>
+</header>
+<div class="shell">
+<nav id="nav" aria-label="Console sections" hidden><ul>
+  <li><a href="#overview" data-view="overview">Overview</a></li>
+  <li><a href="#teach" data-view="teach">Teach &amp; beliefs</a></li>
+  <li><a href="#evidence" data-view="evidence">Evidence</a></li>
+  <li><a href="#questions" data-view="questions">Questions <span id="openCount" class="count"></span></a></li>
+  <li><a href="#graphs" data-view="graphs">Graphs</a></li>
+  <li><a href="#checkpoints" data-view="checkpoints">Checkpoints</a></li>
+  <li><a href="#memory" data-view="memory">Memory log</a></li>
+</ul></nav>
+<main id="main" tabindex="-1">
+
+<section id="locked" class="view locked" aria-labelledby="h-locked">
+  <h1 id="h-locked">Owner console</h1>
+  <p id="lockedText">Open the URL printed by <code>nsf console</code>. It carries a one-time session token after the <code>#</code>, which this page keeps in memory only.</p>
+  <p class="hint">The console listens on 127.0.0.1 only. Restarting <code>nsf console</code> issues a new token.</p>
+</section>
+
+<section id="overview" class="view" aria-labelledby="h-overview" hidden>
+  <div class="viewhead"><h1 id="h-overview" tabindex="-1">Overview</h1><button type="button" id="refreshOverview">Refresh</button></div>
+  <p class="lede">Who this individual is, what it remembers and whether it may accept new evidence.</p>
+  <div class="grid">
+    <article class="card" aria-labelledby="h-birth"><h2 id="h-birth">Birth record</h2><div id="birth" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card" aria-labelledby="h-reg"><h2 id="h-reg">Regulation</h2><div id="regulation" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card" aria-labelledby="h-inv"><h2 id="h-inv">Memory inventory</h2><div id="inventory" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card" aria-labelledby="h-dev"><h2 id="h-dev">Development counters</h2><div id="development" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+  </div>
+  <p id="overviewStatus" class="msg" role="status"></p>
+</section>
+
+<section id="teach" class="view" aria-labelledby="h-teach" hidden>
+  <div class="viewhead"><h1 id="h-teach" tabindex="-1">Teach &amp; beliefs</h1><button type="button" id="refreshTeach">Refresh</button></div>
+  <p class="lede">Record what was commanded and what was observed. Beliefs, change detection and the executive's next step update from the stored evidence.</p>
+  <div class="grid">
+    <article class="card" aria-labelledby="h-epoch"><h2 id="h-epoch">Calibration epoch</h2>
+      <label for="epochSelect">Current epoch</label>
+      <select id="epochSelect"><option value="">No epochs yet</option></select>
+      <p id="epochSummary" class="sub"></p>
+      <form id="epochForm" novalidate>
+        <label for="epochName">New epoch name</label><input id="epochName" maxlength="64" autocomplete="off" required>
+        <label for="epochNote">Note (optional)</label><input id="epochNote" maxlength="1024" autocomplete="off">
+        <button class="primary" id="epochStart">Start epoch</button>
+      </form>
+      <p id="epochStatus" class="msg" role="status"></p>
+    </article>
+    <article class="card" aria-labelledby="h-observe"><h2 id="h-observe">Record an observation</h2>
+      <form id="observeForm" novalidate>
+        <label for="obsChannel">Channel</label>
+        <select id="obsChannel"><option value="camera">Camera reading</option><option value="word">Partner word</option><option value="reference">Mechanical reference</option></select>
+        <fieldset id="actionGroup"><legend>Commanded action</legend></fieldset>
+        <fieldset id="bitGroup"><legend>Observed reading</legend></fieldset>
+        <label for="obsRoot" id="obsRootLabel">Camera root</label><input id="obsRoot" maxlength="128" autocomplete="off" list="rootList" required><datalist id="rootList"></datalist>
+        <label for="obsSample">Sample id (optional; copies of one sample count once)</label><input id="obsSample" maxlength="128" autocomplete="off">
+        <label class="check"><input type="checkbox" id="obsMemoryOnly"> Memory only: keep it, but do not learn from it</label>
+        <label for="obsId">Event id (idempotent: resending the same id and payload is a duplicate)</label>
+        <div class="inline"><input id="obsId" maxlength="128" autocomplete="off" required><button type="button" id="newId">New id</button></div>
+        <button class="primary" id="observeBtn">Record observation</button>
+      </form>
+      <p id="observeStatus" class="msg" role="status"></p>
+    </article>
+    <article class="card wide" aria-labelledby="h-beliefs"><h2 id="h-beliefs">Beliefs</h2><div id="beliefs" class="slot"><p class="empty">Choose or start an epoch to see beliefs.</p></div></article>
+    <article class="card" aria-labelledby="h-change"><h2 id="h-change">Change detection</h2><div id="change" class="slot"><p class="empty">No epoch selected.</p></div></article>
+    <article class="card" aria-labelledby="h-decision"><h2 id="h-decision">Executive decision</h2><div id="decision" class="slot"><p class="empty">No epoch selected.</p></div>
+      <button type="button" class="primary" id="recordDecision" disabled>Record decision</button>
+      <p id="decisionStatus" class="msg" role="status"></p>
+    </article>
+    <article class="card wide" aria-labelledby="h-explain"><h2 id="h-explain">Which experience supports each belief</h2><div id="explain" class="slot"><p class="empty">No epoch selected.</p></div></article>
+    <article class="card wide" aria-labelledby="h-revisions"><h2 id="h-revisions">Revision history</h2><div id="revisions" class="slot"><p class="empty">No epoch selected.</p></div></article>
+  </div>
+</section>
+
+<section id="evidence" class="view" aria-labelledby="h-evidence" hidden>
+  <div class="viewhead"><h1 id="h-evidence" tabindex="-1">Evidence</h1></div>
+  <p class="lede">The evidence journal of one epoch. Forgetting deletes the row and leaves only a payload-free tombstone; promoting keeps a row beyond its default lifetime.</p>
+  <article class="card" aria-labelledby="h-journal"><h2 id="h-journal">Journal</h2>
+    <form id="evFilter" class="filters" novalidate>
+      <div><label for="evEpoch">Epoch</label><select id="evEpoch"><option value="">No epochs yet</option></select></div>
+      <div><label for="evChannel">Channel</label><select id="evChannel"><option value="">All channels</option><option value="camera">camera</option><option value="word">word</option><option value="reference">reference</option></select></div>
+      <div><label for="evRoot">Root</label><input id="evRoot" maxlength="128" autocomplete="off"></div>
+      <div class="end"><button id="evApply">Apply filters</button></div>
+    </form>
+    <div id="evidenceTable" class="slot"><p class="empty">No epoch selected.</p></div>
+  </article>
+  <div class="grid">
+    <article class="card" aria-labelledby="h-fepoch"><h2 id="h-fepoch">Forget this epoch</h2>
+      <p>Deletes every evidence row of the selected epoch, marks affected checkpoints stale and supersedes its open questions.</p>
+      <button type="button" class="danger" id="forgetEpoch" disabled>Forget epoch</button></article>
+    <article class="card" aria-labelledby="h-fpartner"><h2 id="h-fpartner">Forget a partner</h2>
+      <form id="forgetPartnerForm" novalidate><label for="partnerRoot">Partner root</label><input id="partnerRoot" maxlength="128" autocomplete="off" list="partnerList" required><datalist id="partnerList"></datalist>
+      <button class="danger" id="forgetPartner">Forget partner</button></form></article>
+  </div>
+  <p id="evidenceStatus" class="msg" role="status"></p>
+</section>
+
+<section id="questions" class="view" aria-labelledby="h-questions" hidden>
+  <div class="viewhead"><h1 id="h-questions" tabindex="-1">Questions</h1><button type="button" id="refreshQuestions">Refresh</button></div>
+  <p class="lede">Questions the executive asked instead of acting. Your answer is recorded as a teacher intervention.</p>
+  <label class="check"><input type="checkbox" id="showResolved"> Include resolved questions</label>
+  <div id="pendingList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+  <p id="questionStatus" class="msg" role="status"></p>
+</section>
+
+<section id="graphs" class="view" aria-labelledby="h-graphs" hidden>
+  <div class="viewhead"><h1 id="h-graphs" tabindex="-1">Graphs</h1><button type="button" id="refreshGraphs">Refresh</button></div>
+  <p class="lede">Population datasets, learned candidate graphs and the promotion gate that decides whether a candidate replaces the active graph.</p>
+  <div class="grid">
+    <article class="card" aria-labelledby="h-sim"><h2 id="h-sim">Simulate a dataset</h2>
+      <form id="simForm" novalidate>
+        <label for="simContext">Context</label><input id="simContext" maxlength="64" autocomplete="off" required value="world-a">
+        <label for="simSeed">Seed</label><input id="simSeed" type="number" min="0" step="1" inputmode="numeric" required value="1">
+        <label for="simWorld">World</label><select id="simWorld"><option value="a">a (original wiring)</option><option value="b">b (one input per population rewired)</option></select>
+        <button class="primary" id="simBtn">Simulate train, validation and held-out data</button>
+      </form>
+      <p id="simStatus" class="msg" role="status"></p></article>
+    <article class="card" aria-labelledby="h-learn"><h2 id="h-learn">Learn a candidate</h2>
+      <form id="learnForm" novalidate>
+        <label for="learnContext">Context</label><select id="learnContext"><option value="">No datasets yet</option></select>
+        <label for="learnTrain">Training dataset</label><select id="learnTrain"></select>
+        <label for="learnValidation">Validation dataset</label><select id="learnValidation"></select>
+        <button class="primary" id="learnBtn" disabled>Learn candidate graph</button>
+      </form>
+      <p id="learnStatus" class="msg" role="status"></p></article>
+    <article class="card wide" aria-labelledby="h-datasets"><h2 id="h-datasets">Datasets</h2><div id="datasetTable" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card wide" aria-labelledby="h-revs"><h2 id="h-revs">Revisions by context</h2><div id="revisionGroups" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card wide" id="graphDetailCard" aria-labelledby="h-gdetail"><h2 id="h-gdetail">Revision detail</h2>
+      <div id="graphDetail" class="slot"><p class="empty">Choose “View” on a revision to inspect its metrics, gate decision and weights.</p></div>
+      <div id="graphActions" hidden>
+        <div class="buttons"><button type="button" id="gEvaluate">Evaluate on held-out data</button><button type="button" class="primary" id="gPromote">Run promotion gate</button></div>
+        <form id="gRejectForm" class="inline-form" novalidate><label for="gRejectReason">Reason for rejecting this candidate</label><div class="inline"><input id="gRejectReason" maxlength="512" autocomplete="off" required><button class="danger" id="gReject">Reject candidate</button></div></form>
+      </div>
+      <p id="graphStatus" class="msg" role="status"></p>
+      <div id="graphDecision"></div>
+      <div id="graphEvaluation"></div>
+      <div id="graphMatrix"></div>
+    </article>
+    <article class="card wide" aria-labelledby="h-recall"><h2 id="h-recall">Recall</h2>
+      <p class="sub">Replay a stored dataset through the active graphs. Each prediction is committed before its outcome; the best-predicting graph names the context.</p>
+      <form id="recallForm" novalidate>
+        <label for="recallDataset">Dataset</label><select id="recallDataset"><option value="">No datasets yet</option></select>
+        <fieldset id="recallContexts"><legend>Competing contexts (none checked means every active graph)</legend><p class="empty">No active graphs yet.</p></fieldset>
+        <button class="primary" id="recallBtn" disabled>Run recall</button>
+      </form>
+      <p id="recallStatus" class="msg" role="status"></p>
+      <div id="recallResult"></div></article>
+  </div>
+</section>
+
+<section id="checkpoints" class="view" aria-labelledby="h-checkpoints" hidden>
+  <div class="viewhead"><h1 id="h-checkpoints" tabindex="-1">Checkpoints</h1><button type="button" id="refreshCheckpoints">Refresh</button></div>
+  <p class="lede">Verified archives of the whole individual, written next to the instance file in <code>checkpoints/</code>. Forgetting evidence or datasets marks older checkpoints stale.</p>
+  <div class="grid">
+    <article class="card" aria-labelledby="h-ckcreate"><h2 id="h-ckcreate">Create a checkpoint</h2>
+      <form id="ckForm" novalidate><label for="ckPolicy">Compression policy</label>
+        <select id="ckPolicy"><option value="cold">cold: smallest file, slower</option><option value="fast">fast: quicker, larger file</option><option value="experimental">experimental</option></select>
+        <button class="primary" id="ckCreate">Create checkpoint</button></form>
+      <p id="ckStatus" class="msg" role="status"></p></article>
+    <article class="card wide" aria-labelledby="h-cklist"><h2 id="h-cklist">Archive registry</h2><div id="ckTable" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+  </div>
+</section>
+
+<section id="memory" class="view" aria-labelledby="h-memory" hidden>
+  <div class="viewhead"><h1 id="h-memory" tabindex="-1">Memory log</h1><button type="button" id="refreshMemory">Refresh</button></div>
+  <p class="lede">What was deleted and what the executive decided, newest first.</p>
+  <div class="grid">
+    <article class="card wide" aria-labelledby="h-dellog"><h2 id="h-dellog">Deletion log</h2><div id="deletionLog" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card wide" aria-labelledby="h-declog"><h2 id="h-declog">Recorded decisions</h2><div id="decisionLog" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+  </div>
+</section>
+
+</main>
+</div>
+<p id="announce" class="toast" aria-live="off"></p>
+<dialog id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmText">
+  <h2 id="confirmTitle">Confirm</h2>
+  <p id="confirmText"></p>
+  <div class="buttons"><button type="button" id="confirmCancel">Cancel</button><button type="button" class="danger" id="confirmOk">Confirm</button></div>
+</dialog>
+<footer class="foot">NeuroSciFi · Owner console · loopback only</footer>
+</body></html>

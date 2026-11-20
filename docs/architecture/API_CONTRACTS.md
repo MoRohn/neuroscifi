@@ -232,3 +232,26 @@ Loopback only (`127.0.0.1`), started with `nsf console --db PATH [--port 8766]`.
 | POST | /api/checkpoints | checkpoints.create `{"policy"}` ; /api/checkpoints/{id}/verify |
 
 Errors return `{"error": message}` with the status from `errors.py`.
+
+**Additional routes (W3-E):**
+- `POST /api/datasets/simulate {"context","seed","world"?}` → datasets.simulate.
+- `POST /api/graphs/learn {"context","train","validation"}` → graphs.learn(holder="console"), returns `{"revision_id"}`.
+- `POST /api/graphs/{id}/evaluate {}` → graphs.evaluate.
+- `POST /api/recall {"dataset_id","contexts"?}` → recall.run(record=True).
+- `GET /api/epochs/{e}/explain` is an alias of `/beliefs`.
+
+**Response shapes:**
+- `GET /api/inventory` returns store.inventory plus a `regulation` key.
+- `GET /api/epochs` returns `[{name, created_at, note, evidence, learning, memory_only, promoted, forgotten}]`.
+
+**Request rules:**
+- Unknown body or query keys → 400.
+- Body over 4096 bytes → 413.
+- Wrong method → 405 with an `Allow` header.
+- Bad Host, Origin or token → 403.
+
+**Startup and storage:**
+- `nsf console --url-file PATH` writes the URL to a new 0600 file instead of stdout.
+- Checkpoints are written to `<db parent>/checkpoints`.
+
+**CLI-only operations (not in the console):** graph rollback, lesion and export; rule management; checkpoint restore and rebuild; legacy import.
