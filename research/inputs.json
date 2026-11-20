@@ -1,0 +1,65 @@
+[
+  {
+    "filename": "receptors.csv",
+    "repository": "netneurolab/hansen_receptors",
+    "commit": "f8b41da92a733f99368c1f39d4959731aa1316c1",
+    "path": "results/receptor_data_scale100.csv",
+    "git_blob_sha1": "6f7f56e38ef02b077f564c183dd8ec2df179a9b8"
+  },
+  {
+    "filename": "labels.txt",
+    "repository": "ThomasYeoLab/CBIG",
+    "commit": "a54c9c4c38568081b6efa5a6a0da5c9f5a73e314",
+    "path": "stable_projects/brain_parcellation/Schaefer2018_LocalGlobal/Parcellations/MNI/freeview_lut/Schaefer2018_100Parcels_7Networks_order.txt",
+    "git_blob_sha1": "5cbf6e6ae3d931a90a347c1e66e39c393d039d41"
+  },
+  {
+    "filename": "sc_weighted.npy",
+    "repository": "netneurolab/hansen_receptors",
+    "commit": "f8b41da92a733f99368c1f39d4959731aa1316c1",
+    "path": "data/schaefer/sc_weighted.npy",
+    "git_blob_sha1": "02bef96e37f0d092bac7dce0a48f1eb1254d1556"
+  },
+  {
+    "filename": "sc_binary.npy",
+    "repository": "netneurolab/hansen_receptors",
+    "commit": "f8b41da92a733f99368c1f39d4959731aa1316c1",
+    "path": "data/schaefer/sc_binary.npy",
+    "git_blob_sha1": "d39b88a27297213214e0426d7605eeb1b07c23e4"
+  },
+  {
+    "filename": "fc_weighted.npy",
+    "repository": "netneurolab/hansen_receptors",
+    "commit": "f8b41da92a733f99368c1f39d4959731aa1316c1",
+    "path": "data/schaefer/fc_weighted.npy",
+    "git_blob_sha1": "053904776db4b16a61caee52a9758e0163696a07"
+  },
+  {
+    "filename": "Differential_Timing_Control.mat",
+    "repository": "guyavr/AssociativeMotorAdaptation",
+    "commit": "f0c5c7cb930dc7952c24021113edac8be7e4bf32",
+    "path": "Codes/DataAnalysis/Differential_Timing_Control.mat",
+    "git_blob_sha1": "17bf6d23f8d00cf01b9863490a319114b8de96aa"
+  },
+  {
+    "filename": "Differential_Timing_Delay.mat",
+    "repository": "guyavr/AssociativeMotorAdaptation",
+    "commit": "f0c5c7cb930dc7952c24021113edac8be7e4bf32",
+    "path": "Codes/DataAnalysis/Differential_Timing_Delay.mat",
+    "git_blob_sha1": "c0cfa1a8569d93f0147e00e2ae3f0c26949612be"
+  },
+  {
+    "filename": "data_diffCond_Timing_LongITI_Comb.mat",
+    "repository": "guyavr/AssociativeMotorAdaptation",
+    "commit": "f0c5c7cb930dc7952c24021113edac8be7e4bf32",
+    "path": "Codes/Simulations/data_diffCond_Timing_LongITI_Comb.mat",
+    "git_blob_sha1": "d1f42b453c17625055abebe35f0c6489ad6a010c"
+  },
+  {
+    "filename": "data_diffCond_Timing_VaryingDelay_Comb.mat",
+    "repository": "guyavr/AssociativeMotorAdaptation",
+    "commit": "f0c5c7cb930dc7952c24021113edac8be7e4bf32",
+    "path": "Codes/Simulations/data_diffCond_Timing_VaryingDelay_Comb.mat",
+    "git_blob_sha1": "0dbfe9da70333b7180c12d071e5c7404cf1ab380"
+  }
+]

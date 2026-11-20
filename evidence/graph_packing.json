@@ -1,0 +1,14 @@
+{
+  "worlds": 64,
+  "seed_start": 813240,
+  "selected": {
+    "4bit_k3": 64
+  },
+  "raw_dense_fp32_bytes": 2304,
+  "mean_complete_graph_bytes": 247.0,
+  "aggregate_ratio": 9.327935222672064,
+  "mean_test_mse_selected": 0.004325718792363341,
+  "mean_test_mse_dense": 0.004864562906831819,
+  "heldout_fraction_over_validation_tolerance": 0.0,
+  "selection_tolerance": 0.02
+}

@@ -1,0 +1,44 @@
+{
+  "hemisphere": {
+    "structural_weight": 0.21368858063806134,
+    "structural_edges": 0.25616197183098594,
+    "functional_weight": 0.4898617697521094,
+    "degree_imbalance": 0.021485934492160276
+  },
+  "random": {
+    "structural_weight": 0.5049805035987617,
+    "structural_edges": 0.5051069542253521,
+    "functional_weight": 0.5050427878472267,
+    "degree_imbalance": 0.023943768846689924
+  },
+  "0.0": {
+    "structural_weight": 0.21368858063806134,
+    "structural_edges": 0.25616197183098594,
+    "functional_weight": 0.4898617697521094,
+    "degree_imbalance": 0.021485934492160276
+  },
+  "0.25": {
+    "structural_weight": 0.21368858063806134,
+    "structural_edges": 0.25616197183098594,
+    "functional_weight": 0.4898617697521094,
+    "degree_imbalance": 0.021485934492160276
+  },
+  "0.5": {
+    "structural_weight": 0.21368858063806134,
+    "structural_edges": 0.25616197183098594,
+    "functional_weight": 0.4898617697521094,
+    "degree_imbalance": 0.021485934492160276
+  },
+  "0.75": {
+    "structural_weight": 0.3494863657525155,
+    "structural_edges": 0.3732394366197183,
+    "functional_weight": 0.3799895222675387,
+    "degree_imbalance": 0.03203832459138436
+  },
+  "1.0": {
+    "structural_weight": 0.3864895767449685,
+    "structural_edges": 0.4005281690140845,
+    "functional_weight": 0.3763885142247368,
+    "degree_imbalance": 0.023321102123256242
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "prototype_pairs": 16,
+  "validation_pairs": 192,
+  "error_floor": 0.02,
+  "calibrated_decoder_errors": [
+    0.02,
+    0.02
+  ],
+  "nominal": {
+    "report_accuracy_visual_audio": [
+      0.9207763671875,
+      0.9197998046875
+    ],
+    "accepted_fraction_visual_audio": [
+      0.9659423828125,
+      0.9727783203125
+    ],
+    "always": {
+      "exact_state_accuracy_ties_split": 0.966796875,
+      "multiclass_brier_sum": 0.059102946998534744,
+      "mean_confidence": 0.9695564409897239,
+      "mean_probability_on_truth": 0.9433128938437776
+    },
+    "distance_gate": {
+      "exact_state_accuracy_ties_split": 0.96630859375,
+      "multiclass_brier_sum": 0.06012962362209684,
+      "mean_confidence": 0.9695857828649008,
+      "mean_probability_on_truth": 0.9426491047001426
+    }
+  },
+  "rotated_and_transposed": {
+    "report_accuracy_visual_audio": [
+      0.49853515625,
+      0.461181640625
+    ],
+    "accepted_fraction_visual_audio": [
+      0.02880859375,
+      0.488525390625
+    ],
+    "always": {
+      "exact_state_accuracy_ties_split": 0.201904296875,
+      "multiclass_brier_sum": 1.2934508514208662,
+      "mean_confidence": 0.7118330303626927,
+      "mean_probability_on_truth": 0.19743889735426118
+    },
+    "distance_gate": {
+      "exact_state_accuracy_ties_split": 0.0126953125,
+      "multiclass_brier_sum": 1.4781547105007617,
+      "mean_confidence": 0.5444108293624644,
+      "mean_probability_on_truth": 0.01777434775949426
+    }
+  }
+}

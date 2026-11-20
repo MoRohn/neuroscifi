@@ -1,0 +1,13 @@
+{
+  "trials": 3072,
+  "answers": 2727,
+  "correct": 2409,
+  "baselineCorrect": 943,
+  "modelLoss": 1764.9147488106278,
+  "baselineLoss": 3458.6249195550645,
+  "modelLogLoss": 0.5745165197951262,
+  "baselineLogLoss": 1.1258544660009975,
+  "coverage": 0.8876953125,
+  "selectiveAccuracy": 0.8833883388338833,
+  "baselineOnAnswered": 0.34580124679134583
+}

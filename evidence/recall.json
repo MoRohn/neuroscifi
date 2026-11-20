@@ -1,0 +1,11 @@
+{
+  "selected_mse": 0.004660207394685674,
+  "latest_only_mse": 0.008908723263089563,
+  "oracle_mse": 0.004331187518601894,
+  "context_accuracy": 0.957550048828125,
+  "world_pairs": 64,
+  "scored_steps": 32768,
+  "history": 12,
+  "snapshot_bits": 4,
+  "retained_inputs_per_node": 3
+}

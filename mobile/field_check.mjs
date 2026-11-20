@@ -1,0 +1,38 @@
+// Reproduce UI and model checks without reading any personal data or activating hardware.
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {forecast,texture,deviceReceipt,vaultKey,newSalt,seal,openBox,liveRows} from "./web/field-model.mjs";
+const base={goal:["work","owner"],sound:["soft","mic"],switches:["few","android"]};
+const row=(i,features=base)=>({id:String(i),created:Date.now(),outcome:"continued",learn:true,features});
+assert.equal(forecast([],base).answer,null);
+const old={...row(1),created:Date.now()-2*86400000};assert.deepEqual(liveRows([old,{...old,keep:"week"}]).map(r=>r.keep),["week"]);
+const history=Array.from({length:7},(_,i)=>row(i));
+assert.equal(forecast(history,base).answer,"continued");
+assert.equal(forecast(history,{switches:["few","shortcut"]}).ids.length,0);
+assert.equal(forecast(history.map(r=>({...r,learn:false})),base).answer,null);
+assert.equal(texture(new Uint8ClampedArray(32*32*4)), "low");
+assert.throws(()=>deviceReceipt({schema:"pocket-device-1",features:{power:["saving","ios"],package:"example"}}));
+const salt=newSalt(),k=await vaultKey("test example secret",salt),box=await seal(history,k);
+assert.equal((await openBox(box,k)).length,7);
+await assert.rejects(openBox(box,await vaultKey("different example secret",salt)));
+const nodes=new Map(), listeners={}, storage=new Map();
+const element=()=>({textContent:"",value:"",checked:false,hidden:false,dataset:{},append(){},replaceChildren(){}});
+for(const m of readFileSync(new URL("./web/index.html",import.meta.url),"utf8").matchAll(/\bid="([^"]+)"/g))nodes.set(m[1],element());
+const outcomes=["continued","switched","paused"].map(outcome=>({...element(),dataset:{outcome}}));
+globalThis.document={hidden:false,getElementById:id=>{assert(nodes.has(id),id);return nodes.get(id);},createElement:element,
+  querySelectorAll:()=>outcomes,addEventListener:(e,f)=>listeners[e]=f};
+globalThis.window={addEventListener(){},pocketSound:()=>({sound:["soft","mic"]})};
+globalThis.localStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
+Object.defineProperty(globalThis,"navigator",{value:{locks:{request:async(k,f)=>f()}}});
+const realInterval=globalThis.setInterval;globalThis.setInterval=()=>0;
+await import("./web/field-ui.mjs");globalThis.setInterval=realInterval;
+const n=id=>nodes.get(id);
+const unlock=async()=>{n("pass").value="correct horse test vault";await n("unlock").onclick();};
+await unlock();n("goal").onchange({target:{value:"work"}});n("useSound").onclick();
+await n("predict").onclick();assert.equal(n("feedback").hidden,false);
+listeners.visibilitychange();document.hidden=true;listeners.visibilitychange();assert.equal(n("feedback").hidden,true);
+document.hidden=false;await unlock();assert.equal(n("feedback").hidden,false);
+n("locallearn").checked=true;await outcomes[0].onclick();
+const saved=JSON.parse([...storage.values()][0]);const savedRows=await openBox(saved,await vaultKey("correct horse test vault",saved.salt));
+assert.equal(savedRows.length,1);assert.equal(savedRows[0].learn,true);assert.equal(savedRows[0].outcome,"continued");
+console.log("Passed private vault round trip, wrong key, hidden-page lock, pending forecast restore, feedback, field validation, missing source and abstention.");

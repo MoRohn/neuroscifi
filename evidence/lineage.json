@@ -1,0 +1,134 @@
+{
+  "worlds": 16384,
+  "seed": 198675,
+  "fixture_flip_probability": 0.15,
+  "reading_error": 0.1,
+  "conditions": {
+    "one_fixture": {
+      "independent_votes": {
+        "exact_state_accuracy_ties_split": 0.84722900390625,
+        "multiclass_brier_sum": 0.30433840787799504,
+        "mean_confidence": 0.9985130319787063,
+        "mean_probability_on_truth": 0.8466601149666437,
+        "over_95_coverage": 0.990478515625,
+        "wrong_and_over_95_fraction_all_worlds": 0.150146484375
+      },
+      "by_fixture": {
+        "exact_state_accuracy_ties_split": 0.84722900390625,
+        "multiclass_brier_sum": 0.258545850828651,
+        "mean_confidence": 0.848874892807109,
+        "mean_probability_on_truth": 0.7425689189245798,
+        "over_95_coverage": 0.0,
+        "wrong_and_over_95_fraction_all_worlds": 0.0
+      },
+      "by_root": {
+        "exact_state_accuracy_ties_split": 0.84722900390625,
+        "multiclass_brier_sum": 0.258545850828651,
+        "mean_confidence": 0.848874892807109,
+        "mean_probability_on_truth": 0.7425689189245798,
+        "over_95_coverage": 0.0,
+        "wrong_and_over_95_fraction_all_worlds": 0.0
+      },
+      "root_prior_low": {
+        "exact_state_accuracy_ties_split": 0.84722900390625,
+        "multiclass_brier_sum": 0.28800883908082825,
+        "mean_confidence": 0.9685854041443869,
+        "mean_probability_on_truth": 0.825841875758231,
+        "over_95_coverage": 0.99041748046875,
+        "wrong_and_over_95_fraction_all_worlds": 0.150146484375
+      },
+      "root_prior_high": {
+        "exact_state_accuracy_ties_split": 0.84722900390625,
+        "multiclass_brier_sum": 0.3023915111205323,
+        "mean_confidence": 0.6992367536355117,
+        "mean_probability_on_truth": 0.638477722882516,
+        "over_95_coverage": 0.0,
+        "wrong_and_over_95_fraction_all_worlds": 0.0
+      }
+    },
+    "three_independent": {
+      "independent_votes": {
+        "exact_state_accuracy_ties_split": 0.91436767578125,
+        "multiclass_brier_sum": 0.15695099906716353,
+        "mean_confidence": 0.9844279917095748,
+        "mean_probability_on_truth": 0.9076563862004621,
+        "over_95_coverage": 0.8519287109375,
+        "wrong_and_over_95_fraction_all_worlds": 0.04364013671875
+      },
+      "by_fixture": {
+        "exact_state_accuracy_ties_split": 0.9219970703125,
+        "multiclass_brier_sum": 0.12770328971162742,
+        "mean_confidence": 0.9224821639703663,
+        "mean_probability_on_truth": 0.8723589450640958,
+        "over_95_coverage": 0.57720947265625,
+        "wrong_and_over_95_fraction_all_worlds": 0.00390625
+      },
+      "by_root": {
+        "exact_state_accuracy_ties_split": 0.9219970703125,
+        "multiclass_brier_sum": 0.12770328971162742,
+        "mean_confidence": 0.9224821639703663,
+        "mean_probability_on_truth": 0.8723589450640958,
+        "over_95_coverage": 0.57720947265625,
+        "wrong_and_over_95_fraction_all_worlds": 0.00390625
+      },
+      "root_prior_low": {
+        "exact_state_accuracy_ties_split": 0.9219970703125,
+        "multiclass_brier_sum": 0.13808966764874758,
+        "mean_confidence": 0.9688921228491787,
+        "mean_probability_on_truth": 0.9052284863851018,
+        "over_95_coverage": 0.85186767578125,
+        "wrong_and_over_95_fraction_all_worlds": 0.04364013671875
+      },
+      "root_prior_high": {
+        "exact_state_accuracy_ties_split": 0.9219970703125,
+        "multiclass_brier_sum": 0.15055211818702816,
+        "mean_confidence": 0.8200353240874576,
+        "mean_probability_on_truth": 0.7901198008874434,
+        "over_95_coverage": 0.0,
+        "wrong_and_over_95_fraction_all_worlds": 0.0
+      }
+    },
+    "three_shared_root": {
+      "independent_votes": {
+        "exact_state_accuracy_ties_split": 0.84722900390625,
+        "multiclass_brier_sum": 0.30433840787799504,
+        "mean_confidence": 0.9985130319787063,
+        "mean_probability_on_truth": 0.8466601149666437,
+        "over_95_coverage": 0.990478515625,
+        "wrong_and_over_95_fraction_all_worlds": 0.150146484375
+      },
+      "by_fixture": {
+        "exact_state_accuracy_ties_split": 0.84619140625,
+        "multiclass_brier_sum": 0.29722186795276573,
+        "mean_confidence": 0.9809239483332376,
+        "mean_probability_on_truth": 0.8342241207769948,
+        "over_95_coverage": 0.9189453125,
+        "wrong_and_over_95_fraction_all_worlds": 0.1392822265625
+      },
+      "by_root": {
+        "exact_state_accuracy_ties_split": 0.84722900390625,
+        "multiclass_brier_sum": 0.258545850828651,
+        "mean_confidence": 0.848874892807109,
+        "mean_probability_on_truth": 0.7425689189245798,
+        "over_95_coverage": 0.0,
+        "wrong_and_over_95_fraction_all_worlds": 0.0
+      },
+      "root_prior_low": {
+        "exact_state_accuracy_ties_split": 0.84722900390625,
+        "multiclass_brier_sum": 0.28800883908082825,
+        "mean_confidence": 0.9685854041443869,
+        "mean_probability_on_truth": 0.825841875758231,
+        "over_95_coverage": 0.99041748046875,
+        "wrong_and_over_95_fraction_all_worlds": 0.150146484375
+      },
+      "root_prior_high": {
+        "exact_state_accuracy_ties_split": 0.84722900390625,
+        "multiclass_brier_sum": 0.3023915111205323,
+        "mean_confidence": 0.6992367536355117,
+        "mean_probability_on_truth": 0.638477722882516,
+        "over_95_coverage": 0.0,
+        "wrong_and_over_95_fraction_all_worlds": 0.0
+      }
+    }
+  }
+}

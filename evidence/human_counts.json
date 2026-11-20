@@ -1,0 +1,39 @@
+{
+  "source": "Gweon and Schulz, Science 2011, doi:10.1126/science.1204493",
+  "experiment_1": {
+    "counts": [
+      [
+        9,
+        5
+      ],
+      [
+        3,
+        11
+      ]
+    ],
+    "fraction_difference": 0.4285714285714286,
+    "newcombe_95": [
+      0.06309688894258747,
+      0.6667312885158916
+    ],
+    "fisher_two_sided": 0.054237896531610354
+  },
+  "experiment_2_pooled_within_agent_conditions": {
+    "counts": [
+      [
+        13,
+        6
+      ],
+      [
+        11,
+        25
+      ]
+    ],
+    "fraction_difference": 0.3786549707602339,
+    "newcombe_95": [
+      0.10153579212309999,
+      0.5837019007933646
+    ],
+    "fisher_two_sided": 0.010344028668783948
+  }
+}

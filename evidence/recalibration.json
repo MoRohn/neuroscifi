@@ -1,0 +1,2545 @@
+{
+  "rooms_per_condition": 24,
+  "lifetimes_per_room": 128,
+  "seed": 2603194,
+  "conditions": {
+    "nominal": {
+      "usable_rates": [
+        1.0,
+        1.0
+      ],
+      "accuracy_delta_normal_95_by_room": [
+        0.0,
+        0.0
+      ],
+      "recalibrated": {
+        "exact_state_accuracy_ties_split": 0.9666341145833334,
+        "multiclass_brier_sum": 0.05695303243396862,
+        "mean_confidence": 0.9692935740301577,
+        "mean_probability_on_truth": 0.9449094490876421
+      },
+      "refit_unchecked": {
+        "exact_state_accuracy_ties_split": 0.9666341145833334,
+        "multiclass_brier_sum": 0.05693296767453382,
+        "mean_confidence": 0.9698540586234987,
+        "mean_probability_on_truth": 0.9454521704939834
+      },
+      "frozen": {
+        "exact_state_accuracy_ties_split": 0.9666341145833334,
+        "multiclass_brier_sum": 0.05693296389015303,
+        "mean_confidence": 0.969854102705216,
+        "mean_probability_on_truth": 0.9454522145757007
+      },
+      "room_results": [
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.04970754245256171,
+            "mean_confidence": 0.9689128132553141,
+            "mean_probability_on_truth": 0.9501628172306424
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.04970754245256171,
+            "mean_confidence": 0.9689128132553141,
+            "mean_probability_on_truth": 0.9501628172306424
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.04975364773375093,
+            "mean_confidence": 0.9683472189484412,
+            "mean_probability_on_truth": 0.949597283247299
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.94921875,
+            "multiclass_brier_sum": 0.07979409009066922,
+            "mean_confidence": 0.9592456148105467,
+            "mean_probability_on_truth": 0.9279965293787513
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.94921875,
+            "multiclass_brier_sum": 0.07979409009066922,
+            "mean_confidence": 0.9592456148105467,
+            "mean_probability_on_truth": 0.9279965293787513
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.94921875,
+            "multiclass_brier_sum": 0.07984636877837675,
+            "mean_confidence": 0.9587214041315647,
+            "mean_probability_on_truth": 0.9274771707250961
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.95703125,
+            "multiclass_brier_sum": 0.0713160970251033,
+            "mean_confidence": 0.9699355433154235,
+            "mean_probability_on_truth": 0.9387385733367823
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.95703125,
+            "multiclass_brier_sum": 0.0713160970251033,
+            "mean_confidence": 0.9699355433154235,
+            "mean_probability_on_truth": 0.9387385733367823
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.95703125,
+            "multiclass_brier_sum": 0.07118649268977623,
+            "mean_confidence": 0.9696921285256939,
+            "mean_probability_on_truth": 0.9385738972846405
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05453408315593429,
+            "mean_confidence": 0.9762083556523755,
+            "mean_probability_on_truth": 0.9512092739371361
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05453408315593429,
+            "mean_confidence": 0.9762083556523755,
+            "mean_probability_on_truth": 0.9512092739371361
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.054532729825903736,
+            "mean_confidence": 0.9760561094870055,
+            "mean_probability_on_truth": 0.9510619305873278
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04259789673177897,
+            "mean_confidence": 0.9725495908353012,
+            "mean_probability_on_truth": 0.9538521673544881
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04259789673177897,
+            "mean_confidence": 0.9725495908353012,
+            "mean_probability_on_truth": 0.9538521673544881
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.042549292193309524,
+            "mean_confidence": 0.9715411011278641,
+            "mean_probability_on_truth": 0.9529200436081553
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.96484375,
+            "multiclass_brier_sum": 0.05891739524183012,
+            "mean_confidence": 0.9696645113229565,
+            "mean_probability_on_truth": 0.9446645267067296
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96484375,
+            "multiclass_brier_sum": 0.05891739524183012,
+            "mean_confidence": 0.9696645113229565,
+            "mean_probability_on_truth": 0.9446645267067296
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96484375,
+            "multiclass_brier_sum": 0.05895543304662578,
+            "mean_confidence": 0.9690204161582234,
+            "mean_probability_on_truth": 0.9440206537705591
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.984375,
+            "multiclass_brier_sum": 0.0328777041153346,
+            "mean_confidence": 0.9592548400665568,
+            "mean_probability_on_truth": 0.9468078622995331
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.984375,
+            "multiclass_brier_sum": 0.032877793337384484,
+            "mean_confidence": 0.9592543385654619,
+            "mean_probability_on_truth": 0.9468073607984382
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.984375,
+            "multiclass_brier_sum": 0.032747950521766475,
+            "mean_confidence": 0.9590678773716087,
+            "mean_probability_on_truth": 0.946699523702685
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.054394957944431624,
+            "mean_confidence": 0.9767184505184011,
+            "mean_probability_on_truth": 0.9517184659021742
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.054394957944431624,
+            "mean_confidence": 0.9767184505184011,
+            "mean_probability_on_truth": 0.9517184659021742
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.054440311925290266,
+            "mean_confidence": 0.9761723061916281,
+            "mean_probability_on_truth": 0.9511725438039638
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              7
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05488753991347188,
+            "mean_confidence": 0.9742216280121061,
+            "mean_probability_on_truth": 0.949222092955613
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05488754151656092,
+            "mean_confidence": 0.974221071551987,
+            "mean_probability_on_truth": 0.9492215364954939
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05506987591635554,
+            "mean_confidence": 0.9727208479313594,
+            "mean_probability_on_truth": 0.9477252893869527
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.93359375,
+            "multiclass_brier_sum": 0.1083636780686695,
+            "mean_confidence": 0.9719906257424007,
+            "mean_probability_on_truth": 0.9220432177418567
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.93359375,
+            "multiclass_brier_sum": 0.1083636780686695,
+            "mean_confidence": 0.9719906257424007,
+            "mean_probability_on_truth": 0.9220432177418567
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.93359375,
+            "multiclass_brier_sum": 0.10827609793771972,
+            "mean_confidence": 0.9713725217994118,
+            "mean_probability_on_truth": 0.9215017055137411
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.9453125,
+            "multiclass_brier_sum": 0.09252004343319192,
+            "mean_confidence": 0.9735699393490471,
+            "mean_probability_on_truth": 0.9298204082678846
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9453125,
+            "multiclass_brier_sum": 0.09252004343319192,
+            "mean_confidence": 0.9735699393490471,
+            "mean_probability_on_truth": 0.9298204082678846
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9453125,
+            "multiclass_brier_sum": 0.09256557260348963,
+            "mean_confidence": 0.9729247806280464,
+            "mean_probability_on_truth": 0.9291778457938874
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05486461476375628,
+            "mean_confidence": 0.9744084490640521,
+            "mean_probability_on_truth": 0.9494084531040724
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05486461476375628,
+            "mean_confidence": 0.9744084490640521,
+            "mean_probability_on_truth": 0.9494084531040724
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05491481180425539,
+            "mean_confidence": 0.9738708868928224,
+            "mean_probability_on_truth": 0.9488709536394373
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.97265625,
+            "multiclass_brier_sum": 0.04644032002899715,
+            "mean_confidence": 0.9695463092738281,
+            "mean_probability_on_truth": 0.9507963208116614
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.97265625,
+            "multiclass_brier_sum": 0.04644032002899715,
+            "mean_confidence": 0.9695463092738281,
+            "mean_probability_on_truth": 0.9507963208116614
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.97265625,
+            "multiclass_brier_sum": 0.04651833694671009,
+            "mean_confidence": 0.9687312449535972,
+            "mean_probability_on_truth": 0.9499814231636274
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.984375,
+            "multiclass_brier_sum": 0.03097661650895587,
+            "mean_confidence": 0.9690895503713033,
+            "mean_probability_on_truth": 0.9565895580631899
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.984375,
+            "multiclass_brier_sum": 0.03097661650895587,
+            "mean_confidence": 0.9690895503713033,
+            "mean_probability_on_truth": 0.9565895580631899
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.984375,
+            "multiclass_brier_sum": 0.03104666920899226,
+            "mean_confidence": 0.9686467611308637,
+            "mean_probability_on_truth": 0.9561468799370315
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.98828125,
+            "multiclass_brier_sum": 0.020176142274927672,
+            "mean_confidence": 0.9758962772854184,
+            "mean_probability_on_truth": 0.9696462849126128
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.98828125,
+            "multiclass_brier_sum": 0.020176142274927672,
+            "mean_confidence": 0.9758962772854184,
+            "mean_probability_on_truth": 0.9696462849126128
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.98828125,
+            "multiclass_brier_sum": 0.020220646768638127,
+            "mean_confidence": 0.9753324012344964,
+            "mean_probability_on_truth": 0.9690825175929071
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04335024134626733,
+            "mean_confidence": 0.9690759824767976,
+            "mean_probability_on_truth": 0.950379001025557
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04335024134626733,
+            "mean_confidence": 0.9690759824767976,
+            "mean_probability_on_truth": 0.950379001025557
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04323504097010937,
+            "mean_confidence": 0.9686113714706599,
+            "mean_probability_on_truth": 0.9499929645171883
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.9609375,
+            "multiclass_brier_sum": 0.06797300329612196,
+            "mean_confidence": 0.9715151786447471,
+            "mean_probability_on_truth": 0.9402660856507187
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9609375,
+            "multiclass_brier_sum": 0.06797300329612196,
+            "mean_confidence": 0.9715151786447471,
+            "mean_probability_on_truth": 0.9402660856507187
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9609375,
+            "multiclass_brier_sum": 0.06797938004239065,
+            "mean_confidence": 0.9712462691552592,
+            "mean_probability_on_truth": 0.9400019218627994
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.9921875,
+            "multiclass_brier_sum": 0.017520433082951422,
+            "mean_confidence": 0.9735696446598945,
+            "mean_probability_on_truth": 0.96732009428459
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9921875,
+            "multiclass_brier_sum": 0.017520433082951422,
+            "mean_confidence": 0.9735696446598945,
+            "mean_probability_on_truth": 0.96732009428459
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9921875,
+            "multiclass_brier_sum": 0.017568290939777072,
+            "mean_confidence": 0.9729233668706709,
+            "mean_probability_on_truth": 0.9666761325972191
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05197420014983778,
+            "mean_confidence": 0.9731382057115804,
+            "mean_probability_on_truth": 0.9512632210468367
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05197420014983778,
+            "mean_confidence": 0.9731382057115804,
+            "mean_probability_on_truth": 0.9512632210468367
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.052024612808406506,
+            "mean_confidence": 0.9725019373541366,
+            "mean_probability_on_truth": 0.9506271731311735
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.97265625,
+            "multiclass_brier_sum": 0.047361681978982044,
+            "mean_confidence": 0.965175749759857,
+            "mean_probability_on_truth": 0.9464262032951889
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.97265625,
+            "multiclass_brier_sum": 0.047361681978982044,
+            "mean_confidence": 0.965175749759857,
+            "mean_probability_on_truth": 0.9464262032951889
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.97265625,
+            "multiclass_brier_sum": 0.047399167347913475,
+            "mean_confidence": 0.9647150117534355,
+            "mean_probability_on_truth": 0.9459678393310842
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.953125,
+            "multiclass_brier_sum": 0.07581962457159216,
+            "mean_confidence": 0.9635319996865535,
+            "mean_probability_on_truth": 0.9322829218169887
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.953125,
+            "multiclass_brier_sum": 0.07581962457159216,
+            "mean_confidence": 0.9635319996865535,
+            "mean_probability_on_truth": 0.9322829218169887
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.953125,
+            "multiclass_brier_sum": 0.07588451579951845,
+            "mean_confidence": 0.9629855495343524,
+            "mean_probability_on_truth": 0.931741430013356
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.051125268417526216,
+            "mean_confidence": 0.9619228377376963,
+            "mean_probability_on_truth": 0.9431728568380298
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.051125268417526216,
+            "mean_confidence": 0.9619228377376963,
+            "mean_probability_on_truth": 0.9431728568380298
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.0511925743029746,
+            "mean_confidence": 0.961292051295942,
+            "mean_probability_on_truth": 0.9425423434161068
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.9609375,
+            "multiclass_brier_sum": 0.07107828544050343,
+            "mean_confidence": 0.971393132192334,
+            "mean_probability_on_truth": 0.9386029555994232
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9609375,
+            "multiclass_brier_sum": 0.07107828544050343,
+            "mean_confidence": 0.971393132192334,
+            "mean_probability_on_truth": 0.9386029555994232
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9609375,
+            "multiclass_brier_sum": 0.07112530146030757,
+            "mean_confidence": 0.9709332257059468,
+            "mean_probability_on_truth": 0.9381479679868717
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.9453125,
+            "multiclass_brier_sum": 0.08781967333027624,
+            "mean_confidence": 0.9659632351806924,
+            "mean_probability_on_truth": 0.9284632582563564
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9453125,
+            "multiclass_brier_sum": 0.08781967333027624,
+            "mean_confidence": 0.9659632351806924,
+            "mean_probability_on_truth": 0.9284632582563564
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9453125,
+            "multiclass_brier_sum": 0.08783965684288855,
+            "mean_confidence": 0.9656189870707574,
+            "mean_probability_on_truth": 0.928119343490299
+          }
+        }
+      ]
+    },
+    "rotated_and_transposed": {
+      "usable_rates": [
+        1.0,
+        1.0
+      ],
+      "accuracy_delta_normal_95_by_room": [
+        0.7970048560801398,
+        0.8974938418365269
+      ],
+      "recalibrated": {
+        "exact_state_accuracy_ties_split": 0.96728515625,
+        "multiclass_brier_sum": 0.05752597486089834,
+        "mean_confidence": 0.9677579919047803,
+        "mean_probability_on_truth": 0.9426586606248532
+      },
+      "refit_unchecked": {
+        "exact_state_accuracy_ties_split": 0.96728515625,
+        "multiclass_brier_sum": 0.05751231493381017,
+        "mean_confidence": 0.9682868770358,
+        "mean_probability_on_truth": 0.9431697531376976
+      },
+      "frozen": {
+        "exact_state_accuracy_ties_split": 0.12003580729166667,
+        "multiclass_brier_sum": 1.5143075246292776,
+        "mean_confidence": 0.7733520466681845,
+        "mean_probability_on_truth": 0.11759039557948865
+      },
+      "room_results": [
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.236328125,
+            "multiclass_brier_sum": 1.21983703647247,
+            "mean_confidence": 0.7062026531474216,
+            "mean_probability_on_truth": 0.23224488193472115
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96484375,
+            "multiclass_brier_sum": 0.05924108696662346,
+            "mean_confidence": 0.9680601699120895,
+            "mean_probability_on_truth": 0.9430601890771151
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96484375,
+            "multiclass_brier_sum": 0.0592980182911467,
+            "mean_confidence": 0.967308567740522,
+            "mean_probability_on_truth": 0.9423088623084439
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.119140625,
+            "multiclass_brier_sum": 1.4824402359885136,
+            "mean_confidence": 0.7428640118735719,
+            "mean_probability_on_truth": 0.11752655500070144
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.043479354098333214,
+            "mean_confidence": 0.9689606748599682,
+            "mean_probability_on_truth": 0.9502106863977992
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04356186526488608,
+            "mean_confidence": 0.968339789598506,
+            "mean_probability_on_truth": 0.9495899678080173
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.00390625,
+            "multiclass_brier_sum": 1.7649390237147586,
+            "mean_confidence": 0.8048484400001953,
+            "mean_probability_on_truth": 0.0041307580089244515
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05782215907095,
+            "mean_confidence": 0.9596960393707729,
+            "mean_probability_on_truth": 0.9346965005330272
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05785533542416544,
+            "mean_confidence": 0.959054356884111,
+            "mean_probability_on_truth": 0.9340573007949889
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.201171875,
+            "multiclass_brier_sum": 1.3614130087741072,
+            "mean_confidence": 0.7786627920329516,
+            "mean_probability_on_truth": 0.19844731050271944
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9921875,
+            "multiclass_brier_sum": 0.01695765623639016,
+            "mean_confidence": 0.9758899960117059,
+            "mean_probability_on_truth": 0.9696925648390062
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9921875,
+            "multiclass_brier_sum": 0.01687149579039827,
+            "mean_confidence": 0.975264417526255,
+            "mean_probability_on_truth": 0.9691432412003784
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.00390625,
+            "multiclass_brier_sum": 1.7813956616388387,
+            "mean_confidence": 0.8128594945816114,
+            "mean_probability_on_truth": 0.004494518961632828
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9921875,
+            "multiclass_brier_sum": 0.017507927181586485,
+            "mean_confidence": 0.9736861427560188,
+            "mean_probability_on_truth": 0.9674365961616948
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9921875,
+            "multiclass_brier_sum": 0.017531238572467866,
+            "mean_confidence": 0.9731787087487069,
+            "mean_probability_on_truth": 0.9669315314056599
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.330078125,
+            "multiclass_brier_sum": 1.068013080777486,
+            "mean_confidence": 0.734866006359469,
+            "mean_probability_on_truth": 0.32300077917307923
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9609375,
+            "multiclass_brier_sum": 0.06703724362230383,
+            "mean_confidence": 0.9760059616027202,
+            "mean_probability_on_truth": 0.9447573256985917
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9609375,
+            "multiclass_brier_sum": 0.06704989786875497,
+            "mean_confidence": 0.9755394225378242,
+            "mean_probability_on_truth": 0.9442979511884325
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.0,
+            "multiclass_brier_sum": 1.8263354028038008,
+            "mean_confidence": 0.8483203896713453,
+            "mean_probability_on_truth": 2.3344470234647272e-06
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05810988335585083,
+            "mean_confidence": 0.9737718505149444,
+            "mean_probability_on_truth": 0.9472307624617576
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.058159177886150916,
+            "mean_confidence": 0.9734140412589951,
+            "mean_probability_on_truth": 0.9468730696743419
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.333984375,
+            "multiclass_brier_sum": 1.100410649284798,
+            "mean_confidence": 0.7728421215085515,
+            "mean_probability_on_truth": 0.3230143077127782
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.0442384430651803,
+            "mean_confidence": 0.9651620144513116,
+            "mean_probability_on_truth": 0.9464120259891424
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04428472554553046,
+            "mean_confidence": 0.9646249484532041,
+            "mean_probability_on_truth": 0.9458751266627154
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.087890625,
+            "multiclass_brier_sum": 1.561836259146315,
+            "mean_confidence": 0.7611130570472522,
+            "mean_probability_on_truth": 0.08719367569409311
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.0470175165059232,
+            "mean_confidence": 0.9667693397735924,
+            "mean_probability_on_truth": 0.9464782516557113
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04707452744627587,
+            "mean_confidence": 0.9663068461686857,
+            "mean_probability_on_truth": 0.9460158721357562
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.201171875,
+            "multiclass_brier_sum": 1.3216654457763795,
+            "mean_confidence": 0.7315949413781258,
+            "mean_probability_on_truth": 0.19475025622201364
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04188619537971974,
+            "mean_confidence": 0.9766458414256863,
+            "mean_probability_on_truth": 0.9578958491822671
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.041923844952778413,
+            "mean_confidence": 0.9759924913483338,
+            "mean_probability_on_truth": 0.9572426126027778
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.0,
+            "multiclass_brier_sum": 1.8310026414924652,
+            "mean_confidence": 0.8568532215856772,
+            "mean_probability_on_truth": 0.0005815469542037135
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.984375,
+            "multiclass_brier_sum": 0.030802802960690635,
+            "mean_confidence": 0.9696490172935806,
+            "mean_probability_on_truth": 0.957149478326451
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.984375,
+            "multiclass_brier_sum": 0.03085618501660732,
+            "mean_confidence": 0.9688956988113233,
+            "mean_probability_on_truth": 0.9563986378266869
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.353515625,
+            "multiclass_brier_sum": 1.0395299971698675,
+            "mean_confidence": 0.749424301152972,
+            "mean_probability_on_truth": 0.34409524358610477
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04250671105438934,
+            "mean_confidence": 0.9737556469346068,
+            "mean_probability_on_truth": 0.9550061004696666
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04252446611440992,
+            "mean_confidence": 0.9733624895036119,
+            "mean_probability_on_truth": 0.9546153170560792
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.115234375,
+            "multiclass_brier_sum": 1.4547550858160947,
+            "mean_confidence": 0.706851167618323,
+            "mean_probability_on_truth": 0.11384554397215721
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.94140625,
+            "multiclass_brier_sum": 0.09766339101591459,
+            "mean_confidence": 0.9636936993867486,
+            "mean_probability_on_truth": 0.9199437225271023
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.94140625,
+            "multiclass_brier_sum": 0.0976843125665646,
+            "mean_confidence": 0.9633184074148659,
+            "mean_probability_on_truth": 0.9195687662816455
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.009765625,
+            "multiclass_brier_sum": 1.772444492973103,
+            "mean_confidence": 0.8168557847791162,
+            "mean_probability_on_truth": 0.010326267646126003
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.04329017140056958,
+            "mean_confidence": 0.9697794490158859,
+            "mean_probability_on_truth": 0.9510299101134505
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9765625,
+            "multiclass_brier_sum": 0.043318305799165485,
+            "mean_confidence": 0.9692363166674666,
+            "mean_probability_on_truth": 0.9504892581311064
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.2265625,
+            "multiclass_brier_sum": 1.243575715806201,
+            "mean_confidence": 0.7102983850979938,
+            "mean_probability_on_truth": 0.22095033229322536
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9453125,
+            "multiclass_brier_sum": 0.08922379087987803,
+            "mean_confidence": 0.9590251117991103,
+            "mean_probability_on_truth": 0.9215260302132571
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9453125,
+            "multiclass_brier_sum": 0.08923426377200226,
+            "mean_confidence": 0.9586639944040289,
+            "mean_probability_on_truth": 0.9211698204003848
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.009765625,
+            "multiclass_brier_sum": 1.7606809552561786,
+            "mean_confidence": 0.8085374614754625,
+            "mean_probability_on_truth": 0.010309008478194331
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.9453125,
+            "multiclass_brier_sum": 0.09401181711959822,
+            "mean_confidence": 0.9656907167200651,
+            "mean_probability_on_truth": 0.9219937468708079
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.9453125,
+            "multiclass_brier_sum": 0.09396657318609039,
+            "mean_confidence": 0.9648074157095631,
+            "mean_probability_on_truth": 0.921189189364024
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.009765625,
+            "multiclass_brier_sum": 1.7189451458933398,
+            "mean_confidence": 0.7623012336350159,
+            "mean_probability_on_truth": 0.009892443308519398
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05620870976986764,
+            "mean_confidence": 0.9673008626377602,
+            "mean_probability_on_truth": 0.9423534354721907
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.96875,
+            "multiclass_brier_sum": 0.05617429142644293,
+            "mean_confidence": 0.9665067151630746,
+            "mean_probability_on_truth": 0.941635604309482
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.12890625,
+            "multiclass_brier_sum": 1.4265186828777412,
+            "mean_confidence": 0.6991956391071996,
+            "mean_probability_on_truth": 0.128046658794666
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.98046875,
+            "multiclass_brier_sum": 0.03273649209111166,
+            "mean_confidence": 0.9751310975489409,
+            "mean_probability_on_truth": 0.9626841160324666
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.98046875,
+            "multiclass_brier_sum": 0.032638231226396267,
+            "mean_confidence": 0.9745709806730725,
+            "mean_probability_on_truth": 0.9622025712219887
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.0,
+            "multiclass_brier_sum": 1.7868540472189476,
+            "mean_confidence": 0.8142574216637989,
+            "mean_probability_on_truth": 6.888366382176534e-05
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.953125,
+            "multiclass_brier_sum": 0.08203565346921458,
+            "mean_confidence": 0.9637452088225755,
+            "mean_probability_on_truth": 0.9262465767964538
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.953125,
+            "multiclass_brier_sum": 0.0820432688598361,
+            "mean_confidence": 0.96338651302416,
+            "mean_probability_on_truth": 0.9258951022741253
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.20703125,
+            "multiclass_brier_sum": 1.2670021866284524,
+            "mean_confidence": 0.6968621447262123,
+            "mean_probability_on_truth": 0.20335434082084253
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.953125,
+            "multiclass_brier_sum": 0.08126611306950207,
+            "mean_confidence": 0.9676700515569536,
+            "mean_probability_on_truth": 0.9301700632888628
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.953125,
+            "multiclass_brier_sum": 0.08129597452916446,
+            "mean_confidence": 0.9674159555816727,
+            "mean_probability_on_truth": 0.9299161411349743
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.0,
+            "multiclass_brier_sum": 1.8071114951267173,
+            "mean_confidence": 0.8377667664461232,
+            "mean_probability_on_truth": 0.0001290691291213795
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.984375,
+            "multiclass_brier_sum": 0.03254185600217602,
+            "mean_confidence": 0.9612464467669806,
+            "mean_probability_on_truth": 0.9487464582401195
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.984375,
+            "multiclass_brier_sum": 0.032625976782014926,
+            "mean_confidence": 0.9605811121241168,
+            "mean_probability_on_truth": 0.9480812878858709
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.0,
+            "multiclass_brier_sum": 1.8222053718954514,
+            "mean_confidence": 0.8478799216482433,
+            "mean_probability_on_truth": 0.00010016697255091219
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.953125,
+            "multiclass_brier_sum": 0.07603111646901659,
+            "mean_confidence": 0.9624988753377262,
+            "mean_probability_on_truth": 0.9312497936871786
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.953125,
+            "multiclass_brier_sum": 0.07605654655149435,
+            "mean_confidence": 0.962146091369271,
+            "mean_probability_on_truth": 0.9309019149173505
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.30078125,
+            "multiclass_brier_sum": 1.1206296110950449,
+            "mean_confidence": 0.7254512709167222,
+            "mean_probability_on_truth": 0.29364514634543093
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.98828125,
+            "multiclass_brier_sum": 0.020799573623471665,
+            "mean_confidence": 0.9728862376524389,
+            "mean_probability_on_truth": 0.9666362377171308
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.98828125,
+            "multiclass_brier_sum": 0.020837637985436842,
+            "mean_confidence": 0.972450339685645,
+            "mean_probability_on_truth": 0.9662003421334021
+          }
+        },
+        {
+          "usable": [
+            true,
+            true
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              8
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.001953125,
+            "multiclass_brier_sum": 1.80383935747559,
+            "mean_confidence": 0.83374049258307,
+            "mean_probability_on_truth": 0.0020194642850759875
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.91015625,
+            "multiclass_brier_sum": 0.1478798940031822,
+            "mean_confidence": 0.9621645967070159,
+            "mean_probability_on_truth": 0.8934676535534872
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.91015625,
+            "multiclass_brier_sum": 0.1477572358033794,
+            "mean_confidence": 0.961826185317712,
+            "mean_probability_on_truth": 0.8932083662778411
+          }
+        }
+      ]
+    },
+    "aliased_audio": {
+      "usable_rates": [
+        1.0,
+        0.0
+      ],
+      "accuracy_delta_normal_95_by_room": [
+        -0.009930912287934815,
+        0.019696537287934815
+      ],
+      "recalibrated": {
+        "exact_state_accuracy_ties_split": 0.4852701822916667,
+        "multiclass_brier_sum": 0.5262087061758426,
+        "mean_confidence": 0.4850752227659653,
+        "mean_probability_on_truth": 0.4735646816689018
+      },
+      "refit_unchecked": {
+        "exact_state_accuracy_ties_split": 0.49267578125,
+        "multiclass_brier_sum": 0.8439895017420124,
+        "mean_confidence": 0.8291267404938026,
+        "mean_probability_on_truth": 0.48085802667022365
+      },
+      "frozen": {
+        "exact_state_accuracy_ties_split": 0.4803873697916667,
+        "multiclass_brier_sum": 0.8744590997641888,
+        "mean_confidence": 0.8358626786579872,
+        "mean_probability_on_truth": 0.4688313489357512
+      },
+      "room_results": [
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              2,
+              4
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.51171875,
+            "multiclass_brier_sum": 0.8004539921771642,
+            "mean_confidence": 0.8191939975842331,
+            "mean_probability_on_truth": 0.4961412651459649
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.54296875,
+            "multiclass_brier_sum": 0.7299130748702871,
+            "mean_confidence": 0.8078306647839321,
+            "mean_probability_on_truth": 0.5258891436787692
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.4921875,
+            "multiclass_brier_sum": 0.515787781610268,
+            "mean_confidence": 0.4830285314416102,
+            "mean_probability_on_truth": 0.47677856114328754
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              6,
+              3
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.43359375,
+            "multiclass_brier_sum": 0.95674813889398,
+            "mean_confidence": 0.8247894399128806,
+            "mean_probability_on_truth": 0.4245371739565887
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.47265625,
+            "multiclass_brier_sum": 0.9057358551817561,
+            "mean_confidence": 0.8481318927519669,
+            "mean_probability_on_truth": 0.4616780393483638
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.48828125,
+            "multiclass_brier_sum": 0.5209506323474511,
+            "mean_confidence": 0.4882624128460687,
+            "mean_probability_on_truth": 0.47888750011528275
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              4,
+              6
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.53125,
+            "multiclass_brier_sum": 0.7955566483446818,
+            "mean_confidence": 0.8559942201994616,
+            "mean_probability_on_truth": 0.5191115471258528
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.5,
+            "multiclass_brier_sum": 0.8307654808012543,
+            "mean_confidence": 0.8254317648908229,
+            "mean_probability_on_truth": 0.4865203354943815
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.49609375,
+            "multiclass_brier_sum": 0.5087115456923654,
+            "mean_confidence": 0.48678731994568836,
+            "mean_probability_on_truth": 0.4836623205576276
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              4,
+              2
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.4609375,
+            "multiclass_brier_sum": 0.9504793910724194,
+            "mean_confidence": 0.8762268438001566,
+            "mean_probability_on_truth": 0.4520261096674791
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.4921875,
+            "multiclass_brier_sum": 0.8485890348077536,
+            "mean_confidence": 0.8348939322884856,
+            "mean_probability_on_truth": 0.4829945225008072
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.484375,
+            "multiclass_brier_sum": 0.5273810854373523,
+            "mean_confidence": 0.48750822739251864,
+            "mean_probability_on_truth": 0.4750082583180746
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              2,
+              4
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.45703125,
+            "multiclass_brier_sum": 0.9270937808728374,
+            "mean_confidence": 0.8511568744016128,
+            "mean_probability_on_truth": 0.452081696675988
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.52734375,
+            "multiclass_brier_sum": 0.7616833343455736,
+            "mean_confidence": 0.817307236638917,
+            "mean_probability_on_truth": 0.5184853992548206
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.48046875,
+            "multiclass_brier_sum": 0.5332724261202102,
+            "mean_confidence": 0.4884983270175651,
+            "mean_probability_on_truth": 0.47293917988503453
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.484375,
+            "multiclass_brier_sum": 0.8572414099847496,
+            "mean_confidence": 0.828910940926382,
+            "mean_probability_on_truth": 0.47484688719279944
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.5078125,
+            "multiclass_brier_sum": 0.8214880138242614,
+            "mean_confidence": 0.8313143846208972,
+            "mean_probability_on_truth": 0.49330726892743143
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.486328125,
+            "multiclass_brier_sum": 0.523309727034817,
+            "mean_confidence": 0.48431686967150944,
+            "mean_probability_on_truth": 0.4749418999851261
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.41015625,
+            "multiclass_brier_sum": 0.9925595944970443,
+            "mean_confidence": 0.8224977317916948,
+            "mean_probability_on_truth": 0.4014903527042961
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.48046875,
+            "multiclass_brier_sum": 0.8636864645947818,
+            "mean_confidence": 0.8389842968426608,
+            "mean_probability_on_truth": 0.47448672642781897
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.47265625,
+            "multiclass_brier_sum": 0.5468213996631979,
+            "mean_confidence": 0.48403925111638046,
+            "mean_probability_on_truth": 0.4621643123555531
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              5,
+              4
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.54296875,
+            "multiclass_brier_sum": 0.756824007896608,
+            "mean_confidence": 0.8325333476491947,
+            "mean_probability_on_truth": 0.5252280126675776
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.54296875,
+            "multiclass_brier_sum": 0.7586780590193671,
+            "mean_confidence": 0.8353961598969926,
+            "mean_probability_on_truth": 0.52530719560512
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.4921875,
+            "multiclass_brier_sum": 0.5156285356677919,
+            "mean_confidence": 0.48386899935994615,
+            "mean_probability_on_truth": 0.47761905753942213
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              4,
+              6
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.4921875,
+            "multiclass_brier_sum": 0.8733187836280756,
+            "mean_confidence": 0.8590874217658948,
+            "mean_probability_on_truth": 0.4799213050549192
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.47265625,
+            "multiclass_brier_sum": 0.8912389335500983,
+            "mean_confidence": 0.8313370727798567,
+            "mean_probability_on_truth": 0.45695392649877564
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.4765625,
+            "multiclass_brier_sum": 0.5405872172230399,
+            "mean_confidence": 0.4839653017436918,
+            "mean_probability_on_truth": 0.4652153908487238
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              6,
+              1
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.46875,
+            "multiclass_brier_sum": 0.8648725556689825,
+            "mean_confidence": 0.8064396362530248,
+            "mean_probability_on_truth": 0.4586746772489132
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.44921875,
+            "multiclass_brier_sum": 0.9265600901738318,
+            "mean_confidence": 0.8292214717813,
+            "mean_probability_on_truth": 0.4389609673943723
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.482421875,
+            "multiclass_brier_sum": 0.5299174599345975,
+            "mean_confidence": 0.4820997344407545,
+            "mean_probability_on_truth": 0.46966552974068704
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              2,
+              6
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.5078125,
+            "multiclass_brier_sum": 0.8608538705745851,
+            "mean_confidence": 0.8697605308533743,
+            "mean_probability_on_truth": 0.4925734085544926
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.5,
+            "multiclass_brier_sum": 0.825814593452401,
+            "mean_confidence": 0.8234887718070394,
+            "mean_probability_on_truth": 0.48725885952203685
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.49609375,
+            "multiclass_brier_sum": 0.5089476058265379,
+            "mean_confidence": 0.4858082376993932,
+            "mean_probability_on_truth": 0.48268461995099843
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              5,
+              2
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.43359375,
+            "multiclass_brier_sum": 0.9633920084028371,
+            "mean_confidence": 0.8324512799580414,
+            "mean_probability_on_truth": 0.41879805989881963
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.39453125,
+            "multiclass_brier_sum": 1.0421872774197438,
+            "mean_confidence": 0.8388442656260018,
+            "mean_probability_on_truth": 0.38356612075084145
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.47265625,
+            "multiclass_brier_sum": 0.5474400797538261,
+            "mean_confidence": 0.48111134449439286,
+            "mean_probability_on_truth": 0.4592364057335656
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              5,
+              5
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.53125,
+            "multiclass_brier_sum": 0.811427336191783,
+            "mean_confidence": 0.8647608954905147,
+            "mean_probability_on_truth": 0.5112820137413349
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.5078125,
+            "multiclass_brier_sum": 0.8315227624299271,
+            "mean_confidence": 0.847366839157284,
+            "mean_probability_on_truth": 0.49345411153778845
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.48046875,
+            "multiclass_brier_sum": 0.536101295506351,
+            "mean_confidence": 0.48185868288111366,
+            "mean_probability_on_truth": 0.46554477771573066
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              4,
+              3
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.4375,
+            "multiclass_brier_sum": 0.9745928486954505,
+            "mean_confidence": 0.8491751315334941,
+            "mean_probability_on_truth": 0.4250329249224629
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.5546875,
+            "multiclass_brier_sum": 0.7248495680783303,
+            "mean_confidence": 0.8307949238904155,
+            "mean_probability_on_truth": 0.5412031450890327
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.48828125,
+            "multiclass_brier_sum": 0.5214947951334159,
+            "mean_confidence": 0.48564344457325903,
+            "mean_probability_on_truth": 0.4762684748868757
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              6,
+              3
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.48046875,
+            "multiclass_brier_sum": 0.8735416507807179,
+            "mean_confidence": 0.8324911712345734,
+            "mean_probability_on_truth": 0.4652663022828121
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.53515625,
+            "multiclass_brier_sum": 0.7652819565788804,
+            "mean_confidence": 0.8371577418752594,
+            "mean_probability_on_truth": 0.5220258251515764
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.48046875,
+            "multiclass_brier_sum": 0.5346929303405715,
+            "mean_confidence": 0.48225879217895806,
+            "mean_probability_on_truth": 0.46663382371645346
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              4,
+              2
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.44140625,
+            "multiclass_brier_sum": 0.9223682951653212,
+            "mean_confidence": 0.8159785546213105,
+            "mean_probability_on_truth": 0.43686248268259575
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.4296875,
+            "multiclass_brier_sum": 0.9714370133573184,
+            "mean_confidence": 0.8350271707998522,
+            "mean_probability_on_truth": 0.42171100535939166
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.482421875,
+            "multiclass_brier_sum": 0.5292352429469382,
+            "mean_confidence": 0.4860136764488201,
+            "mean_probability_on_truth": 0.47351647065370817
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.50390625,
+            "multiclass_brier_sum": 0.8128010835182786,
+            "mean_confidence": 0.825970800055426,
+            "mean_probability_on_truth": 0.49599022266864773
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.4609375,
+            "multiclass_brier_sum": 0.9275090480142192,
+            "mean_confidence": 0.8563078992354907,
+            "mean_probability_on_truth": 0.4534300117271217
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.47265625,
+            "multiclass_brier_sum": 0.5476061803060607,
+            "mean_confidence": 0.48719181012275964,
+            "mean_probability_on_truth": 0.46461068484645085
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              4,
+              0
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.5078125,
+            "multiclass_brier_sum": 0.8033054240533326,
+            "mean_confidence": 0.8164476824711888,
+            "mean_probability_on_truth": 0.49684266071769867
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.59765625,
+            "multiclass_brier_sum": 0.6433648001393745,
+            "mean_confidence": 0.8351447398514062,
+            "mean_probability_on_truth": 0.5858786821324218
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.48828125,
+            "multiclass_brier_sum": 0.5210958024445858,
+            "mean_confidence": 0.48773479464371483,
+            "mean_probability_on_truth": 0.4783598249573314
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              5,
+              4
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.5,
+            "multiclass_brier_sum": 0.8158636992512434,
+            "mean_confidence": 0.8125634696758126,
+            "mean_probability_on_truth": 0.48867573829335864
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.5078125,
+            "multiclass_brier_sum": 0.7858383753606477,
+            "mean_confidence": 0.7976320187381467,
+            "mean_probability_on_truth": 0.496460466210546
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.49609375,
+            "multiclass_brier_sum": 0.5085442154812055,
+            "mean_confidence": 0.4878099929614267,
+            "mean_probability_on_truth": 0.4846849935733659
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              8,
+              2
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.564453125,
+            "multiclass_brier_sum": 0.7101429153484269,
+            "mean_confidence": 0.8362607269435791,
+            "mean_probability_on_truth": 0.5542044045496468
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.466796875,
+            "multiclass_brier_sum": 0.8883599147502415,
+            "mean_confidence": 0.82135221471305,
+            "mean_probability_on_truth": 0.45799814786763127
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.490234375,
+            "multiclass_brier_sum": 0.5163324419194827,
+            "mean_confidence": 0.487917041673078,
+            "mean_probability_on_truth": 0.4816698061762887
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              7,
+              3
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.4375,
+            "multiclass_brier_sum": 0.9500570497986722,
+            "mean_confidence": 0.832449541721337,
+            "mean_probability_on_truth": 0.42849868745164627
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.5,
+            "multiclass_brier_sum": 0.8227882067557915,
+            "mean_confidence": 0.8212035614733184,
+            "mean_probability_on_truth": 0.4867721077168389
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.4765625,
+            "multiclass_brier_sum": 0.5405489947168276,
+            "mean_confidence": 0.4842706644492001,
+            "mean_probability_on_truth": 0.4655207535542323
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              4,
+              3
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.44140625,
+            "multiclass_brier_sum": 0.9402537182659809,
+            "mean_confidence": 0.8277076982636873,
+            "mean_probability_on_truth": 0.4307514285426032
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.451171875,
+            "multiclass_brier_sum": 0.9153403892312373,
+            "mean_confidence": 0.8241037462124936,
+            "mean_probability_on_truth": 0.44076076550616683
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.482421875,
+            "multiclass_brier_sum": 0.5301173894128334,
+            "mean_confidence": 0.48165886780226475,
+            "mean_probability_on_truth": 0.4691616620071528
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              3,
+              2
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.46484375,
+            "multiclass_brier_sum": 0.9027373222753408,
+            "mean_confidence": 0.8318846350813842,
+            "mean_probability_on_truth": 0.4516845969762057
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.47265625,
+            "multiclass_brier_sum": 0.866025640310577,
+            "mean_confidence": 0.8101788461425281,
+            "mean_probability_on_truth": 0.45992123993826445
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.4921875,
+            "multiclass_brier_sum": 0.5155526222847506,
+            "mean_confidence": 0.4841922983249392,
+            "mean_probability_on_truth": 0.4779423280266165
+          }
+        },
+        {
+          "usable": [
+            true,
+            false
+          ],
+          "hits": [
+            [
+              8,
+              8
+            ],
+            [
+              6,
+              3
+            ]
+          ],
+          "frozen": {
+            "exact_state_accuracy_ties_split": 0.484375,
+            "multiclass_brier_sum": 0.8705328689820209,
+            "mean_confidence": 0.8359717156034326,
+            "mean_probability_on_truth": 0.4714304157353224
+          },
+          "refit_unchecked": {
+            "exact_state_accuracy_ties_split": 0.45703125,
+            "multiclass_brier_sum": 0.9070901547606418,
+            "mean_confidence": 0.8205901550531456,
+            "mean_probability_on_truth": 0.4455686264450488
+          },
+          "recalibrated": {
+            "exact_state_accuracy_ties_split": 0.49609375,
+            "multiclass_brier_sum": 0.5089315414157414,
+            "mean_confidence": 0.4859607231541143,
+            "mean_probability_on_truth": 0.48283572376605355
+          }
+        }
+      ]
+    }
+  }
+}

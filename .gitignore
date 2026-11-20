@@ -1,0 +1,15 @@
+.omc/
+.venv/
+__pycache__/
+*.pyc
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.nsfa
+*.nsg
+node_modules/
+.pytest_cache/
+.ruff_cache/
+/state/
+test-results/
+playwright-report/

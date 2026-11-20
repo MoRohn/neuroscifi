@@ -1,0 +1,14 @@
+{
+  "random": {
+    "mean_noise_actions": 1.6181640625,
+    "diagnostic_accuracy": 0.8489990234375
+  },
+  "entropy": {
+    "mean_noise_actions": 6.017333984375,
+    "diagnostic_accuracy": 0.89776611328125
+  },
+  "information": {
+    "mean_noise_actions": 0.0,
+    "diagnostic_accuracy": 0.98956298828125
+  }
+}

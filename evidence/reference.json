@@ -1,0 +1,115 @@
+{
+  "seed": 672901,
+  "static_worlds": 8192,
+  "stream_lifetimes": 2048,
+  "static": {
+    "passive": {
+      "exact_state_accuracy_ties_split": 0.499725341796875,
+      "multiclass_brier_sum": 0.500333861269038,
+      "mean_confidence": 0.49973592997558136,
+      "mean_probability_on_truth": 0.499676383481696
+    },
+    "fresh_noisy_report_accuracy": {
+      "camera": 0.90185546875,
+      "speech": 0.8912353515625
+    },
+    "independent_trials_1": {
+      "exact_state_accuracy_ties_split": 0.90191650390625,
+      "multiclass_brier_sum": 0.17669274292250262,
+      "mean_confidence": 0.8995246739560465,
+      "mean_probability_on_truth": 0.8213966636893413
+    },
+    "shared_standard_fault_1": {
+      "exact_state_accuracy_ties_split": 0.7752685546875,
+      "multiclass_brier_sum": 0.37931372877345715,
+      "mean_confidence": 0.8995246739560465,
+      "mean_probability_on_truth": 0.7200861707638639
+    },
+    "two_standards_1": {
+      "exact_state_accuracy_ties_split": 0.7752685546875,
+      "multiclass_brier_sum": 0.37931372877345715,
+      "mean_confidence": 0.8995246739560465,
+      "mean_probability_on_truth": 0.7200861707638639
+    },
+    "independent_trials_3": {
+      "exact_state_accuracy_ties_split": 0.97039794921875,
+      "multiclass_brier_sum": 0.05282737962977836,
+      "mean_confidence": 0.9715569069217624,
+      "mean_probability_on_truth": 0.9480526739749359
+    },
+    "shared_standard_fault_3": {
+      "exact_state_accuracy_ties_split": 0.823486328125,
+      "multiclass_brier_sum": 0.33243821422683967,
+      "mean_confidence": 0.9715569069217624,
+      "mean_probability_on_truth": 0.8082472566764051
+    },
+    "two_standards_3": {
+      "exact_state_accuracy_ties_split": 0.84503173828125,
+      "multiclass_brier_sum": 0.2605571379446171,
+      "mean_confidence": 0.961781223404481,
+      "mean_probability_on_truth": 0.8354036363751247
+    },
+    "independent_trials_5": {
+      "exact_state_accuracy_ties_split": 0.99139404296875,
+      "multiclass_brier_sum": 0.015393531322397448,
+      "mean_confidence": 0.990575260334472,
+      "mean_probability_on_truth": 0.9839386650926308
+    },
+    "shared_standard_fault_5": {
+      "exact_state_accuracy_ties_split": 0.83837890625,
+      "multiclass_brier_sum": 0.31692281229980335,
+      "mean_confidence": 0.990575260334472,
+      "mean_probability_on_truth": 0.8331740246039279
+    },
+    "two_standards_5": {
+      "exact_state_accuracy_ties_split": 0.957763671875,
+      "multiclass_brier_sum": 0.07302556055240601,
+      "mean_confidence": 0.9788216630724066,
+      "mean_probability_on_truth": 0.9445489610438524
+    },
+    "one_event_counted_1": {
+      "exact_state_accuracy_ties_split": 0.89874267578125,
+      "multiclass_brier_sum": 0.18177337291342738,
+      "mean_confidence": 0.8995246739560465,
+      "mean_probability_on_truth": 0.8188563486938789
+    },
+    "one_event_counted_4": {
+      "exact_state_accuracy_ties_split": 0.89874267578125,
+      "multiclass_brier_sum": 0.20200923204968124,
+      "mean_confidence": 0.9993195478725356,
+      "mean_probability_on_truth": 0.8985297383643385
+    },
+    "one_event_counted_16": {
+      "exact_state_accuracy_ties_split": 0.89874267578125,
+      "multiclass_brier_sum": 0.20207057647101057,
+      "mean_confidence": 0.9994718599511623,
+      "mean_probability_on_truth": 0.8986513399969243
+    }
+  },
+  "stream": {
+    "passive": {
+      "state_accuracy": 0.4644025166829427,
+      "multiclass_brier_sum": 0.5528446634501513,
+      "mean_references": 0.0
+    },
+    "periodic": {
+      "state_accuracy": 0.893890380859375,
+      "multiclass_brier_sum": 0.15526964685410327,
+      "mean_references": 24.0
+    },
+    "uncertainty": {
+      "state_accuracy": 0.908233642578125,
+      "multiclass_brier_sum": 0.14326672730219844,
+      "mean_references": 24.0
+    },
+    "random": {
+      "state_accuracy": 0.8864898681640625,
+      "multiclass_brier_sum": 0.16283226646899837,
+      "mean_references": 24.0
+    },
+    "uncertainty_minus_periodic_95_normal_paired": [
+      0.012281304029590476,
+      0.016405219407909524
+    ]
+  }
+}
