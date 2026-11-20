@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import signal
 import sqlite3
 import ssl
 import threading
@@ -263,6 +264,7 @@ class Handler(BaseHTTPRequestHandler):
                     if self.server.invitation and now<self.server.invitation_deadline and hmac.compare_digest(self.server.invitation,code):
                         key=self.server.store.pair()
                         self.server.invitation=None
+                        remove_invitation_file(self.server)
                     else:
                         link=getattr(self.server,"handoffs",{}).pop(fingerprint(code),None)
                         if not link or now>=link[1]: return self.reply(403)
@@ -289,6 +291,23 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(400)
 
 
+def write_invitation_file(path, code):
+    """Create `path` exclusively with mode 0600 holding the code. Raises FileExistsError rather than overwrite."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        os.fchmod(handle.fileno(), 0o600)
+        handle.write(code + "\n")
+
+
+def remove_invitation_file(server):
+    path = getattr(server, "invitation_file", None)
+    if path:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--db", default="mobile-private.sqlite")
@@ -296,6 +315,8 @@ def main(argv=None):
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--cert")
     p.add_argument("--key")
+    p.add_argument("--invitation-file", metavar="PATH",
+                   help="write the one-use code to this new 0600 file instead of stdout; removed when used, expired or at shutdown")
     p.add_argument("--list-pairings", action="store_true")
     p.add_argument("--erase-pairing", metavar="LABEL")
     a = p.parse_args(argv)
@@ -322,19 +343,37 @@ def main(argv=None):
     server.store, server.pair_lock = store, threading.Lock()
     server.invitation = secrets.token_urlsafe(24)
     server.invitation_deadline = time.monotonic() + 300
-    print(f"One-use pairing code (5 minutes): {server.invitation}", flush=True)
+    server.invitation_file = a.invitation_file
+    if a.invitation_file:
+        try:
+            signal.signal(signal.SIGTERM, signal.default_int_handler)  # service stop runs the cleanup below
+        except ValueError:
+            pass  # not the main thread
+        try:
+            write_invitation_file(a.invitation_file, server.invitation)
+        except OSError as error:
+            server.server_close()
+            p.error(f"cannot create invitation file {a.invitation_file} (it is never overwritten): {error}")
+        announcement = f"Invitation written to {a.invitation_file}"
+        expiry = threading.Timer(300, lambda: remove_invitation_file(server))
+        expiry.daemon = True
+        expiry.start()
+    else:
+        announcement = f"One-use pairing code (5 minutes): {server.invitation}"
     stop = threading.Event()
     def upkeep():
         while not stop.wait(60):
             store.sweep()
     threading.Thread(target=upkeep, daemon=True).start()
     try:
+        print(announcement, flush=True)  # inside the try: a stop signal right after this line still cleans up
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         stop.set()
         server.server_close()
+        remove_invitation_file(server)
 
 
 if __name__ == "__main__":

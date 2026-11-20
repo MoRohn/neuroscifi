@@ -1,0 +1,56 @@
+# Nightly sweep and cold checkpoint of the instance database. Runs off the interactive loop at idle priority.
+# Archives go to /var/lib/neuroscifi/checkpoints (nsf default: next to the database). Triggered by neuroscifi-checkpoint.timer.
+[Unit]
+Description=NeuroSciFi sweep and cold checkpoint
+# Refuse to start unless the (encrypted) state volume is mounted, so data never lands on the unencrypted root disk.
+RequiresMountsFor=%S/neuroscifi
+
+[Service]
+Type=oneshot
+User=neuroscifi
+Group=neuroscifi
+
+Environment=NSF_DB=%S/neuroscifi/instance.sqlite
+EnvironmentFile=-/etc/neuroscifi/neuroscifi.env
+
+# Sweep first so expired evidence is not archived. `checkpoint rebuild` writes one fresh cold checkpoint and deletes
+# archives that went stale after a forget, so an erasure request leaves no old copy for more than a day.
+# A failed step fails the unit.
+ExecStart=/opt/neuroscifi/venv/bin/nsf sweep --db ${NSF_DB}
+ExecStart=/opt/neuroscifi/venv/bin/nsf checkpoint rebuild --db ${NSF_DB} --policy cold
+TimeoutStartSec=2h
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=20
+
+StateDirectory=neuroscifi
+StateDirectoryMode=0700
+ReadWritePaths=%S/neuroscifi
+UMask=0077
+
+# No network at all.
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service

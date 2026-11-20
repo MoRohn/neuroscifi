@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly NeuroSciFi sweep and cold checkpoint
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=neuroscifi-checkpoint.service
+
+[Install]
+WantedBy=timers.target

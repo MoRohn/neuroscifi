@@ -101,3 +101,24 @@ def test_forgetting_data_reaches_graphs_and_archives(instance, tmp_path):
     copy = sqlite3.connect(tmp_path / "r.sqlite")
     assert copy.execute("SELECT count(*) FROM evidence WHERE id='secret'").fetchone()[0] == 0
     assert out
+
+
+def test_newer_schema_is_refused_cleanly(tmp_path, capsys):
+    path = tmp_path / "future.sqlite"
+    store.create(path, T0).close()
+    raw = sqlite3.connect(path)
+    raw.execute("PRAGMA user_version=99")
+    raw.close()
+    assert main(["birth", "--db", str(path)]) == 2
+    assert "newer than this software" in capsys.readouterr().err
+
+
+def test_init_sets_regulation_limits(tmp_path, capsys):
+    path = tmp_path / "small.sqlite"
+    assert main(["init", "--db", str(path), "--max-evidence-rows", "1", "--min-free-mib", "1"]) == 0
+    capsys.readouterr()
+    assert main(["epoch", "start", "e", "--db", str(path)]) == 0
+    assert main(["observe", "e", "a", "camera", "0", "0", "cam", "--db", str(path)]) == 0
+    capsys.readouterr()
+    assert main(["observe", "e", "b", "camera", "0", "0", "cam", "--db", str(path)]) == 2
+    assert "limit 1" in capsys.readouterr().err

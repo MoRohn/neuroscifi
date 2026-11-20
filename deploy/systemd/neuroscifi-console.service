@@ -1,0 +1,58 @@
+# NeuroSciFi operator console (available from 0.5.0). Loopback only: reach it through an SSH tunnel
+# (docs/operations/RUNBOOK.md). Installed disabled.
+[Unit]
+Description=NeuroSciFi operator console (loopback only)
+# Refuse to start unless the (encrypted) state volume is mounted, so data never lands on the unencrypted root disk.
+RequiresMountsFor=%S/neuroscifi
+After=local-fs.target
+
+[Service]
+Type=simple
+User=neuroscifi
+Group=neuroscifi
+
+Environment=NSF_DB=%S/neuroscifi/instance.sqlite
+Environment=NSF_CONSOLE_PORT=8766
+EnvironmentFile=-/etc/neuroscifi/neuroscifi.env
+
+# The console writes its access URL to the state directory; read it with: sudo cat /var/lib/neuroscifi/console-url
+ExecStart=/opt/neuroscifi/venv/bin/nsf console --db ${NSF_DB} --port ${NSF_CONSOLE_PORT} --url-file %S/neuroscifi/console-url
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+StateDirectory=neuroscifi
+StateDirectoryMode=0700
+ReadWritePaths=%S/neuroscifi
+UMask=0077
+
+# Nothing outside this host may reach or be reached by the console.
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

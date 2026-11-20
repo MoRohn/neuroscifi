@@ -50,7 +50,9 @@ def with_db(handler):
 def _init(args):
     semantics = json.loads(args.action_semantics) if args.action_semantics else None
     cfg = store.InstanceConfig(evidence_ttl_seconds=int(args.ttl_days * 86400),
-                               ask_budget_per_epoch=args.ask_budget)
+                               ask_budget_per_epoch=args.ask_budget,
+                               max_evidence_rows=args.max_evidence_rows,
+                               min_free_bytes=int(args.min_free_mib * 1024 * 1024))
     founding = args.founding_graph.read_bytes() if args.founding_graph else None
     db = store.create(store.resolve_db(args), time.time(), action_semantics=semantics,
                       config=cfg, founding_graph=founding, note=args.note)
@@ -68,6 +70,10 @@ def register(sub):
     p.add_argument("--founding-graph", type=Path, help="NSG1 file registered as the founding graph")
     p.add_argument("--ttl-days", type=float, default=7.0, help="default lifetime of unpromoted evidence")
     p.add_argument("--ask-budget", type=int, default=3, help="questions per epoch before deferring")
+    p.add_argument("--max-evidence-rows", type=int, default=store.InstanceConfig.max_evidence_rows,
+                   help="regulation: pause new evidence writes at this journal size")
+    p.add_argument("--min-free-mib", type=float, default=store.InstanceConfig.min_free_bytes / 1048576,
+                   help="regulation: pause new evidence writes below this free space")
     p.add_argument("--note")
     p.set_defaults(handler=run(_init))
 

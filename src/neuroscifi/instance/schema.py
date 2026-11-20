@@ -115,9 +115,10 @@ SCHEMA_VERSION = len(MIGRATIONS)
 
 def migrate(db):
     """Apply pending migrations inside one transaction. Refuse a newer schema."""
+    from .errors import Conflict
     current = db.execute("PRAGMA user_version").fetchone()[0]
     if current > SCHEMA_VERSION:
-        raise RuntimeError(f"Instance schema {current} is newer than this software ({SCHEMA_VERSION})")
+        raise Conflict(f"Instance schema {current} is newer than this software ({SCHEMA_VERSION})")
     for version in range(current, SCHEMA_VERSION):
         db.executescript("BEGIN IMMEDIATE;" + MIGRATIONS[version] + f";PRAGMA user_version={version+1};COMMIT;")
     return SCHEMA_VERSION

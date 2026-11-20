@@ -1,0 +1,64 @@
+# NeuroSciFi Pocket bridge: the phone interface. Installed disabled; enable only after the rehearsal in
+# docs/operations/RUNBOOK.md. Settings come from /etc/neuroscifi/neuroscifi.env (see deploy/neuroscifi.env.example).
+[Unit]
+Description=NeuroSciFi Pocket bridge (phone interface)
+# Refuse to start unless the (encrypted) state volume is mounted, so data never lands on the unencrypted root disk.
+RequiresMountsFor=%S/neuroscifi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=neuroscifi
+Group=neuroscifi
+
+# Defaults are loopback and plain HTTP. The optional file overrides them; a missing file is not an error.
+Environment=NSF_POCKET_DB=%S/neuroscifi/pocket.sqlite
+Environment=NSF_POCKET_BIND=127.0.0.1
+Environment=NSF_POCKET_PORT=8765
+Environment=NSF_POCKET_TLS_ARGS=
+EnvironmentFile=-/etc/neuroscifi/neuroscifi.env
+
+# The one-use pairing code goes to a 0600 file in the runtime directory (tmpfs, removed at stop),
+# so it never reaches the journal. Read it with: sudo cat /run/neuroscifi/invitation
+# $NSF_POCKET_TLS_ARGS is split on spaces ("--cert PATH --key PATH") and may be empty.
+ExecStart=/opt/neuroscifi/venv/bin/nsf pocket serve --db ${NSF_POCKET_DB} --bind ${NSF_POCKET_BIND} --port ${NSF_POCKET_PORT} --invitation-file %t/neuroscifi/invitation $NSF_POCKET_TLS_ARGS
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+StateDirectory=neuroscifi
+StateDirectoryMode=0700
+RuntimeDirectory=neuroscifi
+RuntimeDirectoryMode=0700
+ReadWritePaths=%S/neuroscifi
+UMask=0077
+
+# Sensing happens on the phone, so this service needs no devices, privileges or namespaces.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# Checked: numpy, zstandard and sqlite3 import and run under MemoryDenyWriteExecute (see docs/operations/ENVIRONMENT.md).
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target
