@@ -4,9 +4,10 @@ Each observation is one corrected binary reading (bit XOR action) from a camera 
 or a reference root. Ingest is idempotent on the event id: the same payload twice is a duplicate,
 a different payload is a Conflict, and a forgotten or expired id is Gone forever.
 """
+import hashlib
 import math
 
-from . import beliefs, store
+from . import beliefs, datasets, store
 from .errors import Conflict, Gone, ValidationError
 
 CHANNELS = ("camera", "word", "reference")
@@ -52,17 +53,75 @@ def normalize(obs):
     return record
 
 
-def start_epoch(db, name, now, note=None):
-    """Create a calibration epoch. Idempotent: an existing name returns created=False."""
+def start_epoch(db, name, now, note=None, context=None):
+    """Create a calibration epoch. Idempotent: an existing name returns created=False.
+
+    context: the graph context of the epoch's panel (epoch_contexts); given for an existing epoch it replaces the
+    association. With a context the result also carries "context".
+    """
     _text("epoch name", name, 64)
     if note is not None and (not isinstance(note, str) or len(note) > 1024):
         raise ValidationError("note must be a string of at most 1024 characters")
+    if context is not None:
+        datasets._check_context(context)
     with store.write(db):
         created = db.execute("INSERT OR IGNORE INTO epochs(name,created_at,note) VALUES(?,?,?)",
                              (name, now, note)).rowcount == 1
-        if created:
+        changed = context is not None and _associate(db, name, context, now)
+        if created or changed:
             store.bump_state_version(db)
-    return {"epoch": name, "created": created}
+    return {"epoch": name, "created": created} | ({"context": context} if context is not None else {})
+
+
+def _associate(db, epoch, context, now):
+    """Upsert the epoch's graph context. Caller owns the transaction. Returns True when it changed."""
+    if beliefs.epoch_context(db, epoch) == context:
+        return False
+    db.execute("INSERT INTO epoch_contexts(epoch,context,created_at) VALUES(?,?,?) "
+               "ON CONFLICT(epoch) DO UPDATE SET context=excluded.context, created_at=excluded.created_at",
+               (epoch, context, now))
+    return True
+
+
+def set_epoch_context(db, epoch, context, now):
+    """Declare (or replace) the graph context of an existing epoch's panel. Returns {"epoch", "context", "changed"}.
+
+    Errors: NotFound (unknown epoch), ValidationError (context not a nonblank name of at most 64 characters).
+    """
+    datasets._check_context(context)
+    with store.write(db):
+        beliefs.require_epoch(db, epoch)
+        changed = _associate(db, epoch, context, now)
+        if changed:
+            store.bump_state_version(db)
+    return {"epoch": epoch, "context": context, "changed": changed}
+
+
+def attach_stream(db, epoch, states, targets, now, *, provenance="observed", path=None):
+    """Attach a short population stream (states[T,N], targets[T,N]) observed in an epoch.
+
+    Validated like datasets.add (numeric, finite, 2-D, same shape, 8..200000 steps, 1..1024 populations) and stored
+    as an npz blob read back with allow_pickle=False. Regulation applies (WritesPaused); it expires after the
+    evidence TTL and is forgotten with its epoch. It is evidence about which panel this is (beliefs.match_epochs
+    scores the most recent one) and is never used for training.
+    Returns {"id", "epoch", "rows", "cols", "sha256", "provenance", "created_at", "expires_at"}.
+    """
+    if provenance not in datasets.PROVENANCES:
+        raise ValidationError(f"provenance must be one of {', '.join(datasets.PROVENANCES)}")
+    states, targets = datasets._check_arrays(states, targets)
+    blob = datasets._encode(states, targets)
+    digest = hashlib.sha256(blob).hexdigest()
+    rows, cols = states.shape
+    with store.write(db):
+        beliefs.require_epoch(db, epoch)
+        store.require_write_allowed(db, path)
+        expires = now + store.config(db).evidence_ttl_seconds
+        stream_id = db.execute(
+            "INSERT INTO epoch_streams(epoch,blob,rows,cols,sha256,provenance,created_at,expires_at) "
+            "VALUES(?,?,?,?,?,?,?,?)", (epoch, blob, rows, cols, digest, provenance, now, expires)).lastrowid
+        store.bump_state_version(db)
+    return {"id": stream_id, "epoch": epoch, "rows": rows, "cols": cols, "sha256": digest, "provenance": provenance,
+            "created_at": now, "expires_at": expires}
 
 
 def observe(db, obs, now, *, path=None):

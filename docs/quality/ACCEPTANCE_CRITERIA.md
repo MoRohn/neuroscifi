@@ -12,7 +12,7 @@ The release is accepted only when every **gate** below passes on a fresh run by 
 | Numerical reproduction | `python scripts/reproduce.py` | "Verified" for all 8 analyses |
 | Browser end to end | `bash scripts/e2e.sh` | 0 failures (Pocket and console) |
 | Accessibility | inside e2e (axe-core) | 0 serious or critical violations on Pocket and the console, at phone and tablet sizes |
-| Acceptance scenarios | `nsf acceptance --all` | every scenario `"pass": true` (7 scenarios, including `first_physical_test` for p.34) |
+| Acceptance scenarios | `nsf acceptance --all` | every scenario `"pass": true` (7 scenarios, including `first_physical_test` for p.34 with the pre-registered D-1 checks) |
 | Packaging | `uv pip install .` into a clean venv, then `nsf --help` | succeeds |
 | Service units | `systemd-analyze verify deploy/systemd/*.service` | no errors |
 

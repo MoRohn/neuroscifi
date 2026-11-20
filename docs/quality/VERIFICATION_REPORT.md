@@ -11,13 +11,13 @@ Every result below comes from a run by the integrator. An agent's report is neve
 | Area | Result |
 |---|---|
 | Quality gates G1 (lint, unit and integration, JavaScript, reproduction, browser e2e, accessibility, packaging) | **PASS** |
-| Acceptance scenarios (`nsf acceptance --all`) | **6 of 7 pass.** `first_physical_test` fails 1 of its 4 checks (§5). |
+| Acceptance scenarios (`nsf acceptance --all`) | **7 of 7 pass** after the pre-registered D-1 redesign (§5) |
 | Critical journeys J1–J6 | **PASS** |
 | Security acceptance G3 | **PASS** after remediation. 0 open P0 or P1 (§4). |
 | Open P0 / P1 defects | **0 / 0** |
 | Deployment | **Not deployed.** Units and installer are verified offline only (§6). |
 
-Under ACCEPTANCE_CRITERIA, the release is **complete except for one simulated milestone check**. ACC-08's automatic recognition of an earlier setup sits below its 0.80 threshold. That threshold was declared before measurement and has not been changed. The check needs an owner decision (§5, Decision D-1).
+Under ACCEPTANCE_CRITERIA, every gate and acceptance scenario passes. ACC-08's earlier-setup recognition was resolved through a design that was pre-registered (`3b4e943`) before implementation or measurement. Thresholds were not lowered; a false-offer control was added (§5).
 
 ## 2. Quality gates (fresh runs at `88f56fd`)
 
@@ -95,28 +95,44 @@ Three read-only reviewers ran in parallel at `d37347c`: security (opus), code (o
 | device_ownership | yes | Idle observe→decide p50 2.10 ms, p99 2.22 ms. Under concurrent learning and checkpointing, p99 3.4 ms with 0 failed writes. Restart, checkpoint restore and write pause all behave correctly. |
 | first_physical_test (p.34) | **no (3/4)** | Attribution 0.92 ✓. Older-skill retention 0.975 ✓. Confident-wrong 0 vs 78 for fixed wiring ✓. **Earlier-setup recognition 0.00 ✗** |
 
-**Why recognition fails (D-1).** In the declared return, 4 steps of camera and word readings with no reference, each shared root can only tell an earlier setup from a brand-new one by 1 bit. A new setup with fresh hidden bits explains consistent readings equally well. The remounted epoch also has two candidate camera segments, so choosing one costs a further bit of evidence. The best achievable posterior is therefore 2/3, and the declared ask threshold is 3:1, a posterior of 0.75.
+**D-1: earlier-setup recognition, resolved by a pre-registered design.**
 
-Recognition by return length (report-only):
+At `88f56fd`, recognition was 0.00. The analysis behind the fix:
+- The scenario had **no negative control**, so a recognition rate alone was meaningless.
+- **Calibration bits alone can never pass.** A new setup reproduces K binary relations by chance with probability 2^-K, so 80% recall forces at least 20% false offers when K = 2.
+- **The missing evidence is the panel's own dynamics.** This is the brief's p.10 mechanism, and the camera remount does not change it.
 
-| Return | Recognition |
-|---|---|
-| 4–12 steps, no references | 0.00 |
-| With 1–3 reference readings | 0.64–0.70 |
+The design and thresholds were committed in `docs/quality/PREREGISTRATION_D1.md` (`3b4e943`) before any code or measurement. The only later edit is an appended "Implementation notes" section; 0 original lines changed. The design:
+- epoch ↔ graph context;
+- a 12-step observation stream for the current epoch;
+- a Gaussian dynamics likelihood against a zero-knowledge "new panel" alternative;
+- calibration bits that pick the camera segment;
+- an empirical prior learned from the owner's earlier answers;
+- the 3:1 ask threshold, unchanged.
 
-When the owner continues the earlier setup, the link works:
-
-| Measure | Without continuing | After "continue there" |
+| Judged check (100 true returns, 100 new-panel returns) | Threshold | Result |
 |---|---|---|
-| Next-reading accuracy | 0.50 | **0.81** |
-| Beliefs correct | — | 0.94 |
+| Earlier setup recognised | ≥ 0.80 | **1.00** |
+| False offers on new panels (same device names) | ≤ 0.10 | **0.00** |
+| Original camera segment offered | ≥ 0.80 | **0.89** |
+| Attribution, retention, confident-wrong vs fixed wiring | unchanged | 0.92, 0.975, 0 vs 78 |
 
-The thresholds were not tuned after measurement. Owner options:
-- (a) Lower the ask threshold to 2:1. The executive then asks earlier, with more false offers.
-- (b) Require a reference reading on return.
-- (c) Accept the result as a documented limit.
+**Bits-only arm (reported, not judged):** recognition 0.00, with the maximum posterior exactly the predicted 2/3 bound.
 
-The brief's own p.12 finding ("An accurate forecast can hide a wrong belief", which is why independent references matter) predicts this behaviour.
+**Post-hoc probe (not pre-registered; kept as `tests/instance/test_near_duplicate_panels.py`).** The hardest negative control is the brief's rewired panel: one of three inputs per population changed, with identical calibration bits and device names.
+
+| Return | False offers | Dynamics margin vs new setup |
+|---|---|---|
+| Rewired near-duplicate | 0/30 | −79 nats on average |
+| Fresh panel | 0/30 | −597 nats |
+| Same panel | 30/30 offered (correct) | +184 nats |
+
+The old graph beats the zero predictor on the rewired panel (MSE 0.013 vs 0.018), but not its own calibrated error (0.0043). The likelihood penalises that overconfidence.
+
+**What this does not show:**
+- Panels whose dynamics differ by less than one rewired input per population would be offered as the same setup.
+- Simulated panels have clean dynamics. Real sensor streams need their own calibration of the residual variance.
+- The 0.11 of returns offered the remounted camera segment happen because recognition fires on the first camera reading. You correct it by answering "No".
 
 ## 6. Reproducibility and device evidence
 
@@ -133,4 +149,5 @@ The brief's own p.12 finding ("An accurate forecast can hide a wrong belief", wh
 - **No real sensors.** There is no camera or microphone, so there is no real sensor-to-action latency, no dropped-capture measurement and no energy per skill (OPS-06 sensor part).
 - **No native handset builds or tests** (NAT-01..03). No Android SDK, Xcode or handsets are available.
 - **Human-data reanalyses** (RES-05) were not re-fetched.
+- **Real panel dynamics.** Earlier-setup recognition depends on attaching an observation stream (`nsf epoch stream`), and it has only been validated on simulated dynamics.
 - **GRA-01b** (edge branch and delay fields) is not implemented (ADR-010). **OPS-10** (device latency budget) needs the owner's budget.

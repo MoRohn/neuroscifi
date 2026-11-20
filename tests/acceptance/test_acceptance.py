@@ -146,9 +146,27 @@ def test_first_physical_test_reports_declared_criteria_and_baselines(first_test)
     json.dumps(result, allow_nan=False)
     m, t = result["metrics"], result["thresholds"]
     assert (t["attribution_min"], t["earlier_setup_recognition_min"], t["retention_min"]) == (0.80, 0.80, 0.90)
+    # Pre-registered in docs/quality/PREREGISTRATION_D1.md (decision D-1).
+    assert (t["new_panel_false_offer_max"], t["original_camera_segment_offered_min"]) == (0.10, 0.80)
     checks = result["checks"]
+    assert set(checks) == {"attribution_at_least_80_percent", "earlier_setup_recognised_at_least_80_percent",
+                           "false_offers_on_new_panel_returns_at_most_10_percent",
+                           "offered_segment_is_original_camera_segment_at_least_80_percent",
+                           "older_skill_retention_at_least_90_percent",
+                           "fewer_confident_wrong_final_answers_than_fixed_wiring"}
     assert checks["attribution_at_least_80_percent"] == (m["attribution_rate"] >= 0.80)
     assert checks["earlier_setup_recognised_at_least_80_percent"] == (m["earlier_setup_recognition_rate"] >= 0.80)
+    assert checks["false_offers_on_new_panel_returns_at_most_10_percent"] == (m["new_panel_false_offer_rate"] <= 0.10)
+    assert checks["offered_segment_is_original_camera_segment_at_least_80_percent"] == (
+        m["offered_original_camera_segment_rate"] is not None and m["offered_original_camera_segment_rate"] >= 0.80)
+    recognition = m["earlier_setup_recognition"]
+    assert recognition["true_returns"] == recognition["new_panel_returns"] == m["new_panel_lifetimes"] == 12
+    assert recognition["recognised_returns"] == round(12 * m["earlier_setup_recognition_rate"])
+    assert sum(recognition["offered_camera_segments"].values()) == recognition["recognised_returns"]
+    dynamics = m["panel_dynamics"]
+    assert dynamics["graphs_promoted"] == 1.0 and dynamics["dataset_provenance"] == ["simulated"]
+    assert dynamics["return_stream_steps"] == 12
+    assert m["return_match"]["panel_a_dynamics_sources"] == ["graph"]
     assert checks["older_skill_retention_at_least_90_percent"] == (m["older_skill_retention"] >= 0.90)
     # Relationships this scenario demonstrates with the default seed.
     assert m["attribution_rate"] >= 0.80 and m["older_skill_retention"] >= 0.90
@@ -167,10 +185,15 @@ def test_first_physical_test_reports_declared_criteria_and_baselines(first_test)
     assert interventions["owner_answers_per_lifetime"]["total"] >= 12   # every remount is confirmed by the owner
     assert interventions["reference_readings_per_lifetime"] == 10
     assert interventions["question_kinds"].get("change:yes", 0) >= 12 * m["attribution_rate"]
-    # Recognition scores panel-A's earlier segments against a new setup; without references it is bounded by 2/3.
-    bound = m["recognition_information_bound"]
+    # Bits only (no stream, report-only): panel-A's earlier segments against a new setup; without references it is
+    # bounded by 2/3, so that arm never asks on either arm.
+    bound = m["recognition_information_bound_bits_only"]
     assert bound["best_case_posterior_in_designed_return"] < bound["limit_posterior_without_references"] < .75
-    assert m["return_match"]["panel_a_posterior_max"] <= bound["best_case_posterior_in_designed_return"] + 1e-12
+    bits_only = m["bits_only_arm_report_only"]
+    for arm in ("true_returns_match", "new_panel_returns_match"):
+        assert bits_only[arm]["panel_a_posterior_max"] <= bound["best_case_posterior_in_designed_return"] + 1e-12
+        assert "panel_a_dynamics_minus_new_setup_nats" not in bits_only[arm]
+    assert bits_only["recognition_rate"] == bits_only["false_offer_rate"] == 0
     rows = m["recognition_sensitivity_report_only"]
     assert [(r["return_steps"], r["reference_readings"]) for r in rows] == \
         [(4, 0), (4, 1), (6, 0), (6, 1), (8, 0), (8, 2), (12, 0), (12, 3)]

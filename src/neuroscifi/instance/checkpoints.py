@@ -3,7 +3,8 @@
 `create` takes a consistent online backup (the writer may stay open) and packs it as an NSFA archive.
 A deletion that commits while the archive is being written makes the new checkpoint 'stale' at once.
 `restore` never publishes a partial file and re-applies current tombstones, forgotten datasets (with their
-graph cascade) and forgotten roots, so nothing forgotten comes back.
+graph cascade) and forgotten roots, and drops epoch streams the instance no longer holds, so nothing forgotten
+comes back.
 `prune` keeps the newest valid archives and deletes the rest.
 
 Archives live in `default_dir(db_path)` = `<db parent>/<db stem>.checkpoints`, one folder per instance.
@@ -152,7 +153,9 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
     tombstones = db.execute("SELECT id,seq,epoch,deleted_at,reason FROM tombstones").fetchall() if apply_tombstones else []
     forgotten = [r[0] for r in db.execute("SELECT id FROM datasets WHERE deleted_at IS NOT NULL")] if apply_tombstones else []
     roots = db.execute("SELECT digest,kind,forgotten_at FROM forgotten_roots").fetchall() if apply_tombstones else []
-    removed = blobs = scrubbed = 0
+    # Epoch streams leave no tombstone: a stream the live instance no longer holds was forgotten or expired.
+    live_streams = set(db.execute("SELECT id,sha256 FROM epoch_streams").fetchall()) if apply_tombstones else None
+    removed = blobs = scrubbed = streams = 0
     invalidated = []
     old_umask = os.umask(0o077)
     try:
@@ -180,6 +183,10 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
                     copy.executemany("INSERT OR IGNORE INTO forgotten_roots(digest,kind,forgotten_at) VALUES(?,?,?)",
                                      roots)
                     scrubbed = _scrub_copy(copy, candidates, {digest for digest, _, _ in roots})
+                if live_streams is not None:
+                    for stream in copy.execute("SELECT id,sha256 FROM epoch_streams").fetchall():
+                        if stream not in live_streams:
+                            streams += copy.execute("DELETE FROM epoch_streams WHERE id=?", (stream[0],)).rowcount
                 copy.execute("COMMIT")
                 copy.execute("PRAGMA journal_mode=DELETE")
             staged.chmod(0o600)
@@ -191,7 +198,7 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
         os.umask(old_umask)
     return {"checkpoint": checkpoint_id, "path": str(dest), "tombstones_applied": len(tombstones),
             "evidence_removed": removed, "datasets_blanked": blobs, "graphs_invalidated": invalidated,
-            "derived_rows_scrubbed": scrubbed}
+            "derived_rows_scrubbed": scrubbed, "streams_removed": streams}
 
 
 def _root_candidates(copy):

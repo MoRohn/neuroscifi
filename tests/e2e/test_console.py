@@ -218,8 +218,10 @@ def test_owner_journey(console, new_page):
 
     # (d2) a new epoch fed with readings from the original mapping looks like the first one
     page.locator("#epochName").fill("second")
+    page.locator("#epochContext").fill("panel-2")
     page.locator("#epochStart").click()
     expect(page.locator("#epochStatus")).to_have_text("Started epoch second.")
+    expect(page.locator("#epochSummary")).to_contain_text("panel context panel-2 · no population stream")
     expect(page.locator("#matchCard")).to_be_hidden()
     for _ in range(4):
         record(page, "word", 0, 0, "alice")

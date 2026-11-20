@@ -188,7 +188,7 @@ def test_teach_journey_over_http(console):
     teach_baseline(c)
     epochs = c.ok("GET", "/api/epochs")
     assert epochs == [{"name": "e1", "created_at": T0 + 10, "note": "bench", "evidence": 15, "learning": 15,
-                       "memory_only": 0, "promoted": 0, "forgotten": 0}]
+                       "memory_only": 0, "promoted": 0, "forgotten": 0, "context": None, "streams": 0}]
     explain = c.ok("GET", "/api/epochs/e1/beliefs")
     beliefs = explain["beliefs"]
     assert beliefs["mechanism"]["identifiable"] is True and beliefs["unidentifiable"] == []

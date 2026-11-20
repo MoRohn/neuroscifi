@@ -296,7 +296,7 @@ async function loadEpochs() {
   }
   const current = state.epochs.find((e) => e.name === state.epoch);
   $('epochSummary').textContent = current
-    ? `Started ${fmtTime(current.created_at)} · ${current.evidence} stored (${current.learning} learning, ${current.memory_only} memory-only, ${current.promoted} promoted) · ${current.forgotten} forgotten or expired${current.note ? ` · ${current.note}` : ''}`
+    ? `Started ${fmtTime(current.created_at)} · ${current.evidence} stored (${current.learning} learning, ${current.memory_only} memory-only, ${current.promoted} promoted) · ${current.forgotten} forgotten or expired · panel context ${current.context ?? 'none'} · ${current.streams ? `${current.streams} population stream${current.streams === 1 ? '' : 's'} attached` : 'no population stream'}${current.note ? ` · ${current.note}` : ''}`
     : 'Start an epoch to begin teaching.';
   syncControls();
 }
@@ -993,12 +993,13 @@ function wire() {
     ev.preventDefault();
     const name = $('epochName').value.trim();
     if (!name) { say($('epochStatus'), 'Name the epoch first.', 'error'); $('epochName').focus(); return; }
-    const note = $('epochNote').value.trim();
+    const note = $('epochNote').value.trim(), context = $('epochContext').value.trim();
     act($('epochStart'), $('epochStatus'), async () => {
-      const result = await api('POST', '/api/epochs', note ? { name, note } : { name });
+      const result = await api('POST', '/api/epochs', { name, ...(note ? { note } : {}), ...(context ? { context } : {}) });
       state.epoch = result.epoch;
       $('epochName').value = '';
       $('epochNote').value = '';
+      $('epochContext').value = '';
       await Promise.all([loadTeach(), loadHeader()]);
       return result.created ? `Started epoch ${result.epoch}.` : `Epoch ${result.epoch} already exists; selected it.`;
     });

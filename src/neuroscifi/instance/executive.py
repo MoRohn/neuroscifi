@@ -337,7 +337,8 @@ def resolve(db, pending_id, resolution, now, *, confirm=None):
     from a new hidden bit, everything else keeps its evidence. confirm=False records a rejection: the scope
     keeps pooling and is not reported again until 3 of its events arrive. On an 'epoch:<E>' question,
     confirm=True ("continue there") links the epoch to E's matching segments (see _record_link) and
-    confirm=False ("this is new") declines E. confirm=None only closes the question. Returns the pending row
+    confirm=False ("this is new") declines E; either answer is counted for beliefs.answer_prior (the empirical
+    P(new setup) of match_epochs). confirm=None only closes the question. Returns the pending row
     plus "changepoint" and "link" (the recorded rows or None).
     Repeating the same answer is idempotent; a different answer to a closed question is a Conflict.
     """
@@ -366,6 +367,7 @@ def resolve(db, pending_id, resolution, now, *, confirm=None):
         if confirm is not None:
             if about_epoch:
                 linked = _record_link(db, current, confirm, now)
+                store.bump(db, beliefs.ANSWER_COUNTERS[confirm])   # the empirical prior of beliefs.match_epochs
             else:
                 changepoint = _record_answer(db, current, confirm, now)
         db.execute("UPDATE pending SET resolved_at=?, resolution=? WHERE id=?", (now, resolution, pending_id))

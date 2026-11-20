@@ -93,15 +93,18 @@ def _epochs(c, p, q, b):
     rows = c.db.execute(
         "SELECT e.name, e.created_at, e.note, count(v.seq), coalesce(sum(v.consent='learn'),0), "
         "coalesce(sum(v.consent='memory_only'),0), coalesce(sum(v.retention='promoted'),0), "
-        "(SELECT count(*) FROM tombstones t WHERE t.epoch=e.name) "
+        "(SELECT count(*) FROM tombstones t WHERE t.epoch=e.name), "
+        "(SELECT context FROM epoch_contexts c WHERE c.epoch=e.name), "
+        "(SELECT count(*) FROM epoch_streams s WHERE s.epoch=e.name) "
         "FROM epochs e LEFT JOIN evidence v ON v.epoch=e.name GROUP BY e.name ORDER BY e.created_at, e.name")
-    keys = ("name", "created_at", "note", "evidence", "learning", "memory_only", "promoted", "forgotten")
+    keys = ("name", "created_at", "note", "evidence", "learning", "memory_only", "promoted", "forgotten", "context",
+            "streams")
     return [dict(zip(keys, row)) for row in rows]
 
 
 def _start_epoch(c, p, q, b):
-    _fields(b, ("name",), ("note",))
-    return evidence.start_epoch(c.db, b["name"], c.now, b.get("note"))
+    _fields(b, ("name",), ("note", "context"))
+    return evidence.start_epoch(c.db, b["name"], c.now, b.get("note"), b.get("context"))
 
 
 def _explain(c, p, q, b):

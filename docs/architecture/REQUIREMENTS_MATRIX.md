@@ -15,7 +15,7 @@ Source of truth: `NeuroSciFi_Architecture.pdf` (Engineering edition 0.4, 34 pp.)
 - **BLOCKED**: an external dependency prevents the work.
 - **DEFERRED**: out of scope for this release, for the reason given.
 
-Owners refer to `docs/execution/AGENT_OWNERSHIP.md`. Statuses are as of the final verification (commit `88f56fd`). Evidence for each is in `docs/quality/VERIFICATION_REPORT.md`.
+Owners refer to `docs/execution/AGENT_OWNERSHIP.md`. Statuses are as of the final verification (see VERIFICATION_REPORT §8). Evidence for each is in `docs/quality/VERIFICATION_REPORT.md`.
 
 ## INS: the persistent individual
 
@@ -160,14 +160,14 @@ Owners refer to `docs/execution/AGENT_OWNERSHIP.md`. Statuses are as of the fina
 | ACC-05 | Growth and retention (gate) | p.19 | M | scenario `growth_retention` | VERIFIED |
 | ACC-06 | Device ownership (capture-to-action loop, restart with intact beliefs and evidence) | p.19 | M (software) / MB (physical) | scenario `device_ownership` | VERIFIED (simulated; host latency idle and under consolidation) |
 | ACC-07 | Decision thresholds: 50% fewer confident-wrong answers on shifted sensors, at most 2 points of task loss, at least 80% coverage, with Brier score and coverage reported | p.19 | R | Recalibration evidence (`evidence/recalibration.json`) via reproduce | VERIFIED (W1) |
-| ACC-08 | First physical acceptance test (teach an action and a word, switch a mapping, restart, return) | p.34 | M (simulated) / MB (physical) | `nsf acceptance first_physical_test` against baselines (fixed wiring, episodic lookup, recurrent learner with replay) | **FAILS 1 of 4 checks:** attribution 0.92 ✓, retention 0.975 ✓, confident-wrong 0 vs 78 ✓, earlier-setup recognition 0.00 ✗ (needs ≥ 0.80; information-bounded, see VERIFICATION_REPORT §5) |
+| ACC-08 | First physical acceptance test (teach an action and a word, switch a mapping, restart, return) | p.34 | M (simulated) / MB (physical) | `nsf acceptance first_physical_test` against baselines (fixed wiring, episodic lookup, recurrent learner with replay) | VERIFIED (simulated; pre-registered D-1: recognition 1.00, false offers 0.00, original segment 0.89; attribution 0.92, retention 0.975, confident-wrong 0 vs 78) |
 
 ## ADD: requirements added by the independent audit
 
 | ID | Requirement | Src | Cl | Implementation | Status |
 |---|---|---|---|---|---|
 | GRA-13 | Functional map: log coactivation with context and lag; propose routes | p.5 | M | `graphs.functional_map`, `nsf graph coactivation`, console | VERIFIED (≥ 6 of 8 pruned true edges recovered at lag 1) |
-| INS-18 | Recognise and resume an earlier setup ("on the earlier panel it recalls and executes the earlier skill") | p.19, p.1 | M | `beliefs.match_epochs` (segment candidates, exact new-setup alternative) + `epoch_links` pooling on "continue there" | PARTIAL: linking verified (return accuracy 0.50 → 0.81 when continued); automatic recognition information-bounded without references |
+| INS-18 | Recognise and resume an earlier setup ("on the earlier panel it recalls and executes the earlier skill") | p.19, p.1 | M | `beliefs.match_epochs` (segment candidates, exact new-setup alternative) + `epoch_links` pooling on "continue there" | VERIFIED (simulated): dynamics + calibration evidence, 1.00 recognised / 0.00 false offers incl. rewired near-duplicates; needs an observation stream (`nsf epoch stream`) |
 | INS-19 | Developmental milestones reported with interactions and compute per capability | p.6 | M | Acceptance JSON reports owner answers, references and CPU seconds per lifetime | VERIFIED (simulated) |
 | INS-20 | Statement scope: personal convention vs testable claim | p.14 | M | Partner-scoped conventions (word channel) vs reference-verified mechanism; `actor` and `root` recorded | PARTIAL: no free-text statements, so no explicit scope field |
 | INS-21 | Request a demonstration | p.2 | M | Executive `ask` / `observe` (the brief's executive set has no separate verb) | VERIFIED (mapped) |

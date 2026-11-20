@@ -139,6 +139,20 @@ MIGRATIONS = [
       epoch TEXT PRIMARY KEY, source_epoch TEXT NOT NULL, segments TEXT NOT NULL,
       pending_id INTEGER, created_at REAL NOT NULL);
     """,
+    # ---- version 5 ---------------------------------------------------------
+    """
+    -- evidence.py writes, beliefs.py reads: the graph context of an epoch's panel (decision D-1).
+    CREATE TABLE epoch_contexts(
+      epoch TEXT PRIMARY KEY REFERENCES epochs(name), context TEXT NOT NULL, created_at REAL NOT NULL);
+    -- evidence.py: short population streams observed in an epoch (npz of float64 states and targets, read with
+    -- allow_pickle=False). Evidence about which panel this is, never training data; they expire with the evidence
+    -- TTL and are forgotten with their epoch.
+    CREATE TABLE epoch_streams(
+      id INTEGER PRIMARY KEY, epoch TEXT NOT NULL REFERENCES epochs(name), blob BLOB NOT NULL,
+      rows INTEGER, cols INTEGER, sha256 TEXT NOT NULL,
+      provenance TEXT NOT NULL CHECK(provenance IN ('observed','simulated')),
+      created_at REAL NOT NULL, expires_at REAL);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

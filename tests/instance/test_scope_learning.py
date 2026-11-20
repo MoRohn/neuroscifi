@@ -548,6 +548,10 @@ def test_forgetting_a_linked_root_deletes_the_link(instance):
 def test_declined_candidate_is_not_asked_again(instance):
     db, _ = instance
     remounted_desk(db)
+    # This instance's owner had answered "continue there" twice before (beliefs.answer_prior counts epoch answers),
+    # so after the decline below P(new setup) = (1 + 1) / (1 + 2 + 2) and the evidence still names desk.
+    with store.write(db):
+        store.bump(db, beliefs.ANSWER_COUNTERS[True], 2)
     tomorrow = Journal(db, "tomorrow")
     original_readings(tomorrow, rounds=3)
     asked = executive.decide(db, "tomorrow", T0 + 200, record=True)
@@ -556,7 +560,8 @@ def test_declined_candidate_is_not_asked_again(instance):
     done = executive.resolve(db, asked["pending_id"], "no, this is new", T0 + 202, confirm=False)
     assert done["link"] is None and done["changepoint"] is None and beliefs.link(db, "tomorrow") is None
     original_readings(tomorrow, rounds=1)    # still within the 12-event matching window, still matches desk
-    assert beliefs.match_epochs(db, "tomorrow")["best"] == "desk"
+    match = beliefs.match_epochs(db, "tomorrow")
+    assert match["prior"] == {"new_setup": 2 / 5, "n_new": 1, "n_continue": 2} and match["best"] == "desk"
     for k in range(3):
         out = executive.decide(db, "tomorrow", T0 + 203 + k, record=True)
         assert out["scope"] != "epoch:desk" and out["asks_used"] == 1

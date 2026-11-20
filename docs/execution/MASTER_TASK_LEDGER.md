@@ -25,4 +25,5 @@ Each task has one accountable owner, a completion check and a risk class (L, M o
 
 | T5.3 | Remediation lanes R1 (governance and privacy), R2 (learning loop), R3 (servers and ops) | executors (opus, opus, sonnet) | T5.1 | regression tests fail on the old code | H | DONE (7e0af91) |
 | T5.4 | Integration lanes I1 (migrations, acceptance p.34, concurrency), I2 (console catch-up) | executors | T5.3 | gate + e2e | M | DONE (7e0af91) |
-| T5.5 | R4 earlier-setup recognition and epoch links | executor (opus) | T5.4 | brute-force tests; acceptance | H | DONE (88f56fd); recognition is information-bounded, see D-1 |
+| T5.5 | R4 earlier-setup recognition and epoch links | executor (opus) | T5.4 | brute-force tests; acceptance | H | DONE (88f56fd) |
+| T5.6 | D-1 analysis → pre-registration → dynamics-based recognition with negative controls | architect + executor (opus) | T5.5 | pre-registered thresholds (3b4e943) | H | DONE |

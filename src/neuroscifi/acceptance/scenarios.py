@@ -1181,11 +1181,25 @@ FIRST_TEST_DESIGN = {
     "final_answers_at": "end of panel-A, before the restart (camera truth = remounted alignment)",
     "episodic_k": 5,
     "confidence": CONFIDENT,
+    # Decision D-1, pre-registered in docs/quality/PREREGISTRATION_D1.md (commit 3b4e943) before implementation.
+    "panel_dynamics": "a graph_bench world per lifetime (world 'a' of seed _panel_world_seed); train 1536 / "
+                      "validation 256 / heldout 512 steps simulated, learned and promoted as graph context panel-A; "
+                      "epoch panel-A declares that context",
+    "return_stream_steps": 12,
+    "return_stream": "12 steps of graph_bench.stream from the panel the return is on, attached to epoch 'return' "
+                     "(provenance simulated) before its first reading",
+    "new_panel_arm": "as many lifetimes as the true arm, lifetime indices offset by NEW_PANEL_OFFSET; the return is "
+                     "a NEW panel: a new graph_bench world, new random mechanism, camera and partner bits, the same "
+                     "camera and partner root names",
+    "bits_only_arm": "the same returns without the stream (report-only information bound)",
 }
-# Declared before the scenario was first run.
+NEW_PANEL_OFFSET = 10_000
+# Declared before the scenario was first run; the false-offer and segment thresholds were pre-registered (D-1).
 FIRST_TEST_THRESHOLDS = {
     "attribution_min": 0.80,
     "earlier_setup_recognition_min": 0.80,
+    "new_panel_false_offer_max": 0.10,
+    "original_camera_segment_offered_min": 0.80,
     "retention_min": 0.90,
     "confident_wrong_final_answers": "strictly fewer than fixed wiring",
 }
@@ -1236,6 +1250,33 @@ def _first_test_lifetime(seed, index):
             "references": sum(e["channel"] == "reference" for e in events)}
 
 
+def _panel_world_seed(seed, index):
+    """Seed of lifetime `index`'s panel-A world (datasets.simulate world 'a')."""
+    return int(np.random.default_rng([seed, 12, index]).integers(2 ** 31))
+
+
+def _new_panel_return(seed, index):
+    """Negative control: a return to a NEW panel. Fresh mechanism, camera and partner bits (same root names) and a
+    new graph_bench world. Returns {"truth", "return", "world_seed"}."""
+    design = FIRST_TEST_DESIGN
+    rng = np.random.default_rng([seed, 15, index])
+    truth = {factor: int(rng.integers(2)) for factor in FACTORS}
+    back = []
+    for _ in range(design["return_steps"]):
+        action = int(rng.integers(2))
+        for channel, root, relation in (("camera", CAMERA_ROOT, truth["mechanism"] ^ truth["camera"]),
+                                        ("word", PARTNER_ROOT, truth["mechanism"] ^ truth["partner"])):
+            reading = relation ^ int(rng.random() < design["reading_noise"])
+            back.append({"channel": channel, "root": root, "action": action, "bit": reading ^ action})
+    return {"truth": truth, "return": back, "world_seed": int(rng.integers(2 ** 31))}
+
+
+def _return_stream(world_seed, seed, index):
+    """The 12-step population stream observed on the return, from world 'a' of `world_seed`."""
+    matrix = graph_bench.world(np.random.default_rng(world_seed))[0]
+    return graph_bench.stream(matrix, FIRST_TEST_DESIGN["return_stream_steps"], np.random.default_rng([seed, 13, index]))
+
+
 def _camera_bit_p(state, action):
     """P(next camera bit = 1 | action) from beliefs: P(relation = 1) = p_w (1 - p_s) + (1 - p_w) p_s.
 
@@ -1258,26 +1299,37 @@ def _owner_answer(db, epoch, decision, now, *, changed_scope=None, changed=False
     """
     row = next(p for p in executive.pending(db, epoch=epoch) if p["id"] == decision["pending_id"])
     scope = row["scope"]
+    offered = None
     if scope.startswith("epoch:"):
         kind, confirm = "earlier_setup", scope == f"epoch:{setup}"
         text = "yes, continue there" if confirm else "no, this is a new setup"
+        # The segments the question offers: the candidate's entry in match_epochs when it was asked (what a
+        # "continue there" links to; see executive._record_link).
+        offered = next(r["segments"] for r in beliefs.match_epochs(db, epoch)["ranking"]
+                       if f"epoch:{r['epoch']}" == scope)
     elif row["question"].startswith("What does"):
         kind, confirm, text = "meaning", None, "the partner's words mean what they meant before"
     else:
         kind, confirm = "change", bool(changed and scope == changed_scope)
         text = "yes, it changed" if confirm else "no, nothing changed"
     executive.resolve(db, row["id"], text, now, confirm=confirm)
-    return {"kind": kind, "scope": scope, "confirm": confirm}
+    answer = {"kind": kind, "scope": scope, "confirm": confirm}
+    return answer | ({"segments": offered} if offered is not None else {})
 
 
-def _first_test_panel(path, life):
-    """Product, before the restart: teach in panel-A, the silent remount, executive questions answered."""
+def _first_test_panel(path, life, world_seed):
+    """Product, before the restart: panel-A's dynamics graph learned and promoted (simulated data), then teaching in
+    epoch panel-A (which declares that graph context), the silent remount, executive questions answered."""
     start = time.process_time()
     db = store.create(path, T0, note="acceptance first physical test (simulated)")
     camera_scope = f"camera:{CAMERA_ROOT}"
     questions, predictions = [], []
     try:
-        evidence.start_epoch(db, PANEL, T0)
+        revision, _, promotion = _learn_promote(db, PANEL, T0, seed=world_seed)
+        graph = {"revision": revision, "promoted": promotion["promoted"],
+                 "validation_mse": graphs.show(db, revision)["metrics"]["validation_mse"],
+                 "provenance": sorted({d["provenance"] for d in datasets.listing(db)})}
+        evidence.start_epoch(db, PANEL, T0, context=PANEL)
         for j, e in enumerate(life["events"]):
             now = T0 + 1 + j
             if e["channel"] == "camera":
@@ -1291,13 +1343,46 @@ def _first_test_panel(path, life):
         final = _plain(beliefs.compute(db, PANEL))
     finally:
         db.close()
-    return {"final": final, "questions": questions, "predictions": predictions,
+    return {"final": final, "questions": questions, "predictions": predictions, "graph": graph,
             "cpu_seconds": time.process_time() - start}
 
 
+def _run_return(db, job, stream):
+    """Start epoch 'return', attach the stream (unless None), feed the return readings with the executive deciding
+    after each event and the owner answering truthfully. Returns (questions, predictions, final match)."""
+    base = T0 + 100_000
+    evidence.start_epoch(db, RETURN, base)
+    if stream is not None:
+        evidence.attach_stream(db, RETURN, *stream, base, provenance=SIMULATED)
+    questions, predictions = [], []
+    for j, e in enumerate(job["events"]):
+        now = base + 1 + j
+        if e["channel"] == "camera":
+            predictions.append([_camera_bit_p(beliefs.compute(db, RETURN), e["action"]), e["bit"], j])
+        evidence.observe(db, _obs(f"R-{j}", RETURN, e["channel"], e["root"], e["action"], e["bit"]), now)
+        decision = executive.decide(db, RETURN, now, record=True)
+        if decision["decision"] == "ask" and decision["pending_id"] is not None:
+            questions.append({"event": j, **_owner_answer(db, RETURN, decision, now, setup=job["setup"])})
+    return questions, predictions, beliefs.match_epochs(db, RETURN)
+
+
+def _match_summary(match):
+    panel = next((r for r in match["ranking"] if r["epoch"] == PANEL), None)
+    return {"best": match["best"], "panel_posterior": panel["posterior"] if panel else None,
+            "new_setup_posterior": match["new_setup_posterior"],
+            "panel_bits_minus_new_setup": panel["bits_log_likelihood"] - match["new_setup_bits_log_likelihood"]
+            if panel else None,
+            "panel_dynamics_minus_new_setup": panel["dynamics_log_likelihood"]
+            - match["new_setup_dynamics_log_likelihood"] if panel and panel["dynamics_log_likelihood"] is not None
+            else None,
+            "panel_dynamics_source": panel["dynamics"]["source"] if panel and panel["dynamics"] else None}
+
+
 def _first_test_return(jobs):
-    """Product, after the restart (runs in a NEW process): reopen each file, check panel-A survived, then return
-    to the original setup in a new epoch "return". Also reads panel-A's beliefs and its last revision summary."""
+    """Product, after the restart (runs in a NEW process): reopen each file, check panel-A survived, then return in
+    a new epoch "return" (to panel-A, or to a new panel in the negative arm) with the observed stream attached. The
+    bits-only arm replays the same return without the stream on an in-memory copy taken before the return starts.
+    Also reads panel-A's beliefs and its last revision summary."""
     from ..instance import memory
     out = []
     for job in jobs:
@@ -1305,18 +1390,15 @@ def _first_test_return(jobs):
         db = store.open_existing(job["path"])
         try:
             intact = _plain(beliefs.compute(db, PANEL)) == job["panel"]
-            base = T0 + 100_000
-            evidence.start_epoch(db, RETURN, base)
-            questions, predictions = [], []
-            for j, e in enumerate(job["events"]):
-                now = base + 1 + j
-                if e["channel"] == "camera":
-                    predictions.append([_camera_bit_p(beliefs.compute(db, RETURN), e["action"]), e["bit"], j])
-                evidence.observe(db, _obs(f"R-{j}", RETURN, e["channel"], e["root"], e["action"], e["bit"]), now)
-                decision = executive.decide(db, RETURN, now, record=True)
-                if decision["decision"] == "ask" and decision["pending_id"] is not None:
-                    questions.append({"event": j, **_owner_answer(db, RETURN, decision, now, setup=PANEL)})
-            match = beliefs.match_epochs(db, RETURN)
+            copy = sqlite3.connect(":memory:", isolation_level=None)
+            try:
+                db.backup(copy)
+                bits_questions, bits_predictions, bits_match = _run_return(copy, job, None)
+                bits_final = _plain(beliefs.compute(copy, RETURN))
+            finally:
+                copy.close()
+            stream = _return_stream(job["stream_world_seed"], job["seed"], job["index"])
+            questions, predictions, match = _run_return(db, job, stream)
             after = _plain(beliefs.compute(db, PANEL))
             back = _plain(beliefs.compute(db, RETURN))
             items = memory.retrieve(db, "belief", epoch=PANEL, limit=1)["items"]
@@ -1324,10 +1406,9 @@ def _first_test_return(jobs):
         finally:
             db.close()
         continued = [q["event"] for q in questions if q["kind"] == "earlier_setup" and q["confirm"]]
-        panel_row = next((r for r in match["ranking"] if r["epoch"] == PANEL), None)
-        out.append({"intact": intact, "questions": questions, "predictions": predictions, "match_best": match["best"],
-                    "match_panel_posterior": panel_row["posterior"] if panel_row else None,
-                    "match_new_setup_posterior": match["new_setup_posterior"],
+        out.append({"intact": intact, "questions": questions, "predictions": predictions, "match": _match_summary(match),
+                    "bits_only": {"questions": bits_questions, "predictions": bits_predictions,
+                                  "return_final": bits_final, "match": _match_summary(bits_match)},
                     "continued_after_event": continued[0] if continued else None, "return_final": back,
                     "panel_after": after, "summary": summary, "cpu_seconds": time.process_time() - start})
     return out
@@ -1549,18 +1630,30 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
     if isinstance(lifetimes, bool) or not isinstance(lifetimes, int) or lifetimes < 1:
         raise ValueError("lifetimes must be a positive integer")
     camera_scope = f"camera:{CAMERA_ROOT}"
+    original_segment = f"{CAMERA_ROOT}@0"
     lives = [_first_test_lifetime(seed, index) for index in range(lifetimes)]
+    negatives = [NEW_PANEL_OFFSET + j for j in range(lifetimes)]
+    negative_lives = [_first_test_lifetime(seed, index) for index in negatives]
+    new_panels = [_new_panel_return(seed, index) for index in negatives]
     with tempfile.TemporaryDirectory(prefix="nsf-acceptance-") as directory:
         directory = Path(directory)
-        panels = [_first_test_panel(directory / f"life-{index}.sqlite", life) for index, life in enumerate(lives)]
+        panels = [_first_test_panel(directory / f"life-{index}.sqlite", life, _panel_world_seed(seed, index))
+                  for index, life in enumerate(lives)]
+        negative_panels = [_first_test_panel(directory / f"life-{index}.sqlite", life, _panel_world_seed(seed, index))
+                           for index, life in zip(negatives, negative_lives)]
         sensitivity = [_return_sensitivity(directory / f"life-{index}.sqlite", *_sensitivity_streams(seed, index, life))
                        for index, life in enumerate(lives)]
         counterfactual = [_continue_counterfactual(directory / f"life-{index}.sqlite", life)
                           for index, life in enumerate(lives)]
-        jobs = [{"path": str(directory / f"life-{index}.sqlite"), "events": life["return"], "panel": panel["final"]}
+        jobs = [{"path": str(directory / f"life-{index}.sqlite"), "events": life["return"], "panel": panel["final"],
+                 "setup": PANEL, "seed": seed, "index": index, "stream_world_seed": _panel_world_seed(seed, index)}
                 for index, (life, panel) in enumerate(zip(lives, panels))]
+        jobs += [{"path": str(directory / f"life-{index}.sqlite"), "events": new["return"], "panel": panel["final"],
+                  "setup": None, "seed": seed, "index": index, "stream_world_seed": new["world_seed"]}
+                 for index, new, panel in zip(negatives, new_panels, negative_panels)]
         (directory / "jobs.json").write_text(json.dumps(jobs))
-        returns = _subprocess_json(_RETURN_AFTER_RESTART, directory / "jobs.json")
+        everything = _subprocess_json(_RETURN_AFTER_RESTART, directory / "jobs.json")
+        returns, negative_returns = everything[:lifetimes], everything[lifetimes:]
         fixed_db = store.create(directory / "fixed.sqlite", T0, note="acceptance first physical test: fixed wiring")
         try:
             fixed = [_fixed_wiring(fixed_db, life, index) for index, life in enumerate(lives)]
@@ -1578,8 +1671,50 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
     for life, panel in zip(lives, panels):
         changes = [q for q in panel["questions"] if q["kind"] == "change" and q["event"] >= life["onset"]]
         attribution.append(bool(changes) and changes[0]["scope"] == camera_scope)
-    recognized = [any(q["kind"] == "earlier_setup" and q["scope"] == f"epoch:{PANEL}" for q in r["questions"])
-                  for r in returns]
+
+    def offers(questions):
+        return [q for q in questions if q["kind"] == "earlier_setup"]
+
+    def recognition(arm_returns, arm_negatives, key=None):
+        """Recognition, false offers and the offered camera segment of one arm (key=None: the judged arm)."""
+        true_q = [(r[key] if key else r)["questions"] for r in arm_returns]
+        new_q = [(r[key] if key else r)["questions"] for r in arm_negatives]
+        recognised = [next((q for q in offers(qs) if q["scope"] == f"epoch:{PANEL}"), None) for qs in true_q]
+        hits = [q for q in recognised if q is not None]
+        return {"true_returns": len(true_q), "recognition_rate": _mean(q is not None for q in recognised),
+                "new_panel_returns": len(new_q), "false_offer_rate": _mean(bool(offers(qs)) for qs in new_q),
+                "recognised_returns": len(hits),
+                "offered_original_camera_segment_rate": _mean(q["segments"].get(camera_scope) == original_segment
+                                                              for q in hits),
+                "offered_camera_segments": {label: sum(q["segments"].get(camera_scope) == label for q in hits)
+                                            for label in sorted({str(q["segments"].get(camera_scope)) for q in hits})},
+                "recognised_offer_event": {"mean": _mean(q["event"] for q in hits),
+                                           "max": max((q["event"] for q in hits), default=None)},
+                "per_return": [q is not None for q in recognised]}
+
+    judged = recognition(returns, negative_returns)
+    bits_only = recognition(returns, negative_returns, "bits_only")
+    recognized = judged.pop("per_return")
+    bits_only.pop("per_return")
+    camera_segment_counts = [len(panel["final"]["segments"].get(camera_scope, [])) or 1 for panel in panels]
+    judged["recognised_with_two_camera_segments"] = sum(hit and n == 2 for hit, n in
+                                                        zip(recognized, camera_segment_counts))
+
+    def match_stats(arm, key=None):
+        rows = [(r[key] if key else r)["match"] for r in arm]
+        stats = {"best_counts": {str(k): sum(m["best"] == k for m in rows) for k in sorted({m["best"] for m in rows},
+                                                                                            key=str)},
+                 "panel_a_posterior_mean": _mean(m["panel_posterior"] or 0.0 for m in rows),
+                 "panel_a_posterior_min": min(m["panel_posterior"] or 0.0 for m in rows),
+                 "panel_a_posterior_max": max(m["panel_posterior"] or 0.0 for m in rows),
+                 "new_setup_posterior_mean": _mean(m["new_setup_posterior"] for m in rows),
+                 "panel_a_bits_minus_new_setup_nats_mean": _mean(m["panel_bits_minus_new_setup"] for m in rows)}
+        dynamics = [m["panel_dynamics_minus_new_setup"] for m in rows if m["panel_dynamics_minus_new_setup"] is not None]
+        if dynamics:
+            stats.update(panel_a_dynamics_minus_new_setup_nats={"mean": _mean(dynamics), "min": min(dynamics),
+                                                                "max": max(dynamics)},
+                         panel_a_dynamics_sources=sorted({m["panel_dynamics_source"] for m in rows}))
+        return stats
 
     def map_answers(state):
         return _answers(state) if state else {f: .5 for f in FACTORS}
@@ -1633,7 +1768,7 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
 
     continued = [(r, life) for r, life in zip(returns, lives) if r["continued_after_event"] is not None]
     not_continued = [(r, life) for r, life in zip(returns, lives) if r["continued_after_event"] is None]
-    segments_in_panel = [len(panel["final"]["segments"].get(camera_scope, [])) or 1 for panel in panels]
+    segments_in_panel = camera_segment_counts
     sensitivity_rows = []
     for n in SENSITIVITY_STEPS:
         for with_references in (False, True):
@@ -1645,20 +1780,37 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
                 "panel_a_posterior_mean": _mean(post for _, post in cells),
                 "best_case_posterior": None if with_references else _best_case_posterior(n)})
     best_case = _best_case_posterior(FIRST_TEST_DESIGN["return_steps"])
-    rates = {"attribution": _mean(attribution), "recognition": _mean(recognized), "retention": _mean(retained)}
+    rates = {"attribution": _mean(attribution), "recognition": judged["recognition_rate"],
+             "false_offers": judged["false_offer_rate"], "segment": judged["offered_original_camera_segment_rate"],
+             "retention": _mean(retained)}
     t = FIRST_TEST_THRESHOLDS
     checks = {
         "attribution_at_least_80_percent": rates["attribution"] >= t["attribution_min"],
         "earlier_setup_recognised_at_least_80_percent": rates["recognition"] >= t["earlier_setup_recognition_min"],
+        "false_offers_on_new_panel_returns_at_most_10_percent": rates["false_offers"] <= t["new_panel_false_offer_max"],
+        "offered_segment_is_original_camera_segment_at_least_80_percent":
+            rates["segment"] is not None and rates["segment"] >= t["original_camera_segment_offered_min"],
         "older_skill_retention_at_least_90_percent": rates["retention"] >= t["retention_min"],
         "fewer_confident_wrong_final_answers_than_fixed_wiring":
             finals["product"]["confident_wrong"] < finals["fixed_wiring"]["confident_wrong"],
     }
     metrics = {
         "lifetimes": lifetimes,
+        "new_panel_lifetimes": len(negatives),
         "attribution_rate": rates["attribution"],
         "earlier_setup_recognition_rate": rates["recognition"],
+        "new_panel_false_offer_rate": rates["false_offers"],
+        "offered_original_camera_segment_rate": rates["segment"],
         "older_skill_retention": rates["retention"],
+        "earlier_setup_recognition": judged,
+        "bits_only_arm_report_only": dict(bits_only, true_returns_match=match_stats(returns, "bits_only"),
+                                          new_panel_returns_match=match_stats(negative_returns, "bits_only")),
+        "panel_dynamics": {
+            "graphs_promoted": _mean(p["graph"]["promoted"] for p in panels + negative_panels),
+            "validation_mse_mean": _mean(p["graph"]["validation_mse"] for p in panels + negative_panels),
+            "dataset_provenance": sorted({x for p in panels + negative_panels for x in p["graph"]["provenance"]}),
+            "return_stream_steps": FIRST_TEST_DESIGN["return_stream_steps"],
+            "train_steps": graph_bench.STEPS},
         "retention_detail": {
             "mechanism_and_partner_correct_after_return": rates["retention"],
             "camera_original_segment_correct": _mean(c["original"] for c in camera_segments
@@ -1671,13 +1823,9 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
             "episodic_lookup": "no answer without its archive (every answer is a coin flip, accuracy 0.5)",
             "fixed_wiring": "beliefs are recomputed from evidence on read; none without it",
             "recurrent_replay": "predicts readings only; no factor answers to retrieve"},
-        "return_match": {"best_counts": {str(k): sum(r["match_best"] == k for r in returns)
-                                         for k in sorted({r["match_best"] for r in returns}, key=str)},
-                         "panel_a_posterior_mean": _mean(r["match_panel_posterior"] or 0.0 for r in returns),
-                         "panel_a_posterior_max": max(r["match_panel_posterior"] or 0.0 for r in returns),
-                         "new_setup_posterior_mean": _mean(r["match_new_setup_posterior"] for r in returns),
-                         "ask_posterior": beliefs.MATCH_POSTERIOR,
-                         "lifetimes_with_two_camera_segments": sum(n == 2 for n in segments_in_panel)},
+        "return_match": dict(match_stats(returns), ask_posterior=beliefs.MATCH_POSTERIOR,
+                             lifetimes_with_two_camera_segments=sum(n == 2 for n in segments_in_panel)),
+        "new_panel_return_match": match_stats(negative_returns),
         "return_after_continue": {
             "lifetimes_continued": len(continued),
             "next_camera_reading_after_continue": _prediction_scores(after_continue),
@@ -1691,14 +1839,15 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
             "next_camera_reading_steps_2_to_4": {
                 "continued": _prediction_scores([(p, bit) for c in counterfactual for p, bit in c["predictions"]]),
                 "not_continued_same_readings": _prediction_scores([(p, bit) for r in returns
-                                                                   for p, bit, j in r["predictions"] if j >= 2])},
+                                                                   for p, bit, j in r["bits_only"]["predictions"]
+                                                                   if j >= 2])},
             "return_beliefs_correct_for_original_setup": {
                 "continued": _mean(original_correct({"return_final": c["final"]}, life)
                                    for c, life in zip(counterfactual, lives)),
-                "not_continued": _mean(original_correct(r, life) for r, life in zip(returns, lives))},
+                "not_continued": _mean(original_correct(r["bits_only"], life) for r, life in zip(returns, lives))},
             "linked_camera_segment_is_original": _mean(
                 c["final"]["linked_from"]["segments"][camera_scope] == f"{CAMERA_ROOT}@0" for c in counterfactual)},
-        "recognition_information_bound": {
+        "recognition_information_bound_bits_only": {
             "candidate_vs_new_setup_max_bits_without_references":
                 "1 bit per shared camera root or partner (a fresh bit matches half the time); 2 bits here",
             "camera_segment_penalty_bits": 1.0,
@@ -1728,12 +1877,25 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
         "(its alignment bit flips) for 16 more steps. executive.decide(record=True) runs after every event and a "
         "truthful simulated owner answers each question: confirm=True only for a change question about the camera "
         "asked after the remount, confirm=False otherwise; 'continue there?' is answered yes only for panel-A.",
+        "Panel dynamics (decision D-1, pre-registered in docs/quality/PREREGISTRATION_D1.md before implementation): "
+        "before teaching, each lifetime simulates panel-A's graph_bench world (train 1536, validation 256, heldout 512 "
+        "steps, all provenance simulated), learns and promotes its graph as context panel-A, and epoch panel-A "
+        "declares that context.",
         "Restart: all files are closed and ONE new process opens each file, checks panel-A's beliefs equal those "
-        "read before closing, starts epoch 'return' and feeds 4 steps of camera + word readings from the ORIGINAL "
-        "camera mapping, with the executive deciding after each event. Recognised = the executive asked 'This "
-        "looks like panel-A ...; continue with that calibration?'; the simulated owner then answers confirm=True "
-        "(continue there), which links 'return' to panel-A's matching segments, and return_after_continue measures "
-        "the next camera readings and the return's beliefs after that.",
+        "read before closing, starts epoch 'return', attaches a 12-step population stream from the panel the return "
+        "is on (provenance simulated) and feeds 4 steps of camera + word readings, with the executive deciding after "
+        "each event. True arm: the readings use panel-A's ORIGINAL camera mapping and the stream comes from panel-A's "
+        "world. Recognised = the executive asked 'This looks like panel-A ...; continue with that calibration?'; the "
+        "simulated owner then answers confirm=True (continue there), which links 'return' to panel-A's matching "
+        "segments, and return_after_continue measures the next camera readings and the return's beliefs after that. "
+        "Offered segment = panel-A's camera segment in the candidate the question named (what 'continue there' "
+        "links); original = camera-1@0.",
+        "New-panel arm (negative control, judged): as many lifetimes again, lifetime indices offset by "
+        f"{NEW_PANEL_OFFSET}, each with its own panel-A taught the same way; the return is a NEW panel: new random "
+        "mechanism, camera and partner bits with the SAME camera and partner root names, and a stream from a new "
+        "graph_bench world. A false offer = any 'continue there?' question; the owner answers 'no, this is a new "
+        "setup'. Bits-only arm (report-only information bound): the same returns of both arms replayed without the "
+        "stream on in-memory copies taken before the return starts.",
         "Attribution: the first change question asked at or after the remount names camera:camera-1 (the owner "
         "gives no hint before that question). Retention: panel-A's mechanism (the taught action) and partner "
         "convention (the taught word) are MAP-correct after the return. Retrieval with archive lookup disabled: "
@@ -1749,17 +1911,23 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
         "time.process_time per lifetime (product: panel-A plus its share of the restart process).",
         "Recognition (beliefs.match_epochs): panel-A's segments are candidates (cam@0 as well as the remounted "
         "segment), each factor's best segment is charged log(#segments), and the alternative is a NEW setup scored "
-        "exactly (fresh mechanism, alignment and convention bits). The ask threshold is posterior >= 0.75 with prior "
-        "1/2 on a new setup. Information bound: the return has camera and word readings only, so under a new setup "
+        "exactly (fresh mechanism, alignment and convention bits). With the stream, panel-A adds log p(stream | its "
+        "active graph) with Gaussian residual variance = the graph's validation MSE, and the new setup adds the zero "
+        "predictor with variance = the stream's mean squared target. The ask threshold is posterior >= 0.75 with "
+        "P(new setup) = (n_new + 1) / (n_new + n_continue + 2) from the owner's earlier epoch answers (1/2 here: "
+        "each lifetime is a fresh instance). Information bound of the bits-only arm: the return has camera and word "
+        "readings only, so under a new setup "
         "each observed relation (mechanism XOR bit) is a fresh coin; panel-A can beat it by at most a factor 2 per "
         "root (1 bit), 2 bits for camera + partner, minus 1 bit for choosing one of cam-a's 2 segments, leaving at "
         "most 1 bit (posterior 2/3) however long the return is, while 0.75 needs log2(3) = 1.58 bits. "
-        "recognition_information_bound and recognition_sensitivity_report_only show this; the sensitivity table "
+        "recognition_information_bound_bits_only and recognition_sensitivity_report_only show this; the sensitivity "
+        "table "
         "(report-only, not judged) scores the whole return for 4/6/8/12 steps, without and with one reference "
         "reading every 4th step, on in-memory copies of each panel-A file. "
         "return_after_continue_counterfactual_report_only (not judged) shows what 'continue there' does when it is "
         "answered: on an in-memory copy the owner answers an epoch:panel-A question with confirm=True after the "
-        "return's first step, and the next camera readings of steps 2-4 are predicted from the linked epoch.",
+        "return's first step, and the next camera readings of steps 2-4 are predicted from the linked epoch; its "
+        "'not continued' side is the bits-only arm (no stream, never asked), since the judged arm now continues.",
         "Simulated binary readings stand in for the brief's physical sensors; this is not a physical test.",
     ]
     return _result("first_physical_test", checks, metrics, dict(FIRST_TEST_THRESHOLDS, confidence=CONFIDENT), notes)

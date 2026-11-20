@@ -34,9 +34,10 @@ import math
 
 import numpy as np
 
+from ..graph_store import decode
 from ..lab.core import CAMERA, SPEAKER, STATES, probabilities
 from ..lab.source_groups import group_log_likelihood
-from . import store
+from . import datasets, store
 from .errors import NotFound, ValidationError
 
 READING_ERROR = .10
@@ -734,44 +735,155 @@ def _candidate(db, other, tallies):
             "events": informative}
 
 
+# ---- panel dynamics (decision D-1, docs/quality/PREREGISTRATION_D1.md) -----------------------------------
+
+ANSWER_COUNTERS = {True: "epoch_answers_continue", False: "epoch_answers_new"}
+
+
+def epoch_context(db, epoch):
+    """The graph context declared for the epoch's panel, or None."""
+    if not _has_table(db, "epoch_contexts"):
+        return None
+    row = db.execute("SELECT context FROM epoch_contexts WHERE epoch=?", (epoch,)).fetchone()
+    return row[0] if row else None
+
+
+def latest_stream(db, epoch):
+    """The epoch's most recently attached population stream: {"id", "rows", "cols", "provenance", "created_at",
+    "expires_at", "states", "targets"}, or None."""
+    if not _has_table(db, "epoch_streams"):
+        return None
+    row = db.execute("SELECT id, rows, cols, sha256, blob, provenance, created_at, expires_at FROM epoch_streams "
+                     "WHERE epoch=? ORDER BY id DESC LIMIT 1", (epoch,)).fetchone()
+    if row is None:
+        return None
+    sid, rows, cols, digest, blob, provenance, created, expires = row
+    states, targets = datasets.decode(blob, digest, rows, cols, f"Stream {sid} of epoch {epoch}")
+    return {"id": sid, "rows": rows, "cols": cols, "provenance": provenance, "created_at": created,
+            "expires_at": expires, "states": states, "targets": targets}
+
+
+def gaussian_log_likelihood(residuals, variance):
+    """Sum over steps and populations of log N(residual; 0, variance): an isotropic Gaussian residual model."""
+    residuals = np.asarray(residuals, dtype=np.float64)
+    return float(-.5 * residuals.size * math.log(2 * math.pi * variance)
+                 - np.sum(residuals * residuals) / (2 * variance))
+
+
+def new_setup_dynamics(targets):
+    """(log p(stream | new panel), variance): the zero predictor with variance = the stream's mean squared target,
+    i.e. a panel whose dynamics are unknown. None when that variance is not positive (all-zero targets)."""
+    variance = float(np.mean(np.asarray(targets, dtype=np.float64) ** 2))
+    if not variance > 0 or not math.isfinite(variance):
+        return None
+    return gaussian_log_likelihood(targets, variance), variance
+
+
+def _graph_dynamics(db, context, states, targets):
+    """(log p(stream | G), detail) under the ACTIVE graph of `context` with variance = its stored validation MSE, or
+    (None, why) when the context has no active graph, no validation MSE, or a population count that differs."""
+    if context is None:
+        return None, "no graph context declared for this epoch"
+    row = db.execute("SELECT id, rows, cols, blob, metrics FROM graph_revisions WHERE context=? AND status='active'",
+                     (context,)).fetchone()
+    if row is None:
+        return None, f"context {context} has no active graph"
+    revision, rows, cols, blob, metrics = row
+    variance = json.loads(metrics or "{}").get("validation_mse")
+    if not isinstance(variance, (int, float)) or isinstance(variance, bool) or not variance > 0 \
+            or not math.isfinite(variance):
+        return None, f"graph revision {revision} of context {context} has no validation MSE"
+    if rows != cols or cols != states.shape[1]:
+        return None, f"graph revision {revision} has {cols} populations, the stream {states.shape[1]}"
+    residuals = targets - states @ decode(blob).T
+    return gaussian_log_likelihood(residuals, float(variance)), {"revision_id": revision, "variance": float(variance)}
+
+
+def answer_prior(db):
+    """P(new setup) = (n_new + 1) / (n_new + n_continue + 2) from the owner's answers to epoch questions.
+
+    n_continue / n_new count resolve(..., confirm=True / False) on 'epoch:<E>' questions in this instance
+    (counters epoch_answers_continue / epoch_answers_new), so the first decision uses 1/2.
+    """
+    n_new = store.counter(db, ANSWER_COUNTERS[False])
+    n_continue = store.counter(db, ANSWER_COUNTERS[True])
+    return {"new_setup": (n_new + 1) / (n_new + n_continue + 2), "n_new": n_new, "n_continue": n_continue}
+
+
+# ---- epoch matching (continued) -----------------------------------------------------------------------
+
 def match_epochs(db, epoch, *, last=MATCH_EVENTS):
     """Is this epoch's recent evidence an earlier setup returning, or a new setup?
 
-    Scores the last `last` learning events of `epoch` under each OTHER epoch with learning evidence, taking
-    the best configuration of that epoch's segments (see _candidate; its log_likelihood includes the
-    log(#segments) multiple-comparison penalty), against a NEW setup scored exactly by
-    new_setup_log_likelihood. Prior: 1/2 on a new setup, 1/2 on "some earlier configuration" split evenly
-    across the candidate epochs. Without references in the window, a candidate can beat a new setup by at most
-    a factor 2 per shared camera root or partner (a fresh bit matches it half the time), however many
-    readings arrive.
+    Bits: scores the last `last` learning events of `epoch` under each OTHER epoch with learning evidence, taking
+    the best configuration of that epoch's segments (see _candidate; it includes the log(#segments)
+    multiple-comparison penalty), against a NEW setup scored exactly by new_setup_log_likelihood. Without references
+    in the window, a candidate can beat a new setup by at most a factor 2 per shared camera root or partner (a fresh
+    bit matches it half the time), however many readings arrive.
 
-    Returns {"epoch", "events", "ranking": [{"epoch", "segments", "log_likelihood", "penalty", "posterior",
-    "events"}], "best", "best_posterior", "new_setup_posterior", "new_setup_log_likelihood", "ask_posterior"}.
-    "best" is the top epoch when its posterior >= MATCH_POSTERIOR (.75), else None.
+    Dynamics (decision D-1): when `epoch` has an attached population stream, its most recent one is scored too.
+    A candidate whose epoch declares a graph context with an ACTIVE graph that has a validation MSE scores
+    log p(stream | G) with an isotropic Gaussian residual of that variance; the new setup scores the zero predictor
+    with variance = the stream's mean squared target. A candidate without such a graph (no context, no active graph,
+    no validation MSE, other population count) is scored with the new setup's dynamics term, so the stream neither
+    favours nor penalises it. Without a stream (or with all-zero targets) there is no dynamics term.
+
+    Prior: P(new setup) = answer_prior(db) (1/2 before the owner answered any epoch question); the rest is split
+    evenly across the candidate epochs.
+
+    Returns {"epoch", "events", "ranking": [{"epoch", "segments", "log_likelihood", "bits_log_likelihood",
+    "dynamics_log_likelihood", "dynamics", "penalty", "posterior", "events"}], "best", "best_posterior",
+    "new_setup_posterior", "new_setup_log_likelihood", "new_setup_bits_log_likelihood",
+    "new_setup_dynamics_log_likelihood", "stream", "prior", "ask_posterior"}. log_likelihood = bits + dynamics
+    (bits already net of the penalty); "dynamics" is None without a stream, else {"source": "graph" or "new_setup",
+    "context", "revision_id", "variance", "why"}. "best" is the top epoch when its posterior >= MATCH_POSTERIOR (.75).
     """
     require_epoch(db, epoch)
     if isinstance(last, bool) or not isinstance(last, int) or not 1 <= last <= 1000:
         raise ValidationError("last must be an integer between 1 and 1000")
     events = _window(db, epoch, last)
     tallies = _window_tallies(events)
-    new_setup = new_setup_log_likelihood(tallies)
+    new_bits = new_setup_log_likelihood(tallies)
+    observed = latest_stream(db, epoch)
+    new_dynamics = new_setup_dynamics(observed["targets"]) if observed is not None else None
     ranking = []
     for (other,) in db.execute("SELECT name FROM epochs WHERE name!=? ORDER BY created_at, name", (epoch,)).fetchall():
         candidate = _candidate(db, other, tallies)
-        if candidate is not None:
-            ranking.append(candidate)
-    prior = math.log(.5 / len(ranking)) if ranking else None
-    total = _LOG_HALF + new_setup
+        if candidate is None:
+            continue
+        bits = candidate.pop("log_likelihood")
+        candidate.update(bits_log_likelihood=bits, dynamics_log_likelihood=None, dynamics=None)
+        if new_dynamics is not None:
+            context = epoch_context(db, other)
+            value, detail = _graph_dynamics(db, context, observed["states"], observed["targets"])
+            if value is None:
+                candidate["dynamics"] = {"source": "new_setup", "context": context, "revision_id": None,
+                                         "variance": new_dynamics[1], "why": detail}
+                value = new_dynamics[0]
+            else:
+                candidate["dynamics"] = {"source": "graph", "context": context, "why": None, **detail}
+            candidate["dynamics_log_likelihood"] = value
+        candidate["log_likelihood"] = bits + (candidate["dynamics_log_likelihood"] or 0.0)
+        ranking.append(candidate)
+    new_setup = new_bits + (new_dynamics[0] if new_dynamics is not None else 0.0)
+    prior = answer_prior(db)
+    log_new = math.log(prior["new_setup"])
+    log_each = math.log((1 - prior["new_setup"]) / len(ranking)) if ranking else None
+    total = log_new + new_setup
     for r in ranking:
-        total = _lse(total, prior + r["log_likelihood"])
+        total = _lse(total, log_each + r["log_likelihood"])
     for r in ranking:
-        r["posterior"] = math.exp(prior + r["log_likelihood"] - total)
+        r["posterior"] = math.exp(log_each + r["log_likelihood"] - total)
     ranking.sort(key=lambda r: (-r["log_likelihood"], r["epoch"]))
     best = ranking[0]["epoch"] if ranking and ranking[0]["posterior"] >= MATCH_POSTERIOR else None
+    stream = None if observed is None else {key: observed[key] for key in ("id", "rows", "cols", "provenance",
+                                                                           "created_at", "expires_at")}
     return {"epoch": epoch, "events": len(events), "ranking": ranking, "best": best,
             "best_posterior": ranking[0]["posterior"] if best is not None else None,
-            "new_setup_posterior": math.exp(_LOG_HALF + new_setup - total),
-            "new_setup_log_likelihood": new_setup, "ask_posterior": MATCH_POSTERIOR}
+            "new_setup_posterior": math.exp(log_new + new_setup - total),
+            "new_setup_log_likelihood": new_setup, "new_setup_bits_log_likelihood": new_bits,
+            "new_setup_dynamics_log_likelihood": new_dynamics[0] if new_dynamics is not None else None,
+            "stream": stream, "prior": prior, "ask_posterior": MATCH_POSTERIOR}
 
 
 # ---- explanations -------------------------------------------------------------------------------------

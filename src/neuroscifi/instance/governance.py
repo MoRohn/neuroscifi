@@ -10,7 +10,8 @@ replaced in belief_revisions, pending and decisions by `camera:#<digest>` or `pa
 (digest = sha256(instance_id ":" root)[:16], recorded in forgotten_roots), its changepoints rows are
 deleted (a change of a root with no evidence is meaningless), epoch_links naming it in a segment are deleted,
 and revision causes naming a removed event id become `evidence:#forgotten`. Forgetting an epoch also deletes
-that epoch's changepoints and every link from or to it. An epoch that continues an epoch losing evidence pools
+that epoch's changepoints, every link from or to it, its graph-context association and its population streams
+(a deleted stream marks every checkpoint stale; sweep also expires streams). An epoch that continues an epoch losing evidence pools
 fewer events on its next read; it gets a belief revision too. After the commit the WAL is checkpointed and truncated so no
 old frame keeps the payload; a reader that blocks this is reported as effects["wal_checkpoint"] = "busy".
 """
@@ -183,6 +184,8 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
                    for table in ("belief_revisions", "decisions", "pending", "changepoints")}
         derived["epoch_links"] = db.execute("DELETE FROM epoch_links WHERE epoch=? OR source_epoch=?",
                                             (drop_epoch, drop_epoch)).rowcount
+        for table in ("epoch_contexts", "epoch_streams"):
+            derived[table] = db.execute(f"DELETE FROM {table} WHERE epoch=?", (drop_epoch,)).rowcount
     if not rows and not any(derived.values()):
         return None
     db.executemany("DELETE FROM evidence WHERE seq=?", [(r[0],) for r in rows])
@@ -194,6 +197,8 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
         stale = [r[0] for r in db.execute(
             "SELECT id FROM checkpoints WHERE status='valid' AND max_evidence_seq>=? ORDER BY id", (first,))]
         db.executemany("UPDATE checkpoints SET status='stale' WHERE id=?", [(i,) for i in stale])
+    if derived.get("epoch_streams"):
+        stale = _stale_all(db, stale)  # a stream carries no evidence seq, so any checkpoint may hold it
     epochs = sorted({r[2] for r in rows})
     version = store.bump_state_version(db)
     from .beliefs import compute  # lazy: governance must not depend on inference at import time
@@ -218,6 +223,13 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
     return effects
 
 
+def _stale_all(db, stale=()):
+    """Mark every valid checkpoint stale. Caller owns the transaction. Returns the ids now stale (sorted)."""
+    more = [r[0] for r in db.execute("SELECT id FROM checkpoints WHERE status='valid' ORDER BY id")]
+    db.executemany("UPDATE checkpoints SET status='stale' WHERE id=?", [(i,) for i in more])
+    return sorted({*stale, *more})
+
+
 def _result(db, effects):
     if effects:
         effects = effects | {"wal_checkpoint": store.truncate_wal(db)}
@@ -237,8 +249,8 @@ def forget_evidence(db, event_id, now, *, reason="forgotten"):
 
 
 def forget_epoch(db, epoch, now):
-    """Forget every evidence row of the epoch, its belief revisions, decisions, questions and changepoints, and every
-    epoch link from or to it."""
+    """Forget every evidence row of the epoch, its belief revisions, decisions, questions and changepoints, every
+    epoch link from or to it, its graph-context association and its population streams."""
     with store.write(db):
         if db.execute("SELECT 1 FROM epochs WHERE name=?", (epoch,)).fetchone() is None:
             raise NotFound(f"Unknown epoch '{epoch}'")
@@ -301,13 +313,23 @@ def promote(db, event_id, now):
 
 
 def sweep(db, now):
-    """Expire unpromoted evidence whose lifetime ended."""
+    """Expire unpromoted evidence and epoch streams whose lifetime ended."""
     with store.write(db):
         effects = _remove(db, "expires_at IS NOT NULL AND expires_at<=? AND retention!='promoted'", (now,), now,
                           reason="expired", cause="expired", kind="sweep", target=f"{now:.0f}")
+        streams = db.execute("DELETE FROM epoch_streams WHERE expires_at IS NOT NULL AND expires_at<=?",
+                             (now,)).rowcount
+        stale = effects["checkpoints_stale"] if effects else []
+        if streams:
+            stale = _stale_all(db, stale)
+            version = store.bump_state_version(db)
+            db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                       ("sweep_streams", f"{now:.0f}", now,
+                        json.dumps({"streams_expired": streams, "checkpoints_stale": stale, "state_version": version},
+                                   sort_keys=True)))
     out = {"expired": effects["deleted"] if effects else 0,
            "epochs": effects["epochs"] if effects else [],
-           "checkpoints_stale": effects["checkpoints_stale"] if effects else []}
-    if effects:
+           "checkpoints_stale": stale, "streams_expired": streams}
+    if effects or streams:
         out["wal_checkpoint"] = store.truncate_wal(db)
     return out

@@ -1,7 +1,11 @@
 """`nsf` commands for the evidence journal, beliefs and the executive (W2-A)."""
 from pathlib import Path
+import zipfile
+
+import numpy as np
 
 from . import beliefs, evidence, executive, legacy, store
+from .errors import ValidationError
 
 
 def _observe(db, args, now):
@@ -20,8 +24,27 @@ def _observe(db, args, now):
     return evidence.observe(db, obs, now, path=store.resolve_db(args))
 
 
+def _stream(db, args, now):
+    """`nsf epoch stream NAME FILE.npz`: arrays `states` and `targets`, read with allow_pickle=False."""
+    try:
+        archive = np.load(args.file, allow_pickle=False)
+    except (ValueError, EOFError, zipfile.BadZipFile) as error:
+        raise ValidationError(f"Cannot read {args.file} as an .npz archive: {error}") from None
+    if not isinstance(archive, np.lib.npyio.NpzFile):
+        raise ValidationError(f"{args.file} is not an .npz archive")
+    with archive:
+        if set(archive.files) != {"states", "targets"}:
+            raise ValidationError(f"{args.file} must hold exactly the arrays states and targets")
+        try:
+            states, targets = archive["states"], archive["targets"]
+        except (ValueError, zipfile.BadZipFile) as error:
+            raise ValidationError(f"Cannot read {args.file}: {error}") from None
+    return evidence.attach_stream(db, args.name, states, targets, now,
+                                  provenance="simulated" if args.simulated else "observed", path=store.resolve_db(args))
+
+
 def register(sub, *, with_db, run):
-    """Add epoch (start, match), observe, status, decide, explain, pending, resolve and import-legacy."""
+    """Add epoch (start, context, stream, match), observe, status, decide, explain, pending, resolve and import-legacy."""
     def command(name, handler, help, *arguments):
         parser = sub.add_parser(name, help=help)
         store.add_db_argument(parser)
@@ -36,7 +59,19 @@ def register(sub, *, with_db, run):
     store.add_db_argument(start)
     start.add_argument("name")
     start.add_argument("--note")
-    start.set_defaults(handler=with_db(lambda db, a, now: evidence.start_epoch(db, a.name, now, a.note)))
+    start.add_argument("--context", help="graph context of this epoch's panel")
+    start.set_defaults(handler=with_db(lambda db, a, now: evidence.start_epoch(db, a.name, now, a.note, a.context)))
+    context = ops.add_parser("context", help="declare the graph context of an epoch's panel")
+    store.add_db_argument(context)
+    context.add_argument("name")
+    context.add_argument("context")
+    context.set_defaults(handler=with_db(lambda db, a, now: evidence.set_epoch_context(db, a.name, a.context, now)))
+    stream = ops.add_parser("stream", help="attach a short population stream (npz: states, targets) to an epoch")
+    store.add_db_argument(stream)
+    stream.add_argument("name")
+    stream.add_argument("file", type=Path)
+    stream.add_argument("--simulated", action="store_true", help="provenance 'simulated'")
+    stream.set_defaults(handler=with_db(_stream))
     match = ops.add_parser("match", help="which earlier epoch does this epoch's recent evidence come from?")
     store.add_db_argument(match)
     match.add_argument("name")

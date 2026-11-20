@@ -87,20 +87,25 @@ def load(db, dataset_id):
     rows, cols, digest, blob, deleted_at = row
     if deleted_at is not None or blob is None:
         raise Gone(f"Dataset {dataset_id} was deleted")
+    return decode(blob, digest, rows, cols, f"Dataset {dataset_id}")
+
+
+def decode(blob, digest, rows, cols, label):
+    """(states, targets) of a stored npz blob, checked against its sha256 and recorded shape (allow_pickle=False)."""
     if hashlib.sha256(blob).hexdigest() != digest:
-        raise Conflict(f"Dataset {dataset_id} failed its integrity check")
+        raise Conflict(f"{label} failed its integrity check")
     try:
         with np.load(io.BytesIO(blob), allow_pickle=False) as archive:
             if set(archive.files) != {"states", "targets"}:
-                raise ValidationError(f"Dataset {dataset_id} has unexpected arrays {sorted(archive.files)}")
+                raise ValidationError(f"{label} has unexpected arrays {sorted(archive.files)}")
             states, targets = archive["states"], archive["targets"]
     except (OSError, ValueError, KeyError, zipfile.BadZipFile) as error:
-        raise ValidationError(f"Dataset {dataset_id} is not a readable npz archive: {error}") from None
+        raise ValidationError(f"{label} is not a readable npz archive: {error}") from None
     if states.dtype != np.float64 or targets.dtype != np.float64:
-        raise ValidationError(f"Dataset {dataset_id} must hold float64 arrays")
+        raise ValidationError(f"{label} must hold float64 arrays")
     states, targets = _check_arrays(states, targets)
     if states.shape != (rows, cols):
-        raise ValidationError(f"Dataset {dataset_id} shape {states.shape} differs from its record")
+        raise ValidationError(f"{label} shape {states.shape} differs from its record")
     return states, targets
 
 
