@@ -23,7 +23,7 @@ NeuroSciFi is a hierarchical, multimodal AI architecture built around **one deve
 
 The runnable components exercise calibration, graph learning, compact storage and recall on controlled tasks. No pretrained model or cloud service is needed to run the cognitive prototype. Core experiments use generated data. The human-data reproduction workflow retrieves source files at verified Git hashes.
 
-| | |
+| Capability | What it does |
 |---|---|
 | 🧠 **One individual, one file** | A persistent instance in a single SQLite file that holds beliefs, evidence, epochs, graphs and checkpoints. It decides whether to *act, observe, ask, test a reference or defer*, and gives a reason. |
 | 🔁 **Scoped relearning** | Detects a silent sensor change, asks about the specific scope, and relearns only what changed. Partner meaning and mechanism carry over. |
