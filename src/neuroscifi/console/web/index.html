@@ -70,6 +70,7 @@
       </form>
       <p id="observeStatus" class="msg" role="status"></p>
     </article>
+    <article class="card wide" id="matchCard" aria-labelledby="h-match" hidden><h2 id="h-match">Looks like an earlier setup</h2><div id="matchPanel" class="slot"></div></article>
     <article class="card wide" aria-labelledby="h-beliefs"><h2 id="h-beliefs">Beliefs</h2><div id="beliefs" class="slot"><p class="empty">Choose or start an epoch to see beliefs.</p></div></article>
     <article class="card" aria-labelledby="h-change"><h2 id="h-change">Change detection</h2><div id="change" class="slot"><p class="empty">No epoch selected.</p></div></article>
     <article class="card" aria-labelledby="h-decision"><h2 id="h-decision">Executive decision</h2><div id="decision" class="slot"><p class="empty">No epoch selected.</p></div>
@@ -145,6 +146,16 @@
       <div id="graphEvaluation"></div>
       <div id="graphMatrix"></div>
     </article>
+    <article class="card wide" aria-labelledby="h-fmap"><h2 id="h-fmap">Functional map</h2>
+      <p class="sub">Which populations coactivate, and at what lag, in a stored dataset. The routes it proposes are hypotheses, not connections.</p>
+      <form id="fmapForm" novalidate>
+        <label for="fmapDataset">Dataset (its context needs an active graph)</label><select id="fmapDataset"><option value="">No datasets yet</option></select>
+        <label for="fmapLags">Lags in steps, comma separated</label><input id="fmapLags" maxlength="32" autocomplete="off" required value="1,2,3">
+        <label for="fmapTop">Routes to list</label><input id="fmapTop" type="number" min="1" max="500" step="1" inputmode="numeric" required value="20">
+        <button class="primary" id="fmapBtn" disabled>Compute functional map</button>
+      </form>
+      <p id="fmapStatus" class="msg" role="status"></p>
+      <div id="fmapResult"></div></article>
     <article class="card wide" aria-labelledby="h-recall"><h2 id="h-recall">Recall</h2>
       <p class="sub">Replay a stored dataset through the active graphs. Each prediction is committed before its outcome; the best-predicting graph names the context.</p>
       <form id="recallForm" novalidate>
@@ -159,13 +170,21 @@
 
 <section id="checkpoints" class="view" aria-labelledby="h-checkpoints" hidden>
   <div class="viewhead"><h1 id="h-checkpoints" tabindex="-1">Checkpoints</h1><button type="button" id="refreshCheckpoints">Refresh</button></div>
-  <p class="lede">Verified archives of the whole individual, written next to the instance file in <code>checkpoints/</code>. Forgetting evidence or datasets marks older checkpoints stale.</p>
+  <p class="lede">Verified archives of the whole individual, written next to the instance file in a <code>.checkpoints</code> folder. Forgetting evidence or datasets marks older checkpoints stale.</p>
   <div class="grid">
     <article class="card" aria-labelledby="h-ckcreate"><h2 id="h-ckcreate">Create a checkpoint</h2>
       <form id="ckForm" novalidate><label for="ckPolicy">Compression policy</label>
         <select id="ckPolicy"><option value="cold">cold: smallest file, slower</option><option value="fast">fast: quicker, larger file</option><option value="experimental">experimental</option></select>
         <button class="primary" id="ckCreate">Create checkpoint</button></form>
       <p id="ckStatus" class="msg" role="status"></p></article>
+    <article class="card" aria-labelledby="h-ckkeep"><h2 id="h-ckkeep">Retention</h2>
+      <p class="sub">Pruning deletes the oldest valid archive files beyond the newest N. Rebuilding writes one fresh checkpoint, deletes the stale archives, then prunes.</p>
+      <form id="ckKeepForm" novalidate>
+        <label for="ckKeep">Valid checkpoints to keep (newest)</label><input id="ckKeep" type="number" min="1" max="1000" step="1" inputmode="numeric" required value="7">
+        <label for="ckRebuildPolicy">Compression policy for a rebuild</label>
+        <select id="ckRebuildPolicy"><option value="cold">cold: smallest file, slower</option><option value="fast">fast: quicker, larger file</option><option value="experimental">experimental</option></select>
+        <div class="buttons"><button type="button" id="ckPrune">Prune (keep 7)</button><button type="button" id="ckRebuild">Rebuild stale (keep 7)</button></div></form>
+      <p id="ckKeepStatus" class="msg" role="status"></p></article>
     <article class="card wide" aria-labelledby="h-cklist"><h2 id="h-cklist">Archive registry</h2><div id="ckTable" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
   </div>
 </section>

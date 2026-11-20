@@ -4,8 +4,9 @@ Every step, each competing graph predicts the next target before the outcome is 
 (lab.context_recall.GraphRecall); the graph with the lowest summed error over the last
 rule.recall_history steps is the choice. No context label enters the selector. A step is 'unknown'
 when the chosen graph's rolling mean error exceeds rule.unknown_context_ratio times its validation MSE;
-when more than half the steps are unknown the verdict is 'unknown_context'. Recall never creates a
-graph: an unknown verdict only records an open question for the owner.
+when more than half the steps are unknown the verdict is 'unknown_context'. A chosen graph without a
+validation MSE (a founding or imported graph) cannot vouch for a step, so that step counts as unknown.
+Recall never creates a graph: an unknown verdict only records an open question for the owner.
 """
 import json
 
@@ -49,7 +50,7 @@ def run(db, dataset_id, now, *, contexts=None, record=True):
         latest += error[-1]
         selector.observe(prediction, y)
         rolling = float(np.mean(np.asarray(selector.errors)[:, chosen]))
-        if validation[chosen] is not None and rolling > ratio * validation[chosen]:
+        if validation[chosen] is None or rolling > ratio * validation[chosen]:
             unknown += 1
         if choices and choices[-1]["context"] == names[chosen]:
             choices[-1]["to"] = t + 1

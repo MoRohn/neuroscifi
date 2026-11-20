@@ -1,9 +1,10 @@
 """Instance commands for `nsf`. Each workstream registers its commands from its own module.
 
-Output is JSON on stdout. Instance errors exit with status 2 and a one-line message on stderr.
+Output is JSON on stdout. Instance, input-file, JSON and database errors exit with status 2 and a one-line message on stderr.
 """
 from importlib import import_module
 import json
+import sqlite3
 import sys
 import time
 
@@ -18,6 +19,11 @@ def emit(value):
     return 0
 
 
+def _fail(message):
+    print(f"nsf: {message}", file=sys.stderr)
+    return 2
+
+
 def run(handler):
     """Wrap a handler(args) -> JSON-able value with uniform error handling."""
     def wrapped(args):
@@ -26,6 +32,17 @@ def run(handler):
         except InstanceError as error:
             print(f"nsf: {error}", file=sys.stderr)
             return 2
+        except json.JSONDecodeError as error:
+            return _fail(f"invalid JSON: {error}")
+        except FileNotFoundError as error:
+            return _fail(f"no such file: {error.filename}")
+        except IsADirectoryError as error:
+            return _fail(f"is a directory: {error.filename}")
+        except PermissionError as error:
+            return _fail(f"permission denied: {error.filename}")
+        except sqlite3.Error as error:
+            busy = "locked" in str(error) or "busy" in str(error)
+            return _fail("instance busy; retry" if busy else f"database error: {error}")
     return wrapped
 
 

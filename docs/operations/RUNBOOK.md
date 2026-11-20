@@ -2,7 +2,7 @@
 
 Audience: the owner or operator of one NeuroSciFi instance on a Linux host such as the NVIDIA DGX Spark (Arm, DGX OS, Ubuntu-based).
 
-Status of this document: these are procedures. **No deployment has been performed from the development host, and nothing here has been run on a Spark.** Steps marked *(unverified on a host)* use system tools (`systemd`, `cryptsetup`, `ssh`) that the project's tests do not cover. Commands marked *(available from 0.5.0)* belong to the console, acceptance and doctor tools and are verified by the integrator, not by this document.
+Status of this document: these are procedures. **No service deployment has been performed.** The units, `install.sh` and the switchover steps have not been run as real system services. The software itself was built and tested on a DGX Spark (GB10) development host running a general-purpose distribution, not DGX OS, with no sensors attached. Steps marked *(unverified on a host)* use system tools (`systemd`, `cryptsetup`, `ssh`) that the project's tests do not cover. Commands marked *(available from 0.5.0)* belong to the console, acceptance and doctor tools and are verified by the integrator, not by this document.
 
 Related: [ENVIRONMENT.md](ENVIRONMENT.md) (every setting), [MIGRATIONS.md](MIGRATIONS.md) (upgrades), [TESTING.md](TESTING.md).
 
@@ -79,11 +79,11 @@ The console binds loopback only (`--port 8766`) and the unit also denies all non
 
 ```sh
 sudo systemctl start neuroscifi-console.service
-sudo cat /var/lib/neuroscifi/console-url        # the URL the console wrote (--url-file)
+sudo cat /run/neuroscifi/console-url            # the URL the console wrote (--url-file); gone after a stop
 ssh -N -L 8766:127.0.0.1:8766 USER@SPARK_HOST   # on your computer; leave running
 ```
 
-Then open the URL from the file in a browser on your computer, with its host and port unchanged (the tunnel keeps port 8766 on both ends). Close the tunnel when finished. Do not change the console to a LAN bind. Run `nsf console --db PATH [--port 8766] [--url-file PATH]` in the foreground instead of the unit for a one-off session.
+Then open the URL from the file in a browser on your computer, with its host and port unchanged (the tunnel keeps port 8766 on both ends). Close the tunnel when finished. The file lives in the unit's runtime directory (tmpfs), is removed when the console stops, and a restart (`systemctl restart`, a crash, a reboot) writes a new URL with a new token, so read the file again after each start. If you run the console by hand and a crash left a stale URL file behind, the next start replaces it; it refuses any other existing file. Do not change the console to a LAN bind. Run `nsf console --db PATH [--port 8766] [--url-file PATH]` in the foreground instead of the unit for a one-off session.
 
 ## 5. Checkpoint, verify, restore
 
@@ -236,6 +236,6 @@ Brief reference: Architecture.md, "Operating as the primary system on the Spark"
 | 10 | Reversible boot or service selection | Section 10 rollback; keep the old boot entry | OPS-04 | Procedure only |
 | 11 | Private LAN or VPN, trusted HTTPS, loopback by default | Env file defaults; LAN needs `--cert` and `--key` or `serve` refuses to start | OPS-02 | Verified by tests; deployment procedure only |
 | 12 | No access logs of observations, addresses, URLs or tokens | `journalctl -u neuroscifi-pocket.service` shows no request lines | OPS-08 | Implemented, tested |
-| 13 | p50/p95/p99 sensor-to-action latency, dropped inputs, memory high-water, joules per skill | Requires the physical Spark with sensors and a power meter | OPS-06 | **Not done: blocked on hardware** |
+| 13 | p50/p95/p99 sensor-to-action latency, dropped inputs, memory high-water, joules per skill | Host decision latency, idle and under concurrent learning plus checkpointing, was measured on the development Spark (acceptance `device_ownership`; `docs/quality/evidence/acceptance.json`). Real sensor-to-action latency, dropped real inputs and joules per skill need capture devices and a power meter | OPS-06 | **Partial:** host latency measured; sensor and energy parts blocked |
 
 Record the date, operator, host, software version (`/opt/neuroscifi/venv/bin/pip show neuroscifi`) and the result of each item. An item with no recorded result is not passed.

@@ -108,6 +108,28 @@ MIGRATIONS = [
       id INTEGER PRIMARY KEY, target_kind TEXT NOT NULL, target_id TEXT NOT NULL,
       requested_at REAL NOT NULL, effects TEXT NOT NULL, failure TEXT);
     """,
+    # ---- version 2 ---------------------------------------------------------
+    """
+    -- governance.py: digests of camera/word roots whose last evidence was removed. The root itself is never
+    -- stored; derived memory names it as '<kind>:#<digest>' with digest = sha256(instance_id ':' root)[:16].
+    CREATE TABLE forgotten_roots(
+      digest TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('camera','partner')), forgotten_at REAL NOT NULL);
+
+    -- rules.py: INSERT OR REPLACE must not overwrite a registered rule (connect() also turns on
+    -- recursive_triggers, so REPLACE's implicit delete fires scoring_rules_immutable_d).
+    CREATE TRIGGER scoring_rules_immutable_i BEFORE INSERT ON scoring_rules
+      WHEN EXISTS (SELECT 1 FROM scoring_rules WHERE version=NEW.version)
+      BEGIN SELECT RAISE(ABORT,'scoring rules are immutable'); END;
+    """,
+    # ---- version 3 ---------------------------------------------------------
+    """
+    -- beliefs.py / executive.py: owner answers about changes (confirmed changepoints and rejections).
+    -- Same statements as beliefs.DDL. IF NOT EXISTS because a version-2 file written by software that
+    -- created these lazily (beliefs.ensure_tables) may already have them.
+    CREATE TABLE IF NOT EXISTS changepoints(id INTEGER PRIMARY KEY, epoch TEXT NOT NULL, scope TEXT NOT NULL, since_seq INTEGER NOT NULL, pending_id INTEGER, created_at REAL NOT NULL, confirmed INTEGER NOT NULL);
+    -- Covering index for the per-epoch tallies (learning rows, sample dedupe and memory-only counts).
+    CREATE INDEX IF NOT EXISTS evidence_tally ON evidence(epoch, consent, sample_id, channel, root, bit, action);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

@@ -114,6 +114,7 @@ td.actions button{min-height:44px;padding:6px 10px;margin:2px 4px 2px 0}
 .bar .zone{position:absolute;top:0;bottom:0;left:13%;width:74%;background:repeating-linear-gradient(135deg,#d3dcd8 0 4px,#e6ecea 4px 8px)}
 .bar .fill{position:absolute;top:0;bottom:0;left:0;background:var(--primary);border-radius:7px 0 0 7px;opacity:.88}
 .bar .mid{position:absolute;top:0;bottom:0;left:50%;width:2px;background:#fff}
+.suspect{margin:6px 0 0;font-size:.9rem}
 .probnum{margin:2px 0 0;font-size:.88rem;font-variant-numeric:tabular-nums}
 .counts{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.9rem;margin:0 0 12px;padding:0;list-style:none}
 .reasons{margin:6px 0 0;padding-left:20px}

@@ -7,7 +7,7 @@ import pytest
 from neuroscifi import cli
 from neuroscifi.graph_store import decode, encode
 from neuroscifi.instance import datasets, graphs, rules, store
-from neuroscifi.instance.errors import Conflict, LeaseHeld, ValidationError
+from neuroscifi.instance.errors import Conflict, Gone, LeaseHeld, NotFound, ValidationError
 from neuroscifi.lab import graph_bench
 
 T0 = 1_800_000_000.0
@@ -164,6 +164,73 @@ def test_gate_e_rule_version_and_blob_are_immutable(instance):
     assert graphs.show(db, rev)["rule_version"] == "gate-v1"
 
 
+def _delete_dataset(db, dataset_id, now):
+    db.execute("UPDATE datasets SET blob=NULL, deleted_at=? WHERE id=?", (now, dataset_id))
+
+
+def test_learn_refuses_a_dataset_deleted_while_it_was_fitting(instance, monkeypatch):
+    db, path = instance
+    ids = datasets.simulate(db, "desk", T0, seed=SEED)
+    other = store.connect(path)
+    real_fit = graphs.learner.fit
+
+    def fit_while_deleted(*args, **kwargs):
+        with store.write(other):       # the owner forgets the training set mid-fit (no lease needed)
+            _delete_dataset(other, ids["train"], T0 + 1)
+            graphs.invalidate_dependents(other, ids["train"], T0 + 1)
+        return real_fit(*args, **kwargs)
+
+    monkeypatch.setattr(graphs.learner, "fit", fit_while_deleted)
+    try:
+        with pytest.raises(Gone, match=f"Dataset {ids['train']} was deleted"):
+            graphs.learn(db, "desk", T0, train=ids["train"], validation=ids["validation"], holder="alice")
+        assert db.execute("SELECT count(*) FROM graph_revisions").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM graph_lineage").fetchone()[0] == 0
+    finally:
+        other.close()
+
+
+def test_gate_rejects_a_candidate_whose_lineage_was_deleted(instance):
+    db, _ = instance
+    rev, ids = _learn(db, "desk", T0)
+    with store.write(db):   # a deletion that bypassed the cascade (older software, or a race before this fix)
+        _delete_dataset(db, ids["validation"], T0 + 2)
+    result = graphs.promote(db, rev, T0 + 3)
+    check = result["decision"]["checks"]["lineage_intact"]
+    assert not result["promoted"] and result["decision"]["failed"] == ["lineage_intact"]
+    assert check == {"passed": False, "datasets": [ids["train"], ids["validation"]], "deleted": [ids["validation"]]}
+    assert _status(db, rev) == "rejected"
+
+
+def test_promote_scores_outside_the_write_lock_and_rechecks_the_incumbent(instance, monkeypatch):
+    db, path = instance
+    weak, weak_ids, strong, strong_ids = _two_generations(db)
+    candidate, _ = _learn(db, "desk", T0 + 30, seed=SEED + 1)
+    other = store.connect(path)
+    other.execute("PRAGMA busy_timeout=0")
+    real_scores = graphs._scores
+    seen = []
+
+    def scores_while_others_write(*args, **kwargs):
+        if not seen:
+            seen.append(True)
+            with store.write(other):     # would raise 'database is locked' if promote held the write lock
+                _delete_dataset(other, strong_ids["train"], T0 + 31)
+                graphs.invalidate_dependents(other, strong_ids["train"], T0 + 31)   # the incumbent changes
+        return real_scores(*args, **kwargs)
+
+    monkeypatch.setattr(graphs, "_scores", scores_while_others_write)
+    try:
+        with pytest.raises(Conflict, match="active graph of desk changed"):
+            graphs.promote(db, candidate, T0 + 32)
+        assert _status(db, candidate) == "candidate" and _status(db, weak) == "active"
+        assert db.execute("SELECT count(*) FROM graph_leases").fetchone()[0] == 0
+        monkeypatch.setattr(graphs, "_scores", real_scores)
+        assert graphs.promote(db, candidate, T0 + 33)["decision"]["incumbent"] == weak   # a retry re-scores
+    finally:
+        other.close()
+
+
 # ---- 4/5. rollback and invalidation -------------------------------------------------------------------
 
 def _two_generations(db):
@@ -230,6 +297,33 @@ def test_invalidate_skips_archived_revisions_with_deleted_lineage(instance):
     assert first == {"invalidated": [weak], "reactivated": None, "failure": None}
     assert second == {"invalidated": [strong], "reactivated": None,
                       "failure": "no eligible snapshot for context desk"}
+
+
+def test_cascade_does_not_revive_a_graph_the_owner_rolled_back_from(instance):
+    db, _ = instance
+    weak, weak_ids, strong, strong_ids = _two_generations(db)
+    graphs.rollback(db, "desk", weak, T0 + 20)        # the owner prefers the older graph
+    assert graphs.show(db, strong)["decision"]["action"] == "replaced_by_rollback"
+    with store.write(db):
+        _delete_dataset(db, weak_ids["train"], T0 + 21)
+        out = graphs.invalidate_dependents(db, weak_ids["train"], T0 + 21)
+    assert out == {"invalidated": [weak], "reactivated": None, "failure": "no eligible snapshot for context desk"}
+    assert _status(db, strong) == "archived"
+    # The owner can still choose it explicitly.
+    assert graphs.rollback(db, "desk", strong, T0 + 22)["active"] == strong
+
+
+def test_cascade_picks_the_newest_eligible_snapshot_past_a_rolled_back_one(instance):
+    db, _ = instance
+    weak, weak_ids, strong, strong_ids = _two_generations(db)
+    third, third_ids = _learn(db, "desk", T0 + 30, seed=SEED, steps=1536 * 2)
+    assert graphs.promote(db, third, T0 + 32)["promoted"]
+    graphs.rollback(db, "desk", strong, T0 + 40)      # third is replaced by the owner's rollback
+    with store.write(db):
+        _delete_dataset(db, strong_ids["train"], T0 + 41)
+        out = graphs.invalidate_dependents(db, strong_ids["train"], T0 + 41)
+    assert out == {"invalidated": [strong], "reactivated": weak, "failure": None}
+    assert _status(db, third) == "archived" and _status(db, weak) == "active"
 
 
 # ---- 7. lease -----------------------------------------------------------------------------------------
@@ -309,6 +403,40 @@ def test_lesion_true_edges_matter_more_than_weak_ones(instance):
     assert out["permuted_control_mse"] > 2 * out["base_mse"]
     rows = db.execute("SELECT kind, count(*) FROM graph_effects WHERE revision_id=? GROUP BY kind", (rev,)).fetchall()
     assert dict(rows) == {"lesion": 144, "lesion_control": 1}
+    # Uncertainty: every true edge's effect is many time-block standard errors away from zero.
+    assert out["task"] == "desk" and out["se_block_steps"] == 32 and out["se_blocks"] == 16
+    true_edges = [e for e in out["edges"] if a[e["dst"], e["src"]] != 0]
+    assert all(e["se"] > 0 and e["delta_mse"] > 3 * e["se"] for e in true_edges)
+    detail = json.loads(db.execute("SELECT detail FROM graph_effects WHERE kind='lesion' AND src=? AND dst=?",
+                                   (true_edges[0]["src"], true_edges[0]["dst"])).fetchone()[0])
+    assert detail["task"] == "desk" and detail["se"] == true_edges[0]["se"] and detail["block"] == 32
+
+
+def test_functional_map_proposes_routes_missing_from_the_active_graph(tmp_path):
+    a, _ = graph_bench.world(np.random.default_rng(SEED))
+    pruned = a.copy()
+    missing = [(dst, int(np.flatnonzero(a[dst])[0])) for dst in range(0, 24, 3)]   # drop 8 true edges
+    for dst, src in missing:
+        pruned[dst, src] = 0
+    db = store.create(tmp_path / "map.sqlite", T0, founding_graph=encode(pruned, 3, 32))
+    try:
+        ids = datasets.simulate(db, "founding", T0, seed=SEED)
+        out = graphs.functional_map(db, ids["train"], T0 + 1, top=20)
+        assert out["context"] == "founding" and out["revision_id"] == 1 and out["pairs"] == 24 * 23
+        proposed = {(r["dst"], r["src"]) for r in out["routes"]}
+        assert all((r["dst"], r["src"]) not in {(d, s) for d, s in zip(*np.nonzero(pruned))} for r in out["routes"])
+        assert len(proposed & set(missing)) >= 6
+        assert {r["lag"] for r in out["routes"] if (r["dst"], r["src"]) in missing} == {1}
+        rows = db.execute("SELECT count(*), min(detail) FROM graph_effects WHERE kind='coactivation'").fetchone()
+        assert rows[0] == 24 * 23 and json.loads(rows[1])["context"] == "founding"
+        assert "common stimulus" in graphs.functional_map.__doc__
+        other = datasets.simulate(db, "elsewhere", T0, seed=SEED)
+        with pytest.raises(NotFound, match="no active graph"):
+            graphs.functional_map(db, other["train"], T0 + 2)
+        with pytest.raises(ValidationError):
+            graphs.functional_map(db, ids["train"], T0 + 2, lags=(0,))
+    finally:
+        db.close()
 
 
 # ---- 9. founding graph --------------------------------------------------------------------------------
@@ -365,8 +493,15 @@ def test_cli_graph_lifecycle(tmp_path, capsys):
     out = tmp_path / "desk.nsg"
     code, exported = _nsf(capsys, "graph", "export", str(rev), str(out), "--db", db)
     assert code == 0 and exported["bytes"] == 247 and decode(out.read_bytes()).shape == (24, 24)
+    assert out.stat().st_mode & 0o777 == 0o600
     code, err = _nsf(capsys, "graph", "export", str(rev), str(out), "--db", db)
     assert code == 2 and "overwrite" in err
+    link = tmp_path / "link.nsg"
+    link.symlink_to(tmp_path / "elsewhere.nsg")            # a dangling symlink is not followed
+    code, err = _nsf(capsys, "graph", "export", str(rev), str(link), "--db", db)
+    assert code == 2 and not (tmp_path / "elsewhere.nsg").exists()
+    code, mapped = _nsf(capsys, "graph", "coactivation", str(ids["heldout"]), "--top", "5", "--db", db)
+    assert code == 0 and len(mapped["routes"]) == 5 and mapped["context"] == "desk"
     # Owner rules: the flag is mandatory.
     rule = tmp_path / "rule.json"
     rule.write_text(json.dumps(dict(store.GATE_V1, version="gate-v2", byte_budget=2048)))

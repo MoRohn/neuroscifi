@@ -8,7 +8,7 @@ Copied from `--help`.
 
 | Command | Flags |
 |---|---|
-| `nsf pocket serve` | `--db DB` (default `mobile-private.sqlite`), `--bind BIND` (default `127.0.0.1`), `--port PORT` (default 8765), `--cert CERT`, `--key KEY`, `--invitation-file PATH` |
+| `nsf pocket serve` | `--db DB` (default `mobile-private.sqlite`), `--bind BIND` (default `127.0.0.1`), `--port PORT` (default 8765), `--cert CERT`, `--key KEY`, `--allowed-host NAME` (repeatable), `--invitation-file PATH` |
 | `nsf pocket list-pairings` | `--db DB` |
 | `nsf pocket erase-pairing LABEL` | `--db DB` |
 | `nsf init` | `--db DB`, `--action-semantics JSON`, `--founding-graph FILE`, `--ttl-days N` (default 7), `--ask-budget N` (default 3), `--note TEXT` |
@@ -23,7 +23,13 @@ Copied from `--help`.
 
 - The default bind is loopback (`127.0.0.1` or `localhost`). Any other `--bind` requires both `--cert` and `--key`. Giving only one of them, or a non-loopback bind without them, exits with "LAN access requires both --cert and --key for HTTPS."
 - `--invitation-file PATH`: the one-use pairing code is written to PATH instead of stdout. The file is created exclusively with mode 0600 (symbolic links are not followed). The server exits with an error if PATH already exists and never overwrites it. The file is removed when the invitation is used, after five minutes, and at shutdown by SIGTERM or Ctrl-C. Only "Invitation written to PATH" is printed. A hard kill (SIGKILL, power loss) can leave the file behind; the service's runtime directory is on tmpfs and is cleared at stop and reboot. Without the flag, the code is printed on stdout as before.
+- `--allowed-host NAME` (repeatable, optional): when given, the request's `Host` header must equal NAME or `NAME:PORT` (case-insensitive), otherwise Pocket answers 421 and does nothing else. Use it on a LAN bind to name the host phones really use, for example `--allowed-host spark.local --allowed-host 192.168.1.20`; it narrows what a DNS-rebinding page could reach. Without the flag any Host is accepted, as before. With the systemd unit, put it in `NSF_POCKET_TLS_ARGS` (for example `--cert ... --key ... --allowed-host spark.local`).
+- With TLS on, every response carries `Strict-Transport-Security: max-age=31536000`. Plain HTTP responses do not.
+- The TLS handshake runs in the connection's own worker thread under an 8-second timeout, and at most 32 connections are served at once (extra ones are closed immediately, also on plain HTTP), so an idle or hostile connection cannot freeze the bridge.
+- Connection errors print one fixed line (`nsf-pocket: connection error`) to stderr with no client address and no traceback. A database error while handling a request answers 503 with `{}`.
 - The process sets umask 0077 for every file it creates.
+- `nsf console --url-file PATH`: the URL with its session token is written atomically to PATH (mode 0600) and removed at shutdown (Ctrl-C or SIGTERM). If PATH exists and is a regular file owned by the same user, not a symbolic link, and starts with `http://127.0.0.1:`, it is a leftover of an earlier console (for example after a crash or SIGKILL) and is replaced; any other existing PATH makes the console exit 2 and leave the file alone.
+- Console `GET` requests do not take the database write lock: expired evidence is swept before every `POST`, and on `GET` at most once a minute with a 200 ms lock wait that is skipped when the database is busy. A request that finds the database locked for more than 2 seconds answers 503 `{"error":"instance busy; retry"}` with `Retry-After: 1`.
 
 ## 2. Environment variables
 
@@ -88,14 +94,14 @@ Use a private LAN or a VPN between the phone and the host. Do not forward the po
 | `/var/lib/neuroscifi/instance.sqlite` (+ `-wal`, `-shm`) | neuroscifi, 0600 | The individual. WAL files are part of it while open. |
 | `/var/lib/neuroscifi/pocket.sqlite` | neuroscifi, 0600 | Pocket pairings and 24-hour records. |
 | `/var/lib/neuroscifi/checkpoints/*.nsfa` | neuroscifi, 0600 in a 0700 folder | Verified archives. |
-| `/var/lib/neuroscifi/console-url` | neuroscifi, 0600 | Console access URL *(available from 0.5.0)*. |
+| `/run/neuroscifi/console-url` | neuroscifi, 0600 in a 0700 tmpfs folder | Console access URL *(available from 0.5.0)*; removed when the console stops. |
 | `/run/neuroscifi/invitation` | neuroscifi, 0600 in a 0700 tmpfs folder | One-use pairing code, short-lived. |
 
 The service user has no login shell (`/usr/sbin/nologin`) and no home directory.
 
 ## 7. Service hardening (what each unit sets and what was checked)
 
-All three units set: `User=neuroscifi`, `StateDirectory=neuroscifi` (0700), `EnvironmentFile=-/etc/neuroscifi/neuroscifi.env`, an absolute `ExecStart` under `/opt/neuroscifi/venv/bin`, `NoNewPrivileges=yes`, `CapabilityBoundingSet=` (empty), `AmbientCapabilities=` (empty), `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `PrivateDevices=yes`, `UMask=0077`, `ReadWritePaths=%S/neuroscifi`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX` (the checkpoint job: `AF_UNIX` plus `PrivateNetwork=yes`), `SystemCallFilter=@system-service`, `SystemCallArchitectures=native`, `MemoryDenyWriteExecute=yes`, `ProtectKernelTunables/Modules/Logs`, `ProtectControlGroups`, `ProtectClock`, `ProtectHostname`, `ProtectProc=invisible`, `ProcSubset=pid`, `RestrictNamespaces`, `RestrictRealtime`, `RestrictSUIDSGID`, `LockPersonality`, and `RequiresMountsFor=%S/neuroscifi`. The console adds `IPAddressDeny=any` and `IPAddressAllow=localhost`. The checkpoint job runs at `Nice=19` with idle I/O so it stays off the interactive loop.
+All three units set: `User=neuroscifi`, `StateDirectory=neuroscifi` (0700), `EnvironmentFile=-/etc/neuroscifi/neuroscifi.env`, an absolute `ExecStart` under `/opt/neuroscifi/venv/bin`, `NoNewPrivileges=yes`, `CapabilityBoundingSet=` (empty), `AmbientCapabilities=` (empty), `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `PrivateDevices=yes`, `UMask=0077`, `ReadWritePaths=%S/neuroscifi`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX` (the checkpoint job: `AF_UNIX` plus `PrivateNetwork=yes`), `SystemCallFilter=@system-service`, `SystemCallArchitectures=native`, `MemoryDenyWriteExecute=yes`, `ProtectKernelTunables/Modules/Logs`, `ProtectControlGroups`, `ProtectClock`, `ProtectHostname`, `ProtectProc=invisible`, `ProcSubset=pid`, `RestrictNamespaces`, `RestrictRealtime`, `RestrictSUIDSGID`, `LockPersonality`, and `RequiresMountsFor=%S/neuroscifi`. Pocket and the console also set `RemoveIPC=yes`, `PrivateUsers=yes`, `MemoryMax` (1G Pocket, 2G console), `TasksMax=128` and `RuntimeDirectory=neuroscifi` (0700, tmpfs; the console URL and Pocket's invitation live there). `PrivateUsers=yes`, like the namespace options, has **not** been started on a host; if a service fails to start with a namespace error, remove that one line and record why. Both units carry a commented `ConditionPathIsMountPoint=/var/lib/neuroscifi`: uncomment it once the encrypted volume is mounted there, so the unit refuses to start when the volume is absent (`RequiresMountsFor` alone cannot tell an unmounted volume from a plain directory on the root disk). Memory and task ceilings are starting values: raise `MemoryMax` if the console is killed during a large graph evaluation. The console adds `IPAddressDeny=any` and `IPAddressAllow=localhost`. The checkpoint job runs at `Nice=19` with idle I/O so it stays off the interactive loop.
 
 Checks made on the development host (systemd 262, aarch64, Python 3.12, numpy 2.3.5): `MemoryDenyWriteExecute=yes` works. numpy matrix products, zstandard, sqlite3, `nsf init`, `sweep`, `checkpoint create` and `verify`, and `nsf pocket serve` ran under `MemoryDenyWriteExecute=yes`, `SystemCallFilter=@system-service`, `PrivateDevices`, the address-family restriction, an empty capability set and `UMask=0077` in a user-mode transient unit. Adding `SystemCallFilter=~@privileged @resources` made Python die with SIGSYS, so it is not set. The namespace options (`ProtectSystem=strict`, `PrivateTmp`, `ReadWritePaths`) cannot be exercised in a user-mode unit and have **not** been run; they are checked only by `systemd-analyze verify`. Test them on the Spark with `systemd-analyze security neuroscifi-pocket.service` and a real start. If a future dependency needs executable memory, remove `MemoryDenyWriteExecute=yes` and record why in the unit.
 
@@ -103,7 +109,7 @@ Checks made on the development host (systemd 262, aarch64, Python 3.12, numpy 2.
 
 NeuroSciFi does not encrypt data itself (ADR-011). The database is cleartext SQLite, protected by file modes and by the volume.
 
-- Mount a LUKS or fscrypt-protected filesystem at `/var/lib/neuroscifi` before the first start. This holds the instance database, Pocket's database, checkpoints and the console URL.
+- Mount a LUKS or fscrypt-protected filesystem at `/var/lib/neuroscifi` before the first start. This holds the instance database, Pocket's database and checkpoints. (The console URL is in `/run/neuroscifi`, on tmpfs.)
 - Check: `findmnt /var/lib/neuroscifi` and `lsblk -o NAME,TYPE,FSTYPE,MOUNTPOINT` should show a `crypt` device *(unverified on a host)*. `nsf doctor --db PATH` *(available from 0.5.0)* reports the filesystem but cannot prove encryption.
 - Exclude `pocket.sqlite`, `pocket.sqlite-wal` and `pocket.sqlite-shm` from every backup, snapshot sync and cloud sync tool. Do the same for `/run/neuroscifi`. For the instance database and checkpoints, include them in backups only on purpose, to storage with equal protection, knowing that erasure does not reach copies there.
 - Unmounted volume: the units will not start (`RequiresMountsFor`). Do not create `/var/lib/neuroscifi` on the root disk to get around it.

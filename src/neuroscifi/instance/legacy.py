@@ -34,7 +34,7 @@ def _read(legacy_path):
     return epochs, observations
 
 
-def import_legacy(db, legacy_path, now):
+def import_legacy(db, legacy_path, now, *, path=None):
     """Copy a prototype database's epochs and observations. Returns counts of newly created rows.
 
     Extra keys: already_present (identical rows skipped) and forgotten_skipped (tombstoned ids).
@@ -52,7 +52,7 @@ def import_legacy(db, legacy_path, now):
             raise ValidationError(f"prototype epoch name {name!r} must be a non-blank string of at most 64 characters")
     created_epochs, created, present, forgotten, touched = 0, {}, 0, 0, set()
     with store.write(db):
-        store.require_write_allowed(db)
+        store.require_write_allowed(db, path)
         for name in epochs:
             created_epochs += db.execute("INSERT OR IGNORE INTO epochs(name,created_at,note) VALUES(?,?,?)",
                                          (name, now, "imported from a prototype database")).rowcount

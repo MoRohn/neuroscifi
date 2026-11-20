@@ -21,7 +21,7 @@ def _observe(db, args, now):
 
 
 def register(sub, *, with_db, run):
-    """Add epoch, observe, status, decide, explain, pending, resolve and import-legacy."""
+    """Add epoch (start, match), observe, status, decide, explain, pending, resolve and import-legacy."""
     def command(name, handler, help, *arguments):
         parser = sub.add_parser(name, help=help)
         store.add_db_argument(parser)
@@ -37,6 +37,11 @@ def register(sub, *, with_db, run):
     start.add_argument("name")
     start.add_argument("--note")
     start.set_defaults(handler=with_db(lambda db, a, now: evidence.start_epoch(db, a.name, now, a.note)))
+    match = ops.add_parser("match", help="which earlier epoch does this epoch's recent evidence come from?")
+    store.add_db_argument(match)
+    match.add_argument("name")
+    match.add_argument("--last", type=int, default=beliefs.MATCH_EVENTS, help="learning events to score")
+    match.set_defaults(handler=with_db(lambda db, a, now: beliefs.match_epochs(db, a.name, last=a.last)))
 
     command("observe", _observe, "journal one observation",
             (("epoch",), {}), (("id",), {}), (("channel",), {"choices": evidence.CHANNELS}),
@@ -55,7 +60,12 @@ def register(sub, *, with_db, run):
     command("pending", lambda db, a, now: executive.pending(db, epoch=a.epoch, include_resolved=a.all),
             "open questions", (("--epoch",), {}),
             (("--all",), {"action": "store_true", "help": "include resolved questions"}))
-    command("resolve", lambda db, a, now: executive.resolve(db, a.id, a.text, now),
-            "answer an open question", (("id",), {"type": int}), (("text",), {}))
-    command("import-legacy", lambda db, a, now: legacy.import_legacy(db, a.path, now),
+    resolve = command("resolve", lambda db, a, now: executive.resolve(db, a.id, a.text, now, confirm=a.confirm),
+                      "answer an open question", (("id",), {"type": int}), (("text",), {}))
+    answer = resolve.add_mutually_exclusive_group()
+    answer.add_argument("--confirm", dest="confirm", action="store_const", const=True,
+                        help="the change happened: relearn only that scope from its changepoint")
+    answer.add_argument("--reject", dest="confirm", action="store_const", const=False,
+                        help="no change: keep pooling and stop reporting it until new evidence arrives")
+    command("import-legacy", lambda db, a, now: legacy.import_legacy(db, a.path, now, path=store.resolve_db(a)),
             "import a prototype live database (read-only)", (("path",), {"type": Path}))

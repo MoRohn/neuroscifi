@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from neuroscifi.graph_store import decode
+from neuroscifi.graph_store import decode, encode
 from neuroscifi.instance import datasets, graphs, recall, store
 from neuroscifi.instance.errors import NotFound
 from neuroscifi.lab import graph_bench
@@ -88,3 +88,18 @@ def test_unrelated_world_is_unknown_and_asks_without_creating_a_graph(two_contex
     assert recall.run(db, probe, T0 + 23)["pending_id"] == out["pending_id"]
     assert db.execute("SELECT count(*) FROM pending").fetchone()[0] == 1
     assert db.execute("SELECT count(*) FROM graph_revisions").fetchone()[0] == before
+
+
+def test_a_founding_graph_without_validation_cannot_vouch_for_an_unrelated_world(tmp_path):
+    a, _ = graph_bench.world(np.random.default_rng(SEED))
+    db = store.create(tmp_path / "born.sqlite", T0, founding_graph=encode(a, 3, 4))
+    try:
+        unrelated, _ = graph_bench.world(np.random.default_rng(SEED + 1))
+        states, targets = graph_bench.stream(unrelated, 512, np.random.default_rng(5))
+        probe = datasets.add(db, "probe", "heldout", states, targets, "simulated", T0 + 1)
+        out = recall.run(db, probe, T0 + 2)
+        assert out["competitors"] == [{"context": "founding", "revision_id": 1, "validation_mse": None}]
+        assert out["verdict"] == "unknown_context" and out["unknown_fraction"] == 1.0
+        assert out["pending_id"] is not None
+    finally:
+        db.close()

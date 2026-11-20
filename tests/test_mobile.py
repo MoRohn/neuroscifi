@@ -46,6 +46,11 @@ class MobileBridge(unittest.TestCase):
         self.assertEqual(self.call("save",learned)[0],410)
         self.assertFalse(self.call("state")[1]["prediction"])
 
+    def test_forget_before_save_retires_the_id(self):
+        self.assertEqual(self.call("forget",{"id":self.event["id"]}),(200,{}))
+        self.assertEqual(self.call("save",self.event)[0],410)
+        self.assertEqual(self.call("state")[1]["records"],[])
+
     def test_expiry_and_revoke(self):
         event=dict(self.event, learn=True)
         self.call("save",event)
@@ -121,6 +126,24 @@ class MuteChannel(unittest.TestCase):
         with bridge.closing(bridge.connect(self.store.path)) as db:
             self.assertEqual(db.execute("SELECT count(*) FROM muted").fetchone()[0], 0)
         self.assertEqual(self.store.action(self.store.pair(), "state", {})[1]["muted"], [])
+
+    def test_unmute_then_identical_retry_of_event_stored_while_muted_is_200(self):
+        stored = self.learned()
+        self.call("mute", {"channel": "sound"})
+        self.call("unmute", {"channel": "sound"})
+        self.assertEqual(self.call("save", stored)[0], 200)
+        self.assertEqual(self.call("save", dict(stored, value="strong"))[0], 409)
+
+    def test_old_events_table_gains_asked_column_once(self):
+        path = Path(self.tmp.name) / "older.db"
+        with bridge.closing(bridge.connect(path)) as db, db:
+            db.executescript("CREATE TABLE devices(key TEXT PRIMARY KEY, label TEXT UNIQUE NOT NULL);"
+                             "CREATE TABLE events(device TEXT REFERENCES devices(key) ON DELETE CASCADE, id TEXT, ch TEXT, val TEXT,"
+                             " learn INTEGER, until INTEGER, PRIMARY KEY(device,id));")
+        bridge.Store(path)
+        bridge.Store(path)
+        with bridge.closing(bridge.connect(path)) as db:
+            self.assertEqual([r[1] for r in db.execute("PRAGMA table_info(events)")].count("asked"), 1)
 
     def test_existing_database_without_table_upgrades(self):
         path = Path(self.tmp.name) / "old.db"

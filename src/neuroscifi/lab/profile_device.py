@@ -2,6 +2,7 @@
 import argparse
 import json
 import platform
+import sys
 import time
 from pathlib import Path
 import numpy as np
@@ -28,7 +29,12 @@ def clock(work,sync,repeats):
 
 def run(device,repeats):
     if device=="cuda":
-        import cupy as xp
+        try:
+            import cupy as xp
+        except ImportError:
+            print("CUDA mode requires CuPy for this driver; install the 'gpu' extra "
+                  "(pip install 'neuroscifi[gpu]')", file=sys.stderr)
+            raise SystemExit(2) from None
         sync=xp.cuda.Stream.null.synchronize
         hardware=xp.cuda.runtime.getDeviceProperties(0)["name"]
         hardware=hardware.decode() if isinstance(hardware,bytes) else str(hardware)

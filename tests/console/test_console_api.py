@@ -1,10 +1,15 @@
 """Owner console HTTP API (API_CONTRACTS.md §6): security controls and the owner journeys over real HTTP."""
+import contextlib
 import http.client
+import io
 import json
 import os
 from pathlib import Path
 import signal
+import socket
+import sqlite3
 import stat
+import struct
 import subprocess
 import sys
 import threading
@@ -14,7 +19,7 @@ import pytest
 
 from neuroscifi.cli import build_parser
 from neuroscifi.console import server
-from neuroscifi.instance import store
+from neuroscifi.instance import checkpoints, graphs, store
 
 T0 = 1_800_000_000.0
 TOKEN = "test-token-" + "x" * 32
@@ -271,14 +276,81 @@ def test_forget_epoch_and_partner(console):
     assert [d["payload"]["target_kind"] for d in deletions] == ["epoch", "partner"]
 
 
-def test_every_request_sweeps_expired_evidence_first(console):
+def test_writes_sweep_expired_evidence_first_and_reads_sweep_once_a_minute(console):
     c = console
     c.post("/api/epochs", {"name": "e1"})
     observe(c, "old", "camera", 0, 0, "cam1")
     assert len(c.ok("GET", "/api/epochs/e1/evidence")) == 1
     c.clock[0] += 8 * 86400
+    assert observe(c, "old", "camera", 0, 0, "cam1")[0] == 410  # a POST sweeps first
     assert c.ok("GET", "/api/epochs/e1/evidence") == []
-    assert observe(c, "old", "camera", 0, 0, "cam1")[0] == 410
+    observe(c, "second", "camera", 0, 0, "cam1")
+    c.clock[0] += 8 * 86400
+    assert len(c.ok("GET", "/api/epochs/e1/evidence")) == 1  # a GET within a minute of the last sweep does not sweep
+    c.srv.last_sweep = float("-inf")
+    assert c.ok("GET", "/api/epochs/e1/evidence") == []  # a due GET sweeps
+
+
+def _hold_write_lock(path):
+    other = sqlite3.connect(path, isolation_level=None)
+    other.execute("BEGIN IMMEDIATE")
+    return other
+
+
+def test_get_does_not_wait_for_a_writer_and_post_gets_503(console):
+    c = console
+    c.srv.post_busy_ms = 300
+    holder = _hold_write_lock(c.path)
+    try:
+        started = time.monotonic()
+        assert c.get("/api/inventory")[0] == 200
+        assert time.monotonic() - started < 1
+        started = time.monotonic()
+        status, headers, data = c.call("POST", "/api/epochs", {"name": "busy"})
+        assert (status, data, headers["Retry-After"]) == (503, {"error": "instance busy; retry"}, "1")
+        assert 0.25 < time.monotonic() - started < 2.5
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+    assert c.post("/api/epochs", {"name": "busy"})[0] == 200
+
+
+def test_negative_length_and_huge_ids(console):
+    c = console
+    assert c.call("POST", "/api/epochs", raw=b"", headers={"Content-Type": "application/json",
+                                                           "Content-Length": "-5"})[0] == 400
+    for route in ("/api/graphs/9223372036854775808", "/api/graphs/99999999999999999999999"):
+        assert c.get(route)[0] == 404
+    assert c.post("/api/pending/9223372036854775808/resolve", {"resolution": "x"})[0] == 404
+    assert c.post("/api/checkpoints/18446744073709551616/verify")[0] == 404
+    assert c.get("/api/graphs/9223372036854775807")[0] == 404  # in range: an ordinary missing revision
+
+
+def test_graph_learn_uses_a_lease_holder_per_request(console):
+    c = console
+    ids = c.ok("POST", "/api/datasets/simulate", {"context": "world-a", "seed": 1})
+    db = store.open_existing(c.path)
+    with graphs.lease(db, "world-a", "console", c.clock[0]):
+        status, data = c.post("/api/graphs/learn", {"context": "world-a", "train": ids["train"],
+                                                   "validation": ids["validation"]})
+    db.close()
+    assert status == 423 and "leased by console" in data["error"]  # a fixed holder would renew and proceed
+
+
+def test_connection_errors_print_a_fixed_line(console):
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        sock = socket.create_connection(("127.0.0.1", console.port))
+        sock.sendall(b"POST /api/epochs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+                     b"Authorization: Bearer " + TOKEN.encode() + b"\r\nContent-Length: 50\r\n\r\n{")
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+        sock.close()
+        deadline = time.monotonic() + 3
+        while "connection error" not in err.getvalue() and time.monotonic() < deadline:
+            time.sleep(0.05)
+    text = err.getvalue()
+    assert "nsf-console: connection error" in text
+    assert "127.0.0.1" not in text and "Traceback" not in text
 
 
 # ---- graphs and checkpoints ---------------------------------------------------------------------------------
@@ -300,7 +372,8 @@ def test_graph_journey_over_http(console):
     assert evaluation["heldout_mse"] > 0 and [h["dataset_id"] for h in evaluation["heldout"]] == [ids["heldout"]]
     promoted = c.ok("POST", f"/api/graphs/{revision}/promote")
     assert promoted["promoted"] is True and promoted["decision"]["failed"] == []
-    assert set(promoted["decision"]["checks"]) == {"independent_heldout", "heldout_gain", "retention", "byte_budget"}
+    assert set(promoted["decision"]["checks"]) == {"independent_heldout", "heldout_gain", "retention", "byte_budget",
+                                                   "lineage_intact"}
     assert c.post(f"/api/graphs/{revision}/promote")[0] == 409
     shown = c.ok("GET", f"/api/graphs/{revision}")
     assert shown["status"] == "active" and len(shown["matrix"]) == 24 and shown["edges"] == 72
@@ -327,13 +400,143 @@ def test_checkpoint_create_and_verify(console):
     assert c.post("/api/checkpoints", {"policy": "bogus"})[0] == 400
     created = c.ok("POST", "/api/checkpoints", {"policy": "fast"})
     path = Path(created["path"])
-    assert path.parent == console.path.parent / "checkpoints" and path.is_file()
+    assert path.parent == checkpoints.default_dir(console.path) == console.path.parent / "individual.checkpoints"
+    assert path.is_file()
     assert stat.S_IMODE(path.stat().st_mode) == 0o600 and created["status"] == "valid"
     verified = c.ok("POST", f"/api/checkpoints/{created['id']}/verify")
     assert verified["ok"] is True and verified["verified_at"] == c.clock[0]
     assert [k["id"] for k in c.ok("GET", "/api/checkpoints")] == [created["id"]]
     c.post("/api/forget", {"kind": "evidence", "target": "c0"})
     assert c.ok("GET", "/api/checkpoints")[0]["status"] == "stale"
+
+
+def test_checkpoint_prune_and_rebuild(console):
+    c = console
+    teach_baseline(c)
+    assert c.post("/api/checkpoints/prune", {})[0] == 400
+    for bad in (0, -1, "2", True, 1.5, None):
+        assert c.post("/api/checkpoints/prune", {"keep": bad})[0] == 400, bad
+    assert c.post("/api/checkpoints/prune", {"keep": 1, "extra": 1})[0] == 400
+    assert c.get("/api/checkpoints/prune")[0] == 405
+    first = c.ok("POST", "/api/checkpoints", {"policy": "fast"})
+    c.clock[0] += 5
+    second = c.ok("POST", "/api/checkpoints", {"policy": "fast"})
+    pruned = c.ok("POST", "/api/checkpoints/prune", {"keep": 1})
+    assert pruned["kept"] == [second["id"]] and pruned["deleted"] == [first["id"]]
+    assert not Path(first["path"]).exists() and Path(second["path"]).exists()
+    assert {k["id"]: k["status"] for k in c.ok("GET", "/api/checkpoints")} == {first["id"]: "deleted", second["id"]: "valid"}
+    # Forgetting makes the survivor stale; rebuild writes a fresh one, deletes the stale file and prunes.
+    c.post("/api/forget", {"kind": "evidence", "target": "c0"})
+    for bad in ({"keep": 0}, {"keep": "7"}, {"policy": "bogus"}, {"nope": 1}):
+        assert c.post("/api/checkpoints/rebuild", bad)[0] == 400, bad
+    c.clock[0] += 5
+    rebuilt = c.ok("POST", "/api/checkpoints/rebuild", {"keep": 2, "policy": "fast"})
+    assert rebuilt["new_checkpoint"]["status"] == "valid" and rebuilt["deleted"] == [second["id"]]
+    assert Path(rebuilt["new_checkpoint"]["path"]).parent == checkpoints.default_dir(c.path)
+    assert not Path(second["path"]).exists()
+    assert c.ok("POST", "/api/checkpoints/rebuild", {})["new_checkpoint"]["policy"] == "cold"
+
+
+def flip_camera(c, epoch="e1"):
+    for k in range(6):
+        observe(c, f"c-flip{k}", "camera", 0, 1, "cam1", epoch=epoch)
+        observe(c, f"w-more{k}", "word", 1, 1, "alice", epoch=epoch)
+
+
+def test_resolve_confirm_relearns_only_that_factor(console):
+    c = console
+    teach_baseline(c)
+    flip_camera(c)
+    question = c.ok("POST", "/api/epochs/e1/decide")["pending_id"]
+    route = f"/api/pending/{question}/resolve"
+    for bad in ("yes", 1, 0, "true", None, []):
+        status, data = c.post(route, {"resolution": "x", "confirm": bad})
+        assert status == 400 and "confirm must be true or false" in data["error"], bad
+    assert c.post(route, {"resolution": "x", "confirmed": True})[0] == 400
+    assert c.ok("GET", "/api/pending")[0]["id"] == question
+    partner_before = c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]["partners"]["alice"]["p_inverted"]
+    resolved = c.ok("POST", route, {"resolution": "Confirmed: camera:cam1 changed", "confirm": True})
+    assert resolved["changepoint"]["confirmed"] is True and resolved["changepoint"]["scope"] == "camera:cam1"
+    beliefs = c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]
+    assert [x["scope"] for x in beliefs["confirmed_changes"]] == ["camera:cam1"]
+    assert beliefs["confirmed_changes"][0]["since_seq"] == resolved["changepoint"]["since_seq"]
+    assert beliefs["partners"]["alice"]["p_inverted"] == pytest.approx(partner_before, abs=0.05)
+    assert not beliefs["sensors"]["cam1"].get("suspected_change")
+    assert c.ok("POST", "/api/epochs/e1/decide")["decision"] == "act"
+    assert c.ok("POST", route, {"resolution": "Confirmed: camera:cam1 changed", "confirm": True})["changepoint"]["confirmed"]
+    assert c.post(route, {"resolution": "different", "confirm": True})[0] == 409
+
+
+def test_resolve_confirm_false_rejects_the_change(console):
+    c = console
+    teach_baseline(c)
+    flip_camera(c)
+    question = c.ok("POST", "/api/epochs/e1/decide")["pending_id"]
+    resolved = c.ok("POST", f"/api/pending/{question}/resolve", {"resolution": "Rejected", "confirm": False})
+    assert resolved["changepoint"]["confirmed"] is False
+    assert c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]["confirmed_changes"] == []
+
+
+def test_confirm_on_a_question_that_is_not_about_a_change_is_400(console):
+    c = console
+    c.ok("POST", "/api/epochs", {"name": "e1"})
+    for k in range(6):
+        observe(c, f"c{k}", "camera", 0, 0, "cam1")
+    decision = c.ok("POST", "/api/epochs/e1/decide")
+    assert decision["pending_id"] and decision["decision"] == "test_reference"
+    status, data = c.post(f"/api/pending/{decision['pending_id']}/resolve", {"resolution": "x", "confirm": True})
+    assert status == 400 and "not about a change" in data["error"]
+    assert c.post("/api/pending/99/resolve", {"resolution": "x", "confirm": True})[0] == 404
+
+
+def test_epoch_match_and_the_continue_there_question(console):
+    c = console
+    teach_baseline(c)
+    c.ok("POST", "/api/epochs", {"name": "e2"})
+    empty = c.ok("GET", "/api/epochs/e2/match")
+    assert empty["best"] is None and empty["events"] == 0 and [r["epoch"] for r in empty["ranking"]] == ["e1"]
+    for k in range(6):
+        observe(c, f"m-c{k}", "camera", 0, 0, "cam1", epoch="e2")
+    match = c.ok("GET", "/api/epochs/e2/match?last=12")
+    assert match["best"] == "e1" and match["ranking"][0]["epoch"] == "e1" and match["ranking"][0]["events"] == 6
+    assert c.ok("GET", "/api/epochs/e2/match") == match
+    assert c.ok("GET", "/api/epochs/e1/match")["ranking"][0]["epoch"] == "e2"
+    assert c.get("/api/epochs/nope/match")[0] == 404
+    for bad in ("last=0", "last=1001", "last=abc", "last=1.5", "other=1"):
+        assert c.get(f"/api/epochs/e2/match?{bad}")[0] == 400, bad
+    assert c.post("/api/epochs/e2/match", {})[0] == 405
+    decision = c.ok("POST", "/api/epochs/e2/decide")
+    assert decision["decision"] == "ask" and decision["scope"] == "epoch:e1"
+    question = c.ok("GET", "/api/pending?epoch=e2")[0]
+    assert question["question"].startswith("This looks like e1; continue there?")
+    answered = c.ok("POST", f"/api/pending/{question['id']}/resolve", {"resolution": "Continue in epoch e1"})
+    assert answered["resolution"] == "Continue in epoch e1" and answered["changepoint"] is None
+
+
+def test_functional_map(console):
+    c = console
+    ids = c.ok("POST", "/api/datasets/simulate", {"context": "world-a", "seed": 1})
+    assert c.post("/api/graphs/coactivation", {"dataset_id": ids["heldout"]})[0] == 404, "needs an active graph"
+    revision = c.ok("POST", "/api/graphs/learn", {"context": "world-a", "train": ids["train"],
+                                                 "validation": ids["validation"]})["revision_id"]
+    c.ok("POST", f"/api/graphs/{revision}/evaluate")
+    c.ok("POST", f"/api/graphs/{revision}/promote")
+    mapped = c.ok("POST", "/api/graphs/coactivation", {"dataset_id": ids["heldout"], "lags": [1, 2], "top": 5})
+    assert mapped["context"] == "world-a" and mapped["lags"] == [1, 2] and mapped["revision_id"] == revision
+    assert len(mapped["routes"]) == 5 and "common stimulus" in mapped["caveat"]
+    assert {"src", "dst", "lag", "correlation", "n"} <= set(mapped["routes"][0])
+    magnitudes = [abs(r["correlation"]) for r in mapped["routes"]]
+    assert magnitudes == sorted(magnitudes, reverse=True)
+    assert len(c.ok("POST", "/api/graphs/coactivation", {"dataset_id": ids["heldout"]})["routes"]) == 20
+    bad_bodies = [{}, {"dataset_id": "1"}, {"dataset_id": True}, {"dataset_id": ids["heldout"], "top": 0},
+                  {"dataset_id": ids["heldout"], "top": "5"}, {"dataset_id": ids["heldout"], "lags": []},
+                  {"dataset_id": ids["heldout"], "lags": [0]}, {"dataset_id": ids["heldout"], "lags": ["1"]},
+                  {"dataset_id": ids["heldout"], "lags": [True]}, {"dataset_id": ids["heldout"], "lags": 1},
+                  {"dataset_id": ids["heldout"], "lags": [10_000]}, {"dataset_id": ids["heldout"], "extra": 1}]
+    for body in bad_bodies:
+        assert c.post("/api/graphs/coactivation", body)[0] == 400, body
+    assert c.post("/api/graphs/coactivation", {"dataset_id": 999})[0] == 404
+    assert c.get("/api/graphs/coactivation")[0] in (400, 404, 405)
 
 
 # ---- the command ----------------------------------------------------------------------------------------------
@@ -371,9 +574,55 @@ def test_url_file_is_private_and_token_stays_off_stdout(tmp_path):
     assert proc.returncode == 0, err
     assert token not in out and token not in err
     assert str(url_file) in out
-    again = _run_console(tmp_path, "--url-file", str(url_file))
-    out, err = again.communicate(timeout=20)
-    assert again.returncode == 2 and "already exists" in err and token not in out + err
+    assert not url_file.exists(), "the URL file is removed at shutdown"
+
+
+def _wait_for_url(proc, url_file, stale=None):
+    deadline = time.monotonic() + 20
+    while not (url_file.exists() and url_file.read_text().endswith("\n") and url_file.read_text().strip() != stale):
+        assert proc.poll() is None and time.monotonic() < deadline, proc.stderr.read() if proc.poll() else "timeout"
+        time.sleep(0.05)
+    return url_file.read_text().strip()
+
+
+def test_console_restarts_after_sigterm_and_after_a_crash(tmp_path):
+    url_file = tmp_path / "console.url"
+    first = _run_console(tmp_path, "--url-file", str(url_file))
+    url = _wait_for_url(first, url_file)
+    first.send_signal(signal.SIGTERM)
+    out, err = first.communicate(timeout=20)
+    assert first.returncode == 0, err
+    assert not url_file.exists()
+    second = _run_console(tmp_path, "--url-file", str(url_file))
+    second_url = _wait_for_url(second, url_file)
+    assert second_url != url and stat.S_IMODE(url_file.stat().st_mode) == 0o600
+    second.kill()  # a crash leaves a stale URL file behind
+    second.communicate(timeout=20)
+    assert url_file.exists()
+    third = _run_console(tmp_path, "--url-file", str(url_file))
+    try:
+        third_url = _wait_for_url(third, url_file, stale=second_url)
+        assert third_url not in (url, second_url)
+        assert stat.S_IMODE(url_file.stat().st_mode) == 0o600
+    finally:
+        third.send_signal(signal.SIGTERM)
+        third.communicate(timeout=20)
+    assert not url_file.exists()
+
+
+def test_url_file_that_is_not_a_stale_console_url_is_refused(tmp_path):
+    other = tmp_path / "precious"
+    other.write_text("keep me")
+    victim = tmp_path / "victim"
+    victim.write_text("http://127.0.0.1:1/#token=stale")
+    link = tmp_path / "link"
+    link.symlink_to(victim)
+    for target in (other, link, tmp_path):
+        proc = _run_console(tmp_path, "--url-file", str(target))
+        out, err = proc.communicate(timeout=20)
+        assert proc.returncode == 2 and "never overwrites" in err, (target, err)
+    assert other.read_text() == "keep me" and victim.read_text() == "http://127.0.0.1:1/#token=stale"
+    assert link.is_symlink() and other.exists() and tmp_path.is_dir()
 
 
 def test_stdout_url_and_missing_instance(tmp_path):

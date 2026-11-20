@@ -1,4 +1,5 @@
 """`nsf archive` and `nsf graphfile`: byte-exact archives and graph snapshots."""
+import os
 from pathlib import Path
 
 import numpy as np
@@ -27,12 +28,17 @@ def _archive(a):
     archive.convert(a.op, a.source, a.destination, policy)
 
 
+def _create_private(path):
+    """New file, never overwritten, mode 0600 whatever the umask."""
+    return os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb")
+
+
 def _graphfile(a):
     if a.mode == "pack":
         result = graph_store.encode(np.load(a.input, allow_pickle=False), a.degree, a.bits)
-        with a.output.open("xb") as out:
+        with _create_private(a.output) as out:
             out.write(result)
     else:
         result = graph_store.decode(a.input.read_bytes())
-        with a.output.open("xb") as out:
+        with _create_private(a.output) as out:
             np.save(out, result, allow_pickle=False)

@@ -8,7 +8,7 @@ import pytest
 
 from neuroscifi.cli import main
 from neuroscifi.instance import checkpoints, governance, store
-from neuroscifi.instance.errors import Conflict
+from neuroscifi.instance.errors import Conflict, ValidationError
 from _seed import T0, add, pending
 
 
@@ -25,8 +25,12 @@ def test_create_registers_and_protects_file(instance, tmp_path):
     assert f.is_file() and cp["path"] == str(f)
     assert oct(f.stat().st_mode & 0o777) == "0o600" and oct(f.parent.stat().st_mode & 0o777) == "0o700"
     assert cp["status"] == "valid" and cp["max_evidence_seq"] == 1 and cp["bytes"] == f.stat().st_size
+    # create bumps state_version, so a clash needs a file already at the next name; it is never overwritten
+    clash = tmp_path / "cps" / f"checkpoint-20270115T080000Z-{store.state_version(db)}.nsfa"
+    clash.write_bytes(b"precious")
     with pytest.raises(Conflict):
         checkpoints.create(db, path, tmp_path / "cps", T0)
+    assert clash.read_bytes() == b"precious"
     assert checkpoints.verify(db, cp["id"], T0 + 1)["verified_at"] == T0 + 1
     assert [c["id"] for c in checkpoints.listing(db)] == [cp["id"]]
 
@@ -198,7 +202,8 @@ def test_cli_end_to_end(tmp_path, capsys):
     assert code == 2 and "channel" in err
 
     code, out, _ = run_cli(capsys, "checkpoint", "create", "--db", db_path)
-    assert code == 0 and out["status"] == "valid" and (tmp_path / "checkpoints").is_dir()
+    assert code == 0 and out["status"] == "valid" and (tmp_path / "i.checkpoints").is_dir()
+    assert not (tmp_path / "checkpoints").exists()  # per-instance folder, not shared with siblings
     cid = out["id"]
     code, out, _ = run_cli(capsys, "checkpoint", "list", "--db", db_path)
     assert code == 0 and [c["id"] for c in out] == [cid]
@@ -227,9 +232,176 @@ def test_cli_end_to_end(tmp_path, capsys):
 
     code, out, _ = run_cli(capsys, "checkpoint", "rebuild", "--db", db_path)
     assert code == 0 and out["deleted"] == [cid]
+    rebuilt = out["new_checkpoint"]["id"]
+    code, out, _ = run_cli(capsys, "checkpoint", "prune", "--keep", "1", "--db", db_path)
+    assert code == 0 and out["deleted"] == [] and out["kept"] == [rebuilt]
     code, out, _ = run_cli(capsys, "forget", "partner", "r-secret", "--db", db_path)
     assert code == 0 and out["effects"]["deleted"] == 1
     code, out, _ = run_cli(capsys, "forget", "epoch", "e2", "--db", db_path)
-    assert code == 0 and out["status"] in ("forgotten", "absent")
+    # e2 has no evidence left, but its belief revisions (from the sweep and the forget) are deleted with it
+    assert code == 0 and out["status"] == "forgotten" and out["effects"]["deleted"] == 0
+    assert out["effects"]["derived_deleted"]["belief_revisions"] == 2
     code, out, _ = run_cli(capsys, "memory", "deletion", "--db", db_path)
-    assert code == 0 and len(out["items"]) == 4
+    assert code == 0 and len(out["items"]) == 5
+
+
+def test_deletion_during_pack_registers_the_archive_stale(instance, tmp_path, monkeypatch):
+    db, path = instance
+    add(db, "keep")
+    add(db, "secret", root="zz-race-root")
+    real = checkpoints.archive.convert
+
+    def convert_then_forget(*args, **kwargs):
+        real(*args, **kwargs)  # the archive now holds 'secret'
+        governance.forget_evidence(db, "secret", T0 + 1)  # commits before the checkpoint is registered
+
+    monkeypatch.setattr(checkpoints.archive, "convert", convert_then_forget)
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 2)
+    assert cp["status"] == "stale" and "deletion committed" in cp["warning"]
+    assert checkpoints.listing(db)[0]["status"] == "stale"
+    monkeypatch.setattr(checkpoints.archive, "convert", real)
+    rebuilt = checkpoints.rebuild_stale(db, path, tmp_path / "cps", T0 + 3)
+    assert rebuilt["deleted"] == [cp["id"]] and rebuilt["new_checkpoint"]["status"] == "valid"
+
+
+def test_checkpoint_bookkeeping_is_not_a_deletion_race(instance, tmp_path):
+    db, path = instance
+    add(db, "a")
+    c1 = checkpoints.create(db, path, tmp_path / "cps", T0)
+    checkpoints.prune(db, T0 + 1, keep=1)
+    c2 = checkpoints.create(db, path, tmp_path / "cps", T0 + 2)
+    assert c1["status"] == c2["status"] == "valid" and "warning" not in c2
+
+
+def test_restore_invalidates_graphs_built_on_forgotten_datasets(instance, tmp_path):
+    db, path = instance
+    from neuroscifi.instance import datasets, graphs
+    ids = datasets.simulate(db, "desk", T0, seed=3, steps=256)
+    rev = graphs.learn(db, "desk", T0 + 1, train=ids["train"], validation=ids["validation"], holder="t")
+    assert graphs.promote(db, rev, T0 + 2)["promoted"]
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 3)
+    governance.forget_dataset(db, ids["train"], T0 + 4)
+    out = checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 5)
+    with sqlite3.connect(tmp_path / "r.sqlite") as copy:
+        assert copy.execute("SELECT status FROM graph_revisions WHERE id=?", (rev,)).fetchone()[0] == "invalidated"
+        assert copy.execute("SELECT count(*) FROM graph_revisions WHERE status='active'").fetchone()[0] == 0
+        assert copy.execute("SELECT blob FROM datasets WHERE id=?", (ids["train"],)).fetchone()[0] is None
+    assert out["datasets_blanked"] == 1 and out["graphs_invalidated"] == [rev]
+
+
+def test_restore_scrubs_roots_forgotten_after_the_checkpoint(instance, tmp_path):
+    db, path = instance
+    from neuroscifi.instance import evidence
+    root = "Alice-restore-zq"
+    evidence.start_epoch(db, "e", T0)
+    for i, bit in enumerate((0, 1, 1)):
+        evidence.observe(db, {"id": f"w{i}", "epoch": "e", "channel": "word", "action": 0, "bit": bit,
+                              "root": root}, T0 + i)
+    evidence.observe(db, {"id": "c0", "epoch": "e", "channel": "camera", "action": 0, "bit": 0,
+                          "root": "cam-a"}, T0 + 5)
+    db.execute("INSERT INTO decisions(epoch,state_version,decision,scope,reason,created_at) VALUES(?,?,?,?,?,?)",
+               ("e", 1, "ask", f"partner:{root}", f"partner {root} is still ambiguous; ask", T0 + 6))
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 7)
+    governance.forget_partner(db, root, T0 + 8)
+    out = checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 9)
+    assert out["evidence_removed"] == 3
+    with sqlite3.connect(tmp_path / "r.sqlite") as copy:
+        text = "\n".join(str(v) for (t,) in copy.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                         for row in copy.execute(f"SELECT * FROM {t}") for v in row if not isinstance(v, bytes))
+        assert root not in text
+        live_roots = db.execute("SELECT digest,kind,forgotten_at FROM forgotten_roots").fetchall()
+        assert copy.execute("SELECT digest,kind,forgotten_at FROM forgotten_roots").fetchall() == live_roots
+        assert copy.execute("SELECT scope FROM decisions").fetchone()[0] == f"partner:#{live_roots[0][0]}"
+    assert root.encode() not in (tmp_path / "r.sqlite").read_bytes()
+    assert out["derived_rows_scrubbed"] > 0
+
+
+def test_verify_decodes_next_to_the_archive(instance, tmp_path, monkeypatch):
+    db, path = instance
+    add(db, "a")
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0)
+    seen = []
+    real = checkpoints.archive.unpack
+
+    def spy(source, dest):
+        seen.append(os.path.dirname(os.path.dirname(dest.name)))
+        return real(source, dest)
+
+    monkeypatch.setattr(checkpoints.archive, "unpack", spy)
+    assert checkpoints.verify(db, cp["id"], T0 + 1)["ok"]
+    assert seen == [str(tmp_path / "cps")]
+    assert sorted(p.name for p in (tmp_path / "cps").iterdir()) == [os.path.basename(cp["path"])]
+
+
+def test_create_tightens_an_existing_folder(instance, tmp_path):
+    db, path = instance
+    folder = tmp_path / "shared"
+    folder.mkdir(mode=0o755)
+    os.chmod(folder, 0o755)
+    checkpoints.create(db, path, folder, T0)
+    assert oct(folder.stat().st_mode & 0o777) == "0o700"
+
+
+def test_create_pauses_without_room_for_a_full_copy(tmp_path):
+    from neuroscifi.instance.errors import WritesPaused
+    path = tmp_path / "i.sqlite"
+    db = store.create(path, T0, config=store.InstanceConfig(min_free_bytes=2 ** 62))
+    try:
+        before = store.state_version(db)
+        with pytest.raises(WritesPaused, match="checkpoint needs"):
+            checkpoints.create(db, path, tmp_path / "cps", T0)
+        assert list((tmp_path / "cps").iterdir()) == [] and checkpoints.listing(db) == []
+        assert store.state_version(db) == before
+    finally:
+        db.close()
+
+
+def test_prune_keeps_the_newest_valid_archives(instance, tmp_path):
+    db, path = instance
+    add(db, "a")
+    made = [checkpoints.create(db, path, tmp_path / "cps", T0 + i) for i in range(4)]
+    os.unlink(made[0]["path"])
+    out = checkpoints.prune(db, T0 + 10, keep=2)
+    assert out == {"kept": [made[3]["id"], made[2]["id"]], "deleted": [made[1]["id"]], "missing": [made[0]["id"]]}
+    status = {c["id"]: c["status"] for c in checkpoints.listing(db)}
+    assert [status[c["id"]] for c in made] == ["missing", "deleted", "valid", "valid"]
+    assert not os.path.exists(made[1]["path"]) and os.path.exists(made[2]["path"])
+    log = db.execute("SELECT target_id,failure FROM deletion_log WHERE target_kind='checkpoint' ORDER BY id").fetchall()
+    assert dict(log) == {str(made[1]["id"]): None, str(made[0]["id"]): log[1][1]} and "already gone" in log[1][1]
+    assert checkpoints.prune(db, T0 + 11, keep=2)["deleted"] == []
+    with pytest.raises(ValidationError):
+        checkpoints.prune(db, T0, keep=0)
+    rebuilt = checkpoints.rebuild_stale(db, path, tmp_path / "cps", T0 + 12, keep=1)
+    assert rebuilt["pruned"]["kept"] == [rebuilt["new_checkpoint"]["id"]]
+    assert sorted(rebuilt["pruned"]["deleted"]) == [made[2]["id"], made[3]["id"]]
+
+
+def test_each_checkpoint_mutation_bumps_state_version_once(instance, tmp_path):
+    db, path = instance
+    add(db, "a")
+    version = store.state_version(db)
+
+    def bumped():
+        nonlocal version
+        now, version = store.state_version(db), store.state_version(db)
+        return now
+
+    start = version
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0)
+    assert bumped() == start + 1
+    checkpoints.verify(db, cp["id"], T0 + 1)
+    assert bumped() == start + 2
+    other = checkpoints.create(db, path, tmp_path / "cps", T0 + 2)
+    os.unlink(other["path"])
+    assert bumped() == start + 3
+    checkpoints.verify(db, other["id"], T0 + 3)  # marks it missing
+    assert bumped() == start + 4
+    checkpoints.create(db, path, tmp_path / "cps", T0 + 4)
+    assert bumped() == start + 5
+    checkpoints.prune(db, T0 + 5, keep=1)  # deletes cp in one transaction
+    assert bumped() == start + 6
+
+
+def test_default_dir_is_per_instance(tmp_path):
+    assert checkpoints.default_dir(tmp_path / "alice.sqlite") == tmp_path.resolve() / "alice.checkpoints"
+    assert checkpoints.default_dir(tmp_path / "bob.sqlite") != checkpoints.default_dir(tmp_path / "alice.sqlite")

@@ -10,17 +10,20 @@ Contract shared by every instance module:
 """
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
+import glob
 import json
 import os
 from pathlib import Path
 import shutil
 import sqlite3
+import time
 import uuid
 
 from .. import __version__
 from .errors import NotFound, ValidationError, WritesPaused
 from .schema import SCHEMA_VERSION, migrate
 
+THERMAL_ZONES = "/sys/class/thermal/thermal_zone*/temp"  # millidegrees Celsius, one file per zone
 DEFAULT_DB_ENV = "NSF_DB"
 DEFAULT_DB = "neuroscifi.sqlite"
 GATE_V1 = {
@@ -48,6 +51,7 @@ class InstanceConfig:
     max_evidence_rows: int = 1_000_000      # regulation: pause new writes beyond this
     min_free_bytes: int = 64 * 1024 * 1024  # regulation: pause new writes below this free space
     ask_budget_per_epoch: int = 3           # executive interruption budget
+    max_thermal_celsius: float | None = None  # regulation: pause new writes above this temperature (None = off)
 
     @classmethod
     def from_json(cls, text):
@@ -73,9 +77,33 @@ def connect(path):
     db = sqlite3.connect(path, timeout=10, isolation_level=None)
     db.execute("PRAGMA foreign_keys=ON")
     db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA journal_size_limit=0")  # a reset WAL is truncated, so old frames do not linger on disk
     db.execute("PRAGMA secure_delete=ON")
+    db.execute("PRAGMA recursive_triggers=ON")  # REPLACE's implicit delete fires delete triggers
     db.execute("PRAGMA busy_timeout=10000")
     return db
+
+
+def truncate_wal(db, *, attempts=5, pause=0.05):
+    """Copy the WAL into the database and truncate it, so removed payloads leave no frames behind.
+
+    Call after a committed destructive operation. Returns "ok", or "busy" when a reader kept the
+    checkpoint from completing after `attempts` tries (the next successful checkpoint finishes the job).
+    """
+    db.execute("PRAGMA busy_timeout=100")
+    try:
+        for attempt in range(attempts):
+            if attempt:
+                time.sleep(pause)
+            try:
+                busy = db.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]
+            except sqlite3.OperationalError:
+                busy = 1
+            if not busy:
+                return "ok"
+        return "busy"
+    finally:
+        db.execute("PRAGMA busy_timeout=10000")
 
 
 @contextmanager
@@ -87,8 +115,13 @@ def write(db):
     except BaseException:
         db.execute("ROLLBACK")
         raise
-    else:
+    try:
         db.execute("COMMIT")
+    except BaseException:
+        # A failed COMMIT (deferred constraint, I/O error, busy) can leave the transaction open.
+        if db.in_transaction:
+            db.execute("ROLLBACK")
+        raise
 
 
 def bump(db, name, amount=1):
@@ -190,8 +223,23 @@ def open_existing(path):
     return db
 
 
+def _hottest_zone():
+    """Highest readable thermal zone temperature in Celsius, or None when no zone is readable."""
+    readings = []
+    for name in glob.glob(THERMAL_ZONES):
+        try:
+            readings.append(int(Path(name).read_text().strip()) / 1000)
+        except (OSError, ValueError):
+            continue
+    return max(readings) if readings else None
+
+
 def write_allowed(db, path=None):
-    """Regulation: return (allowed, reason). Reads stay available while writes are paused."""
+    """Regulation: return (allowed, reason). Reads stay available while writes are paused.
+
+    Pauses on journal size, on free space below the reserve (when `path` is given) and, when
+    config.max_thermal_celsius is set, on any thermal zone above that temperature.
+    """
     cfg = config(db)
     rows = db.execute("SELECT count(*) FROM evidence").fetchone()[0]
     if rows >= cfg.max_evidence_rows:
@@ -200,6 +248,11 @@ def write_allowed(db, path=None):
         free = shutil.disk_usage(Path(path).resolve().parent).free
         if free < cfg.min_free_bytes:
             return False, f"{free} free bytes is below the {cfg.min_free_bytes}-byte reserve"
+    if cfg.max_thermal_celsius is not None:
+        hottest = _hottest_zone()
+        if hottest is not None and hottest > cfg.max_thermal_celsius:
+            return False, (f"hardware temperature {hottest:.1f} C exceeds the {cfg.max_thermal_celsius} C limit; "
+                           "writes are paused while the device is throttled")
     return True, None
 
 

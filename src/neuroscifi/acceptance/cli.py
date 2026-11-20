@@ -21,7 +21,8 @@ def _acceptance(args):
         print(f"nsf: unknown scenario(s) {', '.join(unknown)}; choose from {', '.join(scenarios.SCENARIOS)}",
               file=sys.stderr)
         return 2
-    report = scenarios.run(names, seed=args.seed, lifetimes=args.lifetimes, events=args.events)
+    report = scenarios.run(names, seed=args.seed, lifetimes=args.lifetimes, events=args.events,
+                           test_lifetimes=args.test_lifetimes)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n")
@@ -56,6 +57,8 @@ def register(sub):
                    help="simulated lifetimes in the grounding scenario")
     p.add_argument("--events", type=_positive, default=scenarios.DEFAULT_EVENTS,
                    help="loop events in the device_ownership scenario")
+    p.add_argument("--test-lifetimes", type=_positive, default=scenarios.FIRST_TEST_LIFETIMES,
+                   help="simulated lifetimes in the first_physical_test scenario")
     p.add_argument("--out", type=Path, help="also write the full report to this JSON file")
     p.set_defaults(handler=_acceptance)
 

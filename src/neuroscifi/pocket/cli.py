@@ -11,6 +11,8 @@ def register(sub):
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument("--cert")
     serve.add_argument("--key")
+    serve.add_argument("--allowed-host", action="append", metavar="NAME",
+                       help="accept only this Host (name or name:port); repeatable; others get 421")
     serve.add_argument("--invitation-file", metavar="PATH",
                        help="write the one-use code to this new 0600 file instead of stdout")
     serve.set_defaults(handler=_serve)
@@ -29,6 +31,8 @@ def _serve(a):
         argv += ["--cert", a.cert]
     if a.key:
         argv += ["--key", a.key]
+    for name in a.allowed_host or ():
+        argv += ["--allowed-host", name]
     if a.invitation_file:
         argv += ["--invitation-file", a.invitation_file]
     server.main(argv)

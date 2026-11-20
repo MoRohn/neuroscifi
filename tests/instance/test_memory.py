@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from neuroscifi.instance import memory, store
+from neuroscifi.instance import beliefs, evidence, memory, store
 from neuroscifi.instance.errors import ValidationError
 from _seed import T0, add, pending
 
@@ -13,8 +13,8 @@ def seed(db):
             channel="camera" if i < 3 else "word")
     pending(db)
     db.execute("INSERT INTO decisions(epoch,state_version,decision,reason,created_at) VALUES('e1',1,'ask','why',?)", (T0,))
-    db.execute("INSERT INTO belief_revisions(epoch,state_version,created_at,cause,summary) VALUES('e1',2,?,?,?)",
-               (T0, "evidence:e0", json.dumps({"confidence": 0.8, "map": "x"})))
+    evidence.observe(db, {"id": "obs-cam", "epoch": "e1", "channel": "camera", "action": 0, "bit": 1,
+                          "root": "cam-z"}, T0)
     db.execute("INSERT INTO datasets(context,split,provenance,rows,cols,sha256,created_at) VALUES('c','train','simulated',8,3,'ab',?)", (T0,))
     db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES('evidence','e9',?,'{\"deleted\":1}')", (T0,))
     db.execute("INSERT INTO checkpoints(path,policy,sha256,bytes,state_version,max_evidence_seq,created_at,status) VALUES('/p','cold','h',1,1,5,?,'valid')", (T0,))
@@ -35,8 +35,14 @@ def test_shapes_for_each_kind(instance):
     assert ev["scope"] == {"epoch": "e1", "root": "r2"} and ev["confidence"] is None
     assert ev["permissions"] == {"consent": "learn", "retention": "standard", "expires_at": T0 + 100}
     assert ev["payload"]["channel"] == "camera" and ev["payload"]["seq"] == 1
-    assert memory.retrieve(db, "belief")["items"][0]["confidence"] == 0.8
-    assert memory.retrieve(db, "belief")["items"][0]["payload"]["summary"]["map"] == "x"
+    belief = memory.retrieve(db, "belief")["items"][0]
+    summary = belief["payload"]["summary"]
+    assert belief["payload"]["cause"] == "evidence:obs-cam" and summary == beliefs.compute(db, "e1")
+    factors = [summary["mechanism"]["p_inverted"]] + [v["p_inverted"] for v in
+                                                      (*summary["sensors"].values(), *summary["partners"].values())]
+    assert len(factors) == 6  # mechanism, cameras r1/r2/cam-z, partners r1/r2
+    assert belief["confidence"] == pytest.approx(sum(max(p, 1 - p) for p in factors) / len(factors))
+    assert 0.5 <= belief["confidence"] <= 1
     assert memory.retrieve(db, "dataset")["items"][0]["scope"]["context"] == "c"
     assert memory.retrieve(db, "deletion")["items"][0]["payload"]["effects"] == {"deleted": 1}
     assert memory.retrieve(db, "pending", epoch="e1")["items"][0]["payload"]["question"] == "which way?"

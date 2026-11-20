@@ -156,13 +156,15 @@ def test_pending_rows_are_deduplicated(instance):
     assert executive.decide(db, "desk", T0 + 2)["pending_id"] == first["pending_id"]
 
 
-def test_ask_budget_turns_the_fourth_ask_into_defer(instance):
+def test_ask_budget_turns_the_fourth_new_question_into_defer(instance):
     db, _ = instance
-    pinned_with_ambiguous_partner(db)
+    j = pinned_with_ambiguous_partner(db)
     for n in range(3):
         out = executive.decide(db, "desk", T0 + n, record=True)
         assert out["decision"] == "ask" and out["asks_used"] == n + 1 and out["ask_budget"] == 3
         executive.resolve(db, out["pending_id"], f"answer {n}", T0 + n)
+        for corrected in (0, 1, 0, 1):   # four new words leave Ana ambiguous: a genuinely new question
+            j.add("word", "ana", corrected)
     preview = executive.decide(db, "desk", T0 + 9)
     out = executive.decide(db, "desk", T0 + 10, record=True)
     assert preview == out
@@ -176,6 +178,37 @@ def test_ask_budget_turns_the_fourth_ask_into_defer(instance):
     for corrected in (0, 1, 0, 1):
         other.add("word", "ana", corrected)
     assert executive.decide(db, "garage", T0)["decision"] == "ask"
+
+
+def test_an_answered_question_is_not_asked_again_for_the_same_events(instance):
+    db, _ = instance
+    j = pinned_with_ambiguous_partner(db)
+    first = executive.decide(db, "desk", T0, record=True)
+    executive.resolve(db, first["pending_id"], "Ana is still deciding", T0 + 1)
+    again = executive.decide(db, "desk", T0 + 2, record=True)
+    assert again["decision"] == "act" and again["pending_id"] is None and again["asks_used"] == 1
+    assert "already answered: partner ana (question #%d answered)" % first["pending_id"] in again["reason"]
+    j.add("word", "ana", 0)
+    j.add("word", "ana", 1)
+    assert executive.decide(db, "desk", T0 + 3)["decision"] == "act"   # two new words: still answered
+    j.add("word", "ana", 0)
+    j.add("word", "ana", 1)
+    out = executive.decide(db, "desk", T0 + 4, record=True)
+    assert out["decision"] == "ask" and out["scope"] == "partner:ana" and out["asks_used"] == 2
+    assert out["pending_id"] != first["pending_id"]
+
+
+def test_open_questions_expire_after_seven_days(instance):
+    db, _ = instance
+    pinned_with_ambiguous_partner(db)
+    first = executive.decide(db, "desk", T0, record=True)
+    preview = executive.decide(db, "desk", T0 + 7 * 86400 + 1)
+    out = executive.decide(db, "desk", T0 + 7 * 86400 + 1, record=True)
+    assert out["expired_pending"] == [first["pending_id"]]
+    assert preview["pending_id"] is None and out["pending_id"] != first["pending_id"]
+    (old,) = [p for p in executive.pending(db, include_resolved=True) if p["id"] == first["pending_id"]]
+    assert old["resolution"] == "expired: no answer within 7 days" and old["resolved_at"] == T0 + 7 * 86400 + 1
+    assert out["decision"] == "ask" and out["asks_used"] == 2   # nobody answered, so asking again is new
 
 
 def test_resolve_bumps_teacher_interventions_once(instance):

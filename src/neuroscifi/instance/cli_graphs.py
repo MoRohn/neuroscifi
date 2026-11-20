@@ -31,7 +31,7 @@ def register(sub, *, with_db, run):
         return p
 
     p = command("simulate", lambda db, a, now: datasets.simulate(db, a.context, now, seed=a.seed, world=a.world,
-                                                                 steps=a.steps),
+                                                                 steps=a.steps, path=store.resolve_db(a)),
                 "simulate train/validation/heldout trajectories of a graph_bench world")
     p.add_argument("context")
     p.add_argument("--seed", type=int, required=True)
@@ -76,6 +76,12 @@ def register(sub, *, with_db, run):
                 "zero each retained edge and measure the change in error")
     p.add_argument("revision", type=int)
     p.add_argument("dataset", type=int)
+
+    p = command("coactivation", lambda db, a, now: graphs.functional_map(db, a.dataset, now, lags=a.lags, top=a.top),
+                "lagged coactivation of populations; propose routes missing from the active graph")
+    p.add_argument("dataset", type=int)
+    p.add_argument("--lags", type=int, nargs="+", default=list(graphs.COACTIVATION_LAGS))
+    p.add_argument("--top", type=int, default=20)
 
     p = command("recall", lambda db, a, now: recall.run(db, a.dataset, now, contexts=a.context),
                 "replay a dataset through the active graphs and pick a context")

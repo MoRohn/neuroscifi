@@ -69,9 +69,9 @@ def _insert(db, context, split, states, targets, provenance, now, note):
     return cur.lastrowid
 
 
-def add(db, context, split, states, targets, provenance, now, note=None):
+def add(db, context, split, states, targets, provenance, now, note=None, *, path=None):
     """Store one trajectory pair and return its id."""
-    store.require_write_allowed(db)
+    store.require_write_allowed(db, path)
     with store.write(db):
         dataset_id = _insert(db, context, split, states, targets, provenance, now, note)
         store.bump_state_version(db)
@@ -104,7 +104,7 @@ def load(db, dataset_id):
     return states, targets
 
 
-def simulate(db, context, now, *, seed, world="a", steps=graph_bench.STEPS):
+def simulate(db, context, now, *, seed, world="a", steps=graph_bench.STEPS, path=None):
     """Simulate train/validation/heldout trajectories of one lab.graph_bench world.
 
     Seed derivation (documented so runs are reproducible):
@@ -123,7 +123,7 @@ def simulate(db, context, now, *, seed, world="a", steps=graph_bench.STEPS):
     _check_context(context)
     matrix = graph_bench.world(np.random.default_rng(seed))[WORLDS.index(world)]
     lengths = {"train": steps, "validation": VALIDATION_STEPS, "heldout": HELDOUT_STEPS}
-    store.require_write_allowed(db)
+    store.require_write_allowed(db, path)
     out = {}
     with store.write(db):
         for index, split in enumerate(SPLITS):

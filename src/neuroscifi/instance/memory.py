@@ -39,13 +39,32 @@ def _evidence(r):
                    permissions=_perm(consent, ret, exp))
 
 
+def _belief_confidence(summary):
+    """Mean over the summary's factors (mechanism, sensors, partners) of max(p, 1-p); None if not a compute() summary.
+
+    With no sensor or partner this is the mechanism's own confidence.
+    """
+    if not isinstance(summary, dict):
+        return None
+    probabilities = []
+    mechanism = summary.get("mechanism")
+    if isinstance(mechanism, dict):
+        probabilities.append(mechanism.get("p_inverted"))
+    for key in ("sensors", "partners"):
+        if isinstance(summary.get(key), dict):
+            probabilities.extend(v.get("p_inverted") if isinstance(v, dict) else None for v in summary[key].values())
+    if not probabilities or not all(isinstance(p, (int, float)) and not isinstance(p, bool) and 0 <= p <= 1
+                                    for p in probabilities):
+        return None
+    return sum(max(p, 1 - p) for p in probabilities) / len(probabilities)
+
+
 def _belief(r):
     id, epoch, version, created, cause, summary = r
     parsed = _json(summary)
-    confidence = parsed.get("confidence") if isinstance(parsed, dict) else None
     return _record("belief", id, {"epoch": epoch, "root": None}, created,
                    {"state_version": version, "cause": cause, "summary": parsed},
-                   confidence=confidence if isinstance(confidence, (int, float)) else None)
+                   confidence=_belief_confidence(parsed))
 
 
 def _graph(r):

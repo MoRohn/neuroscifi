@@ -19,17 +19,44 @@ Run `nsf pocket serve`, open `http://localhost:8765` on that computer, and try a
 
 ## Run a persistent instance
 
-From this folder, run the following with Python and NumPy available. Every observation uses an event ID, channel, commanded bit, measured bit and source root. Change the file path to start a separate individual. Each epoch holds a distinct calibration context.
+One file is one individual. `nsf init` creates it and refuses to overwrite an existing file. Every command prints JSON. Set `NSF_DB` or pass `--db`.
 
 ```sh
-python -m neuroscifi.legacy_live --db example.sqlite start bench
-python -m neuroscifi.legacy_live --db example.sqlite observe bench e01 camera 0 0 camera-a
-python -m neuroscifi.legacy_live --db example.sqlite observe bench e02 word 0 0 speaker-a
-python -m neuroscifi.legacy_live --db example.sqlite observe bench e03 reference 0 0 mechanical-standard-a
-python -m neuroscifi.legacy_live --db example.sqlite status bench
+export NSF_DB=$PWD/individual.sqlite
+nsf init --action-semantics '{"0":"turn left","1":"turn right"}'
+nsf birth                                            # priors, action semantics, encoders, memory inventory
+nsf epoch start bench
+nsf observe bench e01 camera 0 0 cam-a               # event id, channel, commanded bit, observed bit, root
+nsf observe bench e02 word 0 0 alice                 # for a word, the root is the partner who spoke
+nsf observe bench e03 reference 0 0 standard-1       # an independent mechanical reference
+nsf status bench                                     # beliefs: mechanism, each camera root, each partner
+nsf decide bench --record                            # act | observe | ask | test_reference | defer, with a reason
+nsf explain bench                                    # supporting and counter evidence, remaining uncertainty, revisions
 ```
 
-The two directions on a real control can be encoded as bits according to a declared convention. These commands use manually encoded observations. The separate sensory experiment starts from generated RGB and PCM arrays. Replaying the same event ID is idempotent; reusing an ID for a different payload raises an error. For physical references the estimator groups readings by calibration root. Camera and word inputs assume independent reading noise. A transcript or second view of the same sample needs the same evidentiary identity at ingestion. The narrow executable does not implement authentication, raw capture, live voice interpretation, automatic context discovery or background graph updates.
+**The design question.** A camera is remounted silently while a person keeps saying "left". The individual handles it like this:
+1. Camera readings start to disagree. `nsf status` flags `suspected_change` on `cam-a`.
+2. `nsf decide --record` asks about scope `camera:cam-a`, and does not act on the stale belief.
+3. The owner confirms with `nsf resolve ID "remounted" --confirm`. Only the camera's alignment relearns; the partner's meaning and the mechanism carry over.
+4. Later, a new epoch with readings from the original setup is recognised. `nsf epoch match NEW` names the earlier epoch, and the executive asks whether to continue there.
+
+Other commands:
+- `nsf pending` lists open questions and `nsf resolve` answers them.
+- `nsf memory evidence|belief|graph|…` retrieves records with scope, permissions and state version.
+- `nsf forget evidence|epoch|partner|dataset` deletes with a full cascade: derived beliefs, questions and decisions are scrubbed, dependent graphs are invalidated and checkpoints are marked stale.
+- `nsf promote` keeps evidence past its default 7-day lifetime.
+- `nsf checkpoint create|verify|restore|rebuild|prune` manages verified lossless archives. A restore never resurrects forgotten ids.
+- `nsf import-legacy OLD.sqlite` imports a database from the prototype's `live.py`.
+
+**Graphs.** `nsf graph simulate CTX --seed N` generates labelled synthetic trajectories. `learn`, `evaluate` and `promote` run the immutable-rule gate. Also available: `recall DATASET`, `coactivation DATASET`, `lesion REV DATASET` and `rollback CTX REV`.
+
+**Owner console.** `nsf console` serves the same operations as a web UI, on loopback only. It prints a one-time URL; from another machine, reach it through `ssh -L 8766:127.0.0.1:8766`.
+
+**Acceptance.** `nsf acceptance --all` runs the brief's first-release milestones as labelled simulations. `nsf bench` reports host decision latency, and `nsf doctor --db FILE` checks permissions, WAL mode, free space and volume encryption.
+
+Operations, deployment and upgrades: `docs/operations/` (RUNBOOK, ENVIRONMENT, MIGRATIONS, TESTING). Architecture and requirement traceability: `docs/architecture/`.
+
+The prototype's original learner is kept, unchanged in behaviour, as `python -m neuroscifi.legacy_live`. It is the parity oracle for the new inference.
 
 ## Run the component suite
 
@@ -84,7 +111,7 @@ OPENBLAS_NUM_THREADS=1 python -m neuroscifi.lab.profile_device --device cpu
 python -m neuroscifi.lab.profile_device --device cuda
 ```
 
-GPU mode requires a working CuPy build for the installed NVIDIA driver and runtime. It checks numerical parity, measures synchronized device-resident execution, then includes input and output transfers. Results are per component. Establish sensor-to-action latency, memory competition and energy separately on the full device under concurrent capture and replay. The included CPU sample was collected on x86. No program here changes device services, boot settings or drivers.
+GPU mode requires a working CuPy build for the installed NVIDIA driver and runtime: `uv pip install -e '.[gpu]'` installs CuPy 14.2.0 for CUDA 13 (verified on a DGX Spark GB10; results in `docs/quality/evidence/profile_device_cuda_gb10.json`). It checks numerical parity, measures synchronized device-resident execution, then includes input and output transfers. Results are per component. Establish sensor-to-action latency, memory competition and energy separately on the full device under concurrent capture and replay. The original CPU sample was collected on x86; a DGX Spark (aarch64) rerun is in `docs/quality/evidence/`. No program here changes device services, boot settings or drivers.
 
 ## Interpretation
 

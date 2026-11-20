@@ -9,6 +9,7 @@ const CHECK_LABELS = {
   heldout_gain: 'Beats the incumbent on held-out data',
   retention: 'Retains older held-out performance',
   byte_budget: 'Fits the byte budget',
+  lineage_intact: 'Trained only on data that still exists',
 };
 const MAX_BODY = 4096;
 
@@ -329,14 +330,17 @@ async function loadTeach() {
   if (!state.epoch) {
     fill($('beliefs'), empty('No epoch yet. Start one, then record camera readings, partner words and references.'));
     for (const id of ['change', 'decision', 'explain', 'revisions']) fill($(id), empty('No epoch selected.'));
+    renderMatch(null);
     return;
   }
   const epoch = state.epoch;
   const result = await load('teach', slots, () => Promise.all([
     api('GET', `/api/epochs/${enc(epoch)}/beliefs`), api('GET', `/api/epochs/${enc(epoch)}/decision`),
-    api('GET', `/api/epochs/${enc(epoch)}/evidence?limit=500`)]));
+    api('GET', `/api/epochs/${enc(epoch)}/evidence?limit=500`),
+    api('GET', `/api/epochs/${enc(epoch)}/match?last=12`).catch(() => null)]));
   if (!result) return;
-  const [explain, decision, events] = result;
+  const [explain, decision, events, match] = result;
+  renderMatch(match);
   const learning = events.filter((e) => e.consent === 'learn');
   renderBeliefs(explain.beliefs);
   renderChange(explain.change, learning);
@@ -348,12 +352,14 @@ async function loadTeach() {
   $('partnerList').replaceChildren(...Object.keys(explain.beliefs.partners).map((r) => h('option', { value: r })));
 }
 
-function probCard(label, scope, p, identifiable, detail) {
+function probCard(label, scope, p, identifiable, detail, suspect) {
   const bar = h('div', { class: 'bar', 'aria-hidden': 'true' }, h('span', { class: 'zone' }), h('span', { class: 'fill' }), h('span', { class: 'mid' }));
   bar.querySelector('.fill').style.width = `${(p * 100).toFixed(1)}%`;
   return h('div', { class: 'prob', 'data-scope': scope },
     h('div', { class: 'probhead' }, h('span', { class: 'probname', text: label }),
       badge(identifiable ? 'Identifiable' : 'Unidentifiable', identifiable ? 'ok' : 'warn')),
+    suspect?.suspected_change ? h('p', { class: 'suspect' }, badge(`change suspected (llr ${suspect.llr.toFixed(2)})`, 'warn'),
+      ` since evidence #${suspect.suspected_since_seq}${suspect.ambiguous ? ', ambiguous' : ''}`) : null,
     bar,
     h('p', { class: 'probnum', text: `P(inverted) = ${p.toFixed(3)} · P(as declared) = ${(1 - p).toFixed(3)}${detail}` }));
 }
@@ -361,20 +367,40 @@ function probCard(label, scope, p, identifiable, detail) {
 function renderBeliefs(b) {
   const unid = new Set(b.unidentifiable.map((u) => u.scope));
   const c = b.evidence;
-  const cards = [probCard('Mechanism', 'mechanism', b.mechanism.p_inverted, b.mechanism.identifiable, ` · ${b.reference_roots} reference root(s)`)];
-  for (const [root, v] of Object.entries(b.sensors)) cards.push(probCard(`Camera ${root}`, `camera:${root}`, v.p_inverted, !unid.has(`camera:${root}`), ` · ${v.n} reading(s)`));
-  for (const [root, v] of Object.entries(b.partners)) cards.push(probCard(`Partner ${root}`, `partner:${root}`, v.p_inverted, !unid.has(`partner:${root}`), ` · ${v.n} word(s)`));
+  const cards = [probCard('Mechanism', 'mechanism', b.mechanism.p_inverted, b.mechanism.identifiable, ` · ${b.reference_roots} reference root(s)`, b.mechanism)];
+  for (const [root, v] of Object.entries(b.sensors)) cards.push(probCard(`Camera ${root}`, `camera:${root}`, v.p_inverted, !unid.has(`camera:${root}`), ` · ${v.n} reading(s)`, v));
+  for (const [root, v] of Object.entries(b.partners)) cards.push(probCard(`Partner ${root}`, `partner:${root}`, v.p_inverted, !unid.has(`partner:${root}`), ` · ${v.n} word(s)`, v));
   fill($('beliefs'),
     h('ul', { class: 'counts', 'aria-label': 'Evidence counts' },
       h('li', { text: `${c.total} stored` }), h('li', { text: `${c.learning} learning` }),
       h('li', { text: `${c.memory_only} memory-only` }), h('li', { text: `${c.duplicates_ignored} duplicate copies ignored` }),
       h('li', { text: `state version ${b.state_version}` })),
+    b.confirmed_changes?.length
+      ? h('ul', { class: 'counts', id: 'confirmedChanges', 'aria-label': 'Confirmed changes' },
+          b.confirmed_changes.map((c) => h('li', { text: `${changeName(c.scope)} since #${c.since_seq}` })))
+      : null,
     h('div', { class: 'probs', id: 'probs' }, cards),
     h('p', { class: 'sub', text: 'Bars show P(inverted). The hatched band (0.13 to 0.87) is where a factor counts as unidentifiable.' }),
     b.unidentifiable.length
       ? [h('h3', { text: 'Why some factors are unidentifiable' }), h('ul', { class: 'reasons', id: 'unidentifiable' },
           b.unidentifiable.map((u) => h('li', {}, h('strong', { text: `${u.scope}: ` }), u.why)))]
       : h('p', { id: 'unidentifiable', text: 'Every factor is identifiable from the current evidence.' }));
+}
+
+function changeName(scope) {
+  const [kind, ...root] = scope.split(':');
+  return kind === 'camera' ? root.join(':') : kind === 'partner' ? `partner ${root.join(':')}` : scope;
+}
+
+function renderMatch(m) {
+  const card = $('matchCard');
+  card.hidden = !m?.best;
+  if (!m?.best) { $('matchPanel').replaceChildren(); return; }
+  fill($('matchPanel'),
+    h('p', { id: 'matchBest' }, h('strong', { text: m.best }), ` explains this epoch's last ${m.events} learning reading(s) better than any other epoch or an unknown setup.`),
+    table('Earlier epochs ranked by fit', ['Epoch', { label: 'Log-likelihood', num: true }, { label: 'Readings', num: true }],
+      m.ranking.map((r) => [r.epoch, r.log_likelihood.toFixed(2), r.events])),
+    h('p', { class: 'sub', text: `Unknown setup: ${m.unknown_log_likelihood.toFixed(2)}. The best epoch must beat it and the runner-up by log 19.` }));
 }
 
 function inScope(e, scope) {
@@ -444,6 +470,8 @@ function renderExplain(factors, events) {
 function causeText(cause) {
   const [kind, ...rest] = cause.split(':');
   const target = rest.join(':');
+  if (cause === 'evidence:#forgotten') return 'evidence that has since been forgotten';
+  if (kind === 'resolve') return `your answer to question #${target}`;
   return { evidence: `new evidence ${target}`, forget: `forgot ${target}`, expired: 'expiry sweep' }[kind] ?? cause;
 }
 
@@ -535,13 +563,38 @@ async function loadQuestions() {
     const status = h('p', { class: 'msg', role: 'status' });
     const form = h('form', { novalidate: true, onsubmit: (ev) => { ev.preventDefault(); resolveQuestion(q, input, button, status); } },
       h('label', { for: input.id, text: `Your answer to question ${q.id}` }), input, button);
+    const open = !q.resolved_at;
+    const epochTarget = q.scope.startsWith('epoch:') ? q.scope.slice(6) : null;
+    const change = open && q.kind === 'calibrate' && !epochTarget;
+    const quick = (id, text, work) => h('button', { type: 'button', id: `${id}-${q.id}`, 'aria-label': `${text} (question ${q.id})`, text,
+      onclick: (ev) => answerQuestion(q, ev.currentTarget, status, work) });
+    const shortcuts = !open ? null : change
+      ? h('div', { class: 'buttons', role: 'group', 'aria-label': `Quick answers to question ${q.id}` },
+          quick('yes', 'Yes, it changed — relearn only that', { resolution: `Confirmed: ${q.scope} changed`, confirm: true }),
+          quick('no', 'No, nothing changed', { resolution: `Rejected: ${q.scope} did not change`, confirm: false }))
+      : epochTarget
+        ? h('div', { class: 'buttons', role: 'group', 'aria-label': `Quick answers to question ${q.id}` },
+            quick('continue', 'Continue there', { resolution: `Continue in epoch ${epochTarget}`, epoch: epochTarget }),
+            quick('new', 'No, this is new', { resolution: `This is a new setup, not epoch ${epochTarget}` }))
+        : null;
     return h('article', { class: 'card', 'data-pending': q.id, 'aria-label': `Question ${q.id}` },
       h('p', {}, badge(q.resolved_at ? 'Resolved' : 'Open', q.resolved_at ? 'neutral' : 'info'), ` #${q.id} · ${q.kind.replace('_', ' ')} · ${q.scope}`),
       h('p', { class: 'question', text: q.question }),
       kv([['Epoch', q.epoch ?? '—'], q.context ? ['Context', q.context] : null, ['Asked', fmtTime(q.created_at)],
         q.resolved_at ? ['Answered', `${fmtTime(q.resolved_at)}: ${q.resolution}`] : null]),
-      q.resolved_at ? null : form, status);
+      shortcuts, q.resolved_at ? null : form, status);
   })));
+}
+
+async function answerQuestion(q, button, status, { epoch, ...body }) {
+  const text = `Question ${q.id} resolved and recorded as a teacher intervention.` + (body.confirm === true ? ' Only that factor is relearned.' : '');
+  await act(button, status, async () => {
+    await api('POST', `/api/pending/${q.id}/resolve`, body);
+    if (epoch) { state.epoch = epoch; $('epochSelect').value = epoch; $('evEpoch').value = epoch; }
+    await Promise.all([loadQuestions(), loadHeader()]);
+    return text;
+  });
+  if (!status.isConnected) say($('questionStatus'), text);
 }
 
 async function resolveQuestion(q, input, button, status) {
@@ -566,6 +619,7 @@ async function loadGraphs() {
   renderRevisionGroups();
   renderLearnOptions();
   renderRecallOptions();
+  renderMapOptions();
   if (state.selectedGraph !== null) await showGraph(state.selectedGraph);
 }
 
@@ -625,6 +679,26 @@ function renderRecallOptions() {
   syncControls();
 }
 
+function renderMapOptions() {
+  const live = state.datasets.filter((d) => !d.deleted_at);
+  const select = $('fmapDataset');
+  const previous = select.value;
+  select.replaceChildren(...(live.length ? live.map((d) => option(d.id, `#${d.id} · ${d.context} ${d.split}`)) : [option('', 'No datasets yet')]));
+  select.value = live.some((d) => String(d.id) === previous) ? previous : String(live.at(-1)?.id ?? '');
+  syncControls();
+}
+
+function renderFunctionalMap(r) {
+  fill($('fmapResult'),
+    kv([['Dataset', `#${r.dataset_id} (context ${r.context}, active revision ${r.revision_id})`], ['Lags', r.lags.join(', ')],
+      ['Pairs scored', r.pairs], ['Edges in the active graph', r.edges_in_graph]]),
+    r.routes.length
+      ? table('Proposed routes not in the active graph, strongest first', ['Route', { label: 'Lag', num: true }, { label: 'Correlation', num: true }, { label: 'Steps', num: true }],
+          r.routes.map((x) => [`${x.src} → ${x.dst}`, x.lag, x.correlation.toFixed(3), x.n]))
+      : empty('No route outside the active graph to propose.'),
+    h('p', { class: 'sub', id: 'fmapCaveat', text: `Caveat: ${r.caveat}.` }));
+}
+
 async function showGraph(id, button) {
   const ticket = (state.seq.graph = (state.seq.graph ?? 0) + 1);
   const slot = $('graphDetail');
@@ -675,6 +749,8 @@ function checkDetail(name, c) {
         : `${c.why ?? 'no older held-out data'} (tolerance ${c.retention_tolerance})`;
     case 'byte_budget':
       return `${c.byte_size} of ${c.byte_budget} bytes`;
+    case 'lineage_intact':
+      return c.deleted?.length ? `training or validation data was forgotten: ${c.deleted.map((d) => `#${d}`).join(', ')}` : `dataset(s) ${c.datasets.map((d) => `#${d}`).join(', ')} still exist`;
     default:
       return JSON.stringify(c);
   }
@@ -808,6 +884,40 @@ async function verifyCheckpoint(button, c) {
   });
 }
 
+function keepValue(status) {
+  const text = $('ckKeep').value.trim();
+  if (!/^\d+$/.test(text) || Number(text) < 1) { say(status, 'Keep must be a whole number of at least 1.', 'error'); $('ckKeep').focus(); return null; }
+  return Number(text);
+}
+
+async function pruneCheckpoints(button) {
+  const status = $('ckKeepStatus');
+  const keep = keepValue(status);
+  if (keep === null) return;
+  const ok = await confirmAction(`Prune checkpoints, keeping ${keep}?`,
+    `The archive files of every valid checkpoint beyond the newest ${keep} are deleted from disk. This cannot be undone.`, 'Prune checkpoints');
+  if (!ok) return;
+  await act(button, status, async () => {
+    const r = await api('POST', '/api/checkpoints/prune', { keep });
+    await Promise.all([loadCheckpoints(), loadHeader()]);
+    return `Kept ${r.kept.length} checkpoint(s); deleted ${r.deleted.length}${r.missing.length ? `; ${r.missing.length} already missing` : ''}.`;
+  });
+}
+
+async function rebuildCheckpoints(button) {
+  const status = $('ckKeepStatus');
+  const keep = keepValue(status);
+  if (keep === null) return;
+  const ok = await confirmAction('Rebuild stale checkpoints?',
+    `A fresh checkpoint is written, the stale archive files are deleted from disk, then valid checkpoints beyond the newest ${keep} are pruned.`, 'Rebuild');
+  if (!ok) return;
+  await act(button, status, async () => {
+    const r = await api('POST', '/api/checkpoints/rebuild', { keep, policy: $('ckRebuildPolicy').value });
+    await Promise.all([loadCheckpoints(), loadHeader()]);
+    return `Checkpoint ${r.new_checkpoint.id} written; ${r.deleted.length} stale archive(s) deleted; ${r.pruned.deleted.length} pruned.`;
+  });
+}
+
 // ---- memory log ----------------------------------------------------------------------------------------
 
 async function loadMemory() {
@@ -846,6 +956,9 @@ function syncControls() {
   enable('gReject', candidate);
   enable('gRejectReason', candidate);
   enable('gEvaluate', !!g);
+  enable('fmapBtn', !!$('fmapDataset').value);
+  $('ckPrune').textContent = `Prune (keep ${$('ckKeep').value.trim() || 'N'})`;
+  $('ckRebuild').textContent = `Rebuild stale (keep ${$('ckKeep').value.trim() || 'N'})`;
   $('obsRootLabel').textContent = CHANNEL_ROOT[$('obsChannel').value];
 }
 
@@ -861,6 +974,11 @@ function wire() {
   $('obsChannel').addEventListener('change', syncControls);
   $('newId').addEventListener('click', () => { $('obsId').value = newEventId(); });
   $('showResolved').addEventListener('change', loadQuestions);
+  $('ckKeep').addEventListener('input', syncControls);
+  $('ckPrune').addEventListener('click', (ev) => pruneCheckpoints(ev.currentTarget));
+  $('ckRebuild').addEventListener('click', (ev) => rebuildCheckpoints(ev.currentTarget));
+  $('ckKeepForm').addEventListener('submit', (ev) => ev.preventDefault());
+  $('fmapDataset').addEventListener('change', syncControls);
   $('learnContext').addEventListener('change', renderLearnOptions);
   $('obsId').value = newEventId();
 
@@ -1013,6 +1131,20 @@ function wire() {
       renderRecall(r);
       await loadHeader();
       return `Recall verdict on dataset #${datasetId}: ${r.verdict}` + (r.pending_id ? `; question #${r.pending_id} opened for a new context.` : '.');
+    });
+  });
+
+  $('fmapForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const lagsText = $('fmapLags').value.trim(), topText = $('fmapTop').value.trim();
+    if (!/^\d+(\s*,\s*\d+)*$/.test(lagsText) || lagsText.split(',').some((x) => Number(x) < 1)) { say($('fmapStatus'), 'Lags are whole numbers of at least 1, separated by commas.', 'error'); $('fmapLags').focus(); return; }
+    if (!/^\d+$/.test(topText) || Number(topText) < 1) { say($('fmapStatus'), 'Routes to list must be a whole number of at least 1.', 'error'); $('fmapTop').focus(); return; }
+    const body = { dataset_id: Number($('fmapDataset').value), lags: lagsText.split(',').map(Number), top: Number(topText) };
+    act($('fmapBtn'), $('fmapStatus'), async () => {
+      const r = await api('POST', '/api/graphs/coactivation', body);
+      renderFunctionalMap(r);
+      await loadHeader();
+      return `Functional map of dataset #${body.dataset_id}: ${r.routes.length} proposed route(s). Coactivation is not connection.`;
     });
   });
 

@@ -1,6 +1,8 @@
 """`nsf console`: the loopback owner console. There is deliberately no option to bind another address."""
 import os
 from pathlib import Path
+import signal
+import stat
 import sys
 
 from ..instance import store
@@ -8,11 +10,51 @@ from ..instance.errors import InstanceError
 from . import server
 
 
+STALE_PREFIX = "http://127.0.0.1:"
+
+
+def _is_stale_url_file(path):
+    """A leftover of an earlier console: a regular file we own, not a symlink, holding a console URL."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return False
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            return False
+        return os.read(fd, len(STALE_PREFIX)).decode("ascii", "replace") == STALE_PREFIX
+    finally:
+        os.close(fd)
+
+
 def _write_url_file(path, url):
-    """Create the file 0600 and refuse an existing one, so the token never lands in a shared file."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as out:
-        out.write(url + "\n")
+    """Publish the URL atomically with mode 0600. Replace only a stale console URL file; refuse anything else."""
+    path = Path(path)
+    stale = os.path.lexists(path)
+    if stale and not _is_stale_url_file(path):
+        raise FileExistsError(path)
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "w") as out:
+            out.write(url + "\n")
+        if stale:
+            os.replace(temp, path)
+        else:
+            os.link(temp, path)  # fails rather than overwrite a file that appeared meanwhile
+    finally:
+        try:
+            os.unlink(temp)
+        except FileNotFoundError:
+            pass
+
+
+def _remove_url_file(path):
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
 
 
 def _serve(args):
@@ -24,14 +66,20 @@ def _serve(args):
     except OSError as error:
         print(f"nsf: cannot listen on {server.BIND}:{args.port}: {error.strerror}", file=sys.stderr)
         return 2
+    written = False
     try:
         if args.url_file is not None:
             try:
+                signal.signal(signal.SIGTERM, signal.default_int_handler)  # service stop runs the cleanup below
+            except ValueError:
+                pass  # not the main thread
+            try:
                 _write_url_file(args.url_file, console.url)
             except FileExistsError:
-                print(f"nsf: {args.url_file} already exists; the console never overwrites a URL file",
-                      file=sys.stderr)
+                print(f"nsf: {args.url_file} exists and is not a stale console URL file; the console never "
+                      f"overwrites other files", file=sys.stderr)
                 return 2
+            written = True
             print(f"Console URL (with its one-time session token) written to {args.url_file}", flush=True)
         else:
             print(f"Open the owner console: {console.url}", flush=True)
@@ -42,6 +90,8 @@ def _serve(args):
         return 0
     finally:
         console.server_close()
+        if written:
+            _remove_url_file(args.url_file)
 
 
 def register(sub):
@@ -49,5 +99,6 @@ def register(sub):
     store.add_db_argument(p)
     p.add_argument("--port", type=int, default=server.DEFAULT_PORT, help="loopback port (0 picks a free one)")
     p.add_argument("--url-file", type=Path, default=None,
-                   help="write the URL with its session token to this new file (mode 0600) instead of stdout")
+                   help="write the URL with its session token to this file (mode 0600) instead of stdout; removed at shutdown; "
+                        "only a stale console URL file is replaced")
     p.set_defaults(handler=_serve)

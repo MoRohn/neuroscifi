@@ -1,0 +1,165 @@
+"""Forward-only schema migrations: version-1 and version-2 files reach the current schema with their data intact.
+
+Old files are built from the old migration strings themselves (schema.MIGRATIONS[:n]) and filled with the rows of
+a real individual, so the data is what the software actually writes. Migration 3 folds beliefs.DDL (the
+changepoints table and the evidence_tally index) into the schema.
+"""
+import re
+import sqlite3
+
+import pytest
+
+from neuroscifi.instance import beliefs, evidence, executive, governance, schema, store
+from conftest import T0
+
+
+def _source(tmp_path):
+    """A current individual with evidence in two epochs, decisions, questions, revisions and a forgotten partner."""
+    path = tmp_path / "source.sqlite"
+    db = store.create(path, T0)
+    for epoch in ("desk", "lab"):
+        evidence.start_epoch(db, epoch, T0)
+        for i in range(6):
+            for channel, root, corrected in (("camera", f"cam-{epoch}", 0), ("word", "ana", 1),
+                                             ("reference", f"ref-{i % 3}", 0)):
+                n = len(epoch) * 100 + i * 3 + ("camera", "word", "reference").index(channel)
+                evidence.observe(db, {"id": f"{epoch}-{n}", "epoch": epoch, "channel": channel, "action": i % 2,
+                                      "bit": corrected ^ (i % 2), "root": root}, T0 + n)
+        for i, bit in enumerate((0, 1, 0, 1)):  # an ambiguous partner, so the executive opens a question
+            evidence.observe(db, {"id": f"{epoch}-cara-{i}", "epoch": epoch, "channel": "word", "action": 0,
+                                  "bit": bit, "root": "cara"}, T0 + 900 + i)
+        assert executive.decide(db, epoch, T0 + 1000, record=True)["scope"] == "partner:cara"
+    evidence.observe(db, {"id": "gone", "epoch": "desk", "channel": "word", "action": 0, "bit": 0,
+                          "root": "Bob-x"}, T0 + 1001)
+    governance.forget_partner(db, "Bob-x", T0 + 1002)
+    db.close()
+    return path
+
+
+def _old_file(tmp_path, source, version):
+    """A file at `version`, created by MIGRATIONS[:version] and filled with the source's rows of those tables."""
+    path = tmp_path / f"v{version}.sqlite"
+    raw = sqlite3.connect(path, isolation_level=None)
+    for number, script in enumerate(schema.MIGRATIONS[:version], start=1):
+        raw.executescript("BEGIN;" + script + f";PRAGMA user_version={number};COMMIT;")
+    tables = [name for (name,) in raw.execute("SELECT name FROM sqlite_master WHERE type='table' "
+                                              "AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+    raw.execute("ATTACH DATABASE ? AS src", (str(source),))
+    for table in tables:
+        raw.execute(f"INSERT INTO main.{table} SELECT * FROM src.{table}")
+    raw.execute("DETACH DATABASE src")
+    raw.close()
+    return path
+
+
+def _dump(db, tables):
+    return {table: db.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall() for table in tables}
+
+
+def _tables(db):
+    return [name for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' "
+                                           "AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+
+
+def _objects(db):
+    return db.execute("SELECT type, name, sql FROM sqlite_master ORDER BY type, name").fetchall()
+
+
+def _statements(text):
+    """SQL statements of a script, comments dropped and whitespace normalized."""
+    text = re.sub(r"--[^\n]*", "", text)
+    return [" ".join(part.split()) for part in text.split(";") if part.strip()]
+
+
+def test_migration_3_is_exactly_the_beliefs_ddl():
+    assert schema.SCHEMA_VERSION == 3
+    assert _statements(schema.MIGRATIONS[2]) == [" ".join(s.split()) for s in beliefs.DDL]
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
+    source = _source(tmp_path)
+    path = _old_file(tmp_path, source, version)
+    with sqlite3.connect(path) as raw:
+        tables = _tables(raw)
+        before = _dump(raw, tables)
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == version
+        assert "changepoints" not in tables
+    assert before["evidence"] and before["belief_revisions"] and before["decisions"] and before["pending"]
+    if version == 2:
+        assert len(before["forgotten_roots"]) == 1
+
+    db = store.open_existing(path)
+    try:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
+        assert _dump(db, tables) == before
+        assert db.execute("SELECT count(*) FROM changepoints").fetchone()[0] == 0
+        assert db.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='evidence_tally'").fetchone()
+        if version == 1:  # migration 2 adds forgotten_roots, empty
+            assert db.execute("SELECT count(*) FROM forgotten_roots").fetchone()[0] == 0
+        assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+
+        # The migrated individual keeps its beliefs and works with the current software.
+        with sqlite3.connect(source) as raw:
+            expected = {epoch: beliefs.compute(raw, epoch) for epoch in ("desk", "lab")}
+        for epoch in ("desk", "lab"):
+            assert beliefs.compute(db, epoch) == expected[epoch]
+        objects = _objects(db)
+        with store.write(db):
+            beliefs.ensure_tables(db)  # idempotent no-op on a migrated file
+        assert _objects(db) == objects
+        evidence.observe(db, {"id": "after", "epoch": "desk", "channel": "camera", "action": 0, "bit": 0,
+                              "root": "cam-desk"}, T0 + 2000)
+        assert executive.decide(db, "desk", T0 + 2001, record=True)["decision"] in ("act", "ask", "test_reference")
+    finally:
+        db.close()
+
+
+def test_version_2_file_with_lazily_created_changepoints_migrates(tmp_path):
+    """Software between migrations 2 and 3 created the table lazily (beliefs.ensure_tables); its rows survive."""
+    source = _source(tmp_path)
+    path = _old_file(tmp_path, source, 2)
+    with sqlite3.connect(path) as raw:
+        for statement in beliefs.DDL:
+            raw.execute(statement)
+        raw.execute("INSERT INTO changepoints(epoch,scope,since_seq,pending_id,created_at,confirmed) "
+                    "VALUES('desk','camera:cam-desk',5,NULL,?,1)", (T0 + 3000,))
+        before = _dump(raw, _tables(raw))
+    db = store.open_existing(path)
+    try:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
+        assert _dump(db, list(before)) == before
+        assert beliefs.changes(db, "desk")["confirmed"] == {"camera:cam-desk": [5]}
+    finally:
+        db.close()
+
+
+def test_opening_a_current_file_is_a_no_op(tmp_path):
+    path = tmp_path / "current.sqlite"
+    store.create(path, T0).close()
+    with sqlite3.connect(path) as raw:
+        cookie = raw.execute("PRAGMA schema_version").fetchone()[0]
+        objects = _objects(raw)
+        before = _dump(raw, _tables(raw))
+    db = store.connect(path)
+    try:
+        assert schema.migrate(db) == schema.SCHEMA_VERSION == 3
+        assert db.total_changes == 0
+        assert db.execute("PRAGMA schema_version").fetchone()[0] == cookie
+        assert _objects(db) == objects and _dump(db, list(before)) == before
+    finally:
+        db.close()
+    store.open_existing(path).close()
+    with sqlite3.connect(path) as raw:
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert raw.execute("PRAGMA schema_version").fetchone()[0] == cookie
+
+
+def test_newer_file_is_refused(tmp_path):
+    path = tmp_path / "future.sqlite"
+    store.create(path, T0).close()
+    with sqlite3.connect(path) as raw:
+        raw.execute(f"PRAGMA user_version={schema.SCHEMA_VERSION + 1}")
+    with pytest.raises(Exception, match="newer than this software"):
+        store.open_existing(path)

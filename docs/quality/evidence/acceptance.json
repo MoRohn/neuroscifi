@@ -2,9 +2,10 @@
   "label": "simulated acceptance scenarios; not a physical validation",
   "parameters": {
     "events": 200,
-    "lifetimes": 200
+    "lifetimes": 200,
+    "test_lifetimes": 100
   },
-  "pass": true,
+  "pass": false,
   "scenarios": {
     "birth": {
       "checks": {
@@ -18,7 +19,7 @@
         "priors_published": true,
         "zero_personal_episodes": true
       },
-      "elapsed_seconds": 0.023,
+      "elapsed_seconds": 0.018,
       "metrics": {
         "action_semantics": {
           "0": "commanded direction A, as declared by the owner",
@@ -100,8 +101,9 @@
     "device_ownership": {
       "checks": {
         "beliefs_correct_after_loop": true,
-        "checkpoint_restore_identical_beliefs": true,
+        "checkpoint_restore_identical_beliefs_except_state_version": true,
         "checkpoint_verified": true,
+        "consolidation_ran_during_loaded_loop": true,
         "loop_reaches_act": true,
         "restart_new_process_identical_beliefs": true,
         "restart_new_process_identical_inventory": true,
@@ -111,13 +113,18 @@
         "storage_pressure_decide_returns_defer": true,
         "storage_pressure_nothing_written_while_paused": true,
         "storage_pressure_observe_raises_writes_paused": true,
-        "storage_pressure_regulation_reports_pause": true
+        "storage_pressure_regulation_reports_pause": true,
+        "zero_failed_observations_idle_and_under_consolidation": true
       },
-      "elapsed_seconds": 1.186,
+      "elapsed_seconds": 0.979,
       "metrics": {
         "checkpoint": {
-          "bytes": 11137,
+          "bytes": 13066,
           "policy": "cold",
+          "state_version": {
+            "live": 404,
+            "restored": 402
+          },
           "tombstones_applied": 0
         },
         "loop": {
@@ -126,16 +133,83 @@
             "test_reference": 20
           },
           "events": 200,
+          "failures": {
+            "busy": 0,
+            "writes_paused": 0
+          },
           "final_decision": "act",
-          "label": "host-local measurement on this machine, not Spark",
+          "host": {
+            "cpu_count": 20,
+            "gpu": "NVIDIA GB10",
+            "machine": "aarch64",
+            "numpy": "2.3.5",
+            "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+            "processor": null,
+            "python": "3.12.16",
+            "sqlite": "3.53.1"
+          },
+          "label": "host = this DGX Spark (aarch64, GB10)",
           "latency_ms": {
-            "max": 7.953659980557859,
-            "mean": 5.259245316265151,
+            "max": 2.540586981922388,
+            "mean": 1.792589442920871,
             "n": 200,
-            "p50": 6.272658007219434,
-            "p95": 7.681202347157522,
-            "p99": 7.914488215465099
+            "p50": 2.0761124906130135,
+            "p95": 2.185635408386588,
+            "p99": 2.2236966725904495
           }
+        },
+        "loop_under_consolidation": {
+          "background": {
+            "cpu_seconds": 1.400158016,
+            "errors": {
+              "busy": 0,
+              "writes_paused": 0
+            },
+            "operation_ms": {
+              "checkpoint": {
+                "max": 380.9654712677002,
+                "mean": 380.9654712677002,
+                "n": 1,
+                "p50": 380.9654712677002,
+                "p95": 380.9654712677002,
+                "p99": 380.9654712677002
+              },
+              "learn": {
+                "max": 4.204273223876953,
+                "mean": 4.204273223876953,
+                "n": 1,
+                "p50": 4.204273223876953,
+                "p95": 4.204273223876953,
+                "p99": 4.204273223876953
+              }
+            },
+            "operations": {
+              "checkpoint": 1,
+              "learn": 1
+            },
+            "operations_overlapping_loop": 1
+          },
+          "decision_counts": {
+            "act": 180,
+            "test_reference": 20
+          },
+          "events": 200,
+          "failed_observations": 0,
+          "failures": {
+            "busy": 0,
+            "writes_paused": 0
+          },
+          "final_decision": "act",
+          "label": "host = this DGX Spark (aarch64, GB10)",
+          "latency_ms": {
+            "max": 3.9538240525871515,
+            "mean": 1.830238313996233,
+            "n": 200,
+            "p50": 2.0878645009361207,
+            "p95": 2.2084473981522024,
+            "p99": 3.123233319493007
+          },
+          "loop_seconds": 0.3661048412322998
         },
         "restart": {
           "evidence": 200,
@@ -154,14 +228,186 @@
       },
       "name": "device_ownership",
       "notes": [
-        "Capture-to-action loop: 200 simulated events (camera, word, healthy reference in turn, 10% noise), each timed from evidence.observe through executive.decide(record=True). Latency is host-local measurement on this machine, not Spark; no device latency budget is declared, so it is reported, not judged.",
+        "Capture-to-action loop: 200 simulated events (camera, word, healthy reference in turn, 10% noise), each timed from evidence.observe through executive.decide(record=True). Latency is reported, not judged (no device latency budget is declared); host = this DGX Spark (aarch64, GB10).",
+        "Simultaneous inference and consolidation (brief p.19): the same stream is run on a fresh instance while a separate OS process repeatedly runs graphs.learn and checkpoints.create on that same file (SQLite WAL, busy timeout 10 s). A WritesPaused or SQLite busy/locked error in the loop counts as a failed observation; the pass requires none in either loop. The background process's own operation counts, errors and CPU seconds are reported; at least one of its operations must overlap the loaded loop for the measurement to count.",
         "Restart: the connection is closed and a NEW process opens the file and returns beliefs, pending questions and the inventory, compared with the values read before closing.",
-        "Not representable in simulation: physical capture devices, reversible switchover of device ownership, and latency under simultaneous inference and consolidation on the Spark (OPS-06 stays blocked)."
+        "Checkpoint restore: beliefs of the restored copy equal the live file's in every key except state_version, which checkpoint create/verify legitimately advance on the live instance.",
+        "Not representable in simulation: physical capture devices and reversible switchover of device ownership."
       ],
       "pass": true,
       "simulated": true,
       "thresholds": {
+        "failed_observations_max": 0,
         "latency_budget": null
+      }
+    },
+    "first_physical_test": {
+      "checks": {
+        "attribution_at_least_80_percent": true,
+        "earlier_setup_recognised_at_least_80_percent": false,
+        "fewer_confident_wrong_final_answers_than_fixed_wiring": true,
+        "older_skill_retention_at_least_90_percent": true
+      },
+      "elapsed_seconds": 29.804,
+      "metrics": {
+        "attribution_rate": 0.92,
+        "compute_cpu_seconds_per_lifetime": {
+          "episodic_lookup": {
+            "max": 5.065599999909409e-05,
+            "mean": 1.654703999946605e-05
+          },
+          "fixed_wiring": {
+            "max": 0.12382057599999996,
+            "mean": 0.11595271088000018
+          },
+          "product": {
+            "max": 0.34504959999999263,
+            "mean": 0.18727319664000044
+          },
+          "recurrent_replay": {
+            "max": 0.0007049120000033327,
+            "mean": 0.0005019529599996986
+          }
+        },
+        "earlier_setup_recognition_rate": 0.0,
+        "final_answers_end_of_panel_a": {
+          "episodic_lookup": {
+            "accuracy": 0.9466666666666667,
+            "answers": 300,
+            "brier": 0.08512,
+            "confident_wrong": 0,
+            "coverage": 0.2733333333333333
+          },
+          "fixed_wiring": {
+            "accuracy": 0.6816666666666666,
+            "answers": 300,
+            "brier": 0.2917970679795754,
+            "confident_wrong": 78,
+            "coverage": 0.8366666666666667
+          },
+          "product": {
+            "accuracy": 0.975,
+            "answers": 300,
+            "brier": 0.01516847029313709,
+            "confident_wrong": 0,
+            "coverage": 0.85
+          },
+          "recurrent_replay": null
+        },
+        "interventions": {
+          "baselines_owner_answers": 0,
+          "interventions_per_lifetime_mean": 11.22,
+          "owner_answers_after_restart_mean": 0.04,
+          "owner_answers_before_restart_mean": 1.18,
+          "owner_answers_per_lifetime": {
+            "max": 3,
+            "mean": 1.22,
+            "total": 122
+          },
+          "question_kinds": {
+            "change:no": 22,
+            "change:yes": 100
+          },
+          "reference_readings_per_lifetime": 10.0
+        },
+        "lifetimes": 100,
+        "next_camera_reading_prediction": {
+          "episodic_lookup": {
+            "panel_a": {
+              "accuracy": 0.81475,
+              "brier": 0.15282298611111114,
+              "n": 4000
+            },
+            "return_to_earlier_setup": {
+              "accuracy": 0.32,
+              "brier": 0.44800000000000006,
+              "n": 400
+            }
+          },
+          "fixed_wiring": {
+            "panel_a": {
+              "accuracy": 0.5275,
+              "brier": 0.39388341358850815,
+              "n": 4000
+            },
+            "return_to_earlier_setup": {
+              "accuracy": 0.855,
+              "brier": 0.12148530118512568,
+              "n": 400
+            }
+          },
+          "product": {
+            "panel_a": {
+              "accuracy": 0.74825,
+              "brier": 0.20837505117882696,
+              "n": 4000
+            },
+            "return_to_earlier_setup": {
+              "accuracy": 0.5,
+              "brier": 0.25,
+              "n": 400
+            }
+          },
+          "recurrent_replay": {
+            "panel_a": {
+              "accuracy": 0.694875,
+              "brier": 0.2191992972821168,
+              "n": 4000
+            },
+            "return_to_earlier_setup": {
+              "accuracy": 0.6825,
+              "brier": 0.2331454414039078,
+              "n": 400
+            }
+          }
+        },
+        "older_skill_retention": 0.975,
+        "restart_panel_beliefs_identical": 1.0,
+        "retention_detail": {
+          "camera_current_segment_correct": 0.975,
+          "camera_original_segment_correct": 0.975,
+          "lifetimes_with_confirmed_camera_segment": 100,
+          "mechanism_and_partner_correct_after_return": 0.975
+        },
+        "retrieval_archive_lookup_disabled": {
+          "episodic_lookup": "no answer without its archive (every answer is a coin flip, accuracy 0.5)",
+          "fixed_wiring": "beliefs are recomputed from evidence on read; none without it",
+          "product_last_revision_summary_accuracy": 0.975,
+          "recurrent_replay": "predicts readings only; no factor answers to retrieve"
+        },
+        "return_match": {
+          "best_counts": {
+            "None": 100
+          },
+          "diagnostic_lifetimes": 100,
+          "diagnostic_recognition_if_earlier_segment_were_scored": 0.42
+        },
+        "teacher_cost": {
+          "episodic_lookup": 0,
+          "fixed_wiring": 0,
+          "product_owner_answers_mean": 1.22,
+          "recurrent_replay": 0
+        }
+      },
+      "name": "first_physical_test",
+      "notes": [
+        "Design fixed before running: {\"confidence\": 0.95, \"episodic_k\": 5, \"final_answers_at\": \"end of panel-A, before the restart (camera truth = remounted alignment)\", \"panel_events_per_step\": \"camera + partner word every step; one reference reading every 4th step\", \"reading_noise\": 0.1, \"reference_readings_per_root\": 2, \"reference_root_flip_probability\": 0.15, \"remount\": \"the camera alignment bit flips silently from teach step 24 on (owner not told)\", \"remounted_steps\": 16, \"return_events_per_step\": \"camera + partner word (original camera mapping), no reference\", \"return_steps\": 4, \"teach_steps\": 24}; recurrent baseline: {\"features\": \"A = 2*action - 1; r_c, r_w, r_r = last camera / word / reference relation (bit XOR action) as +-1, 0 before the first; x = [1, A, A*r_c, A*r_w, A*r_r]\", \"learning_rate\": 0.2, \"model\": \"logistic regression P(camera bit = 1) = sigmoid(w . x)\", \"replay\": \"after each online step, 4 past (x, y) pairs drawn uniformly from a FIFO buffer get one SGD step each\", \"replay_batch\": 4, \"replay_capacity\": 256}.",
+        "Each lifetime is its own instance file. Panel-A: 24 teaching steps, then the camera is remounted silently (its alignment bit flips) for 16 more steps. executive.decide(record=True) runs after every event and a truthful simulated owner answers each question: confirm=True only for a change question about the camera asked after the remount, confirm=False otherwise; 'continue there?' is answered yes only for panel-A.",
+        "Restart: all files are closed and ONE new process opens each file, checks panel-A's beliefs equal those read before closing, starts epoch 'return' and feeds 4 steps of camera + word readings from the ORIGINAL camera mapping, with the executive deciding after each event. Recognised = the executive asked 'This looks like panel-A; continue there?'.",
+        "Attribution: the first change question asked at or after the remount names camera:camera-1 (the owner gives no hint before that question). Retention: panel-A's mechanism (the taught action) and partner convention (the taught word) are MAP-correct after the return. Retrieval with archive lookup disabled: panel-A's latest belief-revision summary (memory.retrieve kind 'belief') scored against the end-of-panel truth, with no evidence read.",
+        "Baselines on the same streams. Fixed wiring: the prototype, one pooled epoch for panel-A and the return, no detection, no questions (run in-process; its state is the same file). Direct episodic lookup: majority of the last 5 readings per channel/root. Conventional recurrent learner with replay: see RECURRENT_DESIGN; it is scored on next camera reading prediction only. Every learner predicts every camera reading before seeing it (prequential), in panel-A and in the return; product predictions come from the epoch it is in (panel-A, then 'return') and combine marginals as described in _camera_bit_p.",
+        "Teacher cost = owner answers; interventions = owner answers + reference readings used. Compute cost = time.process_time per lifetime (product: panel-A plus its share of the restart process).",
+        "Known structural limit: match_epochs scores an epoch by its CURRENT beliefs. After the owner confirms the remount inside panel-A, panel-A's current camera segment is the remounted one, so readings from the original mapping contradict it. return_match.diagnostic_* reports, for information only, how often the return would be recognised if panel-A's earlier camera segment were scored the same way.",
+        "Simulated binary readings stand in for the brief's physical sensors; this is not a physical test."
+      ],
+      "pass": false,
+      "simulated": true,
+      "thresholds": {
+        "attribution_min": 0.8,
+        "confidence": 0.95,
+        "confident_wrong_final_answers": "strictly fewer than fixed wiring",
+        "earlier_setup_recognition_min": 0.8,
+        "retention_min": 0.9
       }
     },
     "graph_development": {
@@ -183,7 +429,7 @@
         "fork-2_true_edges_matter_more_than_weak": true,
         "fork-2_within_10_percent_of_dense": true
       },
-      "elapsed_seconds": 0.069,
+      "elapsed_seconds": 0.071,
       "metrics": {
         "cross_test": {
           "fork-1_graph_on_fork-1_heldout": 0.004615302155992765,
@@ -272,19 +518,26 @@
         "changed_scope_identified_or_asked": true,
         "confident_wrong_reduction_at_least_50_percent": true,
         "coverage_and_brier_reported": true,
-        "executive_asked_to_calibrate_each_detected_scope": true,
+        "executive_addressed_each_detected_scope": true,
         "unchanged_coverage_at_least_80_percent": true,
         "unchanged_task_loss_at_most_2_points": true
       },
-      "elapsed_seconds": 47.618,
+      "elapsed_seconds": 63.825,
       "metrics": {
+        "arms": {
+          "detecting": "product flow: the owner confirms or rejects the executive's change question; one epoch per lifetime",
+          "manual_new_epoch": "earlier policy: every detection is answered by starting a new epoch",
+          "pooled": "fixed wiring: one epoch, no change detection (the prototype)"
+        },
         "brier": {
           "changed_factor": {
-            "detecting": 0.16223291118341343,
+            "detecting": 0.05876688527053358,
+            "manual_new_epoch": 0.16223291118341343,
             "pooled": 0.7304821953873435
           },
           "unchanged_all_factors": {
-            "detecting": 0.016887084417891607,
+            "detecting": 0.015257641491219352,
+            "manual_new_epoch": 0.016887084417891607,
             "pooled": 0.015257641491219352
           }
         },
@@ -295,6 +548,13 @@
         },
         "changed_factor_final_answers": {
           "detecting": {
+            "accuracy": 0.92,
+            "answers": 100,
+            "brier": 0.05876688527053358,
+            "confident_wrong": 3,
+            "coverage": 0.77
+          },
+          "manual_new_epoch": {
             "accuracy": 0.75,
             "answers": 100,
             "brier": 0.16223291118341343,
@@ -312,6 +572,13 @@
         "changed_lifetimes": 100,
         "changed_lifetimes_all_factors": {
           "detecting": {
+            "accuracy": 0.92,
+            "answers": 300,
+            "brier": 0.05711006078758648,
+            "confident_wrong": 7,
+            "coverage": 0.77
+          },
+          "manual_new_epoch": {
             "accuracy": 0.7466666666666667,
             "answers": 300,
             "brier": 0.16412615515405057,
@@ -327,11 +594,47 @@
           }
         },
         "confident_wrong": {
-          "detecting": 0,
+          "detecting": 3,
+          "manual_new_epoch": 0,
           "pooled": 62,
-          "relative_reduction": 1.0
+          "relative_reduction": 0.9516129032258065,
+          "relative_reduction_manual_new_epoch": 1.0
         },
         "detection": {
+          "asked_rate": 0.0,
+          "by_factor": {
+            "camera": {
+              "asked": 0,
+              "identified": 45,
+              "missed": 0,
+              "wrong_scope": 5
+            },
+            "mechanism": {
+              "asked": 0,
+              "identified": 25,
+              "missed": 0,
+              "wrong_scope": 0
+            },
+            "partner": {
+              "asked": 0,
+              "identified": 24,
+              "missed": 0,
+              "wrong_scope": 1
+            }
+          },
+          "delay_events_max": 22,
+          "delay_events_mean": 7.4361702127659575,
+          "delay_events_median": 7.0,
+          "false_alarms_before_onset_on_changed": 6,
+          "identified_or_asked_rate": 0.94,
+          "identified_rate": 0.94,
+          "mean_epochs_per_lifetime": 1.0,
+          "missed_rate": 0.0,
+          "unchanged_ambiguity_ask_rate": 0.0,
+          "unchanged_false_alarm_rate": 0.1,
+          "wrong_scope_rate": 0.06
+        },
+        "detection_manual_new_epoch": {
           "asked_rate": 0.0,
           "by_factor": {
             "camera": {
@@ -366,9 +669,61 @@
           "wrong_scope_rate": 0.06
         },
         "lifetimes": 200,
+        "owner_questions_per_lifetime": {
+          "detecting": {
+            "all": {
+              "max": 3,
+              "mean": 0.645,
+              "total": 129
+            },
+            "changed": {
+              "max": 3,
+              "mean": 1.15,
+              "total": 115
+            },
+            "confirmed_total": 98,
+            "deferred_suspicions_total": 63,
+            "rejected_total": 31,
+            "unchanged": {
+              "max": 3,
+              "mean": 0.14,
+              "total": 14
+            }
+          },
+          "manual_new_epoch": {
+            "all": {
+              "max": 2,
+              "mean": 0.59,
+              "total": 118
+            },
+            "changed": {
+              "max": 2,
+              "mean": 1.07,
+              "total": 107
+            },
+            "unchanged": {
+              "max": 2,
+              "mean": 0.11,
+              "total": 11
+            }
+          }
+        },
+        "partner_meaning_preserved_after_camera_change": {
+          "detecting": 0.82,
+          "lifetimes": 50,
+          "manual_new_epoch": 0.16,
+          "pooled": 0.82
+        },
         "reference_root_faults_total": 142,
         "unchanged_all_factors": {
           "detecting": {
+            "accuracy": 0.975,
+            "answers": 300,
+            "brier": 0.015257641491219352,
+            "confident_wrong": 0,
+            "coverage": 0.85
+          },
+          "manual_new_epoch": {
             "accuracy": 0.975,
             "answers": 300,
             "brier": 0.016887084417891607,
@@ -383,18 +738,21 @@
             "coverage": 0.85
           }
         },
-        "unchanged_coverage_detecting": 0.83,
+        "unchanged_coverage_detecting": 0.85,
+        "unchanged_coverage_manual_new_epoch": 0.83,
         "unchanged_coverage_pooled": 0.85,
         "unchanged_lifetimes": 100,
-        "unchanged_task_loss_points": 0.0
+        "unchanged_task_loss_points": 0.0,
+        "unchanged_task_loss_points_manual_new_epoch": 0.0
       },
       "name": "grounding",
       "notes": [
         "Design fixed before running: {\"change_step_range\": [20, 30], \"changed_factor_cycle\": [\"camera\", \"camera\", \"partner\", \"mechanism\"], \"changed_lifetimes\": \"every odd-numbered lifetime (half)\", \"confidence\": 0.95, \"events_per_step\": \"camera + partner word every step; one reference reading every 4th step\", \"reading_noise\": 0.1, \"reference_readings_per_root\": 2, \"reference_root_flip_probability\": 0.15, \"steps_per_lifetime\": 40}.",
         "Each lifetime draws mechanism, camera alignment and partner convention uniformly. Camera and word readings carry 10% reading noise; each reference root is secretly inverted with probability 0.15 (the instance's prior), and each root gives 2 readings.",
         "Changed lifetimes flip one factor silently at a step drawn uniformly from 20..29 of 40; the changed factor cycles camera, camera, partner, mechanism. Unchanged lifetimes never change.",
-        "Pooled policy: one epoch for the whole lifetime (the prototype behaviour). Detecting policy: after every event, beliefs.detect_change; on a non-ambiguous suspicion the executive's calibrate question is recorded and resolved and a new epoch is started (the owner's recalibration); on an ambiguous one the executive's read-only decision is logged (test_reference when references exist) and evidence keeps pooling.",
-        "Final answers are read from beliefs.compute of each policy's last epoch. Confidently wrong means P>0.95 on the wrong value. Coverage is the fraction of answers with P>0.95. Ties count 0.5 toward accuracy. Brier is (P(bit=1) - truth)^2 averaged over answers.",
+        "Pooled arm: one epoch for the whole lifetime (the prototype behaviour). Detecting arm (the product flow, judged by the checks): after every event, beliefs.detect_change; on a non-ambiguous suspicion the executive's decision is recorded and its question answered by a truthful simulated owner with executive.resolve(confirm=True) when the asked scope really changed (at or before that event), else confirm=False; the lifetime stays in one epoch, so a confirmed camera change relearns only the camera. Manual new epoch arm (the earlier policy, kept for comparison): the question is closed and a new epoch started, so every factor is relearned. On an ambiguous suspicion both detecting arms log the executive's read-only decision (test_reference when references exist) and keep pooling.",
+        "The executive check: on every non-ambiguous suspicion the executive asks about that scope or defers on it (ask budget of 3 per epoch exhausted, or the owner already answered about it with fewer than 3 new events of that scope since).",
+        "Final answers are read from beliefs.compute of each arm's last epoch. Confidently wrong means P>0.95 on the wrong value. Coverage is the fraction of answers with P>0.95. Ties count 0.5 toward accuracy. Brier is (P(bit=1) - truth)^2 averaged over answers. Partner meaning preserved: in camera-change lifetimes, the partner convention's final answer is right with P>0.95. Owner questions: executive questions the owner answered per lifetime.",
         "Thresholds come from the brief (p.19); identified_or_asked_rate_min=0.80 was declared here before running.",
         "Simulated binary readings stand in for the brief's rendered pixels and tones; this does not exercise sensory decoding."
       ],
@@ -533,7 +891,7 @@
         "nothing_expired_after_a_day": true,
         "second_partner_correct_after_a_day": true
       },
-      "elapsed_seconds": 0.321,
+      "elapsed_seconds": 0.287,
       "metrics": {
         "day_later_clock_advance_seconds": 86400.0,
         "day_later_decision": "act",
@@ -563,18 +921,18 @@
         },
         "day_later_semantic_revision": 9,
         "executive": {
-          "ask_rows_in_epoch": 2,
+          "ask_rows_in_epoch": 1,
           "asks_by_scope": {
-            "partner:partner-B": 2
+            "partner:partner-B": 1
           },
           "decision_counts": {
-            "act": 58,
-            "ask": 2,
+            "act": 59,
+            "ask": 1,
             "test_reference": 14
           },
           "decisions": 74,
-          "meaning_asks": 2,
-          "open_questions_at_end": 2,
+          "meaning_asks": 1,
+          "open_questions_at_end": 0,
           "other_asks": 0
         },
         "in_session": {

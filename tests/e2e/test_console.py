@@ -40,7 +40,8 @@ def console(tmp_path):
 
 @pytest.fixture
 def seeded(console):
-    """An individual with taught beliefs, a suspected change, an open question, a promoted graph and a checkpoint."""
+    """An individual with taught beliefs, a suspected change, an open question, a promoted graph, a checkpoint and a
+    second epoch that looks like the first."""
     db = store.open_existing(console.path)
     try:
         now = time.time()
@@ -70,7 +71,15 @@ def seeded(console):
         graphs.evaluate(db, revision, now)
         graphs.promote(db, revision, now)
         graphs.learn(db, "world-a", now, train=ids["train"], validation=ids["validation"], holder="test")
-        checkpoints.create(db, console.path, console.path.parent / "checkpoints", now, policy="fast")
+        checkpoints.create(db, console.path, checkpoints.default_dir(console.path), now, policy="fast")
+        # A later epoch whose readings come from the original mapping looks like "bench" (the match panel).
+        evidence.start_epoch(db, "second", now)
+        for k in range(4):
+            evidence.observe(db, {"id": f"sec-w{k}", "epoch": "second", "channel": "word", "action": 0, "bit": 0,
+                                  "root": "alice"}, now)
+        for k in range(3):
+            evidence.observe(db, {"id": f"sec-r{k}", "epoch": "second", "channel": "reference", "action": 0,
+                                  "bit": 0, "root": f"sec-ref{k}"}, now)
     finally:
         db.close()
     return console
@@ -149,6 +158,10 @@ def test_owner_journey(console, new_page):
         record(page, "word", 0, 0, "alice")
     expect(page.locator("#changeScope")).to_have_text("camera:cam1")
     expect(page.locator("#change")).to_contain_text("Change suspected")
+    badge = page.locator('#probs [data-scope="camera:cam1"] .suspect')
+    expect(badge).to_contain_text("change suspected (llr ")
+    expect(page.locator('#probs [data-scope="partner:alice"] .suspect')).to_have_count(0)
+    partner_before = page.locator('#probs [data-scope="partner:alice"] .probnum').inner_text()
     expect(page.locator("#changeEvents li")).to_have_count(6)
     for event_id in flipped:
         expect(page.locator(f'#changeEvents li[data-id="{event_id}"]')).to_contain_text("camera · cam1 · action 0 → reading 1")
@@ -160,11 +173,21 @@ def test_owner_journey(console, new_page):
     expect(page.locator("#openCount")).to_have_text("1 open")
     go(page, "questions")
     expect(page.locator("#pendingList")).to_contain_text("Did camera:cam1 change?")
-    page.locator("#answer-1").fill("Camera was remounted upside down")
-    page.locator("#resolve-1").click()
+    expect(page.get_by_role("button", name="No, nothing changed")).to_be_visible()
+    page.get_by_role("button", name="Yes, it changed — relearn only that").click()
     expect(page.locator("#questionStatus")).to_contain_text("Question 1 resolved")
+    expect(page.locator("#questionStatus")).to_contain_text("Only that factor is relearned")
     expect(page.locator("#pendingList")).to_contain_text("No open questions")
     expect(page.locator("#openCount")).to_have_text("")
+    go(page, "teach")
+    expect(page.locator("#confirmedChanges")).to_contain_text(re.compile(r"cam1 since #\d+"))
+    expect(page.locator('#probs [data-scope="camera:cam1"] .suspect')).to_have_count(0)
+    expect(page.locator('#probs [data-scope="partner:alice"] .probnum')).to_have_text(partner_before)
+    expect(page.locator("#change")).to_contain_text("No change suspected")
+    expect(page.locator("#decisionValue")).to_have_text("act")
+    page.locator("#recordDecision").click()
+    expect(page.locator("#decisionStatus")).to_contain_text("Recorded decision “act” for bench.")
+    expect(page.locator('#probs [data-scope="partner:alice"] .probnum')).to_have_text(partner_before)
 
     # (d) forget one reference row through the confirmation dialog; beliefs follow
     go(page, "evidence")
@@ -186,9 +209,39 @@ def test_owner_journey(console, new_page):
     go(page, "teach")
     expect(page.locator("#beliefs")).to_contain_text("26 stored")
     expect(page.locator('#explain [data-scope="mechanism"] ul.supporting li')).to_have_count(2)
-    expect(page.locator("#revisions")).to_contain_text(f"forgot {references[0]}")
+    expect(page.locator("#revisions")).to_contain_text("evidence that has since been forgotten")
+    assert references[0] not in page.locator("#teach").inner_text(), "the forgotten id must not appear on the Teach page"
+    assert references[0] not in page.locator("#revisions").inner_html()
+    assert "forgot " + references[0] not in page.locator("body").inner_text()
     page.evaluate("window.scrollTo(0, 0)")
     page.screenshot(path=str(SHOTS / "console-desktop.png"), full_page=True)
+
+    # (d2) a new epoch fed with readings from the original mapping looks like the first one
+    page.locator("#epochName").fill("second")
+    page.locator("#epochStart").click()
+    expect(page.locator("#epochStatus")).to_have_text("Started epoch second.")
+    expect(page.locator("#matchCard")).to_be_hidden()
+    for _ in range(4):
+        record(page, "word", 0, 0, "alice")
+    for k in range(3):
+        record(page, "reference", 0, 0, f"ref-b{k}")
+    expect(page.locator("#matchCard")).to_be_visible()
+    expect(page.get_by_role("heading", name="Looks like an earlier setup")).to_be_visible()
+    expect(page.locator("#matchBest")).to_contain_text("bench")
+    expect(page.locator("#matchPanel table tbody tr")).to_have_count(1)
+    expect(page.locator("#decisionValue")).to_have_text("ask")
+    page.locator("#recordDecision").click()
+    expect(page.locator("#decisionStatus")).to_contain_text("question #2 is open under Questions")
+    page.evaluate("window.scrollTo(0, 0)")
+    page.screenshot(path=str(SHOTS / "console-match-desktop.png"), full_page=True)
+    go(page, "questions")
+    expect(page.locator("#pendingList")).to_contain_text("This looks like bench; continue there?")
+    expect(page.get_by_role("button", name="No, this is new")).to_be_visible()
+    page.get_by_role("button", name="Continue there").click()
+    expect(page.locator("#questionStatus")).to_contain_text("Question 2 resolved")
+    go(page, "teach")
+    expect(page.locator("#epochSelect")).to_have_value("bench")
+    expect(page.locator("#decisionValue")).to_have_text("act")
 
     # (e) graphs: simulate, learn, evaluate, promote, heatmap, recall
     go(page, "graphs")
@@ -206,10 +259,10 @@ def test_owner_journey(console, new_page):
     expect(page.locator("#graphEvaluation")).to_contain_text("#3")
     page.locator("#gPromote").click()
     expect(page.locator("#graphStatus")).to_contain_text("Gate passed: revision #1 is now the active graph of world-a.")
-    expect(page.locator("#gateSummary")).to_contain_text("All 4 checks passed under gate-v1")
+    expect(page.locator("#gateSummary")).to_contain_text("All 5 checks passed under gate-v1")
     checks = page.locator("#gateChecklist li")
-    expect(checks).to_have_count(4)
-    for name in ("independent_heldout", "heldout_gain", "retention", "byte_budget"):
+    expect(checks).to_have_count(5)
+    for name in ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact"):
         expect(page.locator(f'#gateChecklist li[data-check="{name}"]')).to_contain_text("Passed")
     expect(page.locator('#gateChecklist li[data-check="byte_budget"]')).to_contain_text("of 4096 bytes")
     expect(page.locator("#gPromote")).to_be_disabled()
@@ -226,6 +279,17 @@ def test_owner_journey(console, new_page):
     page.locator("#recallBtn").click()
     expect(page.locator("#recallVerdict")).to_have_text("known context: world-a")
     expect(page.locator("#recallResult")).to_contain_text("Selected-graph MSE")
+    page.locator("#fmapBtn").click()
+    expect(page.locator("#fmapStatus")).to_contain_text("proposed route(s). Coactivation is not connection.")
+    expect(page.locator("#fmapResult table tbody tr")).to_have_count(20)
+    expect(page.locator("#fmapCaveat")).to_contain_text("common stimulus")
+    page.locator("#fmapLags").fill("1, x")
+    page.locator("#fmapBtn").click()
+    expect(page.locator("#fmapStatus")).to_have_text("Lags are whole numbers of at least 1, separated by commas.")
+    page.locator("#fmapLags").fill("1,2")
+    page.locator("#fmapTop").fill("3")
+    page.locator("#fmapBtn").click()
+    expect(page.locator("#fmapResult table tbody tr")).to_have_count(3)
     page.evaluate("window.scrollTo(0, 0)")
     page.screenshot(path=str(SHOTS / "console-graphs-desktop.png"), full_page=True)
 
@@ -240,10 +304,30 @@ def test_owner_journey(console, new_page):
     page.get_by_role("button", name="Verify checkpoint 1").click()
     expect(page.locator("#ckStatus")).to_contain_text("Checkpoint 1 verified")
     expect(page.locator("#ckTable tbody tr")).not_to_contain_text("never")
+    page.locator("#ckCreate").click()
+    expect(page.locator("#ckStatus")).to_contain_text("Checkpoint 2 created")
+    assert (console.path.parent / "owner.checkpoints").is_dir()
+    page.locator("#ckKeep").fill("1")
+    expect(page.locator("#ckPrune")).to_have_text("Prune (keep 1)")
+    page.locator("#ckKeep").fill("0")
+    page.locator("#ckPrune").click()
+    expect(page.locator("#ckKeepStatus")).to_have_text("Keep must be a whole number of at least 1.")
+    page.locator("#ckKeep").fill("1")
+    page.locator("#ckPrune").click()
+    page.locator("#confirmCancel").click()
+    expect(page.locator("#ckTable tbody tr")).to_have_count(2)
+    page.locator("#ckPrune").click()
+    expect(page.locator("#confirmDialog")).to_contain_text("newest 1")
+    page.locator("#confirmOk").click()
+    expect(page.locator("#ckKeepStatus")).to_have_text("Kept 1 checkpoint(s); deleted 1.")
+    expect(page.locator("#ckTable tbody tr").nth(1)).to_contain_text("deleted")
+    page.locator("#ckRebuild").click()
+    page.locator("#confirmOk").click()
+    expect(page.locator("#ckKeepStatus")).to_have_text("Checkpoint 3 written; 0 stale archive(s) deleted; 1 pruned.")
 
     go(page, "memory")
-    expect(page.locator("#deletionLog")).to_contain_text(f"evidence {references[0]}")
-    expect(page.locator("#decisionLog tbody tr")).to_have_count(2)
+    expect(page.locator("#deletionLog")).to_contain_text("evidence")
+    expect(page.locator("#decisionLog tbody tr")).to_have_count(4)
     expect(page.locator("#decisionLog")).to_contain_text("camera:cam1")
     go(page, "overview")
     expect(page.locator("#development")).to_contain_text("teacher interventions")
@@ -303,7 +387,11 @@ def test_phone_layout(seeded, new_page):
     go(page, "teach")
     beliefs, observe = page.locator("#h-beliefs").bounding_box(), page.locator("#h-observe").bounding_box()
     assert beliefs["y"] > observe["y"] and abs(beliefs["x"] - observe["x"]) < 2, "single column on a phone"
+    expect(page.locator("#matchCard")).to_be_visible()
     page.screenshot(path=str(SHOTS / "console-phone.png"), full_page=True)
+    page.locator("#epochSelect").select_option("bench")
+    expect(page.locator("#probs [data-scope='camera:cam1'] .suspect")).to_be_visible()
+    page.screenshot(path=str(SHOTS / "console-phone-change.png"), full_page=True)
     desktop = new_page(1280, 900)
     desktop.goto(seeded.url)
     go(desktop, "teach")
@@ -312,6 +400,15 @@ def test_phone_layout(seeded, new_page):
     nav, main = desktop.locator("#nav").bounding_box(), desktop.locator("#main").bounding_box()
     assert nav["x"] + nav["width"] <= main["x"], "navigation sits beside the content"
     assert not page.problems and not desktop.problems, (page.problems, desktop.problems)
+
+
+def scan(page, found, name):
+    page.locator("details").evaluate_all("els => els.forEach(e => e.open = true)")
+    result = page.evaluate("""axe.run(document,{resultTypes:['violations']}).then(r =>
+        r.violations.map(v => ({id:v.id, impact:v.impact, nodes:v.nodes.map(n => n.target.join(' ')).slice(0,5)})))""")
+    bad = [v for v in result if v["impact"] in ("serious", "critical")]
+    if bad:
+        found[name] = bad
 
 
 @pytest.mark.parametrize("size", [(390, 844), (1280, 900)], ids=["phone", "desktop"])
@@ -326,12 +423,16 @@ def test_accessibility_axe(seeded, new_page, size):
         if view == "graphs":
             open_graph(page)
             expect(page.locator("#heatmap")).to_be_visible()
-        page.locator("details").evaluate_all("els => els.forEach(e => e.open = true)")
-        result = page.evaluate("""axe.run(document,{resultTypes:['violations']}).then(r =>
-            r.violations.map(v => ({id:v.id, impact:v.impact, nodes:v.nodes.map(n => n.target.join(' ')).slice(0,5)})))""")
-        bad = [v for v in result if v["impact"] in ("serious", "critical")]
-        if bad:
-            found[view] = bad
+        if view == "teach":  # the default epoch shows the match panel; "bench" shows the change badge
+            expect(page.locator("#matchCard")).to_be_visible()
+            scan(page, found, "teach-match")
+            page.locator("#epochSelect").select_option("bench")
+            expect(page.locator("#probs [data-scope='camera:cam1'] .suspect")).to_be_visible()
+            expect(page.locator("html[data-inflight='0']")).to_have_count(1)
+        if view == "graphs":
+            page.locator("#fmapBtn").click()
+            expect(page.locator("#fmapResult table")).to_be_visible()
+        scan(page, found, view)
     go(page, "evidence")
     page.locator("#evidenceTable button.danger").first.click()
     expect(page.locator("#confirmDialog")).to_be_visible()

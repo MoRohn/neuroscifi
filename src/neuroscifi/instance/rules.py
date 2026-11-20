@@ -65,7 +65,7 @@ def get(db, version):
 
 
 def latest(db):
-    row = db.execute("SELECT version FROM scoring_rules ORDER BY created_at DESC, rowid DESC LIMIT 1").fetchone()
+    row = db.execute("SELECT version FROM scoring_rules ORDER BY rowid DESC LIMIT 1").fetchone()
     if not row:
         raise NotFound("No scoring rule registered")
     return row[0]

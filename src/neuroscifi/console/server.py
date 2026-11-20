@@ -14,7 +14,11 @@ import json
 from pathlib import Path
 import re
 import secrets
+import sqlite3
+import sys
+import threading
 import time
+from uuid import uuid4
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from ..instance import (beliefs, checkpoints, datasets, evidence, executive, governance, graphs, memory,
@@ -24,6 +28,10 @@ from ..instance.errors import InstanceError, ValidationError
 BIND = "127.0.0.1"
 DEFAULT_PORT = 8766
 MAX_BODY = 4096
+MAX_ID = 2**63 - 1             # SQLite INTEGER range: a larger id cannot exist
+SWEEP_EVERY = 60.0             # seconds between expiry sweeps triggered by GET requests
+GET_SWEEP_BUSY_MS = 200        # a GET never waits longer than this for the write lock
+POST_BUSY_MS = 2000
 WEB = Path(__file__).resolve().parent / "web"
 ICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" '
         b'fill="#184e42"/><circle cx="16" cy="16" r="7" fill="none" stroke="#f4f7f5" stroke-width="3"/></svg>')
@@ -125,8 +133,16 @@ def _pending(c, p, q, b):
 
 
 def _resolve(c, p, q, b):
-    _fields(b, ("resolution",))
-    return executive.resolve(c.db, int(p[0]), b["resolution"], c.now)
+    _fields(b, ("resolution",), ("confirm",))
+    confirm = b.get("confirm")
+    if "confirm" in b and not isinstance(confirm, bool):
+        raise ValidationError("confirm must be true or false")
+    return executive.resolve(c.db, int(p[0]), b["resolution"], c.now, confirm=confirm)
+
+
+def _match(c, p, q, b):
+    q = _query(q, ("last",))
+    return beliefs.match_epochs(c.db, p[0], last=_number(q.get("last", str(beliefs.MATCH_EVENTS)), "last", int))
 
 
 def _forget(c, p, q, b):
@@ -158,7 +174,7 @@ def _graph(c, p, q, b):
 def _graph_learn(c, p, q, b):
     _fields(b, ("context", "train", "validation"))
     revision = graphs.learn(c.db, b["context"], c.now, train=_int(b["train"], "train"),
-                            validation=_int(b["validation"], "validation"), holder="console")
+                            validation=_int(b["validation"], "validation"), holder=f"console:{uuid4()}")
     return {"revision_id": revision}
 
 
@@ -175,6 +191,15 @@ def _graph_promote(c, p, q, b):
 def _graph_reject(c, p, q, b):
     _fields(b, ("reason",))
     return graphs.reject(c.db, int(p[0]), c.now, b["reason"])
+
+
+def _coactivation(c, p, q, b):
+    _fields(b, ("dataset_id",), ("lags", "top"))
+    lags = b.get("lags", list(graphs.COACTIVATION_LAGS))
+    if not isinstance(lags, list) or not lags or not all(isinstance(x, int) and not isinstance(x, bool) for x in lags):
+        raise ValidationError("lags must be a non-empty list of integers")
+    top = _int(b.get("top", 20), "top")
+    return graphs.functional_map(c.db, _int(b["dataset_id"], "dataset_id"), c.now, lags=lags, top=top)
 
 
 def _datasets(c, p, q, b):
@@ -201,7 +226,18 @@ def _checkpoints(c, p, q, b):
 
 def _checkpoint_create(c, p, q, b):
     _fields(b, (), ("policy",))
-    return checkpoints.create(c.db, c.path, c.path.parent / "checkpoints", c.now, policy=b.get("policy", "cold"))
+    return checkpoints.create(c.db, c.path, checkpoints.default_dir(c.path), c.now, policy=b.get("policy", "cold"))
+
+
+def _checkpoint_prune(c, p, q, b):
+    _fields(b, ("keep",))
+    return checkpoints.prune(c.db, c.now, _int(b["keep"], "keep"))
+
+
+def _checkpoint_rebuild(c, p, q, b):
+    _fields(b, (), ("keep", "policy"))
+    return checkpoints.rebuild_stale(c.db, c.path, checkpoints.default_dir(c.path), c.now,
+                                     policy=b.get("policy", "cold"), keep=_int(b.get("keep", 7), "keep"))
 
 
 def _checkpoint_verify(c, p, q, b):
@@ -225,6 +261,7 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("POST", "epochs", _start_epoch),
     ("GET", f"epochs/{SEGMENT}/beliefs", _explain),
     ("GET", f"epochs/{SEGMENT}/explain", _explain),
+    ("GET", f"epochs/{SEGMENT}/match", _match),
     ("GET", f"epochs/{SEGMENT}/decision", _decision),
     ("POST", f"epochs/{SEGMENT}/decide", _decide),
     ("GET", f"epochs/{SEGMENT}/evidence", _evidence),
@@ -236,6 +273,7 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("GET", "graphs", _graphs),
     ("POST", "graphs/learn", _graph_learn),
     ("GET", r"graphs/(\d+)", _graph),
+    ("POST", "graphs/coactivation", _coactivation),
     ("POST", r"graphs/(\d+)/evaluate", _graph_evaluate),
     ("POST", r"graphs/(\d+)/promote", _graph_promote),
     ("POST", r"graphs/(\d+)/reject", _graph_reject),
@@ -244,6 +282,8 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("POST", "recall", _recall),
     ("GET", "checkpoints", _checkpoints),
     ("POST", "checkpoints", _checkpoint_create),
+    ("POST", "checkpoints/prune", _checkpoint_prune),
+    ("POST", "checkpoints/rebuild", _checkpoint_rebuild),
     ("POST", r"checkpoints/(\d+)/verify", _checkpoint_verify),
     ("GET", "memory", _memory),
 )]
@@ -315,6 +355,8 @@ class Handler(BaseHTTPRequestHandler):
             allow = ", ".join(sorted({method for method, _, _ in matches}))
             return self.reply(405, {"error": "method not allowed"}, extra={"Allow": allow})
         match, handler = chosen
+        if r"(\d+)" in match.re.pattern and any(int(g) > MAX_ID for g in match.groups()):
+            return self.fail(404, "unknown route")
         body = self._body()
         if body is None:
             return
@@ -325,6 +367,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             size = int(self.headers.get("Content-Length") or 0)
         except ValueError:
+            self.fail(400, "invalid Content-Length")
+            return None
+        if size < 0:
             self.fail(400, "invalid Content-Length")
             return None
         if self.command == "GET":
@@ -356,16 +401,42 @@ class Handler(BaseHTTPRequestHandler):
         try:
             db = store.open_existing(self.server.db_path)
             now = self.server.clock()
-            governance.sweep(db, now)
+            if self.command == "GET":
+                self._sweep_if_due(db, now)
+            else:
+                db.execute(f"PRAGMA busy_timeout={self.server.post_busy_ms}")
+                governance.sweep(db, now)
             result = handler(_Context(db, self.server.db_path, now), params, query, body)
             self.reply(200, result)
         except InstanceError as error:
             self.fail(error.http_status, str(error))
+        except sqlite3.OperationalError as error:
+            if "locked" in str(error) or "busy" in str(error):
+                self.reply(503, {"error": "instance busy; retry"}, extra={"Retry-After": "1"})
+            else:
+                self.fail(500, "internal error")
         except Exception:
             self.fail(500, "internal error")
         finally:
             if db is not None:
                 db.close()
+
+    def _sweep_if_due(self, db, now):
+        """GETs stay readable behind a writer: sweep at most once a minute and give up quickly if the lock is busy."""
+        server = self.server
+        with server.sweep_lock:
+            due = time.monotonic() - server.last_sweep >= SWEEP_EVERY
+            if due:
+                server.last_sweep = time.monotonic()
+        if not due:
+            return
+        db.execute(f"PRAGMA busy_timeout={GET_SWEEP_BUSY_MS}")
+        try:
+            governance.sweep(db, now)
+        except sqlite3.OperationalError as error:
+            if "locked" not in str(error) and "busy" not in str(error):
+                raise
+        db.execute(f"PRAGMA busy_timeout={self.server.post_busy_ms}")
 
     def do_GET(self):
         self.handle_method()
@@ -387,7 +458,12 @@ class ConsoleServer(ThreadingHTTPServer):
         store.open_existing(self.db_path).close()  # refuse to start without an instance
         self.token = token or secrets.token_urlsafe(32)
         self.clock = clock
+        self.post_busy_ms = POST_BUSY_MS
+        self.sweep_lock, self.last_sweep = threading.Lock(), float("-inf")
         super().__init__((BIND, port), Handler)
+
+    def handle_error(self, request, client_address):
+        print("nsf-console: connection error", file=sys.stderr, flush=True)  # no address, no traceback
 
     @property
     def url(self):

@@ -3,7 +3,8 @@
 #
 # Creates the system user "neuroscifi", a virtual environment under the prefix, installs the package,
 # and copies the systemd units. The units are installed DISABLED and are never started or enabled here.
-# Safe to run again: existing users, directories, an existing env file and the venv are reused.
+# Safe to run again: existing users, directories, an existing env file and a root-owned venv are reused;
+# a venv not owned by root is refused, and an existing env file is only chmod'ed to 0640.
 #
 #   sudo bash deploy/install.sh [--dry-run] [--source DIR | --wheel FILE] [--wheelhouse DIR]
 #                               [--prefix DIR] [--python PYTHON] [--unit-dir DIR]
@@ -41,6 +42,10 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# PREFIX is spliced into unit files with sed, so allow only plain absolute paths.
+[[ "$PREFIX" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--prefix must match ^/[A-Za-z0-9._/-]+\$ (got: $PREFIX)"
+case "$PREFIX/" in */../*) die "--prefix must not contain '..'" ;; esac
 
 if [ "$DRY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
   die "must run as root (use sudo). Use --dry-run to review the plan without root."
@@ -91,13 +96,19 @@ act install -d -m 0750 -o root -g "$SVC_USER" "$CONF_DIR"
 act install -d -m 0750 -o root -g "$SVC_USER" "$CONF_DIR/tls"
 
 note "virtual environment $PREFIX/venv (owned by root; the service cannot modify its own code)"
-if [ -x "$PREFIX/venv/bin/python" ]; then echo "venv exists; reusing"; else act "$PYTHON" -m venv "$PREFIX/venv"; fi
+if [ -e "$PREFIX/venv" ] || [ -L "$PREFIX/venv" ]; then
+  # The service runs code from this venv, so anyone who owns it can run code as the service.
+  [ ! -L "$PREFIX/venv" ] && [ -d "$PREFIX/venv" ] && [ "$(stat -c %u "$PREFIX/venv")" = 0 ] \
+    || die "$PREFIX/venv exists but is not a real directory owned by root; refusing to reuse it. Inspect it and remove it yourself."
+fi
+if [ -x "$PREFIX/venv/bin/python" ]; then echo "venv exists (owned by root); reusing"; else act "$PYTHON" -m venv "$PREFIX/venv"; fi
 note "install package from $TARGET"
 act "$PREFIX/venv/bin/python" -m pip install "${PIPARGS[@]}" "$TARGET"
 
 note "environment file"
 if [ -e "$CONF_DIR/neuroscifi.env" ]; then
-  echo "$CONF_DIR/neuroscifi.env exists; left untouched"
+  echo "$CONF_DIR/neuroscifi.env exists; contents left untouched, mode set to 0640"
+  act chmod 0640 "$CONF_DIR/neuroscifi.env"
 else
   act install -m 0640 -o root -g "$SVC_USER" "$HERE/neuroscifi.env.example" "$CONF_DIR/neuroscifi.env"
 fi

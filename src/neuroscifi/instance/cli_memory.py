@@ -5,7 +5,7 @@ from . import checkpoints, governance, memory, store
 
 
 def _dir(args):
-    return args.dir if args.dir is not None else Path(store.resolve_db(args)).resolve().parent / "checkpoints"
+    return args.dir if args.dir is not None else checkpoints.default_dir(store.resolve_db(args))
 
 
 def register(sub, *, with_db, run):
@@ -45,13 +45,16 @@ def register(sub, *, with_db, run):
     p = sub.add_parser("checkpoint", help="verified archives of the instance")
     csub = p.add_subparsers(dest="checkpoint_what", required=True)
 
-    def sub_cmd(name, handler, *, dir_option=False, policy=False):
+    def sub_cmd(name, handler, *, dir_option=False, policy=False, keep=False):
         q = csub.add_parser(name)
         store.add_db_argument(q)
         if dir_option:
-            q.add_argument("--dir", type=Path, default=None, help="archive folder (default <db parent>/checkpoints)")
+            q.add_argument("--dir", type=Path, default=None,
+                           help="archive folder (default <db parent>/<db stem>.checkpoints)")
         if policy:
             q.add_argument("--policy", choices=sorted(checkpoints.POLICIES), default="cold")
+        if keep:
+            q.add_argument("--keep", type=int, default=7, help="valid archives to keep (newest first)")
         q.set_defaults(handler=with_db(handler))
         return q
 
@@ -63,4 +66,5 @@ def register(sub, *, with_db, run):
     q.add_argument("id", type=int)
     q.add_argument("dest", type=Path)
     sub_cmd("rebuild", lambda db, a, now: checkpoints.rebuild_stale(
-        db, store.resolve_db(a), _dir(a), now, policy=a.policy), dir_option=True, policy=True)
+        db, store.resolve_db(a), _dir(a), now, policy=a.policy, keep=a.keep), dir_option=True, policy=True, keep=True)
+    sub_cmd("prune", lambda db, a, now: checkpoints.prune(db, now, keep=a.keep), keep=True)

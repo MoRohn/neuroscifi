@@ -33,8 +33,16 @@ CI does not run layer 7.
 State this plainly when reporting results.
 
 - **No handset has been tested.** The browser tests use headless Chromium with a fake microphone and camera. Real phone browsers, real sensors, iOS Safari behaviour, install-to-home-screen, and permission prompts are untested. The Android and iOS native collectors were not built or run on physical hardware.
-- **The DGX Spark has not been used.** No test runs on the Spark, on DGX OS, or on a GPU. Nothing has measured p50/p95/p99 sensor-to-action latency, dropped inputs, memory high-water mark or energy per skill (OPS-06 is blocked on hardware). The repository's CPU benchmarks are from other hosts.
-- **No GPU or CUDA path is exercised** by the instance, Pocket or console tests.
+- **Development host.** The release was built and tested on an NVIDIA DGX Spark: aarch64, 20 cores, GB10 GPU, 121 GB unified memory. It runs a general Arch-based distribution, not DGX OS, and has no camera or microphone attached.
+- **What was measured on it:**
+  - the CPU probe;
+  - the GB10 CUDA probe (`nsf lab profile_device --device cuda`, with the `gpu` extra);
+  - the compression bake-off;
+  - host observe→decide latency, idle and under concurrent learning and checkpointing (acceptance `device_ownership`).
+
+  The results are in `docs/quality/evidence/`.
+- **Not measured: sensor-to-action latency with real sensors, dropped inputs from real capture, and energy per skill.** There are no capture devices or power meter (OPS-06 sensor part).
+- **No GPU in the regular suites.** The instance, Pocket and console tests do not use the GPU. The CUDA path is a separate probe and is not part of `scripts/check.sh` or CI.
 - **The deployment is unexercised.** `deploy/install.sh` has been syntax-checked and dry-run only. The units have passed `systemd-analyze verify` and a user-mode sandbox run of the CLI, but have not been started as system services. Namespace hardening (`ProtectSystem=strict`, `PrivateTmp`) has not run, nor TLS to a real phone, nor an encrypted volume, nor a power-loss recovery.
 - **The acceptance scenarios are simulated.** They do not claim physical validation.
 - **Not tested at all:** a trusted public certificate chain, VPN or LAN topology, backup tooling exclusions, and concurrent heavy load.

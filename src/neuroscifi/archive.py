@@ -202,7 +202,8 @@ def convert(command, source, destination, methods=FAST):
             with closing(sqlite3.connect(uri, uri=True)) as live, closing(sqlite3.connect(snapshot)) as copy:
                 live.backup(copy)
             source = snapshot
-        with source.open("rb") as inp, (temp/"output").open("wb") as out:
+        fd = os.open(temp/"output", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)  # private whatever the umask
+        with source.open("rb") as inp, os.fdopen(fd, "wb") as out:
             if command == "unpack":
                 unpack(inp, out)
             else:

@@ -5,6 +5,11 @@ Description=NeuroSciFi Pocket bridge (phone interface)
 # Refuse to start unless the (encrypted) state volume is mounted, so data never lands on the unencrypted root disk.
 RequiresMountsFor=%S/neuroscifi
 After=network-online.target
+# Optional, off by default: refuse to start unless the state directory is itself a mount point. RequiresMountsFor
+# above only waits for a mount unit if one exists; if the encrypted volume is not mounted, the state directory
+# would be created on the unencrypted root disk. Uncomment after mounting the volume at /var/lib/neuroscifi
+# (adjust the path if %S differs). Do not enable it on a host that keeps state on the root filesystem.
+#ConditionPathIsMountPoint=/var/lib/neuroscifi
 Wants=network-online.target
 
 [Service]
@@ -34,8 +39,14 @@ RuntimeDirectoryMode=0700
 ReadWritePaths=%S/neuroscifi
 UMask=0077
 
+# Resource ceilings so a runaway request cannot starve the rest of the host.
+MemoryMax=1G
+TasksMax=128
+
 # Sensing happens on the phone, so this service needs no devices, privileges or namespaces.
 NoNewPrivileges=yes
+RemoveIPC=yes
+PrivateUsers=yes
 CapabilityBoundingSet=
 AmbientCapabilities=
 ProtectSystem=strict

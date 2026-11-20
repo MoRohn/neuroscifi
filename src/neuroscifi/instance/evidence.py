@@ -74,6 +74,7 @@ def observe(db, obs, now, *, path=None):
     """
     record = normalize(obs)
     with store.write(db):
+        beliefs.ensure_tables(db)
         beliefs.require_epoch(db, record["epoch"])
         if db.execute("SELECT 1 FROM tombstones WHERE id=?", (record["id"],)).fetchone():
             raise Gone(f"Evidence {record['id']!r} was forgotten or expired and cannot be recorded again")

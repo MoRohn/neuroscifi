@@ -9,6 +9,7 @@ import secrets
 import signal
 import sqlite3
 import ssl
+import sys
 import threading
 import time
 from collections import Counter
@@ -33,6 +34,7 @@ FIELD = {
     "power":(("saving","standard"),("android","ios")), "thermal":(("normal","elevated","high"),("android","ios"))
 }
 DAY = 86400
+MAX_CONNECTIONS = 32
 
 
 def fingerprint(token):
@@ -71,7 +73,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS devices(key TEXT PRIMARY KEY, label TEXT UNIQUE NOT NULL);
                 CREATE TABLE IF NOT EXISTS events(
                   device TEXT REFERENCES devices(key) ON DELETE CASCADE, id TEXT, ch TEXT, val TEXT,
-                  learn INTEGER, until INTEGER, PRIMARY KEY(device,id));
+                  learn INTEGER, until INTEGER, asked INTEGER, PRIMARY KEY(device,id));
                 CREATE TABLE IF NOT EXISTS members(device TEXT PRIMARY KEY REFERENCES devices(key) ON DELETE CASCADE,
                   family TEXT NOT NULL);
                 INSERT OR IGNORE INTO members SELECT key,key FROM devices;
@@ -94,6 +96,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS muted(
                   device TEXT REFERENCES devices(key) ON DELETE CASCADE,ch TEXT,PRIMARY KEY(device,ch));
             """)
+            if "asked" not in [r[1] for r in db.execute("PRAGMA table_info(events)")]:
+                db.execute("ALTER TABLE events ADD COLUMN asked INTEGER")  # learn value originally requested
 
     def pair(self, sponsor=None):
         key = secrets.token_urlsafe(32)
@@ -170,22 +174,26 @@ class Store:
                 args = (key, ident)
                 if db.execute("SELECT 1 FROM retired WHERE device=? AND id=?", args).fetchone():
                     return 410, {}
-                row = db.execute("SELECT ch,val,learn FROM events WHERE device=? AND id=?", args).fetchone()
+                row = db.execute("SELECT ch,val,learn,asked FROM events WHERE device=? AND id=?", args).fetchone()
                 is_muted = db.execute("SELECT 1 FROM muted WHERE device=? AND ch=?", (key, channel)).fetchone()
                 if row is not None:
-                    # Muting turned learning off after storage, so a retry of the original request still matches.
-                    return (200 if row == (channel, value, learn) or (is_muted and learn and row[:2] == (channel, value)) else 409), {}
+                    # Muting turned learning off after storage, so a retry of the original request still matches,
+                    # also after unmuting. Rows stored before `asked` existed fall back to the muted-now rule.
+                    same = row[:2] == (channel, value) and (row[2] == learn or row[3] == learn or
+                                                            (row[3] is None and is_muted and learn))
+                    return (200 if same else 409), {}
                 if learn and is_muted:
                     return 423, {}
                 if db.execute("SELECT count(*) FROM events WHERE device=?", (key,)).fetchone()[0] >= 128:
                     return 429, {}
-                db.execute("INSERT INTO events VALUES (?,?,?,?,?,?)", (key, ident, channel, value, learn, now + DAY))
+                db.execute("INSERT INTO events(device,id,ch,val,learn,until,asked) VALUES (?,?,?,?,?,?,?)",
+                           (key, ident, channel, value, learn, now + DAY, learn))
                 return 201, {}
             if operation == "forget" and set(data) == {"id"}:
                 args = (key, event_id(data["id"]))
-                if db.execute("SELECT 1 FROM events WHERE device=? AND id=?", args).fetchone():
-                    db.execute("INSERT OR IGNORE INTO retired VALUES (?,?)", args)
-                    db.execute("DELETE FROM events WHERE device=? AND id=?", args)
+                # Retire even an id not stored yet, so a delayed save of a forgotten event gets 410.
+                db.execute("INSERT OR IGNORE INTO retired VALUES (?,?)", args)
+                db.execute("DELETE FROM events WHERE device=? AND id=?", args)
                 return 200, {}
             if operation in {"mute", "unmute"} and set(data) == {"channel"}:
                 channel = data["channel"]
@@ -227,13 +235,23 @@ class Handler(BaseHTTPRequestHandler):
             "Content-Type": mime, "Content-Length": str(len(body)), "Cache-Control": "no-store",
             "Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff",
             "Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
-            "Content-Security-Policy": "default-src 'none'; worker-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; manifest-src 'self'; img-src 'self'; media-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+            "Content-Security-Policy": "default-src 'none'; worker-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; manifest-src 'self'; img-src 'self'; media-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+            **({"Strict-Transport-Security": "max-age=31536000"} if isinstance(self.connection, ssl.SSLSocket) else {}),
         }.items():
             self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
+    def host_allowed(self):
+        names = getattr(self.server, "allowed_hosts", None)
+        if not names:
+            return True
+        host = self.headers.get("Host", "").lower()
+        return host in names or host in {f"{n}:{self.server.server_port}" for n in names}
+
     def do_GET(self):
+        if not self.host_allowed():
+            return self.reply(421)
         asset = ASSETS.get(self.path)
         if not asset:
             return self.reply(404)
@@ -241,6 +259,8 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(200, (WEB/name).read_bytes(), mime)
 
     def do_POST(self):
+        if not self.host_allowed():
+            return self.reply(421)
         route = self.path.removeprefix("/api/")
         if self.path != "/api/" + route or route not in {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link","mute","unmute"}:
             return self.reply(404)
@@ -289,6 +309,44 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(403)
         except (ValueError, TypeError):
             self.reply(400)
+        except sqlite3.Error:
+            self.reply(503, {})
+
+
+class PocketServer(ThreadingHTTPServer):
+    """Threaded server whose TLS handshake runs in the worker thread under a timeout, with a connection cap.
+
+    Wrapping the listening socket would handshake inside accept(), so one silent TCP connection froze every client.
+    """
+    def __init__(self, address, handler=Handler, tls=None, limit=MAX_CONNECTIONS):
+        super().__init__(address, handler)
+        self.tls, self.slots = tls, threading.BoundedSemaphore(limit)
+
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            self.shutdown_request(request)  # over the cap: drop at once
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            try:
+                request.settimeout(Handler.timeout)
+                if self.tls:
+                    request = self.tls.wrap_socket(request, server_side=True)
+            except OSError:
+                self.shutdown_request(request)
+                return
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
+
+    def handle_error(self, request, client_address):
+        print("nsf-pocket: connection error", file=sys.stderr, flush=True)  # no address, no traceback
 
 
 def write_invitation_file(path, code):
@@ -317,6 +375,8 @@ def main(argv=None):
     p.add_argument("--key")
     p.add_argument("--invitation-file", metavar="PATH",
                    help="write the one-use code to this new 0600 file instead of stdout; removed when used, expired or at shutdown")
+    p.add_argument("--allowed-host", action="append", metavar="NAME",
+                   help="accept only this Host (name or name:port); repeatable; others get 421")
     p.add_argument("--list-pairings", action="store_true")
     p.add_argument("--erase-pairing", metavar="LABEL")
     a = p.parse_args(argv)
@@ -334,12 +394,13 @@ def main(argv=None):
         return
     if bool(a.cert) != bool(a.key) or (a.bind not in {"127.0.0.1","localhost"} and not a.cert):
         p.error("LAN access requires both --cert and --key for HTTPS.")
-    server = ThreadingHTTPServer((a.bind,a.port), Handler)
+    ctx = None
     if a.cert:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.load_cert_chain(a.cert,a.key)
-        server.socket = ctx.wrap_socket(server.socket,server_side=True)
+    server = PocketServer((a.bind,a.port), Handler, tls=ctx)
+    server.allowed_hosts = {h.lower() for h in a.allowed_host or ()}
     server.store, server.pair_lock = store, threading.Lock()
     server.invitation = secrets.token_urlsafe(24)
     server.invitation_deadline = time.monotonic() + 300

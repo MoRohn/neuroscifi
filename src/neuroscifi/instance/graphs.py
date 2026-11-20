@@ -6,7 +6,9 @@ graphs stay available for rollback and recall. Deleting a dataset turns every re
 validated on it into 'invalidated' (invalidate_dependents).
 
 Single writer: learn, promote and rollback hold the context lease (graph_leases) for their duration and
-re-check it inside the committing transaction.
+re-check it inside the committing transaction. Fitting and scoring run under the lease but outside any
+write transaction; the short committing transaction re-checks what they read (datasets not deleted,
+incumbent and lineage unchanged) and raises Gone or Conflict instead of committing a stale result.
 
 The scoring rule is copied from rules.latest(db) when a candidate is created and is immutable afterwards
 (schema trigger). Nothing in this module registers rules; only the owner command does.
@@ -21,12 +23,15 @@ import numpy as np
 
 from ..graph_store import HEADER, decode
 from . import datasets, learner, rules, store
-from .errors import Conflict, LeaseHeld, NotFound, ValidationError
+from .errors import Conflict, Gone, LeaseHeld, NotFound, ValidationError
 
 COLUMNS = ("id", "context", "parent_id", "status", "bits", "degree", "rows", "cols", "byte_size", "sha256",
            "rule_version", "origin", "metrics", "decision", "created_at", "decided_at")
-CHECKS = ("independent_heldout", "heldout_gain", "retention", "byte_budget")
+CHECKS = ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact")
 NEW_CONTEXT_ADVICE = "register as a new context; the incumbent still solves older data"
+REPLACED_BY_ROLLBACK = "replaced_by_rollback"
+LESION_BLOCK = 32          # time steps per block for the lesion standard error
+COACTIVATION_LAGS = (1, 2, 3)
 
 
 # ---- helpers ------------------------------------------------------------------------------------------
@@ -211,6 +216,10 @@ def learn(db, context, now, *, train, validation, holder):
         }
         with store.write(db):
             _require_lease(db, context, holder)
+            for dataset_id in (train, validation):
+                if db.execute("SELECT deleted_at IS NOT NULL OR blob IS NULL FROM datasets WHERE id=?",
+                              (dataset_id,)).fetchone()[0]:
+                    raise Gone(f"Dataset {dataset_id} was deleted while the candidate was being learned")
             revision = _insert_revision(db, context=context, parent_id=_active(db, context), status="candidate",
                                         blob=packed["blob"], rule_version=rule_version, origin="learner",
                                         metrics=metrics, now=now)
@@ -292,6 +301,10 @@ def _gate(db, cand, rule, now):
     # (d) resource budget
     checks["byte_budget"] = {"passed": cand["byte_size"] <= int(rule["byte_budget"]),
                              "byte_size": cand["byte_size"], "byte_budget": int(rule["byte_budget"])}
+    # (e) integrity: nothing the candidate was learned from has been deleted
+    lineage = _lineage(db, cand["id"])
+    deleted = [dataset_id for dataset_id, _, _, deleted_at in lineage if deleted_at is not None]
+    checks["lineage_intact"] = {"passed": not deleted, "datasets": [row[0] for row in lineage], "deleted": deleted}
     promoted = all(checks[name]["passed"] is True for name in CHECKS)
     decision = {
         "action": "promote" if promoted else "reject", "promoted": promoted, "decided_at": now,
@@ -311,18 +324,35 @@ def _gate(db, cand, rule, now):
 
 
 def promote(db, revision_id, now):
-    """Run the gate of the candidate's recorded rule; promote on a full pass, otherwise reject."""
+    """Run the gate of the candidate's recorded rule; promote on a full pass, otherwise reject.
+
+    Scoring runs under the context lease but outside the write transaction, so readers and evidence
+    writers are not blocked while held-out data is scored. The committing transaction re-checks that the
+    candidate is still a candidate and that the incumbent and the lineage are what was scored; otherwise
+    Conflict (nothing is written, the candidate can be promoted again).
+    """
     rev = _row(db, revision_id)
     if rev["status"] != "candidate":
         raise Conflict(f"Revision {revision_id} is {rev['status']}; only candidates can be promoted")
     holder = _holder("promote")
     with lease(db, rev["context"], holder, now):
+        cand = _row(db, revision_id)
+        if cand["status"] != "candidate":
+            raise Conflict(f"Revision {revision_id} is {cand['status']}; only candidates can be promoted")
+        decision = _gate(db, cand, rules.get(db, cand["rule_version"]), now)
         with store.write(db):
             _require_lease(db, rev["context"], holder)
-            cand = _row(db, revision_id)
-            if cand["status"] != "candidate":
-                raise Conflict(f"Revision {revision_id} is {cand['status']}; only candidates can be promoted")
-            decision = _gate(db, cand, rules.get(db, cand["rule_version"]), now)
+            status = db.execute("SELECT status FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()[0]
+            if status != "candidate":
+                raise Conflict(f"Revision {revision_id} became {status} while it was scored")
+            if _active(db, cand["context"]) != decision["incumbent"]:
+                raise Conflict(f"The active graph of {cand['context']} changed while revision {revision_id} was "
+                               "scored; promote again")
+            lineage = [[d, deleted is not None] for d, _, _, deleted in _lineage(db, revision_id)]
+            scored = [[d, d in decision["checks"]["lineage_intact"]["deleted"]]
+                      for d in decision["checks"]["lineage_intact"]["datasets"]]
+            if lineage != scored:
+                raise Conflict(f"The lineage of revision {revision_id} changed while it was scored; promote again")
             if decision["promoted"]:
                 if decision["incumbent"] is not None:
                     db.execute("UPDATE graph_revisions SET status='archived' WHERE id=?", (decision["incumbent"],))
@@ -369,7 +399,10 @@ def rollback(db, context, revision_id, now):
                 raise Conflict(f"Revision {revision_id} was learned from a deleted dataset")
             previous = _active(db, context)
             if previous is not None:
-                db.execute("UPDATE graph_revisions SET status='archived' WHERE id=?", (previous,))
+                # The owner rolled back FROM this revision: record it so a later cascade does not revive it.
+                db.execute("UPDATE graph_revisions SET status='archived', decision=?, decided_at=? WHERE id=?",
+                           (_dump({"action": REPLACED_BY_ROLLBACK, "by": revision_id, "decided_at": now,
+                                   "prior": _row(db, previous)["decision"]}), now, previous))
             decision = {"action": "rollback", "decided_at": now, "replaced": previous, "prior": rev["decision"]}
             db.execute("UPDATE graph_revisions SET status='active', decision=?, decided_at=? WHERE id=?",
                        (_dump(decision), now, revision_id))
@@ -382,7 +415,8 @@ def invalidate_dependents(db, dataset_id, now):
 
     Does not bump state_version: the caller's deletion is the one logical change. When the active revision
     of a context is invalidated, the newest archived revision of that context whose lineage has no deleted
-    dataset is re-activated; if there is none, `failure` names the context.
+    dataset and that the owner did not roll back from (its latest decision is not 'replaced_by_rollback')
+    is re-activated; if there is none, `failure` names the context.
     """
     revs = db.execute("SELECT DISTINCT r.id, r.context, r.status, r.decision FROM graph_lineage l "
                       "JOIN graph_revisions r ON r.id=l.revision_id WHERE l.dataset_id=? "
@@ -400,8 +434,9 @@ def invalidate_dependents(db, dataset_id, now):
     reactivated, failures = None, []
     for context in contexts:
         candidates = [r[0] for r in db.execute(
-            "SELECT id FROM graph_revisions WHERE context=? AND status='archived' ORDER BY created_at DESC, id DESC",
-            (context,))]
+            "SELECT id, decision FROM graph_revisions WHERE context=? AND status='archived' "
+            "ORDER BY created_at DESC, id DESC", (context,))
+            if (json.loads(r[1]) if r[1] else {}).get("action") != REPLACED_BY_ROLLBACK]
         chosen = next((r for r in candidates if _lineage_intact(db, r)), None)
         if chosen is None:
             failures.append(f"no eligible snapshot for context {context}")
@@ -417,29 +452,53 @@ def invalidate_dependents(db, dataset_id, now):
 
 # ---- inspection ---------------------------------------------------------------------------------------
 
+def _block_se(per_step, block=LESION_BLOCK):
+    """Standard error of the mean of a per-step series from non-overlapping time blocks (autocorrelation-robust)."""
+    blocks = len(per_step) // block
+    if blocks < 2:
+        return None
+    means = per_step[:blocks * block].reshape(blocks, block).mean(axis=1)
+    return float(means.std(ddof=1) / np.sqrt(blocks))
+
+
+def _dataset_context(db, dataset_id):
+    row = db.execute("SELECT context FROM datasets WHERE id=?", (dataset_id,)).fetchone()
+    if row is None:
+        raise NotFound(f"Unknown dataset {dataset_id}")
+    return row[0]
+
+
 def lesion(db, revision_id, dataset_id, now):
     """Zero each retained edge in turn and measure the change in error on one dataset.
 
+    Each edge also gets a time-block standard error ("se"): the per-step error change is averaged over
+    non-overlapping blocks of 32 steps and se = sd(block means) / sqrt(#blocks), which respects the
+    autocorrelation of a trajectory (None with fewer than two blocks). "task" is the dataset's context.
     Also scores a permuted control that keeps each receiver's weights but scrambles their sources
     (as lab.graph_bench does), seeded by (revision_id, dataset_id). Rows go to graph_effects.
     """
     rev = _row(db, revision_id)
     matrix = _matrix(db, revision_id).astype(np.float64)
     states, targets = datasets.load(db, dataset_id)
+    task = _dataset_context(db, dataset_id)
     if matrix.shape != (states.shape[1],) * 2:
         raise ValidationError(f"Dataset {dataset_id} has {states.shape[1]} populations, graph is "
                               f"{matrix.shape[0]}x{matrix.shape[1]}")
     base = learner.mse(matrix, states, targets)
+    residual = states @ matrix.T - targets
+    n = matrix.shape[1]
     edges = []
     for dst, src in zip(*np.nonzero(matrix)):
         copy = matrix.copy()
         copy[dst, src] = 0
-        edges.append({"src": int(src), "dst": int(dst), "weight": float(matrix[dst, src]),
-                      "delta_mse": learner.mse(copy, states, targets) - base})
+        weight = matrix[dst, src]
+        # Removing the edge shifts receiver dst's error by -weight * x_src at every step.
+        per_step = ((residual[:, dst] - weight * states[:, src]) ** 2 - residual[:, dst] ** 2) / n
+        edges.append({"src": int(src), "dst": int(dst), "weight": float(weight),
+                      "delta_mse": learner.mse(copy, states, targets) - base, "se": _block_se(per_step)})
     edges.sort(key=lambda e: -e["delta_mse"])
     rng = np.random.default_rng([revision_id, dataset_id])
     shuffled = np.zeros_like(matrix)
-    n = matrix.shape[1]
     for j in range(n):
         pool = np.delete(np.arange(n), j)
         shuffled[j, pool] = rng.permutation(matrix[j, pool])
@@ -448,14 +507,79 @@ def lesion(db, revision_id, dataset_id, now):
         db.executemany("INSERT INTO graph_effects(revision_id,dataset_id,kind,src,dst,effect,detail,created_at) "
                        "VALUES(?,?,'lesion',?,?,?,?,?)",
                        [(revision_id, dataset_id, e["src"], e["dst"], e["delta_mse"],
-                         _dump({"weight": e["weight"], "base_mse": base}), now) for e in edges])
+                         _dump({"weight": e["weight"], "base_mse": base, "se": e["se"], "block": LESION_BLOCK,
+                                "task": task}), now) for e in edges])
         db.execute("INSERT INTO graph_effects(revision_id,dataset_id,kind,src,dst,effect,detail,created_at) "
                    "VALUES(?,?,'lesion_control',NULL,NULL,?,?,?)",
-                   (revision_id, dataset_id, control, _dump({"base_mse": base, "control": "permuted sources"}), now))
+                   (revision_id, dataset_id, control,
+                    _dump({"base_mse": base, "control": "permuted sources", "task": task}), now))
         store.bump(db, "replay_updates")
         store.bump_state_version(db)
-    return {"revision_id": revision_id, "dataset_id": dataset_id, "context": rev["context"],
-            "edges": edges, "permuted_control_mse": control, "base_mse": base}
+    return {"revision_id": revision_id, "dataset_id": dataset_id, "context": rev["context"], "task": task,
+            "edges": edges, "permuted_control_mse": control, "base_mse": base, "se_block_steps": LESION_BLOCK,
+            "se_blocks": len(states) // LESION_BLOCK}
+
+
+def functional_map(db, dataset_id, now, *, lags=COACTIVATION_LAGS, top=20):
+    """Log which populations coactivate, in what context and with what lag, and propose routes from it.
+
+    For each lag L the Pearson correlation of population i at t with population j at t+L is computed over
+    the dataset's states (n = T - L pairs). Each ordered pair (i, j), i != j, is stored once in
+    graph_effects (kind 'coactivation', src=i, dst=j, effect = the correlation at its strongest lag, detail
+    {lag, context, n, by_lag}), attributed to the context's active revision. The result proposes the `top`
+    pairs by |correlation| that are NOT edges of that active graph.
+
+    Coactivation is not connection: a common stimulus or a shared upstream population can make two
+    disconnected populations coactivate, so a proposed route is a hypothesis for learn/lesion to test.
+    Raises NotFound when the dataset's context has no active graph.
+    """
+    if isinstance(top, bool) or not isinstance(top, int) or top < 1:
+        raise ValidationError("top must be a positive integer")
+    lags = tuple(lags)
+    if not lags or any(isinstance(lag, bool) or not isinstance(lag, int) or lag < 1 for lag in lags):
+        raise ValidationError("lags must be positive integers")
+    states, _ = datasets.load(db, dataset_id)
+    context = _dataset_context(db, dataset_id)
+    revision = _active(db, context)
+    if revision is None:
+        raise NotFound(f"Context {context} has no active graph to attribute a functional map to")
+    matrix = _matrix(db, revision)
+    t, n = states.shape
+    if matrix.shape != (n, n):
+        raise ValidationError(f"Dataset {dataset_id} has {n} populations, the active graph of {context} is "
+                              f"{matrix.shape[0]}x{matrix.shape[1]}")
+    if max(lags) > t - 3:
+        raise ValidationError(f"lags must leave at least 3 time steps (dataset has {t})")
+    by_lag = {}
+    for lag in lags:
+        x, y = states[:-lag], states[lag:]
+        x, y = x - x.mean(axis=0), y - y.mean(axis=0)
+        scale = np.outer(np.sqrt((x * x).sum(axis=0)), np.sqrt((y * y).sum(axis=0)))
+        corr = (x.T @ y) / np.where(scale > 0, scale, 1)     # [i, j]; a constant population correlates 0
+        corr[scale == 0] = 0
+        by_lag[lag] = corr
+    pairs = []
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            values = {lag: float(by_lag[lag][i, j]) for lag in lags}
+            lag = max(lags, key=lambda k: (abs(values[k]), -k))
+            pairs.append({"src": i, "dst": j, "lag": lag, "correlation": values[lag], "n": t - lag,
+                          "by_lag": {str(k): v for k, v in values.items()}, "in_graph": bool(matrix[j, i] != 0)})
+    with store.write(db):
+        db.executemany("INSERT INTO graph_effects(revision_id,dataset_id,kind,src,dst,effect,detail,created_at) "
+                       "VALUES(?,?,'coactivation',?,?,?,?,?)",
+                       [(revision, dataset_id, p["src"], p["dst"], p["correlation"],
+                         _dump({"lag": p["lag"], "context": context, "n": p["n"], "by_lag": p["by_lag"]}), now)
+                        for p in pairs])
+        store.bump(db, "replay_updates")
+        store.bump_state_version(db)
+    proposed = sorted((p for p in pairs if not p["in_graph"]), key=lambda p: (-abs(p["correlation"]), p["src"], p["dst"]))
+    return {"dataset_id": dataset_id, "context": context, "revision_id": revision, "lags": list(lags),
+            "pairs": len(pairs), "edges_in_graph": int((matrix != 0).sum()),
+            "routes": [{key: p[key] for key in ("src", "dst", "lag", "correlation", "n")} for p in proposed[:top]],
+            "caveat": "coactivation can come from a common stimulus; test a route with learn and lesion"}
 
 
 def _public(rev):
@@ -480,12 +604,15 @@ def show(db, revision_id):
 
 
 def export(db, revision_id, out_path):
-    """Write the revision's NSG1 bytes to a new file. Refuses to overwrite."""
+    """Write the revision's NSG1 bytes to a new file (mode 0600). Refuses to overwrite or to follow a symlink."""
     rev = _row(db, revision_id)
     blob = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()[0]
     try:
-        with open(out_path, "xb") as out:
-            out.write(blob)
+        fd = os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     except FileExistsError:
         raise Conflict(f"{out_path} already exists; export never overwrites") from None
+    except OSError as error:
+        raise ValidationError(f"Cannot create {out_path}: {error.strerror}") from None
+    with os.fdopen(fd, "wb") as out:
+        out.write(blob)
     return {"revision_id": revision_id, "path": str(out_path), "bytes": len(blob), "sha256": rev["sha256"]}
