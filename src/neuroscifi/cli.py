@@ -8,6 +8,7 @@ COMMAND_MODULES = [
     "neuroscifi.files_cli",
     "neuroscifi.instance.cli",
     "neuroscifi.console.cli",
+    "neuroscifi.acceptance.cli",
 ]
 
 

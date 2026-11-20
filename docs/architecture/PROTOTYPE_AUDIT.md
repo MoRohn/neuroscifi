@@ -63,4 +63,26 @@ The `Implementation` column of `REQUIREMENTS_MATRIX.md` names the prototype file
 
 ## 7. Pocket control audit (W2-D)
 
-_Appended when W2-D reports._
+Every visible control was traced to its handler and an observable result. The integrator re-ran the 13 Playwright tests on Chromium, which include axe-core and keyboard checks.
+
+| Control | Handler | Observable result / fix |
+|---|---|---|
+| Nav links (Field session, Sense, Memory, Evening review, Spark) | anchors | Scroll to section. "Evening review" is new |
+| `#goal` | field-ui onchange | Adds or removes the goal feature |
+| `#useSound` | field-ui | Includes the last sound check, or tells the user to run one first |
+| `#timer` | field-ui | Toggles, then adds a visible-time band |
+| `#screenfile` / `#nativefile` | field-ui | Layout or device features, or an "unavailable/rejected" message |
+| `#withSpark` | read by predict | **Fixed:** unpaired use showed a raw "Spark returned 403" and now asks the user to pair first |
+| `#predict` / `#resetfield` / `[data-outcome]` | field-ui | Estimate, reset, outcome recorded |
+| Vault: `#pass`, `#unlock`, `#rememberpair`, `#lock`, `#wipe` | field-ui | Status shown in `#fieldmsg` |
+| Local history "Forget here" / "Share episode" | field-ui | **Fixed:** buttons had identical accessible names; added aria-labels |
+| `#sound`, `#survey`, `#light`, `#listen`, `#stop`, `#auto` | mobile.js | Draft and status. **Fixed:** errors appeared off-screen on phones, so `#message` is now a sticky status bar |
+| `[data-tag]`, `#speak` | mobile.js | Draft, or an unavailable message |
+| `#learn`, `#save`, `#drop` | mobile.js | Share or discard. A 423 (muted) shows the paused message |
+| `#pairform` / `#code` | mobile.js | **Fixed:** focus was lost when the form hid |
+| `#refresh`, `#linkdevice`, `#unpair` | mobile.js | **Fixed:** `#handoff` was not a live region |
+| History "Forget" | forgetItem | **Fixed:** focus was lost after re-render |
+| New: `#forgetsession`, "Forget this", "Stop learning this pattern", "Resume learning" | mobile.js | Progress and final count; `mute` / `unmute` routes |
+| `select` | style.css | **Fixed:** height was 41px, below the 44px touch target |
+
+Known minor issue (P3): after "Forget here" in the local vault list, focus moves to the body.
