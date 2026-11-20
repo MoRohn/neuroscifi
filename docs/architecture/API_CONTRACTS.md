@@ -251,7 +251,79 @@ Errors return `{"error": message}` with the status from `errors.py`.
 - Bad Host, Origin or token → 403.
 
 **Startup and storage:**
-- `nsf console --url-file PATH` writes the URL to a new 0600 file instead of stdout.
-- Checkpoints are written to `<db parent>/checkpoints`.
+- `nsf console --url-file PATH` writes the URL to a 0600 file instead of stdout (atomically replacing a stale console URL file it owns) and removes it at shutdown. GET routes are read-only except for a non-blocking expiry sweep at most once per 60 s; a locked instance returns 503 with Retry-After.
+- Checkpoints are written to `checkpoints.default_dir(db)` = `<db parent>/<stem>.checkpoints`.
 
 **CLI-only operations (not in the console):** graph rollback, lesion and export; rule management; checkpoint restore and rebuild; legacy import.
+
+
+## 7. Additions from Wave 5 remediation (binding)
+
+**Schema.** Migrations 2–4 add:
+- `forgotten_roots`;
+- an insert trigger on `scoring_rules`;
+- `changepoints`;
+- the `evidence_tally` index;
+- `epoch_links`.
+
+Connections set `journal_size_limit=0` and `recursive_triggers=ON`.
+
+**store**
+- `truncate_wal(db) -> "ok"|"busy"`
+- `InstanceConfig.max_thermal_celsius` (default None)
+
+**evidence and beliefs**
+- `compute()` adds:
+  - `segments`, `confirmed_changes`, `change` and `linked_from`;
+  - per factor: `suspected_change`, `llr`, `suspected_since_seq` and `ambiguous`.
+- `detect_change()` adds `suppressed`.
+- `beliefs.match_epochs(db, epoch, *, last=12)` → `{ranking:[{epoch, segments, log_likelihood, posterior, events}], best, best_posterior, new_setup_posterior}`.
+
+**executive**
+- `resolve(db, pending_id, resolution, now, *, confirm=None)`. `confirm` is valid on `calibrate` questions (records a changepoint) and on `epoch:<E>` questions (records or declines a link).
+- `decide()` returns `closed_pending` and `expired_pending`.
+- Rule 4b: ask "This looks like <E> …; continue …?" once per (epoch, candidate) when the posterior is ≥ 0.75.
+- A question the owner answered is not re-asked until 3 new events arrive in its scope.
+- `act` is withheld while an unanswered, non-ambiguous change suspicion is open.
+
+**graphs**
+- The gate gains a 5th check, `lineage_intact`.
+- `functional_map(db, dataset_id, now, *, lags=(1,2,3), top=20)`.
+- Lesion edges carry `se`; the output carries `task`.
+- `export` creates its file with 0600 and `O_EXCL`.
+- `invalidate_dependents` skips revisions replaced by an owner rollback.
+
+**governance**
+- Forgetting no longer closes pending rows; the executive closes them when evidence removes their premise.
+- When a root's last evidence goes, it is scrubbed to a salted digest (ADR-019).
+- Effects add `roots_forgotten`, `derived_rows_scrubbed`, `wal_checkpoint` and `linked_epochs_revised`.
+
+**checkpoints**
+- New: `default_dir(db_path)` and `prune(db, now, keep=7)`.
+- `rebuild_stale(..., keep=7)` returns `pruned`.
+- `create` may raise `WritesPaused`, and may register as `stale` with a `warning` if a deletion committed during packing.
+- `restore` returns `graphs_invalidated` and `derived_rows_scrubbed`.
+
+**datasets and legacy** gain `path=` for free-space regulation.
+
+**CLI.** New commands and flags:
+- `nsf epoch match`
+- `nsf resolve ID TEXT [--confirm|--reject]`
+- `nsf graph coactivation DATASET`
+- `nsf checkpoint prune [--keep]` and `rebuild --keep`
+- `nsf init --max-evidence-rows --min-free-mib`
+
+**Pocket**
+- `--allowed-host` (Host mismatch → 421).
+- HSTS when TLS is on.
+- A 32-connection cap, with the TLS handshake run in the worker thread.
+- A not-yet-stored id that is forgotten is retired, so a later save gets 410.
+- After unmute, an identical retry of an event stored while muted returns 200.
+- A SQLite error returns 503.
+
+**Console routes**
+- `POST /api/pending/{id}/resolve {"resolution","confirm"?}`
+- `GET /api/epochs/{e}/match?last=N`
+- `POST /api/graphs/coactivation {"dataset_id","lags"?,"top"?}`
+- `POST /api/checkpoints/prune {"keep"}`
+- `POST /api/checkpoints/rebuild {"keep"?,"policy"?}`

@@ -12,7 +12,7 @@ The release is accepted only when every **gate** below passes on a fresh run by 
 | Numerical reproduction | `python scripts/reproduce.py` | "Verified" for all 8 analyses |
 | Browser end to end | `bash scripts/e2e.sh` | 0 failures (Pocket and console) |
 | Accessibility | inside e2e (axe-core) | 0 serious or critical violations on Pocket and the console, at phone and tablet sizes |
-| Acceptance scenarios | `nsf acceptance --all` | every scenario `"pass": true` |
+| Acceptance scenarios | `nsf acceptance --all` | every scenario `"pass": true` (7 scenarios, including `first_physical_test` for p.34) |
 | Packaging | `uv pip install .` into a clean venv, then `nsf --help` | succeeds |
 | Service units | `systemd-analyze verify deploy/systemd/*.service` | no errors |
 
@@ -20,7 +20,7 @@ The release is accepted only when every **gate** below passes on a fresh run by 
 
 | ID | Journey | Evidence |
 |---|---|---|
-| J1 | **Teach and detect.** Init, start epoch `bench`, teach action and word, add references from three roots. Mechanism becomes identifiable. Camera readings flip without announcement. The scope `camera:<root>` is detected and the executive asks to calibrate. Start epoch `bench-remounted`. After a restart, both epochs keep their beliefs. | acceptance `grounding` + `device_ownership`; CLI test |
+| J1 | **Teach and detect** (the owner confirms the change with `resolve --confirm`; only the camera relearns and the partner's meaning carries over; the earlier setup is offered back through `epoch match`). Init, start epoch `bench`, teach action and word, add references from three roots. Mechanism becomes identifiable. Camera readings flip without announcement. The scope `camera:<root>` is detected and the executive asks to calibrate. Start epoch `bench-remounted`. After a restart, both epochs keep their beliefs. | acceptance `grounding` + `device_ownership`; CLI test |
 | J2 | **Two partners.** Partner B uses the opposite word convention. Each partner's convention resolves, and the first partner's meaning survives in a later session. The executive asks about a word only while it is ambiguous. | acceptance `lifelong_correction` |
 | J3 | **Grow and recall.** Learn context A, promote, learn a rewired world in the same context. The candidate fails retention with a "new context" recommendation. Register it under context B. Recall picks the right graph per segment and flags an unrelated world as an unknown context (owner question, no graph created). | acceptance `growth_retention`, `graph_development`; test_recall |
 | J4 | **Forget everything derived.** Checkpoint, forget an event and a dataset. Beliefs change, the dependent graph is invalidated and the eligible older one re-activated, the checkpoint goes stale, and a rebuild removes the old archive. Restoring an old checkpoint does not resurrect the id. | test_journeys; test_checkpoints |
