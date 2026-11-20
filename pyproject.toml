@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neuroscifi"
+version = "0.5.0"
+description = "NeuroSciFi: calibrated multimodal learning prototype, archives and Pocket field interface."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["numpy==2.3.5", "zstandard==0.25.0"]
+
+[project.optional-dependencies]
+research = ["scipy==1.17.0"]
+dev = ["pytest==9.2.0", "ruff==0.17.6", "playwright==1.64.1"]
+
+[project.scripts]
+nsf = "neuroscifi.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"neuroscifi.pocket" = ["web/*"]
+"neuroscifi.vendor_tufazip" = ["LICENSE", "NOTICE"]
+
+[tool.ruff]
+src = ["src", "tests"]
+extend-exclude = ["research", "mobile/native"]
+
+[tool.ruff.lint]
+select = ["E9", "F"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["e2e", "js"]

@@ -3,13 +3,10 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-import sys
 import numpy as np
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
-import archive
-import graph_store
-from live import open_store, add_event, status
-from context_recall import GraphRecall
+from neuroscifi import archive, graph_store
+from neuroscifi.legacy_live import open_store, add_event, status
+from neuroscifi.lab.context_recall import GraphRecall
 
 class CompressionTests(unittest.TestCase):
     def test_every_codec_preserves_odd_bytes(self):

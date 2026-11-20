@@ -1,7 +1,7 @@
 // Reproduce UI and model checks without reading any personal data or activating hardware.
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {forecast,texture,deviceReceipt,vaultKey,newSalt,seal,openBox,liveRows} from "./web/field-model.mjs";
+import {forecast,texture,deviceReceipt,vaultKey,newSalt,seal,openBox,liveRows} from "../../src/neuroscifi/pocket/web/field-model.mjs";
 const base={goal:["work","owner"],sound:["soft","mic"],switches:["few","android"]};
 const row=(i,features=base)=>({id:String(i),created:Date.now(),outcome:"continued",learn:true,features});
 assert.equal(forecast([],base).answer,null);
@@ -17,7 +17,7 @@ assert.equal((await openBox(box,k)).length,7);
 await assert.rejects(openBox(box,await vaultKey("different example secret",salt)));
 const nodes=new Map(), listeners={}, storage=new Map();
 const element=()=>({textContent:"",value:"",checked:false,hidden:false,dataset:{},append(){},replaceChildren(){}});
-for(const m of readFileSync(new URL("./web/index.html",import.meta.url),"utf8").matchAll(/\bid="([^"]+)"/g))nodes.set(m[1],element());
+for(const m of readFileSync(new URL("../../src/neuroscifi/pocket/web/index.html",import.meta.url),"utf8").matchAll(/\bid="([^"]+)"/g))nodes.set(m[1],element());
 const outcomes=["continued","switched","paused"].map(outcome=>({...element(),dataset:{outcome}}));
 globalThis.document={hidden:false,getElementById:id=>{assert(nodes.has(id),id);return nodes.get(id);},createElement:element,
   querySelectorAll:()=>outcomes,addEventListener:(e,f)=>listeners[e]=f};
@@ -25,7 +25,7 @@ globalThis.window={addEventListener(){},pocketSound:()=>({sound:["soft","mic"]})
 globalThis.localStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
 Object.defineProperty(globalThis,"navigator",{value:{locks:{request:async(k,f)=>f()}}});
 const realInterval=globalThis.setInterval;globalThis.setInterval=()=>0;
-await import("./web/field-ui.mjs");globalThis.setInterval=realInterval;
+await import("../../src/neuroscifi/pocket/web/field-ui.mjs");globalThis.setInterval=realInterval;
 const n=id=>nodes.get(id);
 const unlock=async()=>{n("pass").value="correct horse test vault";await n("unlock").onclick();};
 await unlock();n("goal").onchange({target:{value:"work"}});n("useSound").onclick();

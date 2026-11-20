@@ -1,13 +1,11 @@
 import tempfile
 import unittest
 from pathlib import Path
-import sys
 import numpy as np
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
-from core import BODY,CAMERA,SPEAKER,balanced_ids,probabilities
-from live import open_store,add_event,status
-from source_groups import group_log_likelihood
-from human_counts import compute
+from neuroscifi.lab.core import BODY,CAMERA,SPEAKER,balanced_ids,probabilities
+from neuroscifi.legacy_live import open_store,add_event,status
+from neuroscifi.lab.source_groups import group_log_likelihood
+from neuroscifi.lab.human_counts import compute
 
 
 class ModelChecks(unittest.TestCase):

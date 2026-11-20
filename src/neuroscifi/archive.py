@@ -14,7 +14,7 @@ import zlib
 
 import numpy as np
 import zstandard as zstd
-from vendor_tufazip.arithmetic_coder import ArithmeticDecoder, ArithmeticEncoder, BitInputStream, BitOutputStream
+from .vendor_tufazip.arithmetic_coder import ArithmeticDecoder, ArithmeticEncoder, BitInputStream, BitOutputStream
 
 MAGIC = b"NSFA\x01"
 BLOCK = 65536

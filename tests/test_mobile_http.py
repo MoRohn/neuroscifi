@@ -1,4 +1,3 @@
-import importlib.util
 from pathlib import Path
 from http.client import HTTPSConnection
 import json

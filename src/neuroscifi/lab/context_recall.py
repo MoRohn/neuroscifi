@@ -4,8 +4,8 @@ import json
 from collections import deque
 from pathlib import Path
 import numpy as np
-from graph_bench import simulate, stream
-from graph_store import encode, decode
+from .graph_bench import simulate, stream
+from ..graph_store import encode, decode
 
 
 class GraphRecall:

@@ -1,12 +1,9 @@
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 from uuid import uuid4
 
-spec = importlib.util.spec_from_file_location("mobile_bridge", Path(__file__).resolve().parents[1]/"mobile/bridge.py")
-bridge = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(bridge)
+from neuroscifi.pocket import server as bridge
 
 
 class MobileBridge(unittest.TestCase):

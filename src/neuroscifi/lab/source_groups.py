@@ -3,7 +3,7 @@ import argparse
 import json
 from pathlib import Path
 import numpy as np
-from core import BODY, CAMERA, SPEAKER, balanced_ids, metrics, probabilities, receive, update
+from .core import BODY, CAMERA, SPEAKER, balanced_ids, metrics, probabilities, receive, update
 
 
 def group_log_likelihood(readings, flip_prob, reading_error):

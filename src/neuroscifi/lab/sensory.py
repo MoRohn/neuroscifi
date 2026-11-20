@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from core import BODY, CAMERA, SPEAKER, balanced_ids, metrics, receive, update
+from .core import BODY, CAMERA, SPEAKER, balanced_ids, metrics, receive, update
 
 RATE = 8000
 NSAMPLES = 256

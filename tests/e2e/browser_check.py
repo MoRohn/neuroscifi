@@ -6,7 +6,7 @@ import tempfile
 from threading import Thread, Lock
 import time
 from playwright.sync_api import sync_playwright, expect
-from bridge import Store, Handler, ThreadingHTTPServer
+from neuroscifi.pocket.server import Store, Handler, ThreadingHTTPServer
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)

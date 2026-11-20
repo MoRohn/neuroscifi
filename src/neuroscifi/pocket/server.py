@@ -15,7 +15,7 @@ from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from uuid import UUID
 
-WEB = Path(__file__).parent / "web"
+WEB = Path(__file__).resolve().parent / "web"
 VOCAB = {"sound": ("soft", "moderate", "strong"), "light": ("dim", "midrange", "bright"),
          "dynamics": ("steady","variable","wide"), "activity": ("focus", "walk", "rest", "other")}
 ASSETS = {"/": ("index.html", "text/html; charset=utf-8"), "/mobile.js": ("mobile.js", "text/javascript"),
@@ -271,7 +271,7 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(400)
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--db", default="mobile-private.sqlite")
     p.add_argument("--bind", default="127.0.0.1")
@@ -280,7 +280,7 @@ def main():
     p.add_argument("--key")
     p.add_argument("--list-pairings", action="store_true")
     p.add_argument("--erase-pairing", metavar="LABEL")
-    a = p.parse_args()
+    a = p.parse_args(argv)
     os.umask(0o077)
     store = Store(a.db)
     store.sweep()

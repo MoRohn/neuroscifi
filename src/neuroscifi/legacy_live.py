@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 import sqlite3
 import numpy as np
-from core import BODY, CAMERA, SPEAKER, STATES, probabilities, update
-from source_groups import group_log_likelihood
+from .lab.core import CAMERA, SPEAKER, STATES, probabilities, update
+from .lab.source_groups import group_log_likelihood
 
 
 def open_store(path):

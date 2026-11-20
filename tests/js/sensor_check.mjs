@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {randomUUID} from "node:crypto";
 import vm from "node:vm";
-const ui=readFileSync(new URL("./web/mobile.js",import.meta.url),"utf8");
-const markup=readFileSync(new URL("./web/index.html",import.meta.url),"utf8");
+const ui=readFileSync(new URL("../../src/neuroscifi/pocket/web/mobile.js",import.meta.url),"utf8");
+const markup=readFileSync(new URL("../../src/neuroscifi/pocket/web/index.html",import.meta.url),"utf8");
 const nodes=new Map(), listeners={}, intervals=new Map(), timeouts=new Map(), network=[], tracks=[];
 let now=0, seq=0, pendingGrant=null;
 function element(){

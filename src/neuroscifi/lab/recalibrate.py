@@ -3,8 +3,8 @@ import argparse
 import json
 from pathlib import Path
 import numpy as np
-from core import BODY, CAMERA, SPEAKER, balanced_ids, metrics, receive, update
-from sensory import Prototype, features, render
+from .core import BODY, CAMERA, SPEAKER, balanced_ids, metrics, receive, update
+from .sensory import Prototype, features, render
 
 CONDITIONS=("nominal","rotated_and_transposed","aliased_audio")
 

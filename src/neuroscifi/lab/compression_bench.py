@@ -12,11 +12,16 @@ import tempfile
 from time import perf_counter_ns
 import zstandard
 import numpy as np
-from archive import METHODS, FAST, COLD, TRIAL, pack, unpack
-from graph_bench import world
-from live import open_store
+from ..archive import METHODS, FAST, COLD, TRIAL, pack, unpack
+from .graph_bench import world
+from ..legacy_live import open_store
 
-BASE = Path(__file__).resolve().parents[1]
+
+def repo_root():
+    for d in Path(__file__).resolve().parents:
+        if (d/"pyproject.toml").is_file() and (d/"evidence").is_dir():
+            return d
+    raise SystemExit("compression_bench needs the NeuroSciFi repository checkout (evidence/ and research/); run from an editable install of the repo.")
 
 
 def inputs():
@@ -38,8 +43,8 @@ def inputs():
         target.close()
         db.close()
         snapshot = (Path(temp)/"snapshot.sqlite").read_bytes()
-    return {"model_results_json":(BASE/"evidence/graph.json").read_bytes(),
-            "cpu_timings_csv":(BASE/"research/results/bench_915.csv").read_bytes(),
+    return {"model_results_json":(repo_root()/"evidence/graph.json").read_bytes(),
+            "cpu_timings_csv":(repo_root()/"research/results/bench_915.csv").read_bytes(),
             "learner_sqlite":snapshot, "dense_layout_int8_graphs":graph,
             "smooth_pcm16":sensor, "uniform_bytes":rng.bytes(65536)}
 

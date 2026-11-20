@@ -7,14 +7,14 @@ const saved=async name=>{
  if(!stores.has(name))stores.set(name,new Map());
  const objects=stores.get(name);
  return {async addAll(paths){for(const path of paths){
-   const text=readFileSync(new URL("./web/"+(path==="/"?"index.html":path.slice(1)),import.meta.url),"utf8");
+   const text=readFileSync(new URL("../../src/neuroscifi/pocket/web/"+(path==="/"?"index.html":path.slice(1)),import.meta.url),"utf8");
    objects.set(path,text);
  }},async match(path){return objects.get(path);}};
 };
 const ctx=vm.createContext({self:{addEventListener:(k,fn)=>callbacks[k]=fn,async skipWaiting(){},clients:{async claim(){}}},
   caches:{open:saved,keys:async()=>[...stores.keys()],delete:async key=>stores.delete(key)},URL,location:{origin:"https://example.test"},
   fetch(){throw Error("Network offline");}});
-vm.runInContext(readFileSync(new URL("./web/sw.js",import.meta.url),"utf8"),ctx);
+vm.runInContext(readFileSync(new URL("../../src/neuroscifi/pocket/web/sw.js",import.meta.url),"utf8"),ctx);
 async function lifecycle(name){let work;callbacks[name]({waitUntil:p=>work=p});await work;}
 await lifecycle("install");await lifecycle("activate");
 assert(stores.has("unrelated"));assert(!stores.has("neuroscifi-pocket-shell-old"));

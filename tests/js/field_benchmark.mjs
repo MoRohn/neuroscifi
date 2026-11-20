@@ -1,4 +1,4 @@
-import {forecast,outcomes} from "./web/field-model.mjs";
+import {forecast,outcomes} from "../../src/neuroscifi/pocket/web/field-model.mjs";
 const stats={trials:0,answers:0,correct:0,baselineCorrect:0,modelLoss:0,baselineLoss:0};
 for(let stream=1;stream<=48;stream++){
  let state=stream;const rand=()=>{state=(1664525*state+1013904223)>>>0;return state/4294967296;};

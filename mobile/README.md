@@ -7,7 +7,7 @@ Pocket is the phone interface to one NeuroSciFi instance. Its field workspace ru
 From the NeuroSciFi project root, run:
 
 ~~~sh
-python3 mobile/bridge.py --db mobile-private.sqlite
+nsf pocket serve --db mobile-private.sqlite
 ~~~
 
 Open http://localhost:8765 on that same computer. Sensors begin off. Try **Check sound** or **Mark an activity** before pairing. Copy the one-use code from the terminal to pair, then share a reviewed item. Select the learning checkbox if you want it included in the prediction. Use **Forget** on the item and refresh to see the estimate change. A terminal pairing starts a separate history. A handoff from a paired device joins its field episode group. Pairing requires the Spark process to be reachable.
@@ -17,14 +17,14 @@ Open http://localhost:8765 on that same computer. Sensors begin off. Try **Check
 Use a private LAN or a private VPN between the phone and Spark. Supply a TLS certificate for the hostname you will enter on the phone, its matching private key, and a certificate chain trusted by that phone. On the Spark, bind to its private interface. Substitute your actual values below:
 
 ~~~sh
-python3 mobile/bridge.py --bind PRIVATE_INTERFACE_IP --port 8765 --cert /path/to/fullchain.pem --key /path/to/privkey.pem --db /path/on/encrypted-volume/mobile.sqlite
+nsf pocket serve --bind PRIVATE_INTERFACE_IP --port 8765 --cert /path/to/fullchain.pem --key /path/to/privkey.pem --db /path/on/encrypted-volume/mobile.sqlite
 ~~~
 
 Open https://YOUR_CERTIFICATE_HOSTNAME:8765 on the phone and enter the terminal code within five minutes. One running server issues one invitation at startup. To issue another, restart the bridge against the same DB. The phone keeps its pairing credential in tab memory. Reloading loses the default in-memory credential. To resume, explicitly select “Keep pairing in this vault for 24 hours” while paired. Server-side revocation is independent. On the Spark, list pairing labels and erase abandoned pairings using the commands below. Use a private OS account, encrypted data volume, and exclude the bridge database from backups and cloud sync. The prototype stores SQLite in cleartext within that volume. It does not configure the network, certificates or encryption for you.
 
 ~~~sh
-python3 mobile/bridge.py --db /path/on/encrypted-volume/mobile.sqlite --list-pairings
-python3 mobile/bridge.py --db /path/on/encrypted-volume/mobile.sqlite --erase-pairing LABEL
+nsf pocket list-pairings --db /path/on/encrypted-volume/mobile.sqlite
+nsf pocket erase-pairing LABEL --db /path/on/encrypted-volume/mobile.sqlite
 ~~~
 
 ## Controls and data contract
@@ -59,17 +59,17 @@ python3 mobile/bridge.py --db /path/on/encrypted-volume/mobile.sqlite --erase-pa
 ## Verify
 
 ~~~sh
-python3 -m unittest discover -s tests -q
-node mobile/sensor_check.mjs
-node mobile/field_check.mjs
-node mobile/offline_check.mjs
-node mobile/field_benchmark.mjs
+pytest -q --ignore=tests/e2e
+node tests/js/sensor_check.mjs
+node tests/js/field_check.mjs
+node tests/js/offline_check.mjs
+node tests/js/field_benchmark.mjs
 ~~~
 
 The HTTP integration test builds a disposable certificate and checks a hostname-verified TLS connection. It skips if OpenSSL is unavailable. The Node check exercises the shipped sensor controller with synthetic media and time. An additional browser integration check targets fake microphone/camera input and requires Python Playwright with a working Chromium browser:
 
 ~~~sh
-python3 mobile/browser_check.py --chromium /path/to/chromium
+python tests/e2e/browser_check.py --chromium /path/to/chromium
 ~~~
 
 The browser check is provided for reproduction. Browser execution was blocked by this build host's Chromium socket restriction. Native iPhone/Android capture, hardware power usage and real-world masking have not been validated.
