@@ -1,0 +1,591 @@
+{
+  "repeats": 3,
+  "source": "original CPU measurements",
+  "machine": "aarch64",
+  "sqlite": "3.53.1",
+  "numpy": "2.3.5",
+  "zstandard": "0.25.0",
+  "results": {
+    "model_results_json": {
+      "raw_bytes": 86040,
+      "source_sha256": "84b8fb6c57048dca7b4f2a777d43b53a03f9190385341e120dfbad21604e593d",
+      "profiles": {
+        "raw": {
+          "archive_bytes": 86224,
+          "ratio": 0.9978660233809612,
+          "median_encode_ms": 0.110208,
+          "median_decode_ms": 0.10888,
+          "blocks": {
+            "raw": 2
+          }
+        },
+        "deflate": {
+          "archive_bytes": 13903,
+          "ratio": 6.188592390131626,
+          "median_encode_ms": 0.794386,
+          "median_decode_ms": 0.206417,
+          "blocks": {
+            "deflate": 2
+          }
+        },
+        "zstd": {
+          "archive_bytes": 13717,
+          "ratio": 6.272508566012976,
+          "median_encode_ms": 0.191088,
+          "median_decode_ms": 0.119617,
+          "blocks": {
+            "zstd": 2
+          }
+        },
+        "xz": {
+          "archive_bytes": 13532,
+          "ratio": 6.358261897723914,
+          "median_encode_ms": 2.105172,
+          "median_decode_ms": 0.60605,
+          "blocks": {
+            "xz": 2
+          }
+        },
+        "delta16-zstd": {
+          "archive_bytes": 18706,
+          "ratio": 4.599593713247087,
+          "median_encode_ms": 0.256848,
+          "median_decode_ms": 0.248753,
+          "blocks": {
+            "delta16-zstd": 2
+          }
+        },
+        "adaptive": {
+          "archive_bytes": 36794,
+          "ratio": 2.3384247431646465,
+          "median_encode_ms": 185.45211,
+          "median_decode_ms": 337.37527,
+          "blocks": {
+            "adaptive": 2
+          }
+        },
+        "delta16-adaptive": {
+          "archive_bytes": 49293,
+          "ratio": 1.7454811027935,
+          "median_encode_ms": 213.669703,
+          "median_decode_ms": 372.322605,
+          "blocks": {
+            "delta16-adaptive": 2
+          }
+        },
+        "fast": {
+          "archive_bytes": 13717,
+          "ratio": 6.272508566012976,
+          "median_encode_ms": 0.231697,
+          "median_decode_ms": 0.13064,
+          "blocks": {
+            "zstd": 2
+          }
+        },
+        "cold": {
+          "archive_bytes": 13384,
+          "ratio": 6.428571428571429,
+          "median_encode_ms": 2.493061,
+          "median_decode_ms": 0.494545,
+          "blocks": {
+            "xz": 1,
+            "zstd": 1
+          }
+        },
+        "experimental": {
+          "archive_bytes": 13384,
+          "ratio": 6.428571428571429,
+          "median_encode_ms": 400.708744,
+          "median_decode_ms": 0.513937,
+          "blocks": {
+            "xz": 1,
+            "zstd": 1
+          }
+        }
+      }
+    },
+    "cpu_timings_csv": {
+      "raw_bytes": 63647,
+      "source_sha256": "ae78c9da813ec66a47cd7148cb2ab0a37089b92d16446de35dd5b11d678f7930",
+      "profiles": {
+        "raw": {
+          "archive_bytes": 63758,
+          "ratio": 0.9982590420025722,
+          "median_encode_ms": 0.082049,
+          "median_decode_ms": 0.080032,
+          "blocks": {
+            "raw": 1
+          }
+        },
+        "deflate": {
+          "archive_bytes": 11712,
+          "ratio": 5.434340846994536,
+          "median_encode_ms": 1.057346,
+          "median_decode_ms": 0.167328,
+          "blocks": {
+            "deflate": 1
+          }
+        },
+        "zstd": {
+          "archive_bytes": 12125,
+          "ratio": 5.249237113402062,
+          "median_encode_ms": 0.156416,
+          "median_decode_ms": 0.101712,
+          "blocks": {
+            "zstd": 1
+          }
+        },
+        "xz": {
+          "archive_bytes": 10883,
+          "ratio": 5.848295506753653,
+          "median_encode_ms": 1.93682,
+          "median_decode_ms": 0.495777,
+          "blocks": {
+            "xz": 1
+          }
+        },
+        "delta16-zstd": {
+          "archive_bytes": 20703,
+          "ratio": 3.074288750422644,
+          "median_encode_ms": 0.259536,
+          "median_decode_ms": 0.214656,
+          "blocks": {
+            "delta16-zstd": 1
+          }
+        },
+        "adaptive": {
+          "archive_bytes": 27885,
+          "ratio": 2.2824816209431593,
+          "median_encode_ms": 139.987088,
+          "median_decode_ms": 254.239259,
+          "blocks": {
+            "adaptive": 1
+          }
+        },
+        "delta16-adaptive": {
+          "archive_bytes": 36296,
+          "ratio": 1.7535541106458012,
+          "median_encode_ms": 159.165735,
+          "median_decode_ms": 281.163459,
+          "blocks": {
+            "delta16-adaptive": 1
+          }
+        },
+        "fast": {
+          "archive_bytes": 12125,
+          "ratio": 5.249237113402062,
+          "median_encode_ms": 0.194912,
+          "median_decode_ms": 0.110512,
+          "blocks": {
+            "zstd": 1
+          }
+        },
+        "cold": {
+          "archive_bytes": 10883,
+          "ratio": 5.848295506753653,
+          "median_encode_ms": 2.384437,
+          "median_decode_ms": 0.498017,
+          "blocks": {
+            "xz": 1
+          }
+        },
+        "experimental": {
+          "archive_bytes": 10883,
+          "ratio": 5.848295506753653,
+          "median_encode_ms": 301.419132,
+          "median_decode_ms": 0.532273,
+          "blocks": {
+            "xz": 1
+          }
+        }
+      }
+    },
+    "learner_sqlite": {
+      "raw_bytes": 131072,
+      "source_sha256": "c72a19e67ac376e2abcc9b7af84769e93494aa768565d0436879d381ed3bc041",
+      "profiles": {
+        "raw": {
+          "archive_bytes": 131256,
+          "ratio": 0.9985981593222405,
+          "median_encode_ms": 0.166944,
+          "median_decode_ms": 0.165792,
+          "blocks": {
+            "raw": 2
+          }
+        },
+        "deflate": {
+          "archive_bytes": 21712,
+          "ratio": 6.036845983787767,
+          "median_encode_ms": 1.359778,
+          "median_decode_ms": 0.302433,
+          "blocks": {
+            "deflate": 2
+          }
+        },
+        "zstd": {
+          "archive_bytes": 19165,
+          "ratio": 6.8391338377250195,
+          "median_encode_ms": 0.260577,
+          "median_decode_ms": 0.183616,
+          "blocks": {
+            "zstd": 2
+          }
+        },
+        "xz": {
+          "archive_bytes": 13136,
+          "ratio": 9.978075517661388,
+          "median_encode_ms": 2.608837,
+          "median_decode_ms": 0.750257,
+          "blocks": {
+            "xz": 2
+          }
+        },
+        "delta16-zstd": {
+          "archive_bytes": 22940,
+          "ratio": 5.713687881429817,
+          "median_encode_ms": 0.343057,
+          "median_decode_ms": 0.359601,
+          "blocks": {
+            "delta16-zstd": 2
+          }
+        },
+        "adaptive": {
+          "archive_bytes": 59458,
+          "ratio": 2.2044468364223486,
+          "median_encode_ms": 286.143901,
+          "median_decode_ms": 510.102426,
+          "blocks": {
+            "adaptive": 2
+          }
+        },
+        "delta16-adaptive": {
+          "archive_bytes": 70351,
+          "ratio": 1.8631149521684127,
+          "median_encode_ms": 311.086432,
+          "median_decode_ms": 543.631246,
+          "blocks": {
+            "delta16-adaptive": 2
+          }
+        },
+        "fast": {
+          "archive_bytes": 19165,
+          "ratio": 6.8391338377250195,
+          "median_encode_ms": 0.305377,
+          "median_decode_ms": 0.187936,
+          "blocks": {
+            "zstd": 2
+          }
+        },
+        "cold": {
+          "archive_bytes": 13136,
+          "ratio": 9.978075517661388,
+          "median_encode_ms": 2.823126,
+          "median_decode_ms": 0.762786,
+          "blocks": {
+            "xz": 2
+          }
+        },
+        "experimental": {
+          "archive_bytes": 13136,
+          "ratio": 9.978075517661388,
+          "median_encode_ms": 600.480693,
+          "median_decode_ms": 0.77405,
+          "blocks": {
+            "xz": 2
+          }
+        }
+      }
+    },
+    "dense_layout_int8_graphs": {
+      "raw_bytes": 27648,
+      "source_sha256": "7a3095a5a526bb1fcd2f9b5dd4a3de1cb4804ec7c820dcf4607e157c6cf3a497",
+      "profiles": {
+        "raw": {
+          "archive_bytes": 27759,
+          "ratio": 0.9960012968766886,
+          "median_encode_ms": 0.036448,
+          "median_decode_ms": 0.036096,
+          "blocks": {
+            "raw": 1
+          }
+        },
+        "deflate": {
+          "archive_bytes": 5962,
+          "ratio": 4.637370010063737,
+          "median_encode_ms": 0.956226,
+          "median_decode_ms": 0.082544,
+          "blocks": {
+            "deflate": 1
+          }
+        },
+        "zstd": {
+          "archive_bytes": 6252,
+          "ratio": 4.422264875239923,
+          "median_encode_ms": 0.088144,
+          "median_decode_ms": 0.061121,
+          "blocks": {
+            "zstd": 1
+          }
+        },
+        "xz": {
+          "archive_bytes": 5895,
+          "ratio": 4.690076335877863,
+          "median_encode_ms": 1.276307,
+          "median_decode_ms": 0.272417,
+          "blocks": {
+            "xz": 1
+          }
+        },
+        "delta16-zstd": {
+          "archive_bytes": 8283,
+          "ratio": 3.337921043100326,
+          "median_encode_ms": 0.109457,
+          "median_decode_ms": 0.112288,
+          "blocks": {
+            "delta16-zstd": 1
+          }
+        },
+        "adaptive": {
+          "archive_bytes": 4666,
+          "ratio": 5.925417916845263,
+          "median_encode_ms": 36.951612,
+          "median_decode_ms": 73.126855,
+          "blocks": {
+            "adaptive": 1
+          }
+        },
+        "delta16-adaptive": {
+          "archive_bytes": 7787,
+          "ratio": 3.5505329395145755,
+          "median_encode_ms": 45.64267,
+          "median_decode_ms": 86.094081,
+          "blocks": {
+            "delta16-adaptive": 1
+          }
+        },
+        "fast": {
+          "archive_bytes": 6252,
+          "ratio": 4.422264875239923,
+          "median_encode_ms": 0.115936,
+          "median_decode_ms": 0.069136,
+          "blocks": {
+            "zstd": 1
+          }
+        },
+        "cold": {
+          "archive_bytes": 5895,
+          "ratio": 4.690076335877863,
+          "median_encode_ms": 1.450818,
+          "median_decode_ms": 0.268929,
+          "blocks": {
+            "xz": 1
+          }
+        },
+        "experimental": {
+          "archive_bytes": 4666,
+          "ratio": 5.925417916845263,
+          "median_encode_ms": 83.814765,
+          "median_decode_ms": 73.090775,
+          "blocks": {
+            "adaptive": 1
+          }
+        }
+      }
+    },
+    "smooth_pcm16": {
+      "raw_bytes": 65538,
+      "source_sha256": "84e18b77159159d8533ab0499737e47ede307f98d9434919e671009f773e29c8",
+      "profiles": {
+        "raw": {
+          "archive_bytes": 65722,
+          "ratio": 0.9972003286570706,
+          "median_encode_ms": 0.086352,
+          "median_decode_ms": 0.08368,
+          "blocks": {
+            "raw": 2
+          }
+        },
+        "deflate": {
+          "archive_bytes": 16761,
+          "ratio": 3.9101485591551817,
+          "median_encode_ms": 1.95938,
+          "median_decode_ms": 0.189233,
+          "blocks": {
+            "deflate": 2
+          }
+        },
+        "zstd": {
+          "archive_bytes": 18071,
+          "ratio": 3.6266947042222344,
+          "median_encode_ms": 0.212961,
+          "median_decode_ms": 0.134944,
+          "blocks": {
+            "zstd": 2
+          }
+        },
+        "xz": {
+          "archive_bytes": 14136,
+          "ratio": 4.636247877758914,
+          "median_encode_ms": 3.070278,
+          "median_decode_ms": 0.607682,
+          "blocks": {
+            "xz": 2
+          }
+        },
+        "delta16-zstd": {
+          "archive_bytes": 17024,
+          "ratio": 3.8497415413533833,
+          "median_encode_ms": 0.296673,
+          "median_decode_ms": 0.218193,
+          "blocks": {
+            "delta16-zstd": 2
+          }
+        },
+        "adaptive": {
+          "archive_bytes": 30521,
+          "ratio": 2.1473084106025357,
+          "median_encode_ms": 140.288513,
+          "median_decode_ms": 247.287582,
+          "blocks": {
+            "adaptive": 2
+          }
+        },
+        "delta16-adaptive": {
+          "archive_bytes": 13095,
+          "ratio": 5.004810996563574,
+          "median_encode_ms": 94.124466,
+          "median_decode_ms": 194.031168,
+          "blocks": {
+            "delta16-adaptive": 2
+          }
+        },
+        "fast": {
+          "archive_bytes": 18062,
+          "ratio": 3.628501827040195,
+          "median_encode_ms": 0.249232,
+          "median_decode_ms": 0.142369,
+          "blocks": {
+            "zstd": 1,
+            "raw": 1
+          }
+        },
+        "cold": {
+          "archive_bytes": 14078,
+          "ratio": 4.655348771132263,
+          "median_encode_ms": 3.408183,
+          "median_decode_ms": 0.594593,
+          "blocks": {
+            "xz": 1,
+            "raw": 1
+          }
+        },
+        "experimental": {
+          "archive_bytes": 13094,
+          "ratio": 5.005193218267909,
+          "median_encode_ms": 263.511807,
+          "median_decode_ms": 194.58728,
+          "blocks": {
+            "delta16-adaptive": 1,
+            "raw": 1
+          }
+        }
+      }
+    },
+    "uniform_bytes": {
+      "raw_bytes": 65536,
+      "source_sha256": "3af11b6530581e1def9829ae081190ff3a4287981eb322191e88e8ef515bbf6e",
+      "profiles": {
+        "raw": {
+          "archive_bytes": 65647,
+          "ratio": 0.9983091382698371,
+          "median_encode_ms": 0.083712,
+          "median_decode_ms": 0.082497,
+          "blocks": {
+            "raw": 1
+          }
+        },
+        "deflate": {
+          "archive_bytes": 65673,
+          "ratio": 0.9979139067805644,
+          "median_encode_ms": 0.916594,
+          "median_decode_ms": 0.106544,
+          "blocks": {
+            "deflate": 1
+          }
+        },
+        "zstd": {
+          "archive_bytes": 65657,
+          "ratio": 0.9981570891146413,
+          "median_encode_ms": 0.094049,
+          "median_decode_ms": 0.088545,
+          "blocks": {
+            "zstd": 1
+          }
+        },
+        "xz": {
+          "archive_bytes": 65711,
+          "ratio": 0.9973368233629073,
+          "median_encode_ms": 6.031932,
+          "median_decode_ms": 0.185072,
+          "blocks": {
+            "xz": 1
+          }
+        },
+        "delta16-zstd": {
+          "archive_bytes": 65657,
+          "ratio": 0.9981570891146413,
+          "median_encode_ms": 0.116832,
+          "median_decode_ms": 0.168032,
+          "blocks": {
+            "delta16-zstd": 1
+          }
+        },
+        "adaptive": {
+          "archive_bytes": 66393,
+          "ratio": 0.9870920127121835,
+          "median_encode_ms": 234.123507,
+          "median_decode_ms": 370.121195,
+          "blocks": {
+            "adaptive": 1
+          }
+        },
+        "delta16-adaptive": {
+          "archive_bytes": 66379,
+          "ratio": 0.9873002003645731,
+          "median_encode_ms": 233.871858,
+          "median_decode_ms": 369.471178,
+          "blocks": {
+            "delta16-adaptive": 1
+          }
+        },
+        "fast": {
+          "archive_bytes": 65647,
+          "ratio": 0.9983091382698371,
+          "median_encode_ms": 0.131553,
+          "median_decode_ms": 0.083312,
+          "blocks": {
+            "raw": 1
+          }
+        },
+        "cold": {
+          "archive_bytes": 65647,
+          "ratio": 0.9983091382698371,
+          "median_encode_ms": 4.198424,
+          "median_decode_ms": 0.085472,
+          "blocks": {
+            "raw": 1
+          }
+        },
+        "experimental": {
+          "archive_bytes": 65647,
+          "ratio": 0.9983091382698371,
+          "median_encode_ms": 471.888317,
+          "median_decode_ms": 0.0864,
+          "blocks": {
+            "raw": 1
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+0.2% active
+{'shuffled': 0.097, 'bitmap': 0.268, 'ordered': 0.078, 'scan': 8.095, 'prepare_order': 0.701}
+Median positive break-even uses 39.67
+1% active
+{'shuffled': 0.694, 'bitmap': 0.992, 'ordered': 0.43, 'scan': 10.695, 'prepare_order': 4.085}
+Median positive break-even uses 15.51
+5% active
+{'shuffled': 5.839, 'bitmap': 6.01, 'ordered': 5.227, 'scan': 29.543, 'prepare_order': 22.63}
+Median positive break-even uses 28.61
+25% active
+{'shuffled': 30.812, 'bitmap': 8.508, 'ordered': 7.016, 'scan': 20.41, 'prepare_order': 129.633}
+Median positive break-even uses 5.35
+50% active
+{'shuffled': 64.898, 'bitmap': 9.989, 'ordered': 7.482, 'scan': 33.471, 'prepare_order': 272.32}
+Median positive break-even uses 4.79
+100% active
+{'shuffled': 127.586, 'bitmap': 16.3, 'ordered': 8.95, 'scan': 7.359, 'prepare_order': 558.372}
+Median positive break-even uses 4.74
