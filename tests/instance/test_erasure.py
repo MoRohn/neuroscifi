@@ -218,7 +218,7 @@ def test_wal_size_limit_is_zero_on_every_connection(tmp_path):
     finally:
         db.close()
     with sqlite3.connect(tmp_path / "i.sqlite") as raw:
-        assert raw.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION == 3
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION == 4
 
 
 def test_forget_epoch_deletes_its_changepoints_and_keeps_other_epochs(instance):

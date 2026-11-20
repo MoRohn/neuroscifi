@@ -15,6 +15,13 @@ enumerated exactly (M <= 6); inside each assignment the camera and partner facto
 Reference roots keep one fixture polarity across mechanism segments. With no confirmed change the model
 is the original one and the arithmetic is the same, operation for operation.
 
+Continuing an earlier setup. When the owner answers "continue there" to an epoch question
+(`executive.resolve(..., confirm=True)` on scope 'epoch:<E>'), epoch_links records which segment of each of
+E's factors the new epoch continues. compute() then pools E's learning events in those segments (camera and
+word events of the linked camera/partner segments and reference events, all inside the linked mechanism
+segment) with the new epoch's own evidence, as if they were the new epoch's earliest events. The pool is
+read on every call, so forgetting source evidence changes the linked beliefs at once.
+
 Inference reads SQL aggregates (counts per channel, root, corrected reading and segment, with copies of
 one sample counted once), so its cost does not grow with the Python work per event (ADR-006: beliefs
 are still computed on read; `belief_revisions` is only an audit trail of semantic changes).
@@ -43,6 +50,9 @@ MIN_AFTER_CHANGE = 3
 EXPLAIN_EVENTS = 50
 MAX_MECHANISM_SEGMENTS = 6
 MATCH_EVENTS = 12
+# Declared before measurement: name an earlier setup only when it is at least 3:1 more likely than a new setup
+# and every other earlier configuration combined.
+MATCH_POSTERIOR = .75
 LEGACY_REFERENCE_TEXT = "try a known mechanical reference from a distinct root"
 LEGACY_ACT_TEXT = "test a new action and check its observed consequence"
 
@@ -51,8 +61,6 @@ _LOG_MISS = math.log(READING_ERROR)
 _LOG_HALF = math.log(.5)
 _LOG_KEEP = math.log1p(-REFERENCE_FLIP)
 _LOG_FLIP = math.log(REFERENCE_FLIP)
-# One reference reading under a known w: right fixture and right reading, or flipped fixture and misread.
-_REFERENCE_HIT = (1 - REFERENCE_FLIP) * (1 - REFERENCE_ERROR) + REFERENCE_FLIP * REFERENCE_ERROR
 # Rows of the legacy 8-state table whose mechanism bit is 0 and 1 (group_log_likelihood depends on w only).
 _W_ROW = (int(np.argmax(STATES[:, 0] == 0)), int(np.argmax(STATES[:, 0] == 1)))
 _PREFIX = {"camera": "camera", "word": "partner"}
@@ -140,8 +148,12 @@ def _group_values(n0, n1):
 
 # ---- changepoints -------------------------------------------------------------------------------------
 
+def _has_table(db, name):
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
+
 def _has_changepoints(db):
-    return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='changepoints'").fetchone() is not None
+    return _has_table(db, "changepoints")
 
 
 def changes(db, epoch):
@@ -167,6 +179,63 @@ def changes(db, epoch):
     if len(confirmed.get("mechanism", ())) >= MAX_MECHANISM_SEGMENTS:
         raise ValidationError(f"Epoch {epoch} has more than {MAX_MECHANISM_SEGMENTS} mechanism segments")
     return {"confirmed": confirmed, "rejected": rejected, "records": records}
+
+
+# ---- links to an earlier setup ------------------------------------------------------------------------
+
+def link(db, epoch):
+    """The epoch's continuation of an earlier setup, or None.
+
+    Returns {"source_epoch", "segments": {factor: segment label}, "pending_id", "created_at"}. Factors are
+    'mechanism', 'camera:<root>' and 'partner:<root>'; a label is '<root or mechanism>@<since_seq>'.
+    """
+    if not _has_table(db, "epoch_links"):
+        return None
+    row = db.execute("SELECT source_epoch, segments, pending_id, created_at FROM epoch_links WHERE epoch=?",
+                     (epoch,)).fetchone()
+    if row is None:
+        return None
+    return {"source_epoch": row[0], "segments": json.loads(row[1]), "pending_id": row[2], "created_at": row[3]}
+
+
+def _segment_range(confirmed, scope, label):
+    """[start, end) of the segment named by label; end is None for a scope's latest segment."""
+    start = int(label.rsplit("@", 1)[1])
+    later = [seq for seq in confirmed.get(scope, []) if seq > start]
+    return start, (later[0] if later else None)
+
+
+def _linked_tallies(db, linked):
+    """Learning tallies {(channel, root): [n0, n1, first_seq]} of the source epoch inside the linked segments.
+
+    Every pooled event lies in the linked mechanism segment; camera and word events also lie in their root's
+    linked segment. Roots that are not linked are not pooled.
+    """
+    source, segments = linked["source_epoch"], linked["segments"]
+    confirmed = changes(db, source)["confirmed"]
+
+    def within(scope, label):
+        start, end = _segment_range(confirmed, scope, label)
+        return ("seq>=?" + (" AND seq<?" if end is not None else ""),
+                [start] + ([end] if end is not None else []))
+
+    where, params = within("mechanism", segments.get("mechanism", "mechanism@0"))
+    alternatives = ["channel='reference'"]
+    for scope, label in sorted(segments.items()):
+        if scope == "mechanism":
+            continue
+        prefix, root = scope.split(":", 1)
+        clause, values = within(scope, label)
+        alternatives.append(f"(channel=? AND root=? AND {clause})")
+        params += [_CHANNEL[prefix], root, *values]
+    tallies = {}
+    for channel, root, bit, action, n, first in db.execute(
+            f"SELECT channel, root, bit, action, count(*), min(seq) FROM evidence WHERE epoch=? AND {learning_sql(db)} "
+            f"AND {where} AND ({' OR '.join(alternatives)}) GROUP BY channel, root, bit, action", [source, *params]):
+        entry = tallies.setdefault((channel, root), [0, 0, first])
+        entry[bit ^ action] += n
+        entry[2] = min(entry[2], first)
+    return tallies
 
 
 # ---- tallies and the model ----------------------------------------------------------------------------
@@ -356,16 +425,30 @@ def _segment_start(seqs, index):
     return seqs[index - 1] if index else 0
 
 
-def _assess(db, epoch, *, detect=True, legacy=True):
+def _assess(db, epoch, *, detect=True, legacy=True, pool=True):
     """compute() plus the internals other functions reuse: (result, inference, factors, changes).
 
-    detect=False skips change detection; legacy=False leaves "legacy" as None (the O(events) replay).
+    detect=False skips change detection; legacy=False leaves "legacy" as None (the O(events) replay);
+    pool=False ignores the epoch's link (its own evidence only).
     """
     require_epoch(db, epoch)
     known = changes(db, epoch)
     confirmed = known["confirmed"]
     bounds = sorted({seq for seqs in confirmed.values() for seq in seqs})
     counts, raw = _aggregate(db, epoch, bounds)
+    linked = link(db, epoch) if pool else None
+    linked_from = None
+    if linked is not None:
+        # Pooled events count as the epoch's earliest: bucket 0, i.e. the first segment of every factor.
+        pooled = 0
+        for (channel, root), (n0, n1, first) in _linked_tallies(db, linked).items():
+            entry = raw.setdefault((channel, root, 0), [0, 0, first])
+            entry[0] += n0
+            entry[1] += n1
+            entry[2] = min(entry[2], first)
+            pooled += n0 + n1
+        linked_from = {"epoch": linked["source_epoch"], "segments": linked["segments"],
+                       "pending_id": linked["pending_id"], "created_at": linked["created_at"], "learning": pooled}
     factors, segments = _model(raw, confirmed, bounds)
     inference = _infer(factors, segments)
     p_w = inference["p_segments"][-1]
@@ -412,7 +495,7 @@ def _assess(db, epoch, *, detect=True, legacy=True):
             rows.append({"segment": f"{root}@{_segment_start(seqs, fseg)}", "since_seq": _segment_start(seqs, fseg),
                          "p_inverted": _factor_p(inference, given) if given else .5, "n": n})
         segments_detail[scope] = rows
-    simple = len(groups["camera"]) <= 1 and len(groups["word"]) <= 1 and not confirmed
+    simple = len(groups["camera"]) <= 1 and len(groups["word"]) <= 1 and not confirmed and linked_from is None
     result = {
         "epoch": epoch, "state_version": store.state_version(db), "evidence": counts,
         "mechanism": mechanism, "sensors": groups["camera"], "partners": groups["word"],
@@ -421,6 +504,7 @@ def _assess(db, epoch, *, detect=True, legacy=True):
         "segments": segments_detail,
         "confirmed_changes": [{key: r[key] for key in ("scope", "since_seq", "pending_id", "created_at")}
                               for r in known["records"] if r["confirmed"]],
+        "linked_from": linked_from,
     }
     if detect:
         change = _detect(db, epoch, known)
@@ -448,7 +532,9 @@ def compute(db, epoch):
     legacy_live.status(). Factors report their current segment; "segments" details every segment of a
     scope with confirmed changes, "confirmed_changes" lists them, and "change" is detect_change(). A
     factor (or the mechanism) whose change is suspected but not yet confirmed or rejected carries
-    "suspected_change": true with its llr and suspected_since_seq.
+    "suspected_change": true with its llr and suspected_since_seq. "linked_from" is None, or the earlier
+    epoch and segments this epoch continues ({"epoch", "segments", "pending_id", "created_at", "learning"}
+    with "learning" = pooled source events); factor "n" then includes pooled events, "evidence" does not.
     """
     return _assess(db, epoch)[0]
 
@@ -554,52 +640,138 @@ def _map(p):
     return None if abs(p - .5) < 1e-9 else int(p > .5)
 
 
-def match_epochs(db, epoch, *, last=MATCH_EVENTS):
-    """Which earlier calibration context does this epoch's recent evidence come from?
+def _relation_at(inference, given, m):
+    """P(w_m XOR h = 1): the relation a camera/word segment observes under mechanism segment m."""
+    return sum(p * ((1 - g) if a[m] else g)
+               for p, g, a in zip(inference["posterior"], given, inference["assignments"]))
 
-    Scores the last `last` learning events of `epoch` under each OTHER epoch's current MAP beliefs: a camera
-    or word event under the MAP of (w XOR that root's bit) with reading error .10, a reference event under
-    MAP w (one reading of a fixture that is flipped with probability .15: P(hit) = .78). Roots the other
-    epoch has never seen, and ties, are uninformative (probability .5), so "unknown" (every event at .5)
-    is the reserved alternative. "best" is the top epoch only when it beats both the runner-up epoch and
-    unknown by >= log(19); otherwise None.
+
+def _fresh(n0, n1):
+    """Log marginal likelihood of one camera/word root's readings under a fresh, uniform bit."""
+    return _LOG_HALF + _lse(_bernoulli(n0, n1, 0), _bernoulli(n0, n1, 1))
+
+
+def _window_tallies(events):
+    tallies = {}
+    for e in events:
+        tallies.setdefault((e["channel"], e["root"]), [0, 0])[e["bit"] ^ e["action"]] += 1
+    return {key: tuple(value) for key, value in tallies.items()}
+
+
+def new_setup_log_likelihood(tallies):
+    """Exact log marginal likelihood of readings {(channel, root): (n0, n1)} under a NEW setup.
+
+    A new setup has a fresh, uniform mechanism bit shared by every reading, a fresh uniform alignment bit per
+    camera root, a fresh uniform convention bit per partner and a fixture polarity per reference root, with the
+    reading-error model of compute(): this is compute()'s own evidence on these readings alone.
+    """
+    return _infer([((channel, root, 0), {0: counts}) for (channel, root), counts in sorted(tallies.items())])[
+        "log_marginal"]
+
+
+def _candidate(db, other, tallies):
+    """The best-scoring configuration of `other` for the window tallies, or None when it has no learning events.
+
+    A configuration picks one mechanism segment m and, for each camera root and partner the window and
+    `other` share, one of that factor's segments. Each picked segment predicts with its MAP value: a camera
+    or word root predicts MAP(w_m XOR bit) with reading error .10, references are scored with MAP w_m and
+    their fixture polarity integrated out. Roots `other` never saw, ties, and the references when w_m is a
+    tie are fresh (marginalised), exactly as under a new setup. For each m the segment of each factor is
+    chosen independently (the factors are independent given m), then the best m is kept.
+
+    Multiple comparisons: picking the best of k segments of a factor would let an epoch with more segments
+    fit better by chance. Each picked factor with k > 1 segments (and the mechanism with M > 1 segments,
+    when the window depends on it) is charged log(k): its share of a uniform prior over that factor's
+    segments, so the score is a lower bound on the configuration-averaged likelihood.
+    """
+    result, inference, _, known = _assess(db, other, detect=False, legacy=False, pool=False)
+    if not result["evidence"]["learning"]:
+        return None
+    confirmed = known["confirmed"]
+    mechanism = confirmed.get("mechanism", [])
+    counts = {}
+    for channel, root, _ in inference["conditional"]:
+        counts[(channel, root)] = len(confirmed.get(scope_of(channel, root), [])) + 1
+    references = [c for (channel, _), c in tallies.items() if channel == "reference"]
+    best = None
+    for m in range(len(mechanism) + 1):
+        w = _map(inference["p_segments"][m])
+        ll, penalty, informative, chosen = 0.0, 0.0, 0, {}
+        for (channel, root), (n0, n1) in sorted(tallies.items()):
+            if channel == "reference":
+                continue
+            count = counts.get((channel, root))
+            if count is None:
+                ll += _fresh(n0, n1)
+                continue
+            options = []
+            for fseg in range(count):
+                given = inference["conditional"].get((channel, root, fseg))
+                relation = _map(_relation_at(inference, given[0], m)) if given else None
+                options.append((_fresh(n0, n1) if relation is None else _bernoulli(n0, n1, relation), fseg, relation))
+            score, fseg, relation = max(options, key=lambda option: option[:2])   # ties -> the later segment
+            ll += score
+            penalty += math.log(count)
+            chosen[scope_of(channel, root)] = fseg
+            informative += 0 if relation is None else n0 + n1
+        if references:
+            values = [_group_values(n0, n1) for n0, n1 in references]
+            if w is None:
+                ll += _LOG_HALF + _lse(sum(v[0] for v in values), sum(v[1] for v in values))
+            else:
+                ll += sum(v[w] for v in values)
+                informative += sum(n0 + n1 for n0, n1 in references)
+        if mechanism and (references or chosen):
+            penalty += math.log(len(mechanism) + 1)
+        if best is None or ll - penalty >= best[0]:   # ties -> the later mechanism segment
+            best = (ll - penalty, m, penalty, informative, chosen)
+    score, m, penalty, informative, chosen = best
+    segments = {"mechanism": f"mechanism@{_segment_start(mechanism, m)}"}
+    for (channel, root), count in sorted(counts.items()):
+        scope = scope_of(channel, root)
+        segments[scope] = f"{root}@{_segment_start(confirmed.get(scope, []), chosen.get(scope, count - 1))}"
+    return {"epoch": other, "segments": segments, "log_likelihood": score, "penalty": penalty,
+            "events": informative}
+
+
+def match_epochs(db, epoch, *, last=MATCH_EVENTS):
+    """Is this epoch's recent evidence an earlier setup returning, or a new setup?
+
+    Scores the last `last` learning events of `epoch` under each OTHER epoch with learning evidence, taking
+    the best configuration of that epoch's segments (see _candidate; its log_likelihood includes the
+    log(#segments) multiple-comparison penalty), against a NEW setup scored exactly by
+    new_setup_log_likelihood. Prior: 1/2 on a new setup, 1/2 on "some earlier configuration" split evenly
+    across the candidate epochs. Without references in the window, a candidate can beat a new setup by at most
+    a factor 2 per shared camera root or partner (a fresh bit matches it half the time), however many
+    readings arrive.
+
+    Returns {"epoch", "events", "ranking": [{"epoch", "segments", "log_likelihood", "penalty", "posterior",
+    "events"}], "best", "best_posterior", "new_setup_posterior", "new_setup_log_likelihood", "ask_posterior"}.
+    "best" is the top epoch when its posterior >= MATCH_POSTERIOR (.75), else None.
     """
     require_epoch(db, epoch)
     if isinstance(last, bool) or not isinstance(last, int) or not 1 <= last <= 1000:
         raise ValidationError("last must be an integer between 1 and 1000")
     events = _window(db, epoch, last)
-    unknown = len(events) * _LOG_HALF
+    tallies = _window_tallies(events)
+    new_setup = new_setup_log_likelihood(tallies)
     ranking = []
     for (other,) in db.execute("SELECT name FROM epochs WHERE name!=? ORDER BY created_at, name", (epoch,)).fetchall():
-        result, inference, _, _ = _assess(db, other, detect=False, legacy=False)
-        mechanism = _map(result["mechanism"]["p_inverted"])
-        relation = {}
-        current = {}
-        for (channel, root, fseg), (given, _) in inference["conditional"].items():
-            if (channel, root) not in current or fseg > current[(channel, root)]:
-                current[(channel, root)] = fseg
-                relation[(channel, root)] = _map(_relation_p(inference, given))
-        ll, informative = 0.0, 0
-        for e in events:
-            reading = e["bit"] ^ e["action"]
-            if e["channel"] == "reference":
-                predicted, hit = mechanism, _REFERENCE_HIT
-            else:
-                predicted, hit = relation.get((e["channel"], e["root"])), 1 - READING_ERROR
-            if predicted is None:
-                ll += _LOG_HALF
-            else:
-                ll += math.log(hit if reading == predicted else 1 - hit)
-                informative += 1
-        ranking.append({"epoch": other, "log_likelihood": ll, "events": informative})
+        candidate = _candidate(db, other, tallies)
+        if candidate is not None:
+            ranking.append(candidate)
+    prior = math.log(.5 / len(ranking)) if ranking else None
+    total = _LOG_HALF + new_setup
+    for r in ranking:
+        total = _lse(total, prior + r["log_likelihood"])
+    for r in ranking:
+        r["posterior"] = math.exp(prior + r["log_likelihood"] - total)
     ranking.sort(key=lambda r: (-r["log_likelihood"], r["epoch"]))
-    best = None
-    if ranking and ranking[0]["events"]:
-        rival = max([unknown] + [r["log_likelihood"] for r in ranking[1:2]])
-        if ranking[0]["log_likelihood"] - rival >= CHANGE_THRESHOLD:
-            best = ranking[0]["epoch"]
-    return {"epoch": epoch, "events": len(events), "unknown_log_likelihood": unknown, "ranking": ranking,
-            "best": best}
+    best = ranking[0]["epoch"] if ranking and ranking[0]["posterior"] >= MATCH_POSTERIOR else None
+    return {"epoch": epoch, "events": len(events), "ranking": ranking, "best": best,
+            "best_posterior": ranking[0]["posterior"] if best is not None else None,
+            "new_setup_posterior": math.exp(_LOG_HALF + new_setup - total),
+            "new_setup_log_likelihood": new_setup, "ask_posterior": MATCH_POSTERIOR}
 
 
 # ---- explanations -------------------------------------------------------------------------------------

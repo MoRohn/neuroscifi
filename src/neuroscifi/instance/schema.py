@@ -130,6 +130,15 @@ MIGRATIONS = [
     -- Covering index for the per-epoch tallies (learning rows, sample dedupe and memory-only counts).
     CREATE INDEX IF NOT EXISTS evidence_tally ON evidence(epoch, consent, sample_id, channel, root, bit, action);
     """,
+    # ---- version 4 ---------------------------------------------------------
+    """
+    -- executive.py writes, beliefs.py reads: an epoch that continues an earlier setup ("continue there").
+    -- segments is JSON {factor: segment label}, e.g. {"camera:cam-a": "cam-a@0", "mechanism": "mechanism@0"};
+    -- labels name roots, so governance deletes a link when one of its roots is forgotten.
+    CREATE TABLE epoch_links(
+      epoch TEXT PRIMARY KEY, source_epoch TEXT NOT NULL, segments TEXT NOT NULL,
+      pending_id INTEGER, created_at REAL NOT NULL);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

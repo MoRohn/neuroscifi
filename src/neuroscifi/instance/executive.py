@@ -5,15 +5,19 @@ Policy (first match wins):
 2 change suspected and not ambiguous -> ask (pending kind 'calibrate', scope = changed scope)
 3 change ambiguous -> test_reference if the epoch has any reference evidence, else ask
 4 no learning evidence yet -> observe
-4b the epoch has <= beliefs.MATCH_EVENTS learning events and match_epochs names an earlier epoch -> ask
-   (scope 'epoch:<best>', "This looks like <best>; continue there?"), at most once per epoch
+4b the epoch has <= beliefs.MATCH_EVENTS learning events, continues no earlier setup yet, and match_epochs
+   names an earlier epoch E (posterior >= beliefs.MATCH_POSTERIOR) -> ask (scope 'epoch:<E>', "This looks like
+   E before the camera:x change at #S; continue with that calibration?"), at most once per (epoch, E):
+   a question about E that was answered or closed in this epoch is not asked again
 5 mechanism not identifiable (|p-.5| < .37) -> test_reference
 6 a partner with >= 4 learning words still has |p-.5| < .37 -> ask (the most ambiguous partner that is
   not answered, see below)
 7 otherwise -> act; never while a non-ambiguous change suspicion is open (that defers instead)
 
-Answered questions are not re-asked for the same events. A change the owner confirmed or rejected
-(`resolve(..., confirm=True|False)`) is handled by beliefs.detect_change. Any other owner answer to an
+Answered questions are not re-asked for the same events. `resolve(..., confirm=True)` on an epoch question
+links the epoch to the segments of E that matched (epoch_links), so its beliefs start from E's calibration;
+confirm=False records that E was declined (the answered question) and only closes it. A change the owner
+confirmed or rejected (`resolve(..., confirm=True|False)`) is handled by beliefs.detect_change. Any other owner answer to an
 ask/calibrate question of a scope suppresses a new question of the same kind and scope until at least
 3 learning events of that scope arrived after the evidence the question was about (its "evidence through
 #H" horizon); a suppressed change question defers, a suppressed partner question lets the next rule run.
@@ -23,6 +27,7 @@ the epoch becomes defer. Re-deciding the same open question reuses its pending r
 Working memory decays: decide(record=True) closes ask/test_reference/calibrate questions left open for
 more than 7 days ('expired: no answer within 7 days').
 """
+import json
 import re
 
 from . import beliefs, store
@@ -69,13 +74,30 @@ def _answered(db, epoch, kind, scope):
 
 def _match_rule(db, epoch, learning):
     """Rule 4b: (best epoch, match) or None."""
-    if not 0 < learning <= beliefs.MATCH_EVENTS:
+    if not 0 < learning <= beliefs.MATCH_EVENTS or beliefs.link(db, epoch) is not None:
         return None
-    if db.execute("SELECT 1 FROM pending WHERE epoch=? AND scope LIKE 'epoch:%' AND resolved_at IS NOT NULL",
-                  (epoch,)).fetchone():
-        return None   # once per epoch: an earlier-epoch question was already answered or closed
     match = beliefs.match_epochs(db, epoch, last=beliefs.MATCH_EVENTS)
-    return (match["best"], match) if match["best"] is not None else None
+    best = match["best"]
+    if best is None or db.execute("SELECT 1 FROM pending WHERE epoch=? AND scope=? AND resolved_at IS NOT NULL",
+                                  (epoch, f"epoch:{best}")).fetchone():
+        return None   # once per (epoch, earlier epoch): that question was already answered or closed
+    return best, match
+
+
+def _segment_phrase(db, other, segments):
+    """' before the camera:x change at #S'-style description of the matched segments of `other`."""
+    confirmed = beliefs.changes(db, other)["confirmed"]
+    parts = []
+    for scope, label in sorted(segments.items()):
+        seqs = confirmed.get(scope)
+        if not seqs:
+            continue
+        start, end = beliefs._segment_range(confirmed, scope, label)
+        if end is not None:
+            parts.append(f"before the {scope} change at #{end}" + (f" (since #{start})" if start else ""))
+        else:
+            parts.append(f"after the {scope} change at #{start}")
+    return "".join(" " + part if i == 0 else " and " + part for i, part in enumerate(parts))
 
 
 def _policy(db, epoch, allowed, why, horizon):
@@ -127,11 +149,13 @@ def _policy(db, epoch, allowed, why, horizon):
     if matched is not None:
         best, match = matched
         top = match["ranking"][0]
+        where = _segment_phrase(db, best, top["segments"])
         return ("ask", "ask", f"epoch:{best}",
-                f"epoch {epoch} has {counts['learning']} learning event(s); under {best}'s beliefs they score "
-                f"{top['log_likelihood']:.2f} nats, at least log(19) above every other epoch and unknown "
-                f"({match['unknown_log_likelihood']:.2f}); ask whether this is the earlier setup",
-                f"This looks like {best}; continue there?{through}")
+                f"epoch {epoch} has {counts['learning']} learning event(s); {best}{where} explains them with "
+                f"posterior {top['posterior']:.3f} >= {beliefs.MATCH_POSTERIOR} against a new setup "
+                f"({match['new_setup_posterior']:.3f}) and every other earlier configuration; ask whether this is "
+                "the earlier setup",
+                f"This looks like {best}{where}; continue with that calibration?{through}")
     p = result["mechanism"]["p_inverted"]
     if not result["mechanism"]["identifiable"]:
         return ("test_reference", "test_reference", "mechanism",
@@ -243,11 +267,44 @@ def _changepoint(db, pending_id):
     return dict(zip(("id", "epoch", "scope", "since_seq", "created_at"), row[:5]), confirmed=bool(row[5]))
 
 
+def _link(db, pending_id):
+    if not beliefs._has_table(db, "epoch_links"):
+        return None
+    row = db.execute("SELECT epoch,source_epoch,segments,pending_id,created_at FROM epoch_links WHERE pending_id=?",
+                     (pending_id,)).fetchone()
+    if row is None:
+        return None
+    return {"epoch": row[0], "source_epoch": row[1], "segments": json.loads(row[2]), "pending_id": row[3],
+            "created_at": row[4]}
+
+
+def _record_link(db, current, confirm, now):
+    """confirm=True on an 'epoch:<E>' question: link the epoch to E's matching segments. Caller owns the txn.
+
+    The segments are those of E's entry in match_epochs at answer time. confirm=False records nothing beyond
+    the answered question itself, which keeps rule 4b from asking about E again in this epoch.
+    """
+    epoch, source = current["epoch"], current["scope"].split(":", 1)[1]
+    if not confirm:
+        return None
+    beliefs.require_epoch(db, source)
+    existing = beliefs.link(db, epoch)
+    if existing is not None:
+        raise Conflict(f"Epoch {epoch} already continues epoch {existing['source_epoch']}")
+    match = beliefs.match_epochs(db, epoch, last=beliefs.MATCH_EVENTS)
+    entry = next((r for r in match["ranking"] if r["epoch"] == source), None)
+    if entry is None:
+        raise ValidationError(f"Epoch {source} has no learning evidence to continue from")
+    db.execute("INSERT INTO epoch_links(epoch,source_epoch,segments,pending_id,created_at) VALUES(?,?,?,?,?)",
+               (epoch, source, json.dumps(entry["segments"], sort_keys=True, separators=(",", ":")),
+                current["id"], now))
+    return {"epoch": epoch, "source_epoch": source, "segments": entry["segments"], "pending_id": current["id"],
+            "created_at": now}
+
+
 def _record_answer(db, current, confirm, now):
     """Insert the changepoint row for a confirm=True/False answer to a change question. Caller owns the txn."""
     epoch, scope, kind = current["epoch"], current["scope"], current["kind"]
-    if scope.startswith("epoch:"):
-        return None    # the owner's answer to "continue there?" is recorded in the resolution text
     if kind not in ("calibrate", "ask") or not scope.startswith(("mechanism", "camera:", "partner:")):
         raise ValidationError(f"Question {current['id']} ({kind} about {scope}) is not about a change; "
                               "answer it without confirm")
@@ -278,8 +335,10 @@ def resolve(db, pending_id, resolution, now, *, confirm=None):
     confirm=True on a change question (kind 'calibrate', or an 'ask' about a change) records a confirmed
     changepoint (scope, since_seq from the question, else from detect_change): that scope alone is relearned
     from a new hidden bit, everything else keeps its evidence. confirm=False records a rejection: the scope
-    keeps pooling and is not reported again until 3 of its events arrive. confirm=None only closes the
-    question. Returns the pending row plus "changepoint" (the recorded row or None).
+    keeps pooling and is not reported again until 3 of its events arrive. On an 'epoch:<E>' question,
+    confirm=True ("continue there") links the epoch to E's matching segments (see _record_link) and
+    confirm=False ("this is new") declines E. confirm=None only closes the question. Returns the pending row
+    plus "changepoint" and "link" (the recorded rows or None).
     Repeating the same answer is idempotent; a different answer to a closed question is a Conflict.
     """
     if isinstance(pending_id, bool) or not isinstance(pending_id, int):
@@ -295,18 +354,24 @@ def resolve(db, pending_id, resolution, now, *, confirm=None):
         if row is None:
             raise NotFound(f"No pending question {pending_id}")
         current = dict(zip(_PENDING_COLUMNS, row))
+        about_epoch = current["scope"].startswith("epoch:")
         if current["resolved_at"] is not None:
             recorded = _changepoint(db, pending_id)
-            previous = recorded["confirmed"] if recorded else None
-            if current["resolution"] == resolution and (confirm is None or confirm == previous
-                                                        or current["scope"].startswith("epoch:")):
-                return {**current, "changepoint": recorded}
+            linked = _link(db, pending_id)
+            previous = (linked is not None) if about_epoch else (recorded["confirmed"] if recorded else None)
+            if current["resolution"] == resolution and (confirm is None or confirm == previous):
+                return {**current, "changepoint": recorded, "link": linked}
             raise Conflict(f"Pending question {pending_id} was already resolved: {current['resolution']!r}")
-        changepoint = _record_answer(db, current, confirm, now) if confirm is not None else None
+        changepoint = linked = None
+        if confirm is not None:
+            if about_epoch:
+                linked = _record_link(db, current, confirm, now)
+            else:
+                changepoint = _record_answer(db, current, confirm, now)
         db.execute("UPDATE pending SET resolved_at=?, resolution=? WHERE id=?", (now, resolution, pending_id))
         store.bump(db, "teacher_interventions")
         store.bump_state_version(db)
-        if changepoint is not None:
+        if changepoint is not None or linked is not None:
             beliefs.record_revision(db, current["epoch"], now, f"resolve:{pending_id}")
         return {**dict(zip(_PENDING_COLUMNS, db.execute(select, (pending_id,)).fetchone())),
-                "changepoint": changepoint}
+                "changepoint": changepoint, "link": linked}

@@ -235,12 +235,17 @@ def test_owner_journey(console, new_page):
     page.evaluate("window.scrollTo(0, 0)")
     page.screenshot(path=str(SHOTS / "console-match-desktop.png"), full_page=True)
     go(page, "questions")
-    expect(page.locator("#pendingList")).to_contain_text("This looks like bench; continue there?")
+    expect(page.locator("#pendingList")).to_contain_text("This looks like bench")
+    expect(page.locator("#pendingList")).to_contain_text("continue with that calibration?")
     expect(page.get_by_role("button", name="No, this is new")).to_be_visible()
     page.get_by_role("button", name="Continue there").click()
     expect(page.locator("#questionStatus")).to_contain_text("Question 2 resolved")
+    expect(page.locator("#questionStatus")).to_contain_text("second now continues the calibration of bench")
     go(page, "teach")
-    expect(page.locator("#epochSelect")).to_have_value("bench")
+    expect(page.locator("#epochSelect")).to_have_value("second")
+    expect(page.locator("#linkedFrom")).to_contain_text("Continues an earlier setup")
+    expect(page.locator("#linkedFrom")).to_contain_text("bench (")
+    expect(page.locator("#probs [data-scope='camera:cam1']")).to_be_visible()   # bench's camera, continued
     expect(page.locator("#decisionValue")).to_have_text("act")
 
     # (e) graphs: simulate, learn, evaluate, promote, heatmap, recall

@@ -489,18 +489,27 @@ def test_confirm_on_a_question_that_is_not_about_a_change_is_400(console):
     assert c.post("/api/pending/99/resolve", {"resolution": "x", "confirm": True})[0] == 404
 
 
+def original_setup(c, epoch):
+    """Readings from e1's mapping in a new epoch: 4 camera, 4 word and 3 reference readings (unseen roots)."""
+    for k in range(4):
+        observe(c, f"{epoch}-c{k}", "camera", 0, 0, "cam1", epoch=epoch)
+        observe(c, f"{epoch}-w{k}", "word", 1, 1, "alice", epoch=epoch)
+    for k in range(3):
+        observe(c, f"{epoch}-r{k}", "reference", 0, 0, f"{epoch}-ref{k}", epoch=epoch)
+
+
 def test_epoch_match_and_the_continue_there_question(console):
     c = console
     teach_baseline(c)
     c.ok("POST", "/api/epochs", {"name": "e2"})
     empty = c.ok("GET", "/api/epochs/e2/match")
     assert empty["best"] is None and empty["events"] == 0 and [r["epoch"] for r in empty["ranking"]] == ["e1"]
-    for k in range(6):
-        observe(c, f"m-c{k}", "camera", 0, 0, "cam1", epoch="e2")
+    original_setup(c, "e2")
     match = c.ok("GET", "/api/epochs/e2/match?last=12")
-    assert match["best"] == "e1" and match["ranking"][0]["epoch"] == "e1" and match["ranking"][0]["events"] == 6
+    assert match["best"] == "e1" and match["ranking"][0]["events"] == 11 and match["best_posterior"] >= .75
+    assert match["ranking"][0]["segments"] == {"mechanism": "mechanism@0", "camera:cam1": "cam1@0",
+                                               "partner:alice": "alice@0"}
     assert c.ok("GET", "/api/epochs/e2/match") == match
-    assert c.ok("GET", "/api/epochs/e1/match")["ranking"][0]["epoch"] == "e2"
     assert c.get("/api/epochs/nope/match")[0] == 404
     for bad in ("last=0", "last=1001", "last=abc", "last=1.5", "other=1"):
         assert c.get(f"/api/epochs/e2/match?{bad}")[0] == 400, bad
@@ -508,9 +517,40 @@ def test_epoch_match_and_the_continue_there_question(console):
     decision = c.ok("POST", "/api/epochs/e2/decide")
     assert decision["decision"] == "ask" and decision["scope"] == "epoch:e1"
     question = c.ok("GET", "/api/pending?epoch=e2")[0]
-    assert question["question"].startswith("This looks like e1; continue there?")
-    answered = c.ok("POST", f"/api/pending/{question['id']}/resolve", {"resolution": "Continue in epoch e1"})
-    assert answered["resolution"] == "Continue in epoch e1" and answered["changepoint"] is None
+    assert question["question"].startswith("This looks like e1; continue with that calibration?")
+    before = c.ok("GET", "/api/epochs/e2/beliefs")["beliefs"]
+    assert before["linked_from"] is None and before["sensors"]["cam1"]["n"] == 4
+    route = f"/api/pending/{question['id']}/resolve"
+    answered = c.ok("POST", route, {"resolution": "Continue with the calibration of epoch e1", "confirm": True})
+    assert answered["changepoint"] is None and answered["link"]["source_epoch"] == "e1"
+    after = c.ok("GET", "/api/epochs/e2/beliefs")["beliefs"]
+    assert after["linked_from"]["epoch"] == "e1" and after["linked_from"]["learning"] == 15
+    assert after["sensors"]["cam1"]["n"] == 6 + 4 and after["evidence"]["learning"] == 11
+    assert c.ok("POST", route, {"resolution": "Continue with the calibration of epoch e1", "confirm": True})["link"]
+    assert c.post(route, {"resolution": "Continue with the calibration of epoch e1", "confirm": False})[0] == 409
+    assert c.ok("POST", "/api/epochs/e2/decide")["decision"] == "act"
+    assert c.ok("GET", "/api/epochs/e1/match")["ranking"][0]["epoch"] == "e2"
+    c.ok("POST", "/api/epochs", {"name": "e3"})
+    for k in range(6):   # one camera root alone gains at most a factor 2 over a new setup: never 3:1
+        observe(c, f"m-c{k}", "camera", 0, 0, "cam1", epoch="e3")
+    single = c.ok("GET", "/api/epochs/e3/match?last=6")
+    assert single["best"] is None and all(r["posterior"] < .67 for r in single["ranking"])
+
+
+def test_no_this_is_new_declines_the_earlier_epoch(console):
+    c = console
+    teach_baseline(c)
+    c.ok("POST", "/api/epochs", {"name": "e2"})
+    original_setup(c, "e2")
+    decision = c.ok("POST", "/api/epochs/e2/decide")
+    assert decision["scope"] == "epoch:e1"
+    answered = c.ok("POST", f"/api/pending/{decision['pending_id']}/resolve",
+                    {"resolution": "This is a new setup, not epoch e1", "confirm": False})
+    assert answered["link"] is None and answered["changepoint"] is None
+    assert c.ok("GET", "/api/epochs/e2/match")["best"] == "e1"
+    again = c.ok("POST", "/api/epochs/e2/decide")
+    assert again["scope"] != "epoch:e1" and again["asks_used"] == 1
+    assert c.ok("GET", "/api/epochs/e2/beliefs")["beliefs"]["linked_from"] is None
 
 
 def test_functional_map(console):
@@ -541,13 +581,40 @@ def test_functional_map(console):
 
 # ---- the command ----------------------------------------------------------------------------------------------
 
+_CONSOLES = []
+
+
+@pytest.fixture(autouse=True)
+def _no_orphan_consoles():
+    """Kill any console subprocess a test leaves running, even when the test fails mid-way."""
+    yield
+    while _CONSOLES:
+        proc = _CONSOLES.pop()
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()
+
+
 def _run_console(tmp_path, *extra):
     path = tmp_path / "cli.sqlite"
     if not path.exists():
         store.create(path, T0).close()
     env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
-    return subprocess.Popen([sys.executable, "-m", "neuroscifi.cli", "console", "--db", str(path), "--port", "0", *extra],
+    proc = subprocess.Popen([sys.executable, "-m", "neuroscifi.cli", "console", "--db", str(path), "--port", "0", *extra],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    _CONSOLES.append(proc)
+    return proc
+
+
+def _stop(proc, sig=signal.SIGINT, timeout=20):
+    """Stop a console subprocess; escalate to kill so a failing test never leaves an orphan server."""
+    proc.send_signal(sig)
+    try:
+        return proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        out, err = proc.communicate()
+        raise AssertionError(f"console did not stop on {sig!r}: {err}")
 
 
 def test_url_file_is_private_and_token_stays_off_stdout(tmp_path):
@@ -569,8 +636,7 @@ def test_url_file_is_private_and_token_stays_off_stdout(tmp_path):
         assert conn.getresponse().status == 200
         conn.close()
     finally:
-        proc.send_signal(signal.SIGINT)
-        out, err = proc.communicate(timeout=20)
+        out, err = _stop(proc)
     assert proc.returncode == 0, err
     assert token not in out and token not in err
     assert str(url_file) in out

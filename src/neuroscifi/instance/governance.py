@@ -8,8 +8,10 @@ closed here: the executive closes questions whose premise disappeared on its nex
 Derived memory is scrubbed in the same transaction. A camera or word root with no evidence row left is
 replaced in belief_revisions, pending and decisions by `camera:#<digest>` or `partner:#<digest>`
 (digest = sha256(instance_id ":" root)[:16], recorded in forgotten_roots), its changepoints rows are
-deleted (a change of a root with no evidence is meaningless), and revision causes naming a removed event
-id become `evidence:#forgotten`. Forgetting an epoch also deletes that epoch's changepoints. After the commit the WAL is checkpointed and truncated so no
+deleted (a change of a root with no evidence is meaningless), epoch_links naming it in a segment are deleted,
+and revision causes naming a removed event id become `evidence:#forgotten`. Forgetting an epoch also deletes
+that epoch's changepoints and every link from or to it. An epoch that continues an epoch losing evidence pools
+fewer events on its next read; it gets a belief revision too. After the commit the WAL is checkpointed and truncated so no
 old frame keeps the payload; a reader that blocks this is reported as effects["wal_checkpoint"] = "busy".
 """
 import hashlib
@@ -97,14 +99,19 @@ _SCRUB_TABLES = (  # table, scrubbed columns, columns stored as JSON
 
 
 def scrub_roots(db, roots):
-    """Replace forgotten roots in belief_revisions, pending and decisions and delete their changepoints.
+    """Replace forgotten roots in belief_revisions, pending and decisions; delete their changepoints and links.
 
     Caller owns the transaction. roots: {root: (kind, digest)} with kind 'camera' or 'partner'. Returns the
     number of rows rewritten or deleted. Works on any migrated connection to an instance file (also a
     restore's staged copy). A root has no evidence left in any channel, so both its camera:<root> and
-    partner:<root> changepoints go.
+    partner:<root> changepoints go, and so does every epoch link with a segment of that root.
     """
     rewritten, names = 0, sorted(roots)
+    links = db.execute("SELECT epoch, segments FROM epoch_links").fetchall() if db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='epoch_links'").fetchone() else []
+    for epoch, segments in links:
+        if any(f"{prefix}:{root}" in json.loads(segments) for root in roots for prefix in ("camera", "partner")):
+            rewritten += db.execute("DELETE FROM epoch_links WHERE epoch=?", (epoch,)).rowcount
     for start in range(0, len(names), 32):  # bounded SQL expression size; labels survive a second pass
         chunk = {root: roots[root] for root in names[start:start + 32]}
         scopes = [f"{prefix}:{root}" for root in chunk for prefix in ("camera", "partner")]
@@ -166,10 +173,16 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
     (forget_epoch).
     """
     rows = db.execute(f"SELECT seq,id,epoch,channel,root FROM evidence WHERE {where} ORDER BY seq", params).fetchall()
+    sources = sorted({r[2] for r in rows} | ({drop_epoch} if drop_epoch is not None else set()))
+    linked = [e for (e,) in db.execute(f"SELECT epoch FROM epoch_links WHERE source_epoch IN "
+                                       f"({','.join('?' * len(sources))}) ORDER BY epoch", sources)
+              if e != drop_epoch and e not in sources]
     derived = {}
     if drop_epoch is not None:
         derived = {table: db.execute(f"DELETE FROM {table} WHERE epoch=?", (drop_epoch,)).rowcount
                    for table in ("belief_revisions", "decisions", "pending", "changepoints")}
+        derived["epoch_links"] = db.execute("DELETE FROM epoch_links WHERE epoch=? OR source_epoch=?",
+                                            (drop_epoch, drop_epoch)).rowcount
     if not rows and not any(derived.values()):
         return None
     db.executemany("DELETE FROM evidence WHERE seq=?", [(r[0],) for r in rows])
@@ -184,7 +197,7 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
     epochs = sorted({r[2] for r in rows})
     version = store.bump_state_version(db)
     from .beliefs import compute  # lazy: governance must not depend on inference at import time
-    for epoch in epochs:
+    for epoch in epochs + linked:
         if epoch == drop_epoch:
             continue
         count = sum(1 for r in rows if r[2] == epoch)
@@ -196,6 +209,8 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
     forgotten, scrubbed = _forget_roots(db, rows, now)
     effects = {"deleted": len(rows), "epochs": epochs, "checkpoints_stale": stale, "state_version": version,
                "roots_forgotten": forgotten, "derived_rows_scrubbed": scrubbed + causes}
+    if linked:
+        effects["linked_epochs_revised"] = linked
     if drop_epoch is not None:
         effects["derived_deleted"] = derived
     db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
@@ -222,7 +237,8 @@ def forget_evidence(db, event_id, now, *, reason="forgotten"):
 
 
 def forget_epoch(db, epoch, now):
-    """Forget every evidence row of the epoch and its belief revisions, decisions, questions and changepoints."""
+    """Forget every evidence row of the epoch, its belief revisions, decisions, questions and changepoints, and every
+    epoch link from or to it."""
     with store.write(db):
         if db.execute("SELECT 1 FROM epochs WHERE name=?", (epoch,)).fetchone() is None:
             raise NotFound(f"Unknown epoch '{epoch}'")

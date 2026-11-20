@@ -375,6 +375,10 @@ function renderBeliefs(b) {
       h('li', { text: `${c.total} stored` }), h('li', { text: `${c.learning} learning` }),
       h('li', { text: `${c.memory_only} memory-only` }), h('li', { text: `${c.duplicates_ignored} duplicate copies ignored` }),
       h('li', { text: `state version ${b.state_version}` })),
+    b.linked_from
+      ? h('p', { id: 'linkedFrom' }, badge('Continues an earlier setup', 'info'),
+          ` ${b.linked_from.epoch} (${Object.values(b.linked_from.segments).join(', ')}): ${b.linked_from.learning} earlier learning reading(s) pooled with this epoch's own.`)
+      : null,
     b.confirmed_changes?.length
       ? h('ul', { class: 'counts', id: 'confirmedChanges', 'aria-label': 'Confirmed changes' },
           b.confirmed_changes.map((c) => h('li', { text: `${changeName(c.scope)} since #${c.since_seq}` })))
@@ -397,10 +401,10 @@ function renderMatch(m) {
   card.hidden = !m?.best;
   if (!m?.best) { $('matchPanel').replaceChildren(); return; }
   fill($('matchPanel'),
-    h('p', { id: 'matchBest' }, h('strong', { text: m.best }), ` explains this epoch's last ${m.events} learning reading(s) better than any other epoch or an unknown setup.`),
-    table('Earlier epochs ranked by fit', ['Epoch', { label: 'Log-likelihood', num: true }, { label: 'Readings', num: true }],
-      m.ranking.map((r) => [r.epoch, r.log_likelihood.toFixed(2), r.events])),
-    h('p', { class: 'sub', text: `Unknown setup: ${m.unknown_log_likelihood.toFixed(2)}. The best epoch must beat it and the runner-up by log 19.` }));
+    h('p', { id: 'matchBest' }, h('strong', { text: m.best }), ` explains this epoch's last ${m.events} learning reading(s) with posterior ${m.best_posterior.toFixed(3)}.`),
+    table('Earlier epochs ranked by fit', ['Epoch', 'Segments', { label: 'Log-likelihood', num: true }, { label: 'Posterior', num: true }, { label: 'Readings', num: true }],
+      m.ranking.map((r) => [r.epoch, Object.values(r.segments).join(', '), r.log_likelihood.toFixed(2), r.posterior.toFixed(3), r.events])),
+    h('p', { class: 'sub', text: `A new setup: posterior ${m.new_setup_posterior.toFixed(3)}. The executive asks only when the best earlier setup reaches ${m.ask_posterior} (3:1 against everything else).` }));
 }
 
 function inScope(e, scope) {
@@ -574,8 +578,8 @@ async function loadQuestions() {
           quick('no', 'No, nothing changed', { resolution: `Rejected: ${q.scope} did not change`, confirm: false }))
       : epochTarget
         ? h('div', { class: 'buttons', role: 'group', 'aria-label': `Quick answers to question ${q.id}` },
-            quick('continue', 'Continue there', { resolution: `Continue in epoch ${epochTarget}`, epoch: epochTarget }),
-            quick('new', 'No, this is new', { resolution: `This is a new setup, not epoch ${epochTarget}` }))
+            quick('continue', 'Continue there', { resolution: `Continue with the calibration of epoch ${epochTarget}`, confirm: true }),
+            quick('new', 'No, this is new', { resolution: `This is a new setup, not epoch ${epochTarget}`, confirm: false }))
         : null;
     return h('article', { class: 'card', 'data-pending': q.id, 'aria-label': `Question ${q.id}` },
       h('p', {}, badge(q.resolved_at ? 'Resolved' : 'Open', q.resolved_at ? 'neutral' : 'info'), ` #${q.id} · ${q.kind.replace('_', ' ')} · ${q.scope}`),
@@ -586,11 +590,14 @@ async function loadQuestions() {
   })));
 }
 
-async function answerQuestion(q, button, status, { epoch, ...body }) {
-  const text = `Question ${q.id} resolved and recorded as a teacher intervention.` + (body.confirm === true ? ' Only that factor is relearned.' : '');
+async function answerQuestion(q, button, status, body) {
+  const continued = body.confirm === true && q.scope.startsWith('epoch:');
+  const text = `Question ${q.id} resolved and recorded as a teacher intervention.` + (continued
+    ? ` Epoch ${q.epoch} now continues the calibration of ${q.scope.slice(6)}.`
+    : body.confirm === true ? ' Only that factor is relearned.' : '');
   await act(button, status, async () => {
     await api('POST', `/api/pending/${q.id}/resolve`, body);
-    if (epoch) { state.epoch = epoch; $('epochSelect').value = epoch; $('evEpoch').value = epoch; }
+    if (continued) { state.epoch = q.epoch; $('epochSelect').value = q.epoch; $('evEpoch').value = q.epoch; }
     await Promise.all([loadQuestions(), loadHeader()]);
     return text;
   });

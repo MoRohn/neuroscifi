@@ -1251,7 +1251,8 @@ def _camera_bit_p(state, action):
 def _owner_answer(db, epoch, decision, now, *, changed_scope=None, changed=False, setup=None):
     """The simulated owner answers the executive's open question truthfully. Returns what was asked and answered.
 
-    "This looks like X; continue there?" -> yes only when X is the setup truly in use (`setup`). A change question
+    "This looks like X ...; continue with that calibration?" -> confirm=True ("continue there", which links the
+    epoch to X's matching segments) only when X is the setup truly in use (`setup`), else confirm=False. A change question
     -> confirm=True only when that scope truly changed (`changed` and `changed_scope`), else confirm=False. A
     partner-meaning question -> a plain answer (confirm=None).
     """
@@ -1259,7 +1260,7 @@ def _owner_answer(db, epoch, decision, now, *, changed_scope=None, changed=False
     scope = row["scope"]
     if scope.startswith("epoch:"):
         kind, confirm = "earlier_setup", scope == f"epoch:{setup}"
-        text = "yes, this is that setup" if confirm else "no, this is a different setup"
+        text = "yes, continue there" if confirm else "no, this is a new setup"
     elif row["question"].startswith("What does"):
         kind, confirm, text = "meaning", None, "the partner's words mean what they meant before"
     else:
@@ -1317,13 +1318,18 @@ def _first_test_return(jobs):
                     questions.append({"event": j, **_owner_answer(db, RETURN, decision, now, setup=PANEL)})
             match = beliefs.match_epochs(db, RETURN)
             after = _plain(beliefs.compute(db, PANEL))
+            back = _plain(beliefs.compute(db, RETURN))
             items = memory.retrieve(db, "belief", epoch=PANEL, limit=1)["items"]
             summary = items[0]["payload"]["summary"] if items else None
         finally:
             db.close()
+        continued = [q["event"] for q in questions if q["kind"] == "earlier_setup" and q["confirm"]]
+        panel_row = next((r for r in match["ranking"] if r["epoch"] == PANEL), None)
         out.append({"intact": intact, "questions": questions, "predictions": predictions, "match_best": match["best"],
-                    "match_ranking": match["ranking"], "panel_after": after, "summary": summary,
-                    "cpu_seconds": time.process_time() - start})
+                    "match_panel_posterior": panel_row["posterior"] if panel_row else None,
+                    "match_new_setup_posterior": match["new_setup_posterior"],
+                    "continued_after_event": continued[0] if continued else None, "return_final": back,
+                    "panel_after": after, "summary": summary, "cpu_seconds": time.process_time() - start})
     return out
 
 
@@ -1440,26 +1446,102 @@ def _prediction_scores(pairs):
             "brier": _mean(_brier(p, bit) for p, bit in pairs)}
 
 
-def _segment_recognition(panel, events):
-    """Diagnostic, not a check: would the return be recognised if panel-A's EARLIER camera segment were scored the
-    way match_epochs scores an epoch's current beliefs (reading error .10, unseen or tied -> .5, beat unknown by
-    log(19))? Returns None when panel-A has no confirmed camera segment."""
-    rows = panel["segments"].get(f"camera:{CAMERA_ROOT}")
-    if not rows:
-        return None
+SENSITIVITY_STEPS = (4, 6, 8, 12)
 
-    def bit(p):
-        return None if abs(p - .5) < 1e-9 else int(p > .5)
 
-    mechanism = bit(panel["mechanism"]["p_inverted"])
-    partner = bit(panel["partners"].get(PARTNER_ROOT, {}).get("p_inverted", .5))
-    camera = bit(rows[0]["p_inverted"])
-    ll = 0.0
-    for e in events:
-        factor = camera if e["channel"] == "camera" else partner
-        predicted = None if mechanism is None or factor is None else mechanism ^ factor
-        ll += np.log(.5) if predicted is None else np.log(.9 if (e["bit"] ^ e["action"]) == predicted else .1)
-    return bool(ll - len(events) * np.log(.5) >= beliefs.CHANGE_THRESHOLD)
+def _sensitivity_streams(seed, index, life):
+    """Report-only: the designed return (4 steps) extended to 12 steps from the ORIGINAL mapping with its own
+    generator, and one reference reading every 4th step (2 readings per new reference root, flip .15), as in
+    panel-A. Returns (steps: [[camera, word], ...], references: {step: event})."""
+    design = FIRST_TEST_DESIGN
+    rng = np.random.default_rng([seed, 11, index])
+    truth, noise = life["truth"], design["reading_noise"]
+
+    def event(channel, root, relation, action):
+        reading = relation ^ int(rng.random() < noise)
+        return {"channel": channel, "root": root, "action": action, "bit": reading ^ action}
+
+    steps = [life["return"][2 * k:2 * k + 2] for k in range(design["return_steps"])]
+    while len(steps) < max(SENSITIVITY_STEPS):
+        action = int(rng.integers(2))
+        steps.append([event("camera", CAMERA_ROOT, truth["mechanism"] ^ truth["camera"], action),
+                      event("word", PARTNER_ROOT, truth["mechanism"] ^ truth["partner"], action)])
+    every, per_root = 4, design["reference_readings_per_root"]
+    flips = (rng.random(len(steps) // (every * per_root) + 1) < design["reference_root_flip_probability"]).astype(int)
+    references = {}
+    for step in range(every - 1, len(steps), every):
+        k = step // (every * per_root)
+        references[step] = event("reference", f"return-reference-{k}", truth["mechanism"] ^ int(flips[k]),
+                                 int(rng.integers(2)))
+    return steps, references
+
+
+def _return_sensitivity(path, steps, references):
+    """{(return steps, with references): (recognised, panel-A posterior)} from match_epochs over the WHOLE return,
+    each scored on an in-memory copy of the panel-A file (the scenario's file is not touched)."""
+    source = sqlite3.connect(path)
+    out = {}
+    try:
+        for n in SENSITIVITY_STEPS:
+            for with_references in (False, True):
+                events = [e for k in range(n) for e in steps[k] + ([references[k]] if with_references
+                                                                     and k in references else [])]
+                copy = sqlite3.connect(":memory:", isolation_level=None)
+                try:
+                    source.backup(copy)
+                    evidence.start_epoch(copy, RETURN, T0 + 100_000)
+                    with store.write(copy):
+                        copy.executemany(
+                            "INSERT INTO evidence(id,epoch,channel,action,bit,root,actor,provenance,recorded_at) "
+                            "VALUES(?,?,?,?,?,?,'simulator',?,?)",
+                            [(f"S-{j}", RETURN, e["channel"], e["action"], e["bit"], e["root"], SIMULATED,
+                              T0 + 100_001 + j) for j, e in enumerate(events)])
+                    match = beliefs.match_epochs(copy, RETURN, last=len(events))
+                finally:
+                    copy.close()
+                row = next((r for r in match["ranking"] if r["epoch"] == PANEL), None)
+                out[(n, with_references)] = (match["best"] == PANEL, row["posterior"] if row else 0.0)
+    finally:
+        source.close()
+    return out
+
+
+def _continue_counterfactual(path, life):
+    """Report-only counterfactual on an in-memory copy of the panel-A file: the return as designed, but the owner
+    answers an epoch:panel-A question with confirm=True after the first step (as if the executive had asked), so
+    'return' links to panel-A's matching segments. Returns the next-camera-reading predictions of steps 2..4 and
+    the return's final beliefs."""
+    source = sqlite3.connect(path)
+    copy = sqlite3.connect(":memory:", isolation_level=None)
+    try:
+        source.backup(copy)
+        base = T0 + 100_000
+        evidence.start_epoch(copy, RETURN, base)
+        predictions = []
+        for j, e in enumerate(life["return"]):
+            now = base + 1 + j
+            if e["channel"] == "camera" and j >= 2:
+                predictions.append([_camera_bit_p(beliefs.compute(copy, RETURN), e["action"]), e["bit"]])
+            evidence.observe(copy, _obs(f"C-{j}", RETURN, e["channel"], e["root"], e["action"], e["bit"]), now)
+            if j == 1:
+                with store.write(copy):
+                    question = copy.execute(
+                        "INSERT INTO pending(epoch,kind,scope,question,created_at) VALUES(?,'ask',?,?,?)",
+                        (RETURN, f"epoch:{PANEL}", f"This looks like {PANEL}; continue with that calibration?",
+                         now)).lastrowid
+                executive.resolve(copy, question, "yes, continue there", now, confirm=True)
+        return {"predictions": predictions, "final": _plain(beliefs.compute(copy, RETURN))}
+    finally:
+        copy.close()
+        source.close()
+
+
+def _best_case_posterior(steps, camera_segments=2):
+    """Posterior of panel-A when every camera and word reading of a reference-free return agrees with its original
+    mapping: each root gains r = .9^n / (.5 (.9^n + .1^n)) over a new setup, cam-a pays log(#segments)."""
+    r = .9 ** steps / (.5 * (.9 ** steps + .1 ** steps))
+    ratio = r * r / camera_segments
+    return ratio / (ratio + 1)
 
 
 def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
@@ -1471,6 +1553,10 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
     with tempfile.TemporaryDirectory(prefix="nsf-acceptance-") as directory:
         directory = Path(directory)
         panels = [_first_test_panel(directory / f"life-{index}.sqlite", life) for index, life in enumerate(lives)]
+        sensitivity = [_return_sensitivity(directory / f"life-{index}.sqlite", *_sensitivity_streams(seed, index, life))
+                       for index, life in enumerate(lives)]
+        counterfactual = [_continue_counterfactual(directory / f"life-{index}.sqlite", life)
+                          for index, life in enumerate(lives)]
         jobs = [{"path": str(directory / f"life-{index}.sqlite"), "events": life["return"], "panel": panel["final"]}
                 for index, (life, panel) in enumerate(zip(lives, panels))]
         (directory / "jobs.json").write_text(json.dumps(jobs))
@@ -1537,8 +1623,28 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
     for q in [q for panel in panels for q in panel["questions"]] + [q for r in returns for q in r["questions"]]:
         key = f"{q['kind']}:{'yes' if q['confirm'] else 'no' if q['confirm'] is False else 'answered'}"
         question_kinds[key] = question_kinds.get(key, 0) + 1
-    segment_diag = [_segment_recognition(panel["final"], life["return"]) for life, panel in zip(lives, panels)]
-    with_segment = [d for d in segment_diag if d is not None]
+    # After "continue there": next camera readings predicted from the linked return epoch, and its final beliefs
+    # scored against the ORIGINAL setup (the one the return uses).
+    after_continue = [(p, bit) for r in returns if r["continued_after_event"] is not None
+                      for p, bit, j in r["predictions"] if j > r["continued_after_event"]]
+
+    def original_correct(r, life):
+        return _mean(_correct(_answers(r["return_final"])[f], life["truth"][f]) for f in FACTORS)
+
+    continued = [(r, life) for r, life in zip(returns, lives) if r["continued_after_event"] is not None]
+    not_continued = [(r, life) for r, life in zip(returns, lives) if r["continued_after_event"] is None]
+    segments_in_panel = [len(panel["final"]["segments"].get(camera_scope, [])) or 1 for panel in panels]
+    sensitivity_rows = []
+    for n in SENSITIVITY_STEPS:
+        for with_references in (False, True):
+            cells = [life_rows[(n, with_references)] for life_rows in sensitivity]
+            sensitivity_rows.append({
+                "return_steps": n, "reference_readings": sum(1 for k in range(3, n, 4)) if with_references else 0,
+                "learning_events": 2 * n + (sum(1 for k in range(3, n, 4)) if with_references else 0),
+                "recognition_rate": _mean(hit for hit, _ in cells),
+                "panel_a_posterior_mean": _mean(post for _, post in cells),
+                "best_case_posterior": None if with_references else _best_case_posterior(n)})
+    best_case = _best_case_posterior(FIRST_TEST_DESIGN["return_steps"])
     rates = {"attribution": _mean(attribution), "recognition": _mean(recognized), "retention": _mean(retained)}
     t = FIRST_TEST_THRESHOLDS
     checks = {
@@ -1567,9 +1673,40 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
             "recurrent_replay": "predicts readings only; no factor answers to retrieve"},
         "return_match": {"best_counts": {str(k): sum(r["match_best"] == k for r in returns)
                                          for k in sorted({r["match_best"] for r in returns}, key=str)},
-                         "diagnostic_recognition_if_earlier_segment_were_scored":
-                             _mean(with_segment) if with_segment else None,
-                         "diagnostic_lifetimes": len(with_segment)},
+                         "panel_a_posterior_mean": _mean(r["match_panel_posterior"] or 0.0 for r in returns),
+                         "panel_a_posterior_max": max(r["match_panel_posterior"] or 0.0 for r in returns),
+                         "new_setup_posterior_mean": _mean(r["match_new_setup_posterior"] for r in returns),
+                         "ask_posterior": beliefs.MATCH_POSTERIOR,
+                         "lifetimes_with_two_camera_segments": sum(n == 2 for n in segments_in_panel)},
+        "return_after_continue": {
+            "lifetimes_continued": len(continued),
+            "next_camera_reading_after_continue": _prediction_scores(after_continue),
+            "return_beliefs_correct_for_original_setup": {
+                "continued": _mean(original_correct(r, life) for r, life in continued),
+                "not_continued": _mean(original_correct(r, life) for r, life in not_continued)},
+            "linked_segments": sorted({json.dumps(r["return_final"]["linked_from"]["segments"], sort_keys=True)
+                                       for r, _ in continued})},
+        "return_after_continue_counterfactual_report_only": {
+            "owner_continues_after_step": 1,
+            "next_camera_reading_steps_2_to_4": {
+                "continued": _prediction_scores([(p, bit) for c in counterfactual for p, bit in c["predictions"]]),
+                "not_continued_same_readings": _prediction_scores([(p, bit) for r in returns
+                                                                   for p, bit, j in r["predictions"] if j >= 2])},
+            "return_beliefs_correct_for_original_setup": {
+                "continued": _mean(original_correct({"return_final": c["final"]}, life)
+                                   for c, life in zip(counterfactual, lives)),
+                "not_continued": _mean(original_correct(r, life) for r, life in zip(returns, lives))},
+            "linked_camera_segment_is_original": _mean(
+                c["final"]["linked_from"]["segments"][camera_scope] == f"{CAMERA_ROOT}@0" for c in counterfactual)},
+        "recognition_information_bound": {
+            "candidate_vs_new_setup_max_bits_without_references":
+                "1 bit per shared camera root or partner (a fresh bit matches half the time); 2 bits here",
+            "camera_segment_penalty_bits": 1.0,
+            "bits_needed_for_posterior_0_75": float(np.log2(3)),
+            "best_case_bits_in_designed_return": float(np.log2(best_case / (1 - best_case))),
+            "best_case_posterior_in_designed_return": best_case,
+            "limit_posterior_without_references": 2 / 3},
+        "recognition_sensitivity_report_only": sensitivity_rows,
         "final_answers_end_of_panel_a": finals,
         "next_camera_reading_prediction": prediction,
         "interventions": {
@@ -1594,7 +1731,9 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
         "Restart: all files are closed and ONE new process opens each file, checks panel-A's beliefs equal those "
         "read before closing, starts epoch 'return' and feeds 4 steps of camera + word readings from the ORIGINAL "
         "camera mapping, with the executive deciding after each event. Recognised = the executive asked 'This "
-        "looks like panel-A; continue there?'.",
+        "looks like panel-A ...; continue with that calibration?'; the simulated owner then answers confirm=True "
+        "(continue there), which links 'return' to panel-A's matching segments, and return_after_continue measures "
+        "the next camera readings and the return's beliefs after that.",
         "Attribution: the first change question asked at or after the remount names camera:camera-1 (the owner "
         "gives no hint before that question). Retention: panel-A's mechanism (the taught action) and partner "
         "convention (the taught word) are MAP-correct after the return. Retrieval with archive lookup disabled: "
@@ -1608,10 +1747,19 @@ def first_physical_test(seed=DEFAULT_SEED, lifetimes=FIRST_TEST_LIFETIMES):
         "(panel-A, then 'return') and combine marginals as described in _camera_bit_p.",
         "Teacher cost = owner answers; interventions = owner answers + reference readings used. Compute cost = "
         "time.process_time per lifetime (product: panel-A plus its share of the restart process).",
-        "Known structural limit: match_epochs scores an epoch by its CURRENT beliefs. After the owner confirms the "
-        "remount inside panel-A, panel-A's current camera segment is the remounted one, so readings from the "
-        "original mapping contradict it. return_match.diagnostic_* reports, for information only, how often the "
-        "return would be recognised if panel-A's earlier camera segment were scored the same way.",
+        "Recognition (beliefs.match_epochs): panel-A's segments are candidates (cam@0 as well as the remounted "
+        "segment), each factor's best segment is charged log(#segments), and the alternative is a NEW setup scored "
+        "exactly (fresh mechanism, alignment and convention bits). The ask threshold is posterior >= 0.75 with prior "
+        "1/2 on a new setup. Information bound: the return has camera and word readings only, so under a new setup "
+        "each observed relation (mechanism XOR bit) is a fresh coin; panel-A can beat it by at most a factor 2 per "
+        "root (1 bit), 2 bits for camera + partner, minus 1 bit for choosing one of cam-a's 2 segments, leaving at "
+        "most 1 bit (posterior 2/3) however long the return is, while 0.75 needs log2(3) = 1.58 bits. "
+        "recognition_information_bound and recognition_sensitivity_report_only show this; the sensitivity table "
+        "(report-only, not judged) scores the whole return for 4/6/8/12 steps, without and with one reference "
+        "reading every 4th step, on in-memory copies of each panel-A file. "
+        "return_after_continue_counterfactual_report_only (not judged) shows what 'continue there' does when it is "
+        "answered: on an in-memory copy the owner answers an epoch:panel-A question with confirm=True after the "
+        "return's first step, and the next camera readings of steps 2-4 are predicted from the linked epoch.",
         "Simulated binary readings stand in for the brief's physical sensors; this is not a physical test.",
     ]
     return _result("first_physical_test", checks, metrics, dict(FIRST_TEST_THRESHOLDS, confidence=CONFIDENT), notes)

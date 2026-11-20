@@ -1,8 +1,8 @@
-"""Forward-only schema migrations: version-1 and version-2 files reach the current schema with their data intact.
+"""Forward-only schema migrations: version-1, -2 and -3 files reach the current schema with their data intact.
 
 Old files are built from the old migration strings themselves (schema.MIGRATIONS[:n]) and filled with the rows of
 a real individual, so the data is what the software actually writes. Migration 3 folds beliefs.DDL (the
-changepoints table and the evidence_tally index) into the schema.
+changepoints table and the evidence_tally index) into the schema; migration 4 adds epoch_links ("continue there").
 """
 import re
 import sqlite3
@@ -72,11 +72,17 @@ def _statements(text):
 
 
 def test_migration_3_is_exactly_the_beliefs_ddl():
-    assert schema.SCHEMA_VERSION == 3
     assert _statements(schema.MIGRATIONS[2]) == [" ".join(s.split()) for s in beliefs.DDL]
 
 
-@pytest.mark.parametrize("version", [1, 2])
+def test_migration_4_adds_epoch_links():
+    assert schema.SCHEMA_VERSION == 4
+    assert _statements(schema.MIGRATIONS[3]) == [
+        "CREATE TABLE epoch_links( epoch TEXT PRIMARY KEY, source_epoch TEXT NOT NULL, segments TEXT NOT NULL, "
+        "pending_id INTEGER, created_at REAL NOT NULL)"]
+
+
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
     source = _source(tmp_path)
     path = _old_file(tmp_path, source, version)
@@ -84,7 +90,7 @@ def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
         tables = _tables(raw)
         before = _dump(raw, tables)
         assert raw.execute("PRAGMA user_version").fetchone()[0] == version
-        assert "changepoints" not in tables
+        assert ("changepoints" in tables) == (version >= 3) and "epoch_links" not in tables
     assert before["evidence"] and before["belief_revisions"] and before["decisions"] and before["pending"]
     if version == 2:
         assert len(before["forgotten_roots"]) == 1
@@ -94,6 +100,9 @@ def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
         assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
         assert _dump(db, tables) == before
         assert db.execute("SELECT count(*) FROM changepoints").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM epoch_links").fetchone()[0] == 0
+        assert [row[1] for row in db.execute("PRAGMA table_info(epoch_links)")] == [
+            "epoch", "source_epoch", "segments", "pending_id", "created_at"]
         assert db.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='evidence_tally'").fetchone()
         if version == 1:  # migration 2 adds forgotten_roots, empty
             assert db.execute("SELECT count(*) FROM forgotten_roots").fetchone()[0] == 0
@@ -112,6 +121,21 @@ def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
         evidence.observe(db, {"id": "after", "epoch": "desk", "channel": "camera", "action": 0, "bit": 0,
                               "root": "cam-desk"}, T0 + 2000)
         assert executive.decide(db, "desk", T0 + 2001, record=True)["decision"] in ("act", "ask", "test_reference")
+        # The upgraded individual can continue an earlier setup: a new epoch from desk's mapping links to desk.
+        evidence.start_epoch(db, "return", T0 + 3000)
+        for i in range(4):
+            for channel, root, corrected in (("camera", "cam-desk", 0), ("word", "ana", 1),
+                                             ("reference", f"ref-{i % 3}", 0)):
+                evidence.observe(db, {"id": f"return-{channel}-{i}", "epoch": "return", "channel": channel,
+                                      "action": 0, "bit": corrected, "root": root}, T0 + 3001 + i)
+        # desk and lab share Ana and the references, so neither reaches 3:1; the owner answers a desk question.
+        with store.write(db):
+            question = db.execute("INSERT INTO pending(epoch,kind,scope,question,created_at) VALUES('return','ask',"
+                                  "'epoch:desk','This looks like desk; continue with that calibration?',?)",
+                                  (T0 + 3100,)).lastrowid
+        done = executive.resolve(db, question, "continue there", T0 + 3101, confirm=True)
+        assert done["link"]["source_epoch"] == "desk"
+        assert beliefs.compute(db, "return")["linked_from"]["epoch"] == "desk"
     finally:
         db.close()
 
@@ -144,7 +168,7 @@ def test_opening_a_current_file_is_a_no_op(tmp_path):
         before = _dump(raw, _tables(raw))
     db = store.connect(path)
     try:
-        assert schema.migrate(db) == schema.SCHEMA_VERSION == 3
+        assert schema.migrate(db) == schema.SCHEMA_VERSION == 4
         assert db.total_changes == 0
         assert db.execute("PRAGMA schema_version").fetchone()[0] == cookie
         assert _objects(db) == objects and _dump(db, list(before)) == before
@@ -152,7 +176,7 @@ def test_opening_a_current_file_is_a_no_op(tmp_path):
         db.close()
     store.open_existing(path).close()
     with sqlite3.connect(path) as raw:
-        assert raw.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == 4
         assert raw.execute("PRAGMA schema_version").fetchone()[0] == cookie
 
 

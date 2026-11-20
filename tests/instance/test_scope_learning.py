@@ -14,9 +14,9 @@ import numpy as np
 import pytest
 
 from neuroscifi import cli
-from neuroscifi.instance import beliefs, evidence, executive, store
+from neuroscifi.instance import beliefs, evidence, executive, governance, store
 from neuroscifi.instance.beliefs import _bernoulli, _lse, _logistic
-from neuroscifi.instance.errors import ValidationError
+from neuroscifi.instance.errors import Conflict, ValidationError
 from neuroscifi.lab.source_groups import group_log_likelihood
 
 from conftest import T0
@@ -359,38 +359,208 @@ def test_segmented_inference_equals_brute_force_enumeration(instance):
 
 # ---- 3. the original setup returns --------------------------------------------------------------------
 
-def test_match_epochs_recognises_the_original_setup(instance):
+def remounted_desk(db):
+    """desk: 12 rounds with cam-a relation 0, then a remount (relation 1) the owner confirmed. Returns its seq."""
+    j = Journal(db, "desk")
+    baseline(j)
+    first = remount(j)
+    asked = executive.decide(db, "desk", T0 + 100, record=True)
+    assert asked["scope"] == "camera:cam-a"
+    executive.resolve(db, asked["pending_id"], "yes, I remounted it", T0 + 101, confirm=True)
+    return first
+
+
+def original_readings(j, rounds=4, references=True):
+    """The ORIGINAL desk mapping: cam-a relation 0, Ana relation 0, references at w = 0."""
+    for k in range(rounds):
+        j.add("camera", "cam-a", 0)
+        j.add("word", "ana", 0)
+        if references:
+            j.add("reference", f"ref-{k % 3}", 0)
+
+
+def _brute_new_setup(events):
+    """P(readings) under a new setup: sum over w, one bit per camera root and partner, one polarity per reference root."""
+    bits = sorted({(e["channel"], e["root"]) for e in events if e["channel"] != "reference"})
+    roots = sorted({e["root"] for e in events if e["channel"] == "reference"})
+    total = 0.0
+    for w in (0, 1):
+        for hs in itertools.product((0, 1), repeat=len(bits)):
+            h = dict(zip(bits, hs))
+            for fs in itertools.product((0, 1), repeat=len(roots)):
+                polarity = dict(zip(roots, fs))
+                p = .5 ** (1 + len(bits)) * math.prod(.15 if f else .85 for f in fs)
+                for e in events:
+                    bit = polarity[e["root"]] if e["channel"] == "reference" else h[(e["channel"], e["root"])]
+                    p *= .9 if (e["bit"] ^ e["action"]) == w ^ bit else .1
+                total += p
+    return total
+
+
+def test_segment_candidates_recognise_the_setup_before_a_confirmed_remount(instance):
+    """After a confirmed remount, desk's CURRENT camera segment is the remounted one; its earlier segment cam-a@0
+    must still be a candidate, and the evidence comes from camera, partner and references jointly."""
     db, _ = instance
-    baseline(Journal(db, "desk"))                         # cam-a relation 0
-    baseline(Journal(db, "remounted"), camera=1)          # the same root after a remount: relation 1
+    first = remounted_desk(db)
     tomorrow = Journal(db, "tomorrow")
-    for _ in range(4):
-        tomorrow.add("camera", "cam-a", 0)
-        tomorrow.add("word", "ana", 0)
+    original_readings(tomorrow)
     out = beliefs.match_epochs(db, "tomorrow")
-    assert out["best"] == "desk" and out["events"] == 8
-    assert [r["epoch"] for r in out["ranking"]] == ["desk", "remounted"]
-    assert out["ranking"][0]["events"] == 8
-    assert out["ranking"][0]["log_likelihood"] - out["ranking"][1]["log_likelihood"] >= math.log(19)
-    asked = executive.decide(db, "tomorrow", T0 + 50, record=True)
-    assert asked["decision"] == "ask" and asked["scope"] == "epoch:desk" and asked["asks_used"] == 1
+    (top,) = out["ranking"]
+    assert out["best"] == "desk" and out["events"] == 12 and top["events"] == 12
+    assert top["segments"] == {"mechanism": "mechanism@0", "camera:cam-a": "cam-a@0", "partner:ana": "ana@0"}
+    # Each segment predicts with its MAP value: 4 camera and 4 word readings at .9, references at MAP w = 0 with the
+    # fixture polarity integrated (ref-0 has two readings: .85 * .9^2 + .15 * .1^2 = .69; one reading: .78),
+    # minus log 2 for picking one of cam-a's two segments.
+    assert top["penalty"] == pytest.approx(math.log(2), abs=1e-12)
+    expected = 8 * math.log(.9) + math.log(.85 * .81 + .15 * .01) + 2 * math.log(.78) - math.log(2)
+    assert top["log_likelihood"] == pytest.approx(expected, abs=1e-12)
+    # The new-setup alternative is exact: brute-force enumeration of every hidden bit.
+    events = _old_learning(db, "tomorrow")
+    assert out["new_setup_log_likelihood"] == pytest.approx(math.log(_brute_new_setup(events)), abs=1e-12)
+    posterior = .5 * math.exp(expected) / (.5 * math.exp(expected) + .5 * _brute_new_setup(events))
+    assert top["posterior"] == pytest.approx(posterior, abs=1e-12) and out["best_posterior"] == top["posterior"]
+    assert top["posterior"] >= beliefs.MATCH_POSTERIOR == .75
+    assert top["posterior"] + out["new_setup_posterior"] == pytest.approx(1, abs=1e-12)
+    # The executive names the segment.
+    asked = executive.decide(db, "tomorrow", T0 + 200, record=True)
+    assert asked["decision"] == "ask" and asked["scope"] == "epoch:desk"
     (question,) = executive.pending(db, epoch="tomorrow")
-    assert question["question"].startswith("This looks like desk; continue there?")
-    assert executive.decide(db, "tomorrow", T0 + 51, record=True)["pending_id"] == asked["pending_id"]
-    executive.resolve(db, asked["pending_id"], "yes, back at the desk", T0 + 52, confirm=True)
-    after = executive.decide(db, "tomorrow", T0 + 53, record=True)
-    assert after["decision"] == "test_reference" and after["asks_used"] == 1   # asked once only
-    # Words alone fit both epochs equally (Ana's meaning is the same in both): no best, unknown stays open.
+    assert question["question"].startswith(
+        f"This looks like desk before the camera:cam-a change at #{first}; continue with that calibration?")
+
+
+def test_without_references_a_candidate_gains_at_most_a_factor_two_per_root(instance):
+    """A new setup matches each camera/partner relation half the time, so camera + partner readings alone can never
+    reach 3:1 against it once cam-a's two segments cost log 2: here the posterior is (r^2 / 2) / (r^2 / 2 + 1)."""
+    db, _ = instance
+    remounted_desk(db)
+    tomorrow = Journal(db, "tomorrow")
+    original_readings(tomorrow, rounds=6, references=False)
+    out = beliefs.match_epochs(db, "tomorrow")
+    r = .9 ** 6 / (.5 * (.9 ** 6 + .1 ** 6))
+    assert out["ranking"][0]["segments"]["camera:cam-a"] == "cam-a@0"
+    assert out["ranking"][0]["posterior"] == pytest.approx((r * r / 2) / (r * r / 2 + 1), abs=1e-12)
+    assert out["ranking"][0]["posterior"] < 2 / 3 < beliefs.MATCH_POSTERIOR
+    assert out["best"] is None
     words = Journal(db, "words-only")
     for _ in range(6):
         words.add("word", "ana", 0)
-    tie = beliefs.match_epochs(db, "words-only", last=6)
-    assert tie["best"] is None and tie["ranking"][0]["log_likelihood"] == tie["ranking"][1]["log_likelihood"]
+    assert beliefs.match_epochs(db, "words-only")["best"] is None
     unseen = Journal(db, "elsewhere")
     unseen.add("camera", "cam-z", 0)
-    assert beliefs.match_epochs(db, "elsewhere")["best"] is None   # unseen roots are uninformative
+    elsewhere = beliefs.match_epochs(db, "elsewhere")   # an unseen root is fresh under every candidate
+    assert elsewhere["best"] is None and all(r["events"] == 0 for r in elsewhere["ranking"])
+    assert elsewhere["new_setup_posterior"] == pytest.approx(.5, abs=1e-12)
     with pytest.raises(ValidationError):
         beliefs.match_epochs(db, "tomorrow", last=0)
+
+
+def test_rival_epochs_share_the_prior_mass(instance):
+    """'Some earlier configuration' gets 1/2, split evenly: two epochs that both fit share it."""
+    db, _ = instance
+    baseline(Journal(db, "desk"))
+    baseline(Journal(db, "remounted"), camera=1)
+    tomorrow = Journal(db, "tomorrow")
+    original_readings(tomorrow)
+    out = beliefs.match_epochs(db, "tomorrow")
+    assert [r["epoch"] for r in out["ranking"]] == ["desk", "remounted"] and out["best"] == "desk"
+    assert out["ranking"][1]["segments"]["camera:cam-a"] == "cam-a@0"
+    z = .5 * math.exp(out["new_setup_log_likelihood"]) + sum(.25 * math.exp(r["log_likelihood"]) for r in out["ranking"])
+    assert out["ranking"][0]["posterior"] == pytest.approx(.25 * math.exp(out["ranking"][0]["log_likelihood"]) / z,
+                                                           abs=1e-12)
+    twin = Journal(db, "twin")      # the same setup as desk taught again: now two epochs explain tomorrow
+    baseline(twin)
+    split = beliefs.match_epochs(db, "tomorrow")
+    assert split["best"] is None
+    assert split["ranking"][0]["posterior"] == pytest.approx(split["ranking"][1]["posterior"], abs=1e-12)
+
+
+def _linked_union(db, source, first, epoch):
+    """desk's learning events in the linked segments (cam-a before the remount, Ana, references) plus epoch's own."""
+    linked = [e for e in _old_learning(db, source) if e["channel"] != "camera" or e["seq"] < first]
+    return linked + _old_learning(db, epoch)
+
+
+def test_continue_there_starts_from_the_earlier_calibration(instance):
+    db, _ = instance
+    first = remounted_desk(db)
+    tomorrow = Journal(db, "tomorrow")
+    original_readings(tomorrow)
+    own = beliefs.compute(db, "tomorrow")
+    assert own["linked_from"] is None and own["sensors"]["cam-a"]["n"] == 4
+    asked = executive.decide(db, "tomorrow", T0 + 200, record=True)
+    done = executive.resolve(db, asked["pending_id"], "yes, back at the desk", T0 + 201, confirm=True)
+    segments = {"mechanism": "mechanism@0", "camera:cam-a": "cam-a@0", "partner:ana": "ana@0"}
+    assert done["changepoint"] is None
+    assert done["link"] == {"epoch": "tomorrow", "source_epoch": "desk", "segments": segments,
+                            "pending_id": asked["pending_id"], "created_at": T0 + 201}
+    assert executive.resolve(db, asked["pending_id"], "yes, back at the desk", T0 + 202, confirm=True)["link"] == \
+        done["link"]
+    with pytest.raises(Conflict):
+        executive.resolve(db, asked["pending_id"], "yes, back at the desk", T0 + 202, confirm=False)
+    after = beliefs.compute(db, "tomorrow")
+    assert after["linked_from"] == {"epoch": "desk", "segments": segments, "pending_id": asked["pending_id"],
+                                    "created_at": T0 + 201, "learning": 12 + 18 + 18}
+    assert after["evidence"]["learning"] == 12 and after["legacy"] is None
+    # compute(tomorrow) is exactly inference on the union of its own evidence and desk's linked segments.
+    p_w, bits = _brute_force(_linked_union(db, "desk", first, "tomorrow"), [], {})
+    assert after["mechanism"]["p_inverted"] == pytest.approx(p_w, abs=1e-12)
+    assert after["sensors"]["cam-a"]["p_inverted"] == pytest.approx(bits[("camera", "cam-a", 0)], abs=1e-12)
+    assert after["partners"]["ana"]["p_inverted"] == pytest.approx(bits[("word", "ana", 0)], abs=1e-12)
+    assert after["sensors"]["cam-a"]["n"] == 12 + 4 and after["sensors"]["cam-a"]["p_inverted"] < .01
+    # Linked: rule 4b does not ask again, and the earlier skill is executed (mechanism identified -> act).
+    again = executive.decide(db, "tomorrow", T0 + 203, record=True)
+    assert again["decision"] == "act" and again["asks_used"] == 1
+
+    # Forgetting source evidence changes the linked beliefs on the next read, and records a revision.
+    victims = [e["id"] for e in _old_learning(db, "desk") if e["channel"] == "camera" and e["seq"] < first][:8]
+    for k, event_id in enumerate(victims):
+        out = governance.forget_evidence(db, event_id, T0 + 300 + k)
+        assert out["effects"]["linked_epochs_revised"] == ["tomorrow"]
+    reduced = beliefs.compute(db, "tomorrow")
+    assert reduced["sensors"]["cam-a"]["n"] == 4 + 4 and reduced["linked_from"]["learning"] == 48 - 8
+    assert reduced["sensors"]["cam-a"]["p_inverted"] != after["sensors"]["cam-a"]["p_inverted"]
+    p_w, bits = _brute_force(_linked_union(db, "desk", first, "tomorrow"), [], {})
+    assert reduced["mechanism"]["p_inverted"] == pytest.approx(p_w, abs=1e-12)
+    assert reduced["sensors"]["cam-a"]["p_inverted"] == pytest.approx(bits[("camera", "cam-a", 0)], abs=1e-12)
+    # Forgetting the source epoch deletes the link; tomorrow falls back to its own evidence.
+    out = governance.forget_epoch(db, "desk", T0 + 400)
+    assert out["effects"]["derived_deleted"]["epoch_links"] == 1
+    alone = beliefs.compute(db, "tomorrow")
+    assert alone["linked_from"] is None and alone["sensors"]["cam-a"]["n"] == 4
+    assert {k: alone[k] for k in ("mechanism", "sensors", "partners")} == \
+        {k: own[k] for k in ("mechanism", "sensors", "partners")}
+
+
+def test_forgetting_a_linked_root_deletes_the_link(instance):
+    db, _ = instance
+    remounted_desk(db)
+    tomorrow = Journal(db, "tomorrow")
+    original_readings(tomorrow)
+    asked = executive.decide(db, "tomorrow", T0 + 200, record=True)
+    executive.resolve(db, asked["pending_id"], "yes", T0 + 201, confirm=True)
+    governance.forget_partner(db, "ana", T0 + 300)
+    assert db.execute("SELECT count(*) FROM epoch_links").fetchone()[0] == 0
+    assert beliefs.compute(db, "tomorrow")["linked_from"] is None
+    assert not db.execute("SELECT 1 FROM belief_revisions WHERE instr(summary, 'ana@0')").fetchone()
+
+
+def test_declined_candidate_is_not_asked_again(instance):
+    db, _ = instance
+    remounted_desk(db)
+    tomorrow = Journal(db, "tomorrow")
+    original_readings(tomorrow, rounds=3)
+    asked = executive.decide(db, "tomorrow", T0 + 200, record=True)
+    assert asked["decision"] == "ask" and asked["scope"] == "epoch:desk"
+    assert executive.decide(db, "tomorrow", T0 + 201, record=True)["pending_id"] == asked["pending_id"]
+    done = executive.resolve(db, asked["pending_id"], "no, this is new", T0 + 202, confirm=False)
+    assert done["link"] is None and done["changepoint"] is None and beliefs.link(db, "tomorrow") is None
+    original_readings(tomorrow, rounds=1)    # still within the 12-event matching window, still matches desk
+    assert beliefs.match_epochs(db, "tomorrow")["best"] == "desk"
+    for k in range(3):
+        out = executive.decide(db, "tomorrow", T0 + 203 + k, record=True)
+        assert out["scope"] != "epoch:desk" and out["asks_used"] == 1
+    assert beliefs.compute(db, "tomorrow")["linked_from"] is None
 
 
 def _nsf(capsys, *argv):
@@ -405,16 +575,14 @@ def test_cli_epoch_match_and_resolve_confirm(tmp_path, capsys):
     try:
         baseline(Journal(db, "desk"))
         baseline(Journal(db, "remounted"), camera=1)
-        tomorrow = Journal(db, "tomorrow")
-        for _ in range(7):
-            tomorrow.add("camera", "cam-a", 0)
+        original_readings(Journal(db, "tomorrow"))
     finally:
         db.close()
-    # Six camera readings: 6 x log(.9/.5) = 3.5 nats over unknown; four would be 2.35 < log(19).
+    # Two rounds of camera, word and reference readings reach 3:1; one round does not.
     code, out = _nsf(capsys, "epoch", "match", "tomorrow", "--last", "6", "--db", str(path))
-    assert code == 0 and out["best"] == "desk" and out["events"] == 6
-    code, out = _nsf(capsys, "epoch", "match", "tomorrow", "--last", "4", "--db", str(path))
-    assert code == 0 and out["best"] is None
+    assert code == 0 and out["best"] == "desk" and out["events"] == 6 and out["best_posterior"] >= .75
+    code, out = _nsf(capsys, "epoch", "match", "tomorrow", "--last", "3", "--db", str(path))
+    assert code == 0 and out["best"] is None and out["ranking"][0]["posterior"] < .75
     db = store.open_existing(path)
     try:
         j = Journal(db, "today")

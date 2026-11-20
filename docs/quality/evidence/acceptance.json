@@ -116,10 +116,10 @@
         "storage_pressure_regulation_reports_pause": true,
         "zero_failed_observations_idle_and_under_consolidation": true
       },
-      "elapsed_seconds": 0.979,
+      "elapsed_seconds": 1.128,
       "metrics": {
         "checkpoint": {
-          "bytes": 13066,
+          "bytes": 13154,
           "policy": "cold",
           "state_version": {
             "live": 404,
@@ -150,37 +150,37 @@
           },
           "label": "host = this DGX Spark (aarch64, GB10)",
           "latency_ms": {
-            "max": 2.540586981922388,
-            "mean": 1.792589442920871,
+            "max": 2.6316290022805333,
+            "mean": 1.8087129335617647,
             "n": 200,
-            "p50": 2.0761124906130135,
-            "p95": 2.185635408386588,
-            "p99": 2.2236966725904495
+            "p50": 2.096690994221717,
+            "p95": 2.2039678238797933,
+            "p99": 2.2222683450672776
           }
         },
         "loop_under_consolidation": {
           "background": {
-            "cpu_seconds": 1.400158016,
+            "cpu_seconds": 1.42722824,
             "errors": {
               "busy": 0,
               "writes_paused": 0
             },
             "operation_ms": {
               "checkpoint": {
-                "max": 380.9654712677002,
-                "mean": 380.9654712677002,
+                "max": 117.66409873962402,
+                "mean": 117.66409873962402,
                 "n": 1,
-                "p50": 380.9654712677002,
-                "p95": 380.9654712677002,
-                "p99": 380.9654712677002
+                "p50": 117.66409873962402,
+                "p95": 117.66409873962402,
+                "p99": 117.66409873962402
               },
               "learn": {
-                "max": 4.204273223876953,
-                "mean": 4.204273223876953,
+                "max": 434.07320976257324,
+                "mean": 434.07320976257324,
                 "n": 1,
-                "p50": 4.204273223876953,
-                "p95": 4.204273223876953,
-                "p99": 4.204273223876953
+                "p50": 434.07320976257324,
+                "p95": 434.07320976257324,
+                "p99": 434.07320976257324
               }
             },
             "operations": {
@@ -202,14 +202,14 @@
           "final_decision": "act",
           "label": "host = this DGX Spark (aarch64, GB10)",
           "latency_ms": {
-            "max": 3.9538240525871515,
-            "mean": 1.830238313996233,
+            "max": 3.429761971347034,
+            "mean": 1.8594949593534693,
             "n": 200,
-            "p50": 2.0878645009361207,
-            "p95": 2.2084473981522024,
-            "p99": 3.123233319493007
+            "p50": 2.1033790544606745,
+            "p95": 2.2184799483511597,
+            "p99": 3.0470331141259503
           },
-          "loop_seconds": 0.3661048412322998
+          "loop_seconds": 0.3719596862792969
         },
         "restart": {
           "evidence": 200,
@@ -248,25 +248,25 @@
         "fewer_confident_wrong_final_answers_than_fixed_wiring": true,
         "older_skill_retention_at_least_90_percent": true
       },
-      "elapsed_seconds": 29.804,
+      "elapsed_seconds": 30.643,
       "metrics": {
         "attribution_rate": 0.92,
         "compute_cpu_seconds_per_lifetime": {
           "episodic_lookup": {
-            "max": 5.065599999909409e-05,
-            "mean": 1.654703999946605e-05
+            "max": 0.00022572800000375537,
+            "mean": 1.9528000000690325e-05
           },
           "fixed_wiring": {
-            "max": 0.12382057599999996,
-            "mean": 0.11595271088000018
+            "max": 0.1229983519999962,
+            "mean": 0.1153009638399996
           },
           "product": {
-            "max": 0.34504959999999263,
-            "mean": 0.18727319664000044
+            "max": 0.43942179200001064,
+            "mean": 0.1865748716800003
           },
           "recurrent_replay": {
-            "max": 0.0007049120000033327,
-            "mean": 0.0005019529599996986
+            "max": 0.0006229439999998476,
+            "mean": 0.0004962830400010887
           }
         },
         "earlier_setup_recognition_rate": 0.0,
@@ -362,6 +362,80 @@
           }
         },
         "older_skill_retention": 0.975,
+        "recognition_information_bound": {
+          "best_case_bits_in_designed_return": 0.9995602545016596,
+          "best_case_posterior_in_designed_return": 0.6665989280365658,
+          "bits_needed_for_posterior_0_75": 1.584962500721156,
+          "camera_segment_penalty_bits": 1.0,
+          "candidate_vs_new_setup_max_bits_without_references": "1 bit per shared camera root or partner (a fresh bit matches half the time); 2 bits here",
+          "limit_posterior_without_references": 0.6666666666666666
+        },
+        "recognition_sensitivity_report_only": [
+          {
+            "best_case_posterior": 0.6665989280365658,
+            "learning_events": 8,
+            "panel_a_posterior_mean": 0.643618328249144,
+            "recognition_rate": 0.0,
+            "reference_readings": 0,
+            "return_steps": 4
+          },
+          {
+            "best_case_posterior": null,
+            "learning_events": 9,
+            "panel_a_posterior_mean": 0.663521627967492,
+            "recognition_rate": 0.65,
+            "reference_readings": 1,
+            "return_steps": 4
+          },
+          {
+            "best_case_posterior": 0.6666658303662965,
+            "learning_events": 12,
+            "panel_a_posterior_mean": 0.6627900288207849,
+            "recognition_rate": 0.0,
+            "reference_readings": 0,
+            "return_steps": 6
+          },
+          {
+            "best_case_posterior": null,
+            "learning_events": 13,
+            "panel_a_posterior_mean": 0.679751419689016,
+            "recognition_rate": 0.7,
+            "reference_readings": 1,
+            "return_steps": 6
+          },
+          {
+            "best_case_posterior": 0.6666666563419676,
+            "learning_events": 16,
+            "panel_a_posterior_mean": 0.6664392633056211,
+            "recognition_rate": 0.0,
+            "reference_readings": 0,
+            "return_steps": 8
+          },
+          {
+            "best_case_posterior": null,
+            "learning_events": 18,
+            "panel_a_posterior_mean": 0.699781938935374,
+            "recognition_rate": 0.64,
+            "reference_readings": 2,
+            "return_steps": 8
+          },
+          {
+            "best_case_posterior": 0.6666666666650931,
+            "learning_events": 24,
+            "panel_a_posterior_mean": 0.6666658946246115,
+            "recognition_rate": 0.0,
+            "reference_readings": 0,
+            "return_steps": 12
+          },
+          {
+            "best_case_posterior": null,
+            "learning_events": 27,
+            "panel_a_posterior_mean": 0.7272008988885665,
+            "recognition_rate": 0.65,
+            "reference_readings": 3,
+            "return_steps": 12
+          }
+        ],
         "restart_panel_beliefs_identical": 1.0,
         "retention_detail": {
           "camera_current_segment_correct": 0.975,
@@ -375,12 +449,48 @@
           "product_last_revision_summary_accuracy": 0.975,
           "recurrent_replay": "predicts readings only; no factor answers to retrieve"
         },
+        "return_after_continue": {
+          "lifetimes_continued": 0,
+          "linked_segments": [],
+          "next_camera_reading_after_continue": {
+            "accuracy": null,
+            "brier": null,
+            "n": 0
+          },
+          "return_beliefs_correct_for_original_setup": {
+            "continued": null,
+            "not_continued": 0.5
+          }
+        },
+        "return_after_continue_counterfactual_report_only": {
+          "linked_camera_segment_is_original": 0.89,
+          "next_camera_reading_steps_2_to_4": {
+            "continued": {
+              "accuracy": 0.8116666666666666,
+              "brier": 0.17574149974178616,
+              "n": 300
+            },
+            "not_continued_same_readings": {
+              "accuracy": 0.5,
+              "brier": 0.25,
+              "n": 300
+            }
+          },
+          "owner_continues_after_step": 1,
+          "return_beliefs_correct_for_original_setup": {
+            "continued": 0.9383333333333332,
+            "not_continued": 0.5
+          }
+        },
         "return_match": {
+          "ask_posterior": 0.75,
           "best_counts": {
             "None": 100
           },
-          "diagnostic_lifetimes": 100,
-          "diagnostic_recognition_if_earlier_segment_were_scored": 0.42
+          "lifetimes_with_two_camera_segments": 100,
+          "new_setup_posterior_mean": 0.3563816717508561,
+          "panel_a_posterior_max": 0.6665989280365658,
+          "panel_a_posterior_mean": 0.643618328249144
         },
         "teacher_cost": {
           "episodic_lookup": 0,
@@ -393,11 +503,11 @@
       "notes": [
         "Design fixed before running: {\"confidence\": 0.95, \"episodic_k\": 5, \"final_answers_at\": \"end of panel-A, before the restart (camera truth = remounted alignment)\", \"panel_events_per_step\": \"camera + partner word every step; one reference reading every 4th step\", \"reading_noise\": 0.1, \"reference_readings_per_root\": 2, \"reference_root_flip_probability\": 0.15, \"remount\": \"the camera alignment bit flips silently from teach step 24 on (owner not told)\", \"remounted_steps\": 16, \"return_events_per_step\": \"camera + partner word (original camera mapping), no reference\", \"return_steps\": 4, \"teach_steps\": 24}; recurrent baseline: {\"features\": \"A = 2*action - 1; r_c, r_w, r_r = last camera / word / reference relation (bit XOR action) as +-1, 0 before the first; x = [1, A, A*r_c, A*r_w, A*r_r]\", \"learning_rate\": 0.2, \"model\": \"logistic regression P(camera bit = 1) = sigmoid(w . x)\", \"replay\": \"after each online step, 4 past (x, y) pairs drawn uniformly from a FIFO buffer get one SGD step each\", \"replay_batch\": 4, \"replay_capacity\": 256}.",
         "Each lifetime is its own instance file. Panel-A: 24 teaching steps, then the camera is remounted silently (its alignment bit flips) for 16 more steps. executive.decide(record=True) runs after every event and a truthful simulated owner answers each question: confirm=True only for a change question about the camera asked after the remount, confirm=False otherwise; 'continue there?' is answered yes only for panel-A.",
-        "Restart: all files are closed and ONE new process opens each file, checks panel-A's beliefs equal those read before closing, starts epoch 'return' and feeds 4 steps of camera + word readings from the ORIGINAL camera mapping, with the executive deciding after each event. Recognised = the executive asked 'This looks like panel-A; continue there?'.",
+        "Restart: all files are closed and ONE new process opens each file, checks panel-A's beliefs equal those read before closing, starts epoch 'return' and feeds 4 steps of camera + word readings from the ORIGINAL camera mapping, with the executive deciding after each event. Recognised = the executive asked 'This looks like panel-A ...; continue with that calibration?'; the simulated owner then answers confirm=True (continue there), which links 'return' to panel-A's matching segments, and return_after_continue measures the next camera readings and the return's beliefs after that.",
         "Attribution: the first change question asked at or after the remount names camera:camera-1 (the owner gives no hint before that question). Retention: panel-A's mechanism (the taught action) and partner convention (the taught word) are MAP-correct after the return. Retrieval with archive lookup disabled: panel-A's latest belief-revision summary (memory.retrieve kind 'belief') scored against the end-of-panel truth, with no evidence read.",
         "Baselines on the same streams. Fixed wiring: the prototype, one pooled epoch for panel-A and the return, no detection, no questions (run in-process; its state is the same file). Direct episodic lookup: majority of the last 5 readings per channel/root. Conventional recurrent learner with replay: see RECURRENT_DESIGN; it is scored on next camera reading prediction only. Every learner predicts every camera reading before seeing it (prequential), in panel-A and in the return; product predictions come from the epoch it is in (panel-A, then 'return') and combine marginals as described in _camera_bit_p.",
         "Teacher cost = owner answers; interventions = owner answers + reference readings used. Compute cost = time.process_time per lifetime (product: panel-A plus its share of the restart process).",
-        "Known structural limit: match_epochs scores an epoch by its CURRENT beliefs. After the owner confirms the remount inside panel-A, panel-A's current camera segment is the remounted one, so readings from the original mapping contradict it. return_match.diagnostic_* reports, for information only, how often the return would be recognised if panel-A's earlier camera segment were scored the same way.",
+        "Recognition (beliefs.match_epochs): panel-A's segments are candidates (cam@0 as well as the remounted segment), each factor's best segment is charged log(#segments), and the alternative is a NEW setup scored exactly (fresh mechanism, alignment and convention bits). The ask threshold is posterior >= 0.75 with prior 1/2 on a new setup. Information bound: the return has camera and word readings only, so under a new setup each observed relation (mechanism XOR bit) is a fresh coin; panel-A can beat it by at most a factor 2 per root (1 bit), 2 bits for camera + partner, minus 1 bit for choosing one of cam-a's 2 segments, leaving at most 1 bit (posterior 2/3) however long the return is, while 0.75 needs log2(3) = 1.58 bits. recognition_information_bound and recognition_sensitivity_report_only show this; the sensitivity table (report-only, not judged) scores the whole return for 4/6/8/12 steps, without and with one reference reading every 4th step, on in-memory copies of each panel-A file. return_after_continue_counterfactual_report_only (not judged) shows what 'continue there' does when it is answered: on an in-memory copy the owner answers an epoch:panel-A question with confirm=True after the return's first step, and the next camera readings of steps 2-4 are predicted from the linked epoch.",
         "Simulated binary readings stand in for the brief's physical sensors; this is not a physical test."
       ],
       "pass": false,
@@ -522,7 +632,7 @@
         "unchanged_coverage_at_least_80_percent": true,
         "unchanged_task_loss_at_most_2_points": true
       },
-      "elapsed_seconds": 63.825,
+      "elapsed_seconds": 63.843,
       "metrics": {
         "arms": {
           "detecting": "product flow: the owner confirms or rejects the executive's change question; one epoch per lifetime",
@@ -783,7 +893,7 @@
         "unknown_context_opens_a_question": true,
         "unrelated_world_is_unknown_context": true
       },
-      "elapsed_seconds": 0.098,
+      "elapsed_seconds": 0.099,
       "metrics": {
         "lookup_disabled": {
           "readable_datasets": [
@@ -891,7 +1001,7 @@
         "nothing_expired_after_a_day": true,
         "second_partner_correct_after_a_day": true
       },
-      "elapsed_seconds": 0.287,
+      "elapsed_seconds": 0.284,
       "metrics": {
         "day_later_clock_advance_seconds": 86400.0,
         "day_later_decision": "act",

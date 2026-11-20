@@ -167,6 +167,22 @@ def test_first_physical_test_reports_declared_criteria_and_baselines(first_test)
     assert interventions["owner_answers_per_lifetime"]["total"] >= 12   # every remount is confirmed by the owner
     assert interventions["reference_readings_per_lifetime"] == 10
     assert interventions["question_kinds"].get("change:yes", 0) >= 12 * m["attribution_rate"]
+    # Recognition scores panel-A's earlier segments against a new setup; without references it is bounded by 2/3.
+    bound = m["recognition_information_bound"]
+    assert bound["best_case_posterior_in_designed_return"] < bound["limit_posterior_without_references"] < .75
+    assert m["return_match"]["panel_a_posterior_max"] <= bound["best_case_posterior_in_designed_return"] + 1e-12
+    rows = m["recognition_sensitivity_report_only"]
+    assert [(r["return_steps"], r["reference_readings"]) for r in rows] == \
+        [(4, 0), (4, 1), (6, 0), (6, 1), (8, 0), (8, 2), (12, 0), (12, 3)]
+    assert all(r["recognition_rate"] == 0 for r in rows if not r["reference_readings"])
+    continued = m["return_after_continue"]
+    assert continued["lifetimes_continued"] == round(12 * m["earlier_setup_recognition_rate"])
+    counterfactual = m["return_after_continue_counterfactual_report_only"]
+    after = counterfactual["next_camera_reading_steps_2_to_4"]
+    assert after["continued"]["n"] == after["not_continued_same_readings"]["n"] == 12 * 3
+    assert after["continued"]["accuracy"] > after["not_continued_same_readings"]["accuracy"]
+    beliefs_after = counterfactual["return_beliefs_correct_for_original_setup"]
+    assert beliefs_after["continued"] > beliefs_after["not_continued"]
 
 
 def test_first_physical_test_is_deterministic_per_seed():
