@@ -37,8 +37,10 @@ def with_db(handler):
             now = time.time()
             # Like the Pocket bridge, expire due evidence before every read or write so that
             # beliefs never count records past their lifetime (MEM-09).
-            from .governance import sweep
-            sweep(db, now)
+            # `nsf sweep` itself is excluded so that it can report what it expired.
+            if getattr(args, "command", None) != "sweep":
+                from .governance import sweep
+                sweep(db, now)
             return handler(db, args, now)
         finally:
             db.close()

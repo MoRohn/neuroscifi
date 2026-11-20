@@ -187,7 +187,7 @@ def test_cli_end_to_end(tmp_path, capsys):
     assert code == 0
     db = store.connect(db_path)
     add(db, "e1", root="r-secret", recorded_at=time.time(), expires_at=time.time() + 3600)
-    add(db, "e2", epoch_name="e2", recorded_at=time.time(), expires_at=time.time() - 1)
+    add(db, "e2", epoch_name="e2", recorded_at=time.time(), expires_at=time.time() + 3600)
     add(db, "e3", epoch_name="e2", expires_at=time.time() + 3600)
     pending(db)
     db.close()
@@ -207,6 +207,9 @@ def test_cli_end_to_end(tmp_path, capsys):
 
     code, out, _ = run_cli(capsys, "promote", "e1", "--db", db_path)
     assert code == 0 and out["status"] == "promoted"
+    # e2 reaches its expiry after the checkpoint was taken (commands sweep due rows before running).
+    with sqlite3.connect(db_path) as raw:
+        raw.execute("UPDATE evidence SET expires_at=? WHERE id='e2'", (time.time() - 1,))
     code, out, _ = run_cli(capsys, "sweep", "--db", db_path)
     assert code == 0 and out["expired"] == 1 and out["checkpoints_stale"] == [cid]
     code, out, _ = run_cli(capsys, "forget", "evidence", "e3", "--db", db_path)

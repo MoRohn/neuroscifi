@@ -33,7 +33,7 @@ def _remove(db, where, params, now, *, reason, cause, kind, target):
     for epoch in epochs:
         count = sum(1 for seq, _, e in rows if e == epoch)
         # Always record a revision: the post-deletion belief state is part of the semantic history (MEM-03/08).
-        summary = compute(db, epoch) | {"removed": count}
+        summary = compute(db, epoch) | {"removed": count, "cause": cause}
         db.execute("INSERT INTO belief_revisions(epoch,state_version,created_at,cause,summary) VALUES(?,?,?,?,?)",
                    (epoch, version, now, cause, json.dumps(summary, sort_keys=True, separators=(",", ":"),
                                                            allow_nan=False)))
