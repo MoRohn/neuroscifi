@@ -85,13 +85,25 @@ def _decide(db, epoch, now, record, path):
                            (epoch,)).fetchone()[0]
     allowed, why = store.write_allowed(db, path)
     decision, kind, scope, reason, question = _policy(db, epoch, allowed, why)
+    wanted = (kind, scope)  # the policy's own recommendation, before any budget conversion
     pending_id = _open_pending(db, epoch, kind, scope) if kind else None
     if decision == "ask" and pending_id is None and asks_used >= budget:
         reason = (f"ask budget exhausted: {asks_used} of {budget} questions already asked in epoch {epoch}; "
                   f"deferring instead of: {reason}")
         decision, kind = "defer", None
+    closed = []
     if record and allowed:
         version = store.bump_state_version(db)
+        # Working memory hygiene (MEM-01): an open question whose premise the evidence has since removed is
+        # closed with an auditable resolution. new_context questions belong to recall and are left alone.
+        for pid, pkind, pscope in db.execute(
+                "SELECT id,kind,scope FROM pending WHERE epoch=? AND resolved_at IS NULL "
+                "AND kind IN ('ask','test_reference','calibrate') ORDER BY id", (epoch,)).fetchall():
+            if (pkind, pscope) != wanted:
+                db.execute("UPDATE pending SET resolved_at=?, resolution=? WHERE id=?",
+                           (now, f"resolved by evidence: the executive now recommends {decision}"
+                                 + (f" for {scope}" if scope else ""), pid))
+                closed.append(pid)
         if kind and pending_id is None:
             pending_id = db.execute(
                 "INSERT INTO pending(epoch,kind,scope,question,created_at) VALUES(?,?,?,?,?)",
@@ -101,7 +113,7 @@ def _decide(db, epoch, now, record, path):
         db.execute("INSERT INTO decisions(epoch,state_version,decision,scope,reason,created_at) VALUES(?,?,?,?,?,?)",
                    (epoch, version, decision, scope, reason, now))
     return {"decision": decision, "scope": scope, "reason": reason, "pending_id": pending_id,
-            "asks_used": asks_used, "ask_budget": budget}
+            "asks_used": asks_used, "ask_budget": budget, "closed_pending": closed}
 
 
 def decide(db, epoch, now, *, record=False, path=None):

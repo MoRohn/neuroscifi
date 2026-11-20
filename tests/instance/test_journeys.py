@@ -122,3 +122,21 @@ def test_init_sets_regulation_limits(tmp_path, capsys):
     capsys.readouterr()
     assert main(["observe", "e", "b", "camera", "0", "0", "cam", "--db", str(path)]) == 2
     assert "limit 1" in capsys.readouterr().err
+
+
+def test_questions_close_when_evidence_removes_their_premise(instance):
+    db, _ = instance
+    evidence.start_epoch(db, "e", T0)
+    for i in range(4):
+        evidence.observe(db, {"id": f"c{i}", "epoch": "e", "channel": "camera", "action": 0, "bit": 0,
+                              "root": "cam"}, T0 + i)
+    first = executive.decide(db, "e", T0 + 10, record=True)
+    assert first["decision"] == "test_reference" and first["pending_id"]
+    for r in range(3):
+        evidence.observe(db, {"id": f"r{r}", "epoch": "e", "channel": "reference", "action": 0, "bit": 0,
+                              "root": f"std-{r}"}, T0 + 20 + r)
+    second = executive.decide(db, "e", T0 + 30, record=True)
+    assert second["decision"] == "act" and second["closed_pending"] == [first["pending_id"]]
+    assert executive.pending(db, epoch="e") == []
+    row = executive.pending(db, epoch="e", include_resolved=True)[0]
+    assert row["resolution"].startswith("resolved by evidence")

@@ -86,6 +86,8 @@ executive.decide(db, epoch, now, *, record=False, path=None) -> {"decision": "ac
 #   An 'ask' beyond config.ask_budget_per_epoch (count of ask/calibrate pending rows created in the epoch) becomes
 #   'defer'. With record=True: insert into decisions; for ask/test_reference/calibrate create a pending row unless
 #   an identical unresolved one (same epoch, kind, scope) exists.
+#   Also with record=True: unresolved ask/test_reference/calibrate rows of the epoch whose (kind, scope) differs from
+#   the policy's current recommendation are closed ('resolved by evidence: ...'); ids returned as "closed_pending".
 executive.pending(db, *, epoch=None, include_resolved=False) -> list[dict]
 executive.resolve(db, pending_id, resolution: str, now) -> dict    # bumps teacher_interventions
 legacy.import_legacy(db, legacy_path, now) -> {"epochs": int, "evidence": int}   # prototype live.py DB, provenance kept 'observed'
