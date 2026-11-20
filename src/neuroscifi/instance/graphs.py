@@ -1,0 +1,491 @@
+"""Versioned executable graphs: learn, evaluate, promote under an immutable rule, archive, recall, lesion.
+
+Lifecycle of a revision: 'candidate' (learn) -> 'active' or 'rejected' (promote/reject). Promoting a
+candidate archives the incumbent of its context, so at most one revision per context is active and older
+graphs stay available for rollback and recall. Deleting a dataset turns every revision trained or
+validated on it into 'invalidated' (invalidate_dependents).
+
+Single writer: learn, promote and rollback hold the context lease (graph_leases) for their duration and
+re-check it inside the committing transaction.
+
+The scoring rule is copied from rules.latest(db) when a candidate is created and is immutable afterwards
+(schema trigger). Nothing in this module registers rules; only the owner command does.
+"""
+from contextlib import contextmanager
+import hashlib
+import json
+import os
+import threading
+
+import numpy as np
+
+from ..graph_store import HEADER, decode
+from . import datasets, learner, rules, store
+from .errors import Conflict, LeaseHeld, NotFound, ValidationError
+
+COLUMNS = ("id", "context", "parent_id", "status", "bits", "degree", "rows", "cols", "byte_size", "sha256",
+           "rule_version", "origin", "metrics", "decision", "created_at", "decided_at")
+CHECKS = ("independent_heldout", "heldout_gain", "retention", "byte_budget")
+NEW_CONTEXT_ADVICE = "register as a new context; the incumbent still solves older data"
+
+
+# ---- helpers ------------------------------------------------------------------------------------------
+
+def _row(db, revision_id):
+    row = db.execute(f"SELECT {','.join(COLUMNS)} FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()
+    if row is None:
+        raise NotFound(f"Unknown graph revision {revision_id}")
+    rev = dict(zip(COLUMNS, row))
+    rev["metrics"] = json.loads(rev["metrics"]) if rev["metrics"] else {}
+    rev["decision"] = json.loads(rev["decision"]) if rev["decision"] else None
+    return rev
+
+
+def _matrix(db, revision_id):
+    blob = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()[0]
+    return decode(blob)
+
+
+def _active(db, context):
+    row = db.execute("SELECT id FROM graph_revisions WHERE context=? AND status='active'", (context,)).fetchone()
+    return row[0] if row else None
+
+
+def _lineage(db, revision_id):
+    return db.execute("SELECT l.dataset_id, l.role, d.sha256, d.deleted_at FROM graph_lineage l "
+                      "JOIN datasets d ON d.id=l.dataset_id WHERE l.revision_id=? ORDER BY l.dataset_id",
+                      (revision_id,)).fetchall()
+
+
+def _lineage_intact(db, revision_id):
+    return all(deleted is None for _, _, _, deleted in _lineage(db, revision_id))
+
+
+def _dump(value):
+    return json.dumps(value, sort_keys=True, allow_nan=False)
+
+
+def _holder(operation):
+    return f"graphs.{operation}:{os.getpid()}:{threading.get_ident()}"
+
+
+def _require_lease(db, context, holder):
+    row = db.execute("SELECT holder FROM graph_leases WHERE context=?", (context,)).fetchone()
+    if row is None or row[0] != holder:
+        raise LeaseHeld(f"Lease on context {context} was lost before commit")
+
+
+def _heldout(db, rev):
+    """Held-out datasets of the revision's context that are independent of its lineage.
+
+    Excluded: datasets in the lineage, datasets whose content (sha256) equals a lineage dataset, deleted
+    datasets and datasets with a different population count. 'older' are those created before the
+    revision's training dataset (lower id); 'current' are the newer ones, or all eligible ones when
+    nothing newer exists. Founding revisions have no training dataset, so every eligible set is current.
+    """
+    lineage = _lineage(db, rev["id"])
+    ids = {r[0] for r in lineage}
+    shas = {r[2] for r in lineage}
+    train = [r[0] for r in lineage if r[1] == "train"]
+    eligible, excluded = [], []
+    for dataset_id, sha, cols in db.execute(
+            "SELECT id, sha256, cols FROM datasets WHERE context=? AND split='heldout' AND deleted_at IS NULL "
+            "AND blob IS NOT NULL ORDER BY id", (rev["context"],)):
+        if dataset_id in ids or sha in shas:
+            excluded.append({"dataset_id": dataset_id, "why": "same data as the revision's lineage"})
+        elif cols != rev["cols"] or rev["rows"] != rev["cols"]:
+            excluded.append({"dataset_id": dataset_id,
+                             "why": f"{cols} populations, graph is {rev['rows']}x{rev['cols']}"})
+        else:
+            eligible.append(dataset_id)
+    older = [d for d in eligible if train and d < min(train)]
+    current = [d for d in eligible if d not in older] or list(eligible)
+    return eligible, current, older, excluded
+
+
+def _scores(db, matrix, dataset_ids):
+    out = {}
+    for dataset_id in dataset_ids:
+        states, targets = datasets.load(db, dataset_id)
+        out[dataset_id] = learner.mse(matrix, states, targets)
+    return out
+
+
+def _insert_revision(db, *, context, parent_id, status, blob, rule_version, origin, metrics, now):
+    _, bits, rows, cols, degree = HEADER.unpack(blob[:HEADER.size])
+    cur = db.execute(
+        "INSERT INTO graph_revisions(context,parent_id,status,bits,degree,rows,cols,byte_size,sha256,blob,"
+        "rule_version,origin,metrics,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (context, parent_id, status, bits, degree, rows, cols, len(blob), hashlib.sha256(blob).hexdigest(),
+         blob, rule_version, origin, _dump(metrics), now))
+    return cur.lastrowid
+
+
+# ---- lease --------------------------------------------------------------------------------------------
+
+@contextmanager
+def lease(db, context, holder, now, ttl=600):
+    """Own the mutable graph of `context` while the block runs.
+
+    LeaseHeld if another holder has an unexpired lease. An expired lease is taken over. The same holder
+    renews its own lease (and then leaves it in place on exit); a fresh lease is released on exit.
+    Leases are coordination state, so they do not bump state_version.
+    """
+    datasets._check_context(context)
+    if not isinstance(holder, str) or not holder.strip() or ttl <= 0:
+        raise ValidationError("A lease needs a holder name and a positive ttl")
+    with store.write(db):
+        row = db.execute("SELECT holder, expires_at FROM graph_leases WHERE context=?", (context,)).fetchone()
+        if row and row[0] != holder and row[1] > now:
+            raise LeaseHeld(f"Context {context} is leased by {row[0]} until {row[1]}")
+        renewed = bool(row and row[0] == holder and row[1] > now)
+        db.execute("INSERT INTO graph_leases(context,holder,expires_at) VALUES(?,?,?) ON CONFLICT(context) "
+                   "DO UPDATE SET holder=excluded.holder, expires_at=excluded.expires_at",
+                   (context, holder, now + ttl))
+    try:
+        yield {"context": context, "holder": holder, "expires_at": now + ttl}
+    finally:
+        if not renewed:
+            with store.write(db):
+                db.execute("DELETE FROM graph_leases WHERE context=? AND holder=?", (context, holder))
+
+
+# ---- creation -----------------------------------------------------------------------------------------
+
+def register_founding(db, nsg_blob, now):
+    """Register an NSG1 snapshot as the active graph of context 'founding'. Opens its own transaction."""
+    blob = bytes(nsg_blob)
+    try:
+        matrix = decode(blob)
+    except ValueError as error:
+        raise ValidationError(f"Founding graph is not a valid NSG1 snapshot: {error}") from None
+    if not np.isfinite(matrix).all():
+        raise ValidationError("Founding graph must be finite")
+    with store.write(db):
+        if _active(db, "founding") is not None:
+            raise Conflict("This individual already has an active founding graph")
+        revision = _insert_revision(db, context="founding", parent_id=None, status="active", blob=blob,
+                                    rule_version=rules.latest(db), origin="founding", metrics={}, now=now)
+        db.execute("UPDATE graph_revisions SET decided_at=?, decision=? WHERE id=?",
+                   (now, _dump({"action": "founding", "decided_at": now}), revision))
+        store.bump_state_version(db)
+    return revision
+
+
+def learn(db, context, now, *, train, validation, holder):
+    """Fit a candidate revision from a train and a validation dataset of `context`, holding its lease."""
+    datasets._check_context(context)
+    with lease(db, context, holder, now):
+        meta = {}
+        for dataset_id, split in ((train, "train"), (validation, "validation")):
+            row = db.execute("SELECT context, split, cols FROM datasets WHERE id=?", (dataset_id,)).fetchone()
+            if row is None:
+                raise NotFound(f"Unknown dataset {dataset_id}")
+            if row[0] != context or row[1] != split:
+                raise ValidationError(f"Dataset {dataset_id} is {row[1]} data of context {row[0]}, "
+                                      f"expected {split} data of {context}")
+            meta[split] = row[2]
+        if meta["train"] != meta["validation"]:
+            raise ValidationError("Train and validation datasets have different population counts")
+        rule_version = rules.latest(db)
+        rule = rules.get(db, rule_version)
+        x, y = datasets.load(db, train)
+        val = datasets.load(db, validation)
+        fitted = learner.fit(x, y, seed=train)
+        packed = learner.pack(fitted["dense"], val, rule)
+        sparse_support = fitted["support"]
+        packed_support = decode(packed["blob"]) != 0
+        edges = int(sparse_support.sum())
+        metrics = {
+            "train_dataset": train, "validation_dataset": validation, "train_steps": int(len(x)),
+            "learner": {"window": learner.WINDOW, "learning_rate": learner.LEARNING_RATE, "k": 3,
+                        "initial_support_seed": train},
+            "validation_mse": packed["validation_mse"],
+            "dense_validation_mse": packed["dense_validation_mse"],
+            "pack": {key: packed[key] for key in ("bits", "degree", "byte_size", "validation_mse",
+                                                  "dense_validation_mse", "candidates")},
+            "sparse": {"swaps": fitted["swaps"], "edges": edges,
+                       "validation_mse": learner.mse(fitted["sparse"], *val),
+                       "support_agreement_with_snapshot":
+                           float((sparse_support & packed_support).sum() / edges) if edges else None},
+        }
+        with store.write(db):
+            _require_lease(db, context, holder)
+            revision = _insert_revision(db, context=context, parent_id=_active(db, context), status="candidate",
+                                        blob=packed["blob"], rule_version=rule_version, origin="learner",
+                                        metrics=metrics, now=now)
+            db.executemany("INSERT INTO graph_lineage(revision_id,dataset_id,role) VALUES(?,?,?)",
+                           [(revision, train, "train"), (revision, validation, "validation")])
+            store.bump(db, "replay_updates")
+            store.bump_state_version(db)
+    return revision
+
+
+# ---- scoring and promotion ----------------------------------------------------------------------------
+
+def evaluate(db, revision_id, now):
+    """Score a revision on independent held-out data of its context and store the result in metrics."""
+    rev = _row(db, revision_id)
+    eligible, current, older, excluded = _heldout(db, rev)
+    scores = _scores(db, _matrix(db, revision_id), eligible)
+    heldout_mse = float(np.mean(list(scores.values()))) if scores else None
+    evaluation = {"heldout": [{"dataset_id": d, "mse": scores[d]} for d in eligible],
+                  "current": current, "older": older, "excluded": excluded,
+                  "heldout_mse": heldout_mse, "evaluated_at": now}
+    with store.write(db):
+        metrics = _row(db, revision_id)["metrics"]
+        metrics["evaluation"] = evaluation
+        metrics["heldout_mse"] = heldout_mse
+        db.execute("UPDATE graph_revisions SET metrics=? WHERE id=?", (_dump(metrics), revision_id))
+        store.bump(db, "replay_updates")
+        store.bump_state_version(db)
+    return {"revision_id": revision_id, "context": rev["context"], "status": rev["status"], **evaluation}
+
+
+def _gate(db, cand, rule, now):
+    """Apply checks (a)-(d) of the candidate's own rule and return the full decision record."""
+    incumbent = _active(db, cand["context"])
+    eligible, current, older, excluded = _heldout(db, cand)
+    cand_matrix = _matrix(db, cand["id"])
+    inc_matrix = _matrix(db, incumbent) if incumbent is not None else None
+    checks = {}
+    # (a) independent held-out data
+    checks["independent_heldout"] = {"passed": bool(eligible), "datasets": eligible, "excluded": excluded}
+    # (b) the candidate beats the incumbent on current held-out data by min_heldout_gain
+    gain = float(rule["min_heldout_gain"])
+    if not eligible:
+        checks["heldout_gain"] = {"passed": None, "why": "not evaluated: no independent held-out data"}
+    else:
+        cand_scores = _scores(db, cand_matrix, current)
+        cand_mse = float(np.mean(list(cand_scores.values())))
+        check = {"datasets": current, "candidate_mse": cand_mse, "min_heldout_gain": gain,
+                 "candidate_per_dataset": [{"dataset_id": d, "mse": cand_scores[d]} for d in current]}
+        if inc_matrix is None:
+            check.update(passed=True, incumbent_mse=None, threshold=None, why="no incumbent")
+        elif inc_matrix.shape != cand_matrix.shape:
+            check.update(passed=False, incumbent_mse=None, threshold=None,
+                         why=f"incumbent shape {list(inc_matrix.shape)} differs from the candidate")
+        else:
+            inc_scores = _scores(db, inc_matrix, current)
+            inc_mse = float(np.mean(list(inc_scores.values())))
+            threshold = inc_mse * (1 - gain)
+            check.update(passed=cand_mse < threshold, incumbent_mse=inc_mse, threshold=threshold,
+                         incumbent_per_dataset=[{"dataset_id": d, "mse": inc_scores[d]} for d in current])
+        checks["heldout_gain"] = check
+    # (c) retention on every older held-out dataset
+    tolerance = float(rule["retention_tolerance"])
+    if not eligible:
+        checks["retention"] = {"passed": None, "why": "not evaluated: no independent held-out data"}
+    elif inc_matrix is None or inc_matrix.shape != cand_matrix.shape or not older:
+        checks["retention"] = {"passed": True, "retention_tolerance": tolerance, "datasets": [],
+                               "why": "no incumbent" if inc_matrix is None else
+                               "no comparable incumbent" if inc_matrix.shape != cand_matrix.shape else
+                               "no older held-out data"}
+    else:
+        cand_old = _scores(db, cand_matrix, older)
+        inc_old = _scores(db, inc_matrix, older)
+        rows = [{"dataset_id": d, "candidate_mse": cand_old[d], "incumbent_mse": inc_old[d],
+                 "limit": inc_old[d] * (1 + tolerance), "passed": cand_old[d] <= inc_old[d] * (1 + tolerance)}
+                for d in older]
+        checks["retention"] = {"passed": all(r["passed"] for r in rows), "retention_tolerance": tolerance,
+                               "datasets": rows}
+    # (d) resource budget
+    checks["byte_budget"] = {"passed": cand["byte_size"] <= int(rule["byte_budget"]),
+                             "byte_size": cand["byte_size"], "byte_budget": int(rule["byte_budget"])}
+    promoted = all(checks[name]["passed"] is True for name in CHECKS)
+    decision = {
+        "action": "promote" if promoted else "reject", "promoted": promoted, "decided_at": now,
+        "context": cand["context"], "candidate": cand["id"], "incumbent": incumbent,
+        "rule_version": cand["rule_version"], "rule": rule,
+        "thresholds": {"min_heldout_gain": gain, "retention_tolerance": tolerance,
+                       "byte_budget": int(rule["byte_budget"]),
+                       "validation_tolerance": float(rule["validation_tolerance"])},
+        "heldout": {"current": current, "older": older},
+        "order": list(CHECKS), "checks": checks,
+        "passed": [name for name in CHECKS if checks[name]["passed"] is True],
+        "failed": [name for name in CHECKS if checks[name]["passed"] is not True],
+    }
+    if checks["heldout_gain"]["passed"] is True and checks["retention"]["passed"] is False:
+        decision["recommendation"] = NEW_CONTEXT_ADVICE
+    return decision
+
+
+def promote(db, revision_id, now):
+    """Run the gate of the candidate's recorded rule; promote on a full pass, otherwise reject."""
+    rev = _row(db, revision_id)
+    if rev["status"] != "candidate":
+        raise Conflict(f"Revision {revision_id} is {rev['status']}; only candidates can be promoted")
+    holder = _holder("promote")
+    with lease(db, rev["context"], holder, now):
+        with store.write(db):
+            _require_lease(db, rev["context"], holder)
+            cand = _row(db, revision_id)
+            if cand["status"] != "candidate":
+                raise Conflict(f"Revision {revision_id} is {cand['status']}; only candidates can be promoted")
+            decision = _gate(db, cand, rules.get(db, cand["rule_version"]), now)
+            if decision["promoted"]:
+                if decision["incumbent"] is not None:
+                    db.execute("UPDATE graph_revisions SET status='archived' WHERE id=?", (decision["incumbent"],))
+                status = "active"
+            else:
+                status = "rejected"
+            db.execute("UPDATE graph_revisions SET status=?, decision=?, decided_at=? WHERE id=?",
+                       (status, _dump(decision), now, revision_id))
+            store.bump(db, "replay_updates")
+            store.bump_state_version(db)
+    return {"promoted": decision["promoted"], "decision": decision}
+
+
+def reject(db, revision_id, now, reason):
+    """Owner rejection of a candidate."""
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValidationError("A rejection needs a reason")
+    with store.write(db):
+        rev = _row(db, revision_id)
+        if rev["status"] != "candidate":
+            raise Conflict(f"Revision {revision_id} is {rev['status']}; only candidates can be rejected")
+        decision = {"action": "reject", "promoted": False, "by": "owner", "reason": reason, "decided_at": now,
+                    "rule_version": rev["rule_version"]}
+        db.execute("UPDATE graph_revisions SET status='rejected', decision=?, decided_at=? WHERE id=?",
+                   (_dump(decision), now, revision_id))
+        store.bump_state_version(db)
+    return {"revision_id": revision_id, "status": "rejected", "decision": decision}
+
+
+def rollback(db, context, revision_id, now):
+    """Re-activate an archived, non-invalidated revision whose lineage is intact; archive the active one."""
+    datasets._check_context(context)
+    holder = _holder("rollback")
+    with lease(db, context, holder, now):
+        with store.write(db):
+            _require_lease(db, context, holder)
+            rev = _row(db, revision_id)
+            if rev["context"] != context:
+                raise ValidationError(f"Revision {revision_id} belongs to context {rev['context']}, not {context}")
+            if rev["status"] != "archived":
+                raise Conflict(f"Revision {revision_id} is {rev['status']}; only archived revisions can be "
+                               "re-activated")
+            if not _lineage_intact(db, revision_id):
+                raise Conflict(f"Revision {revision_id} was learned from a deleted dataset")
+            previous = _active(db, context)
+            if previous is not None:
+                db.execute("UPDATE graph_revisions SET status='archived' WHERE id=?", (previous,))
+            decision = {"action": "rollback", "decided_at": now, "replaced": previous, "prior": rev["decision"]}
+            db.execute("UPDATE graph_revisions SET status='active', decision=?, decided_at=? WHERE id=?",
+                       (_dump(decision), now, revision_id))
+            store.bump_state_version(db)
+    return {"context": context, "active": revision_id, "archived": previous}
+
+
+def invalidate_dependents(db, dataset_id, now):
+    """Invalidate revisions trained or validated on a deleted dataset. Caller owns the transaction.
+
+    Does not bump state_version: the caller's deletion is the one logical change. When the active revision
+    of a context is invalidated, the newest archived revision of that context whose lineage has no deleted
+    dataset is re-activated; if there is none, `failure` names the context.
+    """
+    revs = db.execute("SELECT DISTINCT r.id, r.context, r.status, r.decision FROM graph_lineage l "
+                      "JOIN graph_revisions r ON r.id=l.revision_id WHERE l.dataset_id=? "
+                      "AND l.role IN ('train','validation') AND r.status!='invalidated' ORDER BY r.id",
+                      (dataset_id,)).fetchall()
+    invalidated, contexts = [], []
+    for revision, context, status, decision in revs:
+        prior = json.loads(decision) if decision else None
+        db.execute("UPDATE graph_revisions SET status='invalidated', decision=?, decided_at=? WHERE id=?",
+                   (_dump({"action": "invalidate", "dataset": dataset_id, "was": status, "decided_at": now,
+                           "prior": prior}), now, revision))
+        invalidated.append(revision)
+        if status == "active":
+            contexts.append(context)
+    reactivated, failures = None, []
+    for context in contexts:
+        candidates = [r[0] for r in db.execute(
+            "SELECT id FROM graph_revisions WHERE context=? AND status='archived' ORDER BY created_at DESC, id DESC",
+            (context,))]
+        chosen = next((r for r in candidates if _lineage_intact(db, r)), None)
+        if chosen is None:
+            failures.append(f"no eligible snapshot for context {context}")
+            continue
+        prior = _row(db, chosen)["decision"]
+        db.execute("UPDATE graph_revisions SET status='active', decision=?, decided_at=? WHERE id=?",
+                   (_dump({"action": "reactivate", "after_deleting_dataset": dataset_id, "decided_at": now,
+                           "prior": prior}), now, chosen))
+        reactivated = chosen
+    return {"invalidated": invalidated, "reactivated": reactivated,
+            "failure": "; ".join(failures) if failures else None}
+
+
+# ---- inspection ---------------------------------------------------------------------------------------
+
+def lesion(db, revision_id, dataset_id, now):
+    """Zero each retained edge in turn and measure the change in error on one dataset.
+
+    Also scores a permuted control that keeps each receiver's weights but scrambles their sources
+    (as lab.graph_bench does), seeded by (revision_id, dataset_id). Rows go to graph_effects.
+    """
+    rev = _row(db, revision_id)
+    matrix = _matrix(db, revision_id).astype(np.float64)
+    states, targets = datasets.load(db, dataset_id)
+    if matrix.shape != (states.shape[1],) * 2:
+        raise ValidationError(f"Dataset {dataset_id} has {states.shape[1]} populations, graph is "
+                              f"{matrix.shape[0]}x{matrix.shape[1]}")
+    base = learner.mse(matrix, states, targets)
+    edges = []
+    for dst, src in zip(*np.nonzero(matrix)):
+        copy = matrix.copy()
+        copy[dst, src] = 0
+        edges.append({"src": int(src), "dst": int(dst), "weight": float(matrix[dst, src]),
+                      "delta_mse": learner.mse(copy, states, targets) - base})
+    edges.sort(key=lambda e: -e["delta_mse"])
+    rng = np.random.default_rng([revision_id, dataset_id])
+    shuffled = np.zeros_like(matrix)
+    n = matrix.shape[1]
+    for j in range(n):
+        pool = np.delete(np.arange(n), j)
+        shuffled[j, pool] = rng.permutation(matrix[j, pool])
+    control = learner.mse(shuffled, states, targets)
+    with store.write(db):
+        db.executemany("INSERT INTO graph_effects(revision_id,dataset_id,kind,src,dst,effect,detail,created_at) "
+                       "VALUES(?,?,'lesion',?,?,?,?,?)",
+                       [(revision_id, dataset_id, e["src"], e["dst"], e["delta_mse"],
+                         _dump({"weight": e["weight"], "base_mse": base}), now) for e in edges])
+        db.execute("INSERT INTO graph_effects(revision_id,dataset_id,kind,src,dst,effect,detail,created_at) "
+                   "VALUES(?,?,'lesion_control',NULL,NULL,?,?,?)",
+                   (revision_id, dataset_id, control, _dump({"base_mse": base, "control": "permuted sources"}), now))
+        store.bump(db, "replay_updates")
+        store.bump_state_version(db)
+    return {"revision_id": revision_id, "dataset_id": dataset_id, "context": rev["context"],
+            "edges": edges, "permuted_control_mse": control, "base_mse": base}
+
+
+def _public(rev):
+    return {key: rev[key] for key in COLUMNS}
+
+
+def listing(db, context=None):
+    sql = f"SELECT id FROM graph_revisions{' WHERE context=?' if context is not None else ''} ORDER BY id"
+    return [_public(_row(db, r[0])) for r in db.execute(sql, (context,) if context is not None else ())]
+
+
+def show(db, revision_id):
+    """Revision record, lineage, the decoded matrix (rounded to 6 decimals) and its support mask."""
+    rev = _public(_row(db, revision_id))
+    matrix = _matrix(db, revision_id).astype(np.float64)
+    rev["lineage"] = [{"dataset_id": d, "role": role, "deleted": deleted is not None}
+                      for d, role, _, deleted in _lineage(db, revision_id)]
+    rev["matrix"] = np.round(matrix, 6).tolist()
+    rev["support"] = (matrix != 0).tolist()
+    rev["edges"] = int((matrix != 0).sum())
+    return rev
+
+
+def export(db, revision_id, out_path):
+    """Write the revision's NSG1 bytes to a new file. Refuses to overwrite."""
+    rev = _row(db, revision_id)
+    blob = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()[0]
+    try:
+        with open(out_path, "xb") as out:
+            out.write(blob)
+    except FileExistsError:
+        raise Conflict(f"{out_path} already exists; export never overwrites") from None
+    return {"revision_id": revision_id, "path": str(out_path), "bytes": len(blob), "sha256": rev["sha256"]}

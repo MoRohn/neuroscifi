@@ -34,7 +34,12 @@ def with_db(handler):
     def wrapped(args):
         db = store.open_existing(store.resolve_db(args))
         try:
-            return handler(db, args, time.time())
+            now = time.time()
+            # Like the Pocket bridge, expire due evidence before every read or write so that
+            # beliefs never count records past their lifetime (MEM-09).
+            from .governance import sweep
+            sweep(db, now)
+            return handler(db, args, now)
         finally:
             db.close()
     return run(wrapped)
