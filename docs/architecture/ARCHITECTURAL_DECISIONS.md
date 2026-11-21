@@ -76,7 +76,7 @@ defaults to false and every network entry point calls `state.require_enabled`. A
 research and JavaScript rendering are three further switches, also off. Respecting robots.txt and the private-address
 block are constants, not settings. Consequence: a fresh individual behaves exactly as 0.5.
 
-**ADR-022 No model in the loop: extractive synthesis and lexical ranking. R**
+**ADR-022 No model in the loop: extractive synthesis and lexical ranking. R** (extended by ADR-036)
 There is no language model, embedding encoder or reranker on the host or in the package (ADR-009 still holds).
 Inventing one would be a placeholder. Decision: query planning, claim extraction, contradiction detection and
 synthesis are deterministic and rule-based; ranking is BM25 plus recency and source independence. Every answer
@@ -302,3 +302,48 @@ A registry statement gets a verdict in any mode, not only `technical`.
 Consequences. R-6 still holds for publication and latest version (a wrong registry entry is believed for those),
 but it no longer spreads to stability, security or recommendation. Tests:
 tests/webcortex/test_claim_verification.py (section 4). Details: docs/knowledge/CLAIM_VERIFICATION.md §5.
+
+# ADR-036 (draft) Local inference gateway; the model writes answers only from verified evidence. R
+
+Status: draft for docs/architecture/ARCHITECTURAL_DECISIONS.md (Lane B, v0.7.0). Extends ADR-022 (which stays true
+for retrieval, verification, ranking and the degraded path) and supersedes its sentence "There is no language model
+... on the host or in the package" for answer writing only.
+
+Context. v0.7.0 puts an LLM on the DGX Spark (Qwen3-30B-A3B-Instruct-2507-FP8, Apache-2.0, served by vLLM in
+Docker). ADR-022 made every answer sentence a quote or a template so that nothing unverified is ever presented as
+fact. A model can write a more direct answer, but it can also invent facts, numbers, sources and certainty, and it
+reads web text that may carry instructions.
+
+Decision.
+1. `neuroscifi.inference` is a model-independent client for OpenAI-compatible endpoints (stdlib `http.client`, no
+   new dependency): discovery, explicit health states (ready / degraded / unavailable / unauthorised /
+   not_configured), chat with SSE streaming, structured output validated locally with one bounded repair, tool calls
+   decided locally, timeouts, bounded retries with backoff, a context budget and a per-call token ledger
+   (`<db stem>.inference.sqlite`, no text).
+2. Local-first. The endpoint is per individual (`meta` key `inference`, off by default). It must resolve to loopback
+   or private addresses; anything else needs the owner's `remote_allowed`, https, and passes the web privacy screen;
+   messages marked private need `remote_private_memory` as well. The API key lives in a file outside git (0600).
+3. The model writes the research answer after verification, from a bundle of verified claims only (id, state,
+   confidence, quoted text, source ids, dates), wrapped as untrusted data. `webcortex.reasoning.guard` is the
+   authority: per-sentence source and claim citations must exist and match; non-supported claims must be hedged in
+   the sentence's own words; no "verified/confirmed" for non-supported claims; no number absent from the cited
+   evidence; no instruction-like text. A bounded self-critique may only remove sentences. The model never changes a
+   claim's state and its text never becomes knowledge (consolidation reads claims only).
+4. `report.generated_by` is `model:<served name>` only when at least one sentence passed; otherwise `template`, with
+   the label "Advanced reasoning unavailable — showing extractive summary" and the reason. The extractive answer is
+   always kept unchanged.
+5. Tool calls: the model suggests; NeuroSciFi checks the allow-list, the granted permission and the argument schema,
+   and executes through existing functions (knowledge.query, orchestrator.get, orchestrator.submit with its web
+   switch, privacy screen and budgets). No tool changes configuration, forgets, accepts knowledge or resolves
+   questions.
+
+Rejected alternatives. (a) Let the model write freely and show its citations: unverifiable sentences would look
+verified. (b) Trust the model's own `hedged` flag or a self-check alone: the authority must be local code.
+(c) An SDK (openai, httpx): a new dependency for ~400 lines of stdlib. (d) Ollama/llama.cpp: vLLM is the measured,
+working server on GB10 with tool parsing and guided decoding. (e) Storing model answers as knowledge: would let
+model text bypass ADR-026.
+
+Consequences. Answers read better and say what is missing (knowledge gaps), at a cost of one or two model calls
+(measured: COGNITIVE_INFERENCE.md §4). The guard is lexical: hedge detection can be fooled by a hedge word in an
+otherwise assertive sentence, and number grounding does not check units or which claim a number belongs to. A model
+outage, a key problem or a guard rejection only changes the label; research keeps working.

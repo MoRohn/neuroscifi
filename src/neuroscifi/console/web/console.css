@@ -176,6 +176,7 @@ textarea{resize:vertical;min-height:5.5rem;line-height:1.45}
 .answers li,.sources li{margin:8px 0}
 .quote{margin:4px 0;padding:6px 12px;border-left:4px solid var(--softline);background:var(--soft);border-radius:0 8px 8px 0;font-style:italic}
 .template{margin:4px 0}
+.generated{margin:4px 0}
 .answermeta{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;margin:2px 0 0;font-size:.88rem}
 a.cite{display:inline-flex;align-items:center;justify-content:center;min-width:28px;min-height:28px;padding:0 4px;font-weight:700;text-decoration:none;border-radius:6px}
 a.related{font-weight:600}

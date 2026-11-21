@@ -1,0 +1,30 @@
+# NeuroSciFi local model server (ADR-036 draft; docs/architecture/COGNITIVE_INFERENCE.md). vLLM in Docker, bound to
+# 127.0.0.1:8811 only, pinned image digest, read-only model mount, generated API key outside git.
+# Not installed by deploy/install.sh (Docker and the model weights are host choices). Install by hand:
+#   sudo install -m 0644 deploy/systemd/neuroscifi-vllm.service /etc/systemd/system/
+#   sudo systemctl edit neuroscifi-vllm.service   # set User= and NSF_REPO= for this host, see below
+#   sudo systemctl daemon-reload && sudo systemctl enable --now neuroscifi-vllm.service
+# The user must be in the docker group; the key and weights live under that user's home (run.sh, vllm.env).
+# The research worker reads the key through `nsf llm config --key-file` (ProtectHome=yes there: copy the key to
+# /etc/neuroscifi/inference.key, owner root:neuroscifi, mode 0640).
+[Unit]
+Description=NeuroSciFi local model server (vLLM, loopback)
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=rohn
+Environment=NSF_REPO=/home/rohn/neuroscifi
+ExecStart=/usr/bin/env bash ${NSF_REPO}/deploy/vllm/run.sh foreground
+ExecStop=/usr/bin/env bash ${NSF_REPO}/deploy/vllm/run.sh stop
+# Model load and CUDA graph capture take minutes on first start (measured: COGNITIVE_INFERENCE.md §4).
+TimeoutStartSec=30min
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=1h
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

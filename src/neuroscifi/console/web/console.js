@@ -1286,8 +1286,67 @@ async function loadResearch() {
   const [status, , monitors] = result;
   renderWebStatus(status);
   renderMonitors(monitors);
+  loadLlmStatus();
   if (web.taskId) await loadTask(web.taskId);
   schedulePoll();
+}
+
+// Inference gateway health: an explicit state from the server (ready / degraded / unavailable / unauthorised /
+// not_configured), never inferred here.
+const LLM_STATE = { ready: ['Ready', 'ok'], degraded: ['Degraded', 'warn'], unavailable: ['Unavailable', 'warn'],
+  unauthorised: ['Unauthorised', 'warn'], not_configured: ['Not configured', 'neutral'] };
+
+async function loadLlmStatus() {
+  const slot = $('llmStatus');
+  try {
+    renderLlmStatus(await api('GET', '/api/llm/status'));
+  } catch (error) {
+    fill(slot, h('p', { class: 'msg error', text: errorText(error) }));
+  } finally {
+    slot.removeAttribute('aria-busy');
+  }
+}
+
+function renderLlmStatus(s) {
+  const hl = s.health ?? {};
+  const [word, tone] = LLM_STATE[hl.state] ?? [String(hl.state), 'neutral'];
+  const u = s.usage_24h;
+  const answers = !s.config?.reasoning ? 'Extractive summary (model reasoning is off)'
+    : hl.state === 'ready' ? 'Written by the model from verified evidence, every sentence checked'
+      : 'Extractive summary until the model is ready';
+  fill($('llmStatus'), kv([
+    ['State', h('span', { id: 'llmState' }, badge(word, tone))],
+    ['Model', hl.model ?? 'none'],
+    ['Endpoint', hl.endpoint ? `${hl.endpoint} (${hl.locality ?? 'unknown'})` : 'none configured'],
+    ['Research answers', answers],
+    hl.reason ? ['Why', hl.reason] : null,
+    ['Last 24 hours', u && u.calls ? `${u.calls} call${u.calls === 1 ? '' : 's'}, ${u.prompt_tokens + u.completion_tokens} tokens${u.avg_tokens_per_second ? `, about ${fmtNum(u.avg_tokens_per_second, 1)} tokens/s` : ''}` : 'no calls'],
+  ]));
+}
+
+// report.reasoning (webcortex/reasoning.py): a model-written answer that passed the server's citation and claim-state
+// guard, or the template label with the reason. Model text is set as text only, like every web-derived string.
+function reasoningBlock(r) {
+  const x = r.reasoning;
+  if (!x) return [];
+  if (x.generated_by === 'template' || !x.answer?.length) {
+    return [h('p', { class: 'msg warn', id: 'reasoningLabel' }, badge('Extractive summary', 'neutral'), ` ${x.label}`),
+      x.reason ? technical(h('p', { text: `Why: ${x.reason}` })) : null];
+  }
+  const out = [h('h4', { text: 'Answer' }),
+    h('p', { class: 'sub', id: 'reasoningLabel' }, badge('Model reasoning', 'info'), ` ${x.label}`),
+    h('ol', { class: 'answers', id: 'modelAnswer' }, x.answer.map((s) => h('li', {}, h('p', { class: 'generated', text: s.text }),
+      h('p', { class: 'answermeta' }, citeLinks(s.citations), ' ',
+        Object.entries(s.states ?? {}).map(([id, st]) => badge(`${id}: ${statusText(st)}`, st === 'corroborated' || st === 'supported' ? 'ok' : 'neutral'))))))];
+  if (x.gaps?.length) {
+    out.push(h('h4', { text: 'Knowledge gaps' }), h('ul', { class: 'reasons', id: 'modelGaps' }, x.gaps.map((g) => h('li', {}, g.text, ' ', badge(g.by === 'model' ? 'model-identified' : 'from the evidence', 'neutral')))));
+  }
+  const u = x.usage ?? {};
+  out.push(technical(
+    x.rejected?.length ? h('div', {}, h('p', { text: `${x.rejected.length} model sentence${x.rejected.length === 1 ? ' was' : 's were'} rejected by the guard:` }),
+      h('ul', { class: 'reasons', id: 'modelRejected' }, x.rejected.map((j) => h('li', {}, h('span', { text: j.text }), ' — ', h('em', { text: j.reasons.join('; ') }))))) : null,
+    h('p', { text: `${x.generated_by} · ${u.calls ?? 0} call(s) · ${u.prompt_tokens ?? 0} prompt + ${u.completion_tokens ?? 0} completion tokens · ${fmtNum((u.latency_ms ?? 0) / 1000, 1)} s${u.first_token_ms ? ` · first token ${fmtNum(u.first_token_ms, 0)} ms` : ''}` })));
+  return out;
 }
 
 async function loadWebStatus() {
@@ -1645,7 +1704,9 @@ function plainLimitation(text, r) {
 }
 
 function reportBody(r, t) {
-  const out = [h('h4', { text: 'Answer' }), h('ol', { class: 'answers' }, (r.answer ?? []).map((a) => answerItem(a, r)))];
+  const modelAnswer = r.reasoning && r.reasoning.generated_by !== 'template' && r.reasoning.answer?.length;
+  const out = [...reasoningBlock(r), h('h4', { text: modelAnswer ? 'Extractive summary (quoted evidence)' : 'Answer' }),
+    h('ol', { class: 'answers' }, (r.answer ?? []).map((a) => answerItem(a, r)))];
   const claims = (r.sources ?? []).length > 0;
   if (r.verdict && claims) out.push(...verdictBlock(r));
   if (r.comparison?.rows?.length) {

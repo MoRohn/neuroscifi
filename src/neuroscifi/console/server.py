@@ -441,6 +441,20 @@ def _web_monitor_action(action):
     return handler
 
 
+def _llm_status(c, p, q, b):
+    """Inference gateway health (an explicit state, never a guess), reasoning settings and the last 24 h of token
+    accounting. Contacts only the owner-configured endpoint (loopback/private, or remote with remote_allowed);
+    ?probe=1 also generates a one-word reply."""
+    from ..inference import config as iconfig
+    from ..inference.gateway import Gateway
+    from ..inference.ledger import Ledger, ledger_path
+    q = _query(q, ("probe",))
+    gw = Gateway.from_db(c.db, c.path)
+    path = ledger_path(c.path)
+    return {"health": gw.health(probe=q.get("probe") in ("1", "true")), "config": iconfig.public(gw.cfg),
+            "usage_24h": Ledger(path).summary(since=c.now - 86400) if path.exists() else None}
+
+
 SEGMENT = r"([^/]+)"
 ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern, handler in (
     ("GET", "inventory", _inventory),
@@ -473,6 +487,7 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("POST", "checkpoints/rebuild", _checkpoint_rebuild),
     ("POST", r"checkpoints/(\d+)/verify", _checkpoint_verify),
     ("GET", "memory", _memory),
+    ("GET", "llm/status", _llm_status),
     ("GET", "web/status", _web_status),
     ("POST", "web/config", _web_config_set),
     ("GET", "web/tasks", _web_tasks),

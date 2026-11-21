@@ -35,7 +35,10 @@ I/O):
                 skipped; an objective with no topic - a crawl - extracts by each page's salience, its title as
                 topic) -> claims.cluster -> claims.score (config.freshness_ttl as ttl_overrides); clusters persisted
   synthesizing  synthesis.synthesize -> the report (§5, 'synthesized' event) with its context pack
-                (synthesis.context_pack within budget.max_context_tokens, charged to usage.tokens); then
+                (synthesis.context_pack within budget.max_context_tokens, charged to usage.tokens); then, for a
+                completed or partial run, reasoning.apply (_reason): a configured model writes an answer from the
+                verified evidence only, checked by reasoning.guard (report.reasoning, report.generated_by
+                'model:<name>' | 'template'; a 'decision' event); then
                 consolidate.run, predictions for new provisional knowledge, mode statistics (procedural memory),
                 public-cache retention, and change detection when the task belongs to a monitor
 
@@ -1453,6 +1456,7 @@ def _execute(db, task_id, services, *, resume):
             _mark_knowledge_status(report, items)
             _memory_lead(report, items)
             status = "completed"
+            _reason(db, run, report)
         else:
             run.stage("reading")
             run.read()
@@ -1480,6 +1484,8 @@ def _execute(db, task_id, services, *, resume):
                     run.checkpoint["stages_done"] = []
             elif run.mode == "change_detection":
                 _compare_with_previous(db, run, report)
+            if status != "failed":
+                _reason(db, run, report)
     except state.LostLease:
         return _lost_lease(db, task_id, run)
     except _Cancelled:
@@ -1558,6 +1564,22 @@ def _execute(db, task_id, services, *, resume):
     _prune_cache(db, task_id, services, now)
     _after_run(db, task_id, now)
     return get(db, task_id)
+
+
+def _reason(db, run, report):
+    """Model reasoning over the verified evidence (reasoning.apply; COGNITIVE_INFERENCE §3): adds
+    report['reasoning'] and report['generated_by'] ('model:<name>' or 'template'); the extractive answer is not
+    changed and model text is never consolidated. A model failure only degrades the label. One 'decision' event
+    records the outcome when a model endpoint is configured."""
+    from . import reasoning
+    try:
+        out = reasoning.apply(db, report, run.services, question=run.objective, now=run.clock(), task_id=run.id)
+    except Exception as exc:   # the extractive report must survive any reasoning defect
+        out = reasoning._degraded(report, "error", f"reasoning failed: {type(exc).__name__}")
+    if out["status"] != "not_configured":
+        run.event("decision", {"reasoning": out["status"], "generated_by": out["generated_by"],
+                               "accepted": len(out.get("answer") or []), "rejected": len(out.get("rejected") or []),
+                               "reason": out.get("reason"), "usage": out.get("usage")}, "synthesizing")
 
 
 def _lost_lease(db, task_id, run):
