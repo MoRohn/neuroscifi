@@ -8,7 +8,7 @@
 ![Version](https://img.shields.io/badge/version-0.7.0-818CF8)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-E879F9)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-22D3EE?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-1557%20passed-22C55E)
+![Tests](https://img.shields.io/badge/tests-1916%20passed-22C55E)
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-22C55E)
 ![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-22C55E)
 
@@ -233,7 +233,7 @@ Every number below comes from a fresh integrator run recorded in [`docs/quality/
 
 | Gate | Result |
 |---|---|
-| Lint, unit and integration, JavaScript, reproduction (`bash scripts/check.sh`) | **1557 passed**, 6 skipped (opt-in live tests), 35 subtests. Reproduction 8/8 |
+| Lint, unit and integration, JavaScript, reproduction (`bash scripts/check.sh`) | **1916 passed**, 6 skipped (opt-in live tests), 35 subtests. Reproduction 8/8 |
 | Browser end-to-end, Pocket and console (`bash scripts/e2e.sh`) | **107 passed**, twice in a row |
 | Accessibility (axe-core at 390, 1024 and 1280 px) | 0 violations of any impact |
 | Acceptance scenarios (`nsf acceptance --all`) | **7 of 7 pass**. The D-1 redesign was [pre-registered](docs/quality/PREREGISTRATION_D1.md) before implementation |
