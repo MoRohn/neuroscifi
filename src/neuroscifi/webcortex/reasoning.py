@@ -172,9 +172,14 @@ CONFLICT_STATES = frozenset({"contested", "conflicting", "disputed"})
 #      an expletive ("There is", "It is"), or a noun phrase without a finite verb, relative or coordinator
 #      ("The security status of NumPy 2.5.5 cannot be ..."); a nominal "no evidence/source ..." stands first or
 #      after an expletive or a prepositional phrase;
-#   4. nothing in it argues against something (_COUNTER: "No source disputes that X is safe" implies X is safe).
-# A sentence is an insufficiency statement (insufficiency()) when EVERY clause is such a clause (clauses break at
-# ";", ":", contrastive and causal conjunctions, ", and/as/so/which" and "and"/"or" before a new subject or verb).
+#   4. nothing in it argues against something (_COUNTER: "No source disputes that X is safe" implies X is safe);
+#   5. (security review, fails closed) every word before the negation is the question's, an evidence noun or a
+#      function word (_prefix_ok, F3), and what follows the evidence predicate is an embedded whether/if question or
+#      a topic of the question's terms, never a that- or existential complement (_tail_ok, F2).
+# A sentence is an insufficiency statement (insufficiency()) when EVERY clause is such a clause (F1: clauses break at
+# every comma, semicolon, colon, dash, bracket, quote, ellipsis and sentence end, at causal and subordinating
+# conjunctions and at "and"/"or" before a new subject or verb; a discourse lead is stripped first). An absence-shaped
+# clause that is no caveat, or a caveat that denies what a bundle claim states, is rejected (_absence_problems).
 # A compound sentence with one factual clause is not one: its factual clause is checked like any statement, and a
 # hedge inside the caveat clause does not hedge it (hedged_outside_gaps). The number, unit, id and injection checks
 # always apply; the question's own numbers are exempt only inside an absent-evidence clause.
