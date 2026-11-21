@@ -91,6 +91,8 @@ MAX_OBJECTIVE = 2000
 MAX_FOLLOW = 2
 MAX_CONTEXT_PACKAGES = 200
 CANDIDATE_FACTOR = 3          # reading ranks up to 3 x max_pages candidates; failed fetches do not use a page slot
+TIMELY_PER_HOST = 2           # news/time-sensitive questions: at most this many web candidates per host (T1-06)
+MAX_UNREAD_HEADLINES = 6      # dated search hits shown when nothing usable could be read (T1-06)
 WEB_RESERVE_MODES = ("scientific", "deep_research")
 API_PROVIDERS = ("wikipedia", "arxiv", "openalex", "crossref", "pubmed", "pypi", "npm", "osv", "github")
 NEWS_RENDER_MIN_TEXT = 500    # news/time-sensitive: a scripted page with less static text than this is rendered
@@ -818,7 +820,11 @@ class _Run:
             api = r.provider in API_PROVIDERS and bool(r.metadata) and r.provider not in SNIPPET_ONLY
             early = api or r.provider in SNIPPET_ONLY or (monitor and r.provider == "feeds")
             order.append((0 if i < len(named) else (1 if early else 2), i, r, api))
-        picked, seen = [], set()
+        # a news question's hits crowd onto a few hosts (Hacker News items, one publisher's pages): a few per host,
+        # so the candidates a quick lookup can afford cover more than one site (T1-06)
+        timely = "news" in (assessment.get("kinds") or []) or \
+            assessment.get("freshness_class") in ("breaking", "volatile")
+        picked, seen, per_host = [], set(), {}
         for _, _, r, api in sorted(order, key=lambda x: (x[0], x[1])):
             try:
                 key = canonical_url(r.url)
@@ -826,9 +832,14 @@ class _Run:
                 self.failures.append({"stage": "reading", "code": "blocked_policy", "url": r.url,
                                       "detail": "unparsable URL"})
                 continue
-            if key not in seen:
-                seen.add(key)
-                picked.append((r, api))
+            if key in seen:
+                continue
+            seen.add(key)
+            host = _host(r.url).removeprefix("www.")
+            if timely and not api and r.provider != "question" and per_host.get(host, 0) >= TIMELY_PER_HOST:
+                continue
+            per_host[host] = per_host.get(host, 0) + 1
+            picked.append((r, api))
         return picked[:max(0, CANDIDATE_FACTOR * self.budget.max_pages)]
 
     def web_reserve(self, picked) -> int:
@@ -1059,6 +1070,7 @@ class _Run:
         self.save(selected=[{"url": r.url, "provider": r.provider, "api": api} for r, api in picked])
         api_cap = max(0, self.budget.max_pages - self.web_reserve(picked))
         deferred = []
+        waiting = {}   # host -> candidates skipped: its next polite request slot is beyond the fetch timeout
 
         def full():
             return self.usage.pages >= self.budget.max_pages
@@ -1091,6 +1103,9 @@ class _Run:
                     continue
                 if self.skip_denied(r.url, r.provider):
                     continue
+                if _host(r.url) in waiting:       # the same wait would refuse it again: no request is spent
+                    waiting[_host(r.url)] += 1
+                    continue
                 article = r.provider in SNIPPET_ONLY
                 try:
                     if article:
@@ -1098,9 +1113,13 @@ class _Run:
                     else:
                         result, as_api = self.fetch(r.url), False
                 except FetchError as exc:
-                    self.failures.append({"stage": "reading", "provider": r.provider, **exc.to_json()})
+                    # a page that fails to load is the page's site, not the search provider that found it (T1-12)
+                    self.failures.append({"stage": "reading", **({"provider": r.provider} if article else
+                                                                 {"found_by": r.provider}), **exc.to_json()})
                     self.event("error", {"stage": "reading", **exc.to_json()}, "reading")
                     self.renew()
+                    if exc.code == "rate_limited" and exc.retry_after is not None and not article:
+                        waiting.setdefault(_host(r.url), 0)
                     if exc.code == "budget_exhausted":
                         self.limit(f"budget exhausted while reading: {exc.detail}")
                         break
@@ -1118,7 +1137,7 @@ class _Run:
                     except _STOP:
                         raise
                     except FetchError as exc:   # the render escalation's own fetches
-                        self.failures.append({"stage": "reading", "provider": r.provider, **exc.to_json()})
+                        self.failures.append({"stage": "reading", "found_by": r.provider, **exc.to_json()})
                         self.event("error", {"stage": "reading", **exc.to_json()}, "reading")
                         self.renew()
                         continue
@@ -1133,6 +1152,10 @@ class _Run:
                 if full() or self.exhausted:
                     break
                 take_api(r)
+            for host, n in waiting.items():
+                if n:
+                    self.note(f"{host}: {n} more candidate(s) not tried: the site's crawl delay puts the next "
+                              "request beyond the fetch timeout")
             self.follow()
         except BudgetExceeded as exc:
             self.limit(f"budget exhausted while reading: {exc}")
@@ -1379,6 +1402,8 @@ class _Run:
                                       ttl_overrides=self.ttl_overrides())
         report = dict(report)
         _search_dates(report, self.checkpoint.get("documents") or [])
+        _advisory_check(report, self.checkpoint.get("attempts") or [])
+        _nothing_usable(report, self.checkpoint, self.failures)
         if self.checkpoint.get("dependencies"):
             _dependencies(report, self.checkpoint["dependencies"])
         report.setdefault("limitations", [])
@@ -1441,6 +1466,124 @@ def _search_dates(report, entries):
         report["uncertainties"] = [
             u + f" The search engine ({found['reported_by']}) reports {day} (lower trust, not counted)."
             if isinstance(u, str) and u.startswith(prefix) else u for u in report.get("uncertainties") or []]
+
+
+_OSV_QUERY = re.compile(r"^osv:([^:]+):(.+)@([^@\s]+)$", re.I)
+
+
+def _advisory_check(report, attempts):
+    """T1-15: "Is numpy 2.5.5 secure?" said "No OSV record was among the sources" although OSV was queried and
+    answered with no advisory. A security verdict left 'insufficient' says what was checked: OSV answered for that
+    package and version with no advisory, which still does not establish that it is secure (ADR-033). The verdict
+    keeps its state; `summary` (shown on the verdict line) and the first reason say so, `advisory_check` records it."""
+    verdict = report.get("verdict") or {}
+    if verdict.get("aspect") != "secure" or verdict.get("state") != "insufficient":
+        return
+    statement = str(verdict.get("statement") or "").lower()
+    for a in attempts:
+        m = _OSV_QUERY.match(str(a.get("query") or ""))
+        if a.get("provider") != "osv" or not a.get("ok") or a.get("engine") or m is None:
+            continue
+        eco, name, version = m.groups()
+        if name.lower() not in statement or version.lower() not in statement:
+            continue
+        when = datetime.fromtimestamp(float(report.get("as_of") or time.time()), tz=timezone.utc)
+        found = int(a.get("n") or 0)
+        checked = (f"OSV was checked for {name} {version} ({eco}) during this run ({when:%Y-%m-%d %H:%M} UTC): "
+                   + ("no known advisory." if not found else f"{found} record(s), none affecting {version}."))
+        verdict["summary"] = f"{checked} That does not establish that it is secure; publication never does either."
+        verdict["advisory_check"] = {"source": "osv", "query": a.get("query"), "records": found,
+                                     "checked_during_run_at": report.get("as_of")}
+        verdict["reasons"] = [verdict["summary"]] + [r for r in verdict.get("reasons") or []
+                                                     if not str(r).startswith(("No OSV record", "No OSV advisory"))]
+        return
+
+
+_URL_DATE = re.compile(r"/(20\d{2})[/-](\d{1,2})[/-](\d{1,2})(?=[/-])")
+
+
+def _nothing_usable(report, checkpoint, failures):
+    """T1-06: "No usable claims were extracted from 2 sources read" said nothing about why. The lead says precisely
+    what the search engines returned, which pages could not be loaded (by site and reason) and which pages had no
+    readable text; for a news / time-sensitive question it adds the dated headlines the search engines found that
+    were not read (report['unread_headlines']: search-engine data, never evidence)."""
+    lead = next((e for e in report.get("answer") or [] if str(e.get("text") or "").startswith(NO_CLAIM_LEADS[0])),
+                None)
+    if lead is None:
+        return
+    attempts = [a for a in checkpoint.get("attempts") or [] if a.get("provider")]
+    engines = {}
+    with_engines = {a["provider"] for a in attempts if a.get("engine")}
+    for a in attempts:
+        if not a.get("engine") and a["provider"] in with_engines:
+            continue               # the provider's fused total; its engines are listed instead
+        name = f"{a['provider']}/{a['engine']}" if a.get("engine") else a["provider"]
+        entry = engines.setdefault(name, [0, set()])
+        entry[0] += int(a.get("n") or 0)
+        if not a.get("ok"):
+            entry[1].add(str(a.get("error") or "failed").split(":")[0][:40])
+    searched = [f"{name} {n} result(s)" + (f" ({', '.join(sorted(errors))})" if errors else "")
+                for name, (n, errors) in engines.items()]
+    blocked = {}
+    for f in failures:
+        if f.get("stage") == "reading" and f.get("url"):
+            code = str(f.get("code") or "failed")
+            key = (_host(f["url"]).removeprefix("www."), f"HTTP {f['status']}" if f.get("status") else code)
+            blocked[key] = blocked.get(key, 0) + 1
+    shells = {}
+    for src in report.get("sources") or []:
+        if (src.get("flags") or {}).get("js_suspected"):
+            shells[src.get("domain")] = shells.get(src.get("domain"), 0) + 1
+    why = []
+    if searched:
+        why.append("searched: " + ", ".join(searched))
+    if blocked:
+        why.append("not loaded: " + ", ".join(f"{host} {code}" + (f" x{n}" if n > 1 else "")
+                                              for (host, code), n in blocked.items()))
+    if shells:
+        why.append("no readable text (JavaScript page; rendering is off by default): " +
+                   ", ".join(f"{d}" + (f" x{n}" if n > 1 else "") for d, n in shells.items()))
+    assessment = checkpoint.get("assessment") or {}
+    timely = "news" in (assessment.get("kinds") or []) or \
+        assessment.get("freshness_class") in ("breaking", "volatile")
+    headlines = _unread_headlines(report, checkpoint, assessment) if timely else []
+    if headlines:
+        report["unread_headlines"] = headlines
+        why.append("dated headlines found but not read (search-engine data, not evidence): " + "; ".join(
+            f"«{_short(h['title'], 80)}» ({h['domain']}, {h['date']}, date from {h['date_source']})"
+            for h in headlines[:3]))
+    if why:
+        lead["text"] = f"{str(lead['text']).rstrip('.')}. Why: " + "; ".join(why) + "."
+
+
+def _unread_headlines(report, checkpoint, assessment):
+    """Search hits not read whose title shares a topical word with the question and that carry a date (the search
+    engine's, else one in the URL path) within the recency window, newest first."""
+    from . import intent
+    words = {w.lower() for w in intent.keywords(str(report.get("question") or ""), limit=12).split()}
+    read = {s.get("url") for s in report.get("sources") or []}
+    window = assessment.get("recency_window")
+    now = float(report.get("as_of") or time.time())
+    out, seen = [], set()
+    for r in checkpoint.get("results") or []:
+        title = str(r.get("title") or "")
+        if r.get("url") in read or r.get("url") in seen or not words & {w.lower() for w in re.findall(r"\w+", title)}:
+            continue
+        at, how = r.get("published_at"), "the search engine"
+        if at is None:
+            m = _URL_DATE.search(str(r.get("url") or ""))
+            try:
+                at = datetime(*map(int, m.groups()), tzinfo=timezone.utc).timestamp() if m else None
+            except ValueError:
+                at = None
+            how = "the URL"
+        if at is None or (window and now - float(at) > float(window) + 86400.0) or float(at) > now + 86400.0:
+            continue
+        seen.add(r.get("url"))
+        out.append({"title": title[:200], "url": r.get("url"), "domain": _host(r.get("url")).removeprefix("www."),
+                    "published_at": float(at), "date": datetime.fromtimestamp(float(at), tz=timezone.utc)
+                    .strftime("%Y-%m-%d"), "date_source": how, "found_by": (r.get("metadata") or {}).get("found_by")})
+    return sorted(out, key=lambda h: -h["published_at"])[:MAX_UNREAD_HEADLINES]
 
 
 def _dependencies(report, summary):

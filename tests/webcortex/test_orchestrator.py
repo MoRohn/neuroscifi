@@ -1521,3 +1521,116 @@ def test_releases_affecting_this_system_run_the_dependency_check(individual, web
     assert dep["attention"][0]["name"] == "oldpkg" and dep["attention"][0]["advisories"] == ["GHSA-aaaa-bbbb-cccc"]
     assert r["answer"][0]["text"].startswith("Dependency check of 2 packages in use: 1 with a security advisory")
     assert "oldpkg 1.0.0 -> 2.1.0 (security)" in r["answer"][0]["text"]
+
+
+# ---- UAT T1: broad news, read-failure attribution, the OSV check of a security question ------------------------
+
+class PoliteFetcher:
+    """The real fetcher, except that hn.example answers as SafeFetcher does when its robots Crawl-delay puts the next
+    request slot beyond the fetch timeout (the S1 Hacker News items)."""
+
+    def __init__(self, inner):
+        self.inner, self.urls = inner, []
+
+    def fetch(self, url, **kwargs):
+        from neuroscifi.webcortex.types import FetchError
+        self.urls.append(url)
+        if "hn.example" in url:
+            raise FetchError("rate_limited", url, "next request slot for hn.example in 29.6s exceeds the 15s fetch "
+                                                  "timeout", retry_after=29.6)
+        return self.inner.fetch(url, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+AI_WEEK = "What happened in AI this week?"
+SHELL = ("<html><head><title>MSN</title><script src='/app.js'></script></head><body><div id='root'></div>"
+         "<script>window.boot()</script></body></html>")
+
+
+def news_site(web, *, readable):
+    for i in range(2):
+        web.add("paywall.example", f"/ai-{i}", "<html><body>Forbidden</body></html>", status=403)
+        web.add("shell.example", f"/ai-{i}", SHELL)
+    if readable:
+        web.add("markets.example", "/2026/11/20/ai-trade", html(
+            "AI trade unwinds as chip stocks fall", "2026-11-20T21:00:00Z",
+            ["Shares of AI chip makers fell 6 percent on 20 November 2026 as investors sold the AI trade.",
+             "Analysts said AI spending plans for 2027 remain intact."]))
+    hits = [{"url": f"http://hn.example/item?id={i}", "title": f"AI agents story {i}", "snippet": "AI",
+             "published_at": T0 - 3600 * (i + 1), "metadata": {"engines": ["hackernews"]}} for i in range(5)]
+    hits += [{"url": f"http://paywall.example/ai-{i}", "title": f"AI rout wipes out gains {i}", "snippet": "AI"}
+             for i in range(2)]
+    hits += [{"url": f"http://shell.example/ai-{i}", "title": "AI selloff drags the S&P 500", "snippet": "AI"}
+             for i in range(2)]
+    hits += [{"url": "http://markets.example/2026/11/20/ai-trade", "title": "Stock market today: AI trade unwinds",
+              "snippet": "Artificial intelligence news: chip stocks fall"}]   # found by the spelled-out query
+    return CorpusProvider(hits, name="searxng")
+
+
+def run_ai_week(db, path, web, provider):
+    task = orchestrator.submit(db, AI_WEEK, T0)
+    services = svc_mod.build(db, path, fixture=web, providers=[provider], clock=lambda: T0)
+    fetcher = services.fetcher = PoliteFetcher(services.fetcher)
+    try:
+        return orchestrator.run(db, task["id"], services), fetcher
+    finally:
+        services.close()
+
+
+def test_broad_news_reads_past_a_crawl_delayed_host_within_the_default_budget(individual, web):
+    """T1-06: 5 Hacker News items (crawl delay beyond the fetch timeout), 2 x HTTP 403 and 2 JavaScript shells used
+    up every quick-lookup candidate, so the answer was empty. A host whose polite slot is beyond the timeout is not
+    tried again, a news question takes at most TIMELY_PER_HOST candidates per host, and the readable page is read;
+    the budget is the default one."""
+    db, path = individual
+    done, fetcher = run_ai_week(db, path, web, news_site(web, readable=True))
+    assert done["mode"] == "quick_lookup" and done["budget"]["max_pages"] == 3
+    assert sum("hn.example" in u for u in fetcher.urls) == 1
+    assert "http://markets.example/2026/11/20/ai-trade" in {s["url"] for s in done["result"]["sources"]}
+    assert done["result"]["findings"], done["result"]["answer"]
+    assert any(x.startswith("hn.example: 1 more candidate(s) not tried") for x in done["result"]["limitations"])
+
+
+def test_an_empty_news_answer_says_why_and_lists_dated_headlines(individual, web):
+    """T1-06 / T1-12: with nothing usable the lead says which engines answered, which sites refused (by site and
+    reason, not "searxng: http_error") and which pages had no readable text, and lists the dated headlines found
+    (search-engine data, not evidence)."""
+    db, path = individual
+    done, _ = run_ai_week(db, path, web, news_site(web, readable=False))
+    r = done["result"]
+    lead = r["answer"][0]["text"]
+    assert lead.startswith("No usable claims were extracted from 1 source read. Why: searched: searxng ")
+    loaded = lead.split("not loaded: ")[1].split(";")[0].split(", ")
+    assert sorted(loaded) == ["hn.example rate_limited", "markets.example dns_failure", "paywall.example HTTP 403 x2"]
+    assert "no readable text (JavaScript page; rendering is off by default): shell.example" in lead
+    assert "«AI agents story 0» (hn.example, 2026-11-20, date from the search engine)" in lead
+    heads = r["unread_headlines"]
+    assert heads[0]["title"] == "AI agents story 0" and heads[0]["date_source"] == "the search engine"
+    market = next(h for h in heads if h["domain"] == "markets.example")
+    assert market["date"] == "2026-11-20" and market["date_source"] == "the URL"
+    labels = r["limitations"] + r["uncertainties"]
+    assert not any("searxng: http_error" in x or "searxng: rate_limited" in x for x in labels), labels
+    assert "paywall.example: http_error" in r["limitations"] and "hn.example: rate_limited" in r["limitations"]
+
+
+def test_a_security_question_says_that_osv_was_checked(individual, web):
+    """T1-15: "Is numpy 2.5.5 secure?" said "No OSV record was among the sources" although OSV answered with no
+    advisory. The verdict stays insufficient (ADR-033) and says OSV was checked with no known advisory."""
+    from test_deps import FakeProvider, package
+    db, path = individual
+    record = package("numpy", "PyPI", "2.5.5", T0 - 5 * 86400,
+                     recent=[{"version": "2.5.5", "released_at": T0 - 5 * 86400, "yanked": False}])
+    pypi = FakeProvider("pypi", {"pypi:numpy==2.5.5": record, "pypi:numpy": record})
+    osv = FakeProvider("osv", {})
+    task = orchestrator.submit(db, "Is numpy 2.5.5 secure?", T0)
+    done = orchestrator.run(db, task["id"], svc_mod.build(db, path, fixture=web, providers=[pypi, osv],
+                                                          clock=lambda: T0))
+    assert "osv:PyPI:numpy@2.5.5" in osv.calls
+    v = done["result"]["verdict"]
+    assert v["state"] == "insufficient" and v["aspect"] == "secure"
+    assert v["summary"].startswith("OSV was checked for numpy 2.5.5 (PyPI) during this run (2026-11-20 18:40 UTC)")
+    assert "no known advisory. That does not establish that it is secure" in v["summary"]
+    assert v["reasons"][0] == v["summary"] and not any(x.startswith("No OSV record") for x in v["reasons"])
+    assert v["advisory_check"]["records"] == 0
