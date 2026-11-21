@@ -21,6 +21,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import re
 
+from . import temporal
 from .config import MODE_BUDGETS
 from .types import Query, QueryPlan
 
@@ -614,6 +615,9 @@ def assess(question: str, *, now: float, known=()) -> dict:
 
     if scientific and not (technical and len(tech) > len(sci_strong + sci_domain)):
         freshness, why["freshness_class"] = "scientific", f"scientific cue ({(sci_strong + sci_domain)[0]!r})"
+    elif technical and not recency and temporal.historical_release(question):
+        freshness, why["freshness_class"] = "stable", ("a question about a first release is historical: no recency "
+                                                       "requirement")
     elif technical:
         freshness, why["freshness_class"] = "release", f"technical cue ({tech[0]!r}): release cadence"
     elif recency:

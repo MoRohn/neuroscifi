@@ -147,6 +147,19 @@ def test_freshness_window_from_assessment():
     assert late["freshness"]["satisfied"] is False
 
 
+def test_a_first_release_question_has_no_recency_requirement():
+    """D-R5-4 (R5 ev/reg_python): "When was Python first released?" warned "No cited source is dated within the
+    required 7 days" (release class). A first release is history: its answer has no recency requirement, so neither
+    an old nor an undated source fails freshness; "What is the latest release of X?" keeps the requirement."""
+    old = _docs(AGREE, published=NOW - 5 * 365 * D)
+    for docs in (old, _docs(AGREE, published=None)):
+        r = run("When was the Zephyr compiler first released?", docs, {"freshness_class": "stable"})
+        assert r["freshness"]["satisfied"] is True and r["freshness"]["required_seconds"] is None, r["freshness"]
+        assert not any(x.startswith("Freshness requirement not met") for x in r["limitations"])
+    r = run("What is the latest release of the Zephyr compiler?", old, {"freshness_class": "release"})
+    assert r["freshness"]["satisfied"] is False and r["freshness"]["required_seconds"] == 7 * D
+
+
 def test_undated_sources_never_satisfy_freshness_and_are_named():
     docs = _docs(AGREE, published=None)
     r = run(Q, docs, {"freshness_class": "stable"})

@@ -345,6 +345,27 @@ def test_stable_fact_checks_are_not_volatile(question, cls):
     assert a["needs_web"] is True
 
 
+@pytest.mark.parametrize("question, cls", [
+    ("When was Python first released?", "stable"),
+    ("When was numpy first released?", "stable"),
+    ("What was the first version of Linux?", "stable"),
+    ("When was the original iPhone released?", "stable"),
+    ("When was Rust initially released?", "stable"),
+    ("What is the latest release of Python?", "release"),
+    ("When was the first release candidate of numpy 3.0 published?", "release"),
+    ("Has the first stable release of Zig come out yet?", "release"),
+    ("Is numpy 2.5.5 secure?", "release")])
+def test_a_first_release_is_history_without_a_recency_requirement(question, cls):
+    """D-R5-4 (R5 ev/reg_python): "When was Python first released?" got the release class (a source from the last 7
+    days required), so the answer warned "No cited source is dated within the required 7 days". A first, original or
+    initial release is history; a question about the latest release, a pre-release or one not out yet keeps the
+    release class."""
+    from neuroscifi.webcortex import temporal
+    a = intent.assess(question, now=NOW)
+    assert a["freshness_class"] == cls, a["why"]
+    assert temporal.classify(question) == cls or question == "Is numpy 2.5.5 secure?"   # cue fallback agrees
+
+
 def test_related_knowledge_that_does_not_cover_the_question_does_not_answer_it():
     """Benchmark A10 (full run): fresh knowledge about Orbix's port answered "Does Orbix support encryption at
     rest?" from memory, because one shared name counted as relevant. An item must state most of the question's

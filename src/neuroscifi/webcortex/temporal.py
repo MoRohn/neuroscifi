@@ -55,10 +55,32 @@ _CUES = (
 )
 
 
+# D-R5-4: a question about a FIRST, original or initial release ("When was Python first released?", "What was the
+# first version of Linux?") asks for history: the answer does not change, so it has no recency requirement. One that
+# also asks for the newest or next state ("latest", "upcoming", "yet"), or names a pre-release ("first release
+# candidate", "first beta"), still does.
+_ORIGIN = re.compile(r"\b(?:first|original(?:ly)?|initial(?:ly)?|earliest|inaugural|debut)\b")
+_ORIGIN_EVENT = re.compile(r"\b(?:releas\w*|versions?|launch\w*|publish\w*|came\s+out|come\s+out|introduc\w*|"
+                           r"creat\w*|appear\w*|announc\w*|ship\w*|develop\w*|invent\w*|found(?:ed)?|"
+                           r"written|wrote|built|made|available)\b")
+_NOT_HISTORY = re.compile(r"\b(?:latest|newest|current(?:ly)?|now|recent(?:ly)?|upcoming|next|yet|soon|today|"
+                          r"this\s+(?:week|month|year)|candidates?|betas?|alphas?|previews?|nightly|rc\d*)\b")
+
+
+def historical_release(question: str) -> bool:
+    """The question asks when or what the first (original, initial) release or version of something was: history,
+    with no recency requirement (see _ORIGIN)."""
+    q = (question or "").lower()
+    return bool(_ORIGIN.search(q) and _ORIGIN_EVENT.search(q)) and not _NOT_HISTORY.search(q)
+
+
 def classify(question: str, assessment: dict | None = None) -> str:
-    """Freshness class for a question: assessment['freshness_class'] when given and valid, else cue-based."""
+    """Freshness class for a question: assessment['freshness_class'] when given and valid, else cue-based; a
+    question about a first release is historical (stable)."""
     if assessment and assessment.get("freshness_class") in FRESHNESS:
         return assessment["freshness_class"]
+    if historical_release(question):
+        return "stable"
     q = (question or "").lower()
     for cls, rx in _CUES:
         if re.search(rx, q):

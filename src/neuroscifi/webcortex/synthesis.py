@@ -1735,7 +1735,9 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
     cls = temporal.classify(question, assessment)
     window = assessment.get("recency_window")
     class_ttl = temporal.ttl(cls, ttl_overrides)
-    required = float(window) if window else class_ttl
+    # D-R5-4: a question about a first release asks for history: no recency requirement at all
+    historical = not window and temporal.historical_release(question)
+    required = None if historical else float(window) if window else class_ttl
     sources = _Sources(documents)
 
     aside = package_ecosystems(question, assessment, documents)["aside"]
@@ -1847,7 +1849,7 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
     stamps = [d.published_at for d in answer_docs if d.published_at is not None]
     newest = max(stamps) if stamps else None
     observed = [d.retrieved_at for d in answer_docs if _observed_live(d) and d.retrieved_at is not None]
-    satisfied = any(temporal.window_ok(_fresh_ts(d), required, now) for d in answer_docs)
+    satisfied = historical or any(temporal.window_ok(_fresh_ts(d), required, now) for d in answer_docs)
     live = any(d.retrieval_mode in LIVE_MODES for d in cited)
     freshness = {"class": cls, "window_seconds": window, "ttl_seconds": class_ttl, "required_seconds": required,
                  "satisfied": bool(satisfied), "newest_source_at": newest,
