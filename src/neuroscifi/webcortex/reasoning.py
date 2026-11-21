@@ -45,10 +45,11 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
 Citation markup in the text ("[1]", "(C3, sources 4)") is stripped and its ids are checked like the listed ones;
 a noun "reports" ("amid reports of ...") is not an attribution (T1-13).
 An honest insufficiency statement ("The provided evidence does not contain information about X.", insufficiency())
-asserts no fact, so it needs no supported claim and no citation (T2-03); it is accepted only when that is all the
-sentence says (no second clause), and the number, unit, id and injection checks still apply. A leading discourse
-marker ("However, ..."), "X is not evaluated in the available evidence" and "Gaps include ..." are the same kind of
-caveat (T1-09).
+asserts no fact, so it needs no supported claim and no citation (T2-03); it is recognised structurally, not by phrase
+(gap_clause: a negator or absence quantifier scoping over an evidence or confirmation predicate, with nothing asserted
+before it), and accepted only when every clause of the sentence is such a caveat. The number, unit, id and injection
+checks still apply, and an uncited one may name nothing the question does not name (D-R5-3). In a compound sentence
+the caveat clause neither hedges the factual clause nor counts as calling anything confirmed (D-R5-1, D-R5-2).
 A bounded self-critique (one call, cfg.self_critique) may FLAG accepted sentences and add gaps. A flag removes a
 sentence only when an objective check confirms it (unknown source or claim, an unsupported claim state without a
 hedge, a number or unit not in the cited evidence: the same checks as the guard); otherwise the sentence stays,
@@ -143,104 +144,214 @@ _DISAGREE = re.compile(r"\b(?:disagree(?:s|d|ment)?|disputed|contested|conflicti
 _NEGATED_DISAGREE = re.compile(r"\b(?:not|no|never|without)\s+(?:\w+\s+)?(?:disagree(?:s|d|ment)?|disputed?|"
                                r"contested|conflicting|contradict(?:s|ory)?)\b", re.IGNORECASE)
 CONFLICT_STATES = frozenset({"contested", "conflicting", "disputed"})
-# An honest insufficiency statement ("The provided evidence does not contain information about X.") asserts nothing
-# about the world, only that the evidence lacks something, so it needs no supported claim (T2-03). It must be that
-# statement alone: its subject is the evidence (or "no source ..."), and no second clause adds a fact ("..., but X is
-# lower at altitude", "though Y is noted as ..."); numbers, units, ids and injection are still checked.
-_INSUFFICIENT = re.compile(
-    r"^(?:(?:the\s+)?(?:provided\s+|available\s+|cited\s+|retrieved\s+)?(?:evidence|sources?|claims?|documents?)"
-    r"(?:\s+(?:provided|available|cited|retrieved|read))?\s+(?:do|does|did)\s+not\s+(?:\w+\s+)?"
-    r"(?:contain|provide|include|specify|state|mention|establish|say|give|identify|address|answer|report|cover|"
-    r"confirm|show|indicate|clarify|determine|reveal|describe|explain)"
-    r"|(?:no|none\s+of\s+the)\s+(?:provided\s+|available\s+|cited\s+)?(?:evidence|sources?|claims?|documents?)"
-    r"(?:\s+(?:in|among|read|cited|provided)(?:\s+the)?(?:\s+(?:provided|cited|available))?"
-    r"(?:\s+(?:evidence|sources|claims|documents))?)?\s+(?:states?|provides?|mentions?|gives?|establish(?:es)?|"
-    r"specif(?:y|ies)|contains?|reports?|says?|identif(?:y|ies)|includes?|address(?:es)?|answers?)"
-    r"|(?:this|it|the\s+answer)\s+cannot\s+be\s+(?:established|determined|confirmed|answered)\s+from\s+the\s+"
-    r"(?:provided\s+|available\s+)?(?:evidence|sources?)"
-    # N1 (R4 live): "There is insufficient evidence to determine whether NumPy 2.5.5 is secure."
-    r"|there\s+(?:is|are)\s+(?:insufficient|not\s+enough|no|too\s+little)\s+(?:\w+\s+)?(?:evidence|information|data))"
-    r"\b", re.IGNORECASE)
-_EXTRA_CLAUSE = re.compile(r";|:|\b(?:but|though|although|however|while|whereas|despite|except|because|since|due\s+to"
-                           r"|yet|instead|rather|nevertheless|which|who|so|doubts?|disput\w*|contradict\w*)\b"
-                           r"|,\s*(?:and|it|they|this|these)\b",
-                           re.IGNORECASE)
-
-
-# T1-09: the same caveat after a discourse marker ("However, the evidence does not state whether ..."), a topic that
-# "is not (directly) evaluated in the available evidence", and a list of gaps ("Gaps include ...") assert no fact.
+# ---- absent-evidence predications (T2-03, T1-09, N1, D-R5-1..3) -------------------------------------------------
+#
+# An honest caveat ("There is insufficient evidence to determine whether NumPy 2.5.5 is secure", "The security
+# status of NumPy 2.5.5 cannot be confirmed based on the available evidence", "No evidence in the provided claims
+# indicates whether numpy 2.5.5 is recommended") asserts no fact about the world, only that the evidence does not
+# establish something. It is recognised STRUCTURALLY, not by phrase: a clause is an absent-evidence clause when
+#   1. a NEGATOR or absence quantifier (_NEG_WORDS: no, not, n't, cannot, never, none, nothing, lack/absence of,
+#      insufficient, unable/fail to, "too little") scopes over an EVIDENCE predicate: a noun of evidence
+#      (_EVIDENCE_NOUNS: evidence, information, data, source, claim, indication, assessment ...) or a verb of
+#      confirmation or establishment (_EVIDENCE_VERB: confirm, establish, indicate, state, show, determine, verify,
+#      address, evaluate ...). "Scopes over" means the predicate follows the negator with only function words and
+#      degree or epistemic modifiers between them (_SCOPE_FILLER: "cannot BE confirmed", "has not YET BEEN
+#      INDEPENDENTLY verified", "lack RECENT OR VERIFIED evidence"), so "is not secure according to the sources"
+#      is no such clause: "secure" is content;
+#      or a knowledge-absence adjective (unclear, unknown, uncertain, unverified ...; "not known", "not clear") is
+#      the clause's predicate (after a copula: "remains unclear", "it is unknown whether"), never an attribute
+#      ("fixes unknown bugs");
+#   2. a verb of confirmation is anchored to the evidence: its negator hangs on an auxiliary ("does not state",
+#      "is not evaluated", "has not been verified") and the clause names the evidence ("in the cited sources",
+#      "the evidence does not ...") or says it cannot be done ("cannot be confirmed", "unable to determine");
+#      a bare "not reported" (a reduced relative: "fixes bugs not reported in the sources") is not;
+#   3. what precedes the negation asserts nothing: an embedded question ("Whether 2.5.5 is secure remains unclear"),
+#      an expletive ("There is", "It is"), or a noun phrase without a finite verb, relative or coordinator
+#      ("The security status of NumPy 2.5.5 cannot be ..."); a nominal "no evidence/source ..." stands first or
+#      after an expletive or a prepositional phrase;
+#   4. nothing in it argues against something (_COUNTER: "No source disputes that X is safe" implies X is safe).
+# A sentence is an insufficiency statement (insufficiency()) when EVERY clause is such a clause (clauses break at
+# ";", ":", contrastive and causal conjunctions, ", and/as/so/which" and "and"/"or" before a new subject or verb).
+# A compound sentence with one factual clause is not one: its factual clause is checked like any statement, and a
+# hedge inside the caveat clause does not hedge it (hedged_outside_gaps). The number, unit, id and injection checks
+# always apply; the question's own numbers are exempt only inside an absent-evidence clause.
+_WORD_RX = re.compile(r"[A-Za-z0-9][\w.'’-]*[A-Za-z0-9]|[A-Za-z0-9]")
+_NEG_WORDS = frozenset("""no not never none nothing cannot insufficient inadequate lack lacks lacked lacking absence
+unable fail fails failed""".split())
+_KNOWLEDGE_ABSENT = frozenset("""unclear unknown uncertain undetermined unverified unconfirmed unestablished unspecified
+unstated unreported unaddressed unanswered undocumented unsubstantiated uncorroborated""".split())
+_EVIDENCE_NOUNS = frozenset("""evidence information info data detail details source sources claim claims document
+documents record records report reports indication indications assessment assessments evaluation evaluations mention
+mentions confirmation confirmations statement statements literature study studies citation citations reference
+references finding findings sign signs proof answer""".split())
+_EVIDENCE_VERB = re.compile(
+    r"^(?:confirm|establish|indicat|state|stat(?:es|ed|ing)|show|determin|verif|address|evaluat|assess|specif|"
+    r"mention|report|provid|contain|cover|answer|say|says|said|clarif|reveal|describ|explain|discuss|examin|stud|"
+    r"quantif|measur|identif|giv|gave|includ|conclu|judg|tell|told|support|document|corroborat|prov|demonstrat|"
+    r"cite|cites|cited|citing|list|attest|substantiat|settl|resolv)", re.IGNORECASE)
+_SCOPE_FILLER = frozenset("""be been being yet enough any a an the its their this that these those clear clearly
+direct directly specific specifically explicit explicitly independent independently sufficient sufficiently reliable
+reliably definitive definitively conclusive conclusively much single one recent or and adequate adequately fully
+further additional such to of in from among within across provided available cited retrieved read credible
+authoritative published official officially public publicly formal formally really actually even relevant verified
+confirmed corroborated firm firmly strong solid concrete current currently up-to-date dated so far yet""".split())
+_AUX = frozenset("""is are was were be been being am has have had do does did will would shall should can could may
+might must remains remain remained seems seem appears appear still""".split())
+_COPULA = frozenset("is are was were be been being am remains remain remained seems seem appears appear".split())
+_IMPOSSIBLE = frozenset({"cannot", "unable"})
+_SUBORDINATE = frozenset("""that which who whom whose where when because since although though while if unless as and
+or but nor""".split())
+_DETERMINERS = frozenset("the a an this these that those its their no some each every any all both".split())
+_EXPLETIVE = frozenset({"there", "it", "here", "overall", "currently", "still", "also", "so", "far", "thus"})
+_PREPOSITIONS = frozenset("""in among from across of for regarding about on beyond within based according apart besides
+throughout""".split())
+_COUNTER = re.compile(r"\b(?:disput\w*|contradict\w*|refut\w*|challeng\w*|doubt\w*|den(?:y|ies|ied)|oppos\w*|"
+                      r"reject\w*|otherwise|against|contrary)\b", re.IGNORECASE)
+_LEAD_VERB = re.compile(r"^[a-z]{2,}(?:[^su\W]s|ed)$")     # "fixes", "supports", "fixed": a finite verb after a name
+_CLAUSE_SPLIT = re.compile(
+    r"[;:]|,\s*(?:and|or|as|so|which|who|whereas)\b"
+    r"|\b(?:but|however|although|though|while|whereas|nevertheless|nonetheless|because|since|despite|except|"
+    r"instead|rather|due\s+to|so\s+that|(?<!not\s)yet)\b"
+    r"|\b(?:and|or)\s+(?=(?:is|are|was|were|has|have|had|will|would|can|could|may|might|must|should|does|do|did|it|"
+    r"its|they|their|this|these|there|we)\b)", re.IGNORECASE)
+_AND_NAME = re.compile(r"\b(?:and|or)\s+(?=[A-Z0-9])")        # "..., and NumPy 2.5.5 is ...": a new subject
+# T1-09: the same caveat after a discourse marker ("However, the evidence does not state whether ...") and a list of
+# gaps ("Gaps include ...") assert no fact.
 _DISCOURSE_LEAD = re.compile(r"^(?:however|but|still|that said|note that|notably|nevertheless|nonetheless|"
-                             r"unfortunately|importantly|overall|also|in addition)\b\s*,?\s*", re.IGNORECASE)
-_NOT_IN_EVIDENCE = re.compile(
-    r"^[^,;:]{1,160}?\b(?:is|are|was|were|has|have)\s+not\s+(?:been\s+)?(?:\w+\s+){0,2}?(?:evaluated|addressed|"
-    r"covered|discussed|established|stated|mentioned|reported|specified|examined|assessed|studied|described|"
-    r"provided|given|quantified|measured)\s+(?:in|by)\s+(?:the\s+|any\s+of\s+the\s+)?(?:provided\s+|available\s+|"
-    r"cited\s+|retrieved\s+)?(?:evidence|sources?|claims?|documents?)\b"
-    r"|^(?:the\s+)?(?:main\s+|remaining\s+|open\s+|knowledge\s+)?gaps?\s+(?:include|includes|are|is|remain)\b",
-    re.IGNORECASE)
+                             r"unfortunately|importantly|overall|also|in addition|in short|in summary|currently)\b"
+                             r"\s*,?\s*", re.IGNORECASE)
+_JOIN_LEAD = re.compile(r"^(?:and|or|as|so|which|who|whereas|but|however|although|though|while|nevertheless|"
+                        r"nonetheless|because|since|despite|except|instead|rather|due\s+to|so\s+that|yet)\b\s*,?\s*",
+                        re.IGNORECASE)    # the conjunction that opened the clause (_CLAUSE_SPLIT)
+_GAPS_LIST = re.compile(r"^(?:the\s+)?(?:main\s+|remaining\s+|open\s+|knowledge\s+)?gaps?\s+(?:include|includes|are|"
+                        r"is|remain)\b", re.IGNORECASE)
 
 
-def insufficiency(text: str) -> bool:
-    """The sentence only says that the evidence does not establish something (see _INSUFFICIENT and the T1-09
-    shapes above); a leading discourse marker ("However, ...") is not a second clause."""
-    text = _DISCOURSE_LEAD.sub("", _clean(text))
-    return bool(_INSUFFICIENT.match(text) or _NOT_IN_EVIDENCE.match(text)) and not _EXTRA_CLAUSE.search(text)
-_UPGRADE = re.compile(r"\b(?:verified|confirmed|proven|proved|definitely|certainly|undisputed|corroborated|"
-                      r"established fact)\b", re.IGNORECASE)
-_NEGATED_UPGRADE = re.compile(r"\b(?:not|never|un)\s*(?:yet\s+|been\s+|independently\s+)*(?:verified|confirmed|"
-                              r"proven|corroborated)\b"
-                              # T1-09: a statement about missing evidence ("some claims lack recent or verified
-                              # evidence") calls nothing verified
-                              r"|\b(?:lacks?|lacking|without|no|absence\s+of|missing|needs?|requires?)\s+"
-                              r"(?:\w+\s+(?:or|and)\s+)?(?:independently\s+)?(?:verified|confirmed|corroborated)\b",
-                              re.IGNORECASE)
-# T1-09: an uncertainty statement ("It is unclear whether numpy 2.5.5 is recommended") may repeat the question's own
-# numbers: it asserts nothing about them.
-_UNCERTAINTY = re.compile(r"\b(?:it\s+is|it's|it\s+remains|remains|is\s+still|are\s+still)\s+(?:still\s+)?"
-                          r"(?:unclear|uncertain|unknown|not\s+clear|not\s+known|undetermined)\b"
-                          r"|^(?:it\s+is\s+)?(?:unclear|uncertain|unknown)\s+(?:whether|if|how|when|which|what)\b",
-                          re.IGNORECASE)
-# N1 (R4, T1-09 residual): a clause that says the evidence is missing ("There is insufficient evidence to determine
-# whether NumPy 2.5.5 is secure", "..., but the evidence does not state whether version 2.5.5 is recommended",
-# "Whether 2.5.5 is secure remains unclear") names what is missing; the question's own numbers in that clause assert
-# no figure. The clause runs from the marker to the next ";", ":" or contrastive conjunction; a leading
-# "Whether ..." subject and the subject of a passive "... is not addressed in the evidence" belong to it.
-_GAP_MARK = re.compile(
-    r"\b(?:insufficient|not\s+enough|too\s+little|inadequate|limited|no\s+(?:clear\s+|direct\s+|specific\s+)?)"
-    r"\s*(?:evidence|information|data)\s+(?:to\s+(?:determine|establish|confirm|say|assess|judge|conclude|know)|"
-    r"(?:on|about|regarding|whether|as\s+to|for|that)\b)"
-    r"|\black(?:s|ing)?\s+(?:of\s+)?(?:\w+\s+)?(?:evidence|information|data)\b"
-    r"|\b(?:evidence|sources?|claims?|documents?)(?:\s+(?:provided|available|cited|retrieved|read))?\s+(?:do|does|did)"
-    r"\s+not\s+(?:\w+\s+)?(?:contain|provide|include|specify|state|mention|establish|say|give|identify|address|answer|"
-    r"report|cover|confirm|show|indicate|clarify|determine|reveal|describe|explain)\b"
-    r"|\bno\s+(?:provided\s+|available\s+|cited\s+)?(?:evidence|sources?|claims?|documents?)\s+(?:states?|provides?|"
-    r"mentions?|gives?|establish(?:es)?|specif(?:y|ies)|contains?|reports?|says?|confirms?|addresses|answers?)\b"
-    r"|\bcannot\s+be\s+(?:established|determined|confirmed|answered)\b", re.IGNORECASE)
-_GAP_PASSIVE = re.compile(
-    r"\b(?:is|are|was|were|has|have)\s+not\s+(?:been\s+)?(?:\w+\s+){0,2}?(?:evaluated|addressed|covered|discussed|"
-    r"established|stated|mentioned|reported|specified|examined|assessed|described|provided|given|confirmed)\s+(?:in|by)"
-    r"\s+(?:the\s+|any\s+of\s+the\s+)?(?:provided\s+|available\s+|cited\s+|retrieved\s+)?"
-    r"(?:evidence|sources?|claims?|documents?)\b", re.IGNORECASE)
-_CLAUSE_BREAK = re.compile(r"[;:]|,?\s*\b(?:but|however|although|though|while|whereas|yet|nevertheless)\b",
-                           re.IGNORECASE)
-_WHETHER_LEAD = re.compile(r"\s*(?:whether|if)\b", re.IGNORECASE)
+def _clauses(text: str) -> list[tuple[int, int]]:
+    """Character spans of the clauses of `text` (see _CLAUSE_SPLIT)."""
+    cuts = sorted({m.start() for m in _CLAUSE_SPLIT.finditer(text)} | {m.start() for m in _AND_NAME.finditer(text)})
+    bounds = [0] + [c for c in cuts if c > 0] + [len(text)]
+    return [(a, z) for a, z in zip(bounds, bounds[1:]) if text[a:z].strip(" ,.;:")]
+
+
+def _scoped(words: list[str], i: int, limit: int = 4) -> int | None:
+    """Index of the evidence predicate the negator at words[i] scopes over, or None."""
+    candidate = None       # a participle among the modifiers ("not yet verified", "the cited sources")
+    for j in range(i + 1, min(len(words), i + 2 + limit)):
+        w = words[j]
+        if w in _EVIDENCE_NOUNS or (_EVIDENCE_VERB.match(w) and w not in _SCOPE_FILLER):
+            return j
+        if w not in _SCOPE_FILLER:
+            break
+        if candidate is None and _EVIDENCE_VERB.match(w):
+            candidate = j
+    return candidate
+
+
+def _subject_ok(prefix: list[str], raw: list[str], whether: bool) -> bool:
+    """The words before the negation assert nothing (rule 3)."""
+    if whether:
+        return True
+    for k, w in enumerate(prefix):
+        if w in _AUX or w in _SUBORDINATE or _SPECULATIVE.fullmatch(w):
+            return False
+        if k and _LEAD_VERB.match(raw[k]) and (any(ch.isdigit() for ch in raw[k - 1]) or
+                                               (k == 1 and raw[0][:1].isupper() and prefix[0] not in _DETERMINERS)):
+            return False        # "NumPy 2.5.5 fixes ...", "NumPy fixes ...": a finite verb after a version or name
+    return True
+
+
+def gap_clause(clause: str) -> bool:
+    """`clause` is an absent-evidence clause (see the rules above)."""
+    clause = _DISCOURSE_LEAD.sub("", _JOIN_LEAD.sub("", clause.strip(" ,.;:")))
+    if not clause:
+        return False
+    if _GAPS_LIST.match(clause):
+        return True
+    if _COUNTER.search(clause):
+        return False
+    raw = _WORD_RX.findall(clause.replace("’", "'"))
+    words = [w.lower() for w in raw]
+    whether = bool(words) and words[0] in ("whether", "if")
+    has_evidence_noun = any(w in _EVIDENCE_NOUNS for w in words)
+    for i, w in enumerate(words):
+        start = i
+        while start and words[start - 1] in _AUX:
+            start -= 1                       # "does not", "cannot be", "has not been": the auxiliary is the core's
+        prefix, prefix_raw = words[:start], raw[:start]
+        knowledge = w in _KNOWLEDGE_ABSENT or (w == "not" and i + 1 < len(words) and words[i + 1] in ("known", "clear"))
+        if knowledge:
+            predicative = start < i and any(a in _COPULA for a in words[start:i]) or i == 0
+            if predicative and _subject_ok(prefix, prefix_raw, whether):
+                return True
+            continue
+        negator = w in _NEG_WORDS or w.endswith("n't") or (w == "little" and i and words[i - 1] == "too")
+        if not negator:
+            continue
+        j = _scoped(words, i)
+        if j is None:
+            continue
+        if words[j] in _EVIDENCE_NOUNS and w not in ("not", "cannot") and not w.endswith("n't") or \
+                w in ("lack", "lacks", "lacked", "lacking", "absence"):
+            # nominal: "no evidence", "insufficient information", "lack of data", "the evidence is insufficient"
+            ok = whether or all(p in _EXPLETIVE or p in _COPULA or p in _PREPOSITIONS or p in _SCOPE_FILLER
+                                for p in words[:i])
+            if not ok and (w in ("lack", "lacks", "lacked", "lacking", "absence") or
+                           (start < i and any(p in _EVIDENCE_NOUNS for p in prefix))):
+                ok = _subject_ok(prefix, prefix_raw, whether)   # "X lacks evidence", "The evidence is insufficient"
+            if ok:
+                return True
+            continue
+        # verbal: "does not state", "cannot be confirmed", "is not evaluated in the evidence", "unable to determine"
+        attached = start < i or w in _IMPOSSIBLE or w.endswith("n't") or \
+            (w in ("never", "fail", "fails", "failed") and i and words[i - 1] in _EVIDENCE_NOUNS)
+        anchored = has_evidence_noun or w in _IMPOSSIBLE or (w.endswith("n't") and w.startswith("can")) or \
+            (w == "not" and start < i and words[i - 1] in ("can", "could"))
+        if attached and anchored and _subject_ok(prefix, prefix_raw, whether):
+            return True
+    return False
 
 
 def _gap_spans(text: str) -> list[tuple[int, int]]:
-    """Character spans of `text` that state missing or insufficient evidence (see _GAP_MARK)."""
-    breaks = [0] + [m.start() for m in _CLAUSE_BREAK.finditer(text)] + [len(text)]
-    spans = []
-    for a, z in zip(breaks, breaks[1:]):
-        clause = text[a:z]
-        for m in _GAP_MARK.finditer(clause):
-            start = a if _WHETHER_LEAD.match(_CLAUSE_BREAK.sub("", clause[:m.start()], count=1)) else a + m.start()
-            spans.append((start, z))
-        for m in _UNCERTAINTY.finditer(clause):
-            start = a if _WHETHER_LEAD.match(_CLAUSE_BREAK.sub("", clause[:m.start()], count=1)) else a + m.start()
-            spans.append((start, z))
-        for m in _GAP_PASSIVE.finditer(clause):
-            spans.append((a + (clause.rfind(",", 0, m.start()) + 1), z))
-    return spans
+    """Character spans of the absent-evidence clauses of `text` (gap_clause)."""
+    return [(a, z) for a, z in _clauses(text) if gap_clause(text[a:z])]
+
+
+def insufficiency(text: str) -> bool:
+    """Every clause of the sentence only says that the evidence does not establish something (gap_clause)."""
+    text = _clean(text)
+    spans = _clauses(text)
+    return bool(spans) and all(gap_clause(text[a:z]) for a, z in spans)
+
+
+def _outside_gaps(text: str) -> str:
+    """`text` without its absent-evidence clauses: what the sentence asserts."""
+    out = list(text)
+    for a, z in _gap_spans(text):
+        out[a:z] = " " * (z - a)
+    return "".join(out)
+
+
+_UPGRADE = re.compile(r"\b(?:verified|confirmed|proven|proved|definitely|certainly|undisputed|corroborated|"
+                      r"established fact)\b", re.IGNORECASE)
+
+
+def _upgrades(text: str) -> list[str]:
+    """Words that call something verified or confirmed. One inside an absent-evidence clause, or under a negator
+    that scopes over it ("cannot be confirmed", "not yet independently verified", "lack recent or verified
+    evidence"), calls nothing verified."""
+    text = _outside_gaps(text)
+    return [m.group(0) for m in _UPGRADE.finditer(text) if not _negated_at(text, m.start())]
+
+
+def _negated_at(text: str, at: int) -> bool:
+    """A negator scopes over the word at `at` (only _SCOPE_FILLER words and auxiliaries between them)."""
+    for w in reversed([w.lower() for w in _WORD_RX.findall(text[:at].replace("’", "'"))][-5:]):
+        if w in _NEG_WORDS or w.endswith("n't"):
+            return True
+        if w not in _SCOPE_FILLER and w not in _AUX:
+            return False
+    return False
 
 
 # R2-03: "Another source states ..." must cite a source the answer has not cited yet; "several sources say ..." must
@@ -419,8 +530,15 @@ def _inline_refs(text: str) -> tuple[str, list[int], list[str]]:
     return out, list(dict.fromkeys(sources)), list(dict.fromkeys(claims))
 
 
+_ATTRIBUTION = re.compile(r"^(?:reports?|reported|states|stated|says|said|claims?|claimed|suggests?|suggested|writes|"
+                          r"wrote|lists|listed|indicates?|indicated)$", re.IGNORECASE)
+
+
 def hedged(text: str) -> bool:
-    return bool(_HEDGE.search(_NOUN_REPORT.sub(" ", text or "")))
+    """A hedge word in `text`. An attribution verb under a negator ("bugs that are not reported in the sources",
+    "the evidence does not indicate") attributes nothing, so it hedges nothing."""
+    text = _NOUN_REPORT.sub(" ", text or "")
+    return any(not (_ATTRIBUTION.match(m.group(0)) and _negated_at(text, m.start())) for m in _HEDGE.finditer(text))
 
 
 def _numbers(text: str) -> list[str]:
@@ -513,6 +631,16 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     honest_gap = insufficiency(text)      # T2-03: "the evidence does not contain X" needs no supported claim
     if not cites and not honest_gap:
         reasons.append("cites no source")
+    elif not cites:
+        # D-R5-3: an uncited caveat may use only the question's own terms: no name the question does not hold
+        # (numbers: the number check below allows only the question's own inside the caveat)
+        asked = (b.get("question") or "").lower()
+        first = _NAME.match(text)
+        foreign = [m.group(1) for m in _NAME.finditer(text) if m.group(1).lower() not in asked and
+                   not (first and m.start() == first.start() and m.group(1)[1:].islower())]
+        if foreign:
+            reasons.append(f"an uncited caveat names {', '.join(dict.fromkeys(foreign))}, which the question does "
+                           "not name")
     unknown = sorted({n for n in cites if n not in source_ids})
     if unknown:
         reasons.append(f"cites unknown source(s) {unknown}")
@@ -526,7 +654,9 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
         if not set(c["sources"]) & set(cites):
             reasons.append(f"claim {c['id']} is cited without one of its sources {c['sources']}")
     weak = [c for c in used if c["state"] not in SUPPORTED_STATES]
-    is_hedged = hedged(text) or honest_gap
+    # a hedge qualifies the clause it stands in: "..., but the evidence does not indicate whether ..." does not hedge
+    # the factual clause before it
+    is_hedged = honest_gap or hedged(_outside_gaps(text))
     if weak and not is_hedged:
         reasons.append("states " + ", ".join(f"{c['id']} ({c['state']})" for c in weak) +
                        " as fact without hedging")
@@ -544,7 +674,7 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
                                                               m.group(1)[1:].islower())]
         if absent:
             reasons.append(f"speculates about {', '.join(dict.fromkeys(absent))}, which no cited claim mentions")
-    if weak and _UPGRADE.search(_NEGATED_UPGRADE.sub(" ", text)):
+    if weak and _upgrades(text):
         reasons.append("calls an unverified claim verified or confirmed")
     # R1-05: the checked statement's own ADR-035 state (the verdict) counts like a cited claim's state
     verdict_state = (b.get("verdict") or {}).get("state") if isinstance(b.get("verdict"), dict) else None

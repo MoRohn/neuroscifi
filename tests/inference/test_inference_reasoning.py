@@ -290,6 +290,126 @@ def test_there_is_insufficient_evidence_is_an_honest_caveat():
     assert ok == [] and "as fact without hedging" in bad[0]["reasons"][0], bad
 
 
+def r5_bundle(question):
+    """R5 live retest (ev/n1_*): a weak NumPy claim (C1, source 1) and two temporally_unresolved release claims (C7,
+    C8, source 2); none of them repeats the question's version."""
+    b = numpy_bundle()
+    b["question"] = question
+    b["claims"] = [b["claims"][0],
+                   {"id": "C7", "state": "temporally_unresolved", "sources": [2], "published": None, "event": None,
+                    "text": "The release is unusually large for a patch release."},
+                   {"id": "C8", "state": "temporally_unresolved", "sources": [2], "published": None, "event": None,
+                    "text": "Fixes cover string handling and threading."}]
+    return b
+
+
+def test_r5_negated_evidence_predications_are_honest_caveats():
+    """D-R5-1: "No evidence in the provided claims indicates whether numpy 2.5.5 is recommended." was rejected with
+    "number(s) not in the cited evidence: 2.5.5". D-R5-2: "The security status of NumPy 2.5.5 cannot be confirmed based
+    on the available evidence." was rejected as "calls an unverified claim verified or confirmed" (a NEGATED
+    "confirmed") and as stating C7, C8 as fact. Both are negators scoping over an evidence predicate: they assert no
+    fact, so they need no hedge, may name the question's version, and call nothing confirmed."""
+    ok, bad = reasoning.guard([{"text": "No evidence in the provided claims indicates whether numpy 2.5.5 is "
+                                        "recommended.", "sources": [1], "claims": ["C1"]}],
+                              r5_bundle("Is numpy 2.5.5 recommended?"))
+    assert bad == [] and ok[0].get("insufficiency"), bad
+    ok, bad = reasoning.guard([{"text": "The security status of NumPy 2.5.5 cannot be confirmed based on the available "
+                                        "evidence.", "sources": [2], "claims": ["C7", "C8"]}],
+                              r5_bundle("Is numpy 2.5.5 secure?"))
+    assert bad == [] and ok[0].get("insufficiency"), bad
+
+
+def test_r5_uncited_caveat_may_use_only_the_questions_terms():
+    """D-R5-3 (ev/n1_rec_2): "The recommendation status for numpy 2.5.5 is not evaluated in the evidence, and no direct
+    assessment of its suitability is provided." was rejected as citing no source. Every clause only says what the
+    evidence does not establish, so (T2-03) it needs no citation, but an uncited caveat may hold no number and no name
+    the question does not hold, and a factual clause in it is still a factual clause."""
+    b = r5_bundle("Is numpy 2.5.5 recommended?")
+    ok, bad = reasoning.guard([{"text": "The recommendation status for numpy 2.5.5 is not evaluated in the evidence, "
+                                        "and no direct assessment of its suitability is provided.", "sources": [],
+                                "claims": []}], b)
+    assert bad == [] and ok[0].get("insufficiency"), bad
+    ok, bad = reasoning.guard([
+        {"text": "No source states whether OpenSSL bundled with numpy 2.5.5 is recommended.", "sources": [],
+         "claims": []},
+        {"text": "No source states whether numpy 2.5.6 is recommended.", "sources": [], "claims": []},
+        {"text": "No source states whether numpy 2.5.5 is recommended, and Google reports it is.", "sources": [],
+         "claims": []},
+        {"text": "The evidence does not state whether numpy 2.5.5 is recommended, but NumPy 2.5.5 fixes 12 bugs.",
+         "sources": [], "claims": []}], b)
+    assert ok == [] and len(bad) == 4, ok
+    assert "OpenSSL" in bad[0]["reasons"][0] and "2.5.6" in bad[1]["reasons"][-1]
+    assert all("cites no source" in x["reasons"] for x in bad[2:])
+
+
+def test_r5_a_hedge_inside_the_caveat_does_not_hedge_the_factual_clause():
+    """D-R5-3 (ev/n1_rec_1): a compound caveat is rejected on its factual first clause, and a hedge word inside the
+    caveat clause ("does not INDICATE") does not hedge that clause."""
+    ok, bad = reasoning.guard([
+        {"text": "NumPy fixes a critical flaw, but the evidence does not indicate whether it is recommended.",
+         "sources": [1], "claims": ["C1"]},
+        {"text": "While NumPy is widely used and well-optimized, the evidence does not confirm whether version 2.5.5 "
+                 "is recommended for use.", "sources": [1], "claims": ["C1"]}], r5_bundle("Is numpy 2.5.5 recommended?"))
+    assert ok == [] and all("states C1 (insufficient) as fact without hedging" in x["reasons"] for x in bad), bad
+    ok, bad = reasoning.guard([
+        {"text": "According to one source, NumPy is the fundamental package for scientific computing, but the evidence "
+                 "does not indicate whether version 2.5.5 is recommended.", "sources": [1], "claims": ["C1"]}],
+        r5_bundle("Is numpy 2.5.5 recommended?"))
+    assert bad == [] and not ok[0].get("insufficiency"), bad
+
+
+HONEST_CAVEATS = [
+    "No evidence in the provided claims indicates whether numpy 2.5.5 is secure.",
+    "The security status of NumPy 2.5.5 cannot be confirmed based on the available evidence.",
+    "The available sources do not establish whether numpy 2.5.5 is secure.",
+    "Nothing in the cited sources shows whether numpy 2.5.5 is secure.",
+    "None of the sources addresses the security of numpy 2.5.5.",
+    "The evidence is insufficient to determine whether numpy 2.5.5 is secure.",
+    "It remains unknown whether numpy 2.5.5 is secure.",
+    "The sources read are unable to verify the security of numpy 2.5.5.",
+    "Whether numpy 2.5.5 is secure cannot be determined from the evidence.",
+    "There is a lack of data on the security of numpy 2.5.5.",
+    "The security of numpy 2.5.5 has not been independently verified by any of the cited sources.",
+    "The evidence doesn't say whether numpy 2.5.5 is secure.",
+    "There is no clear indication in the evidence that numpy 2.5.5 is secure.",
+    "The cited evidence does not indicate whether numpy 2.5.5 is secure, and no source addresses its security.",
+    "However, the security of numpy 2.5.5 is not yet confirmed in the sources.",
+]
+
+
+@pytest.mark.parametrize("text", HONEST_CAVEATS)
+def test_paraphrased_honest_caveats_pass(text):
+    """A negator or absence quantifier scoping over an evidence predicate, with nothing asserted before it, is an
+    honest caveat however it is worded: cited (hedged, the question's version allowed, nothing called confirmed)."""
+    ok, bad = reasoning.guard([{"text": text, "sources": [2], "claims": ["C7", "C8"]}],
+                              r5_bundle("Is numpy 2.5.5 secure?"))
+    assert bad == [] and ok[0].get("insufficiency") and ok[0]["hedged"], bad
+
+
+NEAR_MISSES = [
+    ("NumPy 2.5.5 will likely be secure.", "as fact without hedging"),          # speculation
+    ("NumPy 2.5.5 is confirmed secure.", "verified or confirmed"),               # positive upgrade
+    ("NumPy 2.5.5 is recommended.", "as fact without hedging"),                  # positive claim
+    ("NumPy 2.5.5 is not secure according to the sources.", "not in the cited evidence: 2.5.5"),   # "secure" is content
+    ("NumPy 2.5.5 fixes unknown bugs.", "as fact without hedging"),              # attributive "unknown"
+    ("NumPy fixes bugs not reported in the sources.", "as fact without hedging"),   # reduced relative
+    ("NumPy fixes bugs that are not reported in the sources.", "as fact without hedging"),   # relative clause
+    ("No source disputes that NumPy is secure.", "as fact without hedging"),     # implies the opposite
+    ("NumPy is secure and no evidence contradicts this.", "as fact without hedging"),
+    ("The security of NumPy cannot be confirmed, though it will probably be secure.", "as fact without hedging"),
+    ("NumPy is not only verified but proven secure.", "verified or confirmed"),
+    ("There is insufficient evidence to determine whether numpy 2.5.7 is secure.", "not in the cited evidence: 2.5.7"),
+]
+
+
+@pytest.mark.parametrize("text,reason", NEAR_MISSES)
+def test_near_miss_positive_or_speculative_sentences_stay_rejected(text, reason):
+    """Speculation, positive claims, a number the question does not hold and a factual clause beside a caveat are
+    not caveats: each is still rejected for what it asserts."""
+    ok, bad = reasoning.guard([{"text": text, "sources": [1], "claims": ["C1"]}], r5_bundle("Is numpy 2.5.5 secure?"))
+    assert ok == [] and any(reason in r for r in bad[0]["reasons"]), bad
+
+
 def test_sources_disagree_passes_when_the_verdict_is_conflicting():
     """R1-05 (s4a): the verdict was conflicting (100 vs 86 billion) but each cited claim's own state was
     insufficient, so "Sources disagree on the exact number ..." was rejected. The guard uses the verdict's state too."""
