@@ -328,25 +328,40 @@ def autonomous_usage(db, now, *, mcp=False) -> dict:
     return {"tasks": tasks, "requests": requests, "bytes": volume}
 
 
-def autonomous_remaining(db, now, cfg, *, mcp=False, exclude=None) -> dict:
+def autonomous_remaining(db, now, cfg, *, mcp=False, exclude=None, reserved=True) -> dict:
     """Requests and bytes of the daily autonomous allowance (mcp=True: config.daily_mcp for MCP-origin tasks) not
-    yet committed: caps minus what finished tasks of the window (_window) spent and what open ones may still spend
-    (their whole budget). Proposals waiting for the owner are not counted until the owner authorises them; a
-    confirmed one counts like any queued task. `exclude`: a task id left out (the one being checked)."""
+    yet committed: caps minus what tasks of the window (_window) spent and (reserved=True) what started, unfinished
+    ones may still spend (their whole budget). A queued task that has not started holds nothing (UAT T5-02: eight
+    queued tasks reserved the day and half were cancelled having used 0 bytes); it is checked when it starts.
+    Proposals waiting for the owner are not counted. `exclude`: a task id left out (the one being checked)."""
     committed = {"requests": 0, "bytes": 0}
     caps = cfg.daily_mcp if mcp else cfg.daily_autonomous
     where, params = _window(now)
-    for task_id, origin, status, stage, usage, budget in db.execute(
-            f"SELECT id, origin, status, stage, usage, budget FROM web_tasks WHERE {where}", params):
+    for task_id, origin, status, stage, usage, budget, started in db.execute(
+            f"SELECT id, origin, status, stage, usage, budget, started_at FROM web_tasks WHERE {where}", params):
         if not _counted(origin, mcp) or stage == "proposed" or task_id == exclude:
             continue
         used, limits = state.loads(usage, {}), state.loads(budget, {})
+        running = status not in TERMINAL_STATES and (status != "queued" or started is not None)
         for key in committed:
             spent = int(used.get(key, 0) or 0)
-            if status not in TERMINAL_STATES:
+            if reserved and running:
                 spent = max(spent, int(limits.get(f"max_{key}", 0) or 0))
             committed[key] += spent
     return {key: max(0, int(caps.get(key, 0)) - committed[key]) for key in committed}
+
+
+def autonomous_waiting(db, now, *, exclude=None) -> str | None:
+    """Why autonomous tasks wait now: the daily request/byte allowance is not spent, but what is left is held by
+    started autonomous tasks (their whole budget until they finish). Else None."""
+    cfg = state.get_config(db)
+    actual = autonomous_remaining(db, now, cfg, exclude=exclude, reserved=False)
+    if any(actual[k] < 1 for k in actual):
+        return None
+    held = autonomous_remaining(db, now, cfg, exclude=exclude)
+    short = [k for k in held if held[k] < 1]
+    return (f"waiting: the rest of today's autonomous {' and '.join(short)} allowance is held by running tasks"
+            if short else None)
 
 
 def _over_cap(db, now, cfg, *, ignore_tasks=False):
@@ -501,9 +516,12 @@ def claim_next(db, holder, now, *, lease=None):
     lease = orchestrator.LEASE_SECONDS if lease is None else lease
     with store.write(db):
         # D4: while `concurrent` autonomous investigations are open, queued autonomous tasks wait their turn; so do
-        # they while resources.policy.background_gate refuses (RD-46: audio priority, critical memory pressure).
+        # they while resources.policy.background_gate refuses (RD-46: audio priority, critical memory pressure), and a
+        # scope whose budget left is held by running tasks waits for them too (T5-02), without being cancelled.
         waiting = f" AND NOT {autonomy.AUTONOMOUS_SQL}" if autonomy.full(db, now) or not background(db)["allowed"] \
-            else ""
+            or autonomy.waiting(db, "autonomous", now) or autonomous_waiting(db, now) else ""
+        if autonomy.waiting(db, "user", now):
+            waiting += f" AND {autonomy.AUTONOMOUS_SQL}"
         row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status='queued' AND "
                          "coalesce(stage,'')!='proposed' AND (lease_holder IS NULL OR lease_expires_at<?)"
                          f"{waiting} ORDER BY created_at, rowid LIMIT 1", (now,)).fetchone()

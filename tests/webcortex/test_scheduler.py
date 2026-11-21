@@ -265,16 +265,22 @@ def test_two_ticks_over_equivalent_result_mixes_report_no_change(individual, sit
 
 
 def test_autonomous_budgets_are_clamped_to_the_daily_allowance(individual, site):
-    """Autonomous tasks get at most the requests/bytes left of the daily cap (open tasks count with their whole
-    budget), so the cap is passed by at most one request; nothing left -> not submitted."""
+    """Autonomous tasks get at most the requests/bytes left of the daily cap (started tasks count with their whole
+    budget; a queued one holds nothing, T5-02), so the cap is passed by at most one request; nothing left -> not
+    submitted."""
     db, path = individual
     state.set_config(db, {"daily_autonomous": {"tasks": 10, "requests": 15, "bytes": 10_000_000}}, T0)
     first = orchestrator.submit(db, "Zephyr compiler latest version", T0, mode="fact_verification",
                                 origin="curiosity")
     assert first["budget"]["max_requests"] == 15 and first["budget"]["max_bytes"] == 10_000_000
-    assert scheduler.autonomous_remaining(db, T0, state.get_config(db))["requests"] == 0   # reserved while queued
+    assert scheduler.autonomous_remaining(db, T0, state.get_config(db))["requests"] == 15   # queued holds nothing
+    with store.write(db):    # once started, it holds its whole budget until it ends
+        state.update_task(db, first["id"], T0, started_at=T0)
+    assert scheduler.autonomous_remaining(db, T0, state.get_config(db))["requests"] == 0
     with pytest.raises(ValidationError, match="daily autonomous cap reached: requests"):
         orchestrator.submit(db, "Zephyr compiler targets", T0, mode="fact_verification", origin="refresh:1")
+    with store.write(db):
+        state.update_task(db, first["id"], T0, started_at=None)
     owner = orchestrator.submit(db, "Zephyr compiler targets", T0, mode="fact_verification")   # not autonomous
     assert owner["budget"]["max_requests"] == 40
     services = build(db, path, site)
@@ -289,6 +295,8 @@ def test_autonomous_budgets_are_clamped_to_the_daily_allowance(individual, site)
     if left:
         second = orchestrator.submit(db, "Zephyr compiler targets", T0, mode="fact_verification", origin="curiosity")
         assert second["budget"]["max_requests"] == left
+        with store.write(db):
+            state.update_task(db, second["id"], T0, started_at=T0)
     with pytest.raises(ValidationError, match="daily autonomous cap reached"):   # W-12: nothing left, no proposal
         orchestrator.submit(db, "Zephyr compiler boards", T0, mode="fact_verification", origin="curiosity",
                             proposed=True)

@@ -15,10 +15,12 @@ provider sets its price). SearXNG-facing HTTP requests and the upstream engine r
 separately (search_counts) and shown in status; they are observations, not limits.
 
 Enforcement (admit, called by orchestrator._claim inside its BEGIN IMMEDIATE transaction, so every worker process
-sees the same numbers): committed = what settled tasks of the day used + the whole allowance of tasks still open.
-A task is refused (cancelled with the reason) when any of searches, pages, seconds or spend has nothing left; else its
-max_queries / max_pages / max_seconds are clamped to what is left and that allowance is recorded as an open
-autonomy_ledger row. Searches and pages are charged before each request (Usage.charge), so they cannot pass the cap;
+sees the same numbers): used = what tasks of the day actually used (settled ones, and running ones so far);
+committed = used + the whole allowance of tasks still running. A task is refused (cancelled with the reason) only when
+`used` leaves nothing of searches, pages, seconds or spend (UAT T5-02: allowances held by running tasks are not
+spent); when only the allowances of running tasks fill the budget it waits (stays queued; claim_next skips its
+scope) until they finish and settle; else its max_queries / max_pages / max_seconds are clamped to what is left and
+that allowance is recorded as an open autonomy_ledger row. A queued task holds nothing. Searches and pages are charged before each request (Usage.charge), so they cannot pass the cap;
 seconds can pass it by at most the network step in flight. An autonomous task also waits (stays queued) while
 `concurrent` autonomous investigations are open; claim_next skips autonomous tasks then. settle() replaces the
 allowance with what the task used when it ends. Forgetting a task keeps its ledger row, so it never refunds budget.
@@ -94,7 +96,7 @@ def policy(db) -> dict:
 
 
 def _number(name, value, *, integer=False, upper=None):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value or value < 0 or \
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 or \
             (integer and int(value) != value) or (upper is not None and value > upper):
         raise ValidationError(f"{name} must be a non-negative {'integer' if integer else 'number'}"
                               + (f" of at most {upper}" if upper is not None else ""))
@@ -203,45 +205,63 @@ def _rows(db, scope, day, *, exclude=None):
     return out
 
 
-def committed(db, scope, now, *, exclude=None) -> dict:
-    """Per limit: used by settled tasks and finished-but-unsettled ones, plus the allowance of open tasks."""
+def committed(db, scope, now, *, exclude=None, reserved=True) -> dict:
+    """Per limit: used by settled tasks and finished-but-unsettled ones, plus (reserved=True) the allowance of tasks
+    still running. reserved=False counts only what running tasks used so far. A task forgotten while open keeps its
+    whole allowance either way (its usage is gone, so it never refunds)."""
     out = {k: 0.0 for k in LIMIT_KEYS}
     for row in _rows(db, scope, day_of(now), exclude=exclude):
-        # open and still running (or forgotten while open: its allowance stays spent)
-        live = row["state"] == "open" and row["status"] not in TERMINAL_STATES
-        source = row["allowed"] if live else row["used"]
+        is_open = row["state"] == "open" and row["status"] not in TERMINAL_STATES
+        gone = is_open and row["status"] is None
+        hold = gone or (is_open and reserved)
+        source = row["allowed"] if hold else row["used"]
         for key in LIMIT_KEYS:
             value = float(source.get(key, 0) or 0)
-            if live:   # an open task never counts less than it already used
+            if hold:   # an open task never counts less than it already used
                 value = max(value, float(row["used"].get(key, 0) or 0))
             out[key] += value
     return out
 
 
-def remaining(db, scope, now, *, exclude=None) -> dict:
+def remaining(db, scope, now, *, exclude=None, reserved=True) -> dict:
     limits = _limits(policy(db), scope)
-    spent = committed(db, scope, now, exclude=exclude)
+    spent = committed(db, scope, now, exclude=exclude, reserved=reserved)
     return {k: max(0.0, float(limits.get(k, 0)) - spent[k]) for k in LIMIT_KEYS}
 
 
 def _exhausted(left: dict, prices: dict, limits: dict) -> str | None:
+    """Which limit has nothing left, worded as what was used of it ('searches: 5 used of 5')."""
     for key in ("searches", "pages"):
         if left[key] < 1:
-            return f"{key} {int(limits[key])} of {int(limits[key])}"
+            return f"{key}: {int(float(limits[key]) - left[key])} used of {int(limits[key])}"
     if left["seconds"] < 1:
-        return f"active time {float(limits['seconds']):g} s of {float(limits['seconds']):g} s"
+        return f"active time: {float(limits['seconds']) - left['seconds']:g} s used of {float(limits['seconds']):g} s"
     cheapest = min([p for p in (float(prices.get("search", 0)), float(prices.get("page", 0))) if p > 0],
                    default=None)
     if cheapest is not None and left["spend_usd"] < cheapest:
-        return f"external spend ${float(limits['spend_usd']):.2f} of ${float(limits['spend_usd']):.2f}"
+        return (f"external spend: ${float(limits['spend_usd']) - left['spend_usd']:.2f} used of "
+                f"${float(limits['spend_usd']):.2f}")
     return None
 
 
 def refusal(db, scope, now) -> str | None:
-    """Why a new task of `scope` cannot start now (its daily budget is spent), else None. No reservation."""
+    """Why a new task of `scope` cannot start today (what finished and running tasks actually used spends the
+    budget), else None. Allowances held by running tasks do not refuse: a task waits for them (waiting())."""
     pol = policy(db)
-    reason = _exhausted(remaining(db, scope, now), pol["prices_usd"], _limits(pol, scope))
+    reason = _exhausted(remaining(db, scope, now, reserved=False), pol["prices_usd"], _limits(pol, scope))
     return None if reason is None else f"daily {scope} research budget exhausted on {day_of(now)}: {reason}"
+
+
+def waiting(db, scope, now, *, exclude=None) -> str | None:
+    """Why a task of `scope` must wait (stay queued) now: the budget is not spent, but what is left of it is held
+    by tasks still running; their allowances return when they finish or are cancelled. Else None."""
+    pol = policy(db)
+    limits, prices = _limits(pol, scope), pol["prices_usd"]
+    if _exhausted(remaining(db, scope, now, exclude=exclude, reserved=False), prices, limits):
+        return None
+    if _exhausted(remaining(db, scope, now, exclude=exclude), prices, limits) is None:
+        return None
+    return (f"waiting: the rest of today's {scope} research budget is held by running tasks until they finish")
 
 
 def require_room(db, origin, now):
@@ -287,10 +307,12 @@ def admit(db, task: dict, now) -> dict:
         gate = rpolicy.background_gate(rpolicy.db_file(db))
         if not gate["allowed"]:
             return {"wait": gate["reason"]}
-    left = remaining(db, scope, now, exclude=task["id"])
-    reason = _exhausted(left, prices, limits)
-    if reason:
+    reason = _exhausted(remaining(db, scope, now, exclude=task["id"], reserved=False), prices, limits)
+    if reason:      # what finished and running tasks actually used spends the budget
         return {"refused": f"daily {scope} research budget exhausted on {day_of(now)}: {reason}"}
+    left = remaining(db, scope, now, exclude=task["id"])
+    if _exhausted(left, prices, limits):   # the rest is held by running tasks: wait for them, never cancel
+        return {"wait": waiting(db, scope, now, exclude=task["id"]) or "waiting for running tasks"}
     budget = Budget.from_json(task["budget"])
     used = Usage.from_json((task.get("checkpoint") or {}).get("usage") or task.get("usage"))
     ps, pp = float(prices.get("search", 0.0)), float(prices.get("page", 0.0))
@@ -740,6 +762,8 @@ def after_task(db, task_id, now) -> dict | None:
 
 def cli(db, a, now):
     action = a.autonomy_action
+    if a.policy_json and action != "set":
+        raise ValidationError("--policy-json applies only to `set`")
     if action == "enable":
         enable(db, now, by="owner:cli")
     elif action == "disable":

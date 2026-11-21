@@ -11,6 +11,7 @@ import pytest
 
 from neuroscifi.instance import store
 from neuroscifi.webcortex import autonomy, evolution, orchestrator, scheduler, state
+from neuroscifi.webcortex.types import Budget
 from test_orchestrator import PAGES, T0, build, corpus, open_individual, serve  # noqa: F401
 
 DAY = 86400.0
@@ -89,13 +90,26 @@ def test_cli_and_console_switches_record_the_owner(individual):
 
 # ---- budgets ---------------------------------------------------------------------------------------------------------
 
+def finish(db, task_id, now, **usage):
+    """End a started task having used `usage` (queries, pages, seconds), as the orchestrator does when it finishes."""
+    with store.write(db):
+        state.update_task(db, task_id, now, status="completed", finished_at=now, lease_holder=None,
+                          lease_expires_at=None, usage=usage)
+        autonomy.settle(db, task_id, usage, {}, now)
+
+
+USED = {"searches": "queries", "pages": "pages", "seconds": "seconds"}
+
+
 @pytest.mark.parametrize("limit, value, field, first, second, word", [
-    ("searches", 7, "max_queries", 6, 1, "searches"),
-    ("pages", 10, "max_pages", 8, 2, "pages"),
-    ("seconds", 200.0, "max_seconds", 120.0, 80.0, "active time"),
-    ("spend_usd", 1.0, "max_queries", 6, 4, "external spend"),
+    ("searches", 7, "max_queries", 6, 1, "searches: 7 used of 7"),
+    ("pages", 10, "max_pages", 8, 2, "pages: 10 used of 10"),
+    ("seconds", 200.0, "max_seconds", 120.0, 80.0, "active time: 200 s used of 200 s"),
+    ("spend_usd", 1.0, "max_queries", 6, 4, "external spend: $1.00 used of $1.00"),
 ])
-def test_each_autonomous_limit_clamps_then_refuses(individual, limit, value, field, first, second, word):
+def test_each_autonomous_limit_clamps_waits_then_refuses(individual, limit, value, field, first, second, word):
+    """Running tasks hold their allowance; a third waits for it (UAT T5-02: it was cancelled although nothing had
+    been used) and is refused only when what was actually used spends the budget."""
     db, _ = individual
     changes = {"autonomous_daily": {limit: value, "concurrent": 5}}
     if limit == "spend_usd":
@@ -106,14 +120,60 @@ def test_each_autonomous_limit_clamps_then_refuses(individual, limit, value, fie
     assert start(db, b["id"], T0, "worker-b")["budget"][field] == second    # clamped to what is left
     assert ledger(db, b["id"])["allowed"][{"max_queries": "searches", "max_pages": "pages",
                                            "max_seconds": "seconds"}[field]] == second
-    assert start(db, c["id"], T0, "worker-c") is None                       # nothing left: refused
+    assert start(db, c["id"], T0, "worker-c") is None                       # the rest is held: it waits
+    waiting = state.task(db, c["id"])
+    assert waiting["status"] == "queued" and waiting["lease_holder"] is None and ledger(db, c["id"]) is None
+    assert scheduler.claim_next(db, "worker-c", T0) is None                 # not picked up again while held
+    assert autonomy.refusal(db, "autonomous", T0) is None
+    assert curious(db, "Zephyr compiler question 4")                         # a queued task holds nothing
+    key = "searches" if limit == "spend_usd" else limit
+    finish(db, a["id"], T0, **{USED[key]: first})
+    finish(db, b["id"], T0, **{USED[key]: second})
+    assert start(db, c["id"], T0, "worker-c") is None                       # actually used up: refused
     refused = state.task(db, c["id"])
     assert refused["status"] == "cancelled" and "daily autonomous research budget exhausted" in refused["error"]
     assert word in refused["error"] and ledger(db, c["id"]) is None
-    with pytest.raises(autonomy.BudgetRefused, match=word):                  # and at submit, at once
-        curious(db, "Zephyr compiler question 4")
-    assert orchestrator.submit(db, "Zephyr compiler question 5", T0, mode="fact_verification")   # user unaffected
+    with pytest.raises(autonomy.BudgetRefused, match=word.replace("$", r"\$")):   # and at submit, at once
+        curious(db, "Zephyr compiler question 5")
+    assert orchestrator.submit(db, "Zephyr compiler question 6", T0, mode="fact_verification")   # user unaffected
     assert autonomy.status(db, T0)["autonomous"]["refusal"]
+
+
+def test_a_waiting_task_starts_with_what_finished_tasks_left(individual):
+    """T5-02: with 3 workers, tasks were cancelled 'searches 5 of 5' after 2 searches were used."""
+    db, _ = individual
+    autonomy.set_policy(db, {"user_daily": {"searches": 5}}, T0)
+    tasks = [orchestrator.submit(db, f"Zephyr compiler question {n}", T0, mode="quick_lookup", origin="console")
+             for n in range(3)]
+    started = [start(db, t["id"], T0, f"worker-{n}") for n, t in enumerate(tasks)]
+    assert started[0] and started[1] and started[2] is None
+    assert state.task(db, tasks[2]["id"])["status"] == "queued"
+    held = autonomy.status(db, T0)["user"]
+    assert held["committed"]["searches"] == 5 and held["used"]["searches"] == 0 and held["refusal"] is None
+    finish(db, tasks[0]["id"], T0, queries=1)
+    finish(db, tasks[1]["id"], T0, queries=1)
+    assert scheduler.claim_next(db, "worker-2", T0)[0] == tasks[2]["id"]
+    third = start(db, tasks[2]["id"], T0, "worker-2")
+    assert third["status"] == "queued" and ledger(db, tasks[2]["id"])["allowed"]["searches"] == \
+        min(3, Budget.from_json(tasks[2]["budget"]).max_queries)
+
+
+def test_queued_autonomous_tasks_hold_no_byte_allowance_and_wait_instead_of_being_cancelled(individual):
+    """T5-02: eight queued autonomous tasks reserved their whole byte budgets; four were cancelled with 0 bytes."""
+    db, _ = individual
+    autonomy.set_policy(db, {"autonomous_daily": {"concurrent": 8}}, T0)
+    state.set_config(db, {"daily_autonomous": {"tasks": 50, "requests": 10_000, "bytes": 3_000_000}}, T0)
+    tasks = [curious(db, f"Zephyr compiler question {n}") for n in range(8)]
+    assert all(Budget.from_json(t["budget"]).max_bytes == 3_000_000 for t in tasks)   # none held by the queue
+    assert start(db, tasks[0]["id"], T0)                       # holds the day's bytes while it runs
+    assert start(db, tasks[1]["id"], T0, "worker-b") is None   # waits, not cancelled
+    assert state.task(db, tasks[1]["id"])["status"] == "queued"
+    assert scheduler.claim_next(db, "worker-b", T0) is None
+    finish(db, tasks[0]["id"], T0, bytes=1000, requests=3)
+    assert scheduler.claim_next(db, "worker-b", T0)[0] == tasks[1]["id"]
+    second = start(db, tasks[1]["id"], T0, "worker-b")
+    assert second and Budget.from_json(second["budget"]).max_bytes == 3_000_000 - 1000
+    assert not db.execute("SELECT count(*) FROM web_tasks WHERE status='cancelled'").fetchone()[0]
 
 
 def test_user_research_has_its_own_budget(individual):
@@ -124,6 +184,8 @@ def test_user_research_has_its_own_budget(individual):
     assert start(db, auto["id"], T0)["budget"]["max_queries"] == 6
     assert start(db, user["id"], T0, "worker-b")["budget"]["max_queries"] == 6   # autonomy spent nothing of it
     assert ledger(db, auto["id"])["scope"] == "autonomous" and ledger(db, user["id"])["scope"] == "user"
+    finish(db, auto["id"], T0, queries=6)
+    finish(db, user["id"], T0, queries=6)
     with pytest.raises(autonomy.BudgetRefused, match="daily user research budget"):
         orchestrator.submit(db, "Zephyr compiler release date", T0, mode="quick_lookup", origin="pocket")
     with pytest.raises(autonomy.BudgetRefused, match="daily autonomous research budget"):
@@ -159,6 +221,7 @@ def test_day_rollover_uses_the_explicit_now(individual):
     late = midnight - 60
     first = curious(db, "Zephyr compiler boards", late)
     assert start(db, first["id"], late)["budget"]["max_queries"] == 6
+    finish(db, first["id"], late, queries=6)
     with pytest.raises(autonomy.BudgetRefused):
         curious(db, "Zephyr compiler targets", late + 30)
     assert autonomy.status(db, late)["day"] != autonomy.status(db, midnight + 1)["day"]
@@ -372,7 +435,9 @@ def test_policy_validation(individual):
     db, _ = individual
     from neuroscifi.instance.errors import ValidationError
     for bad in ({"autonomous_daily": {"searches": -1}}, {"autonomous_daily": {"searches": 1.5}},
-                {"autonomous_daily": {"tokens": 3}}, {"min_gain": 2}, {"budget": 1}, {}):
+                {"autonomous_daily": {"tokens": 3}}, {"min_gain": 2}, {"budget": 1}, {},
+                {"autonomous_daily": {"searches": float("inf")}}, {"user_daily": {"seconds": float("inf")}},
+                {"cooldown": float("inf")}, {"prices_usd": {"search": float("nan")}}):   # T5-04: inf -> 500
         with pytest.raises(ValidationError):
             autonomy.set_policy(db, bad, T0)
     assert autonomy.set_policy(db, {"user_daily": {"pages": 5}}, T0)["user_daily"]["pages"] == 5

@@ -1715,6 +1715,10 @@ def _claim(db, task_id, services, *, resume):
         if not resume and task["status"] == "queued" and is_autonomous(task["origin"]) and \
                 not (task["checkpoint"] or {}).get("stages_done"):
             refused = _autonomous_at_claim(db, task, now)
+            if refused == "wait":
+                if task["lease_holder"] == services.holder:
+                    state.update_task(db, task_id, now, lease_holder=None, lease_expires_at=None)
+                return None
             if refused:
                 state.update_task(db, task_id, now, status="cancelled", finished_at=now, lease_holder=None,
                                   lease_expires_at=None, error=refused)
@@ -1763,13 +1767,19 @@ def _autonomous_at_claim(db, task, now):
     """W-12: an autonomous task (curiosity, prediction refresh; a confirmed proposal too) is checked against the
     daily autonomous allowance again when a worker starts it: what other autonomous tasks committed since it was
     queued counts. Its request/byte budget is clamped to what is left; with nothing left the reason is returned
-    (the caller cancels it). Caller owns the transaction."""
+    (the caller cancels it), and "wait" when what is left is only held by running tasks (it stays queued, T5-02).
+    Caller owns the transaction."""
     from . import scheduler
     cfg = state.get_config(db)
-    left = scheduler.autonomous_remaining(db, now, cfg, exclude=task["id"])
+    actual = scheduler.autonomous_remaining(db, now, cfg, exclude=task["id"], reserved=False)
     for key in ("requests", "bytes"):
-        if left[key] < 1:
-            return f"daily autonomous cap reached when it was due to start: no {key} left of {cfg.daily_autonomous.get(key, 0)}"
+        if actual[key] < 1:
+            used = cfg.daily_autonomous.get(key, 0) - actual[key]
+            return (f"daily autonomous cap reached when it was due to start: {key} {used} used of "
+                    f"{cfg.daily_autonomous.get(key, 0)}")
+    left = scheduler.autonomous_remaining(db, now, cfg, exclude=task["id"])
+    if any(left[key] < 1 for key in ("requests", "bytes")):
+        return "wait"
     budget = Budget.from_json(task["budget"])
     clamped = {f"max_{k}": left[k] for k in ("requests", "bytes") if getattr(budget, f"max_{k}") > left[k]}
     if clamped:
