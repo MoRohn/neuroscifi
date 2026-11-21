@@ -1330,7 +1330,8 @@ function renderLlmStatus(s) {
 // The server label says "reasoning ... verified"; the guard only checks each sentence against its cited sources, and a
 // single-source statement is marked as such. State exactly that, keeping the model name.
 function modelAnswerLabel(x) {
-  const who = /^Advanced reasoning by ([^:]+):/.exec(x.label ?? '')?.[1];
+  // the model name comes from generated_by ("model:<name>"); the backend label wording is not parsed
+  const who = (x.generated_by ?? '').startsWith('model:') ? x.generated_by.slice(6) : null;
   return `Written by ${who ?? 'the local model'} from the collected evidence. Each sentence was checked against its cited sources; single-source statements are marked.`;
 }
 
