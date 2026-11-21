@@ -3429,5 +3429,489 @@
    "candidates_dated": 4,
    "candidates": 16
   }
+ },
+ "rc2": {
+  "evidence": "search_reasoning_live (RC2: UAT T1 query/console fixes)",
+  "generated_at": "2026-11-21",
+  "code": "build/neuroscifi-v1 fixquery lane, commits 982babe..4c34b7a on 7c64b64 (RC1)",
+  "environment": {
+   "searxng": "127.0.0.1:8888 (running container, honest UA); open-webSearch daemon not running (its fallback unavailable)",
+   "model": "qwen3-30b-a3b-instruct-2507-fp8 via vLLM on 127.0.0.1:8811",
+   "individual": "fresh temporary instance (<scratch>/live/rc2.sqlite): nsf init; web config --enable, searxng_url; llm config",
+   "console": "nsf console --web-worker on a loopback port, driven in headless Chromium (Playwright) through the Research view; task JSON read through the console API"
+  },
+  "method": [
+   "one browser session (page loaded once), questions typed into #askObjective with mode auto, in this order: the follow-up first (no earlier question), S1, the follow-up after S1, S3 'Is numpy 2.5.5 recommended?', the S3 follow-up, 'Is numpy 2.5.5 secure?', 'When was Python first released?', then the S5 owner path (nsf knowledge assert 1998, then 1999) and the S5 question",
+   "wall time from the click to the task's terminal status; browser console errors, page errors and HTTP >= 400 recorded",
+   "before = UAT T1 RC1 report (uat/t1/REPORT.md, same questions, same services); a first RC2 run (rc2_first_run below) found that 'that version' after S1 was read as 'AI', fixed in 4c34b7a and re-run",
+   "host paths redacted to <scratch>; no personal data"
+  ],
+  "before_rc1": {
+   "S1": "3/3 default-mode runs: template, 'No usable claims were extracted from 2 sources read'; queries 'AI', 'AI 2026'; 5 Hacker News items rate_limited (crawl delay), cnbc.com HTTP 403, msn.com JavaScript shells; limitations 'searxng: rate_limited', 'searxng: http_error' (T1-06, T1-12)",
+   "S3_followup": "'Is that version secure, stable and recommended?' researched as 'version secure stable recommended' and answered about Go 1 (T1-10)",
+   "S3_secure": "verdict reason 'No OSV record was among the sources' although OSV was queried (T1-15)",
+   "S5": "console question classified change_detection, new web search over 10 sources, stored 1998 -> 1999 supersession never mentioned (T1-04)",
+   "python": "queries 'Python first released' + 'release notes' + 'changelog'; no answer (T1-07)",
+   "provider_health": "searxng 'healthy' while unreachable (T1-11)",
+   "privacy_refusal": "HTTP 400 logged as a browser console error (T1-20)"
+  },
+  "after": {
+   "browser_problems": [],
+   "S3_followup_first_in_session": {
+    "ask_status": "Which version do you mean? “that version” refers to something said earlier, and there is no earlier question in this conversation to take it from. Ask again and name it (package and version, e.g. “Is numpy 2.5.5 secure?”).",
+    "tasks_created": 0
+   },
+   "S1": {
+    "question": "What happened in AI this week?",
+    "ask_status": "Research queued (Quick lookup): “What happened in AI this week?”. Its progress and report appear under Report.",
+    "mode": "quick_lookup",
+    "status": "completed",
+    "wall_seconds": 20.2,
+    "queries": [
+     "AI",
+     "artificial intelligence",
+     "AI news"
+    ],
+    "usage": {
+     "queries": 3,
+     "pages": 3,
+     "requests": 11,
+     "seconds": 15.138
+    },
+    "budget": {
+     "max_queries": 3,
+     "max_pages": 3,
+     "max_requests": 20,
+     "max_seconds": 45
+    },
+    "lead": "3 sources read; 18 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 4 hours ago.",
+    "findings": 18,
+    "sources": [
+     "gizmodo.com: Meta Ray-Ban (Gen 2) Get the Black Friday Treatment as Amazon Just Made AI Glasses a Steal",
+     "wikipedia.org: Mistral AI",
+     "wikipedia.org: Generative AI"
+    ],
+    "freshness_satisfied": true,
+    "verdict": null,
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "reasoning_status": "model",
+    "model_answer": [
+     "According to one source, Meta's Ray-Ban Wayfarer AI Glasses are a prominent option in the AI glasses market, currently available at a discounted price of $344 due to a Black Friday deal."
+    ],
+    "model_sentences_rejected": 4,
+    "limitations": [
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+     "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 1 sentence(s) passed the citation and claim-state guard, 4 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+    ],
+    "unread_headlines": null
+   },
+   "S3_followup_after_S1": {
+    "ask_status": "Which version do you mean? “that version” refers to something said earlier, and your previous question (“What happened in AI this week?”) names no version. Ask again and name it (package and version, e.g. “Is numpy 2.5.5 secure?”).",
+    "tasks_created": 0
+   },
+   "S3_recommended": {
+    "question": "Is numpy 2.5.5 recommended?",
+    "ask_status": "Research queued (Technical (packages, releases, advisories)): “Is numpy 2.5.5 recommended?”. Its progress and report appear under Report.",
+    "mode": "technical",
+    "status": "completed",
+    "wall_seconds": 30.2,
+    "queries": [
+     "pypi:numpy==2.5.5",
+     "osv:PyPI:numpy@2.5.5",
+     "npm:numpy",
+     "osv:npm:numpy@2.5.5",
+     "numpy 2.5.5 recommended",
+     "numpy 2.5.5 recommended release notes",
+     "numpy 2.5.5 recommended changelog"
+    ],
+    "usage": {
+     "queries": 7,
+     "pages": 10,
+     "requests": 35,
+     "seconds": 24.646
+    },
+    "budget": {
+     "max_queries": 12,
+     "max_pages": 10,
+     "max_requests": 120,
+     "max_seconds": 240
+    },
+    "lead": "10 sources read; 11 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 1). Newest cited source: just now.",
+    "findings": 11,
+    "sources": [
+     "newreleases.io: numpy/numpy v2.5.5 on GitHub",
+     "numpy.org: NumPy 2.5.5 Release Notes — NumPy v2.6.dev0 Manual",
+     "pypi.org: numpy 2.5.5 (PyPI)",
+     "numpy.org: NumPy 2.5.1 Release Notes — NumPy v2.6.dev0 Manual",
+     "wikipedia.org: Pandas (software)",
+     "wikipedia.org: Python (programming language)",
+     "npmjs.com: numpy 0.0.1 (npm)",
+     "wikipedia.org: UTF-8",
+     "wikipedia.org: Percentile",
+     "numpy.org: Release notes — NumPy v2.5 Manual"
+    ],
+    "freshness_satisfied": true,
+    "verdict": {
+     "state": "not_evaluated",
+     "aspect": "recommended",
+     "basis": null,
+     "summary": null,
+     "reasons": [
+      "Whether a version is recommended is a judgement (fit for a purpose, maintenance, risk), not a fact a registry record or a quoted sentence can verify. Ask about publication, stability, compatibility or advisories instead."
+     ]
+    },
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "reasoning_status": "model",
+    "model_answer": [
+     "According to one source, NumPy 2.5.5 is a patch release that fixes bugs discovered after the 2.5.4 release, and it supports Python versions 3.12-3.15.",
+     "Sources disagree on whether NumPy 2.5.5 is recommended, as the evidence does not provide a clear recommendation."
+    ],
+    "model_sentences_rejected": 2,
+    "limitations": [
+     "whatsnew.fyi: rate_limited",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+     "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 2 sentence(s) passed the citation and claim-state guard, 2 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+    ],
+    "unread_headlines": null
+   },
+   "S3_followup": {
+    "question": "Is numpy 2.5.5 secure, stable and recommended?",
+    "ask_status": "Research queued (Technical (packages, releases, advisories)): “Is numpy 2.5.5 secure, stable and recommended?”. “that version” was read as numpy 2.5.5, from your previous question. Its progress and report appear under Report.",
+    "mode": "technical",
+    "status": "completed",
+    "wall_seconds": 26.2,
+    "queries": [
+     "pypi:numpy==2.5.5",
+     "osv:PyPI:numpy@2.5.5",
+     "npm:numpy",
+     "osv:npm:numpy@2.5.5",
+     "numpy 2.5.5 secure stable recommended",
+     "numpy 2.5.5 secure stable recommended release notes",
+     "numpy 2.5.5 secure stable recommended changelog"
+    ],
+    "usage": {
+     "queries": 7,
+     "pages": 10,
+     "requests": 29,
+     "seconds": 22.136
+    },
+    "budget": {
+     "max_queries": 12,
+     "max_pages": 10,
+     "max_requests": 120,
+     "max_seconds": 240
+    },
+    "lead": "10 sources read; 20 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 1). Newest cited source: just now.",
+    "findings": 20,
+    "sources": [
+     "newreleases.io: numpy/numpy v2.5.5 on GitHub",
+     "numpy.org: NumPy 2.5.5 Release Notes — NumPy v2.6.dev0 Manual",
+     "pypi.org: numpy 2.5.5 (PyPI)",
+     "numpy.org: NumPy",
+     "numpy.org: NumPy 2.5.2 Release Notes — NumPy v2.6.dev0 Manual",
+     "npmjs.com: numpy 0.0.1 (npm)",
+     "numpy.org: Release notes — NumPy v2.5 Manual",
+     "docker.com: securecodebox/operator - Docker Image",
+     "docker.com: securecodebox/engine - Docker Image",
+     "docker.com: securecodebox/nmap - Docker Image"
+    ],
+    "freshness_satisfied": true,
+    "verdict": null,
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "reasoning_status": "model",
+    "model_answer": [
+     "According to one source, NumPy 2.5.5 is a patch release that fixes bugs discovered after the 2.5.4 release, suggesting it is stable for current use."
+    ],
+    "model_sentences_rejected": 4,
+    "limitations": [
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+     "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 1 sentence(s) passed the citation and claim-state guard, 4 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+    ],
+    "unread_headlines": null
+   },
+   "S3_secure": {
+    "question": "Is numpy 2.5.5 secure?",
+    "ask_status": "Research queued (Technical (packages, releases, advisories)): “Is numpy 2.5.5 secure?”. Its progress and report appear under Report.",
+    "mode": "technical",
+    "status": "completed",
+    "wall_seconds": 24.7,
+    "queries": [
+     "pypi:numpy==2.5.5",
+     "osv:PyPI:numpy@2.5.5",
+     "npm:numpy",
+     "osv:npm:numpy@2.5.5",
+     "numpy 2.5.5 secure",
+     "numpy 2.5.5 secure release notes",
+     "numpy 2.5.5 secure changelog"
+    ],
+    "usage": {
+     "queries": 7,
+     "pages": 10,
+     "requests": 25,
+     "seconds": 20.126
+    },
+    "budget": {
+     "max_queries": 12,
+     "max_pages": 10,
+     "max_requests": 120,
+     "max_seconds": 240
+    },
+    "lead": "10 sources read; 11 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 1). Newest cited source: just now.",
+    "findings": 11,
+    "sources": [
+     "newreleases.io: numpy/numpy v2.5.5 on GitHub",
+     "numpy.org: NumPy 2.5.5 Release Notes — NumPy v2.6.dev0 Manual",
+     "pypi.org: numpy 2.5.5 (PyPI)",
+     "numpy.org: NumPy 2.5.1 Release Notes — NumPy v2.6.dev0 Manual",
+     "wikipedia.org: Random number generation",
+     "wikipedia.org: C (programming language)",
+     "wikipedia.org: Django (web framework)",
+     "npmjs.com: numpy 0.0.1 (npm)",
+     "wikipedia.org: List of Python software",
+     "numpy.org: Release notes — NumPy v2.5 Manual"
+    ],
+    "freshness_satisfied": true,
+    "verdict": {
+     "state": "insufficient",
+     "aspect": "secure",
+     "basis": null,
+     "summary": "OSV was checked for numpy 2.5.5 (PyPI) during this run (2026-11-21 15:26 UTC): no known advisory. That does not establish that it is secure; publication never does either.",
+     "reasons": [
+      "OSV was checked for numpy 2.5.5 (PyPI) during this run (2026-11-21 15:26 UTC): no known advisory. That does not establish that it is secure; publication never does either."
+     ]
+    },
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "reasoning_status": "model",
+    "model_answer": [
+     "According to one source, NumPy 2.5.5 is a patch release that fixes bugs discovered after the 2.5.4 release, but there is no direct information on its security status.",
+     "The release includes fixes related to the datetime cython API and string dtype casting, which may improve stability, but these do not confirm security.",
+     "One source notes that the release is unusually large due to fixes related to threading work and the eMudhra compromise, suggesting potential security-related changes.",
+     "However, no claim explicitly states that NumPy 2.5.5 is secure or insecure, and the overall verdict is 'insufficient'."
+    ],
+    "model_sentences_rejected": 0,
+    "limitations": [
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+     "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 4 sentence(s) passed the citation and claim-state guard, 0 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+    ],
+    "unread_headlines": null,
+    "console_verdict_line": "Not enough evidence OSV was checked for numpy 2.5.5 (PyPI) during this run (2026-11-21 15:26 UTC): no known advisory. That does not establish that it is secure; publication never does either."
+   },
+   "T1_07_python": {
+    "question": "When was Python first released?",
+    "ask_status": "Research queued (Technical (packages, releases, advisories)): “When was Python first released?”. Its progress and report appear under Report.",
+    "mode": "technical",
+    "status": "completed",
+    "wall_seconds": 26.2,
+    "queries": [
+     "Python first released",
+     "Python"
+    ],
+    "usage": {
+     "queries": 2,
+     "pages": 7,
+     "requests": 28,
+     "seconds": 20.304
+    },
+    "budget": {
+     "max_queries": 12,
+     "max_pages": 10,
+     "max_requests": 120,
+     "max_seconds": 240
+    },
+    "lead": "7 sources read; 29 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
+    "findings": 29,
+    "sources": [
+     "python.org: Download Python | Python.org",
+     "w3schools.com: Python Tutorial",
+     "online-python.com: Online Python - IDE, Editor, Compiler, Interpreter",
+     "python.org: Welcome to Python.org",
+     "python.org: Python 3.15.2 documentation",
+     "github.com: Issues · UchePat/Pythonista · GitHub"
+    ],
+    "freshness_satisfied": true,
+    "verdict": null,
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "reasoning_status": "model",
+    "model_answer": [
+     "According to one source, Python's first release date is listed in a table titled 'Python version Maintenance status First released End of support Release schedule', but the specific date is not provided in the text."
+    ],
+    "model_sentences_rejected": 0,
+    "limitations": [
+     "wikipedia: rate_limited: HTTP 429",
+     "wikipedia: rate_limited: host backoff in force",
+     "openwebsearch/duckduckgo: daemon_unreachable",
+     "openwebsearch: daemon_unreachable: daemon unreachable at http://127.0.0.1:3210: <urlopen error ",
+     "news.ycombinator.com: rate_limited",
+     "en.wikipedia.org: rate_limited",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+     "news.ycombinator.com: 3 more candidate(s) not tried: the site's crawl delay puts the next request beyond the fetch timeout",
+     "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 1 sentence(s) passed the citation and claim-state guard, 0 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+    ],
+    "unread_headlines": null
+   },
+   "S5": {
+    "ask_status": "Answered from what this individual has stored about “predictive coding”: no web search was made.",
+    "tasks_created": 0,
+    "wall_seconds": 0.1,
+    "history_panel": "What changed in the understanding of “predictive coding”\n\n«ballard predictiv publish rao»: 2 version(s); current v2 «Rao and Ballard published the predictive coding model of the visual cortex in 1999.» (accepted, not_evaluated by owner_assertion); superseded on 2026-11-21; 1 evidence event(s), last on 2026-11-21\n\nTemplate summary of the stored records above (not model reasoning). Taken from stored versions, supersessions, evidence and hypotheses; no web search was made.\n\nStored versions\nVersion\tStatus\tStatement\tValid from\tSuperseded by\nv1\nSuperseded\nRao and Ballard published the predictive coding model of the visual cortex in 1998.\n2026-11-21 15:27:14 UTC\n#7\nv2\nAccepted\nRao and Ballard published the predictive coding model of the visual cortex in 1999.\n2026-11-21 15:27:14 UTC\n—\nTimeline\nDate\tEvent\tDetail\n2026-11-21\nVersion\nv1 «Rao and Ballard published the predictive coding model of the visual cortex in 1998.» recorded as knowledge; not_evaluated by owner_assertion (ADR-035)\n2026-11-21\nEvidence\na newer statement superseded it (confidence 0.5 -> 0.5; 0.0 bits)\n2026-11-21\nSuperseded\nv1 superseded by knowledge #7\n2026-11-21\nVersion\nv2 «Rao and Ballard published the predictive coding model of the visual cortex in 1999.» recorded as accepted; not_evaluated by owner_assertion (ADR-035)\nResearch this on the web now",
+    "research_button": true
+   },
+   "provider_health_after_runs": [
+    {
+     "name": "npm",
+     "state": "closed",
+     "health": "healthy",
+     "successes": 3,
+     "failures": 0
+    },
+    {
+     "name": "openwebsearch",
+     "state": "closed",
+     "health": "failing",
+     "successes": 0,
+     "failures": 1
+    },
+    {
+     "name": "osv",
+     "state": "closed",
+     "health": "healthy",
+     "successes": 6,
+     "failures": 0
+    },
+    {
+     "name": "pypi",
+     "state": "closed",
+     "health": "healthy",
+     "successes": 3,
+     "failures": 0
+    },
+    {
+     "name": "searxng",
+     "state": "closed",
+     "health": "healthy",
+     "successes": 14,
+     "failures": 0
+    },
+    {
+     "name": "searxng:askubuntu",
+     "state": "open",
+     "health": "down",
+     "successes": 0,
+     "failures": 7
+    },
+    {
+     "name": "searxng:bing news",
+     "state": "closed",
+     "health": "healthy",
+     "successes": 2,
+     "failures": 0
+    },
+    {
+     "name": "searxng:docker hub",
+     "state": "closed",
+     "health": "healthy",
+     "successes": 7,
+     "failures": 0
+    },
+    {
+     "name": "searxng:duckduckgo",
+     "state": "closed",
+     "health": "healthy",
+     "successes": 12,
+     "failures": 0
+    },
+    {
+     "name": "searxng:hackernews",
+     "state": "closed",
+     "health": "healthy",
+     "successes": 3,
+     "failures": 0
+    },
+    {
+     "name": "searxng:mwmbl",
+     "state": "closed",
+     "health": "healthy",
+     "successes": 7,
+     "failures": 0
+    },
+    {
+     "name": "searxng:stackoverflow",
+     "state": "open",
+     "health": "down",
+     "successes": 0,
+     "failures": 7
+    },
+    {
+     "name": "searxng:superuser",
+     "state": "open",
+     "health": "down",
+     "successes": 0,
+     "failures": 7
+    },
+    {
+     "name": "wikipedia",
+     "state": "closed",
+     "health": "healthy",
+     "successes": 10,
+     "failures": 0
+    }
+   ]
+  },
+  "rc2_first_run": {
+   "note": "same sequence except the follow-up was asked after S1 (not first): it was read as 'Is AI secure, stable and recommended?' -> fixed (a version reference needs a versioned previous subject)",
+   "S3_followup_after_S1": {
+    "ask_status": "Research queued (Quick lookup): “Is AI secure, stable and recommended?”. “that version” was read as AI, from your previous question. Its progress and report appear under Report.",
+    "tasks_created": 1
+   },
+   "S1": {
+    "queries": [
+     "AI",
+     "artificial intelligence",
+     "AI news"
+    ],
+    "lead": "3 sources read; 19 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 8 hours ago.",
+    "findings": 19,
+    "sources": [
+     "newsweek.com: Melania Trump Details 'Super Intelligence' Initiative for Students - Newsweek",
+     "wikipedia.org: Mistral AI",
+     "wikipedia.org: Generative AI"
+    ],
+    "freshness_satisfied": true,
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "wall_seconds": 34.2,
+    "limitations": [
+     "www.npr.org: timeout",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+     "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 1 sentence(s) passed the citation and claim-state guard, 3 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+    ]
+   },
+   "T1_07_python": {
+    "queries": [
+     "Python first released",
+     "Python first released"
+    ],
+    "status": "partial",
+    "lead": "Nothing could be read: every source tried failed (news.ycombinator.com: rate_limited).",
+    "limitations": [
+     "Nothing could be read: every source tried failed (news.ycombinator.com: rate_limited)",
+     "wikipedia: rate_limited: HTTP 429",
+     "wikipedia: rate_limited: host backoff in force",
+     "openwebsearch/duckduckgo: daemon_unreachable",
+     "openwebsearch: daemon_unreachable: daemon unreachable at http://127.0.0.1:3210: <urlopen error ",
+     "news.ycombinator.com: rate_limited",
+     "Freshness requirement not met: no cited source is dated (required: within 7 days, release class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+     "news.ycombinator.com: 7 more candidate(s) not tried: the site's crawl delay puts the next request beyond the fetch timeout"
+    ]
+   }
+  },
+  "observations": [
+   "S1 default mode now answers from 3 dated sources within the default quick-lookup budget (3 queries, 3 pages): news 'AI', news 'artificial intelligence', general 'AI news', all time_range=week; relevance of what the news engines return is still weak (Meta AI glasses deal, Wikipedia articles); one Wikipedia source counts toward freshness by its revision date (T1-05, another lane)",
+   "the follow-up is asked about when nothing names a version, and resolved to numpy 2.5.5 after a numpy question; the compound 'secure, stable and recommended' question gets no single verdict (verification is per aspect: another lane)",
+   "the secure verdict line now says OSV was checked with no known advisory; the state stays insufficient (ADR-033)",
+   "S5 answers from evolution.changes: 0 tasks, 0 searches, versions v1 superseded -> v2 shown; 'Research this on the web now' is a separate button",
+   "Python first release: the plan no longer asks for release notes/changelogs and the candidates are spread over hosts (no longer 8 of 9 on Hacker News), but Wikipedia answered HTTP 429 (rate limited after the day's runs) and no date sentence was extracted from python.org pages: still unanswered (claim extraction is another lane)",
+   "read failures are labelled by site (whatsnew.fyi, news.ycombinator.com, www.npr.org), never 'searxng: ...'"
+  ]
  }
 }
