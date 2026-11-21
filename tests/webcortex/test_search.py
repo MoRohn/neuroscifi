@@ -285,6 +285,37 @@ def test_half_open_failure_reopens_and_allows_one_trial():
     assert b.state == "closed"
 
 
+def test_health_reflects_the_last_outcome_and_the_time_since_the_last_success():
+    """T1-11: with SearXNG stopped the console showed "searxng · healthy · 56 ok, 4 failed · searxng_unreachable":
+    the circuit stays closed until 3 failures in a row. `health` is what the owner is shown: the most recent call
+    failed -> failing; circuit open -> down; no success for HEALTH_WINDOW -> unchecked; never called -> unused."""
+    from neuroscifi.webcortex.search import HEALTH_WINDOW
+    clock = Clock()
+    b = Breaker(failure_threshold=3, cooldown=300)
+    assert b.snapshot(clock())["health"] == "unused" and b.snapshot(clock())["since_ok"] is None
+    for _ in range(56):
+        b.success(0.1, clock())
+    assert b.snapshot(clock())["health"] == "healthy"
+    clock.t += 30
+    b.failure("searxng_unreachable: SearXNG unreachable at http://127.0.0.1:8888: Connection refused", 0.0, clock())
+    snap = b.snapshot(clock())
+    assert snap["state"] == "closed" and snap["health"] == "failing" and snap["since_ok"] == 30.0
+    clock.t += 1
+    b.success(0.1, clock())
+    assert b.snapshot(clock())["health"] == "healthy"
+    for _ in range(3):
+        b.failure("down", 0.0, clock())
+    assert b.snapshot(clock())["health"] == "down"
+    clock.t += 300                                     # cooldown over: half_open, still not healthy
+    assert b.snapshot(clock())["state"] == "half_open" and b.snapshot(clock())["health"] == "down"
+    b.allow(clock())
+    b.success(0.1, clock())
+    clock.t += HEALTH_WINDOW + 1
+    assert b.snapshot(clock())["health"] == "unchecked"
+    restored = Breaker().load(b.to_json())             # persisted state (console, `nsf web status`)
+    assert restored.snapshot(clock())["health"] == "unchecked"
+
+
 def test_empty_answer_rule():
     clock = Clock()
     general = Fake("general", behaviour=[], general_web=True)

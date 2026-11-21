@@ -303,10 +303,12 @@ def _provider_health(db, cfg, now):
     registry = search.ProviderRegistry([], clock=lambda: now)
     registry.load_state(wstate.load_strategies(db))
     seen = {row["provider"] for row in registry.status()}
-    rows = [{k: row.get(k) for k in ("name", "provider", "engine", "state", "successes", "failures", "last_error",
-                                     "p50_latency")} for row in registry.status()]
-    rows += [{"name": name, "provider": name, "engine": None, "state": "unused", "successes": 0, "failures": 0,
-              "last_error": None, "p50_latency": None} for name in cfg.providers if name not in seen]
+    rows = [{k: row.get(k) for k in ("name", "provider", "engine", "state", "health", "successes", "failures",
+                                     "last_error", "last_ok_at", "last_failure_at", "since_ok", "p50_latency")}
+            for row in registry.status()]
+    rows += [{"name": name, "provider": name, "engine": None, "state": "unused", "health": "unused", "successes": 0,
+              "failures": 0, "last_error": None, "last_ok_at": None, "last_failure_at": None, "since_ok": None,
+              "p50_latency": None} for name in cfg.providers if name not in seen]
     return sorted(rows, key=lambda r: r["name"])
 
 

@@ -50,6 +50,7 @@ from ..instance.errors import ValidationError
 from .types import BudgetExceeded, FetchError, Query, QueryPlan, SearchOutcome, SearchResult
 
 RRF_K = 60
+HEALTH_WINDOW = 6 * 3600.0   # "healthy" needs a successful call at most this old (T1-11)
 GENERAL_KINDS = ("web", "news")
 # Error codes that say nothing about a provider's health: never move a breaker.
 NON_HEALTH_CODES = frozenset({"budget_exhausted", "disabled", "blocked_policy", "blocked_robots", "circuit_open",
@@ -239,8 +240,26 @@ class Breaker:
     def p50(self) -> float | None:
         return round(statistics.median(self.latencies), 4) if self.latencies else None
 
+    def health(self, now: float) -> str:
+        """What the owner is shown (T1-11; the circuit `state` alone said "closed" = healthy while SearXNG was down,
+        because the circuit opens only after `failure_threshold` consecutive failures):
+        'unused' (never called), 'down' (circuit open, or cooling down before a trial), 'failing' (the most recent
+        call failed), 'unchecked' (the last success is older than HEALTH_WINDOW), else 'healthy'."""
+        state = self.view_state(now)
+        if not (self.successes or self.failures):
+            return "unused"
+        if state in ("open", "half_open"):
+            return "down"
+        if self.last_failure_at is not None and (self.last_ok_at is None or self.last_failure_at >= self.last_ok_at):
+            return "failing"
+        if self.last_ok_at is None or now - self.last_ok_at > HEALTH_WINDOW:
+            return "unchecked"
+        return "healthy"
+
     def snapshot(self, now: float) -> dict:
-        return {"state": self.view_state(now), "successes": self.successes, "failures": self.failures,
+        return {"state": self.view_state(now), "health": self.health(now),
+                "since_ok": None if self.last_ok_at is None else round(max(0.0, now - self.last_ok_at), 1),
+                "successes": self.successes, "failures": self.failures,
                 "consecutive_failures": self.consecutive_failures, "last_error": self.last_error,
                 "last_ok_at": self.last_ok_at, "last_failure_at": self.last_failure_at, "opened_at": self.opened_at,
                 "p50_latency": self.p50(), "calls": len(self.latencies)}

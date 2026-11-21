@@ -472,3 +472,22 @@ def test_a_follow_up_is_read_about_the_previous_question_of_the_session(idle):
     assert task["resolved_followup"]["anaphor"] == "that version"
     assert c.post("/api/web/tasks", {"objective": question, "previous": 7})[0] == 400
     assert c.post("/api/web/tasks", {"objective": question, "route": "elsewhere"})[0] == 400
+
+
+def test_provider_health_shows_a_provider_whose_last_call_failed_as_failing(idle):
+    """T1-11: the Research view's provider health said "healthy" for SearXNG while it was unreachable (56 ok, then
+    connection refused). Health comes from the last outcome and the time since the last success."""
+    from neuroscifi.webcortex import search
+    c = idle
+    registry = search.ProviderRegistry([], clock=lambda: c.clock[0])
+    for _ in range(56):
+        registry.record("searxng", True, 0.1)
+    registry.record("searxng", False, 0.0, "searxng_unreachable: SearXNG unreachable: Connection refused")
+    db = store.open_existing(c.path)
+    state.save_strategies(db, registry.dump_state(), c.clock[0])
+    db.close()
+    row = next(p for p in c.ok("GET", "/api/web/status")["providers"] if p["name"] == "searxng")
+    assert row["state"] == "closed" and row["health"] == "failing"
+    assert row["successes"] == 56 and row["failures"] == 1 and row["last_failure_at"] >= row["last_ok_at"]
+    unused = next(p for p in c.ok("GET", "/api/web/status")["providers"] if p["name"] == "wikipedia")
+    assert unused["health"] == "unused"

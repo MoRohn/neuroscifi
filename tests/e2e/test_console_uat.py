@@ -915,3 +915,23 @@ def test_history_question_and_follow_up_in_the_research_view(uat, new_page):
     db.close()
     assert objectives == ["Is numpy 2.5.5 recommended?", "Is numpy 2.5.5 secure, stable and recommended?"]
     assert not page.problems, page.problems
+
+
+def test_provider_health_shows_failing_searxng(uat, new_page):
+    """T1-11: a provider whose most recent call failed is shown as failing, not healthy."""
+    from neuroscifi.webcortex import search
+    registry = search.ProviderRegistry([])
+    for _ in range(56):
+        registry.record("searxng", True, 0.1)
+    registry.record("searxng", False, 0.0, "searxng_unreachable: SearXNG unreachable: Connection refused")
+    db = uat.db()
+    wstate.save_strategies(db, registry.dump_state(), time.time())
+    db.close()
+    page = new_page(1280, 900)
+    page.goto(uat.url)
+    go(page, "research")
+    row = page.locator("#providerTable tbody tr", has_text="searxng")
+    expect(row).to_contain_text("failing: last call failed")
+    expect(row).to_contain_text("56 ok, 1 failed; last success")
+    expect(row).not_to_contain_text("healthy")
+    assert not page.problems, page.problems

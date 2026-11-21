@@ -1375,8 +1375,8 @@ function renderWebStatus(s) {
   ]));
   fill($('providerTable'), s.providers.length
     ? table('Search provider and engine health', ['Provider / engine', 'State', 'Calls', 'Last error'],
-        s.providers.map((p) => [p.name, badge(p.state === 'closed' ? 'healthy' : p.state === 'open' ? 'cooling down' : p.state.replace('_', ' '),
-          p.state === 'closed' ? 'ok' : p.state === 'open' ? 'warn' : 'neutral'), `${p.successes ?? 0} ok, ${p.failures ?? 0} failed`, p.last_error ?? 'none']))
+        s.providers.map((p) => [p.name, providerBadge(p), `${p.successes ?? 0} ok, ${p.failures ?? 0} failed${p.last_ok_at ? `; last success ${ago(p.last_ok_at)}` : ''}`,
+          p.last_error ? `${p.last_error}${p.last_failure_at ? ` (${ago(p.last_failure_at)})` : ''}` : 'none']))
     : empty('No providers configured.'));
   const cur = s.curiosity;
   fill($('curiosityList'), cur === null
@@ -1692,6 +1692,16 @@ function verdictBlock(r) {
     v.statement ? h('p', { class: 'sub', id: 'claimChecked' }, h('strong', { text: 'Claim checked: ' }), v.statement) : null,
     technical(h('p', { text: `Support estimate ${pct(v.confidence)}${v.citations?.length ? ` from sources ${v.citations.map((n) => `[${n}]`).join(' ')}` : ''}.` }),
       reasons.length ? h('ul', { class: 'reasons' }, reasons.map((x) => h('li', { text: x }))) : null)];
+}
+
+// T1-11: health from the most recent outcome and the time since the last success (the backend's `health`), not
+// from the circuit alone, which stays closed until several failures in a row.
+const PROVIDER_HEALTH = { healthy: ['healthy', 'ok'], failing: ['failing: last call failed', 'warn'], down: ['down', 'warn'],
+  unchecked: ['no recent success', 'neutral'], unused: ['not used yet', 'neutral'] };
+function providerBadge(p) {
+  const fallback = p.state === 'closed' ? 'healthy' : p.state === 'open' ? 'down' : String(p.state ?? 'unknown');
+  const [word, tone] = PROVIDER_HEALTH[p.health ?? fallback] ?? [String(p.health ?? p.state).replace('_', ' '), 'neutral'];
+  return badge(word, tone);
 }
 
 // Limitation strings such as "wikipedia: rate_limited" or "budget_exhausted: budget exhausted: …" in words.
