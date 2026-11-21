@@ -1,0 +1,43 @@
+/* NeuroSciFi Voice Cortex panel. Colours come from the shared app theme (console.css tokens, Presence theme.css
+   tokens as fallback), so light/dark follow the one theme system. */
+.nsfv{display:grid;gap:12px;color:var(--ink,var(--pc-panel-text,#101010))}
+.nsfv-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.nsfv-btn{min-height:44px;padding:6px 14px;font:inherit;font-weight:600;border:1px solid var(--line,var(--pc-panel-line,#ccc));border-radius:8px;background:var(--card,var(--pc-panel,#fff));color:inherit;cursor:pointer}
+.nsfv-btn.primary{background:var(--primary,#184e42);border-color:var(--primary,#184e42);color:var(--paper,#fff)}
+.nsfv-btn.danger{border-color:var(--rust,#a33);color:var(--rust,#a33)}
+.nsfv-btn[aria-pressed="true"]{outline:2px solid var(--focus,#0876a5);outline-offset:1px}
+.nsfv-btn:disabled{opacity:.55;cursor:not-allowed}
+.nsfv-btn:focus-visible,.nsfv input:focus-visible,.nsfv select:focus-visible{outline:3px solid var(--focus,#0876a5);outline-offset:2px}
+.nsfv-indicator{display:inline-flex;align-items:center;min-height:44px;padding:4px 12px;border-radius:999px;border:1px solid var(--line,#ccc);font-weight:700}
+.nsfv-indicator[data-on="true"]{border-color:var(--rust,#b3261e);color:var(--rust,#b3261e);background:var(--rust-soft,transparent)}
+.nsfv-health,.nsfv-notice{margin:0;font-size:.9rem;color:var(--muted,var(--pc-panel-muted,#555))}
+.nsfv-notice:empty{display:none}
+.nsfv-modes{display:grid;gap:6px;margin:0;padding:8px 12px;border:1px solid var(--line,#ccc);border-radius:10px}
+.nsfv-mode{display:grid;grid-template-columns:auto 1fr;gap:0 8px;align-items:center}
+.nsfv-mode input{width:22px;height:22px;margin:0;grid-row:span 2}
+.nsfv-mode small{color:var(--muted,#555)}
+.nsfv-settings{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 10px;align-items:center}
+.nsfv-settings select,.nsfv-settings input[type=number]{min-height:44px;padding:6px 8px;font:inherit;border:1px solid var(--line,#ccc);border-radius:7px;background:var(--card,#fff);color:inherit}
+.nsfv-check{grid-column:1 / -1;display:flex;gap:8px;align-items:center}
+.nsfv-check input{width:22px;height:22px;margin:0}
+.nsfv-consent,.nsfv-confirm,.nsfv-handoff{padding:12px;border:2px solid var(--rust,#a33);border-radius:10px;background:var(--soft,transparent);display:grid;gap:8px}
+.nsfv-consent[hidden],.nsfv-confirm[hidden],.nsfv-handoff[hidden]{display:none}
+.nsfv-consent p,.nsfv-confirm p,.nsfv-handoff p{margin:0}
+.nsfv-type{display:flex;gap:8px;flex-wrap:wrap}
+.nsfv-type input{flex:1 1 220px;min-height:44px;padding:6px 10px;font:inherit;border:1px solid var(--line,#ccc);border-radius:8px;background:var(--card,#fff);color:inherit}
+.nsfv-transcript,.nsfv-results{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.nsfv-transcript[hidden]{display:none}
+.nsfv-seg{padding:8px 12px;border:1px solid var(--line,#ccc);border-radius:10px;background:var(--card,#fff)}
+.nsfv-user{border-left:4px solid var(--info,#4A9CFF)}
+.nsfv-neuroscifi{border-left:4px solid var(--ok,#2e7d32)}
+.nsfv-provisional .nsfv-text{font-style:italic;color:var(--muted,#555)}
+.nsfv-meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;font-size:.85rem}
+.nsfv-meta time{color:var(--muted,#555)}
+.nsfv-badge{display:inline-block;padding:0 6px;border:1px solid var(--line,#ccc);border-radius:6px;font-size:.78rem}
+.nsfv-approximate{border-style:dashed}
+.nsfv-text{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.nsfv-sources{margin:6px 0 0;padding-left:22px;font-size:.85rem}
+.nsfv-sources a{color:var(--link,#0b57d0)}
+.nsfv-link{min-height:44px;padding:0 4px;border:0;background:none;color:var(--link,#0b57d0);text-decoration:underline;font:inherit;cursor:pointer}
+.nsfv-vh{position:absolute!important;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+@media (max-width:480px){.nsfv-settings{grid-template-columns:1fr}}

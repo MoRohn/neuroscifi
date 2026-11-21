@@ -349,6 +349,40 @@ MIGRATIONS = [
       value TEXT NOT NULL DEFAULT '{}', computed_at REAL NOT NULL);
     CREATE INDEX web_metrics_kind ON web_metrics(kind, id);
     """,
+    # ---- version 9 (Voice Cortex, ADR-037; docs/voice/STREAMING_AND_TRANSCRIPTS.md) -------------------------------
+    """
+    -- voice/transcripts.py: voice sessions and their transcript. ASR text is 'approximate', NeuroSciFi's generated
+    -- text 'authoritative', typed text 'user_typed'. Raw audio is not stored unless the owner enables retention
+    -- (voice_audio, bounded TTL, swept by voice/transcripts.sweep). Conversation context lives in the session row
+    -- and NeuroSciFi memory, never in a speech engine.
+    CREATE TABLE voice_sessions(
+      id TEXT PRIMARY KEY, principal TEXT NOT NULL, device TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK(mode IN ('voice_text','voice_in_text_out','text_only')),
+      status TEXT NOT NULL CHECK(status IN ('active','ended')), context TEXT NOT NULL DEFAULT '{}',
+      started_at REAL NOT NULL, ended_at REAL, updated_at REAL NOT NULL);
+    CREATE INDEX voice_sessions_principal ON voice_sessions(principal, started_at);
+    CREATE TABLE voice_segments(
+      id INTEGER PRIMARY KEY, session_id TEXT NOT NULL REFERENCES voice_sessions(id) ON DELETE CASCADE,
+      utterance TEXT NOT NULL, seq INTEGER NOT NULL,
+      speaker TEXT NOT NULL CHECK(speaker IN ('user','neuroscifi')),
+      source TEXT NOT NULL CHECK(source IN ('asr','typed','model','template')),
+      status TEXT NOT NULL CHECK(status IN ('provisional','final','interrupted')),
+      authority TEXT NOT NULL CHECK(authority IN ('approximate','authoritative','user_typed')),
+      text TEXT NOT NULL CHECK(length(text) <= 20000), corrected_text TEXT, corrected_at REAL,
+      detail TEXT NOT NULL DEFAULT '{}', task_id TEXT,
+      started_at REAL NOT NULL, ended_at REAL, created_at REAL NOT NULL, updated_at REAL NOT NULL,
+      UNIQUE(session_id, utterance));
+    CREATE INDEX voice_segments_order ON voice_segments(session_id, seq);
+    CREATE INDEX voice_segments_time ON voice_segments(created_at);
+    -- One capturing device per individual at a time (explicit hand-off); a lease that is not renewed expires.
+    CREATE TABLE voice_capture(
+      scope TEXT PRIMARY KEY, device TEXT NOT NULL, label TEXT NOT NULL, principal TEXT NOT NULL, session_id TEXT,
+      acquired_at REAL NOT NULL, expires_at REAL NOT NULL);
+    CREATE TABLE voice_audio(
+      segment_id INTEGER PRIMARY KEY REFERENCES voice_segments(id) ON DELETE CASCADE, pcm BLOB NOT NULL,
+      rate INTEGER NOT NULL, created_at REAL NOT NULL, expires_at REAL NOT NULL);
+    CREATE INDEX voice_audio_expiry ON voice_audio(expires_at);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

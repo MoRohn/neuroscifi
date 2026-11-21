@@ -1,0 +1,9 @@
+# Keep the base image's Python stack while adding voice packages (versions read from the pinned base image).
+# torch and nvidia-nccl-cu13 are deliberately absent: torch 2.14.0's wheel metadata pins nvidia-nccl-cu13==2.30.7,
+# but the image ships 2.31.2 (installed by vLLM), so any resolve that touches torch downgrades NCCL
+# (docs/voice/PERSONAPLEX_INTEGRATION.md §6.4). Packages that depend on torch are installed with --no-deps instead,
+# and each Dockerfile asserts torch 2.14.0 and NCCL 2.31.2 after installing.
+numpy==2.2.6
+transformers==5.22.1
+huggingface_hub==2.4.0
+safetensors==0.8.0

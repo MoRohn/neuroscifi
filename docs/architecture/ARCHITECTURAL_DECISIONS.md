@@ -404,3 +404,61 @@ posterior is in verification.confidence. Prediction quality is now measurable bu
 settle. Procedural weights are advisory: wiring them into provider selection is a later owner decision. Matching is
 still lexical (keys, values), so a rephrased hypothesis can be missed. Reversal: drop the eligibility call to
 restore ADR-026 thresholds. The new tables and columns can stay, because they are additive and readers ignore them.
+
+# ADR-037 (draft): Voice Cortex — hybrid speech path behind a NeuroSciFi-authoritative bridge
+
+Status: proposed (Lane V, v0.7.0), 2026-11-21. Evidence: docs/voice/PERSONAPLEX_INTEGRATION.md (audit),
+docs/voice/VOICE_UAT_RESULTS.md (measured), test-results/voice_uat.json.
+
+## Context
+
+Spec area 6 asks for voice with NeuroSciFi authoritative for facts, tools, memory and permissions; modes A/B/C;
+real mic/speaker/session/privacy controls; one capturing device at a time; transcripts that separate approximate
+from authoritative text; long tasks that survive the voice session. The audit measured PersonaPlex on this host:
+upstream not real-time (RTF 1.24–1.84), cannot speak external text through its server, unauthenticated server
+binding all interfaces; Whisper large-v3-turbo (vLLM) and Kokoro-82M measured fast and exact on synthetic speech.
+
+## Decision
+
+1. **Default path = hybrid**: Whisper large-v3-turbo via vLLM transcription (127.0.0.1:18431) + Kokoro-82M behind
+   a small authenticated wrapper (127.0.0.1:18432), both Docker containers built FROM the digest-pinned vLLM image,
+   loopback-published, read-only, no capabilities, one generated 0600 API key. NCCL is protected by installing
+   torch-dependent packages with `--no-deps` and asserting torch/NCCL versions in the build.
+2. **Speech engine interface** (`voice/engines.py`): ASR, TTS and an optional full-duplex engine with explicit
+   health states, timeouts, one retry, a fail-fast cool-down and metrics. PersonaPlex is an opt-in experimental
+   engine behind it (loopback URL and voice allow-list enforced), **never routed a question**, not deployed.
+3. **Cognitive Voice Bridge**: deterministic command grammar; questions go to `orchestrator.submit` exactly like
+   typed ones (privacy screen, web switch, budgets, worker, inference gateway + guard, memory). Replies are composed
+   from the task report only: concise speech, detailed text with citations, honest model/extractive/template
+   labels. "Explain more simply" re-asks the local model from the same evidence bundle and re-applies the guard.
+4. **Authorisation and confirmation**: console = owner; Pocket = its pairing family with Pocket's existing rights.
+   Forget/delete, enabling autonomy, privacy-term disclosure, accepting conclusions and microphone hand-off require
+   a same-session confirmation within 60 s (spoken "confirm" or the button).
+5. **Transport**: plain HTTP on the existing servers (no WebSocket): 16 kHz PCM16 chunks ≤ 64 KiB on a dedicated
+   authenticated route, long-poll events, per-sentence WAV. Every other route keeps its limits; console
+   `Permissions-Policy` becomes `microphone=(self)`.
+6. **Client-side VAD and barge-in** (energy + duration thresholds), playback stopped locally before telling the
+   server; server cancels the rest of the turn and records `interrupted` with the sentence reached.
+7. **Persistence**: forward-only schema v9 (`voice_sessions`, `voice_segments`, `voice_capture`, `voice_audio`);
+   raw audio not stored unless the owner enables retention (TTL 1–168 h, swept); one capture lease per individual
+   shared by console and Pocket.
+8. **Presence contract**: `voice.state.snapshot()` and the `nsf:voice` browser event with real RMS levels.
+
+## Alternatives rejected
+
+- PersonaPlex as the default engine: not real-time upstream on GB10, no external-text channel, unauthenticated
+  server; its words are not NeuroSciFi's evidence.
+- WebSocket transport: would need a new server stack in both the console and Pocket; HTTP chunks measured fast
+  enough (EOU → final transcript 0.16–0.45 s).
+- Server-side VAD: needs continuous upload; client VAD uploads nothing outside confirmed utterances and lets mic
+  off mean no transmission at all.
+- An LLM intent classifier: a model must not decide whether a command (forget, autonomy) was given.
+
+## Consequences
+
+- Speech adds ≈ 5 GiB of GPU memory (ASR engine 4.2 GiB, TTS 0.9 GiB measured) beside Qwen3 (44 GiB).
+- End-of-utterance costs the 700 ms VAD hang-over plus ASR (~0.2 s); research answers take tens of seconds and are
+  acknowledged at once.
+- Thresholds, echo cancellation and accents are unmeasured with real hardware (no microphone/speaker here).
+- Shared files touched (small edits): console server/index/js, Pocket server/index/sw.js, instance schema, the top
+  CLI module list, tests/js/offline_check.mjs (shell count).

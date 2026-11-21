@@ -1,0 +1,8 @@
+# NeuroSciFi Voice Cortex ASR: Whisper large-v3-turbo served by vLLM's /v1/audio/transcriptions.
+# The base image lacks soundfile and librosa, which vLLM's transcription endpoint needs (audit §9.1).
+# Base pinned by digest: vllm/vllm-openai nightly-4fab5a07 (vLLM 0.33.0rc1.dev910, CUDA 13.0.2, arm64).
+FROM vllm/vllm-openai@sha256:48c0a41e8268faf50317ab83dc12c54fe6549b1131b38d06abe5ed15e3009700
+COPY constraints.txt /opt/nsf/constraints.txt
+RUN pip install --no-cache-dir -c /opt/nsf/constraints.txt "soundfile==0.13.1" "librosa==0.11.0" \
+ && python3 -c "import soundfile, librosa, torch; assert torch.__version__.startswith('2.14.0')" \
+ && pip list 2>/dev/null | grep -E '^nvidia-nccl-cu13 +2\.31\.2$'

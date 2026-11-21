@@ -1,0 +1,165 @@
+# Cognitive Voice Bridge (v0.7.0, area 6)
+
+Status: implemented and measured on the reference host (DGX Spark GB10), 2026-11-21. Decision record: ADR-037
+(draft `.omc/autopilot/adr/ADR-037-voice.md`). Audit that chose the design: `PERSONAPLEX_INTEGRATION.md`.
+Streaming, transcripts, barge-in and ownership details: `STREAMING_AND_TRANSCRIPTS.md`. Measured results:
+`VOICE_UAT_RESULTS.md`.
+
+## 1. Principle
+
+NeuroSciFi is authoritative for facts, tools, memory and permissions. A speech engine transcribes the owner and
+renders NeuroSciFi's text as audio; it never decides what is asserted. A spoken question goes through **the same
+research path as a typed one** (`webcortex.orchestrator.submit`: privacy screen, web switch, budgets, deduplication,
+the worker's discovery / reading / claim verification, the inference gateway's evidence-bound answer and its guard,
+consolidation into memory). The bridge reads the finished report; it does not ask a model what is true.
+
+```
+mic ─▶ AudioWorklet 16 kHz PCM ─▶ VAD ─▶ /api/voice/audio ─▶ Whisper (vLLM, 127.0.0.1:18431) ─▶ transcript (approximate)
+                                                                                      │ final
+                                     commands.parse (deterministic) ─▶ Bridge ─▶ intent handler (authorised?)
+                                                                                      │ question
+                                    orchestrator.submit ─▶ worker: search ▸ read ▸ verify ▸ reasoning (Qwen3, guard)
+                                                                                      │ report
+                         compose_answer: concise speech + detailed text with citations (authoritative segment)
+                                                                                      │ sentences
+ speaker ◀── WebAudio ◀── /api/voice/speech (WAV per sentence) ◀── Kokoro-82M (127.0.0.1:18432)
+```
+
+## 2. Services (deployed and running)
+
+| Service | Container | Bind | Image | Model (read-only mount) |
+|---|---|---|---|---|
+| ASR | `neuroscifi-voice-asr` | 127.0.0.1:18431 | `neuroscifi-voice-asr:0.7.0` (`sha256:965a968c…`) FROM `vllm/vllm-openai@sha256:48c0a41e…` + soundfile 0.13.1, librosa 0.11.0 | `~/.local/share/neuroscifi/models/whisper-large-v3-turbo` (rev `41f01f3f…`, sha256 of weights `542566a4…`) |
+| TTS | `neuroscifi-voice-tts` | 127.0.0.1:18432 | `neuroscifi-voice-tts:0.7.0` (`sha256:67461d62…`) same base + kokoro 0.9.4, misaki 0.9.4 (`--no-deps`), spaCy 3.8.7 + en_core_web_sm 3.8.0, `deploy/voice/tts_server.py` | `~/.local/share/neuroscifi/models/kokoro-82m` (rev `f3ff3571…`, 12 allow-listed voices) |
+| LLM | `neuroscifi-vllm` (Lane B) | 127.0.0.1:8811 | — | Qwen3-30B-A3B-Instruct-2507-FP8 |
+| Search | `neuroscifi-searxng` (Lane A) | 127.0.0.1:8888 | — | — |
+
+Both voice containers: `--user 1000:1000 --read-only --cap-drop ALL --security-opt no-new-privileges`, pids limit,
+`--cpus`/`--memory` ceilings, `HF_HUB_OFFLINE=1`, one generated API key (`~/.config/neuroscifi/voice/api_key`,
+0600; ASR via `VLLM_API_KEY`, TTS via `NSF_TTS_API_KEY`, both through 0600 env files). `run.sh` refuses a non-loopback
+bind and an image not built on the pinned base digest. The NCCL pin: torch 2.14.0's metadata pins
+`nvidia-nccl-cu13==2.30.7` while the image ships 2.31.2, so kokoro/misaki are installed with `--no-deps` and both
+Dockerfiles assert torch 2.14.0 and NCCL 2.31.2 after installing (`deploy/voice/constraints.txt` explains).
+
+ASR flags (audit §6.5, required on unified memory): `--gpu-memory-utilization 0.08 --kv-cache-memory-bytes
+2147483648 --enforce-eager --max-num-seqs 4`.
+
+```
+deploy/voice/run.sh build                 # both images from the pinned base
+deploy/voice/run.sh start all             # or: start asr | start tts
+deploy/voice/run.sh wait all 600          # ASR ~110 s, TTS ~15-25 s to ready
+deploy/voice/run.sh status
+nsf voice health --db INSTANCE            # engine states + real round trip: Kokoro speaks, Whisper transcribes, WER
+deploy/voice/run.sh stop all              # text keeps working; voice controls show "unavailable"
+```
+
+systemd: `deploy/systemd/neuroscifi-voice-asr.service`, `neuroscifi-voice-tts.service` (`run.sh foreground`).
+
+## 3. Speech engine interface (`src/neuroscifi/voice/engines.py`)
+
+`WhisperASR.transcribe(pcm, rate)`, `KokoroTTS.synthesize(text, voice, speed)`, `PersonaPlexEngine` (experimental),
+each with `health(probe=)` returning one of `ready | loading | degraded | unavailable | unauthorised |
+not_configured | disabled`. Connect timeout 2 s, read timeout 20 s, one retry for a connection error, after 3
+consecutive failures a 10 s cool-down that fails fast without a request (then one probe = reconnect), metrics
+(calls, failures, p50/p95 latency, last error). Endpoints must be loopback (validated in settings and in the
+client). The hub caches health for 5 s.
+
+**PersonaPlex** is behind the same interface but **disabled by default** and never routed a question: its own words
+come from a 7B chat model without NeuroSciFi's evidence. Only a loopback URL and an allow-listed voice name are
+accepted (the upstream server binds every interface, has no auth, and unpickles a path taken from the request; audit
+§2.1). It is not deployed: upstream code is not real-time on GB10 (RTF 1.24–1.84) and the optimised fork is
+third-party and unmerged. Enabling it shows its health only.
+
+## 4. Commands and routing (`commands.py`, `bridge.py`)
+
+Parsing is deterministic (regular expressions over the normalised transcript); no model chooses the intent.
+
+| Say | Intent | Effect | Confirmation |
+|---|---|---|---|
+| any question (≥ 3 words), "research X", "look up X", "tell me about X" | research | `orchestrator.submit(origin="voice")`; spoken acknowledgement; the hub follows the task and speaks the answer | only if the privacy screen finds private data (owner: "send it anyway?"; Pocket: refused) |
+| "show (me) the evidence" | show_evidence | sources of the last task (text), one spoken sentence | — |
+| "explain that more simply" | simpler | the local model rewrites from the **same evidence bundle**; every sentence passes `reasoning.guard`; without a model: a shorter extract, labelled | — |
+| "remember (these) conclusions" | remember | accept the last task's provisional knowledge items (`knowledge.review`) | **yes** (owner only) |
+| "what have you learned since yesterday / this week" | learned_since | knowledge created/updated in the window, from memory (template-labelled) | — |
+| "continue the previous investigation" | continue_research | `orchestrator.requeue` (partial / cancelled / failed) or a new linked task | — |
+| "stop", "stop speaking but keep researching" | stop_speaking | playback stops; research continues | — |
+| "go on" | resume_speaking | speak the rest of an interrupted reply | — |
+| "cancel the research" | cancel_research | `orchestrator.cancel` (the only voice path that stops a task) | — |
+| "switch to text only" / "text replies only" / "speak your answers" | mode | C / B / A | — |
+| "forget this conversation" | forget | delete this session's transcript (and retained audio) | **yes** |
+| "forget the last research" | forget | `governance.forget_research` | **yes** (owner only) |
+| "turn on autonomous research" | enable_autonomy | `webcortex.state.set_config(autonomous=True)` | **yes** (owner only) |
+| "turn off autonomous research" | disable_autonomy | reduces autonomy | — (owner only) |
+| "use this device for the microphone" | handoff | moves the capture lease | **yes** |
+| "confirm" / "no" | confirm / deny | answers the pending confirmation of this session | — |
+
+A confirmation is held server-side per session for 60 s; it is executed only by the same session ("confirm" spoken,
+or the Confirm button). "Yes" alone is not accepted.
+
+**Authorisation.** The console principal is the owner. A Pocket principal is its pairing family: research only while
+`pocket_research` is on (with Pocket's per-family hourly limit), only its family's tasks and transcripts, no owner
+settings (retention, endpoints), no sensitive owner commands ("needs the owner console").
+
+**Replies.** `compose_answer(task)` uses the model answer when `report.reasoning.status == "model"` (sentences that
+passed the guard; label "Advanced reasoning by …"), otherwise the extractive answer, spoken as "According to
+<domain>: <quote>" and labelled "Extractive summary (quoted evidence); advanced reasoning unavailable (reason)".
+Speech is concise (≤ 2 sentences, ≤ 70 words, citation markers removed, plus "The details and citations are on
+screen."); the transcript keeps the full text with `[n]` citations and the source list. Template replies (help,
+confirmations, refusals) are labelled "NeuroSciFi template reply (no model involved)".
+
+**Long tasks.** The acknowledgement is spoken at once; a follower thread reads the task every second, emits
+truthful stage progress ("Research: reading sources") and speaks "Still working: …" at most every 30 s when idle.
+The task belongs to the research system: ending the voice session, switching mode or barge-in never cancels it; its
+answer is still written to the transcript when the session has ended.
+
+**Durable context.** The session row keeps `last_task_id` / `last_objective`; a new session of the same principal
+inherits them, so "show the evidence" or "continue the previous investigation" work after a restart. Nothing
+depends on a speech engine's context window.
+
+## 5. Modes and controls
+
+| Mode | Mic | Speech out | Needs |
+|---|---|---|---|
+| A `voice_text` | yes | yes | ASR + TTS |
+| B `voice_in_text_out` | yes | no (server refuses `/speech`; no synthesis) | ASR |
+| C `text_only` | no (server refuses audio and releases the lease; the client stops its tracks) | no | nothing (works with every voice service down) |
+
+Switching keeps the session and its context. Controls in the console "Voice" view and the Pocket "Voice" section:
+session start/end, microphone on/off (off = `MediaStreamTrack.stop()` on every track and lease release), speaker
+mute (no playback, no synthesis, `speaking` never reported while muted), volume (gain node), voice (Kokoro
+allow-list), input device (`enumerateDevices`, after permission), transcript visibility, typed input, transcript
+search, correction of recognised text, owner-only raw-audio retention with a 1–168 h TTL, a consent prompt before
+the first capture on a device, and a capture indicator ("● Microphone on — capturing").
+
+## 6. HTTP surface
+
+Console (loopback, session token, Host/Origin checks unchanged): `GET /api/voice/{status,events,speech,transcripts}`,
+`POST /api/voice/{session,consent,mode,settings,capture,text,confirm,interrupt,client,correct,forget}` (JSON ≤ 4 KiB)
+and `POST /api/voice/audio` (`audio/L16; rate=16000`, ≤ 64 KiB per chunk, headers `X-NSF-Session`,
+`X-NSF-Utterance`, `X-NSF-Seq`, `X-NSF-Final`). Every other console limit is unchanged. `Permissions-Policy` now
+allows `microphone=(self)` (camera and geolocation stay off).
+
+Pocket (paired credential, HTTPS on the LAN): `POST /api/voice_<op>` with JSON ≤ 512 B (`voice_text`,
+`voice_correct` ≤ 1 KiB), `voice_audio` ≤ 64 KiB. A bridge without `--instance-db` answers `voice_status` with
+`{"voice": false}` to paired devices; unpaired callers get 403. The Pocket device id is an instance-salted pseudonym
+of its pairing; Pocket stores nothing in browser storage for voice.
+
+## 7. Operations
+
+| Symptom | Check | Recovery |
+|---|---|---|
+| "Speech recognition: unavailable" | `deploy/voice/run.sh status`, `docker logs neuroscifi-voice-asr` | `run.sh start asr` (ready after ~110 s); text keeps working |
+| "unauthorised" | `ls -l ~/.config/neuroscifi/voice/api_key` (must be 0600) | `run.sh start` re-writes the env files from the key |
+| ASR container exits at start | log shows `Free memory … less than desired` or a profiler assertion | keep `--gpu-memory-utilization 0.08` **and** `--kv-cache-memory-bytes` (`voice.env`) |
+| TTS `loading` | `curl 127.0.0.1:18432/health` | first start loads spaCy; on CPU set `NSF_VOICE_TTS_DEVICE=cpu` (RTF 0.42) |
+| Console service cannot read the key | `ProtectHome=yes` in the unit | `nsf voice settings --set '{"key_file": "/etc/neuroscifi/voice.key"}'` (root:neuroscifi 0640 is refused: key files must be 0600 and owned by the service user) |
+
+## 8. Limitations (honest)
+
+- End-of-utterance detection is energy-based client VAD (adaptive floor, 700 ms hang-over); the 700 ms is part of
+  every measured response time from the owner's last word. No streaming ASR route exists for Whisper in vLLM; the
+  provisional transcript is a re-transcription of the open utterance at most once a second.
+- Echo cancellation is the browser's (`echoCancellation: true`); not measured with real speakers and microphone.
+- Thresholds (barge 300 ms over max(5×floor, 0.03 RMS)) were tuned on synthetic speech only.
+- The bridge's command grammar is English and literal; paraphrases fall through to research.
+- PersonaPlex: interface and health only; not deployed, not real-time upstream (audit).
