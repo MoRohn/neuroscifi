@@ -3,6 +3,8 @@ from contextlib import closing
 import http.client
 import importlib.util
 import json
+import re
+import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -219,8 +221,12 @@ class _Fake(BaseHTTPRequestHandler):
         return self._send(200, {"voices": ["af_heart"]})
 
     def do_POST(self):
-        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
         self.server.posts += 1
+        try:
+            self.server.bodies.append(json.loads(raw))
+        except ValueError:
+            pass
         if self.headers.get("Authorization") != "Bearer k":
             return self._send(401, {})
         if self.server.mode == "error":
@@ -233,7 +239,7 @@ class _Fake(BaseHTTPRequestHandler):
 @pytest.fixture
 def fake_server():
     srv = ThreadingHTTPServer(("127.0.0.1", 0), _Fake)
-    srv.mode, srv.posts = "ok", 0
+    srv.mode, srv.posts, srv.bodies = "ok", 0, []
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv
     srv.shutdown()
@@ -315,3 +321,48 @@ def test_tts_server_wrapper_rules():
 def test_voice_http_module_lists_pocket_routes():
     assert "voice_audio" in vhttp.POCKET_ROUTES and "voice_events" in vhttp.POCKET_ROUTES
     assert not vhttp.POCKET_ROUTES & (pocket_server.ROUTES | pocket_server.RESEARCH)
+
+
+def test_speakable_pronunciation_pass():
+    """T2-01: domains, URLs and product names reach Kokoro in sayable form; ordinary words are untouched."""
+    from neuroscifi.voice.engines import speakable
+    assert speakable("According to techcrunch.com: yes.") == "According to techcrunch dot com: yes."
+    assert speakable("See https://www.example.org/a/b?c=1 now") == "See example dot org now"
+    assert speakable("This is NeuroSciFi on SearXNG.") == "This is Neuro Sci-Fi on Searx N G."
+    assert speakable("Agentic AI on Kubernetes, 3.5 points.") == "Agentic AI on Kubernetes, 3.5 points."
+
+
+def test_tts_sends_the_speakable_text(fake_server):
+    tts = vengines.KokoroTTS(f"http://127.0.0.1:{fake_server.server_port}", "k")
+    fake_server.mode = "ok"
+    tts.synthesize("According to techcrunch.com.", "af_heart")
+    assert fake_server.bodies[-1]["input"] == "According to techcrunch dot com."
+
+
+def test_tts_server_refuses_to_run_without_the_espeak_fallback():
+    spec = importlib.util.spec_from_file_location("tts_server", ROOT / "deploy" / "voice" / "tts_server.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    class G2P:
+        def __init__(self, fallback):
+            self.fallback = fallback
+
+    class Pipe:
+        def __init__(self, fallback):
+            self.g2p = G2P(fallback)
+    mod.require_fallback({"a": Pipe(object()), "b": Pipe(object())})
+    with pytest.raises(RuntimeError, match="fallback"):
+        mod.require_fallback({"a": Pipe(None), "b": Pipe(object())})
+
+
+def test_tts_container_tmp_allows_loading_espeak(tmp_path):
+    """The TTS container's /tmp must be exec: phonemizer loads libespeak-ng.so from a temporary copy (T2-01)."""
+    model = tmp_path / ".local/share/neuroscifi/models/kokoro-82m"
+    model.mkdir(parents=True)
+    (model / "kokoro-v1_0.pth").write_bytes(b"")
+    run = subprocess.run(["bash", str(ROOT / "deploy" / "voice" / "run.sh"), "print", "tts"],
+                         env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}, capture_output=True, text=True,
+                         timeout=30)
+    options = re.search(r"--tmpfs /tmp:(\S+)", run.stdout.replace("\\,", ",")).group(1).split(",")
+    assert "exec" in options and "noexec" not in options and {"nosuid", "nodev"} <= set(options), run.stdout

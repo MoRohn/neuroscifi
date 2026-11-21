@@ -46,6 +46,15 @@ def pcm16(samples):
         return b"".join(struct.pack("<h", int(max(-1.0, min(1.0, x)) * 32767)) for x in samples)
 
 
+def require_fallback(pipes):
+    """Refuse to serve without misaki's espeak-ng fallback: without it every out-of-vocabulary word (names, new
+    terms, domains) is silently dropped from the speech. /health then says why (State.load)."""
+    missing = [code for code, pipe in pipes.items() if getattr(getattr(pipe, "g2p", None), "fallback", None) is None]
+    if missing:
+        raise RuntimeError("espeak-ng fallback unavailable for " + ",".join(missing) + ": unknown words would be "
+                           "dropped (is the container's /tmp mounted noexec? see deploy/voice/run.sh)")
+
+
 class Engine:
     """Kokoro pipelines per language code ('a' American, 'b' British), loaded once."""
 
@@ -56,6 +65,7 @@ class Engine:
         self.dir = Path(model_dir)
         model = KModel(config=str(self.dir / "config.json"), model=str(self.dir / "kokoro-v1_0.pth")).to(device).eval()
         self.pipes = {code: KPipeline(lang_code=code, model=model, device=device) for code in ("a", "b")}
+        require_fallback(self.pipes)
         self.torch = torch
 
     def synthesize(self, text, voice, speed=1.0):

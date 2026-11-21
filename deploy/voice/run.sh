@@ -53,10 +53,10 @@ check_image() {   # the derived image must sit on the pinned base (its layers ar
   [[ "$derived" == "$base "* ]] || die "image $image is not built on $NSF_VOICE_BASE_IMAGE (rebuild: $0 build)"
 }
 
-common_args() {
+common_args() {   # $1: /tmp mount options (default noexec)
   ARGS+=(--device nvidia.com/gpu=all
     --user "$(id -u):$(id -g)"
-    --read-only --tmpfs /tmp:rw,size=2g,mode=1777
+    --read-only --tmpfs "/tmp:${1:-rw,noexec,nosuid,nodev,size=2g,mode=1777}"
     --cap-drop ALL --security-opt no-new-privileges
     --pids-limit "$NSF_VOICE_PIDS"
     -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 -e VLLM_NO_USAGE_STATS=1 -e DO_NOT_TRACK=1)
@@ -88,7 +88,10 @@ tts_args() {
   mkdir -p "$NSF_VOICE_CACHE_DIR/tts"
   ARGS=(--name "$NSF_VOICE_TTS_CONTAINER" -p "$NSF_VOICE_BIND:$NSF_VOICE_TTS_PORT:8000"
     --cpus "$NSF_VOICE_TTS_CPUS" --memory "$NSF_VOICE_TTS_MEMORY" --shm-size 1g)
-  common_args
+  # phonemizer copies libespeak-ng.so into a temporary directory and loads it from there: on a noexec /tmp the load
+  # fails, misaki has no out-of-vocabulary fallback and Kokoro silently drops every unknown word ("NeuroSciFi",
+  # "agentic", "techcrunch"). The TTS /tmp is exec (still nosuid, nodev, size-bounded, root filesystem read-only).
+  common_args "rw,exec,nosuid,nodev,size=2g,mode=1777"
   [ "$NSF_VOICE_TTS_DEVICE" = cpu ] && ARGS+=(-e CUDA_VISIBLE_DEVICES=)
   ARGS+=(-v "$NSF_VOICE_TTS_MODEL_DIR:/models/kokoro-82m:ro" -v "$NSF_VOICE_CACHE_DIR/tts:/cache:rw"
     -e HOME=/cache -e XDG_CACHE_HOME=/cache -e HF_HOME=/cache/hf -e NUMBA_CACHE_DIR=/cache/numba

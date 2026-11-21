@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections import deque
 import http.client
 import json
+import re
 import socket
 import struct
 import threading
@@ -199,6 +200,24 @@ class WhisperASR(HttpEngine):
         return out
 
 
+# ---- pronunciation pass before TTS ---------------------------------------------------------------------------------
+# Kokoro's G2P knows dictionary words and spells capital acronyms (LLM, GPU); the espeak-ng fallback guesses the rest
+# (deploy/voice/run.sh keeps it loadable). This pass fixes what neither gets right: URLs and domains (read as
+# "techcrunch dot com", not dropped or run together) and a few product names.
+LEXICON = {"neuroscifi": "Neuro Sci-Fi", "searxng": "Searx N G", "vllm": "V L L M", "qwen": "Chwen"}
+_URL = re.compile(r"\bhttps?://([^/\s]+)\S*", re.IGNORECASE)
+_DOMAIN = re.compile(r"\b((?:[a-z0-9-]+\.)+(?:com|org|net|io|ai|dev|edu|gov|co|uk|de|fr|eu|info|app))\b", re.IGNORECASE)
+_WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*")
+
+
+def speakable(text: str) -> str:
+    """The text as it should be pronounced: URLs -> their host, domains -> "techcrunch dot com", LEXICON terms
+    respelled. Only what is spoken changes; the transcript keeps the original text."""
+    text = _URL.sub(lambda m: m.group(1), text or "")
+    text = _DOMAIN.sub(lambda m: " dot ".join(m.group(1).lower().removeprefix("www.").split(".")), text)
+    return _WORD.sub(lambda m: LEXICON.get(m.group(0).lower(), m.group(0)), text)
+
+
 class KokoroTTS(HttpEngine):
     """Kokoro-82M behind deploy/voice/tts_server.py (port 18432)."""
     kind = "tts"
@@ -210,7 +229,8 @@ class KokoroTTS(HttpEngine):
     def synthesize(self, text: str, voice: str, speed: float = 1.0) -> dict:
         if voice not in vconfig.VOICES:
             raise EngineError("bad_request", "voice not on the allow-list")
-        body = json.dumps({"input": text[:1000], "voice": voice, "speed": speed, "response_format": "wav"}).encode()
+        body = json.dumps({"input": speakable(text)[:1000], "voice": voice, "speed": speed,
+                           "response_format": "wav"}).encode()
         started = time.perf_counter()
         _, headers, data = self.request("POST", "/v1/audio/speech", body, {"Content-Type": "application/json"})
         if not data.startswith(b"RIFF"):
