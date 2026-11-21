@@ -109,6 +109,15 @@ def strip_thinking(text: str) -> str:
     return _THINK.sub("", text or "").strip()
 
 
+def _no_constant(name):
+    raise ValueError(f"{name} is not a JSON number")
+
+
+def loads(raw):
+    """json.loads that refuses NaN, Infinity and -Infinity (Python accepts them; JSON and the browser do not)."""
+    return json.loads(raw, parse_constant=_no_constant)
+
+
 def parse_json(text: str):
     """The JSON value in a model reply: fences and thinking removed; the outermost {...} if text surrounds it."""
     body = strip_thinking(text)
@@ -116,11 +125,11 @@ def parse_json(text: str):
     if fenced:
         body = fenced.group(1)
     try:
-        return json.loads(body)
+        return loads(body)
     except json.JSONDecodeError:
         start, end = body.find("{"), body.rfind("}")
         if 0 <= start < end:
-            return json.loads(body[start:end + 1])
+            return loads(body[start:end + 1])
         raise
 
 
@@ -239,7 +248,7 @@ class Gateway:
     def _http_error(resp, raw):
         message = None
         try:
-            detail = json.loads(raw.decode("utf-8", "replace"))
+            detail = loads(raw.decode("utf-8", "replace"))
         except ValueError:
             detail = None
         if isinstance(detail, dict):
@@ -272,7 +281,7 @@ class Gateway:
         if len(raw) > MAX_RESPONSE:
             raise InferenceError("bad_response", "answer larger than 8 MiB")
         try:
-            return json.loads(raw), attempts
+            return loads(raw), attempts
         except ValueError:
             raise InferenceError("bad_response", "the endpoint did not answer JSON") from None
 
@@ -394,7 +403,7 @@ class Gateway:
         except (socket.timeout, TimeoutError):
             raise InferenceError("timeout", "the answer did not arrive within the deadline") from None
         try:
-            data = json.loads(raw)
+            data = loads(raw)
             choice = data["choices"][0]
             message = choice.get("message") or {}
         except (ValueError, KeyError, IndexError, TypeError, AttributeError):
@@ -424,7 +433,7 @@ class Gateway:
             if data == b"[DONE]":
                 break
             try:
-                chunk = json.loads(data)
+                chunk = loads(data)
             except ValueError:
                 raise InferenceError("bad_response", "unparsable stream chunk") from None
             if chunk.get("error"):

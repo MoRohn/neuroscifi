@@ -153,6 +153,25 @@ def test_validate_spec_rules():
     assert scene_spec.nearest("reading the manual") == "reading" and scene_spec.nearest("zzz qqq") == "present"
 
 
+def test_validate_spec_rejects_non_finite_numbers():
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        el = dict(GOOD["elements"][0], x=bad)
+        assert scene_spec.validate_spec(dict(GOOD, elements=[el, GOOD["elements"][1]])), bad
+        el = dict(GOOD["elements"][0], rotation=bad)
+        assert scene_spec.validate_spec(dict(GOOD, elements=[el, GOOD["elements"][1]])), bad
+
+
+def test_model_spec_with_nan_is_not_accepted(tmp_path, fake):
+    scene_spec._results.clear()
+    path = tmp_path / "i.sqlite"
+    with closing(store.create(path, time.time())) as db:
+        nan = json.dumps(GOOD).replace('"x": 70', '"x": NaN')
+        assert "NaN" in nan
+        fake.replies += [{"content": nan}, {"content": nan}]
+        out = scene_spec.propose(db, path, "a nan idea", gateway=gateway_for(fake, tmp_path))
+        assert out["status"] != "ok"
+
+
 # ---- Pocket ---------------------------------------------------------------------------------------------------
 
 class Spark:

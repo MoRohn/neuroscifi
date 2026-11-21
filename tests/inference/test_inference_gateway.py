@@ -218,6 +218,26 @@ def test_parse_json_and_thinking():
     assert strip_thinking("<think>x\ny</think>\nanswer") == "answer"
 
 
+@pytest.mark.parametrize("text", ['{"a": NaN}', '{"a": Infinity}', '{"a": -Infinity}', 'x {"a": [1, NaN]} y'])
+def test_parse_json_rejects_non_finite_numbers(text):
+    with pytest.raises(ValueError):
+        parse_json(text)
+
+
+def test_structured_output_with_nan_is_invalid(gateway, fake):
+    schema = {"type": "object", "required": ["a"], "properties": {"a": {"type": "number", "minimum": 0}}}
+    fake.replies += [{"content": '{"a": NaN}'}, {"content": '{"a": Infinity}'}]
+    with pytest.raises(InferenceError) as err:
+        gateway.structured([{"role": "user", "content": "q"}], schema, name="t", purpose="s")
+    assert err.value.code == "schema_invalid"
+
+
+def test_jsonschema_number_must_be_finite():
+    from neuroscifi.inference.jsonschema import validate
+    assert validate(float("nan"), {"type": "number"}) and validate(float("inf"), {"type": "number"})
+    assert validate(float("nan"), {"minimum": 0, "maximum": 1})
+
+
 # ---- local-first policy ----------------------------------------------------------------------------------------
 
 def test_locality():

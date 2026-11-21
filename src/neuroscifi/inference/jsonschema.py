@@ -2,11 +2,12 @@
 guided decoding is a convenience, never the guarantee).
 
 Supported keywords: type (string or list), properties, required, additionalProperties (bool), items, enum, const,
-minItems, maxItems, minLength, maxLength, minimum, maximum, pattern. Anything else in a schema is refused when the
+minItems, maxItems, minLength, maxLength, minimum, maximum, pattern (NaN and the infinities never validate). Anything else in a schema is refused when the
 schema is checked (`check_schema`), so a schema never silently validates less than it says.
 """
 from __future__ import annotations
 
+import math
 import re
 
 SUPPORTED = {"type", "properties", "required", "additionalProperties", "items", "enum", "const", "minItems",
@@ -29,8 +30,8 @@ def check_schema(schema: dict, path: str = "$") -> None:
 def _is_type(value, name: str) -> bool:
     if name == "integer":
         return isinstance(value, int) and not isinstance(value, bool)
-    if name == "number":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if name == "number":   # NaN and the infinities are not JSON numbers
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
     expected = _TYPES.get(name)
     if expected is None:
         return False
@@ -42,6 +43,8 @@ def _is_type(value, name: str) -> bool:
 def validate(value, schema: dict, path: str = "$") -> list[str]:
     """Every violation as 'path: message'; [] means valid."""
     errors: list[str] = []
+    if isinstance(value, float) and not math.isfinite(value):
+        return [f"{path}: not a finite number"]
     kind = schema.get("type")
     if kind is not None:
         kinds = kind if isinstance(kind, list) else [kind]
