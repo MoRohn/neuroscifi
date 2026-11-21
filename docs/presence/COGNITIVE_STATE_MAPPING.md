@@ -44,7 +44,8 @@ primary is shown *subtly*: the calm exploring entity, an orbiting dot and half t
 | token ledger: calls that ended in the last 30 s | — | feeds intensity (`tokens_30s`) |
 | write regulation paused | `resource_constrained` | — |
 | measured memory/GPU pressure `elevated` or `critical` (`resources.monitor`, RD-46; `sources.resources`) | `resource_constrained` | — |
-| any provider circuit `open` (web enabled) | `network_degraded` | — |
+| any provider circuit `open` (web enabled) | `network_degraded` (`sources.search = "degraded"`) | — |
+| owner voice session active in a voice mode whose speech engines (ASR; plus TTS in `voice_text`) were last measured not `ready` by the hub (`voice.state.engines`, ≤ 60 s old) | `network_degraded` (`sources.voice = "engines_unavailable"`, `sources.voice_engines_down = "asr,tts"`); the text names the engines | — |
 | ≥2 running tasks, or running plus queued | `busy` | — |
 | nothing running for 10 min (tasks, ledger, questions) | — | resting (else idle) |
 

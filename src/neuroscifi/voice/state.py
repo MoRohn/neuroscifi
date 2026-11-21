@@ -8,6 +8,8 @@ process: the session and mode from the server, the capture device from the owner
 speaking / user_speaking / output_muted as last reported by the client that holds the session (the client reports
 every change; the server clears them when the session ends, the mic lease is released or a client goes silent for
 STALE_SECONDS). With no voice session in this process the result is text-only and idle.
+engines() -> {"asr": state, "tts": state} as the hub last measured them (VoiceHub.health, which every open voice
+client polls), or None when nothing was measured for ENGINES_STALE seconds: then nothing is claimed either way.
 """
 from __future__ import annotations
 
@@ -15,10 +17,12 @@ import threading
 import time
 
 STALE_SECONDS = 30.0
+ENGINES_STALE = 60.0
 FIELDS = ("mode", "session_active", "capture_device", "mic_capturing", "output_muted", "speaking", "user_speaking",
           "interrupted_at", "updated_at")
 _LOCK = threading.Lock()
 _SESSIONS: dict[str, dict] = {}
+_ENGINES: dict = {}
 
 
 def _idle(mode="text_only"):
@@ -71,7 +75,27 @@ def snapshot() -> dict:
         return out
 
 
+def set_engines(health: dict) -> None:
+    """Record the speech engines' measured states (the hub's health result)."""
+    if not isinstance(health, dict):
+        return
+    states = {k: (health.get(k) or {}).get("state") for k in ("asr", "tts")}
+    with _LOCK:
+        _ENGINES.clear()
+        _ENGINES.update(states, _at=time.monotonic())
+
+
+def engines() -> dict | None:
+    """The last measured {"asr", "tts"} states, or None when none were measured in the last ENGINES_STALE s."""
+    with _LOCK:
+        at = _ENGINES.get("_at")
+        if at is None or time.monotonic() - at > ENGINES_STALE:
+            return None
+        return {k: _ENGINES.get(k) for k in ("asr", "tts")}
+
+
 def reset() -> None:
     """Tests only."""
     with _LOCK:
         _SESSIONS.clear()
+        _ENGINES.clear()

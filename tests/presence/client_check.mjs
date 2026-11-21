@@ -88,6 +88,14 @@ const asking = { ...research, condition: ['awaiting_permission'], activities: [{
 i = interpret(asking, { connection: 'ok' }, now);
 ok(i.concept === 'asking' && i.assertive, 'permission is user-critical and assertive');
 ok(interpret(null, { connection: 'connecting' }).unknown, 'no state yet: unknown, not idle claims');
+// R2-08: unreachable speech engines are named, not reported as failing search providers (nor as healthy)
+const speechDown = { ...research, condition: ['network_degraded'], sources: { voice: 'engines_unavailable', voice_engines_down: 'asr,tts' } };
+i = interpret(speechDown, { connection: 'ok' }, now);
+ok(/speech recognition and speech output unavailable/.test(i.text) && !/search providers/.test(i.text), 'speech engines down named');
+i = interpret({ ...speechDown, sources: { ...speechDown.sources, search: 'degraded' } }, { connection: 'ok' }, now);
+ok(/speech recognition/.test(i.text) && /search providers are failing/.test(i.text), 'both causes named');
+i = interpret({ ...research, condition: ['network_degraded'] }, { connection: 'ok' }, now);
+ok(/search providers are failing/.test(i.text), 'provider failure keeps its words');
 
 // ---- motion: continuity, limits, interruption, reduced motion, settling
 const e = new MotionEngine();

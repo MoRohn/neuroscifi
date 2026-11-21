@@ -224,3 +224,28 @@ def test_every_user_origin_is_foreground_not_autonomous(inst, origin, cls):
     assert "autonomous_research" not in s["interaction"]
     for autonomous in ("curiosity", "refresh:3", "learner", "bench"):
         assert not orchestrator.user_initiated(autonomous)
+
+
+def test_voice_session_with_unreachable_speech_engines_is_not_healthy(inst):
+    """R2-08: with ASR and TTS unreachable during a voice session, Presence said "healthy" and voice "ok". The hub's
+    measured engine health (voice.state.engines) now makes the condition degraded and says which engines."""
+    from neuroscifi.voice import state as vstate
+    db, path = inst
+    vstate.reset()
+    try:
+        vstate.update("s1", owner=True, mode="voice_text", session_active=True)
+        vstate.set_engines({"asr": {"state": "ready"}, "tts": {"state": "ready"}})
+        s = derive(db, path)
+        assert s["condition"] == ["healthy"] and s["sources"]["voice"] == "ok"
+        vstate.set_engines({"asr": {"state": "unavailable"}, "tts": {"state": "unavailable"}})
+        s = derive(db, path)
+        assert "network_degraded" in s["condition"] and s["sources"]["voice"] == "engines_unavailable"
+        assert s["sources"]["voice_engines_down"] == "asr,tts"
+        vstate.update("s1", owner=True, mode="voice_in_text_out")       # text out: only recognition is needed
+        vstate.set_engines({"asr": {"state": "ready"}, "tts": {"state": "unavailable"}})
+        assert derive(db, path)["condition"] == ["healthy"]
+        vstate.update("s1", owner=True, mode="text_only")                # text only needs no speech engine
+        vstate.set_engines({"asr": {"state": "unavailable"}, "tts": {"state": "unavailable"}})
+        assert derive(db, path)["condition"] == ["healthy"]
+    finally:
+        vstate.reset()

@@ -26,6 +26,21 @@ export const ACTIVITY_TEXT = Object.freeze({
 });
 const CONDITION_TEXT = { busy: 'busy', resource_constrained: 'writes paused to protect storage', network_degraded: 'some search providers are failing',
   disconnected: 'connection lost', recovering: 'recovering an interrupted task', awaiting_permission: 'questions are waiting for you', error: 'a task failed' };
+const ENGINE_TEXT = { asr: 'speech recognition', tts: 'speech output' };
+// network_degraded has two real causes (aggregator sources): failing search providers and unreachable speech engines.
+function conditionNotes(condition, sources) {
+  const notes = [];
+  for (const c of condition) {
+    if (c !== 'network_degraded') { if (CONDITION_TEXT[c]) notes.push(CONDITION_TEXT[c]); continue; }
+    const speech = sources?.voice === 'engines_unavailable';
+    if (speech) {
+      const down = String(sources.voice_engines_down ?? '').split(',').map((k) => ENGINE_TEXT[k]).filter(Boolean);
+      notes.push(`${down.length ? down.join(' and ') : 'speech services'} unavailable; type instead`);
+    }
+    if (!speech || sources?.search === 'degraded') notes.push(CONDITION_TEXT.network_degraded);
+  }
+  return notes;
+}
 const SECONDARY_TEXT = { web_research: 'web research', background_investigation: 'background research', evidence_verification: 'evidence checks',
   knowledge_consolidation: 'knowledge consolidation', memory_retrieval: 'memory retrieval', audio_streaming: 'audio', tool_execution: 'tool execution', device_sync: 'device sync' };
 
@@ -89,7 +104,8 @@ export function interpret(server, local, now = Date.now()) {
   const others = list.filter((c) => c !== primary && c.activity !== primary.activity).slice(0, 2);
   return finish({ activity: primary.activity, concept: primary.concept, priority: primary.priority ?? 'idle', taskId: primary.task_id ?? null,
     label: primary.label ?? null, step: primary.step ?? null, detail: primary.detail ?? null, subsystem: primary.subsystem ?? null,
-    secondary: primary.secondary ?? [], condition: (server.condition ?? []).filter((c) => c !== 'healthy'), interaction: [...interaction].sort(),
+    secondary: primary.secondary ?? [], condition: (server.condition ?? []).filter((c) => c !== 'healthy'), sources: server.sources ?? {},
+    interaction: [...interaction].sort(),
     intensity: server.intensity ?? 0, level, others, audio: primary.audio ?? null, since: primary.since ?? null });
 }
 
@@ -116,7 +132,7 @@ export function describe(intent) {
   const also = [...new Set([...intent.others.map((o) => ACTIVITY_TEXT[o.activity]?.toLowerCase()),
     ...intent.secondary.filter((s) => s === 'background_investigation').map((s) => SECONDARY_TEXT[s])])].filter(Boolean);
   if (also.length) parts.push(`Also: ${also.join(', ')}`);
-  const conds = intent.condition.map((c) => CONDITION_TEXT[c]).filter(Boolean);
+  const conds = conditionNotes(intent.condition, intent.sources);
   if (conds.length) parts.push(`Note: ${conds.join('; ')}`);
   if (intent.interaction.includes('voice_muted')) parts.push('Voice output muted');
   if (intent.interaction.includes('text_only')) parts.push('Text only');

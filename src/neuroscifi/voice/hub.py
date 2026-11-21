@@ -146,6 +146,7 @@ class VoiceHub:
             return cached
         result = self.engines().health()
         self._health = (time.monotonic(), result)
+        vstate.set_engines(result)     # what the owner's Presence reports as the voice condition (R2-08)
         return result
 
     def _sweep(self, db):

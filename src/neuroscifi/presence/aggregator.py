@@ -13,7 +13,9 @@ Sources (all read-only):
 - the inference ledger `<db stem>.inference.sqlite` (owner scope; family scope: the family's own tasks only)
 - presence.activity: in-flight model calls of this process with streamed token counts
 - worker health (embedded worker thread, live leases), provider circuit breakers (web_strategies), write regulation
-- neuroscifi.voice.state.snapshot() when that module exists (owner scope); absent -> voice "unknown", not false
+- neuroscifi.voice.state.snapshot() when that module exists (owner scope); absent -> voice "unknown", not false;
+  an active voice session whose speech engines were last measured not ready (voice.state.engines) -> condition
+  network_degraded, sources.voice "engines_unavailable" (R2-08)
 
 Family scope (Pocket) sees only its own tasks and global system conditions; never another family's activity,
 the owner's questions, the voice session or this process's model calls.
@@ -274,6 +276,20 @@ def voice_snapshot():
     return out, "ok"
 
 
+def _voice_engines_down(mode):
+    """The speech engines a voice session in `mode` needs that were last measured not ready ("asr", "tts"); empty
+    when they are ready or nothing was measured recently (voice.state.engines; no network call here)."""
+    try:
+        from ..voice import state as vstate
+        measured = vstate.engines()
+    except (ImportError, AttributeError):
+        return []
+    if not isinstance(measured, dict):
+        return []
+    needed = ("asr", "tts") if mode == "voice_text" else ("asr",)
+    return [k for k in needed if measured.get(k) not in (None, "ready")]
+
+
 def _candidate(activity, *, subsystem, priority, since=None, task_id=None, category=None, label=None, detail=None,
                step=None, secondary=(), concept=None, confidence=1.0, origin=None):
     return {"activity": activity, "concept": concept, "subsystem": subsystem, "priority": priority,
@@ -400,6 +416,7 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
     if cfg is not None and cfg.enabled and (owner or signals["running"]):
         if _providers(db, now):
             conditions.add("network_degraded")
+            sources["search"] = "degraded"
 
     voice_state = None
     if owner and voice:
@@ -410,6 +427,11 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
                 if voice_state["session_active"]:   # chosen for a session; no session at all claims nothing
                     interactions.add("text_only")
             else:
+                down = _voice_engines_down(mode) if voice_state["session_active"] else []
+                if down:   # the session needs speech services that do not answer: not healthy (R2-08)
+                    conditions.add("network_degraded")
+                    sources["voice"] = "engines_unavailable"
+                    sources["voice_engines_down"] = ",".join(down)
                 if voice_state["output_muted"]:
                     interactions.add("voice_muted")
                 if voice_state["mic_capturing"]:
