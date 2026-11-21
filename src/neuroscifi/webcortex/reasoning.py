@@ -1033,35 +1033,63 @@ def rule_gaps(report: dict) -> list[str]:
 NOTE_LEAD = "NeuroSciFi note: "
 
 
-def verdict_note(report: dict) -> dict | None:
+# F6 (security review): the note's statement is web-derived for an autonomous task (curiosity proposes a target
+# statement read on the web). It is used only when it is one plain clause: no URL or domain, no address to the
+# reader or the model, no instruction.
+_NOTE_URL = re.compile(r"https?://|www\.|@|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b", re.IGNORECASE)
+_NOTE_ADDRESS = re.compile(
+    r"\b(?:you|your|yours|we|us|our|users?|everyone|anyone|readers?|assistants?|ai|models?|llms?|please|ignore|"
+    r"disregard|forget|override|must|should|ought|need\s+to|go|visit|click|download|install|reinstall|uninstall|"
+    r"upgrade|downgrade|paste|enter|type|run|execute|contact|email|call|send|reply|respond|say|tell|instead|above|"
+    r"below|previous|instructions?|system|prompt)\b", re.IGNORECASE)
+
+
+def _plain_clause(statement: str) -> bool:
+    """One clause (_clauses), one verb group, no URL or domain, no addressee or imperative (F6)."""
+    if len(_clauses(statement)) != 1 or _NOTE_URL.search(statement) or _NOTE_ADDRESS.search(statement):
+        return False
+    words = [w.lower() for w in _WORD_RX.findall(statement)]
+    groups = sum(1 for k, w in enumerate(words) if w in _AUX and not (k and words[k - 1] in _AUX))
+    return groups <= 1 and not any(w in ("and", "or", "but", "so", "then") for w in words)
+
+
+def verdict_note(report: dict, asked: str = "owner") -> dict | None:
     """D-R5-3: when the verdict says the checked statement was not evaluated (a judgement such as "recommended") or
     is not established by the evidence (insufficient), a labelled system note says so, whatever the model wrote or
     the guard kept: {"text": "NeuroSciFi note: whether numpy 2.5.5 is recommended is a judgement the evidence does not
-    establish.", "by": "rules"}. Built only from the verdict's statement (derived from the question, never from web
-    text) and its ADR-035 state; None otherwise."""
+    establish.", "by": "rules"}. Built only from the verdict's statement and its ADR-035 state; None otherwise.
+    F6: the statement must be one plain clause (_plain_clause). `asked`: "owner" (the owner asked: the statement
+    derives from the question), "confirmed" (an autonomous proposal the owner authorised: the statement may come
+    from web text, so it is quoted as the question, in guillemets) or "autonomous" (no owner saw it: no note)."""
     v = report.get("verdict") if isinstance(report.get("verdict"), dict) else None
-    if not v or v.get("state") not in ("not_evaluated", "insufficient"):
+    if not v or v.get("state") not in ("not_evaluated", "insufficient") or asked not in ("owner", "confirmed"):
         return None
-    statement = _clean(v.get("statement"), 200).rstrip(" .?!")
-    if not statement or safety.scan_injection(statement):
+    statement = _clean(_norm(v.get("statement")), 200).rstrip(" .?!").replace("«", "").replace("»", "")
+    if not statement or safety.scan_injection(statement) or not _plain_clause(statement):
         return None
-    if v["state"] == "not_evaluated":
+    if asked == "confirmed":
+        text = (f"«{statement}?» is a judgement the evidence does not establish." if v["state"] == "not_evaluated"
+                else f"the evidence read does not establish an answer to «{statement}?».")
+    elif v["state"] == "not_evaluated":
         text = f"whether {statement} is a judgement the evidence does not establish."
     else:
         text = f"the evidence read does not establish whether {statement}."
     return {"text": NOTE_LEAD + text, "by": "rules"}
 
 
-def _degraded(report, status, reason, **extra) -> dict:
+def _degraded_report(report, status, reason, *, asked: str = "owner", **extra) -> dict:
     reasoning = {"generated_by": TEMPLATE, "status": status, "label": LABEL_DEGRADED, "reason": reason,
                  "answer": [], "rejected": [], "gaps": [{"text": g, "by": "rules"} for g in rule_gaps(report)],
                  "critique": None, "usage": None} | extra
-    note = verdict_note(report)
+    note = verdict_note(report, asked)
     if note:
         reasoning["note"] = note
     report["reasoning"] = reasoning
     report["generated_by"] = TEMPLATE
     return reasoning
+
+
+_degraded = _degraded_report
 
 
 def unanswered(question: str) -> dict:
@@ -1110,13 +1138,17 @@ def _critique(gw, b, accepted, timeout=None):
 
 
 def apply(db, report: dict, services, *, question: str, now: float, task_id=None, gateway=None,
-          time_left: float | None = None, presentation: str | None = None) -> dict:
+          time_left: float | None = None, presentation: str | None = None, asked: str = "owner") -> dict:
     """Write report['reasoning'] and report['generated_by'] (see module doc). Never raises for model failures.
     `time_left`: seconds of the task's time budget still available; the model calls (answer, repair, critique)
     share it as their deadline, and with less than MIN_MODEL_SECONDS left no call is made (degraded).
     `presentation`: the owner's style instruction for the answer (task context, messages()); the guard and the
-    critique judge the sentences exactly as without it."""
+    critique judge the sentences exactly as without it. `asked`: who asked the question (verdict_note)."""
     from ..inference.gateway import InferenceError
+
+    def _degraded(report, status, reason, **extra):
+        return _degraded_report(report, status, reason, asked=asked, **extra)
+
     try:
         gw = gateway or gateway_for(db, services, task_id)
     except Exception as exc:     # an unreadable key file or similar: degrade, say why
@@ -1198,7 +1230,7 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     report["reasoning"] = {"generated_by": generated_by, "status": "model", "label": LABEL_MODEL.format(model=model),
                            "reason": None, "answer": accepted, "rejected": rejected, "gaps": merged[:2 * MAX_GAPS],
                            "critique": critique, "usage": usage}
-    note = verdict_note(report)
+    note = verdict_note(report, asked)
     if note:
         report["reasoning"]["note"] = note
     if presentation:

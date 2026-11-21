@@ -1998,10 +1998,20 @@ def _reason(db, run, report):
     from ..resources import policy as rpolicy
     db_path = getattr(run.services, "db_path", None)
 
+    # F6: an autonomous task's verdict statement may come from web text; its rules note needs the owner's authorisation
+    asked = "owner" if not is_autonomous(run.origin) else "autonomous"
+    if asked == "autonomous":
+        try:
+            if any(e["kind"] == "decision" and e["detail"].get("decision") == "proposal authorised by the owner"
+                   for e in state.events(db, run.id)):
+                asked = "confirmed"
+        except sqlite3.Error:
+            pass        # unknown: no note (fail closed)
+
     def apply():
         return reasoning.apply(db, report, run.services, question=run.objective, now=run.clock(), task_id=run.id,
                                time_left=run.budget.max_seconds - run.elapsed(),
-                               presentation=(run.checkpoint.get("context") or {}).get("presentation"))
+                               presentation=(run.checkpoint.get("context") or {}).get("presentation"), asked=asked)
     try:
         if not is_autonomous(run.origin):
             out = apply()
@@ -2013,9 +2023,9 @@ def _reason(db, run, report):
                 else:
                     audio = f"; {rpolicy.AUDIO_REASON}" if rpolicy.audio_active(db_path) else ""
                     out = reasoning._degraded(report, "degraded", "resources: no background model slot was free "
-                                              f"({rpolicy.model_slots(db_path)} at a time{audio})")
+                                              f"({rpolicy.model_slots(db_path)} at a time{audio})", asked=asked)
     except Exception as exc:   # the extractive report must survive any reasoning defect
-        out = reasoning._degraded(report, "error", f"reasoning failed: {type(exc).__name__}")
+        out = reasoning._degraded(report, "error", f"reasoning failed: {type(exc).__name__}", asked=asked)
     run.usage.seconds = round(run.elapsed(), 3)     # model time counts against the task's time budget
     report["usage"] = run.usage.to_json()
     if out["status"] != "not_configured":
