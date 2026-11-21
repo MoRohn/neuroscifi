@@ -93,6 +93,14 @@ Parsing is deterministic (regular expressions over the normalised transcript); n
 | "use this device for the microphone" | handoff | moves the capture lease (a Pocket device taking it from another principal: asks the holder, who grants or refuses) | **yes** |
 | "confirm" / "no" | confirm / deny | answers the pending confirmation of this session | — |
 
+The address ("NeuroSciFi, …", also as ASR hears it: "New Roe Sci-Fi", "neuro sci fi") is removed before parsing,
+and a trailing instruction ("… and summarize their importance", "…, then explain why it matters") is not part of
+the research subject: it is kept in the conversation context (`last_instruction`) and shown with the
+acknowledgement. (Passing it into answer synthesis needs a parameter of the research orchestrator; not done here.)
+"Continue the previous investigation", "show the evidence" and "explain more simply" use the conversation's last
+task, else the principal's latest research from any device (a Pocket device: its family's; the owner: any
+user-started task). "Show the evidence" numbers sources as the answer cites them; uncited sentences carry no "[]".
+
 A confirmation is held server-side per session for 60 s; it is executed only by the same session ("confirm" spoken,
 or the Confirm button). "Yes" alone is not accepted.
 

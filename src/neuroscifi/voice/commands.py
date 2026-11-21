@@ -34,6 +34,22 @@ MIN_QUESTION_WORDS = 3
 class Intent:
     kind: str
     arg: str | None = None
+    instruction: str | None = None     # research only: what to do with the findings ("summarize their importance")
+
+
+# The address ("NeuroSciFi, ..." and how speech recognition hears it: "New Roe Sci-Fi", "neuro sci fi") is not part
+# of the request; an instruction after the subject ("... and summarize their importance") is not the research subject.
+_WAKE = re.compile(r"^\W*(?:(?:hey|ok|okay|hi|hello)\W+)?(?:neuro|new\W*r(?:o|oe|ow))\W*sci\W*fi\b[\s,.!:;-]*",
+                   re.IGNORECASE)
+_INSTRUCTION = re.compile(r"[\s,;]+(?:and|then|,)\s+(?:then\s+)?(?:please\s+)?((?:summari[sz]e|explain|describe|"
+                          r"tell me|list|outline|compare|give me|rank)\b.*?)[\s.!?]*$", re.IGNORECASE)
+
+
+def _split_instruction(objective: str):
+    m = _INSTRUCTION.search(objective)
+    if m and len(objective[:m.start()].split()) >= 2:
+        return objective[:m.start()].rstrip(" ,;"), m.group(1)
+    return objective, None
 
 
 def normalise(text: str) -> str:
@@ -87,7 +103,8 @@ _RESEARCH = re.compile(r"^(?:please )?(?:research|look up|investigate|find out(?
 
 
 def parse(text: str) -> Intent:
-    norm = normalise(text or "")
+    text = _WAKE.sub("", text or "", count=1)
+    norm = normalise(text)
     if not norm:
         return Intent("unclear")
     for kind, pattern in _COMPILED:
@@ -108,9 +125,11 @@ def parse(text: str) -> Intent:
     if m:
         # keep the owner's own wording (case, punctuation) for the objective: drop the command words only
         words = len(norm.split()) - len(m.group(1).split())
-        return Intent("research", " ".join(original.split()[words:]) or m.group(1))
+        objective, instruction = _split_instruction(" ".join(original.split()[words:]) or m.group(1))
+        return Intent("research", objective, instruction)
     if len(norm.split()) >= MIN_QUESTION_WORDS:
-        return Intent("research", original)
+        objective, instruction = _split_instruction(original)
+        return Intent("research", objective, instruction)
     return Intent("unclear")
 
 

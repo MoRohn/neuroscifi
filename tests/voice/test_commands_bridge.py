@@ -237,3 +237,71 @@ def test_voice_autonomy_reply_reflects_a_failed_switch(db, monkeypatch):
     monkeypatch.setattr(autonomy, "enable", refuse)
     out = handle(db, "confirm", pending=r.confirm)
     assert "is now on" not in out.text and "couldn't" in out.text.lower() and not autonomy.enabled(db)
+
+
+@pytest.mark.parametrize("text,objective,instruction", [
+    ("NeuroSciFi, research the latest developments in agentic AI and summarize their importance.",
+     "the latest developments in agentic AI", "summarize their importance"),
+    ("New Roe Sci-Fi research the latest developments in AI agents and summarize their importance.",
+     "the latest developments in AI agents", "summarize their importance"),
+    ("Hey neuro sci fi, when was Python first released?", "when was Python first released?", None),
+    ("Research quantum error correction, then explain why it matters", "quantum error correction",
+     "explain why it matters"),
+    ("Research cats and dogs", "cats and dogs", None),           # 'and' alone is part of the subject
+])
+def test_wake_word_and_instruction_are_not_the_research_subject(text, objective, instruction):
+    """T2-03: the address and the instruction do not pollute the research query; the instruction is kept."""
+    intent = commands.parse(text)
+    assert intent.kind == "research" and intent.arg == objective and intent.instruction == instruction
+
+
+def test_wake_word_before_a_command():
+    assert commands.parse("NeuroSciFi, show me the evidence.").kind == "show_evidence"
+    assert commands.parse("NeuroSciFi.").kind == "unclear"
+
+
+def test_research_keeps_the_instruction_in_the_conversation(db):
+    r = handle(db, "NeuroSciFi, research the Zephyr compiler history and summarize its importance.")
+    assert orchestrator.get(db, r.task_id)["objective"] == "the Zephyr compiler history"
+    ctx = next(a for a in r.actions if a["kind"] == "context")
+    assert ctx["last_instruction"] == "summarize its importance"
+
+
+def test_continue_and_evidence_find_research_started_on_another_device(db):
+    """T2-06: research submitted from Pocket (no voice context) is found by voice within the principal's scope."""
+    phone = pocket_principal(family="fam-A")
+    task = orchestrator.submit(db, "Zephyr compiler release notes", time.time(), origin="pocket", family="fam-A")
+    for who in (phone, OWNER):
+        r = handle(db, "Continue my previous investigation", who)
+        assert r.intent == "continue_research" and r.task_id == task["id"], who.name
+        r = handle(db, "Show me the evidence", who)
+        assert r.intent == "show_evidence" and r.task_id == task["id"] and "Zephyr" in r.text, who.name
+    stranger = pocket_principal(family="fam-B")
+    r = handle(db, "Continue my previous investigation", stranger)
+    assert r.task_id is None and "no previous investigation" in r.text
+    r = handle(db, "Show me the evidence", stranger)
+    assert r.task_id is None and "Zephyr" not in r.text
+
+
+def test_evidence_numbers_match_the_answer_citations(db, monkeypatch):
+    """T2-09: 'show the evidence' numbers sources as the answer cites them; T2-10: no empty '[]' markers."""
+    report = dict(REPORT_MODEL, reasoning={"status": "model", "label": "m", "answer": [
+        {"text": "Cited by the second source.", "citations": [2]}, {"text": "Uncited sentence.", "citations": []}]})
+    r = vbridge.compose_answer({"id": "t", "status": "completed", "objective": "q", "result": report})
+    assert "[]" not in r.text and "Cited by the second source. [2]" in r.text
+    extractive = dict(report, reasoning={"status": "unavailable"},
+                      answer=[{"text": "A quote.", "citations": [], "status": "supported"}])
+    assert "[]" not in vbridge.compose_answer({"id": "t", "status": "completed", "objective": "q",
+                                               "result": extractive}).text
+    task = {"id": "t1", "objective": "q", "status": "completed", "result": report}
+    monkeypatch.setattr(orchestrator, "get", lambda db, tid, family=None: task)
+    sources = [{"url": "https://other.example/", "canonical_url": "https://other.example/", "title": "Other",
+                "domain": "other.example"},
+               {"url": "https://news.example/z", "canonical_url": "https://news.example/z", "title": "News",
+                "domain": "news.example"}]
+    monkeypatch.setattr(orchestrator, "evidence", lambda db, tid, family=None: {"sources": sources})
+    r = handle(db, "Show me the evidence", ctx={"last_task_id": "t1"})
+    by_n = {s["n"]: s["url"] for s in REPORT_MODEL["sources"]}
+    for line in r.text.splitlines()[1:]:
+        n = int(line[1:line.index("]")])
+        assert by_n[n].split("//")[1].split("/")[0] in line, line

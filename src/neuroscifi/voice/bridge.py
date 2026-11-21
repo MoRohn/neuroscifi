@@ -25,6 +25,7 @@ from ..instance.errors import Conflict, InstanceError, NotFound, ValidationError
 from . import commands
 
 CONFIRM_SECONDS = 60.0
+USER_ORIGINS = ("console", "cli", "voice", "pocket", "pocket-voice", "owner", "mcp")   # not autonomous research
 MAX_SPOKEN_SENTENCES = 2
 MAX_SPOKEN_WORDS = 70
 LABEL_TEMPLATE = "NeuroSciFi template reply (no model involved)"
@@ -103,6 +104,12 @@ def _sources(report, numbers=None):
     return out[:20]
 
 
+def _cited(item) -> str:
+    """'text [1, 2]', or just the text when nothing is cited (never an empty '[]')."""
+    numbers = [str(n) for n in item.get("citations") or []]
+    return f"{item['text']} [{', '.join(numbers)}]" if numbers else item["text"]
+
+
 def compose_answer(task) -> Reply:
     """The reply for a finished research task, from its report only."""
     status, objective = task.get("status"), task.get("objective") or ""
@@ -115,7 +122,7 @@ def compose_answer(task) -> Reply:
     reasoning = report.get("reasoning") if isinstance(report.get("reasoning"), dict) else {}
     if reasoning.get("status") == "model" and reasoning.get("answer"):
         items = [a for a in reasoning["answer"] if isinstance(a, dict) and a.get("text")]
-        lines = [f"{a['text']} [{', '.join(map(str, a.get('citations') or []))}]" for a in items]
+        lines = [_cited(a) for a in items]
         cited = {n for a in items for n in a.get("citations") or []}
         reply = Reply("research_result", speech=spoken([a["text"] for a in items]), text="\n".join(lines),
                       source="model", label=str(reasoning.get("label") or "Model answer (evidence-checked)"),
@@ -132,7 +139,7 @@ def compose_answer(task) -> Reply:
             speech = spoken([(f"According to {domain}: " if domain else "One source says: ") + first["text"]], 1)
         elif lead:
             speech = spoken([lead[0]["text"]], 1)
-        lines = [f"{a['text']} [{', '.join(map(str, a.get('citations') or []))}]" for a in items]
+        lines = [_cited(a) for a in items]
         label = LABEL_EXTRACTIVE
         if reasoning.get("reason"):
             label += f" ({str(reasoning['reason'])[:160]})"
@@ -155,8 +162,20 @@ class Bridge:
 
     # -- helpers -----------------------------------------------------------------------------------------------
     def _last_task(self, db, ctx, principal):
+        """The conversation's last task, else the principal's latest research from any device (a Pocket device: its
+        family's; the owner: any user-started task), so research started in Pocket or the console is reachable."""
         from ..webcortex import orchestrator
         tid = ctx.get("last_task_id")
+        if not tid:
+            if principal.owner:
+                row = db.execute("SELECT id FROM web_tasks WHERE origin IN (" + ",".join("?" * len(USER_ORIGINS)) +
+                                 ") ORDER BY created_at DESC, rowid DESC LIMIT 1", USER_ORIGINS).fetchone()
+            elif principal.family:
+                row = db.execute("SELECT id FROM web_tasks WHERE family=? ORDER BY created_at DESC, rowid DESC "
+                                 "LIMIT 1", (principal.family,)).fetchone()
+            else:
+                row = None
+            tid = row[0] if row else None
         if not tid:
             return None
         try:
@@ -186,6 +205,8 @@ class Bridge:
                 return Reply("deny", speech=["Okay, I won't do that."], text=f"Not done: {pending['summary']}",
                              actions=[{"kind": "clear_confirm"}])
             return self.execute(db, principal, ctx, pending)
+        if intent.kind == "research":
+            return self._submit(db, principal, ctx, intent.arg, instruction=intent.instruction)
         handler = getattr(self, "_" + intent.kind)
         return handler(db, principal, ctx, intent.arg)
 
@@ -195,7 +216,8 @@ class Bridge:
         action, args, now = pending["action"], pending["args"], self.clock()
         out = None
         if action == "disclose":
-            out = self._submit(db, principal, ctx, args["objective"], authorization=orchestrator.AUTHORIZED_DISCLOSURE)
+            out = self._submit(db, principal, ctx, args["objective"], authorization=orchestrator.AUTHORIZED_DISCLOSURE,
+                               instruction=args.get("instruction"))
         elif action == "forget_research":
             from ..instance import governance
             governance.forget_research(db, args["task_id"], now)
@@ -226,7 +248,7 @@ class Bridge:
         return out
 
     # -- intents ------------------------------------------------------------------------------------------------
-    def _submit(self, db, principal, ctx, objective, authorization=None):
+    def _submit(self, db, principal, ctx, objective, authorization=None, instruction=None):
         from ..webcortex import orchestrator
         if not principal.research:
             return _say("refused", "Research from this device is switched off. Turn on Pocket research in the "
@@ -242,7 +264,7 @@ class Bridge:
                 if not principal.owner:
                     return _say("refused", "That question contains private data, so it was not sent anywhere.")
                 kinds = str(err).split("(", 1)[-1].split(")", 1)[0]
-                return self._confirm("research", "disclose", {"objective": objective},
+                return self._confirm("research", "disclose", {"objective": objective, "instruction": instruction},
                                      f"That question contains private data ({kinds}). Send it to the web anyway?")
             return _say("refused", f"I couldn't start that research: {str(err)[:200]}")
         except Conflict as err:
@@ -253,9 +275,10 @@ class Bridge:
             return _say("refused", "This device has reached its hourly research limit.")
         again = task.get("deduplicated")
         line = ("I'm already researching that." if again else "I'm researching that now. I'll tell you what I find.")
-        return Reply("research", speech=[line], text=f"{line} Task: {task['objective'][:300]}", task_id=task["id"],
-                     follow=task["id"], actions=[{"kind": "context", "last_task_id": task["id"],
-                                                  "last_objective": task["objective"][:300]}])
+        text = f"{line} Task: {task['objective'][:300]}" + (f" (then: {instruction[:200]})" if instruction else "")
+        return Reply("research", speech=[line], text=text, task_id=task["id"], follow=task["id"],
+                     actions=[{"kind": "context", "last_task_id": task["id"], "last_objective": task["objective"][:300],
+                               "last_instruction": instruction[:200] if instruction else None}])
 
     def _research(self, db, principal, ctx, objective):
         return self._submit(db, principal, ctx, objective)
@@ -292,8 +315,17 @@ class Bridge:
             return _say("show_evidence", "There is no research in this conversation yet.")
         ev = orchestrator.evidence(db, task["id"], family=principal.family)
         n = len(ev.get("sources") or [])
-        lines = [f"[{i}] {s.get('title') or s.get('url')} ({s.get('domain') or ''})"
-                 for i, s in enumerate((ev.get("sources") or [])[:20], 1)]
+        # number the sources as the answer cites them (the report's [n]); sources the report does not list follow
+        cited = {s["url"]: s["n"] for s in _sources(task.get("result"))}
+        numbered, extra = [], max(cited.values(), default=0)
+        for s in ev.get("sources") or []:
+            k = next((cited[u] for u in (s.get("canonical_url"), s.get("final_url"), s.get("url")) if u in cited), None)
+            if k is None:
+                extra += 1
+                k = extra
+            numbered.append((k, s))
+        lines = [f"[{k}] {s.get('title') or s.get('url')} ({s.get('domain') or ''})"
+                 for k, s in sorted(numbered, key=lambda x: x[0])[:20]]
         return Reply("show_evidence", speech=[f"I read {n} source{'s' if n != 1 else ''} for that. They're on "
                                               "screen."],
                      text=f"Evidence for: {task['objective'][:300]}\n" + "\n".join(lines), task_id=task["id"],
@@ -378,7 +410,7 @@ class Bridge:
         accepted, _rejected = reasoning.guard(value.get("sentences"), b)
         if not accepted:
             return None
-        lines = [f"{a['text']} [{', '.join(map(str, a['citations']))}]" for a in accepted]
+        lines = [_cited(a) for a in accepted]
         cited = {n for a in accepted for n in a["citations"]}
         model = getattr(gw.cfg, "model", "") or "local model"
         return Reply("simpler", speech=spoken([a["text"] for a in accepted], 3, 70), text="\n".join(lines),
