@@ -272,6 +272,24 @@ def test_a_missing_evidence_clause_may_name_the_questions_numbers():
     assert all(any("not in the cited evidence" in r for r in x["reasons"]) for x in bad), bad
 
 
+def test_there_is_insufficient_evidence_is_an_honest_caveat():
+    """N1 (R4 live retest after the number fix): "There is insufficient evidence to determine whether NumPy 2.5.5 is
+    secure." was rejected as stating its insufficient claims as fact: it was not read as an insufficiency statement.
+    A second clause that adds a fact still needs its own support."""
+    b = numpy_bundle()
+    b["question"] = "Is numpy 2.5.5 secure?"
+    ok, bad = reasoning.guard([
+        {"text": "There is insufficient evidence to determine whether NumPy 2.5.5 is secure.", "sources": [1],
+         "claims": ["C1"]},
+        {"text": "There is not enough information on the security of numpy 2.5.5.", "sources": [1], "claims": ["C1"]}],
+        b)
+    assert bad == [] and len(ok) == 2 and all(x.get("insufficiency") for x in ok), bad
+    ok, bad = reasoning.guard([
+        {"text": "There is insufficient evidence on its security, but NumPy is the fundamental package for "
+                 "scientific computing.", "sources": [1], "claims": ["C1"]}], b)
+    assert ok == [] and "as fact without hedging" in bad[0]["reasons"][0], bad
+
+
 def test_sources_disagree_passes_when_the_verdict_is_conflicting():
     """R1-05 (s4a): the verdict was conflicting (100 vs 86 billion) but each cited claim's own state was
     insufficient, so "Sources disagree on the exact number ..." was rejected. The guard uses the verdict's state too."""

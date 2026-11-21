@@ -157,7 +157,10 @@ _INSUFFICIENT = re.compile(
     r"(?:\s+(?:evidence|sources|claims|documents))?)?\s+(?:states?|provides?|mentions?|gives?|establish(?:es)?|"
     r"specif(?:y|ies)|contains?|reports?|says?|identif(?:y|ies)|includes?|address(?:es)?|answers?)"
     r"|(?:this|it|the\s+answer)\s+cannot\s+be\s+(?:established|determined|confirmed|answered)\s+from\s+the\s+"
-    r"(?:provided\s+|available\s+)?(?:evidence|sources?))\b", re.IGNORECASE)
+    r"(?:provided\s+|available\s+)?(?:evidence|sources?)"
+    # N1 (R4 live): "There is insufficient evidence to determine whether NumPy 2.5.5 is secure."
+    r"|there\s+(?:is|are)\s+(?:insufficient|not\s+enough|no|too\s+little)\s+(?:\w+\s+)?(?:evidence|information|data))"
+    r"\b", re.IGNORECASE)
 _EXTRA_CLAUSE = re.compile(r";|:|\b(?:but|though|although|however|while|whereas|despite|except|because|since|due\s+to"
                            r"|yet|instead|rather|nevertheless|which|who|so|doubts?|disput\w*|contradict\w*)\b"
                            r"|,\s*(?:and|it|they|this|these)\b",
