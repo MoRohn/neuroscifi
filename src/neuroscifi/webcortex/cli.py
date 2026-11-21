@@ -191,8 +191,8 @@ def _positive_int(text):
         value = int(text)
     except ValueError:
         raise argparse.ArgumentTypeError(f"expected a positive integer, got {text!r}") from None
-    if value < 1:
-        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value}")
+    if not 1 <= value <= 1_000_000:
+        raise argparse.ArgumentTypeError(f"expected a positive integer of at most 1000000, got {value}")
     return value
 
 

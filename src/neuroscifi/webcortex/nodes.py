@@ -234,11 +234,16 @@ def _pocket_device(pocket_db, label):
 
 def cli(db, a, now):
     if a.node_action == "list":
+        if a.label or a.pocket_db:
+            raise ValidationError("list takes no LABEL or --pocket-db")
         return {"nodes": listing(db)}
     if not a.label:
         raise ValidationError(f"{a.node_action} needs the device LABEL")
     if a.node_action == "revoke":
-        return {"revoked": revoke(db, a.label, now), "nodes": listing(db)}
+        revoked = revoke(db, a.label, now)
+        if not revoked:
+            raise NotFound(f"no enrolled node is labelled {a.label!r} (nsf web node list)")
+        return {"revoked": revoked, "nodes": listing(db)}
     if not a.pocket_db:
         raise ValidationError("enrol needs --pocket-db (the Pocket bridge's private database)")
     device_fp, family_fp = _pocket_device(a.pocket_db, a.label)

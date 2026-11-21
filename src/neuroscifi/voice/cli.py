@@ -71,7 +71,8 @@ def _settings(args):
     try:
         changes = json.loads(args.set) if args.set else {}
         if not isinstance(changes, dict):
-            raise SystemExit("--set takes a JSON object")
+            from ..instance.errors import ValidationError
+            raise ValidationError("--set takes a JSON object")
         cfg = config.update(db, changes) if changes else config.get(db)
         return config.public(cfg)
     finally:
@@ -110,13 +111,14 @@ def _sweep(args):
 
 def register(sub):
     from ..instance import store
+    from ..instance.cli import LIMIT, run
     p = sub.add_parser("voice", help="Voice Cortex: speech services, settings, transcripts")
     vs = p.add_subparsers(dest="voice_command", required=True, metavar="ACTION")
 
     def cmd(name, fn, text):
         q = vs.add_parser(name, help=text)
         store.add_db_argument(q)
-        q.set_defaults(handler=lambda a: _print(fn(a)))
+        q.set_defaults(handler=run(lambda a: _jsonable(fn(a))))   # one-line errors, exit 2 (UAT T5-C01)
         return q
     cmd("health", _health, "engine health and a real TTS -> ASR round trip with word error rate")
     q = cmd("settings", _settings, "show or change voice settings")
@@ -124,12 +126,11 @@ def register(sub):
     q = cmd("transcripts", _transcripts, "list sessions and transcript segments, or search them")
     q.add_argument("--session")
     q.add_argument("--search")
-    q.add_argument("--limit", type=int, default=50)
+    q.add_argument("--limit", type=LIMIT, default=50)
     q = cmd("forget", _forget, "delete one voice session, its transcript and retained audio")
     q.add_argument("session")
     cmd("sweep", _sweep, "delete retained audio past its TTL (all of it when retention is off)")
 
 
-def _print(value):
-    print(json.dumps(value, indent=2, default=str))
-    return 0
+def _jsonable(value):
+    return json.loads(json.dumps(value, default=str))

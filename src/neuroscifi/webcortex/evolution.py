@@ -963,11 +963,20 @@ def _cli_calibration(db, a, now):
     return {"current": calibration(db), "history": calibration_history(db, limit=a.limit)}
 
 
+_NODE_TABLES = {"knowledge": "web_knowledge", "hypothesis": "web_hypotheses", "prediction": "web_predictions",
+                "claim": "web_claims"}
+
+
 def _cli_graph(db, a, now):
     kind, _, nid = a.node.partition(":")
     if not nid:
         raise ValidationError("node must be KIND:ID, e.g. knowledge:12")
-    return graph(db, kind, nid, depth=a.depth)
+    out = graph(db, kind, nid, depth=a.depth)
+    table = _NODE_TABLES.get(kind)
+    if not out["edges"] and table and not db.execute(f"SELECT 1 FROM {table} WHERE CAST(id AS TEXT)=? LIMIT 1",
+                                                     (nid,)).fetchone():
+        raise NotFound(f"no {kind} {nid}")
+    return out
 
 
 def _cli_learning(db, a, now):
@@ -986,19 +995,15 @@ def _cli_assert(db, a, now):
 def _cli_adapt(db, a, now):
     import json
     request = json.loads(a.request_json) if a.request_json else {}
+    if not isinstance(request, dict):
+        raise ValidationError("--request-json must be a JSON object")
     request.setdefault("action", a.action)
     request.setdefault("origin", "owner-cli")
     return model_adaptation_guard(db, request, now)
 
 
 def register(sub):
-    from ..instance.cli import with_db
-
-    def _positive(text):
-        value = float(text)
-        if not value > 0:
-            raise ValueError(text)
-        return value
+    from ..instance.cli import LIMIT, bounded_int, days, with_db
 
     def _probability(text):
         value = float(text)
@@ -1016,25 +1021,25 @@ def register(sub):
         return p
 
     p = cmd("evolution", _cli_evolution, "metacognitive metrics computed from the stored records")
-    p.add_argument("--since-days", type=_positive)
+    p.add_argument("--since-days", type=days)
     p.add_argument("--record", action="store_true", help="store the snapshot (web_metrics)")
     p = cmd("changes", _cli_changes, "what has changed in the understanding of TOPIC (versions, evidence, dates)")
     p.add_argument("topic")
-    p.add_argument("--since-days", type=_positive)
-    p.add_argument("--limit", type=int, default=5)
+    p.add_argument("--since-days", type=days)
+    p.add_argument("--limit", type=LIMIT, default=5)
     p.add_argument("--phrase", action="store_true", help="let a configured local model rephrase the summary")
     p = cmd("hypotheses", _cli_hypotheses, "research opportunities and hypotheses (provisional, never knowledge)")
     p.add_argument("--status", choices=HYPOTHESIS_STATES)
-    p.add_argument("--limit", type=int, default=50)
+    p.add_argument("--limit", type=LIMIT, default=50)
     p = cmd("hypothesize", _cli_hypothesize, "record the owner's hypothesis with a testable prediction")
     p.add_argument("statement")
     p.add_argument("--probability", type=_probability, default=0.5, help="your forecast that it holds")
-    p.add_argument("--deadline-days", type=_positive, default=30.0)
+    p.add_argument("--deadline-days", type=days, default=30.0)
     p = cmd("calibration", _cli_calibration, "Brier score and reliability bins of settled predictions")
-    p.add_argument("--limit", type=int, default=10)
+    p.add_argument("--limit", type=LIMIT, default=10)
     p = cmd("graph", _cli_graph, "knowledge-graph edges around KIND:ID (claim, knowledge, hypothesis, ...)")
     p.add_argument("node")
-    p.add_argument("--depth", type=int, default=1)
+    p.add_argument("--depth", type=bounded_int(1, 3), default=1)
     p = cmd("learning", _cli_learning, "procedural research-policy statistics (bounded, logged, reversible)")
     group = p.add_mutually_exclusive_group()
     group.add_argument("--update", action="store_true")

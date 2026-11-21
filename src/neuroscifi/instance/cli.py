@@ -24,14 +24,57 @@ def _fail(message):
     return 2
 
 
+class Failed(Exception):
+    """A command that failed but has a JSON report to print (stdout) and an exit status (default 1)."""
+    def __init__(self, report, status=1):
+        super().__init__(str(report)[:200])
+        self.report, self.status = report, status
+
+
+def bounded_int(low, high):
+    """argparse type: an integer in [low, high] (a huge or negative --limit is refused, never a traceback)."""
+    import argparse
+
+    def parse(text):
+        try:
+            value = int(text)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"expected an integer, got {text!r}") from None
+        if not low <= value <= high:
+            raise argparse.ArgumentTypeError(f"expected an integer from {low} to {high}, got {text}")
+        return value
+    return parse
+
+
+def days(text):
+    """argparse type: a finite number of days, more than 0 and at most 36 500 (100 years)."""
+    import argparse
+    import math
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a number of days, got {text!r}") from None
+    if not math.isfinite(value) or not 0 < value <= 36500:
+        raise argparse.ArgumentTypeError(f"expected a number of days above 0 and at most 36500, got {text}")
+    return value
+
+
+LIMIT = bounded_int(1, 100_000)
+
+
 def run(handler):
     """Wrap a handler(args) -> JSON-able value with uniform error handling."""
     def wrapped(args):
         try:
             return emit(handler(args))
+        except Failed as failed:
+            emit(failed.report)
+            return failed.status
         except InstanceError as error:
             print(f"nsf: {error}", file=sys.stderr)
             return 2
+        except OverflowError as error:
+            return _fail(f"number out of range: {error}")
         except json.JSONDecodeError as error:
             return _fail(f"invalid JSON: {error}")
         except FileNotFoundError as error:
