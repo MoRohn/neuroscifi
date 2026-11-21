@@ -101,6 +101,9 @@ acknowledgement. It reaches answer synthesis as a presentation instruction: the 
 (`orchestrator.submit(context=...)`, privacy-screened like the objective, kept on resume), which
 `reasoning.messages` adds to the system prompt as a style instruction under the same rules. It is never a search
 term, and the evidence guard judges every sentence exactly as without it (`reasoning.presentation` records it).
+A follow-up question that only points back ("Is that version secure?", "When was it released?") takes its subject
+from the conversation's previous question (`last_objective`) through `webcortex.intent.followup`, as the console
+does; with no usable earlier question the reply asks which one is meant (intent `clarify`) and nothing is searched.
 "Continue the previous investigation", "show the evidence" and "explain more simply" use the conversation's last
 task, else the principal's latest research from any device (a Pocket device: its family's; the owner: any
 user-started task). "Show the evidence" numbers sources as the answer cites them; uncited sentences carry no "[]".

@@ -360,3 +360,16 @@ def test_research_from_conversation_is_rate_limited_per_principal(db):
     assert phone.intent == "research"                              # another principal has its own allowance
     clock[0] += vbridge.CONVERSATION_RESEARCH_WINDOW + 1
     assert bridge.handle(db, OWNER, {}, "What is the lifespan of a tortoise?").intent == "research"
+
+
+def test_follow_up_uses_the_previous_question_of_the_conversation(db):
+    """'Is that version secure?' by voice takes its subject from the conversation's previous question, like the
+    console (intent.followup); with no earlier question it asks which one is meant and starts nothing."""
+    first = handle(db, "Is numpy 2.5.5 recommended for production?")
+    ctx = {k: v for k, v in next(a for a in first.actions if a["kind"] == "context").items() if k != "kind"}
+    r = handle(db, "Is that version secure?", ctx=ctx)
+    assert r.intent == "research" and orchestrator.get(db, r.task_id)["objective"] == "Is numpy 2.5.5 secure?"
+    before = db.execute("SELECT count(*) FROM web_tasks").fetchone()[0]
+    lone = handle(db, "Is that version secure?")
+    assert lone.intent == "clarify" and lone.task_id is None and "Which version do you mean?" in lone.speech[0]
+    assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == before

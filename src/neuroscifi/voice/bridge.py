@@ -235,7 +235,14 @@ class Bridge:
                              actions=[{"kind": "clear_confirm"}])
             return self.execute(db, principal, ctx, pending)
         if intent.kind == "research":
-            return self._submit(db, principal, ctx, intent.arg, instruction=intent.instruction)
+            # "Is that version secure?" points back to the conversation's previous question, as in the console
+            # (webcortex.intent.followup; T1-10): the subject comes only from that question, never a guess
+            from ..webcortex import intent as wintent
+            follow = wintent.followup(intent.arg, ctx.get("last_objective"))
+            if follow and "clarify" in follow:
+                return _say("clarify", follow["clarify"])
+            return self._submit(db, principal, ctx, follow["question"] if follow else intent.arg,
+                                instruction=intent.instruction)
         handler = getattr(self, "_" + intent.kind)
         return handler(db, principal, ctx, intent.arg)
 
