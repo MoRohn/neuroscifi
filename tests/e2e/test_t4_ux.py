@@ -231,6 +231,13 @@ def test_changed_views_axe_clean(spark, owner, new_page, width, theme):
         page.wait_for_timeout(400)
         if view == "Voice":
             page.evaluate("() => { window.__nsfVoice.ui.consent.hidden = false; }")
+            # T4-02: a model answer with its marked sentence, as the transcript shows it
+            page.evaluate("""() => window.__nsfVoice.client.emit('segment', {id: 991, speaker: 'neuroscifi',
+                status: 'final', authority: 'authoritative', created_at: 1795280000, label: 'NeuroSciFi',
+                text: 'Zephyr 4.2.0 shipped. [1]\\nIt adds targets. [2] (only one source or too little evidence; not independently confirmed)',
+                detail: {label: 'Model-written summary by m from the collected evidence; each sentence was checked against its cited sources, and a sentence that independent sources do not support is marked',
+                         sources: [{n: 1, title: 'Zephyr', url: 'http://news.example/z', domain: 'news.example'}]}})""")
+            expect(page.locator("[data-seg='991']")).to_contain_text("not independently confirmed")
         assert page.evaluate(AXE_ALL) == [], view
     page.goto(spark.url)
     pair(page)
@@ -238,5 +245,19 @@ def test_changed_views_axe_clean(spark, owner, new_page, width, theme):
     page.locator("#objective").fill("x@y.org")
     page.locator("#researchsubmit").click()
     expect(page.locator("#objective")).to_have_attribute("aria-invalid", "true")
+    expect(page.locator("#researchmsg")).to_contain_text("Refused by your Spark")
+    assert page.evaluate(AXE_ALL) == []
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    # R2-06: the evidence review with each no-basis wording
+    page.route("**/api/research_evidence*", lambda r: r.fulfill(json={"subjects": 3, "evidence": [
+        {"state": "insufficient", "statement": "A claim", "basis": None, "sources": 1, "domain": "one.example"},
+        {"state": "insufficient", "statement": "Another claim", "basis": None, "sources": 2},
+        {"state": "supported", "statement": "Third", "basis": "corroboration", "sources": 3}]}))
+    page.locator("#objective").fill("What is the latest version of the Zephyr compiler?")
+    page.locator("#researchsubmit").click()
+    spark.work()
+    expect(page.locator("#researchstage")).to_contain_text("Completed", timeout=15_000)
+    page.get_by_role("button", name="Review evidence").click()
+    expect(page.locator(".revbasis").first).to_contain_text("stated by one source only")
     assert page.evaluate(AXE_ALL) == []
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
