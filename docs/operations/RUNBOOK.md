@@ -239,3 +239,50 @@ Brief reference: Architecture.md, "Operating as the primary system on the Spark"
 | 13 | p50/p95/p99 sensor-to-action latency, dropped inputs, memory high-water, joules per skill | Host decision latency, idle and under concurrent learning plus checkpointing, was measured on the development Spark (acceptance `device_ownership`; `docs/quality/evidence/acceptance.json`). Real sensor-to-action latency, dropped real inputs and joules per skill need capture devices and a power meter | OPS-06 | **Partial:** host latency measured; sensor and energy parts blocked |
 
 Record the date, operator, host, software version (`/opt/neuroscifi/venv/bin/pip show neuroscifi`) and the result of each item. An item with no recorded result is not passed.
+
+## 12. Web Cortex (governed web research)
+
+Web access is off until the owner turns it on: `nsfs web config --enable`. Nothing below contacts the internet while it is off.
+
+### Which process runs research
+
+| Unit | Role | Network |
+|---|---|---|
+| `neuroscifi-webcortex.service` | `nsf web work`: runs queued research tasks (console, Pocket, `nsf web ask --queue`, the tick timer) | Public web and loopback |
+| `neuroscifi-webcortex-tick.timer` | `nsf web tick`: runs due monitors, and refresh/curiosity when `--autonomous` is on | Public web and loopback |
+| `neuroscifi-websearch.service` | the loopback open-webSearch daemon | Search engines and loopback |
+| `neuroscifi-console.service` | submits, shows and reviews research | **Loopback only** |
+
+The console does **not** run research by default (changed in this release). Its unit is confined to loopback (`IPAddressDeny=any`), so an embedded worker there could not reach the internet and would mark providers unhealthy for everyone. Start `neuroscifi-webcortex.service` to run queued tasks:
+
+```sh
+sudo systemctl start neuroscifi-webcortex.service neuroscifi-websearch.service
+sudo systemctl start neuroscifi-webcortex-tick.timer          # monitors (and autonomous research if enabled)
+nsfs web status                                                # switches, provider health, task counts
+```
+
+`nsf console --web-worker` also runs queued tasks inside the console process. Use it only for a development console started by hand on a host with network access, never in the console unit. `--no-web-worker` is still accepted and is the default. An embedded worker that fails logs the exception type and a short message and retries after 5 s, doubling to at most 60 s.
+
+### Search daemon and the honest User-Agent (ADR-032)
+
+`install.sh --websearch` runs `npm ci --ignore-scripts`, then `apply-honest-ua.mjs`, which replaces the scrapers' forged browser User-Agents with the Web Cortex's own. `nsf web daemon start` and the unit's `ExecStartPre` refuse an unpatched build. After a manual `npm ci`, run `npm run patch-ua` in `/opt/neuroscifi/open-websearch`. Some engines return nothing to an honest User-Agent; research then falls back to the structured providers (Wikipedia, arXiv, OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub). An owner who accepts impersonation can opt in with `nsfs web config --search-browser-ua` (off by default; `nsfs web status` and `nsfs web health` show the switch and `honest_user_agent`).
+
+### Questions, findings and paused writes
+
+- Web questions have their own budget: at most `max_open_web_questions` (default 10) open, and at most `max_web_questions_per_task` (default 3) new per task. Beyond that, candidates stay provisional and one aggregate question per task (scope `web:review:<task>`) says how many await review. Review them in the console (Research) or with `nsfs web knowledge --status provisional` and `nsfs web review ID --accept|--reject`. `nsfs regulation` reports `open_web_questions` separately.
+- A monitor's meaningful change is a `finding` event and an informational question `web:finding:<monitor>:<task>`; the console's monitors table lists recent findings.
+- While regulation pauses writes (section 7), nothing web-related is written: submissions, consolidation, monitors and proposals return "writes paused", the worker claims nothing (one decision event), and a running task stops at its next step as `partial` without consolidating.
+
+### Forgetting web memory
+
+| Request | Command |
+|---|---|
+| A research task, its evidence and the knowledge resting only on it (also its pages in the public cache that no other task read) | `nsfs forget research TASK_ID` |
+| A knowledge item and every version of it | `nsfs forget knowledge ID` (or `nsfs web forget ID`) |
+| A source URL (as requested, original or final) or every source of a domain, also from the public cache | `nsfs forget source URL_OR_DOMAIN` |
+
+Each web forget records a payload-free tombstone (`web_forgotten`, an instance-salted digest), marks every checkpoint stale and logs only a digest label for a URL or domain in `deletion_log`. `checkpoint restore` replays those tombstones on the restored copy, so a forgotten task, knowledge version or source never comes back. Then follow the erasure steps of section 6 (`checkpoint rebuild`). Forgetting a partner (`nsfs forget partner NAME`) also replaces the name in research objectives, reports, events, claims and knowledge.
+
+### MCP
+
+`nsf web mcp` allows at most `mcp_research_per_hour` (default 6) `web_research` calls per hour per server process, and MCP-origin tasks share the daily allowance `daily_mcp` (tasks, requests, bytes). Results carry the report's context pack (bounded by the task's `max_context_tokens`); `full_report: true` returns the whole report.

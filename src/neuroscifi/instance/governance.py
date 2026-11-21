@@ -96,11 +96,17 @@ _SCRUB_TABLES = (  # table, scrubbed columns, columns stored as JSON
     ("belief_revisions", ("summary", "cause"), ("summary",)),
     ("pending", ("scope", "question", "resolution"), ()),
     ("decisions", ("scope", "reason"), ()),
+    # Web Cortex text (migration 6): an owner-authorised task may name a partner (ADR-019, ADR-029).
+    ("web_tasks", ("objective", "result", "checkpoint", "error"), ("result", "checkpoint")),
+    ("web_events", ("detail",), ("detail",)),
+    ("web_claims", ("text", "title"), ()),
+    ("web_knowledge", ("statement", "key", "contradicting", "note"), ("contradicting",)),
 )
 
 
 def scrub_roots(db, roots):
-    """Replace forgotten roots in belief_revisions, pending and decisions; delete their changepoints and links.
+    """Replace forgotten roots in belief_revisions, pending, decisions and the Web Cortex text columns (task
+    objectives, reports and checkpoints, events, claims, knowledge); delete their changepoints and links.
 
     Caller owns the transaction. roots: {root: (kind, digest)} with kind 'camera' or 'partner'. Returns the
     number of rows rewritten or deleted. Works on any migrated connection to an instance file (also a
@@ -124,11 +130,11 @@ def scrub_roots(db, roots):
         for table, columns, json_columns in _SCRUB_TABLES:
             match = " OR ".join(f"instr({c},?)>0" for c in columns for _ in needles)
             params = [n for _ in columns for n in needles]
-            for row in db.execute(f"SELECT id,{','.join(columns)} FROM {table} WHERE {match}", params).fetchall():
+            for row in db.execute(f"SELECT rowid,{','.join(columns)} FROM {table} WHERE {match}", params).fetchall():
                 new = [_scrub_text(text, chunk, sub, as_json=column in json_columns)
                        for column, text in zip(columns, row[1:])]
                 if new != list(row[1:]):
-                    db.execute(f"UPDATE {table} SET {','.join(c + '=?' for c in columns)} WHERE id=?",
+                    db.execute(f"UPDATE {table} SET {','.join(c + '=?' for c in columns)} WHERE rowid=?",
                                (*new, row[0]))
                     rewritten += 1
     return rewritten
@@ -335,15 +341,42 @@ def sweep(db, now):
     return out
 
 
-# ---- Web Cortex (migration 6, ADR-029) ------------------------------------------------------------------------
+# ---- Web Cortex (migrations 6-7, ADR-029) ---------------------------------------------------------------------
 # A forgotten research task leaves no copy of its objective, queries, events, sources or claims: the task row is
 # deleted and the deletion_log names only the task id. Knowledge that rested only on removed claims is deleted
 # with its questions, predictions and feedback; knowledge that keeps other support loses the removed references
-# and becomes 'stale' (it needs re-verification). A version whose successor is deleted becomes the latest again,
-# as 'stale'. Questions about removed knowledge are closed with a system resolution and their text rewritten.
+# and becomes 'stale' (it needs re-verification). When a version in the middle of a supersession chain is deleted,
+# its predecessor points at the nearest surviving successor; only when none survives does the predecessor become
+# the latest version again, as 'stale'. Questions about removed knowledge are closed and their text rewritten.
+#
+# Every web forget also records payload-free tombstones in web_forgotten (kind, web_digest): the task id, each
+# removed knowledge version (id and key), each removed source URL (as requested, original, final and canonical)
+# or the domain. checkpoints.restore replays them on the restored copy (replay_web_forgets) so nothing forgotten
+# comes back. deletion_log never holds a forgotten URL or domain (only its digest label); the public-cache keys
+# the caller must drop are returned in effects["cache"] and are never persisted.
 
 WEB_FORGOTTEN = "forgotten: the web memory it referred to was removed"
+WEB_FORGOTTEN_KINDS = ("task", "knowledge", "source_url", "source_domain")
 _WEB_QUESTION = "#forgotten"
+_WEB_SCRUBBED = "#forgotten"
+
+
+def web_digest(instance_id, kind, value):
+    """Instance-salted digest of a forgotten web subject (kind in WEB_FORGOTTEN_KINDS), like root_digest."""
+    return root_digest(instance_id, f"web:{kind}:{value}")
+
+
+def _knowledge_subject(knowledge_id, key):
+    return f"{knowledge_id}:{key}"
+
+
+def _web_tombstones(db, kind, values, now):
+    """Record payload-free tombstones for forgotten web subjects. Caller owns the txn. Returns the digests."""
+    instance_id = store.birth(db)["instance_id"]
+    digests = sorted({web_digest(instance_id, kind, v) for v in values if v not in (None, "")})
+    db.executemany("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)",
+                   [(kind, d, now) for d in digests])
+    return digests
 
 
 def _ids(db, sql, params=()):
@@ -352,6 +385,12 @@ def _ids(db, sql, params=()):
 
 def _in(values):
     return ",".join("?" * len(values))
+
+
+def _chunks(values, size=300):
+    values = list(values)
+    for start in range(0, len(values), size):
+        yield values[start:start + size]
 
 
 def _forget_pending(db, scopes, prefixes, now):
@@ -372,27 +411,47 @@ def _forget_pending(db, scopes, prefixes, now):
 
 
 def _drop_knowledge(db, ids, now):
-    """Delete knowledge rows and everything derived from them. Caller owns the txn. Returns effects."""
+    """Delete knowledge rows and everything derived from them, recording a tombstone per version. Caller owns the
+    txn. Returns effects."""
     ids = sorted(set(ids))
     if not ids:
-        return {"knowledge_deleted": [], "versions_restored": [], "pending_closed": []}
-    restored = []
+        return {"knowledge_deleted": [], "versions_restored": [], "versions_relinked": [], "pending_closed": []}
+    doomed = set(ids)
+    rows = []
+    for part in _chunks(ids):
+        rows += db.execute(f"SELECT id,key,superseded_by FROM web_knowledge WHERE id IN ({_in(part)})", part).fetchall()
+    successor = {kid: sup for kid, _, sup in rows}
+    restored, relinked = [], []
     for kid in ids:
+        nearest, seen = successor.get(kid), set()
+        while nearest is not None and nearest in doomed and nearest not in seen:
+            seen.add(nearest)
+            nearest = successor.get(nearest)
+        if nearest is not None and (nearest in doomed or db.execute(
+                "SELECT 1 FROM web_knowledge WHERE id=?", (nearest,)).fetchone() is None):
+            nearest = None
         for (older,) in db.execute("SELECT id FROM web_knowledge WHERE superseded_by=?", (kid,)).fetchall():
-            if older in ids:
+            if older in doomed:
+                continue
+            if nearest is not None:   # the chain closes over the gap: the older version stays superseded
+                db.execute("UPDATE web_knowledge SET superseded_by=?, updated_at=? WHERE id=?", (nearest, now, older))
+                relinked.append(older)
                 continue
             db.execute("UPDATE web_knowledge SET superseded_by=NULL, valid_until=NULL, status=CASE WHEN "
                        "status='superseded' THEN 'stale' ELSE status END, note=?, updated_at=? WHERE id=?",
                        ("its successor version was forgotten; needs re-verification", now, older))
             restored.append(older)
-    marks = _in(ids)
-    db.execute(f"DELETE FROM web_knowledge WHERE id IN ({marks})", ids)
-    db.execute(f"DELETE FROM web_predictions WHERE knowledge_id IN ({marks})", ids)
-    db.execute(f"DELETE FROM web_feedback WHERE knowledge_id IN ({marks})", ids)
-    db.execute(f"DELETE FROM web_mentions WHERE knowledge_id IN ({marks})", ids)
-    db.execute(f"DELETE FROM web_events WHERE json_extract(detail,'$.knowledge_id') IN ({marks})", ids)
+    _web_tombstones(db, "knowledge", [_knowledge_subject(kid, key) for kid, key, _ in rows], now)
+    for part in _chunks(ids):
+        marks = _in(part)
+        db.execute(f"DELETE FROM web_knowledge WHERE id IN ({marks})", part)
+        db.execute(f"DELETE FROM web_predictions WHERE knowledge_id IN ({marks})", part)
+        db.execute(f"DELETE FROM web_feedback WHERE knowledge_id IN ({marks})", part)
+        db.execute(f"DELETE FROM web_mentions WHERE knowledge_id IN ({marks})", part)
+        db.execute(f"DELETE FROM web_events WHERE json_extract(detail,'$.knowledge_id') IN ({marks})", part)
     closed = _forget_pending(db, [f"web:knowledge:{k}" for k in ids], [], now)
-    return {"knowledge_deleted": ids, "versions_restored": sorted(restored), "pending_closed": closed}
+    return {"knowledge_deleted": ids, "versions_restored": sorted(restored), "versions_relinked": sorted(relinked),
+            "pending_closed": closed}
 
 
 def _web_cascade(db, removed_claims, now):
@@ -418,10 +477,10 @@ def _web_cascade(db, removed_claims, now):
                                           f"lost {len(support) - len(kept)} supporting claim(s) to a forget; "
                                           "needs re-verification" if kept != support else None, now, kid))
                 weakened.append(kid)
-        marks = _in(sorted(gone))
-        db.execute(f"DELETE FROM web_claim_links WHERE src IN ({marks}) OR dst IN ({marks})",
-                   (*sorted(gone), *sorted(gone)))
-        db.execute(f"DELETE FROM web_mentions WHERE claim_id IN ({marks})", sorted(gone))
+        for part in _chunks(sorted(gone)):
+            marks = _in(part)
+            db.execute(f"DELETE FROM web_claim_links WHERE src IN ({marks}) OR dst IN ({marks})", (*part, *part))
+            db.execute(f"DELETE FROM web_mentions WHERE claim_id IN ({marks})", part)
     effects = _drop_knowledge(db, doomed, now)
     effects["knowledge_stale"] = sorted(set(weakened) - set(doomed))
     effects["claims_removed"] = len(gone)
@@ -430,7 +489,8 @@ def _web_cascade(db, removed_claims, now):
 
 
 def _web_finish(db, kind, target, effects, now):
-    """Stale checkpoints, state version and deletion_log. Caller owns the txn."""
+    """Stale checkpoints, state version and deletion_log. Caller owns the txn. `target` is persisted: it must
+    not carry forgotten payload (a URL or domain goes in as its digest label)."""
     effects["checkpoints_stale"] = _stale_all(db)
     effects["state_version"] = store.bump_state_version(db)
     db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
@@ -438,28 +498,66 @@ def _web_finish(db, kind, target, effects, now):
     return effects
 
 
+def _unreferenced(db, urls, shas):
+    """Of a removed task's public-cache keys, those no remaining web_sources row still references."""
+    still = set()
+    for part in _chunks(sorted(urls)):
+        marks = _in(part)
+        for row in db.execute(f"SELECT url,final_url,canonical_url FROM web_sources WHERE canonical_url IN ({marks}) "
+                              f"OR url IN ({marks}) OR final_url IN ({marks})", (*part, *part, *part)):
+            still.update(u for u in row if u)
+    kept_shas = set()
+    for part in _chunks(sorted(shas)):
+        kept_shas.update(_ids(db, f"SELECT content_sha256 FROM web_sources WHERE content_sha256 IN ({_in(part)})",
+                              part))
+    return sorted(set(urls) - still), sorted(set(shas) - kept_shas)
+
+
+def _forget_research_core(db, task_id, now):
+    """Remove one task and what rested only on it. Caller owns the txn. Returns (effects, cache) or None."""
+    if db.execute("SELECT 1 FROM web_tasks WHERE id=?", (task_id,)).fetchone() is None:
+        return None
+    claim_ids = _ids(db, "SELECT DISTINCT id FROM web_claims WHERE task_id=?", (task_id,))
+    sources = db.execute("SELECT url,final_url,canonical_url,content_sha256 FROM web_sources WHERE task_id=?",
+                         (task_id,)).fetchall()
+    deleted = {table: db.execute(f"DELETE FROM {table} WHERE task_id=?", (task_id,)).rowcount
+               for table in ("web_events", "web_sources", "web_claims", "web_claim_links", "web_mentions",
+                             "web_feedback")}
+    db.execute("UPDATE web_predictions SET task_id=NULL WHERE task_id=?", (task_id,))
+    db.execute("UPDATE web_tasks SET parent_id=NULL WHERE parent_id=?", (task_id,))
+    db.execute("UPDATE web_monitors SET last_task_id=NULL WHERE last_task_id=?", (task_id,))
+    db.execute("UPDATE web_knowledge SET task_id=NULL WHERE task_id=?", (task_id,))
+    db.execute("DELETE FROM web_tasks WHERE id=?", (task_id,))
+    _web_tombstones(db, "task", [task_id], now)
+    effects = _web_cascade(db, claim_ids, now)
+    effects["pending_closed"] = sorted(set(effects["pending_closed"]) | set(_forget_task_questions(db, task_id, now)))
+    effects["deleted"] = deleted
+    urls, shas = _unreferenced(db, {u for r in sources for u in r[:3] if u}, {r[3] for r in sources if r[3]})
+    return effects, {"urls": urls, "sha256": shas}
+
+
+def _forget_task_questions(db, task_id, now):
+    """The task's own questions: its proposal, contested subjects, review aggregate and monitor findings."""
+    scopes = [f"web:research:{task_id}", f"web:review:{task_id}"]
+    scopes += [s for (s,) in db.execute("SELECT DISTINCT scope FROM pending WHERE scope LIKE 'web:finding:%' "
+                                        "AND substr(scope, -?) = ?", (len(task_id) + 1, ":" + task_id))]
+    return _forget_pending(db, scopes, [f"web:contested:{task_id}:"], now)
+
+
 def forget_research(db, task_id, now):
-    """Forget a research task: its row, events, sources, claims, links, mentions, feedback and the knowledge that
-    rested only on it. The objective is kept nowhere (deletion_log names the task id only)."""
+    """Forget a research task: its row, events, sources, claims, links, mentions, feedback, questions and the
+    knowledge that rested only on it. The objective is kept nowhere (deletion_log names the task id only).
+    effects["cache"] = {"urls", "sha256"}: the task's public-cache keys no other task references, for the caller
+    to drop from the public cache (returned, never persisted)."""
     if not isinstance(task_id, str) or not task_id:
         raise ValidationError("task id must be a non-empty string")
     with store.write(db):
-        if db.execute("SELECT 1 FROM web_tasks WHERE id=?", (task_id,)).fetchone() is None:
+        out = _forget_research_core(db, task_id, now)
+        if out is None:
             return {"status": "absent", "effects": {}}
-        claim_ids = _ids(db, "SELECT DISTINCT id FROM web_claims WHERE task_id=?", (task_id,))
-        deleted = {table: db.execute(f"DELETE FROM {table} WHERE task_id=?", (task_id,)).rowcount
-                   for table in ("web_events", "web_sources", "web_claims", "web_claim_links", "web_mentions",
-                                 "web_feedback")}
-        db.execute("UPDATE web_predictions SET task_id=NULL WHERE task_id=?", (task_id,))
-        db.execute("UPDATE web_tasks SET parent_id=NULL WHERE parent_id=?", (task_id,))
-        db.execute("UPDATE web_monitors SET last_task_id=NULL WHERE last_task_id=?", (task_id,))
-        db.execute("UPDATE web_knowledge SET task_id=NULL WHERE task_id=?", (task_id,))
-        db.execute("DELETE FROM web_tasks WHERE id=?", (task_id,))
-        effects = _web_cascade(db, claim_ids, now)
-        effects["pending_closed"] = sorted(set(effects["pending_closed"]) | set(_forget_pending(
-            db, [f"web:research:{task_id}"], [f"web:contested:{task_id}:"], now)))
-        effects["deleted"] = deleted
+        effects, cache = out
         _web_finish(db, "research", task_id, effects, now)
+    effects["cache"] = cache
     return _result(db, effects)
 
 
@@ -479,59 +577,217 @@ def _knowledge_chain(db, knowledge_id):
     return sorted(chain)
 
 
+def _forget_knowledge_core(db, knowledge_id, now):
+    """Caller owns the txn. Returns effects or None when absent."""
+    chain = _knowledge_chain(db, knowledge_id)
+    if not chain:
+        return None
+    effects = _drop_knowledge(db, chain, now)
+    db.execute("DELETE FROM web_entities WHERE id NOT IN (SELECT entity_id FROM web_mentions)")
+    return effects
+
+
 def forget_knowledge(db, knowledge_id, now):
     """Forget a knowledge item and every version in its supersession chain (claims stay with their tasks)."""
     if isinstance(knowledge_id, bool) or not isinstance(knowledge_id, int):
         raise ValidationError("knowledge id must be an integer")
     with store.write(db):
-        chain = _knowledge_chain(db, knowledge_id)
-        if not chain:
+        effects = _forget_knowledge_core(db, knowledge_id, now)
+        if effects is None:
             return {"status": "absent", "effects": {}}
-        effects = _drop_knowledge(db, chain, now)
-        db.execute("DELETE FROM web_entities WHERE id NOT IN (SELECT entity_id FROM web_mentions)")
         _web_finish(db, "knowledge", str(knowledge_id), effects, now)
     return _result(db, effects)
 
 
-def forget_source(db, url_or_domain, now):
-    """Forget one source URL (by canonical URL) or every source of a registrable domain, with the claims taken
-    from it and the knowledge that rested only on them. effects["cache"] names the public-cache keys
-    ({"urls": [...], "domain": d|None, "sha256": [...]}) the caller drops from the public cache."""
+def _source_target(url_or_domain):
+    """(canonical url or None, domain or None, the target as given)."""
     if not isinstance(url_or_domain, str) or not url_or_domain.strip():
         raise ValidationError("source must be a URL or a domain")
     target = url_or_domain.strip()
-    if "://" in target:
-        try:
-            from ..webcortex.extract import canonical_url  # lazy: the canonical form the orchestrator stores
-            canonical = canonical_url(target)
-        except ImportError:
-            canonical = target
-        domain = None
-        where, params = "(canonical_url=? OR source_url=? OR source_url=?)", (canonical, canonical, target)
-        source_where, source_params = "(canonical_url=? OR url=? OR final_url=?)", (canonical, target, target)
+    if "://" not in target:
+        return None, target.lower().strip("."), target
+    try:
+        from ..webcortex.extract import canonical_url  # lazy: the canonical form the orchestrator stores
+        canonical = canonical_url(target)
+    except ImportError:
+        canonical = target
+    except Exception:   # an unparsable URL is matched as given
+        canonical = target
+    return canonical, None, target
+
+
+def _mentions(text, needles):
+    return isinstance(text, str) and any(n in text for n in needles)
+
+
+def _prune_json(value, needles, *, root=False):
+    """Drop every record (a dict with a string value naming a needle, or such a string in a list) and every map
+    entry keyed by a needle. At the root, a string naming a needle is replaced instead."""
+    if isinstance(value, dict):
+        if not root and any(_mentions(v, needles) for v in value.values()):
+            return _GONE
+        out = {}
+        for key, item in value.items():
+            if _mentions(key, needles):
+                continue
+            if root and _mentions(item, needles):
+                out[key] = _WEB_SCRUBBED
+                continue
+            pruned = _prune_json(item, needles)
+            if pruned is not _GONE:
+                out[key] = pruned
+        return out
+    if isinstance(value, list):
+        return [p for p in (_prune_json(v, needles) for v in value) if p is not _GONE]
+    if _mentions(value, needles):
+        return _WEB_SCRUBBED if root else _GONE
+    return value
+
+
+_GONE = object()
+
+
+def _scrub_web_mentions(db, needles):
+    """Remove a forgotten source's URL/domain from episodic events (deleted), task reports and checkpoints and
+    monitor baselines (records naming it dropped). Caller owns the txn. Returns rows changed."""
+    forms = sorted({form for n in needles if n for form in (n, json.dumps(n)[1:-1])})
+    if not forms:
+        return 0
+    changed = 0
+    match = lambda column: " OR ".join(f"instr({column},?)>0" for _ in forms)  # noqa: E731
+    changed += db.execute(f"DELETE FROM web_events WHERE {match('detail')}", forms).rowcount
+    for table, key, columns in (("web_tasks", "rowid", ("result", "checkpoint")),
+                                ("web_monitors", "id", ("baseline",))):
+        where = " OR ".join(f"({match(c)})" for c in columns)
+        for row in db.execute(f"SELECT {key},{','.join(columns)} FROM {table} WHERE {where}",
+                              forms * len(columns)).fetchall():
+            new = []
+            for text in row[1:]:
+                try:
+                    parsed = json.loads(text) if text is not None else None
+                except ValueError:
+                    parsed = None
+                new.append(text if parsed is None else _dump(_prune_json(parsed, forms, root=True)))
+            db.execute(f"UPDATE {table} SET {','.join(c + '=?' for c in columns)} WHERE {key}=?", (*new, row[0]))
+            changed += 1
+    return changed
+
+
+def _forget_source_core(db, target, now):
+    """Forget one source URL or every source of a domain. Caller owns the txn. Returns (effects, cache, label) or
+    None when nothing matched."""
+    canonical, domain, given = _source_target(target)
+    if domain is None:
+        rows = db.execute("SELECT id,url,final_url,canonical_url,content_sha256 FROM web_sources WHERE "
+                          "canonical_url=? OR url=? OR final_url=? OR url=? OR final_url=?",
+                          (canonical, given, given, canonical, canonical)).fetchall()
+        urls = sorted({canonical, given} | {u for r in rows for u in r[1:4] if u})
+        source_ids = [r[0] for r in rows]
+        clauses, params = [], []
+        for part in _chunks(urls):
+            clauses.append(f"canonical_url IN ({_in(part)}) OR source_url IN ({_in(part)})")
+            params += [*part, *part]
+        for part in _chunks(source_ids):
+            clauses.append(f"source_id IN ({_in(part)})")
+            params += part
+        claim_where = " OR ".join(f"({c})" for c in clauses)
+        claim_rows = db.execute(f"SELECT DISTINCT id, source_url, canonical_url FROM web_claims WHERE {claim_where}",
+                                params).fetchall()
+        urls = sorted(set(urls) | {u for r in claim_rows for u in r[1:] if u})
+        needles = urls
     else:
-        domain = target.lower().strip(".")
-        where, params = "(domain=? OR domain LIKE ?)", (domain, "%." + domain)
-        source_where, source_params = where, params
+        like = "%." + domain
+        rows = db.execute("SELECT id,url,final_url,canonical_url,content_sha256 FROM web_sources WHERE "
+                          "domain=? OR domain LIKE ?", (domain, like)).fetchall()
+        source_ids = [r[0] for r in rows]
+        clauses, params = ["domain=? OR domain LIKE ?"], [domain, like]
+        for part in _chunks(source_ids):
+            clauses.append(f"source_id IN ({_in(part)})")
+            params += part
+        claim_where = " OR ".join(f"({c})" for c in clauses)
+        claim_rows = db.execute(f"SELECT DISTINCT id, source_url, canonical_url FROM web_claims WHERE {claim_where}",
+                                params).fetchall()
+        urls = sorted({u for r in rows for u in r[1:4] if u} | {u for r in claim_rows for u in r[1:] if u})
+        needles = [domain]
+    claim_ids = sorted({r[0] for r in claim_rows})
+    if not rows and not claim_ids:
+        return None
+    db.execute(f"DELETE FROM web_claims WHERE {claim_where}", params)
+    for part in _chunks(source_ids):
+        db.execute(f"DELETE FROM web_sources WHERE id IN ({_in(part)})", part)
+    effects = _web_cascade(db, claim_ids, now)
+    dropped = 0
+    for kid, sources in db.execute("SELECT id,sources FROM web_knowledge").fetchall():
+        listed = json.loads(sources or "[]")
+        kept = [s for s in listed if not (s.get("url") in urls or (domain and (
+            s.get("domain") == domain or str(s.get("domain", "")).endswith("." + domain))))]
+        if kept != listed:
+            db.execute("UPDATE web_knowledge SET sources=? WHERE id=?", (_dump(kept), kid))
+            dropped += 1
+    scrubbed = _scrub_web_mentions(db, needles)
+    if domain is None:
+        digests = _web_tombstones(db, "source_url", urls, now)
+        label = "source_url:#" + web_digest(store.birth(db)["instance_id"], "source_url", canonical)
+    else:
+        digests = _web_tombstones(db, "source_domain", [domain], now)
+        label = "source_domain:#" + digests[0]
+    effects.update({"sources_deleted": len(rows), "knowledge_sources_dropped": dropped,
+                    "derived_rows_scrubbed": scrubbed})
+    cache = {"urls": urls if domain is None else sorted({u for r in rows for u in r[1:4] if u}), "domain": domain,
+             "sha256": sorted({r[4] for r in rows if r[4]})}
+    return effects, cache, label
+
+
+def forget_source(db, url_or_domain, now):
+    """Forget one source URL (as requested, original, final or canonical) or every source of a registrable domain,
+    with the claims taken from it and the knowledge that rested only on them; reports, checkpoints, events and
+    monitor baselines lose the records naming it. deletion_log keeps only a digest label. effects["cache"] names
+    the public-cache keys ({"urls": [...], "domain": d|None, "sha256": [...]}) the caller drops from the public
+    cache; it is returned, never persisted."""
+    _source_target(url_or_domain)
     with store.write(db):
-        rows = db.execute(f"SELECT url,final_url,canonical_url,content_sha256 FROM web_sources WHERE {source_where}",
-                          source_params).fetchall()
-        claim_ids = _ids(db, f"SELECT DISTINCT id FROM web_claims WHERE {where}", params)
-        if not rows and not claim_ids:
+        out = _forget_source_core(db, url_or_domain, now)
+        if out is None:
             return {"status": "absent", "effects": {}}
-        db.execute(f"DELETE FROM web_claims WHERE {where}", params)
-        db.execute(f"DELETE FROM web_sources WHERE {source_where}", source_params)
-        effects = _web_cascade(db, claim_ids, now)
-        urls = sorted({u for r in rows for u in r[:3] if u})
-        dropped = 0
-        for kid, sources in db.execute("SELECT id,sources FROM web_knowledge").fetchall():
-            listed = json.loads(sources or "[]")
-            kept = [s for s in listed if not (s.get("url") in urls or (domain and (
-                s.get("domain") == domain or str(s.get("domain", "")).endswith("." + domain))))]
-            if kept != listed:
-                db.execute("UPDATE web_knowledge SET sources=? WHERE id=?", (_dump(kept), kid))
-                dropped += 1
-        effects.update({"sources_deleted": len(rows), "knowledge_sources_dropped": dropped,
-                        "cache": {"urls": urls, "domain": domain, "sha256": sorted({r[3] for r in rows if r[3]})}})
-        _web_finish(db, "source", domain or canonical, effects, now)
+        effects, cache, label = out
+        _web_finish(db, "source", label, effects, now)
+    effects["cache"] = cache
     return _result(db, effects)
+
+
+def _suffixes(domain):
+    parts = (domain or "").lower().strip(".").split(".")
+    return [".".join(parts[i:]) for i in range(len(parts)) if parts[i]]
+
+
+def replay_web_forgets(db, forgotten, now):
+    """Re-apply web tombstones to a restored copy: every task, knowledge version and source (URL or domain) whose
+    digest is in `forgotten` ({(kind, digest)}) is forgotten again with the same cascade as the live forget.
+    Caller owns the transaction. Returns counts."""
+    out = {"tasks": 0, "knowledge": 0, "sources": 0}
+    if not forgotten:
+        return out
+    instance_id = store.birth(db)["instance_id"]
+
+    def wanted(kind, value):
+        return (kind, web_digest(instance_id, kind, value)) in forgotten
+
+    for (task_id,) in db.execute("SELECT id FROM web_tasks ORDER BY rowid").fetchall():
+        if wanted("task", task_id) and _forget_research_core(db, task_id, now) is not None:
+            out["tasks"] += 1
+    doomed = [kid for kid, key in db.execute("SELECT id, key FROM web_knowledge").fetchall()
+              if wanted("knowledge", _knowledge_subject(kid, key))]
+    if doomed:
+        _drop_knowledge(db, doomed, now)
+        db.execute("DELETE FROM web_entities WHERE id NOT IN (SELECT entity_id FROM web_mentions)")
+        out["knowledge"] = len(doomed)
+    urls = {u for row in db.execute("SELECT url, final_url, canonical_url FROM web_sources") for u in row if u}
+    urls |= {u for row in db.execute("SELECT source_url, canonical_url FROM web_claims") for u in row if u}
+    for url in sorted(urls):
+        if wanted("source_url", url) and _forget_source_core(db, url, now) is not None:
+            out["sources"] += 1
+    domains = {d for (d,) in db.execute("SELECT domain FROM web_sources UNION SELECT domain FROM web_claims") if d}
+    for domain in sorted({s for d in domains for s in _suffixes(d)}):
+        if wanted("source_domain", domain) and _forget_source_core(db, domain, now) is not None:
+            out["sources"] += 1
+    return out

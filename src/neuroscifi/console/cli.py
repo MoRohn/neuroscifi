@@ -1,4 +1,5 @@
 """`nsf console`: the loopback owner console. There is deliberately no option to bind another address."""
+import argparse
 import os
 from pathlib import Path
 import signal
@@ -59,7 +60,7 @@ def _remove_url_file(path):
 
 def _serve(args):
     try:
-        console = server.ConsoleServer(store.resolve_db(args), args.port, web_worker=not args.no_web_worker)
+        console = server.ConsoleServer(store.resolve_db(args), args.port, web_worker=args.web_worker)
     except InstanceError as error:
         print(f"nsf: {error}", file=sys.stderr)
         return 2
@@ -101,7 +102,10 @@ def register(sub):
     p.add_argument("--url-file", type=Path, default=None,
                    help="write the URL with its session token to this file (mode 0600) instead of stdout; removed at shutdown; "
                         "only a stale console URL file is replaced")
-    p.add_argument("--no-web-worker", action="store_true",
-                   help="do not run queued research tasks in the console process (use when the `nsf web work` "
-                        "service runs them)")
+    worker = p.add_mutually_exclusive_group()
+    worker.add_argument("--web-worker", action="store_true",
+                        help="also run queued research tasks in the console process (a development console with "
+                             "network access; the service unit leaves this to neuroscifi-webcortex.service)")
+    worker.add_argument("--no-web-worker", dest="web_worker", action="store_false",
+                        help=argparse.SUPPRESS)  # the default since 0.6; kept so older command lines still work
     p.set_defaults(handler=_serve)

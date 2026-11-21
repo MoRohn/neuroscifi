@@ -12,10 +12,23 @@ configured engines one at a time, in order, skipping engines whose own circuit b
 An engine that answers nothing counts as a failure only when a later engine answered the same query with results;
 when every engine is empty the query is simply obscure (health-neutral). Titles and snippets arrive as HTML and are
 stripped to text. Results are untrusted data.
+
+Honest User-Agent: upstream open-webSearch sends forged desktop-Chrome (and Apifox) User-Agents. The pinned build is
+patched by `deploy/open-websearch/apply-honest-ua.mjs` (`npm run patch-ua`), which replaces them with
+config.USER_AGENT and writes UA_MARKER with the sha256 of each patched file. `honest_user_agent(package_dir)`
+checks that marker against the files on disk; `Daemon.status()` and `OpenWebSearchProvider.health()` report it as
+`honest_user_agent`, and `Daemon.start()` refuses an unpatched build unless `allow_browser_user_agent=True` (an
+explicit owner decision). Engines may answer an honest User-Agent differently or refuse it.
+
+Daemon hygiene: the child gets a minimal environment (PATH, HOME, NODE_*, OPEN_WEBSEARCH_*, plus explicit `env`);
+loopback HTTP never follows redirects; a port is trusted only when /status reports EXPECTED_VERSION and the
+listening socket belongs to the process NeuroSciFi started (pid + /proc start time recorded in the pid file, so a
+recycled pid is never signalled).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import ipaddress
 import json
 import os
@@ -30,6 +43,7 @@ from urllib.parse import parse_qs, urlsplit
 import urllib.request
 
 from ...instance.errors import ValidationError
+from ..config import USER_AGENT
 from ..types import BudgetExceeded, Query, SearchResult
 from ..search import Breaker, ProviderError, charge, parse_iso_date, strip_html
 
@@ -39,6 +53,36 @@ MAX_LIMIT = 20
 MAX_RESPONSE_BYTES = 4_000_000
 DEFAULT_PACKAGE_DIR = Path(__file__).resolve().parents[4] / "deploy" / "open-websearch"
 ENTRY = Path("node_modules") / "open-websearch" / "build" / "index.js"
+EXPECTED_VERSION = "2.2.0"
+UA_MARKER = Path("node_modules") / "open-websearch" / ".neuroscifi-honest-ua.json"
+UA_TARGETS = ("build/engines/duckduckgo/searchDuckDuckGo.js", "build/engines/startpage/startpage.js",
+              "build/engines/brave/brave.js", "build/engines/bing/bing.js")
+_ENV_KEEP = ("PATH", "HOME")
+_ENV_PREFIXES = ("NODE_", "OPEN_WEBSEARCH_")
+
+
+def honest_user_agent(package_dir: Path | str = DEFAULT_PACKAGE_DIR) -> bool:
+    """True when the install at package_dir carries apply-honest-ua.mjs's marker for EXPECTED_VERSION and
+    config.USER_AGENT, the marker covers the four search engines, every recorded file still has its recorded
+    sha256 and none of the four contains a browser User-Agent."""
+    marker = Path(package_dir) / UA_MARKER
+    root = marker.parent
+    try:
+        data = json.loads(marker.read_text())
+        files = data["files"]
+        if data.get("version") != EXPECTED_VERSION or data.get("user_agent") != USER_AGENT:
+            return False
+        if not isinstance(files, dict) or not all(t in files for t in UA_TARGETS):
+            return False
+        for rel, digest in files.items():
+            raw = (root / rel).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != digest:
+                return False
+            if rel in UA_TARGETS and b"Mozilla/5.0" in raw:
+                return False
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+    return True
 
 
 class NotLoopback(ValidationError, ValueError):
@@ -62,7 +106,12 @@ def loopback_base(base_url: str) -> str:
     return f"http://{shown}:{port}" if port else f"http://{shown}"
 
 
-_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # loopback: never via a shell proxy
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None              # a loopback daemon has no reason to redirect: the 3xx is returned as an error
+
+
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)   # never via a shell proxy
 
 
 def _http_json(method: str, url: str, body: dict | None, timeout: float) -> tuple[int, dict]:
@@ -119,8 +168,10 @@ class OpenWebSearchProvider:
     general_web = True
 
     def __init__(self, base_url: str, engines, *, timeout: float = 20.0, clock=time.time,
-                 failure_threshold: int = 3, cooldown: float = 300.0):
+                 failure_threshold: int = 3, cooldown: float = 300.0,
+                 package_dir: Path | str = DEFAULT_PACKAGE_DIR):
         self.base_url = loopback_base(base_url)
+        self.package_dir = Path(package_dir)
         self.engines = [str(e).strip().lower() for e in engines if str(e).strip()]
         if not self.engines:
             raise ValidationError("open-webSearch needs at least one engine")
@@ -297,7 +348,7 @@ class OpenWebSearchProvider:
     def health(self) -> dict:
         out = {"base_url": self.base_url, "reachable": False, "version": None, "playwright": None,
                "engines_default": None, "engines_allowed": None, "search_mode": None, "error": None,
-               "engines": self.engine_snapshot()}
+               "engines": self.engine_snapshot(), "honest_user_agent": honest_user_agent(self.package_dir)}
         try:
             _, h = _http_json("GET", self.base_url + "/health", None, min(self.timeout, 5.0))
             out["reachable"] = h.get("status") == "ok"
@@ -326,6 +377,44 @@ def _is_loopback_host(host: str) -> bool:
         return False
 
 
+def _starttime(pid: int) -> str | None:
+    """Start time of a process (field 22 of /proc/<pid>/stat, clock ticks since boot): pid + start time names one
+    process even after the pid number is recycled."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        return stat[stat.rfind(")") + 2:].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
+def _listens(pid: int, port: int) -> bool | None:
+    """Whether process pid owns a socket listening on TCP `port` (Linux /proc); None where /proc/net is absent."""
+    inodes = set()
+    tables = [Path("/proc/net/tcp"), Path("/proc/net/tcp6")]
+    if not any(t.exists() for t in tables):
+        return None
+    for table in tables:
+        try:
+            lines = table.read_text().splitlines()[1:]
+        except OSError:
+            continue
+        for line in lines:
+            fields = line.split()
+            if len(fields) > 9 and fields[3] == "0A" and int(fields[1].rsplit(":", 1)[1], 16) == int(port):
+                inodes.add(f"socket:[{fields[9]}]")
+    try:
+        fds = os.listdir(f"/proc/{pid}/fd")
+    except OSError:
+        return False
+    for fd in fds:
+        try:
+            if os.readlink(f"/proc/{pid}/fd/{fd}") in inodes:
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _alive(pid: int) -> bool:
     """True while the process exists and is not a zombie (exited, waiting to be reaped by its parent)."""
     try:
@@ -340,7 +429,9 @@ class Daemon:
     """Starts/stops the pinned open-webSearch daemon bound to loopback.
 
     `stop()` terminates only the process this object started, or the one recorded in `<state_dir>/
-    openwebsearch.pid` if its command line is still this daemon's entry script. It never kills by name pattern.
+    openwebsearch.pid` ("<pid> <start time>") while that pid still has the recorded start time and this daemon's
+    entry script on its command line. It never kills by name pattern. `start(allow_browser_user_agent=False)`
+    refuses a build without the honest User-Agent patch, and refuses a port another process already serves.
     """
     node: str = "node"
     package_dir: Path | str = DEFAULT_PACKAGE_DIR
@@ -374,19 +465,39 @@ class Daemon:
     def pid_path(self) -> Path:
         return Path(self.state_dir) / "openwebsearch.pid"
 
-    def _healthy(self) -> bool:
+    def _status_payload(self) -> dict | None:
+        """The /status data of whatever answers on the port, or None."""
         try:
-            _, payload = _http_json("GET", self.base_url + "/health", None, 1.0)
-            return payload.get("status") == "ok"
+            _, payload = _http_json("GET", self.base_url + "/status", None, 1.0)
         except (URLError, ConnectionError, OSError, ValueError):
+            return None
+        data = payload.get("data")
+        return data if payload.get("status") == "ok" and isinstance(data, dict) else None
+
+    def _healthy(self, pid: int | None) -> bool:
+        """The port answers /status as open-webSearch EXPECTED_VERSION and its listening socket belongs to `pid`
+        (a process NeuroSciFi started); a port squatter answering the same JSON is not trusted."""
+        if pid is None:
             return False
+        data = self._status_payload()
+        if data is None or data.get("version") != EXPECTED_VERSION:
+            return False
+        return _listens(pid, self.port) is not False
+
+    def _owned_pid(self) -> tuple[int | None, bool]:
+        if self._proc is not None and self._proc.poll() is None:
+            return self._proc.pid, True
+        return self._recorded_pid(), False
 
     def _recorded_pid(self) -> int | None:
         try:
-            pid = int(self.pid_path.read_text().strip())
+            recorded = self.pid_path.read_text().split()
+            pid = int(recorded[0])
             cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
-        except (OSError, ValueError):
+        except (OSError, ValueError, IndexError):
             return None
+        if len(recorded) > 1 and _starttime(pid) != recorded[1]:
+            return None                       # the pid was recycled by another process
         return pid if str(self.entry).encode() in cmdline else None
 
     def _log_tail(self, n: int = 20) -> str:
@@ -395,14 +506,24 @@ class Daemon:
         except OSError:
             return ""
 
-    def start(self, *, timeout: float = 15.0, env: dict | None = None) -> dict:
-        if self._healthy():
+    def start(self, *, timeout: float = 15.0, env: dict | None = None,
+              allow_browser_user_agent: bool = False) -> dict:
+        """Start the daemon (or report the one NeuroSciFi already runs). `allow_browser_user_agent=True` is the
+        owner's explicit acceptance of an unpatched build that sends forged browser User-Agents."""
+        pid, _owned = self._owned_pid()
+        if self._healthy(pid):
             return {**self.status(), "started": False, "reason": "already running"}
+        if self._status_payload() is not None:
+            raise ProviderError("openwebsearch", f"{self.base_url} is served by a process NeuroSciFi did not start; "
+                                "choose another port", code="port_in_use")
         if not self.entry.is_file():
             raise ValidationError(f"open-webSearch is not installed: {self.entry} missing "
                                   f"(run `npm ci` in {self.package_dir})")
+        if not allow_browser_user_agent and not honest_user_agent(self.package_dir):
+            raise ValidationError(f"open-webSearch at {self.package_dir} sends forged browser User-Agents: run "
+                                  f"`npm run patch-ua` there, or pass allow_browser_user_agent=True to accept that")
         Path(self.state_dir).mkdir(parents=True, exist_ok=True)
-        child_env = dict(os.environ)
+        child_env = {k: v for k, v in os.environ.items() if k in _ENV_KEEP or k.startswith(_ENV_PREFIXES)}
         child_env.update({"OPEN_WEBSEARCH_QUIET_STARTUP": "true", "ENABLE_CORS": "false"})
         child_env.update(env or {})
         log = open(self.log_path, "ab")
@@ -413,13 +534,13 @@ class Daemon:
                 stderr=subprocess.STDOUT, start_new_session=True)
         finally:
             log.close()
-        self.pid_path.write_text(str(self._proc.pid))
+        self.pid_path.write_text(f"{self._proc.pid} {_starttime(self._proc.pid) or ''}".strip())
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
                 raise ProviderError("openwebsearch", f"daemon exited with {self._proc.returncode}: "
                                     f"{self._log_tail()}", code="daemon_failed")
-            if self._healthy():
+            if self._healthy(self._proc.pid):
                 return {**self.status(), "started": True}
             time.sleep(0.2)
         self.stop()
@@ -453,11 +574,15 @@ class Daemon:
         return {"stopped": True, "pid": pid}
 
     def status(self) -> dict:
-        owned = self._proc is not None and self._proc.poll() is None
-        pid = self._proc.pid if owned else self._recorded_pid()
-        out = {"base_url": self.base_url, "running": self._healthy(), "pid": pid, "owned": owned,
-               "log": str(self.log_path), "entry": str(self.entry), "installed": self.entry.is_file()}
+        """`running`: a daemon NeuroSciFi started answers as EXPECTED_VERSION on its own socket; `port_answering`:
+        anything answers /status on the port; `honest_user_agent`: the install carries the honest-UA patch."""
+        pid, owned = self._owned_pid()
+        out = {"base_url": self.base_url, "running": self._healthy(pid), "pid": pid, "owned": owned,
+               "port_answering": self._status_payload() is not None, "log": str(self.log_path),
+               "entry": str(self.entry), "installed": self.entry.is_file(),
+               "honest_user_agent": honest_user_agent(self.package_dir)}
         if out["running"]:
-            health = OpenWebSearchProvider(self.base_url, ["duckduckgo"], timeout=3.0).health()
+            health = OpenWebSearchProvider(self.base_url, ["duckduckgo"], timeout=3.0,
+                                           package_dir=self.package_dir).health()
             out.update({k: health.get(k) for k in ("version", "playwright", "engines_default", "search_mode")})
         return out

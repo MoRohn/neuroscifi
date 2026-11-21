@@ -316,3 +316,142 @@ def test_tick_and_runs_apply_cache_retention(individual, site, monkeypatch):
         services.close()
     assert len(calls) == 2 and all(kw == {"max_bytes": 4096, "max_age_seconds": 2.0 * DAY} for _, kw in calls)
     assert "cache" in report
+
+
+# ---- review remediation V2 ---------------------------------------------------------------------------------------
+
+def _pause_writes(db):
+    with store.write(db):
+        cfg = json.loads(db.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
+        db.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(cfg | {"max_evidence_rows": 0}),))
+
+
+def test_queued_monitor_tasks_run_by_the_worker_get_change_detection(individual, site):
+    """C-P1-7 + A-P2-7: tick(queue=True) then work(once=True): the baseline is set by the first run; after the web
+    changes the second worker run records a finding, updates the baseline and asks the owner (informational)."""
+    db, path = individual
+    mon = scheduler.monitor_add(db, TOPIC, T0, interval=6 * HOUR, authorized_by="owner")
+    queued = scheduler.tick(db, T0, None, queue=True)
+    assert [q["origin"] for q in queued["queued"]] == [f"monitor:{mon['id']}"]
+    assert scheduler.monitor_list(db)[0]["next_run_at"] == T0 + 6 * HOUR
+    scheduler.work(path, once=True, fixture=site, providers=[corpus()], clock=lambda: T0 + 60)
+    first = scheduler.monitor_list(db)[0]["baseline"]
+    assert first["claims"] and first["compared_task"] == queued["queued"][0]["task_id"]
+    republish(site, "4.3.0", 21)
+    later = T0 + 12 * HOUR
+    second = scheduler.tick(db, later, None, queue=True)["queued"][0]["task_id"]
+    scheduler.work(path, once=True, fixture=site, providers=[corpus()], clock=lambda: later + 60)
+    baseline = scheduler.monitor_list(db)[0]["baseline"]
+    assert baseline["compared_task"] == second and baseline != first
+    found = scheduler.findings(db, mon["id"])
+    assert len(found) == 1 and found[0]["task_id"] == second and found[0]["pending_id"]
+    scope, question = db.execute("SELECT scope, question FROM pending WHERE id=?", (found[0]["pending_id"],)).fetchone()
+    assert scope == f"web:finding:{mon['id']}:{second}" and "meaningful change" in question
+    assert scheduler.after_monitor_task(db, second, later + 120) is None   # compared once
+
+
+def test_the_worker_reuses_its_services_across_tasks(individual, site, monkeypatch):
+    """C-P2-2: one fetcher (per-host spacing, backoffs) serves consecutive tasks; a config change rebuilds it."""
+    db, path = individual
+    built = []
+    real = svc_mod.build
+    monkeypatch.setattr(svc_mod, "build", lambda *a, **k: built.append(1) or real(*a, **k))
+    for q in ("What is the latest version of the Zephyr compiler?", "Zephyr compiler release date"):
+        orchestrator.submit(db, q, T0, mode="quick_lookup")
+    out = scheduler.work(path, once=True, fixture=site, providers=[corpus()], clock=lambda: T0 + 60)
+    assert len(out["processed"]) == 2 and len(built) == 1
+
+    calls = []
+
+    def sleep(_):
+        calls.append(1)
+        if len(calls) == 1:
+            state.set_config(db, {"min_domain_interval": 0.5}, T0)
+            orchestrator.submit(db, "Zephyr compiler targets", T0, mode="quick_lookup")
+        else:
+            stop.set()
+    stop = threading.Event()
+    orchestrator.submit(db, "Zephyr compiler boards", T0, mode="quick_lookup")
+    scheduler.work(path, stop=stop, sleep=sleep, poll=0.0, fixture=site, providers=[corpus()],
+                   clock=lambda: T0 + 120)
+    assert len(built) == 3   # the first loop builds once; the config change rebuilds once
+
+
+def test_the_worker_claims_nothing_while_writes_are_paused(individual):
+    """A-P1-1: one decision event per pause; the task stays queued."""
+    db, path = individual
+    task = orchestrator.submit(db, "What is the latest version of the Zephyr compiler?", T0, mode="quick_lookup")
+    _pause_writes(db)
+    out = scheduler.work(path, once=True, providers=[corpus()], clock=lambda: T0 + 60)
+    assert out["processed"] == [] and "evidence journal" in out["paused"]
+    assert state.task(db, task["id"])["status"] == "queued" and state.task(db, task["id"])["lease_holder"] is None
+    events = db.execute("SELECT detail FROM web_events WHERE task_id IS NULL AND kind='decision'").fetchall()
+    assert len(events) == 1 and "writes paused" in events[0][0]
+    from neuroscifi.instance.errors import WritesPaused
+    with pytest.raises(WritesPaused):
+        scheduler.monitor_add(db, TOPIC, T0, interval=HOUR, authorized_by="owner")
+
+
+def test_a_monitor_task_claimed_by_a_worker_does_not_abort_the_tick(individual, site, monkeypatch):
+    """C-P3: LeaseHeld from the inline run is reported, the schedule still advances, other monitors still run."""
+    from neuroscifi.instance.errors import LeaseHeld
+    db, path = individual
+    first = scheduler.monitor_add(db, TOPIC, T0, interval=6 * HOUR, authorized_by="owner")
+    second = scheduler.monitor_add(db, "Zephyr compiler release date", T0, interval=6 * HOUR, authorized_by="owner")
+    real, calls = orchestrator.run, []
+
+    def run(db, task_id, services):
+        calls.append(task_id)
+        if len(calls) == 1:
+            raise LeaseHeld("Research task is being run by another worker")
+        return real(db, task_id, services)
+
+    monkeypatch.setattr(orchestrator, "run", run)
+    services = build(db, path, site)
+    try:
+        report = scheduler.tick(db, T0, services)
+    finally:
+        services.close()
+    assert len(report["queued"]) == 1 and "another worker" in report["queued"][0]["note"]
+    assert len(report["ran"]) == 1
+    assert all(m["next_run_at"] == T0 + 6 * HOUR and m["runs"] == 1 for m in scheduler.monitor_list(db))
+    assert {first["id"], second["id"]} == {m["id"] for m in scheduler.monitor_list(db)}
+
+
+def test_due_predictions_stay_due_while_web_access_is_off(individual):
+    """C-P3: disabling the web never settles a prediction 'inconclusive'."""
+    from test_consolidate import consolidated, two_sources
+    db, _ = individual
+    _, out = consolidated(db, [two_sources()])
+    pred = predictions.record(db, out["provisional"][0], predictions.DEFAULT_EXPECTATION, T0 + 1, T0)
+    state.set_config(db, {"enabled": False}, T0)
+    actions = predictions.check_due(db, T0 + 10)
+    assert actions == [{"prediction_id": pred["id"], "action": "skipped",
+                        "reason": "web access is disabled; the prediction stays due"}]
+    assert predictions.listing(db)[0]["outcome"] is None
+    with pytest.raises(ValidationError):
+        predictions.listing(db, limit="5")
+
+
+def test_monitor_findings_and_pocket_proposals_respect_the_question_budget(individual):
+    """A-P1-3: a device's monitor proposal is refused while the web question budget is spent; a finding then gets
+    no question of its own."""
+    db, _ = individual
+    state.set_config(db, {"max_open_web_questions": 1}, T0)
+    scheduler.monitor_add(db, TOPIC, T0, interval=HOUR, authorized_by="pocket:" + "0f" * 8)
+    with pytest.raises(Conflict, match="open web questions"):
+        scheduler.monitor_add(db, "Zephyr news", T0, interval=HOUR, authorized_by="pocket:" + "0f" * 8)
+    mon = scheduler.monitor_add(db, "Zephyr boards", T0, interval=HOUR, authorized_by="owner")
+    task = orchestrator.submit(db, "Zephyr boards", T0, mode="continuous", origin=f"monitor:{mon['id']}")
+    with store.write(db):
+        state.update_task(db, task["id"], T0, status="completed")
+        db.execute("UPDATE web_monitors SET baseline=? WHERE id=?",
+                   (json.dumps({"claims": {"k": {"values": ["1"], "polarity": 1}}}), mon["id"]))
+    import neuroscifi.webcortex.scheduler as sch
+    real = sch.compare
+    sch.compare = lambda *a: real(*a) | {"meaningful": True}
+    try:
+        changes = scheduler.after_monitor_task(db, task["id"], T0)
+    finally:
+        sch.compare = real
+    assert changes["meaningful"] and changes["pending_id"] is None

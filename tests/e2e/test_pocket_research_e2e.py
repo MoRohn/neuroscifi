@@ -3,6 +3,7 @@ offline (FixtureWeb + CorpusProvider), read the cited report, save it in the enc
 a linked tablet continues the same task; axe on phone and tablet."""
 from contextlib import closing
 import json
+import re
 import threading
 import time
 
@@ -252,3 +253,146 @@ def test_research_layout_and_accessibility(spark, new_page, size):
     found = page.evaluate("""axe.run(document,{resultTypes:['violations']}).then(r =>
         r.violations.map(v => ({id:v.id, impact:v.impact, nodes:v.nodes.map(n => n.target.join(' '))})))""")
     assert [v for v in found if v["impact"] in ("serious", "critical")] == []
+
+
+CLAIM = "Is it true that the Zephyr compiler version 4.2.0 was released on 17 November 2026?"
+SPEECH = """(() => {
+    window.spoken = []; window.voices = [{name: 'Remote', lang: 'en-US', localService: false},
+                                         {name: 'Local', lang: 'en-US', localService: true}];
+    window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
+    Object.defineProperty(window, 'speechSynthesis', {configurable: true, value: {
+        getVoices: () => window.voices, addEventListener() {}, cancel() {},
+        speak(u) { window.spoken.push({text: u.text, voice: u.voice && u.voice.name});
+                   setTimeout(() => u.onend && u.onend(), 300); }}}); })()"""
+
+
+def test_shared_link_prefills_the_question_and_never_submits(spark, new_page):
+    page = new_page()
+    sent = posts(page)
+    page.goto(spark.url + "?share_url=https://example.org/a&share_text=x")
+    expect(page).to_have_url(spark.url)   # the shared link leaves the address bar and history at once
+    expect(page.locator("#research")).to_be_visible()
+    expect(page.locator("#researchform")).to_be_hidden()
+    expect(page.locator("#researchhelp")).to_contain_text("Pair with a research-enabled Spark")
+    expect(page.locator("#researchmsg")).to_have_text("Shared link ready. Review the question, then submit it yourself.")
+    assert not sent, "nothing leaves before pairing"
+    pair(page)
+    expect(page.locator("#researchform")).to_be_visible()
+    expect(page.locator("#objective")).to_have_value("Summarize: https://example.org/a")
+    expect(page.locator("#objective")).to_be_focused()
+    expect(page.locator("#researchsubmit")).to_be_enabled()
+    SHOTS.mkdir(exist_ok=True)
+    page.locator("#research").screenshot(path=str(SHOTS / "pocket-research-share.png"))
+    page.wait_for_timeout(500)
+    assert not [r for r, _ in sent if r == "research_submit"], "a shared link is never submitted for the owner"
+    # Android puts the link in the text; anything but an http(s) link, or one too long, prefills nothing.
+    for query, value, note in (
+            ("?share_text=Worth+a+read+https://example.org/b", "Summarize: https://example.org/b", "Shared link ready"),
+            ("?share_url=javascript:alert(1)&share_text=hello", "", "http or https"),
+            ("?share_url=https://user:secret@example.org/c", "", "http or https"),
+            ("?share_url=https://example.org/" + "a" * 290, "", "too long")):
+        page.goto(spark.url + query)
+        expect(page.locator("#objective")).to_have_value(value)
+        expect(page.locator("#researchmsg")).to_contain_text(note)
+        expect(page).to_have_url(spark.url)
+    assert not [r for r, _ in sent if r == "research_submit"]
+    assert not page.problems, page.problems
+
+
+def test_claim_verdict_confidence_and_read_aloud(spark, new_page):
+    page = new_page(bypass_csp=True)  # only so axe can be injected
+    page.add_init_script(SPEECH)
+    page.goto(spark.url)
+    pair(page)
+    ask(page, CLAIM)
+    spark.work()
+    page.locator("#refresh").click()
+    expect(page.locator("#researchlist")).to_contain_text("Completed")
+    page.get_by_role("button", name="Open: " + CLAIM).click()
+    expect(page.locator(".rverdict")).to_have_text(re.compile(r"^Supported · \d{1,3}% confidence$"))
+    expect(page.locator(".rclaim")).to_contain_text("Claim checked: the Zephyr compiler version 4.2.0")
+    expect(page.locator("#researchview blockquote .rconf").first).to_have_text(
+        re.compile(r"^(Corroborated|Single source|Contested)( · \d{1,3}% confidence)?$"))
+    quotes = page.locator("#researchview blockquote").count()
+    assert quotes >= 1
+    # Read aloud: quoted sentences and "Source n" only, with the on-device voice; never the remote one.
+    page.get_by_role("button", name="Read aloud").click()
+    expect(page.locator("#readaloud")).to_have_text("Stop reading")
+    expect(page.locator("#researchmsg")).to_contain_text("on-device voice")
+    expect(page.locator("#readaloud")).to_have_text("Read aloud", timeout=15_000)
+    spoken = page.evaluate("window.spoken")
+    assert len(spoken) == quotes and {s["voice"] for s in spoken} == {"Local"}
+    assert all("4.2.0" in s["text"] and re.search(r"Source \d+\.$", s["text"]) for s in spoken), spoken
+    assert not any("http" in s["text"] or ".example" in s["text"] for s in spoken)
+    SHOTS.mkdir(exist_ok=True)
+    page.locator("#researchview").screenshot(path=str(SHOTS / "pocket-research-verdict.png"))
+    page.evaluate("window.voices = [window.voices[0]]")   # only a network voice left
+    page.get_by_role("button", name="Read aloud").click()
+    expect(page.locator("#researchmsg")).to_have_text("No on-device voice is available, so nothing was read aloud.")
+    assert len(page.evaluate("window.spoken")) == quotes
+    page.add_script_tag(path=str(AXE))
+    found = page.evaluate("""axe.run(document,{resultTypes:['violations']}).then(r =>
+        r.violations.map(v => ({id:v.id, impact:v.impact, nodes:v.nodes.map(n => n.target.join(' '))})))""")
+    assert [v for v in found if v["impact"] in ("serious", "critical")] == []
+
+
+NOTIFY = """(() => {
+    window.shown = []; window.asked = 0;
+    ServiceWorkerRegistration.prototype.showNotification = function (title, options) {
+        window.shown.push({title, body: options.body, tag: options.tag}); return Promise.resolve(); };
+    const focus = Document.prototype.hasFocus;
+    Document.prototype.hasFocus = function () { return window.unfocused ? false : focus.call(this); };
+    const ask = Notification.requestPermission;
+    Notification.requestPermission = function () { window.asked++; return window.deny ? Promise.resolve('denied')
+        : ask.call(Notification); }; })()"""
+
+
+def test_notifications_are_opt_in_and_only_from_the_open_page(spark, new_page):
+    page = new_page()
+    page.context.grant_permissions(["notifications"], origin=spark.url.rstrip("/"))
+    page.add_init_script(NOTIFY)
+    page.goto(spark.url)
+    expect(page.locator("#offlinestate")).to_have_text("Offline shell ready")
+    pair(page)
+    expect(page.locator("#notifyswitch")).not_to_be_checked()   # off by default
+    page.locator("#notifyswitch").check()
+    expect(page.locator("#researchmsg")).to_have_text("Notifications on for this visit while Pocket stays open.")
+    ask(page)
+    page.evaluate("window.unfocused = true")   # Pocket visible beside another window
+    spark.work()
+    deadline = time.monotonic() + 15   # wait_for_function would need eval, which the app CSP forbids
+    while not page.evaluate("window.shown.length") and time.monotonic() < deadline:
+        page.wait_for_timeout(100)
+    shown = page.evaluate("window.shown")
+    assert len(shown) == 1 and shown[0]["title"] == "Pocket research finished"
+    assert shown[0]["body"] == "Completed. Open Pocket to read it.", "no question text on a lock screen"
+    assert page.evaluate("window.asked") == 0, "already granted: no prompt"
+    expect(page.locator(".rstage")).to_have_text("Completed")
+    # Denied: the switch stays off and explains; the prompt is asked only from the switch.
+    other = new_page()
+    other.add_init_script(NOTIFY + """;window.deny = true;   // not yet decided; the owner declines the prompt
+        Object.defineProperty(Notification, 'permission', {configurable: true, get: () => 'default'});""")
+    spark.bridge.invite("other-code")
+    other.goto(spark.url)
+    pair(other, "other-code")
+    assert other.evaluate("window.asked") == 0, "never prompted on load or pairing"
+    other.locator("#notifyswitch").click()
+    expect(other.locator("#researchmsg")).to_have_text("Notifications are blocked for this site in your browser settings.")
+    expect(other.locator("#notifyswitch")).not_to_be_checked()
+    assert other.evaluate("window.asked") == 1
+    assert not page.problems and not other.problems
+
+
+def test_finished_while_away_summary(spark, new_page):
+    page = new_page()
+    page.goto(spark.url)
+    pair(page)
+    ask(page)
+    page.evaluate("""() => { Object.defineProperty(document,'hidden',{configurable:true,value:true});
+        document.dispatchEvent(new Event('visibilitychange')); }""")
+    spark.work()
+    page.evaluate("""() => { Object.defineProperty(document,'hidden',{configurable:true,value:false});
+        document.dispatchEvent(new Event('visibilitychange')); }""")
+    expect(page.locator("#researchmsg")).to_have_text(f"Finished while you were away: “{QUESTION}” (Completed).")
+    expect(page.locator("#researchlist")).to_contain_text("Completed")
+    assert not page.problems, page.problems

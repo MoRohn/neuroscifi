@@ -1042,7 +1042,7 @@ function renderWebStatus(s) {
   fill($('webSummary'), kv([
     ['Web access', onOff(c.enabled)], ['Autonomous research', onOff(c.autonomous)],
     ['Pocket research', onOff(c.pocket_research)], ['JavaScript rendering', onOff(c.browser_rendering)],
-    ['Task runner', s.worker.embedded ? (s.worker.running ? 'this console (embedded worker)' : 'embedded worker stopped') : 'external (nsf web work service)'],
+    ['Task runner', s.worker.embedded ? (s.worker.running ? 'this console (embedded worker, --web-worker)' : 'embedded worker stopped') : 'external: the neuroscifi-webcortex service (nsf web work)'],
     ['Tasks', counts || 'none yet'],
     ['Public cache', s.cache ? `${s.cache.documents} documents, ${fmtBytes(s.cache.bytes)}` : 'empty'],
   ]));
@@ -1284,11 +1284,28 @@ function evidenceBlock(t) {
   return details;
 }
 
+// A monitor finding (meaningful change) in one line; keys and values are untrusted web text, set as text only.
+function findingText(f) {
+  const parts = (f.changed_values || []).slice(0, 2).map((c) =>
+    `${short(String(c.key), 60)}: ${(c.before || []).join(', ') || '—'} → ${(c.after || []).join(', ') || '—'}`);
+  if (f.new_claims?.length) parts.push(`${f.new_claims.length} new corroborated subject${f.new_claims.length === 1 ? '' : 's'}`);
+  if (f.superseded?.length) parts.push(`${f.superseded.length} knowledge item${f.superseded.length === 1 ? '' : 's'} superseded`);
+  return parts.join('; ') || 'change detected';
+}
+
+function monitorFindings(m) {
+  const found = m.findings || [];
+  if (!found.length) return h('span', { class: 'sub', text: 'none yet' });
+  return h('div', { class: 'findings' }, found.slice(0, 3).map((f) => h('div', {},
+    h('span', { text: fmtTime(f.at) }), h('br'),
+    h('span', { class: 'sub', text: findingText(f) + (f.pending_id ? ` (question #${f.pending_id})` : '') }))));
+}
+
 function renderMonitors(monitors) {
   fill($('monitorList'), monitors.length
-    ? table('Monitors', ['Topic', 'Mode', 'Every', 'Status', 'Last run', { label: 'Runs', num: true }, 'Actions'], monitors.map((m) => [
+    ? table('Monitors', ['Topic', 'Mode', 'Every', 'Status', 'Last run', { label: 'Runs', num: true }, 'Recent findings', 'Actions'], monitors.map((m) => [
         h('span', { text: m.topic }), modeLabel(m.mode), `${fmtNum(m.interval_seconds / 3600, 0)} h`, badge(m.status, m.status === 'active' ? 'ok' : m.status === 'proposed' ? 'info' : 'neutral'),
-        fmtTime(m.last_run_at), m.runs, { actions: monitorActions(m) }]))
+        fmtTime(m.last_run_at), m.runs, monitorFindings(m), { actions: monitorActions(m) }]))
     : empty('No monitors. Add a topic below to re-check it on a schedule.'));
 }
 

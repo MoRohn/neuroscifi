@@ -33,6 +33,10 @@ Environment=NODE_ENV=production
 Environment=HOME=%S/neuroscifi-websearch
 WorkingDirectory=/opt/neuroscifi/open-websearch
 # Adjust the node path if Node.js lives elsewhere (install.sh rewrites it to `command -v node`).
+# Honest User-Agent (ADR-032): install.sh runs apply-honest-ua.mjs after `npm ci`; refuse an unpatched build, as
+# `nsf web daemon start` does. Only an owner who opted in (`nsf web config --search-browser-ua`) removes this line
+# in a drop-in.
+ExecStartPre=/usr/bin/test -f /opt/neuroscifi/open-websearch/node_modules/open-websearch/.neuroscifi-honest-ua.json
 ExecStart=/usr/bin/node /opt/neuroscifi/open-websearch/node_modules/open-websearch/build/index.js serve --host 127.0.0.1 --port ${NSF_WEBSEARCH_PORT}
 Restart=on-failure
 RestartSec=10

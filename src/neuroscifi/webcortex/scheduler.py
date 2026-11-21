@@ -22,7 +22,11 @@ tick(db, now, services):
 4. a report of what ran, what was skipped and why.
 
 work(db_path): claim queued tasks with a lease (UPDATE ... WHERE status='queued' AND the lease is free) and run
-them; a running task whose lease expired belonged to a crashed worker and is resumed from its checkpoint.
+them; a running task whose lease expired belonged to a crashed worker and is resumed from its checkpoint (the old
+worker, if it is still alive, loses the lease: its fenced writes fail and it stops without consolidating). Nothing
+is claimed while instance regulation pauses writes. Change detection runs for every finished monitor task,
+whoever ran it (orchestrator -> after_monitor_task); a meaningful change also opens an informational question
+web:finding:<monitor>:<task> within the web question budget.
 """
 from __future__ import annotations
 
@@ -31,7 +35,7 @@ import sqlite3
 import time
 
 from ..instance import store
-from ..instance.errors import Conflict, NotFound, ValidationError
+from ..instance.errors import Conflict, LeaseHeld, NotFound, ValidationError, WritesPaused
 from . import state
 from .types import MODES, TERMINAL_STATES
 
@@ -73,12 +77,17 @@ def monitor_add(db, topic, now, *, interval, mode="continuous", budget=None, aut
     if baseline is not None and not isinstance(baseline, dict):
         raise ValidationError("baseline must be an object")
     cfg = state.get_config(db)
+    state.require_writable(db)
     findings = orchestrator.screen(db, topic, cfg)
     if findings:
         raise ValidationError(f"topic contains private data ({', '.join(sorted({f['kind'] for f in findings}))}); "
                               "monitors are built from public text only")
     chosen = orchestrator._budget(cfg, mode, budget)
     owner = authorized_by == "owner"
+    from .knowledge import question_room
+    if not owner and not question_room(db, cfg):
+        raise Conflict(f"the owner already has {cfg.max_open_web_questions} open web questions; a device's "
+                       "monitor proposal waits until some are answered")
     with store.write(db):
         mid = db.execute("INSERT INTO web_monitors(topic,mode,interval_seconds,budget,baseline,authorized_by,status,"
                          "created_at,updated_at,next_run_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
@@ -215,25 +224,81 @@ def merge_baseline(baseline: dict, current: dict) -> dict:
 
 
 def _after_monitor_run(db, mon, task, now) -> dict:
+    """Compare a finished monitor task with the monitor's baseline (once per task). A meaningful change is a
+    'finding' event and an informational question for the owner (scope web:finding:<monitor>:<task>, within the
+    web question budget); a completed or partial run updates the baseline."""
+    from .knowledge import ask
+    if mon["baseline"].get("compared_task") == task["id"]:
+        return None
     current = snapshot(db, task["id"])
     changes = compare(mon["baseline"], current, (task.get("result") or {}).get("consolidation"))
-    baseline = merge_baseline(mon["baseline"], current)
+    baseline = merge_baseline(mon["baseline"], current) if task["status"] in ("completed", "partial") \
+        else dict(mon["baseline"])
+    baseline["compared_task"] = task["id"]
     with store.write(db):
-        if task["status"] in ("completed", "partial"):
-            db.execute("UPDATE web_monitors SET baseline=? WHERE id=?", (state.dumps(baseline), mon["id"]))
+        db.execute("UPDATE web_monitors SET baseline=? WHERE id=?", (state.dumps(baseline), mon["id"]))
         if changes["meaningful"]:
+            changes["pending_id"] = ask(db, f"web:finding:{mon['id']}:{task['id']}", _finding_text(mon, changes),
+                                        now)
             state.log_event(db, task["id"], "finding", {"monitor_id": mon["id"], "changes": changes}, now)
         store.bump_state_version(db)
     return changes
 
 
+def _finding_text(mon, changes) -> str:
+    from .knowledge import quote
+    parts = []
+    for item in changes.get("changed_values", [])[:3]:
+        parts.append(f"«{quote(item['key'])[:80]}» changed from {', '.join(map(str, item['before'])) or '-'} to "
+                     f"{', '.join(map(str, item['after'])) or '-'}")
+    if changes.get("new_claims"):
+        parts.append(f"{len(changes['new_claims'])} new corroborated subject(s), e.g. "
+                     f"«{quote(changes['new_claims'][0])[:80]}»")
+    if changes.get("superseded"):
+        parts.append(f"{len(changes['superseded'])} knowledge item(s) superseded by newer versions")
+    return (f"Monitor #{mon['id']} «{quote(mon['topic'])[:120]}» found a meaningful change: {'; '.join(parts)}. "
+            "See the console (Research, Monitors) or `nsf web evidence` for the task; answer to dismiss.")
+
+
+def after_monitor_task(db, task_id, now):
+    """Change detection for a finished task of origin 'monitor:<id>' however it ran (tick, worker, resume).
+    Returns the changes, or None when the task is not a finished monitor task or was already compared."""
+    task = state.task(db, task_id)
+    origin = str(task.get("origin") or "")
+    if not origin.startswith("monitor:") or task["status"] not in TERMINAL_STATES:
+        return None
+    try:
+        mon = _monitor(db, int(origin.split(":", 1)[1]))
+    except (ValueError, NotFound):
+        return None
+    return _after_monitor_run(db, mon, task, now)
+
+
+def findings(db, monitor_id, *, limit=5) -> list[dict]:
+    """The monitor's most recent findings (newest first): task, time, changes and the owner question."""
+    out = []
+    for task_id, detail, at in db.execute(
+            "SELECT task_id, detail, created_at FROM web_events WHERE kind='finding' AND "
+            "json_extract(detail,'$.monitor_id')=? ORDER BY id DESC LIMIT ?", (monitor_id, int(limit))):
+        changes = (state.loads(detail, {}) or {}).get("changes") or {}
+        out.append({"task_id": task_id, "at": at, "pending_id": changes.get("pending_id"),
+                    "changed_values": changes.get("changed_values", [])[:10],
+                    "new_claims": changes.get("new_claims", [])[:10], "superseded": changes.get("superseded", [])[:10]})
+    return out
+
+
 # ---- tick --------------------------------------------------------------------------------------------------------
 
-def autonomous_usage(db, now) -> dict:
-    """Tasks, requests and bytes spent by autonomous research (curiosity/refresh) in the last 24 h."""
+def _counted(origin, mcp):
+    return origin == "mcp" if mcp else (origin == "curiosity" or origin.startswith("refresh:"))
+
+
+def autonomous_usage(db, now, *, mcp=False) -> dict:
+    """Tasks, requests and bytes spent by autonomous research (curiosity/refresh; mcp=True: MCP-origin tasks) in
+    the last 24 h."""
     tasks = requests = volume = 0
     for origin, usage in db.execute("SELECT origin, usage FROM web_tasks WHERE created_at>?", (now - DAY,)):
-        if origin == "curiosity" or origin.startswith("refresh:"):
+        if _counted(origin, mcp):
             used = state.loads(usage, {})
             tasks += 1
             requests += int(used.get("requests", 0) or 0)
@@ -241,14 +306,15 @@ def autonomous_usage(db, now) -> dict:
     return {"tasks": tasks, "requests": requests, "bytes": volume}
 
 
-def autonomous_remaining(db, now, cfg) -> dict:
-    """Requests and bytes of the daily autonomous allowance not yet committed: caps minus what finished autonomous
-    tasks of the last 24 h spent and what open ones may still spend (their whole budget). Proposals waiting for
-    the owner are not counted until the owner authorises them."""
+def autonomous_remaining(db, now, cfg, *, mcp=False) -> dict:
+    """Requests and bytes of the daily autonomous allowance (mcp=True: config.daily_mcp for MCP-origin tasks) not
+    yet committed: caps minus what finished tasks of the last 24 h spent and what open ones may still spend (their
+    whole budget). Proposals waiting for the owner are not counted until the owner authorises them."""
     committed = {"requests": 0, "bytes": 0}
+    caps = cfg.daily_mcp if mcp else cfg.daily_autonomous
     for origin, status, stage, usage, budget in db.execute(
             "SELECT origin, status, stage, usage, budget FROM web_tasks WHERE created_at>?", (now - DAY,)):
-        if not (origin == "curiosity" or origin.startswith("refresh:")) or stage == "proposed":
+        if not _counted(origin, mcp) or stage == "proposed":
             continue
         used, limits = state.loads(usage, {}), state.loads(budget, {})
         for key in committed:
@@ -256,7 +322,7 @@ def autonomous_remaining(db, now, cfg) -> dict:
             if status not in TERMINAL_STATES:
                 spent = max(spent, int(limits.get(f"max_{key}", 0) or 0))
             committed[key] += spent
-    return {key: max(0, int(cfg.daily_autonomous.get(key, 0)) - committed[key]) for key in committed}
+    return {key: max(0, int(caps.get(key, 0)) - committed[key]) for key in committed}
 
 
 def _over_cap(db, now, cfg, *, ignore_tasks=False):
@@ -278,14 +344,20 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         return report
     budget_left = max_tasks if max_tasks is not None else 10 ** 6
 
-    def launch(objective, *, mode, origin, budget=None):
+    def launch(objective, *, mode, origin, budget=None, before_run=None):
         nonlocal budget_left
         task = orchestrator.submit(db, objective, now, mode=mode, origin=origin, budget=budget)
         budget_left -= 1
+        if before_run is not None:
+            before_run(task)
         if queue:
             report["queued"].append({"task_id": task["id"], "origin": origin})
             return task
-        done = orchestrator.run(db, task["id"], services)
+        try:
+            done = orchestrator.run(db, task["id"], services)
+        except (LeaseHeld, Conflict) as exc:   # a worker claimed the queued task first: it runs it there
+            report["queued"].append({"task_id": task["id"], "origin": origin, "note": str(exc)[:200]})
+            return task
         report["ran"].append({"task_id": done["id"], "origin": origin, "status": done["status"]})
         return done
 
@@ -295,18 +367,24 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         if budget_left <= 0:
             report["skipped"].append({"monitor_id": mid, "reason": f"max_tasks {max_tasks} reached"})
             continue
+
+        def advance(task, mon=mon, mid=mid):
+            # The schedule moves on as soon as the task exists, whoever runs it and however that ends.
+            with store.write(db):
+                db.execute("UPDATE web_monitors SET last_run_at=?, next_run_at=?, last_task_id=?, runs=runs+1, "
+                           "updated_at=? WHERE id=?", (now, now + mon["interval_seconds"], task["id"], now, mid))
+                store.bump_state_version(db)
+
         try:
-            task = launch(mon["topic"], mode=mon["mode"], origin=f"monitor:{mid}", budget=mon["budget"])
-        except ValidationError as exc:
+            task = launch(mon["topic"], mode=mon["mode"], origin=f"monitor:{mid}", budget=mon["budget"],
+                          before_run=advance)
+        except (ValidationError, WritesPaused) as exc:
             report["skipped"].append({"monitor_id": mid, "reason": str(exc)})
             continue
-        with store.write(db):
-            db.execute("UPDATE web_monitors SET last_run_at=?, next_run_at=?, last_task_id=?, runs=runs+1, "
-                       "updated_at=? WHERE id=?", (now, now + mon["interval_seconds"], task["id"], now, mid))
-            store.bump_state_version(db)
         if task["status"] in TERMINAL_STATES:
-            changes = _after_monitor_run(db, mon, state.task(db, task["id"]), now)
-            if changes["meaningful"]:
+            for (detail,) in db.execute("SELECT detail FROM web_events WHERE task_id=? AND kind='finding'",
+                                        (task["id"],)):
+                changes = (state.loads(detail, {}) or {}).get("changes") or {}
                 report["findings"].append({"monitor_id": mid, "task_id": task["id"], "changes": changes})
     if not cfg.autonomous:
         report["skipped"].append({"what": "predictions and curiosity",
@@ -330,7 +408,11 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         if cap:
             report["skipped"].append({"task_id": action["task_id"], "reason": f"{cap}; left queued"})
             continue
-        done = orchestrator.run(db, action["task_id"], services)
+        try:
+            done = orchestrator.run(db, action["task_id"], services)
+        except (LeaseHeld, Conflict) as exc:
+            report["queued"].append({"task_id": action["task_id"], "origin": "refresh", "note": str(exc)[:200]})
+            continue
         budget_left -= 1
         report["ran"].append({"task_id": done["id"], "origin": "refresh", "status": done["status"]})
     for candidate in curiosity.rank(db, now, limit=10):
@@ -350,7 +432,7 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         objective = candidate["target"]["statement"]
         try:
             launch(objective, mode=candidate["mode"], origin="curiosity")
-        except ValidationError as exc:
+        except (ValidationError, WritesPaused) as exc:
             report["skipped"].append({"target": candidate["target"], "reason": str(exc)})
     return _retention(report, services, now)
 
@@ -397,35 +479,60 @@ def claim_next(db, holder, now, *, lease=None):
 def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=time.time, fixture=None,
          providers=None, max_tasks=None) -> dict:
     """Drain queued tasks with its own connection. once=True returns when nothing is runnable; otherwise polls
-    every `poll` seconds until `stop` (a threading.Event) is set."""
+    every `poll` seconds until `stop` (a threading.Event) is set.
+
+    The services (fetcher, public cache, provider registry) are built once and reused across tasks, so per-host
+    request spacing and Retry-After backoffs carry over from one task to the next; they are rebuilt when the
+    configuration or the feed list changes. While instance regulation pauses writes nothing is claimed (one
+    decision event per pause, result["paused"] says why)."""
     from . import orchestrator, services as service_builder
     db = store.open_existing(db_path)
-    done = []
+    done, svc, built_for, paused = [], None, None, None
     try:
         while not (stop is not None and stop.is_set()):
             if max_tasks is not None and len(done) >= max_tasks:
                 break
-            if not state.get_config(db).enabled:
+            cfg = state.get_config(db)
+            if not cfg.enabled:
                 if once:
                     break
                 sleep(poll)
                 continue
-            svc = service_builder.build(db, db_path, fixture=fixture, providers=providers, clock=clock)
+            allowed, reason = state.write_allowed(db, db_path)
+            if not allowed:
+                if paused is None:
+                    with store.write(db):
+                        state.log_event(db, None, "decision", {"worker": "not claiming: writes paused",
+                                                               "reason": str(reason)[:300]}, float(clock()))
+                paused = reason
+                if once:
+                    break
+                sleep(poll)
+                continue
+            paused = None
+            wanted = (state.dumps(cfg.to_json()), state.dumps(state.get_feeds(db)))
+            if svc is None or built_for != wanted:
+                if svc is not None:
+                    svc.close()
+                svc, built_for = service_builder.build(db, db_path, fixture=fixture, providers=providers,
+                                                       clock=clock), wanted
+            claimed = claim_next(db, svc.holder, float(clock()))
+            if claimed is None:
+                if once:
+                    break
+                sleep(poll)
+                continue
+            task_id, resume = claimed
             try:
-                claimed = claim_next(db, svc.holder, float(clock()))
-                if claimed is None:
-                    if once:
-                        break
-                    sleep(poll)
-                    continue
-                task_id, resume = claimed
-                try:
-                    out = orchestrator.resume(db, task_id, svc) if resume else orchestrator.run(db, task_id, svc)
-                except Conflict as exc:
-                    out = {"id": task_id, "status": "skipped", "error": str(exc)}
-                done.append({"task_id": task_id, "status": out["status"], "resumed": resume})
-            finally:
-                svc.close()
+                out = orchestrator.resume(db, task_id, svc) if resume else orchestrator.run(db, task_id, svc)
+            except Conflict as exc:
+                out = {"id": task_id, "status": "skipped", "error": str(exc)}
+            done.append({"task_id": task_id, "status": out["status"], "resumed": resume})
     finally:
+        if svc is not None:
+            svc.close()
         db.close()
-    return {"processed": done}
+    out = {"processed": done}
+    if paused is not None:
+        out["paused"] = paused
+    return out

@@ -13,7 +13,16 @@ Contract (ARCHITECTURE §4.1)
 - JavaScript shells (little visible text plus scripts, an empty #root/#app/#__next mount, or a <noscript> asking for
   JavaScript) set `flags["js_suspected"]` so the orchestrator may escalate to browser rendering.
 - Dates: JSON-LD, then meta (article:*, citation_*, Dublin Core, itemprop), then `<time datetime>`, then the HTTP
-  Last-Modified header; `metadata["date_source"]` names the source used for `published_at`.
+  Last-Modified header; `metadata["date_source"]` names the source used for `published_at`. Parsing goes through
+  temporal.parse_date_precision first (time-zone offsets kept); a bare year ("2019") is year precision, not a
+  publication time, and is never used as `published_at`. JSON-LD is walked breadth-first over at most
+  MAX_LD_NODES nodes and depth 6.
+- Hostile markup is refused before parsing (FetchError('decode_error')): a tag longer than MAX_TAG_CHARS, a tag
+  with more than MAX_TAG_ATTRIBUTES attributes (libxml2's attribute handling is quadratic per element) or more than
+  MAX_PARSE_TAGS tags. The page is parsed once; trafilatura receives a copy of the cleaned lxml tree, and its
+  readability/justext fallbacks are skipped for trees above MAX_MARKDOWN_ELEMENTS elements.
+- Charsets: only text encodings are honoured (`charset=base64`, `hex`, `rot13`, `zlib`, ... fall back to UTF-8);
+  any decoding failure falls back to UTF-8 with replacement.
 - A page's `<link rel=canonical>` is honoured only when absolute http(s) and on the same registrable domain
   (an off-site canonical could otherwise poison de-duplication); it is recorded in metadata either way.
 - Work is bounded: at most MAX_ELEMENTS elements of a page are kept (document order), Markdown is converted only
@@ -22,13 +31,16 @@ Contract (ARCHITECTURE §4.1)
 - `doc.text` has one line per block element (h1-h6, p, li, td, blockquote, div, br, ...); whitespace inside a block,
   including source line breaks, is collapsed, so a line break in an HTML document's text is always a block boundary.
 - PDFs via pypdf (page and character bounds; encrypted or unreadable files raise FetchError('decode_error')).
-- Feeds and sitemaps are parsed with xml.etree after refusing any DOCTYPE/ENTITY declaration (billion laughs, XXE)
-  and any non-ASCII-compatible encoding (so the refusal check cannot be bypassed with UTF-16).
+- Feeds and sitemaps are parsed by `safe_xml_parse` (safety.py; expat with DOCTYPE/ENTITY declaration handlers
+  that abort the parse), so billion-laughs and XXE documents are refused in every encoding expat reads, UTF-16
+  included.
 """
 from __future__ import annotations
 
+from collections import deque
 import codecs
-from datetime import datetime, timezone
+import copy
+from datetime import datetime, timedelta, timezone
 import email.utils
 import hashlib
 import html as htmlmod
@@ -37,13 +49,14 @@ import ipaddress
 import json
 import re
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
-import xml.etree.ElementTree as ET
 
 import lxml.etree
 import lxml.html
 import markdownify
 from scrapling.parser import Selector
 
+from . import temporal
+from .safety import safe_xml_parse
 from .types import Document, FetchError, FetchResult
 
 MAX_TEXT = 500_000
@@ -53,6 +66,10 @@ MAX_MARKDOWN_ELEMENTS = 10_000   # above this the main content's Markdown is its
 MAX_LINKS = 200
 MAX_FEED_ITEMS = 500
 MAX_SITEMAP_URLS = 50_000
+MAX_TAG_CHARS = 64 * 1024        # a longer tag is refused before parsing
+MAX_TAG_ATTRIBUTES = 1_000       # attributes per tag (libxml2's per-element attribute handling is quadratic)
+MAX_PARSE_TAGS = 1_000_000       # tags in one document
+MAX_LD_NODES = 5_000             # JSON-LD nodes visited per script
 JS_TEXT_THRESHOLD = 200
 AUTO_TRAFILATURA_BELOW = 300
 HTML_TYPES = ("text/html", "application/xhtml+xml")
@@ -164,27 +181,45 @@ def _to_epoch(value: datetime) -> float | None:
     return value.timestamp()
 
 
+_DATE_PREFIX = re.compile(r"^(\d{4})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?(?:[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?"
+                          r"(?:\s*(Z|UTC|GMT|[+-]\d{2}:?\d{2}))?)?", re.I)
+
+
 def _parse_date(value) -> float | None:
-    """ISO-8601 variants, RFC 2822, '2026/11/03', 'YYYY-MM', 'YYYY', '3 November 2026', 'November 3, 2026'."""
+    """Publication-grade timestamp of a metadata date: temporal.parse_date_precision first (ISO 8601 with offsets,
+    RFC 2822, '3 November 2026', 'Nov 3, 2026', '2026-11'), then lenient forms ('2026/11/03 10:00 +0500',
+    '2026-11-03 10:00 UTC', a date inside other words). Time-zone offsets are applied. A bare year ('2019') is not
+    a publication time and returns None; so do years outside 1900..2200."""
     if value is None:
         return None
     text = " ".join(str(value).split())[:120]
     if not text:
+        return None
+    got = temporal.parse_date_precision(text)
+    if got is not None:
+        if got[1] == "year":
+            return None
+        return got[0] if 1900 <= datetime.fromtimestamp(got[0], timezone.utc).year <= 2200 else None
+    if re.fullmatch(r"\d{4}", text):
         return None
     iso = re.sub(r"\s*(UTC|GMT|Z)$", "+00:00", text)
     try:
         return _to_epoch(datetime.fromisoformat(iso))
     except ValueError:
         pass
-    match = re.match(r"^(\d{4})[-/.](\d{1,2})(?:[-/.](\d{1,2}))?(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?", text)
+    match = _DATE_PREFIX.match(text)
     if match:
-        y, mo, d, hh, mm, ss = match.groups()
+        y, mo, d, hh, mm, ss, zone = match.groups()
+        tz = timezone.utc
+        if zone and zone.upper() not in ("Z", "UTC", "GMT"):
+            sign = -1 if zone[0] == "-" else 1
+            digits = zone[1:].replace(":", "")
+            tz = timezone(sign * timedelta(hours=int(digits[:2]), minutes=int(digits[2:4] or 0)))
         try:
-            return _to_epoch(datetime(int(y), int(mo), int(d or 1), int(hh or 0), int(mm or 0), int(ss or 0)))
+            return _to_epoch(datetime(int(y), int(mo), int(d or 1), int(hh or 0), int(mm or 0), int(ss or 0),
+                                      tzinfo=tz))
         except ValueError:
             return None
-    if re.fullmatch(r"\d{4}", text):
-        return _to_epoch(datetime(int(text), 1, 1))
     try:
         parsed = email.utils.parsedate_to_datetime(text)
         if parsed is not None:
@@ -221,10 +256,50 @@ def _decode(body: bytes, headers: dict | None) -> str:
         if match:
             charset = match.group(1).decode("ascii", "ignore")
     try:
-        codecs.lookup(charset or "utf-8")
-    except LookupError:
+        info = codecs.lookup(charset or "utf-8")
+    except (LookupError, TypeError, ValueError):
+        info = None
+    if info is None or not getattr(info, "_is_text_encoding", True):   # base64, hex, rot13, zlib, ...
         charset = None
-    return body.decode(charset or "utf-8", "replace")
+    try:
+        return body.decode(charset or "utf-8", "replace")
+    except (UnicodeError, LookupError, TypeError, ValueError):          # e.g. idna refuses errors="replace"
+        return body.decode("utf-8", "replace")
+
+
+_TAG_START = re.compile(r"<([A-Za-z][A-Za-z0-9]*)")
+_ATTR_NAME = re.compile(r"\s[^\s=<>\"'/]+\s*=")
+_RAW_TEXT = {name: re.compile(rf"</{name}", re.I) for name in
+             ("script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript")}
+
+
+def _refuse_hostile_markup(text: str, url: str) -> None:
+    """Linear pre-scan: refuse documents whose parse would be pathological (see module docstring). The content of
+    raw-text elements (script, style, ...) is skipped: `a<b` in JavaScript is not a tag."""
+    gt = checked = skip = -1
+    tags = 0
+    for m in _TAG_START.finditer(text):
+        start = m.start()
+        if start < skip:
+            continue
+        tags += 1
+        if tags > MAX_PARSE_TAGS:
+            raise FetchError("decode_error", url, f"more than {MAX_PARSE_TAGS} tags")
+        if gt < start:
+            gt = text.find(">", start)
+            if gt < 0:
+                gt = len(text)
+        closing = _RAW_TEXT.get(m.group(1).lower())
+        if closing is not None:
+            end = closing.search(text, gt)
+            skip = end.start() if end else len(text)
+        if gt == checked or gt - start <= 4096:   # later starts inside one span are shorter: checked once
+            continue
+        checked = gt
+        if gt - start > MAX_TAG_CHARS:
+            raise FetchError("decode_error", url, f"HTML tag longer than {MAX_TAG_CHARS} characters")
+        if len(_ATTR_NAME.findall(text, start, gt)) > MAX_TAG_ATTRIBUTES:
+            raise FetchError("decode_error", url, f"HTML tag with more than {MAX_TAG_ATTRIBUTES} attributes")
 
 
 def _is_hidden(el, tag: str) -> bool:
@@ -348,18 +423,21 @@ def _json_ld_objects(sel) -> list[dict]:
             data = json.loads(raw)
         except ValueError:
             continue
-        stack = [(data, 0)]
-        while stack and len(found) < 200:
-            item, depth = stack.pop(0)
+        queue = deque([(data, 0)])
+        visited = 0
+        while queue and len(found) < 200 and visited < MAX_LD_NODES:
+            item, depth = queue.popleft()
+            visited += 1
             if depth > 6:
                 continue
             if isinstance(item, list):
-                stack.extend((x, depth + 1) for x in item[:100])
+                if depth < 6:
+                    queue.extend((x, depth + 1) for x in item[:100] if isinstance(x, (list, dict)))
             elif isinstance(item, dict):
                 found.append(item)
                 for key in ("@graph", "mainEntity", "mainEntityOfPage", "itemListElement"):
-                    if isinstance(item.get(key), (list, dict)):
-                        stack.append((item[key], depth + 1))
+                    if depth < 6 and isinstance(item.get(key), (list, dict)):
+                        queue.append((item[key], depth + 1))
     return found
 
 
@@ -395,13 +473,14 @@ def _first(metas, *names) -> tuple[str | None, str | None]:
     return None, None
 
 
-def _trafilatura(cleaned_html: str, url: str) -> str | None:
+def _trafilatura(tree, url: str, *, fast: bool = False) -> str | None:
+    """Main text by trafilatura from an already-parsed, cleaned lxml tree (it may modify the tree it gets)."""
     try:
         import trafilatura
     except ImportError:
         return None
     try:
-        text = trafilatura.extract(cleaned_html, url=url or None, output_format="txt", include_comments=False)
+        text = trafilatura.extract(tree, url=url or None, output_format="txt", include_comments=False, fast=fast)
     except Exception:          # optional engine on untrusted input: any failure falls back to the heuristic
         return None
     return text.strip() if text else None
@@ -430,6 +509,7 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
     text_in = re.sub(r"^\s*<\?xml[^>]*\?>", "", text_in)
     if not text_in.strip():
         text_in = "<html><body></body></html>"
+    _refuse_hostile_markup(text_in, url)
     sel = Selector(text_in, url=final_url, huge_tree=False)
     truncated_extraction = _prune(sel._root, MAX_ELEMENTS)
     metas = _meta_map(sel)
@@ -551,7 +631,8 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
     text = _text_of(main)
     used_engine = "scrapling"
     if engine in ("trafilatura", "auto") and (engine == "trafilatura" or len(text) < AUTO_TRAFILATURA_BELOW):
-        alt = _trafilatura(lxml.html.tostring(root, encoding="unicode"), final_url)
+        elements = sum(1 for _ in root.iter())
+        alt = _trafilatura(copy.deepcopy(root), final_url, fast=elements > MAX_MARKDOWN_ELEMENTS)
         if alt and (engine == "trafilatura" or len(alt) > len(text)):
             text, used_engine = alt, "trafilatura"
     metadata["engine"] = used_engine
@@ -663,17 +744,7 @@ def extract_pdf(body: bytes, url: str, *, retrieved_at, max_pages=30, retrieval_
 # ---- XML: feeds and sitemaps ------------------------------------------------------------------------------------
 
 def _safe_xml(body: bytes, url: str):
-    body = bytes(body)
-    if not body.strip():
-        raise FetchError("decode_error", url, "empty XML document")
-    if b"\x00" in body[:1024]:
-        raise FetchError("decode_error", url, "XML in a non-ASCII-compatible encoding is refused")
-    if re.search(rb"<!\s*(DOCTYPE|ENTITY)", body, re.I):
-        raise FetchError("decode_error", url, "XML with DOCTYPE/ENTITY declarations is refused")
-    try:
-        return ET.fromstring(body)
-    except ET.ParseError as error:
-        raise FetchError("decode_error", url, f"malformed XML ({error.code})") from None
+    return safe_xml_parse(body, on_refuse=lambda detail: FetchError("decode_error", url, detail))
 
 
 def _local(tag) -> str:

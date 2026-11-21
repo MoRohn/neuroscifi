@@ -8,26 +8,42 @@ def _dir(args):
     return args.dir if args.dir is not None else checkpoints.default_dir(store.resolve_db(args))
 
 
-def _forget_source(db, args, now):
-    """governance.forget_source, then drop the URL (or every URL of the domain) from the public cache, which
-    holds bodies and validators only (ADR-023). The cache file is opened only if it exists."""
-    result = governance.forget_source(db, args.target, now)
+def _drop_cached(args, urls=(), domain=None):
+    """Drop URLs (or every URL of a domain) from the public cache, which holds bodies and validators only
+    (ADR-023). The cache file is opened only if it exists."""
     from ..webcortex.services import cache_path
     path = cache_path(store.resolve_db(args))
-    target = args.target.strip()
     dropped = {"path": str(path), "exists": path.exists(), "entries_removed": 0}
-    if dropped["exists"]:
+    if dropped["exists"] and (urls or domain):
         from ..webcortex.cache import PublicCache
         cache = PublicCache(path)
         try:
-            if "://" in target:
-                urls = set((result.get("effects") or {}).get("cache", {}).get("urls") or []) | {target}
-                dropped["entries_removed"] = sum(cache.forget_url(u) for u in sorted(urls))
+            if domain:
+                dropped["entries_removed"] = cache.forget_domain(domain)
             else:
-                dropped["entries_removed"] = cache.forget_domain(target)
+                dropped["entries_removed"] = sum(cache.forget_url(u) for u in sorted(set(urls)))
         finally:
             cache.close()
+    return dropped
+
+
+def _forget_source(db, args, now):
+    """governance.forget_source, then drop the URL (or every URL of the domain) from the public cache."""
+    result = governance.forget_source(db, args.target, now)
+    target = args.target.strip()
+    keys = (result.get("effects") or {}).get("cache") or {}
+    if "://" in target:
+        dropped = _drop_cached(args, urls=set(keys.get("urls") or []) | {target})
+    else:
+        dropped = _drop_cached(args, domain=target)
     return result | {"public_cache": dropped}
+
+
+def _forget_research(db, args, now):
+    """governance.forget_research, then drop the task's pages that no other task read from the public cache."""
+    result = governance.forget_research(db, args.target, now)
+    urls = ((result.get("effects") or {}).get("cache") or {}).get("urls") or []
+    return result | {"public_cache": _drop_cached(args, urls=urls)}
 
 
 def register(sub, *, with_db, run):
@@ -54,10 +70,11 @@ def register(sub, *, with_db, run):
         store.add_db_argument(q)
         q.add_argument("target", type=kind)
         q.set_defaults(handler=with_db(lambda db, a, now, func=func: func(db, a.target, now)))
-    q = fsub.add_parser("research", help="a Web Cortex task with its events, sources and claims")
+    q = fsub.add_parser("research", help="a Web Cortex task with its events, sources and claims (and its pages in "
+                                         "the public cache that no other task read)")
     store.add_db_argument(q)
     q.add_argument("target", help="task id")
-    q.set_defaults(handler=with_db(lambda db, a, now: governance.forget_research(db, a.target, now)))
+    q.set_defaults(handler=with_db(_forget_research))
     q = fsub.add_parser("knowledge", help="a web knowledge item and every version of it")
     store.add_db_argument(q)
     q.add_argument("target", type=int, help="knowledge id")

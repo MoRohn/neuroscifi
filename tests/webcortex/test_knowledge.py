@@ -75,7 +75,7 @@ def test_refresh_submits_a_fact_verification_task_without_running_it(db):
     kid = out["provisional"][0]
     task = knowledge.refresh(db, kid, T0 + 10 * DAY)
     assert task["status"] == "queued" and task["mode"] == "fact_verification"
-    assert task["origin"] == f"refresh:{kid}" and task["parent_id"] == tid
+    assert task["origin"] == "cli" and task["parent_id"] == tid   # the owner's refresh (A-P2-2)
     assert task["objective"] == knowledge.row(db, kid)["statement"]
     assert orchestrator.get(db, task["id"])["stages_done"] == []
 
@@ -126,3 +126,26 @@ def test_a_new_arxiv_version_of_a_source_makes_knowledge_stale(db):
     item = knowledge.query(db, "dendritic spikes", T0 + 3 * DAY)["items"][0]
     assert item["stale"] is True and "new version" in item["stale_reason"]
     assert state.sources(db, tid)[0]["metadata"]["version"] == "v1"     # the version is kept in web_sources
+
+
+def test_owner_refresh_is_not_autonomous_but_prediction_refresh_is(db):
+    """A-P2-2: with the daily autonomous allowance at zero the owner's refresh still runs; 'refresh:<id>' (a due
+    prediction) is autonomous and refused."""
+    from neuroscifi.webcortex import state
+    state.set_config(db, {"autonomous": False, "daily_autonomous": {"requests": 0}}, T0)
+    _, out = consolidated(db, [two_sources()])
+    kid = out["provisional"][0]
+    task = knowledge.refresh(db, kid, T0 + 5)
+    assert task["origin"] == "cli" and task["budget"]["max_requests"] > 0
+    assert knowledge.refresh(db, kid, T0 + 5, origin="console")["origin"] == "console"
+    assert not orchestrator.is_autonomous("cli") and orchestrator.is_autonomous(f"refresh:{kid}")
+    with pytest.raises(ValidationError, match="daily autonomous cap"):
+        knowledge.refresh(db, kid, T0 + 5, origin=f"refresh:{kid}")
+
+
+def test_query_limit_must_be_an_integer(db):
+    """C-P3: a malformed limit is a ValidationError (exit 2 / HTTP 400), never a bare ValueError."""
+    with pytest.raises(ValidationError):
+        knowledge.query(db, "numpy", T0, limit="ten")
+    with pytest.raises(ValidationError):
+        knowledge.query(db, "numpy", T0, limit=0)

@@ -263,3 +263,11 @@ def test_stem_merges_simple_inflections():
 def test_tolerance_constants_documented():
     assert T.NUMERIC_TOLERANCE == 0.01 and T.DATE_TOLERANCE == 86400.0
     assert math.isclose(T.BM25([["a"]]).idf["a"], math.log(1 + 0.5 / 1.5))
+
+
+# ---- review remediation (V1) --------------------------------------------------------------------------------------
+
+def test_values_skip_numbers_that_overflow_to_infinity():
+    assert T.values("The value is " + "1" * 400 + " units.") == []
+    assert T.values("It cost $" + "9" * 400 + " and 5 mg.") == ["5 mg"]
+    assert T.values("Between " + "7" * 330 + " million and 12 km.") == ["12 km"]

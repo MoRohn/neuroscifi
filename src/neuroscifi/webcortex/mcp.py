@@ -6,18 +6,24 @@ notifications are ignored. stdout carries protocol messages only (anything else 
 redirected to stderr); logs go to stderr and name the tool and outcome, never arguments.
 
 Tools are read-mostly by design: `web_search` (discovery only), `web_research` (submit and run one task with the
-mode's default budget), `web_task`, `web_evidence`, `web_knowledge`. There is no forget, config, review or
+mode's default budget; at most config.mcp_research_per_hour calls per hour per server process, and MCP-origin
+tasks share the daily allowance config.daily_mcp), `web_task`, `web_evidence`, `web_knowledge`. `web_research` and
+`web_task` return the report's working-memory context pack (synthesis.context_pack, bounded by the task's
+budget.max_context_tokens; its tokens are charged to usage.tokens) and the full report only on request
+(`full_report: true`). There is no forget, config, review or
 monitor tool: an agent cannot change what the individual accepts, forgets or is allowed to do. Arguments are
 checked against the published input schemas (types, lengths, enums; unknown fields refused). Enablement and the
 privacy screen apply exactly as on the command line. Every piece of retrieved content in a result is wrapped in a
 `safety.untrusted` envelope and the result text starts with UNTRUSTED_HEADER. Failures become `isError` results
-with a one-line message, never a stack trace.
+with a one-line message, never a stack trace. A malformed message (non-finite numbers, nesting too deep, an id
+that is not a string or an integer) gets a JSON-RPC error; the server never crashes on input.
 
 The services factory (`services_factory(db, db_path) -> Services`) is a parameter so tests can run the server
 offline; it defaults to services.build.
 """
 from __future__ import annotations
 
+from collections import deque
 import contextlib
 import json
 import sys
@@ -55,12 +61,14 @@ def _tools():
                         "cited report. Knowledge it yields stays provisional until the owner reviews it.",
          "inputSchema": {"type": "object", "additionalProperties": False, "required": ["objective"], "properties": {
              "objective": {"type": "string", "minLength": 1, "maxLength": MAX_OBJECTIVE},
-             "mode": {"type": "string", "enum": list(MODES)}}},
+             "mode": {"type": "string", "enum": list(MODES)},
+             "full_report": {"type": "boolean"}}},
          "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                          "openWorldHint": True}},
-        {"name": "web_task", "title": "Research task", "description": "Status, progress and report of a task.",
+        {"name": "web_task", "title": "Research task",
+         "description": "Status, progress and the report's context pack of a task (full_report: the whole report).",
          "inputSchema": {"type": "object", "additionalProperties": False, "required": ["task_id"],
-                         "properties": {"task_id": _TASK_ID}},
+                         "properties": {"task_id": _TASK_ID, "full_report": {"type": "boolean"}}},
          "annotations": read_only},
         {"name": "web_evidence", "title": "Task evidence",
          "description": "Sources, extracted claims, claim links and the episode log of a task.",
@@ -104,6 +112,9 @@ def validate(schema: dict, args) -> dict:
                 raise ToolInputError(f"'{name}' must not be blank")
             if "pattern" in spec and not re.fullmatch(spec["pattern"], value):
                 raise ToolInputError(f"'{name}' has an invalid format")
+        elif spec["type"] == "boolean":
+            if not isinstance(value, bool):
+                raise ToolInputError(f"'{name}' must be true or false")
         elif spec["type"] == "integer":
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ToolInputError(f"'{name}' must be an integer")
@@ -128,6 +139,10 @@ def _task_meta(task) -> dict:
                                      "created_at", "finished_at", "stages_done", "progress") if k in task}
 
 
+class RateLimited(Exception):
+    pass
+
+
 class Server:
     def __init__(self, db_path, *, services_factory=None, clock=time.time, log=None):
         self.db_path = db_path
@@ -136,6 +151,7 @@ class Server:
         self.log = log or sys.stderr
         self.tools = {t["name"]: t for t in _tools()}
         self.initialized = False
+        self.research_calls = deque()   # times of accepted web_research calls (rate limit window: one hour)
 
     # ---- protocol ------------------------------------------------------------------------------------------------
     def handle(self, message):
@@ -186,7 +202,7 @@ class Server:
             finally:
                 db.close()
             text = f"{UNTRUSTED_HEADER}\n\n{_dump(payload)}"
-        except (ToolInputError, InstanceError) as exc:
+        except (ToolInputError, InstanceError, RateLimited) as exc:
             return self._failed(name, str(exc))
         except Exception as exc:   # never a stack trace on the wire: name the failure only
             detail = getattr(exc, "detail", None)
@@ -223,25 +239,50 @@ class Server:
                 "providers": [{k: a.get(k) for k in ("provider", "engine", "ok", "n", "error")}
                               for a in out["attempts"]], "usage": out["usage"]}
 
+    def _rate_limit(self, db, now):
+        """At most config.mcp_research_per_hour web_research calls per hour in this server process."""
+        from . import state
+        per_hour = state.get_config(db).mcp_research_per_hour
+        while self.research_calls and self.research_calls[0] <= now - 3600.0:
+            self.research_calls.popleft()
+        if len(self.research_calls) >= per_hour:
+            wait = 3600.0 - (now - self.research_calls[0]) if self.research_calls else 3600.0
+            raise RateLimited(f"rate limit: at most {per_hour} web_research calls per hour (config "
+                              f"mcp_research_per_hour); retry in {max(1, int(wait))} s")
+        self.research_calls.append(now)
+
     def _web_research(self, db, args, now):
-        from . import orchestrator
-        task = orchestrator.submit(db, args["objective"], now, mode=args.get("mode"), origin="mcp")
+        from . import orchestrator, state
+        state.require_enabled(db)
+        self._rate_limit(db, now)
+        task = orchestrator.submit(db, args["objective"], now, mode=args.get("mode"), origin=orchestrator.MCP_ORIGIN)
         services = self._services(db)
         try:
             done = orchestrator.run(db, task["id"], services)
         finally:
             services.close()
-        return self._task_view(done)
+        return self._task_view(done, full=args.get("full_report", False))
 
-    def _task_view(self, task):
+    def _task_view(self, task, *, full=False):
+        """The task, the report's context pack (token-bounded working memory) and, on request, the full report."""
+        from . import synthesis
         out = {"task": _task_meta(task)}
-        if task.get("result") is not None:
-            out["report"] = _wrap(task["result"], f"neuroscifi:web-task/{task['id']}")
+        report = task.get("result")
+        if report is not None:
+            pack = report.get("context_pack")
+            if pack is None:   # a report written before context packs were stored
+                pack = synthesis.context_pack(report, max_tokens=(task.get("budget") or {}).get(
+                    "max_context_tokens", 2000))
+            out["context"] = _wrap(pack, f"neuroscifi:web-task/{task['id']}/context")
+            out["context_tokens"] = pack.get("tokens")
+            if full:
+                out["report"] = _wrap(report, f"neuroscifi:web-task/{task['id']}")
         return out
 
     def _web_task(self, db, args, now):
         from . import orchestrator
-        return self._task_view(orchestrator.get(db, args["task_id"]))
+        task = orchestrator.get(db, args["task_id"])
+        return self._task_view(task, full=args.get("full_report", False))
 
     def _web_evidence(self, db, args, now):
         from . import orchestrator
@@ -274,7 +315,32 @@ def _result(rid, result):
 
 
 def _error(rid, code, message):
+    if not isinstance(rid, (str, int)) or isinstance(rid, bool):
+        rid = None   # never echo an id that is not a string or an integer (NaN, objects, ...)
     return {"jsonrpc": "2.0", "id": rid, "error": {"code": code, "message": message}}
+
+
+def _reject_constant(name):
+    raise ValueError(f"non-finite number {name} is not JSON")
+
+
+def _decode(line):
+    """json.loads that refuses NaN/Infinity and turns runaway nesting into a parse error."""
+    try:
+        return json.loads(line, parse_constant=_reject_constant), None
+    except RecursionError:
+        return None, _error(None, -32700, "Parse error: nesting too deep")
+    except ValueError:
+        return None, _error(None, -32700, "Parse error")
+
+
+def _encode(response) -> str:
+    try:
+        return json.dumps(response, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError, RecursionError):
+        rid = response.get("id") if isinstance(response, dict) else None
+        return json.dumps(_error(rid, -32603, "Internal error: the result could not be encoded"),
+                          separators=(",", ":"))
 
 
 def serve(db_path, *, stdin=None, stdout=None, stderr=None, services_factory=None, clock=time.time) -> int:
@@ -295,16 +361,18 @@ def serve(db_path, *, stdin=None, stdout=None, stderr=None, services_factory=Non
         elif not line.strip():
             continue
         else:
-            try:
-                message = json.loads(line)
-            except ValueError:
-                response = _error(None, -32700, "Parse error")
-            else:
-                with contextlib.redirect_stdout(err):
-                    response = server.handle(message) if not isinstance(message, list) else \
-                        _error(None, -32600, "Invalid Request: batches are not supported")
+            message, response = _decode(line)
+            if response is None:
+                try:
+                    with contextlib.redirect_stdout(err):
+                        response = server.handle(message) if not isinstance(message, list) else \
+                            _error(None, -32600, "Invalid Request: batches are not supported")
+                except Exception as exc:   # never crash on one message
+                    print(f"nsf web mcp: internal error ({type(exc).__name__})", file=err)
+                    response = _error(message.get("id") if isinstance(message, dict) else None, -32603,
+                                      "Internal error")
         if response is not None:
-            out.write(json.dumps(response, separators=(",", ":"), allow_nan=False) + "\n")
+            out.write(_encode(response) + "\n")
             out.flush()
     return 0
 

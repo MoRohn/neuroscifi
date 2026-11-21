@@ -258,14 +258,15 @@ def test_registry_sees_engine_attempts_and_status(daemon):
 # ---- Daemon lifecycle ------------------------------------------------------------------------------------------
 
 FAKE_ENTRY = textwrap.dedent("""
-    import json, sys
+    import json, os, sys
     from http.server import BaseHTTPRequestHandler, HTTPServer
     args = sys.argv[1:]
     host, port = args[args.index("--host") + 1], int(args[args.index("--port") + 1])
+    print("env:", " ".join(sorted(os.environ)), flush=True)
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
         def do_GET(self):
-            data = {"daemon": "running", "version": "fake", "configSummary": {"defaultSearchEngine": "bing"}}
+            data = {"daemon": "running", "version": "2.2.0", "configSummary": {"defaultSearchEngine": "bing"}}
             raw = json.dumps({"status": "ok", "data": data, "error": None}).encode()
             self.send_response(200); self.send_header("Content-Length", str(len(raw))); self.end_headers()
             self.wfile.write(raw)
@@ -295,11 +296,11 @@ def test_daemon_missing_install(tmp_path):
 
 def test_daemon_start_status_stop(fake_package, tmp_path):
     d = Daemon(node=sys.executable, package_dir=fake_package, port=free_port(), state_dir=tmp_path / "state")
-    started = d.start(timeout=10)
+    started = d.start(timeout=10, allow_browser_user_agent=True)
     try:
         assert started["started"] is True and started["running"] is True and started["owned"] is True
-        assert started["version"] == "fake"
-        assert d.pid_path.read_text() == str(started["pid"])
+        assert started["version"] == "2.2.0" and started["honest_user_agent"] is False
+        assert d.pid_path.read_text().split()[0] == str(started["pid"])
         assert d.start()["started"] is False                       # already running: not started twice
         other = Daemon(node=sys.executable, package_dir=fake_package, port=d.port, state_dir=tmp_path / "state")
         assert other.status()["pid"] == started["pid"] and other.status()["owned"] is False
@@ -326,7 +327,7 @@ def test_daemon_start_failure_reports_log(tmp_path):
     entry.write_text("import sys\nprint('boom: missing module', file=sys.stderr)\nsys.exit(3)\n")
     d = Daemon(node=sys.executable, package_dir=tmp_path / "pkg", port=free_port(), state_dir=tmp_path / "s")
     with pytest.raises(ProviderError, match="boom: missing module"):
-        d.start(timeout=10)
+        d.start(timeout=10, allow_browser_user_agent=True)
 
 
 # ---- live --------------------------------------------------------------------------------------------------------
@@ -361,3 +362,170 @@ def test_live_daemon_search(tmp_path):
     finally:
         d.stop()
         assert not Path(d.pid_path).exists()
+
+
+# ---- review remediation (V1): honest User-Agent, child environment, redirects, pid reuse, port squatting -------
+
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+
+from neuroscifi.webcortex import config as wc_config  # noqa: E402
+from neuroscifi.webcortex.providers import openwebsearch as ows  # noqa: E402
+
+PATCH_SCRIPT = ows.DEFAULT_PACKAGE_DIR / "apply-honest-ua.mjs"
+CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{v}.0.0.0 Safari/537.36"
+MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+ENGINE_FILES = {   # the forged strings of open-webSearch 2.2.0, as the patch script expects them
+    "build/engines/duckduckgo/searchDuckDuckGo.js":
+        f'const h = {{"User-Agent": "{CHROME.format(v=112)}"}};\nconst a = {{\'User-Agent\': \'Apifox/1.0.0 '
+        f'(https://apifox.com)\'}};\n',
+    "build/engines/startpage/startpage.js": f"const h = {{'User-Agent': '{CHROME.format(v=136)}'}};\n",
+    "build/engines/brave/brave.js": f'const h = {{"User-Agent": "{CHROME.format(v=112)}"}};\n',
+    "build/engines/bing/bing.js": f"const B = '{MAC}';\nconst h = {{'User-Agent': '{CHROME.format(v=133)}'}};\n",
+    "build/engines/sogou/sogou.js": f"const h = {{'User-Agent': '{CHROME.format(v=136)}'}};\n",
+}
+
+
+def fake_engines(package, version="2.2.0"):
+    root = package / "node_modules" / "open-websearch"
+    (root / "package.json").write_text(json.dumps({"name": "open-websearch", "version": version}))
+    for rel, text in ENGINE_FILES.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    return root
+
+
+def run_patch(package):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    return subprocess.run([node, str(PATCH_SCRIPT), str(package)], capture_output=True, text=True, timeout=60)
+
+
+def test_patch_script_user_agent_is_the_web_cortex_user_agent():
+    assert f'export const USER_AGENT = "{wc_config.USER_AGENT}";' in PATCH_SCRIPT.read_text()
+    package_json = json.loads((ows.DEFAULT_PACKAGE_DIR / "package.json").read_text())
+    assert package_json["scripts"]["patch-ua"] == "node apply-honest-ua.mjs"
+
+
+def test_patch_script_replaces_forged_user_agents_and_is_verified(fake_package):
+    root = fake_engines(fake_package)
+    assert ows.honest_user_agent(fake_package) is False
+    first = run_patch(fake_package)
+    assert first.returncode == 0, first.stderr
+    for rel in ENGINE_FILES:
+        text = (root / rel).read_text()
+        assert "Mozilla/5.0" not in text and "Apifox" not in text and wc_config.USER_AGENT in text
+    assert ows.honest_user_agent(fake_package) is True
+    marker = (root / ".neuroscifi-honest-ua.json").read_bytes()
+    second = run_patch(fake_package)                                  # idempotent
+    assert second.returncode == 0 and "already patched" in second.stdout
+    assert (root / ".neuroscifi-honest-ua.json").read_bytes() == marker
+    bing = root / "build/engines/bing/bing.js"
+    bing.write_text(bing.read_text() + f"// {MAC}\n")                 # tampered after patching
+    assert ows.honest_user_agent(fake_package) is False
+
+
+def test_patch_script_refuses_other_versions_and_moved_strings(fake_package, tmp_path):
+    fake_engines(fake_package, version="2.3.0")
+    out = run_patch(fake_package)
+    assert out.returncode == 1 and "2.2.0" in out.stderr
+    root = fake_engines(fake_package)
+    (root / "build/engines/brave/brave.js").write_text("const h = {};\n")
+    out = run_patch(fake_package)
+    assert out.returncode == 1 and "brave.js" in out.stderr
+    assert not (root / ".neuroscifi-honest-ua.json").exists()
+
+
+def test_daemon_refuses_unpatched_build_unless_explicitly_allowed(fake_package, tmp_path):
+    d = Daemon(node=sys.executable, package_dir=fake_package, port=free_port(), state_dir=tmp_path / "s")
+    try:
+        with pytest.raises(ValidationError, match="patch-ua"):
+            d.start(timeout=10)
+        assert not d.pid_path.exists()
+        fake_engines(fake_package)
+        assert run_patch(fake_package).returncode == 0
+        started = d.start(timeout=10)                                 # patched: no override needed
+        assert started["started"] is True and started["honest_user_agent"] is True
+    finally:
+        d.stop()
+
+
+def test_daemon_child_environment_is_minimal(fake_package, tmp_path, monkeypatch):
+    monkeypatch.setenv("NSF_TEST_SECRET_TOKEN", "do-not-leak")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "do-not-leak")
+    monkeypatch.setenv("NODE_OPTIONS", "--max-old-space-size=256")
+    monkeypatch.setenv("OPEN_WEBSEARCH_DAEMON_TIMEOUT_MS", "1000")
+    d = Daemon(node=sys.executable, package_dir=fake_package, port=free_port(), state_dir=tmp_path / "s")
+    d.start(timeout=10, env={"USE_PROXY": "false"}, allow_browser_user_agent=True)
+    try:
+        names = set(d.log_path.read_text().split("env:", 1)[1].splitlines()[0].split())
+    finally:
+        d.stop()
+    assert "NSF_TEST_SECRET_TOKEN" not in names and "AWS_SECRET_ACCESS_KEY" not in names
+    assert {"PATH", "NODE_OPTIONS", "OPEN_WEBSEARCH_DAEMON_TIMEOUT_MS", "USE_PROXY", "ENABLE_CORS",
+            "OPEN_WEBSEARCH_QUIET_STARTUP"} <= names
+
+
+def test_loopback_client_never_follows_redirects():
+    target = FakeDaemon({})
+    hits = []
+
+    class Redirect(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            hits.append(self.path)
+            raw = b"{}"
+            self.send_response(302)
+            self.send_header("Location", target.url + "/health")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Redirect)
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
+    try:
+        status, payload = ows._http_json("GET", f"http://127.0.0.1:{server.server_address[1]}/health", None, 2.0)
+        assert status == 302 and payload == {} and hits == ["/health"]
+        assert target.requests == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        target.close()
+
+
+def test_recycled_pid_is_never_trusted_or_signalled(fake_package, tmp_path):
+    d = Daemon(node=sys.executable, package_dir=fake_package, port=free_port(), state_dir=tmp_path / "s")
+    started = d.start(timeout=10, allow_browser_user_agent=True)
+    try:
+        pid, start_time = d.pid_path.read_text().split()
+        assert pid == str(started["pid"]) and start_time == ows._starttime(started["pid"])
+        d.pid_path.write_text(f"{pid} 1")                             # same pid number, different process start
+        other = Daemon(node=sys.executable, package_dir=fake_package, port=d.port, state_dir=tmp_path / "s")
+        assert other.status()["pid"] is None and other.status()["running"] is False
+        assert other.stop()["stopped"] is False and ows._alive(started["pid"])
+    finally:
+        d.stop()
+
+
+def test_port_squatter_is_not_trusted(daemon, tmp_path, fake_package):
+    port = int(daemon.url.rsplit(":", 1)[1])                          # answers /status as open-webSearch 2.2.0
+    d = Daemon(node=sys.executable, package_dir=fake_package, port=port, state_dir=tmp_path / "s")
+    status = d.status()
+    assert status["running"] is False and status["port_answering"] is True and status["pid"] is None
+    with pytest.raises(ProviderError) as info:
+        d.start(timeout=5, allow_browser_user_agent=True)
+    assert info.value.code == "port_in_use"
+    d.pid_path.parent.mkdir(parents=True, exist_ok=True)
+    d.pid_path.write_text(f"{os.getpid()} {ows._starttime(os.getpid())}")   # a recorded pid that is not listening
+    assert d.status()["running"] is False
+
+
+def test_provider_health_reports_honest_user_agent(daemon, fake_package):
+    p = OpenWebSearchProvider(daemon.url, ["duckduckgo"], package_dir=fake_package)
+    assert p.health()["honest_user_agent"] is False
+    fake_engines(fake_package)
+    assert run_patch(fake_package).returncode == 0
+    assert p.health()["honest_user_agent"] is True

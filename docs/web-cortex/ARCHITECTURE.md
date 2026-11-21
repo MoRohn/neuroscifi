@@ -65,26 +65,36 @@ All functions take `now` (or an injected `clock`) explicitly. Errors crossing in
 ```python
 net.NetPolicy(allowed_schemes=("http","https"), allowed_ports=(80,443,8080,8443), max_redirects=5,
               max_bytes=5_000_000, timeout=15.0, user_agent=config.USER_AGENT,
-              content_types=(...), deny_domains=(), min_domain_interval=1.0)
+              content_types=(...), deny_domains=(), min_domain_interval=1.0,
+              host_intervals={"export.arxiv.org": 3.0, "eutils.ncbi.nlm.nih.gov": 0.34},
+              max_api_bytes=16_000_000, subresource_interval=0.1)
+net.RobotsRules.parse(text, user_agent) -> RobotsRules ; .allowed(url) -> bool   # RFC 9309: groups, * and $, longest match, Allow wins ties
 net.check_address(ip: str) -> str | None             # reason it is forbidden, else None
 net.check_url(url: str, policy) -> urllib.parse.SplitResult   # raises FetchError('blocked_policy')
 net.SafeFetcher(policy, *, cache: PublicCache|None=None, resolver=None, connector=None,
                 clock=time.time, sleep=time.sleep)
-    .fetch(url, *, method="GET", body=None, headers=None, purpose="page"|"api"|"feed"|"crawl"|"robots",
+    .fetch(url, *, method="GET", body=None, headers=None, purpose="page"|"api"|"feed"|"crawl"|"robots"|"subresource",
            conditional=True, budget: Budget|None=None, usage: Usage|None=None) -> FetchResult
     .robots_allowed(url, *, budget=None, usage=None) -> bool
     .stats() -> dict                                  # per-host counts, errors, backoffs, bytes
     async .afetch(...)                                # asyncio.to_thread with a concurrency semaphore
 # resolver(host, port) -> list[str]; connector(ip, port, timeout) -> socket.socket   (tests: fixtureweb)
-# purpose 'api' skips robots (documented public APIs); everything else obeys robots.txt (cached 24 h).
-# Identical concurrent GETs are coalesced. 429/503 Retry-After sets a host backoff; a request inside a
-# backoff raises FetchError('rate_limited', retry_after=...). Usage is charged one request per network call.
+# purpose 'api' skips robots (documented public APIs; own 16 MB size cap; never cached); page, feed, crawl and
+# subresource obey robots.txt (cached 24 h). 'subresource' is for the browser's sub-requests: scripts and
+# stylesheets allowed, never cached or extracted, 0.1 s same-host interval, no Crawl-delay.
+# Gap between requests to a host = max(min_domain_interval, host_intervals[host], Crawl-delay).
+# Identical concurrent GETs are coalesced. 429/503 Retry-After sets a host backoff (kept in the PublicCache, so
+# every fetcher on it honours it); a request inside a backoff raises FetchError('rate_limited', retry_after=...).
+# A 304 to a conditional GET returns the cached body with retrieval_mode='live' and header
+# net.REVALIDATED_HEADER ('x-nsf-revalidated': '304'). Usage is charged one request per network call.
 
 cache.PublicCache(path)          # separate SQLite file, mode 0600, no queries stored
     .lookup(url) -> dict|None    # {final_url, status, content_type, sha256, etag, last_modified, fetched_at}
     .put(result: FetchResult) -> str (sha256)  ; .body(sha256) -> bytes|None
     .robots(host) -> (text, fetched_at)|None ; .put_robots(host, text, fetched_at)
-    .prune(now, *, max_bytes, max_age_seconds) -> dict ; .forget_url(url) ; .forget_domain(domain) -> int
+    .backoff(host) -> until|None ; .put_backoff(host, until)       # Retry-After, shared across fetchers
+    .prune(now, *, max_bytes, max_age_seconds) -> dict ; .maybe_prune(now, *, max_bytes, max_age_seconds, every=3600.0) -> dict|None
+    .forget_url(url) ; .forget_domain(domain) -> int              # also drop bodies no remaining row references
     .stats() -> dict
 
 extract.extract(result: FetchResult, *, engine="auto"|"scrapling"|"trafilatura") -> Document
@@ -95,7 +105,8 @@ extract.parse_sitemap(body: bytes, url: str) -> list[dict]   # {url, lastmod}
 extract.registrable_domain(host) -> str ; extract.canonical_url(url) -> str
 # HTML parsed with scrapling.Selector(huge_tree=False). Hidden content (display:none, hidden, aria-hidden,
 # <template>, zero-width chars) is removed and counted in flags["hidden_removed"]. JS-shell pages set
-# flags["js_suspected"]. Dates from JSON-LD, meta (article:published_time, dc.date, citation_*), <time>,
+# flags["js_suspected"]. Bounded: 50,000 elements, Markdown only for main content <= 10,000 elements, 500,000
+# characters (cut -> flags["truncated_extraction"]); doc.text has one line per block element. Dates from JSON-LD, meta (article:published_time, dc.date, citation_*), <time>,
 # then HTTP Last-Modified (marked metadata["date_source"]).
 
 browser.BrowserRenderer(fetcher: SafeFetcher, *, executable=None, timeout=20.0)
@@ -104,6 +115,8 @@ browser.BrowserRenderer(fetcher: SafeFetcher, *, executable=None, timeout=20.0)
 
 crawl.crawl(fetcher, seeds, *, budget, usage, max_pages, max_depth, same_site=True, sitemaps=True) -> list[FetchResult]
 crawl.discover_feeds(html: bytes, url) -> list[str]
+# The orchestrator does not call crawl.crawl: its own follow() (<= 2 same-site links, purpose 'crawl') keeps
+# per-document checkpoints, cancel checks, lease renewal and render escalation (RESEARCH_ORCHESTRATION §3).
 ```
 
 ### 4.2 Discovery (`search.py`, `providers/*`, `intent.py`)
@@ -121,26 +134,33 @@ providers.openwebsearch.OpenWebSearchProvider(base_url, engines, *, timeout=20.0
 providers.openwebsearch.Daemon(node="node", package_dir=deploy/open-websearch, host="127.0.0.1", port=3210)  # start/stop/status
 providers.structured: WikipediaProvider, ArxivProvider, OpenAlexProvider, CrossrefProvider, PubMedProvider,
     PyPIProvider, NpmProvider, OSVProvider, GitHubReleasesProvider   # all via SafeFetcher(purpose="api")
-providers.feeds.FeedProvider(feed_urls)      ; providers.corpus.CorpusProvider(results)   # offline/bench
-providers.build(config: WebConfig, fetcher: SafeFetcher) -> list[SearchProvider]
+providers.feeds.FeedProvider(feed_urls, fetcher=, clock=)   # one fetch per feed per 300 s; the owner's feeds (state.get_feeds)
+providers.corpus.CorpusProvider(results)                    # offline/bench
+providers.build(config: WebConfig, fetcher: SafeFetcher, *, feeds=None, clock=time.time) -> list[SearchProvider]
+#   config.providers in order, then a FeedProvider when `feeds` lists any URL ('feeds' is in providers.KNOWN)
 
 intent.assess(question: str, *, now, known: list[dict] = ()) -> dict
 #  {"needs_web": bool, "reasons": [str], "mode": MODES, "freshness_class": FRESHNESS_CLASSES,
 #   "recency_window": seconds|None, "kinds": [QUERY_KINDS], "entities": [str], "urls": [str],
-#   "comparison": [str, str]|None, "claim": str|None, "packages": [..]}
-#  `known` = matching accepted knowledge with freshness; fresh, uncontested knowledge -> needs_web False.
-intent.plan(question: str, assessment: dict, *, now) -> QueryPlan   # decomposition, expansion, temporal/site/kind routing
-intent.refine(plan, outcome: SearchOutcome, assessment, *, now) -> QueryPlan|None   # one refinement round when results are thin
+#   "comparison": [str, str]|None, "claim": str|None, "packages": [..], "memory_items": [knowledge ids]}
+#  `known` = matching accepted/provisional knowledge with freshness; fresh, uncontested knowledge that
+#  intent.covers(item, question) (states >= 60 % of the question's topical stems) -> needs_web False, memory_items set.
+intent.covers(item: dict, question: str) -> bool
+intent.strip_local(text, local_terms=()) -> (text, removed)   # self-references (SELF_NAMES, "our/my ...", private terms) are local context
+intent.plan(question: str, assessment: dict, *, now, local_terms=()) -> QueryPlan   # decomposition, expansion, temporal/site/kind routing
+intent.refine(plan, outcome: SearchOutcome, assessment, *, now, local_terms=()) -> QueryPlan|None   # one refinement round when results are thin
 ```
 
 ### 4.3 Evidence and time (`text.py`, `claims.py`, `temporal.py`, `safety.py`, `synthesis.py`)
 
 ```python
 text.tokens(s) -> list[str] ; text.sentences(s) -> list[str] ; text.BM25(docs: list[list[str]]).scores(q) -> list[float]
-text.shingles(s, k=5) -> set ; text.jaccard(a, b) -> float ; text.values(s) -> list[str]   # numbers, versions, percents
+text.shingles(s, k=5) -> set ; text.jaccard(a, b) -> float ; text.values(s) -> list[str]   # numbers, versions, percents, unit-normalised quantities
+text.sentences(s, *, hard_newlines=False) -> list[str] ; text.heading_like(line, title="") -> bool   # headings and titles are not claims
+text.values_conflict(va, vb) -> str|None   # like-for-like per comparison group; bare numbers attach to a quantity by magnitude
 
 safety.scan_injection(text) -> list[dict]    # {pattern, excerpt, offset}
-safety.quarantine(doc: Document) -> Document # removes flagged sentences; doc.flags["injection"]
+safety.quarantine(doc: Document) -> Document # removes flagged sentences; doc.flags["injection"] (full findings; reports carry {pattern, count} only)
 safety.privacy_screen(query: str, *, private_terms=()) -> list[dict]   # empty list = safe to send
 safety.untrusted(text, source) -> dict        # {"untrusted": True, "source": url, "text": ...} envelope for agents
 
@@ -148,16 +168,18 @@ claims.extract_claims(doc: Document, question: str, *, max_claims=8) -> list[Cla
 claims.cluster(claims: list[Claim]) -> list[ClaimCluster]
 claims.independence_groups(claims) -> list[list[str]]   # same registrable domain or near-duplicate text => one group
 claims.contradictions(a: Claim, b: Claim) -> str|None   # reason or None
-claims.score(cluster, *, now, freshness_class) -> ClaimCluster   # Beta posterior; rank/popularity never counted as truth
+claims.score(cluster, *, now, freshness_class, ttl_overrides=None) -> ClaimCluster   # Beta posterior; rank/popularity never counted as truth
+claims.is_adversarial(claim) -> bool ; claims.registry_record(doc) -> bool   # adversarial claims weigh 0; only registry records are 'observed' at retrieval
 
 temporal.FRESHNESS: dict[class -> {"ttl": seconds, "description": str}]
 temporal.classify(question: str, assessment: dict|None=None) -> str
 temporal.parse_date(text: str, *, now=None) -> float|None ; temporal.event_dates(sentence, *, reference) -> list[float]
-temporal.is_stale(last_verified_at, freshness_class, now, *, ttl_overrides=None, newer_release_seen=False) -> (bool, str)
+temporal.is_stale(last_verified_at, freshness_class, now, *, ttl_overrides=None, newer_release_seen=False, revision_seen=False) -> (bool, str)
 temporal.window_ok(published_at, window, now) -> bool|None   # None = undated
 temporal.supersedes(new: dict, old: dict) -> bool  ; temporal.describe_age(ts, now) -> str
 
-synthesis.synthesize(question, assessment, documents, clusters, *, now, usage, failures) -> dict  # the Report, §5
+synthesis.synthesize(question, assessment, documents, clusters, *, now, usage, failures, ttl_overrides=None) -> dict  # the Report, §5
+# SUPPORTED_MIN_CONFIDENCE = 0.72 (= WebConfig.auto_provisional_min_confidence default)
 synthesis.context_pack(report: dict, *, max_tokens) -> dict  # bounded working-memory bundle with citations + uncertainty
 ```
 
@@ -165,33 +187,43 @@ synthesis.context_pack(report: dict, *, max_tokens) -> dict  # bounded working-m
 
 ```python
 state.get_config(db) -> WebConfig ; state.set_config(db, changes: dict, now) -> WebConfig ; state.require_enabled(db)
-services.build(db, db_path, *, fixture=None) -> Services   # fetcher, cache, registry, renderer, clock
+services.build(db, db_path, *, fixture=None, providers=None, clock=time.time, sleep=time.sleep) -> Services   # fetcher, cache, registry (+ FeedProvider), renderer, clock
+    .prune_cache(now=None) -> dict|None                   # cache retention (maybe_prune; at most hourly)
+state.get_feeds(db) -> [url] ; set_feeds / add_feed / remove_feed(db, ..., now)   # meta key webcortex.feeds, <= 50 URLs
 orchestrator.submit(db, objective, now, *, mode=None, budget=None, origin="cli", family=None,
-                    authorization=None, parent=None) -> dict      # task row; 'queued'
+                    authorization=None, parent=None, proposed=False, context=None) -> dict   # task row; 'queued'
+#   authorization applies to this task's own queries; refused for curiosity/refresh and unauthorised monitors;
+#   autonomous origins get request/byte budgets clamped to scheduler.autonomous_remaining
 orchestrator.run(db, task_id, services) -> dict    # executes stages, checkpoints after each, honours cancel
 orchestrator.cancel(db, task_id, now, *, family=None) -> dict
 orchestrator.resume(db, task_id, services) -> dict # continues from the last checkpoint; cached documents reused
+orchestrator.requeue(db, task_id, now, *, origin=None, family=None) -> dict   # failed: same id queued; partial/cancelled: linked child task
 orchestrator.get(db, task_id, *, family=None) -> dict ; orchestrator.listing(db, *, family=None, status=None, limit=50)
 orchestrator.evidence(db, task_id, *, family=None) -> dict    # sources, claims, links ("show your evidence")
 consolidate.run(db, task_id, now) -> dict          # candidates -> knowledge (provisional|pending owner) with versions
-knowledge.query(db, topic, now) -> dict            # what is known, from where, verified when, stale, provisional, contested
+knowledge.query(db, topic, now, *, limit=10) -> dict   # what is known, from where, verified when, stale, provisional, contested
+knowledge.staleness(item, now, cfg=None, db=None) -> (bool, str)   # with db: newer_release_seen / revision_seen
+knowledge.feedback(db, subject: int|str, *, limit=5) -> list[dict]   # newest web_feedback rows for a knowledge id or key
 knowledge.review(db, knowledge_id, accept: bool, now, *, note="") -> dict   # also reachable via nsf resolve
 knowledge.archive / reject / forget(db, knowledge_id, now) ; knowledge.refresh(db, knowledge_id, now) -> task
 curiosity.rank(db, now, *, limit=10) -> list[dict]  # {target, kind, info_gain, cost, utility, reason}
 predictions.record(db, knowledge_id, expectation, check_after, now) ; predictions.check_due(db, now, services) -> list
 scheduler.monitor_add(db, topic, now, *, interval, mode="continuous", budget=None, authorized_by) -> dict
-scheduler.tick(db, now, services, *, max_tasks=None) -> dict   # due monitors, refreshes, curiosity (if autonomous)
-scheduler.work(db_path, *, once=False, stop=None) -> None      # drains queued tasks (worker service)
+scheduler.autonomous_remaining(db, now, cfg) -> {"requests": int, "bytes": int}   # daily allowance left
+scheduler.tick(db, now, services, *, max_tasks=None, queue=False) -> dict   # due monitors, refreshes, curiosity (if autonomous), cache retention
+scheduler.work(db_path, *, once=False, stop=None, ...) -> dict   # drains queued tasks (worker service)
 ```
 
 ### 4.5 Interfaces
 
 - CLI `nsf web …` (`webcortex/cli.py`): `config`, `status`, `health`, `daemon start|stop|status`, `search`, `fetch`,
-  `ask`, `tasks`, `show`, `evidence`, `cancel`, `resume`, `knowledge`, `review`, `refresh`, `archive`, `reject`,
-  `forget`, `monitor add|list|pause|resume|stop`, `tick`, `work`, `curiosity`, `predictions`, `deps`, `bench`, `mcp`.
-- Console (loopback): `/api/web/*` routes and a Research view.
+  `ask`, `tasks`, `show`, `evidence`, `cancel`, `resume`, `requeue`, `knowledge`, `review`, `refresh`, `archive`, `reject`,
+  `forget`, `monitor add|list|pause|resume|stop`, `feeds add|remove|list`, `cache stats|prune`, `tick`, `work`, `curiosity`,
+  `predictions`, `deps`, `bench`, `mcp`. Operation: RUNBOOK.
+- Console (loopback): `/api/web/*` routes, a Research view, and an embedded worker (`nsf console --no-web-worker`
+  leaves queued tasks to `neuroscifi-webcortex.service`). Routes: API_CONTRACTS §8.
 - Pocket (opt-in): `research_submit`, `research_list`, `research_get`, `research_cancel` actions under the
-  existing bearer/pairing model; family-scoped.
+  existing bearer/pairing model; family-scoped (ADR-028; API_CONTRACTS §8).
 - MCP stdio server (`nsf web mcp`): read-mostly tools `web_search`, `web_research`, `web_task`, `web_evidence`,
   `web_knowledge`. Outputs wrap content in `safety.untrusted` envelopes. No forget/config tools.
 
@@ -257,4 +289,7 @@ Additive changes made during implementation (all backwards compatible with §4):
 | claims / synthesis | `evaluate`, `posterior`, `info_gain` (bits); age discounts evidence only for breaking, volatile and release classes; report answer items carry `type: quote|template`; scientific findings carry `section`, technical findings `package`. |
 | orchestration | `submit(..., proposed=False)` for curiosity proposals awaiting `web:research:<id>`; `services.build(..., providers, clock, sleep)`; `scheduler.tick(..., queue)`; `scheduler.work` returns `{"processed": [...]}`; contested clusters without knowledge become `web:contested:<task>:<n>` informational questions; one open question per knowledge item (updates appended). |
 | schema | 12 `web_*` tables; `web_claims` keyed `(task_id, id)`. |
+| remediation: net / cache / browser (`df00137`) | `net.RobotsRules` (RFC 9309) replaces `urllib.robotparser`; `NetPolicy.host_intervals`, `max_api_bytes` (16 MB), `subresource_interval`; purpose `subresource` (browser only); 304 revalidation is `live` with `x-nsf-revalidated`; Retry-After backoff stored in the public cache (`backoff` table); `PublicCache.maybe_prune`, `meta` table, `backoff()`/`put_backoff()`; `forget_*` drop orphan bodies; `Services.prune_cache`. The `5f09ac3` rows above that say API responses are "never cached" and robots.txt is "capped at 512 KiB" still hold (the cap applies to the fetch; 500 KiB is parsed). |
+| remediation: evidence (`df00137`) | `text.values` unit normalisation, like-kind `values_conflict` with the magnitude rule; `text.heading_like`, `sentences(hard_newlines=)`; claim id keeps numbers; `claims.is_adversarial` (weight 0, excluded from groups, posterior, verdict, contradictions), `claims.registry_record`; `ttl_overrides` in `claims.score`, `evaluate`, `synthesize`; reports carry `{pattern, count}` for injection, never excerpts; `extract` bounds (`MAX_ELEMENTS`, `MAX_MARKDOWN_ELEMENTS`, `flags.truncated_extraction`); two-source floor 0.72 (ADR-026). |
+| remediation: orchestration (`df00137`) | `intent.strip_local`, `SELF_NAMES`, `local_terms` on `plan`/`refine`; `intent.covers`, `assessment.memory_items`; owner authorisation per task (`disclosed_under_authorization` event); `select` ranks 3 x `max_pages`, failed fetches cost no page, web slots reserved in scientific/deep modes; `orchestrator.requeue`; `scheduler.autonomous_remaining` and budget clamp at submit; monitor meaningful-change rule with `seen_keys`; feeds (`state.get_feeds`, `FeedProvider` in `providers.build`, `nsf web feeds`); `knowledge.staleness(..., db)` with `newer_release_seen`/`revision_seen`; `knowledge.feedback`; `extract` and `synthesized` events; consolidation holds adversarial claims; memory answers flag provisional knowledge; lease renewal after every fetch and search; `nsf web requeue`, `nsf web cache stats|prune`. |
 | interfaces | `orchestrator.submit(..., context={"packages": [...]})` for technical mode; `cli.SERVICES_OPTIONS` test hook; console `web_worker`, `worker_options`; Pocket `state.research` flag, precache 9 assets (ADR-015); HTTP routes in API_CONTRACTS §8. |

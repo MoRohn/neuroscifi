@@ -45,7 +45,7 @@ The brief: "Decouple ingestion from training so incoming events do not contend w
 The brief's milestones (p.19, p.34) assume a Spark, cameras and people. Decision: `nsf acceptance` runs each milestone against simulated evidence with `provenance='simulated'` and reports its thresholds. Consequence: nothing in this release claims physical validation.
 
 **ADR-015 The service worker precache list grows to include the manifest and icon. R**
-Home-screen shortcuts (p.20) need a web app manifest. Decision: precache 8 assets instead of the brief's "six named program assets". Recorded as a deviation from p.29. **0.6:** grows to 9 with `research-ui.mjs` (cache `neuroscifi-pocket-shell-6`) so research findings saved in the encrypted vault reopen offline (ADR-028); API traffic is still never cached.
+Home-screen shortcuts (p.20) need a web app manifest. Decision: precache 8 assets instead of the brief's "six named program assets". Recorded as a deviation from p.29. **0.6:** grows to 9 with `research-ui.mjs` (cache `neuroscifi-pocket-shell-7`) so research findings saved in the encrypted vault reopen offline (ADR-028); API traffic is still never cached.
 
 **ADR-016 Founding graph and development counters. R**
 INS-01 says each instance has a founding scaffold, but the brief does not specify its contents. Inventing weights would be a placeholder. Decision: the founding graph is owner-supplied (`nsf init --founding-graph FILE.nsg`). Without one, birth records `initial_graph: null`. `replay_updates` counts graph operations over stored datasets (learn, evaluate, promote, lesion, recall). `teacher_interventions` counts owner answers to questions.
@@ -88,14 +88,20 @@ and reported in TEST_RESULTS. The GPU is not used for retrieval. A model can lat
 The directive asks to separate public research caches from private memory. Decision: downloaded bodies, robots
 files and HTTP validators go to `<db stem>.webcache.sqlite` (0600), keyed by URL and content hash only. Task
 objectives, queries, claims and knowledge live in the individual and are governed by forget, checkpoints and
-erasure. The cache is excluded from checkpoints and pruned by size and age. Consequence: restoring a checkpoint
+erasure. The cache is excluded from checkpoints and pruned by size and age: `Services.prune_cache` applies
+`cache_max_bytes` and `cache_max_age_days` through `PublicCache.maybe_prune` (at most hourly) after every run and tick,
+and `nsf web cache prune` runs it at once. The cache also holds Retry-After backoffs (so every fetcher on it honours
+them); forgetting a URL or domain deletes bodies no other row references. Consequence: restoring a checkpoint
 restores knowledge and provenance but not page bodies; re-verification refetches.
 
 **ADR-024 Our own SSRF-safe fetcher; Scrapling as the parser only. R**
 Scrapling 0.5.1's fetchers impersonate browser TLS fingerprints by default and ship Cloudflare/Turnstile solving and
 fingerprint spoofing; its redirect check is a post-hoc IP test without DNS pinning, and its spiders ignore robots.txt
 by default. Decision: `net.SafeFetcher` (stdlib `http.client`) resolves, validates and pins every address, re-validates
-every redirect, honours robots.txt and Retry-After, and limits size, time and type. Bodies are parsed with
+every redirect, honours robots.txt (evaluated by its own RFC 9309 matcher, `net.RobotsRules`, because the stdlib parser
+ignores `*` and `$`) and Retry-After, throttles per host (the largest of the default interval, a per-host interval such as
+arXiv 3 s and Crawl-delay), and limits size, time and type; browser sub-requests use their own `subresource` purpose.
+Bodies are parsed with
 `scrapling.Selector(huge_tree=False)` and converted with `markdownify`. `scrapling[fetchers]` is not installed.
 Consequence: no anti-bot circumvention exists in the code base; sites that require it are reported as unavailable.
 
@@ -105,12 +111,17 @@ browser fetch path does not pin DNS, and it has no cross-engine fallback or rate
 duckduckgo answered, brave 429, startpage 0 results, bing redirect failure). Decision: run `open-websearch serve
 --host 127.0.0.1` pinned by `deploy/open-websearch/package-lock.json`; call only `/search`, `/health`, `/status`;
 track health per engine with a circuit breaker; fall back across engines and to structured APIs (Wikipedia, arXiv,
-OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub). Consequence: search keeps working, degraded, when engines fail.
+OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub). The owner's RSS/Atom feeds (`nsf web feeds`) join as a `FeedProvider`.
+Consequence: search keeps working, degraded, when engines fail.
 
 **ADR-026 Web knowledge enters semantic memory as candidates through the executive's question path. R**
 Web content must never become verified knowledge automatically. Decision: claims → clusters → `web_knowledge` rows
-with status `provisional` only when ≥2 independent sources agree, nothing contradicts, and confidence ≥ 0.75
-(configurable); everything else, and every promotion to `accepted`, goes through a `pending` question
+with status `provisional` only when ≥2 independent sources agree, nothing contradicts, and confidence ≥ 0.72
+(`auto_provisional_min_confidence`, configurable). The floor is derived, not chosen: with prior Beta(1, 1) and
+secondary-source weight 0.8, two dated secondary sources give 2.6/3.6 = 0.722 and pass, one dated plus one undated
+give 2.4/3.4 = 0.706 and two undated 0.688 and do not; the same constant is the fact-verification `supported`
+threshold, so a verdict and a promotion agree. At 0.75 no two-source claim could pass (two primary
+records give 0.737). Claims from adversarial (injection-flagged) sources are held and never count; everything else, and every promotion to `accepted`, goes through a `pending` question
 (scope `web:knowledge:<id>`) answered with `nsf resolve ID TEXT --confirm|--reject`. Versions are never overwritten:
 a new value supersedes the old row, which keeps its validity interval. Consequence: raw evidence, extracted claims
 and accepted knowledge stay distinguishable, and an owner can audit every step.
@@ -119,14 +130,18 @@ and accepted knowledge stay distinguishable, and an owner can audit every step.
 Pocket- and console-initiated research must run on the Spark without blocking a request. Decision: tasks are rows
 in `web_tasks`; `nsf web work` (systemd `neuroscifi-webcortex.service`) claims queued tasks one at a time;
 `nsf web tick` (timer) starts due monitors and, only when `autonomous` is on, refreshes and curiosity research
-within a daily cap. Nothing crawls without a task, a budget and an origin. Consequence: every background action is a
-visible, cancellable task with an episode log.
+within a daily cap that is also clamped into each autonomous task's budget at submit. A monitor reports a change only
+when it is meaningful (a changed value of a known key, or a new corroborated or primary key not seen in any earlier run),
+not when the search results merely differ. The console runs an embedded worker (leases prevent double execution;
+`--no-web-worker` leaves tasks to the service). Nothing crawls without a task, a budget and an origin. Consequence:
+every background action is a visible, cancellable task with an episode log.
 
 **ADR-028 Pocket can request research, scoped to its pairing family. R** (amends ADR-013's remote surface note)
 Decision: when `pocket_research` is on and the bridge is started with `--instance-db`, paired devices may
 submit (≤ 300-character objective), list, read and cancel tasks of their own family, and read the report. They
-cannot accept knowledge, change configuration, forget memory or see other families' tasks. Consequence: the LAN
-surface grows by four actions under the existing bearer, origin, size and TLS controls.
+cannot accept knowledge, change configuration, forget memory or see other families' tasks. A device may submit 10
+tasks per hour, with a privacy-screened objective and no budget field. Consequence: the LAN surface grows by four
+actions under the existing bearer, origin, size and TLS controls (tests: `tests/test_pocket_research.py`).
 
 **ADR-029 Migration 6 adds the web tables to the individual; forget and erasure cover them. H (format)**
 Decision: twelve `web_*` tables (ARCHITECTURE §6), owned by `webcortex/state.py`. `nsf forget research|knowledge|source`
@@ -136,5 +151,26 @@ cascades to derived claims, links, knowledge versions and pending questions, mar
 **ADR-030 JavaScript rendering is an escalation, sandboxed and routed through SafeFetcher. R**
 Decision: when extraction finds a JavaScript shell and the task has a browser-session budget, `browser.BrowserRenderer`
 loads the page in a fresh Chromium context whose every request is intercepted and fulfilled by `SafeFetcher` (or
-refused). No cookies persist, downloads and permissions are denied, service workers and WebSockets are blocked.
-Off by default (`browser_rendering`). Consequence: SSRF and robots controls apply to every sub-resource.
+refused; fetched with `purpose="subresource"`, which admits scripts and stylesheets, is never cached or extracted and
+uses a short same-host interval). No cookies persist, downloads and permissions are denied, service workers and
+WebSockets are blocked. Off by default (`browser_rendering`). Consequence: SSRF and robots controls apply to every
+sub-resource.
+
+**ADR-031 One executing node; devices are access points. R**
+The directive describes distributed research across enrolled devices with compute-aware routing. The only device
+relationship that exists is Pocket pairing families, and the only machine that holds the individual is the Spark.
+Federating workers would need device enrolment, remote attestation and result signing, none of which exist.
+Decision: the process that runs `nsf web work` (or `ask`/`tick`) executes; Pocket families and the console submit,
+watch, cancel and read; each task records `executed_on` (host digest, CPUs, load). Linked devices share tasks through
+the family scope (ADR-028). Consequence: no crawler stack on phones, no credentials or browser sessions on devices,
+and no cross-device routing decisions to make. Deferred: worker federation (WEB-36).
+
+**ADR-032 The search daemon sends an honest User-Agent unless the owner opts in. R** (amends ADR-025)
+The security review found that open-webSearch 2.2.0's engine scrapers send forged Chrome User-Agent strings, which
+contradicts "no anti-bot circumvention". Decision: `deploy/open-websearch/apply-honest-ua.mjs` (`npm run patch-ua`,
+run by `install.sh`) replaces them with `config.USER_AGENT`; `Daemon.start` refuses an unpatched build unless the owner
+sets `search_browser_user_agent` (default false). Consequence, measured live on 2026-11-20: with the honest
+User-Agent all four key-free engines returned 0 results (duckduckgo 0, brave 429, startpage token failure, bing 0), so
+general web discovery currently relies on the structured providers (Wikipedia, arXiv, OpenAlex, Crossref, PubMed,
+PyPI, npm, OSV, GitHub) and on feeds. Whether to accept browser impersonation for search engines is an owner decision
+(`.omc/autopilot/decisions-pending.md` item 4).

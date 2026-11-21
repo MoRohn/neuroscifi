@@ -433,6 +433,8 @@ def values(s: str) -> list[str]:
         g = m.groupdict()
         if g["money1"]:
             amount = _num(g["m1"]) * _MAGNITUDE.get((g["mag1"] or "").lower(), 1.0)
+            if not math.isfinite(amount):
+                continue                                       # a 309+ digit run is not a value
             found.append((m.start(), f"{_CURRENCY_SYMBOL[g['cur']]} {_fmt(amount)}"))
         elif g["ver"] or g["ver2"]:
             found.append((m.start(), "v" + (g["ver"] or g["ver2"]).lower()))
@@ -444,6 +446,8 @@ def values(s: str) -> list[str]:
             x = _num(raw)
             if g["mag"]:
                 x *= _MAGNITUDE[g["mag"].lower()]
+            if not math.isfinite(x):
+                continue
             if g["curw"]:
                 found.append((m.start(), f"{_CURRENCY_WORD[g['curw'].lower()]} {_fmt(x)}"))
                 continue

@@ -267,6 +267,17 @@ MIGRATIONS = [
       detail TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL);
     CREATE INDEX web_feedback_key ON web_feedback(key, created_at);
     """,
+    # ---- version 7 (Web Cortex remediation) ------------------------------------------------------------------
+    """
+    -- Payload-free tombstones of forgotten web memory (ADR-029): digest = governance.web_digest (instance-salted
+    -- sha256 of the task id, knowledge id+key, canonical URL or domain). checkpoints.restore replays them on a
+    -- restored copy so nothing forgotten comes back.
+    CREATE TABLE web_forgotten(
+      kind TEXT NOT NULL CHECK(kind IN ('task','knowledge','source_url','source_domain')),
+      digest TEXT NOT NULL, forgotten_at REAL NOT NULL, PRIMARY KEY(kind, digest));
+    -- Index-friendly "a newer release was seen since" scans (knowledge.newer_release_seen).
+    CREATE INDEX web_claims_created ON web_claims(created_at);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

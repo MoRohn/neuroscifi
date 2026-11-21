@@ -297,3 +297,93 @@ def test_feeds_cache_and_requeue_commands(capsys, db, offline, tmp_path):
     nsf(capsys, "web", "cancel", queued["id"], "--db", db)
     code, out = nsf(capsys, "web", "requeue", queued["id"], "--db", db)
     assert code == 0 and out["parent_id"] == queued["id"] and out["requeued"] == "child" and out["origin"] == "cli"
+
+
+# ---- review remediation V2 ---------------------------------------------------------------------------------------
+
+def test_search_browser_user_agent_switch_is_off_by_default_and_reported(capsys, db):
+    """ADR-032: the owner opt-in for the search daemon's browser User-Agents is off by default, settable, and shown
+    by status and health with the install's honest_user_agent."""
+    code, out = nsf(capsys, "web", "config", "--db", db)
+    assert out["config"]["search_browser_user_agent"] is False
+    code, out = nsf(capsys, "web", "config", "--search-browser-ua", "--db", db)
+    assert code == 0 and out["changed"] == ["search_browser_user_agent"] and out["config"]["search_browser_user_agent"]
+    code, out = nsf(capsys, "web", "status", "--db", db)
+    assert out["switches"]["search_browser_user_agent"] is True and "honest_user_agent" in out["daemon"]
+    code, out = nsf(capsys, "web", "health", "--db", db)
+    assert out["search_browser_user_agent"] is True and "honest_user_agent" in out
+    code, out = nsf(capsys, "web", "config", "--no-search-browser-ua", "--db", db)
+    assert out["config"]["search_browser_user_agent"] is False
+    assert nsf(capsys, "web", "config", "--set", 'search_browser_user_agent="yes"', "--db", db)[0] == 2
+
+
+@pytest.mark.parametrize("opt_in", [False, True])
+def test_daemon_start_passes_the_owner_switch_and_names_patch_ua(capsys, db, monkeypatch, opt_in):
+    from neuroscifi.instance.errors import ValidationError
+    from neuroscifi.webcortex.providers import openwebsearch
+    seen = []
+
+    def start(self, **kwargs):
+        seen.append(kwargs)
+        if not kwargs.get("allow_browser_user_agent"):
+            raise ValidationError(f"open-webSearch at {self.package_dir} sends forged browser User-Agents: run "
+                                  "`npm run patch-ua` there, or pass allow_browser_user_agent=True to accept that")
+        return {"started": True}
+
+    monkeypatch.setattr(openwebsearch.Daemon, "start", start)
+    enable(capsys, db, *(("--search-browser-ua",) if opt_in else ()))
+    code, out = nsf(capsys, "web", "daemon", "start", "--db", db)
+    assert seen == [{"allow_browser_user_agent": opt_in}]
+    if opt_in:
+        assert code == 0 and out["started"] is True
+    else:
+        assert code == 2 and "npm run patch-ua" in out and "--search-browser-ua" in out
+
+
+@pytest.mark.parametrize("argv", [
+    ("tasks", "--limit", "0"), ("knowledge", "--limit", "-1"), ("search", "x", "--limit", "0"),
+    ("curiosity", "--limit", "0"), ("curiosity", "--propose", "-1"), ("predictions", "--limit", "0"),
+    ("monitor", "add", "topic", "--interval-hours", "nan"), ("monitor", "add", "topic", "--interval-hours", "inf"),
+    ("crawl", "http://a.example/", "--max-pages", "0"), ("tick", "--max-tasks", "-1")])
+def test_cli_bounds_are_checked_before_anything_runs(capsys, db, argv):
+    """C-P3: limits >= 1, counts >= 0, finite intervals (argparse exits 2 with a usage message)."""
+    with pytest.raises(SystemExit) as exc:
+        main(["web", *argv, "--db", db])
+    assert exc.value.code == 2
+
+
+def test_cli_refresh_is_the_owners_task_not_autonomous(capsys, db, offline):
+    """A-P2-2: `nsf web refresh` works while the daily autonomous allowance is zero (origin 'cli')."""
+    enable(capsys, db, "--set", 'daily_autonomous={"tasks":0,"requests":0,"bytes":0}')
+    code, task = nsf(capsys, "web", "ask", QUESTION, "--mode", "fact_verification", "--db", db)
+    kid = task["result"]["consolidation"]["provisional"][0]
+    code, out = nsf(capsys, "web", "refresh", str(kid), "--db", db)
+    assert code == 0 and out["origin"] == "cli" and out["budget"]["max_requests"] > 0
+
+
+def test_crawl_investigates_sources_into_a_task(capsys, db, offline):
+    """A-P2-5: `nsf web crawl URL` reads the seed and same-site links into a deep_research task with recorded
+    sources, searching nothing."""
+    offline.add("news-one.example", "/", "<html><head><title>News one</title></head><body><article><h1>News</h1>"
+                "<p>The front page of a news site about compilers and embedded systems.</p>"
+                "<a href='/zephyr'>Zephyr 4.2</a> <a href='http://elsewhere.example/x'>off-site</a></article></body></html>")
+    enable(capsys, db)
+    code, out = nsf(capsys, "web", "crawl", "http://news-one.example/", "--max-pages", "3", "--depth", "1", "--db", db)
+    assert code == 0, out
+    assert out["mode"] == "deep_research" and out["origin"] == "cli" and out["status"] in ("completed", "partial")
+    code, ev = nsf(capsys, "web", "evidence", out["id"], "--db", db)
+    urls = {s["url"] for s in ev["sources"]}
+    assert "http://news-one.example/" in urls and "http://news-one.example/zephyr" in urls
+    assert all("elsewhere" not in u for u in urls) and {s["provider"] for s in ev["sources"]} == {"crawl"}
+    assert not [e for e in ev["events"] if e["kind"] in ("query", "search")]
+
+
+def test_feeds_discover_lists_advertised_feeds(capsys, db, offline):
+    offline.add("news-one.example", "/blog", "<html><head><title>Blog</title>"
+                "<link rel='alternate' type='application/rss+xml' href='/feed.xml'></head><body>hi</body></html>")
+    enable(capsys, db)
+    code, out = nsf(capsys, "web", "feeds", "discover", "http://news-one.example/blog", "--db", db)
+    assert code == 0 and out["feeds"] == ["http://news-one.example/feed.xml"] and "feeds_added" not in out
+    code, out = nsf(capsys, "web", "feeds", "discover", "http://news-one.example/blog", "--add", "--db", db)
+    assert out["feeds_added"] == ["http://news-one.example/feed.xml"]
+    assert nsf(capsys, "web", "feeds", "list", "--db", db)[1]["feeds"] == ["http://news-one.example/feed.xml"]

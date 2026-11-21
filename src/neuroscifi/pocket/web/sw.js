@@ -1,4 +1,4 @@
-const CACHE="neuroscifi-pocket-shell-6";
+const CACHE="neuroscifi-pocket-shell-7";
 const shell=["/","/style.css","/mobile.js","/field-ui.mjs","/field-model.mjs","/research-ui.mjs","/sw.js","/manifest.webmanifest","/icon.svg"];
 self.addEventListener("install",e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(shell)).then(()=>self.skipWaiting())));
 self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith("neuroscifi-pocket-shell-")&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
@@ -8,3 +8,6 @@ self.addEventListener("fetch",e=>{
    e.respondWith(caches.open(CACHE).then(async c=>(await c.match(u.pathname))||fetch(e.request)));
  }
 });
+// Research notifications are shown by the open page (research-ui.mjs); a tap brings Pocket forward. No push handler.
+self.addEventListener("notificationclick",e=>{e.notification.close();
+ e.waitUntil(self.clients.matchAll({type:"window"}).then(list=>list.length?list[0].focus():self.clients.openWindow("/#research")));});

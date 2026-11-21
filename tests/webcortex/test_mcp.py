@@ -133,16 +133,26 @@ def test_research_task_evidence_and_knowledge_are_wrapped_as_untrusted(individua
     research = payload(got[1])
     task_id = research["task"]["id"]
     assert research["task"]["status"] == "completed" and research["task"]["mode"] == "fact_verification"
-    report = research["report"]
-    assert report["untrusted"] is True and report["source"] == f"neuroscifi:web-task/{task_id}"
-    assert any("4.2.0" in a["text"] for a in json.loads(report["text"])["answer"] if a.get("type") == "quote")
+    assert "report" not in research   # token-bounded by default: the context pack, the full report on request
+    context = research["context"]
+    assert context["untrusted"] is True and context["source"] == f"neuroscifi:web-task/{task_id}/context"
+    pack = json.loads(context["text"])
+    assert 0 < pack["tokens"] == research["context_tokens"] <= 2000 and pack["items"]
+    assert any("4.2.0" in json.dumps(i) for i in pack["items"])
     assert "web_research ok" in err and QUESTION not in err   # logs name the tool, never the arguments
+    got, _ = exchange(individual, [call(6, "web_task", {"task_id": task_id, "full_report": True})], factory)
+    full = payload(got[6])
+    report = full["report"]
+    assert report["untrusted"] is True and report["source"] == f"neuroscifi:web-task/{task_id}"
+    parsed = json.loads(report["text"])
+    assert any("4.2.0" in a["text"] for a in parsed["answer"] if a.get("type") == "quote")
+    assert parsed["context_pack"] == pack and parsed["usage"]["tokens"] == pack["tokens"]   # tokens are charged
     got, _ = exchange(individual, [call(2, "web_task", {"task_id": task_id}),
                                    call(3, "web_evidence", {"task_id": task_id}),
                                    call(4, "web_knowledge", {"topic": "Zephyr compiler version"}),
                                    call(5, "web_search", {"query": "Zephyr compiler release", "limit": 2})], factory)
     task = payload(got[2])
-    assert task["task"]["status"] == "completed" and task["report"]["untrusted"] is True
+    assert task["task"]["status"] == "completed" and task["context"]["untrusted"] is True and "report" not in task
     evidence = payload(got[3])
     assert len(evidence["sources"]) == 3 and evidence["claims"]
     assert all(s["content"]["untrusted"] and s["content"]["source"] == s["url"] for s in evidence["sources"])
@@ -205,3 +215,46 @@ def test_spawned_server_round_trip(individual):
     assert "disabled" in error_text(responses[3])
     assert payload(responses[4])["matched"] == 0
     assert responses[5]["error"]["code"] == -32601
+
+
+# ---- review remediation V2 ---------------------------------------------------------------------------------------
+
+def test_non_finite_ids_and_deep_nesting_get_json_rpc_errors(individual):
+    """C-P2-5 (coderev r5): NaN ids and runaway nesting are answered with JSON-RPC errors; the server keeps
+    serving the next message."""
+    out, err = io.StringIO(), io.StringIO()
+    lines = ['{"jsonrpc":"1.0","id":NaN}', '{"jsonrpc":"2.0","id":NaN,"method":5}', "[" * 200000,
+             '{"jsonrpc":"2.0","id":Infinity,"method":"ping"}', '{"jsonrpc":"2.0","id":{"a":1},"method":"ping"}',
+             request(9, "ping")]
+    assert mcp.serve(individual, stdin=io.StringIO("\n".join(lines) + "\n"), stdout=out, stderr=err) == 0
+    responses = [json.loads(line) for line in out.getvalue().splitlines()]
+    assert len(responses) == 6 and responses[-1] == {"jsonrpc": "2.0", "id": 9, "result": {}}
+    assert all(r["error"]["code"] in (-32700, -32600) and r["id"] is None for r in responses[:5])
+    assert "nesting too deep" in responses[2]["error"]["message"]
+
+
+def test_web_research_is_rate_limited_per_process(individual, factory):
+    """S-P3-10: at most config.mcp_research_per_hour web_research calls per hour per server process."""
+    enable(individual, mcp_research_per_hour=1)
+    got, _ = exchange(individual, [call(1, "web_research", {"objective": QUESTION, "mode": "quick_lookup"}),
+                                   call(2, "web_research", {"objective": QUESTION, "mode": "quick_lookup"})], factory)
+    assert got[1]["result"]["isError"] is False
+    assert "rate limit" in error_text(got[2]) and "mcp_research_per_hour" in error_text(got[2])
+
+
+def test_mcp_origin_tasks_share_a_daily_cap(individual, factory):
+    """S-P3-10: MCP-origin tasks are clamped to config.daily_mcp like autonomous research."""
+    enable(individual, daily_mcp={"tasks": 1, "requests": 400, "bytes": 80_000_000})
+    got, _ = exchange(individual, [call(1, "web_research", {"objective": QUESTION, "mode": "quick_lookup"})], factory)
+    assert got[1]["result"]["isError"] is False
+    got, _ = exchange(individual, [call(2, "web_research", {"objective": QUESTION, "mode": "quick_lookup"})], factory)
+    assert "daily MCP cap reached: tasks 1" in error_text(got[2])
+    db = store.connect(individual)
+    try:
+        from neuroscifi.webcortex import orchestrator, scheduler
+        used = scheduler.autonomous_usage(db, T0, mcp=True)["requests"]
+        state.set_config(db, {"daily_mcp": {"tasks": 9, "requests": used + 5, "bytes": 80_000_000}}, T0)
+        clamped = orchestrator.submit(db, QUESTION, T0, mode="quick_lookup", origin="mcp")
+        assert clamped["budget"]["max_requests"] <= 5
+    finally:
+        db.close()

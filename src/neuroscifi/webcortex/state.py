@@ -11,7 +11,7 @@ import math
 from urllib.parse import urlsplit
 
 from ..instance import store
-from ..instance.errors import Conflict, NotFound, ValidationError
+from ..instance.errors import Conflict, NotFound, ValidationError, WritesPaused
 from . import config as wconfig
 from .types import Budget, Claim, ClaimCluster, FRESHNESS_CLASSES, MODES
 
@@ -85,7 +85,7 @@ def _str_list(name, value, *, max_items=200, max_len=256):
 
 def _validate(name, value):
     """Return the validated value for one WebConfig field, or raise ValidationError."""
-    if name in ("enabled", "autonomous", "pocket_research", "browser_rendering"):
+    if name in ("enabled", "autonomous", "pocket_research", "browser_rendering", "search_browser_user_agent"):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value
@@ -114,12 +114,20 @@ def _validate(name, value):
                 raise ValidationError(f"budget_ceiling.{key} must be a non-negative "
                                       f"{'number' if key == 'max_seconds' else 'integer'}")
         return dict(get_default("budget_ceiling"), **value)
-    if name == "daily_autonomous":
+    if name in ("daily_autonomous", "daily_mcp"):
         if not isinstance(value, dict) or set(value) - {"tasks", "requests", "bytes"}:
-            raise ValidationError("daily_autonomous accepts only tasks, requests and bytes")
+            raise ValidationError(f"{name} accepts only tasks, requests and bytes")
         if not all(_is_int(v) and v >= 0 for v in value.values()):
-            raise ValidationError("daily_autonomous values must be non-negative integers")
-        return dict(get_default("daily_autonomous"), **value)
+            raise ValidationError(f"{name} values must be non-negative integers")
+        return dict(get_default(name), **value)
+    if name in ("max_open_web_questions", "max_web_questions_per_task"):
+        if not _is_int(value) or not 1 <= value <= 1000:
+            raise ValidationError(f"{name} must be an integer between 1 and 1000")
+        return value
+    if name == "mcp_research_per_hour":
+        if not _is_int(value) or not 0 <= value <= 1000:
+            raise ValidationError("mcp_research_per_hour must be an integer between 0 and 1000")
+        return value
     if name == "min_domain_interval":
         if not _is_num(value) or not 0 <= value <= 3600:
             raise ValidationError("min_domain_interval must be between 0 and 3600 seconds")
@@ -233,6 +241,19 @@ def require_enabled(db) -> wconfig.WebConfig:
     return cfg
 
 
+def write_allowed(db, path=None):
+    """Instance regulation (store.write_allowed) for a Web Cortex write: (allowed, reason). The free-space check
+    uses `path`, else the connection's own file (PRAGMA database_list)."""
+    return store.write_allowed(db, path if path is not None else store.database_path(db))
+
+
+def require_writable(db, path=None):
+    """WritesPaused unless regulation allows new writes (web research, consolidation, monitors, proposals)."""
+    allowed, reason = write_allowed(db, path)
+    if not allowed:
+        raise WritesPaused(f"web memory writes are paused: {reason}")
+
+
 def family_digest(db, fingerprint: str) -> str:
     """Instance-salted pseudonym of a Pocket pairing family fingerprint (like governance.root_digest)."""
     from ..instance.governance import root_digest
@@ -261,15 +282,33 @@ def task(db, task_id, *, family=None) -> dict:
     return out
 
 
-def update_task(db, task_id, now, **changes):
-    """Caller owns the transaction. JSON columns are encoded; updated_at is set."""
+class LostLease(Exception):
+    """The worker's lease on a task was taken over (it expired and another worker claimed the task): the run must
+    stop without writing its outcome or consolidating."""
+
+
+def update_task(db, task_id, now, *, holder=None, **changes):
+    """Caller owns the transaction. JSON columns are encoded; updated_at is set. With `holder` the update is
+    fenced: it applies only while that worker still holds the lease, else LostLease."""
     sets, params = ["updated_at=?"], [now]
     for key, value in changes.items():
         if key not in TASK_COLUMNS or key in ("id", "created_at"):
             raise ValidationError(f"task column {key} cannot be updated")
         sets.append(f"{key}=?")
         params.append(dumps(value) if key in _TASK_JSON and value is not None else value)
-    db.execute(f"UPDATE web_tasks SET {','.join(sets)} WHERE id=?", (*params, task_id))
+    if holder is None:
+        db.execute(f"UPDATE web_tasks SET {','.join(sets)} WHERE id=?", (*params, task_id))
+        return
+    if not db.execute(f"UPDATE web_tasks SET {','.join(sets)} WHERE id=? AND lease_holder=?",
+                      (*params, task_id, holder)).rowcount:
+        raise LostLease(f"research task {task_id}: the lease is held by another worker")
+
+
+def require_lease(db, task_id, holder):
+    """LostLease unless `holder` still holds the task's lease (a fence before consolidating)."""
+    row = db.execute("SELECT lease_holder FROM web_tasks WHERE id=?", (task_id,)).fetchone()
+    if row is None or row[0] != holder:
+        raise LostLease(f"research task {task_id}: the lease is held by another worker")
 
 
 def log_event(db, task_id, kind, detail, now, *, stage=None) -> int:

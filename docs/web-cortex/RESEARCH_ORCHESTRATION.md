@@ -1,6 +1,6 @@
 # Web Cortex: research orchestration
 
-Status: describes the code committed at `5f09ac3` (`intent.py`, `orchestrator.py`, `config.py`, `scheduler.py`, `state.py`). Test names are given where a property is verified. Contracts: [ARCHITECTURE.md](ARCHITECTURE.md) §2, §4.2, §4.4, §5, §7. Decisions: ADR-022, ADR-026, ADR-027. Operating commands (`nsf web ask`, `tasks`, `show`, `cancel`, `resume`, `work`, `tick`): see RUNBOOK.
+Status: describes the code at `df00137` (`intent.py`, `orchestrator.py`, `config.py`, `scheduler.py`, `state.py`). Test names are given where a property is verified. Contracts: [ARCHITECTURE.md](ARCHITECTURE.md) §2, §4.2, §4.4, §5, §7. Decisions: ADR-022, ADR-026, ADR-027. Operating commands (`nsf web ask`, `tasks`, `show`, `cancel`, `resume`, `requeue`, `work`, `tick`, `feeds`, `cache`): see RUNBOOK. The console (`/api/web/*`, embedded worker, `--no-web-worker`), Pocket research actions (ADR-028) and the MCP server submit and read tasks through the calls described here; routes and bodies are in API_CONTRACTS §8.
 
 A research task is a row in `web_tasks`. Nothing runs without a task, a budget and an origin (ADR-027). Every step writes an episodic event; no stage reports progress it did not make.
 
@@ -27,22 +27,22 @@ A research task is a row in `web_tasks`. Nothing runs without a task, a budget a
 
 | Field | Meaning |
 |---|---|
-| `freshness_class` | `scientific` if a scientific cue and no stronger technical cue; else `release` for a technical cue; else `breaking` for a recency cue with a window of at most 7 days (or the word "breaking"); else `volatile` for any other recency cue or for continuous / change / verification modes; else `stable` |
+| `freshness_class` | `scientific` if a scientific cue and no stronger technical cue; else `release` for a technical cue; else `breaking` for a recency cue with a window of at most 7 days (or the word "breaking"); else `volatile` for any other recency cue or for continuous / change modes; else `stable` (a fact check with no recency, release or scientific cue is `stable`: `test_stable_fact_checks_are_not_volatile`) |
 | `recency_window` | The most restrictive explicit window: "today" 1 day, "yesterday" 2, "this week" 7, "this month" 31, "this year" 365, "recently" 30 (90 if scientific), a month or current-year mention up to 366 days; `None` if the cue names no window ("latest") |
 | `kinds` | `academic` (scientific), `technical`, `encyclopedia` (short definitional question), `news` (recency cue without science/tech), always `web` |
 | `entities`, `urls`, `sites`, `packages`, `comparison`, `claim`, `language` | Extracted deterministically; `packages` come from `name==ver`, `pypi:`, `npm:`, `github:` forms in the text |
 
 ### The `needs_web` decision
 
-`needs_web` is false in exactly three cases, each with a stated reason (`test_needs_web_false_explains_itself`):
+`needs_web` is false in exactly three cases, each with a stated reason (`test_needs_web_false_explains_itself`); when it is false, `assessment["memory_items"]` lists the knowledge ids that answer:
 
 1. Bare arithmetic and no hard reason.
 2. A short definitional question ("what is ...") with no hard reason and at least one fresh, uncontested knowledge item.
 3. No hard reason, no soft reason, and at least one fresh, uncontested knowledge item.
 
-*Hard reasons* force a web visit: a URL in the question, any recency cue, a verification request, monitoring, change detection, relevant knowledge that is stale, relevant knowledge that is contested. *Soft reasons*: scientific question, technical question, comparison, an entity that no knowledge statement mentions. Knowledge counts only if it is `accepted` or `provisional` and shares a content word with the question (`test_rejected_or_irrelevant_knowledge_does_not_count`, `test_stale_and_contested_reasons`).
+*Hard reasons* force a web visit: a URL in the question, any recency cue, a verification request, monitoring, change detection, relevant knowledge that is stale, relevant knowledge that is contested. *Soft reasons*: scientific question, technical question, comparison, an entity that no knowledge statement mentions. Knowledge counts only if it is `accepted` or `provisional` and shares a content word with the question (`test_rejected_or_irrelevant_knowledge_does_not_count`, `test_stale_and_contested_reasons`), and it answers without the web only if it also **covers** the question: `intent.covers(item, question)` requires the statement to state at least 60 % (`MEMORY_COVERAGE`) of the question's topical terms, compared as 5-letter stems, so sharing one name ("Orbix") is not an answer to another property of it (encryption versus port). When related items exist but none covers, the reason says so (`test_related_knowledge_that_does_not_cover_the_question_does_not_answer_it`).
 
-When the web is not needed the task builds its report from the knowledge items (stage `synthesizing` only). The report says `live: false`, carries `memory: {answered_from_memory: true, knowledge_ids, reasons}`, and nothing is consolidated (`test_fresh_accepted_knowledge_answers_without_the_web`). **Limit:** the check uses any non-stale, non-contested live item, including `provisional` ones, and the report does not mark an item as provisional; `memory.knowledge_ids` identifies them.
+When the web is not needed the task builds its report from the knowledge items (stage `synthesizing` only). The report says `live: false`, carries `memory: {answered_from_memory: true, knowledge_ids, provisional_ids, reasons}`, and nothing is consolidated (`test_fresh_accepted_knowledge_answers_without_the_web`). Provisional knowledge is flagged, never presented as accepted: its answer items and findings carry `status: "provisional"` (and `knowledge_id`, `knowledge_status`), and each provisional item adds an `uncertainties` line saying the owner has not accepted it. The run emits an `extract` event (`from_memory`, `knowledge_ids`) and a `synthesized` event (`test_memory_answer_marks_provisional_knowledge_and_logs_extract_and_synthesis`).
 
 ## 2. Planning, expansion, refinement
 
@@ -58,7 +58,9 @@ When the web is not needed the task builds its report from the knowledge items (
 
 **Decomposition** splits on `;`, `?` and sentence ends, and on " and " only when the right side begins with a verb from a fixed list. A clause with no searchable topic (an instruction only) is dropped with a note (`test_plan_monitor_drops_instruction_clause`). Every query carries a `purpose` string that appears in the episode log.
 
-**Privacy.** Every planned query passes `safety.privacy_screen` with the owner's private terms and the camera and partner roots of the evidence journal. A query with a finding is dropped and a `decision` event counts the drops and names the finding kinds, never the text (`test_privacy_screen_blocks_private_identifiers` covers submission).
+**Self-references are local context.** References to the individual's own system are answered from local documents and state and never become web queries. `intent.strip_local(text, local_terms)` removes the names in `intent.SELF_NAMES` (`NeuroSciFi`, `Neuro SciFi`, `Neuro-SciFi`), possessive and demonstrative phrases ("our", "my", "this individual", "this instance", "this system"), "the libraries we use"-style phrases, and the caller's `local_terms` (the owner's `private_terms`, unless the owner authorised disclosure for this task). A possessive reference is removed with the noun phrase it owns (up to 4 non-function words: "NeuroSciFi's learning architecture"); a bare name is removed alone. `intent.plan(..., local_terms=)` and `intent.refine(..., local_terms=)` apply it to the question, claim, comparison sides and entities, and a `notes` entry says how many references were not searched; a comparison whose side is purely local searches only the outside side (`test_plan_and_refine_never_search_the_individuals_own_system`, `test_strip_local_keeps_the_outside_topic`, `test_self_references_are_local_context_not_web_queries`).
+
+**Privacy.** Every planned query passes `safety.privacy_screen` with the owner's private terms and the camera and partner roots of the evidence journal. A query with a finding is dropped and a `decision` event counts the drops and names the finding kinds, never the text (`test_privacy_screen_blocks_private_identifiers` covers submission). **Owner authorisation** (`authorization="owner-approved-disclosure"` at submit) applies to **this task's own queries only**: a query is kept when every finding in it is private text that the task's objective itself contained, and a `decision` event `disclosed_under_authorization` records the count and finding kinds (never the text). Curiosity and refresh tasks cannot carry it, and a monitor's task carries it only when the owner authorised that monitor; otherwise `submit` raises `ValidationError` (`test_owner_authorisation_applies_to_the_tasks_own_queries`). `requeue` and `resume` keep the authorisation.
 
 **Refinement.** After the first search, `intent.refine` allows one broader round when fewer than 3 results arrived or every provider failed: no date or site limit, text cut to the key entities or first three keywords, at most 4 queries, original queries not repeated (`test_refine_broadens_thin_results`, `test_refine_returns_none_when_nothing_broader_exists`).
 
@@ -72,10 +74,14 @@ queued ──▶ discovering ──▶ reading ──▶ evaluating ──▶ sy
 
 | Stage | Work | Checkpoint written |
 |---|---|---|
-| discovering | `knowledge.query`, `intent.assess`, `decision` event, plan, privacy screen, `registry.search`, at most one `refine` round | `assessment`, `plan`, `results`, `attempts` |
-| reading | Select documents, fetch or take API records, extract, quarantine, optional render, optional two-link follow (SEARCH_AND_ACQUISITION §5). Each document is saved as a `web_sources` row and checkpointed as soon as it is read | `documents`, `selected` |
-| evaluating | `claims.extract_claims` per document, `cluster`, `score`; clusters and claims persisted | `clusters` |
-| synthesizing | `synthesis.synthesize` builds the report; then `consolidate.run`, one prediction per new provisional item, mode statistics | `result` |
+| discovering | `knowledge.query`, `intent.assess`, `decision` event, plan (self-references removed), privacy screen, `registry.search`, at most one `refine` round. The lease is renewed after every search round | `assessment`, `plan`, `results`, `attempts` |
+| reading | Rank candidates, read until `max_pages` documents succeed (see *Selecting documents* below), extract, quarantine, optional render, optional two-link follow (SEARCH_AND_ACQUISITION §5). Each document is saved as a `web_sources` row and checkpointed as soon as it is read; the lease is renewed after every fetch (`test_lease_is_renewed_after_every_fetch`) | `documents`, `selected` |
+| evaluating | `claims.extract_claims` per document (one `extract` event each: `test_web_run_logs_extract_per_document`), `cluster`, `score` with the owner's `freshness_ttl` as `ttl_overrides`; clusters and claims persisted | `clusters` |
+| synthesizing | `synthesis.synthesize` builds the report (`synthesized` event); then `consolidate.run`, one prediction per new provisional item, mode statistics, and public-cache retention (`Services.prune_cache`, at most hourly; a failure is logged as an `error` event with stage `cache_retention` and does not change the outcome) | `result` |
+
+**Selecting documents** (`_Run.select`, `read`). `select` ranks at most `3 x max_pages` candidates: URLs named in the question first, then structured API records (and, for a monitor's task, feed items), then web results, deduplicated by canonical URL. `read` takes them in order until `max_pages` documents have **succeeded**. A failed fetch (blocked by policy or robots, error, refused type) costs requests, bytes and time, never a page slot, so one dead link does not shrink the evidence; the request, byte and time budgets bound the attempts (`test_failed_fetches_do_not_use_page_slots`). In `scientific` and `deep_research` modes `ceil(max_pages / 3)` slots are reserved for web pages (`WEB_RESERVE_MODES`): API records fill only the other slots, and take a reserved one only after every web candidate was tried (`test_scientific_mode_reserves_page_slots_for_web_pages`). Feeds: SEARCH_AND_ACQUISITION §2; monitors read feed items before web results (`test_monitor_tasks_read_feed_items_first_and_services_build_the_feed_provider`).
+
+**Link following.** `deep_research` follows at most 2 same-site links of the first page through the orchestrator's own `follow()`, not `crawl.crawl`: the crawler re-fetches its seeds, returns only after the whole walk (no per-document checkpoint, cancel check or lease renewal) and has no render escalation. `follow()` keeps all four with the same `SafeFetcher` policy.
 
 Final status:
 
@@ -102,6 +108,8 @@ Final status:
 | `continuous` | 4 | 40 | 6 | 120 | 0 |
 | `gap_resolution` | 4 | 30 | 5 | 90 | 0 |
 
+**Autonomous tasks** (origin `curiosity` or `refresh:*`) have their request and byte budgets clamped at submit to the daily allowance left (`scheduler.autonomous_remaining`); nothing left means a `ValidationError` and no task. The `submitted` event records `clamped_to_daily_allowance` (MEMORY_INTEGRATION §8).
+
 **Requested budgets and the ceiling.** A caller may pass a partial budget object. `submit` rejects unknown fields and non-numeric or negative values (`test_page_budget_allows_exactly_one_fetch` covers the unknown-field error). `WebConfig.budget_for` applies the request over the mode default, sets `max_browser_sessions` to 0 when rendering is off, and then clamps **every field** to `WebConfig.budget_ceiling` (default queries 16, requests 200, pages 30, bytes 60,000,000, seconds 600, depth 2, browser sessions 2, concurrency 6, context tokens 6000). A task can ask for less, never more.
 
 **How each resource is charged and enforced**
@@ -110,7 +118,7 @@ Final status:
 |---|---|---|
 | `max_queries` | One per planned query, by the registry before sending | Extra planned queries are not sent; the failure `budget_exhausted: N planned queries not sent` is recorded |
 | `max_requests` | One per network call: page, robots.txt, each redirect hop, each structured API call, each open-webSearch engine call | `BudgetExceeded` before the limit would be passed; reading stops |
-| `max_pages` | One per document recorded (API records included) | Checked before each acquisition; limitation `page budget reached (N documents)` |
+| `max_pages` | One per document recorded (API records included); failed fetches are not charged | Reading stops when `max_pages` documents succeeded; limitation `page budget reached (N documents)` when candidates remained |
 | `max_bytes` | Wire bytes after each read | The read stops before the cap is exceeded |
 | `max_seconds` | Not a counter: `elapsed = seconds used before a resume + (clock - run start)` | Checked before each network step and between queries; a step already in flight can overrun by up to one fetch timeout (15 s) |
 | `max_depth` | | Link following only when mode is `deep_research` and depth is at least 1 |
@@ -138,7 +146,7 @@ Final status:
 
 **Partial results.** Reports from `partial` and `cancelled` tasks have the same shape as completed ones. Their `limitations` list says what was cut.
 
-**Leases.** `LEASE_SECONDS = 600`. `_claim` sets `lease_holder` (`<host digest>:<pid>:<thread>`) and `lease_expires_at`; each stage change and checkpoint renews it. A second worker raises `LeaseHeld` while the lease is live. `scheduler.claim_next` takes a queued task (skipping proposals and live leases), else a running task whose lease expired, and resumes it (`test_worker_drains_the_queue_and_recovers_expired_leases`).
+**Leases.** `LEASE_SECONDS = 600`. `_claim` sets `lease_holder` (`<host digest>:<pid>:<thread>`) and `lease_expires_at`; each stage change and checkpoint renews it, and so does every fetch and search round (`_Run.renew`), so a long stage cannot outlive the lease while it is still making progress. A second worker raises `LeaseHeld` while the lease is live. `scheduler.claim_next` takes a queued task (skipping proposals and live leases), else a running task whose lease expired, and resumes it (`test_worker_drains_the_queue_and_recovers_expired_leases`).
 
 **`executed_on`.** Recorded at claim time: `{host: sha256(hostname)[:12], cpus, load}`. The host name itself is not stored. On a deployment this identifies the Spark; Pocket devices and the console only submit and read (ARCHITECTURE §7).
 
@@ -150,23 +158,25 @@ One row per event, in order. Kinds the committed code writes:
 |---|---|
 | `submitted`, `started`, `resumed` | Task creation; lease taken; lease taken on resume |
 | `stage` | Entering a stage (`detail.stage`) |
-| `decision` | `needs_web` and reasons; dropped queries; render skipped (with reason); worker `claimed`; proposal authorised |
+| `decision` | `needs_web` and reasons; dropped queries; `disclosed_under_authorization` (count and finding kinds); render skipped (with reason); worker `claimed`; proposal authorised |
 | `query` | One per planned query, with `kind`, `purpose`, `round` |
 | `search` | Result count, attempt count, first failure reasons per round |
 | `fetch` | Each document recorded: `source_id`, kind, retrieval mode, flags, injection count |
 | `render`, `crawl` | A rendered page; a followed link |
 | `error` | A `FetchError` or stage failure |
+| `extract` | Per document: URL, kind, claim count; for a memory-answered task `from_memory` with the knowledge ids |
 | `claim` | Counts of claims, clusters and cluster statuses |
+| `synthesized` | Answer items, findings, sources and `live` of the report |
 | `consolidated` | Consolidation summary counts |
 | `cancel_requested`, `cancelled`, `completed`, `partial`, `failed` | Terminal and control events; the terminal event carries `live`, source count, limitation count, error |
 | `finding` | A monitor run found a meaningful change (scheduler) |
 | `prediction`, `prediction_error`, `feedback` | Prediction lifecycle (task id may be null) |
 
-`extract` and `synthesized` are allowed by the schema and by `state.EVENT_KINDS` but nothing emits them. The UI stage line (Discovering, Reading, Evaluating, Synthesizing, Completed) is derived from `stage` events.
+The UI stage line (Discovering, Reading, Evaluating, Synthesizing, Completed) is derived from `stage` events.
 
 ## 7. A real report
 
-Produced offline at `5f09ac3` with `FixtureWeb` (three fake public hosts), `CorpusProvider` and `services.build`, exactly as `tests/webcortex/test_orchestrator.py` does, with question *"What is the latest version of the Zephyr compiler?"* at `T0 = 1795200000` (the fixture clock). Trimmed; `contradictions` and `verdict` were empty; the event list is written in compact `kind:stage` notation. The working tree had an uncommitted `context` parameter on `submit`; it is unused on this path.
+Produced offline at `df00137` with `FixtureWeb` (three fake public hosts), `CorpusProvider` and `services.build`, exactly as `tests/webcortex/test_orchestrator.py` does, with question *"What is the latest version of the Zephyr compiler?"* at `T0 = 1795200000` (the fixture clock). Trimmed; `contradictions` and `verdict` were empty; the event list is written in compact `kind:stage` notation.
 
 ```json
 {
@@ -174,8 +184,8 @@ Produced offline at `5f09ac3` with `FixtureWeb` (three fake public hosts), `Corp
           "stages_done": ["discovering", "reading", "evaluating", "synthesizing"],
           "usage": {"queries": 3, "requests": 6, "pages": 3, "bytes": 1105, "browser_sessions": 0, "seconds": 0.0}},
  "events": ["submitted","started","stage:discovering","decision","query","query","query","search",
-            "stage:reading","fetch","fetch","fetch","stage:evaluating","claim","stage:synthesizing",
-            "consolidated","completed"],
+            "stage:reading","fetch","fetch","fetch","stage:evaluating","extract","extract","extract","claim",
+            "stage:synthesizing","synthesized","consolidated","completed"],
  "assessment": {"needs_web": true, "mode": "technical", "freshness_class": "release",
    "reasons": ["recency requested: latest",
                "technical question (version): registries and advisories change",
@@ -185,16 +195,17 @@ Produced offline at `5f09ac3` with `FixtureWeb` (three fake public hosts), `Corp
   "question": "What is the latest version of the Zephyr compiler?", "mode": "technical", "live": true,
   "answer": [
    {"type": "template", "status": "summary", "citations": [1, 2, 3],
-    "text": "3 sources read; 4 statement clusters had usable evidence; the top statement is corroborated (3 agreeing independent source groups of 3). Newest cited source: 9 hours ago."},
+    "text": "3 sources read; 3 statement clusters had usable evidence; the top statement is corroborated (3 agreeing independent source groups of 3). Newest cited source: 9 hours ago."},
    {"type": "quote", "status": "corroborated", "citations": [1, 2, 3], "confidence": 0.772727,
     "uncertainty": 0.180339, "independent_sources": 3,
     "text": "The Zephyr compiler version 4.2.0 was released on 17 November 2026 by the Zephyr project team."},
-   {"type": "quote", "status": "single_source", "citations": [2], "confidence": 0.642857,
-    "text": "Hands on with the Zephyr compiler"},
    {"type": "quote", "status": "single_source", "citations": [3], "confidence": 0.642857,
-    "text": "Developers report that the compiler now supports more targets."}
+    "text": "Developers report that the compiler now supports more targets."},
+   {"type": "quote", "status": "single_source", "citations": [1], "confidence": 0.642857,
+    "text": "The release adds faster incremental builds for large embedded projects."}
   ],
-  "uncertainties": ["Single source: \"Hands on with the Zephyr compiler\" is reported only by blog-three.example [2]."],
+  "uncertainties": ["Single source: \"Developers report that the compiler now supports more targets.\" is reported only by tech-two.example [3].",
+                    "Single source: \"The release adds faster incremental builds for large embedded projects.\" is reported only by news-one.example [1]."],
   "limitations": ["Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"],
   "freshness": {"class": "release", "window_seconds": null, "ttl_seconds": 604800.0,
                 "required_seconds": 604800.0, "satisfied": true, "newest_source_at": 1795165200.0},
@@ -204,14 +215,16 @@ Produced offline at `5f09ac3` with `FixtureWeb` (three fake public hosts), `Corp
    {"n": 3, "title": "Zephyr 4.2 is out", "url": "http://tech-two.example/news/zephyr-42", "retrieval_mode": "live", "kind": "page"}
   ],
   "consolidation": {"provisional": [1], "pending": [1], "strengthened": [], "unchanged": [], "superseded": [], "contested": [],
-    "held": [{"statement": "Developers report that the compiler now supports more targets.",
+    "held": [{"statement": "The release adds faster incremental builds for large embedded projects.",
+              "reasons": ["single source that is not a primary structured source"]},
+             {"statement": "Developers report that the compiler now supports more targets.",
               "reasons": ["single source that is not a primary structured source"]}]},
   "budget": {"max_queries": 12, "max_requests": 120, "max_pages": 10, "max_seconds": 240, "max_depth": 0, "max_browser_sessions": 0}
  }
 }
 ```
 
-What the example shows: three independent hosts agree, so the top cluster is `corroborated` with posterior mean 0.7727 (section 3 of EVIDENCE_AND_PROVENANCE); a page heading of six words passes the sentence filter and appears as a single-source "statement" (a known weakness); the one corroborated cluster became provisional knowledge #1 with an owner question, and the single-source clusters were held as claims only. Report shape: ARCHITECTURE §5.
+What the example shows: three independent hosts agree, so the top cluster is `corroborated` with posterior mean 0.7727 (section 3 of EVIDENCE_AND_PROVENANCE); the two other statements are single-source; page headings and titles are not claims (`text.heading_like`), so only body sentences appear; the one corroborated cluster became provisional knowledge #1 with an owner question, and the single-source clusters were held as claims only. Report shape: ARCHITECTURE §5.
 
 ## 8. Recovery procedures
 
@@ -221,11 +234,13 @@ Commands are named in ARCHITECTURE §4.5; flags and service units are in RUNBOOK
 |---|---|---|
 | Task stuck in `discovering`, `reading`, `evaluating` or `synthesizing` | `nsf web show` for the task: `lease_expires_at` and last event time | If the lease has expired (up to 600 s after the last checkpoint), the worker resumes it by itself, or run `nsf web resume <id>`. While the lease is live, resume raises `LeaseHeld`: wait, or `nsf web cancel <id>` (sets `cancel_requested`; the holder stops at its next network step) |
 | Worker crashed mid-task | Events end without a terminal kind | Same as above; the checkpoint keeps documents, so no page is re-fetched while the cache still holds the body |
-| Task `failed` | `error` field and the `error` events from `nsf web evidence <id>` | `nsf web resume <id>` requeues a failed task and continues from its checkpoint. If the cause is permanent, `nsf forget research <id>` and submit again |
-| Task `partial` | `limitations` in the result | Not resumable. Raise the budget (up to the ceiling) and submit a new task, or accept the partial report |
+| Task `failed` | `error` field and the `error` events from `nsf web evidence <id>` | `nsf web resume <id>` continues a failed task from its checkpoint here; `nsf web requeue <id>` queues it again for the worker (same id). If the cause is permanent, `nsf forget research <id>` and submit again |
+| Task `partial` or `cancelled` | `limitations` in the result | Not resumable. `nsf web requeue <id>` (console: resume) queues a linked child task (`parent_id` = the task) with the same objective, mode, context and owner authorisation; documents read before are re-requested conditionally. Or raise the budget (up to the ceiling) and submit a new task, or accept the partial report |
 | Provider or engine outage | `nsf web health`; `registry.status()` shows `open` circuits and last errors | Nothing to do for a short outage: breakers open after 3 failures, retry after 300 s, and other engines or providers answer meanwhile. For a long one, `nsf web daemon status` / `start`, or edit `engines` / `providers` with `nsf web config`. Reports from degraded runs list each failure under `limitations` |
 | Web access switched off while tasks are queued | `Conflict: Web access is disabled ...` | Tasks stay queued; re-enable with `nsf web config` |
 | Proposal waiting | `nsf resolve` question with scope `web:research:<id>` | `--confirm` queues it; `--reject` cancels it |
+
+`orchestrator.requeue(db, task_id, now, *, origin=None, family=None)` accepts `failed` (same id, status `queued`, the worker resumes from the checkpoint), `partial` and `cancelled` (new child task); any other status raises `Conflict`. The result carries `resumed_from` and `requeued` (`same` or `child`) (`test_requeue_semantics_and_feedback_reader`, `test_feeds_cache_and_requeue_commands`).
 
 Autonomy (monitors, `tick`, daily caps) is in MEMORY_INTEGRATION §8.
 
@@ -234,7 +249,7 @@ Autonomy (monitors, `tick`, daily caps) is in MEMORY_INTEGRATION §8.
 ```sh
 pytest -q tests/webcortex/test_orchestrator.py tests/webcortex/test_intent.py tests/webcortex/test_state.py
 pytest -q tests/webcortex/test_scheduler.py -k "worker or monitor"
-pytest -q tests/webcortex -k "resume or cancel or budget or lease"
+pytest -q tests/webcortex -k "resume or cancel or budget or lease or requeue"
 ```
 
 ## 10. Limits stated plainly
@@ -242,4 +257,6 @@ pytest -q tests/webcortex -k "resume or cancel or budget or lease"
 - Mode and intent rules are lexical and English-only; a question the cues miss becomes a `quick_lookup` with a 3-query budget.
 - `max_seconds` bounds when the next step may start, not the step itself.
 - `resume` after the public cache is pruned re-fetches live; the task then mixes `cache` and `live` sources.
+- Self-reference stripping is lexical: a local project referred to by a name the owner did not list in `private_terms` (and that is not `NeuroSciFi`) is still searched.
+- `intent.covers` compares 5-letter stems; a paraphrase that shares fewer than 60 % of the question's topical stems sends the question to the web even if memory holds the answer.
 - A resumed or memory-answered report is `live: false` by construction, even if the knowledge it used was verified minutes before.

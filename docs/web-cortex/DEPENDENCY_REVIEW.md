@@ -15,6 +15,7 @@ pinned. The core package (`numpy`, `zstandard`) is unchanged; Web Cortex depende
 | Task queue / scheduler | none (ADR-012: explicit jobs, systemd timers) | Added a SQLite-backed task queue drained by `nsf web work`, and `nsf web tick` on a timer (ADR-027). |
 | Vector / graph DB, embeddings, reranker | none (ADR-009) | Not added. BM25 + recency + independence ranking; entity/claim graph in SQLite tables. |
 | HTTP client | stdlib only | Stdlib `http.client` with an address-pinning connection (ADR-024). No `requests`/`httpx`. |
+| `robots.txt` matching | stdlib `urllib.robotparser` | Replaced by `net.RobotsRules`, an in-tree RFC 9309 matcher (wildcards, `$`, longest match, group selection); the stdlib parser ignored `*` and `$` in paths. No new dependency. |
 | Browser | Playwright 1.64.1 already a `dev` dependency (e2e tests), system Chromium | Reused as the optional `web-render` extra. |
 | Search engine access | none | open-webSearch daemon (Node), pinned. |
 | MCP | none | Minimal stdlib JSON-RPC stdio server (`nsf web mcp`); no MCP SDK dependency. |
@@ -79,10 +80,10 @@ client tracks health per engine and falls back across engines and to the structu
 | Provider | Endpoint | Use | Notes |
 |---|---|---|---|
 | Wikipedia | `en.wikipedia.org/w/api.php` | stable encyclopedic background | last-edit timestamp, not publication date |
-| arXiv | `export.arxiv.org/api/query` (Atom) | preprints, versions | arXiv asks for ≤ 1 request / 3 s; per-host throttle enforces it |
+| arXiv | `export.arxiv.org/api/query` (Atom) | preprints, versions | arXiv asks for ≤ 1 request / 3 s; the per-host interval `NetPolicy.host_intervals` (3.0 s) enforces it (`test_host_intervals_with_fake_clock`) |
 | OpenAlex | `api.openalex.org/works` | scholarly works, abstracts | citation counts shown as metadata only, never as truth |
 | Crossref | `api.crossref.org/works` | DOIs, publication dates | |
-| PubMed | NCBI E-utilities `esearch`/`esummary` | biomedical literature | ≤ 3 requests / s without a key |
+| PubMed | NCBI E-utilities `esearch`/`esummary` | biomedical literature | ≤ 3 requests / s without a key; per-host interval 0.34 s |
 | PyPI | `pypi.org/pypi/<name>/json` | release versions and dates | |
 | npm | `registry.npmjs.org/<name>` | release versions and dates | |
 | OSV | `api.osv.dev/v1/query` | security advisories | authoritative aggregation of GHSA, PYSEC, etc. |

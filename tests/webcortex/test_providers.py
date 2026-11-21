@@ -584,3 +584,45 @@ def test_build_adds_the_feed_provider_only_when_feeds_exist():
     assert feed.search(Query("dendritic computation"), 5) and feed.search(Query("dendritic results"), 5)
     assert len(f.requests) == 1                                   # memoised within the run, not one per query
     assert providers.unknown(WebConfig(providers=["feeds", "nope"])) == ["nope"]
+
+
+# ---- review remediation (V1): XML guards in every encoding, OSV GIT ranges -------------------------------------
+
+UTF16_LAUGHS = '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE r [<!ENTITY a "aaaaaaaaaa">' + "".join(
+    f'<!ENTITY {chr(98 + i)} "' + ("&" + chr(97 + i) + ";") * 10 + '">' for i in range(8)) + \
+    ']><feed xmlns="http://www.w3.org/2005/Atom"><entry><title>&i;</title>' \
+    '<link href="http://x.example/1"/></entry></feed>'
+UTF16_XXE = '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/hostname">]>' \
+    '<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>&x;</title><link href="http://x.example/1"/>' \
+    '</entry></feed>'
+UTF16_OK = '<?xml version="1.0" encoding="UTF-16"?><feed xmlns="http://www.w3.org/2005/Atom"><entry>' \
+    '<title>Wide dendrites</title><link href="http://x.example/1"/></entry></feed>'
+
+
+@pytest.mark.parametrize("doc", [UTF16_LAUGHS, UTF16_XXE])
+def test_minimal_feed_parser_refuses_utf16_declarations(doc):
+    with pytest.raises(ValueError, match="DOCTYPE"):
+        parse_feed_minimal(doc.encode("utf-16"), "http://feeds.example/")
+    assert [i["url"] for i in parse_feed_minimal(UTF16_OK.encode("utf-16"), "http://feeds.example/")] == \
+        ["http://x.example/1"]
+
+
+@pytest.mark.parametrize("doc", [UTF16_LAUGHS, UTF16_XXE])
+def test_arxiv_refuses_utf16_declarations(doc):
+    url = ("https://export.arxiv.org/api/query?search_query=all%3Ax&sortBy=relevance&sortOrder=descending"
+           "&max_results=1")
+    f = FakeFetcher({url: (200, doc.encode("utf-16"), "application/atom+xml")})
+    with pytest.raises(ProviderError, match="DOCTYPE") as info:
+        ArxivProvider(f).search(Query("x"), 1)
+    assert info.value.code == "bad_response"
+
+
+def test_osv_fixed_versions_exclude_git_commit_hashes():
+    url = "https://api.osv.dev/v1/query"
+    vuln = json.loads(json.dumps(OSV["vulns"][0]))
+    vuln["affected"][0]["ranges"].append({"type": "GIT", "repo": "https://github.com/x/zstandard",
+                                          "events": [{"introduced": "0"},
+                                                     {"fixed": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b"}]})
+    out = OSVProvider(FakeFetcher({url: {"vulns": [vuln]}})).search(Query("osv:PyPI:zstandard@0.25.0"), 5)
+    assert out[0].metadata["fixed_versions"] == ["0.25.1"]
+    assert {r["type"] for r in out[0].metadata["affected_ranges"]} == {"ECOSYSTEM", "GIT"}

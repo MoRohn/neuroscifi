@@ -460,3 +460,17 @@ def test_age_discounts_only_time_sensitive_classes():
     assert evidence_weight(old, now=now, freshness_class="stable") == RELIABILITY_SECONDARY
     assert evidence_weight(old, now=now, freshness_class="volatile") == RELIABILITY_SECONDARY * STALE_FACTOR
     assert evidence_weight(old, now=now, freshness_class="release") == RELIABILITY_SECONDARY * STALE_FACTOR
+
+
+# ---- review remediation (V1) ----------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("sentence,kind", [
+    ("In May 2026 the trial found that the drug reduced mortality by 12%.", "finding"),
+    ("On May 3 the team reported that 40 mice recovered.", "finding"),
+    ("May the results hold, the authors observed 12 cases.", "finding"),
+    ("The drug may reduce mortality in older adults.", "interpretation"),
+    ("May be associated with lower mortality.", "interpretation"),
+    ("Running may also protect memory.", "interpretation"),
+])
+def test_may_is_a_hedge_only_as_a_modal(sentence, kind):
+    assert C.claim_kind(sentence) == kind

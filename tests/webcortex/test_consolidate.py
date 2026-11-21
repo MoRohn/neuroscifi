@@ -5,6 +5,7 @@ rules of consolidate.run are tested independently of claim extraction. Helpers h
 Lane D test modules.
 """
 import hashlib
+import json
 from urllib.parse import urlsplit
 
 import pytest
@@ -235,3 +236,103 @@ def test_claims_from_injection_flagged_sources_are_held(db):
     tid = task_with(db, [cluster([_flagged(claim("http://evil.example/numpy2"))])])
     consolidate.run(db, tid, T0 + 1)
     assert len(knowledge.row(db, kid)["supporting"]) == 2
+
+
+# ---- review remediation V2 ---------------------------------------------------------------------------------------
+
+def test_a_contested_cluster_whose_majority_agrees_never_lowers_knowledge(db):
+    """C-P1-4: three sources restate the stored version and one outlier disagrees: the item is strengthened (never
+    weakened) and the contradiction cites the outlier, not an agreeing claim."""
+    _, first = consolidated(db, [two_sources()])
+    kid = first["provisional"][0]
+    before = knowledge.row(db, kid)["confidence"]
+    agree = [claim(f"http://{h}/np2", TEXT, published=T0) for h in ("c.example", "d.example", "e.example")]
+    odd = claim("http://f.example/np2", "NumPy 2.3.4 is the latest release of the NumPy library.", published=T0)
+    contested = cluster(agree + [odd], status="contested", confidence=0.7,
+                        contradicting=[{"a": agree[0].id, "b": odd.id, "reason": "different versions"}])
+    contested.supporting = [c.id for c in agree]
+    _, out = consolidated(db, [contested], now=T0 + 10)
+    item = knowledge.row(db, kid)
+    assert item["confidence"] == before and out["strengthened"] == [kid]
+    assert [c["claim"] for c in item["contradicting"]] == [odd.id]
+    assert "2.3.4" in item["contradicting"][0]["text"]
+    assert set(c.id for c in agree) <= set(item["supporting"])
+
+
+def test_a_contested_cluster_that_conflicts_still_contradicts_and_weakens(db):
+    _, first = consolidated(db, [two_sources()])
+    kid = first["provisional"][0]
+    newer = [claim(f"http://{h}/np3", "NumPy 2.3.4 is the latest release of the NumPy library.", published=T0 - 9 * DAY)
+             for h in ("c.example", "d.example")]
+    odd = claim("http://e.example/np3", TEXT, published=T0)
+    contested = cluster(newer + [odd], status="contested", confidence=0.7,
+                        contradicting=[{"a": newer[0].id, "b": odd.id, "reason": "different versions"}])
+    contested.supporting = [c.id for c in newer]
+    _, out = consolidated(db, [contested], now=T0 + 10)
+    item = knowledge.row(db, kid)
+    assert item["confidence"] < 0.85 and [c["claim"] for c in item["contradicting"]] == [newer[0].id]
+
+
+def test_web_questions_respect_the_per_task_and_global_budget(db):
+    """A-P1-3: 30 new candidates of one task open at most max_web_questions_per_task questions plus ONE aggregate;
+    across tasks no more than max_open_web_questions are open (the aggregate is updated, not multiplied)."""
+    def many(prefix, n):
+        return [cluster([claim(f"http://{h}/{prefix}{i}", f"Widget{prefix}{i} 1.{i}.0 is the latest release of "
+                               f"widget{prefix}{i}.", key=f"widget{prefix}{i} latest version")
+                         for h in ("a.example", "b.example")]) for i in range(n)]
+    tid, out = consolidated(db, many("a", 30))
+    assert len(out["provisional"]) == 30 and out["questions_deferred"] == 27
+    open_web = db.execute("SELECT scope, question FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:%' "
+                          "ORDER BY id").fetchall()
+    assert len(open_web) == 4 and open_web[-1][0] == f"web:review:{tid}" and "27 candidate(s)" in open_web[-1][1]
+    assert store.regulation(db)["open_web_questions"] == 4
+    assert db.execute("SELECT count(*) FROM web_knowledge WHERE status='provisional' AND pending_id IS NULL"
+                      ).fetchone()[0] == 27
+    for n in range(3):
+        consolidated(db, many(f"b{n}", 5), now=T0 + n + 1)
+    assert store.regulation(db)["open_web_questions"] <= state.get_config(db).max_open_web_questions + 1
+    state.set_config(db, {"max_open_web_questions": 50, "max_web_questions_per_task": 5}, T0)
+    _, more = consolidated(db, many("c", 6), now=T0 + 9)
+    assert more["questions_deferred"] == 1 and more["review_question"] is not None
+
+
+def test_consolidation_refuses_while_writes_are_paused(tmp_path):
+    """A-P1-1: instance regulation pauses web writes too: no submission, no knowledge, no question."""
+    from neuroscifi.instance.errors import WritesPaused
+    conn = store.create(tmp_path / "individual.sqlite", T0)
+    state.set_config(conn, {"enabled": True}, T0)
+    tid = task_with(conn, [two_sources()])
+    db_file = tmp_path / "individual.sqlite"
+    with store.write(conn):   # max_evidence_rows=0: the evidence journal is "full"
+        cfg = json.loads(conn.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
+        conn.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(cfg | {"max_evidence_rows": 0}),))
+    assert store.write_allowed(conn, db_file)[0] is False
+    with pytest.raises(WritesPaused):
+        consolidate.run(conn, tid, T0)
+    with pytest.raises(WritesPaused):
+        orchestrator.submit(conn, "What is the latest numpy release version?", T0, mode="fact_verification")
+    assert conn.execute("SELECT count(*) FROM web_knowledge").fetchone()[0] == 0
+    assert conn.execute("SELECT count(*) FROM pending").fetchone()[0] == 0
+    conn.close()
+
+
+def test_knowledge_is_never_valid_from_the_future(db):
+    """C-P2-8: a source dated after `now` does not make knowledge valid from the future."""
+    _, out = consolidated(db, [two_sources(published=T0 + 30 * DAY)])
+    item = knowledge.row(db, out["provisional"][0])
+    assert item["valid_from"] <= T0
+
+
+def test_existing_lookup_reads_only_matching_rows(db, monkeypatch):
+    """C-P3: _existing no longer decodes every live knowledge row."""
+    for i in range(5):
+        consolidated(db, [cluster([claim(f"http://{h}/k{i}", f"Thing{i} 1.{i}.0 is the latest release of thing{i}.",
+                                         key=f"thing{i} latest version") for h in ("a.example", "b.example")])],
+                     now=T0 + i)
+    seen = []
+    real = knowledge.rows
+    monkeypatch.setattr(knowledge, "rows", lambda db, where="1", params=(): seen.append(where) or real(db, where, params))
+    found = consolidate._existing(db, cluster([claim("http://z.example/k2", "Thing2 1.2.0 is the latest release.",
+                                                     key="thing2 latest version")]))
+    assert found["key"] == "thing2 latest version"
+    assert all(w != "status IN (?,?,?)" for w in seen)   # never the full live scan

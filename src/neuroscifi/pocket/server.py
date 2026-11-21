@@ -38,8 +38,10 @@ MAX_CONNECTIONS = 32
 ROUTES = {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link","mute","unmute"}
 # Web Cortex research (ADR-028): exist only with --instance-db and the individual's pocket_research switch on.
 RESEARCH = {"research_submit","research_list","research_get","research_cancel"}
+# An omitted mode lets the Spark assess one from the question, as the console does.
 RESEARCH_MODES = ("quick_lookup","deep_research","fact_verification","comparative","scientific","technical")
 MAX_OBJECTIVE = 300
+VERDICTS = ("supported", "disputed", "contested", "insufficient")
 SUBMISSIONS_PER_HOUR = 10
 _RATE_LOCK = threading.Lock()
 
@@ -272,8 +274,18 @@ def _number(value):
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
+def _confidence(value):
+    """A probability rounded for display, else None (NaN or infinity would also break the JSON reply)."""
+    return round(float(value), 3) if _number(value) is not None and 0 <= value <= 1 else None
+
+
+def _citations(value, n=12):
+    return [c for c in value[:n] if type(c) is int] if isinstance(value, list) else []
+
+
 def phone_report(report):
-    """The report trimmed for a phone: answer, contradictions, uncertainties, limitations, freshness, sources."""
+    """The report trimmed for a phone: answer, verdict, contradictions, uncertainties, limitations, freshness,
+    sources."""
     if not isinstance(report, dict):
         return None
     def side(s):
@@ -285,12 +297,16 @@ def phone_report(report):
         value = report.get(name)
         return [_text(x, limit) for x in value[:n] if isinstance(x, str)] if isinstance(value, list) else []
     fresh = report.get("freshness") if isinstance(report.get("freshness"), dict) else {}
+    verdict = report.get("verdict") if isinstance(report.get("verdict"), dict) else {}
     return {
         "live": bool(report.get("live")),
         "answer": [{"text": _text(a.get("text")), "type": "quote" if a.get("type") == "quote" else "template",
-                    "citations": [n for n in (a.get("citations") or [])[:12] if type(n) is int],
-                    "status": _text(a.get("status"), 40), "confidence": _number(a.get("confidence"))}
+                    "citations": _citations(a.get("citations")),
+                    "status": _text(a.get("status"), 40), "confidence": _confidence(a.get("confidence"))}
                    for a in items("answer", 20)],
+        "verdict": {"label": verdict["label"], "confidence": _confidence(verdict.get("confidence")),
+                    "statement": _text(verdict.get("statement"), 300), "citations": _citations(verdict.get("citations"))}
+                   if verdict.get("label") in VERDICTS else None,
         "contradictions": [{"reason": _text(c.get("reason"), 300), "assessment": _text(c.get("assessment")),
                             "a": side(c.get("a")), "b": side(c.get("b"))} for c in items("contradictions", 10)],
         "uncertainties": texts("uncertainties", 20),
@@ -343,8 +359,10 @@ def research(server, token, route, data):
         digest = state.family_digest(db, family)  # instance-salted; never the credential or its fingerprint
         try:
             if route == "research_submit":
-                objective, mode = data.get("objective"), data.get("mode", RESEARCH_MODES[0])
-                if not {"objective"} <= set(data) <= {"objective", "mode"} or mode not in RESEARCH_MODES:
+                objective, mode = data.get("objective"), data.get("mode")
+                if not {"objective"} <= set(data) <= {"objective", "mode"}:
+                    raise ValueError()
+                if "mode" in data and mode not in RESEARCH_MODES:
                     raise ValueError()
                 if not isinstance(objective, str) or not objective.strip() or len(objective) > MAX_OBJECTIVE:
                     raise ValueError()
@@ -352,7 +370,7 @@ def research(server, token, route, data):
                 if orchestrator.screen(db, objective, cfg):
                     return 400, {"error": "private_data"}
                 task = admit_submission(server, fingerprint(token), lambda: orchestrator.submit(
-                    db, objective, time.time(), mode=data.get("mode"), origin="pocket", family=digest))
+                    db, objective, time.time(), mode=mode, origin="pocket", family=digest))
                 return (429, {}) if task is None else (201, {"id": task["id"]})
             if route == "research_list":
                 if data:
@@ -400,7 +418,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.host_allowed():
             return self.reply(421)
-        asset = ASSETS.get(self.path)
+        # The page alone accepts a query: the share target (manifest.webmanifest) opens /?share_url=…; the page
+        # reads it locally and nothing here looks at it.
+        asset = ASSETS.get("/" if self.path.startswith("/?") else self.path)
         if not asset:
             return self.reply(404)
         name, mime = asset
@@ -412,13 +432,20 @@ class Handler(BaseHTTPRequestHandler):
         route = self.path.removeprefix("/api/")
         if self.path != "/api/" + route or route not in ROUTES | RESEARCH:
             return self.reply(404)
-        if route in RESEARCH and not research_on(self.server):
-            return self.reply(404)  # invisible while off, like an unknown route
         origin = self.headers.get("Origin")
         scheme = "https://" if isinstance(self.connection, ssl.SSLSocket) else "http://"
         if origin and origin != scheme + self.headers.get("Host", ""):
             return self.reply(403)
         try:
+            if route in RESEARCH:
+                # Authenticate before consulting the feature state, so a caller without a live credential gets the
+                # same empty 403 whether research is on or off. A paired device then sees 404 while it is off.
+                auth = self.headers.get("Authorization", "")
+                if not auth.startswith("Bearer "):
+                    return self.reply(403)
+                self.server.store.family(auth[7:])
+                if not research_on(self.server):
+                    return self.reply(404)  # invisible while off, like an unknown route
             size = int(self.headers.get("Content-Length", "0"))
             if self.headers.get_content_type() != "application/json" or not 2 <= size <= 512:
                 return self.reply(400)

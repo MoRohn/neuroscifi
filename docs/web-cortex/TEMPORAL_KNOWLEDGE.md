@@ -1,6 +1,6 @@
 # Web Cortex: temporal knowledge
 
-Status: describes the code committed at `5f09ac3` (`temporal.py`, `knowledge.py`, `consolidate.py`, `predictions.py`, `curiosity.py`, `instance/governance.py`). Test names are given where a property is verified. Contracts: [ARCHITECTURE.md](ARCHITECTURE.md) §4.3-4.4, §6. Decision: ADR-026. Related: [EVIDENCE_AND_PROVENANCE.md](EVIDENCE_AND_PROVENANCE.md), [MEMORY_INTEGRATION.md](MEMORY_INTEGRATION.md).
+Status: describes the code at `df00137` (`temporal.py`, `knowledge.py`, `consolidate.py`, `predictions.py`, `curiosity.py`, `instance/governance.py`). Test names are given where a property is verified. Contracts: [ARCHITECTURE.md](ARCHITECTURE.md) §4.3-4.4, §6. Decision: ADR-026. Related: [EVIDENCE_AND_PROVENANCE.md](EVIDENCE_AND_PROVENANCE.md), [MEMORY_INTEGRATION.md](MEMORY_INTEGRATION.md).
 
 All times are Unix seconds in UTC. Nothing in `temporal.py` reads the clock: relative expressions ("yesterday", "2 days ago") resolve only against an explicit `now` or reference date. A date without a zone is UTC.
 
@@ -38,7 +38,9 @@ Every question and every knowledge item has one class. The TTL is how long a ver
 
 **How a class is chosen.** The orchestrator uses `assessment["freshness_class"]` from `intent.assess` (RESEARCH_ORCHESTRATION §1). `temporal.classify` is the fallback when no assessment exists; it has its own cue table (breaking, then release, then scientific, then volatile, else stable) and prefers a valid class in the assessment (`test_classify_prefers_assessment_and_ignores_invalid`). The two cue tables are written separately and can disagree on a borderline question; the assessment wins whenever it is present.
 
-**Owner override.** `WebConfig.freshness_ttl` maps a class to a TTL in seconds (keys must be class names, values positive). It is applied to knowledge staleness, prediction check times and curiosity (`knowledge.staleness`, `orchestrator._predict`, `predictions.check`, `curiosity.rank`). It is **not** applied to the evidence weights in `claims.score` or to the report's freshness requirement (`synthesis` uses the class default); an override therefore changes when knowledge is called stale, not how a report weighs a source (`test_ttl_overrides_and_unknown_class`).
+**Owner override.** `WebConfig.freshness_ttl` maps a class to a TTL in seconds (keys must be class names, values positive). It is applied to knowledge staleness, prediction check times and curiosity (`knowledge.staleness`, `orchestrator._predict`, `predictions.check`, `curiosity.rank`), and it is threaded through the evidence stage: the orchestrator passes it as `ttl_overrides` to `claims.score` and `synthesis.synthesize`, so the age discount, the report's freshness requirement and the fact-verification verdict use the owner's TTL (`test_ttl_overrides_and_unknown_class`, `test_score_threads_ttl_overrides`, `test_synthesize_threads_ttl_overrides`, `test_owner_freshness_ttl_reaches_scoring_and_synthesis`).
+
+**Cue-less fact checks are `stable`.** A question that only asks to verify a claim (mode `fact_verification`) with no recency, release or scientific cue gets class `stable`; only `continuous` and `change_detection` modes imply `volatile` (`test_stable_fact_checks_are_not_volatile`).
 
 ## 3. Age and the evidence weight
 
@@ -54,7 +56,11 @@ Staleness of a knowledge item is **computed on read** (`knowledge.staleness`), n
    - `now - last_verified_at` greater than the class TTL (override applied): stale, with a reason such as "stale: last verified 9 days ago; the release class allows 7 days";
    - otherwise fresh, with the age and limit stated. A verification time more than a minute in the future is fresh with a clock-skew warning.
 
-`is_stale` also takes `newer_release_seen` and `revision_seen` flags that force "stale" with a stated reason (`test_is_stale_overrides_and_events`). **At `5f09ac3` no production code passes them.** A newer release or a new paper revision is therefore noticed indirectly: a refresh finds the newer value, and consolidation supersedes the old row (section 5). Until that refresh runs, the old row is fresh until its TTL.
+`is_stale` also takes `newer_release_seen` and `revision_seen` flags that force "stale" with a stated reason (`test_is_stale_overrides_and_events`). `knowledge.staleness(item, now, cfg, db)` sets them from later observations when it has the database:
+   - `newer_release_seen` (release-class items only): a claim about the same key, or a near-identical key, with a **higher version** than every version the item states was recorded after the item's last verification. Reason: "stale: a newer release was observed after the last verification" (`test_a_newer_release_observed_later_makes_release_knowledge_stale`).
+   - `revision_seen` (any item with an arXiv source): a later read of that record (`web_sources.metadata.version`) showed a higher arXiv version than any read up to the verification. Reason: "stale: a new version, erratum or retraction of the source was observed" (`test_a_new_arxiv_version_of_a_source_makes_knowledge_stale`).
+
+   Either makes the item stale before its TTL, so `intent.assess` goes back to the web and `curiosity.rank` raises it to even odds (`test_a_newer_release_makes_fresh_knowledge_a_curiosity_candidate`). Without a database (`staleness(item, now, cfg)`) only the TTL applies. Both flags are computed on read; a refresh still has to run to supersede the row (section 5).
 
 `knowledge.query` returns each item with `stale`, `stale_reason`, `last_verified_at`, `valid_from`, `valid_until`, `provisional`, `contested` and its version list, so a caller never has to guess (`test_query_ranks_matches_and_reports_freshness_provenance_and_status`). `intent.assess` treats stale or contested knowledge as a hard reason to go back to the web.
 
@@ -113,7 +119,7 @@ In reports (`synthesize`), a contradiction between two sources is called a *lean
 The system distinguishes *when the bytes were fetched* from *whether this task fetched them*.
 
 - Every source carries `retrieval_mode`: `live`, `api`, `feed`, `rendered` (fetched during this task) or `cache`.
-- A conditional request answered 304 is reported as `cache`, although the server just confirmed the page. This errs on the cautious side.
+- A conditional request answered 304 is reported as `live`: the origin was contacted just now and confirmed the stored body is current. The header `x-nsf-revalidated: 304` records that the bytes came from the cache (`test_conditional_get_returns_cached_body`). Only a body re-read by `resume` without asking the origin is `cache`.
 - `orchestrator.resume` re-reads earlier documents from the public cache and marks them `cache`; a fully resumed task reports `live: false` (`test_resume_after_a_crash_at_reading_uses_cached_documents`).
 - A report built from memory carries `live: false` and `memory.answered_from_memory: true`.
 - A report whose cited sources are all `cache` says so three times: `"live": false`, a lead sentence ("All cited sources were served from cache."), and a limitation naming the age of the oldest ("Served from cache retrieved 2 days ago; not re-verified live") (`test_cache_only_report_is_not_live`).
@@ -135,7 +141,7 @@ A prediction is a falsifiable expectation about a knowledge item, checked by a l
 
 A prediction check is idempotent: a settled prediction is returned unchanged (`test_prediction_check_outcomes`, `test_tick_autonomous_refreshes_due_predictions_within_the_daily_cap`).
 
-**How errors raise curiosity.** In `curiosity.rank`, an item with a prediction outcome `error` in the last 30 days has its importance multiplied by 1.5, and the candidate's reason says so. A due prediction is itself a candidate of kind `prediction`. The item then ranks higher for information gain per cost (MEMORY_INTEGRATION §7). `feedback` rows (`strengthened`, `weakened`, `unchanged`, `reversed`, `new`) record before and after confidence and the information gain in bits for every consolidation, which is also what the futility damping reads.
+**How errors raise curiosity.** In `curiosity.rank`, an item with a prediction outcome `error` in the last 30 days has its importance multiplied by 1.5, and the candidate's reason says so. A due prediction is itself a candidate of kind `prediction`. The item then ranks higher for information gain per cost (MEMORY_INTEGRATION §7). `feedback` rows (`strengthened`, `weakened`, `unchanged`, `reversed`, `new`) record before and after confidence and the information gain in bits for every consolidation, which is also what the futility damping reads. `knowledge.feedback(db, subject, limit=5)` returns the newest rows (1-100) for a knowledge id (its key's history across versions) or a claim key; the console knowledge route attaches them (`test_requeue_semantics_and_feedback_reader`).
 
 ## 10. How to verify
 
@@ -150,8 +156,7 @@ pytest -q tests/webcortex/test_instance_integration.py -k forget
 
 - Staleness is time-based only. A fact that changed upstream an hour ago is fresh until its TTL unless a refresh finds the change.
 - TTLs are policy defaults, not measurements of how fast a given topic changes. The owner can override them.
-- `newer_release_seen` and `revision_seen` are not wired in the committed code (section 4).
-- `freshness_ttl` overrides do not reach evidence weighting or report freshness (section 2).
+- `newer_release_seen` needs a later claim that states a higher version for the same key (or a near-identical one); a release observed only in a source no task has read is not noticed. `revision_seen` covers arXiv versions only.
 - An undated source can support a statement but starts its validity at the retrieval time, which is later than the truth.
 - Series detection is by comparing value groups; a sentence with unrelated extra numbers can be misread as a series or a conflict.
 - Event dates come from regular expressions over English month names and relative phrases.

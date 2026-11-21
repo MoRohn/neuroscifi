@@ -1,8 +1,9 @@
 """RSS/Atom feeds as a search provider: fetch each configured feed (purpose='feed', robots apply), keep items that
 share words with the query, rank by lexical overlap and recency, honour `query.since`.
 
-Parsing uses `extract.parse_feed` when the extraction module is installed; otherwise a minimal local parser that
-refuses DOCTYPE/ENTITY declarations (no entity expansion) and reads RSS 2.0, RSS 1.0 (RDF) and Atom items.
+Parsing uses `extract.parse_feed` when the extraction module is installed; otherwise a minimal local parser over
+`safety.safe_xml_parse` (DOCTYPE/ENTITY declarations refused in any encoding, UTF-16 included; no entity
+expansion) that reads RSS 2.0, RSS 1.0 (RDF) and Atom items.
 A provider instance (one per research run or tick) fetches each feed at most once per MEMO_SECONDS, not once per
 planned query.
 """
@@ -13,8 +14,8 @@ import math
 import re
 import threading
 import time
-from xml.etree import ElementTree
 
+from ..safety import safe_xml_parse
 from ..search import ProviderError, parse_iso_date, strip_html
 from ..types import FetchError, Query, SearchResult
 
@@ -51,10 +52,7 @@ def _local(tag) -> str:
 
 def parse_feed_minimal(body: bytes, url: str) -> list[dict]:
     """Safe minimal RSS/Atom parser -> [{title, url, published_at, summary}]. Raises ValueError on refusal."""
-    head = body[:4096].upper()
-    if b"<!DOCTYPE" in head or b"<!ENTITY" in body.upper():
-        raise ValueError("feed with DOCTYPE/ENTITY refused")
-    root = ElementTree.fromstring(body)
+    root = safe_xml_parse(body, on_refuse=lambda detail: ValueError(f"feed refused: {detail}"))
     items = []
     for el in root.iter():
         if _local(el.tag) not in ("item", "entry"):

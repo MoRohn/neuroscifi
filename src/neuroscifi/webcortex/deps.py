@@ -36,6 +36,8 @@ import re
 import time
 import tomllib
 
+from ..instance.errors import ValidationError
+
 WEB_EXTRAS = ("web", "web-extract", "web-render")
 NO_CHANGES = "No packages were installed or modified."
 TASK_QUERY_CAP = 8
@@ -333,12 +335,38 @@ def _advisory(result):
             "url": result.url, "affected": True}
 
 
+_FIX_VERSION = re.compile(r"v?\d+(?:\.\d+)*(?:[-+._]?(?:a|b|c|rc|alpha|beta|pre|preview|dev|post)?\d*[0-9A-Za-z.+-]*)?")
+_GIT_HASH = re.compile(r"[0-9a-f]{7,40}")
+
+
+def _fix_version(text) -> bool:
+    """A release version an owner can install: not an OSV GIT commit hash, not a pre-release, parseable."""
+    text = str(text or "").strip()
+    if not text or (_GIT_HASH.fullmatch(text.lower()) and not text.isdigit()) or not _FIX_VERSION.fullmatch(text):
+        return False
+    parsed = release(text)
+    return parsed is not None and not is_prerelease(text, "PyPI")
+
+
 def _fix_target(current, advisories):
+    """The version to upgrade to: for each advisory, its smallest fixed release above `current` on the same release
+    line (same major; same major.minor for 0.x), else its smallest fixed release above `current`; the target is
+    the highest of those, so every advisory is fixed by it. Non-release identifiers (OSV GIT commit hashes) and
+    pre-releases are ignored."""
     have = release(current)
-    fixes = sorted({f for a in advisories for f in a["fixed_in"]
-                    if release(f) and have and _pad(release(f), 6) > _pad(have, 6)},
-                   key=lambda f: _pad(release(f), 6))
-    return fixes[-1] if fixes else None
+    if not have:
+        return None
+    have = _pad(have, 6)
+    line = have[:2] if have[0] == 0 else have[:1]
+    picks = []
+    for advisory in advisories:
+        fixes = sorted({f for f in advisory.get("fixed_in") or [] if _fix_version(f)
+                        and _pad(release(f), 6) > have}, key=lambda f: _pad(release(f), 6))
+        if not fixes:
+            continue
+        same = [f for f in fixes if _pad(release(f), 6)[:len(line)] == line]
+        picks.append((same or fixes)[0])
+    return max(picks, key=lambda f: _pad(release(f), 6)) if picks else None
 
 
 def within_range(spec, version) -> bool | None:
@@ -550,7 +578,7 @@ def run(db, db_path, now, *, services=None, audit=False, network=True, queue=Fal
                        "statement": NO_CHANGES + " No network request was made."}
     state.require_enabled(db)
     if services is None:
-        raise ValueError("services are required for a network check")
+        raise ValidationError("services are required for a network check")
     packages = inv["packages"]
     if audit:
         packages = [p for p in packages if p["ecosystem"] == "npm" or p.get("installed_version")]

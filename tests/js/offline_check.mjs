@@ -18,14 +18,16 @@ vm.runInContext(readFileSync(new URL("../../src/neuroscifi/pocket/web/sw.js",imp
 async function lifecycle(name){let work;callbacks[name]({waitUntil:p=>work=p});await work;}
 async function read(path,method="GET"){let answer;callbacks.fetch({request:{url:"https://example.test"+path,method},respondWith:p=>answer=p});return answer;}
 await lifecycle("install");await lifecycle("activate");
-const installed=[...stores.get("neuroscifi-pocket-shell-6").keys()];
+const installed=[...stores.get("neuroscifi-pocket-shell-7").keys()];
 // Plan p.20 names six shell assets; the manifest and its icon make eight (ADR-015) and the Research module nine
 // (ADR-028: saved findings must reopen offline). Documented deviations.
 assert.equal(installed.length,9);assert(installed.includes("/manifest.webmanifest")&&installed.includes("/icon.svg"));
 assert(installed.includes("/research-ui.mjs"));assert.match(await read("/research-ui.mjs"),/keepFinding/);
 assert.equal(await read("/api/research_get","POST"),undefined);
-assert.equal(JSON.parse(await read("/manifest.webmanifest")).shortcuts.length,3);assert.match(await read("/icon.svg"),/<svg/);
+const manifest=JSON.parse(await read("/manifest.webmanifest"));
+assert.equal(manifest.shortcuts.length,3);assert.deepEqual(manifest.share_target,{action:"/",method:"GET",params:{title:"share_title",text:"share_text",url:"share_url"}});
+assert.equal(await read("/?share_url=https%3A%2F%2Fexample.org%2Fa"),undefined);assert(!callbacks.push,"no push handler");assert.match(await read("/icon.svg"),/<svg/);
 assert(stores.has("unrelated"));assert(!stores.has("neuroscifi-pocket-shell-old"));
 assert.match(await read("/"),/Field session/);assert.match(await read("/field-ui.mjs"),/restore|restored/i);
 assert.equal(await read("/api/episodes","POST"),undefined);assert.equal(await read("/?code=example"),undefined);
-console.log("Passed deterministic offline asset replay, nine-asset shell with manifest, icon and research module, cache upgrade, private API exclusion and URL query exclusion.");
+console.log("Passed deterministic offline asset replay, nine-asset shell with manifest (share target), icon and research module, cache upgrade, private API exclusion and URL query exclusion.");

@@ -113,3 +113,22 @@ def test_a_newer_release_makes_fresh_knowledge_a_curiosity_candidate(db):
     chosen = [c for c in curiosity.rank(db, T0 + 2 * DAY) if not c["excluded"] and c["kind"] == "stale"]
     assert [c["target"]["knowledge_id"] for c in chosen] == [kid] and "newer release" in chosen[0]["reason"]
     assert chosen[0]["info_gain"] == pytest.approx(curiosity.info_gain(0.5))
+
+
+def test_propose_is_one_transaction_and_respects_the_question_budget(db):
+    """C-P2-12 + A-P1-3: task and question in one state bump; no proposal once the web question budget is spent."""
+    from neuroscifi.instance.errors import Conflict, ValidationError
+    kid = accepted(db, "zlib latest version", "zlib 1.3.1 is the latest zlib release.", ("a.example", "b.example"),
+                   T0)
+    candidate = next(c for c in curiosity.rank(db, T0 + 20 * DAY) if c["target"].get("knowledge_id") == kid)
+    before = store.state_version(db)
+    curiosity.propose(db, candidate, T0 + 20 * DAY)
+    assert store.state_version(db) == before + 1
+    open_now = knowledge.open_web_questions(db)
+    state.set_config(db, {"max_open_web_questions": open_now}, T0)
+    tasks = db.execute("SELECT count(*) FROM web_tasks").fetchone()[0]
+    with pytest.raises(Conflict, match="open web questions"):
+        curiosity.propose(db, candidate, T0 + 20 * DAY)
+    assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == tasks   # nothing half-written
+    with pytest.raises(ValidationError):
+        curiosity.rank(db, T0, limit="10")

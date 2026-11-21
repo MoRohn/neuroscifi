@@ -82,6 +82,14 @@ class Spark:
         c.close()
         return status, json.loads(body) if body else {}
 
+    def get(self, path):
+        c = HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)
+        c.request("GET", path)
+        resp = c.getresponse()
+        status, body = resp.status, resp.read()
+        c.close()
+        return status, body
+
     def configure(self, **changes):
         with closing(store.connect(self.instance)) as db:
             state.set_config(db, changes, time.time())
@@ -127,13 +135,80 @@ def test_feature_is_invisible_when_off(spark, devices):
         spark.configure(**changes)
         for route, body in on.items():
             assert spark.req(route, body, a)[0] == 404, (changes, route)
-            assert spark.req(route, body)[0] == 404, "no hint before authentication either"
         assert "research" not in spark.req("state", {}, a)[1]
     spark.configure(enabled=True, pocket_research=True)
     spark.server.instance_db = None   # bridge started without --instance-db
     for route, body in on.items():
         assert spark.req(route, body, a)[0] == 404
     assert "research" not in spark.req("state", {}, a)[1]
+
+
+def test_unauthenticated_callers_cannot_tell_whether_research_is_on(spark, devices):
+    """Without a live credential every research route answers the same empty 403 in both states, whatever the
+    body; a paired device alone learns the state (404 while off)."""
+    a, _, _ = devices
+    big = json.dumps({"objective": "x" * 600})
+    probes = [dict(), dict(token="not-a-credential"), dict(raw=big), dict(raw="not json"),
+              dict(token="not-a-credential", raw=big), dict(token=a, origin="http://evil.example")]
+    routes = {"research_submit": {"objective": QUESTION}, "research_list": {}, "research_get": {"id": "x"},
+              "research_cancel": {"id": "x"}}
+
+    def observe():
+        return {(route, i): spark.req(route, body, **probe) for route, body in routes.items()
+                for i, probe in enumerate(probes)}
+
+    on = observe()
+    spark.configure(pocket_research=False)
+    off = observe()
+    spark.configure(pocket_research=True, enabled=False)
+    disabled = observe()
+    spark.server.instance_db = None
+    absent = observe()
+    assert on == off == disabled == absent
+    assert all(v == (403, {}) for v in on.values())
+    with spark.owner() as db:
+        assert orchestrator.listing(db) == []
+    assert spark.req("research_list", {}, a)[0] == 404
+    spark.server.instance_db = str(spark.instance)
+    spark.configure(enabled=True)
+    assert spark.req("research_list", {}, a)[0] == 200
+
+
+def test_omitted_mode_is_assessed_by_the_spark(spark, devices):
+    """No mode means the Spark assesses one, as the console does; Pocket does not default to quick_lookup."""
+    a, _, _ = devices
+    compare = "Compare Zephyr 4.2 and Zephyr 4.1 build speed"
+    first = submit(spark, a, compare)[1]["id"]
+    chosen = submit(spark, a, compare, mode="quick_lookup")[1]["id"]
+    modes = {t["id"]: t["mode"] for t in spark.req("research_list", {}, a)[1]["tasks"]}
+    assert modes == {first: "comparative", chosen: "quick_lookup"}
+    assert submit(spark, a, compare, mode=None)[0] == 400, "an explicit mode must be a known one"
+
+
+def test_share_target_opens_the_page_with_its_query(spark):
+    page = spark.get("/")
+    assert page[0] == 200 and b"researchform" in page[1]
+    assert spark.get("/?share_url=https%3A%2F%2Fexample.org%2Fa&share_text=x") == page
+    assert spark.get("/style.css?x=1")[0] == 404, "only the page takes a query"
+    manifest = json.loads(spark.get("/manifest.webmanifest")[1])
+    assert manifest["share_target"] == {"action": "/", "method": "GET",
+                                        "params": {"title": "share_title", "text": "share_text", "url": "share_url"}}
+
+
+def test_phone_report_bounds_verdict_and_answer_confidence():
+    raw = {"answer": [{"text": "t", "type": "quote", "citations": [1, "2", True, 3], "status": "corroborated" * 9,
+                       "confidence": 0.8234}, {"text": "u", "confidence": float("nan")},
+                      {"text": "v", "confidence": 7}, {"text": "w", "confidence": True}],
+           "verdict": {"label": "supported", "confidence": 0.91234, "statement": "s" * 900, "citations": [1, 2],
+                       "reasons": ["kept on the Spark"]}}
+    report = bridge.phone_report(raw)
+    assert [x["confidence"] for x in report["answer"]] == [0.823, None, None, None]
+    assert report["answer"][0]["citations"] == [1, 3] and len(report["answer"][0]["status"]) == 40
+    assert report["verdict"] == {"label": "supported", "confidence": 0.912, "statement": "s" * 300, "citations": [1, 2]}
+    json.dumps(report, allow_nan=False)
+    assert bridge.phone_report(raw | {"verdict": {"label": "<b>true</b>", "confidence": 1}})["verdict"] is None
+    assert bridge.phone_report(raw | {"verdict": None})["verdict"] is None
+    assert bridge.phone_report(raw | {"verdict": {"label": "disputed", "confidence": -1}})["verdict"]["confidence"] is None
 
 
 def test_submit_list_get_cancel(spark, devices):
@@ -224,7 +299,12 @@ def test_scenario_f_phone_queues_spark_runs_tablet_reads(spark, devices, web):
     assert status == 200 and done["status"] == "completed" and done["stage"] is None
     assert done["stages_done"] == ["discovering", "reading", "evaluating", "synthesizing"]
     report = done["report"]
-    assert set(report) == {"live", "answer", "contradictions", "uncertainties", "limitations", "freshness", "sources"}
+    assert set(report) == {"live", "answer", "verdict", "contradictions", "uncertainties", "limitations", "freshness",
+                           "sources"}
+    assert report["verdict"] is None, "only a claim check has a verdict"
+    assert all(set(x) == {"text", "type", "citations", "status", "confidence"} for x in report["answer"])
+    assert all(x["confidence"] is None or 0 <= x["confidence"] <= 1 for x in report["answer"])
+    assert {x["status"] for x in report["answer"][1:]} <= {"corroborated", "single_source", "contested"}
     assert report["live"] is True and len(report["sources"]) == 3
     assert {s["retrieval_mode"] for s in report["sources"]} == {"live"}
     assert all(set(s) == {"n", "title", "url", "domain", "published_at", "retrieved_at", "retrieval_mode"}
@@ -241,6 +321,21 @@ def test_scenario_f_phone_queues_spark_runs_tablet_reads(spark, devices, web):
     assert owner == {task_id: "completed", queued: "cancelled"}
     assert "usage" in full["result"] and "usage" not in report, "the phone gets a trimmed report"
     assert spark.req("research_cancel", {"id": task_id}, b)[1]["status"] == "completed"   # terminal stays
+
+
+def test_claim_check_reports_its_verdict(spark, devices, web):
+    a, b, _ = devices
+    claim = "Is it true that the Zephyr compiler version 4.2.0 was released on 17 November 2026?"
+    task_id = submit(spark, a, claim)[1]["id"]
+    out = scheduler.work(spark.instance, once=True, fixture=web, providers=[corpus()])
+    assert [(p["task_id"], p["status"]) for p in out["processed"]] == [(task_id, "completed")]
+    done = spark.req("research_get", {"id": task_id}, b)[1]
+    assert done["mode"] == "fact_verification"
+    verdict = done["report"]["verdict"]
+    assert set(verdict) == {"label", "confidence", "statement", "citations"}
+    assert verdict["label"] == "supported" and 0.5 < verdict["confidence"] <= 1
+    assert "4.2.0" in verdict["statement"]
+    assert set(verdict["citations"]) <= {s["n"] for s in done["report"]["sources"]}
 
 
 def test_main_rejects_missing_instance(tmp_path, capsys):

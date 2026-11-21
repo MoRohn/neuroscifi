@@ -199,3 +199,33 @@ def test_validity():
     v = TM.validity({"retrieved_at": NOW}, now=NOW)
     assert v["valid_from"] == NOW and "undated" in v["basis"]
     assert TM.validity({}, now=NOW)["valid_from"] is None
+
+
+# ---- review remediation (V1) ----------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("sentence", ["Humans settled here 12000 years ago.", "It was 100000000 days ago.",
+                                      "The event happened 12,900 years ago.", "Roughly 4.5 billion years ago.",
+                                      "About 1.000 years ago."])
+def test_relative_dates_out_of_calendar_range_are_skipped(sentence):
+    assert TM.event_dates(sentence, reference=NOW) == []
+
+
+def test_in_range_relative_years_still_resolve():
+    assert TM.event_dates("Built 900 years ago.", reference=NOW) == [ts(1126, 11, 20)]
+
+
+def test_future_effective_dates_never_supersede():
+    old = {"key": "k", "values": ["v2.3.5"], "published_at": NOW - D, "retrieved_at": NOW}
+    plan = {"key": "k", "values": ["v3.0"], "published_at": NOW - 5 * D, "event_at": ts(2027, 6, 1),
+            "retrieved_at": NOW}
+    assert TM.supersedes(plan, old, now=NOW) is False
+    assert TM.supersedes(plan, old) is False                 # its own retrieval time bounds "now"
+    assert TM.supersedes(plan, old, now=ts(2027, 6, 2)) is True
+    soon = dict(plan, event_at=NOW + 0.5 * D)
+    assert TM.supersedes(soon, old, now=NOW) is True         # within FUTURE_SKEW (time zones)
+
+
+def test_validity_never_starts_in_the_future():
+    out = TM.validity({"published_at": NOW + 100 * 365 * D}, now=NOW)
+    assert out["valid_from"] is None and "future" in out["basis"]
+    assert TM.validity({"published_at": NOW + 0.5 * D}, now=NOW)["valid_from"] == NOW + 0.5 * D

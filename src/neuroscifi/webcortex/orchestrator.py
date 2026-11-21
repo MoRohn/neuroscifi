@@ -18,19 +18,34 @@ I/O):
                 through SafeFetcher (purpose 'page'), extracted, quarantined; JavaScript shells escalate to the
                 renderer when the budget has browser sessions; deep_research follows <= 2 same-site links of the
                 first page when depth and pages remain. Each document is recorded (web_sources, event, checkpoint)
-                as soon as it is read; the lease is renewed after every fetch.
-  evaluating    claims.extract_claims per document ('extract' event each) -> claims.cluster -> claims.score
-                (config.freshness_ttl as ttl_overrides); clusters persisted
-  synthesizing  synthesis.synthesize -> the report (§5, 'synthesized' event); then consolidate.run, predictions
-                for new provisional knowledge, mode statistics (procedural memory), public-cache retention
+                as soon as it is read; the lease is renewed after every fetch. API records are quarantined like
+                pages. An unexpected exception while extracting one document (or reading it back from the cache)
+                is that document's failure ('decode_error' or 'internal_error' with the exception type, an
+                'error' event), never the task's. A crawl task (`nsf web crawl`, context.crawl) reads its seeds by
+                a bounded same-site crawl (crawl.crawl) instead of searching.
+                Reading is deliberately serial: cancellation is honoured before every page request (a cancel never
+                races several requests already in flight), a crash loses at most the page being read, page
+                accounting cannot overshoot max_pages, and SafeFetcher's per-host spacing would serialise most
+                same-site candidates anyway; the parallel part of a task is discovery (providers run in
+                budget.max_concurrency threads).
+  evaluating    claims.extract_claims per document ('extract' event each; one document failing is recorded and
+                skipped) -> claims.cluster -> claims.score (config.freshness_ttl as ttl_overrides); clusters persisted
+  synthesizing  synthesis.synthesize -> the report (§5, 'synthesized' event) with its context pack
+                (synthesis.context_pack within budget.max_context_tokens, charged to usage.tokens); then
+                consolidate.run, predictions for new provisional knowledge, mode statistics (procedural memory),
+                public-cache retention, and change detection when the task belongs to a monitor
 
 Cancellation (`cancel_requested`, set from any connection) is checked before every network step; a cancelled run
-ends 'cancelled' with a partial report. Time is measured with services.clock against budget.max_seconds. A run
+ends 'cancelled' with a partial report. The same check stops a run whose lease another worker took over (its
+writes are fenced on lease_holder: state.LostLease; it never consolidates nor writes an outcome) and a run while
+instance regulation pauses writes (it ends 'partial' and consolidates nothing; submit refuses with WritesPaused). Time is measured with services.clock against budget.max_seconds. A run
 that exhausts its budget or loses a stage ends 'partial' when it still has a report, 'failed' when it has none.
 `resume` continues from the checkpoint: completed stages are skipped and documents already read are re-read from
 the public cache, so the report then says retrieval_mode 'cache' (live false) for them. `requeue` puts a failed
 task back in the queue (same id) or continues a partial/cancelled one as a linked child task.
-Autonomous tasks (curiosity, refresh) get request/byte budgets clamped to the daily allowance left at submit.
+Autonomous tasks (curiosity, refresh:<id>) get request/byte budgets clamped to the daily allowance left at submit,
+and MCP tasks (origin 'mcp') to config.daily_mcp. The owner's own refreshes (origin 'cli'/'console') are not
+autonomous.
 """
 from __future__ import annotations
 
@@ -50,6 +65,7 @@ from .types import (MODES, TERMINAL_STATES, Budget, BudgetExceeded, Claim, Claim
 
 LEASE_SECONDS = 600.0
 AUTHORIZED_DISCLOSURE = "owner-approved-disclosure"
+MCP_ORIGIN = "mcp"
 MAX_OBJECTIVE = 2000
 MAX_FOLLOW = 2
 MAX_CONTEXT_PACKAGES = 200
@@ -67,6 +83,14 @@ class _Cancelled(Exception):
 
 class _OutOfTime(Exception):
     pass
+
+
+class _Paused(Exception):
+    """Instance regulation paused writes while the task ran: it stops at the next check and ends 'partial'."""
+
+
+# Control flow that per-document isolation must never swallow.
+_STOP = (_Cancelled, _OutOfTime, _Paused, BudgetExceeded, state.LostLease)
 
 
 def executed_on() -> dict:
@@ -110,12 +134,38 @@ def _budget(cfg, mode, requested):
     return cfg.budget_for(mode, requested)
 
 
+MAX_CRAWL_SEEDS = 10
+MAX_CRAWL_DEPTH = 3
+
+
+def _crawl_spec(spec):
+    """{"seeds": [http(s) URL, ...] (1..10), "max_pages": int >= 1, "max_depth": 0..3} (`nsf web crawl`)."""
+    from urllib.parse import urlsplit
+    if not isinstance(spec, dict) or set(spec) - {"seeds", "max_pages", "max_depth"}:
+        raise ValidationError("context.crawl is {seeds, max_pages, max_depth}")
+    seeds = spec.get("seeds")
+    if not isinstance(seeds, list) or not 1 <= len(seeds) <= MAX_CRAWL_SEEDS:
+        raise ValidationError(f"context.crawl.seeds must list 1 to {MAX_CRAWL_SEEDS} URLs")
+    for url in seeds:
+        parts = urlsplit(url) if isinstance(url, str) and len(url) <= 2048 else None
+        if parts is None or parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValidationError(f"crawl seeds must be http(s) URLs: {str(url)[:200]}")
+    pages, depth = spec.get("max_pages", 10), spec.get("max_depth", 1)
+    if isinstance(pages, bool) or not isinstance(pages, int) or pages < 1:
+        raise ValidationError("context.crawl.max_pages must be a positive integer")
+    if isinstance(depth, bool) or not isinstance(depth, int) or not 0 <= depth <= MAX_CRAWL_DEPTH:
+        raise ValidationError(f"context.crawl.max_depth must be an integer from 0 to {MAX_CRAWL_DEPTH}")
+    return {"seeds": list(dict.fromkeys(seeds)), "max_pages": pages, "max_depth": depth}
+
+
 def _context(context):
-    """Validate the structured task context: {"packages": [{ecosystem, name, version|None}, ...]} (<= 200)."""
+    """Validate the structured task context: {"packages": [{ecosystem, name, version|None}, ...]} (<= 200) and/or
+    {"crawl": {seeds, max_pages, max_depth}} (a bounded same-site crawl instead of searching)."""
     if context is None:
         return None
-    if not isinstance(context, dict) or set(context) - {"packages"}:
-        raise ValidationError("context accepts only 'packages'")
+    if not isinstance(context, dict) or set(context) - {"packages", "crawl"}:
+        raise ValidationError("context accepts only 'packages' and 'crawl'")
+    crawl = _crawl_spec(context["crawl"]) if "crawl" in context else None
     packages = context.get("packages") or []
     if not isinstance(packages, list) or len(packages) > MAX_CONTEXT_PACKAGES:
         raise ValidationError(f"context.packages must be a list of at most {MAX_CONTEXT_PACKAGES} items")
@@ -128,7 +178,10 @@ def _context(context):
                 and (version is None or isinstance(version, str) and 0 < len(version) <= 64)):
             raise ValidationError("package ecosystem (<= 32), name (<= 214) and version (<= 64 or null) are strings")
         out.append({"ecosystem": eco, "name": name, "version": version})
-    return {"packages": out}
+    validated = {"packages": out} if out or crawl is None else {}
+    if crawl is not None:
+        validated["crawl"] = crawl
+    return validated
 
 
 def submit(db, objective, now, *, mode=None, budget=None, origin="cli", family=None, authorization=None,
@@ -137,8 +190,21 @@ def submit(db, objective, now, *, mode=None, budget=None, origin="cli", family=N
     addresses, phone numbers, ...) unless authorization == 'owner-approved-disclosure'. `proposed=True` creates a
     proposal the worker skips until the owner authorises it (pending scope web:research:<id>). `context` carries
     structured inputs the objective text cannot (`{"packages": [...]}` for registry and advisory lookups); it is
-    kept in the checkpoint and merged into the assessment at discovery."""
+    kept in the checkpoint and merged into the assessment at discovery. WritesPaused while instance regulation
+    pauses writes."""
+    prepared = prepare(db, objective, now, mode=mode, budget=budget, origin=origin, family=family,
+                       authorization=authorization, parent=parent, proposed=proposed, context=context)
+    with store.write(db):
+        task_id = insert(db, prepared, now)
+        store.bump_state_version(db)
+    return get(db, task_id)
+
+
+def prepare(db, objective, now, *, mode=None, budget=None, origin="cli", family=None, authorization=None,
+            parent=None, proposed=False, context=None) -> dict:
+    """Validate a submission (submit's checks, no write). Returns what insert() records."""
     cfg = state.require_enabled(db)
+    state.require_writable(db)
     context = _context(context)
     if not isinstance(objective, str) or not objective.strip():
         raise ValidationError("objective must be a non-blank string")
@@ -169,6 +235,8 @@ def submit(db, objective, now, *, mode=None, budget=None, origin="cli", family=N
     clamped = None
     if is_autonomous(origin) and not proposed:
         chosen, clamped = _clamp_autonomous(db, cfg, chosen, now)
+    elif origin == MCP_ORIGIN:
+        chosen, clamped = _clamp_autonomous(db, cfg, chosen, now, mcp=True)
     if parent is not None and db.execute("SELECT 1 FROM web_tasks WHERE id=?", (str(parent),)).fetchone() is None:
         parent = None   # the parent was forgotten; the link is not kept
     initial = {}
@@ -176,21 +244,27 @@ def submit(db, objective, now, *, mode=None, budget=None, origin="cli", family=N
         initial["context"] = context
     if authorization == AUTHORIZED_DISCLOSURE:
         initial["authorization"] = AUTHORIZED_DISCLOSURE   # applies to this task's own queries (_Run.screened)
+    return {"objective": objective, "mode": mode, "proposed": bool(proposed), "origin": origin, "family": family,
+            "parent": None if parent is None else str(parent), "budget": chosen, "initial": initial,
+            "clamped": clamped, "disclosure_authorized": bool(findings)}
+
+
+def insert(db, prepared, now) -> str:
+    """Record a prepared submission and its 'submitted' event. Caller owns the transaction (and the state bump).
+    Returns the task id."""
     task_id = str(uuid.uuid4())
-    with store.write(db):
-        db.execute("INSERT INTO web_tasks(id,objective,mode,status,stage,origin,family,parent_id,budget,usage,"
-                   "checkpoint,created_at,updated_at) VALUES(?,?,?,'queued',?,?,?,?,?,?,?,?,?)",
-                   (task_id, objective, mode, "proposed" if proposed else None, origin, family,
-                    None if parent is None else str(parent), state.dumps(chosen.to_json()),
-                    state.dumps(Usage().to_json()), state.dumps(initial) if initial else None,
-                    now, now))
-        detail = {"mode": mode, "origin": origin, "budget": chosen.to_json(), "proposed": bool(proposed),
-                  "disclosure_authorized": bool(findings)}
-        if clamped:
-            detail["clamped_to_daily_allowance"] = clamped
-        state.log_event(db, task_id, "submitted", detail, now)
-        store.bump_state_version(db)
-    return get(db, task_id)
+    db.execute("INSERT INTO web_tasks(id,objective,mode,status,stage,origin,family,parent_id,budget,usage,"
+               "checkpoint,created_at,updated_at) VALUES(?,?,?,'queued',?,?,?,?,?,?,?,?,?)",
+               (task_id, prepared["objective"], prepared["mode"], "proposed" if prepared["proposed"] else None,
+                prepared["origin"], prepared["family"], prepared["parent"],
+                state.dumps(prepared["budget"].to_json()), state.dumps(Usage().to_json()),
+                state.dumps(prepared["initial"]) if prepared["initial"] else None, now, now))
+    detail = {"mode": prepared["mode"], "origin": prepared["origin"], "budget": prepared["budget"].to_json(),
+              "proposed": prepared["proposed"], "disclosure_authorized": prepared["disclosure_authorized"]}
+    if prepared["clamped"]:
+        detail["clamped_to_daily_allowance"] = prepared["clamped"]
+    state.log_event(db, task_id, "submitted", detail, now)
+    return task_id
 
 
 def is_autonomous(origin) -> bool:
@@ -213,16 +287,19 @@ def _may_authorize(db, origin) -> bool:
     return True
 
 
-def _clamp_autonomous(db, cfg, chosen, now):
-    """Clamp an autonomous task's request and byte budgets to what is left of the daily allowance, so the daily
-    cap can be passed by at most the one request in flight. Nothing left -> ValidationError (not submitted)."""
+def _clamp_autonomous(db, cfg, chosen, now, *, mcp=False):
+    """Clamp an autonomous (mcp=True: an MCP-origin) task's request and byte budgets to what is left of its daily
+    allowance (config.daily_autonomous / config.daily_mcp), so the daily cap can be passed by at most the one
+    request in flight. Nothing left, or the daily task count reached -> ValidationError (not submitted)."""
     from . import scheduler
-    left = scheduler.autonomous_remaining(db, now, cfg)
+    caps, what = (cfg.daily_mcp, "MCP") if mcp else (cfg.daily_autonomous, "autonomous")
+    left = scheduler.autonomous_remaining(db, now, cfg, mcp=mcp)
+    if mcp and scheduler.autonomous_usage(db, now, mcp=True)["tasks"] >= caps.get("tasks", 0):
+        raise ValidationError(f"daily {what} cap reached: tasks {caps.get('tasks', 0)}")
     for key in ("requests", "bytes"):
         if left[key] < 1:
-            raise ValidationError(f"daily autonomous cap reached: {key} "
-                                  f"{cfg.daily_autonomous.get(key, 0) - left[key]} of "
-                                  f"{cfg.daily_autonomous.get(key, 0)} committed")
+            raise ValidationError(f"daily {what} cap reached: {key} "
+                                  f"{caps.get(key, 0) - left[key]} of {caps.get(key, 0)} committed")
     clamped = {}
     if chosen.max_requests > left["requests"]:
         clamped["max_requests"] = left["requests"]
@@ -314,6 +391,7 @@ class _Run:
         self.documents, self.clusters = [], []
         self.exhausted = None
         self.stage_failed = []
+        self.holder = services.holder
 
     def clock(self):
         return float(self.services.clock())
@@ -335,20 +413,22 @@ class _Run:
         self.checkpoint["limitations"] = self.limitations
         now = self.clock()
         with store.write(self.db):
-            state.update_task(self.db, self.id, now, checkpoint=self.checkpoint, usage=self.usage.to_json(),
-                              lease_expires_at=now + LEASE_SECONDS)
+            state.update_task(self.db, self.id, now, holder=self.holder, checkpoint=self.checkpoint,
+                              usage=self.usage.to_json(), lease_expires_at=now + LEASE_SECONDS)
 
     def renew(self):
         """Renew the worker lease (one short transaction): called after every fetch and search round, so a long
-        stage cannot outlive LEASE_SECONDS while the run is still making progress."""
+        stage cannot outlive LEASE_SECONDS while the run is still making progress. Fenced: state.LostLease when
+        another worker took the task over."""
         now = self.clock()
         with store.write(self.db):
-            state.update_task(self.db, self.id, now, lease_expires_at=now + LEASE_SECONDS)
+            state.update_task(self.db, self.id, now, holder=self.holder, lease_expires_at=now + LEASE_SECONDS)
 
     def stage(self, name):
         now = self.clock()
         with store.write(self.db):
-            state.update_task(self.db, self.id, now, status=name, stage=name, lease_expires_at=now + LEASE_SECONDS)
+            state.update_task(self.db, self.id, now, holder=self.holder, status=name, stage=name,
+                              lease_expires_at=now + LEASE_SECONDS)
             state.log_event(self.db, self.id, "stage", {"stage": name}, now, stage=name)
 
     def done(self, name, **updates):
@@ -361,12 +441,23 @@ class _Run:
         return name in self.checkpoint.get("stages_done", [])
 
     def check(self):
-        """Before every network step: honour cancel (any connection may set it) and the time budget."""
-        row = self.db.execute("SELECT cancel_requested FROM web_tasks WHERE id=?", (self.id,)).fetchone()
+        """Before every network step: honour cancel (any connection may set it), the lease (another worker took
+        the task over -> state.LostLease), instance regulation (writes paused -> the run stops, 'partial') and the
+        time budget."""
+        row = self.db.execute("SELECT cancel_requested, lease_holder FROM web_tasks WHERE id=?",
+                              (self.id,)).fetchone()
         if row is None or row[0]:
             raise _Cancelled()
+        if row[1] != self.holder:
+            raise state.LostLease(f"research task {self.id}: the lease is held by another worker")
+        allowed, reason = state.write_allowed(self.db, self.services_db_path())
+        if not allowed:
+            raise _Paused(reason)
         if self.elapsed() > self.budget.max_seconds:
             raise _OutOfTime()
+
+    def services_db_path(self):
+        return getattr(self.services, "db_path", None)
 
     def limit(self, why):
         self.exhausted = self.exhausted or why
@@ -386,6 +477,16 @@ class _Run:
             assessment["packages"] = list(assessment.get("packages") or []) + [
                 p for p in packages if (p["ecosystem"].lower(), p["name"].lower()) not in named]
             assessment["notes"] = [n for n in assessment.get("notes") or [] if not n.startswith("no packages listed")]
+        crawl = (self.checkpoint.get("context") or {}).get("crawl")
+        if crawl:   # "investigate these sources": the seeds are read by a bounded crawl, nothing is searched
+            assessment["needs_web"] = True
+            assessment["urls"] = list(crawl["seeds"])
+            self.save(assessment=assessment, known=[k["id"] for k in known])
+            self.event("decision", {"needs_web": True, "crawl": {"seeds": len(crawl["seeds"]),
+                                                                 "max_pages": crawl["max_pages"],
+                                                                 "max_depth": crawl["max_depth"]}}, "discovering")
+            self.done("discovering", plan=QueryPlan(queries=()).to_json(), results=[], attempts=[])
+            return True
         self.save(assessment=assessment, known=[k["id"] for k in known])
         if not assessment.get("needs_web", True):
             self.event("decision", {"needs_web": False, "reasons": assessment.get("reasons", []),
@@ -528,8 +629,15 @@ class _Run:
 
     def acquire(self, url, purpose="page"):
         """Fetch -> extract -> quarantine (-> render escalation). Raises FetchError / BudgetExceeded."""
+        return self.finish(url, self.fetch(url, purpose))
+
+    def fetch(self, url, purpose="page"):
+        """One fetch through SafeFetcher."""
+        return self.services.fetcher.fetch(url, purpose=purpose, budget=self.budget, usage=self.usage)
+
+    def finish(self, url, result):
+        """Extract -> quarantine (-> render escalation) of a fetched page, on the run's own thread."""
         from . import extract, safety
-        result = self.services.fetcher.fetch(url, purpose=purpose, budget=self.budget, usage=self.usage)
         doc = safety.quarantine(extract.extract(result))
         renderer = self.services.renderer
         if doc.flags.get("js_suspected") and renderer is not None and \
@@ -552,7 +660,7 @@ class _Run:
         """A document read before a crash/resume, re-read from the public cache (retrieval_mode 'cache')."""
         from . import extract, safety
         if entry["api"]:
-            doc = Document(**entry["doc"])
+            doc = safety.quarantine(Document(**entry["doc"]))
             doc.retrieval_mode = "cache"
             return doc
         body = self.services.cache.body(entry["sha256"]) if entry.get("sha256") else None
@@ -572,12 +680,23 @@ class _Run:
         assessment = self.checkpoint.get("assessment") or {}
         done = {d["canonical_url"]: d for d in self.checkpoint.get("documents", [])}
         for entry in list(done.values()):
-            doc = self.reread(entry)
+            try:
+                doc = self.reread(entry)
+            except _STOP:
+                raise
+            except Exception as exc:   # one bad cached document never costs the task its other evidence
+                self.document_failed(entry.get("url"), entry.get("provider"), exc)
+                doc = None
             if doc is None:
                 done.pop(entry["canonical_url"])
                 continue
             self.record(doc, provider=entry.get("provider"), api=entry["api"])
         if self.is_done("reading"):
+            return
+        crawl = (self.checkpoint.get("context") or {}).get("crawl")
+        if crawl:
+            self.crawl(crawl, done)
+            self.done("reading")
             return
         picked = self.select(assessment)
         self.save(selected=[{"url": r.url, "provider": r.provider, "api": api} for r, api in picked])
@@ -588,9 +707,17 @@ class _Run:
             return self.usage.pages >= self.budget.max_pages
 
         def take_api(r):
+            from . import safety
             self.check()
+            try:
+                doc = safety.quarantine(self.api_document(r, self.clock()))
+            except _STOP:
+                raise
+            except Exception as exc:   # a malformed API record is one failed document, not a failed task
+                self.document_failed(r.url, r.provider, exc)
+                return
             self.usage.charge(self.budget, pages=1)
-            self.record(self.api_document(r, self.clock()), provider=r.provider, api=True)
+            self.record(doc, provider=r.provider, api=True)
 
         try:
             for r, api in picked:
@@ -606,7 +733,7 @@ class _Run:
                         take_api(r)
                     continue
                 try:
-                    doc = self.acquire(r.url)
+                    result = self.fetch(r.url)
                 except FetchError as exc:
                     self.failures.append({"stage": "reading", "provider": r.provider, **exc.to_json()})
                     self.event("error", {"stage": "reading", **exc.to_json()}, "reading")
@@ -614,6 +741,19 @@ class _Run:
                     if exc.code == "budget_exhausted":
                         self.limit(f"budget exhausted while reading: {exc.detail}")
                         break
+                    continue
+                try:
+                    doc = self.finish(r.url, result)
+                except _STOP:
+                    raise
+                except FetchError as exc:   # the render escalation's own fetches
+                    self.failures.append({"stage": "reading", "provider": r.provider, **exc.to_json()})
+                    self.event("error", {"stage": "reading", **exc.to_json()}, "reading")
+                    self.renew()
+                    continue
+                except Exception as exc:   # one untrusted document never costs the task its other evidence
+                    self.document_failed(r.url, r.provider, exc)
+                    self.renew()
                     continue
                 self.usage.charge(self.budget, pages=1)
                 self.record(doc, provider=r.provider, api=False)
@@ -627,6 +767,50 @@ class _Run:
         except _OutOfTime:
             self.limit("time budget exhausted while reading")
         self.done("reading")
+
+    def document_failed(self, url, provider, exc):
+        """Record one document's unexpected failure (decode or internal error) and carry on with the others."""
+        code = "decode_error" if isinstance(exc, (UnicodeError, ValueError, LookupError)) else "internal_error"
+        failure = {"stage": "reading", "provider": provider, "code": code, "url": url,
+                   "detail": f"{type(exc).__name__}: {str(exc)[:200]}"}
+        self.failures.append(failure)
+        self.event("error", {k: failure[k] for k in ("stage", "code", "url", "detail")}, "reading")
+
+    def crawl(self, spec, done):
+        """`nsf web crawl`: a bounded same-site crawl (crawl.crawl: robots, sitemaps, nofollow, per-host throttling,
+        the task budget) from the seeds; each page is extracted, quarantined and recorded as a source (provider
+        'crawl'). Pages already recorded before a resume are not fetched again."""
+        from . import crawl as crawler
+        self.check()
+        failures = []
+        try:
+            results = crawler.crawl(self.services.fetcher, spec["seeds"], budget=self.budget, usage=self.usage,
+                                    max_pages=spec["max_pages"], max_depth=spec["max_depth"], failures=failures)
+        except _OutOfTime:
+            results = []
+            self.limit("time budget exhausted while crawling")
+        for failure in failures:
+            self.failures.append({"stage": "reading", "provider": "crawl", **failure})
+            if failure.get("code") == "budget_exhausted":
+                self.limit(f"budget exhausted while crawling: {failure.get('detail')}")
+        if failures:
+            self.event("error", {"stage": "reading", "crawl": True, "failures": len(failures),
+                                 "codes": sorted({str(f.get("code")) for f in failures})}, "reading")
+        self.renew()
+        from .extract import canonical_url
+        for result in results:
+            self.check()
+            try:
+                if canonical_url(result.final_url) in done:
+                    continue
+                doc = self.finish(result.url, result)
+            except _STOP:
+                raise
+            except Exception as exc:   # one untrusted page never costs the crawl its other pages
+                self.document_failed(result.url, "crawl", exc)
+                continue
+            self.event("crawl", {"url": result.url}, "reading")
+            self.record(doc, provider="crawl", api=False)
 
     def follow(self):
         """deep_research: follow <= MAX_FOLLOW same-site links of the first page (bounded crawl, depth 1).
@@ -654,10 +838,16 @@ class _Run:
                 break
             self.check()
             try:
-                doc = self.acquire(link, purpose="crawl")
+                doc = self.finish(link, self.fetch(link, purpose="crawl"))
             except FetchError as exc:
                 self.failures.append({"stage": "reading", "provider": "crawl", **exc.to_json()})
                 self.event("error", {"stage": "reading", "crawl": True, **exc.to_json()}, "reading")
+                self.renew()
+                continue
+            except _STOP:
+                raise
+            except Exception as exc:   # one untrusted page never costs the task its other evidence
+                self.document_failed(link, "crawl", exc)
                 self.renew()
                 continue
             self.usage.charge(self.budget, pages=1)
@@ -669,9 +859,18 @@ class _Run:
         from . import claims
         assessment = self.checkpoint.get("assessment") or {}
         freshness = assessment.get("freshness_class") or "stable"
-        found, per_doc = [], []
+        found, per_doc, failed = [], [], []
         for doc in self.documents:
-            extracted = claims.extract_claims(doc, self.objective)
+            try:
+                extracted = claims.extract_claims(doc, self.objective)
+            except Exception as exc:   # one untrusted document never costs the task its other claims
+                code = "decode_error" if isinstance(exc, (UnicodeError, ValueError, LookupError)) else \
+                    "internal_error"
+                failure = {"stage": "evaluating", "code": code, "url": doc.canonical_url or doc.url,
+                           "detail": f"{type(exc).__name__}: {str(exc)[:200]}"}
+                self.failures.append(failure)
+                failed.append(failure)
+                continue
             per_doc.append((doc, len(extracted)))
             found += extracted
         now = self.clock()
@@ -683,6 +882,8 @@ class _Run:
                 if entry.get(key):
                     sources[entry[key]] = entry["source_id"]
         with store.write(self.db):
+            for failure in failed:
+                state.log_event(self.db, self.id, "error", failure, now, stage="evaluating")
             for doc, n in per_doc:
                 state.log_event(self.db, self.id, "extract", {"url": doc.canonical_url or doc.url, "kind": doc.kind,
                                                               "claims": n}, now, stage="evaluating")
@@ -707,6 +908,9 @@ class _Run:
         for why in self.limitations:
             if why not in report["limitations"]:
                 report["limitations"].append(why)
+        pack = synthesis.context_pack(report, max_tokens=self.budget.max_context_tokens)
+        report["context_pack"] = pack
+        self.usage.tokens = int(pack.get("tokens") or 0)   # the working-memory pack this report hands on
         report["budget"] = self.budget.to_json()
         report["usage"] = self.usage.to_json()
         self.event("synthesized", {"answer": len(report.get("answer") or []),
@@ -820,6 +1024,8 @@ def _execute(db, task_id, services, *, resume):
             else:
                 try:
                     run.evaluate()
+                except _STOP:
+                    raise
                 except Exception as exc:   # a failed stage still allows a partial report
                     run.stage_failed.append("evaluating")
                     run.limit(f"evaluating failed: {type(exc).__name__}")
@@ -829,6 +1035,8 @@ def _execute(db, task_id, services, *, resume):
             report = run.synthesize()
             run.done("synthesizing")
             status = "partial" if (run.exhausted or run.stage_failed) else "completed"
+    except state.LostLease:
+        return _lost_lease(db, task_id, run)
     except _Cancelled:
         status = "cancelled"
         try:
@@ -836,6 +1044,14 @@ def _execute(db, task_id, services, *, resume):
             report.setdefault("limitations", []).append("cancelled by request: partial report")
         except Exception as exc:  # a partial report is best effort; the cancellation itself must stand
             error = f"no partial report: {type(exc).__name__}"
+    except _Paused as exc:
+        status = "partial"
+        run.limit(f"writes paused by instance regulation: {exc}")
+        run.event("decision", {"stopped": "writes paused", "reason": str(exc)[:300]})
+        try:
+            report = run.synthesize()
+        except Exception as inner:  # best effort; the pause itself must stand
+            report, error = None, f"writes paused: {str(exc)[:200]}; no partial report: {type(inner).__name__}"
     except Exception as exc:
         error = f"{type(exc).__name__}: {str(exc)[:500]}"
         run.event("error", {"stage": run.checkpoint.get("stages_done", [])[-1:] or ["discovering"],
@@ -846,31 +1062,69 @@ def _execute(db, task_id, services, *, resume):
             report = None
         status = "partial" if report else "failed"
     now = run.clock()
-    if report is not None and status in ("completed", "partial") and needs_web_report(report):
+    paused = not state.write_allowed(db, run.services_db_path())[0]
+    if paused and report is not None and status in ("completed", "partial"):
+        status = "partial"
+        if not any(str(why).startswith("writes paused") for why in report.get("limitations", [])):
+            report.setdefault("limitations", []).append("writes paused by instance regulation: nothing was "
+                                                        "consolidated into knowledge")
+    if report is not None and status in ("completed", "partial") and needs_web_report(report) and not paused:
         try:
             from . import consolidate
-            consolidation = consolidate.run(db, task_id, now)
+            consolidation = consolidate.run(db, task_id, now, holder=run.holder)
             report["consolidation"] = {k: consolidation[k] for k in ("provisional", "strengthened", "unchanged",
-                                                                      "superseded", "contested", "held", "pending")}
+                                                                      "superseded", "contested", "held", "pending",
+                                                                      "questions_deferred", "review_question")}
             _predict(db, consolidation["provisional"], now)
+        except state.LostLease:
+            return _lost_lease(db, task_id, run)
         except Exception as exc:
             report.setdefault("limitations", []).append(f"consolidation failed: {type(exc).__name__}")
             run.event("error", {"stage": "consolidating", "error": type(exc).__name__, "detail": str(exc)[:300]})
             status = "partial"
     run.usage.seconds = round(run.elapsed(), 3)
-    with store.write(db):
-        state.update_task(db, task_id, now, status=status, stage=None, result=report, error=error,
-                          usage=run.usage.to_json(), finished_at=now, lease_holder=None, lease_expires_at=None,
-                          checkpoint=run.checkpoint | {"usage": run.usage.to_json()})
-        state.log_event(db, task_id, status, {"live": (report or {}).get("live"),
-                                              "sources": len((report or {}).get("sources") or []),
-                                              "limitations": len((report or {}).get("limitations") or []),
-                                              "error": error}, now)
-        state.record_mode_outcome(db, run.mode, status, run.usage.to_json(), now)
-        store.bump_state_version(db)
+    try:
+        with store.write(db):
+            state.update_task(db, task_id, now, holder=run.holder, status=status, stage=None, result=report,
+                              error=error, usage=run.usage.to_json(), finished_at=now, lease_holder=None,
+                              lease_expires_at=None, checkpoint=run.checkpoint | {"usage": run.usage.to_json()})
+            state.log_event(db, task_id, status, {"live": (report or {}).get("live"),
+                                                  "sources": len((report or {}).get("sources") or []),
+                                                  "limitations": len((report or {}).get("limitations") or []),
+                                                  "error": error}, now)
+            state.record_mode_outcome(db, run.mode, status, run.usage.to_json(), now)
+            store.bump_state_version(db)
+    except state.LostLease:
+        return _lost_lease(db, task_id, run)
     services.persist(db, now)
     _prune_cache(db, task_id, services, now)
+    _after_run(db, task_id, now)
     return get(db, task_id)
+
+
+def _lost_lease(db, task_id, run):
+    """Another worker took the task over (this worker's lease expired): stop without writing an outcome or
+    consolidating; the new holder finishes the task. One decision event records it."""
+    now = run.clock()
+    with store.write(db):
+        state.log_event(db, task_id, "decision", {"stopped": "lease lost to another worker",
+                                                  "holder": run.holder.split(":")[0]}, now)
+    return get(db, task_id) | {"lease_lost": True}
+
+
+def _after_run(db, task_id, now):
+    """Change detection for a monitor's task, however it ran (inline tick, worker, resume): the monitor's
+    comparison with its baseline (scheduler.after_monitor_task). A failure is recorded; the outcome stands."""
+    try:
+        origin = db.execute("SELECT origin FROM web_tasks WHERE id=?", (task_id,)).fetchone()
+        if origin is None or not str(origin[0]).startswith("monitor:"):
+            return
+        from . import scheduler
+        scheduler.after_monitor_task(db, task_id, now)
+    except Exception as exc:   # change detection is best effort; the run's outcome stands
+        with store.write(db):
+            state.log_event(db, task_id, "error", {"stage": "change_detection", "error": type(exc).__name__,
+                                                   "detail": str(exc)[:300]}, now)
 
 
 def _prune_cache(db, task_id, services, now):

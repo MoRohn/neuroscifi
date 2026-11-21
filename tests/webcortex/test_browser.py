@@ -116,3 +116,86 @@ def test_render_runs_external_scripts_and_styles(web):
     for url in ("http://quotes.example/style.css", "http://quotes.example/app.js", "http://cdn.example/lib.js"):
         assert outcomes[url] == "served"
     assert usage.requests == 6        # robots.txt + page + style + app on quotes.example; robots.txt + lib on cdn
+
+
+# ---- review remediation (V1): hung renders, blocked navigations, no double fetch --------------------------------
+
+import os  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+
+from neuroscifi.webcortex import browser as browser_mod  # noqa: E402
+
+
+def _alive(pid):
+    try:
+        stat = open(f"/proc/{pid}/stat").read()
+    except OSError:
+        return False
+    return stat[stat.rfind(")") + 2:][:1] != "Z"
+
+
+class HangingFetcher:
+    """Delegates to a SafeFetcher but blocks every sub-resource fetch, recording the processes below this test
+    process (Playwright driver + Chromium) while the render hangs."""
+
+    def __init__(self, inner):
+        self.inner, self.policy, self._clock = inner, inner.policy, inner._clock
+        self.release = threading.Event()
+        self.tree: list[int] = []
+        self.cmdlines: dict[int, str] = {}
+
+    def fetch(self, url, **kwargs):
+        if kwargs.get("purpose") == "subresource":
+            self.tree = browser_mod._descendants(os.getpid())
+            for pid in self.tree:
+                try:
+                    self.cmdlines[pid] = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", "replace")
+                except OSError:
+                    pass
+            self.release.wait(30)
+        return self.inner.fetch(url, **kwargs)
+
+
+def test_hung_render_kills_driver_and_chromium(web, monkeypatch):
+    monkeypatch.setattr(browser_mod, "RENDER_GRACE", 1.0)
+    web.add("hang.example", "/", '<html><body><p>text</p><script src="/slow.js"></script></body></html>')
+    fetcher = HangingFetcher(fetcher_for(web))
+    renderer = BrowserRenderer(fetcher, timeout=2.0)
+    if not renderer.available()[0]:
+        pytest.skip("browser rendering unavailable")
+    started = time.monotonic()
+    try:
+        with pytest.raises(FetchError) as info:
+            renderer.render("http://hang.example/", budget=Budget(max_browser_sessions=1), usage=Usage())
+        assert info.value.code == "timeout" and time.monotonic() - started < 2.0 + 1.0 + 1.0 + 1.0
+        chromium = [p for p, cmd in fetcher.cmdlines.items() if "chrom" in cmd.lower()]
+        assert chromium, "the hang was not observed with Chromium running"
+        deadline = time.monotonic() + 3
+        while any(_alive(p) for p in fetcher.tree) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not [p for p in fetcher.tree if _alive(p)], "driver/Chromium processes outlived the render"
+    finally:
+        fetcher.release.set()
+
+
+def test_blocked_navigation_error_page_is_not_content(web):
+    page = ('<html><head><title>Real</title></head><body><p>real page text</p>'
+            '<script>location.href = "http://internal.test/next";</script></body></html>')
+    web.add("nav.example", "/", page)
+    renderer = renderer_or_skip(fetcher_for(web))
+    result = renderer.render("http://nav.example/", budget=Budget(max_browser_sessions=1), usage=Usage())
+    assert b"real page text" in result.body and b"chromewebdata" not in result.body
+    assert result.final_url.startswith("http://nav.example/")
+
+
+def test_render_reuses_the_callers_main_fetch(web):
+    web.add("reuse.example", "/", "<html><body><p id='p'>static</p>"
+            "<script>document.getElementById('p').textContent = 'rendered';</script></body></html>")
+    fetcher = fetcher_for(web)
+    usage, budget = Usage(), Budget(max_browser_sessions=1)
+    main = fetcher.fetch("http://reuse.example/", purpose="page", budget=budget, usage=usage)
+    renderer = renderer_or_skip(fetcher)
+    result = renderer.render("http://reuse.example/", budget=budget, usage=usage, main=main)
+    assert b"rendered" in result.body and result.retrieval_mode == "rendered"
+    assert len(web.requests_to("reuse.example", "/")) == 1 and usage.requests == 2   # robots.txt + page, once

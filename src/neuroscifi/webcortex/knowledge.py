@@ -96,8 +96,9 @@ def newer_release_seen(db, item) -> bool:
         return False
     from .consolidate import SIMILAR_KEY, _similar
     top = max(mine)
-    for key, values in db.execute("SELECT key, claim_values FROM web_claims WHERE created_at>? AND claim_values "
-                                  "LIKE '%v%'", (item["last_verified_at"] or 0.0,)):
+    # A range scan of web_claims_created (migration 7): only claims recorded after the last verification are read.
+    for key, values in db.execute("SELECT key, claim_values FROM web_claims INDEXED BY web_claims_created "
+                                  "WHERE created_at>? AND claim_values LIKE '%v%'", (item["last_verified_at"] or 0.0,)):
         if key != item["key"] and _similar(key, item["key"]) < SIMILAR_KEY:
             continue
         if any(v > top for v in _versions(state.loads(values, []))):
@@ -149,6 +150,8 @@ def query(db, topic, now, *, limit=10) -> dict:
     from . import text
     if not isinstance(topic, str) or not topic.strip() or len(topic) > 2000:
         raise ValidationError("topic must be a non-blank string of at most 2000 characters")
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValidationError("limit must be a positive integer")
     cfg = state.get_config(db)
     terms = text.content_tokens(topic)
     live = rows(db, f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))})", state.LIVE_KNOWLEDGE)
@@ -157,7 +160,7 @@ def query(db, topic, now, *, limit=10) -> dict:
         scores = text.BM25([text.content_tokens(r["statement"] + " " + r["key"].replace("<", " ").replace(">", " "))
                             for r in live]).scores(terms)
         ranked = sorted(((s, r) for s, r in zip(scores, live) if s > 0), key=lambda x: (-x[0], -x[1]["id"]))
-        for score, item in ranked[:max(1, min(100, int(limit)))]:
+        for score, item in ranked[:min(100, limit)]:
             items.append(describe(db, item, now, cfg) | {"score": round(score, 6)})
     return {"topic": topic, "as_of": now, "items": items, "matched": len(items),
             "known": sum(1 for i in items if i["status"] == "accepted" and not i["stale"] and not i["contested"])}
@@ -199,6 +202,47 @@ def open_question(db, scope, question, now) -> int:
         return found[0]
     return db.execute("INSERT INTO pending(epoch,kind,scope,question,created_at) VALUES(NULL,'ask',?,?,?)",
                       (scope, question, now)).lastrowid
+
+
+def open_web_questions(db) -> int:
+    """Open Web Cortex questions (scope web:...), across tasks."""
+    return db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:%'").fetchone()[0]
+
+
+def question_room(db, cfg=None) -> bool:
+    """Whether a NEW web question fits the owner's interruption budget (config.max_open_web_questions)."""
+    cfg = cfg or state.get_config(db)
+    return open_web_questions(db) < cfg.max_open_web_questions
+
+
+def ask(db, scope, question, now, cfg=None):
+    """open_question within the web question budget: an open question of the same scope is updated (no new
+    interruption); a new one is opened only while fewer than config.max_open_web_questions are open. Returns the
+    pending id, or None when the budget is spent (the subject stays reviewable in the console / `nsf web
+    knowledge`). Caller owns the transaction."""
+    found = db.execute("SELECT 1 FROM pending WHERE scope=? AND resolved_at IS NULL LIMIT 1", (scope,)).fetchone()
+    if found is None and not question_room(db, cfg):
+        return None
+    return open_question(db, scope, question, now)
+
+
+def review_question(db, task_id, deferred, now, cfg=None) -> int | None:
+    """The ONE aggregate question of a task whose candidates exceeded the question budget: "N candidates from task
+    X await review". When the global budget is spent the newest open aggregate question is updated instead of
+    opening another. Caller owns the transaction."""
+    if deferred <= 0:
+        return None
+    text = (f"{deferred} candidate(s) from research task {task_id} await review in the console (Research) or with "
+            "`nsf web knowledge --status provisional` / `nsf web review ID --accept|--reject`; no separate question "
+            "was opened for each (web question budget).")
+    scope = f"web:review:{task_id}"
+    if db.execute("SELECT 1 FROM pending WHERE scope=? AND resolved_at IS NULL", (scope,)).fetchone() is None \
+            and not question_room(db, cfg):
+        latest = db.execute("SELECT scope FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:review:%' "
+                            "ORDER BY id DESC LIMIT 1").fetchone()
+        if latest is not None:
+            scope = latest[0]
+    return open_question(db, scope, text, now)
 
 
 def quote(statement) -> str:
@@ -243,7 +287,8 @@ def apply_review(db, current: dict, confirm: bool, now) -> dict:
     web:knowledge:<id>  confirm=True -> accepted, False -> rejected
     web:monitor:<id>    confirm=True -> the proposed monitor becomes active (due now), False -> stopped
     web:research:<id>   confirm=True -> the proposed task is queued for the worker, False -> cancelled
-    Other web questions (e.g. web:contested:...) are informational: answer them without confirm.
+    Other web questions (web:contested:..., web:review:<task> aggregates, web:finding:<monitor>:<task> monitor
+    findings) are informational: answer them without confirm.
     """
     kind, ident = _parse_scope(current["scope"])
     if kind == "knowledge":
@@ -364,11 +409,14 @@ def forget(db, knowledge_id, now) -> dict:
     return governance.forget_knowledge(db, knowledge_id, now)
 
 
-def refresh(db, knowledge_id, now, *, origin=None) -> dict:
-    """Submit (not run) a fact-verification task for the item's statement; returns the queued task."""
+def refresh(db, knowledge_id, now, *, origin="cli") -> dict:
+    """Submit (not run) a fact-verification task for the item's statement; returns the queued task.
+
+    `origin` names who asked: the owner's paths pass 'cli' or 'console' (an owner task, never clamped to the
+    autonomous allowance); only a due prediction passes 'refresh:<id>', which is autonomous research."""
     from . import orchestrator
     item = row(db, knowledge_id)
     if item["status"] not in REVIEWABLE:
         raise Conflict(f"Knowledge item {knowledge_id} is {item['status']}; refresh the current version instead")
-    return orchestrator.submit(db, item["statement"], now, mode="fact_verification",
-                               origin=origin or f"refresh:{item['id']}", parent=item["task_id"])
+    return orchestrator.submit(db, item["statement"], now, mode="fact_verification", origin=origin,
+                               parent=item["task_id"])

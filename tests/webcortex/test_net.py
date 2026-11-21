@@ -754,3 +754,204 @@ def test_live_tls_smoke():
     items = parse_feed(api.body, api.final_url)
     assert len(items) == 1 and items[0]["title"]
 
+
+
+# ---- review remediation (V1): deadlines, throttle, header digits, robots origin, coalescing, numeric hosts -----
+
+import socket  # noqa: E402
+import time  # noqa: E402
+
+from neuroscifi.webcortex.fixtureweb import FixtureWeb  # noqa: E402
+
+
+class DripServer:
+    """Raw socket server that answers robots.txt with 404 and then trickles one byte every `gap` seconds, in the
+    status/header block ('headers') or in a declared body ('body'); each gap is shorter than any socket timeout."""
+
+    def __init__(self, mode, gap=0.2, head=b""):
+        self.mode, self.gap, self.head = mode, gap, head
+        self.stop = threading.Event()
+        self.srv = socket.socket()
+        self.srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.srv.bind(("127.0.0.1", 0))
+        self.srv.listen(8)
+        self.srv.settimeout(0.2)
+        self.port = self.srv.getsockname()[1]
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self):
+        while not self.stop.is_set():
+            try:
+                conn, _ = self.srv.accept()
+            except OSError:
+                continue
+            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+
+    def _handle(self, conn):
+        try:
+            request = b""
+            while b"\r\n\r\n" not in request:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    return
+                request += chunk
+            if b"/robots.txt" in request:
+                conn.sendall(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                return
+            if self.mode == "raw":
+                conn.sendall(self.head)
+                return
+            if self.mode == "headers":
+                conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nX-Drip: ")
+            else:
+                conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 100000\r\n\r\n")
+            while not self.stop.is_set():
+                conn.sendall(b"a")
+                time.sleep(self.gap)
+        except OSError:
+            pass
+        finally:
+            conn.close()
+
+    def fetcher(self, **policy):
+        def connector(ip, port, timeout):
+            return socket.create_connection(("127.0.0.1", self.port), timeout=timeout)
+        return SafeFetcher(NetPolicy(min_domain_interval=0.0, **policy), resolver=lambda h, p: ["93.184.215.14"],
+                           connector=connector)
+
+    def close(self):
+        self.stop.set()
+        self.srv.close()
+
+
+@pytest.mark.parametrize("mode", ["headers", "body"])
+@pytest.mark.parametrize("purpose", ["page", "api"])
+def test_slow_drip_server_cannot_outlive_the_fetch_deadline(mode, purpose):
+    server = DripServer(mode)
+    try:
+        fetcher = server.fetcher(timeout=1.0)
+        out = {}
+
+        def run():
+            try:
+                out["result"] = fetcher.fetch("http://drip.example/", purpose=purpose)
+            except FetchError as error:
+                out["error"] = error
+
+        worker = threading.Thread(target=run, daemon=True)
+        started = time.monotonic()
+        worker.start()
+        worker.join(2.0)                       # timeout + 1 s; a hung fetch fails here instead of hanging pytest
+        assert not worker.is_alive(), "fetch still running 2 s after a 1 s timeout"
+        assert out["error"].code == "timeout" and time.monotonic() - started < 2.0
+    finally:
+        server.close()
+
+
+def test_unicode_digits_in_headers_are_not_numbers(web, tmp_path):
+    assert net._parse_retry_after("²", 0.0) is None and net._parse_retry_after("٣", 0.0) is None
+    assert net._parse_retry_after("7", 0.0) == 7.0
+    web.add("digits.example", "/ra", "slow down", status=429, content_type="text/plain", headers={"Retry-After": "²"})
+    fetcher, *_ = make(web, tmp_path)
+    error = code_of(lambda: fetcher.fetch("http://digits.example/ra", purpose="api"))
+    assert error.code == "rate_limited" and error.retry_after == net.DEFAULT_BACKOFF
+    server = DripServer("raw", head=b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \xc2\xb2\r\n"
+                                    b"Connection: close\r\n\r\n{}")
+    try:
+        result = server.fetcher().fetch("http://digits.example/cl", purpose="api")   # no bare ValueError
+        assert result.body == b"{}"
+    finally:
+        server.close()
+
+
+def test_throttle_wait_beyond_timeout_is_rate_limited_without_sleeping():
+    with FixtureWeb() as web:
+        web.add("crawl.example", "/robots.txt", "User-agent: *\nCrawl-delay: 3\n", content_type="text/plain")
+        web.add("crawl.example", "/a", "<p>hello</p>")
+        fetcher = SafeFetcher(NetPolicy(timeout=0.5, min_domain_interval=0.0), resolver=web.resolver,
+                              connector=web.connector)
+        usage = Usage()
+        started = time.monotonic()
+        error = code_of(lambda: fetcher.fetch(web.url("crawl.example", "/a"), budget=Budget(), usage=usage))
+        assert time.monotonic() - started < 0.5                       # did not sleep the Crawl-delay
+        assert error.code == "rate_limited" and 2.5 < error.retry_after <= 3.0
+        assert usage.requests == 1                                    # robots.txt only; the page was not charged
+        assert web.requests_to("crawl.example", "/a") == []
+
+
+def test_fetch_deadline_starts_after_the_politeness_wait():
+    with FixtureWeb() as web:
+        web.add("polite.example", "/robots.txt", "User-agent: *\nCrawl-delay: 0.8\n", content_type="text/plain")
+        web.add("polite.example", "/a", "<p>hello</p>", delay=0.6)
+        fetcher = SafeFetcher(NetPolicy(timeout=1.2, min_domain_interval=0.0), resolver=web.resolver,
+                              connector=web.connector)
+        usage = Usage()
+        result = fetcher.fetch(web.url("polite.example", "/a"), budget=Budget(), usage=usage)
+        assert result.status == 200 and usage.requests == 2
+
+
+def test_robots_are_scoped_to_scheme_host_and_port(web, tmp_path):
+    web.add("origin.example", "/robots.txt", "User-agent: *\nAllow: /\n", content_type="text/plain")
+    web.add("origin.example", "/a", "a")
+    fetcher, *_ = make(web, tmp_path)
+    fetcher.fetch("http://origin.example/a")
+    fetcher.fetch("http://origin.example:8080/a")
+    fetcher.fetch("http://origin.example:8080/a", conditional=False)
+    assert len(web.requests_to("origin.example", "/robots.txt")) == 2     # one per origin, then cached
+    fresh = SafeFetcher(NetPolicy(), resolver=web.resolver, connector=web.connector, cache=fetcher.cache)
+    fresh.robots_allowed("http://origin.example:8080/a")                   # persisted per origin too
+    assert len(web.requests_to("origin.example", "/robots.txt")) == 2
+    assert fetcher.cache.forget_domain("origin.example") >= 2              # rows still found by domain
+
+
+def _coalesced(web, tmp_path, leader_budget):
+    web.add("co2.example", "/robots.txt", "", content_type="text/plain")
+    web.add("co2.example", "/a", "<html><body>" + "hello " * 500 + "</body></html>", delay=0.5)
+    fetcher, *_ = make(web, tmp_path, cache=False)
+    fetcher.robots_allowed("http://co2.example/a")
+    out = {}
+
+    def run(name, budget, usage):
+        try:
+            out[name] = fetcher.fetch("http://co2.example/a", budget=budget, usage=usage)
+        except BaseException as error:   # recorded and asserted on below
+            out[name] = error
+
+    follower_usage = Usage()
+    leader = threading.Thread(target=run, args=("leader", leader_budget, Usage()))
+    leader.start()
+    time.sleep(0.15)
+    follower = threading.Thread(target=run, args=("follower", Budget(), follower_usage))
+    follower.start()
+    leader.join()
+    follower.join()
+    return out, follower_usage
+
+
+def test_coalesced_follower_never_inherits_the_leaders_budget_error(web, tmp_path):
+    out, usage = _coalesced(web, tmp_path, Budget(max_bytes=100))
+    assert isinstance(out["leader"], BudgetExceeded)
+    assert not isinstance(out["follower"], BaseException) and out["follower"].status == 200
+    assert usage.requests == 1 and usage.bytes == len(out["follower"].body)
+
+
+def test_coalesced_follower_is_charged_its_own_request(web, tmp_path):
+    out, usage = _coalesced(web, tmp_path, Budget())
+    assert out["leader"].body == out["follower"].body
+    assert usage.requests == 1 and usage.bytes == len(out["follower"].body)
+    assert web.routes[("co2.example", "/a")].hits == 1
+
+
+@pytest.mark.parametrize("url", ["http://１２７。０。０。１/", "http://１２７．０．０．１/", "http://０ｘ７ｆ０００００１/",
+                                 "http://１２７.１/", "http://１０.０.０.１/"])
+def test_numeric_hosts_are_checked_after_idna_mapping(url):
+    assert code_of(lambda: check_url(url, NetPolicy())).code == "blocked_policy"
+
+
+def test_fullwidth_public_ip_normalises_to_the_literal():
+    assert check_url("http://８.８.８.８/x", NetPolicy()).hostname == "8.8.8.8"
+
+
+@pytest.mark.parametrize("ip", ["64:ff9b:1::808:808", "64:ff9b:1:ffff::1"])
+def test_local_use_nat64_refused(ip):
+    assert check_address(ip) is not None

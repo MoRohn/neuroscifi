@@ -27,3 +27,21 @@ Each task has one accountable owner, a completion check and a risk class (L, M o
 | T5.4 | Integration lanes I1 (migrations, acceptance p.34, concurrency), I2 (console catch-up) | executors | T5.3 | gate + e2e | M | DONE (7e0af91) |
 | T5.5 | R4 earlier-setup recognition and epoch links | executor (opus) | T5.4 | brute-force tests; acceptance | H | DONE (88f56fd) |
 | T5.6 | D-1 analysis → pre-registration → dynamics-based recognition with negative controls | architect + executor (opus) | T5.5 | pre-registered thresholds (3b4e943) | H | DONE |
+
+## Web Cortex (0.6)
+
+| ID | Task | Owner | Depends | Completion check | Risk | Status |
+|---|---|---|---|---|---|---|
+| W0.1 | Architecture reconciliation, upstream review (open-webSearch 2.2.0, Scrapling 0.5.1), contracts, ADR-021…030 | architect | — | ARCHITECTURE.md, DEPENDENCY_REVIEW.md | M | DONE (5f09ac3) |
+| W1.A | Acquisition: SafeFetcher, cache, extraction, browser, crawl | executor (opus) | W0.1 | tests/webcortex/test_{net,cache,extract,browser,crawl}.py | H | DONE (5f09ac3) |
+| W1.B | Discovery: registry, open-webSearch client, structured APIs, intent | executor (opus) | W0.1 | test_{search,intent,providers,openwebsearch}.py | M | DONE (5f09ac3) |
+| W1.C | Evidence, temporal, safety, synthesis | executor (opus) | W0.1 | test_{text,safety,claims,temporal,synthesis}.py | H | DONE (5f09ac3) |
+| W1.D | Migration 6, memory integration, orchestration, curiosity, scheduler | executor (opus) | W1.A–C | test_{state,knowledge,consolidate,orchestrator,curiosity,scheduler,instance_integration}.py | H | DONE (5f09ac3) |
+| W2.E1 | CLI, MCP, deps (Scenario C), systemd units | executor (opus) | W1.D | test_{cli,mcp,deps}.py; systemd-analyze | M | DONE (849f7bf) |
+| W2.E2 | Console Research and Knowledge | executor (opus) | W1.D | tests/console/test_console_web.py; e2e | M | DONE (849f7bf) |
+| W2.E3 | Pocket research, multi-device (Scenario F) | executor (opus) | W1.D | tests/test_pocket_research.py; e2e | M | DONE (849f7bf) |
+| W2.F | Benchmark corpus, live scenarios, TEST_RESULTS | executor (opus) | W1.D | test_bench.py; evidence JSON | M | DONE (849f7bf; baseline faea282) |
+| W3.R | Remediation from doc audit and benchmark (R1–R16) | executors (opus ×3) | W2 | regression tests fail on old code | H | DONE (df00137) |
+| W4.V | Independent reviews: architect, security, code | reviewers (opus) | W3.R | P0–P3 findings with probes | H | DONE (REJECT ×2, MEDIUM risk) |
+| W4.X | Review remediation lanes V1 (acquisition security), V2 (governance/orchestration), V3 (Pocket) | executors (opus ×3) | W4.V | probes re-run; regression tests | H | RUNNING |
+| W5.E | Evidence regenerated at the final commit; traceability; verification report | architect | W4.X | evidence `git_commit` = verified commit | M | TODO |

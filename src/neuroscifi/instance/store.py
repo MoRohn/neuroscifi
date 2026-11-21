@@ -262,12 +262,25 @@ def require_write_allowed(db, path=None):
         raise WritesPaused(reason)
 
 
+def database_path(db):
+    """The file behind the connection's main database (PRAGMA database_list), or None for an in-memory one."""
+    for _, name, file in db.execute("PRAGMA database_list").fetchall():
+        if name == "main":
+            return file or None
+    return None
+
+
 def regulation(db, path=None):
+    """Write regulation and interruption load. open_questions counts every open question; open_web_questions
+    counts the Web Cortex ones (scope 'web:...'), which have their own budget (WebConfig.max_open_web_questions)
+    and never use an epoch's ask budget."""
     allowed, reason = write_allowed(db, path)
     return {
         "writes_allowed": allowed, "reason": reason,
         "evidence_rows": db.execute("SELECT count(*) FROM evidence").fetchone()[0],
         "open_questions": db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL").fetchone()[0],
+        "open_web_questions": db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL "
+                                         "AND scope LIKE 'web:%'").fetchone()[0],
         "write_volume": counter(db, "evidence_written"),
         "state_version": state_version(db),
         "config": asdict(config(db)),

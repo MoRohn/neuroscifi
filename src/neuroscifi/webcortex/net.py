@@ -4,27 +4,33 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
 - Address policy: every resolved address must be globally routable. Loopback, RFC 1918, link-local (incl. the
   169.254.169.254 / fd00:ec2::254 metadata endpoints), CGNAT, multicast, reserved, unspecified, documentation and
   benchmark ranges, IPv6 ULA and site-local are refused, and so are IPv6 forms that embed a refused IPv4 address
-  (IPv4-mapped, IPv4-compatible, 6to4, Teredo, NAT64). If ANY answer for a host is refused the host is refused.
+  (IPv4-mapped, IPv4-compatible, 6to4, Teredo, NAT64); the local-use NAT64 prefix 64:ff9b:1::/48 is refused
+  outright. If ANY answer for a host is refused the host is refused.
 - URL policy: http/https only, allow-listed ports, no userinfo, no non-canonical numeric hosts (0x7f000001,
-  2130706433, 127.1), IDNA-encodable hosts only, deny-listed domains and their subdomains, at most 2048 chars.
+  2130706433, 127.1; checked again after IDNA mapping, so fullwidth digits and ideographic dots cannot spell one),
+  IDNA-encodable hosts only, deny-listed domains and their subdomains, at most 2048 chars.
 - DNS pinning: a host is resolved once per fetch (shared by its robots.txt request and redirect hops back to it);
   the socket connects to a validated address and is never re-resolved, so DNS rebinding cannot swap the target.
   TLS verifies the certificate against the original hostname; the Host header carries the original hostname.
 - Redirects are followed manually (at most policy.max_redirects); every hop is re-checked (URL policy, resolution,
   address policy, robots), https -> http downgrades are refused, 303 (and 301/302 after POST) become GET, and
   credentials headers are dropped when the origin changes.
-- Limits: total wall-clock timeout per fetch, streamed body cap (policy.max_bytes; policy.max_api_bytes for
-  purpose='api'; pages/crawls are truncated and flagged, api/feed/subresource responses raise too_large),
+- Limits: total wall-clock timeout per fetch, enforced by a per-exchange watchdog that shuts the socket down at
+  the deadline (a server trickling bytes in the status line, headers or body cannot outlive it), streamed body
+  cap (policy.max_bytes; policy.max_api_bytes for purpose='api'; pages/crawls are truncated and flagged,
+  api/feed/subresource responses raise too_large),
   gzip/deflate decoded under the same cap (decompression bombs stop at the cap), content-type allow-list checked
   before the body is read.
 - Politeness: robots.txt for purposes page/feed/crawl/subresource, evaluated by RobotsRules (RFC 9309: group
   selection by product token, longest-match Allow/Disallow with Allow winning ties, `*` and `$`, percent-encoding
-  normalisation, 500 KiB parse cap). 4xx => allow, 5xx/unreachable => disallow this host for this process; parsed
-  files are cached 24 h in memory and the PublicCache; timeouts and 429 are not remembered. Per-host throttle: the
-  gap between two requests to a host is the largest of min_domain_interval, the host's host_intervals entry
-  (defaults: export.arxiv.org 3 s, eutils.ncbi.nlm.nih.gov 0.34 s) and Crawl-delay; purpose='subresource' uses
-  subresource_interval (0.1 s) and host_intervals only. Retry-After backoff on 429/503 (requests inside a backoff
-  fail without touching the network) is kept in memory and in the PublicCache, so a new fetcher sharing the cache
+  normalisation, 500 KiB parse cap), scoped to scheme + host + port. 4xx => allow, 5xx/unreachable => disallow
+  that origin for this process; parsed files are cached 24 h per origin in memory and the PublicCache; timeouts and
+  429 are not remembered. Per-host throttle: the gap between two requests to a host is the largest of
+  min_domain_interval, the host's host_intervals entry (defaults: export.arxiv.org 3 s, eutils.ncbi.nlm.nih.gov
+  0.34 s) and Crawl-delay; purpose='subresource' uses subresource_interval (0.1 s) and host_intervals only. The
+  fetch deadline starts after the throttle wait; a wait longer than policy.timeout is not slept:
+  FetchError('rate_limited', retry_after=wait). Retry-After backoff on 429/503 (requests inside a backoff fail
+  without touching the network) is kept in memory and in the PublicCache, so a new fetcher sharing the cache
   honours it.
 - Purposes: page, feed, crawl (robots, cached), api (no robots, never cached, own size cap, POST allowed), robots,
   subresource (browser sub-requests only: robots and all limits apply, script/style types allowed in addition,
@@ -33,6 +39,9 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
   confirmed it is current) and the header REVALIDATED_HEADER ('x-nsf-revalidated': '304').
 - Budget: one request is charged before every network call (robots and redirect hops included); body bytes are
   charged after reading, and reading stops before the byte budget could be exceeded (BudgetExceeded propagates).
+  Identical concurrent GETs are coalesced: a follower is charged its own request(s) and the body length on its own
+  budget, and when the leader fails with BudgetExceeded (the leader's budget) the follower fetches for itself.
+- Numeric headers (Retry-After, Content-Length) accept ASCII digits only.
 - Privacy: bodies and full query strings are never logged; purpose='api' responses are never cached (API URLs
   carry search queries, ADR-023).
 
@@ -87,6 +96,7 @@ _NUMERIC_LABEL = re.compile(r"^(0x[0-9a-f]*|[0-9]+)$")
 _FORBIDDEN_HEADERS = {"host", "accept-encoding", "connection", "content-length", "transfer-encoding", "user-agent",
                       "te", "upgrade", "proxy-authorization", "if-none-match", "if-modified-since"}
 _CREDENTIAL_HEADERS = {"authorization", "cookie"}
+_DIGITS = re.compile(r"[0-9]+")         # ASCII only: str.isdigit() accepts '²' and other Unicode digits
 _CHARGE_LOCK = threading.Lock()
 
 
@@ -116,7 +126,8 @@ _V4_EXTRA = [ipaddress.ip_network(n) for n in (
 _V6_EXTRA = [ipaddress.ip_network(n) for n in (
     "fc00::/7", "fec0::/10", "fe80::/10", "ff00::/8", "2001:db8::/32", "3fff::/20", "100::/64", "::/128", "::1/128",
     "fd00:ec2::254/128")]
-_NAT64 = (ipaddress.ip_network("64:ff9b::/96"), ipaddress.ip_network("64:ff9b:1::/48"))
+_NAT64 = (ipaddress.ip_network("64:ff9b::/96"),)
+_NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")   # RFC 8215 local-use: translator unknown, refused outright
 _COMPAT = ipaddress.ip_network("::/96")
 
 
@@ -150,6 +161,8 @@ def check_address(ip: str) -> str | None:
         return "not an IP address"
     if addr.version == 4:
         return _check_v4(addr)
+    if addr in _NAT64_LOCAL:
+        return "local-use NAT64 address"
     embedded = None
     if addr.ipv4_mapped is not None:
         embedded = ("IPv4-mapped", addr.ipv4_mapped)
@@ -211,6 +224,24 @@ def _redact(url: str) -> str:
         return url[:80]
 
 
+def _numeric_host(host: str, url: str):
+    """The IP address a host spells (IPv6 literal or canonical dotted IPv4), None for a name; non-canonical numeric
+    IPv4 spellings (0x7f000001, 2130706433, 127.1, 0177.0.0.1) are refused."""
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    if _NUMERIC_LABEL.match(host.split(".")[-1]):
+        try:
+            dotted = socket.inet_ntoa(socket.inet_aton(host))
+        except (OSError, ValueError):
+            raise _refuse(url, "invalid numeric host") from None
+        if dotted != host:
+            raise _refuse(url, "non-canonical numeric IPv4 host")
+        return ipaddress.ip_address(dotted)
+    return None
+
+
 def check_url(url: str, policy: NetPolicy) -> SplitResult:
     """Validate a URL against the policy; returns a normalised SplitResult or raises FetchError('blocked_policy')."""
     if not isinstance(url, str) or not url:
@@ -237,18 +268,15 @@ def check_url(url: str, policy: NetPolicy) -> SplitResult:
     port = port if port is not None else (443 if scheme == "https" else 80)
     if port not in policy.allowed_ports:
         raise _refuse(url, f"port {port} not allowed")
-    literal = None
-    try:
-        literal = ipaddress.ip_address(host)
-    except ValueError:
-        if _NUMERIC_LABEL.match(host.split(".")[-1]):
-            try:
-                dotted = socket.inet_ntoa(socket.inet_aton(host))
-            except OSError:
-                raise _refuse(url, "invalid numeric host") from None
-            if dotted != host:
-                raise _refuse(url, "non-canonical numeric IPv4 host")
-            literal = ipaddress.ip_address(dotted)
+    literal = _numeric_host(host, url)
+    ascii_host = None
+    if literal is None:
+        try:
+            ascii_host = host.encode("idna").decode("ascii").lower() if not host.isascii() else host.lower()
+        except UnicodeError:
+            raise _refuse(url, "host is not IDNA-encodable") from None
+        # IDNA maps fullwidth digits and ideographic dots to ASCII: "１２７。０。０。１" is 127.0.0.1
+        literal = _numeric_host(ascii_host, url)
     if literal is not None:
         if isinstance(literal, ipaddress.IPv6Address) and literal.scope_id:
             raise _refuse(url, "scoped IPv6 literal")
@@ -257,10 +285,6 @@ def check_url(url: str, policy: NetPolicy) -> SplitResult:
             raise _refuse(url, reason)
         netloc_host = f"[{literal}]" if literal.version == 6 else str(literal)
     else:
-        try:
-            ascii_host = host.encode("idna").decode("ascii").lower() if not host.isascii() else host.lower()
-        except UnicodeError:
-            raise _refuse(url, "host is not IDNA-encodable") from None
         if not _HOST_RE.match(ascii_host):
             raise _refuse(url, "invalid host name")
         if any(ascii_host == s or ascii_host.endswith("." + s) for s in _RESERVED_SUFFIXES):
@@ -366,6 +390,54 @@ class _Flight:
         self.error = None
 
 
+class _Watchdog:
+    """Shuts a connection down at the fetch deadline. Socket timeouts bound each read, not the exchange: a server
+    that trickles one byte per gap shorter than the timeout would otherwise keep a fetch alive indefinitely. The
+    watchdog holds a duplicate of the connection's descriptor (shutdown acts on the connection, so it also stops a
+    TLS socket wrapped around the original), and `fired` tells the reader the EOF/error it sees is the deadline."""
+
+    def __init__(self, deadline: float):
+        self.deadline = deadline
+        self.fired = False
+        self._lock = threading.Lock()
+        self._dup = None
+        self._timer = None
+        self._done = False
+
+    def arm(self, sock) -> None:
+        try:
+            dup = sock.dup()
+        except (AttributeError, OSError):     # an injected connector without real sockets: socket timeouts only
+            return
+        with self._lock:
+            if self._done:
+                dup.close()
+                return
+            self._dup = dup
+            self._timer = threading.Timer(max(0.0, self.deadline - time.monotonic()), self._fire)
+            self._timer.daemon = True
+            self._timer.start()
+
+    def _fire(self) -> None:
+        with self._lock:
+            if self._done or self._dup is None:
+                return
+            self.fired = True
+            try:
+                self._dup.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    def disarm(self) -> None:
+        with self._lock:
+            self._done = True
+            if self._timer is not None:
+                self._timer.cancel()
+            if self._dup is not None:
+                self._dup.close()
+                self._dup = None
+
+
 def _media_type(value: str | None) -> str:
     return (value or "").split(";")[0].strip().lower()
 
@@ -380,7 +452,7 @@ def _parse_retry_after(value: str | None, now: float) -> float | None:
     if not value:
         return None
     value = value.strip()
-    if value.isdigit():
+    if _DIGITS.fullmatch(value):
         return min(float(value), MAX_RETRY_AFTER)
     try:
         when = email.utils.parsedate_to_datetime(value)
@@ -535,6 +607,13 @@ def _robots_from_text(text: str, fetched_at: float, reason: str = "", user_agent
     return _Robots(rules, fetched_at, min(max(rules.delay, 0.0), MAX_CRAWL_DELAY), rules.sitemaps, reason)
 
 
+def _robots_key(parts: SplitResult) -> str:
+    """Cache key of a robots.txt: RFC 9309 §2.3 scopes the file to scheme, host and port. The host stays the
+    suffix after a '.' so PublicCache.forget_domain still finds the row; '~' cannot occur in a host name."""
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    return f"{parts.scheme}~{port}~.{parts.hostname}"
+
+
 def _robots_disallow_all(fetched_at: float, reason: str) -> _Robots:
     return _Robots(RobotsRules(disallow_all=True), fetched_at, 0.0, (), reason)
 
@@ -579,9 +658,15 @@ class SafeFetcher:
             self._count(urlsplit(url).hostname or "", "coalesced")
             if not flight.event.wait(self.policy.timeout * 3 + 5):
                 raise FetchError("timeout", _redact(url), "coalesced request did not finish")
+            if isinstance(flight.error, BudgetExceeded):
+                # the leader's budget is not this caller's: make the request on this caller's own budget
+                return self._fetch(url, method, body, headers, purpose, conditional, budget, usage)
             if flight.error is not None:
                 raise flight.error
-            return replace(flight.result, headers=dict(flight.result.headers), redirects=list(flight.result.redirects))
+            result = flight.result
+            # a follower is charged what its own request would have cost (request + redirect hops, body bytes)
+            _charge(budget, usage, requests=1 + len(result.redirects), bytes=len(result.body))
+            return replace(result, headers=dict(result.headers), redirects=list(result.redirects))
         try:
             flight.result = self._fetch(url, method, body, headers, purpose, conditional, budget, usage)
             return flight.result
@@ -721,7 +806,8 @@ class SafeFetcher:
                     self._count(host, "robots_blocked")
                     raise FetchError("blocked_robots", _redact(current.geturl()), entry.reason or "disallowed")
                 crawl_delay = entry.delay
-            self._throttle(host, self._interval(host, purpose, crawl_delay))
+            # the fetch deadline starts after the politeness wait, not before it
+            deadline += self._throttle(host, self._interval(host, purpose, crawl_delay), current.geturl())
             response = self._exchange(current, method, body, headers, addresses, purpose, budget, usage, deadline)
             if response.status not in REDIRECT_STATUSES:
                 return response, current, redirects
@@ -780,16 +866,24 @@ class SafeFetcher:
             self.cache.put_backoff(host, until)
         self._count(host, "backoffs")
 
-    def _throttle(self, host, interval):
-        """Reserve the next request slot for host: at least `interval` seconds after the previous one."""
+    def _throttle(self, host, interval, url="") -> float:
+        """Reserve the next request slot for host: at least `interval` seconds after the previous one; sleeps until
+        then and returns the seconds waited. A slot further away than policy.timeout is not reserved and nothing
+        sleeps: FetchError('rate_limited', retry_after=wait) (a Crawl-delay at or above the timeout must not
+        turn every first page fetch into a charged timeout)."""
         with self._lock:
             now = self._clock()
             last = self._last_request.get(host)
             slot = now if last is None else max(now, last + interval)
+            wait = slot - now
+            if wait > self.policy.timeout:
+                raise FetchError("rate_limited", _redact(url or host),
+                                 f"next request slot for {host} in {wait:.1f}s exceeds the "
+                                 f"{self.policy.timeout:g}s fetch timeout", retry_after=wait)
             self._last_request[host] = slot
-        wait = slot - now
         if wait > 0:
             self._sleep(wait)
+        return max(0.0, wait)
 
     def _resolve(self, parts, resolved):
         host, port = parts.hostname, parts.port or (443 if parts.scheme == "https" else 80)
@@ -820,6 +914,7 @@ class SafeFetcher:
         _charge(budget, usage, requests=1)
         self._count(host, "requests")
         chosen = []
+        watchdog = _Watchdog(deadline)
 
         def opener():
             last = None
@@ -835,6 +930,7 @@ class SafeFetcher:
                     last = error
                     continue
                 sock.settimeout(max(0.01, deadline - time.monotonic()))
+                watchdog.arm(sock)
                 chosen.append(ip)
                 return sock
             raise ConnectionError(f"could not connect to any validated address ({type(last).__name__})")
@@ -872,21 +968,25 @@ class SafeFetcher:
                     if not any(fnmatch.fnmatchcase(media, pattern) for pattern in allowed):
                         raise FetchError("unsupported_type", _redact(url), media or "no content type", status=status)
                 self._read_body(raw, conn, response, purpose, budget, usage, deadline, url)
+            if watchdog.fired:                    # the body "ended" because the watchdog shut the socket
+                raise TimeoutError
             return response
         except FetchError:
             raise
         except BudgetExceeded:
             raise
-        except (TimeoutError, socket.timeout):
-            raise FetchError("timeout", _redact(url), f"no response within {self.policy.timeout:g}s") from None
-        except (ssl.SSLError, ssl.CertificateError) as error:
-            raise FetchError("tls_error", _redact(url), type(error).__name__) from None
-        except http.client.HTTPException as error:
-            raise FetchError("http_error", _redact(url), f"malformed response ({type(error).__name__})") from None
-        except OSError as error:
+        except (OSError, http.client.HTTPException) as error:
+            if watchdog.fired or isinstance(error, (TimeoutError, socket.timeout)):
+                raise FetchError("timeout", _redact(url), f"no response within {self.policy.timeout:g}s") from None
+            if isinstance(error, (ssl.SSLError, ssl.CertificateError)):
+                raise FetchError("tls_error", _redact(url), type(error).__name__) from None
+            if isinstance(error, http.client.HTTPException):
+                raise FetchError("http_error", _redact(url),
+                                 f"malformed response ({type(error).__name__})") from None
             detail = type(error).__name__ + (f" ({error.strerror})" if error.strerror else "")
             raise FetchError("connect_failed", _redact(url), detail) from None
         finally:
+            watchdog.disarm()
             conn.release()
 
     def _read_body(self, raw, conn, response, purpose, budget, usage, deadline, url):
@@ -904,8 +1004,8 @@ class SafeFetcher:
             decoder = False
         else:
             raise FetchError("decode_error", _redact(url), f"unsupported content-encoding {encoding[:40]}")
-        declared = response.headers.get("content-length", "")
-        if not may_truncate and declared.isdigit() and int(declared) > limit and encoding == "identity":
+        declared = response.headers.get("content-length", "").strip()
+        if not may_truncate and _DIGITS.fullmatch(declared) and int(declared) > limit and encoding == "identity":
             raise FetchError("too_large", _redact(url), f"declared body of {declared} bytes exceeds {limit}")
         out = bytearray()
         wire = 0
@@ -957,30 +1057,30 @@ class SafeFetcher:
         response.wire = wire
 
     def _robots_entry(self, parts, budget, usage, resolved, deadline) -> _Robots:
-        host = parts.hostname
+        key = _robots_key(parts)
         now = self._clock()
         with self._lock:
-            entry = self._robots.get(host)
-            host_lock = self._robots_locks.setdefault(host, threading.Lock())
+            entry = self._robots.get(key)
+            host_lock = self._robots_locks.setdefault(key, threading.Lock())
         if entry is not None and (now - entry.fetched_at < ROBOTS_TTL):
             return entry
         with host_lock:
             now = self._clock()
             with self._lock:
-                entry = self._robots.get(host)
+                entry = self._robots.get(key)
             if entry is not None and (now - entry.fetched_at < ROBOTS_TTL):
                 return entry
-            stored = self.cache.robots(host) if self.cache is not None else None
+            stored = self.cache.robots(key) if self.cache is not None else None
             if stored is not None and now - stored[1] < ROBOTS_TTL:
                 entry = _robots_from_text(stored[0], stored[1], user_agent=self.policy.user_agent)
             else:
                 entry = self._fetch_robots(parts, budget, usage, resolved, deadline)
             with self._lock:
-                self._robots[host] = entry
+                self._robots[key] = entry
             return entry
 
     def _fetch_robots(self, parts, budget, usage, resolved, deadline) -> _Robots:
-        host = parts.hostname
+        key = _robots_key(parts)
         robots = urlsplit(urlunsplit((parts.scheme, parts.netloc, "/robots.txt", "", "")))
         headers = {"User-Agent": self.policy.user_agent, "Accept": "text/plain,*/*;q=0.5",
                    "Accept-Encoding": "gzip, deflate", "Connection": "close"}
@@ -995,11 +1095,11 @@ class SafeFetcher:
         if 200 <= response.status < 300:
             text = response.body.decode("utf-8", "replace")
             if self.cache is not None:
-                self.cache.put_robots(host, text, now)
+                self.cache.put_robots(key, text, now)
             return _robots_from_text(text, now, user_agent=self.policy.user_agent)
         if 400 <= response.status < 500:
             if self.cache is not None:
-                self.cache.put_robots(host, "", now)
+                self.cache.put_robots(key, "", now)
             return _robots_from_text("", now, user_agent=self.policy.user_agent)
         return _robots_disallow_all(now, f"robots.txt answered HTTP {response.status}")
 

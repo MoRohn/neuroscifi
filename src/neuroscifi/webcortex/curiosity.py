@@ -143,6 +143,9 @@ def _entry(kind, target, gain, mode, importance, reason, *, extra=None, factor=1
 def rank(db, now, *, limit=10) -> list[dict]:
     """Candidates sorted by utility (desc), then the excluded ones (excluded=True) with the reason."""
     from . import knowledge, temporal
+    from ..instance.errors import ValidationError
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValidationError("limit must be a positive integer")
     cfg = state.get_config(db)
     monitor_tasks = _monitor_keys(db)
     errors = {kid for (kid,) in db.execute("SELECT knowledge_id FROM web_predictions WHERE outcome='error' AND "
@@ -223,26 +226,33 @@ def rank(db, now, *, limit=10) -> list[dict]:
             entry if gain * factor >= MIN_GAIN else entry | {"excluded": True, "utility": 0.0})
     chosen.sort(key=lambda e: (-e["utility"], str(e["target"])))
     excluded.sort(key=lambda e: str(e["target"]))
-    limit = max(1, int(limit))
     return chosen[:limit] + [e | {"excluded": True, "utility": 0.0} for e in excluded[:limit]]
 
 
 def propose(db, candidate: dict, now) -> dict:
     """Turn a candidate into a research *proposal* the owner authorises (pending scope web:research:<task id>).
 
-    The task is created queued with stage 'proposed'; the worker skips it until the owner confirms."""
+    The task is created queued with stage 'proposed'; the worker skips it until the owner confirms. Task and
+    question are written in one transaction (one state bump). Conflict when the web question budget
+    (config.max_open_web_questions) is spent: a proposal is a question, and the owner is not interrupted further."""
     from ..instance import store
+    from ..instance.errors import Conflict
     from . import orchestrator
+    from .knowledge import open_question, question_room, quote
     target = candidate.get("target") or {}
     objective = target.get("statement") or _terms(target.get("key", ""))
     if candidate.get("hypotheses"):
         objective = f"{objective} ({candidate['hypotheses'][0]['query']})"
-    task = orchestrator.submit(db, objective, now, mode=candidate.get("mode", "fact_verification"),
-                               origin="curiosity", proposed=True)
+    prepared = orchestrator.prepare(db, objective, now, mode=candidate.get("mode", "fact_verification"),
+                                    origin="curiosity", proposed=True)
     with store.write(db):
-        from .knowledge import open_question, quote
-        pid = open_question(db, f"web:research:{task['id']}",
+        cfg = state.get_config(db)
+        if not question_room(db, cfg):
+            raise Conflict(f"the owner already has {cfg.max_open_web_questions} open web questions; no further "
+                           "research proposal is made until some are answered")
+        task_id = orchestrator.insert(db, prepared, now)
+        pid = open_question(db, f"web:research:{task_id}",
                             f"Curiosity proposes researching «{quote(objective)}» ({candidate.get('reason', '')}). "
                             "Run it?", now)
         store.bump_state_version(db)
-    return task | {"pending_id": pid}
+    return orchestrator.get(db, task_id) | {"pending_id": pid}

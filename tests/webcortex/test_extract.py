@@ -114,7 +114,7 @@ def test_last_modified_header_is_the_last_resort():
     ("2026-11-03", 1793664000.0), ("2026-11-03T10:00:00Z", 1793700000.0), ("2026-11-03T10:00:00+0000", 1793700000.0),
     ("2026-11-03 10:00:00 UTC", 1793700000.0), ("Tue, 03 Nov 2026 10:00:00 GMT", 1793700000.0),
     ("3 November 2026", 1793664000.0), ("3rd Nov. 2026", 1793664000.0), ("Nov 3, 2026", 1793664000.0),
-    ("2026", 1767225600.0), ("not a date", None), ("", None), ("1066-10-14", None)])
+    ("2026", None), ("not a date", None), ("", None), ("1066-10-14", None)])
 def test_date_parsing(text, expected):
     assert ex._parse_date(text) == expected
 
@@ -315,3 +315,82 @@ def test_canonical_url():
     assert canonical_url("http://example.com:8080/") == "http://example.com:8080/"
     assert canonical_url("http://user:pw@example.com/x?ref=hn") == "http://example.com/x"
     assert canonical_url("not a url") == "not a url"
+
+
+# ---- review remediation (V1) ------------------------------------------------------------------------------------
+
+import time  # noqa: E402
+
+
+def page_result(body: bytes, content_type="text/html"):
+    return FetchResult(url="http://e.example/", final_url="http://e.example/", status=200,
+                       headers={"content-type": content_type}, content_type="text/html", body=body,
+                       retrieved_at=0.0, retrieval_mode="live")
+
+
+@pytest.mark.parametrize("attributes", [80_000, 2_000])
+def test_tag_with_huge_attribute_list_is_refused_fast(attributes):
+    body = ("<html><body><div " + " ".join(f"a{i}='x'" for i in range(attributes)) + ">x</div>"
+            "<p>" + PARA + "</p></body></html>").encode()
+    started = time.monotonic()
+    with pytest.raises(FetchError) as info:
+        extract(page_result(body))
+    assert info.value.code == "decode_error" and time.monotonic() - started < 1.5
+
+
+def test_many_moderate_tags_and_script_text_are_not_refused():
+    script = "<script>" + "if (a<b && c<d) { x = 1; }\n" * 3000 + "</script>"
+    body = ("<html><head>" + script + "</head><body>" + "<p class='c' id='i'>word</p>" * 5000
+            + "<p>" + PARA + "</p></body></html>").encode()
+    doc = extract(page_result(body))
+    assert "Dendritic spikes" in doc.text
+
+
+@pytest.mark.parametrize("charset", ["base64", "hex", "rot13", "zlib", "bz2", "uu", "idna", "quopri"])
+def test_non_text_charsets_fall_back_to_utf8(charset):
+    body = "<html><head><title>Café</title></head><body><p>Hello wörld</p></body></html>".encode()
+    doc = html_doc(body, headers={"content-type": f"text/html; charset={charset}"})
+    assert doc.title == "Café" and "Hello wörld" in doc.text
+    meta = f'<html><head><meta charset="{charset}"><title>Café</title></head><body><p>x</p></body></html>'
+    assert html_doc(meta.encode()).title == "Café"
+
+
+def test_json_ld_walk_is_bounded():
+    inner = ",".join(["0"] * 45)
+    level2 = ",".join(["[" + inner + "]"] * 100)
+    ld = "[" + ",".join(["[" + level2 + "]"] * 100) + "]"
+    body = ('<html><head><script type="application/ld+json">' + ld + '</script></head><body><p>' + PARA
+            + "</p></body></html>").encode()
+    started = time.monotonic()
+    html_doc(body)
+    assert time.monotonic() - started < 1.5
+
+
+def test_bare_year_is_not_a_publication_date_and_offsets_are_kept():
+    doc = html_doc('<html><head><meta name="citation_date" content="2019"></head><body><p>x</p></body></html>')
+    assert doc.published_at is None and "date_source" not in doc.metadata
+    assert ex._parse_date("2026/11/03 10:00 +0500") == 1793682000.0
+    assert ex._parse_date("2026-11-03 10:00:00 -02:00") == 1793707200.0
+    assert ex._parse_date("2026-11-03T10:00:00.123456789Z") == pytest.approx(1793700000.0, abs=1)
+    assert ex._parse_date("2026-11") == 1793491200.0
+
+
+UTF16_FEED = '<?xml version="1.0" encoding="UTF-16"?><rss><channel><title>T</title><item><title>Wide</title>' \
+             '<link>http://feeds.example/w</link></item></channel></rss>'
+LAUGHS = '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE r [<!ENTITY a "aaaaaaaaaa">' + "".join(
+    f'<!ENTITY {chr(98 + i)} "' + ("&" + chr(97 + i) + ";") * 10 + '">' for i in range(8)) + \
+    ']><rss><channel><item><title>&i;</title><link>http://x.example/</link></item></channel></rss>'
+XXE = '<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/hostname">]>' \
+      '<rss><channel><item><title>&x;</title><link>http://x.example/</link></item></channel></rss>'
+
+
+@pytest.mark.parametrize("codec", ["utf-16", "utf-16-le", "utf-16-be"])
+def test_utf16_xml_parses_but_declarations_are_refused(codec):
+    body = UTF16_FEED.encode(codec)
+    if codec != "utf-16":
+        body = ("﻿" + UTF16_FEED).encode(codec)
+    assert [i["url"] for i in parse_feed(body, "http://feeds.example/rss")] == ["http://feeds.example/w"]
+    for hostile in (LAUGHS, XXE):
+        with pytest.raises(FetchError) as info:
+            parse_feed(hostile.encode(codec), "http://feeds.example/rss")
+        assert info.value.code == "decode_error" and "DOCTYPE" in info.value.detail

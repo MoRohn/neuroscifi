@@ -75,7 +75,7 @@ class Research:
         db = store.create(self.path, NOW)
         state.set_config(db, {"min_domain_interval": 0.0}, NOW)
         db.close()
-        self.server = ConsoleServer(self.path, 0, token=TOKEN,
+        self.server = ConsoleServer(self.path, 0, token=TOKEN, web_worker=True,   # opt-in since C-P0-1
                                     worker_options={"fixture": self.web, "providers": [CorpusProvider(results)]})
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.url = self.server.url
@@ -214,6 +214,8 @@ def test_research_journey(research, new_page):
     page.locator("#monitorBtn").click()
     expect(page.locator("#monitorStatus")).to_contain_text("Monitoring")
     expect(page.locator("#monitorList tbody tr")).to_have_count(1)
+    expect(page.locator("#monitorList thead")).to_contain_text("Recent findings")   # A-P2-7
+    expect(page.locator("#monitorList tbody")).to_contain_text("none yet")
     page.locator("#monitorList").get_by_role("button", name=re.compile("^Pause monitor")).click()
     expect(page.locator("#monitorList .badge")).to_have_text("paused")
     expect(page.locator("#providerTable")).to_contain_text("corpus")

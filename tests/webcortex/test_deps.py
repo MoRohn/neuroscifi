@@ -242,3 +242,28 @@ def test_budget_is_clamped_by_the_owner_ceiling(tmp_path, capsys, monkeypatch, p
     assert nsf(capsys, "web", "config", "--set", 'budget_ceiling={"max_requests": 3}', "--db", db)[0] == 0
     code, out = nsf(capsys, "web", "deps", "--audit", "--root", str(project), "--db", db)
     assert code == 0 and out["budget"]["max_requests"] == 3
+
+
+@pytest.mark.parametrize("current, advisories, target", [
+    ("3.1.2", [{"fixed_in": ["3.1.3", "8f3c1d2e9a7b"]}], "3.1.3"),            # OSV GIT commit hashes are not releases
+    ("3.1.2", [{"fixed_in": ["8f3c1d2e9a7b4c11"]}], None),
+    ("2.7.1", [{"fixed_in": ["2.7.5", "3.1.2"]}], "2.7.5"),                   # the fix on the same release line
+    ("2.7.1", [{"fixed_in": ["2.7.5", "3.1.2"]}, {"fixed_in": ["2.8.1"]}], "2.8.1"),   # fixes every advisory
+    ("1.4.0", [{"fixed_in": ["2.0.0rc1", "2.0.1"]}], "2.0.1"),                # never a pre-release
+    ("0.3.1", [{"fixed_in": ["0.4.0", "0.3.9"]}], "0.3.9"),                   # 0.x: the minor is the line
+])
+def test_fix_target_is_the_smallest_release_fixing_every_advisory(current, advisories, target):
+    """coderev r1: OSV GIT ranges give commit hashes; deps recommends the smallest installable fix >= current."""
+    from neuroscifi.webcortex import deps as d
+    assert d._fix_target(current, advisories) == target
+
+
+def test_network_check_without_services_is_a_validation_error(tmp_path):
+    from neuroscifi.instance import store
+    from neuroscifi.instance.errors import ValidationError
+    from neuroscifi.webcortex import deps as d, state
+    db = store.create(tmp_path / "i.sqlite", 1_795_200_000.0)
+    state.set_config(db, {"enabled": True}, 1_795_200_000.0)
+    with pytest.raises(ValidationError):
+        d.run(db, tmp_path / "i.sqlite", 1_795_200_000.0, network=True, services=None, root=tmp_path)
+    db.close()

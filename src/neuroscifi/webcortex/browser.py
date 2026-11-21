@@ -1,9 +1,11 @@
 """Sandboxed JavaScript rendering, every request served through SafeFetcher (ARCHITECTURE §3, ADR-030).
 
 Contract
-- `BrowserRenderer(fetcher).render(url, budget=, usage=)` charges one browser session, fetches the document with
-  `fetcher.fetch(purpose="page")`, then loads it in a fresh headless Chromium context and returns the rendered DOM
-  as a FetchResult with retrieval_mode='rendered'. Off unless the task budget has browser sessions
+- `BrowserRenderer(fetcher).render(url, budget=, usage=, main=None)` charges one browser session, fetches the
+  document with `fetcher.fetch(purpose="page")` (or uses `main`, the FetchResult the caller already fetched for
+  `url`, so the page is neither fetched nor charged twice), then loads it in a fresh headless Chromium context and
+  returns the rendered DOM as a FetchResult with retrieval_mode='rendered'. When the browser ends on a non-http(s)
+  page (a blocked navigation shows `chrome-error://chromewebdata/`), that page is not content: `main` is returned. Off unless the task budget has browser sessions
   (`config.browser_rendering`); `available()` reports (False, reason) when Playwright or Chromium is missing.
 - Isolation: Chromium's own sandbox on, no profile (fresh context per render, closed afterwards), no extensions,
   background networking/sync/component updates off, downloads refused, no permissions, service workers blocked,
@@ -17,7 +19,10 @@ Contract
   Defence in depth for traffic that bypasses routing: all DNS inside Chromium resolves to NOTFOUND, a dead proxy
   is configured, and WebRTC may not use non-proxied UDP. Chromium therefore never opens a
   socket to the page's hosts itself.
-- Bounded: one wall-clock `timeout` per render; the rendered body is capped at the fetcher's max_bytes.
+- Bounded: one wall-clock `timeout` per render; the rendered body is capped at the fetcher's max_bytes. If the
+  render thread is still busy RENDER_GRACE seconds after the timeout, a watchdog SIGKILLs the Playwright driver
+  and every process below it (Chromium and its helpers), so a hung render leaks neither a browser nor a thread
+  that keeps driving one.
 - `last_events` keeps the sub-request outcomes of the latest render ({url (no query), outcome, code}) for audit.
 """
 from __future__ import annotations
@@ -25,6 +30,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shutil
+import signal
 import threading
 import time
 from urllib.parse import urlsplit
@@ -51,6 +57,7 @@ BLOCK_SCRIPT = """(() => {
   }
 })();"""
 SERVED_HEADERS = ("content-type", "content-security-policy", "content-language")
+RENDER_GRACE = 5.0      # seconds past the render timeout before the watchdog kills the driver and Chromium
 
 
 class BrowserRenderer:
@@ -83,7 +90,9 @@ class BrowserRenderer:
             return True, f"playwright chromium at {bundled}"
         return False, "no chromium found (install chromium or set NSF_CHROMIUM)"
 
-    def render(self, url, *, budget, usage) -> FetchResult:
+    def render(self, url, *, budget, usage, main: FetchResult | None = None) -> FetchResult:
+        """`main`: the FetchResult of `url` the caller already fetched (purpose='page'); it is not fetched or
+        charged again. Without it the page is fetched here."""
         ok, reason = self.available()
         if not ok:
             raise FetchError("disabled", _redact(url), reason)
@@ -91,16 +100,19 @@ class BrowserRenderer:
             raise FetchError("disabled", _redact(url), "rendering needs a task budget and usage")
         check_url(url, self.fetcher.policy)
         _charge(budget, usage, browser_sessions=1)
-        main = self.fetcher.fetch(url, purpose="page", budget=budget, usage=usage)
+        if main is None:
+            main = self.fetcher.fetch(url, purpose="page", budget=budget, usage=usage)
         if main.content_type not in ("text/html", "application/xhtml+xml"):
             return main
         box: dict = {}
         worker = threading.Thread(target=self._render_thread, args=(main, budget, usage, box), daemon=True,
                                   name="webcortex-render")
         worker.start()
-        worker.join(self.timeout + 15.0)
+        worker.join(self.timeout + RENDER_GRACE)
         if worker.is_alive():
-            raise FetchError("timeout", _redact(url), "renderer did not finish")
+            _kill_tree(box.get("driver_pid"))   # Chromium dies with its driver; the thread's next call then fails
+            worker.join(RENDER_GRACE)
+            raise FetchError("timeout", _redact(url), f"renderer did not finish within {self.timeout:g}s; killed")
         if "error" in box:
             raise box["error"]
         return box["result"]
@@ -108,11 +120,11 @@ class BrowserRenderer:
     # ---- inside the render thread (Playwright's sync API must not share a thread with an asyncio loop) -------
     def _render_thread(self, main, budget, usage, box):
         try:
-            box["result"] = self._render(main, budget, usage)
+            box["result"] = self._render(main, budget, usage, box)
         except BaseException as error:          # handed back to the calling thread
             box["error"] = error
 
-    def _render(self, main: FetchResult, budget, usage) -> FetchResult:
+    def _render(self, main: FetchResult, budget, usage, box=None) -> FetchResult:
         from playwright.sync_api import Error as PlaywrightError
         from playwright.sync_api import TimeoutError as PlaywrightTimeout
         from playwright.sync_api import sync_playwright
@@ -157,7 +169,10 @@ class BrowserRenderer:
             route.fulfill(status=result.status, headers=_served_headers(result), body=result.body)
 
         exe = self._executable()
-        with sync_playwright() as playwright:
+        manager = sync_playwright()
+        with manager as playwright:
+            if box is not None:
+                box["driver_pid"] = _driver_pid(manager)
             browser = playwright.chromium.launch(executable_path=exe, headless=True, chromium_sandbox=True,
                                                  args=CHROMIUM_ARGS, proxy=DEAD_PROXY,
                                                  timeout=max(1000, (deadline - time.monotonic()) * 1000))
@@ -202,7 +217,7 @@ class BrowserRenderer:
         body = html.encode("utf-8")
         truncated = len(body) > policy.max_bytes
         if urlsplit(final).scheme not in ("http", "https"):
-            final = main.final_url
+            return main          # chrome-error:// (blocked navigation) or about:blank: not the page's content
         return FetchResult(url=main.url, final_url=final, status=main.status,
                            headers={"content-type": "text/html; charset=utf-8"}, content_type="text/html",
                            body=body[:policy.max_bytes], retrieved_at=self.fetcher._clock(),
@@ -214,6 +229,50 @@ def _served_headers(result: FetchResult) -> dict:
     headers = {name: result.headers[name] for name in SERVED_HEADERS if result.headers.get(name)}
     headers.setdefault("content-type", result.content_type or "application/octet-stream")
     return headers
+
+
+def _driver_pid(manager) -> int | None:
+    """Pid of the Playwright driver process behind a sync_playwright() manager (Chromium runs below it)."""
+    try:
+        return int(manager._connection._transport._proc.pid)   # playwright 1.64 internals; None if they move
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _descendants(pid: int) -> list[int]:
+    """Every process below pid (Linux /proc), parents before children; [] where /proc is unavailable."""
+    children: dict[int, list[int]] = {}
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return []
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        try:
+            stat = Path(f"/proc/{entry}/stat").read_text()
+            ppid = int(stat[stat.rfind(")") + 2:].split()[1])
+        except (OSError, ValueError, IndexError):
+            continue
+        children.setdefault(ppid, []).append(int(entry))
+    out, stack = [], [pid]
+    while stack:
+        for child in children.get(stack.pop(), ()):
+            out.append(child)
+            stack.append(child)
+    return out
+
+
+def _kill_tree(pid: int | None) -> None:
+    """SIGKILL a driver and everything below it. The tree is listed first: Chromium's helpers would be re-parented
+    away (and become unfindable) once their parent dies."""
+    if not pid:
+        return
+    for target in [pid] + _descendants(pid):
+        try:
+            os.kill(target, signal.SIGKILL)
+        except OSError:
+            pass
 
 
 def _bundled_chromium() -> str | None:

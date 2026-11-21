@@ -167,7 +167,7 @@ def test_disabled_by_default_and_owner_switches(console):
     status = c.ok("GET", "/api/web/status")
     assert status["config"] == {**status["config"], "enabled": False, "autonomous": False, "pocket_research": False,
                                 "browser_rendering": False}
-    assert status["worker"] == {"embedded": True, "running": True}
+    assert status["worker"] == {"embedded": True, "running": True, "note": None}
     assert status["curiosity"] is None and status["tasks"] == {} and status["active"] == 0
     assert "deep_research" in status["modes"] and len(status["modes"]) == 9
     assert {p["name"] for p in status["providers"]} >= {"openwebsearch", "wikipedia"}
@@ -313,7 +313,7 @@ def test_knowledge_review_archive_refresh_and_forget(console):
     reviewed = c.ok("POST", f"/api/web/knowledge/{kid}/review", {"accept": True, "note": "checked the release notes"})
     assert reviewed["status"] == "accepted" and reviewed["previous_status"] == "provisional"
     refreshed = c.ok("POST", f"/api/web/knowledge/{kid}/refresh", {})
-    assert refreshed["origin"] == f"refresh:{kid}" and refreshed["mode"] == "fact_verification"
+    assert refreshed["origin"] == "console" and refreshed["mode"] == "fact_verification"   # the owner's refresh
     wait_for(c, refreshed["id"])
     assert c.ok("POST", f"/api/web/knowledge/{kid}/archive", {"note": "kept for history"})["status"] == "archived"
     code, data = c.post(f"/api/web/knowledge/{kid}/refresh", {})
@@ -346,10 +346,18 @@ def test_monitor_lifecycle(console):
 
 # ---- worker lifecycle ------------------------------------------------------------------------------------
 
-def test_no_web_worker_flag_and_shutdown_stops_the_worker(instance, web):
-    args = build_parser().parse_args(["console", "--db", str(instance), "--no-web-worker"])
-    assert args.no_web_worker is True
-    assert build_parser().parse_args(["console", "--db", str(instance)]).no_web_worker is False
+def test_web_worker_is_opt_in_and_shutdown_stops_the_worker(instance, web):
+    """C-P0-1: the embedded worker is opt-in (`--web-worker`); `--no-web-worker` is still accepted (the default)."""
+    parse = lambda *extra: build_parser().parse_args(["console", "--db", str(instance), *extra])  # noqa: E731
+    assert parse().web_worker is False and parse("--web-worker").web_worker is True
+    assert parse("--no-web-worker").web_worker is False
+    with pytest.raises(SystemExit):
+        parse("--web-worker", "--no-web-worker")
+    default = server.ConsoleServer(instance, 0, token=TOKEN)
+    try:
+        assert default.worker is None
+    finally:
+        default.server_close()
     c = start_console(instance, web)
     worker = c.srv.worker
     assert worker.is_alive()
@@ -357,7 +365,59 @@ def test_no_web_worker_flag_and_shutdown_stops_the_worker(instance, web):
     assert not worker.is_alive()
     c = start_console(instance, web, worker=False)
     try:
-        assert c.srv.worker is None and c.ok("GET", "/api/web/status")["worker"] == {"embedded": False,
-                                                                                    "running": False}
+        status = c.ok("GET", "/api/web/status")["worker"]
+        assert c.srv.worker is None and status["embedded"] is False and status["running"] is False
+        assert "neuroscifi-webcortex" in status["note"] and "--web-worker" in status["note"]
     finally:
         stop_console(c)
+
+
+# ---- review remediation V2 ---------------------------------------------------------------------------------------
+
+def test_monitors_api_shows_recent_findings(instance, web):
+    """A-P2-7: the console's monitors list carries each monitor's recent findings (newest first)."""
+    c = start_console(instance, web, worker=False)
+    try:
+        c.ok("POST", "/api/web/config", {"enabled": True})
+        mon = c.ok("POST", "/api/web/monitors", {"topic": "Zephyr compiler releases", "interval_hours": 24})
+        assert c.ok("GET", "/api/web/monitors")[0]["findings"] == []
+        db = store.connect(instance)
+        try:
+            with store.write(db):
+                state.log_event(db, None, "finding", {"monitor_id": mon["id"], "changes": {
+                    "meaningful": True, "changed_values": [{"key": "zephyr version", "before": ["v4.2.0"],
+                                                            "after": ["v4.3.0"], "polarity": [1, 1]}],
+                    "new_claims": [], "superseded": [], "pending_id": 7}}, T0 + 5)
+        finally:
+            db.close()
+        found = c.ok("GET", "/api/web/monitors")[0]["findings"]
+        assert len(found) == 1 and found[0]["pending_id"] == 7
+        assert found[0]["changed_values"][0]["after"] == ["v4.3.0"]
+    finally:
+        stop_console(c)
+
+
+def test_embedded_worker_errors_are_logged_and_backed_off(instance, monkeypatch, capsys):
+    """C-P2-4: exception type and a truncated message are logged; the retry delay doubles up to 60 s."""
+    from neuroscifi.webcortex import scheduler
+    srv = server.ConsoleServer(instance, 0, token=TOKEN)
+    waits = []
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("database disk image is malformed " + "x" * 500)
+
+    def wait(seconds):
+        waits.append(seconds)
+        if len(waits) >= 6:
+            srv.worker_stop.set()
+        return srv.worker_stop.is_set()
+
+    monkeypatch.setattr(scheduler, "work", boom)
+    monkeypatch.setattr(srv.worker_stop, "wait", wait)
+    try:
+        srv._work()
+    finally:
+        srv.server_close()
+    assert waits == [5.0, 10.0, 20.0, 40.0, 60.0, 60.0]
+    err = capsys.readouterr().err
+    assert "RuntimeError: database disk image is malformed" in err and "x" * 300 not in err

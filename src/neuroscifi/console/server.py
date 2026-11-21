@@ -263,8 +263,9 @@ def _memory(c, p, q, b):
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 WEB_SWITCHES = ("enabled", "autonomous", "pocket_research", "browser_rendering")
-WORKER_POLL = 2.0      # seconds between idle polls of the embedded worker
-WORKER_RETRY = 5.0     # seconds before the embedded worker restarts after an unexpected error
+WORKER_POLL = 5.0      # seconds between idle polls of the opt-in embedded worker (as `nsf web work`)
+WORKER_RETRY = 5.0     # first back-off after an unexpected worker error; doubles per consecutive error
+WORKER_RETRY_MAX = 60.0
 
 
 def _task_id(text):
@@ -316,7 +317,10 @@ def _web_status(c, p, q, b):
             "tasks": counts, "active": sum(n for s, n in counts.items() if s not in TERMINAL_STATES),
             "curiosity": [x for x in curiosity.rank(c.db, c.now, limit=5) if not x["excluded"]][:5]
             if cfg.enabled else None,
-            "worker": {"embedded": worker is not None, "running": bool(worker and worker.is_alive())},
+            "worker": {"embedded": worker is not None, "running": bool(worker and worker.is_alive()),
+                       "note": None if worker is not None else
+                       "queued tasks run in the neuroscifi-webcortex service (`nsf web work`); start the console "
+                       "with --web-worker to run them here"},
             "modes": list(MODES), "memory": wstate.counts(c.db)}
 
 
@@ -402,13 +406,16 @@ def _web_knowledge_action(action):
             _fields(b, (), ("note",))
             return getattr(knowledge, action)(c.db, int(p[0]), c.now, note=_note(b))
         _fields(b)
+        if action == "refresh":   # the owner's refresh, not autonomous research
+            return knowledge.refresh(c.db, int(p[0]), c.now, origin="console")
         return getattr(knowledge, action)(c.db, int(p[0]), c.now)
     return handler
 
 
 def _web_monitors(c, p, q, b):
+    """Monitors, each with its most recent findings (meaningful changes, newest first)."""
     from ..webcortex import scheduler
-    return scheduler.monitor_list(c.db)
+    return [m | {"findings": scheduler.findings(c.db, m["id"], limit=5)} for m in scheduler.monitor_list(c.db)]
 
 
 def _web_monitor_add(c, p, q, b):
@@ -643,11 +650,13 @@ class Handler(BaseHTTPRequestHandler):
 class ConsoleServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, db_path, port=DEFAULT_PORT, *, token=None, clock=time.time, web_worker=True,
+    def __init__(self, db_path, port=DEFAULT_PORT, *, token=None, clock=time.time, web_worker=False,
                  worker_options=None):
-        """web_worker: run queued research tasks in a background thread (scheduler.work with its own connection;
-        it idles cheaply while web access is disabled). Turn it off when the `nsf web work` service runs them;
-        task leases keep two workers from running one task. worker_options: extra scheduler.work arguments, e.g.
+        """web_worker (opt-in, `nsf console --web-worker`): run queued research tasks in a background thread
+        (scheduler.work with its own connection; it idles while web access is disabled). Off by default: the
+        console service is confined to loopback, so research runs in the neuroscifi-webcortex service (`nsf web
+        work`), which has network access; turn it on only for a development console that can reach the internet.
+        Task leases keep two workers from running one task. worker_options: extra scheduler.work arguments, e.g.
         {"fixture": FixtureWeb, "providers": [...]} for offline tests."""
         self.db_path = Path(db_path).resolve()
         store.open_existing(self.db_path).close()  # refuse to start without an instance
@@ -663,14 +672,23 @@ class ConsoleServer(ThreadingHTTPServer):
             self.worker.start()
 
     def _work(self):
+        """The embedded worker loop: an unexpected error is logged (exception type and a truncated message, never
+        a traceback or task content) and the loop restarts after an exponential back-off (5 s doubling to 60 s)."""
         from ..webcortex import scheduler
+        delay = WORKER_RETRY
         while not self.worker_stop.is_set():
+            started = time.monotonic()
             try:
                 scheduler.work(self.db_path, stop=self.worker_stop, poll=WORKER_POLL, sleep=self.worker_stop.wait,
                                **self.worker_options)
-            except Exception:
-                print("nsf-console: research worker error; retrying", file=sys.stderr, flush=True)
-                self.worker_stop.wait(WORKER_RETRY)
+            except Exception as exc:
+                if time.monotonic() - started > WORKER_RETRY_MAX:
+                    delay = WORKER_RETRY   # it ran fine for a while: start the back-off over
+                message = " ".join(str(exc).split())[:200]
+                print(f"nsf-console: research worker error: {type(exc).__name__}: {message}; retrying in "
+                      f"{delay:g} s", file=sys.stderr, flush=True)
+                self.worker_stop.wait(delay)
+                delay = min(WORKER_RETRY_MAX, delay * 2)
 
     def server_close(self):
         self.worker_stop.set()

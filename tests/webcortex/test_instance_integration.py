@@ -205,3 +205,189 @@ def test_inventory_counts_web_memory(db):
     web = store.inventory(db)["web"]
     assert web["tasks"] == 1 and web["claims"] == 2 and web["knowledge"] == 1 and web["provisional_knowledge"] == 1
     assert web["open_tasks"] == 1 and web["accepted_knowledge"] == 0
+
+
+# ---- review remediation V2: forgetting survives checkpoint restore, logs carry no payload ---------------------
+
+def _restore(db, tmp_path, forget):
+    """Checkpoint -> forget (callable) -> restore into a new file. Returns (restore result, restored path)."""
+    from neuroscifi.instance import checkpoints
+    path = db_path(db)
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 1)
+    forget()
+    assert db.execute("SELECT status FROM checkpoints WHERE id=?", (cp["id"],)).fetchone()[0] == "stale"
+    dest = tmp_path / "restored.sqlite"
+    return checkpoints.restore(db, cp["id"], dest, T0 + 3), dest
+
+
+def test_restore_never_resurrects_forgotten_research(db, tmp_path):
+    """A-P0-1: the restored copy of a checkpoint taken before forget_research holds no task, knowledge, question or
+    objective byte of it."""
+    import sqlite3
+    tid, out = consolidated(db, [two_sources()], objective=SECRET_OBJECTIVE)
+    result, dest = _restore(db, tmp_path, lambda: governance.forget_research(db, tid, T0 + 2))
+    assert result["web_removed"]["tasks"] == 1 and result["web_forgotten_applied"] >= 1
+    copy = sqlite3.connect(dest)
+    try:
+        for table in ("web_tasks", "web_claims", "web_knowledge", "web_events", "web_feedback"):
+            assert copy.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0, table
+        assert copy.execute("SELECT count(*) FROM pending WHERE scope LIKE 'web:%' AND resolved_at IS NULL"
+                            ).fetchone()[0] == 0
+    finally:
+        copy.close()
+    assert b"quokkazz" not in raw_bytes(dest)
+
+
+def test_restore_never_resurrects_forgotten_knowledge(db, tmp_path):
+    import sqlite3
+    _, first = consolidated(db, [two_sources(published=T0 - 10 * DAY)])
+    _, second = consolidated(db, [two_sources(published=T0 - DAY, text="NumPy 2.4.0 is the latest release of NumPy.",
+                                              hosts=("c.example", "d.example"))], T0 + DAY)
+    old, new = first["provisional"][0], second["superseded"][0]["new"]
+    result, dest = _restore(db, tmp_path, lambda: governance.forget_knowledge(db, old, T0 + 2))
+    assert result["web_removed"]["knowledge"] == 2
+    copy = sqlite3.connect(dest)
+    try:
+        assert copy.execute("SELECT count(*) FROM web_knowledge").fetchone()[0] == 0
+        assert copy.execute("SELECT count(*) FROM web_predictions").fetchone()[0] == 0
+        open_q = copy.execute("SELECT question FROM pending WHERE scope IN (?,?)",
+                              (f"web:knowledge:{old}", f"web:knowledge:{new}")).fetchall()
+        assert all(q == "#forgotten" for (q,) in open_q)
+        assert copy.execute("SELECT count(*) FROM web_claims").fetchone()[0] == 4   # claims stay with their tasks
+    finally:
+        copy.close()
+
+
+def test_restore_never_resurrects_a_forgotten_source_domain(db, tmp_path):
+    import sqlite3
+    tid, out = consolidated(db, [two_sources(hosts=("embarrassing-clinic.example", "b.example"))])
+    result, dest = _restore(db, tmp_path,
+                            lambda: governance.forget_source(db, "embarrassing-clinic.example", T0 + 2))
+    assert result["web_removed"]["sources"] == 1
+    copy = sqlite3.connect(dest)
+    try:
+        assert copy.execute("SELECT count(*) FROM web_claims WHERE domain LIKE '%embarrassing%'").fetchone()[0] == 0
+        assert copy.execute("SELECT status FROM web_knowledge").fetchall() == [("stale",)]
+    finally:
+        copy.close()
+    assert b"embarrassing-clinic" not in raw_bytes(dest)
+
+
+def test_deletion_log_keeps_only_a_digest_of_a_forgotten_source(db):
+    """A-P1-2: neither deletion_log.target_id nor its effects name the forgotten domain or URL; the cache keys come
+    back in the return value only."""
+    _, out = consolidated(db, [two_sources(hosts=("embarrassing-clinic.example", "b.example"))])
+    with store.write(db):
+        state.save_source(db, out["task_id"], {"url": "http://embarrassing-clinic.example/numpy",
+                                               "canonical_url": "http://embarrassing-clinic.example/numpy",
+                                               "domain": "embarrassing-clinic.example", "retrieved_at": T0,
+                                               "content_sha256": "cd" * 32}, T0)
+    gone = governance.forget_source(db, "embarrassing-clinic.example", T0 + 1)
+    assert gone["effects"]["cache"]["urls"] == ["http://embarrassing-clinic.example/numpy"]
+    url = governance.forget_source(db, "http://b.example/numpy", T0 + 2)
+    assert url["effects"]["cache"]["urls"]
+    rows = db.execute("SELECT target_kind, target_id, effects FROM deletion_log").fetchall()
+    assert [r[0] for r in rows] == ["source", "source"]
+    assert rows[0][1].startswith("source_domain:#") and rows[1][1].startswith("source_url:#")
+    for _, target, effects in rows:
+        assert "example" not in target and "example" not in effects and "cache" not in json.loads(effects)
+    assert b"embarrassing-clinic" not in raw_bytes(db_path(db))
+    kinds = {k for (k,) in db.execute("SELECT kind FROM web_forgotten")}
+    assert {"source_domain", "source_url", "knowledge"} <= kinds
+
+
+def test_forgetting_the_middle_of_a_version_chain_relinks_instead_of_reviving(db):
+    """C-P1-5: v1 -> v2 -> v3; forgetting v2 makes v1 point at v3 (still superseded), never a second head."""
+    texts = ["NumPy 2.3.5 is the latest release of the NumPy library.", "NumPy 2.4.0 is the latest release of NumPy.",
+             "NumPy 2.5.0 is the latest release of NumPy."]
+    tasks, ids = [], []
+    for n, text in enumerate(texts):
+        tid, out = consolidated(db, [two_sources(published=T0 + n * DAY, text=text,
+                                                 hosts=(f"h{n}a.example", f"h{n}b.example"))], T0 + (n + 1) * DAY)
+        tasks.append(tid)
+        ids.append(out["provisional"][0])
+    gone = governance.forget_research(db, tasks[1], T0 + 9 * DAY)
+    assert gone["effects"]["knowledge_deleted"] == [ids[1]] and gone["effects"]["versions_relinked"] == [ids[0]]
+    rows = {r[0]: r[1:] for r in db.execute("SELECT id, status, superseded_by FROM web_knowledge")}
+    assert rows[ids[0]] == ("superseded", ids[2]) and rows[ids[2]][1] is None
+    heads = [k for k, (status, sup) in rows.items() if sup is None]
+    assert heads == [ids[2]]
+
+
+def test_forget_source_by_the_original_redirecting_url_removes_its_claims(db):
+    """C-P1-6: a page reached through a redirect is forgotten by the URL the owner knows, claims included."""
+    from neuroscifi.webcortex.extract import canonical_url
+    final = "https://www.long.example/article?id=7"
+    tid, _ = consolidated(db, [two_sources()])
+    with store.write(db):
+        sid = state.save_source(db, tid, {"url": "https://t.co/abc", "final_url": final,
+                                          "canonical_url": canonical_url(final), "domain": "long.example",
+                                          "retrieved_at": T0}, T0)
+        db.execute("INSERT INTO web_claims(id,task_id,source_id,text,key,kind,polarity,source_url,canonical_url,domain,"
+                   "retrieved_at,created_at) VALUES('c-redirect',?,?,'SECRET CLAIM TEXT','k','statement',1,?,?,"
+                   "'long.example',?,?)", (tid, sid, canonical_url(final), canonical_url(final), T0, T0))
+    gone = governance.forget_source(db, "https://t.co/abc", T0 + 1)
+    assert gone["effects"]["sources_deleted"] == 1 and gone["effects"]["claims_removed"] == 1
+    assert db.execute("SELECT count(*) FROM web_claims WHERE id='c-redirect'").fetchone()[0] == 0
+    assert b"SECRET CLAIM TEXT" not in raw_bytes(db_path(db))
+
+
+def test_forget_partner_scrubs_web_text_and_a_restored_copy(db, tmp_path):
+    """A-P2-1 (ADR-019): a partner root in an owner-authorised task objective, its events, claims and knowledge is
+    replaced by its label, live and in a restored checkpoint."""
+    import sqlite3
+    from neuroscifi.instance import checkpoints
+    from neuroscifi.webcortex import orchestrator
+    evidence.start_epoch(db, "e1", T0)
+    evidence.observe(db, {"id": "w1", "epoch": "e1", "channel": "word", "action": 0, "bit": 1, "root": "zelphinaqq",
+                          "sample_id": None, "actor": "owner", "consent": "learn", "provenance": "observed"}, T0 + 1)
+    task = orchestrator.submit(db, "Who is zelphinaqq?", T0 + 2, mode="quick_lookup", origin="cli",
+                               authorization=orchestrator.AUTHORIZED_DISCLOSURE)
+    with store.write(db):
+        state.log_event(db, task["id"], "query", {"text": "zelphinaqq biography"}, T0 + 2)
+    cp = checkpoints.create(db, db_path(db), tmp_path / "cps", T0 + 3)
+    governance.forget_partner(db, "zelphinaqq", T0 + 4)
+    objective = db.execute("SELECT objective FROM web_tasks").fetchone()[0]
+    assert "zelphinaqq" not in objective and "partner:#" in objective
+    assert b"zelphinaqq" not in raw_bytes(db_path(db))
+    dest = tmp_path / "restored.sqlite"
+    checkpoints.restore(db, cp["id"], dest, T0 + 5)
+    copy = sqlite3.connect(dest)
+    try:
+        assert "partner:#" in copy.execute("SELECT objective FROM web_tasks").fetchone()[0]
+    finally:
+        copy.close()
+    assert b"zelphinaqq" not in raw_bytes(dest)
+
+
+def test_forget_research_returns_unshared_cache_keys_and_the_cli_drops_them(tmp_path, capsys):
+    """A-P2-4: `nsf forget research` drops the task's pages from the public cache unless another task read them."""
+    from neuroscifi.cli import main
+    from neuroscifi.webcortex.cache import PublicCache
+    from neuroscifi.webcortex.services import cache_path
+    path = tmp_path / "individual.sqlite"
+    db = store.create(path, T0)
+    state.set_config(db, {"enabled": True}, T0)
+    first, _ = consolidated(db, [two_sources()])
+    second, _ = consolidated(db, [two_sources(hosts=("c.example", "d.example"))], T0 + 1)
+    with store.write(db):
+        for tid, url in ((first, "http://only.example/a"), (first, "http://shared.example/b"),
+                         (second, "http://shared.example/b")):
+            state.save_source(db, tid, {"url": url, "canonical_url": url, "domain": url.split("/")[2],
+                                        "retrieved_at": T0}, T0)
+    db.close()
+    from neuroscifi.webcortex.types import FetchResult
+    cache = PublicCache(cache_path(path))
+    for url in ("http://only.example/a", "http://shared.example/b"):
+        cache.put(FetchResult(url=url, final_url=url, status=200, headers={}, content_type="text/html",
+                              body=url.encode(), retrieved_at=T0))
+    cache.close()
+    assert main(["forget", "research", first, "--db", str(path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["effects"]["cache"]["urls"] == ["http://only.example/a"]
+    assert out["public_cache"]["entries_removed"] >= 1
+    cache = PublicCache(cache_path(path))
+    try:
+        assert cache.lookup("http://only.example/a") is None and cache.lookup("http://shared.example/b") is not None
+    finally:
+        cache.close()

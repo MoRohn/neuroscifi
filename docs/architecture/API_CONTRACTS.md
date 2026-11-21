@@ -347,8 +347,9 @@ access is disabled for the individual (ADR-021), except reads of stored memory.
 | POST | /api/web/knowledge/{id}/review `{accept, note?}` ; /archive ; /reject ; /refresh ; /forget | knowledge.review / archive / reject / refresh / forget |
 | GET / POST | /api/web/monitors ; /api/web/monitors/{id}/pause, /resume, /stop | scheduler.monitor_* |
 
-`nsf console --no-web-worker` disables the embedded worker when `neuroscifi-webcortex.service` runs instead; leases
-prevent double execution.
+The console does not run research by default: queued tasks are executed by `neuroscifi-webcortex.service`
+(`nsf web work`). `nsf console --web-worker` starts an embedded worker for a development console that has network
+access (the console's systemd unit allows loopback only). Leases prevent double execution.
 
 **Pocket bridge research actions** (ADR-028). Present only when the bridge runs with `--instance-db` and the
 individual has `enabled` and `pocket_research` on; otherwise 404 like any unknown route. Existing bearer, Origin,

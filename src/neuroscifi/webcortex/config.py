@@ -1,7 +1,7 @@
 """Per-individual Web Cortex configuration, stored as JSON in the instance `meta` table (key 'webcortex').
 
 Defaults are the reversible, conservative direction: network access OFF, autonomous research OFF, Pocket
-research OFF, JavaScript rendering OFF. The owner turns each on explicitly (`nsf web config ...`).
+research OFF, JavaScript rendering OFF, browser User-Agents for the search daemon OFF (honest User-Agent only). The owner turns each on explicitly (`nsf web config ...`).
 Respecting robots.txt, the private-address block and the read-only default are constants, not settings.
 """
 from __future__ import annotations
@@ -37,6 +37,10 @@ class WebConfig:
     autonomous: bool = False                 # scheduler may start curiosity/refresh research on its own
     pocket_research: bool = False            # paired Pocket devices may submit and read research tasks
     browser_rendering: bool = False          # permit sandboxed JavaScript rendering (needs Playwright + Chromium)
+    # Owner opt-in (ADR-032), off by default: let the upstream open-webSearch scrapers send their built-in browser
+    # User-Agent strings (a form of impersonation) instead of the honest USER_AGENT patched in by `npm run
+    # patch-ua`. With it off, `nsf web daemon start` refuses an unpatched build.
+    search_browser_user_agent: bool = False
     openwebsearch_url: str = "http://127.0.0.1:3210"   # loopback daemon (trusted local integration)
     engines: list = field(default_factory=lambda: list(DEFAULT_ENGINES))
     providers: list = field(default_factory=lambda: [
@@ -57,6 +61,14 @@ class WebConfig:
     # secondary sources through (posterior 2.6/3.6 = 0.722) but not one dated + one undated (2.4/3.4 = 0.706).
     auto_provisional_min_confidence: float = 0.72
     freshness_ttl: dict = field(default_factory=dict)    # overrides of temporal.FRESHNESS ttl seconds
+    # Interruption budget of web questions (scope web:...), separate from an epoch's ask budget: beyond either cap
+    # candidates stay provisional and one aggregate question per task points to the console / `nsf web knowledge`.
+    max_open_web_questions: int = 10
+    max_web_questions_per_task: int = 3
+    # MCP (`nsf web mcp`): web_research calls per hour per server process, and a daily cap for origin 'mcp' tasks
+    # (tasks, requests and bytes of the last 24 h; request/byte budgets are clamped to what is left at submit).
+    mcp_research_per_hour: int = 6
+    daily_mcp: dict = field(default_factory=lambda: {"tasks": 24, "requests": 400, "bytes": 80_000_000})
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

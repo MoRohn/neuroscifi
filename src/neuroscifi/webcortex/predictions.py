@@ -3,13 +3,14 @@
 record() stores an expectation with a check time (now + the freshness TTL). check_due() submits a refresh task
 (knowledge.refresh) for each due prediction and checks those whose refresh finished. check() compares the
 refresh's consolidation with the item: the same values and polarity -> 'confirmed' (and the next prediction is
-recorded); a superseding value or a contradiction -> 'error' (a prediction_error event, a question for the owner,
-and a curiosity boost for the item, see curiosity.rank); no evidence either way -> 'inconclusive'.
+recorded); a superseding value or a contradiction -> 'error' (a prediction_error event, a question for the owner
+within the web question budget, and a curiosity boost for the item, see curiosity.rank); no evidence either way
+-> 'inconclusive'. Refreshes are autonomous research: origin 'refresh:<knowledge id>'.
 """
 from __future__ import annotations
 
 from ..instance import store
-from ..instance.errors import Conflict, NotFound, ValidationError
+from ..instance.errors import Conflict, NotFound, ValidationError, WritesPaused
 from . import state
 from .types import TERMINAL_STATES
 
@@ -51,6 +52,8 @@ def record(db, knowledge_id, expectation, check_after, now) -> dict:
 
 
 def listing(db, *, open_only=False, limit=100) -> list[dict]:
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValidationError("limit must be a positive integer")
     where = "WHERE outcome IS NULL" if open_only else ""
     return [dict(zip(COLUMNS, r)) | {"detail": state.loads(r[-1], {})} for r in db.execute(
         f"SELECT {','.join(COLUMNS)} FROM web_predictions {where} ORDER BY id DESC LIMIT ?", (int(limit),))]
@@ -97,7 +100,7 @@ def check(db, prediction_id, task_report, now) -> dict:
             state.log_event(db, pred["task_id"], "prediction_error",
                             {"prediction_id": prediction_id, "knowledge_id": kid, "reason": reason}, now)
             if item is not None and item["status"] in knowledge.REVIEWABLE:   # a superseded item has a successor
-                detail["pending_id"] = knowledge.open_question(
+                detail["pending_id"] = knowledge.ask(   # within the web question budget (None when spent)
                     db, f"web:knowledge:{kid}",
                     f"Prediction failed: «{knowledge.quote(item['statement'])}» was expected to hold at the next "
                     f"refresh, but {reason}. Keep it as knowledge?", now)
@@ -115,9 +118,11 @@ def check(db, prediction_id, task_report, now) -> dict:
 def check_due(db, now, services=None, *, limit=MAX_REFRESHES) -> list[dict]:
     """Submit refresh tasks for due predictions (at most `limit`) and settle those whose refresh finished.
 
-    Never runs a task: the scheduler or the worker runs what this submits."""
+    Never runs a task: the scheduler or the worker runs what this submits. While web access is disabled no refresh
+    is submitted and the prediction stays due (it is not settled 'inconclusive' for want of a refresh)."""
     from . import knowledge
     actions = []
+    enabled = state.get_config(db).enabled
     for pred in due(db, now):
         if pred["task_id"] is not None:
             try:
@@ -128,12 +133,16 @@ def check_due(db, now, services=None, *, limit=MAX_REFRESHES) -> list[dict]:
                 settled = check(db, pred["id"], (task["result"] or {}) | {"task_id": task["id"]}, now)
                 actions.append({"prediction_id": pred["id"], "action": "checked", "outcome": settled["outcome"]})
             continue
+        if not enabled:
+            actions.append({"prediction_id": pred["id"], "action": "skipped",
+                            "reason": "web access is disabled; the prediction stays due"})
+            continue
         if sum(1 for a in actions if a["action"] == "refresh_submitted") >= limit:
             actions.append({"prediction_id": pred["id"], "action": "skipped", "reason": f"refresh limit {limit}"})
             continue
         try:
             task = knowledge.refresh(db, pred["knowledge_id"], now, origin=f"refresh:{pred['knowledge_id']}")
-        except (NotFound, ValidationError) as exc:
+        except (NotFound, ValidationError, WritesPaused) as exc:
             actions.append({"prediction_id": pred["id"], "action": "skipped", "reason": str(exc)})
             continue
         except Conflict as exc:   # the item is no longer reviewable (superseded/archived/rejected) or web is off

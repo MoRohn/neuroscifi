@@ -39,7 +39,8 @@ UMask=0077
 MemoryMax=2G
 TasksMax=128
 
-# Nothing outside this host may reach or be reached by the console.
+# Nothing outside this host may reach or be reached by the console. So the console never runs research itself
+# (no --web-worker here): queued tasks run in neuroscifi-webcortex.service, which has network access.
 IPAddressDeny=any
 IPAddressAllow=localhost
 

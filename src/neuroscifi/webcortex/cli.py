@@ -1,8 +1,8 @@
 """`nsf web …`: the Web Cortex command line (ARCHITECTURE §4.5).
 
 Every command prints JSON and exits 2 with a one-line message on an instance error (instance.cli.run). Every
-command that can reach the public web (search, fetch, ask, resume, refresh --run, health --probe, daemon start,
-deps, curiosity --propose, work --once) calls state.require_enabled first; `tick` and the long-running `work`
+command that can reach the public web (search, fetch, ask, crawl, resume, refresh --run, health --probe, daemon
+start, deps, feeds discover, curiosity --propose, work --once) calls state.require_enabled first; `tick` and the long-running `work`
 report or wait instead, so the timer and the worker service stay quiet while web access is off.
 Web Cortex modules are imported inside the handlers so `nsf --help` stays fast.
 
@@ -148,6 +148,37 @@ def _db_path(args):
     return store.resolve_db(args)
 
 
+def _positive_int(text):
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {text!r}") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value}")
+    return value
+
+
+def _count(text):
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a non-negative integer, got {text!r}") from None
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"expected a non-negative integer, got {value}")
+    return value
+
+
+def _hours(text):
+    import math
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a number of hours, got {text!r}") from None
+    if not math.isfinite(value) or value <= 0:
+        raise argparse.ArgumentTypeError(f"expected a finite positive number of hours, got {text}")
+    return value
+
+
 def _json_arg(text, what):
     try:
         return json.loads(text)
@@ -161,7 +192,7 @@ def _config(db, a, now):
     from . import state
     changes = {}
     for flag, key in (("enable", "enabled"), ("autonomous", "autonomous"), ("pocket_research", "pocket_research"),
-                      ("browser", "browser_rendering")):
+                      ("browser", "browser_rendering"), ("search_browser_ua", "search_browser_user_agent")):
         value = getattr(a, flag)
         if value is not None:
             changes[key] = value
@@ -184,7 +215,8 @@ def _status(db, a, now):
     daemon = _daemon(db, path).status()
     return {"enabled": cfg.enabled,
             "switches": {"enabled": cfg.enabled, "autonomous": cfg.autonomous, "pocket_research": cfg.pocket_research,
-                         "browser_rendering": cfg.browser_rendering},
+                         "browser_rendering": cfg.browser_rendering,
+                         "search_browser_user_agent": cfg.search_browser_user_agent},
             "config": {"providers": cfg.providers, "unknown_providers": unknown(cfg), "engines": cfg.engines,
                        "openwebsearch_url": cfg.openwebsearch_url, "budget_ceiling": cfg.budget_ceiling,
                        "daily_autonomous": cfg.daily_autonomous, "deny_domains": len(cfg.deny_domains),
@@ -198,7 +230,10 @@ def _health(db, a, now):
     from .providers.openwebsearch import OpenWebSearchProvider
     cfg = state.get_config(db)
     out = {"enabled": cfg.enabled, "daemon": OpenWebSearchProvider(cfg.openwebsearch_url, cfg.engines).health(),
-           "providers": {}, "probed": False, "stored_health": _health_view(db, now)}
+           "providers": {}, "probed": False, "stored_health": _health_view(db, now),
+           "search_browser_user_agent": cfg.search_browser_user_agent}
+    if isinstance(out["daemon"], dict):
+        out["honest_user_agent"] = out["daemon"].get("honest_user_agent")
     if not a.probe:
         out["note"] = "pass --probe to send one cheap request per structured provider"
         return out
@@ -241,8 +276,16 @@ def _daemon_cmd(db, a, now):
     from . import state
     daemon = _daemon(db, _db_path(a))
     if a.action == "start":
-        state.require_enabled(db)
-        return daemon.start()
+        cfg = state.require_enabled(db)
+        try:
+            return daemon.start(allow_browser_user_agent=cfg.search_browser_user_agent)
+        except ValidationError as exc:
+            if "User-Agent" not in str(exc):
+                raise
+            raise ValidationError(
+                f"the open-webSearch build at {daemon.package_dir} still sends forged browser User-Agents; run "
+                f"`npm run patch-ua` in {daemon.package_dir} (applies the honest User-Agent), or opt in with "
+                "`nsf web config --search-browser-ua` (ADR-032)") from None
     if a.action == "stop":
         return daemon.stop()
     return daemon.status()
@@ -332,8 +375,56 @@ def _requeue(db, a, now):
     return orchestrator.requeue(db, a.task, now, origin="cli")
 
 
+def _discover_feeds(db, a, now):
+    """`feeds discover URL`: fetch one page and list the RSS/Atom feeds it advertises (crawl.discover_feeds);
+    --add adds them to the feed list."""
+    from . import crawl, orchestrator, state
+    from .types import Usage
+    cfg = state.require_enabled(db)
+    findings = orchestrator.screen(db, a.url, cfg)
+    if findings:
+        raise ValidationError(f"URL contains private data ({', '.join(sorted({f['kind'] for f in findings}))}); "
+                              "it was not requested")
+    budget, usage = _budget(cfg, FETCH_BUDGET | {"max_bytes": 2 * cfg.max_document_bytes}), Usage()
+    services = build_services(db, _db_path(a))
+    try:
+        result = services.fetcher.fetch(a.url, purpose="page", budget=budget, usage=usage)
+    finally:
+        services.close()
+    found = crawl.discover_feeds(result.body, result.final_url) if result.content_type in crawl.HTML_TYPES else []
+    out = {"url": a.url, "final_url": result.final_url, "feeds": found, "notice": UNTRUSTED, "usage": usage.to_json()}
+    if a.add and found:
+        known = state.get_feeds(db)
+        out["feeds_added"] = [f for f in found if f not in known][:max(0, state.MAX_FEEDS - len(known))]
+        if out["feeds_added"]:
+            state.set_feeds(db, known + out["feeds_added"], now)
+    elif found:
+        out["note"] = "add one with `nsf web feeds add URL`, or all with --add"
+    return out
+
+
+def _crawl(db, a, now):
+    """`crawl URL...`: investigate these sources - a bounded same-site crawl into a research task (mode
+    deep_research, origin cli): every page read is a recorded source, then the usual evaluation, report and
+    consolidation."""
+    from . import orchestrator
+    urls = list(dict.fromkeys(a.urls))
+    objective = "Investigate these sources: " + " ".join(urls)
+    if len(objective) > orchestrator.MAX_OBJECTIVE:
+        objective = objective[:orchestrator.MAX_OBJECTIVE - 1] + "…"
+    task = orchestrator.submit(db, objective, now, mode="deep_research", origin="cli",
+                               budget={"max_pages": a.max_pages, "max_depth": a.depth},
+                               context={"crawl": {"seeds": urls, "max_pages": a.max_pages, "max_depth": a.depth}},
+                               authorization=orchestrator.AUTHORIZED_DISCLOSURE if a.allow_private_terms else None)
+    if a.queue:
+        return task | {"note": "queued for the worker (nsf web work)"}
+    return _run_task(db, a, task["id"])
+
+
 def _feeds(db, a, now):
     from . import state
+    if a.feeds_action == "discover":
+        return _network_errors(_discover_feeds)(db, a, now)
     if a.feeds_action == "add":
         feeds = state.add_feed(db, a.url, now)
     elif a.feeds_action == "remove":
@@ -382,7 +473,7 @@ def _review(db, a, now):
 
 def _refresh(db, a, now):
     from . import knowledge
-    task = knowledge.refresh(db, a.id, now)
+    task = knowledge.refresh(db, a.id, now, origin="cli")   # the owner's refresh, not autonomous research
     return _run_task(db, a, task["id"]) if a.run else task
 
 
@@ -414,9 +505,14 @@ def _curiosity(db, a, now):
     ranked = curiosity.rank(db, now, limit=a.limit)
     out = {"as_of": now, "candidates": ranked, "proposed": []}
     if a.propose:
+        from ..instance.errors import Conflict
         state.require_enabled(db)
         for candidate in [c for c in ranked if not c.get("excluded")][:a.propose]:
-            out["proposed"].append(curiosity.propose(db, candidate, now))
+            try:
+                out["proposed"].append(curiosity.propose(db, candidate, now))
+            except Conflict as exc:   # the web question budget is spent: stop proposing
+                out["stopped"] = str(exc)
+                break
         out["note"] = "proposals wait for the owner: answer each with `nsf resolve ID TEXT --confirm|--reject`"
     return out
 
@@ -534,6 +630,9 @@ def register(sub):
     _switch(p, "autonomous", "autonomous", "allow timer-driven refresh and curiosity research", "forbid it")
     _switch(p, "pocket-research", "pocket_research", "let paired Pocket devices submit research", "forbid it")
     _switch(p, "browser", "browser", "permit sandboxed JavaScript rendering", "forbid it")
+    _switch(p, "search-browser-ua", "search_browser_ua",
+            "let the search daemon's scrapers send browser User-Agent strings (impersonation; ADR-032)",
+            "honest User-Agent only (default; needs `npm run patch-ua`)")
     p.add_argument("--set", action="append", metavar="KEY=JSON", help="set one field, e.g. --set 'engines=[\"bing\"]'")
 
     cmd("status", _status, "configuration, provider health, daemon, cache, tasks and executing node")
@@ -545,7 +644,7 @@ def register(sub):
     p = cmd("search", _search, "discovery only: one privacy-screened query through the providers")
     p.add_argument("query")
     p.add_argument("--kind", choices=QUERY_KINDS, default="web")
-    p.add_argument("--limit", type=int, default=8)
+    p.add_argument("--limit", type=_positive_int, default=8)
     p = cmd("fetch", _fetch, "fetch, extract and quarantine one URL through the safe fetcher")
     p.add_argument("url")
     p.add_argument("--markdown", action="store_true", help="include the Markdown reading view")
@@ -557,9 +656,18 @@ def register(sub):
     p.add_argument("--queue", action="store_true", help="only enqueue; `nsf web work` runs it")
     p.add_argument("--allow-private-terms", action="store_true",
                    help="authorise disclosing private data the objective contains (owner-approved-disclosure)")
+    p = cmd("crawl", _crawl, "investigate these sources: a bounded same-site crawl from URL(s) into a research task")
+    p.add_argument("urls", nargs="+", metavar="URL")
+    p.add_argument("--max-pages", type=_positive_int, default=10, help="pages to read (default 10; budget ceiling "
+                                                                       "applies)")
+    p.add_argument("--depth", type=_count, default=1, help="link depth from the seeds (default 1, at most 3; the "
+                                                           "budget ceiling applies)")
+    p.add_argument("--queue", action="store_true", help="only enqueue; `nsf web work` runs it")
+    p.add_argument("--allow-private-terms", action="store_true",
+                   help="authorise disclosing private data the URLs contain (owner-approved-disclosure)")
     p = cmd("tasks", _tasks, "list research tasks")
     p.add_argument("--status")
-    p.add_argument("--limit", type=int, default=50)
+    p.add_argument("--limit", type=_positive_int, default=50)
     for name, handler, help_text in (("show", _show, "a task and its report"),
                                      ("evidence", _evidence, "sources, claims, links and episode log of a task"),
                                      ("cancel", _cancel, "cancel a task"),
@@ -571,7 +679,7 @@ def register(sub):
     p = cmd("knowledge", _knowledge, "what is known about TOPIC, or list knowledge items")
     p.add_argument("topic", nargs="?")
     p.add_argument("--status", choices=("provisional", "accepted", "stale", "archived", "rejected", "superseded"))
-    p.add_argument("--limit", type=int, default=50)
+    p.add_argument("--limit", type=_positive_int, default=50)
     p = cmd("review", _review, "accept or reject a knowledge item")
     p.add_argument("id", type=int)
     verdict = p.add_mutually_exclusive_group(required=True)
@@ -598,7 +706,7 @@ def register(sub):
 
     q = monitor_cmd("add")
     q.add_argument("topic")
-    q.add_argument("--interval-hours", type=float, required=True)
+    q.add_argument("--interval-hours", type=_hours, required=True)
     q.add_argument("--mode", choices=MODES, default="continuous")
     q.add_argument("--budget-json")
     monitor_cmd("list").add_argument("--status", choices=("proposed", "active", "paused", "stopped"))
@@ -607,31 +715,34 @@ def register(sub):
 
     p = wsub.add_parser("feeds", help="RSS/Atom feeds searched by research tasks (read first by monitors)")
     fsub = p.add_subparsers(dest="feeds_action", required=True)
-    for action in ("add", "remove", "list"):
-        q = fsub.add_parser(action)
+    for action in ("add", "remove", "list", "discover"):
+        q = fsub.add_parser(action, help="list the feeds a page advertises (--add adds them)"
+                            if action == "discover" else None)
         store.add_db_argument(q)
         q.set_defaults(handler=with_db(_feeds))
         if action != "list":
             q.add_argument("url")
+        if action == "discover":
+            q.add_argument("--add", action="store_true", help="add every discovered feed to the list")
     p = cmd("cache", _cache, "public cache: stats, or prune by the configured age and size limits")
     p.add_argument("cache_action", choices=("stats", "prune"))
 
     p = cmd("tick", _tick, "one timer pass: due monitors; refresh and curiosity when autonomous")
     p.add_argument("--queue", action="store_true", help="queue the tasks for the worker instead of running them")
-    p.add_argument("--max-tasks", type=int)
+    p.add_argument("--max-tasks", type=_count)
     p = cmd("work", run(_work), "worker: run queued tasks (SIGTERM finishes the current task, then exits)",
             db=False)
     p.add_argument("--once", action="store_true", help="return when nothing is runnable")
     p.add_argument("--poll", type=float, default=5.0, help="seconds between queue checks")
-    p.add_argument("--max-tasks", type=int)
+    p.add_argument("--max-tasks", type=_count)
 
     p = cmd("curiosity", _curiosity, "rank what would be most informative to research next")
-    p.add_argument("--limit", type=int, default=10)
-    p.add_argument("--propose", type=int, default=0, metavar="N",
+    p.add_argument("--limit", type=_positive_int, default=10)
+    p.add_argument("--propose", type=_count, default=0, metavar="N",
                    help="create N research proposals that wait for the owner's confirmation")
     p = cmd("predictions", _predictions, "recorded predictions about knowledge")
     p.add_argument("--due", action="store_true")
-    p.add_argument("--limit", type=int, default=100)
+    p.add_argument("--limit", type=_positive_int, default=100)
 
     p = cmd("deps", _deps, "Scenario C: newer stable releases and security advisories of the libraries in use")
     p.add_argument("--audit", action="store_true", help="advisories only (installed Python packages, npm locks)")

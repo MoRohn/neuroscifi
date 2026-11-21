@@ -84,10 +84,15 @@ _FINDING = re.compile(
     r"|\bn\s*=\s*\d+|\bp\s*[<=>≤]\s*0?\.\d+|\bstatistically significant\b"
     r"|\b9[059]\s*%\s*(?:ci|confidence interval)\b", re.IGNORECASE)
 _HEDGE = re.compile(
-    r"\b(?:suggests?|suggested|suggesting|may|might|could(?!\s+not|n't)|we propose|proposed that|"
+    r"\b(?:suggests?|suggested|suggesting|might|could(?!\s+not|n't)|we propose|proposed that|"
     r"we hypothesi[sz]e|hypothesi[sz]ed|indicates? that|indicated that|likely|unlikely|possibly|possible that|"
     r"perhaps|appears? to|appeared to|seems? to|seemed to|potentially|speculate\w*|we believe|"
     r"(?:is|are) thought to|presumably|implies|imply)\b", re.IGNORECASE)
+# "may" hedges only as a modal: lower-case before a word, or sentence-initial "May" before a verb-ish word. The month
+# ("In May 2026 the trial found ...", "May the 4th", "on May 3") is not a hedge.
+_MAY_MODAL = re.compile(
+    r"(?-i:\bmay)\s+(?!(?:the|a|an|of|and|or|to|in|on|at|through|until|this|last|next|each|every)\b)[a-z]"
+    r"|^\W*May\s+(?!(?:the|a|an|of|and|or|to|in|on|at|through|until|this|last|next|each|every)\b)[a-z]")
 _NEGATION = re.compile(
     r"\b(?:not|no|never|neither|nor|cannot|can't|won't|didn't|doesn't|don't|isn't|aren't|wasn't|weren't|hasn't|"
     r"haven't|hadn't|couldn't|shouldn't|wouldn't|fails?\s+to|failed\s+to|without\s+evidence|false|debunked|"
@@ -199,7 +204,7 @@ def negation_cue(sentence: str) -> str | None:
 def claim_kind(sentence: str) -> str:
     """'interpretation' for hedged/inferential language (wins over result cues: a hedged result is not a finding),
     'finding' for reported results, else 'statement'. API-derived templates are 'metadata' (set by the caller)."""
-    if _HEDGE.search(sentence):
+    if _HEDGE.search(sentence) or _MAY_MODAL.search(sentence):
         return "interpretation"
     if _FINDING.search(sentence):
         return "finding"

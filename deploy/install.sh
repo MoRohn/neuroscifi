@@ -135,6 +135,10 @@ if [ "$WEBSEARCH" -eq 1 ]; then
   act install -m 0644 "$SOURCE/deploy/open-websearch/package.json" "$SOURCE/deploy/open-websearch/package-lock.json" \
       "$PREFIX/open-websearch/"
   act npm ci --ignore-scripts --omit=dev --no-audit --no-fund --prefix "$PREFIX/open-websearch"
+  # The honest User-Agent (ADR-032): replace the scrapers' forged browser strings; `nsf web daemon start` refuses
+  # an unpatched build unless the owner opts in with `nsf web config --search-browser-ua`.
+  act install -m 0644 "$SOURCE/deploy/open-websearch/apply-honest-ua.mjs" "$PREFIX/open-websearch/"
+  act "${NODE:-node}" "$PREFIX/open-websearch/apply-honest-ua.mjs" "$PREFIX/open-websearch"
 fi
 
 note "environment file"

@@ -14,8 +14,8 @@ from datetime import datetime, timezone
 import json
 import re
 from urllib.parse import quote, urlencode
-from xml.etree import ElementTree
 
+from ..safety import safe_xml_parse
 from ..search import ProviderError, date_string, parse_iso_date, strip_html
 from ..types import FetchError, Query, SearchResult
 
@@ -81,13 +81,9 @@ class _Api:
 
 
 def _safe_xml(body: bytes, provider: str):
-    head = body[:4096].upper()
-    if b"<!DOCTYPE" in head or b"<!ENTITY" in body.upper():
-        raise ProviderError(provider, "XML with DOCTYPE/ENTITY refused", code="bad_response", retryable=False)
-    try:
-        return ElementTree.fromstring(body)
-    except ElementTree.ParseError as exc:
-        raise ProviderError(provider, f"unparseable XML: {exc}", code="bad_response", retryable=False) from None
+    """Root of an untrusted XML response (safety.safe_xml_parse: DOCTYPE/ENTITY refused in any encoding)."""
+    return safe_xml_parse(body, on_refuse=lambda detail: ProviderError(
+        provider, f"unparseable XML: {detail}"[:300], code="bad_response", retryable=False))
 
 
 # ---- encyclopedia ----------------------------------------------------------------------------------------------
@@ -547,7 +543,8 @@ class OSVProvider(_Api):
                     events = [e for e in (rng.get("events") or []) if isinstance(e, dict)] \
                         if isinstance(rng, dict) else []
                     ranges.append({"type": rng.get("type"), "events": events[:20]})
-                    fixed += [str(e["fixed"]) for e in events if e.get("fixed")]
+                    if str(rng.get("type") or "").upper() != "GIT":   # GIT "fixed" values are commit hashes
+                        fixed += [str(e["fixed"]) for e in events if e.get("fixed")]
             severity = [{"type": s.get("type"), "score": s.get("score")} for s in v.get("severity") or []
                         if isinstance(s, dict)]
             db_sev = (v.get("database_specific") or {}).get("severity") if isinstance(

@@ -18,7 +18,14 @@ Steps for each scored cluster of the task (state.load_clusters):
 5. provenance and time: sources, supporting claim ids, freshness class, validity interval;
 6. commit: a new item is written only as 'provisional', and only with >= config.auto_provisional_min_sources
    independent sources, no contradiction and confidence >= config.auto_provisional_min_confidence; each new item
-   gets a pending question (scope web:knowledge:<id>) so acceptance stays the owner's decision.
+   gets a pending question (scope web:knowledge:<id>) so acceptance stays the owner's decision - within the web
+   question budget: at most config.max_web_questions_per_task new questions per task and none while
+   config.max_open_web_questions are open; the rest stay provisional (or recorded) without a question of their
+   own and ONE aggregate question (scope web:review:<task>) says how many await review.
+A contested cluster about live knowledge compares values first: when its supporting side agrees with the item,
+the item is strengthened by it and never lowered; only claims that really conflict with the item are recorded as
+contradictions, each citing that claim (see _contested_against).
+Nothing is written while instance regulation pauses writes (WritesPaused).
 Entities and mentions are extracted from claim text (capitalised names, CamelCase, package names, acronyms,
 identifiers). Feedback rows record before/after confidence and the information gain (entropy reduction, bits).
 The binary-belief tables are never touched.
@@ -109,11 +116,24 @@ def _times(cluster):
 
 def _validity(cluster, now):
     """(valid_from, valid_until) by temporal.validity over the newest event/publication date of the supporting
-    claims (retrieval time as the upper bound for undated sources); open-ended until superseded."""
+    claims (retrieval time as the upper bound for undated sources); open-ended until superseded. A stated date in
+    the future never makes knowledge valid from the future: valid_from is at most `now`."""
     from . import temporal
     published, event, retrieved = _times(cluster)
     out = temporal.validity({"event_at": event, "published_at": published, "retrieved_at": retrieved}, now=now)
-    return state.finite(out.get("valid_from"), now), state.finite(out.get("valid_until"))
+    return min(state.finite(out.get("valid_from"), now), now), state.finite(out.get("valid_until"))
+
+
+def _supersedes(new, old, now):
+    """temporal.supersedes, passing `now` where the installed temporal module accepts it (statements dated in the
+    future must not win)."""
+    import inspect
+    from . import temporal
+    try:
+        takes_now = "now" in inspect.signature(temporal.supersedes).parameters
+    except (TypeError, ValueError):
+        takes_now = False
+    return bool(temporal.supersedes(new, old, now=now) if takes_now else temporal.supersedes(new, old))
 
 
 def _as_temporal(cluster, now, key):
@@ -221,21 +241,35 @@ def _meets_bar(cluster, cfg):
     return not reasons, reasons
 
 
+_LIVE = f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))})"
+
+
 def _existing(db, cluster):
     """Live knowledge about the same subject: one already supported by one of the cluster's claims (claim ids hash
     the source URL and the sentence, so a re-read finds them whatever the question was), else the latest version
-    with the same key, else the most similar live key above SIMILAR_KEY."""
-    live = knowledge.rows(db, f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))})", state.LIVE_KNOWLEDGE)
-    ids = {c.id for c in cluster.claims}
-    shared = [r for r in live if ids & set(r["supporting"])]
+    with the same key, else the most similar live key above SIMILAR_KEY. Only matching rows are decoded: claim
+    ids are matched in SQL (json_each), the key by the (status, key) index, similar keys over the key column."""
+    ids = sorted({c.id for c in cluster.claims})
+    shared = []
+    for start in range(0, len(ids), 300):
+        part = ids[start:start + 300]
+        shared += knowledge.rows(db, f"{_LIVE} AND EXISTS (SELECT 1 FROM json_each(web_knowledge.supporting) j "
+                                     f"WHERE j.value IN ({','.join('?' * len(part))}))",
+                                 (*state.LIVE_KNOWLEDGE, *part))
     if shared:
-        return max(shared, key=lambda r: (len(ids & set(r["supporting"])), r["version"]))
+        wanted = set(ids)
+        return max(shared, key=lambda r: (len(wanted & set(r["supporting"])), r["version"]))
     key = cluster.key
-    exact = [r for r in live if r["key"] == key]
+    exact = knowledge.rows(db, f"{_LIVE} AND key=?", (*state.LIVE_KNOWLEDGE, key))
     if exact:
         return max(exact, key=lambda r: r["version"])
-    scored = sorted(((_similar(key, r["key"]), r["version"], r) for r in live), key=lambda x: (-x[0], -x[1]))
-    return scored[0][2] if scored and scored[0][0] >= SIMILAR_KEY else None
+    best = None
+    for kid, other, version in db.execute(f"SELECT id, key, version FROM web_knowledge WHERE {_LIVE}",
+                                          state.LIVE_KNOWLEDGE):
+        score = _similar(key, other)
+        if score >= SIMILAR_KEY and (best is None or (score, version) > best[:2]):
+            best = (score, version, kid)
+    return knowledge.row(db, best[2]) if best else None
 
 
 def _bits_gain(before, after):
@@ -264,7 +298,32 @@ def _freshness(db, task):
     return temporal.classify(task["objective"], assessment or None)
 
 
-def _insert_knowledge(db, task_id, cluster, freshness, now, *, key, version):
+class _Questions:
+    """The web question budget of one consolidation: at most config.max_web_questions_per_task new questions, and
+    none once config.max_open_web_questions are open (knowledge.ask); what is not asked is counted and summarised
+    in ONE aggregate question for the task (knowledge.review_question)."""
+
+    def __init__(self, db, cfg, task_id):
+        self.db, self.cfg, self.task_id = db, cfg, task_id
+        self.asked, self.deferred = 0, 0
+
+    def ask(self, scope, question, now):
+        if self.db.execute("SELECT 1 FROM pending WHERE scope=? AND resolved_at IS NULL",
+                           (scope,)).fetchone() is None and self.asked >= self.cfg.max_web_questions_per_task:
+            self.deferred += 1
+            return None
+        pid = knowledge.ask(self.db, scope, question, now, self.cfg)
+        if pid is None:
+            self.deferred += 1
+        else:
+            self.asked += 1
+        return pid
+
+    def close(self, now):
+        return knowledge.review_question(self.db, self.task_id, self.deferred, now, self.cfg)
+
+
+def _insert_knowledge(db, task_id, cluster, freshness, now, *, key, version, questions):
     values, polarity = _values(cluster)
     valid_from, valid_until = _validity(cluster, now)
     confidence = state.finite(cluster.confidence, 0.0)
@@ -276,10 +335,10 @@ def _insert_knowledge(db, task_id, cluster, freshness, now, *, key, version):
          state.finite(cluster.uncertainty, 0.0), freshness, now, now, valid_from, valid_until,
          state.dumps(list(cluster.supporting) or [c.id for c in cluster.claims]), state.dumps(_sources(cluster)),
          state.dumps(values), polarity, task_id, now, now)).lastrowid
-    pid = knowledge.open_question(db, f"web:knowledge:{kid}",
-                                  _question(cluster.statement or _head(cluster).text, cluster.independent_sources,
-                                            confidence, freshness), now)
-    db.execute("UPDATE web_knowledge SET pending_id=? WHERE id=?", (pid, kid))
+    pid = questions.ask(f"web:knowledge:{kid}", _question(cluster.statement or _head(cluster).text,
+                                                          cluster.independent_sources, confidence, freshness), now)
+    if pid is not None:
+        db.execute("UPDATE web_knowledge SET pending_id=? WHERE id=?", (pid, kid))
     return kid, pid, valid_from
 
 
@@ -310,9 +369,10 @@ def _entities(db, task_id, clusters, ids_by_key, now):
     return found
 
 
-def _contradict(db, task_id, cluster, item, reason, now, summary):
-    """Record a contradiction of live knowledge by this cluster and ask the owner. Caller owns the txn."""
-    head = _head(cluster)
+def _contradict(db, task_id, cluster, item, reason, now, summary, questions, *, head=None, weaken=True):
+    """Record a contradiction of live knowledge by `head` (default: the cluster's head claim) and ask the owner.
+    weaken=False keeps the item's confidence (a minority of the cluster disagrees). Caller owns the txn."""
+    head = head or _head(cluster)
     against = list(item["contradicting"])
     known = {a.get("claim") for a in against if isinstance(a, dict)}
     fresh = head.id not in known
@@ -321,31 +381,90 @@ def _contradict(db, task_id, cluster, item, reason, now, summary):
                         "url": head.source_url})
         db.execute("UPDATE web_knowledge SET contradicting=?, updated_at=? WHERE id=?",
                    (state.dumps(against), now, item["id"]))
+        item["contradicting"] = against
     if item["supporting"]:
         state.add_link(db, task_id, head.id, item["supporting"][0], "contradicts",
                        {"reason": reason, "knowledge_id": item["id"]}, now)
-    pid = knowledge.open_question(
-        db, f"web:knowledge:{item['id']}",
+    pid = questions.ask(
+        f"web:knowledge:{item['id']}",
         f"Sources now contradict known «{knowledge.quote(item['statement'])}»: «{knowledge.quote(head.text)}» "
         f"({reason}). Keep it as knowledge?", now)
     before = state.finite(item["confidence"], 0.0)
-    after = before if not fresh else round(before * (1 - state.finite(cluster.confidence, 0.0) / 2), 6)
+    after = before if not (fresh and weaken) else round(before * (1 - state.finite(cluster.confidence, 0.0) / 2), 6)
     if after != before:
         db.execute("UPDATE web_knowledge SET confidence=? WHERE id=?", (after, item["id"]))
-    _feedback(db, task_id, item["id"], item["key"], "weakened" if fresh else "unchanged", before, after,
-              {"contested": True, "reason": reason}, now)
+    _feedback(db, task_id, item["id"], item["key"], "weakened" if after != before else "unchanged", before, after,
+              {"contested": True, "reason": reason, "claim": head.id}, now)
     summary["contested"].append({"key": cluster.key, "knowledge_id": item["id"], "pending_id": pid,
-                                 "reason": reason})
-    summary["pending"].append(pid)
+                                 "reason": reason, "claim": head.id})
+    if pid is not None:
+        summary["pending"].append(pid)
 
 
-def run(db, task_id, now) -> dict:
-    """Consolidate one task's scored clusters into knowledge candidates. One transaction, one state bump."""
-    from . import temporal
+def _strengthen(db, task_id, cluster, item, now, summary, ids_by_key, *, supporting=None, confidence=None):
+    """Duplication: the cluster restates live knowledge -> refresh it (last_verified_at, supporting claims,
+    sources), never duplicate. Caller owns the txn."""
+    supporting = list(cluster.supporting) if supporting is None else supporting
+    new_claims = [c for c in supporting if c not in item["supporting"]]
+    before = state.finite(item["confidence"], 0.0)
+    gain = state.finite(cluster.confidence, 0.0) if confidence is None else confidence
+    after = max(before, gain) if new_claims else before
+    status = "provisional" if item["status"] == "stale" else item["status"]
+    db.execute("UPDATE web_knowledge SET last_verified_at=?, supporting=?, sources=?, confidence=?, "
+               "uncertainty=min(uncertainty, ?), status=?, updated_at=? WHERE id=?",
+               (now, state.dumps(item["supporting"] + new_claims),
+                state.dumps(_sources(cluster, item["sources"])), after,
+                state.finite(cluster.uncertainty, 1.0), status, now, item["id"]))
+    head = item["supporting"][0] if item["supporting"] else None
+    for cid in supporting:
+        if head and cid != head:
+            state.add_link(db, task_id, cid, head, "duplicates" if cid in item["supporting"] else "supports",
+                           {"knowledge_id": item["id"]}, now)
+    effect = "strengthened" if new_claims else "unchanged"
+    _feedback(db, task_id, item["id"], item["key"], effect, before, after, {"new_claims": len(new_claims)}, now)
+    summary["strengthened" if new_claims else "unchanged"].append(item["id"])
+    ids_by_key[cluster.key] = item["id"]
+    item["supporting"] = item["supporting"] + new_claims
+    item["confidence"] = after
+
+
+def _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key):
+    """A contested cluster about live knowledge: compare values first. When the cluster's supporting side states
+    the same values and polarity as the item, the item is strengthened by them (confidence never lowered) and
+    only claims that really conflict with it are recorded as contradictions, each citing that claim. When the
+    supporting side conflicts with the item, the item is contradicted by it (citing the supporting head)."""
+    values, polarity = _values(cluster)
+    relation, differ = _compare(values, polarity, item)
+    if relation != "same":
+        _contradict(db, task_id, cluster, item, differ or reason, now, summary, questions)
+        return
+    support = set(cluster.supporting) or {c.id for c in cluster.claims}
+    _strengthen(db, task_id, cluster, item, now, summary, ids_by_key,
+                supporting=[c for c in cluster.supporting if c in support] or [c.id for c in cluster.claims],
+                confidence=state.finite(item["confidence"], 0.0))
+    for claim in cluster.claims:
+        if claim.id in support:
+            continue
+        other, why = _compare(list(claim.values or []), -1 if claim.polarity < 0 else 1, item)
+        if other != "same":
+            _contradict(db, task_id, cluster, item, why or reason, now, summary, questions, head=claim,
+                        weaken=False)
+
+
+def run(db, task_id, now, *, holder=None) -> dict:
+    """Consolidate one task's scored clusters into knowledge candidates. One transaction, one state bump.
+
+    WritesPaused while instance regulation pauses writes. With `holder` (the running worker) the transaction is
+    fenced: state.LostLease when another worker took the task over meanwhile, and nothing is written."""
     cfg = state.get_config(db)
+    state.require_writable(db)
     summary = {"task_id": task_id, "candidates": 0, "provisional": [], "strengthened": [], "unchanged": [],
-               "superseded": [], "contested": [], "held": [], "pending": [], "feedback": 0, "entities": 0}
+               "superseded": [], "contested": [], "held": [], "pending": [], "feedback": 0, "entities": 0,
+               "questions_deferred": 0, "review_question": None}
     with store.write(db):
+        if holder is not None:
+            state.require_lease(db, task_id, holder)
+        questions = _Questions(db, cfg, task_id)
         task = state.task(db, task_id)
         clusters = sorted(state.load_clusters(db, task_id), key=lambda c: (-state.finite(c.confidence, 0.0), c.key))
         summary["candidates"] = len(clusters)
@@ -366,10 +485,10 @@ def run(db, task_id, now) -> dict:
                 reason = "; ".join(sorted({c.get("reason", "") for c in cluster.contradicting} - {""})) or \
                     "the sources disagree"
                 if item is not None:
-                    _contradict(db, task_id, cluster, item, reason, now, summary)
+                    _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key)
                     continue
-                pid = knowledge.open_question(
-                    db, f"web:contested:{task_id}:{n}",
+                pid = questions.ask(
+                    f"web:contested:{task_id}:{n}",
                     f"Sources disagree about «{knowledge.quote(cluster.statement or _head(cluster).text)}» "
                     f"({reason}); nothing was stored as knowledge. Which holds?", now)
                 prior = db.execute("SELECT count(*) FROM web_feedback WHERE key=?", (cluster.key,)).fetchone()[0]
@@ -378,7 +497,8 @@ def run(db, task_id, now) -> dict:
                           {"contested": True, "reason": reason}, now)
                 summary["contested"].append({"key": cluster.key, "knowledge_id": None, "pending_id": pid,
                                              "reason": reason})
-                summary["pending"].append(pid)
+                if pid is not None:
+                    summary["pending"].append(pid)
                 continue
             eligible, reasons = _eligibility(db, task_id, cluster, removed)
             if not eligible:
@@ -389,29 +509,11 @@ def run(db, task_id, now) -> dict:
             if item is not None:
                 relation, differ = _compare(values, polarity, item)
                 if relation == "same":   # duplication: strengthen, never duplicate
-                    new_claims = [c for c in cluster.supporting if c not in item["supporting"]]
-                    before = state.finite(item["confidence"], 0.0)
-                    after = max(before, state.finite(cluster.confidence, 0.0)) if new_claims else before
-                    status = "provisional" if item["status"] == "stale" else item["status"]
-                    db.execute("UPDATE web_knowledge SET last_verified_at=?, supporting=?, sources=?, confidence=?, "
-                               "uncertainty=min(uncertainty, ?), status=?, updated_at=? WHERE id=?",
-                               (now, state.dumps(item["supporting"] + new_claims),
-                                state.dumps(_sources(cluster, item["sources"])), after,
-                                state.finite(cluster.uncertainty, 1.0), status, now, item["id"]))
-                    head = item["supporting"][0] if item["supporting"] else None
-                    for cid in cluster.supporting:
-                        if head and cid != head:
-                            state.add_link(db, task_id, cid, head, "duplicates" if cid in item["supporting"]
-                                           else "supports", {"knowledge_id": item["id"]}, now)
-                    effect = "strengthened" if new_claims else "unchanged"
-                    _feedback(db, task_id, item["id"], item["key"], effect, before, after,
-                              {"new_claims": len(new_claims)}, now)
-                    summary["strengthened" if new_claims else "unchanged"].append(item["id"])
-                    ids_by_key[cluster.key] = item["id"]
+                    _strengthen(db, task_id, cluster, item, now, summary, ids_by_key)
                     continue
                 new_t, old_t = _as_temporal(cluster, now, item["key"]), _item_temporal(item)
                 if relation == "conflict":
-                    newer = bool(temporal.supersedes(new_t, old_t))
+                    newer = _supersedes(new_t, old_t, now)
                 else:   # a later statement of a series updates the item; the old version keeps its period
                     newer = _later(new_t, old_t)
                     if not newer:
@@ -424,7 +526,7 @@ def run(db, task_id, now) -> dict:
                     version = db.execute("SELECT max(version) FROM web_knowledge WHERE key=?",
                                          (item["key"],)).fetchone()[0] + 1
                     kid, pid, valid_from = _insert_knowledge(db, task_id, cluster, freshness, now,
-                                                             key=item["key"], version=version)
+                                                             key=item["key"], version=version, questions=questions)
                     db.execute("UPDATE web_knowledge SET status='superseded', valid_until=?, superseded_by=?, "
                                "updated_at=? WHERE id=?", (valid_from, kid, now, item["id"]))
                     knowledge.close_questions(db, f"web:knowledge:{item['id']}",
@@ -437,23 +539,30 @@ def run(db, task_id, now) -> dict:
                               now)
                     summary["superseded"].append({"old": item["id"], "new": kid, "reason": differ})
                     summary["provisional"].append(kid)
-                    summary["pending"].append(pid)
+                    if pid is not None:
+                        summary["pending"].append(pid)
                     ids_by_key[cluster.key] = kid
                     continue
                 why = differ if newer is False else f"{differ}; newer but below the provisional bar ({'; '.join(bar)})"
-                _contradict(db, task_id, cluster, item, why, now, summary)
+                _contradict(db, task_id, cluster, item, why, now, summary, questions)
                 continue
             ok, bar = _meets_bar(cluster, cfg)
             if not ok:
                 summary["held"].append({"key": cluster.key, "statement": cluster.statement, "reasons": bar,
                                         "status": cluster.status})
                 continue
-            kid, pid, _ = _insert_knowledge(db, task_id, cluster, freshness, now, key=cluster.key, version=1)
+            kid, pid, _ = _insert_knowledge(db, task_id, cluster, freshness, now, key=cluster.key, version=1,
+                                            questions=questions)
             _feedback(db, task_id, kid, cluster.key, "new", None, state.finite(cluster.confidence, 0.0),
                       {"independent_sources": cluster.independent_sources}, now)
             summary["provisional"].append(kid)
-            summary["pending"].append(pid)
+            if pid is not None:
+                summary["pending"].append(pid)
             ids_by_key[cluster.key] = kid
+        summary["questions_deferred"] = questions.deferred
+        summary["review_question"] = questions.close(now)
+        if summary["review_question"] is not None:
+            summary["pending"].append(summary["review_question"])
         summary["entities"] = _entities(db, task_id, cleaned, ids_by_key, now)
         summary["feedback"] = db.execute("SELECT count(*) FROM web_feedback").fetchone()[0] - feedback_before
         summary["pending"] = sorted(set(summary["pending"]))

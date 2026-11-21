@@ -145,13 +145,16 @@ def _relative(s: str, now: float) -> tuple[float, str] | None:
     if m:
         n = int(m.group(1)) if m.group(1).isdigit() else _NUMWORDS[m.group(1)]
         unit = m.group(2)
-        if unit == "month":
-            return _midnight(_shift_months(now, -n)), "day"
-        if unit == "year":
-            return _midnight(_shift_months(now, -12 * n)), "day"
-        precision = "time" if unit in ("second", "sec", "minute", "min", "hour", "hr") else "day"
-        ts = now - n * _UNITS[unit]
-        return (ts if precision == "time" else _midnight(ts)), precision
+        try:   # "12000 years ago" lies before year 1: not a calendar date
+            if unit == "month":
+                return _midnight(_shift_months(now, -n)), "day"
+            if unit == "year":
+                return _midnight(_shift_months(now, -12 * n)), "day"
+            precision = "time" if unit in ("second", "sec", "minute", "min", "hour", "hr") else "day"
+            ts = now - n * _UNITS[unit]
+            return (ts if precision == "time" else _midnight(ts)), precision
+        except (ValueError, OverflowError, OSError):
+            return None
     m = re.fullmatch(r"(?:last|on|this past)\s+(" + "|".join(_WEEKDAYS) + ")", s)
     if m:
         target = _WEEKDAYS.index(m.group(1))
@@ -237,8 +240,8 @@ _EVENT_PATTERNS = (
 )
 _EVENT_PARTIAL = re.compile(rf"\b(?:on\s+)?({_M})\.?\s+(\d{{1,2}}){_ORD}\b(?!,?\s*\d{{4}})|"
                             rf"\b(?:on\s+)?(\d{{1,2}}){_ORD}\s+(?:of\s+)?({_M})\b(?!\.?,?\s*\d{{4}})", re.IGNORECASE)
-_EVENT_RELATIVE = re.compile(
-    r"\b(?:yesterday|today|this (?:morning|afternoon|evening|week|month|year)|tonight|last (?:night|week|month|"
+_EVENT_RELATIVE = re.compile(      # (?<![\d,.]): "12,900 years ago" is not "900 years ago"
+    r"(?<![\d,.])\b(?:yesterday|today|this (?:morning|afternoon|evening|week|month|year)|tonight|last (?:night|week|month|"
     r"year)|(?:last|on|this past) (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|"
     r"(?:\d+|a couple of|a few|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+"
     r"(?:second|sec|minute|min|hour|hr|day|week|month|year)s?\s+ago)\b", re.IGNORECASE)
@@ -361,14 +364,19 @@ def effective_time(claim: dict) -> float | None:
     return claim.get("event_at") if claim.get("event_at") is not None else claim.get("published_at")
 
 
-def supersedes(new: dict, old: dict) -> bool:
+def supersedes(new: dict, old: dict, *, now: float | None = None) -> bool:
     """True when `new` replaces `old`: same key, conflicting values or polarity, and `new`'s effective time
     (event_at, else published_at) is strictly later than `old`'s. An undated `new` never supersedes. An undated
-    `old` is bounded by its retrieval time (it was published no later than it was retrieved)."""
+    `old` is bounded by its retrieval time (it was published no later than it was retrieved). A `new` dated more
+    than FUTURE_SKEW after `now` (default: `new`'s retrieval time) never supersedes: a planned release or a
+    misparsed date is not a newer state of the world."""
     if not new.get("key") or new.get("key") != old.get("key"):
         return False
     t_new = effective_time(new)
     if t_new is None:
+        return False
+    reference = now if now is not None else new.get("retrieved_at")
+    if reference is not None and t_new > reference + FUTURE_SKEW:
         return False
     t_old = effective_time(old)
     if t_old is None:
@@ -382,7 +390,8 @@ def supersedes(new: dict, old: dict) -> bool:
 
 def validity(claim: dict, *, now: float) -> dict:
     """{valid_from, valid_until, basis}: a statement holds from its event date (else publication date, else
-    retrieval time as an upper bound) until it is superseded (claim['superseded_at']) — open-ended otherwise."""
+    retrieval time as an upper bound) until it is superseded (claim['superseded_at']) — open-ended otherwise. A
+    start more than FUTURE_SKEW after `now` is not used: valid_from is None and the basis says why."""
     if claim.get("event_at") is not None:
         start, basis = claim["event_at"], "event date stated in the source"
     elif claim.get("published_at") is not None:
@@ -394,8 +403,8 @@ def validity(claim: dict, *, now: float) -> dict:
     until = claim.get("superseded_at")
     if until is not None:
         basis += "; ends when superseded by a newer conflicting statement"
-    elif start is not None and start > now + FUTURE_SKEW:
-        basis += "; the stated date lies in the future"
+    if start is not None and start > now + FUTURE_SKEW:
+        start, basis = None, basis + "; the stated date lies in the future, so no start is asserted"
     return {"valid_from": start, "valid_until": until, "basis": basis}
 
 

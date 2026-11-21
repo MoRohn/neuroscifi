@@ -85,7 +85,7 @@ def test_migration_4_adds_epoch_links():
 
 
 def test_migration_5_adds_epoch_contexts_and_streams():
-    assert schema.SCHEMA_VERSION == 6
+    assert schema.SCHEMA_VERSION == 7
     assert _statements(schema.MIGRATIONS[4]) == [
         "CREATE TABLE epoch_contexts( epoch TEXT PRIMARY KEY REFERENCES epochs(name), context TEXT NOT NULL, "
         "created_at REAL NOT NULL)",
@@ -93,6 +93,13 @@ def test_migration_5_adds_epoch_contexts_and_streams():
         "blob BLOB NOT NULL, rows INTEGER, cols INTEGER, sha256 TEXT NOT NULL, "
         "provenance TEXT NOT NULL CHECK(provenance IN ('observed','simulated')), created_at REAL NOT NULL, "
         "expires_at REAL)"]
+
+
+def test_migration_7_adds_web_tombstones_and_a_claim_time_index():
+    assert _statements(schema.MIGRATIONS[6]) == [
+        "CREATE TABLE web_forgotten( kind TEXT NOT NULL CHECK(kind IN ('task','knowledge','source_url',"
+        "'source_domain')), digest TEXT NOT NULL, forgotten_at REAL NOT NULL, PRIMARY KEY(kind, digest))",
+        "CREATE INDEX web_claims_created ON web_claims(created_at)"]
 
 
 @pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
@@ -121,7 +128,7 @@ def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
         for table in ("epoch_contexts", "epoch_streams"):   # migration 5 adds both, empty
             assert db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
         web = [t for t in _tables(db) if t.startswith("web_")]   # migration 6 adds the Web Cortex tables, empty
-        assert len(web) == 12 and all(db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0 for t in web)
+        assert len(web) == 13 and all(db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0 for t in web)
         assert db.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='evidence_tally'").fetchone()
         if version == 1:  # migration 2 adds forgotten_roots, empty
             assert db.execute("SELECT count(*) FROM forgotten_roots").fetchone()[0] == 0
@@ -194,7 +201,7 @@ def test_opening_a_current_file_is_a_no_op(tmp_path):
         before = _dump(raw, _tables(raw))
     db = store.connect(path)
     try:
-        assert schema.migrate(db) == schema.SCHEMA_VERSION == 6
+        assert schema.migrate(db) == schema.SCHEMA_VERSION == 7
         assert db.total_changes == 0
         assert db.execute("PRAGMA schema_version").fetchone()[0] == cookie
         assert _objects(db) == objects and _dump(db, list(before)) == before
@@ -202,7 +209,7 @@ def test_opening_a_current_file_is_a_no_op(tmp_path):
         db.close()
     store.open_existing(path).close()
     with sqlite3.connect(path) as raw:
-        assert raw.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == 7
         assert raw.execute("PRAGMA schema_version").fetchone()[0] == cookie
 
 

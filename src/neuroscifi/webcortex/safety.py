@@ -7,7 +7,14 @@ characters, beacon images). The patterns aim at *imperative, agent-directed* phr
 the same topics ("Researchers ignored previous results", "the system prompt engineering field") is not flagged.
 Flagged sentences are quarantined: they never become claims.
 
-`privacy_screen` runs on every outbound query: an empty result is the only "safe to send" signal.
+`privacy_screen` runs on every outbound query: an empty result is the only "safe to send" signal. It matches on a
+normalised copy of the query (NFKC, format characters such as zero-width spaces removed; private terms also
+case-folded) so fullwidth, zero-width and separator variants of private data are found; offsets refer to the
+original query.
+
+`safe_xml_parse` is the one XML parser for untrusted documents (feeds, sitemaps, arXiv Atom): expat with handlers
+that abort on any DOCTYPE or entity declaration and never load external entities, in whatever encoding expat
+reads (UTF-8, UTF-16, Latin-1), so billion laughs, quadratic blow-up and XXE are refused before expansion.
 """
 from __future__ import annotations
 
@@ -15,6 +22,8 @@ from dataclasses import replace
 import ipaddress
 import re
 import unicodedata
+from xml.etree import ElementTree
+import xml.parsers.expat as expat
 
 from . import text as _text
 from .types import Document
@@ -146,31 +155,46 @@ def _remove_flagged(text: str, findings: list[dict]) -> tuple[str, int]:
 
 
 def quarantine(doc: Document) -> Document:
-    """A copy of `doc` with every sentence that carries an injection finding removed from `text` and `markdown`.
+    """A copy of `doc` with every sentence that carries an injection finding removed from `text`, `markdown` and
+    `title` (titles reach reports and MCP clients).
 
-    flags["injection"] = findings (each with field "text" or "markdown"), flags["quarantined_sentences"] = number
-    of sentences removed from `text` (markdown removals in flags["quarantined_markdown_sentences"]). The input is
-    not modified."""
+    flags["injection"] = findings (each with field "text", "markdown" or "title"), flags["quarantined_sentences"]
+    = number of sentences removed from `text` (markdown removals in flags["quarantined_markdown_sentences"];
+    flags["quarantined_title"] = True when the title was cut). The input is not modified."""
     text_findings = scan_injection(doc.text)
     md_findings = scan_injection(doc.markdown) if doc.markdown else []
+    title_findings = scan_injection(doc.title) if doc.title else []
     new_text, n_text = _remove_flagged(doc.text, text_findings)
     new_md, n_md = _remove_flagged(doc.markdown, md_findings)
+    new_title, n_title = _remove_flagged(doc.title, title_findings)
     flags = dict(doc.flags)
     flags["injection"] = ([dict(f, field="text") for f in text_findings]
-                          + [dict(f, field="markdown") for f in md_findings])
+                          + [dict(f, field="markdown") for f in md_findings]
+                          + [dict(f, field="title") for f in title_findings])
     flags["quarantined_sentences"] = n_text
     flags["quarantined_markdown_sentences"] = n_md
-    return replace(doc, text=new_text, markdown=new_md, flags=flags)
+    if n_title:
+        flags["quarantined_title"] = True
+    return replace(doc, text=new_text, markdown=new_md, title=" ".join(new_title.split()), flags=flags)
 
 
 # ---- privacy screen -----------------------------------------------------------------------------------------
+
+_AT = r"(?:\s*[(\[{<]\s*at\s*[)\]}>]\s*|\s+at\s+)"
+_DOT = r"(?:\.|\s*[(\[{<]\s*dot\s*[)\]}>]\s*|\s+dot\s+)"
+_SEPARATORS = r"[\s\-_.·]*"
 
 _PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
     ("api_key", re.compile(
         r"(?<![\w-])(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{16,}|sk_(?:live|test)_[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|"
         r"gh[ousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|AKIA[0-9A-Z]{16}|xox[bpars]-[A-Za-z0-9-]{10,}|"
         r"AIza[0-9A-Za-z_-]{30,})")),
+    ("jwt", re.compile(r"(?<![\w-])eyJ[A-Za-z0-9_-]{4,}\.eyJ[A-Za-z0-9_-]{2,}\.[A-Za-z0-9_-]*")),
     ("email", re.compile(r"(?<![\w.+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b")),
+    ("email", re.compile(   # obfuscated: name (at) host [dot] org, "name at host dot org"
+        rf"(?<![\w.+-])[A-Za-z0-9_%+-]+(?:{_DOT}[A-Za-z0-9_%+-]+)*{_AT}[A-Za-z0-9-]+(?:{_DOT}[A-Za-z0-9-]+)*"
+        rf"{_DOT}[A-Za-z]{{2,}}\b", re.IGNORECASE)),
+    ("iban", re.compile(r"(?<![A-Za-z0-9])[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?(?![A-Za-z0-9])")),
     ("credit_card", re.compile(r"(?<![\d.])\d(?:[ -]?\d){12,18}(?![\d.])")),
     ("mac_address", re.compile(r"(?<![\w:-])[0-9A-Fa-f]{2}(?:([:-])[0-9A-Fa-f]{2})(?:\1[0-9A-Fa-f]{2}){4}(?![\w:-])")),
     ("ipv6", re.compile(r"(?<![\w:.])(?=[0-9A-Fa-f:]*:[0-9A-Fa-f:]*:)[0-9A-Fa-f:]{2,39}(?:%\w+)?(?![\w:])")),
@@ -207,7 +231,9 @@ def _accept(kind: str, raw: str, query: str, start: int) -> bool:
             return False
         return True
     if kind == "ipv4":
-        return not re.search(r"(?:version|release|v)\s?$", query[:start], re.IGNORECASE)
+        return not re.search(r"\b(?:version|release|v)\s?$", query[:start], re.IGNORECASE)
+    if kind == "iban":
+        return _iban_ok(re.sub(r"\s", "", raw))
     if kind == "phone":
         digits = re.sub(r"\D", "", raw)
         if not 9 <= len(digits) <= 15:
@@ -222,6 +248,70 @@ def _accept(kind: str, raw: str, query: str, start: int) -> bool:
     return True
 
 
+def _iban_ok(iban: str) -> bool:
+    """ISO 13616 check digits (mod 97 == 1)."""
+    if not 15 <= len(iban) <= 34:
+        return False
+    digits = "".join(str(int(ch, 36)) for ch in iban[4:] + iban[:4])
+    return int(digits) % 97 == 1
+
+
+def _normalise(text: str, *, fold: bool) -> tuple[str, list[int]]:
+    """NFKC per character, format characters (Cf: zero-width, bidi, soft hyphen) removed, optionally case-folded;
+    returns the normalised text and, for each of its characters, the index of the original character."""
+    out, index = [], []
+    for i, ch in enumerate(text):
+        if unicodedata.category(ch) == "Cf":
+            continue
+        mapped = unicodedata.normalize("NFKC", ch)
+        if fold:
+            mapped = mapped.casefold()
+        out.append(mapped)
+        index.extend([i] * len(mapped))
+    return "".join(out), index
+
+
+def _span(index: list[int], a: int, b: int, length: int) -> tuple[int, int]:
+    start = index[a] if a < len(index) else length
+    end = index[b - 1] + 1 if b > 0 and b - 1 < len(index) else start
+    return start, end
+
+
+def _term_pattern(term: str) -> re.Pattern | None:
+    """A private term with any run of separators (space, -, _, ., ·, or none) between its words and at most one
+    separator between its letters ("A d a Quill", "ada-quill", "adaquill" all match "Ada Quill")."""
+    words = [w for w in re.split(r"[\s\-_.·]+", _normalise(term, fold=True)[0]) if w]
+    if not words:
+        return None
+    letters = ["[\\s\\-_.·]?".join(re.escape(ch) for ch in word) for word in words]
+    return re.compile(r"(?<!\w)" + _SEPARATORS.join(letters) + r"(?!\w)")
+
+
+_SCRIPT_TOKEN = re.compile(r"[^\W\d_]{2,}")
+
+
+# Greek letters that pass for Latin ones; scientific symbols glued to Latin words (μm, κB, αsyn) are not included
+_GREEK_LOOKALIKES = frozenset("ΑΒΕΖΗΙΚΜΝΟΡΤΥΧο")
+
+
+def _script(ch: str) -> str | None:
+    name = unicodedata.name(ch, "")
+    if name.startswith("LATIN"):
+        return "LATIN"
+    if name.startswith("CYRILLIC"):
+        return "CYRILLIC"
+    if ch in _GREEK_LOOKALIKES:
+        return "GREEK"
+    return None
+
+
+def _mixed_script(token: str) -> bool:
+    """Latin letters mixed with Cyrillic (or Latin-looking Greek) ones in one word: a confusable spelling ("Аda"
+    with a Cyrillic А) used to slip a private term past the screen."""
+    scripts = {_script(ch) for ch in token} - {None}
+    return "LATIN" in scripts and len(scripts) > 1
+
+
 def _mask(raw: str) -> str:
     return raw[:2] + "\u2026" if len(raw) > 4 else "\u2026"
 
@@ -229,31 +319,82 @@ def _mask(raw: str) -> str:
 def privacy_screen(query: str, *, private_terms=()) -> list[dict]:
     """Findings [{kind, offset, length, excerpt}] for private data in an outbound query; [] = safe to send.
 
-    Detects e-mail addresses, phone numbers (>= 9 digits), IPv4/IPv6 literals, MAC addresses, absolute file paths,
-    API-key prefixes, credit-card numbers (Luhn-valid), long mixed hex/base64 secrets (>= 24 chars) and owner-listed
-    private terms (case-insensitive, whole word). Excerpts are masked so findings can be logged safely."""
+    Detects e-mail addresses (also obfuscated: "(at)", "[at]", " at ... dot "), phone numbers (>= 9 digits), IPv4/
+    IPv6 literals, MAC addresses, absolute file paths, API-key prefixes, JSON Web Tokens, IBANs (check digits),
+    credit-card numbers (Luhn-valid), long mixed hex/base64 secrets (>= 24 chars), words mixing Latin with
+    Cyrillic/Greek letters (confusables) and owner-listed private terms (case-folded, whole word, separator and
+    concatenation variants). Matching runs on the NFKC-normalised query without format characters. Excerpts are
+    masked so findings can be logged safely."""
     query = query or ""
     findings: list[dict] = []
     claimed: list[tuple[int, int]] = []
+    text, index = _normalise(query, fold=False)
+
+    def add(kind, a, b, idx):
+        start, end = _span(idx, a, b, len(query))
+        findings.append({"kind": kind, "offset": start, "length": end - start, "excerpt": _mask(query[start:end])})
+
     for kind, rx in _PRIVACY_PATTERNS:
-        for m in rx.finditer(query):
+        for m in rx.finditer(text):
             a, b = m.start(), m.end()
             raw = m.group(0)
             if any(a < cb and ca < b for ca, cb in claimed):
                 continue
-            if not _accept(kind, raw, query, a):
+            if not _accept(kind, raw, text, a):
                 continue
             claimed.append((a, b))
-            findings.append({"kind": kind, "offset": a, "length": b - a, "excerpt": _mask(raw)})
+            add(kind, a, b, index)
+    folded, folded_index = _normalise(query, fold=True)
     for term in private_terms or ():
-        term = (term or "").strip()
-        if not term:
+        pattern = _term_pattern((term or "").strip())
+        if pattern is None:
             continue
-        for m in re.finditer(rf"(?<!\w){re.escape(term)}(?!\w)", query, re.IGNORECASE):
-            findings.append({"kind": "private_term", "offset": m.start(), "length": m.end() - m.start(),
-                             "excerpt": _mask(m.group(0))})
+        for m in pattern.finditer(folded):
+            add("private_term", m.start(), m.end(), folded_index)
+    for m in _SCRIPT_TOKEN.finditer(text):
+        if _mixed_script(m.group(0)):
+            add("mixed_script", m.start(), m.end(), index)
     findings.sort(key=lambda f: (f["offset"], f["kind"]))
     return findings
+
+
+class _XMLRefused(Exception):
+    pass
+
+
+def _refuse_declaration(*_args):
+    raise _XMLRefused("XML with DOCTYPE/ENTITY declarations is refused")
+
+
+def safe_xml_parse(body: bytes, *, on_refuse):
+    """ElementTree root of an untrusted XML document. `on_refuse(detail) -> Exception` builds the exception raised
+    for a refused or malformed document (DOCTYPE or entity declarations, external entities, undefined entities,
+    syntax errors, empty input). Namespaced tags are '{uri}local', as with ElementTree.fromstring."""
+    body = bytes(body)
+    if not body.strip():
+        raise on_refuse("empty XML document")
+    builder = ElementTree.TreeBuilder()
+    parser = expat.ParserCreate(namespace_separator="}")
+
+    def name(raw):
+        return "{" + raw if "}" in raw else raw
+
+    parser.StartDoctypeDeclHandler = _refuse_declaration
+    parser.EntityDeclHandler = _refuse_declaration
+    parser.UnparsedEntityDeclHandler = _refuse_declaration
+    parser.ExternalEntityRefHandler = _refuse_declaration
+    parser.SetParamEntityParsing(expat.XML_PARAM_ENTITY_PARSING_NEVER)
+    parser.buffer_text = True
+    parser.StartElementHandler = lambda tag, attrs: builder.start(name(tag), {name(k): v for k, v in attrs.items()})
+    parser.EndElementHandler = lambda tag: builder.end(name(tag))
+    parser.CharacterDataHandler = builder.data
+    try:
+        parser.Parse(body, True)
+        return builder.close()
+    except _XMLRefused as error:
+        raise on_refuse(str(error)) from None
+    except expat.ExpatError as error:
+        raise on_refuse(f"malformed XML ({expat.ErrorString(error.code)})") from None
 
 
 def untrusted(text: str, source: str) -> dict:
@@ -261,5 +402,5 @@ def untrusted(text: str, source: str) -> dict:
     return {"untrusted": True, "source": source, "notice": UNTRUSTED_NOTICE, "text": text}
 
 
-__all__ = ["EXCERPT_MAX", "INJECTION_PATTERNS", "UNTRUSTED_NOTICE", "privacy_screen", "quarantine", "scan_injection",
-           "untrusted"]
+__all__ = ["EXCERPT_MAX", "INJECTION_PATTERNS", "UNTRUSTED_NOTICE", "privacy_screen", "quarantine",
+           "safe_xml_parse", "scan_injection", "untrusted"]
