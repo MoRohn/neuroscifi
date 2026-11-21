@@ -66,7 +66,9 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
   ui.showTranscript = h("input", { type: "checkbox", id: "nsfvShow", checked: true, "data-keep": true });
   ui.retain = h("input", { type: "checkbox", id: "nsfvRetain", "data-keep": true });
   ui.ttl = h("input", { type: "number", id: "nsfvTtl", min: "1", max: "168", step: "1", value: "24", "data-keep": true });
-  ui.consent = h("div", { class: "nsfv-consent", role: "region", "aria-label": "Microphone consent", hidden: true },
+  ui.consent = h("div", { class: "nsfv-consent", role: "dialog", "aria-modal": "true", "aria-label": "Microphone consent",
+                         tabindex: "-1", hidden: true,
+                         onkeydown: (e) => { if (e.key === "Escape") { e.preventDefault(); closeConsent(); } } },
     h("p", { text: "Before the first capture on this device: when the microphone is on, NeuroSciFi sends your speech " +
                    "to its own speech recognition on this computer (never to an outside service) and keeps the " +
                    "transcript. Raw audio is not stored unless the owner turns retention on. You can turn the " +
@@ -74,7 +76,7 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
     h("button", { type: "button", class: "nsfv-btn primary", "data-keep": true, text: "Allow microphone",
                   onclick: () => act(async () => { await client.consent(true); ui.consent.hidden = true; await micOn(); }) }),
     h("button", { type: "button", class: "nsfv-btn", "data-keep": true, text: "Not now",
-                  onclick: () => { ui.consent.hidden = true; } }));
+                  onclick: () => closeConsent() }));
   ui.confirmText = h("p", {});
   ui.confirm = h("div", { class: "nsfv-confirm", role: "alertdialog", "aria-label": "Confirmation needed", hidden: true },
     ui.confirmText,
@@ -119,6 +121,12 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
         h("label", { for: "nsfvSearch", class: "nsfv-vh", text: "Search text" }), ui.search,
         h("button", { type: "submit", class: "nsfv-btn", "data-keep": true, text: "Search" })), ui.results)));
 
+  function closeConsent() { ui.consent.hidden = true; ui.mic.focus(); }
+  // The server's label for model text overstates ("reasoning", "verified"); the panel states what the guard checked.
+  function modelBadge(label) {
+    return /^Advanced reasoning by /.test(label || "") ? "Model-written summary from the collected evidence" : label;
+  }
+
   function notice(text) { ui.notice.textContent = text || ""; }
 
   async function act(fn) {
@@ -136,8 +144,8 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
     ui.mute.textContent = s.outputMuted ? "Unmute speech" : "Mute speech";
     ui.mute.disabled = s.mode !== "voice_text";
     ui.indicator.dataset.on = String(s.micOn);
-    ui.indicator.textContent = s.micOn ? (s.userSpeaking ? "● Microphone on — hearing you" : "● Microphone on — capturing")
-      : (s.speaking ? "Speaking" : "Microphone off");
+    const mic = s.micOn ? (s.userSpeaking ? "● Microphone on — hearing you" : "● Microphone on — capturing") : "Microphone off";
+    ui.indicator.textContent = s.speaking ? `${mic} · NeuroSciFi speaking` : mic;
     for (const r of ui.modes.querySelectorAll("input")) r.checked = r.value === s.mode;
     ui.confirm.hidden = !s.pending;
     if (s.pending) ui.confirmText.textContent = s.pending.summary;
@@ -174,7 +182,7 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
 
   function segmentItem(seg) {
     const who = seg.speaker === "user" ? "You" : "NeuroSciFi";
-    const badge = seg.speaker === "neuroscifi" ? (seg.detail && seg.detail.label) || seg.label : seg.label;
+    const badge = seg.speaker === "neuroscifi" ? modelBadge((seg.detail && seg.detail.label) || seg.label) : seg.label;
     const li = h("li", { class: `nsfv-seg nsfv-${seg.speaker} nsfv-${seg.status}`, "data-seg": String(seg.id) },
       h("div", { class: "nsfv-meta" }, h("strong", { text: who }), h("time", { text: time(seg.created_at) }),
         h("span", { class: `nsfv-badge nsfv-${seg.authority}`, text: badge }),
@@ -231,7 +239,7 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
       if (ui.input.options.length <= 1) for (const d of list) ui.input.append(h("option", { value: d.id, text: d.label }));
       ui.input.value = client.inputDevice;
     } catch (err) {
-      if (err.code === "consent") { ui.consent.hidden = false; return; }
+      if (err.code === "consent") { ui.consent.hidden = false; ui.consent.focus(); return; }
       if (err.code === "busy") { ui.handoff.hidden = false; ui.handoff.querySelector(".nsfv-handoff-text").textContent = err.message; return; }
       notice(err.name === "NotAllowedError" ? "The browser blocked the microphone." : err.message);
     }

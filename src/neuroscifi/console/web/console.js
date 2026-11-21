@@ -1327,6 +1327,13 @@ function renderLlmStatus(s) {
 
 // report.reasoning (webcortex/reasoning.py): a model-written answer that passed the server's citation and claim-state
 // guard, or the template label with the reason. Model text is set as text only, like every web-derived string.
+// The server label says "reasoning ... verified"; the guard only checks each sentence against its cited sources, and a
+// single-source statement is marked as such. State exactly that, keeping the model name.
+function modelAnswerLabel(x) {
+  const who = /^Advanced reasoning by ([^:]+):/.exec(x.label ?? '')?.[1];
+  return `Written by ${who ?? 'the local model'} from the collected evidence. Each sentence was checked against its cited sources; single-source statements are marked.`;
+}
+
 function reasoningBlock(r) {
   const x = r.reasoning;
   if (!x) return [];
@@ -1335,7 +1342,7 @@ function reasoningBlock(r) {
       x.reason ? technical(h('p', { text: `Why: ${x.reason}` })) : null];
   }
   const out = [h('h4', { text: 'Answer' }),
-    h('p', { class: 'sub', id: 'reasoningLabel', 'data-generated-by': x.generated_by }, badge('Model reasoning', 'info'), ` ${x.label}`),
+    h('p', { class: 'sub', id: 'reasoningLabel', 'data-generated-by': x.generated_by }, badge('Model-written summary', 'info'), ` ${modelAnswerLabel(x)}`),
     h('ol', { class: 'answers', id: 'modelAnswer' }, x.answer.map((s) => h('li', {}, h('p', { class: 'generated', text: s.text }),
       h('p', { class: 'answermeta' }, citeLinks(s.citations), ' ',
         Object.entries(s.states ?? {}).map(([id, st]) => badge(`${id}: ${statusText(st)}`, st === 'corroborated' || st === 'supported' ? 'ok' : 'neutral')),
@@ -1919,7 +1926,7 @@ function renderKnowledge(topic = $('kTopic').value.trim(), wanted = $('kStatus')
   const what = wanted ? `${$('kStatus').selectedOptions[0].textContent.toLowerCase()} ` : '';
   fill($('knowledgeList'), items.length ? h('div', { class: 'grid' }, items.map(knowledgeCard))
     : empty(wanted && web.knowledge?.length ? `No ${what}knowledge${topic ? ` about “${topic}”` : ''}.`
-      : topic ? `Nothing known about “${topic}”. Research it under Research.` : 'Nothing learned from the web yet.'));
+      : topic ? `Nothing known about “${topic}”. Research it under Research.` : 'Nothing learned from the web yet. Next step: turn on web access, then ask a question under Research; what it finds appears here for your review.'));
   const target = web.focusKnowledge;
   if (target !== undefined && target !== null) {
     web.focusKnowledge = null;
@@ -1972,7 +1979,7 @@ function knowledgeCard(k) {
     h('h2', { id: `k-title-${k.id}`, class: 'kstatement', tabindex: '-1', text: k.statement }),
     h('p', { class: 'badges' }, badge(cap(k.status), KNOWLEDGE_TONE[k.status] ?? 'neutral'), k.stale && k.status !== 'stale' ? badge('Stale', 'warn') : null,
       k.contested ? badge('Contested', 'warn') : null, badge(`confidence ${pct(k.confidence)}`, 'neutral'), ` #${k.id} · version ${k.version}`),
-    kv([['Freshness class', k.freshness_class], ['Last verified', `${fmtTime(k.last_verified_at)} (${ago(k.last_verified_at)})`], ['First verified', fmtTime(k.first_verified_at)],
+    kv([['Freshness class', k.freshness_class], [k.status === 'provisional' ? 'Last checked against sources' : 'Last verified', `${fmtTime(k.last_verified_at)} (${ago(k.last_verified_at)})`], [k.status === 'provisional' ? 'First seen' : 'First verified', fmtTime(k.first_verified_at)],
       k.stale ? ['Why stale', String(k.stale_reason ?? '').replace(/^stale:\s*/i, '')] : null, k.note ? ['Note', k.note] : null, k.pending_id ? ['Open question', `#${k.pending_id}`] : null]),
     h('h3', { text: 'Sources' }), k.sources.length ? h('ul', { class: 'reasons' }, k.sources.map((s) => h('li', {}, h('span', { text: `${s.title || s.domain} · ${fmtDay(s.published_at)} · ` }), safeLink(s.url))))
       : empty('No sources recorded.'),
@@ -2154,18 +2161,29 @@ function signalList(signals) {
   const on = Object.entries(signals ?? {}).filter(([, v]) => Number(v) > 0).sort((a, b) => b[1] - a[1]);
   if (!on.length) return h('p', { class: 'candmeta', text: 'No weighted signal: ranked on expected gain alone.' });
   return h('ul', { class: 'signals', 'aria-label': 'Signals' },
-    on.map(([k, v]) => h('li', { 'data-signal': k }, SIGNAL_TEXT[k] ?? k.replaceAll('_', ' '), h('span', { class: 'sv', text: two(v) }))));
+    on.map(([k, v]) => {
+      const name = SIGNAL_TEXT[k] ?? k.replaceAll('_', ' ');
+      const tip = `${name}: weight ${two(v)} on a 0 to 1 scale. A higher weight ranks this question earlier.`;
+      return h('li', { 'data-signal': k, title: tip, 'aria-label': tip }, name, h('span', { class: 'sv', 'aria-hidden': 'true', text: two(v) }));
+    }));
 }
 
 function autoCandidatesBlock(c, s) {
   if (c === null) return [empty('Candidates are ranked while web access is on; with it off nothing can be researched.')];
   const out = [];
   if (!s.enabled && c.chosen.length) out.push(h('p', { class: 'sub', text: 'Autonomy is off: this is what it would investigate. Nothing is queued.' }));
-  out.push(h('h3', { text: `Would investigate (${c.chosen.length})` }));
-  out.push(c.chosen.length
-    ? h('ol', { class: 'candidates', id: 'autoChosen' }, c.chosen.map((x) => h('li', { 'data-key': x.key }, h('div', {},
+  // The API can rank the same statement twice (for example as contested knowledge and as an open hypothesis). Show it
+  // once, at its best rank, and name the other reasons it was ranked.
+  const chosen = [];
+  for (const x of c.chosen) {
+    const first = chosen.find((y) => candidateTitle(y) === candidateTitle(x));
+    if (first) first.alsoKinds.push(CANDIDATE_KIND[x.kind] ?? x.kind); else chosen.push({ ...x, alsoKinds: [] });
+  }
+  out.push(h('h3', { text: `Would investigate (${chosen.length})` }));
+  out.push(chosen.length
+    ? h('ol', { class: 'candidates', id: 'autoChosen' }, chosen.map((x) => h('li', { 'data-key': x.key }, h('div', {},
         h('p', { class: 'kstatement', text: candidateTitle(x) }),
-        h('p', { class: 'candmeta', text: `${CANDIDATE_KIND[x.kind] ?? x.kind} · ${modeLabel(x.mode)} · priority ${three(x.priority)} · gain ${three(x.info_gain)} bits` }),
+        h('p', { class: 'candmeta', text: `${CANDIDATE_KIND[x.kind] ?? x.kind}${x.alsoKinds.length ? ` (also: ${x.alsoKinds.join(', ')})` : ''} · ${modeLabel(x.mode)} · priority ${three(x.priority)} · gain ${three(x.info_gain)} bits` }),
         signalList(x.signals),
         technical(kv([['Ranking', x.reason], ['Cost', three(x.cost)], ['Search terms', x.objective || '—'], ['Index key', h('code', { text: x.key })]]))))))
     : empty(c.refused.length ? 'Nothing clears the bar now: every candidate was refused for the reason shown below.'

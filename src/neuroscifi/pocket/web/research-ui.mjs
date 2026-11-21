@@ -33,6 +33,10 @@ function fail(e){
   if(e.code==="not_paired")return;  // the pairing was dropped here; mobile.js already says why (RT-B-08 race)
   if(e.code==="owned"&&e.body?.session&&current&&!current.saved)setSession(current.id,e.body);
   if(e.status===404){research=false;tasks=[];if(current&&!current.saved)close();layout();say("Research is not available from this Spark.");return;}
+  if(e.code==="private_data"){  // like the console: keep focus on the field and tie the refusal to it
+    const f=$("objective");f.setAttribute("aria-invalid","true");f.setAttribute("aria-describedby","objectivecount researchmsg");
+    queueMicrotask(()=>f.focus());
+  }
   say(e.code==="daily_budget"?"Your Spark's daily research budget is used up. Nothing was queued. It renews tomorrow, or the owner can raise it."
     :e.code==="owned"?"Another of your devices is driving this research right now. Ask it to hand it over."
     :e.code==="not_continuable"?"Only a cancelled, partial or failed question can be continued."
@@ -73,6 +77,8 @@ function buttons(){
   const text=$("objective").value, size=bytes(body()), chars=[...text].length;
   $("objectivecount").textContent=chars+" / "+MAX+" characters · "+size+" / "+MAX_BYTES+" bytes"+(size>MAX_BYTES?" · too long to send":"");
   $("researchsubmit").disabled=!paired||!research||busy||!text.trim()||chars>MAX||size>MAX_BYTES;
+  $("researchsubmithint").textContent=!$("researchsubmit").disabled?"":!paired||!research?"Pair with a research-enabled Spark to submit.":
+    busy?"Sending your question…":!text.trim()?"Type a question to enable Submit.":"Shorten the question to enable Submit.";
   $("dictate").disabled=!!dictation;
 }
 function drawList(){
@@ -176,6 +182,8 @@ function show(t,saved=false){
   if(r&&"speechSynthesis" in window&&spoken(r).length){
     const aloud=node("button",reading?.id===t.id?"Stop reading":"Read aloud");aloud.id="readaloud";
     aloud.onclick=()=>readAloud(t.id,r);actions.append(aloud);
+    // offered only when an on-device voice exists; otherwise there is nothing to press
+    if(!reading&&voiceKnown!==true){aloud.hidden=true;if(voiceKnown===undefined)localVoice().then(v=>{voiceKnown=!!v;if(v){const b=$("readaloud");if(b)b.hidden=false;}}).catch(()=>{voiceKnown=false;});}
   }
   if(saved){
     const forget=node("button","Forget saved copy");forget.onclick=()=>forgetFinding(t.id).then(()=>say("Saved finding forgotten on this device.")).catch(e=>say(e.message));
@@ -195,6 +203,7 @@ function close(){stopReading();current=null;shown=null;session=null;$("researchb
 function spoken(r){
   return (r.answer||[]).filter(x=>x.type==="quote"&&x.text).map(x=>x.text.replace(/[\s.!?…]+$/,"")+"."+(x.citations?.length?" "+x.citations.map(n=>"Source "+n).join(", ")+".":""));
 }
+let voiceKnown;
 async function localVoice(){
   let all=speechSynthesis.getVoices();
   if(!all.length)await new Promise(done=>{const t=setTimeout(done,1000);speechSynthesis.addEventListener("voiceschanged",()=>{clearTimeout(t);done();},{once:true});});
@@ -274,7 +283,7 @@ async function reviewEvidence(id){
       st.firstChild.setAttribute("aria-hidden","true");
       li.append(st,node("p",x.statement?"“"+x.statement+"”":"(no claim text)","revclaim"));
       const basis=node("p",null,"revbasis");
-      basis.append("basis: ",node("strong",x.basis?BASIS[x.basis]||x.basis.replaceAll("_"," "):"not stated"));
+      basis.append("basis: ",node("strong",x.basis?BASIS[x.basis]||x.basis.replaceAll("_"," "):x.state==="insufficient"?"none: no supporting evidence was found":"not stated"));
       for(const extra of [x.category&&"category: "+x.category.replaceAll("_"," "),x.domain])if(extra)basis.append(" · "+extra);
       li.append(basis);ul.append(li);
     }
@@ -376,6 +385,7 @@ function update(t){
   const row=tasks.find(x=>x.id===t.id);
   if(row)for(const k of ["status","stage","updated","cancel_requested","spent"])row[k]=t[k];
   drawList();
+  if(!active(t)&&/^Queued on your Spark/.test($("researchmsg").textContent))say("");  // no stale "Queued" after it finished
 }
 async function refresh(){
   if(!research||!paired)return;
@@ -437,7 +447,7 @@ $("dictate").onclick=async()=>{
   say("Microphone active · dictating on this device");
   try{rec.start();}catch{stopDictation();say("Dictation unavailable. Type your question.");}
 };
-$("objective").oninput=buttons;$("researchmode").onchange=buttons;
+$("objective").oninput=()=>{const f=$("objective");f.removeAttribute("aria-invalid");f.setAttribute("aria-describedby","objectivecount");buttons();};$("researchmode").onchange=buttons;
 $("researchform").onsubmit=async e=>{
   e.preventDefault();
   const data=body(), objective=data.objective;

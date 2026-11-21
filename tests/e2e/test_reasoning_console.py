@@ -91,8 +91,10 @@ def test_model_answer_label_flag_and_verdict_fields(research, model, new_page):
     report = run(page, research)
     label = report.locator("#reasoningLabel")
     expect(label).to_have_attribute("data-generated-by", "model:fake-model")
-    expect(label).to_contain_text("Model reasoning")
-    expect(label).to_contain_text("Advanced reasoning by fake-model")
+    expect(label).to_contain_text("Model-written summary")
+    expect(label).to_contain_text("Written by fake-model from the collected evidence")
+    expect(label).to_contain_text("single-source statements are marked")
+    expect(label).not_to_contain_text("verified")   # T4-02: the guard checks citations, it does not verify claims
     answer = report.locator("#modelAnswer li")
     expect(answer).to_have_count(1)
     expect(answer.first.locator("p.generated")).to_contain_text("4.2.0")
