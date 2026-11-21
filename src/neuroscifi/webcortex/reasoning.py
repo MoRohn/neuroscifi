@@ -178,7 +178,7 @@ CONFLICT_STATES = frozenset({"contested", "conflicting", "disputed"})
 # A compound sentence with one factual clause is not one: its factual clause is checked like any statement, and a
 # hedge inside the caveat clause does not hedge it (hedged_outside_gaps). The number, unit, id and injection checks
 # always apply; the question's own numbers are exempt only inside an absent-evidence clause.
-_WORD_RX = re.compile(r"[A-Za-z0-9][\w.'’-]*[A-Za-z0-9]|[A-Za-z0-9]")
+_WORD_RX = re.compile(r"[^\W_][\w.'’-]*[^\W_]|[^\W_]")    # any script (F5): no word is invisible to the guard
 _NEG_WORDS = frozenset("""no not never none nothing cannot insufficient inadequate lack lacks lacked lacking absence
 unable fail fails failed""".split())
 _KNOWLEDGE_ABSENT = frozenset("""unclear unknown uncertain undetermined unverified unconfirmed unestablished unspecified
@@ -478,6 +478,33 @@ def gap_clause(clause: str, question: str = "") -> bool:
     """`clause` is an absent-evidence clause about `question` (see the rules above). Without a question only a
     caveat with no content word outside an embedded question can pass."""
     return _parse_gap(clause, question)[1]
+
+
+_NUMBER_WORDS = frozenset("""zero two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen
+sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred hundreds thousand
+thousands million millions billion billions trillion dozen dozens twice thrice double triple half point first third
+fourth fifth sixth seventh eighth ninth tenth""".split())
+
+
+def _uncited_problems(text: str, question: str) -> list[str]:
+    """F5: why an uncited caveat says more than its question: a word that is neither the question's nor caveat
+    vocabulary, a non-ASCII letter (homoglyphs: Cyrillic "О" in "Оpenssl"), a number written in words."""
+    terms = _question_terms(question)
+    words = _WORD_RX.findall(text.replace("’", "'"))
+    out = []
+    foreign = [w for w in words if not any(c.isdigit() for c in w) and not (
+        (lw := w.lower()) in T.STOPWORDS or lw in _TAIL_WORDS or lw in _EVIDENCE_NOUNS or lw in _JUDGEMENT_NOUNS or
+        lw in _NEG_WORDS or lw.endswith("n't") or lw in _KNOWLEDGE_ABSENT or lw in _AUX or
+        _EVIDENCE_VERB.match(lw) or _question_term(lw, terms)) or w.lower() in _NUMBER_WORDS]
+    named = [w for w in foreign if w.lower() not in _NUMBER_WORDS]
+    if named:
+        out.append(f"an uncited caveat names {', '.join(dict.fromkeys(named))}, which the question does not name")
+    if any(ch.isalpha() and not ch.isascii() for ch in text):
+        out.append("an uncited caveat holds non-ASCII letters")
+    spelled = [w for w in words if w.lower() in _NUMBER_WORDS]
+    if spelled:
+        out.append(f"an uncited caveat writes a number in words ({', '.join(dict.fromkeys(spelled))})")
+    return out
 
 
 def _absence_problems(text: str, b: dict) -> list[str]:
@@ -841,15 +868,10 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     if not cites and not honest_gap:
         reasons.append("cites no source")
     elif not cites:
-        # D-R5-3: an uncited caveat may use only the question's own terms: no name the question does not hold
-        # (numbers: the number check below allows only the question's own inside the caveat)
-        asked = (b.get("question") or "").lower()
-        first = _NAME.match(text)
-        foreign = [m.group(1) for m in _NAME.finditer(text) if m.group(1).lower() not in asked and
-                   not (first and m.start() == first.start() and m.group(1)[1:].islower())]
-        if foreign:
-            reasons.append(f"an uncited caveat names {', '.join(dict.fromkeys(foreign))}, which the question does "
-                           "not name")
+        # D-R5-3, F5: an uncited caveat may use only the question's own terms and the caveat vocabulary (stopwords,
+        # evidence nouns and verbs, negators, function words); digits are left to the number check below, which
+        # allows only the question's own inside the caveat. No other letters than ASCII, no number written in words.
+        reasons += _uncited_problems(text, question)
     unknown = sorted({n for n in cites if n not in source_ids})
     if unknown:
         reasons.append(f"cites unknown source(s) {unknown}")

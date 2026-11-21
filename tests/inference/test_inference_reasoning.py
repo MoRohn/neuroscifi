@@ -174,7 +174,7 @@ def test_an_honest_insufficiency_statement_passes_but_only_on_its_own():
     single-source claims; the hedging rule rejected it and the fallback spoke an unrelated quote. A sentence that only
     says the evidence lacks something asserts no fact: it passes, with or without citations. A second clause that
     asserts a fact, a number not in the evidence or an unknown id still fails."""
-    honest = [("No source states whether a Zephyr compiler release is planned.", [], []),
+    honest = [("No source states whether the Zephyr compiler version is the latest.", [], []),
               ("This cannot be established from the sources read.", [1], ["C1"])]
     ok, bad = check(*honest)
     assert bad == [] and [x["text"] for x in ok] == [t for t, _, _ in honest]
@@ -466,7 +466,20 @@ F2_ABSENCE = [    # a that-complement or an existential complement: an absence c
     "None of the sources reports security problems in numpy 2.5.5.",
     "The evidence does not show that numpy 2.5.5 is unsafe.",
 ]
-SEC_BYPASSES = F1_SPLIT + F4_GAPS + F3_PREFIX + F2_ABSENCE
+F5_UNCITED = [    # uncited: a word the question does not hold, a homoglyph, fullwidth letters, a number in words
+    "No source states whether numpy 2.5.5 is secure, openssl and tensorflow are affected by it.",
+    "No source states whether numpy 2.5.5 is secure, \u041epenssl is affected by it.",
+    "No source states whether numpy 2.5.5 is secure, \uff2fpenSSL is affected by it.",
+    "No source states whether numpy 2.5.5 is secure, it fixes twelve critical bugs.",
+    "No source states whether numpy 2.5.5 is secure, downgrade to version two point four.",
+    "No source states whether openssl in numpy 2.5.5 is secure.",
+    "No source states whether \u041epenssl in numpy 2.5.5 is secure.",
+    "No source states whether \uff2f\uff50\uff45\uff4e\uff33\uff33\uff2c in numpy 2.5.5 is secure.",
+    "No source states whether numpy 2.5.5 fixes twelve critical bugs.",
+    "No source states whether numpy 2.5.5 is secure \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u0435\u043d.",
+    "No source states whether nu\u200bmpy 2.5.5 is secure for tensorflow users.",
+]
+SEC_BYPASSES = F1_SPLIT + F4_GAPS + F3_PREFIX + F2_ABSENCE + F5_UNCITED[:5]
 
 
 @pytest.mark.parametrize("cited", [True, False], ids=["cited", "uncited"])
@@ -505,6 +518,29 @@ REJECTED_CAVEATS = [
      "F2/F5 (D-R5-3 live wording): 'suitability' is not the question's term; the rules note says 'recommended' is a "
      "judgement the evidence does not establish"),
 ]
+
+
+@pytest.mark.parametrize("text", F5_UNCITED[5:])
+def test_an_uncited_embedded_question_holds_only_the_questions_words(text):
+    """F5: inside "whether ..." a CITED caveat's words are free (an embedded question asserts nothing); an UNCITED one
+    may hold only the question's terms and caveat vocabulary."""
+    ok, bad = reasoning.guard([{"text": text, "sources": [], "claims": []}], r5_bundle(SEC_Q))
+    assert ok == [] and len(bad) == 1, ok
+
+
+def test_an_uncited_caveat_says_nothing_beyond_its_question():
+    """F5: the reasons for the uncited forms of the F5 bypasses (NFKC-normalised first)."""
+    b = r5_bundle(SEC_Q)
+
+    def reasons(text):
+        return reasoning.guard([{"text": text, "sources": [], "claims": []}], b)[1][0]["reasons"]
+    assert any("names openssl" in r for r in reasons(F5_UNCITED[5]))
+    assert any("non-ASCII" in r for r in reasons(F5_UNCITED[6]))
+    assert any("names OpenSSL" in r for r in reasons(F5_UNCITED[7]))      # fullwidth -> ASCII by NFKC
+    assert any("twelve" in r for r in reasons(F5_UNCITED[8]))
+    ok, bad = reasoning.guard([{"text": "No source states whether numpy 2.5.5 is secure.", "sources": [],
+                                "claims": []}], b)
+    assert bad == [] and ok[0].get("insufficiency"), bad
 
 
 @pytest.mark.parametrize("text,question,sources,claims,why", REJECTED_CAVEATS)
