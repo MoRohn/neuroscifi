@@ -1,0 +1,80 @@
+# open-webSearch 2.2.0 daemon (ADR-025): key-free multi-engine search for the Web Cortex, REST on loopback only.
+# Installed disabled. install.sh copies the pinned deploy/open-websearch/package.json + package-lock.json to
+# /opt/neuroscifi/open-websearch and installs them with `npm ci --ignore-scripts` (no install scripts run).
+# Only GET /health, GET /status and POST /search are used (providers/openwebsearch.py). Its /mcp and SSE modes
+# bind 0.0.0.0 without authentication and are never started; the host is fixed to 127.0.0.1 here.
+#
+# Network policy, thought through:
+# - Inbound: only loopback clients may connect. The daemon binds 127.0.0.1, and IPAddressAllow=localhost with
+#   IPAddressDeny=any for every other inbound source would be ideal, but systemd's IP filter is not
+#   direction-aware: the same lists apply to egress, and the daemon must reach the public search engines. So the
+#   bind address is the inbound control, and the kernel filter below is an egress control.
+# - Outbound: public addresses (search engines) and loopback (DNS via the systemd-resolved stub 127.0.0.53; the
+#   replies to its own loopback clients). Denied: private (RFC 1918), carrier-grade NAT, unique-local IPv6,
+#   link-local (includes the 169.254.169.254 cloud metadata address) and multicast, so the daemon's own fetch
+#   tools, which do not pin DNS, cannot be turned against the LAN.
+# - Residual risk, accepted: loopback stays reachable from the daemon (it must answer loopback clients), so a
+#   local process could use its unused /fetch-* endpoints to reach other loopback services. Only local users can
+#   reach the daemon at all. If the resolver is a LAN address, allow it in a drop-in (IPAddressAllow=ADDRESS).
+[Unit]
+Description=open-webSearch daemon for NeuroSciFi Web Cortex (loopback only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Its own throwaway unprivileged user: it never sees the individual's files (no access to %S/neuroscifi).
+DynamicUser=yes
+Environment=NSF_WEBSEARCH_PORT=3210
+EnvironmentFile=-/etc/neuroscifi/neuroscifi.env
+Environment=OPEN_WEBSEARCH_QUIET_STARTUP=true
+Environment=ENABLE_CORS=false
+Environment=NODE_ENV=production
+Environment=HOME=%S/neuroscifi-websearch
+WorkingDirectory=/opt/neuroscifi/open-websearch
+# Adjust the node path if Node.js lives elsewhere (install.sh rewrites it to `command -v node`).
+ExecStart=/usr/bin/node /opt/neuroscifi/open-websearch/node_modules/open-websearch/build/index.js serve --host 127.0.0.1 --port ${NSF_WEBSEARCH_PORT}
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+
+StateDirectory=neuroscifi-websearch
+StateDirectoryMode=0700
+UMask=0077
+
+MemoryMax=1G
+TasksMax=64
+
+IPAddressAllow=localhost
+IPAddressDeny=link-local multicast 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7 0.0.0.0/8
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+NoNewPrivileges=yes
+RemoveIPC=yes
+PrivateUsers=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# V8's JIT needs writable+executable memory, so MemoryDenyWriteExecute stays off for Node (`node --jitless` would
+# also disable WebAssembly, which Node's HTTP parser uses).
+MemoryDenyWriteExecute=no
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

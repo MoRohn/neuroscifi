@@ -129,9 +129,9 @@ cannot accept knowledge, change configuration, forget memory or see other famili
 surface grows by four actions under the existing bearer, origin, size and TLS controls.
 
 **ADR-029 Migration 6 adds the web tables to the individual; forget and erasure cover them. H (format)**
-Decision: eleven `web_*` tables (ARCHITECTURE §6), owned by `webcortex/state.py`. `nsf forget research|knowledge|source`
+Decision: twelve `web_*` tables (ARCHITECTURE §6), owned by `webcortex/state.py`. `nsf forget research|knowledge|source`
 cascades to derived claims, links, knowledge versions and pending questions, marks checkpoints stale, and records a
-`deletion_log` row. Forgetting a task rewrites its objective and queries to `#forgotten`.
+`deletion_log` row. Forgetting a task deletes its row, events, sources and claims; the deletion log keeps only the task id, and a byte-level test checks that the objective text leaves the file and its WAL. Owner questions about forgotten knowledge keep their row with the text replaced by `#forgotten`.
 
 **ADR-030 JavaScript rendering is an escalation, sandboxed and routed through SafeFetcher. R**
 Decision: when extraction finds a JavaScript shell and the task has a browser-session budget, `browser.BrowserRenderer`

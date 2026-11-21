@@ -33,6 +33,8 @@ function sensorTime() {
   el("lastactive").textContent = el("sensor").dataset.live === "yes" ? "active now"
     : lastActive ? new Date(lastActive).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}) : "none since this page opened";
 }
+// Tells the Research panel whether this pairing may research (the bridge says so in `state` only when enabled).
+function pairing(research) { document.dispatchEvent?.(new CustomEvent("pocketpair", {detail:{paired:!!key, research}})); }
 function item(channel, value) { return {id:crypto.randomUUID(), channel, value}; }
 function stop(reason = "Sensors off") {
   generation++;
@@ -216,9 +218,10 @@ async function forgetSession() {
 }
 async function historyView() {
   const requestedKey=key;
-  const {records,prediction,muted} = await api("state",{});
+  const {records,prediction,muted,research} = await api("state",{});
   const {episodes} = await api("episodes",{});
   if (requestedKey!==key || document.hidden) return;
+  pairing(research === true);
   el("history").replaceChildren();
   for (const r of [...records,...(episodes||[]).map(e=>({id:e.id,channel:"field episode",value:e.outcome,learn:e.learn,episode:true}))]) {
     const li = document.createElement("li"), btn = document.createElement("button");
@@ -286,5 +289,6 @@ window.pocketSetPair=token=>{
  el("linkstate").textContent=key?"Paired with Spark":"Phone only";
  el("pairhelp").textContent=key?"This tab has a pairing credential. Refresh history to check connectivity.":"Enter your Spark or linked-device code.";
  if(!key){el("history").replaceChildren();el("forecast").textContent="";el("handoff").textContent="";}
+ pairing(false);
  buttons();
 };

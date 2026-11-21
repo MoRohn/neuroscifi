@@ -8,6 +8,28 @@ def _dir(args):
     return args.dir if args.dir is not None else checkpoints.default_dir(store.resolve_db(args))
 
 
+def _forget_source(db, args, now):
+    """governance.forget_source, then drop the URL (or every URL of the domain) from the public cache, which
+    holds bodies and validators only (ADR-023). The cache file is opened only if it exists."""
+    result = governance.forget_source(db, args.target, now)
+    from ..webcortex.services import cache_path
+    path = cache_path(store.resolve_db(args))
+    target = args.target.strip()
+    dropped = {"path": str(path), "exists": path.exists(), "entries_removed": 0}
+    if dropped["exists"]:
+        from ..webcortex.cache import PublicCache
+        cache = PublicCache(path)
+        try:
+            if "://" in target:
+                urls = set((result.get("effects") or {}).get("cache", {}).get("urls") or []) | {target}
+                dropped["entries_removed"] = sum(cache.forget_url(u) for u in sorted(urls))
+            else:
+                dropped["entries_removed"] = cache.forget_domain(target)
+        finally:
+            cache.close()
+    return result | {"public_cache": dropped}
+
+
 def register(sub, *, with_db, run):
     p = sub.add_parser("memory", help="retrieve records of one memory kind")
     store.add_db_argument(p)
@@ -32,6 +54,18 @@ def register(sub, *, with_db, run):
         store.add_db_argument(q)
         q.add_argument("target", type=kind)
         q.set_defaults(handler=with_db(lambda db, a, now, func=func: func(db, a.target, now)))
+    q = fsub.add_parser("research", help="a Web Cortex task with its events, sources and claims")
+    store.add_db_argument(q)
+    q.add_argument("target", help="task id")
+    q.set_defaults(handler=with_db(lambda db, a, now: governance.forget_research(db, a.target, now)))
+    q = fsub.add_parser("knowledge", help="a web knowledge item and every version of it")
+    store.add_db_argument(q)
+    q.add_argument("target", type=int, help="knowledge id")
+    q.set_defaults(handler=with_db(lambda db, a, now: governance.forget_knowledge(db, a.target, now)))
+    q = fsub.add_parser("source", help="a source URL or every source of a domain, also from the public cache")
+    store.add_db_argument(q)
+    q.add_argument("target", help="URL or registrable domain")
+    q.set_defaults(handler=with_db(_forget_source))
 
     p = sub.add_parser("promote", help="keep one episode beyond the default lifetime")
     store.add_db_argument(p)

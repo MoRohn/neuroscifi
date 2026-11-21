@@ -59,7 +59,7 @@ def _remove_url_file(path):
 
 def _serve(args):
     try:
-        console = server.ConsoleServer(store.resolve_db(args), args.port)
+        console = server.ConsoleServer(store.resolve_db(args), args.port, web_worker=not args.no_web_worker)
     except InstanceError as error:
         print(f"nsf: {error}", file=sys.stderr)
         return 2
@@ -101,4 +101,7 @@ def register(sub):
     p.add_argument("--url-file", type=Path, default=None,
                    help="write the URL with its session token to this file (mode 0600) instead of stdout; removed at shutdown; "
                         "only a stale console URL file is replaced")
+    p.add_argument("--no-web-worker", action="store_true",
+                   help="do not run queued research tasks in the console process (use when the `nsf web work` "
+                        "service runs them)")
     p.set_defaults(handler=_serve)

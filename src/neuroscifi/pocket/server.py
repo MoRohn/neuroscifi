@@ -24,7 +24,7 @@ ASSETS = {"/": ("index.html", "text/html; charset=utf-8"), "/mobile.js": ("mobil
           "/style.css": ("style.css", "text/css"),
           "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
           "/icon.svg": ("icon.svg", "image/svg+xml")}
-for asset in ("field-model.mjs","field-ui.mjs","sw.js"):
+for asset in ("field-model.mjs","field-ui.mjs","research-ui.mjs","sw.js"):
     ASSETS["/"+asset]=(asset,"text/javascript")
 FIELD = {
     "goal":(("work","read","unwind","move"),("owner",)), "sound":(VOCAB["sound"],("mic",)),
@@ -35,6 +35,13 @@ FIELD = {
 }
 DAY = 86400
 MAX_CONNECTIONS = 32
+ROUTES = {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link","mute","unmute"}
+# Web Cortex research (ADR-028): exist only with --instance-db and the individual's pocket_research switch on.
+RESEARCH = {"research_submit","research_list","research_get","research_cancel"}
+RESEARCH_MODES = ("quick_lookup","deep_research","fact_verification","comparative","scientific","technical")
+MAX_OBJECTIVE = 300
+SUBMISSIONS_PER_HOUR = 10
+_RATE_LOCK = threading.Lock()
 
 
 def fingerprint(token):
@@ -111,6 +118,14 @@ class Store:
             db.execute("INSERT INTO devices VALUES (?,?)", (fingerprint(key), secrets.token_hex(6)))
             db.execute("INSERT INTO members VALUES(?,?)",(fingerprint(key),family))
         return key
+
+    def family(self, token):
+        """The pairing family fingerprint of a live credential (PermissionError when unknown or revoked)."""
+        with closing(connect(self.path)) as db:
+            row = db.execute("SELECT family FROM members WHERE device=?", (fingerprint(token),)).fetchone()
+        if not row:
+            raise PermissionError()
+        return row[0]
 
     @staticmethod
     def expire(db, now):
@@ -222,6 +237,139 @@ class Store:
             raise ValueError()
 
 
+def research_db(server):
+    """A connection to the individual when Pocket research is on, else None (its routes then answer 404)."""
+    path = getattr(server, "instance_db", None)
+    if not path or not Path(path).is_file():
+        return None
+    from ..instance import store as individual
+    from ..webcortex import state
+    db = individual.connect(path)
+    try:
+        cfg = state.get_config(db)
+        if cfg.enabled and cfg.pocket_research:
+            return db
+    except BaseException:
+        db.close()
+        raise
+    db.close()
+    return None
+
+
+def research_on(server):
+    db = research_db(server)
+    if db is None:
+        return False
+    db.close()
+    return True
+
+
+def _text(value, limit=1000):
+    return value[:limit] if isinstance(value, str) else ""
+
+
+def _number(value):
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def phone_report(report):
+    """The report trimmed for a phone: answer, contradictions, uncertainties, limitations, freshness, sources."""
+    if not isinstance(report, dict):
+        return None
+    def side(s):
+        return {"text": _text(s.get("text")), "citation": _number(s.get("citation"))} if isinstance(s, dict) else None
+    def items(name, n):
+        value = report.get(name)
+        return [x for x in value[:n] if isinstance(x, dict)] if isinstance(value, list) else []
+    def texts(name, n, limit=500):
+        value = report.get(name)
+        return [_text(x, limit) for x in value[:n] if isinstance(x, str)] if isinstance(value, list) else []
+    fresh = report.get("freshness") if isinstance(report.get("freshness"), dict) else {}
+    return {
+        "live": bool(report.get("live")),
+        "answer": [{"text": _text(a.get("text")), "type": "quote" if a.get("type") == "quote" else "template",
+                    "citations": [n for n in (a.get("citations") or [])[:12] if type(n) is int],
+                    "status": _text(a.get("status"), 40), "confidence": _number(a.get("confidence"))}
+                   for a in items("answer", 20)],
+        "contradictions": [{"reason": _text(c.get("reason"), 300), "assessment": _text(c.get("assessment")),
+                            "a": side(c.get("a")), "b": side(c.get("b"))} for c in items("contradictions", 10)],
+        "uncertainties": texts("uncertainties", 20),
+        "limitations": texts("limitations", 20),
+        "freshness": {"class": _text(fresh.get("class"), 40), "satisfied": bool(fresh.get("satisfied")),
+                      "newest_source_at": _number(fresh.get("newest_source_at"))},
+        "sources": [{"n": s.get("n") if type(s.get("n")) is int else None, "title": _text(s.get("title"), 300),
+                     "url": _text(s.get("url"), 2000), "domain": _text(s.get("domain"), 255),
+                     "published_at": _number(s.get("published_at")), "retrieved_at": _number(s.get("retrieved_at")),
+                     "retrieval_mode": "cache" if s.get("retrieval_mode") == "cache" else "live"}
+                    for s in items("sources", 40)],
+    }
+
+
+def task_summary(task):
+    return {"id": task["id"], "objective": task["objective"], "status": task["status"], "stage": task["stage"],
+            "mode": task["mode"], "created": task["created_at"], "updated": task["updated_at"]}
+
+
+def task_detail(task):
+    return task_summary(task) | {"stages_done": task.get("stages_done", []),
+                                 "cancel_requested": bool(task.get("cancel_requested")),
+                                 "error": _text(task.get("error"), 200) or None,
+                                 "report": phone_report(task.get("result"))}
+
+
+def admit_submission(server, device, submit):
+    """Run `submit` unless this device already submitted SUBMISSIONS_PER_HOUR tasks in the last hour (in memory)."""
+    with _RATE_LOCK:
+        recent = server.__dict__.setdefault("research_submissions", {})
+        now = time.monotonic()
+        times = [t for t in recent.get(device, ()) if now - t < 3600]
+        if len(times) >= SUBMISSIONS_PER_HOUR:
+            recent[device] = times
+            return None
+        result = submit()
+        recent[device] = [*times, now]
+        return result
+
+
+def research(server, token, route, data):
+    """Family-scoped research actions (ADR-028). Pocket queues and reads; the Spark's worker runs the task."""
+    from ..instance.errors import Conflict, NotFound, ValidationError
+    from ..webcortex import orchestrator, state
+    family = server.store.family(token)
+    db = research_db(server)
+    if db is None:
+        return 404, {}
+    with closing(db):
+        digest = state.family_digest(db, family)  # instance-salted; never the credential or its fingerprint
+        try:
+            if route == "research_submit":
+                objective, mode = data.get("objective"), data.get("mode", RESEARCH_MODES[0])
+                if not {"objective"} <= set(data) <= {"objective", "mode"} or mode not in RESEARCH_MODES:
+                    raise ValueError()
+                if not isinstance(objective, str) or not objective.strip() or len(objective) > MAX_OBJECTIVE:
+                    raise ValueError()
+                cfg = state.get_config(db)
+                if orchestrator.screen(db, objective, cfg):
+                    return 400, {"error": "private_data"}
+                task = admit_submission(server, fingerprint(token), lambda: orchestrator.submit(
+                    db, objective, time.time(), mode=data.get("mode"), origin="pocket", family=digest))
+                return (429, {}) if task is None else (201, {"id": task["id"]})
+            if route == "research_list":
+                if data:
+                    raise ValueError()
+                return 200, {"tasks": [task_summary(t) for t in orchestrator.listing(db, family=digest, limit=50)]}
+            if set(data) != {"id"}:
+                raise ValueError()
+            ident = event_id(data["id"])
+            if route == "research_cancel":
+                orchestrator.cancel(db, ident, time.time(), family=digest)
+            return 200, task_detail(orchestrator.get(db, ident, family=digest))
+        except (NotFound, Conflict):
+            return 404, {}  # another family's task, a forgotten one, or web access switched off meanwhile
+        except ValidationError:
+            return 400, {"error": "invalid"}
+
+
 class Handler(BaseHTTPRequestHandler):
     timeout = 8
     def log_message(self, *args):
@@ -262,8 +410,10 @@ class Handler(BaseHTTPRequestHandler):
         if not self.host_allowed():
             return self.reply(421)
         route = self.path.removeprefix("/api/")
-        if self.path != "/api/" + route or route not in {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link","mute","unmute"}:
+        if self.path != "/api/" + route or route not in ROUTES | RESEARCH:
             return self.reply(404)
+        if route in RESEARCH and not research_on(self.server):
+            return self.reply(404)  # invisible while off, like an unknown route
         origin = self.headers.get("Origin")
         scheme = "https://" if isinstance(self.connection, ssl.SSLSocket) else "http://"
         if origin and origin != scheme + self.headers.get("Host", ""):
@@ -303,7 +453,11 @@ class Handler(BaseHTTPRequestHandler):
                     handoffs[fingerprint(code)]=(sponsor,now+300)
                     self.server.handoffs=handoffs
                 return self.reply(201,{"code":code})
+            if route in RESEARCH:
+                return self.reply(*research(self.server, auth[7:], route, data))
             status, payload = self.server.store.action(auth[7:], route, data)
+            if route == "state" and status == 200 and research_on(self.server):
+                payload["research"] = True  # lets the page show its Research panel without probing a 404
             self.reply(status, payload)
         except PermissionError:
             self.reply(403)
@@ -377,6 +531,9 @@ def main(argv=None):
                    help="write the one-use code to this new 0600 file instead of stdout; removed when used, expired or at shutdown")
     p.add_argument("--allowed-host", action="append", metavar="NAME",
                    help="accept only this Host (name or name:port); repeatable; others get 421")
+    p.add_argument("--instance-db", metavar="PATH",
+                   help="the individual's database; with its pocket_research switch on, paired devices may queue "
+                        "and read research tasks of their own family")
     p.add_argument("--list-pairings", action="store_true")
     p.add_argument("--erase-pairing", metavar="LABEL")
     a = p.parse_args(argv)
@@ -394,6 +551,13 @@ def main(argv=None):
         return
     if bool(a.cert) != bool(a.key) or (a.bind not in {"127.0.0.1","localhost"} and not a.cert):
         p.error("LAN access requires both --cert and --key for HTTPS.")
+    if a.instance_db:
+        from ..instance import store as individual
+        from ..instance.errors import InstanceError
+        try:
+            individual.open_existing(a.instance_db).close()  # migrates; research tasks live in the individual
+        except (InstanceError, sqlite3.Error) as error:
+            p.error(f"cannot open instance {a.instance_db}: {error}")
     ctx = None
     if a.cert:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -402,6 +566,7 @@ def main(argv=None):
     server = PocketServer((a.bind,a.port), Handler, tls=ctx)
     server.allowed_hosts = {h.lower() for h in a.allowed_host or ()}
     server.store, server.pair_lock = store, threading.Lock()
+    server.instance_db = a.instance_db
     server.invitation = secrets.token_urlsafe(24)
     server.invitation_deadline = time.monotonic() + 300
     server.invitation_file = a.invitation_file

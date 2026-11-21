@@ -16,6 +16,8 @@
   <li><a href="#teach" data-view="teach">Teach &amp; beliefs</a></li>
   <li><a href="#evidence" data-view="evidence">Evidence</a></li>
   <li><a href="#questions" data-view="questions">Questions <span id="openCount" class="count"></span></a></li>
+  <li><a href="#research" data-view="research">Research <span id="activeCount" class="count"></span></a></li>
+  <li><a href="#knowledge" data-view="knowledge">Knowledge</a></li>
   <li><a href="#graphs" data-view="graphs">Graphs</a></li>
   <li><a href="#checkpoints" data-view="checkpoints">Checkpoints</a></li>
   <li><a href="#memory" data-view="memory">Memory log</a></li>
@@ -113,6 +115,81 @@
   <label class="check"><input type="checkbox" id="showResolved"> Include resolved questions</label>
   <div id="pendingList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
   <p id="questionStatus" class="msg" role="status"></p>
+</section>
+
+<section id="research" class="view" aria-labelledby="h-research" hidden>
+  <div class="viewhead"><h1 id="h-research" tabindex="-1">Research</h1><button type="button" id="refreshResearch">Refresh</button></div>
+  <p class="lede">Ask the individual to research the public web. Every answer sentence is quoted from a cited source or computed from them, and nothing enters accepted knowledge without your review.</p>
+  <article id="webOff" class="card notice" aria-labelledby="h-weboff" hidden><h2 id="h-weboff">Web access is off</h2>
+    <p>This individual does not contact the network. Turning web access on lets research tasks ask search providers and read public pages through the safe fetcher: robots.txt is honoured, private addresses are refused, and size, time and request budgets apply. You can turn it off again under Web settings.</p>
+    <button type="button" class="primary" id="webEnable">Turn on web access</button>
+    <p id="webOffStatus" class="msg" role="status"></p>
+  </article>
+  <div class="grid">
+    <article class="card" aria-labelledby="h-ask"><h2 id="h-ask">Ask a research question</h2>
+      <form id="askForm" novalidate>
+        <label for="askObjective">Question or objective</label>
+        <textarea id="askObjective" maxlength="2000" rows="3" required aria-describedby="askHelp"></textarea>
+        <p id="askHelp" class="sub">Do not include private names, e-mail addresses or other personal details: the question is sent to search providers.</p>
+        <label for="askMode">Research mode</label><select id="askMode"></select>
+        <button class="primary" id="askBtn">Start research</button>
+      </form>
+      <p id="askStatus" class="msg" role="status"></p>
+    </article>
+    <article class="card" aria-labelledby="h-websettings"><h2 id="h-websettings">Web settings</h2>
+      <div id="webSummary" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+      <details id="webSettings"><summary>Change web settings</summary>
+        <fieldset id="webSwitches"><legend>Owner switches</legend>
+          <label class="check"><input type="checkbox" id="swEnabled" data-switch="enabled"> Web access (master switch for every network path)</label>
+          <label class="check"><input type="checkbox" id="swAutonomous" data-switch="autonomous"> Autonomous research (refreshes and curiosity within the daily cap)</label>
+          <label class="check"><input type="checkbox" id="swPocket" data-switch="pocket_research"> Research from paired Pocket devices</label>
+          <label class="check"><input type="checkbox" id="swBrowser" data-switch="browser_rendering"> Sandboxed JavaScript rendering</label>
+        </fieldset>
+      </details>
+      <p id="webSettingsStatus" class="msg" role="status"></p>
+    </article>
+    <article class="card wide" aria-labelledby="h-tasks"><h2 id="h-tasks">Research history</h2>
+      <form id="taskFilter" class="filters" novalidate>
+        <div><label for="taskStatus">Status</label><select id="taskStatus"><option value="">All tasks</option><option value="active">Active</option><option value="completed">Completed</option><option value="partial">Partial</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option></select></div>
+        <div><label for="taskText">Objective contains</label><input id="taskText" maxlength="200" autocomplete="off"></div>
+      </form>
+      <div id="taskList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+      <p id="taskStatusMsg" class="msg" role="status"></p>
+    </article>
+    <article class="card wide" id="reportCard" aria-labelledby="h-report"><h2 id="h-report" tabindex="-1">Report</h2>
+      <div id="report" class="slot"><p class="empty">Choose “Open” on a task to follow its progress and read its report.</p></div>
+      <p id="reportStatus" class="msg" role="status"></p>
+    </article>
+    <article class="card wide" aria-labelledby="h-monitors"><h2 id="h-monitors">Monitors</h2>
+      <p class="sub">A monitor re-runs a topic on a schedule and records a finding only when something meaningful changed.</p>
+      <div id="monitorList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+      <form id="monitorForm" novalidate>
+        <label for="monTopic">Topic</label><input id="monTopic" maxlength="2000" autocomplete="off" required>
+        <label for="monHours">Every (hours, at least 1)</label><input id="monHours" type="number" min="1" max="8784" step="1" inputmode="numeric" required value="24">
+        <label for="monMode">Research mode</label><select id="monMode"></select>
+        <button class="primary" id="monitorBtn">Add monitor</button>
+      </form>
+      <p id="monitorStatus" class="msg" role="status"></p>
+    </article>
+    <article class="card" aria-labelledby="h-providers"><h2 id="h-providers">Provider health</h2>
+      <p class="sub">As recorded by the last research runs; opening this page contacts nothing.</p>
+      <div id="providerTable" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card" aria-labelledby="h-curiosity"><h2 id="h-curiosity">Curiosity</h2>
+      <p class="sub">What the individual would investigate next, by expected information gain per cost. Read only: proposals are made from the command line (<code>nsf web curiosity --propose</code>).</p>
+      <div id="curiosityList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+  </div>
+  <p id="researchLive" class="vh" aria-live="polite"></p>
+</section>
+
+<section id="knowledge" class="view" aria-labelledby="h-knowledge" hidden>
+  <div class="viewhead"><h1 id="h-knowledge" tabindex="-1">Knowledge</h1><button type="button" id="refreshKnowledge">Refresh</button></div>
+  <p class="lede">What the individual learned from the web, version by version. Provisional items wait for your review; accepted items answer later questions without searching while they are fresh.</p>
+  <article class="card" aria-labelledby="h-ksearch"><h2 id="h-ksearch">Find knowledge</h2>
+    <form id="kSearch" novalidate><label for="kTopic">Topic (leave empty for the most recently changed items)</label>
+      <div class="inline"><input id="kTopic" maxlength="2000" autocomplete="off"><button class="primary" id="kSearchBtn">Search</button></div></form>
+  </article>
+  <div id="knowledgeList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+  <p id="knowledgeStatus" class="msg" role="status"></p>
 </section>
 
 <section id="graphs" class="view" aria-labelledby="h-graphs" hidden>

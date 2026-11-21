@@ -32,6 +32,7 @@ function paint(){
    li.append(block,forget,send);$("historyLocal").append(li);
  }
  $("vaultstatus").textContent=vault?"Vault unlocked":"Session memory only";
+ document.dispatchEvent?.(new Event("pocketvault"));
 }
 function include(patch){if(prediction){msg("Finish or reset the current prediction first.");return;}Object.assign(context,checkFeatures(patch));paint();}
 function reset(){linkedEvidence=[];pendingId=null;$("withSpark").checked=false;context={};prediction=null;measured=null;imageGeneration++;$("goal").value="";$("timer").textContent="Time Pocket on screen";$("locallearn").checked=false;$("keepweek").checked=false;paint();}
@@ -53,6 +54,18 @@ async function mutate(change){
    });
  }finally{busy=false;}
 }
+// Saved research findings live in the same vault: same AES-GCM key, 64-entry limit and 24-hour expiry.
+export const vaultOpen=()=>!!vault;
+export const findings=()=>liveRows(rows).filter(r=>r.research);
+export async function keepFinding(entry){
+ if(!vault)throw Error("Open your device vault first (Device memory). Nothing was stored.");
+ await mutate(list=>{
+   const rest=list.filter(r=>r.id!==entry.id);
+   if(rest.filter(r=>r.research).length>=8)throw Error("Forget a saved finding first (8 limit).");
+   return [...rest,entry];
+ });
+}
+export const forgetFinding=id=>mutate(list=>list.filter(r=>r.id!==id));
 $("unlock").onclick=async()=>{
  if(busy || vault)return;
  if(rows.length){msg("Open a vault before creating episodes, or clear the session first.");return;}

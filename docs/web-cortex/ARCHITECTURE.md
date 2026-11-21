@@ -240,6 +240,20 @@ the executing node; on a deployment that is the DGX Spark. Pocket devices and th
 they never fetch. GPU is not used: no stage has a model to run (ADR-022). The worker records `executed_on`
 (hostname digest, cpu count, load) per task.
 
-## 8. Decisions
+## 8. Decisions and recorded contract changes
 
-See `docs/architecture/ARCHITECTURAL_DECISIONS.md` ADR-021 … ADR-030 for the full text.
+Decisions: `docs/architecture/ARCHITECTURAL_DECISIONS.md` ADR-021 … ADR-030.
+
+Additive changes made during implementation (all backwards compatible with §4):
+
+| Module | Change |
+|---|---|
+| types | `JsonMixin.to_json` serialises nested contract objects; `Usage.charge` is atomic under one module lock. |
+| net | `NetPolicy.max_concurrency`; `SafeFetcher.sitemaps(url)`; `FetchError.url` omits the query string (queries stay out of logs); API responses are never cached (they embed queries); any forbidden DNS answer refuses the host; `localhost`, `.local`, `.internal`, `home.arpa` and non-canonical numeric hosts refused; robots.txt capped at 512 KiB, Crawl-delay at 60 s. |
+| extract | `extract_html(..., headers=None, final_url=None)`, `extract_pdf(..., retrieval_mode, final_url)`; off-site `rel=canonical` recorded, not used. |
+| crawl / browser | `crawl(..., failures=list)` collects failures; `BrowserRenderer.last_events`; Chromium's own DNS and proxy are disabled so it cannot open sockets itself; WebSocket, RTCPeerConnection and EventSource constructors throw. |
+| search / providers | `ProviderError(code=)`; empty-result health rule documented in `search.py`; `OpenWebSearchProvider(clock, failure_threshold, cooldown)`; `Daemon(state_dir)` stops only the process it started; `FeedProvider(feed_urls, fetcher=)`; arXiv over https. |
+| intent | `assess` adds `sites`, `language`, `notes`, `why`; bare arithmetic needs no web. |
+| claims / synthesis | `evaluate`, `posterior`, `info_gain` (bits); age discounts evidence only for breaking, volatile and release classes; report answer items carry `type: quote|template`; scientific findings carry `section`, technical findings `package`. |
+| orchestration | `submit(..., proposed=False)` for curiosity proposals awaiting `web:research:<id>`; `services.build(..., providers, clock, sleep)`; `scheduler.tick(..., queue)`; `scheduler.work` returns `{"processed": [...]}`; contested clusters without knowledge become `web:contested:<task>:<n>` informational questions; one open question per knowledge item (updates appended). |
+| schema | 12 `web_*` tables; `web_claims` keyed `(task_id, id)`. |

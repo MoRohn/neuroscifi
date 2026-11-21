@@ -15,6 +15,9 @@ def register(sub):
                        help="accept only this Host (name or name:port); repeatable; others get 421")
     serve.add_argument("--invitation-file", metavar="PATH",
                        help="write the one-use code to this new 0600 file instead of stdout")
+    serve.add_argument("--instance-db", metavar="PATH",
+                       help="the individual's database; with `nsf web config` pocket_research on, paired devices "
+                            "may queue and read research tasks of their own family (the Spark's worker runs them)")
     serve.set_defaults(handler=_serve)
     listing = ops.add_parser("list-pairings", help="print paired device labels")
     listing.add_argument("--db", default="mobile-private.sqlite")
@@ -35,6 +38,8 @@ def _serve(a):
         argv += ["--allowed-host", name]
     if a.invitation_file:
         argv += ["--invitation-file", a.invitation_file]
+    if a.instance_db:
+        argv += ["--instance-db", a.instance_db]
     server.main(argv)
 
 

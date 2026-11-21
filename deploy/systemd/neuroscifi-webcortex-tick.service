@@ -1,0 +1,62 @@
+# One Web Cortex timer pass (ADR-027): starts the owner's due monitors and, only when the owner turned
+# `autonomous` on, prediction refreshes and curiosity research within the daily cap. With web access off it
+# records that nothing ran and exits 0. Triggered by neuroscifi-webcortex-tick.timer; installed disabled.
+# The pass runs the tasks itself. When neuroscifi-webcortex.service is enabled, add `--queue` to hand them to the
+# worker instead (a drop-in overriding ExecStart).
+[Unit]
+Description=NeuroSciFi Web Cortex timer pass (monitors, refresh, curiosity)
+RequiresMountsFor=%S/neuroscifi
+After=network-online.target neuroscifi-websearch.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=neuroscifi
+Group=neuroscifi
+
+Environment=NSF_DB=%S/neuroscifi/instance.sqlite
+EnvironmentFile=-/etc/neuroscifi/neuroscifi.env
+
+ExecStart=/opt/neuroscifi/venv/bin/nsf web tick --db ${NSF_DB}
+TimeoutStartSec=1h
+Nice=15
+CPUWeight=30
+IOSchedulingClass=idle
+
+StateDirectory=neuroscifi
+StateDirectoryMode=0700
+ReadWritePaths=%S/neuroscifi
+UMask=0077
+
+MemoryMax=2G
+TasksMax=128
+
+# Same network policy as neuroscifi-webcortex.service (see the reasoning there).
+IPAddressAllow=localhost
+IPAddressDeny=link-local multicast 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7 0.0.0.0/8
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+NoNewPrivileges=yes
+RemoveIPC=yes
+PrivateUsers=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service

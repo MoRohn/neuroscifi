@@ -9,6 +9,7 @@ COMMAND_MODULES = [
     "neuroscifi.instance.cli",
     "neuroscifi.console.cli",
     "neuroscifi.acceptance.cli",
+    "neuroscifi.webcortex.cli",
 ]
 
 

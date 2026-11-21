@@ -1,7 +1,7 @@
 // NeuroSciFi owner console. Vanilla ES module, no framework, CSP-compatible (no inline code or styles in markup).
 // The session token arrives in the URL fragment, is kept in this module only and removed from the address bar.
 
-const VIEWS = ['overview', 'teach', 'evidence', 'questions', 'graphs', 'checkpoints', 'memory'];
+const VIEWS = ['overview', 'teach', 'evidence', 'questions', 'research', 'knowledge', 'graphs', 'checkpoints', 'memory'];
 const CHANNEL_ROOT = { camera: 'Camera root', word: 'Partner (word root)', reference: 'Reference root' };
 const MAP_TEXT = { 0: 'as declared', 1: 'inverted', null: 'tied' };
 const CHECK_LABELS = {
@@ -943,6 +943,448 @@ async function loadMemory() {
     : empty('No decisions recorded yet. Use “Record decision” under Teach & beliefs.'));
 }
 
+// ---- research (Web Cortex) ---------------------------------------------------------------------------------
+// Everything a source supplies (titles, quotes, claims, URLs) is untrusted: it is set with textContent only, and a
+// URL becomes a link only when it parses as http(s).
+
+const MODE_LABELS = {
+  auto: 'Automatic (chosen from the question)', quick_lookup: 'Quick lookup', deep_research: 'Deep research',
+  continuous: 'Continuous', comparative: 'Comparison of two things', scientific: 'Scientific literature',
+  technical: 'Technical (packages, releases, advisories)', change_detection: 'Change detection',
+  fact_verification: 'Fact verification', gap_resolution: 'Gap resolution',
+};
+const STAGES = [['discovering', 'Discovering'], ['reading', 'Reading'], ['evaluating', 'Evaluating'], ['synthesizing', 'Synthesizing']];
+const TASK_LABELS = { queued: 'Queued', discovering: 'Discovering', reading: 'Reading', evaluating: 'Evaluating',
+                      synthesizing: 'Synthesizing', completed: 'Completed', partial: 'Partial', failed: 'Failed', cancelled: 'Cancelled' };
+const TERMINAL = ['completed', 'partial', 'failed', 'cancelled'];
+const POLL_MS = 2000;
+const web = { status: null, tasks: [], taskId: null, task: null, taskSig: '', listSig: '', seen: new Map(), timer: null, polling: false };
+
+const modeLabel = (m) => MODE_LABELS[m] ?? m ?? '—';
+const short = (text, n = 70) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
+const isActive = (t) => !TERMINAL.includes(t.status) && !t.proposed;
+const pct = (x) => (typeof x === 'number' ? `${Math.round(x * 100)}%` : '—');
+const fmtDay = (t) => (t === null || t === undefined ? 'undated' : new Date(t * 1000).toISOString().slice(0, 10));
+
+function taskLabel(t) {
+  if (t.proposed) return 'Proposed (awaiting your approval)';
+  const label = TASK_LABELS[t.status] ?? t.status;
+  return t.cancel_requested && isActive(t) ? `${label} · cancelling` : label;
+}
+
+function taskTone(t) {
+  if (t.status === 'completed') return 'ok';
+  if (t.status === 'partial' || t.status === 'failed') return 'warn';
+  if (t.status === 'cancelled' || t.status === 'queued' || t.proposed) return 'neutral';
+  return 'info';
+}
+
+function originLabel(t) {
+  const o = t.origin ?? '';
+  if (t.family || o.startsWith('pocket')) return 'Pocket device';
+  if (o.startsWith('monitor:')) return `Monitor #${o.slice(8)}`;
+  if (o.startsWith('refresh:')) return `Refresh of knowledge #${o.slice(8)}`;
+  return { console: 'Owner console', cli: 'Command line', mcp: 'MCP client', curiosity: 'Curiosity (autonomous)' }[o] ?? o;
+}
+
+function safeLink(url, text) {
+  let parsed = null;
+  try { parsed = new URL(url); } catch { parsed = null; }
+  if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) return h('span', { class: 'url', text: String(url ?? '') });
+  return h('a', { href: parsed.href, rel: 'noopener noreferrer', target: '_blank', class: 'url', text: text ?? parsed.href });
+}
+
+function citeLinks(numbers) {
+  return (numbers ?? []).map((n) => h('a', { href: `#src-${n}`, class: 'cite', 'aria-label': `source ${n}`, text: `[${n}]`,
+    onclick: (ev) => { ev.preventDefault(); const el = $(`src-${n}`); if (el) { el.scrollIntoView({ block: 'center' }); el.focus(); } } }));
+}
+
+function fillOptions(select, values, labels) {
+  if (select.options.length) return;
+  select.replaceChildren(...values.map((v) => h('option', { value: v, text: labels(v) })));
+}
+
+// Keep keyboard focus and open disclosures across a re-render of a live region of the page.
+function rerender(slot, nodes) {
+  const focused = slot.contains(document.activeElement) ? document.activeElement.id : null;
+  const open = [...slot.querySelectorAll('details[open][id]')].map((d) => d.id);
+  fill(slot, nodes);
+  for (const id of open) { const d = $(id); if (d) d.open = true; }
+  if (focused && $(focused)) $(focused).focus();
+}
+
+async function loadResearch() {
+  const result = await load('research', ['webSummary', 'taskList', 'monitorList', 'providerTable', 'curiosityList'].map($),
+    () => Promise.all([api('GET', '/api/web/status'), loadTaskList(), api('GET', '/api/web/monitors')]));
+  if (!result) return;
+  const [status, , monitors] = result;
+  renderWebStatus(status);
+  renderMonitors(monitors);
+  if (web.taskId) await loadTask(web.taskId);
+  schedulePoll();
+}
+
+async function loadWebStatus() {
+  renderWebStatus(await api('GET', '/api/web/status'));
+}
+
+function renderWebStatus(s) {
+  web.status = s;
+  const c = s.config;
+  fillOptions($('askMode'), ['auto', ...s.modes], modeLabel);
+  fillOptions($('monMode'), ['continuous', ...s.modes.filter((m) => m !== 'continuous')], modeLabel);
+  $('webOff').hidden = c.enabled;
+  for (const box of $('webSwitches').querySelectorAll('input[data-switch]')) {
+    if (!state.busy.has(box)) box.checked = !!c[box.dataset.switch];
+  }
+  const onOff = (on) => badge(on ? 'On' : 'Off', on ? 'ok' : 'neutral');
+  const counts = Object.entries(s.tasks).map(([k, v]) => `${v} ${TASK_LABELS[k]?.toLowerCase() ?? k}`).join(', ');
+  fill($('webSummary'), kv([
+    ['Web access', onOff(c.enabled)], ['Autonomous research', onOff(c.autonomous)],
+    ['Pocket research', onOff(c.pocket_research)], ['JavaScript rendering', onOff(c.browser_rendering)],
+    ['Task runner', s.worker.embedded ? (s.worker.running ? 'this console (embedded worker)' : 'embedded worker stopped') : 'external (nsf web work service)'],
+    ['Tasks', counts || 'none yet'],
+    ['Public cache', s.cache ? `${s.cache.documents} documents, ${fmtBytes(s.cache.bytes)}` : 'empty'],
+  ]));
+  fill($('providerTable'), s.providers.length
+    ? table('Search provider and engine health', ['Provider / engine', 'State', 'Calls', 'Last error'],
+        s.providers.map((p) => [p.name, badge(p.state === 'closed' ? 'healthy' : p.state === 'open' ? 'cooling down' : p.state.replace('_', ' '),
+          p.state === 'closed' ? 'ok' : p.state === 'open' ? 'warn' : 'neutral'), `${p.successes ?? 0} ok, ${p.failures ?? 0} failed`, p.last_error ?? 'none']))
+    : empty('No providers configured.'));
+  const cur = s.curiosity;
+  fill($('curiosityList'), cur === null
+    ? empty('Curiosity is shown while web access is on.')
+    : cur.length
+      ? h('ol', { class: 'reasons' }, cur.map((x) => h('li', {}, h('strong', { text: x.target.statement ?? x.target.key ?? '—' }),
+          h('br'), `${x.kind} · ${modeLabel(x.mode)} · utility ${fmtNum(x.utility, 3)} · gain ${fmtNum(x.info_gain, 3)} bits`,
+          h('br'), h('span', { class: 'sub', text: x.reason }))))
+      : empty('Nothing is worth investigating now: what is known is fresh or well supported.'));
+  $('activeCount').textContent = s.active ? `${s.active} active` : '';
+  syncControls();
+}
+
+async function loadTaskList() {
+  const filter = $('taskStatus').value;
+  const query = filter && filter !== 'active' ? `?status=${enc(filter)}&limit=100` : '?limit=100';
+  const tasks = await api('GET', `/api/web/tasks${query}`);
+  noteChanges(tasks);
+  web.tasks = tasks;
+  renderTaskList();
+  return tasks;
+}
+
+// aria-live: one polite line when a task finishes, and stage changes of the task whose report is open.
+function noteChanges(tasks) {
+  const lines = [];
+  for (const t of tasks) {
+    const before = web.seen.get(t.id);
+    if (before && before !== t.status && (TERMINAL.includes(t.status) || t.id === web.taskId)) {
+      lines.push(`Research “${short(t.objective, 50)}”: ${taskLabel(t)}.`);
+    }
+    web.seen.set(t.id, t.status);
+  }
+  if (lines.length) $('researchLive').textContent = lines.join(' ');
+}
+
+function renderTaskList() {
+  const filter = $('taskStatus').value;
+  const needle = $('taskText').value.trim().toLowerCase();
+  const shown = web.tasks.filter((t) => (filter !== 'active' || isActive(t)) && (!needle || t.objective.toLowerCase().includes(needle)));
+  const sig = JSON.stringify([filter, needle, shown.map((t) => [t.id, t.status, t.cancel_requested, t.updated_at]), web.taskId]);
+  if (sig === web.listSig && $('taskList').querySelector('table, .empty')) { $('taskList').removeAttribute('aria-busy'); return; }
+  web.listSig = sig;
+  rerender($('taskList'), shown.length
+    ? table('Research tasks, newest first', ['Status', 'Mode', 'Objective', 'Created', 'Origin', 'Actions'], shown.map((t) => [
+        badge(taskLabel(t), taskTone(t)), modeLabel(t.mode), h('span', { class: 'objective', text: t.objective }), fmtTime(t.created_at),
+        originLabel(t), { actions: taskActions(t, $('taskStatusMsg')) }]))
+    : empty(web.tasks.length ? 'No task matches the filter.' : 'No research yet. Ask a question above.'));
+}
+
+function taskActions(t, statusEl) {
+  const what = short(t.objective, 60);
+  const out = [h('button', { type: 'button', id: `open-${t.id}`, text: t.id === web.taskId ? 'Shown' : 'Open',
+    'aria-label': `Open research task: ${what}`, onclick: () => openTask(t.id) })];
+  if (isActive(t) && !t.cancel_requested) {
+    out.push(h('button', { type: 'button', class: 'danger', id: `cancel-${t.id}`, text: 'Cancel', 'aria-label': `Cancel research task: ${what}`,
+      onclick: (ev) => act(ev.currentTarget, statusEl, async () => {
+        const done = await api('POST', `/api/web/tasks/${t.id}/cancel`, {});
+        await refreshTasks();
+        return done.status === 'cancelled' ? `Cancelled “${what}”.` : `Cancel requested for “${what}”; it stops before its next network request.`;
+      }) }));
+  }
+  if (['failed', 'partial', 'cancelled'].includes(t.status)) {
+    out.push(h('button', { type: 'button', id: `resume-${t.id}`, text: 'Resume', 'aria-label': `Resume research task: ${what}`,
+      onclick: (ev) => act(ev.currentTarget, statusEl, async () => {
+        const next = await api('POST', `/api/web/tasks/${t.id}/resume`, {});
+        web.taskId = next.id;
+        await refreshTasks();
+        return next.id === t.id ? `Queued “${what}” again; it continues from its last checkpoint.`
+          : `Continuing “${what}” as a new linked task; sources read before are reused from the cache where possible.`;
+      }) }));
+  }
+  return out;
+}
+
+async function refreshTasks() {
+  await Promise.all([loadTaskList(), web.taskId ? loadTask(web.taskId) : null, loadWebStatus()]);
+  schedulePoll();
+}
+
+async function openTask(id) {
+  web.taskId = id;
+  web.taskSig = '';
+  renderTaskList();
+  await loadTask(id);
+  $('h-report').focus();
+}
+
+async function loadTask(id) {
+  let task;
+  try { task = await api('GET', `/api/web/tasks/${id}`); } catch (error) { say($('reportStatus'), errorText(error), 'error'); return; }
+  if (id !== web.taskId) return;
+  web.task = task;
+  const sig = JSON.stringify([task.id, task.status, task.cancel_requested, task.updated_at]);
+  if (sig === web.taskSig) return;
+  web.taskSig = sig;
+  rerender($('report'), renderReport(task));
+}
+
+function stageList(t) {
+  const done = new Set(t.stages_done ?? []);
+  const terminal = TERMINAL.includes(t.status);
+  const items = STAGES.map(([key, label]) => {
+    const step = done.has(key) ? 'done' : t.status === key ? 'current' : 'todo';
+    return h('li', { class: step, 'aria-current': step === 'current' ? 'step' : null },
+      h('span', { class: 'mark', 'aria-hidden': 'true', text: step === 'done' ? '✓' : step === 'current' ? '›' : '·' }),
+      label, h('span', { class: 'vh', text: step === 'done' ? ' (done)' : step === 'current' ? ' (in progress)' : ' (not reached)' }));
+  });
+  const end = terminal ? taskLabel(t) : 'Completed';
+  items.push(h('li', { class: terminal ? `done end-${t.status}` : 'todo' },
+    h('span', { class: 'mark', 'aria-hidden': 'true', text: terminal ? (t.status === 'completed' ? '✓' : '!') : '·' }), end,
+    h('span', { class: 'vh', text: terminal ? ' (finished)' : ' (not reached)' })));
+  return h('ol', { class: 'stages', 'aria-label': 'Progress' }, items);
+}
+
+function renderReport(t) {
+  const r = t.result;
+  const head = [
+    h('h3', { class: 'question', text: t.objective }),
+    h('p', { class: 'badges' }, badge(taskLabel(t), taskTone(t)), r ? badge(r.live ? 'Live' : 'From cache', r.live ? 'info' : 'neutral') : null,
+      r?.memory?.answered_from_memory ? badge('Answered from memory', 'neutral') : null,
+      ` ${modeLabel(t.mode)} · ${originLabel(t)} · created ${fmtTime(t.created_at)}${t.finished_at ? ` · finished ${fmtTime(t.finished_at)}` : ''}`),
+    stageList(t),
+    t.cancel_requested && isActive(t) ? h('p', { class: 'msg busy', text: 'Cancel requested: the run stops before its next network request.' }) : null,
+    t.error ? h('p', { class: 'msg error', text: `Error: ${t.error}` }) : null,
+  ];
+  if (!r) {
+    return [...head, empty(isActive(t) ? 'The report appears when the run finishes. The stage above is the one the worker reports; nothing is estimated.'
+      : 'This task ended without a report.')];
+  }
+  return [...head, ...reportBody(r), usageBlock(t), evidenceBlock(t)];
+}
+
+function answerItem(a) {
+  const meta = [a.status && a.status !== 'summary' ? badge(a.status.replace('_', ' '), a.status === 'corroborated' ? 'ok' : a.status === 'contested' ? 'warn' : 'neutral') : null,
+    typeof a.confidence === 'number' ? badge(`confidence ${pct(a.confidence)}`, 'neutral') : null];
+  const body = a.type === 'quote' ? h('blockquote', { class: 'quote', text: a.text }) : h('p', { class: 'template', text: a.text });
+  return h('li', {}, body, h('p', { class: 'answermeta' }, citeLinks(a.citations), ' ', meta));
+}
+
+function side(label, x) {
+  return h('div', { class: 'side' }, h('p', { class: 'sidehead' }, `${label} `, citeLinks([x.citation]), ` ${x.domain} · ${fmtDay(x.published_at)} · ${x.source_type}`),
+    x.type === 'quote' ? h('blockquote', { class: 'quote', text: x.text }) : h('p', { text: x.text }));
+}
+
+function reportBody(r) {
+  const out = [h('h4', { text: 'Answer' }), h('ol', { class: 'answers' }, (r.answer ?? []).map(answerItem))];
+  if (r.verdict) {
+    out.push(h('h4', { text: 'Verdict' }), h('p', {}, badge(r.verdict.label, r.verdict.label === 'supported' ? 'ok' : r.verdict.label === 'insufficient' ? 'neutral' : 'warn'),
+      ` confidence ${pct(r.verdict.confidence)}`), h('ul', { class: 'reasons' }, (r.verdict.reasons ?? []).map((x) => h('li', { text: x }))));
+  }
+  if (r.comparison?.rows?.length) {
+    const [a, b] = r.comparison.items;
+    const cell = (x) => (x ? h('span', {}, x.text, ' ', citeLinks(x.citations)) : '—');
+    out.push(h('h4', { text: 'Comparison' }), table(`Comparison of ${a} and ${b}`, ['Aspect', a, b], r.comparison.rows.map((row) => [row.aspect, cell(row.A), cell(row.B)])));
+  }
+  if (r.methodology?.length) {
+    out.push(h('h4', { text: 'Methodology' }), table('Methodology of the scientific sources', ['Source', 'Kind', 'Design', 'Sample', { label: 'Year', num: true }],
+      r.methodology.map((m) => [h('span', {}, citeLinks([m.source])), m.kind, m.design ?? 'not stated', m.sample ?? 'not stated', m.year ?? '—'])));
+  }
+  if (r.contradictions?.length) {
+    out.push(h('h4', { text: 'Contradictions' }), ...r.contradictions.map((c) => h('div', { class: 'contradiction' },
+      h('p', { class: 'reason', text: `Disagreement: ${c.reason}` }), h('div', { class: 'sides' }, side('A', c.a), side('B', c.b)),
+      h('p', { class: 'sub', text: c.assessment }))));
+  }
+  const listed = (title, items) => (items?.length ? [h('h4', { text: title }), h('ul', { class: 'reasons' }, items.map((x) => h('li', { text: x })))] : []);
+  out.push(...listed('Uncertainties', r.uncertainties), ...listed('Limitations', r.limitations));
+  const f = r.freshness;
+  if (f) {
+    out.push(h('h4', { text: 'Freshness' }), kv([['Required', `${f.class}${f.window_seconds ? ` (within ${(f.window_seconds / 86400).toFixed(f.window_seconds < 86400 ? 2 : 0)} days)` : ''}`],
+      ['Satisfied', badge(f.satisfied ? 'yes' : 'no', f.satisfied ? 'ok' : 'warn')], ['Newest source', fmtDay(f.newest_source_at)]]));
+  }
+  out.push(h('h4', { text: 'Sources' }), (r.sources ?? []).length ? h('ol', { class: 'sources' }, r.sources.map(sourceItem)) : empty('No sources were read.'));
+  const k = r.consolidation;
+  if (k?.provisional?.length) out.push(h('p', { class: 'msg ok', text: `${k.provisional.length} new provisional knowledge item(s) await your review under Knowledge.` }));
+  return out;
+}
+
+function sourceFlags(s) {
+  const f = s.flags ?? {};
+  const out = [];
+  if (f.injection?.length) out.push(badge(`injection quarantined (${f.quarantined_sentences ?? 0} sentence${f.quarantined_sentences === 1 ? '' : 's'})`, 'warn'));
+  if (f.truncated) out.push(badge('truncated', 'warn'));
+  if (s.published_at === null || s.published_at === undefined) out.push(badge('undated', 'neutral'));
+  if (f.js_suspected) out.push(badge('needs JavaScript', 'neutral'));
+  if (f.hidden_removed) out.push(badge(`${f.hidden_removed} hidden element${f.hidden_removed === 1 ? '' : 's'} removed`, 'neutral'));
+  if (s.cited === false) out.push(badge('read, not cited', 'neutral'));
+  return out;
+}
+
+function sourceItem(s) {
+  return h('li', { id: `src-${s.n}`, tabindex: '-1', value: String(s.n), 'data-source': s.n },
+    h('p', { class: 'srctitle' }, h('strong', { text: s.title || s.domain || 'Untitled' }), ` · ${s.domain}`),
+    h('p', { class: 'srcurl' }, safeLink(s.url)),
+    h('p', { class: 'sub', text: `Published ${fmtDay(s.published_at)} · retrieved ${fmtTime(s.retrieved_at)} · ${s.retrieval_mode === 'cache' ? 'from cache' : s.retrieval_mode} · ${s.kind}` }),
+    h('p', { class: 'flags' }, sourceFlags(s)));
+}
+
+function usageBlock(t) {
+  const u = t.usage ?? {};
+  const b = t.budget ?? {};
+  return h('details', { id: `usage-${t.id}` }, h('summary', { text: 'Budget and usage' }), kv([
+    ['Requests', `${u.requests ?? 0} of ${b.max_requests ?? '—'}`], ['Documents', `${u.pages ?? 0} of ${b.max_pages ?? '—'}`],
+    ['Search queries', `${u.queries ?? 0} of ${b.max_queries ?? '—'}`], ['Downloaded', fmtBytes(u.bytes ?? 0)],
+    ['Time', `${fmtNum(u.seconds ?? 0, 1)} s of ${b.max_seconds ?? '—'} s`]]));
+}
+
+function evidenceBlock(t) {
+  const slot = h('div', { class: 'slot' }, empty('Open to load the claims extracted from each source.'));
+  const details = h('details', { id: `evidence-${t.id}`, class: 'evidence' }, h('summary', { text: 'Evidence: claims per source' }), slot);
+  let loaded = false;
+  details.addEventListener('toggle', async () => {
+    if (!details.open || loaded) return;
+    loaded = true;
+    try {
+      const e = await api('GET', `/api/web/tasks/${t.id}/evidence`);
+      const bySource = new Map(e.sources.map((s) => [s.id, { source: s, claims: [] }]));
+      const orphans = [];
+      for (const c of e.claims) (bySource.get(c.source_id)?.claims ?? orphans).push(c);
+      const groups = [...bySource.values()].filter((g) => g.claims.length);
+      fill(slot, groups.length || orphans.length ? [
+        ...groups.map((g) => h('div', { class: 'evsource' }, h('p', { class: 'srctitle' }, h('strong', { text: g.source.title || g.source.domain }), ` · ${g.source.domain} · `, safeLink(g.source.url)),
+          h('ul', { class: 'claims' }, g.claims.map((c) => h('li', {}, h('span', { text: c.text }), ' ',
+            badge(c.cluster_status ? c.cluster_status.replace('_', ' ') : c.kind, 'neutral')))))),
+        orphans.length ? h('ul', { class: 'claims' }, orphans.map((c) => h('li', { text: c.text }))) : null,
+      ] : empty('No claims were extracted.'));
+    } catch (error) {
+      loaded = false;
+      fill(slot, h('p', { class: 'msg error', text: errorText(error) }));
+    }
+  });
+  return details;
+}
+
+function renderMonitors(monitors) {
+  fill($('monitorList'), monitors.length
+    ? table('Monitors', ['Topic', 'Mode', 'Every', 'Status', 'Last run', { label: 'Runs', num: true }, 'Actions'], monitors.map((m) => [
+        h('span', { text: m.topic }), modeLabel(m.mode), `${fmtNum(m.interval_seconds / 3600, 0)} h`, badge(m.status, m.status === 'active' ? 'ok' : m.status === 'proposed' ? 'info' : 'neutral'),
+        fmtTime(m.last_run_at), m.runs, { actions: monitorActions(m) }]))
+    : empty('No monitors. Add a topic below to re-check it on a schedule.'));
+}
+
+function monitorActions(m) {
+  const what = short(m.topic, 50);
+  const button = (verb, label, cls) => h('button', { type: 'button', id: `mon-${verb}-${m.id}`, class: cls, text: label,
+    'aria-label': `${label} monitor: ${what}`, onclick: async (ev) => {
+      const control = ev.currentTarget;
+      if (verb === 'stop' && !(await confirmAction('Stop this monitor?', `“${what}” will no longer be re-checked. Stopped monitors cannot be restarted; add a new one instead.`, 'Stop monitor'))) return;
+      act(control, $('monitorStatus'), async () => {
+        const out = await api('POST', `/api/web/monitors/${m.id}/${verb}`, {});
+        renderMonitors(await api('GET', '/api/web/monitors'));
+        return `Monitor “${what}” is ${out.status}.`;
+      });
+    } });
+  return [m.status === 'active' ? button('pause', 'Pause') : null, m.status === 'paused' ? button('resume', 'Resume') : null,
+    m.status !== 'stopped' ? button('stop', 'Stop', 'danger') : null].filter(Boolean);
+}
+
+function schedulePoll() {
+  clearTimeout(web.timer);
+  web.timer = null;
+  if (!state.token || state.view !== 'research') return;
+  const enabled = web.status?.config?.enabled || web.status?.active;
+  if (enabled && (web.tasks.some(isActive) || (web.task && isActive(web.task)))) web.timer = setTimeout(poll, POLL_MS);
+}
+
+async function poll() {
+  web.timer = null;
+  if (web.polling || !state.token || state.view !== 'research') return;
+  web.polling = true;
+  try {
+    await Promise.all([loadTaskList(), web.taskId ? loadTask(web.taskId) : null]);
+    if (!web.tasks.some(isActive)) await loadWebStatus();
+  } catch {
+    // a failed poll is retried on the next tick; errors of explicit actions are reported where they happen
+  } finally {
+    web.polling = false;
+    schedulePoll();
+  }
+}
+
+// ---- knowledge -------------------------------------------------------------------------------------------
+
+const KNOWLEDGE_TONE = { accepted: 'ok', provisional: 'info', stale: 'warn', archived: 'neutral', rejected: 'neutral', superseded: 'neutral' };
+
+async function loadKnowledge() {
+  const topic = $('kTopic').value.trim();
+  const out = await load('knowledge', [$('knowledgeList')], () => api('GET', `/api/web/knowledge${topic ? `?topic=${enc(topic)}` : ''}`));
+  if (!out) return;
+  fill($('knowledgeList'), out.items.length ? h('div', { class: 'grid' }, out.items.map(knowledgeCard))
+    : empty(topic ? `Nothing known about “${topic}”. Research it under Research.` : 'Nothing learned from the web yet.'));
+}
+
+function knowledgeCard(k) {
+  const status = h('p', { class: 'msg', role: 'status' });
+  const what = short(k.statement, 60);
+  const action = (verb, label, cls, work) => h('button', { type: 'button', id: `k-${verb}-${k.id}`, class: cls, text: label,
+    'aria-label': `${label}: ${what}`, onclick: (ev) => work(ev.currentTarget) });
+  const run = (control, path, body, text) => act(control, status, async () => {
+    const out = await api('POST', `/api/web/knowledge/${k.id}/${path}`, body);
+    const message = text(out);
+    await Promise.all([loadKnowledge(), loadHeader()]);
+    say($('knowledgeStatus'), message);
+    return message;
+  });
+  const live = ['provisional', 'accepted', 'stale'].includes(k.status);
+  const buttons = [
+    k.status === 'provisional' || k.status === 'stale' ? action('accept', 'Accept', 'primary', (c) => run(c, 'review', { accept: true }, () => `Accepted knowledge #${k.id}.`)) : null,
+    k.status === 'provisional' || k.status === 'stale' ? action('reject', 'Reject', null, (c) => run(c, 'review', { accept: false }, () => `Rejected knowledge #${k.id}.`)) : null,
+    live ? action('refresh', 'Refresh', null, (c) => run(c, 'refresh', {}, (t) => `Re-checking knowledge #${k.id}: research task queued (${modeLabel(t.mode)}).`)) : null,
+    live ? action('archive', 'Archive', null, (c) => run(c, 'archive', {}, () => `Archived knowledge #${k.id}; it is kept for history only.`)) : null,
+    action('forget', 'Forget', 'danger', async (c) => {
+      if (!(await confirmAction('Forget this knowledge?', `“${what}” and every earlier version of it are deleted from memory. This cannot be undone.`, 'Forget'))) return;
+      run(c, 'forget', {}, () => `Forgot knowledge #${k.id} and its version history.`);
+    }),
+  ].filter(Boolean);
+  const superseded = (k.versions ?? []).filter((v) => v.id !== k.id && (v.status === 'superseded' || v.superseded_by));
+  return h('article', { class: 'card', 'data-knowledge': k.id, 'aria-labelledby': `k-title-${k.id}` },
+    h('h2', { id: `k-title-${k.id}`, class: 'kstatement', text: k.statement }),
+    h('p', { class: 'badges' }, badge(k.status, KNOWLEDGE_TONE[k.status] ?? 'neutral'), k.stale && k.status !== 'stale' ? badge('stale', 'warn') : null,
+      k.contested ? badge('contested', 'warn') : null, badge(`confidence ${pct(k.confidence)}`, 'neutral'), ` #${k.id} · version ${k.version}`),
+    kv([['Freshness class', k.freshness_class], ['Last verified', fmtTime(k.last_verified_at)], ['First verified', fmtTime(k.first_verified_at)],
+      k.stale ? ['Why stale', k.stale_reason] : null, k.note ? ['Note', k.note] : null, k.pending_id ? ['Open question', `#${k.pending_id}`] : null]),
+    h('h3', { text: 'Sources' }), k.sources.length ? h('ul', { class: 'reasons' }, k.sources.map((s) => h('li', {}, h('span', { text: `${s.title || s.domain} · ${fmtDay(s.published_at)} · ` }), safeLink(s.url))))
+      : empty('No sources recorded.'),
+    h('details', { id: `k-versions-${k.id}` }, h('summary', { text: `Version history (${(k.versions ?? []).length})` }),
+      table('Version history', [{ label: 'Version', num: true }, 'Status', 'Statement', 'Valid from', 'Valid until'],
+        (k.versions ?? []).map((v) => [v.version, v.status, h('span', { text: v.statement }), fmtTime(v.valid_from), fmtTime(v.valid_until)]))),
+    superseded.length || k.feedback?.length ? h('div', { class: 'changed' }, h('h3', { text: 'What changed' }),
+      superseded.length ? h('ul', { class: 'reasons' }, superseded.map((v) => h('li', { text: `Version ${v.version} (${v.status}) said: ${v.statement}` }))) : null,
+      k.feedback?.length ? h('ul', { class: 'reasons' }, k.feedback.map((f) => h('li', {
+        text: `${fmtTime(f.created_at)}: ${f.effect} (confidence ${pct(f.before_confidence)} → ${pct(f.after_confidence)}, ${fmtNum(f.info_gain ?? 0, 3)} bits)` }))) : null) : null,
+    h('div', { class: 'buttons', role: 'group', 'aria-label': `Actions for knowledge #${k.id}` }, buttons), status);
+}
+
 // ---- controls ------------------------------------------------------------------------------------------
 
 // A control stays disabled while its own request is in flight, whatever the data says.
@@ -967,6 +1409,7 @@ function syncControls() {
   $('ckPrune').textContent = `Prune (keep ${$('ckKeep').value.trim() || 'N'})`;
   $('ckRebuild').textContent = `Rebuild stale (keep ${$('ckKeep').value.trim() || 'N'})`;
   $('obsRootLabel').textContent = CHANNEL_ROOT[$('obsChannel').value];
+  enable('askBtn', !!web.status?.config?.enabled);
 }
 
 function wire() {
@@ -1165,7 +1608,70 @@ function wire() {
     });
   });
 
+  wireResearch();
   window.addEventListener('hashchange', () => { if (!takeToken()) route(true); });
+}
+
+const SWITCH_LABELS = { enabled: 'Web access', autonomous: 'Autonomous research', pocket_research: 'Pocket research',
+                        browser_rendering: 'JavaScript rendering' };
+
+function wireResearch() {
+  $('refreshResearch').addEventListener('click', loadResearch);
+  $('refreshKnowledge').addEventListener('click', loadKnowledge);
+  $('webEnable').addEventListener('click', (ev) => act(ev.currentTarget, $('webSettingsStatus'), async () => {
+    await api('POST', '/api/web/config', { enabled: true });
+    await loadWebStatus();
+    $('askObjective').focus();
+    return 'Web access is on. Research tasks may now contact the public web.';
+  }));
+  for (const box of $('webSwitches').querySelectorAll('input[data-switch]')) {
+    box.addEventListener('change', (ev) => {
+      const control = ev.currentTarget;
+      const key = control.dataset.switch;
+      const value = control.checked;
+      act(control, $('webSettingsStatus'), async () => {
+        try {
+          await api('POST', '/api/web/config', { [key]: value });
+        } catch (error) {
+          control.checked = !value;
+          throw error;
+        }
+        await loadWebStatus();
+        schedulePoll();
+        return `${SWITCH_LABELS[key]} is ${value ? 'on' : 'off'}.`;
+      });
+    });
+  }
+  $('askForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const objective = $('askObjective').value.trim();
+    if (!objective) { say($('askStatus'), 'Write a question or objective first.', 'error'); $('askObjective').focus(); return; }
+    act($('askBtn'), $('askStatus'), async () => {
+      const t = await api('POST', '/api/web/tasks', { objective, mode: $('askMode').value || 'auto' });
+      $('askObjective').value = '';
+      web.taskId = t.id;
+      web.taskSig = '';
+      await refreshTasks();
+      return `Research queued (${modeLabel(t.mode)}). Its progress and report appear under Report.`;
+    });
+  });
+  $('taskFilter').addEventListener('submit', (ev) => ev.preventDefault());
+  $('taskStatus').addEventListener('change', () => loadTaskList().catch((error) => say($('taskStatusMsg'), errorText(error), 'error')));
+  $('taskText').addEventListener('input', renderTaskList);
+  $('monitorForm').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const topic = $('monTopic').value.trim();
+    const hours = Number($('monHours').value);
+    if (!topic) { say($('monitorStatus'), 'Enter a topic to monitor.', 'error'); $('monTopic').focus(); return; }
+    if (!Number.isFinite(hours) || hours < 1) { say($('monitorStatus'), 'The interval must be at least 1 hour.', 'error'); $('monHours').focus(); return; }
+    act($('monitorBtn'), $('monitorStatus'), async () => {
+      const m = await api('POST', '/api/web/monitors', { topic, interval_hours: hours, mode: $('monMode').value || 'continuous' });
+      $('monTopic').value = '';
+      renderMonitors(await api('GET', '/api/web/monitors'));
+      return `Monitoring “${short(m.topic, 60)}” every ${fmtNum(m.interval_seconds / 3600, 0)} h.`;
+    });
+  });
+  $('kSearch').addEventListener('submit', (ev) => { ev.preventDefault(); loadKnowledge(); });
 }
 
 function renderRecall(r) {
@@ -1198,7 +1704,8 @@ function takeToken() {
 }
 
 const LOADERS = { overview: loadOverview, teach: loadTeach, evidence: loadEvidence, questions: loadQuestions,
-                  graphs: loadGraphs, checkpoints: loadCheckpoints, memory: loadMemory };
+                  research: loadResearch, knowledge: loadKnowledge, graphs: loadGraphs, checkpoints: loadCheckpoints,
+                  memory: loadMemory };
 
 function refreshView() { if (state.token) LOADERS[state.view]?.(); }
 
@@ -1215,6 +1722,7 @@ function route(moveFocus) {
     if (a.dataset.view === view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
   if (moveFocus) $(`h-${view}`).focus();
+  schedulePoll();
   refreshView();
 }
 

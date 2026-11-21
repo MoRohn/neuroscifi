@@ -40,6 +40,7 @@ LEASE_SECONDS = 600.0
 AUTHORIZED_DISCLOSURE = "owner-approved-disclosure"
 MAX_OBJECTIVE = 2000
 MAX_FOLLOW = 2
+MAX_CONTEXT_PACKAGES = 200
 API_PROVIDERS = ("wikipedia", "arxiv", "openalex", "crossref", "pubmed", "pypi", "npm", "osv", "github")
 _PUBLIC = ("id", "objective", "mode", "status", "stage", "origin", "family", "parent_id", "budget", "usage",
            "result", "error", "executed_on", "created_at", "updated_at", "started_at", "finished_at",
@@ -95,12 +96,36 @@ def _budget(cfg, mode, requested):
     return cfg.budget_for(mode, requested)
 
 
+def _context(context):
+    """Validate the structured task context: {"packages": [{ecosystem, name, version|None}, ...]} (<= 200)."""
+    if context is None:
+        return None
+    if not isinstance(context, dict) or set(context) - {"packages"}:
+        raise ValidationError("context accepts only 'packages'")
+    packages = context.get("packages") or []
+    if not isinstance(packages, list) or len(packages) > MAX_CONTEXT_PACKAGES:
+        raise ValidationError(f"context.packages must be a list of at most {MAX_CONTEXT_PACKAGES} items")
+    out = []
+    for pkg in packages:
+        if not isinstance(pkg, dict) or set(pkg) - {"ecosystem", "name", "version"}:
+            raise ValidationError("each package is {ecosystem, name, version}")
+        eco, name, version = pkg.get("ecosystem"), pkg.get("name"), pkg.get("version")
+        if not (isinstance(eco, str) and 0 < len(eco) <= 32 and isinstance(name, str) and 0 < len(name) <= 214
+                and (version is None or isinstance(version, str) and 0 < len(version) <= 64)):
+            raise ValidationError("package ecosystem (<= 32), name (<= 214) and version (<= 64 or null) are strings")
+        out.append({"ecosystem": eco, "name": name, "version": version})
+    return {"packages": out}
+
+
 def submit(db, objective, now, *, mode=None, budget=None, origin="cli", family=None, authorization=None,
-           parent=None, proposed=False) -> dict:
+           parent=None, proposed=False, context=None) -> dict:
     """Queue a research task. The objective passes the privacy screen (private terms, evidence roots, e-mail
     addresses, phone numbers, ...) unless authorization == 'owner-approved-disclosure'. `proposed=True` creates a
-    proposal the worker skips until the owner authorises it (pending scope web:research:<id>)."""
+    proposal the worker skips until the owner authorises it (pending scope web:research:<id>). `context` carries
+    structured inputs the objective text cannot (`{"packages": [...]}` for registry and advisory lookups); it is
+    kept in the checkpoint and merged into the assessment at discovery."""
     cfg = state.require_enabled(db)
+    context = _context(context)
     if not isinstance(objective, str) or not objective.strip():
         raise ValidationError("objective must be a non-blank string")
     objective = " ".join(objective.split())
@@ -129,10 +154,11 @@ def submit(db, objective, now, *, mode=None, budget=None, origin="cli", family=N
     task_id = str(uuid.uuid4())
     with store.write(db):
         db.execute("INSERT INTO web_tasks(id,objective,mode,status,stage,origin,family,parent_id,budget,usage,"
-                   "created_at,updated_at) VALUES(?,?,?,'queued',?,?,?,?,?,?,?,?)",
+                   "checkpoint,created_at,updated_at) VALUES(?,?,?,'queued',?,?,?,?,?,?,?,?,?)",
                    (task_id, objective, mode, "proposed" if proposed else None, origin, family,
                     None if parent is None else str(parent), state.dumps(chosen.to_json()),
-                    state.dumps(Usage().to_json()), now, now))
+                    state.dumps(Usage().to_json()), state.dumps({"context": context}) if context else None,
+                    now, now))
         state.log_event(db, task_id, "submitted",
                         {"mode": mode, "origin": origin, "budget": chosen.to_json(), "proposed": bool(proposed),
                          "disclosure_authorized": bool(findings)}, now)
@@ -279,6 +305,12 @@ class _Run:
         known = knowledge.query(self.db, self.objective, now)["items"]
         assessment = intent.assess(self.objective, now=now, known=known)
         assessment["assessed_mode"], assessment["mode"] = assessment.get("mode"), self.mode
+        packages = (self.checkpoint.get("context") or {}).get("packages")
+        if packages:
+            named = {(p["ecosystem"].lower(), p["name"].lower()) for p in assessment.get("packages") or []}
+            assessment["packages"] = list(assessment.get("packages") or []) + [
+                p for p in packages if (p["ecosystem"].lower(), p["name"].lower()) not in named]
+            assessment["notes"] = [n for n in assessment.get("notes") or [] if not n.startswith("no packages listed")]
         self.save(assessment=assessment, known=[k["id"] for k in known])
         if not assessment.get("needs_web", True):
             self.event("decision", {"needs_web": False, "reasons": assessment.get("reasons", []),
@@ -706,7 +738,7 @@ def resume(db, task_id, services) -> dict:
     task = state.task(db, str(task_id))
     if task["status"] in ("completed", "partial", "cancelled"):
         raise Conflict(f"Research task {task_id} is {task['status']}; submit a new task instead")
-    if task["status"] == "queued" and not task["checkpoint"]:
+    if task["status"] == "queued" and not set(task["checkpoint"] or {}) - {"context"}:
         return run(db, task_id, services)
     return _execute(db, str(task_id), services, resume=True)
 

@@ -1,0 +1,80 @@
+# NeuroSciFi Web Cortex worker (ADR-027): runs research tasks queued by the console, Pocket, `nsf web ask --queue`
+# or the tick timer, one at a time. Installed disabled. It does nothing until the owner runs
+# `nsf web config --enable` for the individual (ADR-021); while web access is off it waits.
+# Stop: SIGTERM lets the task in progress finish and checkpoint (bounded by its budget, at most the owner's
+# budget_ceiling.max_seconds, 600 s by default), then the worker exits. If systemd has to kill it after
+# TimeoutStopSec, the task's lease expires and the next worker resumes it from its last checkpoint.
+[Unit]
+Description=NeuroSciFi Web Cortex research worker
+# Refuse to start unless the (encrypted) state volume is mounted, so data never lands on the unencrypted root disk.
+RequiresMountsFor=%S/neuroscifi
+After=network-online.target neuroscifi-websearch.service
+Wants=network-online.target
+# Optional, off by default: refuse to start unless the state directory is itself a mount point (see
+# neuroscifi-console.service for the reasoning).
+#ConditionPathIsMountPoint=/var/lib/neuroscifi
+
+[Service]
+Type=simple
+User=neuroscifi
+Group=neuroscifi
+
+Environment=NSF_DB=%S/neuroscifi/instance.sqlite
+EnvironmentFile=-/etc/neuroscifi/neuroscifi.env
+
+ExecStart=/opt/neuroscifi/venv/bin/nsf web work --db ${NSF_DB}
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=11min
+Nice=10
+CPUWeight=50
+IOWeight=50
+
+StateDirectory=neuroscifi
+StateDirectoryMode=0700
+ReadWritePaths=%S/neuroscifi
+UMask=0077
+
+# Resource ceilings so a runaway page or parser cannot starve the rest of the host.
+MemoryMax=2G
+TasksMax=128
+
+# Network: the worker must reach public web servers and APIs, and the loopback open-webSearch daemon. Its own
+# fetcher already refuses private, loopback and link-local destinations (net.SafeFetcher); these lines repeat that
+# in the kernel for everything except loopback. IPAddressAllow wins over IPAddressDeny. DNS: with
+# systemd-resolved the stub is 127.0.0.53 (loopback, allowed). If this host's resolver is a LAN address, add it
+# in a drop-in, e.g. IPAddressAllow=192.168.1.1
+IPAddressAllow=localhost
+IPAddressDeny=link-local multicast 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7 0.0.0.0/8
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+NoNewPrivileges=yes
+RemoveIPC=yes
+PrivateUsers=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# JavaScript rendering (browser_rendering, ADR-030, off by default) starts Chromium, whose JIT and sandbox need
+# MemoryDenyWriteExecute=no and user namespaces (RestrictNamespaces=~user). Grant those in a drop-in only if the
+# owner turns rendering on; the Python stack (lxml, pypdf, sqlite3) runs with the settings below.
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

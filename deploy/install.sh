@@ -7,7 +7,7 @@
 # a venv not owned by root is refused, and an existing env file is only chmod'ed to 0640.
 #
 #   sudo bash deploy/install.sh [--dry-run] [--source DIR | --wheel FILE] [--wheelhouse DIR]
-#                               [--prefix DIR] [--python PYTHON] [--unit-dir DIR]
+#                               [--prefix DIR] [--python PYTHON] [--unit-dir DIR] [--web] [--websearch]
 #
 # --dry-run     print every action and change nothing; allowed without root so the plan can be reviewed
 # --source DIR  project folder to install from (default: the folder above this script)
@@ -16,11 +16,14 @@
 # --prefix DIR  install root (default /opt/neuroscifi); the units are rewritten to match
 # --python P    interpreter for the venv (default python3.12, then python3); must be 3.12 or newer
 # --unit-dir D  where unit files go (default /etc/systemd/system)
+# --web         also install the Web Cortex extras (.[web]); the Web Cortex units are installed either way
+# --websearch   also install the pinned open-webSearch daemon into PREFIX/open-websearch with
+#               `npm ci --ignore-scripts --omit=dev` (needs node and npm; no package install scripts run)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$(cd "$HERE/.." && pwd)"
-WHEEL="" WHEELHOUSE="" PREFIX=/opt/neuroscifi PYTHON="" UNIT_DIR=/etc/systemd/system DRY=0
+WHEEL="" WHEELHOUSE="" PREFIX=/opt/neuroscifi PYTHON="" UNIT_DIR=/etc/systemd/system DRY=0 WEB=0 WEBSEARCH=0
 SVC_USER=neuroscifi
 STATE_DIR=/var/lib/neuroscifi
 CONF_DIR=/etc/neuroscifi
@@ -37,6 +40,8 @@ while [ $# -gt 0 ]; do
     --prefix) [ $# -ge 2 ] || die "--prefix needs a value"; PREFIX="$2"; shift ;;
     --python) [ $# -ge 2 ] || die "--python needs a value"; PYTHON="$2"; shift ;;
     --unit-dir) [ $# -ge 2 ] || die "--unit-dir needs a value"; UNIT_DIR="$2"; shift ;;
+    --web) WEB=1 ;;
+    --websearch) WEBSEARCH=1 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
@@ -103,7 +108,34 @@ if [ -e "$PREFIX/venv" ] || [ -L "$PREFIX/venv" ]; then
 fi
 if [ -x "$PREFIX/venv/bin/python" ]; then echo "venv exists (owned by root); reusing"; else act "$PYTHON" -m venv "$PREFIX/venv"; fi
 note "install package from $TARGET"
-act "$PREFIX/venv/bin/python" -m pip install "${PIPARGS[@]}" "$TARGET"
+if [ "$WEB" -eq 1 ]; then
+  # pip's extras syntax: a source folder becomes "DIR[web]", a wheel "FILE[web]".
+  act "$PREFIX/venv/bin/python" -m pip install "${PIPARGS[@]}" "$TARGET[web]"
+else
+  act "$PREFIX/venv/bin/python" -m pip install "${PIPARGS[@]}" "$TARGET"
+fi
+
+# Node.js for the optional open-webSearch daemon. The unit names /usr/bin/node; rewrite it when node lives elsewhere.
+NODE="$(command -v node 2>/dev/null || true)"
+[ -z "$NODE" ] || NODE="$(readlink -f "$NODE")"
+[[ -z "$NODE" || "$NODE" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "node path has unexpected characters: $NODE"
+case "$NODE" in
+  /home/*|/root/*|/run/user/*)
+    # ProtectHome=yes and DynamicUser hide home directories from the daemon, so such a node cannot run there.
+    echo "# warning: node is at $NODE (a home directory); the websearch unit keeps /usr/bin/node. Install a system Node.js."
+    NODE="" ;;
+esac
+if [ "$WEBSEARCH" -eq 1 ]; then
+  note "open-webSearch daemon into $PREFIX/open-websearch (pinned lock file, no install scripts)"
+  if [ -z "$NODE" ] || ! command -v npm >/dev/null 2>&1; then
+    [ "$DRY" -eq 1 ] || die "--websearch needs node and npm on PATH"
+    echo "# warning: node or npm not found on this host; a real run would stop here"
+  fi
+  act install -d -m 0755 "$PREFIX/open-websearch"
+  act install -m 0644 "$SOURCE/deploy/open-websearch/package.json" "$SOURCE/deploy/open-websearch/package-lock.json" \
+      "$PREFIX/open-websearch/"
+  act npm ci --ignore-scripts --omit=dev --no-audit --no-fund --prefix "$PREFIX/open-websearch"
+fi
 
 note "environment file"
 if [ -e "$CONF_DIR/neuroscifi.env" ]; then
@@ -114,12 +146,15 @@ else
 fi
 
 note "systemd units into $UNIT_DIR (installed disabled; never enabled or started by this script)"
-for unit in neuroscifi-pocket.service neuroscifi-console.service neuroscifi-checkpoint.service neuroscifi-checkpoint.timer; do
+NODE_SED="s#/usr/bin/node #${NODE:-/usr/bin/node} #"
+for unit in neuroscifi-pocket.service neuroscifi-console.service neuroscifi-checkpoint.service neuroscifi-checkpoint.timer \
+            neuroscifi-webcortex.service neuroscifi-webcortex-tick.service neuroscifi-webcortex-tick.timer \
+            neuroscifi-websearch.service; do
   if [ "$DRY" -eq 1 ]; then
-    echo "+ sed 's#/opt/neuroscifi#$PREFIX#g' $HERE/systemd/$unit > $UNIT_DIR/$unit (mode 0644)"
+    echo "+ sed -e 's#/opt/neuroscifi#$PREFIX#g' -e '$NODE_SED' $HERE/systemd/$unit > $UNIT_DIR/$unit (mode 0644)"
   else
     install -d -m 0755 "$UNIT_DIR"
-    sed "s#/opt/neuroscifi#$PREFIX#g" "$HERE/systemd/$unit" > "$UNIT_DIR/$unit.tmp"
+    sed -e "s#/opt/neuroscifi#$PREFIX#g" -e "$NODE_SED" "$HERE/systemd/$unit" > "$UNIT_DIR/$unit.tmp"
     chmod 0644 "$UNIT_DIR/$unit.tmp"
     mv -f "$UNIT_DIR/$unit.tmp" "$UNIT_DIR/$unit"
   fi
@@ -134,4 +169,6 @@ cat <<MSG
 Nothing is enabled or running. Next steps are in docs/operations/RUNBOOK.md:
   1. create the instance:  sudo -u $SVC_USER NSF_DB=$STATE_DIR/instance.sqlite $PREFIX/venv/bin/nsf init
   2. rehearse on synthetic input, take a checkpoint, then start the services deliberately.
+Web Cortex stays off until the owner runs \`nsf web config --enable\`; its units (neuroscifi-webcortex.service,
+neuroscifi-webcortex-tick.timer, neuroscifi-websearch.service) are installed disabled like the others.
 MSG

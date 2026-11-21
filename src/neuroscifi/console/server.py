@@ -23,7 +23,9 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from ..instance import (beliefs, checkpoints, datasets, evidence, executive, governance, graphs, memory,
                         recall, store)
-from ..instance.errors import InstanceError, ValidationError
+from ..instance.errors import Conflict, InstanceError, ValidationError
+from ..webcortex import state as wstate
+from ..webcortex.types import MODES, TASK_STATES, TERMINAL_STATES
 
 BIND = "127.0.0.1"
 DEFAULT_PORT = 8766
@@ -257,6 +259,197 @@ def _memory(c, p, q, b):
                            until=_number(q.get("until"), "until"), limit=_number(q.get("limit", "100"), "limit", int))
 
 
+# ---- Web Cortex (ARCHITECTURE.md §4.5): research tasks, knowledge, monitors, switches --------------------------
+
+UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+WEB_SWITCHES = ("enabled", "autonomous", "pocket_research", "browser_rendering")
+WORKER_POLL = 2.0      # seconds between idle polls of the embedded worker
+WORKER_RETRY = 5.0     # seconds before the embedded worker restarts after an unexpected error
+
+
+def _task_id(text):
+    if not UUID.match(text):
+        raise ValidationError("task id must be a lowercase UUID")
+    return text
+
+
+def _note(b):
+    note = b.get("note", "")
+    if not isinstance(note, str) or len(note) > 1024:
+        raise ValidationError("note must be a string of at most 1024 characters")
+    return note
+
+
+def _web_config(cfg):
+    return {**{k: getattr(cfg, k) for k in WEB_SWITCHES}, "providers": list(cfg.providers),
+            "engines": list(cfg.engines), "openwebsearch_url": cfg.openwebsearch_url}
+
+
+def _provider_health(db, cfg, now):
+    """Provider and engine health as last persisted by a run (procedural memory); no network call is made."""
+    from ..webcortex import search
+    registry = search.ProviderRegistry([], clock=lambda: now)
+    registry.load_state(wstate.load_strategies(db))
+    seen = {row["provider"] for row in registry.status()}
+    rows = [{k: row.get(k) for k in ("name", "provider", "engine", "state", "successes", "failures", "last_error",
+                                     "p50_latency")} for row in registry.status()]
+    rows += [{"name": name, "provider": name, "engine": None, "state": "unused", "successes": 0, "failures": 0,
+              "last_error": None, "p50_latency": None} for name in cfg.providers if name not in seen]
+    return sorted(rows, key=lambda r: r["name"])
+
+
+def _web_status(c, p, q, b):
+    from ..webcortex import curiosity, services
+    cfg = wstate.get_config(c.db)
+    counts = dict(c.db.execute("SELECT status, count(*) FROM web_tasks GROUP BY status").fetchall())
+    cache = None
+    path = services.cache_path(c.path)
+    if path.exists():
+        from ..webcortex.cache import PublicCache
+        public = PublicCache(path)
+        try:
+            cache = {k: v for k, v in public.stats().items() if k != "path"}
+        finally:
+            public.close()
+    worker = c.server.worker if c.server is not None else None
+    return {"config": _web_config(cfg), "providers": _provider_health(c.db, cfg, c.now), "cache": cache,
+            "tasks": counts, "active": sum(n for s, n in counts.items() if s not in TERMINAL_STATES),
+            "curiosity": [x for x in curiosity.rank(c.db, c.now, limit=5) if not x["excluded"]][:5]
+            if cfg.enabled else None,
+            "worker": {"embedded": worker is not None, "running": bool(worker and worker.is_alive())},
+            "modes": list(MODES), "memory": wstate.counts(c.db)}
+
+
+def _web_config_set(c, p, q, b):
+    _fields(b, (), WEB_SWITCHES)
+    return {"config": _web_config(wstate.set_config(c.db, b, c.now))}
+
+
+def _web_tasks(c, p, q, b):
+    from ..webcortex import orchestrator
+    q = _query(q, ("status", "limit"))
+    status = q.get("status") or None
+    if status is not None and status not in TASK_STATES:
+        raise ValidationError("status must be one of " + ", ".join(TASK_STATES))
+    limit = _number(q.get("limit", "50"), "limit", int)
+    if not 1 <= limit <= 500:
+        raise ValidationError("limit must be between 1 and 500")
+    return orchestrator.listing(c.db, status=status, limit=limit)
+
+
+def _web_submit(c, p, q, b):
+    from ..webcortex import orchestrator
+    _fields(b, ("objective",), ("mode", "authorization"))
+    mode = b.get("mode")
+    return orchestrator.submit(c.db, b["objective"], c.now, mode=None if mode in (None, "auto") else mode,
+                               origin="console", authorization=b.get("authorization"))
+
+
+def _web_task(c, p, q, b):
+    from ..webcortex import orchestrator
+    return orchestrator.get(c.db, _task_id(p[0]))
+
+
+def _web_evidence(c, p, q, b):
+    from ..webcortex import orchestrator
+    return orchestrator.evidence(c.db, _task_id(p[0]))
+
+
+def _web_cancel(c, p, q, b):
+    from ..webcortex import orchestrator
+    _fields(b)
+    return orchestrator.cancel(c.db, _task_id(p[0]), c.now)
+
+
+def _web_resume(c, p, q, b):
+    """Queue the task again; the worker continues it. A failed task keeps its id and checkpoint (orchestrator.resume
+    semantics). The orchestrator refuses to resume a partial or cancelled task, so those continue as a new task
+    linked by parent_id; documents read before are then served conditionally from the public cache."""
+    from ..webcortex import orchestrator
+    _fields(b)
+    task_id = _task_id(p[0])
+    task = wstate.task(c.db, task_id)
+    if task["status"] == "failed":
+        with store.write(c.db):
+            wstate.update_task(c.db, task_id, c.now, status="queued", finished_at=None, error=None,
+                               lease_holder=None, lease_expires_at=None, cancel_requested=0)
+            wstate.log_event(c.db, task_id, "resumed", {"requeued_by": "owner"}, c.now)
+            store.bump_state_version(c.db)
+        return orchestrator.get(c.db, task_id) | {"resumed_from": task_id}
+    if task["status"] in ("partial", "cancelled"):
+        context = (task["checkpoint"] or {}).get("context")
+        new = orchestrator.submit(c.db, task["objective"], c.now, mode=task["mode"], origin="console", parent=task_id,
+                                  **({"context": context} if context else {}))
+        return new | {"resumed_from": task_id}
+    raise Conflict(f"Research task {task_id} is {task['status']}; only failed, partial or cancelled tasks resume")
+
+
+def _knowledge_feedback(db, key):
+    keys = ("effect", "before_confidence", "after_confidence", "info_gain", "task_id", "created_at")
+    return [dict(zip(keys, row)) for row in db.execute(
+        f"SELECT {','.join(keys)} FROM web_feedback WHERE key=? ORDER BY id DESC LIMIT 5", (key,))]
+
+
+def _web_knowledge(c, p, q, b):
+    from ..webcortex import knowledge
+    q = _query(q, ("topic", "limit"))
+    limit = _number(q.get("limit", "30"), "limit", int)
+    if not 1 <= limit <= 100:
+        raise ValidationError("limit must be between 1 and 100")
+    topic = (q.get("topic") or "").strip()
+    if topic:
+        out = knowledge.query(c.db, topic, c.now, limit=limit)
+    else:
+        cfg = wstate.get_config(c.db)
+        recent = knowledge.rows(c.db, "id IN (SELECT id FROM web_knowledge ORDER BY updated_at DESC, id DESC "
+                                "LIMIT ?)", (limit,))
+        items = [knowledge.describe(c.db, item, c.now, cfg) for item in reversed(recent)]
+        out = {"topic": None, "as_of": c.now, "items": items, "matched": len(items)}
+    for item in out["items"]:
+        item["feedback"] = _knowledge_feedback(c.db, item["key"])
+    return out
+
+
+def _web_review(c, p, q, b):
+    from ..webcortex import knowledge
+    _fields(b, ("accept",), ("note",))
+    return knowledge.review(c.db, int(p[0]), b["accept"], c.now, note=_note(b))
+
+
+def _web_knowledge_action(action):
+    def handler(c, p, q, b):
+        from ..webcortex import knowledge
+        if action in ("archive", "reject"):
+            _fields(b, (), ("note",))
+            return getattr(knowledge, action)(c.db, int(p[0]), c.now, note=_note(b))
+        _fields(b)
+        return getattr(knowledge, action)(c.db, int(p[0]), c.now)
+    return handler
+
+
+def _web_monitors(c, p, q, b):
+    from ..webcortex import scheduler
+    return scheduler.monitor_list(c.db)
+
+
+def _web_monitor_add(c, p, q, b):
+    from ..webcortex import scheduler
+    _fields(b, ("topic", "interval_hours"), ("mode",))
+    hours = b["interval_hours"]
+    if isinstance(hours, bool) or not isinstance(hours, (int, float)) or not 1 <= hours <= 24 * 366:
+        raise ValidationError("interval_hours must be a number between 1 and 8784")
+    return scheduler.monitor_add(c.db, b["topic"], c.now, interval=float(hours) * 3600,
+                                 mode=b.get("mode") or "continuous", authorized_by="owner")
+
+
+def _web_monitor_action(action):
+    def handler(c, p, q, b):
+        from ..webcortex import scheduler
+        _fields(b)
+        return getattr(scheduler, f"monitor_{action}")(c.db, int(p[0]), c.now)
+    return handler
+
+
 SEGMENT = r"([^/]+)"
 ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern, handler in (
     ("GET", "inventory", _inventory),
@@ -289,12 +482,27 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("POST", "checkpoints/rebuild", _checkpoint_rebuild),
     ("POST", r"checkpoints/(\d+)/verify", _checkpoint_verify),
     ("GET", "memory", _memory),
+    ("GET", "web/status", _web_status),
+    ("POST", "web/config", _web_config_set),
+    ("GET", "web/tasks", _web_tasks),
+    ("POST", "web/tasks", _web_submit),
+    ("GET", f"web/tasks/{SEGMENT}", _web_task),
+    ("GET", f"web/tasks/{SEGMENT}/evidence", _web_evidence),
+    ("POST", f"web/tasks/{SEGMENT}/cancel", _web_cancel),
+    ("POST", f"web/tasks/{SEGMENT}/resume", _web_resume),
+    ("GET", "web/knowledge", _web_knowledge),
+    ("POST", r"web/knowledge/(\d+)/review", _web_review),
+    *(("POST", rf"web/knowledge/(\d+)/{name}", _web_knowledge_action(name))
+      for name in ("archive", "reject", "refresh", "forget")),
+    ("GET", "web/monitors", _web_monitors),
+    ("POST", "web/monitors", _web_monitor_add),
+    *(("POST", rf"web/monitors/(\d+)/{name}", _web_monitor_action(name)) for name in ("pause", "resume", "stop")),
 )]
 
 
 class _Context:
-    def __init__(self, db, path, now):
-        self.db, self.path, self.now = db, path, now
+    def __init__(self, db, path, now, server=None):
+        self.db, self.path, self.now, self.server = db, path, now, server
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -409,7 +617,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 db.execute(f"PRAGMA busy_timeout={self.server.post_busy_ms}")
                 governance.sweep(db, now)
-            result = handler(_Context(db, self.server.db_path, now), params, query, body)
+            result = handler(_Context(db, self.server.db_path, now, self.server), params, query, body)
             self.reply(200, result)
         except InstanceError as error:
             self.fail(error.http_status, str(error))
@@ -456,14 +664,40 @@ class Handler(BaseHTTPRequestHandler):
 class ConsoleServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, db_path, port=DEFAULT_PORT, *, token=None, clock=time.time):
+    def __init__(self, db_path, port=DEFAULT_PORT, *, token=None, clock=time.time, web_worker=True,
+                 worker_options=None):
+        """web_worker: run queued research tasks in a background thread (scheduler.work with its own connection;
+        it idles cheaply while web access is disabled). Turn it off when the `nsf web work` service runs them;
+        task leases keep two workers from running one task. worker_options: extra scheduler.work arguments, e.g.
+        {"fixture": FixtureWeb, "providers": [...]} for offline tests."""
         self.db_path = Path(db_path).resolve()
         store.open_existing(self.db_path).close()  # refuse to start without an instance
         self.token = token or secrets.token_urlsafe(32)
         self.clock = clock
         self.post_busy_ms = POST_BUSY_MS
         self.sweep_lock, self.last_sweep = threading.Lock(), float("-inf")
+        self.worker_stop, self.worker = threading.Event(), None
         super().__init__((BIND, port), Handler)
+        self.worker_options = {"clock": clock, **(worker_options or {})}
+        if web_worker:
+            self.worker = threading.Thread(target=self._work, name="nsf-console-web-worker", daemon=True)
+            self.worker.start()
+
+    def _work(self):
+        from ..webcortex import scheduler
+        while not self.worker_stop.is_set():
+            try:
+                scheduler.work(self.db_path, stop=self.worker_stop, poll=WORKER_POLL, sleep=self.worker_stop.wait,
+                               **self.worker_options)
+            except Exception:
+                print("nsf-console: research worker error; retrying", file=sys.stderr, flush=True)
+                self.worker_stop.wait(WORKER_RETRY)
+
+    def server_close(self):
+        self.worker_stop.set()
+        if self.worker is not None and self.worker is not threading.current_thread():
+            self.worker.join(timeout=30)
+        super().server_close()
 
     def handle_error(self, request, client_address):
         print("nsf-console: connection error", file=sys.stderr, flush=True)  # no address, no traceback
