@@ -191,6 +191,65 @@ def test_an_honest_insufficiency_statement_passes_but_only_on_its_own():
     assert "states C2 (insufficient) as fact without hedging" in bad[3]["reasons"]
 
 
+def test_honest_caveats_pass_after_a_discourse_marker():
+    """T1-09 (UAT RC1, 85915111 / s3_recommended): "However, the implications for NeuroSciFi specifically are not
+    directly evaluated in the available evidence.", "Gaps include direct application to NeuroSciFi systems" and
+    "However, the evidence does not state whether NumPy 2.5.5 is recommended." were rejected as single-source facts.
+    A caveat about what the evidence does not establish asserts no fact; a second clause that does still fails."""
+    caveats = [("However, the evidence does not state whether Zephyr 4.2.0 is recommended.", [1], ["C1"]),
+               ("However, the implications for ARM boards specifically are not directly evaluated in the available "
+                "evidence.", [3], ["C2"]),
+               ("Gaps include direct measurements of build times on ARM boards.", [3], ["C2"]),
+               ("Note that build times on ARM boards are not reported in the sources.", [3], ["C2"])]
+    ok, bad = check(*caveats)
+    assert bad == [] and [x["text"] for x in ok] == [t for t, _, _ in caveats]
+    assert all(x.get("insufficiency") for x in ok)
+    ok, bad = check(("However, the evidence does not state the cause, but builds are faster on ARM.", [3], ["C2"]),
+                    ("Gaps include ARM builds, which are 3 times faster.", [3], ["C2"]))
+    assert ok == [] and len(bad) == 2
+
+
+def test_speculation_is_not_a_hedge_and_may_not_reach_beyond_the_cited_evidence():
+    """T1-09: the guard kept "These advances may enhance NeuroSciFi's capacity to simulate realistic neural
+    dynamics" (its claims say nothing about NeuroSciFi). Speculation about something no cited claim or source
+    names is rejected, and a prediction ("will", "likely", "may soon") does not hedge an unsupported claim."""
+    ok, bad = check(("These faster builds may enhance NeuroSciFi's capacity to simulate neural dynamics.", [3],
+                     ["C2"]),
+                    ("Build times will likely drop by 30 percent.", [3], ["C2"]),
+                    ("Build times may soon drop by 30 percent.", [3], ["C2"]))
+    assert ok == []
+    assert any("NeuroSciFi" in r and "no cited claim" in r for r in bad[0]["reasons"]), bad
+    assert all(any("speculat" in r for r in x["reasons"]) for x in bad[1:]), bad
+    ok, bad = check(("According to one source, build times may drop by 30 percent.", [3], ["C2"]),
+                    ("Zephyr 4.2.0 may be the release that was out on 17 November 2026.", [1], ["C1"]))
+    assert bad == [] and len(ok) == 2                            # an attributed or epistemic hedge still passes
+
+
+def test_inline_source_and_claim_ids_are_normalised_not_fatal():
+    """T1-09 (console dce0d4ee): the model appended "(C3, sources 4)"; every sentence failed "number(s) not in the
+    cited evidence: 3, 4" and the answer fell back to the template. Inline citation markup is stripped from the
+    text and its ids are checked like the listed ones."""
+    ok, bad = check(("Zephyr 4.2.0 was released on 17 November 2026 (C1, sources 1 and 2).", [], []),
+                    ("Zephyr 4.2.0 was released on 17 November 2026 [1][2].", [1, 2], ["C1"]),
+                    ("As C1 states, Zephyr 4.2.0 was released on 17 November 2026.", [1], ["C1"]))
+    assert bad == [] and len(ok) == 3, bad
+    assert ok[0]["text"] == ok[1]["text"] == "Zephyr 4.2.0 was released on 17 November 2026."
+    assert ok[0]["citations"] == [1, 2] and ok[0]["claims"] == ["C1"]
+    ok, bad = check(("Zephyr 4.2.0 was released on 17 November 2026 (C1, source 9).", [1], ["C1"]))
+    assert ok == [] and any("unknown source(s) [9]" in r for r in bad[0]["reasons"])
+    assert "Do not write source or claim ids" in reasoning.SYSTEM
+
+
+def test_a_noun_report_is_not_an_attribution():
+    """T1-13/T1-14 (UAT RC1, 640e1f9e): "Nvidia's stock dropped 14.01% amid reports of a potential SEC accounting
+    probe" passed the hedge rule for a single-source figure because of "reports"."""
+    ok, bad = check(("Build times dropped by 30 percent amid reports of a faster linker.", [3], ["C2"]),
+                    ("Build times dropped by 30 percent, news reports of the beta show.", [3], ["C2"]))
+    assert ok == [] and all(any("without hedging" in r for r in x["reasons"]) for x in bad)
+    ok, bad = check(("One source reports that build times dropped by 30 percent.", [3], ["C2"]))
+    assert bad == [] and ok[0]["hedged"]
+
+
 def test_when_no_sentence_survives_the_report_says_what_was_not_established(gateway, fake):
     """T2-03: with every model sentence rejected the reader is told the question was not answered from the
     sources (reasoning.unanswered), not handed a quote that may not address it; the extractive answer stays."""

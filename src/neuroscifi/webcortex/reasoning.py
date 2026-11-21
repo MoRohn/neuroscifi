@@ -35,10 +35,16 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
   - gives a number a unit (or scale) that the cited evidence does not give that number ("41 feet" when the claim
     says "41 metres", "86 neurons" vs "86 million neurons" is fine only without a unit; "$3 million" vs "3 billion"
     is not): every number with a unit must appear with the same unit in a cited claim or source title;
-  - contains instruction-like text (safety.scan_injection).
+  - contains instruction-like text (safety.scan_injection);
+  - speculates: a prediction ("will", "likely", "may soon") is not a hedge for an unsupported claim, and a
+    speculative sentence may not name anything that no cited claim or source title names (T1-09).
+Citation markup in the text ("[1]", "(C3, sources 4)") is stripped and its ids are checked like the listed ones;
+a noun "reports" ("amid reports of ...") is not an attribution (T1-13).
 An honest insufficiency statement ("The provided evidence does not contain information about X.", insufficiency())
 asserts no fact, so it needs no supported claim and no citation (T2-03); it is accepted only when that is all the
-sentence says (no second clause), and the number, unit, id and injection checks still apply.
+sentence says (no second clause), and the number, unit, id and injection checks still apply. A leading discourse
+marker ("However, ..."), "X is not evaluated in the available evidence" and "Gaps include ..." are the same kind of
+caveat (T1-09).
 A bounded self-critique (one call, cfg.self_critique) may FLAG accepted sentences and add gaps. A flag removes a
 sentence only when an objective check confirms it (unknown source or claim, an unsupported claim state without a
 hedge, a number or unit not in the cited evidence: the same checks as the guard); otherwise the sentence stays,
@@ -107,6 +113,10 @@ recent source establishes it: say it may be out of date.
 5. Do not add facts, numbers, dates or names that are not in the claims you cite. No outside knowledge.
 6. If the evidence does not answer the question, say so in one sentence citing the closest claim, and list what is \
 missing in "gaps" (short phrases).
+7. Do not write source or claim ids in the sentence text (no "[1]", "(C3)", "(C3, sources 4)"); list them only in \
+the "sources" and "claims" fields.
+8. Do not speculate: no predictions ("will", "likely", "may soon") and no implications for anything the cited claims \
+do not name.
 Reply with a JSON object only."""
 
 CRITIC = """You check an answer against its evidence. For each numbered sentence decide: "unsupported" (says \
@@ -147,10 +157,24 @@ _EXTRA_CLAUSE = re.compile(r";|:|\b(?:but|though|although|however|while|whereas|
                            re.IGNORECASE)
 
 
+# T1-09: the same caveat after a discourse marker ("However, the evidence does not state whether ..."), a topic that
+# "is not (directly) evaluated in the available evidence", and a list of gaps ("Gaps include ...") assert no fact.
+_DISCOURSE_LEAD = re.compile(r"^(?:however|but|still|that said|note that|notably|nevertheless|nonetheless|"
+                             r"unfortunately|importantly|overall|also|in addition)\b\s*,?\s*", re.IGNORECASE)
+_NOT_IN_EVIDENCE = re.compile(
+    r"^[^,;:]{1,160}?\b(?:is|are|was|were|has|have)\s+not\s+(?:been\s+)?(?:\w+\s+){0,2}?(?:evaluated|addressed|"
+    r"covered|discussed|established|stated|mentioned|reported|specified|examined|assessed|studied|described|"
+    r"provided|given|quantified|measured)\s+(?:in|by)\s+(?:the\s+|any\s+of\s+the\s+)?(?:provided\s+|available\s+|"
+    r"cited\s+|retrieved\s+)?(?:evidence|sources?|claims?|documents?)\b"
+    r"|^(?:the\s+)?(?:main\s+|remaining\s+|open\s+|knowledge\s+)?gaps?\s+(?:include|includes|are|is|remain)\b",
+    re.IGNORECASE)
+
+
 def insufficiency(text: str) -> bool:
-    """The sentence only says that the evidence does not establish something (see _INSUFFICIENT)."""
-    text = _clean(text)
-    return bool(_INSUFFICIENT.match(text)) and not _EXTRA_CLAUSE.search(text)
+    """The sentence only says that the evidence does not establish something (see _INSUFFICIENT and the T1-09
+    shapes above); a leading discourse marker ("However, ...") is not a second clause."""
+    text = _DISCOURSE_LEAD.sub("", _clean(text))
+    return bool(_INSUFFICIENT.match(text) or _NOT_IN_EVIDENCE.match(text)) and not _EXTRA_CLAUSE.search(text)
 _UPGRADE = re.compile(r"\b(?:verified|confirmed|proven|proved|definitely|certainly|undisputed|corroborated|"
                       r"established fact)\b", re.IGNORECASE)
 _NEGATED_UPGRADE = re.compile(r"\b(?:not|never|un)\s*(?:yet\s+|been\s+|independently\s+)*(?:verified|confirmed|"
@@ -270,13 +294,53 @@ def messages(b: dict) -> list[dict]:
 
 # ---- the guard ----------------------------------------------------------------------------------------------------
 
+# A noun "report(s)" ("amid reports of a probe", "news reports") attributes nothing to a source (T1-13).
+_NOUN_REPORT = re.compile(r"\b(?:amid|despite|after|following|with|of|the|these|those|news|media|press|recent|some|"
+                          r"many|several|initial|early|earlier)\s+reports?\b|\breports?\s+of\b", re.IGNORECASE)
+# A prediction or speculation (T1-09): it is not a hedge for an unsupported claim, and it may not reach beyond what
+# the cited evidence names ("These advances may enhance NeuroSciFi's capacity ...").
+_SPECULATION = re.compile(r"\b(?:will|won't|would|likely|probably|(?:may|might|could)\s+soon|(?:is|are)\s+"
+                          r"(?:expected|set|poised)\s+to|promises?\s+to)\b", re.IGNORECASE)
+_SPECULATIVE = re.compile(r"\b(?:may|might|could|will|would|likely|probably|potentially|expected\s+to|poised\s+to)\b",
+                          re.IGNORECASE)
+_NAME = re.compile(r"(?<![\w.])([A-Z][\w-]*[A-Za-z0-9])(?:['’]s)?\b")
+# Citation markup written into the text (T1-09): "[1]", "[1][2]", "(C3)", "(C3, sources 4)", "(source 2)",
+# "(C1–C3)". Stripped from the sentence; its ids are checked like the listed ones.
+_REF_ITEM = r"(?:(?:claims?|sources?|src)\s*:?\s*)?C?\d{1,3}"
+_REF_SEP = r"\s*(?:,|;|–|-|and|&)\s*"
+_INLINE_REF = re.compile(rf"\s*(?:\[\s*{_REF_ITEM}(?:{_REF_SEP}{_REF_ITEM})*\s*\]"
+                         rf"|\(\s*{_REF_ITEM}(?:{_REF_SEP}{_REF_ITEM})*\s*\))", re.IGNORECASE)
+_CLAIM_ID = re.compile(r"\bC\d{1,3}\b")
+
+
+def _inline_refs(text: str) -> tuple[str, list[int], list[str]]:
+    """(text without citation markup, source ids, claim ids) — see _INLINE_REF. A parenthesis counts as markup only
+    when it names a claim id or the word "source" ("(2008)" is a year)."""
+    sources, claims = [], []
+
+    def take(m):
+        ref = m.group(0)
+        if ref.lstrip().startswith("(") and not re.search(r"\bC\d|source|src", ref, re.IGNORECASE):
+            return ref
+        for r in re.finditer(r"C(\d{1,3})\s*[–-]\s*C?(\d{1,3})", ref):
+            claims.extend(f"C{i}" for i in range(int(r.group(1)), min(int(r.group(2)), int(r.group(1)) + 20) + 1))
+        claims.extend(c.upper() for c in re.findall(r"\bC\d{1,3}\b", ref, re.IGNORECASE))
+        sources.extend(int(n) for n in re.findall(r"(?<![C\d])(?<!C)\b(\d{1,3})\b", ref))
+        return ""
+
+    out = _INLINE_REF.sub(take, text)
+    out = _SPACE.sub(" ", re.sub(r"\s+([.,;:!?])", r"\1", out)).strip()
+    return out, list(dict.fromkeys(sources)), list(dict.fromkeys(claims))
+
+
 def hedged(text: str) -> bool:
-    return bool(_HEDGE.search(text or ""))
+    return bool(_HEDGE.search(_NOUN_REPORT.sub(" ", text or "")))
 
 
 def _numbers(text: str) -> list[str]:
     out = []
-    for m in _NUMBER.finditer(text or ""):
+    text = _CLAIM_ID.sub(" ", text or "")          # "As C1 states": a claim id, not a figure
+    for m in _NUMBER.finditer(text):
         if _COUNT.match(text, m.end()) and len(m.group(0)) <= 2:
             continue      # "two sources" written as "2 sources": a count of citations, not a claimed figure
         out.append(m.group(0).replace(",", ""))
@@ -350,9 +414,11 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     claims = {c["id"]: c for c in b["claims"]}
     source_ids = {x["id"] for x in b["sources"]}
     by_source = {x["id"]: x for x in b["sources"]}
-    text = _clean(s.get("text"))
+    text, inline_sources, inline_claims = _inline_refs(_clean(s.get("text")))
     cites = [n for n in s.get("sources") or [] if isinstance(n, int) and not isinstance(n, bool)]
     ids = [str(c).strip() for c in s.get("claims") or []]
+    cites += [n for n in inline_sources if n not in cites]
+    ids += [c for c in inline_claims if c not in ids]
     reasons = []
     honest_gap = insufficiency(text)      # T2-03: "the evidence does not contain X" needs no supported claim
     if not cites and not honest_gap:
@@ -374,6 +440,20 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     if weak and not is_hedged:
         reasons.append("states " + ", ".join(f"{c['id']} ({c['state']})" for c in weak) +
                        " as fact without hedging")
+    speculation = _SPECULATION.search(text)
+    if weak and speculation and not honest_gap and not hedged(_SPECULATION.sub(" ", text)):
+        reasons.append(f"speculates ('{speculation.group(0)}') about " + ", ".join(f"{c['id']} ({c['state']})"
+                                                                                   for c in weak) +
+                       " instead of attributing it")
+    if _SPECULATIVE.search(text) and not honest_gap:
+        named = " ".join([c["text"] for c in used] + [x.get("title") or "" for x in b["sources"]
+                                                      if x["id"] in cites]).lower()
+        first = _NAME.match(text)
+        absent = [m.group(1) for m in _NAME.finditer(text)
+                  if m.group(1).lower() not in named and not (first and m.start() == first.start() and
+                                                              m.group(1)[1:].islower())]
+        if absent:
+            reasons.append(f"speculates about {', '.join(dict.fromkeys(absent))}, which no cited claim mentions")
     if weak and _UPGRADE.search(_NEGATED_UPGRADE.sub(" ", text)):
         reasons.append("calls an unverified claim verified or confirmed")
     if _DISAGREE.search(_NEGATED_DISAGREE.sub(" ", text)) and not any(c["state"] in CONFLICT_STATES for c in used):
