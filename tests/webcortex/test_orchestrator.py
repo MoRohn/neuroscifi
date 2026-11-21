@@ -1702,3 +1702,11 @@ def test_candidates_are_spread_over_hosts_for_any_question(individual, web):
     cap = max(2, -(-done["budget"]["max_pages"] // 3))
     assert sum("hn.example" in c["url"] for c in selected) == cap
     assert "http://encyclo.example/python" in {c["url"] for c in selected}
+
+
+@pytest.mark.parametrize("objective", ["\u0000", "Zephyr\u0000compiler", "Zephyr \u0007 release", "\u009bx"])
+def test_an_objective_with_control_characters_is_refused(individual, objective):
+    """T5-06: NUL passed the blank check and broke the length CHECK (console 500, Pocket 503)."""
+    db, _ = individual
+    with pytest.raises(ValidationError, match="control characters"):
+        orchestrator.submit(db, objective, T0, mode="quick_lookup")

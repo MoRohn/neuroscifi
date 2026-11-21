@@ -274,6 +274,8 @@ def prepare(db, objective, now, *, mode=None, budget=None, origin="cli", family=
     if not isinstance(objective, str) or not objective.strip():
         raise ValidationError("objective must be a non-blank string")
     objective = " ".join(objective.split())
+    if any(ord(c) < 32 or 127 <= ord(c) < 160 for c in objective):   # NUL broke the length CHECK -> 500 (T5-06)
+        raise ValidationError("objective must not contain control characters")
     if len(objective) > MAX_OBJECTIVE:
         raise ValidationError(f"objective must be at most {MAX_OBJECTIVE} characters")
     if authorization not in (None, AUTHORIZED_DISCLOSURE):

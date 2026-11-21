@@ -58,14 +58,22 @@ def _fields(body, required=(), optional=()):
     return body
 
 
+MAX_INT = 2 ** 53 - 1        # SQLite and JavaScript both hold it exactly; 2**63 overflowed SQLite (T5-05)
+STRING_FIELDS = ("session", "session_id", "id", "turn", "kind", "action", "mode", "device", "label", "text", "q")
+
+
 def _int(value, name):
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValidationError(f"{name} must be an integer")
+    if isinstance(value, bool) or not isinstance(value, int) or not -MAX_INT <= value <= MAX_INT:
+        raise ValidationError(f"{name} must be an integer of at most {MAX_INT} in size")
     return value
 
 
 def run(hub: VoiceHub, principal: Principal, op: str, b: dict, *, audio=None, headers=None, wait_cap=None):
-    """One operation. Returns (status, payload, mime); payload is bytes for audio."""
+    """One operation. Returns (status, payload, mime); payload is bytes for audio. Identifier and text fields
+    must be strings (an object as `session` was a 500 for Pocket, T5-05)."""
+    for key in STRING_FIELDS:
+        if b.get(key) is not None and not isinstance(b[key], str):
+            raise ValidationError(f"{key} must be a string")
     if op == "status":
         _fields(b, (), ("session", "probe"))
         return 200, hub.status(principal, b.get("session"), probe=bool(b.get("probe"))), None

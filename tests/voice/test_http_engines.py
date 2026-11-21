@@ -165,6 +165,26 @@ def test_pocket_voice_needs_paired_credential_and_keeps_limits(pocket):
     assert st == 200 and any(e["type"] == "transcript" for e in ev["events"])
 
 
+def test_malformed_voice_fields_are_400_not_500(pocket, console):
+    """T5-05: a segment id >= 2**63 overflowed SQLite (500); an object as `session` was a 500 for Pocket; an
+    objective with NUL broke the database CHECK (500 / 503, T5-06)."""
+    key = ppost(pocket, "pair", {"code": "invite"})[2]["key"]
+    sid = ppost(pocket, "voice_session", {"action": "start", "device": "phone123"}, key=key)[2]["session"]
+    for route, body in (("voice_status", {"session": {"x": 1}}), ("voice_text", {"session": ["a"], "text": "hi"}),
+                        ("voice_events", {"session": {"x": 1}, "since": 0, "wait": 0}),
+                        ("voice_correct", {"segment": 2 ** 63, "text": "x"}),
+                        ("voice_correct", {"segment": 1, "text": {"x": 1}}),
+                        ("voice_transcripts", {"limit": 2 ** 64}),
+                        ("voice_events", {"session": sid, "since": 2 ** 70, "wait": 0})):
+        st, _, out = ppost(pocket, route, body, key=key)
+        assert st == 400 and out["error"], (route, st, out)
+    port = console.server_port
+    for route, body in (("/api/voice/correct", {"segment": 2 ** 63, "text": "x"}),
+                        ("/api/voice/text", {"session": {"x": 1}, "text": "hi"})):
+        st, _, out = call(port, "POST", route, body)
+        assert st == 400, (route, st, out)
+
+
 def test_pocket_voice_is_off_unless_pocket_research_is_on(pocket, instance):
     """Pocket voice follows the pocket_research switch (default off), like Pocket research itself (H1)."""
     key = ppost(pocket, "pair", {"code": "invite"})[2]["key"]
