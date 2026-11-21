@@ -1,6 +1,7 @@
 """Verified checkpoint archives of the instance database.
 
-`create` takes a consistent online backup (the writer may stay open) and packs it as an NSFA archive.
+`create` takes a consistent online backup (the writer may stay open) and packs it as an NSFA archive; retained
+voice audio past its TTL is deleted first, so it never enters a new archive.
 A deletion that commits while the archive is being written makes the new checkpoint 'stale' at once.
 `restore` never publishes a partial file and re-applies current tombstones, forgotten datasets (with their
 graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
@@ -79,6 +80,13 @@ def create(db, db_path, out_dir, now, *, policy="cold"):
     if free < needed:
         raise WritesPaused(f"{free} free bytes in {out_dir} is below the {needed} bytes a checkpoint needs "
                            "(database size plus the free-space reserve)")
+    # Retained raw audio past its TTL is not archived, even when the voice hub's sweep has not run yet
+    # (secure_delete overwrites the freed pages). Archives written earlier are immutable (hash-registered): audio
+    # in them expires only with the archive itself (prune / rebuild), and a restore drops it again.
+    if db.execute("SELECT 1 FROM voice_audio WHERE expires_at<=? LIMIT 1", (now,)).fetchone():  # no idle write
+        with store.write(db):
+            db.execute("DELETE FROM voice_audio WHERE expires_at<=?", (now,))
+        store.truncate_wal(db)
     stamp = datetime.fromtimestamp(now, timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     version = store.state_version(db)
     path = out_dir / f"checkpoint-{stamp}-{version}.nsfa"

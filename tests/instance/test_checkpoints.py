@@ -487,3 +487,20 @@ def test_each_checkpoint_mutation_bumps_state_version_once(instance, tmp_path):
 def test_default_dir_is_per_instance(tmp_path):
     assert checkpoints.default_dir(tmp_path / "alice.sqlite") == tmp_path.resolve() / "alice.checkpoints"
     assert checkpoints.default_dir(tmp_path / "bob.sqlite") != checkpoints.default_dir(tmp_path / "alice.sqlite")
+
+
+def test_checkpoint_excludes_retained_audio_past_its_ttl(instance, tmp_path):
+    """Raw audio whose TTL has passed is never written into a new archive (L7), even when no sweep ran yet."""
+    db, path = instance
+    from neuroscifi.voice import transcripts as tx
+    sid = tx.start_session(db, "owner", "console:x", "voice_text", T0)
+    old = tx.upsert(db, sid, "u1", speaker="user", source="asr", status="final", text="old", now=T0 + 1)
+    tx.retain_audio(db, old["id"], b"EXPIRED-PCM-" * 40, 16000, T0 + 1, 1)          # expires at T0 + 1 h
+    new = tx.upsert(db, sid, "u2", speaker="user", source="asr", status="final", text="new", now=T0 + 2 * 3600)
+    tx.retain_audio(db, new["id"], b"LIVE-PCM-" * 40, 16000, T0 + 2 * 3600, 24)
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 2 * 3600 + 5)
+    out = tmp_path / "r.sqlite"
+    checkpoints.restore(db, cp["id"], out, T0 + 2 * 3600 + 6, apply_tombstones=False)
+    with sqlite3.connect(out) as copy:
+        assert [r[0] for r in copy.execute("SELECT segment_id FROM voice_audio")] == [new["id"]]
+    assert b"EXPIRED-PCM-" not in out.read_bytes() and b"LIVE-PCM-" in out.read_bytes()

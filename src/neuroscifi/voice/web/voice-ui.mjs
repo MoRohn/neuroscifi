@@ -21,6 +21,12 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 
+// Source URLs come from fetched pages: only http(s) becomes a link (no javascript:, data:, ...), as research-ui.mjs.
+export function safeUrl(u) {
+  try { const x = new URL(u); return x.protocol === "http:" || x.protocol === "https:" ? x.href : null; }
+  catch { return null; }
+}
+
 function time(ts) {
   if (!ts) return "";
   const d = new Date(ts * 1000);
@@ -177,7 +183,7 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
     const sources = seg.detail && seg.detail.sources;
     if (sources && sources.length) {
       li.append(h("ol", { class: "nsfv-sources", "aria-label": "Sources" }, sources.map((s) =>
-        h("li", { value: String(s.n) }, h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer",
+        h("li", { value: String(s.n) }, h("a", { href: safeUrl(s.url), target: "_blank", rel: "noopener noreferrer",
                                                  text: s.title || s.url }), h("span", { text: ` ${s.domain}` })))));
     }
     if (seg.authority === "approximate" && seg.status === "final") {

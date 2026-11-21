@@ -69,6 +69,10 @@ Forward-only migration 9 (`instance/schema.py`; v8 is Lane D's knowledge-evoluti
   `nsf voice forget SESSION`; rows are deleted and the WAL truncated.
 - Retention: `retain_audio` (default **false**) and `audio_ttl_hours` (1–168, default 24) are owner-only settings;
   the hub sweeps every minute (`nsf voice sweep` by hand); switching retention off deletes every retained clip.
+  A new checkpoint deletes expired clips before it archives (so it never contains audio past its TTL). Limitation:
+  archives are immutable and hash-registered, so a clip that was live when an earlier checkpoint was written stays
+  in that archive until the archive is pruned (`nsf checkpoint prune --keep N`); a restore from it
+  drops every clip the live instance no longer holds.
 
 ## 5. Capture ownership (one device at a time)
 
