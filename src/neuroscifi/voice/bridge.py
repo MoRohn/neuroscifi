@@ -34,6 +34,13 @@ MAX_SPOKEN_SENTENCES = 2
 MAX_SPOKEN_WORDS = 70
 LABEL_TEMPLATE = "NeuroSciFi template reply (no model involved)"
 LABEL_EXTRACTIVE = "Extractive summary (quoted evidence); advanced reasoning unavailable"
+# A model answer's label says what the transcript shows (T4-02): every sentence passed the citation guard, and a
+# sentence that rests on a claim independent sources do not support carries a mark (STATE_MARKS) after its citations.
+LABEL_MODEL = ("Model-written summary by {model} from the collected evidence; each sentence was checked against its "
+               "cited sources, and a sentence that independent sources do not support is marked")
+STATE_MARKS = {"insufficient": "only one source or too little evidence; not independently confirmed",
+               "temporally_unresolved": "not established as current", "conflicting": "sources conflict",
+               "disputed": "disputed by other sources", "not_evaluated": "not checked against other sources"}
 HELP = ("You can ask a question or say: research followed by a topic, show evidence, explain more simply, "
         "remember conclusions, what have you learned since yesterday, continue previous investigation, stop, "
         "stop speaking but keep researching, switch to text only, or speak your answers.")
@@ -114,6 +121,13 @@ def _cited(item) -> str:
     return f"{item['text']} [{', '.join(numbers)}]" if numbers else item["text"]
 
 
+def _marked(item) -> str:
+    """The cited line with the mark of each claim state it rests on that is not "supported" (T4-02)."""
+    marks = [STATE_MARKS.get(st, str(st).replace("_", " ")) for st in dict.fromkeys((item.get("states") or {}).values())
+             if st != "supported"]
+    return _cited(item) + (f" ({'; '.join(marks)})" if marks else "")
+
+
 def compose_answer(task) -> Reply:
     """The reply for a finished research task, from its report only."""
     status, objective = task.get("status"), task.get("objective") or ""
@@ -126,10 +140,12 @@ def compose_answer(task) -> Reply:
     reasoning = report.get("reasoning") if isinstance(report.get("reasoning"), dict) else {}
     if reasoning.get("status") == "model" and reasoning.get("answer"):
         items = [a for a in reasoning["answer"] if isinstance(a, dict) and a.get("text")]
-        lines = [_cited(a) for a in items]
+        lines = [_marked(a) for a in items]
         cited = {n for a in items for n in a.get("citations") or []}
+        by = str(reasoning.get("generated_by") or report.get("generated_by") or "")
+        model = by[6:] if by.startswith("model:") and by[6:] else "the local model"
         reply = Reply("research_result", speech=spoken([a["text"] for a in items]), text="\n".join(lines),
-                      source="model", label=str(reasoning.get("label") or "Model answer (evidence-checked)"),
+                      source="model", label=LABEL_MODEL.format(model=model[:120]),
                       task_id=task.get("id"), sources=_sources(report, cited))
     else:
         items = [a for a in report.get("answer") or [] if isinstance(a, dict) and a.get("text")]

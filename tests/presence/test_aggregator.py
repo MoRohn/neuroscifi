@@ -249,3 +249,12 @@ def test_voice_session_with_unreachable_speech_engines_is_not_healthy(inst):
         assert derive(db, path)["condition"] == ["healthy"]
     finally:
         vstate.reset()
+
+
+def test_model_answer_stage_is_worded_as_what_happens():
+    """T4-02: Presence said "reasoning over the verified evidence"; the model writes an answer from the collected
+    evidence (which may hold unconfirmed claims) and the guard then checks each sentence against its sources."""
+    task = {"status": "synthesizing", "cancel_requested": 0}
+    act, detail, _, _ = aggregator._running(task, {"kind": "synthesized", "detail": {}}, 0, True)
+    assert act == "reasoning" and detail == "The local model is writing an answer from the collected evidence"
+    assert "verified" not in detail

@@ -178,9 +178,27 @@ REPORT_MODEL = {
 
 def test_compose_answer_speaks_checked_model_text_concisely():
     r = vbridge.compose_answer({"id": "t", "status": "completed", "objective": "q", "result": REPORT_MODEL})
-    assert r.source == "model" and r.label.startswith("Advanced reasoning")
+    assert r.source == "model" and r.label.startswith("Model-written summary by the local model")
     assert r.speech[:2] == ["Zephyr 4.2.0 came out on 17 November 2026.", "Two sources agree."]
     assert "[1, 2]" in r.text and "Verdict: supported" in r.text and len(r.sources) == 2
+
+
+def test_compose_answer_marks_sentences_independent_sources_do_not_support():
+    """T4-02: the voice label says such sentences are marked, so the transcript text must mark them (after the
+    citations, never spoken); a supported sentence carries no mark, and the label names the model."""
+    report = json.loads(json.dumps(REPORT_MODEL))
+    report["reasoning"]["generated_by"] = "model:qwen-test"
+    states = [{"C1": "supported"}, {"C1": "supported", "C2": "insufficient"}, {"C3": "temporally_unresolved"}]
+    for item, st in zip(report["reasoning"]["answer"], states):
+        item["states"] = st
+    r = vbridge.compose_answer({"id": "t", "status": "completed", "objective": "q", "result": report})
+    lines = r.text.splitlines()
+    assert lines[0] == "Zephyr 4.2.0 came out on 17 November 2026. [1]"
+    assert lines[1] == "Two sources agree. [1, 2] (only one source or too little evidence; not independently confirmed)"
+    assert lines[2] == "A third sentence. [2] (not established as current)"
+    assert r.label.startswith("Model-written summary by qwen-test") and "is marked" in r.label
+    assert "verified" not in r.label and "single-source statements are marked" not in r.label
+    assert not any("(" in s for s in r.speech)
 
 
 def test_compose_answer_extractive_is_attributed_and_labelled():

@@ -113,7 +113,7 @@ def _running(task, last, contradictions, reasoning_on):
         return "consolidating", "Consolidating verified findings into knowledge", 0.9, ["knowledge_consolidation"]
     if kind == "synthesized":
         if reasoning_on:
-            return "reasoning", "The local model is reasoning over the verified evidence", 0.8, []
+            return "reasoning", "The local model is writing an answer from the collected evidence", 0.8, []
         return "consolidating", "Consolidating verified findings into knowledge", 0.8, ["knowledge_consolidation"]
     if kind == "extract" and detail.get("from_memory"):
         return "generating", "Writing the answer from memory", 1.0, ["memory_retrieval"]
