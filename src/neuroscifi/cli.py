@@ -2,6 +2,8 @@
 import argparse
 from importlib import import_module
 
+from . import __version__
+
 COMMAND_MODULES = [
     "neuroscifi.pocket.cli",
     "neuroscifi.lab.cli",
@@ -18,6 +20,7 @@ COMMAND_MODULES = [
 
 def build_parser():
     parser = argparse.ArgumentParser(prog="nsf", description="NeuroSciFi command line.")
+    parser.add_argument("--version", action="version", version=f"nsf {__version__}")
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     for name in COMMAND_MODULES:
         try:

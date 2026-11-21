@@ -31,6 +31,7 @@ where = ["src"]
 "neuroscifi.pocket" = ["web/*"]
 "neuroscifi.console" = ["web/*"]
 "neuroscifi.presence" = ["web/*"]
+"neuroscifi.voice" = ["web/*"]
 "neuroscifi.webcortex" = ["bench/*.json"]
 "neuroscifi.vendor_tufazip" = ["LICENSE", "NOTICE"]
 

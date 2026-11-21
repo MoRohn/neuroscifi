@@ -521,7 +521,11 @@ class Handler(BaseHTTPRequestHandler):
         if not asset:
             return self.reply(404)
         name, mime = asset
-        self.reply(200, (WEB/name).read_bytes(), mime)
+        try:
+            body = (WEB/name).read_bytes()
+        except OSError:   # a listed asset missing on disk (incomplete install) is a 404, not a dropped connection
+            return self.reply(404)
+        self.reply(200, body, mime)
 
     def do_POST(self):
         if not self.host_allowed():

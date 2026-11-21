@@ -628,7 +628,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, ICON, "image/svg+xml")
             if not asset:
                 return self.fail(404, "not found")
-            return self.reply(200, (WEB / asset[0]).read_bytes(), asset[1])
+            try:
+                body = (WEB / asset[0]).read_bytes()
+            except OSError:   # a listed asset missing on disk (incomplete install) is a 404, not a dropped connection
+                return self.fail(404, "not found")
+            return self.reply(200, body, asset[1])
         if not self._authorized():
             return self.fail(403, "missing or invalid session token; open the URL printed by `nsf console`")
         if url.path.startswith("/api/voice/"):   # own body rules: JSON <= 4 KiB, or one audio chunk <= 64 KiB
