@@ -1090,3 +1090,33 @@ def test_a_page_about_another_entity_that_contains_the_subjects_name_is_set_asid
     report = run("Is numpy 2.5.5 stable?", docs, {"packages": [{"ecosystem": "PyPI", "name": "numpy", "inferred": True}]})
     assert not any("stable-diffusion" in u for u in _cited_urls(report)), report["findings"]
     assert report["findings"]
+
+
+def test_the_first_release_sentence_leads_a_first_release_question():
+    """R1-04 / T1-07 (RC2 live, "When was Python first released?"): the Python article's "Van Rossum first released
+    it in 1991 as Python 0.9.0." ranked 36th (its head is "Van Rossum", and "it" was not read as the article's
+    subject), behind "They were firstly introduced in 2000 ..." (about PEPs, read as about Python), so the model
+    never saw it and answered "Python was first introduced in 2000"."""
+    article = doc("https://en.wikipedia.org/wiki/Python_(programming_language)", "Python is a high-level, "
+                  "general-purpose programming language. They were firstly introduced in 2000, inspired by other RfCs "
+                  "(requests for comments) and Design Enhancement Proposals. Van Rossum first released it in 1991 as "
+                  "Python 0.9.0. Python 2.7.18, released in 2020, was the last release of Python 2.",
+                  title="Python (programming language)", kind="api", published=None)
+    r = run("When was Python first released?", [article])
+    assert r["answer"][1]["text"] == "Van Rossum first released it in 1991 as Python 0.9.0.", r["answer"]
+
+
+def test_a_contested_cluster_is_placed_by_its_side_that_answers_the_question():
+    """R1-04 (RC2 live): the History of Python's "first published the code (for Python version 0.9.1) ... in February
+    1991" led a contested cluster whose other side, "Van Rossum first released it in 1991 as Python 0.9.0.", answers
+    the question; the cluster ranked 21st (by the leading side) and never reached the model."""
+    docs = [doc("https://en.wikipedia.org/wiki/Python_(programming_language)", "Python is a high-level, general-purpose "
+                "programming language. Van Rossum first released it in 1991 as Python 0.9.0. Python 2.0 was released "
+                "in 2000 and introduced list comprehensions.", title="Python (programming language)", kind="api",
+                published=None),
+            doc("https://www.python-history.example/history", "Van Rossum first published the code (for Python "
+                "version 0.9.1) to alt.sources in February 1991. Python 1.6 included a new CNRI license.",
+                title="History of Python", published=None)]
+    r = run("When was Python first released?", docs)
+    top = r["findings"][0]
+    assert "Van Rossum first" in top["statement"] and top["status"] == "contested", r["findings"][:3]

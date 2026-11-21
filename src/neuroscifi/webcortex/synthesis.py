@@ -1482,6 +1482,8 @@ def _head(claim: Claim) -> tuple[frozenset, list[str]]:
     """(head tokens, stemmed tokens of the rest of the sentence, in order) of a quoted claim (section comment)."""
     text = _PARENS.sub(" ", claim.text or "")
     clause = _claims._subject_clause(text)
+    if _PLURAL_PRONOUN.match(clause):       # "They were first introduced in 2000": not the title's (one) subject
+        return frozenset(), [T.stem(t) for t in T.tokens(clause)]
     if _claims.title_reference(clause) is not None:        # "It ...", "The tower ...": the title's subject
         subject = _claims.title_subject(claim.title or "") or ""
         return _claims.subject_tokens(subject), [T.stem(t) for t in T.tokens(clause)]
@@ -1496,6 +1498,9 @@ def _head(claim: Claim) -> tuple[frozenset, list[str]]:
     noun = ([w for w in T.tokens(head) if w not in T.STOPWORDS] or [""])[-1]
     rest = text.replace(head, f" {noun} ", 1) if head.strip() else text
     return _claims.subject_tokens(head), [T.stem(t) for t in T.tokens(rest)]
+
+
+_PLURAL_PRONOUN = re.compile(r"^\s*(?:they|these|those|their)\b", re.IGNORECASE)
 
 
 def _states_relation(rest: list[str], relation: frozenset, entity: frozenset) -> bool:
@@ -1523,6 +1528,11 @@ def subject_tier(claim: Claim | None, focus: dict) -> int:
     if any((e <= head and not _other_name(claim, head - e)) or _claims.same_subject(e, head) for e in entities):
         return 0
     words = frozenset().union(*focus["relation"]) if focus.get("relation") else frozenset()
+    page = _claims.subject_tokens(_claims.title_subject(claim.title or "") or "")
+    for e in entities:
+        if page and (e <= page or _claims.same_subject(e, page)):
+            # "Van Rossum first released it in 1991": "it" is the page's subject (R1-04 live, Python article)
+            rest = [t for w in rest for t in (sorted(e) if w in ("it", "its") else [w])]
     if any(_states_relation(rest, words, e) for e in entities):
         return 0                            # it states the question's relation about the entity
     return 2
@@ -1722,8 +1732,15 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         return c.confidence * (rep.relevance if rep else 0.0) * factor
 
     def order(t):            # UAT-W-24: on-subject first, then relation coverage, then value
-        rep = _representative(t[0])
-        return (subject_tier(rep, focus), -relation_coverage(rep, focus), -t[1], t[0].key, t[0].statement)
+        c = t[0]
+        rep = _representative(c)
+        # a contested cluster is placed by the best of its two sides: "Van Rossum first released it in 1991 as
+        # Python 0.9.0" answers "When was Python first released?" though the side that leads is about "the code
+        # (for Python version 0.9.1)" (R1-04 live)
+        sides = {x["a"] for x in c.contradicting} | {x["b"] for x in c.contradicting}
+        claims = [rep] + [x for x in c.claims if x.id in sides and x is not rep]
+        return (min(subject_tier(x, focus) for x in claims), -max(relation_coverage(x, focus) for x in claims),
+                -t[1], c.key, c.statement)
 
     ranked = sorted(((c, value(c)) for c in usable if report_safe_text(_representative(c)) == c.statement),
                     key=order)
