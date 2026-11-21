@@ -27,11 +27,15 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
     consolidation), never the legacy cluster label: a time-sensitive claim backed only by stale or undated
     sources is temporally_unresolved and must be hedged or left out, however many sources repeat it;
   - calls something verified/confirmed/proven while any cited claim is not supported (never upgrade a state);
-  - says the sources disagree (conflicting, disputed, contested, contradict) while no cited claim is in a conflict
-    state (CONFLICT_STATES): such a hedge asserts a disagreement the evidence does not hold, and would otherwise let
+  - attributes to "another source" while citing only sources an earlier accepted sentence cited, or to several
+    sources ("other sources", "both sources") while citing fewer than two (R2-03);
+  - says the sources disagree (conflicting, disputed, contested, contradict) while neither the verdict (R1-05) nor
+    any cited claim is in a conflict state (CONFLICT_STATES): such a hedge asserts a disagreement the evidence does not hold, and would otherwise let
     a single-source claim through bound to another claim's version or subject (live case: "Sources disagree on
     whether zod's latest version, 4.6.7, is affected", where the advisory is about the version in use);
-  - contains a number that appears in none of its cited claims or their sources' dates (no invented figures);
+  - contains a number that appears in none of its cited claims or their sources' dates (no invented figures); an
+    uncertainty or insufficiency statement may repeat the question's numbers ("It is unclear whether numpy 2.5.5
+    ..."), and "lack verified evidence" calls nothing verified (T1-09);
   - gives a number a unit (or scale) that the cited evidence does not give that number ("41 feet" when the claim
     says "41 metres", "86 neurons" vs "86 million neurons" is fine only without a unit; "$3 million" vs "3 billion"
     is not): every number with a unit must appear with the same unit in a cited claim or source title;
@@ -146,7 +150,8 @@ CONFLICT_STATES = frozenset({"contested", "conflicting", "disputed"})
 _INSUFFICIENT = re.compile(
     r"^(?:(?:the\s+)?(?:provided\s+|available\s+|cited\s+|retrieved\s+)?(?:evidence|sources?|claims?|documents?)"
     r"(?:\s+(?:provided|available|cited|retrieved|read))?\s+(?:do|does|did)\s+not\s+(?:\w+\s+)?"
-    r"(?:contain|provide|include|specify|state|mention|establish|say|give|identify|address|answer|report|cover)"
+    r"(?:contain|provide|include|specify|state|mention|establish|say|give|identify|address|answer|report|cover|"
+    r"confirm|show|indicate|clarify|determine|reveal|describe|explain)"
     r"|(?:no|none\s+of\s+the)\s+(?:provided\s+|available\s+|cited\s+)?(?:evidence|sources?|claims?|documents?)"
     r"(?:\s+(?:in|among|read|cited|provided)(?:\s+the)?(?:\s+(?:provided|cited|available))?"
     r"(?:\s+(?:evidence|sources|claims|documents))?)?\s+(?:states?|provides?|mentions?|gives?|establish(?:es)?|"
@@ -180,7 +185,25 @@ def insufficiency(text: str) -> bool:
 _UPGRADE = re.compile(r"\b(?:verified|confirmed|proven|proved|definitely|certainly|undisputed|corroborated|"
                       r"established fact)\b", re.IGNORECASE)
 _NEGATED_UPGRADE = re.compile(r"\b(?:not|never|un)\s*(?:yet\s+|been\s+|independently\s+)*(?:verified|confirmed|"
-                              r"proven|corroborated)\b", re.IGNORECASE)
+                              r"proven|corroborated)\b"
+                              # T1-09: a statement about missing evidence ("some claims lack recent or verified
+                              # evidence") calls nothing verified
+                              r"|\b(?:lacks?|lacking|without|no|absence\s+of|missing|needs?|requires?)\s+"
+                              r"(?:\w+\s+(?:or|and)\s+)?(?:independently\s+)?(?:verified|confirmed|corroborated)\b",
+                              re.IGNORECASE)
+# T1-09: an uncertainty statement ("It is unclear whether numpy 2.5.5 is recommended") may repeat the question's own
+# numbers: it asserts nothing about them.
+_UNCERTAINTY = re.compile(r"\b(?:it\s+is|it's|it\s+remains|remains|is\s+still|are\s+still)\s+(?:still\s+)?"
+                          r"(?:unclear|uncertain|unknown|not\s+clear|not\s+known|undetermined)\b"
+                          r"|^(?:it\s+is\s+)?(?:unclear|uncertain|unknown)\s+(?:whether|if|how|when|which|what)\b",
+                          re.IGNORECASE)
+# R2-03: "Another source states ..." must cite a source the answer has not cited yet; "several sources say ..." must
+# cite at least two distinct sources.
+_ANOTHER_SOURCE = re.compile(r"\b(?:another|a\s+second|a\s+different|a\s+separate|a\s+further)\s+(?:\w+\s+)?"
+                             r"(?:source|report|study|article|paper|page)\b", re.IGNORECASE)
+_MANY_SOURCES = re.compile(r"\b(?:other|multiple|several|many|various|numerous|both|two|three|independent|separate|"
+                           r"different)\s+(?:independent\s+)?(?:sources|reports|studies|articles|papers|pages)\b"
+                           r"|\bsources\s+(?:agree|confirm|corroborate)\b", re.IGNORECASE)
 _NUMBER = re.compile(r"\d+(?:[.,:]\d+)*")
 _COUNT = re.compile(r"\s+(?:independent\s+|separate\s+|different\s+)?(?:sources?|claims?|reports?|websites?|sites?)\b",
                     re.IGNORECASE)
@@ -265,7 +288,8 @@ def bundle(report: dict, question: str) -> dict:
     verdict = report.get("verdict")
     return {"question": _clean(question, 2000), "as_of": _day(report.get("as_of")), "claims": claims,
             "sources": sources,
-            "verdict": {"label": verdict.get("label"), "statement": _clean(verdict.get("statement"), 300)}
+            "verdict": {"label": verdict.get("label"), "state": verdict.get("state"),
+                        "statement": _clean(verdict.get("statement"), 300)}
             if isinstance(verdict, dict) else None,
             "contradictions": len(report.get("contradictions") or []),
             "freshness_satisfied": (report.get("freshness") or {}).get("satisfied")}
@@ -472,10 +496,17 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
             reasons.append(f"speculates about {', '.join(dict.fromkeys(absent))}, which no cited claim mentions")
     if weak and _UPGRADE.search(_NEGATED_UPGRADE.sub(" ", text)):
         reasons.append("calls an unverified claim verified or confirmed")
-    if _DISAGREE.search(_NEGATED_DISAGREE.sub(" ", text)) and not any(c["state"] in CONFLICT_STATES for c in used):
+    # R1-05: the checked statement's own ADR-035 state (the verdict) counts like a cited claim's state
+    verdict_state = (b.get("verdict") or {}).get("state") if isinstance(b.get("verdict"), dict) else None
+    if _DISAGREE.search(_NEGATED_DISAGREE.sub(" ", text)) and verdict_state not in CONFLICT_STATES and \
+            not any(c["state"] in CONFLICT_STATES for c in used):
         reasons.append("says the sources disagree, but no cited claim is contested")
+    if _MANY_SOURCES.search(text) and len(set(cites)) < 2:
+        reasons.append("attributes it to several sources, but cites fewer than 2 distinct sources")
     cited_sources = [by_source[n] for n in cites if n in by_source]
     allowed = _allowed_numbers(used, cited_sources)
+    if honest_gap or _UNCERTAINTY.search(text):
+        allowed |= set(n.replace(",", "") for n in _NUMBER.findall(b.get("question") or ""))
     invented = [n for n in _numbers(text) if not _number_ok(n, allowed)]
     if invented:
         reasons.append(f"number(s) not in the cited evidence: {', '.join(dict.fromkeys(invented))}")
@@ -489,13 +520,18 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
 
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
     accepted, rejected = [], []
+    earlier = set()          # sources the accepted sentences before this one cite (R2-03 "another source")
     for s in sentences or []:
         if not _clean(s.get("text")):
             continue
         text, cites, ids, used, is_hedged, reasons = check_sentence(s, b)
+        if _ANOTHER_SOURCE.search(text) and cites and set(cites) <= earlier:
+            reasons = reasons + [f"attributes it to another source, but cites the same source(s) {sorted(set(cites))} "
+                                 "as an earlier sentence"]
         if reasons:
             rejected.append({"text": text, "reasons": reasons})
         else:
+            earlier.update(cites)
             accepted.append({"text": text, "citations": sorted(set(cites)), "claims": list(dict.fromkeys(ids)),
                              "states": {c["id"]: c["state"] for c in used}, "hedged": is_hedged}
                             | ({"insufficiency": True} if insufficiency(text) else {}))

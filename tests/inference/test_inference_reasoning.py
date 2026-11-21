@@ -209,6 +209,78 @@ def test_honest_caveats_pass_after_a_discourse_marker():
     assert ok == [] and len(bad) == 2
 
 
+def numpy_bundle(verdict_state=None):
+    """RC2 retest s3_recommended / s4a: the claims do not repeat the question's version; the verdict carries the
+    ADR-035 state of the checked statement."""
+    return {"question": "Is numpy 2.5.5 recommended?",
+            "claims": [{"id": "C1", "state": "insufficient", "sources": [1], "published": None, "event": None,
+                        "text": "NumPy is the fundamental package for scientific computing with Python."},
+                       {"id": "C2", "state": "insufficient", "sources": [2], "published": None, "event": None,
+                        "text": "On average, the human brain contains about 100 billion neurons."},
+                       {"id": "C3", "state": "insufficient", "sources": [3], "published": "2025-02-06", "event": None,
+                        "text": "Yes, the human brain has around 86 billion neurons."}],
+            "sources": [{"id": n, "title": f"Source {n}", "published": "undated"} for n in (1, 2, 3)],
+            "verdict": {"label": "contested", "state": verdict_state, "statement": "x"} if verdict_state else None}
+
+
+def test_honest_uncertainty_and_meta_statements_about_the_evidence_pass():
+    """T1-09 (RC2 retest r1): "It is unclear whether numpy 2.5.5 is recommended, ..." failed the number check (2.5.5
+    is the question's own version) and "... as some claims lack recent or verified evidence" was read as calling a
+    claim verified. Neither asserts a fact. A plain statement still may not take a number from the question."""
+    b = numpy_bundle()
+    ok, bad = reasoning.guard([
+        {"text": "It is unclear whether numpy 2.5.5 is recommended, as the evidence does not provide a clear "
+                 "recommendation.", "sources": [1], "claims": ["C1"]},
+        {"text": "The relevance of recent NumPy developments may be uncertain, as some claims lack recent or verified "
+                 "evidence.", "sources": [1], "claims": ["C1"]}], b)
+    assert bad == [] and len(ok) == 2, bad
+    ok, bad = reasoning.guard([
+        {"text": "According to one source, numpy 2.5.5 is recommended.", "sources": [1], "claims": ["C1"]},
+        {"text": "According to one source, NumPy is verified for scientific computing.", "sources": [1],
+         "claims": ["C1"]}], b)
+    assert ok == [] and "2.5.5" in bad[0]["reasons"][0] and "verified" in bad[1]["reasons"][0]
+
+
+def test_sources_disagree_passes_when_the_verdict_is_conflicting():
+    """R1-05 (s4a): the verdict was conflicting (100 vs 86 billion) but each cited claim's own state was
+    insufficient, so "Sources disagree on the exact number ..." was rejected. The guard uses the verdict's state too."""
+    text = {"text": "Sources disagree on the exact number of neurons in the human brain.", "sources": [2, 3],
+            "claims": ["C2", "C3"]}
+    ok, bad = reasoning.guard([text], numpy_bundle("conflicting"))
+    assert bad == [] and len(ok) == 1
+    ok, bad = reasoning.guard([text], numpy_bundle())
+    assert ok == [] and "no cited claim is contested" in bad[0]["reasons"][0]
+    assert reasoning.bundle({"verdict": {"label": "contested", "state": "conflicting", "statement": "s"}},
+                            "q")["verdict"]["state"] == "conflicting"
+
+
+def test_another_source_must_be_another_source():
+    """R2-03 (RC2 voice retest, Makemake): "Another source states that a moon was discovered ..." cited the same
+    single source [1] as the sentence before it. A sentence that attributes to another, or to several, sources
+    must cite a source not cited before, or at least two distinct sources."""
+    b = numpy_bundle()
+    ok, bad = reasoning.guard([
+        {"text": "According to one source, the human brain contains about 100 billion neurons.", "sources": [2],
+         "claims": ["C2"]},
+        {"text": "Another source states that the human brain contains about 100 billion neurons.", "sources": [2],
+         "claims": ["C2"]},
+        {"text": "Several sources say the human brain has around 86 billion neurons.", "sources": [3],
+         "claims": ["C3"]},
+        {"text": "Another source states that the human brain has around 86 billion neurons.", "sources": [3],
+         "claims": ["C3"]}], b)
+    assert [x["text"][:20] for x in ok] == ["According to one sou", "Another source state"], (ok, bad)
+    assert ok[1]["citations"] == [3]
+    assert any("same source" in r for r in bad[0]["reasons"]) and any("2 distinct" in r for r in bad[1]["reasons"])
+
+
+def test_the_evidence_does_not_confirm_is_an_honest_caveat():
+    """R2-03: "However, the evidence does not confirm whether this moon has been officially recognized or if
+    Makemake has any other moons." was rejected as stating its insufficient claims as fact."""
+    ok, bad = check(("However, the evidence does not confirm whether the Zephyr compiler has been officially "
+                     "recognized or if other builds exist.", [3], ["C2"]))
+    assert bad == [] and ok[0].get("insufficiency")
+
+
 def test_speculation_is_not_a_hedge_and_may_not_reach_beyond_the_cited_evidence():
     """T1-09: the guard kept "These advances may enhance NeuroSciFi's capacity to simulate realistic neural
     dynamics" (its claims say nothing about NeuroSciFi). Speculation about something no cited claim or source
