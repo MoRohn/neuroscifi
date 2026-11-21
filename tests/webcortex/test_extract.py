@@ -198,10 +198,12 @@ def test_pathological_page_extraction_is_bounded():
             + "</article></body></html>").encode()
     assert len(body) > 4_500_000
     # CPU time, not wall time: the bound is about the extractor's work, and a loaded host (parallel suites,
-    # browsers, model servers) stretched wall time to 1.63 s while the extraction itself was unchanged.
+    # browsers, model servers) stretched wall time to 1.63 s while the extraction itself was unchanged. The bound is
+    # 3 s CPU: about 0.6 s on the development host and 1.5 s on a GitHub runner, while the regression it guards
+    # against (markdownify over every element) took 6.7 s.
     start = time.process_time()
     doc = html_doc(body)
-    assert time.process_time() - start < 1.5
+    assert time.process_time() - start < 3.0
     assert doc.flags["truncated_extraction"] is True and doc.title == "Big"
     assert 0 < len(doc.text) <= ex.MAX_TEXT and len(doc.markdown) <= ex.MAX_MARKDOWN
     assert doc.text.count("\n") < ex.MAX_ELEMENTS
