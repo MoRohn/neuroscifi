@@ -168,7 +168,7 @@ Notes that matter:
 - **Retry-After.** HTTP 429 sets a host backoff from `Retry-After` (seconds or HTTP date, capped at 6 h; 60 s if absent). HTTP 503 does so only when it carries `Retry-After`. Any request to the host inside the backoff raises `rate_limited` with `retry_after` and touches no network (`test_retry_after_seconds_sets_backoff`, `test_retry_after_http_date_on_503`). The backoff is also written to the public cache (`backoff` table, a later `until` never shortens an earlier one), so a second fetcher or process sharing the cache honours it (`test_retry_after_shared_by_fetchers_on_one_cache`, `test_backoff_rows_keep_the_longest_and_expire`).
 - **Conditional GET.** For `page`, `feed` and `crawl` GETs, if the cache holds an ETag or Last-Modified and the body, the request sends `If-None-Match` / `If-Modified-Since`. A 304 returns the cached body with `retrieval_mode="live"`, because the origin was just contacted and confirmed it current; the result header `x-nsf-revalidated: 304` (`net.REVALIDATED_HEADER`) marks that the body came from the cache (`test_conditional_get_returns_cached_body`).
 - **Coalescing.** Identical concurrent GETs (same URL, purpose, conditional flag, extra headers) share one network call; followers receive a copy of the leader's result or error. Only the leader's budget is charged (`test_identical_concurrent_gets_are_coalesced`).
-- **User agent.** `NeuroSciFi-WebCortex/0.6 (research agent; honours robots.txt)`. No contact address, no browser impersonation, no proxy rotation.
+- **User agent.** `NeuroSciFi-WebCortex/0.7 (research agent; honours robots.txt)`. No contact address, no browser impersonation, no proxy rotation.
 
 ### What is cached
 

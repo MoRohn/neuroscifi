@@ -9,10 +9,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, fields
 import json
 
+from .. import __version__
 from .types import Budget, MODES
 
 META_KEY = "webcortex"
-USER_AGENT = "NeuroSciFi-WebCortex/0.6 (research agent; honours robots.txt)"
+# The release's major.minor; the product token "NeuroSciFi-WebCortex" is what robots.txt rules name and never changes.
+# deploy/open-websearch/apply-honest-ua.mjs carries the same literal (a test ties the two together).
+USER_AGENT = f"NeuroSciFi-WebCortex/{'.'.join(__version__.split('.')[:2])} (research agent; honours robots.txt)"
 RESPECT_ROBOTS = True            # constant by design (SECURITY_MODEL §5); there is no switch
 DEFAULT_ENGINES = ("duckduckgo", "brave", "startpage", "bing")
 

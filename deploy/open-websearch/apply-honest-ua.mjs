@@ -16,7 +16,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const USER_AGENT = "NeuroSciFi-WebCortex/0.6 (research agent; honours robots.txt)";
+export const USER_AGENT = "NeuroSciFi-WebCortex/0.7 (research agent; honours robots.txt)";
 export const PINNED_VERSION = "2.2.0";
 export const MARKER = ".neuroscifi-honest-ua.json";
 // engine file -> forged strings it must contain at the pinned version (all are replaced)
