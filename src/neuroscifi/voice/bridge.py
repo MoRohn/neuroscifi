@@ -30,7 +30,6 @@ CONFIRM_SECONDS = 60.0
 # (UAT T5: 385 tasks were queued in about 5 s). Only tasks created count (a deduplicated repeat creates none).
 CONVERSATION_RESEARCH_LIMIT = 8
 CONVERSATION_RESEARCH_WINDOW = 600.0
-USER_ORIGINS = ("console", "cli", "voice", "pocket", "pocket-voice", "owner", "mcp")   # not autonomous research
 MAX_SPOKEN_SENTENCES = 2
 MAX_SPOKEN_WORDS = 70
 LABEL_TEMPLATE = "NeuroSciFi template reply (no model involved)"
@@ -197,8 +196,9 @@ class Bridge:
         tid = ctx.get("last_task_id")
         if not tid:
             if principal.owner:
-                row = db.execute("SELECT id FROM web_tasks WHERE origin IN (" + ",".join("?" * len(USER_ORIGINS)) +
-                                 ") ORDER BY created_at DESC, rowid DESC LIMIT 1", USER_ORIGINS).fetchone()
+                users = orchestrator.USER_ORIGINS
+                row = db.execute("SELECT id FROM web_tasks WHERE origin IN (" + ",".join("?" * len(users)) +
+                                 ") ORDER BY created_at DESC, rowid DESC LIMIT 1", users).fetchone()
             elif principal.family:
                 row = db.execute("SELECT id FROM web_tasks WHERE family=? ORDER BY created_at DESC, rowid DESC "
                                  "LIMIT 1", (principal.family,)).fetchone()

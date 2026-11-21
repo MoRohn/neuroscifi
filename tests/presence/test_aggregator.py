@@ -208,3 +208,19 @@ def test_a_spoken_or_owner_requested_task_is_foreground_not_autonomous(inst, ori
     bg = orchestrator.submit(db, "Okapi conservation status", NOW - 20, origin="curiosity")
     run(db, bg["id"], "reading")
     assert "autonomous_research" in derive(db, path)["interaction"]
+
+
+@pytest.mark.parametrize("origin,cls", [("pocket-voice", "pocket"), ("pocket", "pocket"), ("mcp", "owner"),
+                                        ("cli", "owner")])
+def test_every_user_origin_is_foreground_not_autonomous(inst, origin, cls):
+    """R2-02: a question spoken on a Pocket device (origin 'pocket-voice') was shown in the owner's Presence as
+    autonomous research. Foreground comes from orchestrator.user_initiated, the one list of user origins."""
+    db, path = inst
+    assert orchestrator.user_initiated(origin)
+    task = orchestrator.submit(db, "When did the Zephyr compiler 4.2 ship?", NOW - 30, origin="console")
+    run(db, task["id"], "reading", origin=origin)
+    s = derive(db, path)
+    assert s["primary"]["priority"] == "foreground" and s["primary"]["origin"] == cls
+    assert "autonomous_research" not in s["interaction"]
+    for autonomous in ("curiosity", "refresh:3", "learner", "bench"):
+        assert not orchestrator.user_initiated(autonomous)

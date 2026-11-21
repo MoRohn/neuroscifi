@@ -27,8 +27,10 @@ check every row of these tables.
 The step comes from the stage index (`stage k of 4`). `progress` is always `null` because the backend has no
 measured fraction of work done, and the interface never shows a percentage.
 
-Priority: origins `console`, `pocket` and `cli` are **foreground**. `curiosity`, `refresh:*`, `monitor:*`, `mcp`,
-`learner` and `bench` are **background**, which also adds the interaction `autonomous_research`. A background
+Priority: tasks a person asked for are **foreground**: `webcortex.orchestrator.user_initiated(origin)`, the one list
+of user origins (`console`, `cli`, `voice`, `pocket`, `pocket-voice`, `owner`, `mcp`, and `refresh-owner:*`); the
+voice bridge reads the same list. Everything else (`curiosity`, `refresh:*`, `monitor:*`, `learner`, `bench`) is
+**background**, which also adds the interaction `autonomous_research`. A background
 primary is shown *subtly*: the calm exploring entity, an orbiting dot and half the motion energy.
 
 ## Other sources

@@ -41,7 +41,6 @@ INTERACTIONS = ("user_speaking", "user_typing", "responding", "user_interruption
                 "autonomous_research", "voice_muted", "text_only", "background_task_completed")
 # Arbitration (spec): user-critical > active communication > foreground cognition > tool execution > background > idle
 RANK = {"user_critical": 5, "communication": 4, "foreground": 3, "tool": 2, "background": 1, "idle": 0}
-FOREGROUND_ORIGINS = ("console", "pocket", "cli", "voice")   # asked by the owner (T2-02: a spoken question)
 STAGES = ("discovering", "reading", "evaluating", "synthesizing")
 TERMINAL = ("completed", "partial", "failed", "cancelled")
 RECENT = 30.0              # seconds of events / tokens that feed intensity
@@ -80,12 +79,15 @@ def _short(text, n=80):
 
 
 def _origin_class(origin):
+    """Foreground when a person asked for it (orchestrator.user_initiated: console, CLI, voice, Pocket and Pocket
+    voice, MCP, the owner's refreshes; T2-02, R2-02); a Pocket device's own question is 'pocket'."""
+    from ..webcortex.orchestrator import user_initiated
     origin = origin or ""
-    if origin in FOREGROUND_ORIGINS or origin.startswith("refresh-owner:"):
-        return "owner" if origin != "pocket" else "pocket"
+    if user_initiated(origin):
+        return "pocket" if origin.startswith("pocket") else "owner"
     if origin.startswith("monitor:"):
         return "monitor"
-    return "autonomous"   # curiosity, refresh:*, learner, mcp, bench: work nobody is waiting on right now
+    return "autonomous"   # curiosity, refresh:*, learner, bench: work nobody is waiting on right now
 
 
 def _running(task, last, contradictions, reasoning_on):

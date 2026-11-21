@@ -87,6 +87,11 @@ LEASE_SECONDS = 600.0
 AUTHORIZED_DISCLOSURE = "owner-approved-disclosure"
 PRIVACY_OVERRIDE = f"pass authorization='{AUTHORIZED_DISCLOSURE}'"   # cli.py words it as --allow-private-terms
 MCP_ORIGIN = "mcp"
+# Origins of tasks a person asked for (console, CLI, voice, Pocket, Pocket voice, an MCP client acting for its user)
+# and is waiting on, as opposed to autonomous research (curiosity, refresh:<id>, monitor:<id>, learner, bench).
+# The owner's own refreshes are 'refresh-owner:<id>'. Presence and the voice bridge both read user_initiated().
+USER_ORIGINS = ("console", "cli", "voice", "pocket", "pocket-voice", "owner", MCP_ORIGIN)
+USER_ORIGIN_PREFIXES = ("refresh-owner:",)
 MAX_OBJECTIVE = 2000
 MAX_FOLLOW = 2
 MAX_CONTEXT_PACKAGES = 200
@@ -394,6 +399,12 @@ def _clamp_autonomous(db, cfg, chosen, now, *, mcp=False):
 
 _ORIGIN_LABELS = {"console": "Owner console", "cli": "Command line", "mcp": "MCP client",
                   "curiosity": "Curiosity (autonomous)"}
+
+
+def user_initiated(origin) -> bool:
+    """Whether a task with this origin was asked for by a person (USER_ORIGINS), not started autonomously."""
+    origin = str(origin or "")
+    return origin in USER_ORIGINS or origin.startswith(USER_ORIGIN_PREFIXES)
 
 
 def origin_label(origin, family=None) -> str:
