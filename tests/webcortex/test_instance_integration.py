@@ -7,7 +7,8 @@ import pytest
 from neuroscifi.instance import evidence, executive, governance, memory, store
 from neuroscifi.instance.errors import Conflict, ValidationError
 from neuroscifi.webcortex import consolidate, knowledge, predictions, scheduler, state
-from test_consolidate import DAY, T0, claim, cluster, consolidated, task_with, two_sources, open_db
+from neuroscifi.webcortex import text as wtext
+from test_consolidate import DAY, T0, claim, cluster, consolidated, reworded, task_with, two_sources, open_db
 
 
 @pytest.fixture
@@ -61,7 +62,8 @@ def test_resolve_confirm_accepts_and_reject_rejects_in_one_transaction(db):
 
 
 def two_sources_key(key, text, hosts):
-    return cluster([claim(f"http://{h}/p", text, key=key) for h in hosts])
+    return cluster([claim(f"http://{h}/p", reworded(text, n), key=key, values=wtext.values(text))
+                    for n, h in enumerate(hosts)])
 
 
 def test_informational_web_questions_take_no_confirm_and_do_not_decay(db):
@@ -137,7 +139,7 @@ def test_forget_research_keeps_knowledge_with_other_support_as_stale(db):
 
 
 def test_forget_knowledge_removes_the_whole_version_chain(db):
-    _, first = consolidated(db, [two_sources(published=T0 - 10 * DAY)])
+    _, first = consolidated(db, [two_sources(published=T0 - 5 * DAY)])
     _, second = consolidated(db, [two_sources(published=T0 - DAY, text="NumPy 2.4.0 is the latest release of NumPy.",
                                               hosts=("c.example", "d.example"))], T0 + DAY)
     old, new = first["provisional"][0], second["superseded"][0]["new"]
@@ -240,7 +242,7 @@ def test_restore_never_resurrects_forgotten_research(db, tmp_path):
 
 def test_restore_never_resurrects_forgotten_knowledge(db, tmp_path):
     import sqlite3
-    _, first = consolidated(db, [two_sources(published=T0 - 10 * DAY)])
+    _, first = consolidated(db, [two_sources(published=T0 - 5 * DAY)])
     _, second = consolidated(db, [two_sources(published=T0 - DAY, text="NumPy 2.4.0 is the latest release of NumPy.",
                                               hosts=("c.example", "d.example"))], T0 + DAY)
     old, new = first["provisional"][0], second["superseded"][0]["new"]

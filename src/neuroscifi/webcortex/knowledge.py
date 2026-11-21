@@ -23,8 +23,9 @@ from . import state
 COLUMNS = ("id", "key", "version", "statement", "status", "confidence", "uncertainty", "freshness_class",
            "first_verified_at", "last_verified_at", "valid_from", "valid_until", "superseded_by", "supporting",
            "contradicting", "sources", "claim_values", "polarity", "note", "pending_id", "task_id", "created_at",
-           "updated_at")
+           "updated_at", "provenance", "verification", "published_at", "event_at", "retrieved_at")
 _JSON = ("supporting", "contradicting", "sources", "claim_values")
+PROVENANCE = ("verified_conclusion", "user_asserted")     # migration 8 (ADR-038)
 MAX_QUESTION_STATEMENT = 300
 REVIEWABLE = ("provisional", "accepted", "stale")
 
@@ -42,6 +43,7 @@ def _decode(values) -> dict:
     out = dict(zip(COLUMNS, values))
     for key in _JSON:
         out[key] = state.loads(out[key], [])
+    out["verification"] = state.loads(out["verification"], {}) or {}
     return out
 
 
@@ -144,6 +146,12 @@ def describe(db, item: dict, now, cfg=None) -> dict:
         "values": item["claim_values"], "polarity": item["polarity"], "note": item["note"],
         "pending_id": item["pending_id"], "superseded_by": item["superseded_by"],
         "versions": versions(db, item["key"]),
+        # ADR-038: provenance kind (verified_conclusion | user_asserted), the ADR-035 verification record and the
+        # separate times of this version (effective = valid_from, verification = last_verified_at).
+        "provenance": item["provenance"], "verification": item["verification"],
+        "times": {"published_at": item["published_at"], "event_at": item["event_at"],
+                  "retrieved_at": item["retrieved_at"], "verified_at": item["last_verified_at"],
+                  "effective_at": item["valid_from"]},
     }
 
 
@@ -531,6 +539,63 @@ def archive(db, knowledge_id, now, *, note="") -> dict:
 
 def reject(db, knowledge_id, now, *, note="") -> dict:
     return _owner_status(db, knowledge_id, "rejected", now, note)
+
+
+def assert_fact(db, statement, now, *, note="") -> dict:
+    """Record the owner's own assertion as knowledge with provenance 'user_asserted' (ADR-038): status
+    'accepted' (the owner said it), verification state 'not_evaluated' (no evidence was examined), confidence 0.5
+    (no web evidence either way). It is never mixed with verified conclusions: a live row of the same (or a
+    near-identical) key stating the same values is left as it is ("already known"); one stating other values is
+    superseded by a NEW version (old row kept with its interval, a knowledge -> knowledge 'supersedes' edge and a
+    'reversed' feedback row). Web evidence never supersedes a user-asserted row (consolidate records a
+    contradiction and asks the owner instead)."""
+    from . import claims, evolution, temporal, text
+    from .consolidate import SIMILAR_KEY, _compare, _similar, next_version
+    if not isinstance(statement, str) or not statement.strip() or len(statement) > 2000:
+        raise ValidationError("statement must be a non-blank string of at most 2000 characters")
+    if not isinstance(note, str) or len(note) > 1024:
+        raise ValidationError("note must be a string of at most 1024 characters")
+    statement = " ".join(statement.split())
+    key = claims.claim_key(statement) or statement.casefold()[:200]
+    values, polarity = text.values(statement), (-1 if claims.polarity(statement) < 0 else 1)
+    category, why = temporal.claim_category(statement, now=now)
+    state.require_writable(db)
+    with store.write(db):
+        live = [r for r in rows(db, f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))})", state.LIVE_KNOWLEDGE)
+                if r["key"] == key or max(_similar(r["key"], key),
+                                          _similar(claims.claim_key(r["statement"]), key)) >= SIMILAR_KEY]
+        current = max(live, key=lambda r: (r["key"] == key, r["version"])) if live else None
+        if current is not None and _compare(values, polarity, current)[0] == "same":
+            return {"id": current["id"], "status": "unchanged", "provenance": current["provenance"],
+                    "reason": f"already known as knowledge #{current['id']} with the same values"}
+        key = current["key"] if current is not None else key
+        verification = {"policy": "ADR-035", "state": "not_evaluated", "basis": "owner_assertion",
+                        "category": category, "category_reason": why, "verified_at": None}
+        kid = db.execute(
+            "INSERT INTO web_knowledge(key,version,statement,status,confidence,uncertainty,freshness_class,"
+            "first_verified_at,last_verified_at,valid_from,supporting,contradicting,sources,claim_values,polarity,"
+            "note,created_at,updated_at,provenance,verification) VALUES(?,?,?,'accepted',0.5,0.5,?,?,?,?,'[]','[]',"
+            "'[]',?,?,?,?,?,'user_asserted',?)",
+            (key, next_version(db, key), statement, temporal.CATEGORY_FRESHNESS[category], now, now, now,
+             state.dumps(values), polarity, "asserted by the owner" + (f": {note}" if note else ""), now, now,
+             state.dumps(verification))).lastrowid
+        superseded = None
+        if current is not None:
+            superseded = current["id"]
+            db.execute("UPDATE web_knowledge SET status='superseded', valid_until=?, superseded_by=?, note=?, "
+                       "updated_at=? WHERE id=?", (now, kid, f"superseded by the owner's assertion #{kid}", now,
+                                                   current["id"]))
+            _close_questions(db, f"web:knowledge:{current['id']}", f"superseded by the owner's assertion #{kid}", now)
+            evolution.link(db, None, "knowledge", kid, "supersedes", "knowledge", current["id"],
+                           {"reason": "owner assertion"}, now)
+            db.execute("INSERT INTO web_feedback(task_id,knowledge_id,key,effect,before_confidence,after_confidence,"
+                       "info_gain,detail,created_at) VALUES(NULL,?,?,'reversed',?,0.5,0,?,?)",
+                       (kid, key, state.finite(current["confidence"], 0.0),
+                        state.dumps({"superseded": current["id"], "owner_assertion": True}), now))
+        store.bump(db, "teacher_interventions")
+        version = store.bump_state_version(db)
+    return {"id": kid, "status": "accepted", "provenance": "user_asserted", "superseded": superseded,
+            "state_version": version}
 
 
 def forget(db, knowledge_id, now) -> dict:

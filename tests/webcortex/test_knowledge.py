@@ -4,7 +4,8 @@ import pytest
 from neuroscifi.instance import store
 from neuroscifi.instance.errors import Conflict, NotFound, ValidationError
 from neuroscifi.webcortex import knowledge, orchestrator
-from test_consolidate import DAY, T0, cluster, claim, consolidated, two_sources, open_db
+from neuroscifi.webcortex import text as wtext
+from test_consolidate import DAY, T0, cluster, claim, consolidated, reworded, two_sources, open_db
 
 
 @pytest.fixture
@@ -14,7 +15,8 @@ def db(tmp_path):
 
 def other_topic(hosts=("c.example", "d.example")):
     text = "The Rust compiler 1.91 stabilised async closures for every target."
-    return cluster([claim(f"http://{h}/rust", text, key="rust compiler async closures") for h in hosts])
+    return cluster([claim(f"http://{h}/rust", reworded(text, n), key="rust compiler async closures",
+                          values=wtext.values(text)) for n, h in enumerate(hosts)])
 
 
 def test_query_ranks_matches_and_reports_freshness_provenance_and_status(db):
@@ -58,7 +60,7 @@ def test_review_accepts_once_and_closes_the_question(db):
 
 
 def test_reject_and_superseded_items_cannot_be_reviewed(db):
-    _, first = consolidated(db, [two_sources(published=T0 - 10 * DAY)])
+    _, first = consolidated(db, [two_sources(published=T0 - 5 * DAY)])
     old = first["provisional"][0]
     _, second = consolidated(db, [two_sources(published=T0 - DAY, text="NumPy 2.4.0 is the latest release of NumPy.",
                                               hosts=("c.example", "d.example"))], T0 + DAY)
@@ -107,8 +109,8 @@ def test_a_new_arxiv_version_of_a_source_makes_knowledge_stale(db):
     from test_consolidate import task_with
     arxiv = "https://arxiv.org/abs/2611.00001"
     text = "Dendritic spikes double the memory capacity of pyramidal neurons in the model."
-    sources = cluster([claim(u, text, key="dendritic spikes memory capacity") for u in
-                       (arxiv, "http://lab.example/dendrites")])
+    sources = cluster([claim(u, reworded(text, n), key="dendritic spikes memory capacity") for n, u in
+                       enumerate((arxiv, "http://lab.example/dendrites"))])
     tid, out = consolidated(db, [sources], objective="What do studies of dendritic spikes in neurons show?")
     kid = out["provisional"][0]
     assert knowledge.row(db, kid)["freshness_class"] == "scientific"

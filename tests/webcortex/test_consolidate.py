@@ -66,8 +66,15 @@ def consolidated(db, clusters, now=T0, **kw):
     return tid, consolidate.run(db, tid, now)
 
 
-def two_sources(values=None, published=T0 - DAY, text=TEXT, hosts=("a.example", "b.example"), **kw):
-    return cluster([claim(f"http://{h}/numpy", text, values=values, published=published) for h in hosts], **kw)
+def reworded(text, n):
+    """The n-th independent wording of `text`. ADR-035: sentences that are near-identical copies (3-word shingle
+    Jaccard >= 0.8) are one source, so independent sources in these fixtures state the fact in their own words."""
+    return text if n == 0 else f"According to the release notes read by reviewer {n}, {text}"
+
+
+def two_sources(values=None, published=T0 - DAY, text=TEXT, hosts=("a.example", "b.example"), key=KEY, **kw):
+    return cluster([claim(f"http://{h}/numpy", reworded(text, n), values=values or wtext.values(text),
+                          published=published, key=key) for n, h in enumerate(hosts)], **kw)
 
 
 def test_two_independent_agreeing_sources_become_provisional_with_a_question(db):
@@ -94,7 +101,7 @@ def test_two_independent_agreeing_sources_become_provisional_with_a_question(db)
 
 @pytest.mark.parametrize("make, reason", [
     (lambda: cluster([claim("http://a.example/x")]), "single source"),
-    (lambda: two_sources(confidence=0.6), "confidence 0.60 < "),   # the bar is config (RA lowers it)
+    (lambda: two_sources(published=None), "temporally_unresolved"),   # ADR-035: "latest" needs dated evidence
     (lambda: cluster([claim("http://a.example/x", relevance=0.0), claim("http://b.example/x", relevance=0.0)]),
      "no claim is relevant"),
     (lambda: two_sources(status="insufficient"), "insufficient evidence"),
@@ -109,12 +116,26 @@ def test_weak_evidence_is_held_as_claims_only(db, make, reason):
 
 
 def test_primary_structured_single_source_needs_the_source_threshold(db):
+    """ADR-038: a single structured record is a single source (ADR-035 'insufficient') whatever the owner's floor;
+    the owner's floors only raise the ADR-035 bar. Only an authoritative registry record (ADR-033) suffices alone."""
     primary = cluster([claim("http://pypi.example/numpy", primary=True, kind="metadata")], confidence=0.9)
     _, out = consolidated(db, [primary])
-    assert out["provisional"] == [] and "1 independent source(s) < 2 required" in out["held"][0]["reasons"]
+    assert out["provisional"] == [] and "1 independent source(s) < 2 required" in " ".join(out["held"][0]["reasons"])
     state.set_config(db, {"auto_provisional_min_sources": 1}, T0)
     _, out = consolidated(db, [primary], T0 + 1)
-    assert len(out["provisional"]) == 1
+    assert out["provisional"] == [] and out["held"][0]["verification"] == "insufficient"
+    record = claim("http://pypi.example/numpy", "PyPI reports numpy latest version 2.3.5.", primary=True,
+                   kind="metadata")
+    record.flags = dict(record.flags, record="package", observed_at=T0)
+    _, out = consolidated(db, [cluster([record], confidence=0.9)], T0 + 2)
+    item = knowledge.row(db, out["provisional"][0])
+    assert item["verification"]["state"] == "supported" and item["verification"]["basis"] == "registry_record"
+
+
+def test_owner_floors_raise_the_adr035_bar(db):
+    state.set_config(db, {"auto_provisional_min_confidence": 0.8}, T0)
+    _, out = consolidated(db, [two_sources()])
+    assert out["provisional"] == [] and "confidence 0.72 < 0.80" in out["held"][0]["reasons"]
 
 
 def test_duplicate_evidence_strengthens_and_never_duplicates(db):
@@ -135,7 +156,7 @@ def test_duplicate_evidence_strengthens_and_never_duplicates(db):
 
 
 def test_newer_conflicting_value_supersedes_with_a_new_version(db):
-    _, first = consolidated(db, [two_sources(published=T0 - 10 * DAY)])
+    _, first = consolidated(db, [two_sources(published=T0 - 5 * DAY)])
     old = first["provisional"][0]
     newer = two_sources(published=T0 - DAY, text="NumPy 2.4.0 is the latest release of NumPy.")
     _, out = consolidated(db, [newer], T0 + DAY)
@@ -155,7 +176,7 @@ def test_newer_conflicting_value_supersedes_with_a_new_version(db):
 def test_older_conflicting_value_is_recorded_as_a_contradiction(db):
     _, first = consolidated(db, [two_sources()])
     kid = first["provisional"][0]
-    older = two_sources(published=T0 - 30 * DAY, text="NumPy 2.2.0 is the latest NumPy release.",
+    older = two_sources(published=T0 - 3 * DAY, text="NumPy 2.2.0 is the latest NumPy release.",
                         hosts=("old1.example", "old2.example"))
     _, out = consolidated(db, [older], T0 + 1)
     assert out["superseded"] == [] and out["provisional"] == []
@@ -195,8 +216,9 @@ def test_later_statement_of_a_series_updates_and_an_older_one_is_held(db):
     old_text = "Zephyr 4.2.0 was released on 17 November 2026."
     new_text = "Zephyr 4.3.0 was released on 21 November 2026."
     key = "zephyr releas"
-    pair = lambda text, published, hosts: cluster([claim(f"http://{h}/z", text, key=key, published=published)  # noqa: E731
-                                                   for h in hosts])
+    pair = lambda text, published, hosts: cluster([claim(f"http://{h}/z", reworded(text, n), key=key,  # noqa: E731
+                                                         values=wtext.values(text), published=published)
+                                                   for n, h in enumerate(hosts)])
     _, first = consolidated(db, [pair(old_text, T0 - 3 * DAY, ("a.example", "b.example"))])
     _, out = consolidated(db, [pair(new_text, T0, ("c.example", "d.example"))], T0 + 1)
     assert out["superseded"] and out["superseded"][0]["old"] == first["provisional"][0]
@@ -280,9 +302,10 @@ def test_web_questions_respect_the_per_task_and_global_budget(db):
     """A-P1-3: 30 new candidates of one task open at most max_web_questions_per_task questions plus ONE aggregate;
     across tasks no more than max_open_web_questions are open (the aggregate is updated, not multiplied)."""
     def many(prefix, n):
-        return [cluster([claim(f"http://{h}/{prefix}{i}", f"Widget{prefix}{i} 1.{i}.0 is the latest release of "
-                               f"widget{prefix}{i}.", key=f"widget{prefix}{i} latest version")
-                         for h in ("a.example", "b.example")]) for i in range(n)]
+        return [cluster([claim(f"http://{h}/{prefix}{i}", reworded(f"Widget{prefix}{i} 1.{i}.0 is the latest release "
+                                                            f"of widget{prefix}{i}.", n),
+                               key=f"widget{prefix}{i} latest version", values=[f"v1.{i}.0"])
+                         for n, h in enumerate(("a.example", "b.example"))]) for i in range(n)]
     tid, out = consolidated(db, many("a", 30))
     assert len(out["provisional"]) == 30 and out["questions_deferred"] == 27
     open_web = db.execute("SELECT scope, question FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:%' "
@@ -320,8 +343,9 @@ def test_consolidation_refuses_while_writes_are_paused(tmp_path):
 
 
 def test_knowledge_is_never_valid_from_the_future(db):
-    """C-P2-8: a source dated after `now` does not make knowledge valid from the future."""
-    _, out = consolidated(db, [two_sources(published=T0 + 30 * DAY)])
+    """C-P2-8: a source dated after `now` does not make knowledge valid from the future (a stable fact: a
+    time-sensitive one dated in the future is not timely evidence at all, ADR-035)."""
+    _, out = consolidated(db, [two_sources(published=T0 + 30 * DAY, text="The Corran Spire is in Harrowgate.")])
     item = knowledge.row(db, out["provisional"][0])
     assert item["valid_from"] <= T0
 
@@ -329,8 +353,9 @@ def test_knowledge_is_never_valid_from_the_future(db):
 def test_existing_lookup_reads_only_matching_rows(db, monkeypatch):
     """C-P3: _existing no longer decodes every live knowledge row."""
     for i in range(5):
-        consolidated(db, [cluster([claim(f"http://{h}/k{i}", f"Thing{i} 1.{i}.0 is the latest release of thing{i}.",
-                                         key=f"thing{i} latest version") for h in ("a.example", "b.example")])],
+        consolidated(db, [cluster([claim(f"http://{h}/k{i}", reworded(f"Thing{i} 1.{i}.0 is the latest release of "
+                                                                f"thing{i}.", n), key=f"thing{i} latest version",
+                                         values=[f"v1.{i}.0"]) for n, h in enumerate(("a.example", "b.example"))])],
                      now=T0 + i)
     seen = []
     real = knowledge.rows

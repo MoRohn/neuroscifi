@@ -1,4 +1,15 @@
-"""Controlled consolidation: a task's scored claim clusters -> versioned knowledge candidates (ADR-026).
+"""Controlled consolidation: a task's scored claim clusters -> versioned knowledge candidates (ADR-026, ADR-038).
+
+ADR-038 (docs/knowledge/KNOWLEDGE_EVOLUTION.md §2): eligibility follows the ADR-035 verification state of each
+cluster (evolution.cluster_verdict). Only 'supported' clusters (basis corroboration, official_source or
+registry_record, recorded on the row) may become knowledge candidates; 'insufficient', 'temporally_unresolved' and
+'not_evaluated' clusters are held and kept as research opportunities (web_hypotheses, each with a testable
+prediction); 'conflicting' and 'disputed' (contested) clusters record a contradiction (against live knowledge, or
+as a hypothesis with 'contradicts' edges). The owner-review path of ADR-026 is unchanged. Every new row records its
+provenance kind ('verified_conclusion'), verification record and publication/event/retrieval times, and typed
+knowledge-graph edges (claim -> source / knowledge / interval, knowledge -> knowledge, entity -> entity). A
+user-asserted row is never superseded by web evidence: a conflicting cluster is recorded as a contradiction. After
+the loop the task's verified clusters settle open hypothesis predictions (evolution.observe).
 
 Steps for each scored cluster of the task (state.load_clusters):
 1. candidates: clusters ranked by confidence;
@@ -42,7 +53,7 @@ from datetime import datetime, timezone
 import re
 
 from ..instance import store
-from . import claims as _claims, knowledge, state
+from . import claims as _claims, evolution, knowledge, state
 from .curiosity import entropy
 
 MIN_RELEVANCE = 0.0          # a cluster needs at least one claim with relevance above this
@@ -169,17 +180,6 @@ def _sources(cluster, extra=()):
     return out
 
 
-def _primary_structured(db, task_id, cluster) -> bool:
-    for c in cluster.claims:
-        if c.kind == "metadata" or (c.flags or {}).get("source_type") == "primary" or (c.flags or {}).get("primary"):
-            return True
-        found = db.execute("SELECT kind FROM web_sources WHERE task_id=? AND canonical_url=?",
-                           (task_id, c.source_url)).fetchone()
-        if found and found[0] in ("api", "json"):
-            return True
-    return False
-
-
 def _adversarial_urls(db, task_id) -> set:
     """Canonical URLs of this task's sources whose quarantine found instruction-like content
     (claims.adversarial_document: an image beacon found only in the Markdown rendering, such as a Wikipedia
@@ -225,7 +225,8 @@ def _without_adversarial(cluster, adversarial_urls):
 
 
 def _eligibility(db, task_id, cluster, removed=0):
-    """(eligible, reasons): evidence-quality and relevance gate before memory comparison."""
+    """(eligible, reasons): relevance gate before verification and memory comparison (the evidence-quality bar is
+    the ADR-035 verification state, _meets_bar)."""
     reasons = []
     if not cluster.claims:
         return False, ["every claim comes from a source with instruction-like content (held, never knowledge)"
@@ -234,21 +235,42 @@ def _eligibility(db, task_id, cluster, removed=0):
         reasons.append("no claim is relevant to the question")
     if cluster.status == "insufficient":
         reasons.append("insufficient evidence")
-    elif cluster.status == "single_source" and not _primary_structured(db, task_id, cluster):
-        reasons.append("single source that is not a primary structured source")
     return not reasons, reasons
 
 
-def _meets_bar(cluster, cfg):
+def _unverified(verdict, cluster=None) -> list[str]:
+    """Why a cluster whose ADR-035 state is not 'supported' is not knowledge."""
+    out = [f"verification state {verdict['state']} ({verdict.get('reason') or verdict.get('category_reason')}): "
+           "kept as a research opportunity, not knowledge"]
+    groups = (verdict.get("independent_groups") or {}).get("supporting", 0)
+    needed = verdict.get("min_groups")
+    if verdict["state"] in ("insufficient", "temporally_unresolved") and needed and groups < needed:
+        out.append(f"{groups} independent source(s) < {needed} required"
+                   + (" (single source that is not an authoritative record)" if groups == 1 else ""))
+    if verdict["state"] == "temporally_unresolved":
+        out.append("no source dated inside the time window establishes that it holds now")
+    if cluster is not None and cluster.contradicting:
+        out.append("the sources contradict each other")
+    return out
+
+
+def _meets_bar(cluster, cfg, verdict):
+    """ADR-038: the ADR-035 state must be 'supported' (corroboration, or a direct authoritative record when nothing
+    contradicts) and the cluster has no contradiction. For corroboration the owner's floors apply on top
+    (auto_provisional_min_sources independent groups, auto_provisional_min_confidence over the category posterior);
+    they can only raise the ADR-035 bar, never lower it."""
     reasons = []
-    if cluster.independent_sources < cfg.auto_provisional_min_sources:
-        reasons.append(f"{cluster.independent_sources} independent source(s) < "
-                       f"{cfg.auto_provisional_min_sources} required")
+    if verdict["state"] != "supported":
+        reasons += _unverified(verdict)
+    elif verdict.get("basis") == "corroboration":
+        groups = (verdict.get("independent_groups") or {}).get("supporting", 0)
+        if groups < cfg.auto_provisional_min_sources:
+            reasons.append(f"{groups} independent source(s) < {cfg.auto_provisional_min_sources} required")
+        if state.finite(verdict.get("confidence"), 0.0) < cfg.auto_provisional_min_confidence:
+            reasons.append(f"confidence {state.finite(verdict.get('confidence'), 0.0):.2f} < "
+                           f"{cfg.auto_provisional_min_confidence:.2f}")
     if cluster.contradicting:
         reasons.append("the sources contradict each other")
-    if state.finite(cluster.confidence, 0.0) < cfg.auto_provisional_min_confidence:
-        reasons.append(f"confidence {state.finite(cluster.confidence, 0.0):.2f} < "
-                       f"{cfg.auto_provisional_min_confidence:.2f}")
     return not reasons, reasons
 
 
@@ -345,9 +367,15 @@ def _feedback(db, task_id, knowledge_id, key, effect, before, after, detail, now
                 state.dumps(detail or {}), now))
 
 
-def _question(statement, n_sources, confidence, freshness):
+def _question(statement, n_sources, confidence, freshness, basis=None):
     return (f"Accept as knowledge: «{knowledge.quote(statement)}» ({n_sources} independent sources, confidence "
-            f"{confidence:.2f}, freshness class {freshness})?")
+            f"{confidence:.2f}, freshness class {freshness}" + (f", verified by {basis}" if basis else "") + ")?")
+
+
+def _window(task):
+    """The question's recency window (seconds) from the task's assessment, or None."""
+    assessment = (task.get("checkpoint") or {}).get("assessment") or {}
+    return state.finite(assessment.get("recency_window"))
 
 
 def _freshness(db, task):
@@ -384,23 +412,48 @@ class _Questions:
         return knowledge.review_question(self.db, self.task_id, self.deferred, now, self.cfg)
 
 
-def _insert_knowledge(db, task_id, cluster, freshness, now, *, key, version, questions):
+def _insert_knowledge(db, task_id, cluster, freshness, now, *, key, version, questions, verdict):
     values, polarity = _values(cluster)
     valid_from, valid_until = _validity(cluster, now)
+    published, event, retrieved = _times(cluster)
     confidence = state.finite(cluster.confidence, 0.0)
+    supporting = list(cluster.supporting) or [c.id for c in cluster.claims]
     kid = db.execute(
         "INSERT INTO web_knowledge(key,version,statement,status,confidence,uncertainty,freshness_class,"
         "first_verified_at,last_verified_at,valid_from,valid_until,supporting,contradicting,sources,claim_values,"
-        "polarity,task_id,created_at,updated_at) VALUES(?,?,?,'provisional',?,?,?,?,?,?,?,?,'[]',?,?,?,?,?,?)",
+        "polarity,task_id,created_at,updated_at,provenance,verification,published_at,event_at,retrieved_at) "
+        "VALUES(?,?,?,'provisional',?,?,?,?,?,?,?,?,'[]',?,?,?,?,?,?,'verified_conclusion',?,?,?,?)",
         (key, version, cluster.statement or _head(cluster).text, confidence,
          state.finite(cluster.uncertainty, 0.0), freshness, now, now, valid_from, valid_until,
-         state.dumps(list(cluster.supporting) or [c.id for c in cluster.claims]), state.dumps(_sources(cluster)),
-         state.dumps(values), polarity, task_id, now, now)).lastrowid
-    pid = questions.ask(f"web:knowledge:{kid}", _question(_statement(cluster),
-                                                          cluster.independent_sources, confidence, freshness), now)
+         state.dumps(supporting), state.dumps(_sources(cluster)), state.dumps(values), polarity, task_id, now, now,
+         state.dumps(verdict), published, event, retrieved)).lastrowid
+    pid = questions.ask(f"web:knowledge:{kid}", _question(_statement(cluster), cluster.independent_sources,
+                                                          confidence, freshness, verdict.get("basis")), now)
     if pid is not None:
         db.execute("UPDATE web_knowledge SET pending_id=? WHERE id=?", (pid, kid))
+    wanted = set(supporting)
+    evolution.record_knowledge_edges(
+        db, task_id, [c for c in cluster.claims if c.id in wanted], kid,
+        {"published_at": published, "event_at": event, "retrieved_at": retrieved, "verified_at": now,
+         "effective_at": valid_from, "valid_from": valid_from, "valid_until": valid_until}, now, head=_head(cluster))
     return kid, pid, valid_from
+
+
+def _research_opportunity(db, task_id, cluster, verdict, now, summary, *, freshness, cfg, knowledge_id=None,
+                          origin=None):
+    """A cluster that is not verified knowledge becomes (or refreshes) a hypothesis with a testable prediction
+    (evolution.open_hypothesis), at most evolution.MAX_HYPOTHESES_PER_TASK per task. Returns its id or None."""
+    if len(summary["hypotheses"]) >= evolution.MAX_HYPOTHESES_PER_TASK:
+        return None
+    values, polarity = _values(cluster)
+    origin = origin or (verdict["state"] if verdict["state"] in evolution.HYPOTHESIS_ORIGINS else "insufficient")
+    hid, created = evolution.open_hypothesis(
+        db, key=cluster.key, statement=_statement(cluster), origin=origin, verification=verdict,
+        claims=[c.id for c in cluster.claims], values=values, polarity=polarity, now=now, task_id=task_id,
+        knowledge_id=knowledge_id, freshness_class=freshness, ttl_overrides=cfg.freshness_ttl or None)
+    if hid not in summary["hypotheses"]:
+        summary["hypotheses"].append(hid)
+    return hid
 
 
 def _entities(db, task_id, clusters, ids_by_key, now):
@@ -408,7 +461,7 @@ def _entities(db, task_id, clusters, ids_by_key, now):
     for cluster in clusters:
         kid = ids_by_key.get(cluster.key)
         for c in cluster.claims:
-            seen = set()
+            seen, entity_ids = set(), []
             for kind, pattern in _ENTITY_PATTERNS:
                 for match in pattern.finditer(c.text or ""):
                     name = " ".join(match.group(0).split()).strip(".,;:")
@@ -422,11 +475,13 @@ def _entities(db, task_id, clusters, ids_by_key, now):
                     eid = db.execute("SELECT id FROM web_entities WHERE normalized=?", (norm,)).fetchone()[0]
                     db.execute("INSERT INTO web_mentions(entity_id,claim_id,knowledge_id,task_id,created_at) "
                                "VALUES(?,?,?,?,?)", (eid, c.id, kid, task_id, now))
+                    entity_ids.append(eid)
                     found += 1
                     if len(seen) >= MAX_ENTITIES_PER_CLAIM:
                         break
                 if len(seen) >= MAX_ENTITIES_PER_CLAIM:
                     break
+            evolution.record_entity_edges(db, task_id, c.id, entity_ids, kid, now)
     return found
 
 
@@ -446,6 +501,7 @@ def _contradict(db, task_id, cluster, item, reason, now, summary, questions, *, 
     if item["supporting"]:
         state.add_link(db, task_id, head.id, item["supporting"][0], "contradicts",
                        {"reason": reason, "knowledge_id": item["id"]}, now)
+    evolution.link(db, task_id, "claim", head.id, "contradicts", "knowledge", item["id"], {"reason": reason}, now)
     pid = questions.ask(
         f"web:knowledge:{item['id']}",
         f"Sources now contradict known «{knowledge.quote(item['statement'])}»: «{knowledge.quote(safe_text(head))}» "
@@ -462,7 +518,8 @@ def _contradict(db, task_id, cluster, item, reason, now, summary, questions, *, 
         summary["pending"].append(pid)
 
 
-def _strengthen(db, task_id, cluster, item, now, summary, ids_by_key, *, supporting=None, confidence=None):
+def _strengthen(db, task_id, cluster, item, now, summary, ids_by_key, *, supporting=None, confidence=None,
+                verdict=None):
     """Duplication: the cluster restates live knowledge -> refresh it (last_verified_at, supporting claims,
     sources), never duplicate. Caller owns the txn."""
     supporting = list(cluster.supporting) if supporting is None else supporting
@@ -481,6 +538,16 @@ def _strengthen(db, task_id, cluster, item, now, summary, ids_by_key, *, support
         if head and cid != head:
             state.add_link(db, task_id, cid, head, "duplicates" if cid in item["supporting"] else "supports",
                            {"knowledge_id": item["id"]}, now)
+    if new_claims:
+        published, event, retrieved = _times(cluster)
+        wanted = set(new_claims)
+        evolution.record_knowledge_edges(db, task_id, [c for c in cluster.claims if c.id in wanted], item["id"],
+                                         {}, now)
+        db.execute("UPDATE web_knowledge SET published_at=max(coalesce(published_at, ?), coalesce(?, published_at)), "
+                   "retrieved_at=max(coalesce(retrieved_at, ?), coalesce(?, retrieved_at)) WHERE id=?",
+                   (published, published, retrieved, retrieved, item["id"]))
+        if verdict is not None and verdict.get("state") == "supported" and item.get("provenance") != "user_asserted":
+            db.execute("UPDATE web_knowledge SET verification=? WHERE id=?", (state.dumps(verdict), item["id"]))
     effect = "strengthened" if new_claims else "unchanged"
     _feedback(db, task_id, item["id"], item["key"], effect, before, after, {"new_claims": len(new_claims)}, now)
     summary["strengthened" if new_claims else "unchanged"].append(item["id"])
@@ -531,7 +598,8 @@ def run(db, task_id, now, *, holder=None) -> dict:
     state.require_writable(db)
     summary = {"task_id": task_id, "candidates": 0, "provisional": [], "strengthened": [], "unchanged": [],
                "superseded": [], "contested": [], "held": [], "pending": [], "feedback": 0, "entities": 0,
-               "questions_deferred": 0, "review_question": None}
+               "questions_deferred": 0, "review_question": None, "hypotheses": [], "verification": [],
+               "predictions_settled": []}
     with store.write(db):
         if holder is not None:
             state.require_lease(db, task_id, holder)
@@ -540,9 +608,10 @@ def run(db, task_id, now, *, holder=None) -> dict:
         clusters = sorted(state.load_clusters(db, task_id), key=lambda c: (-state.finite(c.confidence, 0.0), c.key))
         summary["candidates"] = len(clusters)
         freshness = _freshness(db, task)
+        window = _window(task)
         feedback_before = db.execute("SELECT count(*) FROM web_feedback").fetchone()[0]
         adversarial = _adversarial_urls(db, task_id)
-        ids_by_key, cleaned = {}, []
+        ids_by_key, cleaned, observed = {}, [], []
         for n, cluster in enumerate(clusters):
             cluster, removed = _without_adversarial(cluster, adversarial)
             cleaned.append(cluster)
@@ -551,6 +620,11 @@ def run(db, task_id, now, *, holder=None) -> dict:
                                         "reasons": ["every claim comes from a source with instruction-like content "
                                                     "(held, never knowledge)"]})
                 continue
+            verdict = evolution.cluster_verdict(cluster, now=now, freshness_class=freshness,
+                                                ttl_overrides=cfg.freshness_ttl or None, window=window)
+            observed.append((cluster, verdict, _statement(cluster)))
+            summary["verification"].append({"key": cluster.key, "state": verdict["state"],
+                                            "category": verdict.get("category"), "basis": verdict.get("basis")})
             item = _existing(db, cluster)
             if cluster.status == "contested":
                 reason = "; ".join(sorted({c.get("reason", "") for c in cluster.contradicting} - {""})) or \
@@ -575,8 +649,18 @@ def run(db, task_id, now, *, holder=None) -> dict:
                 _feedback(db, task_id, None, cluster.key, "unchanged" if prior else "new", conf, conf,
                           {"contested": True, "reason": reason, "pending_id": pid, "values": sides} |
                           ({"owner_decision": note} if note else {}), now)
+                hid = None
+                if decided is None:   # the disagreement itself is the research opportunity (ADR-035: no consensus)
+                    hid = _research_opportunity(db, task_id, cluster, verdict, now, summary, freshness=freshness,
+                                                cfg=cfg, origin="disputed" if verdict["state"] == "disputed"
+                                                else "conflicting")
+                    for pair in cluster.contradicting:
+                        if hid is not None and pair.get("b"):
+                            evolution.link(db, task_id, "claim", pair["b"], "contradicts", "hypothesis", hid,
+                                           {"reason": pair.get("reason", "")}, now)
                 summary["contested"].append({"key": cluster.key, "knowledge_id": None, "pending_id": pid,
-                                             "reason": reason} | ({"decided": note} if note else {}))
+                                             "reason": reason, "state": verdict["state"], "hypothesis_id": hid} |
+                                            ({"decided": note} if note else {}))
                 if pid is not None:
                     summary["pending"].append(pid)
                 continue
@@ -585,10 +669,23 @@ def run(db, task_id, now, *, holder=None) -> dict:
                 summary["held"].append(_held(cluster, reasons))
                 continue
             values, polarity = _values(cluster)
+            if verdict["state"] != "supported":
+                rejected = _rejected_before(db, [cluster.key] + ([item["key"]] if item else []), values, polarity)
+                held = _held(cluster, _unverified(verdict, cluster))
+                if rejected is None:
+                    held["hypothesis_id"] = _research_opportunity(
+                        db, task_id, cluster, verdict, now, summary, freshness=freshness, cfg=cfg,
+                        knowledge_id=item["id"] if item is not None else None)
+                summary["held"].append(held | {"verification": verdict["state"]})
+                continue
             if item is not None:
                 relation, differ = _compare(values, polarity, item)
                 if relation == "same":   # duplication: strengthen, never duplicate
-                    _strengthen(db, task_id, cluster, item, now, summary, ids_by_key)
+                    _strengthen(db, task_id, cluster, item, now, summary, ids_by_key, verdict=verdict)
+                    continue
+                if item.get("provenance") == "user_asserted":   # the owner's assertion is never overwritten
+                    _contradict(db, task_id, cluster, item, f"{differ}; the owner asserted the stored statement",
+                                now, summary, questions, weaken=False)
                     continue
                 new_t, old_t = _as_temporal(cluster, now, item["key"]), _item_temporal(item)
                 if relation == "conflict":
@@ -604,11 +701,11 @@ def run(db, task_id, now, *, holder=None) -> dict:
                     summary["held"].append(_held(cluster, [f"owner rejected this before (knowledge "
                                                            f"#{rejected['id']})"]))
                     continue
-                ok, bar = _meets_bar(cluster, cfg)
+                ok, bar = _meets_bar(cluster, cfg, verdict)
                 if newer and ok:
                     kid, pid, valid_from = _insert_knowledge(db, task_id, cluster, freshness, now,
                                                              key=item["key"], version=next_version(db, item["key"]),
-                                                             questions=questions)
+                                                             questions=questions, verdict=verdict)
                     db.execute("UPDATE web_knowledge SET status='superseded', valid_until=?, superseded_by=?, "
                                "updated_at=? WHERE id=?", (valid_from, kid, now, item["id"]))
                     knowledge.close_questions(db, f"web:knowledge:{item['id']}",
@@ -616,6 +713,8 @@ def run(db, task_id, now, *, holder=None) -> dict:
                     if item["supporting"]:
                         state.add_link(db, task_id, _head(cluster).id, item["supporting"][0], "supersedes",
                                        {"old": item["id"], "new": kid, "reason": differ}, now)
+                    evolution.link(db, task_id, "knowledge", kid, "supersedes", "knowledge", item["id"],
+                                   {"reason": differ, "valid_until": valid_from}, now)
                     _feedback(db, task_id, kid, item["key"], "reversed", state.finite(item["confidence"], 0.0),
                               state.finite(cluster.confidence, 0.0), {"superseded": item["id"], "reason": differ},
                               now)
@@ -632,14 +731,15 @@ def run(db, task_id, now, *, holder=None) -> dict:
             if rejected is not None:
                 summary["held"].append(_held(cluster, [f"owner rejected this before (knowledge #{rejected['id']})"]))
                 continue
-            ok, bar = _meets_bar(cluster, cfg)
+            ok, bar = _meets_bar(cluster, cfg, verdict)
             if not ok:
                 summary["held"].append(_held(cluster, bar))
                 continue
             kid, pid, _ = _insert_knowledge(db, task_id, cluster, freshness, now, key=cluster.key,
-                                            version=next_version(db, cluster.key), questions=questions)
+                                            version=next_version(db, cluster.key), questions=questions,
+                                            verdict=verdict)
             _feedback(db, task_id, kid, cluster.key, "new", None, state.finite(cluster.confidence, 0.0),
-                      {"independent_sources": cluster.independent_sources}, now)
+                      {"independent_sources": cluster.independent_sources, "basis": verdict.get("basis")}, now)
             summary["provisional"].append(kid)
             if pid is not None:
                 summary["pending"].append(pid)
@@ -649,6 +749,9 @@ def run(db, task_id, now, *, holder=None) -> dict:
         if summary["review_question"] is not None:
             summary["pending"].append(summary["review_question"])
         summary["entities"] = _entities(db, task_id, cleaned, ids_by_key, now)
+        summary["predictions_settled"] = evolution.observe(db, task_id, observed, now, freshness_class=freshness,
+                                                           ttl_overrides=cfg.freshness_ttl or None,
+                                                           knowledge_by_key=ids_by_key)
         summary["feedback"] = db.execute("SELECT count(*) FROM web_feedback").fetchone()[0] - feedback_before
         summary["pending"] = sorted(set(summary["pending"]))
         state.log_event(db, task_id, "consolidated", {k: (len(v) if isinstance(v, list) else v)

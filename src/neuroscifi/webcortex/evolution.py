@@ -1,0 +1,1053 @@
+"""Knowledge evolution: how what the individual knows changes, and how well it predicts (ADR-038).
+
+docs/knowledge/KNOWLEDGE_EVOLUTION.md and docs/knowledge/CONTINUAL_LEARNING.md describe every rule here.
+
+DISCOVER -> UNDERSTAND -> VERIFY -> CONNECT -> CONSOLIDATE -> PREDICT -> REASSESS -> EVOLVE:
+- VERIFY       cluster_verdict: the ADR-035 verification state of one scored claim cluster (category policy,
+               syndication-aware independent groups, timeframe for time-sensitive statements, authoritative
+               records). consolidate.run admits only "supported" clusters as knowledge candidates.
+- CONNECT      link/graph: typed edges in web_claim_links (claim -> source, claim -> knowledge as evidence,
+               claim -> knowledge contradiction, claim -> validity interval, entity -> entity, hypothesis ->
+               prediction -> observation -> error -> revised hypothesis).
+- PREDICT      open_hypothesis/predict: research opportunities (provisional claims that are not verified knowledge)
+               become hypotheses with a testable prediction: resolution criteria, deadline, forecast probability.
+- REASSESS     observe: when a later task brings decisive evidence about a hypothesis, the prediction is settled
+               (confirmed / error); an error gets an error analysis, alternative explanations and a revised
+               hypothesis. calibration: Brier score and reliability bins over every settled forecast, persisted.
+- EVOLVE       metrics (metacognition from real records), changes ("what has changed in your understanding of X"),
+               research_policy (procedural learning: bounded, logged, reversible) and the model-adaptation guard
+               (no weight change without owner authorisation, isolated evaluation and a rollback plan; nothing in
+               this package changes weights).
+
+Provenance kinds (PROVENANCE_KINDS) are kept apart on every record: raw evidence (web_sources), provisional claims
+(web_claims, web_hypotheses), verified conclusions (web_knowledge provenance 'verified_conclusion') and
+user-asserted facts (web_knowledge provenance 'user_asserted'). Nothing here touches the binary-belief tables.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from ..instance import store
+from ..instance.errors import Conflict, NotFound, ValidationError
+from . import state
+
+PROVENANCE_KINDS = ("raw_evidence", "provisional_claim", "verified_conclusion", "user_asserted")
+PROVENANCE_BY_TABLE = {"web_sources": "raw_evidence", "web_claims": "provisional_claim",
+                       "web_hypotheses": "provisional_claim"}       # web_knowledge: its provenance column
+HYPOTHESIS_ORIGINS = ("insufficient", "conflicting", "temporally_unresolved", "disputed", "not_evaluated", "gap",
+                      "prediction_error", "owner")
+HYPOTHESIS_STATES = ("open", "supported", "refuted", "revised", "abandoned")
+RESEARCH_OPPORTUNITY_STATES = ("insufficient", "conflicting", "temporally_unresolved", "not_evaluated")
+MAX_HYPOTHESES_PER_TASK = 20          # research opportunities recorded per consolidation (bounded growth)
+MAX_HORIZON = 30 * 86400.0            # a hypothesis prediction resolves within at most 30 days (else inconclusive)
+MIN_FORECAST, MAX_FORECAST = 0.01, 0.99
+CALIBRATION_BINS = 10
+MAX_ENTITY_EDGES_PER_CLAIM = 10
+MAX_GRAPH_EDGES = 500
+H_COLUMNS = ("id", "key", "statement", "origin", "status", "verification", "claims", "claim_values", "polarity",
+             "alternatives", "knowledge_id", "parent_id", "task_id", "note", "created_at", "updated_at",
+             "resolved_at")
+_H_JSON = {"verification": {}, "claims": [], "claim_values": [], "alternatives": []}
+P_COLUMNS = ("id", "knowledge_id", "hypothesis_id", "expectation", "criteria", "probability", "check_after",
+             "deadline", "created_at", "task_id", "checked_at", "outcome", "detail")
+
+
+def _day(ts) -> str | None:
+    ts = state.finite(ts)
+    return None if ts is None else datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d")
+
+
+def _clip(p) -> float | None:
+    p = state.finite(p)
+    return None if p is None else round(min(MAX_FORECAST, max(MIN_FORECAST, p)), 6)
+
+
+# ---- VERIFY: the ADR-035 state of a claim cluster -------------------------------------------------------------
+
+def _support_and_contra(cluster, members):
+    ids = {c.id for c in members}
+    support = set(cluster.supporting) & ids
+    head = next((c for c in members if c.id in support), members[0])
+    support.add(head.id)
+    contra = set()
+    for pair in cluster.contradicting:      # claims.evaluate lists the side agreeing with the representative first
+        a, b = pair.get("a"), pair.get("b")
+        if a in ids and b in ids:
+            contra.add(a if b == head.id else b)
+    return head, support - contra, contra - {head.id}
+
+
+def cluster_verdict(cluster, *, now, freshness_class, ttl_overrides=None, window=None) -> dict:
+    """The verification state of a scored cluster's representative statement under the ADR-035 policy
+    (claims.CATEGORY_POLICY, the same rules as synthesis._verdict, applied to the cluster's own bearing: its
+    supporting claims and the claims its contradiction pairs set against them). Adversarial claims never count.
+
+    {state, category, category_reason, basis, confidence (posterior mean under the category's undated factor),
+     independent_groups {supporting, contradicting}, timeframe, policy 'ADR-035', verified_at}."""
+    from . import claims as C, synthesis, temporal
+    base = {"policy": "ADR-035", "verified_at": now, "basis": None, "timeframe": None, "confidence": 0.5,
+            "independent_groups": {"supporting": 0, "contradicting": 0}}
+    members = [c for c in cluster.claims if not C.is_adversarial(c)]
+    if not members:
+        return base | {"state": "not_evaluated", "category": None, "category_reason": None,
+                       "reason": "no claim from a non-adversarial source"}
+    head, support, contra = _support_and_contra(cluster, members)
+    statement = cluster.statement if cluster.statement in {c.text for c in members} else head.text
+    kinds = {"academic"} if any((c.flags or {}).get("record") == "academic" for c in members) else set()
+    category, why = temporal.claim_category(statement, now=now, freshness_class=freshness_class,
+                                            registry=synthesis.release_statement(statement) is not None,
+                                            source_kinds=kinds)
+    policy = C.CATEGORY_POLICY[category]
+    out = base | {"category": category, "category_reason": why}
+    if not policy["evaluated"]:
+        return out | {"state": "not_evaluated", "reason": f"not evaluated: {why}"}
+    relation = {cid: "support" for cid in support} | {cid: "contradict" for cid in contra}
+    order = [c for c in members if c.id in relation]
+    counted = order
+    if policy["timeframe"]:
+        ts_cls = freshness_class if freshness_class in C.AGE_DISCOUNT_CLASSES else temporal.CATEGORY_FRESHNESS[category]
+        span = float(window) if window else temporal.ttl(ts_cls, ttl_overrides)
+        timely = {c.id: C.timely(c, now=now, window=span) for c in order}
+        counted = [c for c in order if timely[c.id]]
+        out["timeframe"] = {"required": True, "window_seconds": span, "class": ts_cls,
+                            "timely": sum(1 for v in timely.values() if v),
+                            "undated": sum(1 for v in timely.values() if v is None),
+                            "outside_window": sum(1 for v in timely.values() if v is False)}
+    by_id = {c.id: c for c in counted}
+    age_cls = None if category == "historical" else freshness_class
+    undated = policy["undated_factor"] if policy["undated_factor"] is not None else C.UNDATED_FACTOR
+    alpha, beta, sup, con = C.PRIOR_ALPHA, C.PRIOR_BETA, 0, 0
+    for group in C.independence_groups(counted):
+        members_g = [by_id[i] for i in group]
+        a = sum(1 for x in members_g if relation[x.id] == "support")
+        w = max(C.evidence_weight(x, now=now, freshness_class=age_cls, ttl_overrides=ttl_overrides,
+                                  undated_factor=undated) for x in members_g)
+        alpha += w * a / len(members_g)
+        beta += w * (len(members_g) - a) / len(members_g)
+        if a and a >= len(members_g) - a:
+            sup += 1
+        else:
+            con += 1
+    mean = alpha / (alpha + beta)
+    backing = [c for c in counted if relation[c.id] == "support"]
+    authority = None
+    if con == 0 and "registry" in policy["authority"] and \
+            any(c.kind == "metadata" and (c.flags or {}).get("record") in ("package", "release") for c in backing):
+        authority = "registry_record"
+    elif con == 0 and "official" in policy["authority"] and backing:
+        slot = synthesis.parse_statement(statement)
+        if slot and slot.get("entity") and slot.get("shape") != "quantity" and \
+                any(C.official_source(c, slot["head"]) for c in backing):
+            authority = "official_source"
+    found = C.verification_state(sup_groups=sup, con_groups=con, sup_weight=alpha - C.PRIOR_ALPHA,
+                                 con_weight=beta - C.PRIOR_BETA, mean=mean, min_groups=policy["min_groups"],
+                                 authoritative=authority is not None)
+    basis = None
+    if found == "supported":
+        basis = "corroboration" if sup >= policy["min_groups"] and mean >= C.VERIFICATION_MIN_CONFIDENCE \
+            else authority
+    elif found in ("disputed", "conflicting"):
+        basis = "contradiction"
+    if policy["timeframe"] and found == "insufficient" and len(counted) < len(order):
+        found = "temporally_unresolved"
+    reason = (f"{sup} independent group(s) support, {con} contradict; posterior {mean:.3f} "
+              f"({category}: {policy['min_groups']} group(s) needed"
+              + (", undated sources do not count" if policy["undated_factor"] is None else "") + ")")
+    return out | {"state": found, "basis": basis, "confidence": round(mean, 6), "min_groups": policy["min_groups"],
+                  "independent_groups": {"supporting": sup, "contradicting": con}, "reason": reason}
+
+
+# ---- CONNECT: typed knowledge-graph edges ---------------------------------------------------------------------
+
+def link(db, task_id, src_kind, src, kind, dst_kind, dst, detail, now, *, unique=True):
+    """One typed edge (state.add_link). With `unique` an identical edge of the same task is not written twice.
+    Caller owns the transaction."""
+    if unique and db.execute("SELECT 1 FROM web_claim_links WHERE task_id IS ? AND src_kind=? AND src=? AND kind=? "
+                             "AND dst_kind=? AND dst=? LIMIT 1",
+                             (task_id, src_kind, str(src), kind, dst_kind, str(dst))).fetchone():
+        return None
+    return state.add_link(db, task_id, src, dst, kind, detail, now, src_kind=src_kind, dst_kind=dst_kind)
+
+
+def record_knowledge_edges(db, task_id, claims, knowledge_id, times, now, *, head=None):
+    """claim -> source (derived_from), claim -> knowledge (evidence_for) for every supporting claim, and the head
+    claim -> validity interval of the version (valid_during, with its publication, event, retrieval, verification
+    and effective times). Caller owns the transaction."""
+    for c in claims:
+        link(db, task_id, "claim", c.id, "derived_from", "source", c.source_url,
+             {"published_at": state.finite(c.published_at), "retrieved_at": state.finite(c.retrieved_at)}, now)
+        link(db, task_id, "claim", c.id, "evidence_for", "knowledge", knowledge_id,
+             {"event_at": state.finite(c.event_at), "published_at": state.finite(c.published_at)}, now)
+    if head is not None:
+        link(db, task_id, "claim", head.id, "valid_during", "interval", knowledge_id, dict(times), now)
+
+
+def record_entity_edges(db, task_id, claim_id, entity_ids, knowledge_id, now) -> int:
+    """entity -> entity (related_to) for entities named in one claim: a co-mention, not an ontology relation.
+    At most MAX_ENTITY_EDGES_PER_CLAIM per claim. Caller owns the transaction."""
+    out = 0
+    ids = list(dict.fromkeys(entity_ids))
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            if out >= MAX_ENTITY_EDGES_PER_CLAIM:
+                return out
+            if link(db, task_id, "entity", a, "related_to", "entity", b,
+                    {"claim": claim_id, "knowledge_id": knowledge_id, "relation": "co-mentioned"}, now):
+                out += 1
+    return out
+
+
+def graph(db, node_kind, node_id, *, depth=1, limit=MAX_GRAPH_EDGES) -> dict:
+    """Edges around one node (both directions), breadth-first to `depth` (1..3), at most `limit` edges."""
+    if node_kind not in state.NODE_KINDS:
+        raise ValidationError(f"node kind must be one of {', '.join(state.NODE_KINDS)}")
+    if isinstance(depth, bool) or not isinstance(depth, int) or not 1 <= depth <= 3:
+        raise ValidationError("depth must be 1, 2 or 3")
+    seen_nodes, frontier, edges, seen_edges = {(node_kind, str(node_id))}, [(node_kind, str(node_id))], [], set()
+    for _ in range(depth):
+        nxt = []
+        for kind, nid in frontier:
+            for row in db.execute("SELECT id,task_id,src_kind,src,kind,dst_kind,dst,detail,created_at FROM "
+                                  "web_claim_links WHERE (src_kind=? AND src=?) OR (dst_kind=? AND dst=?) ORDER BY id",
+                                  (kind, nid, kind, nid)):
+                if row[0] in seen_edges:
+                    continue
+                seen_edges.add(row[0])
+                edges.append({"id": row[0], "task_id": row[1], "src": {"kind": row[2], "id": row[3]}, "kind": row[4],
+                              "dst": {"kind": row[5], "id": row[6]}, "detail": state.loads(row[7], {}),
+                              "at": row[8]})
+                for other in ((row[2], row[3]), (row[5], row[6])):
+                    if other not in seen_nodes:
+                        seen_nodes.add(other)
+                        nxt.append(other)
+                if len(edges) >= limit:
+                    return {"node": {"kind": node_kind, "id": str(node_id)}, "edges": edges, "truncated": True}
+        frontier = nxt
+    return {"node": {"kind": node_kind, "id": str(node_id)}, "edges": edges, "truncated": False}
+
+
+# ---- PREDICT: hypotheses and their predictions ----------------------------------------------------------------
+
+def _decode_h(values) -> dict:
+    out = dict(zip(H_COLUMNS, values))
+    for key, default in _H_JSON.items():
+        out[key] = state.loads(out[key], default)
+    out["provenance"] = "provisional_claim"
+    return out
+
+
+def hypothesis(db, hypothesis_id) -> dict:
+    found = db.execute(f"SELECT {','.join(H_COLUMNS)} FROM web_hypotheses WHERE id=?", (hypothesis_id,)).fetchone()
+    if found is None:
+        raise NotFound(f"No hypothesis {hypothesis_id}")
+    return _decode_h(found)
+
+
+def hypotheses(db, *, status=None, key=None, limit=100) -> list[dict]:
+    if status is not None and status not in HYPOTHESIS_STATES:
+        raise ValidationError(f"status must be one of {', '.join(HYPOTHESIS_STATES)}")
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValidationError("limit must be a positive integer")
+    where, params = [], []
+    if status:
+        where.append("status=?")
+        params.append(status)
+    if key:
+        where.append("key=?")
+        params.append(key)
+    sql = " AND ".join(where) or "1"
+    return [_decode_h(r) for r in db.execute(f"SELECT {','.join(H_COLUMNS)} FROM web_hypotheses WHERE {sql} "
+                                             "ORDER BY id DESC LIMIT ?", (*params, int(limit)))]
+
+
+def _p_row(values) -> dict:
+    out = dict(zip(P_COLUMNS, values))
+    out["criteria"] = state.loads(out["criteria"], {})
+    out["detail"] = state.loads(out["detail"], {})
+    return out
+
+
+def prediction(db, prediction_id) -> dict:
+    found = db.execute(f"SELECT {','.join(P_COLUMNS)} FROM web_predictions WHERE id=?", (prediction_id,)).fetchone()
+    if found is None:
+        raise NotFound(f"No prediction {prediction_id}")
+    return _p_row(found)
+
+
+def predict(db, hypothesis_id, now, *, expectation=None, criteria=None, deadline=None, probability=None) -> int:
+    """A testable prediction about a hypothesis: it resolves 'confirmed' when a later task verifies (ADR-035
+    "supported") a statement with the hypothesis' values and polarity, 'error' when it verifies conflicting values
+    or disputes them, and 'inconclusive' once `deadline` passes without decisive evidence. `probability` is the
+    forecast that the statement holds (default: the hypothesis' posterior), used for calibration. Caller owns the
+    transaction."""
+    h = hypothesis(db, hypothesis_id)
+    deadline = state.finite(deadline, now + MAX_HORIZON)
+    if deadline <= now:
+        raise ValidationError("deadline must be in the future")
+    p = _clip(h["verification"].get("confidence") if probability is None else probability)
+    if probability is not None and not (0.0 <= float(probability) <= 1.0):
+        raise ValidationError("probability must be between 0 and 1")
+    criteria = criteria or {"key": h["key"], "values": h["claim_values"], "polarity": h["polarity"],
+                            "confirmed_when": "a later task verifies (supported) the same values and polarity",
+                            "error_when": "a later task verifies conflicting values or polarity, or disputes it",
+                            "inconclusive_when": f"no decisive evidence by {_day(deadline)}"}
+    expectation = expectation or (f"«{_quote(h['statement'])}» will be confirmed by independent evidence by "
+                                  f"{_day(deadline)}")
+    if not isinstance(expectation, str) or not expectation.strip() or len(expectation) > 500:
+        raise ValidationError("expectation must be a non-blank string of at most 500 characters")
+    pid = db.execute("INSERT INTO web_predictions(hypothesis_id,expectation,criteria,probability,check_after,"
+                     "deadline,created_at) VALUES(?,?,?,?,?,?,?)",
+                     (hypothesis_id, expectation[:500], state.dumps(criteria), p, now, deadline, now)).lastrowid
+    link(db, h["task_id"], "hypothesis", hypothesis_id, "predicts", "prediction", pid,
+         {"probability": p, "deadline": deadline}, now)
+    state.log_event(db, None, "prediction", {"prediction_id": pid, "hypothesis_id": hypothesis_id,
+                                             "deadline": deadline}, now)
+    return pid
+
+
+def _quote(text) -> str:
+    from . import knowledge
+    return knowledge.quote(text)
+
+
+def open_hypothesis(db, *, key, statement, origin, verification, claims, values, polarity, now, task_id=None,
+                    knowledge_id=None, parent_id=None, note=None, freshness_class="stable", ttl_overrides=None,
+                    with_prediction=True) -> tuple[int, bool]:
+    """Record a research opportunity (a provisional claim, never knowledge). An open hypothesis with the same key,
+    values and polarity is updated (claims merged, latest verification), never duplicated. A new one gets a
+    testable prediction (predict) with a deadline of the class TTL, at most MAX_HORIZON. Returns (id, created).
+    Caller owns the transaction."""
+    from . import temporal
+    if origin not in HYPOTHESIS_ORIGINS:
+        raise ValidationError(f"origin must be one of {', '.join(HYPOTHESIS_ORIGINS)}")
+    if not isinstance(statement, str) or not statement.strip():
+        raise ValidationError("statement must be a non-blank string")
+    polarity = -1 if polarity is not None and polarity < 0 else 1
+    for h in hypotheses(db, status="open", key=key, limit=50):
+        if _relation(values, polarity, h["claim_values"], h["polarity"]) == "same":
+            merged = list(dict.fromkeys(h["claims"] + list(claims)))
+            db.execute("UPDATE web_hypotheses SET claims=?, verification=?, updated_at=?, "
+                       "knowledge_id=coalesce(knowledge_id, ?) WHERE id=?",
+                       (state.dumps(merged), state.dumps(verification), now, knowledge_id, h["id"]))
+            return h["id"], False
+    hid = db.execute("INSERT INTO web_hypotheses(key,statement,origin,status,verification,claims,claim_values,"
+                     "polarity,knowledge_id,parent_id,task_id,note,created_at,updated_at) "
+                     "VALUES(?,?,?,'open',?,?,?,?,?,?,?,?,?,?)",
+                     (key, statement[:2000], origin, state.dumps(verification), state.dumps(list(claims)),
+                      state.dumps(list(values or [])), polarity, knowledge_id, parent_id, task_id, note, now,
+                      now)).lastrowid
+    for cid in claims:
+        link(db, task_id, "claim", cid, "evidence_for", "hypothesis", hid, {"origin": origin}, now)
+    if with_prediction:
+        try:
+            horizon = min(temporal.ttl(freshness_class, ttl_overrides), MAX_HORIZON)
+        except ValidationError:
+            horizon = MAX_HORIZON
+        predict(db, hid, now, deadline=now + horizon)
+    return hid, True
+
+
+def _relation(values, polarity, other_values, other_polarity) -> str:
+    """'same' | 'conflict' | 'series' (consolidate._compare over plain values)."""
+    from .consolidate import _compare
+    return _compare(list(values or []), polarity, {"polarity": other_polarity,
+                                                   "claim_values": list(other_values or [])})[0]
+
+
+# ---- REASSESS: settle predictions when new evidence arrives -----------------------------------------------------
+
+def _alternatives(relation, observed_verdict, hyp) -> list[str]:
+    """Alternative explanations of a prediction error, from the records only (labelled template text)."""
+    out = ["the hypothesis was wrong when it was formed"]
+    if relation in ("conflict", "series"):
+        out.append("the subject changed between the hypothesis and the observation (a later state supersedes it)")
+    if relation == "series":
+        out.append("the two statements describe different reference periods or scopes")
+    groups = (observed_verdict.get("independent_groups") or {}).get("supporting", 0)
+    if groups < 2:
+        out.append(f"the observation rests on {groups} independent group(s) and may itself be wrong")
+    if (hyp.get("verification") or {}).get("state") in ("conflicting", "disputed"):
+        out.append("the sources behind the hypothesis already disagreed; the other side may have been right")
+    return out
+
+
+def _settle(db, pred, outcome, now, *, task_id, observation, analysis=None):
+    detail = dict(pred["detail"]) | {"observation": observation}
+    if analysis:
+        detail["error_analysis"] = analysis
+    db.execute("UPDATE web_predictions SET outcome=?, checked_at=?, detail=?, task_id=coalesce(task_id, ?) "
+               "WHERE id=?", (outcome, now, state.dumps(detail), task_id, pred["id"]))
+    if task_id is not None:
+        link(db, task_id, "prediction", pred["id"], "observed", "observation", task_id,
+             {"outcome": outcome, "state": observation.get("state")}, now)
+    state.log_event(db, task_id, "prediction_error" if outcome == "error" else "feedback",
+                    {"prediction_id": pred["id"], "hypothesis_id": pred["hypothesis_id"],
+                     "knowledge_id": pred["knowledge_id"], "outcome": outcome}, now)
+
+
+def _revise(db, pred, hyp, *, task_id, statement, values, polarity, verification, claims, analysis, now,
+            freshness_class, ttl_overrides):
+    """observation -> error -> revised hypothesis: the error node is the prediction id; the revision states what
+    the observation verified (a new hypothesis, parent = the refuted one), itself with a new prediction."""
+    link(db, task_id, "observation", task_id, "error_of", "error", pred["id"], {"reason": analysis["reason"]}, now)
+    new_id, _ = open_hypothesis(db, key=hyp["key"] if hyp else analysis.get("key", ""), statement=statement,
+                                origin="prediction_error", verification=verification, claims=claims, values=values,
+                                polarity=polarity, now=now, task_id=task_id, parent_id=hyp["id"] if hyp else None,
+                                note=f"revision after prediction #{pred['id']} failed", freshness_class=freshness_class,
+                                ttl_overrides=ttl_overrides)
+    link(db, task_id, "error", pred["id"], "revised_to", "hypothesis", new_id, {"alternatives": analysis.get(
+        "alternatives", [])}, now)
+    return new_id
+
+
+def observe(db, task_id, observed, now, *, freshness_class="stable", ttl_overrides=None, knowledge_by_key=None) \
+        -> list[dict]:
+    """Compare the open hypothesis predictions with a task's verified evidence. `observed`: [(cluster, verdict,
+    statement)] of the task. A prediction formed by an earlier task whose hypothesis key matches (equal or
+    near-identical) a cluster verified 'supported' here is settled: same values and polarity -> confirmed, else
+    error (error analysis, alternatives, revised hypothesis); a 'disputed' cluster stating the hypothesis' own
+    values -> error. Other observations are tracked on the prediction and it stays open. Predictions past their
+    deadline become 'inconclusive'. Caller owns the transaction. Returns the settlements."""
+    from .consolidate import SIMILAR_KEY, _similar, _values
+    out = []
+    knowledge_by_key = knowledge_by_key or {}
+    rows = db.execute(f"SELECT {','.join('p.' + c for c in P_COLUMNS)} FROM web_predictions p JOIN web_hypotheses h "
+                      "ON h.id=p.hypothesis_id WHERE p.outcome IS NULL AND h.status='open' AND "
+                      "(h.task_id IS NULL OR h.task_id<>?) ORDER BY p.id", (task_id,)).fetchall()
+    for pred in map(_p_row, rows):
+        hyp = hypothesis(db, pred["hypothesis_id"])
+        match = None
+        for cluster, verdict, statement in observed:
+            if cluster.key == hyp["key"] or _similar(cluster.key, hyp["key"]) >= SIMILAR_KEY:
+                match = (cluster, verdict, statement)
+                if verdict["state"] in ("supported", "disputed"):
+                    break
+        if match is None:
+            continue
+        cluster, verdict, statement = match
+        values, polarity = _values(cluster)
+        relation = _relation(values, polarity, hyp["claim_values"], hyp["polarity"])
+        observation = {"task_id": task_id, "state": verdict["state"], "basis": verdict.get("basis"),
+                       "statement": statement, "values": values, "polarity": polarity, "relation": relation,
+                       "confidence": verdict.get("confidence"), "at": now}
+        if verdict["state"] == "supported" and relation == "same":
+            outcome = "confirmed"
+        elif (verdict["state"] == "supported" and relation in ("conflict", "series")) or \
+                (verdict["state"] == "disputed" and relation == "same"):
+            outcome = "error"
+        else:                                       # tracked, not decisive
+            detail = dict(pred["detail"])
+            detail.setdefault("observations", []).append(observation)
+            detail["observations"] = detail["observations"][-10:]
+            db.execute("UPDATE web_predictions SET detail=? WHERE id=?", (state.dumps(detail), pred["id"]))
+            continue
+        support = [c.id for c in cluster.claims if c.id in set(cluster.supporting)] or [c.id for c in cluster.claims]
+        if outcome == "confirmed":
+            _settle(db, pred, outcome, now, task_id=task_id, observation=observation)
+            db.execute("UPDATE web_hypotheses SET status='supported', resolved_at=?, updated_at=?, "
+                       "knowledge_id=coalesce(?, knowledge_id), verification=? WHERE id=?",
+                       (now, now, knowledge_by_key.get(cluster.key), state.dumps(verdict), hyp["id"]))
+            out.append({"prediction_id": pred["id"], "hypothesis_id": hyp["id"], "outcome": outcome})
+            continue
+        reason = (f"expected {hyp['claim_values'] or 'the statement'} (polarity {hyp['polarity']:+d}); the "
+                  f"observation {'verified' if verdict['state'] == 'supported' else 'disputed'} "
+                  f"{values or 'the statement'} (polarity {polarity:+d}, relation {relation})")
+        analysis = {"reason": reason, "expected": {"values": hyp["claim_values"], "polarity": hyp["polarity"]},
+                    "observed": {"values": values, "polarity": polarity, "state": verdict["state"]},
+                    "probability": pred["probability"], "alternatives": _alternatives(relation, verdict, hyp),
+                    "label": "template analysis from the stored records"}
+        _settle(db, pred, outcome, now, task_id=task_id, observation=observation, analysis=analysis)
+        db.execute("UPDATE web_hypotheses SET status=?, resolved_at=?, updated_at=?, alternatives=? WHERE id=?",
+                   ("refuted" if verdict["state"] == "disputed" else "revised", now, now,
+                    state.dumps(analysis["alternatives"]), hyp["id"]))
+        revised = None
+        if verdict["state"] == "supported":
+            revised = _revise(db, pred, hyp, task_id=task_id, statement=statement, values=values, polarity=polarity,
+                              verification=verdict, claims=support, analysis=analysis, now=now,
+                              freshness_class=freshness_class, ttl_overrides=ttl_overrides)
+        else:
+            link(db, task_id, "observation", task_id, "error_of", "error", pred["id"], {"reason": reason}, now)
+        out.append({"prediction_id": pred["id"], "hypothesis_id": hyp["id"], "outcome": outcome,
+                    "revised_hypothesis": revised})
+    out += expire(db, now)
+    if out:
+        record_calibration(db, now)
+    return out
+
+
+def expire(db, now) -> list[dict]:
+    """Open hypothesis predictions past their deadline -> 'inconclusive' (no decisive evidence in time); the
+    hypothesis stays open as a research opportunity. Caller owns the transaction."""
+    out = []
+    for pred in map(_p_row, db.execute(f"SELECT {','.join(P_COLUMNS)} FROM web_predictions WHERE outcome IS NULL "
+                                       "AND hypothesis_id IS NOT NULL AND deadline IS NOT NULL AND deadline<=? "
+                                       "ORDER BY id", (now,)).fetchall()):
+        _settle(db, pred, "inconclusive", now, task_id=None,
+                observation={"state": None, "reason": f"no decisive evidence by {_day(pred['deadline'])}",
+                             "at": now})
+        out.append({"prediction_id": pred["id"], "hypothesis_id": pred["hypothesis_id"], "outcome": "inconclusive"})
+    return out
+
+
+def knowledge_prediction_error(db, pred, item, reason, consolidation, now) -> dict:
+    """Error analysis of a failed 'still holds' prediction about a knowledge item (predictions.check): links
+    prediction -> observation (the refresh task) -> error, and error -> the revision: the superseding knowledge
+    version, or a hypothesis stating the contradicting claim. Caller owns the transaction."""
+    task_id = (consolidation or {}).get("task_id") or pred.get("task_id")
+    analysis = {"reason": reason, "probability": pred.get("probability"), "label": "template analysis from the "
+                "stored records", "alternatives": ["the item was wrong when it was verified",
+                                                   "the subject changed after it was verified",
+                                                   "the contradicting evidence may itself be wrong"]}
+    obs = task_id or f"prediction:{pred['id']}"
+    link(db, task_id, "prediction", pred["id"], "observed", "observation", obs, {"outcome": "error"}, now)
+    link(db, task_id, "observation", obs, "error_of", "error", pred["id"], {"reason": reason}, now)
+    if item is None:
+        return analysis
+    if item.get("superseded_by"):
+        link(db, task_id, "error", pred["id"], "revised_to", "knowledge", item["superseded_by"],
+             {"reason": "superseded"}, now)
+        analysis["revision"] = {"knowledge_id": item["superseded_by"]}
+        return analysis
+    against = [a for a in item.get("contradicting") or [] if isinstance(a, dict) and a.get("text")]
+    if against:
+        last = against[-1]
+        hid, _ = open_hypothesis(db, key=item["key"], statement=last["text"], origin="prediction_error",
+                                 verification={"policy": "ADR-035", "state": "conflicting", "basis": "contradiction",
+                                               "confidence": 0.5}, claims=[last["claim"]] if last.get("claim") else [],
+                                 values=[], polarity=1, now=now, task_id=task_id, knowledge_id=item["id"],
+                                 note=f"alternative to knowledge #{item['id']} after prediction #{pred['id']} failed",
+                                 freshness_class=item.get("freshness_class") or "stable")
+        link(db, task_id, "error", pred["id"], "revised_to", "hypothesis", hid, {"reason": "contradicted"}, now)
+        analysis["revision"] = {"hypothesis_id": hid}
+    return analysis
+
+
+# ---- calibration --------------------------------------------------------------------------------------------
+
+def calibration(db, *, since=None) -> dict:
+    """Brier score and reliability bins over every settled prediction with a forecast probability: outcome
+    'confirmed' = 1, 'error' = 0 ('inconclusive' is excluded: nothing was observed). Skill against the base rate
+    (climatology) and the expected calibration error (bin-weighted |mean forecast - observed frequency|)."""
+    since = state.finite(since, 0.0)
+    rows = db.execute("SELECT probability, outcome FROM web_predictions WHERE outcome IN ('confirmed','error') AND "
+                      "probability IS NOT NULL AND coalesce(checked_at, 0)>=?", (since,)).fetchall()
+    n = len(rows)
+    inconclusive = db.execute("SELECT count(*) FROM web_predictions WHERE outcome='inconclusive' AND "
+                              "coalesce(checked_at,0)>=?", (since,)).fetchone()[0]
+    out = {"n": n, "inconclusive": inconclusive, "brier": None, "base_rate": None, "brier_reference": None,
+           "skill": None, "ece": None, "bins": []}
+    if not n:
+        return out
+    ys = [1.0 if o == "confirmed" else 0.0 for _, o in rows]
+    ps = [float(p) for p, _ in rows]
+    brier = sum((p - y) ** 2 for p, y in zip(ps, ys)) / n
+    base = sum(ys) / n
+    ref = base * (1 - base)
+    bins, ece = [], 0.0
+    for b in range(CALIBRATION_BINS):
+        lo, hi = b / CALIBRATION_BINS, (b + 1) / CALIBRATION_BINS
+        idx = [i for i, p in enumerate(ps) if lo <= p < hi or (b == CALIBRATION_BINS - 1 and p == 1.0)]
+        if not idx:
+            continue
+        mean_p = sum(ps[i] for i in idx) / len(idx)
+        freq = sum(ys[i] for i in idx) / len(idx)
+        ece += len(idx) / n * abs(mean_p - freq)
+        bins.append({"lower": lo, "upper": hi, "n": len(idx), "mean_probability": round(mean_p, 6),
+                     "observed_frequency": round(freq, 6)})
+    return out | {"brier": round(brier, 6), "base_rate": round(base, 6), "brier_reference": round(ref, 6),
+                  "skill": round(1 - brier / ref, 6) if ref > 0 else None, "ece": round(ece, 6), "bins": bins}
+
+
+def _snapshot(db, kind, value, now) -> int:
+    return db.execute("INSERT INTO web_metrics(kind,value,computed_at) VALUES(?,?,?)",
+                      (kind, state.dumps(value), now)).lastrowid
+
+
+def record_calibration(db, now) -> int:
+    """Persist the current calibration (web_metrics kind 'calibration'). Caller owns the transaction."""
+    return _snapshot(db, "calibration", calibration(db), now)
+
+
+def calibration_history(db, *, limit=20) -> list[dict]:
+    return [{"id": i, "computed_at": t} | state.loads(v, {}) for i, v, t in db.execute(
+        "SELECT id, value, computed_at FROM web_metrics WHERE kind='calibration' ORDER BY id DESC LIMIT ?",
+        (int(limit),))]
+
+
+# ---- EVOLVE: metacognitive metrics ----------------------------------------------------------------------------
+
+def metrics(db, now, *, since=None, record=False) -> dict:
+    """Metacognition computed from the stored records (never "how much is stored"):
+    verified knowledge gained, research opportunities (gaps) resolved, contradictions clarified, prediction
+    accuracy and calibration, retrieval effectiveness (memory-answered share of finished tasks), research
+    efficiency (network requests per verified claim) and information gain (bits, from web_feedback).
+    `since` (seconds) limits every count to records created/settled since then. `record` stores the snapshot."""
+    since = state.finite(since, 0.0)
+    one = lambda sql, *p: db.execute(sql, (*p,)).fetchone()[0] or 0  # noqa: E731
+    verified = one("SELECT count(*) FROM web_knowledge WHERE provenance='verified_conclusion' AND "
+                   "json_extract(verification,'$.state')='supported' AND created_at>=?", since)
+    legacy = one("SELECT count(*) FROM web_knowledge WHERE provenance='verified_conclusion' AND "
+                 "json_extract(verification,'$.policy')='ADR-026' AND created_at>=?", since)
+    accepted = one("SELECT count(*) FROM web_knowledge WHERE status='accepted' AND provenance='verified_conclusion' "
+                   "AND updated_at>=?", since)
+    strengthened = one("SELECT count(*) FROM web_feedback WHERE effect='strengthened' AND created_at>=?", since)
+    bits = float(one("SELECT sum(info_gain) FROM web_feedback WHERE created_at>=?", since))
+    gaps_opened = one("SELECT count(*) FROM web_hypotheses WHERE created_at>=?", since)
+    gaps_resolved = one("SELECT count(*) FROM web_hypotheses WHERE status IN ('supported','refuted','revised') AND "
+                        "resolved_at>=?", since)
+    gaps_open = one("SELECT count(*) FROM web_hypotheses WHERE status='open'")
+    recorded = one("SELECT count(*) FROM web_feedback WHERE json_extract(detail,'$.contested') AND created_at>=?",
+                   since)
+    clarified_q = one("SELECT count(*) FROM pending WHERE scope LIKE 'web:contested:%' AND resolved_at>=? AND "
+                      "question<>'#forgotten'", since)
+    reversed_ = one("SELECT count(*) FROM web_feedback WHERE effect='reversed' AND created_at>=?", since)
+    clarified_h = one("SELECT count(*) FROM web_hypotheses WHERE origin IN ('conflicting','disputed') AND status IN "
+                      "('supported','refuted','revised') AND resolved_at>=?", since)
+    outcomes = dict(db.execute("SELECT outcome, count(*) FROM web_predictions WHERE outcome IS NOT NULL AND "
+                               "coalesce(checked_at,0)>=? GROUP BY outcome", (since,)).fetchall())
+    decided = outcomes.get("confirmed", 0) + outcomes.get("error", 0)
+    finished = db.execute("SELECT usage, json_extract(result,'$.memory.answered_from_memory') FROM web_tasks WHERE "
+                          "status IN ('completed','partial') AND coalesce(finished_at, updated_at)>=?",
+                          (since,)).fetchall()
+    requests = sum(int(state.finite((state.loads(u, {}) or {}).get("requests"), 0)) for u, _ in finished)
+    from_memory = sum(1 for _, m in finished if m)
+    verified_claims = verified + strengthened
+    out = {
+        "as_of": now, "since": since or None,
+        "verified_knowledge": {"gained": verified, "owner_accepted": accepted, "strengthened": strengthened,
+                               "pre_adr035_versions": legacy},
+        "gaps": {"opened": gaps_opened, "resolved": gaps_resolved, "open": gaps_open},
+        "contradictions": {"recorded": recorded, "clarified": clarified_q + reversed_ + clarified_h,
+                           "owner_answered": clarified_q, "superseded": reversed_, "hypotheses_resolved": clarified_h},
+        "predictions": {"confirmed": outcomes.get("confirmed", 0), "error": outcomes.get("error", 0),
+                        "inconclusive": outcomes.get("inconclusive", 0),
+                        "open": one("SELECT count(*) FROM web_predictions WHERE outcome IS NULL"),
+                        "accuracy": round(outcomes.get("confirmed", 0) / decided, 6) if decided else None,
+                        "calibration": calibration(db, since=since)},
+        "retrieval": ({"measurable": True, "finished_tasks": len(finished), "answered_from_memory": from_memory,
+                       "memory_answer_rate": round(from_memory / len(finished), 6)} if finished else
+                      {"measurable": False, "reason": "no finished research task in the window"}),
+        "research_efficiency": {"requests": requests, "verified_claims": verified_claims,
+                                "requests_per_verified_claim": round(requests / verified_claims, 3)
+                                if verified_claims else None},
+        "information_gain_bits": round(bits, 6),
+        "not_metrics": "Counts of stored sources, claims or rows are deliberately not reported: more stored data "
+                       "is not more understanding.",
+    }
+    if record:
+        with store.write(db):
+            out["snapshot_id"] = _snapshot(db, "evolution", out, now)
+            store.bump_state_version(db)
+    return out
+
+
+# ---- "What has changed in your understanding of X?" -----------------------------------------------------------
+
+def _keys_for(db, topic, limit):
+    from . import text
+    terms = text.content_tokens(topic)
+    rows = db.execute("SELECT key, group_concat(statement, ' ') FROM (SELECT key, statement FROM web_knowledge "
+                      "UNION ALL SELECT key, statement FROM web_hypotheses) GROUP BY key").fetchall()
+    if not terms or not rows:
+        return []
+    scores = text.BM25([text.content_tokens(f"{s} {k.replace('<', ' ').replace('>', ' ')}")
+                        for k, s in rows]).scores(terms)
+    ranked = sorted(((s, k) for s, (k, _) in zip(scores, rows) if s > 0), key=lambda x: (-x[0], x[1]))
+    return [k for _, k in ranked[:limit]]
+
+
+def _ev(at, kind, text, **detail):
+    return {"at": at, "date": _day(at), "kind": kind, "text": text} | detail
+
+
+def changes(db, topic, now, *, since=None, limit=5, phrase=False, gateway=None) -> dict:
+    """What has changed in the understanding of `topic`: for each matching claim key (BM25 over every version and
+    hypothesis, any status), the version history with its times and verification, supersessions, new evidence
+    (feedback rows), contradictions, owner decisions, prediction outcomes and hypothesis revisions, as one dated
+    timeline. `summary` is template text from these records; with `phrase` and a configured, reachable local
+    inference gateway a model may rephrase it from the returned records only, labelled 'model:<name>'."""
+    from . import knowledge
+    if not isinstance(topic, str) or not topic.strip() or len(topic) > 2000:
+        raise ValidationError("topic must be a non-blank string of at most 2000 characters")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+        raise ValidationError("limit must be an integer between 1 and 50")
+    since = state.finite(since, 0.0)
+    subjects = []
+    for key in _keys_for(db, topic, limit):
+        rows = knowledge.rows(db, "key=?", (key,))
+        timeline, versions = [], []
+        for r in rows:
+            v = state.loads(r.get("verification"), {}) if isinstance(r.get("verification"), str) else \
+                (r.get("verification") or {})
+            versions.append({"id": r["id"], "version": r["version"], "statement": r["statement"],
+                             "status": r["status"], "provenance": r.get("provenance"),
+                             "verification": {k: v.get(k) for k in ("policy", "state", "category", "basis",
+                                                                     "confidence", "independent_groups")},
+                             "confidence": r["confidence"],
+                             "times": {"published_at": r.get("published_at"), "event_at": r.get("event_at"),
+                                       "retrieved_at": r.get("retrieved_at"),
+                                       "first_verified_at": r["first_verified_at"],
+                                       "last_verified_at": r["last_verified_at"], "effective_at": r["valid_from"],
+                                       "valid_from": r["valid_from"], "valid_until": r["valid_until"]},
+                             "superseded_by": r["superseded_by"]})
+            how = v.get("state") and f"{v.get('state')} by {v.get('basis') or 'n/a'} ({v.get('policy')})" or \
+                f"verified under {v.get('policy') or 'ADR-026'}"
+            timeline.append(_ev(r["created_at"], "version", f"v{r['version']} «{_quote(r['statement'])}» recorded as "
+                                f"{r['status'] if r['status'] != 'superseded' else 'knowledge'}; {how}",
+                                knowledge_id=r["id"], provenance=r.get("provenance")))
+            if r["superseded_by"]:
+                timeline.append(_ev(r["valid_until"] or r["updated_at"], "superseded",
+                                    f"v{r['version']} superseded by knowledge #{r['superseded_by']}",
+                                    knowledge_id=r["id"], superseded_by=r["superseded_by"]))
+            for pid, question, resolution, resolved in db.execute(
+                    "SELECT id, question, resolution, resolved_at FROM pending WHERE scope=? AND resolved_at IS NOT "
+                    "NULL AND question<>'#forgotten'", (f"web:knowledge:{r['id']}",)):
+                timeline.append(_ev(resolved, "owner_decision", f"owner answered on knowledge #{r['id']}: "
+                                    f"{_quote(resolution or '')}", knowledge_id=r["id"], pending_id=pid))
+        for fid, kid, effect, before, after, bits, detail, at, task in db.execute(
+                "SELECT id, knowledge_id, effect, before_confidence, after_confidence, info_gain, detail, created_at, "
+                "task_id FROM web_feedback WHERE key=? ORDER BY id", (key,)):
+            d = state.loads(detail, {})
+            what = "contradicting evidence" if d.get("contested") else {
+                "strengthened": "new supporting evidence", "unchanged": "re-read, nothing new",
+                "reversed": "a newer statement superseded it", "new": "first verified",
+                "weakened": "contradicting evidence"}[effect]
+            timeline.append(_ev(at, "evidence", f"{what} (confidence {before if before is not None else '-'} -> "
+                                f"{after}; {round(bits or 0.0, 3)} bits)", knowledge_id=kid, effect=effect,
+                                task_id=task, reason=d.get("reason")))
+        for h in hypotheses(db, key=key, limit=100):
+            timeline.append(_ev(h["created_at"], "hypothesis", f"hypothesis #{h['id']} «{_quote(h['statement'])}» "
+                                f"({h['origin']})", hypothesis_id=h["id"], parent_id=h["parent_id"]))
+            if h["resolved_at"]:
+                timeline.append(_ev(h["resolved_at"], "hypothesis_" + h["status"],
+                                    f"hypothesis #{h['id']} {h['status']}", hypothesis_id=h["id"]))
+        ids = [r["id"] for r in rows]
+        hids = [h["id"] for h in hypotheses(db, key=key, limit=100)]
+        preds = []
+        if ids or hids:
+            marks_k, marks_h = ",".join("?" * len(ids)) or "NULL", ",".join("?" * len(hids)) or "NULL"
+            preds = [_p_row(p) for p in db.execute(
+                f"SELECT {','.join(P_COLUMNS)} FROM web_predictions WHERE knowledge_id IN ({marks_k}) OR "
+                f"hypothesis_id IN ({marks_h}) ORDER BY id", (*ids, *hids))]
+        for p in preds:
+            if p["outcome"]:
+                why = (p["detail"].get("reason") or (p["detail"].get("error_analysis") or {}).get("reason") or
+                       (p["detail"].get("observation") or {}).get("reason") or "")
+                timeline.append(_ev(p["checked_at"], "prediction_" + p["outcome"],
+                                    f"prediction #{p['id']} «{_quote(p['expectation'])}» {p['outcome']}"
+                                    + (f": {why}" if why else ""), prediction_id=p["id"],
+                                    probability=p["probability"]))
+        timeline = sorted((e for e in timeline if (e["at"] or 0) >= since), key=lambda e: (e["at"] or 0, e["kind"]))
+        current = [v for v in versions if v["status"] in state.LIVE_KNOWLEDGE]
+        subjects.append({"key": key, "current": current, "versions": versions, "timeline": timeline,
+                         "predictions": [{k: p[k] for k in ("id", "expectation", "probability", "deadline",
+                                                             "outcome", "checked_at")} for p in preds],
+                         "changed": any(e["kind"] in ("superseded", "evidence", "owner_decision", "prediction_error",
+                                                       "hypothesis_revised") for e in timeline) or len(versions) > 1})
+    summary = _template_summary(topic, subjects, since)
+    out = {"topic": topic, "as_of": now, "since": since or None, "subjects": subjects,
+           "summary": {"text": summary, "generated_by": "template",
+                       "label": "Template summary of the stored records above (not model reasoning)."}}
+    if phrase:
+        out["summary"] = _phrase(db, out, gateway) or out["summary"]
+    return out
+
+
+def _template_summary(topic, subjects, since) -> str:
+    if not subjects:
+        return f"Nothing about «{_quote(topic)}» is in memory, so nothing has changed."
+    parts = []
+    for s in subjects:
+        vs = s["versions"]
+        live = s["current"]
+        line = f"«{s['key']}»: {len(vs)} version(s)"
+        if live:
+            cur = live[-1]
+            line += f"; current v{cur['version']} «{_quote(cur['statement'])}» ({cur['status']}"
+            state_ = (cur["verification"] or {}).get("state")
+            line += f", {state_} by {(cur['verification'] or {}).get('basis')})" if state_ else ")"
+        sup = [e for e in s["timeline"] if e["kind"] == "superseded"]
+        if sup:
+            line += "; superseded on " + ", ".join(e["date"] or "?" for e in sup)
+        ev = [e for e in s["timeline"] if e["kind"] == "evidence"]
+        if ev:
+            line += f"; {len(ev)} evidence event(s), last on {ev[-1]['date']}"
+        pe = [e for e in s["timeline"] if e["kind"].startswith("prediction_")]
+        if pe:
+            line += f"; {len(pe)} prediction outcome(s)"
+        if not s["changed"]:
+            line += "; unchanged since first recorded"
+        parts.append(line)
+    head = f"Since {_day(since)}: " if since else ""
+    return head + " | ".join(parts)
+
+
+def _phrase(db, result, gateway):
+    """A local model's rephrasing of the template summary, from the returned records only; None when no gateway
+    is configured, reachable or local. Remote endpoints are never used here (memory is private)."""
+    try:
+        if gateway is None:
+            from ..inference.gateway import Gateway
+            gateway = Gateway.from_db(db)
+        if gateway.guard() == "remote":
+            return {"text": result["summary"]["text"], "generated_by": "template",
+                    "label": "Template summary: the configured model endpoint is remote and memory is not sent to it."}
+        records = [{"key": s["key"], "timeline": [{k: e[k] for k in ("date", "kind", "text")} for e in s["timeline"]]}
+                   for s in result["subjects"]]
+        reply = gateway.chat([
+            {"role": "system", "content": "Rephrase the change history below in at most five plain sentences. Use "
+                                          "only these records; keep every date; add nothing."},
+            {"role": "user", "content": state.dumps(records)[:12000]}], purpose="knowledge_changes", max_tokens=400)
+        return {"text": reply.text.strip(), "generated_by": f"model:{reply.model}",
+                "label": "Model phrasing of the records above; the records, not this text, are the evidence."}
+    except Exception as exc:   # degraded: the structured answer stands
+        return {"text": result["summary"]["text"], "generated_by": "template",
+                "label": f"Template summary (model phrasing unavailable: {type(exc).__name__})."}
+
+
+# ---- procedural learning: research-policy statistics ----------------------------------------------------------
+
+POLICY_STEP = 0.1          # a weight moves at most this much per update
+POLICY_BOUNDS = (0.5, 1.5)  # and stays inside these bounds
+POLICY_MIN_SOURCES = 5     # a provider needs this many read sources before its weight moves
+
+
+def _yields(db) -> dict:
+    """Per provider: sources read, and sources behind at least one verified conclusion (supporting claim of a
+    'verified_conclusion' web_knowledge row). Per mode: finished tasks, and tasks that produced one."""
+    verified_claims = {c for (s,) in db.execute("SELECT supporting FROM web_knowledge WHERE "
+                                                "provenance='verified_conclusion'") for c in state.loads(s, [])}
+    providers = {}
+    for provider, task_id, url in db.execute("SELECT coalesce(provider,'(direct)'), task_id, canonical_url FROM "
+                                             "web_sources"):
+        p = providers.setdefault(provider, {"sources": 0, "verified_sources": 0})
+        p["sources"] += 1
+        ids = {i for (i,) in db.execute("SELECT id FROM web_claims WHERE task_id=? AND canonical_url=?",
+                                        (task_id, url))}
+        if ids & verified_claims:
+            p["verified_sources"] += 1
+    modes = {}
+    for mode, n, produced in db.execute(
+            "SELECT mode, count(*), sum(EXISTS(SELECT 1 FROM web_knowledge k WHERE k.task_id=t.id AND "
+            "k.provenance='verified_conclusion')) FROM web_tasks t WHERE status IN ('completed','partial') "
+            "GROUP BY mode"):
+        modes[mode] = {"tasks": n, "tasks_with_verified": produced or 0}
+    return {"providers": providers, "modes": modes}
+
+
+def research_policy(db) -> dict:
+    """The current procedural research-policy statistics (the latest 'procedural' snapshot) or the neutral policy."""
+    row = db.execute("SELECT id, value, computed_at FROM web_metrics WHERE kind='procedural' ORDER BY id DESC "
+                     "LIMIT 1").fetchone()
+    if row is None:
+        return {"snapshot_id": None, "weights": {}, "statistics": None, "note": "neutral: no update yet"}
+    return {"snapshot_id": row[0], "computed_at": row[2]} | state.loads(row[1], {})
+
+
+def update_research_policy(db, now) -> dict:
+    """Procedural learning (CONTINUAL_LEARNING §3): recompute provider yields from the current records (so
+    forgotten records drop out) and move each provider's advisory weight toward 0.5 + yield, by at most
+    POLICY_STEP, inside POLICY_BOUNDS, only with >= POLICY_MIN_SOURCES sources. Logged as a snapshot holding the
+    previous weights; revert_research_policy restores them. Advisory only: nothing reads it to change a search
+    automatically in this release."""
+    stats = _yields(db)
+    previous = research_policy(db)
+    old = previous.get("weights") or {}
+    weights, changes_ = {}, {}
+    for name, p in stats["providers"].items():
+        w = float(old.get(name, 1.0))
+        if p["sources"] >= POLICY_MIN_SOURCES:
+            target = 0.5 + p["verified_sources"] / p["sources"]
+            new = min(POLICY_BOUNDS[1], max(POLICY_BOUNDS[0], w + max(-POLICY_STEP, min(POLICY_STEP, target - w))))
+            if round(new, 6) != round(w, 6):
+                changes_[name] = {"from": round(w, 6), "to": round(new, 6)}
+            w = new
+        weights[name] = round(w, 6)
+    value = {"weights": weights, "previous": old, "previous_snapshot": previous.get("snapshot_id"),
+             "changes": changes_, "statistics": stats, "reverted": False}
+    with store.write(db):
+        sid = _snapshot(db, "procedural", value, now)
+        state.log_event(db, None, "decision", {"procedural_policy": sid, "changed": sorted(changes_)}, now)
+        store.bump_state_version(db)
+    return {"snapshot_id": sid} | value
+
+
+def revert_research_policy(db, now) -> dict:
+    """Undo the last procedural update: a new snapshot with the previous weights (history is kept)."""
+    current = research_policy(db)
+    if current.get("snapshot_id") is None:
+        raise Conflict("no procedural policy update to revert")
+    value = {"weights": current.get("previous") or {}, "previous": current.get("weights") or {},
+             "previous_snapshot": current["snapshot_id"], "changes": {}, "statistics": current.get("statistics"),
+             "reverted": True}
+    with store.write(db):
+        sid = _snapshot(db, "procedural", value, now)
+        state.log_event(db, None, "decision", {"procedural_policy": sid, "reverted": current["snapshot_id"]}, now)
+        store.bump_state_version(db)
+    return {"snapshot_id": sid} | value
+
+
+# ---- model adaptation guard ---------------------------------------------------------------------------------
+
+AUTONOMOUS_ORIGINS = ("curiosity", "refresh", "monitor", "scheduler", "autonomous", "pocket")
+
+
+def model_adaptation_guard(db, request: dict, now) -> dict:
+    """Refuse any weight-changing action unless it carries (1) the owner's explicit authorisation, (2) an isolated
+    evaluation plan (held-out data never used for training, a metric and a pass bar) and (3) a rollback plan (a
+    restorable checkpoint of the current weights and a procedure); requests from an autonomous origin are always
+    refused. Every decision is logged (web_metrics kind 'adaptation', names and booleans only). Even a permitted
+    request is not executed: this package contains no weight-changing implementation (CONTINUAL_LEARNING §4).
+    Raises Conflict when refused."""
+    if not isinstance(request, dict):
+        raise ValidationError("request must be an object")
+    action = str(request.get("action") or "")[:80]
+    missing = []
+    origin = str(request.get("origin") or "")
+    if any(origin == o or origin.startswith(o + ":") for o in AUTONOMOUS_ORIGINS):
+        missing.append("autonomous origin: model adaptation is never started autonomously")
+    auth = request.get("owner_authorization") or {}
+    if not (isinstance(auth, dict) and auth.get("by") == "owner" and auth.get("confirmed") is True and
+            state.finite(auth.get("at")) is not None):
+        missing.append("owner_authorization {by: 'owner', confirmed: true, at}")
+    ev = request.get("isolated_evaluation") or {}
+    if not (isinstance(ev, dict) and ev.get("isolated") is True and ev.get("heldout") and ev.get("metric") and
+            state.finite(ev.get("pass_bar")) is not None):
+        missing.append("isolated_evaluation {isolated: true, heldout, metric, pass_bar}")
+    rb = request.get("rollback_plan") or {}
+    if not (isinstance(rb, dict) and rb.get("checkpoint") and rb.get("procedure")):
+        missing.append("rollback_plan {checkpoint, procedure}")
+    changes_weights = request.get("changes_weights", True) is not False
+    allowed = not missing or not changes_weights
+    decision = {"action": action, "changes_weights": changes_weights, "allowed": allowed,
+                "missing": [m.split(" ")[0] for m in missing], "implemented": False}
+    with store.write(db):
+        decision["decision_id"] = _snapshot(db, "adaptation", decision, now)
+        store.bump_state_version(db)
+    if not allowed:
+        raise Conflict("model adaptation refused: missing " + "; ".join(missing))
+    return decision | {"note": "Permitted by the guard, but no weight-changing implementation ships in this "
+                               "package; run it outside, in isolation, against the stated evaluation and rollback "
+                               "plan." if changes_weights else "Does not change weights."}
+
+
+# ---- CLI: nsf knowledge ... -----------------------------------------------------------------------------------
+
+def _cli_evolution(db, a, now):
+    return metrics(db, now, since=(now - a.since_days * 86400.0) if a.since_days else None, record=a.record)
+
+
+def _cli_changes(db, a, now):
+    return changes(db, a.topic, now, since=(now - a.since_days * 86400.0) if a.since_days else None,
+                   limit=a.limit, phrase=a.phrase)
+
+
+def _cli_hypotheses(db, a, now):
+    return {"hypotheses": hypotheses(db, status=a.status, limit=a.limit)}
+
+
+def _cli_hypothesize(db, a, now):
+    from . import claims, text
+    statement = a.statement.strip()
+    if not statement or len(statement) > 2000:
+        raise ValidationError("statement must be a non-blank string of at most 2000 characters")
+    with store.write(db):
+        hid, created = open_hypothesis(db, key=claims.claim_key(statement), statement=statement, origin="owner",
+                                       verification={"policy": "ADR-035", "state": "not_evaluated",
+                                                     "basis": "owner_hypothesis", "confidence": a.probability},
+                                       claims=[], values=text.values(statement), polarity=claims.polarity(statement),
+                                       now=now, with_prediction=False)
+        pid = predict(db, hid, now, deadline=now + a.deadline_days * 86400.0, probability=a.probability) \
+            if created else None
+        store.bump_state_version(db)
+    return {"hypothesis": hypothesis(db, hid), "prediction": prediction(db, pid) if pid else None}
+
+
+def _cli_calibration(db, a, now):
+    return {"current": calibration(db), "history": calibration_history(db, limit=a.limit)}
+
+
+def _cli_graph(db, a, now):
+    kind, _, nid = a.node.partition(":")
+    if not nid:
+        raise ValidationError("node must be KIND:ID, e.g. knowledge:12")
+    return graph(db, kind, nid, depth=a.depth)
+
+
+def _cli_learning(db, a, now):
+    if a.update:
+        return update_research_policy(db, now)
+    if a.revert:
+        return revert_research_policy(db, now)
+    return research_policy(db) | {"statistics_now": _yields(db)}
+
+
+def _cli_assert(db, a, now):
+    from . import knowledge
+    return knowledge.assert_fact(db, a.statement, now, note=a.note or "")
+
+
+def _cli_adapt(db, a, now):
+    import json
+    request = json.loads(a.request_json) if a.request_json else {}
+    request.setdefault("action", a.action)
+    request.setdefault("origin", "owner-cli")
+    return model_adaptation_guard(db, request, now)
+
+
+def register(sub):
+    from ..instance.cli import with_db
+
+    def _positive(text):
+        value = float(text)
+        if not value > 0:
+            raise ValueError(text)
+        return value
+
+    def _probability(text):
+        value = float(text)
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(text)
+        return value
+
+    k = sub.add_parser("knowledge", help="knowledge evolution: metrics, changes, hypotheses, calibration (ADR-038)")
+    ksub = k.add_subparsers(dest="knowledge_command", required=True, metavar="KNOWLEDGE_COMMAND")
+
+    def cmd(name, handler, help_text):
+        p = ksub.add_parser(name, help=help_text)
+        store.add_db_argument(p)
+        p.set_defaults(handler=with_db(handler))
+        return p
+
+    p = cmd("evolution", _cli_evolution, "metacognitive metrics computed from the stored records")
+    p.add_argument("--since-days", type=_positive)
+    p.add_argument("--record", action="store_true", help="store the snapshot (web_metrics)")
+    p = cmd("changes", _cli_changes, "what has changed in the understanding of TOPIC (versions, evidence, dates)")
+    p.add_argument("topic")
+    p.add_argument("--since-days", type=_positive)
+    p.add_argument("--limit", type=int, default=5)
+    p.add_argument("--phrase", action="store_true", help="let a configured local model rephrase the summary")
+    p = cmd("hypotheses", _cli_hypotheses, "research opportunities and hypotheses (provisional, never knowledge)")
+    p.add_argument("--status", choices=HYPOTHESIS_STATES)
+    p.add_argument("--limit", type=int, default=50)
+    p = cmd("hypothesize", _cli_hypothesize, "record the owner's hypothesis with a testable prediction")
+    p.add_argument("statement")
+    p.add_argument("--probability", type=_probability, default=0.5, help="your forecast that it holds")
+    p.add_argument("--deadline-days", type=_positive, default=30.0)
+    p = cmd("calibration", _cli_calibration, "Brier score and reliability bins of settled predictions")
+    p.add_argument("--limit", type=int, default=10)
+    p = cmd("graph", _cli_graph, "knowledge-graph edges around KIND:ID (claim, knowledge, hypothesis, ...)")
+    p.add_argument("node")
+    p.add_argument("--depth", type=int, default=1)
+    p = cmd("learning", _cli_learning, "procedural research-policy statistics (bounded, logged, reversible)")
+    group = p.add_mutually_exclusive_group()
+    group.add_argument("--update", action="store_true")
+    group.add_argument("--revert", action="store_true")
+    p = cmd("assert", _cli_assert, "record a fact as the owner's assertion (provenance user_asserted)")
+    p.add_argument("statement")
+    p.add_argument("--note")
+    p = cmd("adapt", _cli_adapt, "model adaptation guard: refuses weight changes without authorisation, isolated "
+                                 "evaluation and a rollback plan (nothing is executed)")
+    p.add_argument("action")
+    p.add_argument("--request-json", help="{owner_authorization, isolated_evaluation, rollback_plan, ...}")
+

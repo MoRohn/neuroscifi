@@ -278,6 +278,77 @@ MIGRATIONS = [
     -- Index-friendly "a newer release was seen since" scans (knowledge.newer_release_seen).
     CREATE INDEX web_claims_created ON web_claims(created_at);
     """,
+    # ---- version 8 (knowledge evolution, ADR-038; docs/knowledge/KNOWLEDGE_EVOLUTION.md) ----------------------
+    """
+    -- Provenance kind, verification record (ADR-035 state, category, basis, groups) and the separate times of a
+    -- knowledge version. Rows written before this migration passed the ADR-026 bar: their verification records
+    -- that policy. Publication and retrieval times are copied from the row's own sources; event time is unknown
+    -- for them (NULL), never invented. Effective time stays valid_from; verification time last_verified_at.
+    ALTER TABLE web_knowledge ADD COLUMN provenance TEXT NOT NULL DEFAULT 'verified_conclusion'
+      CHECK(provenance IN ('verified_conclusion','user_asserted'));
+    ALTER TABLE web_knowledge ADD COLUMN verification TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE web_knowledge ADD COLUMN published_at REAL;
+    ALTER TABLE web_knowledge ADD COLUMN event_at REAL;
+    ALTER TABLE web_knowledge ADD COLUMN retrieved_at REAL;
+    UPDATE web_knowledge SET verification='{"policy":"ADR-026"}',
+      published_at=(SELECT max(json_extract(j.value,'$.published_at')) FROM json_each(web_knowledge.sources) j),
+      retrieved_at=(SELECT max(json_extract(j.value,'$.retrieved_at')) FROM json_each(web_knowledge.sources) j);
+    -- Provisional claims kept as research opportunities and the hypotheses of the predictive loop. Never
+    -- verified knowledge: a hypothesis becomes knowledge only through consolidation and the owner's review.
+    CREATE TABLE web_hypotheses(
+      id INTEGER PRIMARY KEY, key TEXT NOT NULL, statement TEXT NOT NULL,
+      origin TEXT NOT NULL CHECK(origin IN ('insufficient','conflicting','temporally_unresolved','disputed',
+        'not_evaluated','gap','prediction_error','owner')),
+      status TEXT NOT NULL CHECK(status IN ('open','supported','refuted','revised','abandoned')),
+      verification TEXT NOT NULL DEFAULT '{}', claims TEXT NOT NULL DEFAULT '[]',
+      claim_values TEXT NOT NULL DEFAULT '[]', polarity INTEGER NOT NULL DEFAULT 1 CHECK(polarity IN (-1,1)),
+      alternatives TEXT NOT NULL DEFAULT '[]', knowledge_id INTEGER, parent_id INTEGER, task_id TEXT, note TEXT,
+      created_at REAL NOT NULL, updated_at REAL NOT NULL, resolved_at REAL);
+    CREATE INDEX web_hypotheses_key ON web_hypotheses(key, status);
+    CREATE INDEX web_hypotheses_task ON web_hypotheses(task_id);
+    -- Predictions about a knowledge item OR a hypothesis, with resolution criteria, a deadline and the forecast
+    -- probability (calibration). Rebuilt because knowledge_id was NOT NULL; every row and id is copied.
+    CREATE TABLE web_predictions_v8(
+      id INTEGER PRIMARY KEY, knowledge_id INTEGER, hypothesis_id INTEGER, expectation TEXT NOT NULL,
+      criteria TEXT NOT NULL DEFAULT '{}',
+      probability REAL CHECK(probability IS NULL OR (probability >= 0 AND probability <= 1)),
+      check_after REAL NOT NULL, deadline REAL, created_at REAL NOT NULL, task_id TEXT, checked_at REAL,
+      outcome TEXT CHECK(outcome IN ('confirmed','error','inconclusive')), detail TEXT NOT NULL DEFAULT '{}',
+      CHECK(knowledge_id IS NOT NULL OR hypothesis_id IS NOT NULL));
+    INSERT INTO web_predictions_v8(id,knowledge_id,expectation,check_after,created_at,task_id,checked_at,outcome,
+      detail) SELECT id,knowledge_id,expectation,check_after,created_at,task_id,checked_at,outcome,detail
+      FROM web_predictions;
+    DROP TABLE web_predictions;
+    ALTER TABLE web_predictions_v8 RENAME TO web_predictions;
+    CREATE INDEX web_predictions_due ON web_predictions(outcome, check_after);
+    CREATE INDEX web_predictions_hypothesis ON web_predictions(hypothesis_id);
+    -- Knowledge graph edges between typed nodes (claim, source, knowledge, interval, entity, hypothesis,
+    -- prediction, observation, error). Rebuilt to add the node kinds and edge kinds; every row is copied as
+    -- claim -> claim.
+    CREATE TABLE web_claim_links_v8(
+      id INTEGER PRIMARY KEY, task_id TEXT,
+      src_kind TEXT NOT NULL DEFAULT 'claim' CHECK(src_kind IN ('claim','source','knowledge','interval','entity',
+        'hypothesis','prediction','observation','error')), src TEXT NOT NULL,
+      dst_kind TEXT NOT NULL DEFAULT 'claim' CHECK(dst_kind IN ('claim','source','knowledge','interval','entity',
+        'hypothesis','prediction','observation','error')), dst TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('supports','contradicts','supersedes','duplicates','derived_from',
+        'evidence_for','valid_during','related_to','predicts','observed','error_of','revised_to')),
+      detail TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL);
+    INSERT INTO web_claim_links_v8(id,task_id,src,dst,kind,detail,created_at)
+      SELECT id,task_id,src,dst,kind,detail,created_at FROM web_claim_links;
+    DROP TABLE web_claim_links;
+    ALTER TABLE web_claim_links_v8 RENAME TO web_claim_links;
+    CREATE INDEX web_claim_links_src ON web_claim_links(src);
+    CREATE INDEX web_claim_links_dst ON web_claim_links(dst);
+    CREATE INDEX web_claim_links_task ON web_claim_links(task_id);
+    -- Metacognition snapshots: numbers only (calibration, evolution metrics, procedural research-policy
+    -- statistics and model-adaptation guard decisions); never statements, objectives or URLs.
+    CREATE TABLE web_metrics(
+      id INTEGER PRIMARY KEY,
+      kind TEXT NOT NULL CHECK(kind IN ('calibration','evolution','procedural','adaptation')),
+      value TEXT NOT NULL DEFAULT '{}', computed_at REAL NOT NULL);
+    CREATE INDEX web_metrics_kind ON web_metrics(kind, id);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

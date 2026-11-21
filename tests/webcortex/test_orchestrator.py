@@ -9,7 +9,7 @@ from neuroscifi.instance import evidence, store
 from neuroscifi.instance.errors import Conflict, ValidationError
 from neuroscifi.webcortex import knowledge, orchestrator, services as svc_mod, state
 from neuroscifi.webcortex.providers.corpus import CorpusProvider
-from test_consolidate import claim, cluster, consolidated
+from test_consolidate import TEXT, claim, cluster, consolidated, reworded
 
 T0 = 1_795_200_000.0            # 2026-11-21
 QUESTION = "What is the latest version of the Zephyr compiler?"
@@ -209,8 +209,8 @@ def test_page_budget_allows_exactly_one_fetch(individual, site):
 def test_fresh_accepted_knowledge_answers_without_the_web(individual, web):
     db, path = individual
     statement = "The okapi is a giraffid mammal native to the Ituri rainforest of the Democratic Republic of the Congo."
-    clusters = [cluster([claim(f"http://{h}/okapi", statement, key="okapi giraffid mammal native")
-                         for h in ("zoo.example", "museum.example")])]
+    clusters = [cluster([claim(f"http://{h}/okapi", reworded(statement, n), key="okapi giraffid mammal native")
+                         for n, h in enumerate(("zoo.example", "museum.example"))])]
     _, out = consolidated(db, clusters, T0 - 3600, objective="What is an okapi?")
     knowledge.review(db, out["provisional"][0], True, T0 - 3000)
     task = orchestrator.submit(db, "Where is the okapi native to?", T0)
@@ -409,8 +409,8 @@ def test_memory_answer_marks_provisional_knowledge_and_logs_extract_and_synthesi
     """R11: an answer from provisional (not accepted) knowledge says so; extract/synthesized events are written."""
     db, path = individual
     statement = "The okapi is a giraffid mammal native to the Ituri rainforest of the Democratic Republic of the Congo."
-    clusters = [cluster([claim(f"http://{h}/okapi", statement, key="okapi giraffid mammal native")
-                         for h in ("zoo.example", "museum.example")])]
+    clusters = [cluster([claim(f"http://{h}/okapi", reworded(statement, n), key="okapi giraffid mammal native")
+                         for n, h in enumerate(("zoo.example", "museum.example"))])]
     _, out = consolidated(db, clusters, T0 - 3600, objective="What is an okapi?")
     kid = out["provisional"][0]
     task = orchestrator.submit(db, "Where is the okapi native to?", T0)
@@ -463,7 +463,8 @@ def test_requeue_semantics_and_feedback_reader(individual, site):
     with pytest.raises(Conflict, match="completed"):
         orchestrator.requeue(db, done["id"], T0 + 3)
     # knowledge.feedback: by knowledge id (its key's history) and by key
-    _, out = consolidated(db, [cluster([claim(f"http://{h}/numpy") for h in ("a.example", "b.example")])])
+    _, out = consolidated(db, [cluster([claim(f"http://{h}/numpy", reworded(TEXT, n), values=["v2.3.5"])
+                                        for n, h in enumerate(("a.example", "b.example"))])])
     kid = out["provisional"][0]
     rows = knowledge.feedback(db, kid)
     assert rows and rows[0]["effect"] == "new" and rows[0]["knowledge_id"] == kid
@@ -1214,8 +1215,9 @@ def test_report_wording_for_memory_answers_cancellation_and_resume(individual, w
     resuming a cancelled task points to requeue."""
     db, path = individual
     statement = "The okapi is a giraffid mammal native to the Ituri rainforest of the Democratic Republic of the Congo."
-    _, out = consolidated(db, [cluster([claim(f"http://{h}/okapi", statement, key="okapi giraffid mammal native")
-                                        for h in ("zoo.example", "museum.example")])], T0 - 3600,
+    _, out = consolidated(db, [cluster([claim(f"http://{h}/okapi", reworded(statement, n),
+                                              key="okapi giraffid mammal native")
+                                        for n, h in enumerate(("zoo.example", "museum.example"))])], T0 - 3600,
                           objective="What is an okapi?")
     knowledge.review(db, out["provisional"][0], True, T0 - 3000)
     task = orchestrator.submit(db, "Where is the okapi native to?", T0)

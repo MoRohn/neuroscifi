@@ -16,7 +16,7 @@ def db(tmp_path):
 
 WEB_TABLES = {"web_tasks", "web_events", "web_sources", "web_claims", "web_claim_links", "web_knowledge",
               "web_entities", "web_mentions", "web_strategies", "web_monitors", "web_predictions", "web_feedback",
-              "web_forgotten"}
+              "web_forgotten", "web_hypotheses", "web_metrics"}
 
 
 def _check_values(db, table, column):
@@ -26,8 +26,8 @@ def _check_values(db, table, column):
     return tuple(v.strip().strip("'") for v in match.group(1).split(","))
 
 
-def test_fresh_individual_has_schema_7_and_every_web_table(db):
-    assert schema.SCHEMA_VERSION == 7 and db.execute("PRAGMA user_version").fetchone()[0] == 7
+def test_fresh_individual_has_the_current_schema_and_every_web_table(db):
+    assert schema.SCHEMA_VERSION >= 8 and db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
     tables = {n for (n,) in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'web_%'")}
     assert tables == WEB_TABLES
     indexes = {n for (n,) in db.execute("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'web_%'")}
@@ -67,7 +67,7 @@ def test_version_5_file_migrates_and_reports_web_inventory(tmp_path):
     raw.close()
     db = store.open_existing(old)
     try:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
         inventory = store.inventory(db)
         assert inventory["web"]["tasks"] == 0 and inventory["web"]["knowledge"] == 0
         assert state.get_config(db).enabled is False

@@ -347,3 +347,60 @@ Consequences. Answers read better and say what is missing (knowledge gaps), at a
 (measured: COGNITIVE_INFERENCE.md §4). The guard is lexical: hedge detection can be fooled by a hedge word in an
 otherwise assertive sentence, and number grounding does not check units or which claim a number belongs to. A model
 outage, a key problem or a guard rejection only changes the label; research keeps working.
+
+# ADR-038 (draft) Knowledge evolution: verified-only consolidation, hypotheses with calibrated predictions, and three separated kinds of learning. R
+
+Status: draft for docs/architecture/ARCHITECTURAL_DECISIONS.md (Lane D, v0.7.0). Amends ADR-026 (its consolidation
+thresholds only; its governance stands) and builds on ADR-029 (web memory lives in the individual's file) and
+ADR-035 (claim verification). Details and every rule: docs/knowledge/KNOWLEDGE_EVOLUTION.md and
+docs/knowledge/CONTINUAL_LEARNING.md.
+
+Context. After ADR-035 the fact-verification verdict used per-category rules (an undated stable pair is supported,
+a "current" claim needs evidence from the time window, syndicated copies count once), but consolidation into
+knowledge still used ADR-026's single bar over cluster confidence. A statement could be "supported" yet never become
+knowledge, and an old "latest" page could still contradict current knowledge. Statements that failed the bar were
+dropped from view, so nothing tracked them as open questions. The system made "still holds" predictions but had no
+forecast probability, calibration, error analysis or revision. There was no record of how understanding of a topic
+had changed, no metric of learning other than stored volume, and no written boundary between updating memory,
+tuning research behaviour and changing model weights.
+
+Decision.
+1. Consolidation eligibility is the ADR-035 verification state of each scored cluster (evolution.cluster_verdict:
+   category policy, syndication-aware groups, timeframe, authoritative records). Only "supported" clusters become
+   provisional candidates. The owner question path of ADR-026 is unchanged, and nothing is accepted without the
+   owner. The owner's floors (auto_provisional_min_sources, auto_provisional_min_confidence) can only raise the bar.
+   "insufficient", "temporally_unresolved" and "not_evaluated" clusters are held as research opportunities.
+   "conflicting" and "disputed" clusters record a contradiction (against knowledge, or as a hypothesis) and choose
+   no consensus.
+2. Every record has one provenance kind: raw_evidence (web_sources), provisional_claim (web_claims, web_hypotheses),
+   verified_conclusion and user_asserted (web_knowledge.provenance). An owner assertion is a new accepted version
+   with state not_evaluated. Web evidence never supersedes it; a conflict is recorded and the owner is asked.
+3. Each knowledge version stores its verification record and its publication, event, retrieval, verification and
+   effective times. Versions are never destroyed, and only forgetting removes them.
+4. Typed knowledge-graph edges live in the existing web_claim_links table, rebuilt with node kinds: claim -> source,
+   evidence, contradiction and validity interval; entity -> entity; knowledge -> knowledge (supersedes);
+   hypothesis -> prediction -> observation -> error -> revised hypothesis or version.
+5. Each research opportunity is a hypothesis with a testable prediction: resolution criteria, a deadline (class TTL,
+   at most 30 days) and a forecast probability (the ADR-035 posterior). Later verified evidence settles it
+   (confirmed, or error with an error analysis, alternative explanations and a revised hypothesis). An expired
+   deadline gives inconclusive. Calibration (Brier score, skill, ECE, 10 reliability bins) is persisted after every
+   settlement.
+6. Metacognitive metrics are computed from records only. Stored volume is not a metric. "What has changed in your
+   understanding of X" is a structured, dated answer. A local model may rephrase it from the returned records,
+   labelled; a remote endpoint never receives it.
+7. Learning comes in three kinds, kept separate. Knowledge evolution (above). Procedural learning: advisory
+   provider weights from verified yield, at most 0.1 per step, in [0.5, 1.5], logged as snapshots, and reversible.
+   Model adaptation: not implemented. A guard refuses any weight change without owner authorisation, an isolated
+   evaluation plan and a rollback plan, always refuses autonomous origins, and logs every decision.
+8. Migration 8 is forward-only and atomic. It adds the knowledge columns, web_hypotheses and web_metrics, and
+   rebuilds web_predictions and web_claim_links, copying every row and id. Forgetting cascades through the new
+   records, and checkpoint restore replays the cascade.
+
+Consequences. True stable and historical facts with undated sources now reach the owner as candidates. Stale
+current-state claims no longer contradict knowledge; they become hypotheses. Consolidation recounts independent
+groups, so a cluster built outside the scorer that counted a copied sentence twice is now one source; test fixtures
+were reworded accordingly. web_knowledge.confidence remains the scorer's cluster posterior, and the ADR-035
+posterior is in verification.confidence. Prediction quality is now measurable but noisy until enough forecasts
+settle. Procedural weights are advisory: wiring them into provider selection is a later owner decision. Matching is
+still lexical (keys, values), so a rephrased hypothesis can be missed. Reversal: drop the eligibility call to
+restore ADR-026 thresholds. The new tables and columns can stay, because they are additive and readers ignore them.

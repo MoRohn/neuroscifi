@@ -23,7 +23,11 @@ LIVE_KNOWLEDGE = ("provisional", "accepted", "stale")   # rows that still descri
 MONITOR_STATES = ("proposed", "active", "paused", "stopped")
 PREDICTION_OUTCOMES = ("confirmed", "error", "inconclusive")
 FEEDBACK_EFFECTS = ("strengthened", "weakened", "unchanged", "reversed", "new")
-LINK_KINDS = ("supports", "contradicts", "supersedes", "duplicates")
+CLAIM_LINK_KINDS = ("supports", "contradicts", "supersedes", "duplicates")     # claim -> claim (migration 6)
+# Knowledge-graph edges between typed nodes (migration 8, ADR-038; docs/knowledge/KNOWLEDGE_EVOLUTION.md §3).
+LINK_KINDS = CLAIM_LINK_KINDS + ("derived_from", "evidence_for", "valid_during", "related_to", "predicts", "observed",
+                                 "error_of", "revised_to")
+NODE_KINDS = ("claim", "source", "knowledge", "interval", "entity", "hypothesis", "prediction", "observation", "error")
 DISABLED_MESSAGE = "Web access is disabled for this individual; enable with `nsf web config --enable`"
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 
@@ -412,17 +416,22 @@ def claims(db, task_id) -> list[dict]:
 
 
 def links(db, task_id) -> list[dict]:
+    """The task's claim -> claim links (supports, contradicts, supersedes, duplicates). Typed knowledge-graph edges
+    (evolution.graph) are not listed here."""
     return [{"id": i, "src": s, "dst": d, "kind": k, "detail": loads(x, {}), "at": t} for i, s, d, k, x, t in
-            db.execute("SELECT id,src,dst,kind,detail,created_at FROM web_claim_links WHERE task_id=? ORDER BY id",
-                       (task_id,))]
+            db.execute("SELECT id,src,dst,kind,detail,created_at FROM web_claim_links WHERE task_id=? AND "
+                       "src_kind='claim' AND dst_kind='claim' ORDER BY id", (task_id,))]
 
 
-def add_link(db, task_id, src, dst, kind, detail, now) -> int:
+def add_link(db, task_id, src, dst, kind, detail, now, *, src_kind="claim", dst_kind="claim") -> int:
     """Caller owns the transaction."""
     if kind not in LINK_KINDS:
         raise ValidationError(f"link kind must be one of {', '.join(LINK_KINDS)}")
-    return db.execute("INSERT INTO web_claim_links(task_id,src,dst,kind,detail,created_at) VALUES(?,?,?,?,?,?)",
-                      (task_id, src, dst, kind, dumps(detail or {}), now)).lastrowid
+    if src_kind not in NODE_KINDS or dst_kind not in NODE_KINDS:
+        raise ValidationError(f"node kind must be one of {', '.join(NODE_KINDS)}")
+    return db.execute("INSERT INTO web_claim_links(task_id,src_kind,src,dst_kind,dst,kind,detail,created_at) "
+                      "VALUES(?,?,?,?,?,?,?,?)", (task_id, src_kind, str(src), dst_kind, str(dst), kind,
+                                                  dumps(detail or {}), now)).lastrowid
 
 
 def cluster_json(cluster: ClaimCluster) -> dict:

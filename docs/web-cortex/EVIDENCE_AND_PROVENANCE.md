@@ -46,7 +46,14 @@ PDFs, feeds and plain text pass through the same sentence path.
 
 ## 3. Confidence: a Beta posterior over independent groups
 
-**Independence groups** (`independence_groups`): claims from the **same registrable domain**, or whose raw texts have shingle Jaccard of at least 0.8 (3-word shingles; syndication, copying), collapse into one group. Ten reports on one domain count once (`test_same_domain_repetition_does_not_add_confidence`, `test_syndicated_copy_on_second_domain_counts_once`).
+**Independence groups** (`independence_groups`, ADR-035): claims collapse into one group when any of these holds:
+
+- They come from the same host.
+- Their raw sentences are copies: 3-word shingle Jaccard of at least 0.8.
+- They share an origin (`flags["origin"]`, `claims.origin_keys`): a canonical URL on another host, an attribution line ("originally published by X", matched to X's host label), or a wire credit ("(Reuters)", "by Associated Press").
+- During synthesis, the two documents are near-identical: at least 40 words each and 5-word shingle Jaccard of at least 0.6 (`document_origins`, passed as `origins`).
+
+Ten reports on one domain count once, and so do two outlets carrying one wire story (`test_same_domain_repetition_does_not_add_confidence`, `test_syndicated_copy_on_second_domain_counts_once`, `test_canonical_url_and_near_identical_documents_join_origins`). The full table is in [CLAIM_VERIFICATION.md](../knowledge/CLAIM_VERIFICATION.md) §6.
 
 **Representative and bearing.** Within a cluster, the *representative* is the claim whose supporters (`claims.agrees`) span the most independent groups; ties go to the newer effective date, then higher relevance. For release and package records it is the **highest version** (`text.version_key`, semver-aware: `2.5.5 > 2.5.4 > 2.5.5rc1 > 2.5.5.dev1`, then the newer date), never the provider order (`test_different_releases_are_different_records_and_the_highest_version_leads`). Every other claim then bears on the representative in one of three ways (`claims.bearing`):
 
@@ -73,7 +80,7 @@ uncertainty = sqrt(alpha*beta / ((alpha+beta)^2 * (alpha+beta+1)))   (posterior 
 | Ordinary page (secondary) | 0.8 |
 | Structured API record fetched for the task (primary) | 0.9 |
 | Claim from an adversarial (injection-flagged) source, section 7 | **0**: shown, never counted |
-| Undated source (no `observed_at`, `published_at` or `event_at`) | x 0.75, in every class |
+| Undated source (no `observed_at`, `published_at` or `event_at`) | x 0.75 in cluster scoring. Verdicts and consolidation use the claim category's factor (ADR-035): x 1.0 for stable and historical statements, x 0.75 for scientific, numerical, comparative and registry statements, and not counted at all for time-sensitive ones |
 | Dated, but older than the class TTL | x 0.5, **only** for `breaking`, `volatile`, `release` |
 
 Age discounts evidence only where age makes a statement less likely to be true: a 2019 finding is not less true than a 2026 one, and a definition does not rot. For `scientific` and `stable` classes staleness means "re-verify" (reported on the knowledge item, TEMPORAL_KNOWLEDGE §4), not a discount (`test_age_discounts_only_time_sensitive_classes`, `test_stale_and_undated_sources_lower_confidence`).
@@ -92,7 +99,13 @@ Resulting numbers (dated, same subject, agreeing, no contradiction; computed fro
 | 3 primary | 0.787 |
 | 3 undated secondary | 0.737 |
 
-**Consequence:** the two-source confidence floor is 0.72 (`SUPPORTED_MIN_CONFIDENCE` and `WebConfig.auto_provisional_min_confidence`). Derivation with prior Beta(1, 1) and secondary weight 0.8: two dated secondary groups give 2.6 / 3.6 = 0.722 and pass; one dated and one undated (0.8 + 0.6) give 2.4 / 3.4 = 0.706 and do not; two undated (0.6 + 0.6) give 2.2 / 3.2 = 0.688 and do not. The decisive criteria remain at least two agreeing independent groups and no contradiction; the floor keeps weak or undated pairs out. See MEMORY_INTEGRATION §3 (`test_two_independent_sources_rule_is_coherent_across_verdict_and_consolidation`).
+**Consequence:** the two-group posterior floor is 0.72 (`claims.VERIFICATION_MIN_CONFIDENCE`). Derivation with prior Beta(1, 1) and secondary weight 0.8:
+
+- Two dated secondary groups give 2.6 / 3.6 = 0.722 and pass.
+- With the 0.75 undated factor, one dated and one undated group (0.8 + 0.6) give 2.4 / 3.4 = 0.706, and two undated groups (0.6 + 0.6) give 2.2 / 3.2 = 0.688. Neither passes.
+- Since ADR-035, a **stable or historical** statement weighs undated sources at 1.0, so two credible undated groups give 0.722, exactly the two-group bar and never a single source.
+
+The cluster `confidence` shown in reports keeps the 0.75 factor for every class. The decision to verify uses the category policy. **Consolidation follows the same decision** (ADR-038, [KNOWLEDGE_EVOLUTION.md](../knowledge/KNOWLEDGE_EVOLUTION.md) §2): `evolution.cluster_verdict` applies the category policy to each cluster. Only `supported` clusters become knowledge candidates, and the owner's `auto_provisional_min_sources` and `auto_provisional_min_confidence` can only raise that bar.
 
 `test_more_independent_agreement_raises_confidence` and `test_contradiction_lowers_confidence` cover the direction of both effects.
 
@@ -143,16 +156,22 @@ Pairs from the same independence group, and pairs of claims that are not directl
 
 An optional "is it true that", "fact-check" or "verify" prefix and "not" or "never" in the statement are allowed. Source sentences must be *about* X (its primary subject, section 2), not mention it in passing. A number in the subject ("Quillstream 4.2.0") must not differ in the sentence, since another release is another subject. A document titled "X (Qualifier)" whose qualifier the statement does not share ("Eiffel Tower (Paris, Texas)") is about something else (`test_fact_check_discriminates_place_claims`, `test_verdict_shapes_quantity_capital_and_date`).
 
-Independent groups then weigh in as in `claims.evaluate`: prior Beta(1, 1), each group adds its evidence weight split between supporting and contradicting members. A claim that a listed contradiction pits against a supporting claim counts as contradicting too, so a verdict never says "0 contradict" next to a contradiction of the checked statement (`test_verdict_is_consistent_with_listed_contradictions`).
+Independent groups (with syndication joined, section 3) then weigh in as in `claims.evaluate`: prior Beta(1, 1), and each group adds its evidence weight split between supporting and contradicting members, with the **claim category's** undated factor. A claim that a listed contradiction pits against a supporting claim counts as contradicting too, so a verdict never says "0 contradict" next to a contradiction of the checked statement (`test_verdict_is_consistent_with_listed_contradictions`).
 
-| Label | Rule |
-|---|---|
-| `supported` | Mean at least 0.72, at least 2 independent groups support, no group contradicts. Adversarial claims count on neither side |
-| `disputed` | More weight on the contradicting side than on the supporting side |
-| `contested` | At least one group supports and at least one contradicts, but not `disputed` |
-| `insufficient` | Anything else, including no claim naming the subject with the checked relation (confidence 0.5) |
+**Categories and states (ADR-035, supersedes ADR-026's single rule).** `temporal.claim_category` assigns one of stable, historical, time_sensitive, scientific, numerical, comparative, registry or interpretive. `claims.CATEGORY_POLICY` sets, per category, the undated factor, the number of groups needed, which direct authoritative record suffices, and whether a timeframe is required. `claims.verification_state` then decides:
 
-The verdict object carries `label`, `confidence`, `statement`, `shape` (null for an unsupported statement), `citations`, `supporting` and `contradicting` (claim ids) and `reasons` (group counts, the posterior mean and up to four contradicting sources with what each says instead). A statement of any other shape gets `insufficient`, `shape: null` and a reason that lists the shapes the lexical checker supports; no source is counted. A fact-verification task with no extracted claims at all has `verdict: null` (`test_unsupported_shapes_and_no_claims`). Because of the 0.72 floor, `supported` needs two dated independent sources; one dated plus one undated, or two undated, stay `insufficient`. A verdict's `ttl_overrides` (owner `freshness_ttl`) come from `synthesize` (`test_synthesize_threads_ttl_overrides`, `test_score_threads_ttl_overrides`). Older tests of the labels: `test_verdict_labels`, `test_verdict_for_negated_claim_flips_support`, `test_verdict_insufficient_when_nothing_matches`.
+| State | Rule | Legacy `label` |
+|---|---|---|
+| `supported` | No group contradicts, and either at least 2 independent groups agree with posterior mean ≥ 0.72, or a direct authoritative record supports it (the subject's official site for narrow stable or historical facts; the package registry for publication and latest version) | supported |
+| `disputed` | More contradicting than supporting groups, with contradicting weight ≥ 1.5 × supporting weight (or no support at all) | disputed |
+| `conflicting` | Credible evidence on both sides; neither clearly outweighs the other. No consensus is chosen | contested |
+| `insufficient` | Evidence was examined but too little bears on it | insufficient |
+| `temporally_unresolved` | A time-sensitive statement with no evidence dated inside the question's window | insufficient |
+| `not_evaluated` | A judgement (interpretive), an unsupported statement shape, or no usable source | insufficient |
+
+The verdict carries `state`, `category`, `category_reason`, `basis` (`corroboration`, `official_source`, `registry_record`, `version_marker`, `contradiction` or null), `aspect` (registry statements), `timeframe`, `independent_groups`, and the legacy fields `label`, `confidence`, `statement`, `shape` (null for an unsupported statement), `citations`, `supporting`, `contradicting` and `reasons`. Stored verdicts are normalised on read with `claims.verdict_state`. A fact-verification task with no extracted claims at all has `verdict: null` (`test_unsupported_shapes_and_no_claims`). A verdict's `ttl_overrides` (owner `freshness_ttl`) come from `synthesize` (`test_synthesize_threads_ttl_overrides`, `test_score_threads_ttl_overrides`). Every rule, number and benchmark result: [CLAIM_VERIFICATION.md](../knowledge/CLAIM_VERIFICATION.md) §2–§8 (`tests/webcortex/test_claim_verification.py`). Older tests of the labels: `test_verdict_labels`, `test_verdict_for_negated_claim_flips_support`, `test_verdict_insufficient_when_nothing_matches`.
+
+**Verdict versus knowledge.** The same states decide what may become knowledge (ADR-038). Consolidation computes the state of every scored cluster (`evolution.cluster_verdict`). Only `supported` clusters become provisional knowledge candidates for the owner, recording `verification` and provenance kind `verified_conclusion`. `insufficient`, `temporally_unresolved` and `not_evaluated` clusters are kept as research opportunities (hypotheses with a testable prediction), and `conflicting` and `disputed` clusters record a contradiction. See [KNOWLEDGE_EVOLUTION.md](../knowledge/KNOWLEDGE_EVOLUTION.md) §2.
 
 ## 7. Prompt-injection quarantine (`safety.py`)
 

@@ -85,7 +85,7 @@ def test_migration_4_adds_epoch_links():
 
 
 def test_migration_5_adds_epoch_contexts_and_streams():
-    assert schema.SCHEMA_VERSION == 7
+    assert schema.SCHEMA_VERSION >= 8
     assert _statements(schema.MIGRATIONS[4]) == [
         "CREATE TABLE epoch_contexts( epoch TEXT PRIMARY KEY REFERENCES epochs(name), context TEXT NOT NULL, "
         "created_at REAL NOT NULL)",
@@ -127,8 +127,8 @@ def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
             "epoch", "source_epoch", "segments", "pending_id", "created_at"]
         for table in ("epoch_contexts", "epoch_streams"):   # migration 5 adds both, empty
             assert db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
-        web = [t for t in _tables(db) if t.startswith("web_")]   # migration 6 adds the Web Cortex tables, empty
-        assert len(web) == 13 and all(db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0 for t in web)
+        web = [t for t in _tables(db) if t.startswith("web_")]   # migrations 6-8 add the Web Cortex tables, empty
+        assert len(web) == 15 and all(db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0 for t in web)
         assert db.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='evidence_tally'").fetchone()
         if version == 1:  # migration 2 adds forgotten_roots, empty
             assert db.execute("SELECT count(*) FROM forgotten_roots").fetchone()[0] == 0
@@ -201,7 +201,7 @@ def test_opening_a_current_file_is_a_no_op(tmp_path):
         before = _dump(raw, _tables(raw))
     db = store.connect(path)
     try:
-        assert schema.migrate(db) == schema.SCHEMA_VERSION == 7
+        assert schema.migrate(db) == schema.SCHEMA_VERSION >= 8
         assert db.total_changes == 0
         assert db.execute("PRAGMA schema_version").fetchone()[0] == cookie
         assert _objects(db) == objects and _dump(db, list(before)) == before
@@ -209,7 +209,7 @@ def test_opening_a_current_file_is_a_no_op(tmp_path):
         db.close()
     store.open_existing(path).close()
     with sqlite3.connect(path) as raw:
-        assert raw.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
         assert raw.execute("PRAGMA schema_version").fetchone()[0] == cookie
 
 

@@ -6,6 +6,12 @@ refresh's consolidation with the item: the same values and polarity -> 'confirme
 recorded); a superseding value or a contradiction -> 'error' (a prediction_error event, a question for the owner
 within the web question budget, and a curiosity boost for the item, see curiosity.rank); no evidence either way
 -> 'inconclusive'. Refreshes are autonomous research: origin 'refresh:<knowledge id>'.
+
+ADR-038 (docs/knowledge/KNOWLEDGE_EVOLUTION.md §5): each prediction stores its forecast `probability` (the item's
+confidence when it was made: the posterior that the statement holds) and its resolution criteria; a settled
+prediction updates the persisted calibration (evolution.record_calibration), and an 'error' gets an error analysis
+with the graph path prediction -> observation -> error -> revision (evolution.knowledge_prediction_error).
+Predictions about hypotheses (hypothesis_id, knowledge_id NULL) are made and settled by webcortex/evolution.py.
 """
 from __future__ import annotations
 
@@ -15,7 +21,7 @@ from . import state
 from .types import TERMINAL_STATES
 
 COLUMNS = ("id", "knowledge_id", "expectation", "check_after", "created_at", "task_id", "checked_at", "outcome",
-           "detail")
+           "detail", "hypothesis_id", "probability", "criteria", "deadline")
 DEFAULT_EXPECTATION = "still holds at next refresh"
 MAX_REFRESHES = 5
 
@@ -24,8 +30,13 @@ def _row(db, prediction_id) -> dict:
     found = db.execute(f"SELECT {','.join(COLUMNS)} FROM web_predictions WHERE id=?", (prediction_id,)).fetchone()
     if found is None:
         raise NotFound(f"No prediction {prediction_id}")
-    out = dict(zip(COLUMNS, found))
+    return _decode(found)
+
+
+def _decode(values) -> dict:
+    out = dict(zip(COLUMNS, values))
     out["detail"] = state.loads(out["detail"], {})
+    out["criteria"] = state.loads(out["criteria"], {})
     return out
 
 
@@ -35,10 +46,19 @@ def add(db, knowledge_id, expectation, check_after, now) -> int:
         raise ValidationError("expectation must be a non-blank string of at most 500 characters")
     if state.finite(check_after) is None:
         raise ValidationError("check_after must be a number")
-    if db.execute("SELECT 1 FROM web_knowledge WHERE id=?", (knowledge_id,)).fetchone() is None:
+    found = db.execute("SELECT confidence, key, claim_values, polarity FROM web_knowledge WHERE id=?",
+                       (knowledge_id,)).fetchone()
+    if found is None:
         raise NotFound(f"No web knowledge item {knowledge_id}")
-    pid = db.execute("INSERT INTO web_predictions(knowledge_id,expectation,check_after,created_at) VALUES(?,?,?,?)",
-                     (knowledge_id, expectation, check_after, now)).lastrowid
+    probability = state.finite(found[0])
+    probability = None if probability is None else min(1.0, max(0.0, probability))
+    criteria = {"knowledge_id": knowledge_id, "key": found[1], "values": state.loads(found[2], []),
+                "polarity": found[3], "confirmed_when": "the refresh finds the same values and polarity",
+                "error_when": "a newer value supersedes it or a source contradicts it",
+                "inconclusive_when": "the refresh finds no evidence about it"}
+    pid = db.execute("INSERT INTO web_predictions(knowledge_id,expectation,check_after,created_at,probability,"
+                     "criteria) VALUES(?,?,?,?,?,?)", (knowledge_id, expectation, check_after, now, probability,
+                                                       state.dumps(criteria))).lastrowid
     state.log_event(db, None, "prediction", {"prediction_id": pid, "knowledge_id": knowledge_id,
                                              "check_after": check_after}, now)
     return pid
@@ -55,15 +75,16 @@ def listing(db, *, open_only=False, limit=100) -> list[dict]:
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValidationError("limit must be a positive integer")
     where = "WHERE outcome IS NULL" if open_only else ""
-    return [dict(zip(COLUMNS, r)) | {"detail": state.loads(r[-1], {})} for r in db.execute(
+    return [_decode(r) for r in db.execute(
         f"SELECT {','.join(COLUMNS)} FROM web_predictions {where} ORDER BY id DESC LIMIT ?", (int(limit),))]
 
 
 def due(db, now) -> list[dict]:
-    """Open predictions whose check time has come."""
-    return [dict(zip(COLUMNS, r)) | {"detail": state.loads(r[-1], {})} for r in db.execute(
-        f"SELECT {','.join(COLUMNS)} FROM web_predictions WHERE outcome IS NULL AND check_after<=? ORDER BY "
-        "check_after, id", (now,))]
+    """Open predictions about knowledge whose check time has come (hypothesis predictions are settled by evidence,
+    evolution.observe, not by refresh tasks)."""
+    return [_decode(r) for r in db.execute(
+        f"SELECT {','.join(COLUMNS)} FROM web_predictions WHERE outcome IS NULL AND knowledge_id IS NOT NULL AND "
+        "check_after<=? ORDER BY check_after, id", (now,))]
 
 
 def _verdict(kid, item, consolidation):
@@ -85,7 +106,7 @@ def _verdict(kid, item, consolidation):
 
 def check(db, prediction_id, task_report, now) -> dict:
     """Settle a prediction from the refresh task's report (its result JSON; key "consolidation")."""
-    from . import knowledge, temporal
+    from . import evolution, knowledge, temporal
     report = task_report or {}
     with store.write(db):
         pred = _row(db, prediction_id)
@@ -96,9 +117,13 @@ def check(db, prediction_id, task_report, now) -> dict:
         item = knowledge._decode(found) if found else None
         outcome, reason = _verdict(kid, item, report.get("consolidation") or {})
         detail = {"reason": reason, "task_id": report.get("task_id") or pred["task_id"]}
+        if pred["knowledge_id"] is None:
+            raise Conflict(f"Prediction {prediction_id} is about a hypothesis; evidence settles it (evolution)")
         if outcome == "error":
             state.log_event(db, pred["task_id"], "prediction_error",
                             {"prediction_id": prediction_id, "knowledge_id": kid, "reason": reason}, now)
+            detail["error_analysis"] = evolution.knowledge_prediction_error(
+                db, pred, item, reason, {"task_id": report.get("task_id") or pred["task_id"]}, now)
             if item is not None and item["status"] in knowledge.REVIEWABLE:   # a superseded item has a successor
                 detail["pending_id"] = knowledge.ask(   # within the web question budget (None when spent)
                     db, f"web:knowledge:{kid}",
@@ -109,6 +134,7 @@ def check(db, prediction_id, task_report, now) -> dict:
             detail["next_prediction"] = add(db, kid, pred["expectation"], now + ttl, now)
         db.execute("UPDATE web_predictions SET outcome=?, checked_at=?, detail=? WHERE id=?",
                    (outcome, now, state.dumps(detail), prediction_id))
+        evolution.record_calibration(db, now)
         state.log_event(db, pred["task_id"], "feedback",
                         {"prediction_id": prediction_id, "knowledge_id": kid, "outcome": outcome}, now)
         store.bump_state_version(db)

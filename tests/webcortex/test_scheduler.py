@@ -168,7 +168,7 @@ def test_worker_polls_until_stopped(individual):
 def test_prediction_check_outcomes(individual):
     from test_consolidate import consolidated, two_sources
     db, _ = individual
-    _, first = consolidated(db, [two_sources(published=T0 - 10 * DAY)])
+    _, first = consolidated(db, [two_sources(published=T0 - 5 * DAY)])
     kid = first["provisional"][0]
     confirmed = predictions.record(db, kid, "still holds at next refresh", T0 + DAY, T0)
     out = predictions.check(db, confirmed["id"], {"consolidation": {"unchanged": [kid]}}, T0 + 2 * DAY)

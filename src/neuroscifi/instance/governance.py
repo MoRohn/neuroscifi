@@ -420,6 +420,62 @@ def _forget_pending(db, scopes, prefixes, now):
     return sorted({pid for pid, _ in rows})
 
 
+def _has_evolution(db):
+    """Migration 8 (knowledge evolution, ADR-038) is present."""
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='web_hypotheses'").fetchone() is not None
+
+
+def _drop_node_links(db, kinds, ids):
+    """Delete the typed knowledge-graph edges touching nodes (kind in `kinds`, id in `ids`). Caller owns the txn."""
+    for part in _chunks(sorted({str(i) for i in ids})):
+        marks, kmarks = _in(part), _in(kinds)
+        db.execute(f"DELETE FROM web_claim_links WHERE (src_kind IN ({kmarks}) AND src IN ({marks})) OR "
+                   f"(dst_kind IN ({kmarks}) AND dst IN ({marks}))", (*kinds, *part, *kinds, *part))
+
+
+def _drop_predictions(db, where, params):
+    """Delete predictions (and their prediction/error graph nodes). Caller owns the txn."""
+    ids = _ids(db, f"SELECT id FROM web_predictions WHERE {where}", params)
+    if ids:
+        _drop_node_links(db, ("prediction", "error"), ids)
+        for part in _chunks(ids):
+            db.execute(f"DELETE FROM web_predictions WHERE id IN ({_in(part)})", part)
+    return ids
+
+
+def _drop_hypotheses(db, ids):
+    """Delete hypotheses with their predictions and graph edges; revisions of them lose the parent link (their own
+    statement rests on other evidence). Caller owns the txn. Returns the ids."""
+    ids = sorted(set(ids))
+    for part in _chunks(ids):
+        marks = _in(part)
+        _drop_predictions(db, f"hypothesis_id IN ({marks})", part)
+        db.execute(f"UPDATE web_hypotheses SET parent_id=NULL WHERE parent_id IN ({marks})", part)
+        db.execute(f"DELETE FROM web_hypotheses WHERE id IN ({marks})", part)
+        db.execute(f"DELETE FROM web_events WHERE json_extract(detail,'$.hypothesis_id') IN ({marks})", part)
+    if ids:
+        _drop_node_links(db, ("hypothesis",), ids)
+    return ids
+
+
+def _scrub_observations(db, task_id):
+    """Predictions settled or tracked by a forgotten task keep their outcome but lose what the task observed."""
+    for pid, detail in db.execute("SELECT id, detail FROM web_predictions WHERE task_id=? OR detail LIKE ?",
+                                  (task_id, f"%{task_id}%")).fetchall():
+        value = json.loads(detail or "{}")
+        obs = value.get("observation") or {}
+        changed = False
+        if obs.get("task_id") == task_id or value.get("task_id") == task_id:
+            for k in ("observation", "error_analysis", "task_id"):
+                changed |= value.pop(k, None) is not None
+            value["observation"] = {"forgotten": True}
+        kept = [o for o in value.get("observations") or [] if o.get("task_id") != task_id]
+        if kept != (value.get("observations") or []):
+            value["observations"], changed = kept, True
+        if changed:
+            db.execute("UPDATE web_predictions SET detail=? WHERE id=?", (_dump(value), pid))
+
+
 def _drop_knowledge(db, ids, now):
     """Delete knowledge rows and everything derived from them, recording a tombstone per version. Caller owns the
     txn. Returns effects."""
@@ -452,9 +508,14 @@ def _drop_knowledge(db, ids, now):
                        ("its successor version was forgotten; needs re-verification", now, older))
             restored.append(older)
     _web_tombstones(db, "knowledge", [_knowledge_subject(kid, key) for kid, key, _ in rows], now)
+    if _has_evolution(db):
+        _drop_node_links(db, ("knowledge", "interval"), ids)
     for part in _chunks(ids):
         marks = _in(part)
         db.execute(f"DELETE FROM web_knowledge WHERE id IN ({marks})", part)
+        if _has_evolution(db):
+            _drop_predictions(db, f"knowledge_id IN ({marks})", part)
+            db.execute(f"UPDATE web_hypotheses SET knowledge_id=NULL WHERE knowledge_id IN ({marks})", part)
         db.execute(f"DELETE FROM web_predictions WHERE knowledge_id IN ({marks})", part)
         db.execute(f"DELETE FROM web_feedback WHERE knowledge_id IN ({marks})", part)
         db.execute(f"DELETE FROM web_mentions WHERE knowledge_id IN ({marks})", part)
@@ -491,6 +552,11 @@ def _web_cascade(db, removed_claims, now):
             marks = _in(part)
             db.execute(f"DELETE FROM web_claim_links WHERE src IN ({marks}) OR dst IN ({marks})", (*part, *part))
             db.execute(f"DELETE FROM web_mentions WHERE claim_id IN ({marks})", part)
+            if _has_evolution(db):   # entity co-mention edges cite the claim; hypotheses state a claim's text
+                db.execute(f"DELETE FROM web_claim_links WHERE json_extract(detail,'$.claim') IN ({marks})", part)
+                hypotheses = _ids(db, f"SELECT DISTINCT h.id FROM web_hypotheses h, json_each(h.claims) j "
+                                      f"WHERE j.value IN ({marks})", part)
+                _drop_hypotheses(db, hypotheses)
     effects = _drop_knowledge(db, doomed, now)
     effects["knowledge_stale"] = sorted(set(weakened) - set(doomed))
     effects["claims_removed"] = len(gone)
@@ -533,6 +599,10 @@ def _forget_research_core(db, task_id, now):
     deleted = {table: db.execute(f"DELETE FROM {table} WHERE task_id=?", (task_id,)).rowcount
                for table in ("web_events", "web_sources", "web_claims", "web_claim_links", "web_mentions",
                              "web_feedback")}
+    if _has_evolution(db):
+        _drop_hypotheses(db, _ids(db, "SELECT id FROM web_hypotheses WHERE task_id=?", (task_id,)))
+        _drop_node_links(db, ("observation",), [task_id])
+        _scrub_observations(db, task_id)
     db.execute("UPDATE web_predictions SET task_id=NULL WHERE task_id=?", (task_id,))
     db.execute("UPDATE web_tasks SET parent_id=NULL WHERE parent_id=?", (task_id,))
     db.execute("UPDATE web_monitors SET last_task_id=NULL WHERE last_task_id=?", (task_id,))

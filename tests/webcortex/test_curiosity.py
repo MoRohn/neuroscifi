@@ -14,8 +14,10 @@ def db(tmp_path):
 
 
 def pair(key, text, hosts, published):
-    return cluster([claim(f"http://{h}/{key.replace(' ', '-')}", text, key=key, published=published)
-                    for h in hosts])
+    from neuroscifi.webcortex import text as wtext
+    from test_consolidate import reworded
+    return cluster([claim(f"http://{h}/{key.replace(' ', '-')}", reworded(text, n), key=key, published=published,
+                          values=wtext.values(text)) for n, h in enumerate(hosts)])
 
 
 def accepted(db, key, text, hosts, now, published=None):
@@ -44,7 +46,7 @@ def test_stale_contested_beats_stale_corroborated_and_fresh_is_excluded(db):
     contested = accepted(db, "curl latest version", "curl 8.11.0 is the latest curl release.",
                          ("c.example", "d.example"), T0)
     consolidated(db, [pair("curl latest version", "curl 8.10.0 is the latest curl release.",
-                           ("e.example", "f.example"), T0 - 30 * DAY)], T0 + 1,
+                           ("e.example", "f.example"), T0 - 3 * DAY)], T0 + 1,   # older, still timely (ADR-035)
                  objective="What is the latest curl latest version release?")
     assert knowledge.row(db, contested)["contradicting"]
     now = T0 + 20 * DAY
