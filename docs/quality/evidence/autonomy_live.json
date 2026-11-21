@@ -1794,5 +1794,1334 @@
     "seconds": 0.1
    }
   }
- ]
+ ],
+ "rc2": {
+  "generated_at": "2026-11-21",
+  "fixes": [
+   "UAT T1-02 derivation depth and relevance",
+   "UAT T1-03 owner records always ranked first",
+   "UAT T1-17 claim-shaped, deduplicated, capped hypotheses",
+   "UAT S6 per-worker idle interval"
+  ],
+  "environment": {
+   "searxng": "SearXNG on 127.0.0.1:8888",
+   "model": "vLLM qwen3-30b-a3b-instruct-2507-fp8 on 127.0.0.1:8811",
+   "individual": "fresh scratch database <scratch>/rc2.sqlite; two user research tasks first (predictive coding, numpy 2.5.5) so derived opportunities compete with the owner's hypothesis; autonomous limits raised by the owner to 60 searches / 150 pages, idle_interval 0",
+   "driver": "<scratch>/drive.py (user-facing CLI only)"
+  },
+  "summary": {
+   "max_depth": 1,
+   "owner_hypothesis_picked_first": true,
+   "picks": [
+    {
+     "depth": 0,
+     "kind": "hypothesis_prediction",
+     "objective": "scipy 1.18.1 was released",
+     "owner": true,
+     "status": "completed"
+    },
+    {
+     "depth": 0,
+     "kind": "hypothesis",
+     "objective": "NumPy 2.5.5 patch release fixes bugs discovered 2.5.4",
+     "owner": false,
+     "status": "completed"
+    },
+    {
+     "depth": 1,
+     "kind": "gap",
+     "objective": "Hi behalf NumPy team pleased announce 1.18.1 released",
+     "owner": false,
+     "status": "completed"
+    },
+    {
+     "depth": 0,
+     "kind": "gap",
+     "objective": "PyArray_StringDTypeObject opaque abi3t stable ABI#",
+     "owner": false,
+     "status": "completed"
+    },
+    {
+     "depth": 1,
+     "kind": "hypothesis",
+     "objective": "release makes PyArray_StringDTypeObject opaque abi3t stable ABI",
+     "owner": false,
+     "status": "completed"
+    }
+   ],
+   "tasks": 5
+  },
+  "steps": [
+   {
+    "at": 1795273865.474,
+    "result": {
+     "argv": [
+      "nsf",
+      "init"
+     ],
+     "exit": 0,
+     "json": {
+      "birth": {
+       "action_semantics": {
+        "0": "commanded direction A, as declared by the owner",
+        "1": "commanded direction B, as declared by the owner"
+       },
+       "created_at": 1795273865.4505289,
+       "encoders": [
+        {
+         "channels": [
+          "camera",
+          "word",
+          "reference"
+         ],
+         "externally_trained": false,
+         "name": "manual-bit-encoding",
+         "provenance": "owner-declared binary encoding of commanded and observed directions"
+        }
+       ],
+       "initial_graph": null,
+       "instance_id": "e3228bff-1552-446e-b47c-0667a46c9545",
+       "note": null,
+       "priors": {
+        "camera_reading_error": 0.1,
+        "reference_reading_error": 0.1,
+        "reference_root_flip_probability": 0.15,
+        "state_prior": "uniform over mechanism, per-camera-root alignment and per-partner convention bits",
+        "word_reading_error": 0.1
+       },
+       "schema_version": 11,
+       "software_version": "0.7.0"
+      },
+      "development": {},
+      "memory": {
+       "active_graphs": 0,
+       "belief_revisions": 0,
+       "checkpoints": 0,
+       "datasets": 0,
+       "epochs": 0,
+       "evidence": 0,
+       "graph_revisions": 0,
+       "open_questions": 0,
+       "promoted_evidence": 0,
+       "tombstones": 0
+      },
+      "state_version": 1,
+      "web": {
+       "accepted_knowledge": 0,
+       "claims": 0,
+       "entities": 0,
+       "feedback": 0,
+       "knowledge": 0,
+       "monitors": 0,
+       "open_tasks": 0,
+       "predictions_open": 0,
+       "provisional_knowledge": 0,
+       "sources": 0,
+       "tasks": 0
+      }
+     },
+     "seconds": 0.1
+    },
+    "step": "init"
+   },
+   {
+    "at": 1795273865.644,
+    "result": {
+     "argv": [
+      "nsf",
+      "web",
+      "config",
+      "--enable",
+      "--set",
+      "searxng_url=\"http://127.0.0.1:8888\""
+     ],
+     "exit": 0,
+     "json": {
+      "changed": [
+       "enabled",
+       "searxng_url"
+      ],
+      "config": {
+       "auto_provisional_min_confidence": 0.72,
+       "auto_provisional_min_sources": 2,
+       "autonomous": false,
+       "browser_rendering": false,
+       "budget_ceiling": {
+        "max_browser_sessions": 2,
+        "max_bytes": 60000000,
+        "max_concurrency": 6,
+        "max_context_tokens": 6000,
+        "max_depth": 2,
+        "max_pages": 30,
+        "max_queries": 16,
+        "max_requests": 200,
+        "max_seconds": 600
+       },
+       "cache_max_age_days": 30.0,
+       "cache_max_bytes": 536870912,
+       "daily_autonomous": {
+        "bytes": 80000000,
+        "requests": 400,
+        "tasks": 12
+       },
+       "daily_mcp": {
+        "bytes": 80000000,
+        "requests": 400,
+        "tasks": 24
+       },
+       "deny_domains": [],
+       "enabled": true,
+       "engines": [
+        "duckduckgo",
+        "brave",
+        "startpage",
+        "bing"
+       ],
+       "freshness_ttl": {},
+       "max_document_bytes": 5000000,
+       "max_open_web_questions": 10,
+       "max_web_questions_per_task": 3,
+       "mcp_research_per_hour": 6,
+       "min_domain_interval": 1.0,
+       "openwebsearch_url": "http://127.0.0.1:3210",
+       "pocket_research": false,
+       "private_terms": [],
+       "providers": [
+        "openwebsearch",
+        "wikipedia",
+        "arxiv",
+        "openalex",
+        "crossref",
+        "pubmed",
+        "pypi",
+        "npm",
+        "osv",
+        "github"
+       ],
+       "search_browser_user_agent": false,
+       "searxng_engines": {},
+       "searxng_url": "http://127.0.0.1:8888"
+      }
+     },
+     "seconds": 0.2
+    },
+    "step": "web enable"
+   },
+   {
+    "at": 1795273865.761,
+    "result": {
+     "argv": [
+      "nsf",
+      "llm",
+      "config",
+      "--url",
+      "http://127.0.0.1:8811/v1",
+      "--model",
+      "qwen3-30b-a3b-instruct-2507-fp8"
+     ],
+     "exit": 0,
+     "json": {
+      "backoff": 0.5,
+      "base_url": "http://127.0.0.1:8811/v1",
+      "connect_timeout": 3.0,
+      "key_file": "",
+      "key_file_effective": "<home>/.config/neuroscifi/inference/api_key",
+      "key_present": true,
+      "locality": "loopback",
+      "max_context_tokens": 24000,
+      "max_output_tokens": 1200,
+      "max_retries": 2,
+      "model": "qwen3-30b-a3b-instruct-2507-fp8",
+      "read_timeout": 180.0,
+      "reasoning": true,
+      "remote_allowed": false,
+      "remote_private_memory": false,
+      "self_critique": true,
+      "temperature": 0.2,
+      "thinking": "default",
+      "tools": false
+     },
+     "seconds": 0.1
+    },
+    "step": "model"
+   },
+   {
+    "at": 1795273889.887,
+    "result": {
+     "argv": [
+      "nsf",
+      "web",
+      "ask",
+      "--mode",
+      "deep_research",
+      "Recent research on predictive coding in the cortex"
+     ],
+     "exit": 0,
+     "seconds": 24.1
+    },
+    "status": "completed",
+    "step": "user research (creates derived research opportunities)",
+    "usage": {
+     "browser_sessions": 0,
+     "bytes": 66500,
+     "pages": 15,
+     "queries": 5,
+     "requests": 30,
+     "seconds": 23.965,
+     "tokens": 1559
+    }
+   },
+   {
+    "at": 1795273917.117,
+    "result": {
+     "argv": [
+      "nsf",
+      "web",
+      "ask",
+      "--mode",
+      "technical",
+      "Is numpy 2.5.5 stable?"
+     ],
+     "exit": 0,
+     "seconds": 27.2
+    },
+    "status": "completed",
+    "step": "user research (creates derived research opportunities)",
+    "usage": {
+     "browser_sessions": 0,
+     "bytes": 1482718,
+     "pages": 10,
+     "queries": 7,
+     "requests": 41,
+     "seconds": 27.041,
+     "tokens": 902
+    }
+   },
+   {
+    "at": 1795273917.234,
+    "count": 10,
+    "step": "open hypotheses after user research"
+   },
+   {
+    "at": 1795273917.355,
+    "result": {
+     "argv": [
+      "nsf",
+      "knowledge",
+      "hypothesize",
+      "scipy 1.18.1 was released",
+      "--probability",
+      "0.5",
+      "--deadline-days",
+      "30"
+     ],
+     "exit": 0,
+     "json": {
+      "hypothesis": {
+       "alternatives": [],
+       "claim_values": [
+        "v1.18.1"
+       ],
+       "claims": [],
+       "created_at": 1795273917.3139253,
+       "id": 11,
+       "key": "releas scipy",
+       "knowledge_id": null,
+       "note": null,
+       "origin": "owner",
+       "parent_id": null,
+       "polarity": 1,
+       "provenance": "provisional_claim",
+       "resolved_at": null,
+       "statement": "scipy 1.18.1 was released",
+       "status": "open",
+       "task_id": null,
+       "updated_at": 1795273917.3139253,
+       "verification": {
+        "basis": "owner_hypothesis",
+        "confidence": 0.5,
+        "policy": "ADR-035",
+        "state": "not_evaluated"
+       }
+      },
+      "prediction": {
+       "check_after": 1795273917.3139253,
+       "checked_at": null,
+       "created_at": 1795273917.3139253,
+       "criteria": {
+        "confirmed_when": "a later task verifies (supported) the same values and polarity",
+        "error_when": "a later task verifies conflicting values or polarity, or disputes it",
+        "inconclusive_when": "no decisive evidence by 2026-12-21",
+        "key": "releas scipy",
+        "polarity": 1,
+        "values": [
+         "v1.18.1"
+        ]
+       },
+       "deadline": 1797865917.3139253,
+       "detail": {},
+       "expectation": "\u00abscipy 1.18.1 was released\u00bb will be confirmed by independent evidence by 2026-12-21",
+       "hypothesis_id": 11,
+       "id": 13,
+       "knowledge_id": null,
+       "outcome": null,
+       "probability": 0.5,
+       "task_id": null
+      }
+     },
+     "seconds": 0.1
+    },
+    "step": "owner hypothesis"
+   },
+   {
+    "at": 1795273917.535,
+    "owner_hypothesis_position": 1,
+    "refused_reasons": [
+     [
+      "depends on the text it was taken from (a pronoun, 'we', 'you' or 'this",
+      18
+     ],
+     [
+      "a structured record's template is re-read by its own refresh",
+      4
+     ],
+     [
+      "not a statement",
+      1
+     ]
+    ],
+    "result": {
+     "argv": [
+      "nsf",
+      "web",
+      "autonomy",
+      "candidates",
+      "--limit",
+      "500"
+     ],
+     "exit": 0
+    },
+    "step": "ranking before autonomy",
+    "top": [
+     {
+      "depth": 0,
+      "hypothesis_id": 11,
+      "info_gain": 0.278072,
+      "key": "releas scipy",
+      "kind": "hypothesis_prediction",
+      "owner": true,
+      "priority": 0.722987,
+      "reason": "priority 0.7230 = gain 0.278 x (1 + 1.600) / cost 1.000; the owner's own record: ranked ahead of derived candidates",
+      "statement": "scipy 1.18.1 was released"
+     },
+     {
+      "depth": 0,
+      "hypothesis_id": null,
+      "info_gain": 0.898089,
+      "key": "fix numpy patch releas",
+      "kind": "hypothesis",
+      "owner": false,
+      "priority": 3.472611,
+      "reason": "priority 3.4726 = gain 0.898 x (1 + 1.900) / cost 0.750",
+      "statement": "NumPy 2.5.5 is a patch release that fixes bugs discovered after the 2.5.4"
+     },
+     {
+      "depth": 0,
+      "hypothesis_id": 6,
+      "info_gain": 0.264198,
+      "key": "abi abi3t stabl stringdtypeobject",
+      "kind": "gap",
+      "owner": false,
+      "priority": 1.114331,
+      "reason": "priority 1.1143 = gain 0.264 x (1 + 2.163) / cost 0.750",
+      "statement": "PyArray_StringDTypeObject is opaque under the abi3t stable ABI#"
+     },
+     {
+      "depth": 0,
+      "hypothesis_id": 8,
+      "info_gain": 0.264198,
+      "key": "avoid bug legacy segfault",
+      "kind": "gap",
+      "owner": false,
+      "priority": 1.081094,
+      "reason": "priority 1.0811 = gain 0.264 x (1 + 2.069) / cost 0.750",
+      "statement": "#32221: BUG: avoid segfaults when legacy copyswap slot is not defined\u2026"
+     },
+     {
+      "depth": 0,
+      "hypothesis_id": 9,
+      "info_gain": 0.264198,
+      "key": "big includ python wheel",
+      "kind": "gap",
+      "owner": false,
+      "priority": 1.081094,
+      "reason": "priority 1.0811 = gain 0.264 x (1 + 2.069) / cost 0.750",
+      "statement": "The big news is that it includes wheels for the newly released Python 3.15.0rc1."
+     },
+     {
+      "depth": 0,
+      "hypothesis_id": 10,
+      "info_gain": 0.264198,
+      "key": "capability generation imag model",
+      "kind": "gap",
+      "owner": false,
+      "priority": 1.07519,
+      "reason": "priority 1.0752 = gain 0.264 x (1 + 2.052) / cost 0.750",
+      "statement": "While the capabilities of image generation models are impressive, they can also reinforce or exacerbate social biases."
+     }
+    ],
+    "total": {
+     "chosen": 28,
+     "refused": 23
+    }
+   },
+   {
+    "at": 1795273917.675,
+    "result": {
+     "argv": [
+      "nsf",
+      "web",
+      "autonomy",
+      "enable"
+     ],
+     "exit": 0,
+     "json": {
+      "autonomous": {
+       "committed": {
+        "pages": 0.0,
+        "searches": 0.0,
+        "seconds": 0.0,
+        "spend_usd": 0.0
+       },
+       "limits": {
+        "concurrent": 2,
+        "pages": 60,
+        "searches": 20,
+        "seconds": 1800.0,
+        "spend_usd": 1.0
+       },
+       "open": 0,
+       "refusal": null,
+       "remaining": {
+        "pages": 60.0,
+        "searches": 20.0,
+        "seconds": 1800.0,
+        "spend_usd": 1.0
+       },
+       "running": 0,
+       "tasks": 0,
+       "used": {
+        "engine_requests": 0.0,
+        "pages": 0.0,
+        "searches": 0.0,
+        "searxng_requests": 0.0,
+        "seconds": 0.0,
+        "spend_usd": 0.0
+       }
+      },
+      "cooldown": 86400.0,
+      "day": "2026-11-21",
+      "decisions": [
+       {
+        "at": 1795273917.6553273,
+        "autonomy": "enabled",
+        "by": "owner:cli",
+        "task_id": null
+       }
+      ],
+      "enabled": true,
+      "idle_interval": 300.0,
+      "min_gain": 0.05,
+      "prices_usd": {
+       "page": 0.0,
+       "search": 0.0
+      },
+      "record": {
+       "disabled_at": null,
+       "enabled_at": 1795273917.6553273,
+       "enabled_by": "owner:cli"
+      },
+      "switch": true,
+      "user": {
+       "committed": {
+        "pages": 25.0,
+        "searches": 12.0,
+        "seconds": 51.006,
+        "spend_usd": 0.0
+       },
+       "limits": {
+        "pages": 1200,
+        "searches": 400,
+        "seconds": 14400.0,
+        "spend_usd": 5.0
+       },
+       "open": 0,
+       "refusal": null,
+       "remaining": {
+        "pages": 1175.0,
+        "searches": 388.0,
+        "seconds": 14348.994,
+        "spend_usd": 5.0
+       },
+       "tasks": 2,
+       "used": {
+        "engine_requests": 26.0,
+        "pages": 25.0,
+        "searches": 12.0,
+        "searxng_requests": 7.0,
+        "seconds": 51.006,
+        "spend_usd": 0.0
+       }
+      },
+      "weights": {
+       "contradiction": 1.0,
+       "gap": 0.5,
+       "goal": 1.0,
+       "hypothesis": 0.8,
+       "prediction_uncertainty": 0.8,
+       "source_change": 0.7,
+       "stale": 0.6
+      }
+     },
+     "seconds": 0.1
+    },
+    "step": "enable"
+   },
+   {
+    "at": 1795273917.838,
+    "result": {
+     "argv": [
+      "nsf",
+      "web",
+      "autonomy",
+      "set",
+      "--policy-json",
+      "{\"idle_interval\": 0, \"autonomous_daily\": {\"searches\": 60, \"pages\": 150}}"
+     ],
+     "exit": 0,
+     "json": {
+      "autonomous": {
+       "committed": {
+        "pages": 0.0,
+        "searches": 0.0,
+        "seconds": 0.0,
+        "spend_usd": 0.0
+       },
+       "limits": {
+        "concurrent": 2,
+        "pages": 150,
+        "searches": 60,
+        "seconds": 1800.0,
+        "spend_usd": 1.0
+       },
+       "open": 0,
+       "refusal": null,
+       "remaining": {
+        "pages": 150.0,
+        "searches": 60.0,
+        "seconds": 1800.0,
+        "spend_usd": 1.0
+       },
+       "running": 0,
+       "tasks": 0,
+       "used": {
+        "engine_requests": 0.0,
+        "pages": 0.0,
+        "searches": 0.0,
+        "searxng_requests": 0.0,
+        "seconds": 0.0,
+        "spend_usd": 0.0
+       }
+      },
+      "cooldown": 86400.0,
+      "day": "2026-11-21",
+      "decisions": [
+       {
+        "at": 1795273917.8171625,
+        "autonomy": "policy changed",
+        "changes": {
+         "autonomous_daily": {
+          "pages": 150,
+          "searches": 60
+         },
+         "idle_interval": 0.0
+        },
+        "task_id": null
+       },
+       {
+        "at": 1795273917.6553273,
+        "autonomy": "enabled",
+        "by": "owner:cli",
+        "task_id": null
+       }
+      ],
+      "enabled": true,
+      "idle_interval": 0.0,
+      "min_gain": 0.05,
+      "prices_usd": {
+       "page": 0.0,
+       "search": 0.0
+      },
+      "record": {
+       "disabled_at": null,
+       "enabled_at": 1795273917.6553273,
+       "enabled_by": "owner:cli"
+      },
+      "switch": true,
+      "user": {
+       "committed": {
+        "pages": 25.0,
+        "searches": 12.0,
+        "seconds": 51.006,
+        "spend_usd": 0.0
+       },
+       "limits": {
+        "pages": 1200,
+        "searches": 400,
+        "seconds": 14400.0,
+        "spend_usd": 5.0
+       },
+       "open": 0,
+       "refusal": null,
+       "remaining": {
+        "pages": 1175.0,
+        "searches": 388.0,
+        "seconds": 14348.994,
+        "spend_usd": 5.0
+       },
+       "tasks": 2,
+       "used": {
+        "engine_requests": 26.0,
+        "pages": 25.0,
+        "searches": 12.0,
+        "searxng_requests": 7.0,
+        "seconds": 51.006,
+        "spend_usd": 0.0
+       }
+      },
+      "weights": {
+       "contradiction": 1.0,
+       "gap": 0.5,
+       "goal": 1.0,
+       "hypothesis": 0.8,
+       "prediction_uncertainty": 0.8,
+       "source_change": 0.7,
+       "stale": 0.6
+      }
+     },
+     "seconds": 0.2
+    },
+    "step": "policy"
+   },
+   {
+    "at": 1795273942.886,
+    "pick": {
+     "depth": 0,
+     "hypothesis_id": 11,
+     "key": "releas scipy",
+     "kind": "hypothesis_prediction",
+     "objective": "scipy 1.18.1 was released",
+     "owner": true,
+     "priority": 0.722987,
+     "reason": "priority 0.7230 = gain 0.278 x (1 + 1.600) / cost 1.000; the owner's own record: ranked ahead of derived candidates",
+     "seconds": 24.8,
+     "status": "completed",
+     "task_id": "b56fba86-7ac7-4239-a066-a51d335394a0",
+     "usage": {
+      "browser_sessions": 0,
+      "bytes": 1721495,
+      "pages": 8,
+      "queries": 6,
+      "requests": 27,
+      "seconds": 24.526,
+      "tokens": 617
+     }
+    },
+    "step": "work 1"
+   },
+   {
+    "at": 1795273950.173,
+    "pick": {
+     "depth": 0,
+     "hypothesis_id": null,
+     "key": "fix numpy patch releas",
+     "kind": "hypothesis",
+     "objective": "NumPy 2.5.5 patch release fixes bugs discovered 2.5.4",
+     "owner": false,
+     "priority": 3.472611,
+     "reason": "priority 3.4726 = gain 0.898 x (1 + 1.900) / cost 0.750",
+     "seconds": 7.0,
+     "status": "completed",
+     "task_id": "f12c2cf1-2906-447e-905f-1905a6bd9e16",
+     "usage": {
+      "browser_sessions": 0,
+      "bytes": 666074,
+      "pages": 2,
+      "queries": 4,
+      "requests": 4,
+      "seconds": 6.808,
+      "tokens": 36
+     }
+    },
+    "step": "work 2"
+   },
+   {
+    "at": 1795273956.266,
+    "pick": {
+     "depth": 1,
+     "hypothesis_id": 16,
+     "key": "behalf hi numpy releas",
+     "kind": "gap",
+     "objective": "Hi behalf NumPy team pleased announce 1.18.1 released",
+     "owner": false,
+     "priority": 1.120235,
+     "reason": "priority 1.1202 = gain 0.264 x (1 + 2.180) / cost 0.750; derived 1 step from an owner subject (overlap 0.67)",
+     "seconds": 5.8,
+     "status": "completed",
+     "task_id": "0916e95c-3a87-4816-be5d-e2b0909c979a",
+     "usage": {
+      "browser_sessions": 0,
+      "bytes": 677142,
+      "pages": 4,
+      "queries": 4,
+      "requests": 4,
+      "seconds": 5.58,
+      "tokens": 56
+     }
+    },
+    "step": "work 3"
+   },
+   {
+    "at": 1795273977.986,
+    "pick": {
+     "depth": 0,
+     "hypothesis_id": 6,
+     "key": "abi abi3t stabl stringdtypeobject",
+     "kind": "gap",
+     "objective": "PyArray_StringDTypeObject opaque abi3t stable ABI#",
+     "owner": false,
+     "priority": 1.114331,
+     "reason": "priority 1.1143 = gain 0.264 x (1 + 2.163) / cost 0.750",
+     "seconds": 21.4,
+     "status": "completed",
+     "task_id": "53452fe3-7377-4bc2-a479-0c187086d46e",
+     "usage": {
+      "browser_sessions": 0,
+      "bytes": 186747,
+      "pages": 5,
+      "queries": 1,
+      "requests": 13,
+      "seconds": 21.26,
+      "tokens": 659
+     }
+    },
+    "step": "work 4"
+   },
+   {
+    "at": 1795273993.725,
+    "pick": {
+     "depth": 1,
+     "hypothesis_id": 17,
+     "key": "abi abi3t pyarray stringdtypeobject",
+     "kind": "hypothesis",
+     "objective": "release makes PyArray_StringDTypeObject opaque abi3t stable ABI",
+     "owner": false,
+     "priority": 4.385275,
+     "reason": "priority 4.3853 = gain 0.898 x (1 + 2.662) / cost 0.750; derived 1 step from an owner subject (overlap 0.86)",
+     "seconds": 15.5,
+     "status": "completed",
+     "task_id": "62e7a322-7753-4b39-8798-2d68ddaf9c98",
+     "usage": {
+      "browser_sessions": 0,
+      "bytes": 1033747,
+      "pages": 5,
+      "queries": 3,
+      "requests": 21,
+      "seconds": 15.244,
+      "tokens": 439
+     }
+    },
+    "step": "work 5"
+   },
+   {
+    "at": 1795273994.032,
+    "owner_hypothesis_position": null,
+    "refused_reasons": [
+     [
+      "depends on the text it was taken from (a pronoun, 'we', 'you' or 'this",
+      12
+     ],
+     [
+      "derived from autonomous research 2 steps away from the owner's records",
+      11
+     ],
+     [
+      "known only from autonomous research and unrelated to the owner subject",
+      9
+     ],
+     [
+      "investigated autonomously within the last 86400 s",
+      4
+     ],
+     [
+      "not a statement",
+      2
+     ]
+    ],
+    "result": {
+     "argv": [
+      "nsf",
+      "web",
+      "autonomy",
+      "candidates",
+      "--limit",
+      "500"
+     ],
+     "exit": 0
+    },
+    "step": "ranking after the runs",
+    "top": [
+     {
+      "depth": 0,
+      "hypothesis_id": 8,
+      "info_gain": 0.264198,
+      "key": "avoid bug legacy segfault",
+      "kind": "gap",
+      "owner": false,
+      "priority": 1.081094,
+      "reason": "priority 1.0811 = gain 0.264 x (1 + 2.069) / cost 0.750",
+      "statement": "#32221: BUG: avoid segfaults when legacy copyswap slot is not defined\u2026"
+     },
+     {
+      "depth": 0,
+      "hypothesis_id": 9,
+      "info_gain": 0.264198,
+      "key": "big includ python wheel",
+      "kind": "gap",
+      "owner": false,
+      "priority": 1.081094,
+      "reason": "priority 1.0811 = gain 0.264 x (1 + 2.069) / cost 0.750",
+      "statement": "The big news is that it includes wheels for the newly released Python 3.15.0rc1."
+     },
+     {
+      "depth": 1,
+      "hypothesis_id": 12,
+      "info_gain": 0.264198,
+      "key": "analyz commit prs releas",
+      "kind": "gap",
+      "owner": false,
+      "priority": 1.07519,
+      "reason": "priority 1.0752 = gain 0.264 x (1 + 2.052) / cost 0.750; derived 1 step from an owner subject (overlap 0.33)",
+      "statement": "Analyzes commits, merged PRs, and code changes between releases to generate comprehensive release notes."
+     },
+     {
+      "depth": 1,
+      "hypothesis_id": 13,
+      "info_gain": 0.264198,
+      "key": "apach everyth scipy spark",
+      "kind": "gap",
+      "owner": false,
+      "priority": 1.07519,
+      "reason": "priority 1.0752 = gain 0.264 x (1 + 2.052) / cost 0.750; derived 1 step from an owner subject (overlap 0.33)",
+      "statement": "htc-pyspark-notebook - Everything in htc-scipy-notebook, plus Apache Spark."
+     },
+     {
+      "depth": 1,
+      "hypothesis_id": 15,
+      "info_gain": 0.264198,
+      "key": "automatical changelog github releas",
+      "kind": "gap",
+      "owner": false,
+      "priority": 1.07519,
+      "reason": "priority 1.0752 = gain 0.264 x (1 + 2.052) / cost 0.750; derived 1 step from an owner subject (overlap 0.33)",
+      "statement": "Automatically updates CHANGELOG.md and GitHub releases."
+     },
+     {
+      "depth": 0,
+      "hypothesis_id": 10,
+      "info_gain": 0.264198,
+      "key": "capability generation imag model",
+      "kind": "gap",
+      "owner": false,
+      "priority": 1.07519,
+      "reason": "priority 1.0752 = gain 0.264 x (1 + 2.052) / cost 0.750",
+      "statement": "While the capabilities of image generation models are impressive, they can also reinforce or exacerbate social biases."
+     }
+    ],
+    "total": {
+     "chosen": 18,
+     "refused": 38
+    }
+   },
+   {
+    "at": 1795273994.153,
+    "budget": {
+     "committed": {
+      "pages": 24.0,
+      "searches": 18.0,
+      "seconds": 73.418,
+      "spend_usd": 0.0
+     },
+     "limits": {
+      "concurrent": 2,
+      "pages": 150,
+      "searches": 60,
+      "seconds": 1800.0,
+      "spend_usd": 1.0
+     },
+     "open": 0,
+     "refusal": null,
+     "remaining": {
+      "pages": 126.0,
+      "searches": 42.0,
+      "seconds": 1726.582,
+      "spend_usd": 1.0
+     },
+     "running": 0,
+     "tasks": 5,
+     "used": {
+      "engine_requests": 37.0,
+      "pages": 24.0,
+      "searches": 18.0,
+      "searxng_requests": 6.0,
+      "seconds": 73.418,
+      "spend_usd": 0.0
+     }
+    },
+    "hypotheses_by_task": [
+     [
+      "62e7a322",
+      5
+     ],
+     [
+      "53452fe3",
+      5
+     ],
+     [
+      "b56fba86",
+      5
+     ],
+     [
+      "aced2cb7",
+      5
+     ],
+     [
+      "dbfc251e",
+      5
+     ],
+     [
+      "owner",
+      1
+     ]
+    ],
+    "open_hypotheses": 24,
+    "owner_hypothesis_status": "supported",
+    "record_title_hypotheses": 0,
+    "step": "final"
+   },
+   {
+    "at": 1795273994.261,
+    "result": {
+     "argv": [
+      "nsf",
+      "web",
+      "autonomy",
+      "disable"
+     ],
+     "exit": 0,
+     "json": {
+      "autonomous": {
+       "committed": {
+        "pages": 24.0,
+        "searches": 18.0,
+        "seconds": 73.418,
+        "spend_usd": 0.0
+       },
+       "limits": {
+        "concurrent": 2,
+        "pages": 150,
+        "searches": 60,
+        "seconds": 1800.0,
+        "spend_usd": 1.0
+       },
+       "open": 0,
+       "refusal": null,
+       "remaining": {
+        "pages": 126.0,
+        "searches": 42.0,
+        "seconds": 1726.582,
+        "spend_usd": 1.0
+       },
+       "running": 0,
+       "tasks": 5,
+       "used": {
+        "engine_requests": 37.0,
+        "pages": 24.0,
+        "searches": 18.0,
+        "searxng_requests": 6.0,
+        "seconds": 73.418,
+        "spend_usd": 0.0
+       }
+      },
+      "cooldown": 86400.0,
+      "day": "2026-11-21",
+      "decisions": [
+       {
+        "at": 1795273994.244735,
+        "autonomy": "disabled",
+        "by": "owner:cli",
+        "task_id": null
+       },
+       {
+        "at": 1795273993.3882818,
+        "autonomy": "no meaningful finding: no notification",
+        "task_id": "62e7a322-7753-4b39-8798-2d68ddaf9c98"
+       },
+       {
+        "at": 1795273978.1558526,
+        "autonomy": {
+         "cost": 0.75,
+         "depth": 1,
+         "forecast": 0.611111,
+         "hypothesis_id": 17,
+         "info_gain": 0.898089,
+         "key": "abi abi3t pyarray stringdtypeobject",
+         "kind": "hypothesis",
+         "min_gain": 0.05,
+         "mode": "gap_resolution",
+         "owner": false,
+         "prediction_id": 21,
+         "priority": 4.385275,
+         "reason": "priority 4.3853 = gain 0.898 x (1 + 2.662) / cost 0.750; derived 1 step from an owner subject (overlap 0.86)",
+         "signals": {
+          "contradiction": 1.0,
+          "gap": 0.0,
+          "goal": 0.090909,
+          "hypothesis": 1.0,
+          "prediction_uncertainty": 0.964079,
+          "source_change": 0.0,
+          "stale": 0.0
+         },
+         "weights": {
+          "contradiction": 1.0,
+          "gap": 0.5,
+          "goal": 1.0,
+          "hypothesis": 0.8,
+          "prediction_uncertainty": 0.8,
+          "source_change": 0.7,
+          "stale": 0.6
+         }
+        },
+        "task_id": "62e7a322-7753-4b39-8798-2d68ddaf9c98"
+       },
+       {
+        "at": 1795273977.5318694,
+        "autonomy": "notified",
+        "findings": {
+         "new_verified": 0,
+         "pending_id": null,
+         "resolved_contradictions": 0,
+         "settled_predictions": 1
+        },
+        "pending_id": null,
+        "task_id": "53452fe3-7377-4bc2-a479-0c187086d46e"
+       },
+       {
+        "at": 1795273956.3657765,
+        "autonomy": {
+         "cost": 0.75,
+         "depth": 0,
+         "forecast": 0.642857,
+         "hypothesis_id": 6,
+         "info_gain": 0.264198,
+         "key": "abi abi3t stabl stringdtypeobject",
+         "kind": "gap",
+         "min_gain": 0.05,
+         "mode": "gap_resolution",
+         "owner": false,
+         "prediction_id": 6,
+         "priority": 1.114331,
+         "reason": "priority 1.1143 = gain 0.264 x (1 + 2.163) / cost 0.750",
+         "signals": {
+          "contradiction": 0.0,
+          "gap": 1.0,
+          "goal": 0.111111,
+          "hypothesis": 1.0,
+          "prediction_uncertainty": 0.940286,
+          "source_change": 0.0,
+          "stale": 0.0
+         },
+         "weights": {
+          "contradiction": 1.0,
+          "gap": 0.5,
+          "goal": 1.0,
+          "hypothesis": 0.8,
+          "prediction_uncertainty": 0.8,
+          "source_change": 0.7,
+          "stale": 0.6
+         }
+        },
+        "task_id": "53452fe3-7377-4bc2-a479-0c187086d46e"
+       },
+       {
+        "at": 1795273955.8605778,
+        "autonomy": "notified",
+        "findings": {
+         "new_verified": 1,
+         "pending_id": 9,
+         "resolved_contradictions": 0,
+         "settled_predictions": 0
+        },
+        "pending_id": 9,
+        "task_id": "0916e95c-3a87-4816-be5d-e2b0909c979a"
+       },
+       {
+        "at": 1795273950.293728,
+        "autonomy": {
+         "cost": 0.75,
+         "depth": 1,
+         "forecast": 0.615385,
+         "hypothesis_id": 16,
+         "info_gain": 0.264198,
+         "key": "behalf hi numpy releas",
+         "kind": "gap",
+         "min_gain": 0.05,
+         "mode": "gap_resolution",
+         "owner": false,
+         "prediction_id": 18,
+         "priority": 1.120235,
+         "reason": "priority 1.1202 = gain 0.264 x (1 + 2.180) / cost 0.750; derived 1 step from an owner subject (overlap 0.67)",
+         "signals": {
+          "contradiction": 0.0,
+          "gap": 1.0,
+          "goal": 0.111111,
+          "hypothesis": 1.0,
+          "prediction_uncertainty": 0.961236,
+          "source_change": 0.0,
+          "stale": 0.0
+         },
+         "weights": {
+          "contradiction": 1.0,
+          "gap": 0.5,
+          "goal": 1.0,
+          "hypothesis": 0.8,
+          "prediction_uncertainty": 0.8,
+          "source_change": 0.7,
+          "stale": 0.6
+         }
+        },
+        "task_id": "0916e95c-3a87-4816-be5d-e2b0909c979a"
+       },
+       {
+        "at": 1795273949.8454103,
+        "autonomy": "no meaningful finding: no notification",
+        "task_id": "f12c2cf1-2906-447e-905f-1905a6bd9e16"
+       },
+       {
+        "at": 1795273943.0231588,
+        "autonomy": {
+         "cost": 0.75,
+         "depth": 0,
+         "info_gain": 0.898089,
+         "key": "fix numpy patch releas",
+         "kind": "hypothesis",
+         "min_gain": 0.05,
+         "mode": "gap_resolution",
+         "owner": false,
+         "priority": 3.472611,
+         "reason": "priority 3.4726 = gain 0.898 x (1 + 1.900) / cost 0.750",
+         "signals": {
+          "contradiction": 1.0,
+          "gap": 0.0,
+          "goal": 0.1,
+          "hypothesis": 1.0,
+          "source_change": 0.0,
+          "stale": 0.0
+         },
+         "weights": {
+          "contradiction": 1.0,
+          "gap": 0.5,
+          "goal": 1.0,
+          "hypothesis": 0.8,
+          "prediction_uncertainty": 0.8,
+          "source_change": 0.7,
+          "stale": 0.6
+         }
+        },
+        "task_id": "f12c2cf1-2906-447e-905f-1905a6bd9e16"
+       },
+       {
+        "at": 1795273942.5365596,
+        "autonomy": "notified",
+        "findings": {
+         "new_verified": 1,
+         "pending_id": 7,
+         "resolved_contradictions": 0,
+         "settled_predictions": 1
+        },
+        "pending_id": 7,
+        "task_id": "b56fba86-7ac7-4239-a066-a51d335394a0"
+       }
+      ],
+      "enabled": false,
+      "idle_interval": 0.0,
+      "min_gain": 0.05,
+      "prices_usd": {
+       "page": 0.0,
+       "search": 0.0
+      },
+      "record": {
+       "disabled_at": 1795273994.244735,
+       "disabled_by": "owner:cli",
+       "enabled_at": 1795273917.6553273,
+       "enabled_by": "owner:cli"
+      },
+      "switch": false,
+      "user": {
+       "committed": {
+        "pages": 25.0,
+        "searches": 12.0,
+        "seconds": 51.006,
+        "spend_usd": 0.0
+       },
+       "limits": {
+        "pages": 1200,
+        "searches": 400,
+        "seconds": 14400.0,
+        "spend_usd": 5.0
+       },
+       "open": 0,
+       "refusal": null,
+       "remaining": {
+        "pages": 1175.0,
+        "searches": 388.0,
+        "seconds": 14348.994,
+        "spend_usd": 5.0
+       },
+       "tasks": 2,
+       "used": {
+        "engine_requests": 26.0,
+        "pages": 25.0,
+        "searches": 12.0,
+        "searxng_requests": 7.0,
+        "seconds": 51.006,
+        "spend_usd": 0.0
+       }
+      },
+      "weights": {
+       "contradiction": 1.0,
+       "gap": 0.5,
+       "goal": 1.0,
+       "hypothesis": 0.8,
+       "prediction_uncertainty": 0.8,
+       "source_change": 0.7,
+       "stale": 0.6
+      }
+     },
+     "seconds": 0.1
+    },
+    "step": "disable"
+   }
+  ]
+ }
 }

@@ -4,7 +4,8 @@ Owner decision D4 (docs/qa/RELEASE_DECISIONS.md), ADR-039 draft (`.omc/autopilot
 Code: `src/neuroscifi/webcortex/autonomy.py` (budgets, ranking, idle investigator, notifications),
 `webcortex/nodes.py` (nodes and session ownership), `pocket/research_routes.py` (Pocket routes),
 migration 10 (`instance/schema.py`). Tests: `tests/webcortex/test_autonomy.py`, `tests/test_pocket_autonomy.py`,
-`tests/console/test_console_autonomy.py`, `tests/e2e/test_pocket_autonomy_e2e.py`. Live evidence:
+`tests/console/test_console_autonomy.py`, `tests/webcortex/test_autonomy_ranking.py` (UAT T1-02, T1-03, T1-17, S6),
+`tests/e2e/test_pocket_autonomy_e2e.py`. Live evidence:
 `docs/quality/evidence/autonomy_live.json`.
 
 ## 1. Policy
@@ -17,9 +18,14 @@ migration 10 (`instance/schema.py`). Tests: `tests/webcortex/test_autonomy.py`, 
   user research: console, CLI, Pocket, node, owner monitor and MCP.
 - Research runs only when the stored records contain a reason for it (section 3). It also needs room in the budget
   and an expected information gain of at least the minimum. Nothing browses just to generate activity.
-- Autonomy does not feed on its own by-products. A subject that only autonomous research has seen is not pursued
-  unless it overlaps an active owner goal. The owner's own records are always eligible: hypotheses, monitors and the
-  owner's research.
+- Autonomy does not feed on its own by-products. Every subject has a derivation depth: 0 for the owner's records
+  and for what the owner's research found, and 1 + the depth of the investigated subject for what an autonomous task
+  found. A subject is pursued only at depth 0, or at depth 1 when it shares at least a third of its words with the
+  owner subject it was derived from (section 3). A word overlap with an active goal is a ranking signal, never a
+  licence (UAT T1-02: a 0.03 overlap let a chain drift from predictive coding to econometric tests).
+- The owner's own records are always ranked and come first: open owner hypotheses (with or without an open
+  prediction), the owner's assertions that no evidence was examined for yet, and contested owner assertions. They
+  are never cut by a candidate limit, and when refused they are listed first with the reason (UAT T1-03).
 - Results are never promoted automatically. A verified statement becomes a knowledge candidate through the existing
   ADR-026/035 path. The owner is notified only of meaningful findings (section 5).
 
@@ -83,8 +89,9 @@ Every candidate comes from stored records:
 
 - `curiosity.rank`: contested knowledge, stale knowledge, knowledge predictions that are due, contested subjects
   that never became knowledge, and single-source gaps.
-- Open hypotheses with an open prediction, from Lane D (`web_hypotheses`, `web_predictions`). Before this lane,
-  nothing scheduled research to settle them.
+- Open hypotheses with an open prediction, from Lane D (`web_hypotheses`, `web_predictions`): every open owner
+  hypothesis, then the 50 newest others. Before this lane, nothing scheduled research to settle them.
+- The owner's assertions (`nsf knowledge assert`) without supporting evidence (kind `owner_assertion`).
 
 Each subject appears once, with its strongest signals.
 
@@ -109,7 +116,17 @@ Each subject appears once, with its strongest signals.
   - the subject was investigated autonomously within `cooldown` (24 h);
   - its statement is a structured record's template;
   - it has nothing searchable;
-  - it is known only from autonomous research and has no goal overlap.
+  - it was derived from autonomous research more than `MAX_DERIVATION_DEPTH` (1) steps from the owner's records,
+    or in a cycle of autonomous tasks;
+  - it is at depth 1 and shares less than `MIN_RELEVANCE` (1/3, as a share of the smaller word set) with the owner
+    subject it came from;
+  - a derived statement is not a self-contained claim (`curiosity.claim_shaped`): a question, a fragment, a record
+    template, or wording that leans on its source text (it, these, this ..., we, you).
+- Order: owner records first, then by priority. `candidates` returns `total` (both list lengths before `limit`).
+- Hypotheses are opened by consolidation only from self-contained claims (the same `claim_shaped` test), one per
+  statement (an open hypothesis with the same statement under another key is reused), and at most
+  `MAX_NEW_HYPOTHESES_PER_TASK` (5) new ones per task; refreshing an open one does not count (UAT T1-17: 384 open
+  hypotheses after about 35 tasks, many of them "Crossref record: ..." titles).
 
 Hypotheses are checked as the statements they make (`fact_verification`). Other kinds research the statement's own
 words.
@@ -139,7 +156,10 @@ Modes map to implementations as follows (RD-09):
 ## 5. Scheduling, recovery and notifications
 
 - Idle investigations: when a worker (`nsf web work`, or the console's embedded worker) finds nothing queued, it
-  asks `autonomy.idle`, at most once per `idle_interval` (300 s). If autonomy is enabled, the budget has room,
+  asks `autonomy.idle`, at most once per `idle_interval` (300 s) per worker (process and thread). One worker runs one
+  task at a time, so two concurrent investigations need two workers, for example the console's `--web-worker` and
+  `nsf web work`. In RC1 the interval was instance-wide and the second worker only waited (UAT S6), so
+  idle investigations never ran two at once (`test_two_workers_start_two_autonomous_investigations_at_once`). If autonomy is enabled, the budget has room,
   fewer than 2 investigations are open and the best candidate clears the threshold, that candidate is queued as an
   autonomous task. Otherwise a `decision` event states why: budget refused, nothing worth researching (with the
   best gain), or busy.
@@ -219,6 +239,26 @@ FP8) on 127.0.0.1:8811. Every step went through the user-facing CLI.
      of 6`;
    - an autonomous submit raised `BudgetRefused`;
    - a user (`cli`) submit was queued normally.
+
+RC2 re-run after the UAT T1 fixes (`autonomy_live.json`, section `rc2`): a fresh scratch individual with two user
+research tasks first (predictive coding; "Is numpy 2.5.5 stable?"), then the owner's hypothesis "scipy 1.18.1 was
+released" (p = 0.5), 60 searches / 150 pages, `idle_interval` 0, five `nsf web work --once --max-tasks 1` runs:
+
+- Before autonomy started, the owner's hypothesis ranked 1st (in RC1 it ranked 15th, then disappeared). It was
+  investigated first, and it is now `supported`.
+- The other four picks stayed on the user's subjects: a NumPy 2.5.5 patch-release disagreement (depth 0), a NumPy
+  1.18.1 announcement (depth 1, overlap 0.67), and the StringDType ABI change (depth 0, then depth 1, overlap 0.86).
+  No pick was more than one step from the owner's records.
+- After the runs, 38 candidates were refused with stated reasons:
+  - 12 were sentences that depend on their source text;
+  - 11 were two steps from the owner's records;
+  - 9 were off the owner subject they came from;
+  - 4 were cooling down;
+  - 2 were not statements.
+- Each task opened 5 hypotheses (the cap). None came from a record title.
+- Residual: one depth-1 pick was a mailing-list greeting ("Hi ... on behalf of the NumPy team ...") about NumPy
+  1.18.1. It passed the relevance test through the shared words "1.18.1" and "released". It stayed on topic, but it
+  was low value.
 
 Earlier live trials, kept to explain two choices:
 
