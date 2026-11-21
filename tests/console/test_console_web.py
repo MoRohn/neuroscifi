@@ -200,7 +200,9 @@ def test_submit_runs_on_the_embedded_worker_and_reports(console, web):
     assert c.post("/api/web/tasks", {"objective": QUESTION, "colour": "blue"})[0] == 400
     assert c.post("/api/web/tasks", {"objective": "   "})[0] == 400
     code, data = c.post("/api/web/tasks", {"objective": "Ask jo@example.org about the Zephyr compiler"})
-    assert code == 400 and "private data" in data["error"]
+    # T1-20: a privacy refusal is a normal outcome the page handles, not an HTTP error (no browser console error)
+    assert code == 200 and data["kind"] == "refused" and data["kinds"] == ["email"] and "private data" in data["error"]
+    assert c.ok("GET", "/api/web/tasks") == []
     done = complete(c, mode="auto")
     assert done["status"] == "completed", done["error"]
     assert done["stages_done"] == ["discovering", "reading", "evaluating", "synthesizing"]
@@ -425,3 +427,48 @@ def test_embedded_worker_errors_are_logged_and_backed_off(instance, monkeypatch,
     assert waits == [5.0, 10.0, 20.0, 40.0, 60.0, 60.0]
     err = capsys.readouterr().err
     assert "RuntimeError: database disk image is malformed" in err and "x" * 300 not in err
+
+
+# ---- UAT T1: questions the Research view answers without a new web search -------------------------------------
+
+def test_a_question_about_the_individuals_own_understanding_is_answered_from_its_history(idle):
+    """T1-04: "What has changed in your understanding of predictive coding?" ran a new web search (change_detection)
+    and never mentioned the stored 1998 -> 1999 revision. It is answered from evolution.changes; a fresh web run is a
+    separate action (route 'research')."""
+    from neuroscifi.webcortex import knowledge
+    c = idle
+    enable(c)
+    db = store.open_existing(c.path)
+    knowledge.assert_fact(db, "Rao and Ballard published the predictive coding model of the visual cortex in 1998.",
+                          T0)
+    knowledge.assert_fact(db, "Rao and Ballard published the predictive coding model of the visual cortex in 1999.",
+                          T0 + 5)
+    db.close()
+    question = "What has changed in your understanding of predictive coding?"
+    out = c.ok("POST", "/api/web/tasks", {"objective": question, "mode": "auto"})
+    assert out["kind"] == "history" and out["topic"] == "predictive coding"
+    subject = next(s for s in out["history"]["subjects"] if s["versions"])
+    assert [(v["version"], v["status"]) for v in subject["versions"]] == [(1, "superseded"), (2, "accepted")]
+    assert "1998" in subject["versions"][0]["statement"] and subject["versions"][0]["superseded_by"]
+    assert any(e["kind"] == "superseded" for e in subject["timeline"]) and subject["changed"] is True
+    assert c.ok("GET", "/api/web/tasks") == []                                    # nothing was searched
+    assert out["research"] == {"objective": question, "route": "research"}
+    task = c.ok("POST", "/api/web/tasks", out["research"])                        # the explicit fresh run
+    assert task["status"] == "queued" and task["mode"] == "change_detection"
+
+
+def test_a_follow_up_is_read_about_the_previous_question_of_the_session(idle):
+    """T1-10: "Is that version secure, stable and recommended?" after the numpy questions was researched about Go 1.
+    The page sends its session's previous question; the server resolves the reference or asks."""
+    c = idle
+    enable(c)
+    question = "Is that version secure, stable and recommended?"
+    out = c.ok("POST", "/api/web/tasks", {"objective": question})
+    assert out["kind"] == "clarify" and out["clarify"].startswith("Which version do you mean?")
+    assert c.ok("GET", "/api/web/tasks") == []
+    task = c.ok("POST", "/api/web/tasks", {"objective": question, "previous": "Is numpy 2.5.5 recommended?"})
+    assert task["objective"] == "Is numpy 2.5.5 secure, stable and recommended?"
+    assert task["resolved_followup"]["subject"] == "numpy 2.5.5"
+    assert task["resolved_followup"]["anaphor"] == "that version"
+    assert c.post("/api/web/tasks", {"objective": question, "previous": 7})[0] == 400
+    assert c.post("/api/web/tasks", {"objective": question, "route": "elsewhere"})[0] == 400

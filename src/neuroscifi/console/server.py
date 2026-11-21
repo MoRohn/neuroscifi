@@ -382,11 +382,48 @@ def _web_tasks(c, p, q, b):
 
 
 def _web_submit(c, p, q, b):
-    from ..webcortex import orchestrator
-    _fields(b, ("objective",), ("mode", "authorization"))
-    mode = b.get("mode")
-    return orchestrator.submit(c.db, b["objective"], c.now, mode=None if mode in (None, "auto") else mode,
-                               origin="console", authorization=b.get("authorization"))
+    """A question from the Research view. Besides queueing a research task it may answer, with `kind`:
+    - "history": a question about how the individual's own understanding changed (auto mode) is answered from the
+      stored record (evolution.changes); `research` is the body that queues a fresh web run instead (T1-04);
+    - "clarify": a follow-up ("Is that version secure?") with no earlier question in this console session to take
+      its subject from (`previous`, the session's last question, kept by the page only) (T1-10);
+    - "refused": the privacy screen found private data; nothing was sent anywhere (a normal outcome, not an HTTP
+      error: T1-20).
+    A follow-up resolved from `previous` queues the rewritten question and says so in `resolved_followup`."""
+    from ..webcortex import evolution, intent, orchestrator
+    _fields(b, ("objective",), ("mode", "authorization", "previous", "route"))
+    mode, objective, previous = b.get("mode"), b["objective"], b.get("previous")
+    if previous is not None and (not isinstance(previous, str) or len(previous) > 2000):
+        raise ValidationError("previous must be a string of at most 2000 characters")
+    if b.get("route") not in (None, "research"):
+        raise ValidationError("route must be omitted or 'research'")
+    resolved = None
+    if isinstance(objective, str) and objective.strip():
+        topic = intent.history_topic(objective)
+        if topic and mode in (None, "auto") and b.get("route") is None:
+            return {"kind": "history", "objective": " ".join(objective.split()), "topic": topic,
+                    "history": evolution.changes(c.db, topic, c.now),
+                    "research": {"objective": " ".join(objective.split()), "route": "research"}}
+        follow = intent.followup(objective, previous)
+        if follow and "clarify" in follow:
+            return {"kind": "clarify", "objective": " ".join(objective.split()), "clarify": follow["clarify"],
+                    "anaphor": follow["anaphor"]}
+        if follow:
+            resolved, objective = follow, follow["question"]
+    try:
+        task = orchestrator.submit(c.db, objective, c.now, mode=None if mode in (None, "auto") else mode,
+                                   origin="console", authorization=b.get("authorization"))
+    except ValidationError as error:
+        findings = orchestrator.screen(c.db, objective, wstate.get_config(c.db)) \
+            if isinstance(objective, str) and b.get("authorization") is None else []
+        if not findings:
+            raise
+        return {"kind": "refused", "refused": "private_data", "kinds": sorted({f["kind"] for f in findings}),
+                "error": str(error)}
+    if resolved:
+        task = task | {"resolved_followup": {k: resolved[k] for k in ("question", "subject", "anaphor",
+                                                                      "previous")}}
+    return task
 
 
 def _web_task(c, p, q, b):

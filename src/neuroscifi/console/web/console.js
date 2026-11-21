@@ -2629,15 +2629,21 @@ function clearPrivacy() {
 }
 
 // U-09/S-14: the backend may answer an identical running question with the existing task (deduplicated).
-async function submitResearch(disclose) {
-  const objective = $('askObjective').value.trim();
+// The backend may also answer without queueing research (`kind`): from the stored history of the individual's own
+// understanding ('history', T1-04), by asking which subject a follow-up means ('clarify', T1-10), or by refusing
+// private data ('refused', a normal outcome rather than an HTTP error: T1-20). web.previous is this page session's
+// last question (kept in memory only, never stored), sent so "Is that version secure?" is read about it.
+async function submitResearch(disclose, route = null, asked = null) {
+  const objective = asked ?? $('askObjective').value.trim();
   if (!objective) { say($('askStatus'), 'Write a question or objective first.', 'error'); $('askObjective').focus(); return; }
-  if (!askCount()) { $('askObjective').focus(); return; }
+  if (asked === null && !askCount()) { $('askObjective').focus(); return; }
   const status = $('askStatus');
-  let refused = null;
+  let refused = null, clarify = null;
   await act($('askBtn'), status, async () => {
     const body = { objective, mode: $('askMode').value || 'auto' };
     if (disclose) body.authorization = 'owner-approved-disclosure';
+    if (web.previous) body.previous = web.previous;
+    if (route) body.route = route;
     let t;
     try {
       t = await api('POST', '/api/web/tasks', body);
@@ -2646,15 +2652,28 @@ async function submitResearch(disclose) {
       if (refused) return null;
       throw error;
     }
+    if (t.kind === 'refused') { refused = t.kinds ?? []; return null; }
+    if (t.kind === 'clarify') { clarify = t.clarify; return null; }
     $('askObjective').value = '';
     clearPrivacy();
     askCount();
+    web.previous = t.objective;
+    if (t.kind === 'history') {
+      showHistory(t);
+      return `Answered from what this individual has stored about “${short(t.topic, 60)}”: no web search was made.`;
+    }
+    showHistory(null);
     web.taskId = t.id;
     web.taskSig = '';
     await refreshTasks();
-    if (t.deduplicated || t.existing) return 'Already running — opened the existing task. Its progress and report are under Report.';
-    return `Research queued (${modeLabel(t.mode)}). Its progress and report appear under Report.`;
+    const read = t.resolved_followup ? ` “${t.resolved_followup.anaphor}” was read as ${t.resolved_followup.subject}, from your previous question.` : '';
+    if (t.deduplicated || t.existing) return `Already running — opened the existing task. Its progress and report are under Report.${read}`;
+    return `Research queued (${modeLabel(t.mode)}): “${short(t.objective, 90)}”.${read} Its progress and report appear under Report.`;
   });
+  if (clarify) {
+    say(status, clarify, 'error');
+    $('askObjective').focus();
+  }
   if (refused) {
     web.privacy = refused;
     say(status, `Nothing was sent. Your question contains ${kindList(refused)}. Remove personal details such as e-mail addresses, ` +
@@ -2664,6 +2683,29 @@ async function submitResearch(disclose) {
     $('askDisclose').checked = false;
     $('askObjective').focus();
   }
+}
+
+// T1-04: "What has changed in your understanding of X?" answered from evolution.changes: the template summary, the
+// stored versions (with supersession) and the dated timeline; a fresh web run is a separate, explicit action.
+function showHistory(t) {
+  const slot = $('askHistory');
+  if (!t) { slot.hidden = true; slot.replaceChildren(); return; }
+  const hist = t.history ?? {};
+  const subjects = [...(hist.subjects ?? [])].sort((a, b) => (b.versions?.length ?? 0) - (a.versions?.length ?? 0));
+  const versions = subjects.flatMap((s) => (s.versions ?? []).map((v) => [`v${v.version}`, cap(v.status),
+    v.statement, fmtTime(v.times?.valid_from), v.superseded_by ? `#${v.superseded_by}` : '—']));
+  const events = subjects.flatMap((s) => s.timeline ?? []).sort((a, b) => (a.at ?? 0) - (b.at ?? 0)).slice(-20);
+  slot.replaceChildren(
+    h('h3', { id: 'h-history', text: `What changed in the understanding of “${t.topic}”` }),
+    h('p', { id: 'historySummary', text: hist.summary?.text ?? '' }),
+    h('p', { class: 'sub', text: `${hist.summary?.label ?? ''} Taken from stored versions, supersessions, evidence and hypotheses; no web search was made.` }),
+    versions.length ? table('Stored versions', ['Version', 'Status', 'Statement', 'Valid from', 'Superseded by'], versions, { showCaption: true })
+      : empty('No knowledge version about this topic is stored.'),
+    events.length ? table('Timeline', ['Date', 'Event', 'Detail'], events.map((e) => [e.date ?? fmtTime(e.at), cap(String(e.kind).replaceAll('_', ' ')), e.text]), { showCaption: true })
+      : null,
+    h('button', { type: 'button', id: 'historyResearch', text: 'Research this on the web now',
+      onclick: () => submitResearch(false, 'research', t.research?.objective ?? t.objective) }));
+  slot.hidden = false;
 }
 
 // C-13: the limit is in bytes (UTF-8), so CJK text runs out sooner than the character count suggests.

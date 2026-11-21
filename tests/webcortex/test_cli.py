@@ -413,3 +413,21 @@ def test_privacy_refusal_names_the_cli_flag_and_status_survives_a_corrupt_cache(
     finally:
         conn.close()
     assert any("public_cache" in w for w in warnings)
+
+
+def test_ask_answers_history_questions_from_memory_and_refuses_bare_follow_ups(capsys, db):
+    """T1-04 / T1-10 on the command line: a question about the individual's own understanding is answered from
+    evolution.changes (no task, no search); a question that only points back ("that version") has no earlier
+    question to take its subject from and asks for it (exit 2) instead of researching something else."""
+    enable(capsys, db)
+    for year in (1998, 1999):
+        code, out = nsf(capsys, "knowledge", "assert",
+                        f"Rao and Ballard published the predictive coding model of the visual cortex in {year}.",
+                        "--db", db)
+        assert code == 0, out
+    code, out = nsf(capsys, "web", "ask", "What has changed in your understanding of predictive coding?", "--db", db)
+    assert code == 0 and out["kind"] == "history" and out["topic"] == "predictive coding"
+    assert any(len(s["versions"]) == 2 for s in out["history"]["subjects"])
+    code, err = nsf(capsys, "web", "ask", "Is that version secure, stable and recommended?", "--queue", "--db", db)
+    assert code == 2 and "Which version do you mean?" in err
+    assert nsf(capsys, "web", "tasks", "--db", db)[1] == []

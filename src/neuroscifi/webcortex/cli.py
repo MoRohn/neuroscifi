@@ -455,7 +455,20 @@ def _cli_words(fn, *args, **kwargs):
 
 
 def _ask(db, a, now):
-    from . import orchestrator
+    """Submit and run a research task. A question about how the individual's own understanding changed is answered
+    from the stored history (evolution.changes; --mode researches it on the web instead: T1-04). A question that
+    only points back ("Is that version secure?") is refused with a request to name the subject: a command line has
+    no earlier question to take it from (T1-10)."""
+    from . import evolution, intent, orchestrator
+    topic = intent.history_topic(a.objective) if a.mode is None else None
+    if topic:
+        return {"kind": "history", "objective": " ".join(a.objective.split()), "topic": topic,
+                "history": evolution.changes(db, topic, now),
+                "note": "answered from stored knowledge versions, evidence and hypotheses; no web search was made "
+                        "(pass --mode to research the question on the web)"}
+    follow = intent.followup(a.objective)
+    if follow:
+        raise ValidationError(follow["clarify"])
     budget = _json_arg(a.budget_json, "--budget-json") if a.budget_json else None
     task = _cli_words(orchestrator.submit, db, a.objective, now, mode=a.mode, budget=budget, origin="cli",
                       authorization=orchestrator.AUTHORIZED_DISCLOSURE if a.allow_private_terms else None)

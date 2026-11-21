@@ -313,7 +313,7 @@ def test_privacy_refusal_is_plain_and_has_an_owner_override(uat, new_page):
     detail = db.execute("SELECT detail FROM web_events WHERE kind='submitted'").fetchone()[0]
     db.close()
     assert json.loads(detail)["disclosure_authorized"] is True
-    assert not [p for p in page.problems if "400" not in p], page.problems
+    assert not page.problems, page.problems   # T1-20: the refusal is not an HTTP error
 
 
 # ---- U-04 queued without a worker, U-09 duplicates -----------------------------------------------------------
@@ -869,4 +869,49 @@ def test_curiosity_titles_are_plain_sentences_with_numbers_under_technical_detai
     tech = item.locator("details.tech").text_content()
     assert "bits" in tech and key in tech, tech
     assert key not in item.inner_text().replace(item.locator("details.tech").inner_text(), "")
+    assert not page.problems, page.problems
+
+
+# ---- UAT T1-04 / T1-10: history questions and follow-ups in the Research view ----------------------------------
+
+def test_history_question_and_follow_up_in_the_research_view(uat, new_page):
+    """T1-04: "What has changed in your understanding of predictive coding?" shows the stored versions and the
+    supersession, with a separate button for a fresh web run. T1-10: a follow-up with no earlier question asks
+    which version; after a question naming numpy 2.5.5 the follow-up is queued about numpy 2.5.5."""
+    db = uat.db()
+    knowledge.assert_fact(db, "Rao and Ballard published the predictive coding model of the visual cortex in 1998.",
+                          time.time() - 60)
+    knowledge.assert_fact(db, "Rao and Ballard published the predictive coding model of the visual cortex in 1999.",
+                          time.time())
+    db.close()
+    page = new_page(1280, 900)
+    page.goto(uat.url)
+    go(page, "research")
+    status = page.locator("#askStatus")
+    page.locator("#askObjective").fill("Is that version secure, stable and recommended?")
+    page.locator("#askBtn").click()
+    expect(status).to_contain_text("Which version do you mean?")
+    page.locator("#askObjective").fill("What has changed in your understanding of predictive coding?")
+    page.locator("#askBtn").click()
+    expect(status).to_contain_text("no web search was made")
+    history = page.locator("#askHistory")
+    expect(history).to_be_visible()
+    expect(history).to_contain_text("in 1998.")
+    expect(history).to_contain_text("Superseded")
+    expect(history.get_by_role("button", name="Research this on the web now")).to_be_visible()
+    history.screenshot(path=str(SHOTS / "uat-t1-04-history-1280.png"))
+    db = uat.db()
+    assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == 0
+    db.close()
+    page.locator("#askObjective").fill("Is numpy 2.5.5 recommended?")
+    page.locator("#askBtn").click()
+    expect(status).to_contain_text("Research queued")
+    page.locator("#askObjective").fill("Is that version secure, stable and recommended?")
+    page.locator("#askBtn").click()
+    expect(status).to_contain_text("was read as numpy 2.5.5")
+    expect(history).to_be_hidden()
+    db = uat.db()
+    objectives = [o for (o,) in db.execute("SELECT objective FROM web_tasks ORDER BY created_at")]
+    db.close()
+    assert objectives == ["Is numpy 2.5.5 recommended?", "Is numpy 2.5.5 secure, stable and recommended?"]
     assert not page.problems, page.problems
