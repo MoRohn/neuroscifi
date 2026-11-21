@@ -9,7 +9,8 @@ apply(db, report, services, question=, now=, task_id=) adds to the report:
   report["reasoning"] = {"generated_by", "status", "label", "answer": [{"text", "citations", "claims", "states",
                          "hedged", "insufficiency"?}], "rejected": [{"text", "reasons"}], "gaps": [{"text", "by"}],
                          "critique", "usage", "reason", "unanswered"? {"text", "by": "rules"} (status "rejected":
-                         no sentence survived; say this rather than an unrelated quote)}
+                         no sentence survived; say this rather than an unrelated quote), "note"? {"text", "by":
+                         "rules"} (verdict_note: the verdict did not evaluate or establish the checked statement)}
 The extractive `answer` is never changed: it stays the evidence of record and the degraded view.
 
 The model sees only the bundle(): the question, claim ids with their ADR-035 verification state and category
@@ -798,10 +799,35 @@ def rule_gaps(report: dict) -> list[str]:
 
 # ---- apply ------------------------------------------------------------------------------------------------------
 
+NOTE_LEAD = "NeuroSciFi note: "
+
+
+def verdict_note(report: dict) -> dict | None:
+    """D-R5-3: when the verdict says the checked statement was not evaluated (a judgement such as "recommended") or
+    is not established by the evidence (insufficient), a labelled system note says so, whatever the model wrote or
+    the guard kept: {"text": "NeuroSciFi note: whether numpy 2.5.5 is recommended is a judgement the evidence does not
+    establish.", "by": "rules"}. Built only from the verdict's statement (derived from the question, never from web
+    text) and its ADR-035 state; None otherwise."""
+    v = report.get("verdict") if isinstance(report.get("verdict"), dict) else None
+    if not v or v.get("state") not in ("not_evaluated", "insufficient"):
+        return None
+    statement = _clean(v.get("statement"), 200).rstrip(" .?!")
+    if not statement or safety.scan_injection(statement):
+        return None
+    if v["state"] == "not_evaluated":
+        text = f"whether {statement} is a judgement the evidence does not establish."
+    else:
+        text = f"the evidence read does not establish whether {statement}."
+    return {"text": NOTE_LEAD + text, "by": "rules"}
+
+
 def _degraded(report, status, reason, **extra) -> dict:
     reasoning = {"generated_by": TEMPLATE, "status": status, "label": LABEL_DEGRADED, "reason": reason,
                  "answer": [], "rejected": [], "gaps": [{"text": g, "by": "rules"} for g in rule_gaps(report)],
                  "critique": None, "usage": None} | extra
+    note = verdict_note(report)
+    if note:
+        reasoning["note"] = note
     report["reasoning"] = reasoning
     report["generated_by"] = TEMPLATE
     return reasoning
@@ -941,6 +967,9 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     report["reasoning"] = {"generated_by": generated_by, "status": "model", "label": LABEL_MODEL.format(model=model),
                            "reason": None, "answer": accepted, "rejected": rejected, "gaps": merged[:2 * MAX_GAPS],
                            "critique": critique, "usage": usage}
+    note = verdict_note(report)
+    if note:
+        report["reasoning"]["note"] = note
     if presentation:
         report["reasoning"]["presentation"] = _clean(presentation, 200)
     report["generated_by"] = generated_by
@@ -953,4 +982,4 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
 
 __all__ = ["ANSWER_SCHEMA", "LABEL_DEGRADED", "LABEL_MODEL", "MIN_MODEL_SECONDS", "SUPPORTED_STATES", "apply",
            "bundle", "check_sentence", "claim_state", "gateway_for", "guard", "hedged", "insufficiency", "messages",
-           "rule_gaps", "unanswered"]
+           "rule_gaps", "unanswered", "verdict_note"]

@@ -175,6 +175,12 @@ def compose_answer(task) -> Reply:
             label += f" ({str(reasoning['reason'])[:160]})"
         reply = Reply("research_result", speech=speech, text="\n".join(lines) or "No answer was found.",
                       source="template", label=label, task_id=task.get("id"), sources=_sources(report))
+    note = reasoning.get("note") if isinstance(reasoning.get("note"), dict) else {}
+    note = str(note.get("text") or "").strip()[:300]
+    if note:
+        # D-R5-3: the verdict did not evaluate or establish the checked statement; say so whatever the model wrote
+        reply.text = note + "\n" + reply.text
+        reply.speech = list(reply.speech) + [note]
     verdict = report.get("verdict") if isinstance(report.get("verdict"), dict) else None
     if verdict and verdict.get("label"):
         reply.text += f"\nVerdict: {verdict['label']}" + (f" - {verdict.get('statement')}"

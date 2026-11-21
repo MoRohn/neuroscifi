@@ -1341,6 +1341,7 @@ function reasoningBlock(r) {
   if (x.generated_by === 'template' || !x.answer?.length) {
     // T2-03: no model sentence survived the guard: say what was not established before any quoted evidence
     return [x.unanswered?.text ? h('p', { class: 'msg', id: 'reasoningUnanswered', text: x.unanswered.text }) : null,
+      x.note?.text ? h('p', { class: 'msg', id: 'reasoningNote', text: x.note.text }) : null,
       h('p', { class: 'msg warn', id: 'reasoningLabel', 'data-generated-by': 'template' }, badge('Extractive summary (template)', 'neutral'), ` ${x.label}`),
       x.reason ? technical(h('p', { text: `Why: ${x.reason}` })) : null];
   }
@@ -1350,6 +1351,8 @@ function reasoningBlock(r) {
       h('p', { class: 'answermeta' }, citeLinks(s.citations), ' ',
         Object.entries(s.states ?? {}).map(([id, st]) => badge(`${id}: ${statusText(st)}`, st === 'corroborated' || st === 'supported' ? 'ok' : 'neutral')),
         s.flag ? badge(`self-check flagged: ${s.flag.problem.replace(/_/g, ' ')} (not confirmed by the checks)`, 'neutral') : null))))];
+  // D-R5-3: the verdict did not evaluate or establish the checked statement: a system note, whatever the model wrote
+  if (x.note?.text) out.push(h('p', { class: 'msg', id: 'reasoningNote', text: x.note.text }));
   if (x.gaps?.length) {
     out.push(h('h4', { text: 'Knowledge gaps' }), h('ul', { class: 'reasons', id: 'modelGaps' }, x.gaps.map((g) => h('li', {}, g.text, ' ', badge(g.by === 'model' ? 'model-identified' : 'from the evidence', 'neutral')))));
   }

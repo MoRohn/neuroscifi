@@ -235,6 +235,19 @@ def test_compose_answer_speaks_what_was_not_established_when_the_guard_rejected_
     assert lines[0] == said and "Zephyr 4.2.0" in r.text and r.text.index("Zephyr") > r.text.index(said)
 
 
+def test_compose_answer_says_the_verdict_note():
+    """D-R5-3: the reasoning's system note (the verdict did not evaluate the checked statement) leads the text answer
+    and is spoken, whatever the model wrote."""
+    note = {"text": "NeuroSciFi note: whether numpy 2.5.5 is recommended is a judgement the evidence does not "
+                    "establish.", "by": "rules"}
+    report = dict(REPORT_MODEL, reasoning=dict(REPORT_MODEL["reasoning"], note=note))
+    r = vbridge.compose_answer({"id": "t", "status": "completed", "objective": "q", "result": report})
+    assert r.source == "model" and r.text.splitlines()[0] == note["text"] and note["text"] in r.speech
+    report = dict(REPORT_MODEL, reasoning={"status": "rejected", "generated_by": "template", "note": note})
+    r = vbridge.compose_answer({"id": "t", "status": "completed", "objective": "q", "result": report})
+    assert r.source == "template" and r.text.splitlines()[0] == note["text"]
+
+
 def test_spoken_budget():
     out = vbridge.spoken(["word " * 50 + "end.", "second [3] sentence.", "third."])
     assert out == ["word " * 50 + "end.", "second sentence."]

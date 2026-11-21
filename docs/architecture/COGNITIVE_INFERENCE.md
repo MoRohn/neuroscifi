@@ -92,6 +92,33 @@ included); failed and cancelled runs keep the extractive report only.
   vs "86 million", "17 days" vs "17 November", "$1.5 million" vs "1.5 billion dollars"; units and scale words are
   normalised, "%" = "percent"; an ambiguous one-letter unit such as "5m" is not judged), or contains
   instruction-like text. `check_sentence` holds these checks.
+- **Honest caveats** (`gap_clause`, `insufficiency`). A sentence that only says what the evidence does not establish
+  asserts no fact: it needs no supported claim, no hedge and (T2-03) no citation, and it may repeat the question's
+  own numbers. It is recognised by structure, not by phrase: a clause is a caveat when a negator or absence
+  quantifier (no, not, n't, cannot, never, none, nothing, lack/absence of, insufficient, unable/fail to) scopes over
+  an evidence noun or a confirmation verb (evidence, information, data, source, indication; confirm, establish,
+  indicate, state, show, determine, verify, address, evaluate) with only function words and degree or epistemic
+  modifiers between them, or a knowledge-absence adjective (unclear, unknown, unverified) is its predicate; a verbal
+  predicate hangs on an auxiliary and names the evidence or says it cannot be done; the words before the negation
+  assert nothing (an embedded "whether" question, an expletive, a noun phrase without a finite verb, relative or
+  coordinator); and nothing in the clause argues against something ("No source disputes that X is safe" is not a
+  caveat). A sentence is a caveat only when every clause is one. The same negation scope decides the other checks:
+  "cannot be confirmed" calls nothing confirmed, "not reported" or "does not indicate" attributes (hedges) nothing,
+  and a caveat clause does not hedge the factual clause beside it, so "X fixes a critical flaw, but the evidence does
+  not indicate whether it is recommended" is judged on "X fixes a critical flaw".
+- **Uncited caveats and the verdict note (D-R5-3).** The question was whether the guard should accept an uncited
+  sentence that asserts no fact. It already did (T2-03), and the structural rule widens what is recognised, so an
+  uncited caveat may now hold no number and no name the question does not hold. The R5 retest showed the deeper
+  problem: for "Is numpy 2.5.5 recommended?" the model's caveat failed in 3 of 3 runs for wording (uncited with an
+  extra noun phrase, or compound with a factual first clause), so whether the reader learned that "recommended" was
+  never evaluated depended on the model's phrasing. Relaxing the guard further would trade safety for that
+  phrasing; instead the answer carries a deterministic system note (`verdict_note`, `reasoning.note` `{text, by:
+  "rules"}`) whenever the verdict's ADR-035 state is `not_evaluated` ("NeuroSciFi note: whether numpy 2.5.5 is
+  recommended is a judgement the evidence does not establish.") or `insufficient` ("NeuroSciFi note: the evidence
+  read does not establish whether numpy 2.5.5 is secure."), on the model path and on every degraded path. It is
+  built from the verdict's statement (derived from the question, injection-scanned) and state only, never from
+  model or web text, is never mixed into the model's sentences, and is shown by the console (`#reasoningNote`) and
+  said by voice.
 - **Self-critique.** One call (≤ 400 tokens): each accepted sentence is marked `fine`, `unsupported`, `overstated` or
   `missing_hedge`. A mark removes a sentence only when `check_sentence` confirms an objective failure (unknown
   source or claim, a claim state that is not supported stated without a hedge, a number or unit not in the cited
@@ -108,7 +135,7 @@ included); failed and cancelled runs keep the extractive report only.
 - **Gaps.** Model-identified gaps (injection-scanned, ≤ 300 chars) plus rule gaps from the evidence (single-source
   findings, contested findings, unmet freshness, no claims), each labelled by origin.
 - **Output.** `report.reasoning = {generated_by, status, label, answer[{text, citations, claims, states, hedged}],
-  rejected[{text, reasons}], gaps[{text, by}], critique, usage, reason}`, `report.generated_by`, a limitation line
+  rejected[{text, reasons}], gaps[{text, by}], critique, usage, reason, note?}`, `report.generated_by`, a limitation line
   saying how many sentences passed and were rejected, and one `decision` event (when an endpoint is configured).
   `status` is `model`, `not_configured`, `disabled`, `no_evidence`, `unavailable`, `unauthorised`, `degraded`
   (e.g. schema failure, timeout, time budget), `rejected` (nothing passed) or `error`. Undated sources that a search
@@ -191,7 +218,11 @@ nsf llm usage                                                 # token ledger
 
 ## 6. Limitations
 
-- The guard is lexical. A hedge word anywhere in a sentence ("could", "reports") satisfies the hedge rule. Number
+- The guard is lexical. A hedge word anywhere outside a caveat clause ("could", "reports") satisfies the hedge rule.
+  The caveat rule reads structure from word classes, not a parse: a finite verb in a caveat's subject is detected
+  only through auxiliaries, relatives, coordinators and a third-person or past form right after a name or version
+  ("NumPy 2.5.5 fixes ..."), so an unusual subject ("Bugs the sources do not describe ...") can still read as a
+  caveat; it is then hedged-as-caveat, and every number, unit, id and injection check still applies. Number
   grounding checks that a number appears in the cited evidence with the same unit or scale word, not that it means
   the same thing (a bare number is matched by value only; "5m" is not judged). Names and dates written in words are
   not checked. The self-critique is a model judging a model; its marks are shown as flags and remove nothing on
