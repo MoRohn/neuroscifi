@@ -23,8 +23,15 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
     model's say-so is not used: HEDGE patterns are matched locally);
   - calls something verified/confirmed/proven while any cited claim is not supported (never upgrade a state);
   - contains a number that appears in none of its cited claims or their sources' dates (no invented figures);
+  - gives a number a unit (or scale) that the cited evidence does not give that number ("41 feet" when the claim
+    says "41 metres", "86 neurons" vs "86 million neurons" is fine only without a unit; "$3 million" vs "3 billion"
+    is not): every number with a unit must appear with the same unit in a cited claim or source title;
   - contains instruction-like text (safety.scan_injection).
-A bounded self-critique (one call, cfg.self_critique) may only REMOVE accepted sentences and add gaps.
+A bounded self-critique (one call, cfg.self_critique) may FLAG accepted sentences and add gaps. A flag removes a
+sentence only when an objective check confirms it (unknown source or claim, an unsupported claim state without a
+hedge, a number or unit not in the cited evidence: the same checks as the guard); otherwise the sentence stays,
+carrying the flag ({"problem", "note"}) for the reader. The model's judgement alone never removes a sentence.
+`time_left` (seconds, from the task's budget) bounds both calls; too little time or a timeout degrades the label.
 Any model failure (not configured, unavailable, unauthorised, invalid JSON after one repair, every sentence
 rejected) leaves generated_by "template" with LABEL_DEGRADED and the reason; the extractive report is unchanged.
 """
@@ -33,6 +40,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import re
+import time
 
 from . import safety
 
@@ -47,6 +55,7 @@ MAX_GAPS = 5
 QUOTE_CHARS = 420
 ANSWER_TOKENS = 900
 CRITIQUE_TOKENS = 400
+MIN_MODEL_SECONDS = 5.0   # less of the task's time budget left than this: no model call (the label says so)
 
 ANSWER_SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["sentences", "gaps"],
@@ -106,6 +115,33 @@ _NUMBER = re.compile(r"\d+(?:[.,:]\d+)*")
 _COUNT = re.compile(r"\s+(?:independent\s+|separate\s+|different\s+)?(?:sources?|claims?|reports?|websites?|sites?)\b",
                     re.IGNORECASE)
 _SPACE = re.compile(r"\s+")
+# Units and scale words that may follow a number, normalised (a sentence's "41 m" matches evidence "41 metres").
+_UNIT_WORDS = {
+    "%": "%", "percent": "%", "per cent": "%", "pct": "%", "percentage points": "pp", "pp": "pp",
+    "thousand": "thousand", "million": "million", "millions": "million", "mn": "million", "billion": "billion",
+    "billions": "billion", "bn": "billion", "trillion": "trillion",
+    "km": "km", "kilometres": "km", "kilometers": "km", "kilometre": "km", "kilometer": "km",
+    "m": "m", "metres": "m", "meters": "m", "metre": "m", "meter": "m", "cm": "cm", "centimetres": "cm",
+    "centimeters": "cm", "mm": "mm", "millimetres": "mm", "millimeters": "mm", "nm": "nm", "nanometres": "nm",
+    "nanometers": "nm", "mi": "mi", "miles": "mi", "mile": "mi", "ft": "ft", "feet": "ft", "foot": "ft",
+    "kg": "kg", "kilograms": "kg", "g": "g", "grams": "g", "t": "t", "tonnes": "t", "tons": "t", "lb": "lb",
+    "lbs": "lb", "pounds": "lb",
+    "ms": "ms", "milliseconds": "ms", "millisecond": "ms", "s": "s", "sec": "s", "secs": "s", "seconds": "s",
+    "second": "s", "min": "min", "mins": "min", "minutes": "min", "minute": "min", "h": "h", "hr": "h",
+    "hrs": "h", "hours": "h", "hour": "h", "days": "day", "day": "day", "weeks": "week", "week": "week",
+    "months": "month", "month": "month", "years": "year", "year": "year",
+    "b": "B", "bytes": "B", "kb": "kB", "mb": "MB", "gb": "GB", "tb": "TB", "kib": "KiB", "mib": "MiB",
+    "gib": "GiB", "tib": "TiB", "hz": "Hz", "khz": "kHz", "mhz": "MHz", "ghz": "GHz", "w": "W", "watts": "W",
+    "kw": "kW", "mw": "MW", "gw": "GW", "kwh": "kWh", "mwh": "MWh", "°c": "°C", "°f": "°F", "degrees": "°",
+    "x": "x", "×": "x", "times": "x", "tokens/s": "tokens/s", "tokens per second": "tokens/s", "tok/s": "tokens/s",
+    "usd": "$", "dollars": "$", "dollar": "$", "eur": "€", "euros": "€", "euro": "€", "gbp": "£",
+}
+_SCALES = frozenset({"thousand", "million", "billion", "trillion"})
+_AMBIGUOUS = frozenset({"m", "s", "h", "b", "t", "g", "w", "x"})   # "5m", "3B", "2x": read as unknown, never judged
+_CURRENCY = {"$": "$", "US$": "$", "€": "€", "£": "£"}
+_UNIT_AFTER = re.compile(r"\s?(" + "|".join(sorted((re.escape(u) for u in _UNIT_WORDS), key=len, reverse=True)) +
+                         r")(?![\w/])", re.IGNORECASE)
+_QUANTITY = re.compile(r"(US\$|[$€£])?\s?(\d+(?:[.,:]\d+)*)")
 
 
 def _day(ts):
@@ -149,7 +185,11 @@ def bundle(report: dict, question: str) -> dict:
         cited.extend(n for n in sources if n not in cited)
     sources = [{"id": n, "title": _clean(by_n[n].get("title"), 160), "domain": by_n[n].get("domain"),
                 "published": _day(by_n[n].get("published_at")) or "undated",
-                "retrieved": _day(by_n[n].get("retrieved_at")), "kind": by_n[n].get("kind")} for n in sorted(cited)]
+                "retrieved": _day(by_n[n].get("retrieved_at")), "kind": by_n[n].get("kind")}
+               | ({"search_engine_reported_date": _day(by_n[n].get("search_published_at")),
+                   "date_note": "reported by a search engine, not on the page: lower trust"}
+                  if by_n[n].get("published_at") is None and by_n[n].get("search_published_at") else {})
+               for n in sorted(cited)]
     verdict = report.get("verdict")
     return {"question": _clean(question, 2000), "as_of": _day(report.get("as_of")), "claims": claims,
             "sources": sources,
@@ -190,7 +230,7 @@ def _allowed_numbers(claims, sources) -> set[str]:
         for d in (c.get("published"), c.get("event")):
             allowed.update(_NUMBER.findall(d or "") + [str(int(x)) for x in _NUMBER.findall(d or "")])
     for s in sources:
-        for d in (s.get("published"), s.get("title")):
+        for d in (s.get("published"), s.get("title"), s.get("search_engine_reported_date")):
             allowed.update(n.replace(",", "") for n in _NUMBER.findall(d or ""))
             allowed.update(str(int(x)) for x in re.findall(r"\b0\d\b", d or ""))
     return allowed
@@ -202,45 +242,98 @@ def _number_ok(n: str, allowed: set[str]) -> bool:
     return any(a.startswith(n + ".") or a.startswith(n + ":") for a in allowed)   # "4.2" of "4.2.0"
 
 
-def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
+def _quantities(text: str) -> list[tuple[str, frozenset]]:
+    """(number, units) for each number in `text`: a currency sign before it, and the unit or scale word after it
+    (after a scale word, one more unit: "1.5 million km"). Units are normalised (_UNIT_WORDS)."""
+    out = []
+    text = text or ""
+    for m in _QUANTITY.finditer(text):
+        if m.start(2) and (text[m.start(2) - 1].isalnum() or text[m.start(2) - 1] in ".-"):
+            continue        # inside a word, version or identifier ("v4", "COVID-19")
+        units = set()
+        if m.group(1):
+            units.add(_CURRENCY[m.group(1)])
+        pos = m.end()
+        for _ in range(2):
+            u = _UNIT_AFTER.match(text, pos)
+            if not u:
+                break
+            unit = _UNIT_WORDS[u.group(1).lower()]
+            units.add("?" if u.group(1).lower() in _AMBIGUOUS else unit)
+            pos = u.end()
+            if unit not in _SCALES:
+                break
+        out.append((m.group(2).replace(",", ""), frozenset(units)))
+    return out
+
+
+def _unit_mismatches(text: str, evidence: list[str]) -> list[str]:
+    """Numbers the sentence gives a unit that no cited evidence gives the same number: '41 ft' when the evidence
+    says '41 metres'. A number without a unit is left to the number check."""
+    have: dict[str, set] = {}
+    for e in evidence:
+        for n, units in _quantities(e):
+            have.setdefault(n, set()).add(units)
+    bad = []
+    for n, units in _quantities(text):
+        if not units or "?" in units or n not in have:
+            continue        # unit-less, ambiguous ("5m": metres or million?) or not in the evidence (number check)
+        if not any(units <= found or "?" in found for found in have[n]):
+            seen = sorted({u for found in have[n] for u in found}) or ["no unit"]
+            bad.append(f"{n} {'/'.join(sorted(units))} (evidence: {n} {', '.join(seen)})")
+    return bad
+
+
+def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[dict], bool, list[str]]:
+    """The objective checks of one model sentence against the bundle -> (text, cited source ids, claim ids, the
+    claims used, hedged, reasons it fails). Shared by the guard and the confirmation of self-critique flags."""
     claims = {c["id"]: c for c in b["claims"]}
-    source_ids = {s["id"] for s in b["sources"]}
-    by_source = {s["id"]: s for s in b["sources"]}
+    source_ids = {x["id"] for x in b["sources"]}
+    by_source = {x["id"]: x for x in b["sources"]}
+    text = _clean(s.get("text"))
+    cites = [n for n in s.get("sources") or [] if isinstance(n, int) and not isinstance(n, bool)]
+    ids = [str(c).strip() for c in s.get("claims") or []]
+    reasons = []
+    if not cites:
+        reasons.append("cites no source")
+    unknown = sorted({n for n in cites if n not in source_ids})
+    if unknown:
+        reasons.append(f"cites unknown source(s) {unknown}")
+    if not ids:
+        reasons.append("cites no evidence claim")
+    bad = sorted({c for c in ids if c not in claims})
+    if bad:
+        reasons.append(f"cites unknown claim(s) {bad}")
+    used = [claims[c] for c in dict.fromkeys(ids) if c in claims]
+    for c in used:
+        if not set(c["sources"]) & set(cites):
+            reasons.append(f"claim {c['id']} is cited without one of its sources {c['sources']}")
+    weak = [c for c in used if c["state"] not in SUPPORTED_STATES]
+    is_hedged = hedged(text)
+    if weak and not is_hedged:
+        reasons.append("states " + ", ".join(f"{c['id']} ({c['state']})" for c in weak) +
+                       " as fact without hedging")
+    if weak and _UPGRADE.search(_NEGATED_UPGRADE.sub(" ", text)):
+        reasons.append("calls an unverified claim verified or confirmed")
+    cited_sources = [by_source[n] for n in cites if n in by_source]
+    allowed = _allowed_numbers(used, cited_sources)
+    invented = [n for n in _numbers(text) if not _number_ok(n, allowed)]
+    if invented:
+        reasons.append(f"number(s) not in the cited evidence: {', '.join(dict.fromkeys(invented))}")
+    mismatched = _unit_mismatches(text, [c["text"] for c in used] + [x.get("title") or "" for x in cited_sources])
+    if mismatched:
+        reasons.append(f"number/unit mismatch with the cited evidence: {'; '.join(mismatched)}")
+    if safety.scan_injection(text):
+        reasons.append("instruction-like text")
+    return text, cites, ids, used, is_hedged, reasons
+
+
+def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
     accepted, rejected = [], []
     for s in sentences or []:
-        text = _clean(s.get("text"))
-        cites = [n for n in s.get("sources") or [] if isinstance(n, int) and not isinstance(n, bool)]
-        ids = [str(c).strip() for c in s.get("claims") or []]
-        reasons = []
-        if not text:
+        if not _clean(s.get("text")):
             continue
-        if not cites:
-            reasons.append("cites no source")
-        unknown = sorted({n for n in cites if n not in source_ids})
-        if unknown:
-            reasons.append(f"cites unknown source(s) {unknown}")
-        if not ids:
-            reasons.append("cites no evidence claim")
-        bad = sorted({c for c in ids if c not in claims})
-        if bad:
-            reasons.append(f"cites unknown claim(s) {bad}")
-        used = [claims[c] for c in dict.fromkeys(ids) if c in claims]
-        for c in used:
-            if not set(c["sources"]) & set(cites):
-                reasons.append(f"claim {c['id']} is cited without one of its sources {c['sources']}")
-        weak = [c for c in used if c["state"] not in SUPPORTED_STATES]
-        is_hedged = hedged(text)
-        if weak and not is_hedged:
-            reasons.append("states " + ", ".join(f"{c['id']} ({c['state']})" for c in weak) +
-                           " as fact without hedging")
-        if weak and _UPGRADE.search(_NEGATED_UPGRADE.sub(" ", text)):
-            reasons.append("calls an unverified claim verified or confirmed")
-        allowed = _allowed_numbers(used, [by_source[n] for n in cites if n in by_source])
-        invented = [n for n in _numbers(text) if not _number_ok(n, allowed)]
-        if invented:
-            reasons.append(f"number(s) not in the cited evidence: {', '.join(dict.fromkeys(invented))}")
-        if safety.scan_injection(text):
-            reasons.append("instruction-like text")
+        text, cites, ids, used, is_hedged, reasons = check_sentence(s, b)
         if reasons:
             rejected.append({"text": text, "reasons": reasons})
         else:
@@ -308,19 +401,23 @@ def gateway_for(db, services, task_id=None):
     return Gateway.from_db(db, getattr(services, "db_path", None), task_id=task_id)
 
 
-def _critique(gw, b, accepted):
+def _critique(gw, b, accepted, timeout=None):
     numbered = "\n".join(f"{i}. {s['text']} [sources {s['citations']}; claims {s['claims']}]"
                          for i, s in enumerate(accepted, 1))
     evidence = json.dumps({"untrusted": True, "claims": b["claims"], "sources": b["sources"]}, ensure_ascii=False)
     msgs = [{"role": "system", "content": CRITIC},
             {"role": "user", "content": f"Question: {b['question']}\n\n<evidence>\n{evidence}\n</evidence>\n\n"
                                         f"Answer sentences:\n{numbered}"}]
+    extra = {"timeout": timeout} if timeout is not None else {}
     return gw.structured(msgs, CRITIQUE_SCHEMA, name="nsf_critique", purpose="research_critique",
-                         max_tokens=CRITIQUE_TOKENS, temperature=0.0)
+                         max_tokens=CRITIQUE_TOKENS, temperature=0.0, **extra)
 
 
-def apply(db, report: dict, services, *, question: str, now: float, task_id=None, gateway=None) -> dict:
-    """Write report['reasoning'] and report['generated_by'] (see module doc). Never raises for model failures."""
+def apply(db, report: dict, services, *, question: str, now: float, task_id=None, gateway=None,
+          time_left: float | None = None) -> dict:
+    """Write report['reasoning'] and report['generated_by'] (see module doc). Never raises for model failures.
+    `time_left`: seconds of the task's time budget still available; the model calls (answer, repair, critique)
+    share it as their deadline, and with less than MIN_MODEL_SECONDS left no call is made (degraded)."""
     from ..inference.gateway import InferenceError
     try:
         gw = gateway or gateway_for(db, services, task_id)
@@ -333,10 +430,21 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     b = bundle(report, question)
     if not b["claims"]:
         return _degraded(report, "no_evidence", "no verified evidence claim to reason over")
+    deadline = None
+    if time_left is not None:
+        if time_left < MIN_MODEL_SECONDS:
+            return _degraded(report, "degraded", f"time_budget: {max(0.0, time_left):.1f} s of the task's time budget "
+                             f"left, model reasoning needs at least {MIN_MODEL_SECONDS:.0f} s")
+        deadline = time.monotonic() + time_left
+
+    def remaining():
+        return None if deadline is None else max(0.05, deadline - time.monotonic())
+
     results = []
     try:
+        extra = {"timeout": remaining()} if deadline is not None else {}
         value, results = gw.structured(messages(b), ANSWER_SCHEMA, name="nsf_answer", purpose="research_answer",
-                                       stream=True, max_tokens=ANSWER_TOKENS, temperature=0.1)
+                                       stream=True, max_tokens=ANSWER_TOKENS, temperature=0.1, **extra)
     except InferenceError as err:
         status = err.code if err.code in ("not_configured", "unavailable", "unauthorised") else "degraded"
         if err.code == "remote_not_authorised":
@@ -345,21 +453,34 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     accepted, rejected = guard(value.get("sentences"), b)
     gaps = [{"text": g, "by": "model"} for g in map(_gap_text, value.get("gaps") or []) if g]
     critique = None
-    if accepted and gw.cfg.self_critique:
+    if accepted and gw.cfg.self_critique and deadline is not None and deadline - time.monotonic() < MIN_MODEL_SECONDS:
+        critique = {"status": "skipped", "reason": "time_budget: too little of the task's time budget left"}
+    elif accepted and gw.cfg.self_critique:
         try:
-            verdicts, more = _critique(gw, b, accepted)
+            verdicts, more = _critique(gw, b, accepted, timeout=remaining())
             results += more
-            dropped = set()
+            dropped, flagged = set(), 0
             for issue in verdicts.get("issues") or []:
                 i = issue.get("sentence")
-                if issue.get("problem") != "fine" and isinstance(i, int) and 1 <= i <= len(accepted):
+                if issue.get("problem") == "fine" or not isinstance(i, int) or not 1 <= i <= len(accepted) \
+                        or i - 1 in dropped:
+                    continue
+                item = accepted[i - 1]
+                flag = {"problem": issue["problem"], "note": _clean(issue.get("note"), 200) or None}
+                # the model's judgement alone never removes a sentence: an objective check must confirm it
+                failed = check_sentence({"text": item["text"], "sources": item["citations"], "claims": item["claims"]},
+                                        b)[5]
+                if failed:
                     dropped.add(i - 1)
-                    rejected.append({"text": accepted[i - 1]["text"], "reasons": [
-                        f"self-critique: {issue['problem']}" + (f" ({_clean(issue.get('note'), 200)})"
-                                                                if issue.get("note") else "")]})
+                    rejected.append({"text": item["text"], "reasons": [
+                        f"self-critique: {issue['problem']}" + (f" ({flag['note']})" if flag["note"] else ""),
+                        *(f"confirmed: {r}" for r in failed)]})
+                else:
+                    item["flag"] = flag | {"confirmed": False}
+                    flagged += 1
             accepted = [s for i, s in enumerate(accepted) if i not in dropped]
             gaps += [{"text": g, "by": "model"} for g in map(_gap_text, verdicts.get("gaps") or []) if g]
-            critique = {"status": "ok", "removed": len(dropped)}
+            critique = {"status": "ok", "removed": len(dropped), "flagged": flagged}
         except InferenceError as err:
             critique = {"status": "failed", "reason": f"{err.code}: {err}"}
     seen, merged = set(), []
@@ -387,5 +508,5 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     return report["reasoning"]
 
 
-__all__ = ["ANSWER_SCHEMA", "LABEL_DEGRADED", "LABEL_MODEL", "SUPPORTED_STATES", "apply", "bundle", "gateway_for",
-           "guard", "hedged", "messages", "rule_gaps"]
+__all__ = ["ANSWER_SCHEMA", "LABEL_DEGRADED", "LABEL_MODEL", "MIN_MODEL_SECONDS", "SUPPORTED_STATES", "apply",
+           "bundle", "check_sentence", "gateway_for", "guard", "hedged", "messages", "rule_gaps"]

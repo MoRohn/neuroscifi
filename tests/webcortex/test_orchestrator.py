@@ -1363,3 +1363,74 @@ def test_github_release_quotes_are_whole_plain_sentences_from_the_whole_body(ind
     quotes = [a["text"] for a in done["result"]["answer"][1:]]
     assert quotes and not any(m in t for t in texts + quotes for m in ("#", "**", "`", "- "))
     assert all(t.rstrip().endswith((".", "!", "?", ")", ":")) for t in quotes), quotes
+
+
+# ---- Lane G follow-ups: search-engine dates (#3) and the dependency check (#2) -----------------------------------
+
+UNDATED = ("undated-news.example", "/kestrel-ships")
+UNDATED_TEXT = "The Kestrel editor version 7.1 shipped with a new plugin system for teams."
+
+
+def test_a_search_engine_date_dates_an_undated_page_with_lower_trust(individual, web):
+    """Lane G #3: a page without its own date gets the date the search engine reported (SearXNG publishedDate,
+    Hacker News ...), marked as search-engine-reported; it is never used as an in-page date (freshness and
+    verification still see an undated page) and a page with its own date keeps it."""
+    db, path = individual
+    web.add(*UNDATED, f"<html><head><title>Kestrel 7.1</title></head><body><article><p>{UNDATED_TEXT}</p>"
+                      "</article></body></html>")
+    web.add("dated-news.example", "/kestrel", "<html><head><title>Kestrel 7.1 is out</title><meta property="
+            "'article:published_time' content='2026-11-19T09:00:00Z'></head><body><article><p>"
+            "The Kestrel editor version 7.1 shipped with a new plugin system.</p></article></body></html>")
+    reported = T0 - 2 * 86400
+    provider = CorpusProvider([
+        {"url": f"http://{UNDATED[0]}{UNDATED[1]}", "title": "Kestrel 7.1", "snippet": UNDATED_TEXT,
+         "published_at": reported, "metadata": {"engines": ["hackernews"]}},
+        {"url": "http://dated-news.example/kestrel", "title": "Kestrel 7.1 is out", "snippet": UNDATED_TEXT,
+         "published_at": T0 - 9 * 86400, "metadata": {"engines": ["bing news"]}}], name="searxng")
+    task = orchestrator.submit(db, "Which version of the Kestrel editor shipped a plugin system?", T0)
+    done = orchestrator.run(db, task["id"], svc_mod.build(db, path, fixture=web, providers=[provider],
+                                                          clock=lambda: T0))
+    sources = {s["domain"]: s for s in done["result"]["sources"]}
+    undated, dated = sources["undated-news.example"], sources["dated-news.example"]
+    assert undated["published_at"] is None and undated["search_published_at"] == reported
+    assert undated["date_source"] == "search_engine" and "searxng:hackernews" in undated["date_note"]
+    assert "lower trust" in undated["date_note"]
+    assert dated["published_at"] == datetime(2026, 11, 19, 9, tzinfo=timezone.utc).timestamp()   # in-page wins
+    assert "search_published_at" not in dated and "date_source" not in dated
+    notes = [u for u in done["result"]["uncertainties"] if u.startswith("Undated source:")]
+    assert notes and all("search engine (searxng:hackernews) reports 2026-11-18" in u for u in notes)
+
+
+def test_releases_affecting_this_system_run_the_dependency_check(individual, web, monkeypatch):
+    """Lane G #2: "Latest releases affecting NeuroSciFi" searched the web for "releases" (the self-reference is
+    local context). It now runs the `nsf web deps` logic: the inventory's packages are checked in their registries
+    and the ones needing attention are read as evidence; nothing is sent to a general search engine."""
+    from neuroscifi.webcortex import deps
+    from test_deps import FakeProvider, advisory, package
+    db, path = individual
+    inventory = [{"ecosystem": "PyPI", "name": "oldpkg", "version": "1.0.0", "source_file": "pyproject.toml",
+                  "pinned_spec": ">=1.0", "installed_version": "1.0.0", "groups": ["dependencies"]},
+                 {"ecosystem": "PyPI", "name": "freshpkg", "version": "2.0.0", "source_file": "pyproject.toml",
+                  "pinned_spec": ">=2.0", "installed_version": "2.0.0", "groups": ["dependencies"]}]
+    monkeypatch.setattr(deps, "inventory", lambda root=None: {"packages": inventory, "failures": [], "notes": [],
+                                                              "root": "<repo>", "files": [], "count": 2,
+                                                              "python": "3.12"})
+    pypi = FakeProvider("pypi", {"pypi:oldpkg": package("oldpkg", "PyPI", "2.1.0", T0 - 86400),
+                                 "pypi:oldpkg==1.0.0": package("oldpkg", "PyPI", "2.1.0", T0 - 86400),
+                                 "pypi:freshpkg": package("freshpkg", "PyPI", "2.0.0", T0 - 9e6)})
+    osv = FakeProvider("osv", {"osv:PyPI:oldpkg@1.0.0": advisory("GHSA-aaaa-bbbb-cccc", ["1.0.5"])})
+    general = CorpusProvider([{"url": "http://news.example/releases", "title": "Releases",
+                               "snippet": "releases releases release notes changelog"}], name="searxng")
+    task = orchestrator.submit(db, "Latest releases affecting NeuroSciFi", T0)
+    assert task["mode"] == "technical"
+    done = orchestrator.run(db, task["id"], svc_mod.build(db, path, fixture=web, providers=[pypi, osv, general],
+                                                          clock=lambda: T0))
+    r = done["result"]
+    queries = [e["detail"]["text"] for e in state.events(db, done["id"]) if e["kind"] == "query"]
+    assert queries and all(q.startswith(("pypi:", "osv:", "npm:")) for q in queries), queries
+    assert "pypi:oldpkg==1.0.0" in queries and not any("freshpkg" in q for q in queries)   # attention only
+    dep = r["dependencies"]
+    assert dep["packages"] == 2 and dep["totals"]["upgrade_security"] == 1 and dep["totals"]["up_to_date"] == 1
+    assert dep["attention"][0]["name"] == "oldpkg" and dep["attention"][0]["advisories"] == ["GHSA-aaaa-bbbb-cccc"]
+    assert r["answer"][0]["text"].startswith("Dependency check of 2 packages in use: 1 with a security advisory")
+    assert "oldpkg 1.0.0 -> 2.1.0 (security)" in r["answer"][0]["text"]

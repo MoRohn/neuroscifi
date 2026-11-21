@@ -136,13 +136,18 @@ _RELEASE_CUE = re.compile(
     r"\bvulnerabilit(?:y|ies)\b|\bnew(?:er|est)? (?:stable )?(?:releases?|versions?)\b")
 # A plain release word ("Was numpy 2.5.5 released?", "numpy 2.5.5 version") is a strong cue only next to a name
 # carrying a dotted version: "released" alone is too common ("the film was released") to make words registry names.
-_VERSIONED_RELEASE_CUE = re.compile(r"\b(?:released?|releases|versions?|published)\b")
+# The registry aspects of CLAIM_VERIFICATION §5 count too ("Is corvane 2.5.4 stable?", "Is numpy 2.5.5 secure?"):
+# only the package registries (and OSV for security) can decide them.
+_VERSIONED_RELEASE_CUE = re.compile(r"\b(?:released?|releases|versions?|published|stable|unstable|pre-?releases?|"
+                                    r"yanked|compatible|incompatible|secure|insecure|vulnerable|recommended|"
+                                    r"latest)\b")
 _NAME_WITH_VERSION = re.compile(r"(?<![\w.:/@`'’-])@?[a-z][\w.-]*(?:/[\w.-]+)?(?:\s+(?:version\s+)?v?|==)\d+(?:\.\d+)+")
 _REGISTRY_VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+_~!-]{0,63}")   # providers.structured.VERSION
 # weak cues admit only names that look like package names (code style, "X library", digits/hyphens/dots)
 _WEAK_RELEASE_CUE = re.compile(r"\bupdates?\b|\bupgrades?\b|\bchangelogs?\b")
 MAX_PLAIN_QUESTION_WORDS = 14   # plain lower-case words are candidates only in short questions
-_ADVISORY_CUE = re.compile(r"\b(?:advisor(?:y|ies)|vulnerabilit(?:y|ies)|cves?|security)\b", re.I)
+_ADVISORY_CUE = re.compile(r"\b(?:advisor(?:y|ies)|vulnerabilit(?:y|ies)|vulnerable|cves?|security|secure|"
+                           r"insecure)\b", re.I)
 _CODE_NAME = re.compile(r"`([A-Za-z0-9@][\w.@/-]{0,99})`")
 _NAMED_PACKAGE = re.compile(r"\b([A-Za-z0-9][\w.-]{0,99})\s+(?:(?:python|javascript|js|node(?:\.js)?|npm|pypi|"
                             r"typescript)\s+)?(?:package|library|lib|module)s?\b", re.I)
@@ -152,7 +157,8 @@ _NOT_PACKAGES = frozenset("""python python3 javascript typescript node nodejs ja
 swift scala linux windows macos android ios chrome firefox safari pypi npm pip github gitlab conda homebrew brew
 package packages library libraries lib libs module modules framework frameworks tool tools app apps software
 release releases released version versions stable dates date notes advisory advisories security vulnerability
-vulnerabilities changelog changelogs patch patches fix fixes bug bugs""".split())
+vulnerabilities changelog changelogs patch patches fix fixes bug bugs secure insecure vulnerable recommended
+yanked compatible incompatible unstable prerelease pre-release prereleases pre-releases latest""".split())
 _COMMON = frozenset("""
 able about above across actually after again against ago all almost alone along already also although always
 among amount and another answer any anyone anything are area around ask asked available away back bad base based
@@ -214,6 +220,31 @@ def strip_local(text: str, local_terms=()) -> tuple[str, int]:
         count += 1
     out.append(text[pos:])
     return " ".join("".join(out).split()), count
+
+
+# "Latest releases affecting NeuroSciFi", "security advisories affecting our dependencies": releases of the
+# individual's own dependencies. Once the self-reference is stripped nothing topical is left ("releases"), so a web
+# search would look for the bare word; the dependency check (deps.py, `nsf web deps`) answers it instead.
+_DEPENDENCY_CUE = re.compile(r"\b(?:releases?|released|updates?|upgrades?|versions?|advisor(?:y|ies)|"
+                             r"vulnerabilit(?:y|ies)|cves?|security|dependenc(?:y|ies)|librar(?:y|ies)|packages?)\b",
+                             re.I)
+_DEPENDENCY_WORDS = frozenset("""releases release released update updates upgrade upgrades version versions advisory
+advisories vulnerability vulnerabilities cve cves security dependency dependencies library libraries package packages
+affecting affect affects affected impacting impact impacts relevant newer newest new stable important critical known
+available pending check whether there have has any""".split())
+
+
+def dependency_question(question: str, local_terms=()) -> bool:
+    """True when the question asks about releases / advisories of the individual's own dependencies: it refers to
+    the individual's own system (strip_local), carries a release/advisory/dependency cue, and no topical word is
+    left once the self-reference and that vocabulary are removed. "Latest releases affecting NeuroSciFi" -> True;
+    "Latest numpy releases" (no self-reference) and "evaluate implications of dendritic computation for NeuroSciFi"
+    (a topic remains) -> False."""
+    question = " ".join(str(question or "").split())
+    stripped, n = strip_local(question, local_terms)
+    if not n or not _DEPENDENCY_CUE.search(question):
+        return False
+    return not [w for w in keywords(stripped).split() if w.lower() not in _DEPENDENCY_WORDS]
 
 
 def _cap(text: str, n: int = 200) -> str:
@@ -523,6 +554,15 @@ def assess(question: str, *, now: float, known=()) -> dict:
             if mode == "quick_lookup":
                 mode, why["mode"] = "technical", f"package name(s) with a release cue: {inferred[0]['name']!r}"
 
+    dependencies = mode in ("quick_lookup", "technical") and dependency_question(question)
+    if dependencies:
+        mode, why["mode"] = "technical", "releases or advisories of the individual's own dependencies: dependency check"
+        why["dependency_check"] = ("the question names this system and only release/advisory words remain: the "
+                                   "packages in use are checked in their registries (nsf web deps), not searched")
+        if "dependency check" not in tech:
+            tech.append("dependency check")
+        technical = True
+
     # recency window: the most restrictive explicit window
     window, window_label = None, None
     for label, value in recency:
@@ -561,7 +601,7 @@ def assess(question: str, *, now: float, known=()) -> dict:
         kinds.append("encyclopedia")
     if recency and not (scientific or technical):
         kinds.append("news")
-    kinds.append("web")
+    kinds.append("web")       # a dependency check plans no topic query of any kind (plan)
     why["kinds"] = ", ".join(kinds) + (" (scientific)" if scientific else "") + (" (technical)" if technical else "")
 
     # ---- web decision ----
@@ -609,14 +649,16 @@ def assess(question: str, *, now: float, known=()) -> dict:
                            (f" ({len(usable)} related item(s) do not cover the question's terms)" if usable else ""))
     if urls:
         notes.append(f"{len(urls)} URL(s) named: fetched directly, not searched")
-    if technical and not packages:
+    if dependencies:
+        notes.append("dependency check: the packages in use come from the project inventory (nsf web deps)")
+    elif technical and not packages:
         notes.append("no packages listed: set assessment['packages'] = [{ecosystem, name, version}] for registry "
                      "and advisory lookups")
     return {"needs_web": needs_web, "reasons": reasons, "mode": mode, "freshness_class": freshness,
             "memory_items": [k["id"] for k in fresh if "id" in k] if not needs_web else [],
             "recency_window": window, "kinds": kinds, "entities": entities, "urls": urls,
             "comparison": comparison, "claim": claim, "packages": packages, "sites": sites, "language": language,
-            "notes": notes, "why": why}
+            "notes": notes, "why": why, "dependency_check": dependencies}
 
 
 # ---- plan --------------------------------------------------------------------------------------------------------
@@ -743,7 +785,8 @@ def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> Quer
     for site in assessment.get("sites") or []:   # a named domain becomes a site: restriction, not a keyword
         searchable = re.sub(rf"(?i)\b(?:site:)?(?:www\.)?{re.escape(site)}\b", " ", searchable)
     searchable = strip(" ".join(searchable.split()), counted=True)   # the claim and sides are parts of it
-    clauses = [] if comparison else decompose(searchable)
+    dependency_check = bool(assessment.get("dependency_check"))
+    clauses = [] if comparison or dependency_check else decompose(searchable)
     topics: list[str] = []
     if comparison:
         a, b = comparison
@@ -773,7 +816,10 @@ def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> Quer
             add(1, keywords(clause, limit=5), "academic", f"{label}: scholarly")
         if "encyclopedia" in kinds:
             add(1, kw, "encyclopedia", f"{label}: encyclopedia")
-    if not topics and not assessment.get("packages"):
+    if dependency_check and not assessment.get("packages"):
+        notes.append("dependency check without a package inventory: nothing to look up (the orchestrator supplies "
+                     "the packages in use)")
+    elif not topics and not assessment.get("packages"):
         entities = _outside(assessment.get("entities") or [], local_terms)
         if entities:
             topics.append(" ".join(entities[:3]))
@@ -900,5 +946,5 @@ def searxng_route(query: Query, *, now: float) -> dict:
 
 
 __all__ = ["assess", "plan", "refine", "keywords", "query_text", "searchable_text", "decompose", "extract_entities",
-           "detect_language", "strip_local", "SELF_NAMES",
+           "detect_language", "strip_local", "dependency_question", "SELF_NAMES",
            "searxng_route", "SEARXNG_CATEGORIES"]

@@ -8,6 +8,7 @@
 #
 #   sudo bash deploy/install.sh [--dry-run] [--source DIR | --wheel FILE] [--wheelhouse DIR]
 #                               [--prefix DIR] [--python PYTHON] [--unit-dir DIR] [--web] [--websearch]
+#                               [--searxng] [--llm [--llm-user USER]]
 #
 # --dry-run     print every action and change nothing; allowed without root so the plan can be reviewed
 # --source DIR  project folder to install from (default: the folder above this script)
@@ -19,11 +20,18 @@
 # --web         also install the Web Cortex extras (.[web]); the Web Cortex units are installed either way
 # --websearch   also install the pinned open-webSearch daemon into PREFIX/open-websearch with
 #               `npm ci --ignore-scripts --omit=dev` (needs node and npm; no package install scripts run)
+# --searxng     also install neuroscifi-searxng.service (ADR-034) and copy deploy/searxng/settings.yml to
+#               PREFIX/searxng/settings.yml (the path the unit names); needs docker. Set User= and NSF_DB in a drop-in.
+# --llm         also install neuroscifi-vllm.service (ADR-036): vLLM in docker on 127.0.0.1:8811 through
+#               deploy/vllm/run.sh in the source folder (NSF_REPO); needs docker and the weights (COGNITIVE_INFERENCE §4)
+# --llm-user U  the account the vLLM unit runs as (default: $SUDO_USER); it must be in the docker group and own the
+#               weights and key under its home
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$(cd "$HERE/.." && pwd)"
 WHEEL="" WHEELHOUSE="" PREFIX=/opt/neuroscifi PYTHON="" UNIT_DIR=/etc/systemd/system DRY=0 WEB=0 WEBSEARCH=0
+SEARXNG=0 LLM=0 LLM_USER="${SUDO_USER:-}"
 SVC_USER=neuroscifi
 STATE_DIR=/var/lib/neuroscifi
 CONF_DIR=/etc/neuroscifi
@@ -42,6 +50,9 @@ while [ $# -gt 0 ]; do
     --unit-dir) [ $# -ge 2 ] || die "--unit-dir needs a value"; UNIT_DIR="$2"; shift ;;
     --web) WEB=1 ;;
     --websearch) WEBSEARCH=1 ;;
+    --searxng) SEARXNG=1 ;;
+    --llm) LLM=1 ;;
+    --llm-user) [ $# -ge 2 ] || die "--llm-user needs a value"; LLM_USER="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
@@ -51,6 +62,12 @@ done
 # PREFIX is spliced into unit files with sed, so allow only plain absolute paths.
 [[ "$PREFIX" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--prefix must match ^/[A-Za-z0-9._/-]+\$ (got: $PREFIX)"
 case "$PREFIX/" in */../*) die "--prefix must not contain '..'" ;; esac
+if [ "$LLM" -eq 1 ]; then
+  # LLM_USER and SOURCE are spliced into the vLLM unit with sed, like PREFIX.
+  [[ "$LLM_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "--llm needs --llm-user USER (a plain account name; got: '$LLM_USER')"
+  [ "$LLM_USER" != root ] || die "--llm-user must not be root"
+  [[ "$SOURCE" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--llm: the source folder path has unexpected characters: $SOURCE"
+fi
 
 if [ "$DRY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
   die "must run as root (use sudo). Use --dry-run to review the plan without root."
@@ -151,18 +168,46 @@ fi
 
 note "systemd units into $UNIT_DIR (installed disabled; never enabled or started by this script)"
 NODE_SED="s#/usr/bin/node #${NODE:-/usr/bin/node} #"
-for unit in neuroscifi-pocket.service neuroscifi-console.service neuroscifi-checkpoint.service neuroscifi-checkpoint.timer \
-            neuroscifi-webcortex.service neuroscifi-webcortex-tick.service neuroscifi-webcortex-tick.timer \
-            neuroscifi-websearch.service; do
+# install_unit UNIT [SED_EXPR ...]: the unit with PREFIX (and any extra sed expressions) applied, mode 0644.
+install_unit() {
+  local unit="$1"; shift
+  local args=(-e "s#/opt/neuroscifi#$PREFIX#g")
+  local expr
+  for expr in "$@"; do args+=(-e "$expr"); done
   if [ "$DRY" -eq 1 ]; then
-    echo "+ sed -e 's#/opt/neuroscifi#$PREFIX#g' -e '$NODE_SED' $HERE/systemd/$unit > $UNIT_DIR/$unit (mode 0644)"
+    printf '+ sed'; printf " -e '%s'" "s#/opt/neuroscifi#$PREFIX#g" "$@"; echo " $HERE/systemd/$unit > $UNIT_DIR/$unit (mode 0644)"
   else
     install -d -m 0755 "$UNIT_DIR"
-    sed -e "s#/opt/neuroscifi#$PREFIX#g" -e "$NODE_SED" "$HERE/systemd/$unit" > "$UNIT_DIR/$unit.tmp"
+    sed "${args[@]}" "$HERE/systemd/$unit" > "$UNIT_DIR/$unit.tmp"
     chmod 0644 "$UNIT_DIR/$unit.tmp"
     mv -f "$UNIT_DIR/$unit.tmp" "$UNIT_DIR/$unit"
   fi
+}
+for unit in neuroscifi-pocket.service neuroscifi-console.service neuroscifi-checkpoint.service neuroscifi-checkpoint.timer \
+            neuroscifi-webcortex.service neuroscifi-webcortex-tick.service neuroscifi-webcortex-tick.timer \
+            neuroscifi-websearch.service; do
+  install_unit "$unit" "$NODE_SED"
 done
+if [ "$SEARXNG" -eq 1 ] || [ "$LLM" -eq 1 ]; then
+  command -v docker >/dev/null 2>&1 || echo "# warning: docker not found on this host; --searxng/--llm units need it"
+fi
+if [ "$SEARXNG" -eq 1 ]; then
+  note "SearXNG (ADR-034): settings template into $PREFIX/searxng, unit neuroscifi-searxng.service"
+  act install -d -m 0755 "$PREFIX/searxng"
+  act install -m 0644 "$SOURCE/deploy/searxng/settings.yml" "$PREFIX/searxng/settings.yml"
+  install_unit neuroscifi-searxng.service
+  echo "# set User= (a docker user) and Environment=NSF_DB=... with: systemctl edit neuroscifi-searxng.service"
+fi
+if [ "$LLM" -eq 1 ]; then
+  note "local model server (ADR-036): unit neuroscifi-vllm.service runs $SOURCE/deploy/vllm/run.sh as $LLM_USER"
+  if [ "$DRY" -eq 0 ]; then
+    getent passwd "$LLM_USER" >/dev/null || die "--llm-user $LLM_USER does not exist"
+    [ -f "$SOURCE/deploy/vllm/run.sh" ] || die "no deploy/vllm/run.sh in $SOURCE"
+  fi
+  id -nG "$LLM_USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker \
+    || echo "# warning: $LLM_USER is not in the docker group; the unit's docker run would fail"
+  install_unit neuroscifi-vllm.service "s#^User=.*#User=$LLM_USER#" "s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=$SOURCE#"
+fi
 if [ "$UNIT_DIR" = /etc/systemd/system ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   act systemctl daemon-reload
 fi
@@ -176,3 +221,5 @@ Nothing is enabled or running. Next steps are in docs/operations/RUNBOOK.md:
 Web Cortex stays off until the owner runs \`nsf web config --enable\`; its units (neuroscifi-webcortex.service,
 neuroscifi-webcortex-tick.timer, neuroscifi-websearch.service) are installed disabled like the others.
 MSG
+[ "$SEARXNG" -eq 0 ] || echo "neuroscifi-searxng.service is installed disabled: set User= and NSF_DB (systemctl edit), then enable it."
+[ "$LLM" -eq 0 ] || echo "neuroscifi-vllm.service is installed disabled: enable it after the weights are in place (COGNITIVE_INFERENCE.md §5)."

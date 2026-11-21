@@ -1,6 +1,6 @@
 # NeuroSciFi local model server (ADR-036 draft; docs/architecture/COGNITIVE_INFERENCE.md). vLLM in Docker, bound to
 # 127.0.0.1:8811 only, pinned image digest, read-only model mount, generated API key outside git.
-# Not installed by deploy/install.sh (Docker and the model weights are host choices). Install by hand:
+# Installed (disabled) by `deploy/install.sh --llm --llm-user USER`, which sets User= and NSF_REPO=; or by hand:
 #   sudo install -m 0644 deploy/systemd/neuroscifi-vllm.service /etc/systemd/system/
 #   sudo systemctl edit neuroscifi-vllm.service   # set User= and NSF_REPO= for this host, see below
 #   sudo systemctl daemon-reload && sudo systemctl enable --now neuroscifi-vllm.service

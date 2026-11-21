@@ -1,0 +1,3433 @@
+{
+ "evidence": "search_reasoning_live",
+ "lane": "G (v0.7.0 follow-ups)",
+ "generated_at": "2026-11-21",
+ "code": "working tree on 06c171c (uncommitted Lane G changes)",
+ "environment": {
+  "searxng": "searxng/searxng@sha256:fc1d81d7e9d04d3c8b3e23c7162feddf5c3d6aecd32e67a56eaabcb8d8747f79 on 127.0.0.1:8888 (honest UA patch)",
+  "model": "qwen3-30b-a3b-instruct-2507-fp8 via vLLM on 127.0.0.1:8811 (deploy/vllm/run.sh)",
+  "open_websearch_daemon": "not running (SearXNG's fallback was therefore unavailable)",
+  "gpu_contention": "voice containers (TTS/ASR) of another lane were running on the same GPU; model latencies are higher than the uncontended figures in inference_live.json",
+  "individual": "fresh temporary database (<scratch>/live/laneg.sqlite); web enabled, searxng_url set, nsf llm config --url http://127.0.0.1:8811/v1"
+ },
+ "method": [
+  "each question through the user-facing CLI: `nsf web ask QUESTION` (auto mode), wall time measured around the CLI call",
+  "providers/engines from the task checkpoint's search attempts (provider:engine, attempts, results); sources, verdict, reasoning from the task JSON; claims from `nsf web evidence`",
+  "citation check: for each model sentence and each claim it cites, the claim's quoted text (as given to the model) is found in a claim extracted from one of the cited sources (proxy for 'quote present in the cited source': extracted sentences, not the raw page)",
+  "fallbacks: `nsf web searxng stop` -> one question -> `nsf web searxng start`; `deploy/vllm/run.sh stop` -> one question -> `run.sh start` + `run.sh wait`",
+  "host paths redacted to <repo>/<home>/<scratch>; no personal data"
+ ],
+ "summary": [
+  {
+   "question": "What happened in AI this week?",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_seconds": 4.82,
+   "providers_engines_with_results": [
+    "searxng",
+    "searxng:bing news",
+    "searxng:hackernews"
+   ],
+   "sources_read": 3,
+   "sources_dated_in_page": 0,
+   "sources_dated_by_search_engine_only": 0,
+   "freshness_satisfied": false,
+   "verdict": null,
+   "generated_by": "template",
+   "reasoning_status": "no_evidence",
+   "model_sentences_accepted": 0,
+   "guard_removed": 0,
+   "critique": null,
+   "model_citation_quotes_in_cited_source": "0/0",
+   "extractive_quotes_in_cited_source": "0/0",
+   "model_latency_ms": null,
+   "model_first_token_ms": null
+  },
+  {
+   "question": "Latest developments in open-source LLM inference",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_seconds": 17.86,
+   "providers_engines_with_results": [
+    "searxng",
+    "searxng:bing news",
+    "searxng:hackernews"
+   ],
+   "sources_read": 2,
+   "sources_dated_in_page": 2,
+   "sources_dated_by_search_engine_only": 0,
+   "freshness_satisfied": false,
+   "verdict": null,
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "reasoning_status": "model",
+   "model_sentences_accepted": 1,
+   "guard_removed": 5,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "model_citation_quotes_in_cited_source": "1/1",
+   "extractive_quotes_in_cited_source": "5/5",
+   "model_latency_ms": 11528.5,
+   "model_first_token_ms": 301.5
+  },
+  {
+   "question": "Recent research on predictive coding",
+   "mode": "scientific",
+   "status": "completed",
+   "wall_seconds": 25.01,
+   "providers_engines_with_results": [
+    "arxiv",
+    "crossref",
+    "openalex",
+    "pubmed",
+    "searxng",
+    "searxng:duckduckgo",
+    "searxng:europepmc",
+    "wikipedia"
+   ],
+   "sources_read": 12,
+   "sources_dated_in_page": 12,
+   "sources_dated_by_search_engine_only": 0,
+   "freshness_satisfied": true,
+   "verdict": null,
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "reasoning_status": "model",
+   "model_sentences_accepted": 1,
+   "guard_removed": 3,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "model_citation_quotes_in_cited_source": "1/1",
+   "extractive_quotes_in_cited_source": "3/3",
+   "model_latency_ms": 9428.5,
+   "model_first_token_ms": 350.3
+  },
+  {
+   "question": "Current DGX Spark software updates",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_seconds": 9.1,
+   "providers_engines_with_results": [
+    "searxng",
+    "searxng:bing news",
+    "searxng:hackernews"
+   ],
+   "sources_read": 3,
+   "sources_dated_in_page": 1,
+   "sources_dated_by_search_engine_only": 1,
+   "freshness_satisfied": false,
+   "verdict": null,
+   "generated_by": "template",
+   "reasoning_status": "rejected",
+   "model_sentences_accepted": 0,
+   "guard_removed": 5,
+   "critique": null,
+   "model_citation_quotes_in_cited_source": "0/0",
+   "extractive_quotes_in_cited_source": "5/5",
+   "model_latency_ms": 6906.3,
+   "model_first_token_ms": 334.7
+  },
+  {
+   "question": "Latest releases affecting NeuroSciFi",
+   "mode": "technical",
+   "status": "completed",
+   "wall_seconds": 63.07,
+   "providers_engines_with_results": [
+    "npm",
+    "osv",
+    "pypi"
+   ],
+   "sources_read": 5,
+   "sources_dated_in_page": 5,
+   "sources_dated_by_search_engine_only": 0,
+   "freshness_satisfied": true,
+   "verdict": null,
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "reasoning_status": "model",
+   "model_sentences_accepted": 4,
+   "guard_removed": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "model_citation_quotes_in_cited_source": "5/5",
+   "extractive_quotes_in_cited_source": "0/0",
+   "model_latency_ms": 10000.5,
+   "model_first_token_ms": 276.0
+  },
+  {
+   "question": "Research recent advances in dendritic computation and evaluate their implications for NeuroSciFi",
+   "mode": "scientific",
+   "status": "completed",
+   "wall_seconds": 28.89,
+   "providers_engines_with_results": [
+    "arxiv",
+    "crossref",
+    "openalex",
+    "pubmed",
+    "searxng",
+    "searxng:duckduckgo",
+    "wikipedia"
+   ],
+   "sources_read": 12,
+   "sources_dated_in_page": 12,
+   "sources_dated_by_search_engine_only": 0,
+   "freshness_satisfied": true,
+   "verdict": null,
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "reasoning_status": "model",
+   "model_sentences_accepted": 1,
+   "guard_removed": 5,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "model_citation_quotes_in_cited_source": "1/1",
+   "extractive_quotes_in_cited_source": "4/4",
+   "model_latency_ms": 11039.2,
+   "model_first_token_ms": 375.8
+  },
+  {
+   "question": "Was numpy 2.5.5 released?",
+   "mode": "technical",
+   "status": "completed",
+   "wall_seconds": 27.09,
+   "providers_engines_with_results": [
+    "npm",
+    "pypi",
+    "searxng",
+    "searxng:docker hub",
+    "searxng:duckduckgo",
+    "searxng:mwmbl",
+    "wikipedia"
+   ],
+   "sources_read": 10,
+   "sources_dated_in_page": 6,
+   "sources_dated_by_search_engine_only": 2,
+   "freshness_satisfied": true,
+   "verdict": {
+    "state": "supported",
+    "basis": "corroboration",
+    "category": "registry",
+    "aspect": "published"
+   },
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "reasoning_status": "model",
+   "model_sentences_accepted": 2,
+   "guard_removed": 3,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "model_citation_quotes_in_cited_source": "2/2",
+   "extractive_quotes_in_cited_source": "4/4",
+   "model_latency_ms": 7851.6,
+   "model_first_token_ms": 322.1
+  },
+  {
+   "question": "Is numpy 2.5.5 secure?",
+   "mode": "technical",
+   "status": "completed",
+   "wall_seconds": 22.29,
+   "providers_engines_with_results": [
+    "npm",
+    "pypi",
+    "searxng",
+    "searxng:docker hub",
+    "searxng:duckduckgo",
+    "searxng:mwmbl",
+    "wikipedia"
+   ],
+   "sources_read": 10,
+   "sources_dated_in_page": 10,
+   "sources_dated_by_search_engine_only": 0,
+   "freshness_satisfied": true,
+   "verdict": {
+    "state": "insufficient",
+    "basis": null,
+    "category": "registry",
+    "aspect": "secure"
+   },
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "reasoning_status": "model",
+   "model_sentences_accepted": 2,
+   "guard_removed": 1,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "model_citation_quotes_in_cited_source": "3/3",
+   "extractive_quotes_in_cited_source": "4/4",
+   "model_latency_ms": 8918.8,
+   "model_first_token_ms": 330.8
+  }
+ ],
+ "fallback_searxng_down": {
+  "question": "Latest developments in open-source LLM inference",
+  "status": "partial",
+  "wall_seconds": 0.36,
+  "engines": {
+   "openwebsearch": {
+    "attempts": 2,
+    "results": 0
+   },
+   "openwebsearch:duckduckgo": {
+    "attempts": 2,
+    "results": 0
+   },
+   "searxng": {
+    "attempts": 2,
+    "results": 0
+   },
+   "wikipedia": {
+    "attempts": 2,
+    "results": 0
+   }
+  },
+  "engine_failures": {
+   "searxng: searxng_unreachable: SearXNG unreachable at http://127.0.0.1:8888: [Errno 111] Co": 2,
+   "openwebsearch:duckduckgo: daemon_unreachable": 2,
+   "openwebsearch: daemon_unreachable: daemon unreachable at http://127.0.0.1:3210: <urlopen e": 2,
+   "wikipedia: rate_limited: HTTP 429": 1,
+   "wikipedia: rate_limited: host backoff in force": 1
+  },
+  "lead": "Nothing could be read: every search provider failed (searxng: searxng_unreachable, openwebsearch/duckduckgo: daemon_unreachable, openwebsearch: daemon_unreachable, wikipedia: rate_limited).",
+  "reasoning": "no_evidence",
+  "note": "SearXNG unreachable -> open-webSearch fallback tried (daemon not running: daemon_unreachable) -> refined round, Wikipedia rate-limited (429). Nothing read; task 'partial' with every failure named; no hang (0.36 s). SearXNG restarted with `nsf web searxng start`: running, healthy, verdict healthy.",
+  "restart": "nsf web searxng start -> container running, health 'starting' then healthy; status verdict healthy"
+ },
+ "fallback_model_down": {
+  "question": "Was numpy 2.5.5 released?",
+  "status": "completed",
+  "wall_seconds": 11.43,
+  "verdict": {
+   "state": "supported",
+   "label": "supported",
+   "basis": "registry_record",
+   "category": "registry",
+   "aspect": "published",
+   "statement": "numpy 2.5.5 was released",
+   "confidence": 0.658
+  },
+  "generated_by": "template",
+  "reasoning_status": "unavailable",
+  "reason": "unavailable: cannot connect: Connection refused",
+  "label": "Advanced reasoning unavailable — showing extractive summary",
+  "note": "vLLM stopped: `nsf llm status` -> unavailable (connection refused); the research task completed with the extractive answer and the verdict, labelled template with the degraded label; no hang.",
+  "restart": "deploy/vllm/run.sh start; healthy after 36 s (run.sh wait), 39 s from start; `nsf llm status --probe` -> ready, reply 'ready'"
+ },
+ "observations": [
+  "Item 2 (dependency routing): 'Latest releases affecting NeuroSciFi' sent no general search: only pypi/npm/osv lookups; report.dependencies: 49 packages, 1 with an advisory affecting the version in use (zod 3.25.76), 10 with newer stable releases, 38 up to date, 0 unknown; 63 s (the 49-package registry pass dominates).",
+  "Item 3 (search-engine dates): 3 undated pages were shown with a search-engine-reported date (Docker Hub via SearXNG docker hub engine; news.ycombinator.com via hackernews), lower trust, not counted for freshness.",
+  "ADR-033 amended live: 'Was numpy 2.5.5 released?' -> supported (registry, aspect published); 'Is numpy 2.5.5 secure?' -> insufficient (registry, aspect secure; OSV returned no advisory, which is not evidence of security).",
+  "Item 5 (critique): 2 sentences were flagged by the self-critique and kept because no objective check failed; 0 sentences were removed by the critique. One kept, flagged sentence is wrong in substance: 'Sources disagree on whether zod's latest version, 4.6.7, is affected by a vulnerability ...' (the OSV advisory covers the version in use, 3.25.76, not 4.6.7). The guard is lexical and the hedge satisfied it; the flag ('overstated') is shown next to it. This is the cost of not letting the model's judgement remove sentences.",
+  "The guard removed 22 model sentences across the 8 runs, 21 for stating a single-source claim without a hedge and 1 for citing a source not in the bundle plus an ungrounded number; model sentence citations: 13/13 claim quotes found in the cited sources.",
+  "'What happened in AI this week?' and 'Current DGX Spark software updates': SearXNG news returned Bing News (undated) and Hacker News items; the msn.com pages read are JavaScript shells (0 claims) -> no_evidence / every model sentence rejected (unhedged single-source) -> template label; freshness not met. Unchanged limitation of SEARXNG_INTEGRATION §8.2.",
+  "Model call time is inside the task's usage.seconds (Lane G item 4); model latencies 6.9-11.5 s per answer (2 calls), first token 276-376 ms, under GPU contention."
+ ],
+ "records": [
+  {
+   "question": "What happened in AI this week?",
+   "task_id": "8b0d0fb1-443c-472f-adff-80851728d0d1",
+   "status": "completed",
+   "mode": "quick_lookup",
+   "wall_seconds": 4.82,
+   "task_seconds": 4.579,
+   "providers": {
+    "searxng": {
+     "attempts": 6,
+     "results": 96
+    }
+   },
+   "searxng_engines": [],
+   "provider_failures": {},
+   "queries": [
+    {
+     "text": "AI",
+     "kind": "news",
+     "round": 0
+    },
+    {
+     "text": "AI 2026",
+     "kind": "news",
+     "round": 0
+    }
+   ],
+   "dependencies": null,
+   "sources": [
+    {
+     "n": 1,
+     "domain": "msn.com",
+     "url": "https://msn.com/en-us/money/top-stocks/bnp-paribas-sees-panic-selling-as-the-ai-selloff-drags-the-s-p-500-into-a-correction-and-wipes-out-the-nasdaq-s-2026-gains/ar-AA2hSC6F",
+     "kind": "page",
+     "cited": false,
+     "published": null,
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": "searxng"
+    },
+    {
+     "n": 2,
+     "domain": "msn.com",
+     "url": "https://msn.com/en-us/news/other/nasdaq-wipes-out-gains-for-the-year-as-anthropic-fails-to-quell-ai-nerves/ar-AA2hROfF",
+     "kind": "page",
+     "cited": false,
+     "published": null,
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": "searxng"
+    },
+    {
+     "n": 3,
+     "domain": "msn.com",
+     "url": "https://msn.com/en-us/news/other/wall-street-forecasters-are-starting-to-worry-that-the-ai-trade-is-on-its-last-legs/ar-AA2hSfL8",
+     "kind": "page",
+     "cited": false,
+     "published": null,
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": "searxng"
+    }
+   ],
+   "freshness": {
+    "class": "breaking",
+    "satisfied": false,
+    "required_seconds": 604800.0,
+    "newest_source": null
+   },
+   "verdict": null,
+   "finding_states": {},
+   "extractive_answer_lead": "No usable claims were extracted from 3 sources read.",
+   "extractive_quote_check": {
+    "quote_items": 0,
+    "quote_in_cited_source": 0
+   },
+   "reasoning": {
+    "generated_by": "template",
+    "status": "no_evidence",
+    "label": "Advanced reasoning unavailable — showing extractive summary",
+    "reason": "no verified evidence claim to reason over",
+    "critique": null,
+    "usage": null,
+    "answer": [],
+    "guard_removed": [],
+    "gaps": [
+     {
+      "by": "rules",
+      "text": "No claim relevant to the question was extracted from the sources read."
+     },
+     {
+      "by": "rules",
+      "text": "No cited source is recent enough for this question's freshness requirement."
+     }
+    ]
+   },
+   "limitations": [
+    "searxng: http_error",
+    "Freshness requirement not met: no cited source is dated (required: within 7 days, breaking class)",
+    "No claim relevant to the question could be extracted from the sources read",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+   ],
+   "engines": {
+    "searxng": {
+     "attempts": 2,
+     "results": 16
+    },
+    "searxng:bing news": {
+     "attempts": 2,
+     "results": 20
+    },
+    "searxng:hackernews": {
+     "attempts": 2,
+     "results": 60
+    }
+   },
+   "engine_failures": {},
+   "candidates_by_engine": {
+    "searxng:bing news": 10
+   },
+   "candidates_dated": 0,
+   "candidates": 10
+  },
+  {
+   "question": "Latest developments in open-source LLM inference",
+   "task_id": "3a41e968-20cc-4f8e-a68f-4ee4bce31598",
+   "status": "completed",
+   "mode": "quick_lookup",
+   "wall_seconds": 17.86,
+   "task_seconds": 17.652,
+   "providers": {
+    "searxng": {
+     "attempts": 3,
+     "results": 47
+    }
+   },
+   "searxng_engines": [],
+   "provider_failures": {},
+   "queries": [
+    {
+     "text": "open-source LLM inference",
+     "kind": "news",
+     "round": 0
+    }
+   ],
+   "dependencies": null,
+   "sources": [
+    {
+     "n": 1,
+     "domain": "techtimes.com",
+     "url": "https://techtimes.com/articles/329305/20261021/open-source-llm-d-10-hits-production-ibm-research-confirms-115x-ai-inference-cost-drop.htm",
+     "kind": "page",
+     "cited": true,
+     "published": "2026-10-21",
+     "search_engine_reported": null,
+     "date_source": "json-ld",
+     "found_by": "searxng"
+    },
+    {
+     "n": 2,
+     "domain": "yahoo.com",
+     "url": "https://finance.yahoo.com/technology/ai/articles/tensormesh-launches-tensormesh-platform-cut-130000339.html",
+     "kind": "page",
+     "cited": true,
+     "published": "2026-10-14",
+     "search_engine_reported": null,
+     "date_source": "json-ld",
+     "found_by": "searxng"
+    }
+   ],
+   "freshness": {
+    "class": "volatile",
+    "satisfied": false,
+    "required_seconds": 172800.0,
+    "newest_source": "2026-10-21"
+   },
+   "verdict": null,
+   "finding_states": {
+    "single_source": 14
+   },
+   "extractive_answer_lead": "2 sources read; 14 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 2 days; these statements may be out of date.",
+   "extractive_quote_check": {
+    "quote_items": 5,
+    "quote_in_cited_source": 5
+   },
+   "reasoning": {
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "status": "model",
+    "label": "Advanced reasoning by qwen3-30b-a3b-instruct-2507-fp8: written only from the verified evidence; each sentence cites its sources and passed NeuroSciFi's citation and claim-state checks.",
+    "reason": null,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    },
+    "usage": {
+     "answer_tokens_per_second": 47.01,
+     "calls": 2,
+     "completion_tokens": 519,
+     "first_token_ms": 301.5,
+     "latency_ms": 11528.5,
+     "model": "qwen3-30b-a3b-instruct-2507-fp8",
+     "prompt_tokens": 3004
+    },
+    "answer": [
+     {
+      "text": "According to Chris Aniszczyk of the CNCF, llm-d 1.0 represents a step toward operational maturity in cloud-native AI inference.",
+      "citations": [
+       1
+      ],
+      "claims": [
+       "C2"
+      ],
+      "states": {
+       "C2": "single_source"
+      },
+      "hedged": true,
+      "flag": null,
+      "citation_check": [
+       {
+        "claim": "C2",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         1
+        ]
+       }
+      ]
+     }
+    ],
+    "guard_removed": [
+     {
+      "text": "llm-d 1.0, a Kubernetes-native open-source stack for distributed LLM inference, was released in October 2026 and is available under the Apache 2.0 license.",
+      "reasons": [
+       "states C1 (single_source), C3 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "Mistral AI is using llm-d in production for its regional inference offering, indicating real-world deployment.",
+      "reasons": [
+       "states C4 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "Tensormesh has launched the Tensormesh Platform, an enterprise-ready data management layer for AI inference that supports any LLM and inference orchestration software.",
+      "reasons": [
+       "states C6 (single_source), C9 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "Tensormesh's platform enables KV cache reuse, including prefix caching, to reduce inference costs at scale.",
+      "reasons": [
+       "states C11 (single_source), C9 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "Verkor has introduced a new LLM inference accelerator silicon IP, and MOREH demonstrated production-ready inference on Tenstorrent Galaxy with high efficiency.",
+      "reasons": [
+       "states C8 (single_source), C10 (single_source) as fact without hedging"
+      ]
+     }
+    ],
+    "gaps": [
+     {
+      "by": "model",
+      "text": "Specific details on how llm-d integrates with Tensormesh Platform"
+     },
+     {
+      "by": "model",
+      "text": "Performance benchmarks comparing llm-d and Tensormesh Platform"
+     },
+     {
+      "by": "model",
+      "text": "Adoption rates beyond Mistral AI and MOREH"
+     },
+     {
+      "by": "model",
+      "text": "Definition of operational maturity in cloud-native AI inference"
+     },
+     {
+      "by": "model",
+      "text": "Details on how llm-d 1.0 achieves this maturity"
+     },
+     {
+      "by": "model",
+      "text": "Comparison with other cloud-native AI inference solutions"
+     },
+     {
+      "by": "model",
+      "text": "Adoption rate of llm-d 1.0 beyond Mistral AI"
+     },
+     {
+      "by": "model",
+      "text": "Performance benchmarks of llm-d 1.0 against other open-source inference stacks"
+     },
+     {
+      "by": "rules",
+      "text": "14 finding(s) rest on a single source and need independent confirmation."
+     },
+     {
+      "by": "rules",
+      "text": "No cited source is recent enough for this question's freshness requirement."
+     }
+    ]
+   },
+   "limitations": [
+    "searxng: rate_limited",
+    "searxng: http_error",
+    "Freshness requirement not met: newest source is from 2026-10-21 (required: within 2 days, volatile class)",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 1 sentence(s) passed the citation and claim-state guard, 5 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ],
+   "engines": {
+    "searxng": {
+     "attempts": 1,
+     "results": 8
+    },
+    "searxng:bing news": {
+     "attempts": 1,
+     "results": 9
+    },
+    "searxng:hackernews": {
+     "attempts": 1,
+     "results": 30
+    }
+   },
+   "engine_failures": {},
+   "candidates_by_engine": {
+    "searxng:bing news": 3,
+    "searxng:hackernews": 5
+   },
+   "candidates_dated": 5,
+   "candidates": 8
+  },
+  {
+   "question": "Recent research on predictive coding",
+   "task_id": "55fed0a4-7521-4be8-b6c8-42194987672c",
+   "status": "completed",
+   "mode": "scientific",
+   "wall_seconds": 25.01,
+   "task_seconds": 24.81,
+   "providers": {
+    "arxiv": {
+     "attempts": 2,
+     "results": 16
+    },
+    "crossref": {
+     "attempts": 2,
+     "results": 16
+    },
+    "openalex": {
+     "attempts": 2,
+     "results": 16
+    },
+    "pubmed": {
+     "attempts": 2,
+     "results": 14
+    },
+    "searxng": {
+     "attempts": 15,
+     "results": 105
+    },
+    "wikipedia": {
+     "attempts": 3,
+     "results": 24
+    }
+   },
+   "searxng_engines": [],
+   "provider_failures": {
+    "searxng: timeout: timeout": 1,
+    "searxng: timeout: Suspended: timeout": 1
+   },
+   "queries": [
+    {
+     "text": "predictive coding",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "predictive coding",
+     "kind": "academic",
+     "round": 0
+    },
+    {
+     "text": "predictive coding 2026",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "predictive coding review",
+     "kind": "academic",
+     "round": 0
+    },
+    {
+     "text": "predictive coding study",
+     "kind": "web",
+     "round": 0
+    }
+   ],
+   "dependencies": null,
+   "sources": [
+    {
+     "n": 1,
+     "domain": "doi.org",
+     "url": "https://doi.org/10.21203/rs.3.rs-11059245/v1",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-09-23",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "crossref"
+     ]
+    },
+    {
+     "n": 2,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Speech_coding",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-18",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 3,
+     "domain": "doi.org",
+     "url": "https://doi.org/10.7554/elife.108142.2.sa3",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-11",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "crossref",
+      "openalex"
+     ]
+    },
+    {
+     "n": 4,
+     "domain": "doi.org",
+     "url": "https://doi.org/10.7554/elife.108142.2.sa2",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-11",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "crossref",
+      "openalex"
+     ]
+    },
+    {
+     "n": 5,
+     "domain": "doi.org",
+     "url": "https://doi.org/10.7554/elife.108142.2.sa1",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-11",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "crossref",
+      "openalex"
+     ]
+    },
+    {
+     "n": 6,
+     "domain": "doi.org",
+     "url": "https://doi.org/10.7554/elife.108142.2.sa4",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-11",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "crossref"
+     ]
+    },
+    {
+     "n": 7,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Predictive_coding",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-20",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 8,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Advanced_Video_Coding",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-09",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 9,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/V-coding",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-20",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 10,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Linear_predictive_coding",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-07-26",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 11,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Bayesian_approaches_to_brain_function",
+     "kind": "api",
+     "cited": true,
+     "published": "2025-09-28",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 12,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/AI-assisted_software_development",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-18",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    }
+   ],
+   "freshness": {
+    "class": "scientific",
+    "satisfied": true,
+    "required_seconds": 7776000.0,
+    "newest_source": "2026-11-20"
+   },
+   "verdict": null,
+   "finding_states": {
+    "single_source": 32
+   },
+   "extractive_answer_lead": "12 sources read; 32 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 12 hours ago.",
+   "extractive_quote_check": {
+    "quote_items": 3,
+    "quote_in_cited_source": 3
+   },
+   "reasoning": {
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "status": "model",
+    "label": "Advanced reasoning by qwen3-30b-a3b-instruct-2507-fp8: written only from the verified evidence; each sentence cites its sources and passed NeuroSciFi's citation and claim-state checks.",
+    "reason": null,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    },
+    "usage": {
+     "answer_tokens_per_second": 45.83,
+     "calls": 2,
+     "completion_tokens": 404,
+     "first_token_ms": 350.3,
+     "latency_ms": 9428.5,
+     "model": "qwen3-30b-a3b-instruct-2507-fp8",
+     "prompt_tokens": 3984
+    },
+    "answer": [
+     {
+      "text": "According to one source, initialising multipliers from local readout gradients degrades learning, while penalty-only predictive coding retains much of the quality benefit.",
+      "citations": [
+       1
+      ],
+      "claims": [
+       "C2"
+      ],
+      "states": {
+       "C2": "single_source"
+      },
+      "hedged": true,
+      "flag": null,
+      "citation_check": [
+       {
+        "claim": "C2",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         1
+        ]
+       }
+      ]
+     }
+    ],
+    "guard_removed": [
+     {
+      "text": "Recent research explores predictive coding in neural network models, including a study on stage-boundary augmented Lagrangian predictive coding applied to a 12-layer Transformer.",
+      "reasons": [
+       "states C3 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "In neuroscience, predictive coding is theorized as a mechanism where the brain generates and updates a mental model of the environment, aligning with the Bayesian brain hypothesis.",
+      "reasons": [
+       "states C9 (single_source), C10 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "A 2026 review discusses intrinsic and circuit mechanisms of predictive coding in a grid cell network model, suggesting ongoing investigation into its neural underpinnings.",
+      "reasons": [
+       "states C5 (single_source), C6 (single_source), C7 (single_source), C8 (single_source) as fact without hedging"
+      ]
+     }
+    ],
+    "gaps": [
+     {
+      "by": "model",
+      "text": "specific findings on predictive coding in human cognition"
+     },
+     {
+      "by": "model",
+      "text": "empirical validation of predictive coding models in vivo"
+     },
+     {
+      "by": "model",
+      "text": "comparative analysis with other cognitive theories"
+     },
+     {
+      "by": "model",
+      "text": "definition of 'penalty-only predictive coding'"
+     },
+     {
+      "by": "model",
+      "text": "specifics of the 'quality benefit'"
+     },
+     {
+      "by": "model",
+      "text": "details of the '27-run study' mentioned in C3"
+     },
+     {
+      "by": "model",
+      "text": "connection between the grid cell network model and CPU transformers"
+     },
+     {
+      "by": "model",
+      "text": "current state of predictive coding in real-world applications beyond theory"
+     },
+     {
+      "by": "rules",
+      "text": "32 finding(s) rest on a single source and need independent confirmation."
+     }
+    ]
+   },
+   "limitations": [
+    "searxng/openairepublications: timeout: timeout",
+    "searxng/openairepublications: timeout: Suspended: timeout",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 1 sentence(s) passed the citation and claim-state guard, 3 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ],
+   "engines": {
+    "arxiv": {
+     "attempts": 2,
+     "results": 16
+    },
+    "crossref": {
+     "attempts": 2,
+     "results": 16
+    },
+    "openalex": {
+     "attempts": 2,
+     "results": 16
+    },
+    "pubmed": {
+     "attempts": 2,
+     "results": 14
+    },
+    "searxng": {
+     "attempts": 5,
+     "results": 40
+    },
+    "searxng:duckduckgo": {
+     "attempts": 3,
+     "results": 30
+    },
+    "searxng:europepmc": {
+     "attempts": 2,
+     "results": 35
+    },
+    "searxng:mwmbl": {
+     "attempts": 3,
+     "results": 0
+    },
+    "searxng:openairepublications": {
+     "attempts": 2,
+     "results": 0
+    },
+    "wikipedia": {
+     "attempts": 3,
+     "results": 24
+    }
+   },
+   "engine_failures": {
+    "searxng:openairepublications: timeout: timeout": 1,
+    "searxng:openairepublications: timeout: Suspended: timeout": 1
+   },
+   "candidates_by_engine": {
+    "wikipedia": 18,
+    "openalex": 16,
+    "searxng:europepmc": 12,
+    "searxng:duckduckgo": 21,
+    "crossref": 5,
+    "arxiv": 16,
+    "pubmed": 14
+   },
+   "candidates_dated": 81,
+   "candidates": 102
+  },
+  {
+   "question": "Current DGX Spark software updates",
+   "task_id": "624b43e1-da3d-4daa-b1a3-795578c87323",
+   "status": "completed",
+   "mode": "quick_lookup",
+   "wall_seconds": 9.1,
+   "task_seconds": 8.889,
+   "providers": {
+    "searxng": {
+     "attempts": 3,
+     "results": 19
+    }
+   },
+   "searxng_engines": [],
+   "provider_failures": {},
+   "queries": [
+    {
+     "text": "DGX Spark software",
+     "kind": "news",
+     "round": 0
+    }
+   ],
+   "dependencies": null,
+   "sources": [
+    {
+     "n": 1,
+     "domain": "ycombinator.com",
+     "url": "https://news.ycombinator.com/item?id=48383578",
+     "kind": "page",
+     "cited": true,
+     "published": null,
+     "search_engine_reported": "2026-06-03",
+     "date_source": "search_engine",
+     "found_by": "searxng"
+    },
+    {
+     "n": 2,
+     "domain": "yahoo.com",
+     "url": "https://finance.yahoo.com/technology/ai/articles/progress-software-launches-progress-chef-130000724.html",
+     "kind": "page",
+     "cited": true,
+     "published": "2026-06-30",
+     "search_engine_reported": null,
+     "date_source": "json-ld",
+     "found_by": "searxng"
+    },
+    {
+     "n": 3,
+     "domain": "msn.com",
+     "url": "https://msn.com/en-us/technology/software/nvidia-plans-dgx-spark-software-update-to-turn-it-into-a-local-ai-system/ar-AA1TMKFJ",
+     "kind": "page",
+     "cited": false,
+     "published": null,
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": "searxng"
+    }
+   ],
+   "freshness": {
+    "class": "volatile",
+    "satisfied": false,
+    "required_seconds": 172800.0,
+    "newest_source": "2026-06-30"
+   },
+   "verdict": null,
+   "finding_states": {
+    "single_source": 8
+   },
+   "extractive_answer_lead": "3 sources read; 8 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 2 days; these statements may be out of date.",
+   "extractive_quote_check": {
+    "quote_items": 5,
+    "quote_in_cited_source": 5
+   },
+   "reasoning": {
+    "generated_by": "template",
+    "status": "rejected",
+    "label": "Advanced reasoning unavailable — showing extractive summary",
+    "reason": "every model sentence failed NeuroSciFi's citation and claim checks",
+    "critique": null,
+    "usage": {
+     "answer_tokens_per_second": 47.02,
+     "calls": 1,
+     "completion_tokens": 309,
+     "first_token_ms": 334.7,
+     "latency_ms": 6906.3,
+     "model": "qwen3-30b-a3b-instruct-2507-fp8",
+     "prompt_tokens": 1281
+    },
+    "answer": [],
+    "guard_removed": [
+     {
+      "text": "Progress Software announced enterprise lifecycle management for NVIDIA DGX Spark via its Chef platform in June 2026, enabling secure provisioning, monitoring, and management at scale.",
+      "reasons": [
+       "states C3 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "Controlled maintenance features allow orchestration of updates and operational changes across staged cohorts, suggesting structured software update processes.",
+      "reasons": [
+       "states C6 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "The DGX Spark system supports a 64GB option and delivers petaflop-class AI performance, indicating hardware and software integration for local AI workloads.",
+      "reasons": [
+       "states C4 (single_source), C7 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "RLC Pro AI is noted to deliver top AI performance on DGX Spark with Enterprise Linux stability, implying software stack optimization.",
+      "reasons": [
+       "states C8 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "Old and new facts coexisted without clear indication of current status, suggesting ambiguity in the timeline of software updates.",
+      "reasons": [
+       "states C1 (single_source) as fact without hedging"
+      ]
+     }
+    ],
+    "gaps": [
+     {
+      "by": "model",
+      "text": "Specific details on software versioning"
+     },
+     {
+      "by": "model",
+      "text": "Timeline of recent software updates"
+     },
+     {
+      "by": "model",
+      "text": "Direct information on DGX Spark software release notes"
+     },
+     {
+      "by": "rules",
+      "text": "8 finding(s) rest on a single source and need independent confirmation."
+     },
+     {
+      "by": "rules",
+      "text": "No cited source is recent enough for this question's freshness requirement."
+     }
+    ]
+   },
+   "limitations": [
+    "Freshness requirement not met: newest source is from 2026-06-30 (required: within 2 days, volatile class)",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+   ],
+   "engines": {
+    "searxng": {
+     "attempts": 1,
+     "results": 8
+    },
+    "searxng:bing news": {
+     "attempts": 1,
+     "results": 8
+    },
+    "searxng:hackernews": {
+     "attempts": 1,
+     "results": 3
+    }
+   },
+   "engine_failures": {},
+   "candidates_by_engine": {
+    "searxng:bing news": 5,
+    "searxng:hackernews": 3
+   },
+   "candidates_dated": 3,
+   "candidates": 8
+  },
+  {
+   "question": "Latest releases affecting NeuroSciFi",
+   "task_id": "3a38e2f9-497e-4baf-a579-417eaa3f20a4",
+   "status": "completed",
+   "mode": "technical",
+   "wall_seconds": 63.07,
+   "task_seconds": 62.877,
+   "providers": {
+    "npm": {
+     "attempts": 3,
+     "results": 3
+    },
+    "osv": {
+     "attempts": 4,
+     "results": 1
+    },
+    "pypi": {
+     "attempts": 1,
+     "results": 1
+    }
+   },
+   "searxng_engines": [],
+   "provider_failures": {},
+   "queries": [
+    {
+     "text": "npm:zod",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "osv:npm:zod@3.25.76",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "pypi:pyee==13.0.1",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "osv:PyPI:pyee@13.0.1",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "npm:jsdom",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "osv:npm:jsdom@26.1.0",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "npm:koffi",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "osv:npm:koffi@2.16.4",
+     "kind": "technical",
+     "round": 0
+    }
+   ],
+   "dependencies": {
+    "attention": [
+     {
+      "action": "upgrade to 4.6.6 or later",
+      "advisories": [
+       "GHSA-mrhx-c7xc-m3w5"
+      ],
+      "behind_by": "major",
+      "current": "3.25.76",
+      "ecosystem": "npm",
+      "latest": "4.6.7",
+      "name": "zod",
+      "recommendation": "upgrade (security)",
+      "released_at": 1791822577.0
+     },
+     {
+      "action": "13.0.1 -> 16.1.0 (major)",
+      "advisories": [],
+      "behind_by": "major",
+      "current": "13.0.1",
+      "ecosystem": "PyPI",
+      "latest": "16.1.0",
+      "name": "pyee",
+      "recommendation": "consider upgrade",
+      "released_at": 1794679582.0
+     },
+     {
+      "action": "26.1.0 -> 31.0.1 (major)",
+      "advisories": [],
+      "behind_by": "major",
+      "current": "26.1.0",
+      "ecosystem": "npm",
+      "latest": "31.0.1",
+      "name": "jsdom",
+      "recommendation": "consider upgrade",
+      "released_at": 1794551808.0
+     },
+     {
+      "action": "2.16.4 -> 3.3.8 (major)",
+      "advisories": [],
+      "behind_by": "major",
+      "current": "2.16.4",
+      "ecosystem": "npm",
+      "latest": "3.3.8",
+      "name": "koffi",
+      "recommendation": "consider upgrade",
+      "released_at": 1794549788.0
+     },
+     {
+      "action": "7.0.6 -> 9.1.0 (major)",
+      "advisories": [],
+      "behind_by": "major",
+      "current": "7.0.6",
+      "ecosystem": "npm",
+      "latest": "9.1.0",
+      "name": "https-proxy-agent",
+      "recommendation": "consider upgrade",
+      "released_at": 1780937248.0
+     },
+     {
+      "action": "0.22.35 -> 1.0.0 (major)",
+      "advisories": [],
+      "behind_by": "major",
+      "current": "0.22.35",
+      "ecosystem": "npm",
+      "latest": "1.0.0",
+      "name": "@types/cheerio",
+      "recommendation": "consider upgrade",
+      "released_at": 1746473669.0
+     },
+     {
+      "action": "4.10.2 -> 4.14.1 (minor)",
+      "advisories": [],
+      "behind_by": "minor",
+      "current": "4.10.2",
+      "ecosystem": "npm",
+      "latest": "4.14.1",
+      "name": "axe-core",
+      "recommendation": "consider upgrade",
+      "released_at": 1794830188.0
+     },
+     {
+      "action": "2.3.5 -> 2.5.5 (minor)",
+      "advisories": [],
+      "behind_by": "minor",
+      "current": "2.3.5",
+      "ecosystem": "PyPI",
+      "latest": "2.5.5",
+      "name": "numpy",
+      "recommendation": "consider upgrade",
+      "released_at": 1794778210.0
+     },
+     {
+      "action": "1.64.1 -> 1.65.2 (minor)",
+      "advisories": [],
+      "behind_by": "minor",
+      "current": "1.64.1",
+      "ecosystem": "PyPI",
+      "latest": "1.65.2",
+      "name": "playwright",
+      "recommendation": "consider upgrade",
+      "released_at": 1794616119.0
+     },
+     {
+      "action": "1.17.0 -> 1.18.1 (minor)",
+      "advisories": [],
+      "behind_by": "minor",
+      "current": "1.17.0",
+      "ecosystem": "PyPI",
+      "latest": "1.18.1",
+      "name": "scipy",
+      "recommendation": "consider upgrade",
+      "released_at": 1787354624.0
+     },
+     {
+      "action": "3.3.0 -> 3.3.1 (patch)",
+      "advisories": [],
+      "behind_by": "patch",
+      "current": "3.3.0",
+      "ecosystem": "npm",
+      "latest": "3.3.1",
+      "name": "request-filtering-agent",
+      "recommendation": "consider upgrade",
+      "released_at": 1795259696.0
+     }
+    ],
+    "budget": {
+     "max_browser_sessions": 0,
+     "max_bytes": 60000000,
+     "max_concurrency": 4,
+     "max_context_tokens": 0,
+     "max_depth": 0,
+     "max_pages": 0,
+     "max_queries": 0,
+     "max_requests": 198,
+     "max_seconds": 452.0
+    },
+    "failures": 0,
+    "packages": 49,
+    "source": "project inventory (deps.inventory) + direct registry pass (deps.check, as `nsf web deps`)",
+    "totals": {
+     "advisories": 1,
+     "affected_packages": 1,
+     "behind_major": 6,
+     "consider_upgrade": 10,
+     "packages": 49,
+     "unknown": 0,
+     "up_to_date": 38,
+     "upgrade_security": 1
+    },
+    "usage": {
+     "browser_sessions": 0,
+     "bytes": 9314556,
+     "pages": 0,
+     "queries": 0,
+     "requests": 98,
+     "seconds": 48.683,
+     "tokens": 0
+    }
+   },
+   "sources": [
+    {
+     "n": 1,
+     "domain": "npmjs.com",
+     "url": "https://npmjs.com/package/jsdom",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-13",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "npm"
+     ]
+    },
+    {
+     "n": 2,
+     "domain": "npmjs.com",
+     "url": "https://npmjs.com/package/koffi",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-13",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "npm"
+     ]
+    },
+    {
+     "n": 3,
+     "domain": "npmjs.com",
+     "url": "https://npmjs.com/package/zod",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-10-12",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "npm"
+     ]
+    },
+    {
+     "n": 4,
+     "domain": "pypi.org",
+     "url": "https://pypi.org/project/pyee",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-14",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "pypi"
+     ]
+    },
+    {
+     "n": 5,
+     "domain": "osv.dev",
+     "url": "https://osv.dev/vulnerability/GHSA-mrhx-c7xc-m3w5",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-10-01",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "osv"
+     ]
+    }
+   ],
+   "freshness": {
+    "class": "release",
+    "satisfied": true,
+    "required_seconds": 604800.0,
+    "newest_source": "2026-11-21"
+   },
+   "verdict": null,
+   "finding_states": {
+    "single_source": 5
+   },
+   "extractive_answer_lead": "Dependency check of 49 packages in use: 1 with a security advisory affecting the version in use, 10 with a newer stable release, 38 up to date, 0 unknown (lookup failed). Needing attention: zod 3.25.76 -> 4.6.7 (security), pyee 13.0.1 -> 16.1.0, jsdom 26.1.0 -> 31.0.1, koffi 2.16.4 -> 3.3.8, https-proxy-agent 7.0.6 -> 9.1.0. 5 sources read; 5 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: just now.",
+   "extractive_quote_check": {
+    "quote_items": 0,
+    "quote_in_cited_source": 0
+   },
+   "reasoning": {
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "status": "model",
+    "label": "Advanced reasoning by qwen3-30b-a3b-instruct-2507-fp8: written only from the verified evidence; each sentence cites its sources and passed NeuroSciFi's citation and claim-state checks.",
+    "reason": null,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    },
+    "usage": {
+     "answer_tokens_per_second": 46.59,
+     "calls": 2,
+     "completion_tokens": 447,
+     "first_token_ms": 276.0,
+     "latency_ms": 10000.5,
+     "model": "qwen3-30b-a3b-instruct-2507-fp8",
+     "prompt_tokens": 2388
+    },
+    "answer": [
+     {
+      "text": "According to one source, jsdom's latest version, 31.0.1, was released on 2026-11-13.",
+      "citations": [
+       1
+      ],
+      "claims": [
+       "C1"
+      ],
+      "states": {
+       "C1": "single_source"
+      },
+      "hedged": true,
+      "flag": null,
+      "citation_check": [
+       {
+        "claim": "C1",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "text": "According to one source, koffi's latest version, 3.3.8, was released on 2026-11-13.",
+      "citations": [
+       2
+      ],
+      "claims": [
+       "C2"
+      ],
+      "states": {
+       "C2": "single_source"
+      },
+      "hedged": true,
+      "flag": null,
+      "citation_check": [
+       {
+        "claim": "C2",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         2
+        ]
+       }
+      ]
+     },
+     {
+      "text": "According to one source, pyee's latest version, 16.1.0, was released on 2026-11-14.",
+      "citations": [
+       4
+      ],
+      "claims": [
+       "C5"
+      ],
+      "states": {
+       "C5": "single_source"
+      },
+      "hedged": true,
+      "flag": null,
+      "citation_check": [
+       {
+        "claim": "C5",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         4
+        ]
+       }
+      ]
+     },
+     {
+      "text": "Sources disagree on whether zod's latest version, 4.6.7, is affected by a vulnerability; one source states the issue was fixed in version 4.6.6.",
+      "citations": [
+       3,
+       5
+      ],
+      "claims": [
+       "C3",
+       "C4"
+      ],
+      "states": {
+       "C3": "single_source",
+       "C4": "single_source"
+      },
+      "hedged": true,
+      "flag": {
+       "confirmed": false,
+       "note": null,
+       "problem": "overstated"
+      },
+      "citation_check": [
+       {
+        "claim": "C3",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         3,
+         5
+        ]
+       },
+       {
+        "claim": "C4",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         3,
+         5
+        ]
+       }
+      ]
+     }
+    ],
+    "guard_removed": [],
+    "gaps": [
+     {
+      "by": "model",
+      "text": "NeuroSciFi's own release history"
+     },
+     {
+      "by": "model",
+      "text": "Integration details of these packages in NeuroSciFi"
+     },
+     {
+      "by": "model",
+      "text": "Impact of these releases on NeuroSciFi functionality"
+     },
+     {
+      "by": "model",
+      "text": "NeuroSciFi definition"
+     },
+     {
+      "by": "model",
+      "text": "Relevance of jsdom to NeuroSciFi"
+     },
+     {
+      "by": "model",
+      "text": "Relevance of koffi to NeuroSciFi"
+     },
+     {
+      "by": "model",
+      "text": "Relevance of pyee to NeuroSciFi"
+     },
+     {
+      "by": "model",
+      "text": "Relevance of zod to NeuroSciFi"
+     },
+     {
+      "by": "rules",
+      "text": "5 finding(s) rest on a single source and need independent confirmation."
+     }
+    ]
+   },
+   "limitations": [
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 4 sentence(s) passed the citation and claim-state guard, 0 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ],
+   "engines": {
+    "npm": {
+     "attempts": 3,
+     "results": 3
+    },
+    "osv": {
+     "attempts": 4,
+     "results": 1
+    },
+    "pypi": {
+     "attempts": 1,
+     "results": 1
+    }
+   },
+   "engine_failures": {},
+   "candidates_by_engine": {
+    "npm": 3,
+    "osv": 1,
+    "pypi": 1
+   },
+   "candidates_dated": 5,
+   "candidates": 5
+  },
+  {
+   "question": "Research recent advances in dendritic computation and evaluate their implications for NeuroSciFi",
+   "task_id": "8b270644-e077-496d-b36e-30849bff7530",
+   "status": "completed",
+   "mode": "scientific",
+   "wall_seconds": 28.89,
+   "task_seconds": 28.73,
+   "providers": {
+    "arxiv": {
+     "attempts": 4,
+     "results": 16
+    },
+    "crossref": {
+     "attempts": 4,
+     "results": 32
+    },
+    "openalex": {
+     "attempts": 4,
+     "results": 32
+    },
+    "pubmed": {
+     "attempts": 4,
+     "results": 23
+    },
+    "searxng": {
+     "attempts": 26,
+     "results": 72
+    },
+    "wikipedia": {
+     "attempts": 4,
+     "results": 32
+    }
+   },
+   "searxng_engines": [],
+   "provider_failures": {
+    "searxng: circuit_open": 4,
+    "searxng: timeout: Suspended: timeout": 4,
+    "searxng: timeout: timeout": 2,
+    "searxng: engines_failed: every engine failed (europepmc: Suspended: timeout; ope": 2,
+    "searxng: engines_failed: every engine failed (europepmc: timeout; openairepublic": 1,
+    "searxng: circuit_open: every science engine circuit is open": 1
+   },
+   "queries": [
+    {
+     "text": "advances dendritic computation",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "advances dendritic computation",
+     "kind": "academic",
+     "round": 0
+    },
+    {
+     "text": "evaluate implications",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "evaluate implications",
+     "kind": "academic",
+     "round": 0
+    },
+    {
+     "text": "advances dendritic computation 2026",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "advances dendritic computation review",
+     "kind": "academic",
+     "round": 0
+    },
+    {
+     "text": "evaluate implications 2026",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "evaluate implications review",
+     "kind": "academic",
+     "round": 0
+    }
+   ],
+   "dependencies": null,
+   "sources": [
+    {
+     "n": 1,
+     "domain": "doi.org",
+     "url": "https://doi.org/10.1038/s41467-026-77929-8",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-10-15",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "openalex"
+     ]
+    },
+    {
+     "n": 2,
+     "domain": "doi.org",
+     "url": "https://doi.org/10.1162/neco.a.1583",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-10-16",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "crossref"
+     ]
+    },
+    {
+     "n": 3,
+     "domain": "doi.org",
+     "url": "https://doi.org/10.64898/2026.11.04.764328",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-05",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "openalex"
+     ]
+    },
+    {
+     "n": 4,
+     "domain": "doi.org",
+     "url": "https://doi.org/10.1016/j.jes.2026.105878",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-01",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "crossref"
+     ]
+    },
+    {
+     "n": 5,
+     "domain": "arxiv.org",
+     "url": "https://arxiv.org/abs/2611.25627",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-19",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "arxiv"
+     ]
+    },
+    {
+     "n": 6,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Performance_appraisal",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-04",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 7,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/GRADE_approach",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-10-01",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 8,
+     "domain": "nih.gov",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/43065364",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-01",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "pubmed"
+     ]
+    },
+    {
+     "n": 9,
+     "domain": "nih.gov",
+     "url": "https://pubmed.ncbi.nlm.nih.gov/43057170",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-19",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "pubmed"
+     ]
+    },
+    {
+     "n": 10,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Dendritic_spine",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-08-11",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 11,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/David_Holcman",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-15",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 12,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Compartmental_neuron_models",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-08-31",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    }
+   ],
+   "freshness": {
+    "class": "scientific",
+    "satisfied": true,
+    "required_seconds": 7776000.0,
+    "newest_source": "2026-11-19"
+   },
+   "verdict": null,
+   "finding_states": {
+    "single_source": 33
+   },
+   "extractive_answer_lead": "12 sources read; 33 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
+   "extractive_quote_check": {
+    "quote_items": 4,
+    "quote_in_cited_source": 4
+   },
+   "reasoning": {
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "status": "model",
+    "label": "Advanced reasoning by qwen3-30b-a3b-instruct-2507-fp8: written only from the verified evidence; each sentence cites its sources and passed NeuroSciFi's citation and claim-state checks.",
+    "reason": null,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    },
+    "usage": {
+     "answer_tokens_per_second": 46.13,
+     "calls": 2,
+     "completion_tokens": 482,
+     "first_token_ms": 375.8,
+     "latency_ms": 11039.2,
+     "model": "qwen3-30b-a3b-instruct-2507-fp8",
+     "prompt_tokens": 3584
+    },
+    "answer": [
+     {
+      "text": "Recent advances suggest that AI attention mechanisms may resemble dendritic computations within neurons, inspiring models with improved memory and reduced computational cost, according to one source.",
+      "citations": [
+       1
+      ],
+      "claims": [
+       "C1"
+      ],
+      "states": {
+       "C1": "single_source"
+      },
+      "hedged": true,
+      "flag": null,
+      "citation_check": [
+       {
+        "claim": "C1",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         1
+        ]
+       }
+      ]
+     }
+    ],
+    "guard_removed": [
+     {
+      "text": "A dendritic voltage surrogate has been introduced that enables differentiable approximations of membrane voltage, supporting supervised fitting and reconstruction of neuronal responses.",
+      "reasons": [
+       "states C2 (single_source), C3 (single_source), C5 (single_source), C12 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "This approach links interpretable dendritic computation with scalable optimization, offering a framework for synaptic learning in detailed neuronal models.",
+      "reasons": [
+       "states C5 (single_source), C12 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "The development of 'Dendrite Control Theory' presents a new engineering framework connecting neuronal morphology to computation and robustness.",
+      "reasons": [
+       "states C10 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "These findings imply a potential convergence between control theory and dendritic computation, though such integration remains rare.",
+      "reasons": [
+       "states C7 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "The implications for NeuroSciFi include a new paradigm for AI that leverages intra-neuronal dynamics, though the full impact remains to be evaluated.",
+      "reasons": [
+       "states C1 (single_source), C5 (single_source), C10 (single_source) as fact without hedging"
+      ]
+     }
+    ],
+    "gaps": [
+     {
+      "by": "model",
+      "text": "direct experimental validation in NeuroSciFi systems"
+     },
+     {
+      "by": "model",
+      "text": "integration of dendritic models into existing AI architectures"
+     },
+     {
+      "by": "model",
+      "text": "long-term performance metrics of dendritic-inspired models"
+     },
+     {
+      "by": "model",
+      "text": "Mechanisms of dendritic computation in neurons"
+     },
+     {
+      "by": "model",
+      "text": "Validation of dendritic-inspired AI models"
+     },
+     {
+      "by": "model",
+      "text": "Integration of control theory with dendritic computation"
+     },
+     {
+      "by": "model",
+      "text": "Scalability of biophysically detailed neuron models"
+     },
+     {
+      "by": "model",
+      "text": "Empirical evidence for improved memory in hybrid-attention models"
+     },
+     {
+      "by": "rules",
+      "text": "33 finding(s) rest on a single source and need independent confirmation."
+     }
+    ]
+   },
+   "limitations": [
+    "searxng/europepmc: timeout: timeout",
+    "searxng/openairepublications: timeout: timeout",
+    "searxng: engines_failed: every engine failed (europepmc: timeout; openairepublications: t",
+    "searxng/openairepublications: circuit_open",
+    "searxng/europepmc: timeout: Suspended: timeout",
+    "searxng/openairepublications: timeout: Suspended: timeout",
+    "searxng: engines_failed: every engine failed (europepmc: Suspended: timeout; openairepubl",
+    "searxng/europepmc: circuit_open",
+    "searxng: circuit_open: every science engine circuit is open",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 1 sentence(s) passed the citation and claim-state guard, 5 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ],
+   "engines": {
+    "arxiv": {
+     "attempts": 4,
+     "results": 16
+    },
+    "crossref": {
+     "attempts": 4,
+     "results": 32
+    },
+    "openalex": {
+     "attempts": 4,
+     "results": 32
+    },
+    "pubmed": {
+     "attempts": 4,
+     "results": 23
+    },
+    "searxng": {
+     "attempts": 8,
+     "results": 32
+    },
+    "searxng:duckduckgo": {
+     "attempts": 4,
+     "results": 40
+    },
+    "searxng:europepmc": {
+     "attempts": 4,
+     "results": 0
+    },
+    "searxng:mwmbl": {
+     "attempts": 4,
+     "results": 0
+    },
+    "searxng:openairepublications": {
+     "attempts": 6,
+     "results": 0
+    },
+    "wikipedia": {
+     "attempts": 4,
+     "results": 32
+    }
+   },
+   "engine_failures": {
+    "searxng:openairepublications: circuit_open": 3,
+    "searxng:europepmc: timeout: Suspended: timeout": 2,
+    "searxng:openairepublications: timeout: Suspended: timeout": 2,
+    "searxng: engines_failed: every engine failed (europepmc: Suspended: timeout; openairepubli": 2,
+    "searxng:europepmc: timeout: timeout": 1,
+    "searxng:openairepublications: timeout: timeout": 1,
+    "searxng: engines_failed: every engine failed (europepmc: timeout; openairepublications: ti": 1,
+    "searxng:europepmc: circuit_open": 1,
+    "searxng: circuit_open: every science engine circuit is open": 1
+   },
+   "candidates_by_engine": {
+    "searxng:duckduckgo": 27,
+    "openalex": 26,
+    "pubmed": 21,
+    "crossref": 28,
+    "arxiv": 15,
+    "wikipedia": 29
+   },
+   "candidates_dated": 119,
+   "candidates": 146
+  },
+  {
+   "question": "Was numpy 2.5.5 released?",
+   "task_id": "68700c77-923d-4ff3-978b-86692538916d",
+   "status": "completed",
+   "mode": "technical",
+   "wall_seconds": 27.09,
+   "task_seconds": 26.904,
+   "providers": {
+    "npm": {
+     "attempts": 1,
+     "results": 1
+    },
+    "osv": {
+     "attempts": 2,
+     "results": 0
+    },
+    "pypi": {
+     "attempts": 1,
+     "results": 1
+    },
+    "searxng": {
+     "attempts": 24,
+     "results": 105
+    },
+    "wikipedia": {
+     "attempts": 3,
+     "results": 8
+    }
+   },
+   "searxng_engines": [],
+   "provider_failures": {
+    "wikipedia: rate_limited: HTTP 429": 1,
+    "wikipedia: rate_limited: host backoff in force": 1
+   },
+   "queries": [
+    {
+     "text": "pypi:numpy==2.5.5",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "osv:PyPI:numpy@2.5.5",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "npm:numpy",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "osv:npm:numpy@2.5.5",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "numpy 2.5.5 released",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "numpy 2.5.5 released release notes",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "numpy 2.5.5 released changelog",
+     "kind": "web",
+     "round": 0
+    }
+   ],
+   "dependencies": null,
+   "sources": [
+    {
+     "n": 1,
+     "domain": "numpy.org",
+     "url": "https://numpy.org/devdocs/release/2.5.5-notes.html",
+     "kind": "page",
+     "cited": true,
+     "published": null,
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": "searxng"
+    },
+    {
+     "n": 2,
+     "domain": "newreleases.io",
+     "url": "https://newreleases.io/project/github/numpy/numpy/release/v2.5.5",
+     "kind": "page",
+     "cited": true,
+     "published": "2026-11-15",
+     "search_engine_reported": null,
+     "date_source": "json-ld",
+     "found_by": "searxng"
+    },
+    {
+     "n": 3,
+     "domain": "pypi.org",
+     "url": "https://pypi.org/project/numpy",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-15",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "pypi"
+     ]
+    },
+    {
+     "n": 4,
+     "domain": "psycopg.org",
+     "url": "https://psycopg.org/articles/2015/02/09/psycopg-26-and-255-released",
+     "kind": "page",
+     "cited": true,
+     "published": "2015-02-09",
+     "search_engine_reported": null,
+     "date_source": "time-element",
+     "found_by": "searxng"
+    },
+    {
+     "n": 5,
+     "domain": "docker.com",
+     "url": "https://hub.docker.com/r/jenkins/core-changelog-generator",
+     "kind": "page",
+     "cited": true,
+     "published": null,
+     "search_engine_reported": "2020-01-07",
+     "date_source": "search_engine",
+     "found_by": "searxng"
+    },
+    {
+     "n": 6,
+     "domain": "mongodb.com",
+     "url": "https://mongodb.com/community/forums/t/mongodb-c-driver-2-5-5-released/343721",
+     "kind": "page",
+     "cited": true,
+     "published": "2026-09-24",
+     "search_engine_reported": null,
+     "date_source": "meta:article:published_time",
+     "found_by": "searxng"
+    },
+    {
+     "n": 7,
+     "domain": "docker.com",
+     "url": "https://hub.docker.com/r/redislabs/operator-internal",
+     "kind": "page",
+     "cited": true,
+     "published": null,
+     "search_engine_reported": "2026-11-20",
+     "date_source": "search_engine",
+     "found_by": "searxng"
+    },
+    {
+     "n": 8,
+     "domain": "npmjs.com",
+     "url": "https://npmjs.com/package/numpy",
+     "kind": "api",
+     "cited": false,
+     "published": "2017-08-30",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "npm"
+     ]
+    },
+    {
+     "n": 9,
+     "domain": "numpy.org",
+     "url": "https://numpy.org/doc/stable/release.html",
+     "kind": "page",
+     "cited": false,
+     "published": null,
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": "searxng"
+    },
+    {
+     "n": 10,
+     "domain": "joomla.org",
+     "url": "https://joomla.org/announcements/release-news/joomla-255-released.html",
+     "kind": "page",
+     "cited": false,
+     "published": "2012-06-18",
+     "search_engine_reported": null,
+     "date_source": "time-element",
+     "found_by": "searxng"
+    }
+   ],
+   "freshness": {
+    "class": "release",
+    "satisfied": true,
+    "required_seconds": 604800.0,
+    "newest_source": "2026-11-21"
+   },
+   "verdict": {
+    "state": "supported",
+    "label": "supported",
+    "basis": "corroboration",
+    "category": "registry",
+    "aspect": "published",
+    "statement": "numpy 2.5.5 was released",
+    "confidence": 0.73
+   },
+   "finding_states": {
+    "single_source": 17
+   },
+   "extractive_answer_lead": "10 sources read; 17 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: just now.",
+   "extractive_quote_check": {
+    "quote_items": 4,
+    "quote_in_cited_source": 4
+   },
+   "reasoning": {
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "status": "model",
+    "label": "Advanced reasoning by qwen3-30b-a3b-instruct-2507-fp8: written only from the verified evidence; each sentence cites its sources and passed NeuroSciFi's citation and claim-state checks.",
+    "reason": null,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    },
+    "usage": {
+     "answer_tokens_per_second": 47.92,
+     "calls": 2,
+     "completion_tokens": 348,
+     "first_token_ms": 322.1,
+     "latency_ms": 7851.6,
+     "model": "qwen3-30b-a3b-instruct-2507-fp8",
+     "prompt_tokens": 3239
+    },
+    "answer": [
+     {
+      "text": "Yes, numpy 2.5.5 was released on 2026-11-15, according to PyPI.",
+      "citations": [
+       3
+      ],
+      "claims": [
+       "C1"
+      ],
+      "states": {
+       "C1": "single_source"
+      },
+      "hedged": true,
+      "flag": null,
+      "citation_check": [
+       {
+        "claim": "C1",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         3
+        ]
+       }
+      ]
+     },
+     {
+      "text": "The release supports Python versions 3.12 to 3.15, as stated in the release notes.",
+      "citations": [
+       2
+      ],
+      "claims": [
+       "C3"
+      ],
+      "states": {
+       "C3": "single_source"
+      },
+      "hedged": true,
+      "flag": null,
+      "citation_check": [
+       {
+        "claim": "C3",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         2
+        ]
+       }
+      ]
+     }
+    ],
+    "guard_removed": [
+     {
+      "text": "This release is described as a patch release that fixes bugs discovered after version 2.5.4.",
+      "reasons": [
+       "states C2 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "It is unusually large for a patch release due to multiple bug fixes and infrastructure updates.",
+      "reasons": [
+       "states C4 (single_source) as fact without hedging"
+      ]
+     },
+     {
+      "text": "A total of 37 pull requests were merged and 12 contributors were involved in this release.",
+      "reasons": [
+       "states C10 (single_source), C11 (single_source) as fact without hedging"
+      ]
+     }
+    ],
+    "gaps": [
+     {
+      "by": "model",
+      "text": "Release notes content"
+     },
+     {
+      "by": "model",
+      "text": "Contributor details"
+     },
+     {
+      "by": "model",
+      "text": "Changelog completeness"
+     },
+     {
+      "by": "model",
+      "text": "Verification of PyPI data"
+     },
+     {
+      "by": "model",
+      "text": "Source reliability"
+     },
+     {
+      "by": "rules",
+      "text": "17 finding(s) rest on a single source and need independent confirmation."
+     }
+    ]
+   },
+   "limitations": [
+    "wikipedia: rate_limited: HTTP 429",
+    "wikipedia: rate_limited: host backoff in force",
+    "wikipedia: rate_limited",
+    "searxng: rate_limited",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 2 sentence(s) passed the citation and claim-state guard, 3 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ],
+   "engines": {
+    "npm": {
+     "attempts": 1,
+     "results": 1
+    },
+    "osv": {
+     "attempts": 2,
+     "results": 0
+    },
+    "pypi": {
+     "attempts": 1,
+     "results": 1
+    },
+    "searxng": {
+     "attempts": 3,
+     "results": 24
+    },
+    "searxng:askubuntu": {
+     "attempts": 3,
+     "results": 0
+    },
+    "searxng:docker hub": {
+     "attempts": 3,
+     "results": 30
+    },
+    "searxng:duckduckgo": {
+     "attempts": 3,
+     "results": 30
+    },
+    "searxng:hackernews": {
+     "attempts": 3,
+     "results": 0
+    },
+    "searxng:mwmbl": {
+     "attempts": 3,
+     "results": 21
+    },
+    "searxng:stackoverflow": {
+     "attempts": 3,
+     "results": 0
+    },
+    "searxng:superuser": {
+     "attempts": 3,
+     "results": 0
+    },
+    "wikipedia": {
+     "attempts": 3,
+     "results": 8
+    }
+   },
+   "engine_failures": {
+    "wikipedia: rate_limited: HTTP 429": 1,
+    "wikipedia: rate_limited: host backoff in force": 1
+   },
+   "candidates_by_engine": {
+    "searxng:mwmbl": 7,
+    "searxng:duckduckgo": 6,
+    "pypi": 1,
+    "npm": 1,
+    "searxng:docker hub": 2,
+    "wikipedia": 7
+   },
+   "candidates_dated": 12,
+   "candidates": 24
+  },
+  {
+   "question": "Is numpy 2.5.5 secure?",
+   "task_id": "c8ae5731-3f03-4ab3-a853-15aa055387e0",
+   "status": "completed",
+   "mode": "technical",
+   "wall_seconds": 22.29,
+   "task_seconds": 22.1,
+   "providers": {
+    "npm": {
+     "attempts": 1,
+     "results": 1
+    },
+    "osv": {
+     "attempts": 2,
+     "results": 0
+    },
+    "pypi": {
+     "attempts": 1,
+     "results": 1
+    },
+    "searxng": {
+     "attempts": 19,
+     "results": 78
+    },
+    "wikipedia": {
+     "attempts": 3,
+     "results": 11
+    }
+   },
+   "searxng_engines": [],
+   "provider_failures": {},
+   "queries": [
+    {
+     "text": "pypi:numpy==2.5.5",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "osv:PyPI:numpy@2.5.5",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "npm:numpy",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "osv:npm:numpy@2.5.5",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "numpy 2.5.5 secure",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "numpy 2.5.5 secure release notes",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "numpy 2.5.5 secure changelog",
+     "kind": "web",
+     "round": 0
+    }
+   ],
+   "dependencies": null,
+   "sources": [
+    {
+     "n": 1,
+     "domain": "pypi.org",
+     "url": "https://pypi.org/project/numpy",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-15",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "pypi",
+      "searxng:duckduckgo"
+     ]
+    },
+    {
+     "n": 2,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Random_number_generation",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-11",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 3,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Mersenne_Twister",
+     "kind": "page",
+     "cited": true,
+     "published": "2002-03-22",
+     "search_engine_reported": null,
+     "date_source": "json-ld",
+     "found_by": "searxng"
+    },
+    {
+     "n": 4,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/C_(programming_language)",
+     "kind": "api",
+     "cited": false,
+     "published": "2026-11-15",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 5,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Django_(web_framework)",
+     "kind": "api",
+     "cited": false,
+     "published": "2026-10-13",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 6,
+     "domain": "npmjs.com",
+     "url": "https://npmjs.com/package/numpy",
+     "kind": "api",
+     "cited": false,
+     "published": "2017-08-30",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "npm"
+     ]
+    },
+    {
+     "n": 7,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/List_of_Python_software",
+     "kind": "api",
+     "cited": false,
+     "published": "2026-11-01",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 8,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/List_of_random_number_generators",
+     "kind": "api",
+     "cited": false,
+     "published": "2026-04-23",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 9,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/Flask_(web_framework)",
+     "kind": "api",
+     "cited": false,
+     "published": "2026-10-13",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    },
+    {
+     "n": 10,
+     "domain": "wikipedia.org",
+     "url": "https://en.wikipedia.org/wiki/List_of_free_and_open-source_software_packages",
+     "kind": "api",
+     "cited": false,
+     "published": "2026-11-16",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "wikipedia"
+     ]
+    }
+   ],
+   "freshness": {
+    "class": "release",
+    "satisfied": true,
+    "required_seconds": 604800.0,
+    "newest_source": "2026-11-21"
+   },
+   "verdict": {
+    "state": "insufficient",
+    "label": "insufficient",
+    "basis": null,
+    "category": "registry",
+    "aspect": "secure",
+    "statement": "numpy 2.5.5 is secure",
+    "confidence": 0.5
+   },
+   "finding_states": {
+    "single_source": 6
+   },
+   "extractive_answer_lead": "10 sources read; 6 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: just now.",
+   "extractive_quote_check": {
+    "quote_items": 4,
+    "quote_in_cited_source": 4
+   },
+   "reasoning": {
+    "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+    "status": "model",
+    "label": "Advanced reasoning by qwen3-30b-a3b-instruct-2507-fp8: written only from the verified evidence; each sentence cites its sources and passed NeuroSciFi's citation and claim-state checks.",
+    "reason": null,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    },
+    "usage": {
+     "answer_tokens_per_second": 47.54,
+     "calls": 2,
+     "completion_tokens": 398,
+     "first_token_ms": 330.8,
+     "latency_ms": 8918.8,
+     "model": "qwen3-30b-a3b-instruct-2507-fp8",
+     "prompt_tokens": 2356
+    },
+    "answer": [
+     {
+      "text": "According to one source, numpy version 2.5.5 was released on 2026-11-15, but no information is available on its security status.",
+      "citations": [
+       1
+      ],
+      "claims": [
+       "C1"
+      ],
+      "states": {
+       "C1": "single_source"
+      },
+      "hedged": true,
+      "flag": {
+       "confirmed": false,
+       "note": null,
+       "problem": "unsupported"
+      },
+      "citation_check": [
+       {
+        "claim": "C1",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         1
+        ]
+       }
+      ]
+     },
+     {
+      "text": "One source notes that the Mersenne Twister, used internally in some implementations, is not cryptographically secure unless specific variants like CryptMT are used.",
+      "citations": [
+       3
+      ],
+      "claims": [
+       "C3",
+       "C4"
+      ],
+      "states": {
+       "C3": "single_source",
+       "C4": "single_source"
+      },
+      "hedged": true,
+      "flag": null,
+      "citation_check": [
+       {
+        "claim": "C3",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         3
+        ]
+       },
+       {
+        "claim": "C4",
+        "quote_in_cited_source": true,
+        "sources_checked": [
+         3
+        ]
+       }
+      ]
+     }
+    ],
+    "guard_removed": [
+     {
+      "text": "Sources indicate that the default random number generator in NumPy was changed to PCG64 starting from version 1.17, which suggests improved security, but this does not confirm the security of version 2.5.5 specifically.",
+      "reasons": [
+       "cites unknown source(s) [6]",
+       "number(s) not in the cited evidence: 2.5.5"
+      ]
+     }
+    ],
+    "gaps": [
+     {
+      "by": "model",
+      "text": "Security audit of numpy 2.5.5"
+     },
+     {
+      "by": "model",
+      "text": "Details on RNG used in numpy 2.5.5"
+     },
+     {
+      "by": "model",
+      "text": "Known vulnerabilities in numpy 2.5.5"
+     },
+     {
+      "by": "model",
+      "text": "Security vulnerabilities in numpy 2.5.5"
+     },
+     {
+      "by": "model",
+      "text": "Cryptographic security of default RNG in numpy 2.5.5"
+     },
+     {
+      "by": "model",
+      "text": "Use of CryptMT or other secure variants in numpy 2.5.5"
+     },
+     {
+      "by": "model",
+      "text": "Official security advisories for numpy 2.5.5"
+     },
+     {
+      "by": "model",
+      "text": "Patch status or updates for known issues in numpy 2.5.5"
+     },
+     {
+      "by": "rules",
+      "text": "6 finding(s) rest on a single source and need independent confirmation."
+     }
+    ]
+   },
+   "limitations": [
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 2 sentence(s) passed the citation and claim-state guard, 1 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ],
+   "engines": {
+    "npm": {
+     "attempts": 1,
+     "results": 1
+    },
+    "osv": {
+     "attempts": 2,
+     "results": 0
+    },
+    "pypi": {
+     "attempts": 1,
+     "results": 1
+    },
+    "searxng": {
+     "attempts": 3,
+     "results": 24
+    },
+    "searxng:askubuntu": {
+     "attempts": 2,
+     "results": 0
+    },
+    "searxng:docker hub": {
+     "attempts": 2,
+     "results": 20
+    },
+    "searxng:duckduckgo": {
+     "attempts": 3,
+     "results": 30
+    },
+    "searxng:hackernews": {
+     "attempts": 2,
+     "results": 0
+    },
+    "searxng:mwmbl": {
+     "attempts": 3,
+     "results": 4
+    },
+    "searxng:stackoverflow": {
+     "attempts": 2,
+     "results": 0
+    },
+    "searxng:superuser": {
+     "attempts": 2,
+     "results": 0
+    },
+    "wikipedia": {
+     "attempts": 3,
+     "results": 11
+    }
+   },
+   "engine_failures": {},
+   "candidates_by_engine": {
+    "searxng:mwmbl": 3,
+    "pypi": 1,
+    "searxng:duckduckgo": 9,
+    "wikipedia": 7,
+    "npm": 1,
+    "searxng:docker hub": 8
+   },
+   "candidates_dated": 18,
+   "candidates": 29
+  }
+ ],
+ "fallback_records": {
+  "searxng_down": {
+   "question": "Latest developments in open-source LLM inference",
+   "task_id": "0a89773d-1f4b-40e4-8e13-940978592172",
+   "status": "partial",
+   "mode": "quick_lookup",
+   "wall_seconds": 0.36,
+   "task_seconds": 0.196,
+   "providers": {
+    "openwebsearch": {
+     "attempts": 4,
+     "results": 0
+    },
+    "searxng": {
+     "attempts": 2,
+     "results": 0
+    },
+    "wikipedia": {
+     "attempts": 2,
+     "results": 0
+    }
+   },
+   "searxng_engines": [],
+   "provider_failures": {
+    "searxng: searxng_unreachable: SearXNG unreachable at http://127.0.0.1:8888: [Err": 2,
+    "openwebsearch: daemon_unreachable": 2,
+    "openwebsearch: daemon_unreachable: daemon unreachable at http://127.0.0.1:3210: ": 2,
+    "wikipedia: rate_limited: HTTP 429": 1,
+    "wikipedia: rate_limited: host backoff in force": 1
+   },
+   "queries": [
+    {
+     "text": "open-source LLM inference",
+     "kind": "news",
+     "round": 0
+    },
+    {
+     "text": "open-source LLM inference",
+     "kind": "web",
+     "round": 1
+    }
+   ],
+   "dependencies": null,
+   "sources": [],
+   "freshness": {
+    "class": "volatile",
+    "satisfied": false,
+    "required_seconds": 172800.0,
+    "newest_source": null
+   },
+   "verdict": null,
+   "finding_states": {},
+   "extractive_answer_lead": "Nothing could be read: every search provider failed (searxng: searxng_unreachable, openwebsearch/duckduckgo: daemon_unreachable, openwebsearch: daemon_unreachable, wikipedia: rate_limited).",
+   "extractive_quote_check": {
+    "quote_items": 0,
+    "quote_in_cited_source": 0
+   },
+   "reasoning": {
+    "generated_by": "template",
+    "status": "no_evidence",
+    "label": "Advanced reasoning unavailable — showing extractive summary",
+    "reason": "no verified evidence claim to reason over",
+    "critique": null,
+    "usage": null,
+    "answer": [],
+    "guard_removed": [],
+    "gaps": [
+     {
+      "by": "rules",
+      "text": "No claim relevant to the question was extracted from the sources read."
+     },
+     {
+      "by": "rules",
+      "text": "No cited source is recent enough for this question's freshness requirement."
+     }
+    ]
+   },
+   "limitations": [
+    "Nothing could be read: every search provider failed (searxng: searxng_unreachable, openwebsearch/duckduckgo: daemon_unreachable, openwebsearch: daemon_unreachable, wikipedia: rate_limited)",
+    "searxng: searxng_unreachable: SearXNG unreachable at http://127.0.0.1:8888: [Errno 111] C",
+    "openwebsearch/duckduckgo: daemon_unreachable",
+    "openwebsearch: daemon_unreachable: daemon unreachable at http://127.0.0.1:3210: <urlopen error ",
+    "wikipedia: rate_limited: HTTP 429",
+    "wikipedia: rate_limited: host backoff in force",
+    "Freshness requirement not met: no cited source is dated (required: within 2 days, volatile class)",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+   ],
+   "engines": {
+    "openwebsearch": {
+     "attempts": 2,
+     "results": 0
+    },
+    "openwebsearch:duckduckgo": {
+     "attempts": 2,
+     "results": 0
+    },
+    "searxng": {
+     "attempts": 2,
+     "results": 0
+    },
+    "wikipedia": {
+     "attempts": 2,
+     "results": 0
+    }
+   },
+   "engine_failures": {
+    "searxng: searxng_unreachable: SearXNG unreachable at http://127.0.0.1:8888: [Errno 111] Co": 2,
+    "openwebsearch:duckduckgo: daemon_unreachable": 2,
+    "openwebsearch: daemon_unreachable: daemon unreachable at http://127.0.0.1:3210: <urlopen e": 2,
+    "wikipedia: rate_limited: HTTP 429": 1,
+    "wikipedia: rate_limited: host backoff in force": 1
+   },
+   "candidates_by_engine": {},
+   "candidates_dated": 0,
+   "candidates": 0
+  },
+  "model_down": {
+   "question": "Was numpy 2.5.5 released?",
+   "task_id": "0e99edd8-0977-4c0b-b5f2-0ac145d332f7",
+   "status": "completed",
+   "mode": "technical",
+   "wall_seconds": 11.43,
+   "task_seconds": 11.236,
+   "providers": {
+    "npm": {
+     "attempts": 1,
+     "results": 1
+    },
+    "osv": {
+     "attempts": 2,
+     "results": 0
+    },
+    "pypi": {
+     "attempts": 1,
+     "results": 1
+    },
+    "searxng": {
+     "attempts": 24,
+     "results": 105
+    },
+    "wikipedia": {
+     "attempts": 3,
+     "results": 0
+    }
+   },
+   "searxng_engines": [],
+   "provider_failures": {
+    "wikipedia: rate_limited: host backoff in force": 3
+   },
+   "queries": [
+    {
+     "text": "pypi:numpy==2.5.5",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "osv:PyPI:numpy@2.5.5",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "npm:numpy",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "osv:npm:numpy@2.5.5",
+     "kind": "technical",
+     "round": 0
+    },
+    {
+     "text": "numpy 2.5.5 released",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "numpy 2.5.5 released release notes",
+     "kind": "web",
+     "round": 0
+    },
+    {
+     "text": "numpy 2.5.5 released changelog",
+     "kind": "web",
+     "round": 0
+    }
+   ],
+   "dependencies": null,
+   "sources": [
+    {
+     "n": 1,
+     "domain": "numpy.org",
+     "url": "https://numpy.org/devdocs/release/2.5.5-notes.html",
+     "kind": "page",
+     "cited": true,
+     "published": null,
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": "searxng"
+    },
+    {
+     "n": 2,
+     "domain": "newreleases.io",
+     "url": "https://newreleases.io/project/github/numpy/numpy/release/v2.5.5",
+     "kind": "page",
+     "cited": true,
+     "published": "2026-11-15",
+     "search_engine_reported": null,
+     "date_source": "json-ld",
+     "found_by": "searxng"
+    },
+    {
+     "n": 3,
+     "domain": "pypi.org",
+     "url": "https://pypi.org/project/numpy",
+     "kind": "api",
+     "cited": true,
+     "published": "2026-11-15",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "pypi"
+     ]
+    },
+    {
+     "n": 4,
+     "domain": "numpy.org",
+     "url": "https://numpy.org/devdocs/release/2.5.0-notes.html",
+     "kind": "page",
+     "cited": true,
+     "published": null,
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": "searxng"
+    },
+    {
+     "n": 5,
+     "domain": "numpy.org",
+     "url": "https://numpy.org/devdocs/release/2.5.1-notes.html",
+     "kind": "page",
+     "cited": true,
+     "published": null,
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": "searxng"
+    },
+    {
+     "n": 6,
+     "domain": "docker.com",
+     "url": "https://hub.docker.com/r/jenkins/core-changelog-generator",
+     "kind": "page",
+     "cited": true,
+     "published": null,
+     "search_engine_reported": "2020-01-07",
+     "date_source": "search_engine",
+     "found_by": "searxng"
+    },
+    {
+     "n": 7,
+     "domain": "mongodb.com",
+     "url": "https://mongodb.com/community/forums/t/mongodb-c-driver-2-5-5-released/343721",
+     "kind": "page",
+     "cited": true,
+     "published": "2026-09-24",
+     "search_engine_reported": null,
+     "date_source": "meta:article:published_time",
+     "found_by": "searxng"
+    },
+    {
+     "n": 8,
+     "domain": "npmjs.com",
+     "url": "https://npmjs.com/package/numpy",
+     "kind": "api",
+     "cited": false,
+     "published": "2017-08-30",
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": [
+      "npm"
+     ]
+    },
+    {
+     "n": 9,
+     "domain": "numpy.org",
+     "url": "https://numpy.org/doc/stable/release.html",
+     "kind": "page",
+     "cited": false,
+     "published": null,
+     "search_engine_reported": null,
+     "date_source": null,
+     "found_by": "searxng"
+    },
+    {
+     "n": 10,
+     "domain": "joomla.org",
+     "url": "https://joomla.org/announcements/release-news/joomla-255-released.html",
+     "kind": "page",
+     "cited": false,
+     "published": "2012-06-18",
+     "search_engine_reported": null,
+     "date_source": "time-element",
+     "found_by": "searxng"
+    }
+   ],
+   "freshness": {
+    "class": "release",
+    "satisfied": true,
+    "required_seconds": 604800.0,
+    "newest_source": "2026-11-21"
+   },
+   "verdict": {
+    "state": "supported",
+    "label": "supported",
+    "basis": "registry_record",
+    "category": "registry",
+    "aspect": "published",
+    "statement": "numpy 2.5.5 was released",
+    "confidence": 0.658
+   },
+   "finding_states": {
+    "single_source": 22,
+    "contested": 3
+   },
+   "extractive_answer_lead": "10 sources read; 25 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 1). Newest cited source: just now.",
+   "extractive_quote_check": {
+    "quote_items": 4,
+    "quote_in_cited_source": 4
+   },
+   "reasoning": {
+    "generated_by": "template",
+    "status": "unavailable",
+    "label": "Advanced reasoning unavailable — showing extractive summary",
+    "reason": "unavailable: cannot connect: Connection refused",
+    "critique": null,
+    "usage": null,
+    "answer": [],
+    "guard_removed": [],
+    "gaps": [
+     {
+      "by": "rules",
+      "text": "22 finding(s) rest on a single source and need independent confirmation."
+     },
+     {
+      "by": "rules",
+      "text": "3 finding(s) are contested; the sources disagree."
+     }
+    ]
+   },
+   "limitations": [
+    "wikipedia: rate_limited: host backoff in force",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+   ],
+   "engines": {
+    "npm": {
+     "attempts": 1,
+     "results": 1
+    },
+    "osv": {
+     "attempts": 2,
+     "results": 0
+    },
+    "pypi": {
+     "attempts": 1,
+     "results": 1
+    },
+    "searxng": {
+     "attempts": 3,
+     "results": 24
+    },
+    "searxng:askubuntu": {
+     "attempts": 3,
+     "results": 0
+    },
+    "searxng:docker hub": {
+     "attempts": 3,
+     "results": 30
+    },
+    "searxng:duckduckgo": {
+     "attempts": 3,
+     "results": 30
+    },
+    "searxng:hackernews": {
+     "attempts": 3,
+     "results": 0
+    },
+    "searxng:mwmbl": {
+     "attempts": 3,
+     "results": 21
+    },
+    "searxng:stackoverflow": {
+     "attempts": 3,
+     "results": 0
+    },
+    "searxng:superuser": {
+     "attempts": 3,
+     "results": 0
+    },
+    "wikipedia": {
+     "attempts": 3,
+     "results": 0
+    }
+   },
+   "engine_failures": {
+    "wikipedia: rate_limited: host backoff in force": 3
+   },
+   "candidates_by_engine": {
+    "searxng:mwmbl": 7,
+    "searxng:duckduckgo": 5,
+    "pypi": 1,
+    "npm": 1,
+    "searxng:docker hub": 2
+   },
+   "candidates_dated": 4,
+   "candidates": 16
+  }
+ }
+}

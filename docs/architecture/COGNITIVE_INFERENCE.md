@@ -23,8 +23,8 @@ intent ─▶ memory ─▶ discovery/reading ─▶ claims + verification ─�
                                          reasoning.apply ◀────────────┘   (orchestrator._reason)
                                            │ bundle(): verified claims, states, quotes, source ids, dates (untrusted)
                                            │ gateway.structured(): JSON answer, one repair
-                                           │ guard(): per-sentence citation / state / number / injection checks
-                                           │ self-critique (one call, may only remove)
+                                           │ guard(): per-sentence citation / state / number+unit / injection checks
+                                           │ self-critique (one call, may only flag; removal needs an objective check)
                                            ▼
                                report.reasoning + report.generated_by ─▶ consolidation (claims only) ─▶ memory
 ```
@@ -84,29 +84,48 @@ included); failed and cancelled runs keep the extractive report only.
   cites a claim through a source that does not carry it, relies on a claim whose state is not `corroborated` /
   `supported` without hedging in its own words (local patterns: "according to", "one source", "may", "disputed", …),
   calls a non-supported claim verified/confirmed, contains a number that is in none of its cited claims or their
-  sources' dates/titles (a small count before "sources" is allowed; "4.2" matches "4.2.0"), or contains
-  instruction-like text.
+  sources' dates/titles (a small count before "sources" is allowed; "4.2" matches "4.2.0"), gives a number a unit
+  or scale the cited evidence does not give that number (`_unit_mismatches`: "41 feet" vs "41 metres", "86 billion"
+  vs "86 million", "17 days" vs "17 November", "$1.5 million" vs "1.5 billion dollars"; units and scale words are
+  normalised, "%" = "percent"; an ambiguous one-letter unit such as "5m" is not judged), or contains
+  instruction-like text. `check_sentence` holds these checks.
 - **Self-critique.** One call (≤ 400 tokens): each accepted sentence is marked `fine`, `unsupported`, `overstated` or
-  `missing_hedge`; anything not `fine` is removed. It can never add a sentence.
+  `missing_hedge`. A mark removes a sentence only when `check_sentence` confirms an objective failure (unknown
+  source or claim, a claim state that is not supported stated without a hedge, a number or unit not in the cited
+  evidence); otherwise the sentence stays with `flag: {problem, note, confirmed: false}`, shown in the console as
+  "self-check flagged". The model's judgement alone never removes a sentence, and it can never add one. `critique`
+  reports `removed` and `flagged`. (Before v0.7.0 Lane G any mark removed the sentence; live, that dropped correct
+  sentences and once a whole answer.)
+- **Time budget.** `orchestrator._reason` passes what is left of the task's `budget.max_seconds`
+  (`time_left`); the answer call, its schema repair and the critique share that one deadline (`Gateway.structured`
+  gives the repair only the remaining time; `Gateway._call` never exceeds `read_timeout`). With less than
+  `MIN_MODEL_SECONDS` (5 s) left no call is made (`status: degraded`, reason `time_budget: …`); a critique without
+  time is `skipped`. A timeout degrades the label, never hangs the task, and the model's time is counted in the
+  task's `usage.seconds`.
 - **Gaps.** Model-identified gaps (injection-scanned, ≤ 300 chars) plus rule gaps from the evidence (single-source
   findings, contested findings, unmet freshness, no claims), each labelled by origin.
 - **Output.** `report.reasoning = {generated_by, status, label, answer[{text, citations, claims, states, hedged}],
   rejected[{text, reasons}], gaps[{text, by}], critique, usage, reason}`, `report.generated_by`, a limitation line
   saying how many sentences passed and were rejected, and one `decision` event (when an endpoint is configured).
   `status` is `model`, `not_configured`, `disabled`, `no_evidence`, `unavailable`, `unauthorised`, `degraded`
-  (e.g. schema failure), `rejected` (nothing passed) or `error`.
+  (e.g. schema failure, timeout, time budget), `rejected` (nothing passed) or `error`. Undated sources that a search
+  engine dated carry `search_engine_reported_date` in the bundle, labelled lower trust.
 
 **Interfaces.** CLI: `nsf web ask` prints the task JSON with `result.generated_by` and `result.reasoning.label`;
 `nsf llm ask` replies directly and is labelled "Model output, not checked against evidence". Console: Research view
 "Model reasoning" card (`GET /api/llm/status`, same token/Host/Origin checks as every route) and, in a report, the
-model answer with its label, citations and claim-state badges, the knowledge gaps, rejected sentences and token use
-under Technical detail, then "Extractive summary (quoted evidence)". A template report shows the degraded label and
-the reason.
+model answer with its label (`#reasoningLabel`, `data-generated-by` = `model:<name>` or `template`), citations,
+claim-state badges and any self-check flag, the knowledge gaps, rejected sentences and token use under Technical
+detail, then "Extractive summary (quoted evidence)"; the verdict shows its ADR-035 state, basis and category
+(`#verdictBasis`). A template report shows "Extractive summary (template)", the degraded label and the reason.
+Browser test: `tests/e2e/test_reasoning_console.py` (fake OpenAI-compatible server).
 
 ## 4. Deployment on the DGX Spark (measured 2026-11-21)
 
 Server: `deploy/vllm/run.sh` (settings `deploy/vllm/vllm.env`, owner overrides in
-`~/.config/neuroscifi/inference/vllm.env`), optional unit `deploy/systemd/neuroscifi-vllm.service`.
+`~/.config/neuroscifi/inference/vllm.env`), optional unit `deploy/systemd/neuroscifi-vllm.service`, installed
+disabled by `sudo bash deploy/install.sh --llm --llm-user USER` (sets `User=` and `NSF_REPO=`; `--dry-run` prints
+the plan; `--searxng` likewise installs `neuroscifi-searxng.service` and its settings template).
 
 ```
 docker run -d --restart unless-stopped --name neuroscifi-vllm --device nvidia.com/gpu=all \
@@ -169,16 +188,17 @@ nsf llm usage                                                 # token ledger
 
 ## 6. Limitations
 
-- The guard is lexical. A hedge word anywhere in a sentence ("could", "reports") satisfies the hedge rule, and number
-  grounding checks that a number appears in the cited evidence, not that it is used with the same meaning or unit.
-  Names and dates written in words are not checked. The self-critique is a model judging a model; it can only remove,
-  and it does remove correct sentences sometimes (live: one answer fell back to template this way).
+- The guard is lexical. A hedge word anywhere in a sentence ("could", "reports") satisfies the hedge rule. Number
+  grounding checks that a number appears in the cited evidence with the same unit or scale word, not that it means
+  the same thing (a bare number is matched by value only; "5m" is not judged). Names and dates written in words are
+  not checked. The self-critique is a model judging a model; its marks are shown as flags and remove nothing on
+  their own, so an overstated sentence that passes every objective check stays visible, flagged.
 - Claim states come from claims.py (`corroborated` today; `supported` is accepted for Lane C's new states). The model
   sees at most 12 findings; it cannot see evidence the extractive pipeline did not extract.
-- A model answer costs ≈ 4–5 s and ≈ 2–4 k tokens per research task; the task's `max_seconds` budget does not include
-  it (the call has its own deadline, `read_timeout`).
+- A model answer costs ≈ 4–5 s and ≈ 2–4 k tokens per research task, inside the task's `max_seconds` budget.
 - Token counts in the ledger are the server's; the context budget before sending is an estimate (3.5 characters per
   token).
-- `deploy/install.sh` does not install the vLLM unit (Docker and weights are host choices); install it by hand (§5).
+- `deploy/install.sh --llm` installs the vLLM unit but neither enables it nor provides Docker or the weights (host
+  choices, §5).
 - Not done in this release: remote providers were tested only with fakes (no remote endpoint is configured); no
   per-sentence semantic entailment check; voice/PersonaPlex integration is area 6.

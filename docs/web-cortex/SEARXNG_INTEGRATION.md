@@ -56,8 +56,9 @@ Container hardening (`Container.run_args`):
 | `--env-file secret.env` | secret outside git and outside settings.yml |
 
 systemd: `deploy/systemd/neuroscifi-searxng.service` (installed disabled) is a oneshot wrapper around
-`nsf web searxng start|stop`; set `User=`, `NSF_DB` and copy `deploy/searxng/settings.yml` to the path in
-`NSF_SEARXNG_SETTINGS`. Docker's restart policy keeps the container up between boots either way.
+`nsf web searxng start|stop`. `sudo bash deploy/install.sh --searxng` (dry run: `--dry-run --searxng`) installs it
+and copies `deploy/searxng/settings.yml` to `PREFIX/searxng/settings.yml`, the path in `NSF_SEARXNG_SETTINGS`; then
+set `User=` (a docker user) and `NSF_DB` with `systemctl edit neuroscifi-searxng.service`. Docker's restart policy keeps the container up between boots either way.
 
 ## 2. Configuration
 
@@ -152,7 +153,8 @@ Not enabled, and never queried by NeuroSciFi:
   `metadata.retrieved_at`; `metadata.canonical_url`; `rank`; `kind` `academic` for science else `web`;
   `published_at` **only** from a parseable `publishedDate` — missing, null or unparseable stays `None`
   (`test_results_are_normalised_and_dates_are_never_invented`). Dated results older than `Query.since` are dropped;
-  undated ones stay.
+  undated ones stay. A page read from a dated hit that has no date of its own is shown with that date as
+  search-engine-reported, lower trust, never as its publication date (SEARCH_AND_ACQUISITION §7).
 - Engine health: `unresponsive_engines` → per-engine Breaker failure classified captcha / forbidden (403) /
   rate_limited (429) / timeout / error, plus counters (`engine_stats`); contributing engines → success; silent
   engines → neutral ("empty"). Exposed as `last_attempts` (registry `attempts`, `searxng:<engine>` in status and
@@ -242,9 +244,10 @@ stackoverflow, askubuntu, superuser 3/3 each; europepmc 2/2; openairepublication
 2. **Freshness of news.** Bing News results carry no `publishedDate`; dated news comes from Hacker News. Pages read
    from msn.com are JavaScript shells (0 claims). Current-event questions therefore often end with "freshness
    requirement not met" — honestly, but not usefully.
-3. **"Latest releases affecting NeuroSciFi"** is planned as a web search for "releases" after the self-reference is
-   stripped. The dependency interpretation is served by `nsf web deps`, not by `ask`; routing such questions to the
-   dependency check is planner work outside this lane.
+3. ~~**"Latest releases affecting NeuroSciFi"** is planned as a web search for "releases"~~ — fixed (Lane G):
+   `intent.dependency_question` recognises "releases / advisories affecting <this system>" and the task runs the
+   `nsf web deps` logic (project inventory + direct PyPI/npm/OSV pass, `report.dependencies`); no general search is
+   sent. Live result: `docs/quality/evidence/search_reasoning_live.json`.
 4. Europe PMC often exceeds SearXNG's 4 s engine timeout (2 of 3 calls).
 5. The adapter cannot report per-engine latency (SearXNG's JSON has none); the evidence records call latency.
 

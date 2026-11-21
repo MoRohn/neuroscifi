@@ -96,8 +96,9 @@ def test_scenario_reasons_and_kinds():
     a = intent.assess(S2, now=NOW)
     assert a["kinds"] == ["academic", "web"] and "unfamiliar entity: NeuroSciFi" in a["reasons"]
     assert any(r.startswith("scientific question") for r in a["reasons"])
-    a = intent.assess(S3, now=NOW)
-    assert a["kinds"] == ["technical", "web"] and any("no packages listed" in n for n in a["notes"])
+    a = intent.assess(S3, now=NOW)       # Scenario C is a dependency check (Lane G #2): no general web query
+    assert a["kinds"] == ["technical", "web"] and a["dependency_check"] is True
+    assert any(n.startswith("dependency check: the packages in use") for n in a["notes"])
     a = intent.assess(S4, now=NOW)
     assert "continuous monitoring requested" in a["reasons"] and "academic" in a["kinds"]
     a = intent.assess(S5, now=NOW)
@@ -235,8 +236,8 @@ def test_plan_technical_with_packages():
                                      "osv:PyPI:zstandard@0.25.0", "npm:open-websearch",
                                      "osv:npm:open-websearch@2.2.0"]
     assert all(q.since is None for q in p.queries if q.kind == "technical")
-    assert len(p.queries) == 8
-    assert "stable releases security advisories" in texts(p, "web")      # "the libraries we use" is local
+    assert len(p.queries) == 6     # a dependency check (Lane G #2): the registries only, no web search for the
+    assert texts(p, "web") == []   # cue words left after "the libraries we use" (local) is stripped
 
 
 def test_plan_technical_expansions_without_packages():
@@ -453,3 +454,53 @@ def test_a_versioned_name_with_a_plain_release_word_is_a_registry_lookup(questio
                                       "Which version of the report was published?"])
 def test_a_plain_release_word_without_a_versioned_name_names_no_package(question):
     assert intent.assess(question, now=NOW)["packages"] == []
+
+
+@pytest.mark.parametrize("question, aspect_queries", [
+    ("Is corvane 2.5.4 stable?", ["pypi:corvane==2.5.4", "osv:PyPI:corvane@2.5.4"]),
+    ("Is numpy 2.5.5 secure?", ["pypi:numpy==2.5.5", "osv:PyPI:numpy@2.5.5"]),
+    ("Is numpy 2.5.5 yanked?", ["pypi:numpy==2.5.5"]),
+    ("Is numpy 2.5.5 a pre-release?", ["pypi:numpy==2.5.5"]),
+    ("Is numpy 2.5.5 compatible with Python 3.9?", ["pypi:numpy==2.5.5"]),
+    ("Is corvane 2.5.5 recommended?", ["pypi:corvane==2.5.5"]),
+])
+def test_registry_aspect_questions_query_the_registries(question, aspect_queries):
+    """Lane G #1 (bench F26): "Is corvane 2.5.4 stable?" was a quick_lookup that never asked PyPI, so the stable
+    aspect (CLAIM_VERIFICATION §5) could not be decided. Next to a versioned name, the registry aspects stable,
+    pre-release, yanked, compatible, secure, recommended and latest are registry cues (OSV for secure); the aspect
+    word itself is never taken for a package name."""
+    a = intent.assess(question, now=NOW)
+    assert a["mode"] == "technical"
+    planned = texts(intent.plan(question, a, now=NOW), "technical")
+    assert set(aspect_queries) <= set(planned), planned
+    assert not {p["name"] for p in a["packages"]} & {"stable", "secure", "yanked", "pre-release", "compatible",
+                                                       "recommended"}
+
+
+@pytest.mark.parametrize("question", ["Is the bridge stable?", "Is Python 3.12 stable?", "Is my password secure?"])
+def test_aspect_words_without_a_versioned_package_name_name_no_package(question):
+    assert intent.assess(question, now=NOW)["packages"] == []
+
+
+@pytest.mark.parametrize("question", ["Latest releases affecting NeuroSciFi",
+                                      "Are there security advisories affecting our dependencies?",
+                                      "What new releases affect this system?",
+                                      "Check whether the libraries we use have newer stable releases or important "
+                                      "security advisories"])
+def test_releases_affecting_this_system_are_a_dependency_check(question):
+    """Lane G #2: once the self-reference is stripped only "releases" was left and searched on the web. The
+    question is now a dependency check: technical, no web/news query kind, no topic query."""
+    a = intent.assess(question, now=NOW)
+    assert a["dependency_check"] is True and a["mode"] == "technical"
+    p = intent.plan(question, a, now=NOW)
+    assert p.queries == ()
+    a["packages"] = [{"ecosystem": "PyPI", "name": "numpy", "version": "2.3.5"}]
+    assert texts(intent.plan(question, a, now=NOW)) == ["pypi:numpy==2.3.5", "osv:PyPI:numpy@2.3.5"]
+
+
+@pytest.mark.parametrize("question", ["Latest numpy releases", "How does NeuroSciFi learn?",
+                                      "Research recent advances in dendritic computation and evaluate their "
+                                      "implications for NeuroSciFi", "Latest releases of PyTorch affecting NeuroSciFi"])
+def test_other_questions_are_not_a_dependency_check(question):
+    assert intent.dependency_question(question) is False
+    assert intent.assess(question, now=NOW)["dependency_check"] is False

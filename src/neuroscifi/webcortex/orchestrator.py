@@ -627,6 +627,8 @@ class _Run:
             assessment["packages"] = list(assessment.get("packages") or []) + [
                 p for p in packages if (p["ecosystem"].lower(), p["name"].lower()) not in named]
             assessment["notes"] = [n for n in assessment.get("notes") or [] if not n.startswith("no packages listed")]
+        elif assessment.get("dependency_check"):
+            self.dependency_check(assessment)
         crawl = (self.checkpoint.get("context") or {}).get("crawl")
         if crawl:   # "investigate these sources": the seeds are read by a bounded crawl, nothing is searched
             assessment["needs_web"] = True
@@ -677,6 +679,48 @@ class _Run:
             self.limit("query budget exhausted: some planned queries were not sent")
         self.done("discovering", plan=plan.to_json(), results=results, attempts=attempts[:200])
         return True
+
+    def dependency_check(self, assessment):
+        """"Latest releases affecting <this system>" (intent.dependency_question): the `nsf web deps` logic instead
+        of a web search for the bare word "releases". The packages in use come from the project inventory
+        (deps.inventory: local files and installed versions, no network); deps.check makes its bounded direct pass
+        through the PyPI/npm/OSV providers (its own budget, clamped by the owner's ceiling, as `nsf web deps`);
+        the packages that need attention (security first, then the largest version gaps) become the plan's
+        registry lookups, so their records are read as evidence. The summary is report['dependencies']."""
+        from . import deps
+        try:
+            inv = deps.inventory()
+        except Exception as exc:     # an unreadable project file: say so, search nothing
+            self.note(f"dependency check: the package inventory could not be read ({type(exc).__name__})")
+            return
+        packages = [p for p in inv["packages"] if p.get("name")]
+        if not packages:
+            self.note("dependency check: no package in use was found in the project inventory")
+            return
+        self.check()
+        result = deps.check(self.db, self.services, packages)
+        self.renew()
+        reports = result["packages"]
+        rank = {"major": 0, "minor": 1, "patch": 2}
+        attention = sorted((r for r in reports if r.get("recommendation") in ("upgrade (security)",
+                                                                              "consider upgrade")),
+                           key=lambda r: (r["recommendation"] != "upgrade (security)",
+                                          rank.get(r.get("behind_by"), 3), -float(r.get("released_at") or 0)))
+        keep = ("ecosystem", "name", "current", "latest", "released_at", "behind_by", "recommendation", "action")
+        summary = {"packages": len(reports), "source": "project inventory (deps.inventory) + direct registry pass "
+                                                       "(deps.check, as `nsf web deps`)",
+                   "totals": deps._totals(reports, False),
+                   "attention": [{k: r.get(k) for k in keep} | {"advisories": [a.get("id") for a in r["advisories"]]}
+                                 for r in attention][:20],
+                   "failures": len(result["failures"]), "usage": result["usage"], "budget": result["budget"]}
+        assessment["packages"] = [{"ecosystem": r["ecosystem"], "name": r["name"], "version": r["current"]}
+                                  for r in attention]
+        self.save(dependencies=summary)
+        self.event("decision", {"dependency_check": {"packages": len(reports), "attention": len(attention),
+                                                     "failures": len(result["failures"])}}, "discovering")
+        if result["failures"]:
+            self.note(f"dependency check: {len(result['failures'])} registry/advisory lookup(s) failed "
+                      "(see `nsf web deps` for the per-package list)")
 
     def local_terms(self) -> list[str]:
         """Names of the individual's own system that are local context, never search terms (intent.strip_local
@@ -814,7 +858,7 @@ class _Run:
                                              meta.get("last_edited"), "source": "article"})
         return safety.quarantine(self.api_document(page, self.clock())), True
 
-    def record(self, doc, *, provider, api, published_hint=None):
+    def record(self, doc, *, provider, api, published_hint=None, search_date=None):
         now = self.clock()
         with store.write(self.db):
             state.require_lease(self.db, self.id, self.holder)   # nothing is written for a task taken or forgotten
@@ -832,6 +876,8 @@ class _Run:
                  "doc": doc.to_json() if api else None}
         if published_hint is not None:
             entry["published_hint"] = published_hint
+        if search_date and doc.published_at is None:
+            entry["search_date"] = search_date
         docs = [d for d in self.checkpoint.get("documents", []) if d["canonical_url"] != doc.canonical_url]
         self.save(documents=docs + [entry])
         self.documents.append(doc)
@@ -948,7 +994,7 @@ class _Run:
             if doc is None:
                 done.pop(entry["canonical_url"])
                 continue
-            self.record(doc, provider=entry.get("provider"), api=entry["api"])
+            self.record(doc, provider=entry.get("provider"), api=entry["api"], search_date=entry.get("search_date"))
         if self.is_done("reading"):
             return
         crawl = (self.checkpoint.get("context") or {}).get("crawl")
@@ -1028,7 +1074,8 @@ class _Run:
                         self.renew()
                         continue
                 self.usage.charge(self.budget, pages=1)
-                self.record(doc, provider=r.provider, api=as_api, published_hint=hint)
+                self.record(doc, provider=r.provider, api=as_api, published_hint=hint,
+                            search_date=None if as_api or hint is not None else _search_date(r))
             for r in deferred:
                 if full() or self.exhausted:
                     break
@@ -1278,6 +1325,9 @@ class _Run:
                                       usage=self.usage, failures=[f for f in self.failures if not _empty_result(f)],
                                       ttl_overrides=self.ttl_overrides())
         report = dict(report)
+        _search_dates(report, self.checkpoint.get("documents") or [])
+        if self.checkpoint.get("dependencies"):
+            _dependencies(report, self.checkpoint["dependencies"])
         report.setdefault("limitations", [])
         for why in self.limitations:
             if why not in report["limitations"]:
@@ -1296,6 +1346,69 @@ class _Run:
     def ttl_overrides(self):
         """The owner's freshness TTL overrides (config.freshness_ttl) for claims.score / synthesis.synthesize."""
         return dict(self.cfg.freshness_ttl) or None
+
+
+def _search_date(r: SearchResult) -> dict | None:
+    """The publication date a search engine reported for a hit (SearXNG publishedDate, Hacker News created_at, ...),
+    when it reported one: {at, reported_by}. Never invented: None without a parsed date."""
+    if r.published_at is None:
+        return None
+    engines = (r.metadata or {}).get("engines") or []
+    engine = engines[0] if isinstance(engines, list) and engines else getattr(r, "engine", None)
+    return {"at": float(r.published_at), "reported_by": f"{r.provider}:{engine}" if engine and engine != r.provider
+            else str(r.provider)}
+
+
+SEARCH_DATE_NOTE = ("date reported by the search engine ({by}), not found on the page: lower trust than an in-page "
+                    "date; shown for orientation, not used for freshness or claim verification")
+
+
+def _search_dates(report, entries):
+    """Date the report's undated sources by the search engine's reported date (source['search_published_at'],
+    'date_source': 'search_engine', 'date_note'). The in-page date always wins: a source with its own published_at
+    is never touched. published_at stays None, so freshness and verification still treat the page as undated
+    (lower trust); the uncertainty line about the undated source says what the search engine reported."""
+    by_url = {}
+    for e in entries:
+        if e.get("search_date"):
+            for key in ("canonical_url", "url", "final_url"):
+                if e.get(key):
+                    by_url[e[key]] = e["search_date"]
+    if not by_url:
+        return
+    for source in report.get("sources") or []:
+        found = by_url.get(source.get("url"))
+        if found is None or source.get("published_at") is not None:
+            continue
+        source["search_published_at"] = found["at"]
+        source["date_source"] = "search_engine"
+        source["date_note"] = SEARCH_DATE_NOTE.format(by=found["reported_by"])
+        day = datetime.fromtimestamp(found["at"], tz=timezone.utc).strftime("%Y-%m-%d")
+        prefix = f"Undated source: [{source.get('n')}] "
+        report["uncertainties"] = [
+            u + f" The search engine ({found['reported_by']}) reports {day} (lower trust, not counted)."
+            if isinstance(u, str) and u.startswith(prefix) else u for u in report.get("uncertainties") or []]
+
+
+def _dependencies(report, summary):
+    """report['dependencies'] and its totals at the start of the summary line (answer[0], a template, not a quote)
+    for a dependency-check question (_Run.dependency_check)."""
+    report["dependencies"] = summary
+    t = summary.get("totals") or {}
+    line = (f"Dependency check of {summary.get('packages', 0)} packages in use: "
+            f"{t.get('upgrade_security', 0)} with a security advisory affecting the version in use, "
+            f"{t.get('consider_upgrade', 0)} with a newer stable release, {t.get('up_to_date', 0)} up to date, "
+            f"{t.get('unknown', 0)} unknown (lookup failed).")
+    top = [f"{a['name']} {a['current']} -> {a['latest']}" + (" (security)" if a.get("advisories") else "")
+           for a in summary.get("attention") or [] if a.get("latest")][:5]
+    if top:
+        line += " Needing attention: " + ", ".join(top) + "."
+    answer = report.get("answer") or []
+    if answer and answer[0].get("status") == "summary":
+        answer[0]["text"] = line + " " + str(answer[0].get("text") or "")
+    else:
+        report["answer"] = [{"text": line, "type": "template", "citations": [], "confidence": None,
+                             "status": "summary"}] + answer
 
 
 def _extract(result, published_hint=None):
@@ -1569,13 +1682,17 @@ def _execute(db, task_id, services, *, resume):
 def _reason(db, run, report):
     """Model reasoning over the verified evidence (reasoning.apply; COGNITIVE_INFERENCE §3): adds
     report['reasoning'] and report['generated_by'] ('model:<name>' or 'template'); the extractive answer is not
-    changed and model text is never consolidated. A model failure only degrades the label. One 'decision' event
-    records the outcome when a model endpoint is configured."""
+    changed and model text is never consolidated. A model failure only degrades the label. The model calls get
+    what is left of the task's time budget (budget.max_seconds - elapsed) as their deadline, and their time is
+    counted in the task's usage. One 'decision' event records the outcome when a model endpoint is configured."""
     from . import reasoning
     try:
-        out = reasoning.apply(db, report, run.services, question=run.objective, now=run.clock(), task_id=run.id)
+        out = reasoning.apply(db, report, run.services, question=run.objective, now=run.clock(), task_id=run.id,
+                              time_left=run.budget.max_seconds - run.elapsed())
     except Exception as exc:   # the extractive report must survive any reasoning defect
         out = reasoning._degraded(report, "error", f"reasoning failed: {type(exc).__name__}")
+    run.usage.seconds = round(run.elapsed(), 3)     # model time counts against the task's time budget
+    report["usage"] = run.usage.to_json()
     if out["status"] != "not_configured":
         run.event("decision", {"reasoning": out["status"], "generated_by": out["generated_by"],
                                "accepted": len(out.get("answer") or []), "rejected": len(out.get("rejected") or []),

@@ -1330,14 +1330,15 @@ function reasoningBlock(r) {
   const x = r.reasoning;
   if (!x) return [];
   if (x.generated_by === 'template' || !x.answer?.length) {
-    return [h('p', { class: 'msg warn', id: 'reasoningLabel' }, badge('Extractive summary', 'neutral'), ` ${x.label}`),
+    return [h('p', { class: 'msg warn', id: 'reasoningLabel', 'data-generated-by': 'template' }, badge('Extractive summary (template)', 'neutral'), ` ${x.label}`),
       x.reason ? technical(h('p', { text: `Why: ${x.reason}` })) : null];
   }
   const out = [h('h4', { text: 'Answer' }),
-    h('p', { class: 'sub', id: 'reasoningLabel' }, badge('Model reasoning', 'info'), ` ${x.label}`),
+    h('p', { class: 'sub', id: 'reasoningLabel', 'data-generated-by': x.generated_by }, badge('Model reasoning', 'info'), ` ${x.label}`),
     h('ol', { class: 'answers', id: 'modelAnswer' }, x.answer.map((s) => h('li', {}, h('p', { class: 'generated', text: s.text }),
       h('p', { class: 'answermeta' }, citeLinks(s.citations), ' ',
-        Object.entries(s.states ?? {}).map(([id, st]) => badge(`${id}: ${statusText(st)}`, st === 'corroborated' || st === 'supported' ? 'ok' : 'neutral'))))))];
+        Object.entries(s.states ?? {}).map(([id, st]) => badge(`${id}: ${statusText(st)}`, st === 'corroborated' || st === 'supported' ? 'ok' : 'neutral')),
+        s.flag ? badge(`self-check flagged: ${s.flag.problem.replace(/_/g, ' ')} (not confirmed by the checks)`, 'neutral') : null))))];
   if (x.gaps?.length) {
     out.push(h('h4', { text: 'Knowledge gaps' }), h('ul', { class: 'reasons', id: 'modelGaps' }, x.gaps.map((g) => h('li', {}, g.text, ' ', badge(g.by === 'model' ? 'model-identified' : 'from the evidence', 'neutral')))));
   }
@@ -1656,13 +1657,21 @@ const VERDICT_TEXT = {
   disputed: ['The sources contradict this claim.', 'warn', 'Disputed'],
   contested: ['The sources disagree about this claim.', 'warn', 'Contested'],
   insufficient: ['There is not enough evidence to decide this claim.', 'neutral', 'Not enough evidence'],
+  // ADR-035 verification states (verdict.state); `label` above stays the pre-v0.7.0 fallback
+  conflicting: ['Credible sources disagree about this claim; neither side clearly outweighs the other.', 'warn', 'Conflicting'],
+  temporally_unresolved: ['No evidence establishes whether this is true now.', 'neutral', 'Not established for now'],
+  not_evaluated: ['This claim was not evaluated (a judgement, or no usable evidence was examined).', 'neutral', 'Not evaluated'],
 };
+const BASIS_TEXT = { corroboration: 'independent sources agree', official_source: "the subject's own site", registry_record: 'the package registry record', version_marker: 'the version number (pre-release marker)', contradiction: 'contradicting evidence' };
 
 // The verdict in one sentence plus the claim that was checked. A verdict never says "0 contradict" next to listed
 // contradictions: such reasons are dropped and the contradictions are pointed to instead.
 function verdictBlock(r) {
   const v = r.verdict;
-  const [sentence, tone, word] = VERDICT_TEXT[v.label] ?? [v.label, 'neutral', cap(v.label)];
+  const [sentence, tone, word] = VERDICT_TEXT[v.state] ?? VERDICT_TEXT[v.label] ?? [v.label, 'neutral', cap(v.label)];
+  const facts = [v.state ? `State: ${v.state.replace(/_/g, ' ')}` : null,
+    v.state ? `basis: ${v.basis ? (BASIS_TEXT[v.basis] ?? v.basis) : 'none'}` : null,
+    v.category ? `category: ${v.category.replace(/_/g, ' ')}${v.aspect ? ` (${v.aspect})` : ''}` : null].filter(Boolean);
   const conflicts = (r.contradictions ?? []).filter((c) => !v.citations?.length || v.citations.includes(c.a?.citation) || v.citations.includes(c.b?.citation));
   let reasons = v.reasons ?? [];
   let plain = v.summary ?? v.plain ?? sentence;
@@ -1678,6 +1687,7 @@ function verdictBlock(r) {
   }
   return [h('h4', { text: 'Verdict' }),
     h('p', { class: 'verdictline', id: 'verdictText' }, badge(word, tone), ` ${plain}`),
+    facts.length ? h('p', { class: 'sub', id: 'verdictBasis', 'data-state': v.state ?? '', text: `${facts.join(' · ')}.` }) : null,
     v.statement ? h('p', { class: 'sub', id: 'claimChecked' }, h('strong', { text: 'Claim checked: ' }), v.statement) : null,
     technical(h('p', { text: `Support estimate ${pct(v.confidence)}${v.citations?.length ? ` from sources ${v.citations.map((n) => `[${n}]`).join(' ')}` : ''}.` }),
       reasons.length ? h('ul', { class: 'reasons' }, reasons.map((x) => h('li', { text: x }))) : null)];
@@ -1753,6 +1763,7 @@ function sourceFlags(s) {
   if (f.injection?.length) out.push(badge(`injection quarantined (${f.quarantined_sentences ?? 0} sentence${f.quarantined_sentences === 1 ? '' : 's'})`, 'warn'));
   if (f.truncated) out.push(badge('truncated', 'warn'));
   if (s.published_at === null || s.published_at === undefined) out.push(badge('undated', 'neutral'));
+  if (s.date_source === 'search_engine' && s.search_published_at) out.push(badge(`search engine reports ${fmtDay(s.search_published_at)} (lower trust)`, 'neutral'));
   if (f.js_suspected) out.push(badge('needs JavaScript', 'neutral'));
   if (f.hidden_removed) out.push(badge(`${f.hidden_removed} hidden element${f.hidden_removed === 1 ? '' : 's'} removed`, 'neutral'));
   if (s.cited === false) out.push(badge('read, not cited', 'neutral'));

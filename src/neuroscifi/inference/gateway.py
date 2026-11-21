@@ -209,7 +209,7 @@ class Gateway:
 
     def _call(self, method, path, payload=None, *, timeout=None, retries=None):
         """One exchange with bounded retries -> (conn, resp, attempts, deadline). Non-2xx raise InferenceError."""
-        deadline = self.clock() + (timeout or self.cfg.read_timeout)
+        deadline = self.clock() + (self.cfg.read_timeout if timeout is None else min(timeout, self.cfg.read_timeout))
         retries = self.cfg.max_retries if retries is None else retries
         attempts = 0
         while True:
@@ -449,9 +449,11 @@ class Gateway:
 
     def structured(self, messages, schema, *, name, purpose, **kwargs):
         """A JSON value matching `schema`: requested with response_format json_schema, validated HERE, and on a
-        violation re-asked once with the errors (bounded repair). Raises InferenceError('schema_invalid')."""
+        violation re-asked once with the errors (bounded repair). Raises InferenceError('schema_invalid').
+        A `timeout` bounds the answer and its repair together (one deadline), not each call."""
         check_schema(schema)
         fmt = {"type": "json_schema", "json_schema": {"name": name, "schema": schema, "strict": True}}
+        end = self.clock() + kwargs["timeout"] if kwargs.get("timeout") else None   # one deadline for both calls
         results = [self.chat(messages, purpose=purpose, response_format=fmt, **kwargs)]
         value, errors = _decode(results[0].text, schema)
         if not errors:
@@ -461,6 +463,12 @@ class Gateway:
             {"role": "user", "content": "That reply does not match the required JSON schema: " + "; ".join(errors[:8])
              + ". Reply again with only a JSON object that matches the schema."}]
         kwargs.pop("on_delta", None)
+        if end is not None:
+            kwargs["timeout"] = end - self.clock()
+            if kwargs["timeout"] <= 0:
+                err = InferenceError("timeout", "no time left for the schema repair within the deadline")
+                err.results = results
+                raise err
         results.append(self.chat(repair, purpose=f"{purpose}:repair", response_format=fmt, **kwargs))
         value, errors = _decode(results[1].text, schema)
         if errors:

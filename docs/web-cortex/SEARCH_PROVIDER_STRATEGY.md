@@ -21,7 +21,16 @@ fusion) and [SEARXNG_INTEGRATION.md](SEARXNG_INTEGRATION.md) (SearXNG). Decision
    category (two for a software cue), so a query reaches 1–5 upstream engines, not all of them.
 5. **No configuration, no change.** With `searxng_url` empty the provider list, routing and results are exactly
    those of v0.6.0 (`test_build_without_searxng_is_unchanged`).
-6. **Privacy screen first.** Every query, to any provider, has passed `orchestrator.screen` / `safety.privacy_screen`
+6. **Registry questions go to the registries.** A versioned package name with a release word or a registry aspect
+   (released, published, latest, stable, pre-release, yanked, compatible, secure, vulnerable, recommended: "Is
+   corvane 2.5.4 stable?") is a `technical` question with `pypi:name==version` / `npm:` lookups, plus
+   `osv:<eco>:name@version` for the version asked about (`intent._VERSIONED_RELEASE_CUE`). What each aspect can
+   and cannot establish is CLAIM_VERIFICATION §5 (publication is not security).
+7. **Releases affecting this system are a dependency check.** "Latest releases affecting NeuroSciFi", "advisories
+   affecting our dependencies" (`intent.dependency_question`: a self-reference, a release/advisory cue, nothing
+   topical left) plan no topic query of any kind; the task reads the project inventory and runs the `nsf web deps`
+   registry pass (`orchestrator._Run.dependency_check`), then reads the records of the packages needing attention.
+8. **Privacy screen first.** Every query, to any provider, has passed `orchestrator.screen` / `safety.privacy_screen`
    and the local-context stripping in `intent.plan`. SearXNG forwards query text to third-party engines, so it is
    treated exactly like any external provider.
 

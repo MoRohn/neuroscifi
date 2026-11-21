@@ -187,6 +187,16 @@ def test_structured_output_gives_up_after_one_repair(gateway, fake):
     assert err.value.code == "schema_invalid" and len(fake.requests) == 2
 
 
+def test_structured_timeout_is_one_deadline_for_the_answer_and_its_repair(gateway, fake):
+    """Lane G #4: the repair call got a fresh `timeout`, so a task deadline could be overrun by up to twice it."""
+    import time
+    fake.replies += [{"content": "not json", "delay": 0.7}, {"content": '{"answer": "late"}', "delay": 2.0}]
+    started = time.monotonic()
+    with pytest.raises(InferenceError) as err:
+        gateway.structured([{"role": "user", "content": "q"}], SCHEMA, name="t", purpose="s", timeout=1.0)
+    assert err.value.code == "timeout" and time.monotonic() - started < 1.5
+
+
 def test_parse_json_and_thinking():
     assert parse_json('Sure: {"a": 1} done') == {"a": 1}
     assert strip_thinking("<think>x\ny</think>\nanswer") == "answer"
