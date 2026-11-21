@@ -8,11 +8,11 @@
 ![Version](https://img.shields.io/badge/version-0.6.0-818CF8)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-E879F9)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-22D3EE?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-303%20passed-22C55E)
+![Tests](https://img.shields.io/badge/tests-1557%20passed-22C55E)
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-22C55E)
 ![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-22C55E)
 
-**[Overview](#overview)** · **[Quick start](#quick-start)** · **[Persistent instance](#run-a-persistent-instance)** · **[Pocket](#pocket-the-phone-interface)** · **[Graphs & archives](#packed-graphs-restored-skills-and-verified-archives)** · **[Research](#reproduce-the-research)** · **[Docs](#documentation)**
+**[Overview](#overview)** · **[Quick start](#quick-start)** · **[Persistent instance](#run-a-persistent-instance)** · **[Pocket](#pocket-the-phone-interface)** · **[Web Cortex](#web-cortex-06-governed-web-research)** · **[Graphs & archives](#packed-graphs-restored-skills-and-verified-archives)** · **[Research](#reproduce-the-research)** · **[Docs](#documentation)**
 
 </div>
 
@@ -31,6 +31,7 @@ The runnable components exercise calibration, graph learning, compact storage an
 | 🕸️ **Executable connectome** | Graphs are learned, evaluated and promoted through an immutable-rule gate. They are recalled per context and can be rolled back. |
 | 🗜️ **Compact, verified memory** | Quantized NSG1 graph snapshots and NSFA byte-exact archives with per-block checksums. An optional TufaZip arithmetic-coder path is available. |
 | 📱 **Pocket field runtime** | A mobile-first phone and tablet interface that works offline. Pairing is explicit, capture can be revoked, and forgetting cascades. |
+| 🌐 **Governed web research** | An optional, off-by-default capability: the individual researches the public web within owner-set budgets, keeps evidence with provenance and dates, and never changes a belief or weight from web text. See [Web Cortex](#web-cortex-06-governed-web-research). |
 | 🧾 **Governed forgetting** | `nsf forget` scrubs derived beliefs, questions and decisions, invalidates dependent graphs and marks checkpoints stale. |
 
 The **[34-page architecture brief](NeuroSciFi_Architecture.pdf)** is also available as editable [`Architecture.md`](Architecture.md). It covers:
@@ -60,6 +61,9 @@ bash scripts/check.sh      # lint, tests, JavaScript checks, numerical reproduct
 | `research` | SciPy 1.17.0 | the human-data and statistical analyses |
 | `dev` | pytest, ruff, Playwright | the test suite and browser end-to-end tests |
 | `gpu` | CuPy 14.2.0 for CUDA 13 | `profile_device --device cuda` |
+| `web` | Scrapling 0.5.1, markdownify 1.2.4, pypdf 7.1.1 | Web Cortex: HTML parsing, Markdown and PDF extraction |
+| `web-extract` | trafilatura 2.3.1 | Web Cortex: optional second article-extraction engine |
+| `web-render` | Playwright 1.64.1 | Web Cortex: optional JavaScript rendering (needs a Chromium) |
 
 ## Run a persistent instance
 
@@ -123,6 +127,30 @@ The optional field vault lets you combine sound or device metrics with a goal, p
 - offline operation and tablet handoff
 - the synthetic learning benchmark
 - privacy controls
+
+## Web Cortex (0.6): governed web research
+
+Web Cortex lets one individual research the public web and remember what it finds as dated, cited evidence. It is **off by default**: nothing touches the network until the owner enables it. Web text never edits a belief, graph or weight. Findings enter memory only as candidates that the owner accepts or rejects.
+
+```sh
+uv pip install -e '.[web]'                       # add web-extract and web-render as needed
+nsf web config --enable                          # the one switch; until then every web command refuses
+nsf web ask "What is the capital of Australia?"  # a cited report: sources, dates, contradictions, confidence
+nsf web deps                                     # installed versions vs newer releases and advisories; installs nothing
+nsf web mcp                                      # read-mostly MCP tool server over stdio
+```
+
+- **Console.** The Research and Knowledge views show stages, sources, contradictions and the owner's accept or reject questions.
+- **Pocket.** Research from a phone or tablet is opt-in, scoped to the pairing family, and runs on the Spark.
+- **Governed.** `nsf forget` reaches web evidence, and a checkpoint restore never resurrects forgotten research.
+
+**Limits, stated plainly.**
+- Synthesis is **extractive**: statements are quoted from sources, not generated. No language model runs on the host. Contradiction detection covers numbers, versions, dates, polarity and explicit opposites only.
+- The search daemon sends an honest User-Agent, so key-free search engines may return **nothing**. Discovery then leans on structured APIs (Wikipedia, arXiv, OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub) and feeds.
+- Two agreeing sources with one undated stay "insufficient", so true claims are often not confirmed.
+- Pocket on real handsets, push notifications and unattended long-running research were not verified.
+
+Read the [architecture](docs/web-cortex/ARCHITECTURE.md), the [security model](docs/web-cortex/SECURITY_MODEL.md), the [measured results](docs/web-cortex/TEST_RESULTS.md) and the [production-readiness assessment](docs/qa/PRODUCTION_READINESS.md) for the open risks.
 
 ## Packed graphs, restored skills and verified archives
 
@@ -201,13 +229,13 @@ The probe checks numerical parity and measures synchronized device-resident exec
 
 ## Verification
 
-Every number below comes from a fresh integrator run recorded in [`docs/quality/VERIFICATION_REPORT.md`](docs/quality/VERIFICATION_REPORT.md).
+Every number below comes from a fresh integrator run recorded in [`docs/quality/VERIFICATION_REPORT.md`](docs/quality/VERIFICATION_REPORT.md) and, for 0.6.0, [`docs/qa/REGRESSION_REPORT.md`](docs/qa/REGRESSION_REPORT.md).
 
 | Gate | Result |
 |---|---|
-| Lint, unit and integration, JavaScript, reproduction (`bash scripts/check.sh`) | **303 passed**, 31 subtests, 0 skipped. Reproduction 8/8 |
-| Browser end-to-end, Pocket and console (`bash scripts/e2e.sh`) | **25 passed** |
-| Accessibility (axe-core at 390×844 and 1280×900) | 0 serious or critical violations |
+| Lint, unit and integration, JavaScript, reproduction (`bash scripts/check.sh`) | **1557 passed**, 6 skipped (opt-in live tests), 35 subtests. Reproduction 8/8 |
+| Browser end-to-end, Pocket and console (`bash scripts/e2e.sh`) | **107 passed**, twice in a row |
+| Accessibility (axe-core at 390, 1024 and 1280 px) | 0 violations of any impact |
 | Acceptance scenarios (`nsf acceptance --all`) | **7 of 7 pass**. The D-1 redesign was [pre-registered](docs/quality/PREREGISTRATION_D1.md) before implementation |
 | Open P0 / P1 defects | 0 / 0 |
 
@@ -223,6 +251,7 @@ neuroscifi/
 │   ├── acceptance/      simulated first-release scenarios
 │   ├── pocket/          phone bridge and web client
 │   ├── console/         loopback owner console
+│   ├── webcortex/       governed web research (off by default)
 │   ├── vendor_tufazip/  pinned upstream arithmetic coder
 │   ├── archive.py       NSFA archives
 │   ├── graph_store.py   NSG1 graph snapshots
@@ -244,6 +273,8 @@ neuroscifi/
 | **Operations** | [Runbook](docs/operations/RUNBOOK.md) · [Environment](docs/operations/ENVIRONMENT.md) · [Migrations](docs/operations/MIGRATIONS.md) · [Testing](docs/operations/TESTING.md) |
 | **Quality** | [Acceptance criteria](docs/quality/ACCEPTANCE_CRITERIA.md) · [Verification report](docs/quality/VERIFICATION_REPORT.md) · [D-1 pre-registration](docs/quality/PREREGISTRATION_D1.md) |
 | **Field runtime** | [Pocket guide](mobile/README.md) |
+| **Web Cortex** | [Architecture](docs/web-cortex/ARCHITECTURE.md) · [Security model](docs/web-cortex/SECURITY_MODEL.md) · [Search and acquisition](docs/web-cortex/SEARCH_AND_ACQUISITION.md) · [Measured results](docs/web-cortex/TEST_RESULTS.md) · [Dependency review](docs/web-cortex/DEPENDENCY_REVIEW.md) |
+| **User-acceptance QA** | [Production readiness](docs/qa/PRODUCTION_READINESS.md) · [Regression report](docs/qa/REGRESSION_REPORT.md) · [E2E results](docs/qa/E2E_TEST_RESULTS.md) · [Defect log](docs/qa/DEFECT_RESOLUTION_LOG.md) · [Journey matrix](docs/qa/USER_JOURNEY_MATRIX.md) · [UX validation](docs/qa/UX_VALIDATION.md) |
 | **Research** | [Research workflow](research/README.md) · [Architecture brief](Architecture.md) |
 
 ## Interpretation and limits

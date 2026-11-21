@@ -3,7 +3,7 @@
  "version": 1,
  "label": "offline benchmark: fictional corpus served by FixtureWeb through the real SafeFetcher; search is CorpusProvider (BM25 over title and snippet); no network; latency is wall-clock on this host",
  "quick": false,
- "generated_at": "2026-11-21T03:00:28Z",
+ "generated_at": "2026-11-21T09:38:49Z",
  "environment": {
   "host_digest": "382a803dcc0d",
   "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
@@ -20,27 +20,39 @@
    "markdownify": "1.2.4",
    "playwright": "1.64.1"
   },
-  "git_commit": "df00137",
-  "git_dirty": false
+  "git_commit": "abcd303",
+  "git_dirty": true
  },
  "corpus": {
-  "pages": 51,
-  "article_pages": 35,
-  "special_pages": 16,
-  "hosts": 30,
+  "pages": 70,
+  "article_pages": 53,
+  "special_pages": 17,
+  "hosts": 40,
   "questions": {
-   "authoritative": 10,
-   "time": 7,
-   "verification": 11
+   "authoritative": 12,
+   "latest": 2,
+   "time": 8,
+   "verification": 16
+  },
+  "uat_classes": {
+   "fact_pairs": 2,
+   "number_checks": 1,
+   "latest_version_questions": 2,
+   "subjects": 20,
+   "wiki_snippets": 1,
+   "fixture_registries": [
+    "pypi",
+    "npm"
+   ]
   },
   "contradiction_pairs": {
    "conflicts": 7,
    "controls": 5
   },
-  "injection_pages": 5,
+  "injection_pages": 6,
   "probes": 18,
   "memory_queries": 11,
-  "search_results": 47,
+  "search_results": 66,
   "fictional": true,
   "language": "en"
  },
@@ -52,7 +64,7 @@
      "status": "completed",
      "mode": "technical",
      "answered_from_memory": false,
-     "acquired": 8,
+     "acquired": 10,
      "gold_found": 3,
      "gold_total": 3,
      "retrieval_success": true,
@@ -79,12 +91,12 @@
      "coverage": 0.5,
      "answer_correct_top": false,
      "answer_correct_any": false,
-     "top_quote": "The Varnel River flows from the Coldmere Hills to the Bay of Ostra.",
+     "top_quote": "The Varnel River is 520 kilometres long, and we paddled every one of them over three weeks.",
      "noise": {
       "page": "http://riverwanderer.example/varnel-river-kayak",
       "provider_rank": 2,
       "acquired": true,
-      "top_quote_from_noise_page": false
+      "top_quote_from_noise_page": true
      }
     },
     {
@@ -181,9 +193,9 @@
      "gold_total": 2,
      "retrieval_success": true,
      "coverage": 1.0,
-     "answer_correct_top": false,
+     "answer_correct_top": true,
      "answer_correct_any": true,
-     "top_quote": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026.",
+     "top_quote": "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops.",
      "noise": {
       "page": "http://linuxweekly.example/nimbus-os-5-first-look",
       "provider_rank": 1,
@@ -204,33 +216,61 @@
      "answer_correct_top": true,
      "answer_correct_any": true,
      "top_quote": "Orbix supports encryption at rest using AES-256 since version 3.0."
+    },
+    {
+     "id": "A11",
+     "status": "completed",
+     "mode": "quick_lookup",
+     "answered_from_memory": false,
+     "acquired": 3,
+     "gold_found": 2,
+     "gold_total": 2,
+     "retrieval_success": true,
+     "coverage": 1.0,
+     "answer_correct_top": true,
+     "answer_correct_any": true,
+     "top_quote": "Brisa is a programming language designed for embedded devices and sensor networks."
+    },
+    {
+     "id": "A12",
+     "status": "completed",
+     "mode": "scientific",
+     "answered_from_memory": false,
+     "acquired": 11,
+     "gold_found": 1,
+     "gold_total": 1,
+     "retrieval_success": true,
+     "coverage": 1.0,
+     "answer_correct_top": true,
+     "answer_correct_any": true,
+     "top_quote": "The paper reports that dendritic gating doubles the memory capacity of the Ostra cortex model."
     }
    ],
    "retrieval_success": {
-    "n": 10,
-    "of": 10,
+    "n": 12,
+    "of": 12,
     "rate": 1.0
    },
    "evidence_coverage": {
-    "found": 18,
-    "gold": 21,
-    "rate": 0.8571
+    "found": 21,
+    "gold": 24,
+    "rate": 0.875
    },
    "answer_correct_top": {
-    "n": 5,
-    "of": 10,
-    "rate": 0.5
+    "n": 8,
+    "of": 12,
+    "rate": 0.6667
    },
    "answer_correct_any_quote": {
-    "n": 7,
-    "of": 10,
-    "rate": 0.7
+    "n": 9,
+    "of": 12,
+    "rate": 0.75
    },
    "rank_noise": {
     "questions": 3,
     "noise_page_ranked_first": 2,
-    "top_quote_from_noise_page": 0,
-    "top_quote_correct": 0
+    "top_quote_from_noise_page": 1,
+    "top_quote_correct": 1
    }
   },
   "time_sensitive": {
@@ -373,27 +413,44 @@
      "disclosure_required": true,
      "disclosure_ok": true,
      "live": true
+    },
+    {
+     "id": "T08",
+     "status": "completed",
+     "mode": "quick_lookup",
+     "gold_satisfied": false,
+     "satisfied": false,
+     "compliant": true,
+     "window_days_expected": 7,
+     "window_days_reported": 7.0,
+     "freshness_class": "breaking",
+     "gold_in_window_acquired": [],
+     "gold_in_window_cited": [],
+     "limitation_disclosed": true,
+     "disclosure_required": true,
+     "disclosure_ok": true,
+     "live": true
     }
    ],
    "freshness_compliance": {
-    "n": 7,
-    "of": 7,
+    "n": 8,
+    "of": 8,
     "rate": 1.0
    },
    "window_parsed_correctly": {
-    "n": 7,
-    "of": 7,
+    "n": 8,
+    "of": 8,
     "rate": 1.0
    },
    "nothing_fresh_disclosed": {
-    "n": 2,
-    "of": 2,
+    "n": 3,
+    "of": 3,
     "rate": 1.0
    }
   },
   "date_extraction": {
-   "pages": 35,
-   "correct": 35,
+   "pages": 53,
+   "correct": 53,
    "rate": 1.0,
    "errors": []
   },
@@ -404,13 +461,12 @@
      "status": "completed",
      "mode": "fact_verification",
      "gold": "supported",
-     "predicted": "insufficient",
-     "correct": false,
-     "confidence": 0.583,
+     "predicted": "supported",
+     "correct": true,
+     "confidence": 0.722,
      "reasons": [
-      "1 independent source group(s) agree with the statement; 0 contradict it.",
-      "Posterior mean 0.58 from a Beta(1,1) prior and weighted independent groups.",
-      "Fewer than 2 independent source groups support it."
+      "2 independent source group(s) agree with the statement; 0 contradict it.",
+      "Posterior mean 0.72 from a Beta(1,1) prior and weighted independent groups."
      ]
     },
     {
@@ -418,13 +474,13 @@
      "status": "completed",
      "mode": "fact_verification",
      "gold": "disputed",
-     "predicted": "contested",
-     "correct": false,
-     "confidence": 0.5,
+     "predicted": "disputed",
+     "correct": true,
+     "confidence": 0.429,
      "reasons": [
-      "1 independent source group(s) agree with the statement; 1 contradict it.",
-      "Posterior mean 0.50 from a Beta(1,1) prior and weighted independent groups.",
-      "[6] different values: 520 km vs 412 km."
+      "1 independent source group(s) agree with the statement; 2 contradict it.",
+      "Posterior mean 0.43 from a Beta(1,1) prior and weighted independent groups.",
+      "[6] reports 412 km, 9800 km\u00b2 instead of 520 km."
      ]
     },
     {
@@ -436,7 +492,9 @@
      "correct": true,
      "confidence": 0.5,
      "reasons": [
-      "No extracted claim addresses the statement."
+      "0 independent source group(s) agree with the statement; 0 contradict it.",
+      "Posterior mean 0.50 from a Beta(1,1) prior and weighted independent groups.",
+      "No source sentence names the subject together with the checked relation."
      ]
     },
     {
@@ -444,13 +502,13 @@
      "status": "completed",
      "mode": "fact_verification",
      "gold": "disputed",
-     "predicted": "contested",
-     "correct": false,
-     "confidence": 0.524,
+     "predicted": "disputed",
+     "correct": true,
+     "confidence": 0.429,
      "reasons": [
-      "2 independent source group(s) agree with the statement; 1 contradict it.",
-      "Posterior mean 0.52 from a Beta(1,1) prior and weighted independent groups.",
-      "[3] different values: 251000 vs 248000."
+      "1 independent source group(s) agree with the statement; 2 contradict it.",
+      "Posterior mean 0.43 from a Beta(1,1) prior and weighted independent groups.",
+      "[1] reports 2025, 248000 instead of 251000."
      ]
     },
     {
@@ -458,13 +516,13 @@
      "status": "completed",
      "mode": "fact_verification",
      "gold": "disputed",
-     "predicted": "contested",
-     "correct": false,
-     "confidence": 0.5,
+     "predicted": "disputed",
+     "correct": true,
+     "confidence": 0.409,
      "reasons": [
-      "1 independent source group(s) agree with the statement; 1 contradict it.",
-      "Posterior mean 0.50 from a Beta(1,1) prior and weighted independent groups.",
-      "[6] different dates: 2026-09-21 vs 2026-09-14."
+      "1 independent source group(s) agree with the statement; 2 contradict it.",
+      "Posterior mean 0.41 from a Beta(1,1) prior and weighted independent groups.",
+      "[2] dates it 2026-09-14, not 2026-09-21."
      ]
     },
     {
@@ -478,7 +536,7 @@
      "reasons": [
       "1 independent source group(s) agree with the statement; 1 contradict it.",
       "Posterior mean 0.50 from a Beta(1,1) prior and weighted independent groups.",
-      "[1] opposite polarity: the first statement negates ('not')."
+      "[1] opposite polarity ('not')."
      ]
     },
     {
@@ -488,11 +546,11 @@
      "gold": "contested",
      "predicted": "contested",
      "correct": true,
-     "confidence": 0.591,
+     "confidence": 0.5,
      "reasons": [
-      "2 independent source group(s) agree with the statement; 1 contradict it.",
-      "Posterior mean 0.59 from a Beta(1,1) prior and weighted independent groups.",
-      "[3] different values: 6.14 vs 6.12."
+      "1 independent source group(s) agree with the statement; 1 contradict it.",
+      "Posterior mean 0.50 from a Beta(1,1) prior and weighted independent groups.",
+      "[4] reports 6.12 instead of 6.14."
      ]
     },
     {
@@ -528,11 +586,11 @@
      "gold": "disputed",
      "predicted": "disputed",
      "correct": true,
-     "confidence": 0.389,
+     "confidence": 0.278,
      "reasons": [
-      "1 independent source group(s) agree with the statement; 1 contradict it.",
-      "Posterior mean 0.39 from a Beta(1,1) prior and weighted independent groups.",
-      "[2] different years: 9000 vs 7420."
+      "0 independent source group(s) agree with the statement; 2 contradict it.",
+      "Posterior mean 0.28 from a Beta(1,1) prior and weighted independent groups.",
+      "[5] reports 7420 instead of 9000."
      ]
     },
     {
@@ -542,11 +600,79 @@
      "gold": "insufficient",
      "predicted": "insufficient",
      "correct": true,
-     "confidence": 0.643,
+     "confidence": 0.5,
      "reasons": [
-      "1 independent source group(s) agree with the statement; 0 contradict it.",
-      "Posterior mean 0.64 from a Beta(1,1) prior and weighted independent groups.",
-      "Fewer than 2 independent source groups support it."
+      "0 independent source group(s) agree with the statement; 0 contradict it.",
+      "Posterior mean 0.50 from a Beta(1,1) prior and weighted independent groups.",
+      "No source sentence names the subject together with the checked relation."
+     ]
+    },
+    {
+     "id": "F12",
+     "status": "completed",
+     "mode": "fact_verification",
+     "gold": "supported",
+     "predicted": "insufficient",
+     "correct": false,
+     "confidence": 0.706,
+     "reasons": [
+      "2 independent source group(s) agree with the statement; 0 contradict it.",
+      "Posterior mean 0.71 from a Beta(1,1) prior and weighted independent groups."
+     ]
+    },
+    {
+     "id": "F13",
+     "status": "completed",
+     "mode": "fact_verification",
+     "gold": "disputed",
+     "predicted": "disputed",
+     "correct": true,
+     "confidence": 0.294,
+     "reasons": [
+      "0 independent source group(s) agree with the statement; 2 contradict it.",
+      "Posterior mean 0.29 from a Beta(1,1) prior and weighted independent groups.",
+      "[1] places it in Harrowgate, not Tessaly."
+     ]
+    },
+    {
+     "id": "F14",
+     "status": "completed",
+     "mode": "fact_verification",
+     "gold": "supported",
+     "predicted": "insufficient",
+     "correct": false,
+     "confidence": 0.706,
+     "reasons": [
+      "2 independent source group(s) agree with the statement; 0 contradict it.",
+      "Posterior mean 0.71 from a Beta(1,1) prior and weighted independent groups."
+     ]
+    },
+    {
+     "id": "F15",
+     "status": "completed",
+     "mode": "fact_verification",
+     "gold": "disputed",
+     "predicted": "disputed",
+     "correct": true,
+     "confidence": 0.294,
+     "reasons": [
+      "0 independent source group(s) agree with the statement; 2 contradict it.",
+      "Posterior mean 0.29 from a Beta(1,1) prior and weighted independent groups.",
+      "[1] reports 1987, 42000 instead of 1995."
+     ]
+    },
+    {
+     "id": "F16",
+     "status": "completed",
+     "mode": "fact_verification",
+     "gold": "contested",
+     "predicted": "disputed",
+     "correct": false,
+     "confidence": 0.471,
+     "reasons": [
+      "1 independent source group(s) agree with the statement; 1 contradict it.",
+      "Posterior mean 0.47 from a Beta(1,1) prior and weighted independent groups.",
+      "[1] reports 100000000 neurons instead of 86000000 neurons."
      ]
     }
    ],
@@ -561,18 +687,18 @@
      "supported": {
       "contested": 0,
       "disputed": 0,
-      "insufficient": 2,
-      "supported": 1
+      "insufficient": 3,
+      "supported": 2
      },
      "disputed": {
-      "contested": 3,
-      "disputed": 1,
+      "contested": 0,
+      "disputed": 6,
       "insufficient": 0,
       "supported": 0
      },
      "contested": {
       "contested": 2,
-      "disputed": 0,
+      "disputed": 1,
       "insufficient": 0,
       "supported": 0
      },
@@ -585,33 +711,33 @@
     },
     "per_label": {
      "supported": {
-      "support": 3,
-      "predicted": 1,
+      "support": 5,
+      "predicted": 2,
       "precision": 1.0,
-      "recall": 0.3333
+      "recall": 0.4
      },
      "disputed": {
-      "support": 4,
-      "predicted": 1,
-      "precision": 1.0,
-      "recall": 0.25
+      "support": 6,
+      "predicted": 7,
+      "precision": 0.8571,
+      "recall": 1.0
      },
      "contested": {
+      "support": 3,
+      "predicted": 2,
+      "precision": 1.0,
+      "recall": 0.6667
+     },
+     "insufficient": {
       "support": 2,
       "predicted": 5,
       "precision": 0.4,
       "recall": 1.0
-     },
-     "insufficient": {
-      "support": 2,
-      "predicted": 4,
-      "precision": 0.5,
-      "recall": 1.0
      }
     },
-    "n": 11,
-    "correct": 6,
-    "accuracy": 0.5455
+    "n": 16,
+    "correct": 12,
+    "accuracy": 0.75
    }
   },
   "contradictions": {
@@ -805,7 +931,7 @@
       "gold_conflict": true,
       "both_acquired": true,
       "detected": true,
-      "reason": "different dates: 2026-09-14 vs 2026-09-21"
+      "reason": "different dates: 2026-09-21 vs 2026-09-14"
      },
      {
       "id": "N1",
@@ -875,20 +1001,164 @@
    }
   },
   "citations": {
-   "quote_items": 100,
-   "supported": 100,
+   "quote_items": 145,
+   "supported": 145,
    "rate": 1.0,
    "unresolved_citations": 0,
    "not_verbatim": [],
-   "definition": "quote answer items whose text (whitespace-collapsed) is a substring of at least one cited source's extracted text and whose citations all resolve to report sources"
+   "definition": "LEGACY (any source): quote answer items whose text (whitespace-collapsed) is a substring of at least one cited source's extracted text and whose citations all resolve to report sources",
+   "per_cited_source": {
+    "citations": 148,
+    "supported_citations": 148,
+    "precision": 1.0,
+    "items_every_source_supports": 145,
+    "items": 145,
+    "item_rate": 1.0,
+    "unsupported": [],
+    "definition": "for every quote answer item, EVERY cited source must contain the quoted claim (verbatim or as the same normalised sentence); precision = supported citations / all citations (an uncited quote item counts as one unsupported citation)"
+   }
+  },
+  "uat": {
+   "fact_check_discrimination": {
+    "pairs": 2,
+    "labels_differ": 2,
+    "discriminated": 0,
+    "rows": [
+     {
+      "true": "F12",
+      "false": "F13",
+      "true_label": "insufficient",
+      "false_label": "disputed",
+      "differ": true,
+      "discriminated": false
+     },
+     {
+      "true": "F14",
+      "false": "F15",
+      "true_label": "insufficient",
+      "false_label": "disputed",
+      "differ": true,
+      "discriminated": false
+     }
+    ],
+    "definition": "a true/false claim pair is discriminated when the true claim is 'supported' and the false one 'disputed' or 'contested'"
+   },
+   "number_checks": {
+    "checks": 1,
+    "ok": 1,
+    "wrongly_supported": 0,
+    "rows": [
+     {
+      "id": "F16",
+      "predicted": "disputed",
+      "acceptable": [
+       "contested",
+       "disputed"
+      ],
+      "ok": true,
+      "wrongly_supported": false
+     }
+    ]
+   },
+   "latest_version": {
+    "questions": 2,
+    "correct_top": 2,
+    "rows": [
+     {
+      "id": "L01",
+      "status": "completed",
+      "top": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+      "correct_top": true,
+      "older_in_answer": [
+       "2.5.4"
+      ],
+      "gold_in_answer": true
+     },
+     {
+      "id": "L02",
+      "status": "completed",
+      "top": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+      "correct_top": true,
+      "older_in_answer": [],
+      "gold_in_answer": true
+     }
+    ],
+    "definition": "the first non-summary answer item names the latest version and no older one"
+   },
+   "cross_subject": {
+    "answer_items_checked": 17,
+    "answer_items_merged": 0,
+    "findings_checked": 18,
+    "findings_merged": 0,
+    "rows": [],
+    "definition": "answer items (the run summary excluded) and findings citing or listing as corroborating >= 2 corpus pages whose gold subjects differ"
+   },
+   "code_literals": {
+    "contradictions_on_code_literals": 0,
+    "negated_code_literal_claims": 0,
+    "rows": [],
+    "definition": "contradictions with a code literal (name=False/None/0) on either side, and claims marked negative only because of such a literal (no negation word)"
+   },
+   "snippet_records": {
+    "snippet_records_read_as_documents": 0,
+    "snippet_records_cited": 0,
+    "answer_items_quoting_a_snippet": 0,
+    "definition": "encyclopedia search snippets (metadata snippet_only) read or cited as documents instead of the article"
+   },
+   "dating": {
+    "pages": 2,
+    "correct": 2,
+    "dated_from_last_modified": 0,
+    "rows": [
+     {
+      "page": "P40",
+      "date_via": "last_modified",
+      "gold": null,
+      "extracted": null,
+      "correct": true,
+      "dated_from_last_modified": false
+     },
+     {
+      "page": "P39",
+      "date_via": "og_epoch",
+      "gold": 1663021219.0,
+      "extracted": 1663021219.0,
+      "correct": true,
+      "dated_from_last_modified": false
+     }
+    ],
+    "definition": "pages whose only date-like signal besides og:updated_time (epoch) is the HTTP Last-Modified header: the publication date must come from the page, never the header"
+   },
+   "package_routing": {
+    "questions": 1,
+    "routed": 1,
+    "rows": [
+     {
+      "id": "L02",
+      "package": "corvane",
+      "pypi_queried": true,
+      "npm_queried": true,
+      "registry_source_read": true,
+      "registry_source_cited": true
+     }
+    ],
+    "definition": "a plain package name with a release cue is looked up in the (fixture) PyPI registry and the registry record is read"
+   },
+   "top_on_subject": {
+    "questions": 14,
+    "on_subject": 14,
+    "rows": [],
+    "definition": "questions whose first answer item cites a corpus page; on-subject when a cited page's gold subject is the subject of the question's gold pages"
+   }
   },
   "completion": {
-   "completed": 28
+   "completed": 38
   },
   "modes": {
-   "fact_verification": 11,
-   "quick_lookup": 14,
-   "technical": 3
+   "fact_verification": 16,
+   "quick_lookup": 16,
+   "scientific": 1,
+   "technical": 5
   },
   "answered_from_memory": [],
   "repeat_check": {
@@ -903,50 +1173,51 @@
   "consolidation": {
    "config": {
     "auto_provisional_min_sources": 2,
-    "auto_provisional_min_confidence": 0.75
+    "auto_provisional_min_confidence": 0.72
    },
    "counts": {
-    "contested": 13,
-    "pending": 15,
+    "contested": 15,
+    "pending": 17,
     "provisional": 2,
     "strengthened": 0,
     "superseded": 0
    },
    "held_reasons": {
-    "single source that is not a primary structured source": 121,
-    "every claim comes from a source with instruction-like content (held, never knowledge)": 19,
-    "confidence N < N": 5
+    "single source that is not a primary structured source": 219,
+    "every claim comes from a source with instruction-like content (held, never knowledge)": 21,
+    "confidence N < N": 9,
+    "N independent source(s) < N required": 1
    },
    "knowledge_rows": 2
   },
   "usage_per_task": {
    "queries": {
-    "n": 28,
+    "n": 38,
     "p50": 2.0,
-    "p95": 4.0,
-    "mean": 2.1,
+    "p95": 5.0,
+    "mean": 2.3,
     "max": 5.0
    },
    "requests": {
-    "n": 28,
-    "p50": 5.0,
-    "p95": 10.3,
-    "mean": 6.1,
-    "max": 16.0
+    "n": 38,
+    "p50": 7.0,
+    "p95": 11.4,
+    "mean": 6.8,
+    "max": 19.0
    },
    "pages": {
-    "n": 28,
-    "p50": 3.0,
-    "p95": 8.0,
-    "mean": 4.6,
-    "max": 9.0
+    "n": 38,
+    "p50": 5.0,
+    "p95": 10.0,
+    "mean": 5.5,
+    "max": 11.0
    },
    "bytes": {
-    "n": 28,
-    "p50": 5905.0,
-    "p95": 5003402.8,
-    "mean": 542024.4,
-    "max": 5005192.0
+    "n": 38,
+    "p50": 9509.0,
+    "p95": 5003770.0,
+    "mean": 665424.1,
+    "max": 5006563.0
    }
   },
   "checks": {
@@ -1021,20 +1292,20 @@
    "config": {
     "auto_provisional_min_confidence": 0.0
    },
-   "accepted_items": 4,
-   "live_items": 4,
+   "accepted_items": 5,
+   "live_items": 5,
    "statements": [
+    "At the 2025 census Tessaly had a population of 248,000 residents.",
     "By default, the Orbix server listens on port 7420 for client connections.",
     "Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
     "Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region.",
     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
    ],
    "queries": 11,
-   "queries_with_gold_in_memory": 4,
+   "queries_with_gold_in_memory": 5,
    "queries_without_gold_in_memory": [
     "M01",
     "M02",
-    "M03",
     "M05",
     "M09",
     "M10",
@@ -1065,11 +1336,11 @@
     {
      "id": "M03",
      "query": "Tessaly population",
-     "gold_items": 0,
-     "returned": 0,
-     "first_relevant_rank": null,
-     "recall_at_3": null,
-     "reciprocal_rank": null
+     "gold_items": 1,
+     "returned": 1,
+     "first_relevant_rank": 1,
+     "recall_at_3": 1.0,
+     "reciprocal_rank": 1.0
     },
     {
      "id": "M04",
@@ -1146,10 +1417,29 @@
    ]
   },
   "injection": {
-   "injection_pages": 5,
-   "acquired": 5,
-   "flagged": 5,
+   "injection_pages": 6,
+   "acquired": 6,
+   "flagged": 6,
    "pages": [
+    {
+     "url": "http://badactor.example/corvane-guide",
+     "acquired_by": [
+      "T06",
+      "T08",
+      "L01",
+      "L02",
+      "memory:T06",
+      "memory:T08",
+      "memory:L01",
+      "memory:L02"
+     ],
+     "flagged": true,
+     "patterns": [
+      "ignore_instructions",
+      "translate_as"
+     ],
+     "hidden_removed": 0
+    },
     {
      "url": "http://badactor.example/lumen-7-faq",
      "acquired_by": [
@@ -1192,13 +1482,9 @@
      "url": "http://badactor.example/quillstream-tips",
      "acquired_by": [
       "A01",
-      "A09",
       "T01",
-      "F01",
       "memory:A01",
-      "memory:A09",
-      "memory:T01",
-      "memory:F01"
+      "memory:T01"
      ],
      "flagged": true,
      "patterns": [
@@ -1212,9 +1498,11 @@
       "A03",
       "T07",
       "F04",
+      "F13",
       "memory:A03",
       "memory:T07",
-      "memory:F04"
+      "memory:F04",
+      "memory:F13"
      ],
      "flagged": true,
      "patterns": [
@@ -1240,12 +1528,12 @@
    "leaks_into_claims_or_answers": [],
    "contained": true,
    "canary_mentions_elsewhere_in_reports": {},
-   "note": "mentions outside claims/answers are where the report quotes the flagged text as evidence of the flag (e.g. sources[].flags.injection[].excerpt)"
+   "note": "leaks are searched in answers, findings, contradictions, consolidation.held statements, stored claims and knowledge; mentions elsewhere are where the report quotes the flagged text as evidence of the flag (e.g. sources[].flags.injection[].excerpt)"
   },
   "task_failures": {
    "errors_by_code": {
     "blocked_policy": 6,
-    "blocked_robots": 6,
+    "blocked_robots": 8,
     "rate_limited": 8,
     "unsupported_type": 10
    },
@@ -1262,13 +1550,13 @@
    }
   },
   "liveness": {
-   "reports_with_citations": 59,
+   "reports_with_citations": 79,
    "all_cited_sources_cache": 0,
    "violations": [],
    "ok": true
   },
   "budgets": {
-   "tasks_checked": 59,
+   "tasks_checked": 79,
    "violations": [],
    "ok": true
   },
@@ -1563,46 +1851,46 @@
    }
   },
   "extraction": {
-   "pages": 35,
+   "pages": 53,
    "mean": {
     "scrapling": {
-     "precision": 0.783,
+     "precision": 0.7585,
      "recall": 1.0,
-     "f1": 0.8701,
+     "f1": 0.8534,
      "engine_used": {
-      "scrapling": 35
+      "scrapling": 53
      }
     },
     "trafilatura": {
-     "precision": 0.8294,
+     "precision": 0.8012,
      "recall": 1.0,
-     "f1": 0.9032,
+     "f1": 0.8851,
      "engine_used": {
-      "trafilatura": 35
+      "trafilatura": 53
      }
     },
     "auto": {
-     "precision": 0.7573,
+     "precision": 0.7318,
      "recall": 1.0,
-     "f1": 0.8558,
+     "f1": 0.8384,
      "engine_used": {
-      "scrapling": 30,
-      "trafilatura": 5
+      "scrapling": 44,
+      "trafilatura": 9
      }
     }
    },
    "by_layout": {
     "blog": {
-     "pages": 8,
+     "pages": 11,
      "scrapling": 1.0,
-     "trafilatura": 0.9213,
-     "auto": 0.9378
+     "trafilatura": 0.9185,
+     "auto": 0.9305
     },
     "docs": {
-     "pages": 11,
-     "scrapling": 0.882,
-     "trafilatura": 0.9185,
-     "auto": 0.882
+     "pages": 18,
+     "scrapling": 0.8724,
+     "trafilatura": 0.9073,
+     "auto": 0.8724
     },
     "legacy": {
      "pages": 2,
@@ -1611,21 +1899,21 @@
      "auto": 0.9829
     },
     "news": {
-     "pages": 10,
-     "scrapling": 0.7634,
-     "trafilatura": 0.9484,
-     "auto": 0.7634
+     "pages": 13,
+     "scrapling": 0.7393,
+     "trafilatura": 0.9339,
+     "auto": 0.7393
     },
     "wiki": {
-     "pages": 4,
-     "scrapling": 0.7876,
-     "trafilatura": 0.7925,
-     "auto": 0.7876
+     "pages": 9,
+     "scrapling": 0.772,
+     "trafilatura": 0.7614,
+     "auto": 0.7688
     }
    },
    "per_page_winner": {
-    "trafilatura": 22,
-    "scrapling": 13
+    "trafilatura": 32,
+    "scrapling": 21
    },
    "items": [
     {
@@ -2397,6 +2685,402 @@
       "f1": 0.875,
       "engine_used": "trafilatura"
      }
+    },
+    {
+     "id": "P36",
+     "layout": "docs",
+     "scrapling": {
+      "precision": 0.75,
+      "recall": 1.0,
+      "f1": 0.8571,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.7959,
+      "recall": 1.0,
+      "f1": 0.8864,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.75,
+      "recall": 1.0,
+      "f1": 0.8571,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P37",
+     "layout": "docs",
+     "scrapling": {
+      "precision": 0.7759,
+      "recall": 1.0,
+      "f1": 0.8738,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.8182,
+      "recall": 1.0,
+      "f1": 0.9,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.7759,
+      "recall": 1.0,
+      "f1": 0.8738,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P38",
+     "layout": "blog",
+     "scrapling": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.9333,
+      "recall": 1.0,
+      "f1": 0.9655,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.9333,
+      "recall": 1.0,
+      "f1": 0.9655,
+      "engine_used": "trafilatura"
+     }
+    },
+    {
+     "id": "P39",
+     "layout": "docs",
+     "scrapling": {
+      "precision": 0.7551,
+      "recall": 1.0,
+      "f1": 0.8605,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.8043,
+      "recall": 1.0,
+      "f1": 0.8916,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.7551,
+      "recall": 1.0,
+      "f1": 0.8605,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P40",
+     "layout": "docs",
+     "scrapling": {
+      "precision": 0.75,
+      "recall": 1.0,
+      "f1": 0.8571,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.8108,
+      "recall": 1.0,
+      "f1": 0.8955,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.75,
+      "recall": 1.0,
+      "f1": 0.8571,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P41",
+     "layout": "docs",
+     "scrapling": {
+      "precision": 0.7568,
+      "recall": 1.0,
+      "f1": 0.8615,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.8235,
+      "recall": 1.0,
+      "f1": 0.9032,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.7568,
+      "recall": 1.0,
+      "f1": 0.8615,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P42",
+     "layout": "wiki",
+     "scrapling": {
+      "precision": 0.5294,
+      "recall": 1.0,
+      "f1": 0.6923,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6667,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.5294,
+      "recall": 1.0,
+      "f1": 0.6923,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P43",
+     "layout": "wiki",
+     "scrapling": {
+      "precision": 0.64,
+      "recall": 1.0,
+      "f1": 0.7805,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.6038,
+      "recall": 1.0,
+      "f1": 0.7529,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.64,
+      "recall": 1.0,
+      "f1": 0.7805,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P44",
+     "layout": "blog",
+     "scrapling": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.7941,
+      "recall": 1.0,
+      "f1": 0.8852,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.7941,
+      "recall": 1.0,
+      "f1": 0.8852,
+      "engine_used": "trafilatura"
+     }
+    },
+    {
+     "id": "P45",
+     "layout": "docs",
+     "scrapling": {
+      "precision": 0.7407,
+      "recall": 1.0,
+      "f1": 0.8511,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.7843,
+      "recall": 1.0,
+      "f1": 0.8791,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.7407,
+      "recall": 1.0,
+      "f1": 0.8511,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P46",
+     "layout": "docs",
+     "scrapling": {
+      "precision": 0.7234,
+      "recall": 1.0,
+      "f1": 0.8395,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.7727,
+      "recall": 1.0,
+      "f1": 0.8718,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.7234,
+      "recall": 1.0,
+      "f1": 0.8395,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P47",
+     "layout": "wiki",
+     "scrapling": {
+      "precision": 0.6032,
+      "recall": 1.0,
+      "f1": 0.7525,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.5846,
+      "recall": 1.0,
+      "f1": 0.7379,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.6032,
+      "recall": 1.0,
+      "f1": 0.7525,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P48",
+     "layout": "blog",
+     "scrapling": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.7895,
+      "recall": 1.0,
+      "f1": 0.8824,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.7895,
+      "recall": 1.0,
+      "f1": 0.8824,
+      "engine_used": "trafilatura"
+     }
+    },
+    {
+     "id": "P49",
+     "layout": "news",
+     "scrapling": {
+      "precision": 0.4918,
+      "recall": 1.0,
+      "f1": 0.6593,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.7895,
+      "recall": 1.0,
+      "f1": 0.8824,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.4918,
+      "recall": 1.0,
+      "f1": 0.6593,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P50",
+     "layout": "news",
+     "scrapling": {
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6667,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.8108,
+      "recall": 1.0,
+      "f1": 0.8955,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6667,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P51",
+     "layout": "wiki",
+     "scrapling": {
+      "precision": 0.6792,
+      "recall": 1.0,
+      "f1": 0.809,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.6545,
+      "recall": 1.0,
+      "f1": 0.7912,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.6792,
+      "recall": 1.0,
+      "f1": 0.809,
+      "engine_used": "scrapling"
+     }
+    },
+    {
+     "id": "P52",
+     "layout": "wiki",
+     "scrapling": {
+      "precision": 0.617,
+      "recall": 1.0,
+      "f1": 0.7632,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.58,
+      "recall": 1.0,
+      "f1": 0.7342,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.58,
+      "recall": 1.0,
+      "f1": 0.7342,
+      "engine_used": "trafilatura"
+     }
+    },
+    {
+     "id": "P53",
+     "layout": "news",
+     "scrapling": {
+      "precision": 0.4833,
+      "recall": 1.0,
+      "f1": 0.6517,
+      "engine_used": "scrapling"
+     },
+     "trafilatura": {
+      "precision": 0.7838,
+      "recall": 1.0,
+      "f1": 0.8788,
+      "engine_used": "trafilatura"
+     },
+     "auto": {
+      "precision": 0.4833,
+      "recall": 1.0,
+      "f1": 0.6517,
+      "engine_used": "scrapling"
+     }
     }
    ],
    "gold": "paragraph text of the article body (title, chrome and comments excluded)"
@@ -2409,17 +3093,17 @@
     "error": null,
     "usage": {
      "queries": 3,
-     "requests": 16,
-     "pages": 8,
-     "bytes": 12965,
+     "requests": 19,
+     "pages": 10,
+     "bytes": 15461,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 8,
+    "sources": 10,
     "answer": [
-     "8 sources read; 13 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
+     "10 sources read; 15 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
      "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026.",
-     "Quillstream 4.3 beta opens for testing"
+     "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
     ],
     "limitations": [
      "corpus: rate_limited",
@@ -2441,9 +3125,9 @@
     "live": true,
     "sources": 3,
     "answer": [
-     "3 sources read; 2 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 1 year; these statements may be out of date.",
-     "The Varnel River flows from the Coldmere Hills to the Bay of Ostra.",
-     "The Varnel River is 520 kilometres long, and we paddled every one of them over three weeks."
+     "3 sources read; 2 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "The Varnel River is 520 kilometres long, and we paddled every one of them over three weeks.",
+     "The Varnel River flows from the Coldmere Hills to the Bay of Ostra."
     ],
     "limitations": [
      "corpus: blocked_policy",
@@ -2537,9 +3221,9 @@
     "live": true,
     "sources": 3,
     "answer": [
-     "3 sources read; 4 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-07-01.",
+     "3 sources read; 5 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-07-01.",
      "By default, the Orbix server listens on port 7420 for client connections.",
-     "Replication traffic uses a separate port, 7421, which must also be open between nodes."
+     "The port can be changed with the listen_port setting in orbix.conf."
     ],
     "limitations": [
      "corpus: unsupported_type",
@@ -2555,17 +3239,18 @@
      "queries": 1,
      "requests": 4,
      "pages": 3,
-     "bytes": 3818,
+     "bytes": 3948,
      "browser_sessions": 0
     },
     "live": true,
     "sources": 3,
     "answer": [
-     "3 sources read; 6 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-11-03.",
+     "3 sources read; 5 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). No cited source is dated within the required 1 year; these statements may be out of date.",
      "Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
-     "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+     "The language is developed in the open by a team of eleven core maintainers."
     ],
     "limitations": [
+     "Freshness requirement not met: no cited source is dated (required: within 1 year, stable class)",
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
     ]
    },
@@ -2601,18 +3286,19 @@
      "queries": 3,
      "requests": 11,
      "pages": 9,
-     "bytes": 13983,
+     "bytes": 14170,
      "browser_sessions": 0
     },
     "live": true,
     "sources": 9,
     "answer": [
-     "9 sources read; 8 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
-     "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026.",
-     "Nimbus-OS 5 ships with Linux kernel 6.14 and the Wayland session by default."
+     "9 sources read; 7 statement clusters had usable evidence; the top statement is contested (2 agreeing independent source groups of 3). No cited source is dated within the required 7 days; these statements may be out of date.",
+     "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops.",
+     "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
     ],
     "limitations": [
      "corpus: rate_limited",
+     "Freshness requirement not met: newest source is from 2026-11-02 (required: within 7 days, release class)",
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
     ]
    },
@@ -2636,6 +3322,54 @@
     ],
     "limitations": [
      "corpus: unsupported_type",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "A11",
+    "mode": "quick_lookup",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 1,
+     "requests": 4,
+     "pages": 3,
+     "bytes": 3897,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 3,
+    "answer": [
+     "3 sources read; 6 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "Brisa is a programming language designed for embedded devices and sensor networks.",
+     "Brisa was created by Tove Ahlgren."
+    ],
+    "limitations": [
+     "Freshness requirement not met: no cited source is dated (required: within 1 year, stable class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "A12",
+    "mode": "scientific",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 4,
+     "requests": 14,
+     "pages": 11,
+     "bytes": 18468,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 11,
+    "answer": [
+     "11 sources read; 15 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 30 days; these statements may be out of date.",
+     "The paper reports that dendritic gating doubles the memory capacity of the Ostra cortex model.",
+     "Index record: 'Dendritic gating in the Ostra cortex model', published 2021-03-04 in the Journal of Ostra Neuroscience."
+    ],
+    "limitations": [
+     "Freshness requirement not met: newest source is from 2026-06-18 (required: within 30 days, scientific class)",
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
     ]
    },
@@ -2762,17 +3496,17 @@
     "error": null,
     "usage": {
      "queries": 4,
-     "requests": 8,
-     "pages": 8,
-     "bytes": 11993,
+     "requests": 10,
+     "pages": 9,
+     "bytes": 10357,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 8,
+    "sources": 9,
     "answer": [
-     "8 sources read; 10 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
-     "A stable 4.3.0 release is planned for January 2027 if no blocking bugs are found.",
-     "Kestrel is a programming language designed by Ilse Marten and first released in 2019."
+     "9 sources read; 16 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-11-03.",
+     "Kestrel is a programming language designed by Ilse Marten and first released in 2019.",
+     "The language is developed in the open by a team of eleven core maintainers."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -2804,21 +3538,45 @@
     ]
    },
    {
+    "key": "T08",
+    "mode": "quick_lookup",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 2,
+     "requests": 3,
+     "pages": 3,
+     "bytes": 2757,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 3,
+    "answer": [
+     "3 sources read; 2 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 7 days; these statements may be out of date.",
+     "These notes on Corvane connection pooling were copied from an older wiki.",
+     "Idle connections are closed when pool_timeout expires."
+    ],
+    "limitations": [
+     "Freshness requirement not met: no cited source is dated (required: within 7 days, breaking class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
     "key": "F01",
     "mode": "fact_verification",
     "status": "completed",
     "error": null,
     "usage": {
      "queries": 5,
-     "requests": 8,
-     "pages": 7,
-     "bytes": 10817,
+     "requests": 9,
+     "pages": 8,
+     "bytes": 13072,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 7,
+    "sources": 8,
     "answer": [
-     "7 sources read; 18 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
+     "8 sources read; 21 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
      "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes.",
      "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
     ],
@@ -2842,9 +3600,9 @@
     "live": true,
     "sources": 6,
     "answer": [
-     "6 sources read; 7 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 1 year; these statements may be out of date.",
-     "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region.",
-     "The Varnel River flows from the Coldmere Hills to the Bay of Ostra."
+     "6 sources read; 7 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "The Varnel River is 520 kilometres long, and we paddled every one of them over three weeks.",
+     "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region."
     ],
     "limitations": [
      "corpus: blocked_policy",
@@ -2859,15 +3617,15 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 4,
-     "pages": 4,
-     "bytes": 5005192,
+     "requests": 5,
+     "pages": 5,
+     "bytes": 5006563,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 4,
+    "sources": 5,
     "answer": [
-     "4 sources read; 4 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "5 sources read; 5 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 1 year; these statements may be out of date.",
      "The Halvorsen Bridge is a cable-stayed bridge across the Varnel estuary that opened in 1987.",
      "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
     ],
@@ -2883,16 +3641,16 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 5,
-     "pages": 5,
-     "bytes": 7759,
+     "requests": 7,
+     "pages": 7,
+     "bytes": 11138,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 5,
+    "sources": 7,
     "answer": [
-     "5 sources read; 2 statement clusters had usable evidence; the top statement is contested (2 agreeing independent source groups of 3). Newest cited source: on 2026-04-22.",
-     "Tessaly now has a population of 251,000, according to figures from the 2025 census.",
+     "7 sources read; 5 statement clusters had usable evidence; the top statement is contested (2 agreeing independent source groups of 3). Newest cited source: on 2026-05-20.",
+     "At the 2025 census Tessaly had a population of 248,000 residents.",
      "Tessaly is a coastal city on the Bay of Ostra and the seat of the Ostra regional council."
     ],
     "limitations": [
@@ -2909,15 +3667,15 @@
      "queries": 4,
      "requests": 9,
      "pages": 8,
-     "bytes": 6225,
+     "bytes": 5131,
      "browser_sessions": 0
     },
     "live": true,
     "sources": 8,
     "answer": [
-     "8 sources read; 12 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 4 days ago.",
-     "Lumen-7 was launched on 14 September 2026 from the Andoya launch site.",
-     "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays."
+     "8 sources read; 12 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). Newest cited source: 4 days ago.",
+     "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays.",
+     "Lumen-7 was launched on 14 September 2026 from the Andoya launch site."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -2938,9 +3696,9 @@
     "live": true,
     "sources": 7,
     "answer": [
-     "7 sources read; 7 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). Newest cited source: on 2026-10-08.",
+     "7 sources read; 8 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). Newest cited source: on 2026-10-08.",
      "Orbix supports encryption at rest using AES-256 since version 3.0.",
-     "Version 4.2.0, released 2 October 2026, adds backpressure-aware batching and removes Python 3.9 support."
+     "By default, the Orbix server listens on port 7420 for client connections."
     ],
     "limitations": [
      "corpus: unsupported_type",
@@ -2954,16 +3712,17 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 5,
-     "pages": 5,
-     "bytes": 5074,
+     "requests": 8,
+     "pages": 8,
+     "bytes": 9335,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 5,
+    "sources": 8,
     "answer": [
-     "5 sources read; 1 statement cluster had usable evidence; the top statement is contested (2 agreeing independent source groups of 3). Newest cited source: on 2026-10-08.",
-     "Nimbus-OS 5 ships with Linux kernel 6.14 and the Wayland session by default."
+     "8 sources read; 2 statement clusters had usable evidence; the top statement is contested (2 agreeing independent source groups of 3). Newest cited source: on 2026-11-02.",
+     "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops.",
+     "The default, verify=True, checks the server certificate against the system trust store."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -2976,17 +3735,17 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 3,
-     "pages": 3,
-     "bytes": 3818,
+     "requests": 8,
+     "pages": 7,
+     "bytes": 9239,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 3,
+    "sources": 7,
     "answer": [
-     "3 sources read; 6 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-11-03.",
+     "7 sources read; 10 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-11-03.",
      "Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
-     "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+     "The language is developed in the open by a team of eleven core maintainers."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -2999,7 +3758,7 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 6,
+     "requests": 5,
      "pages": 5,
      "bytes": 9683,
      "browser_sessions": 0
@@ -3009,7 +3768,7 @@
     "answer": [
      "5 sources read; 5 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-11-12.",
      "Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region.",
-     "Repairs to the Brightwater dam spillway began on 10 November 2026 and are expected to take five months."
+     "The Brightwater dam is not open to visitors, although the small museum at the car park is."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -3030,9 +3789,9 @@
     "live": true,
     "sources": 7,
     "answer": [
-     "7 sources read; 10 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 4 hours ago.",
-     "Orbix supports encryption at rest using AES-256 since version 3.0.",
-     "Orbix listens on port 7420 by default unless you change listen_port."
+     "7 sources read; 11 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: 4 hours ago.",
+     "By default, the Orbix server listens on port 7420 for client connections.",
+     "The port can be changed with the listen_port setting in orbix.conf."
     ],
     "limitations": [
      "corpus: unsupported_type",
@@ -3046,17 +3805,183 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 7,
-     "pages": 7,
-     "bytes": 10420,
+     "requests": 8,
+     "pages": 8,
+     "bytes": 10507,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 7,
+    "sources": 8,
     "answer": [
-     "7 sources read; 5 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: on 2026-11-03.",
+     "8 sources read; 5 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: on 2026-11-03.",
      "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler.",
      "Programs written for Kestrel 1.x need minor changes to their import statements."
+    ],
+    "limitations": [
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "F12",
+    "mode": "fact_verification",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 2,
+     "requests": 7,
+     "pages": 5,
+     "bytes": 8616,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 5,
+    "answer": [
+     "5 sources read; 4 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: on 2026-06-10.",
+     "The Corran Spire in Harrowgate has stood on the Weir Field since 1911.",
+     "Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire."
+    ],
+    "limitations": [
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "F13",
+    "mode": "fact_verification",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 2,
+     "requests": 8,
+     "pages": 8,
+     "bytes": 11799,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 8,
+    "answer": [
+     "8 sources read; 8 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: on 2026-06-10.",
+     "The Corran Spire in Harrowgate has stood on the Weir Field since 1911.",
+     "Tessaly is a coastal city on the Bay of Ostra and the seat of the Ostra regional council."
+    ],
+    "limitations": [
+     "corpus: blocked_robots",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "F14",
+    "mode": "fact_verification",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 2,
+     "requests": 3,
+     "pages": 3,
+     "bytes": 5003770,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 3,
+    "answer": [
+     "3 sources read; 2 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+     "The bridge carries four road lanes and a separate cycle path."
+    ],
+    "limitations": [
+     "Freshness requirement not met: newest source is from 2025-06-12 (required: within 1 year, stable class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "F15",
+    "mode": "fact_verification",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 2,
+     "requests": 3,
+     "pages": 3,
+     "bytes": 5003770,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 3,
+    "answer": [
+     "3 sources read; 2 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+     "The bridge carries four road lanes and a separate cycle path."
+    ],
+    "limitations": [
+     "Freshness requirement not met: newest source is from 2025-06-12 (required: within 1 year, stable class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "F16",
+    "mode": "fact_verification",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 5,
+     "requests": 9,
+     "pages": 8,
+     "bytes": 14177,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 8,
+    "answer": [
+     "8 sources read; 10 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). No cited source is dated within the required 30 days; these statements may be out of date.",
+     "The Ostra marsh newt brain has roughly 100 million neurons, researchers said.",
+     "Tessaly is a coastal city on the Bay of Ostra and the seat of the Ostra regional council."
+    ],
+    "limitations": [
+     "Freshness requirement not met: newest source is from 2026-08-14 (required: within 30 days, scientific class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "L01",
+    "mode": "technical",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 3,
+     "requests": 11,
+     "pages": 10,
+     "bytes": 13090,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 10,
+    "answer": [
+     "10 sources read; 18 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 7 days; these statements may be out of date.",
+     "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+     "The release contains no configuration changes."
+    ],
+    "limitations": [
+     "Freshness requirement not met: newest source is from 2026-11-02 (required: within 7 days, release class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "L02",
+    "mode": "technical",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 5,
+     "requests": 11,
+     "pages": 10,
+     "bytes": 12232,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 10,
+    "answer": [
+     "10 sources read; 16 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: just now.",
+     "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+     "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -3141,17 +4066,17 @@
     "error": null,
     "usage": {
      "queries": 3,
-     "requests": 16,
-     "pages": 8,
-     "bytes": 12965,
+     "requests": 19,
+     "pages": 10,
+     "bytes": 15461,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 8,
+    "sources": 10,
     "answer": [
-     "8 sources read; 13 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
+     "10 sources read; 15 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
      "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026.",
-     "Quillstream 4.3 beta opens for testing"
+     "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
     ],
     "limitations": [
      "corpus: rate_limited",
@@ -3173,9 +4098,9 @@
     "live": true,
     "sources": 3,
     "answer": [
-     "3 sources read; 2 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 1 year; these statements may be out of date.",
-     "The Varnel River flows from the Coldmere Hills to the Bay of Ostra.",
-     "The Varnel River is 520 kilometres long, and we paddled every one of them over three weeks."
+     "3 sources read; 2 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "The Varnel River is 520 kilometres long, and we paddled every one of them over three weeks.",
+     "The Varnel River flows from the Coldmere Hills to the Bay of Ostra."
     ],
     "limitations": [
      "corpus: blocked_policy",
@@ -3269,9 +4194,9 @@
     "live": true,
     "sources": 3,
     "answer": [
-     "3 sources read; 4 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-07-01.",
+     "3 sources read; 5 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-07-01.",
      "By default, the Orbix server listens on port 7420 for client connections.",
-     "Replication traffic uses a separate port, 7421, which must also be open between nodes."
+     "The port can be changed with the listen_port setting in orbix.conf."
     ],
     "limitations": [
      "corpus: unsupported_type",
@@ -3287,17 +4212,18 @@
      "queries": 1,
      "requests": 4,
      "pages": 3,
-     "bytes": 3818,
+     "bytes": 3948,
      "browser_sessions": 0
     },
     "live": true,
     "sources": 3,
     "answer": [
-     "3 sources read; 6 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-11-03.",
+     "3 sources read; 5 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). No cited source is dated within the required 1 year; these statements may be out of date.",
      "Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
-     "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+     "The language is developed in the open by a team of eleven core maintainers."
     ],
     "limitations": [
+     "Freshness requirement not met: no cited source is dated (required: within 1 year, stable class)",
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
     ]
    },
@@ -3333,18 +4259,19 @@
      "queries": 3,
      "requests": 11,
      "pages": 9,
-     "bytes": 13983,
+     "bytes": 14170,
      "browser_sessions": 0
     },
     "live": true,
     "sources": 9,
     "answer": [
-     "9 sources read; 8 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
-     "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026.",
-     "Nimbus-OS 5 ships with Linux kernel 6.14 and the Wayland session by default."
+     "9 sources read; 7 statement clusters had usable evidence; the top statement is contested (2 agreeing independent source groups of 3). No cited source is dated within the required 7 days; these statements may be out of date.",
+     "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops.",
+     "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
     ],
     "limitations": [
      "corpus: rate_limited",
+     "Freshness requirement not met: newest source is from 2026-11-02 (required: within 7 days, release class)",
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
     ]
    },
@@ -3368,6 +4295,54 @@
     ],
     "limitations": [
      "corpus: unsupported_type",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "memory:A11",
+    "mode": "quick_lookup",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 1,
+     "requests": 4,
+     "pages": 3,
+     "bytes": 3897,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 3,
+    "answer": [
+     "3 sources read; 6 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "Brisa is a programming language designed for embedded devices and sensor networks.",
+     "Brisa was created by Tove Ahlgren."
+    ],
+    "limitations": [
+     "Freshness requirement not met: no cited source is dated (required: within 1 year, stable class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "memory:A12",
+    "mode": "scientific",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 4,
+     "requests": 14,
+     "pages": 11,
+     "bytes": 18468,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 11,
+    "answer": [
+     "11 sources read; 15 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 30 days; these statements may be out of date.",
+     "The paper reports that dendritic gating doubles the memory capacity of the Ostra cortex model.",
+     "Index record: 'Dendritic gating in the Ostra cortex model', published 2021-03-04 in the Journal of Ostra Neuroscience."
+    ],
+    "limitations": [
+     "Freshness requirement not met: newest source is from 2026-06-18 (required: within 30 days, scientific class)",
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
     ]
    },
@@ -3432,7 +4407,7 @@
     "live": true,
     "sources": 2,
     "answer": [
-     "2 sources read; 3 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 4 hours ago.",
+     "2 sources read; 3 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 5 hours ago.",
      "The company said a faulty network configuration change caused the outage.",
      "Orbix Cloud customers in the eu-north region lost access to their databases for about 90 minutes on 20 November 2026."
     ],
@@ -3494,17 +4469,17 @@
     "error": null,
     "usage": {
      "queries": 4,
-     "requests": 8,
-     "pages": 8,
-     "bytes": 11993,
+     "requests": 10,
+     "pages": 9,
+     "bytes": 10357,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 8,
+    "sources": 9,
     "answer": [
-     "8 sources read; 10 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
-     "A stable 4.3.0 release is planned for January 2027 if no blocking bugs are found.",
-     "Kestrel is a programming language designed by Ilse Marten and first released in 2019."
+     "9 sources read; 16 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-11-03.",
+     "Kestrel is a programming language designed by Ilse Marten and first released in 2019.",
+     "The language is developed in the open by a team of eleven core maintainers."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -3536,21 +4511,45 @@
     ]
    },
    {
+    "key": "memory:T08",
+    "mode": "quick_lookup",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 2,
+     "requests": 3,
+     "pages": 3,
+     "bytes": 2757,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 3,
+    "answer": [
+     "3 sources read; 2 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 7 days; these statements may be out of date.",
+     "These notes on Corvane connection pooling were copied from an older wiki.",
+     "Idle connections are closed when pool_timeout expires."
+    ],
+    "limitations": [
+     "Freshness requirement not met: no cited source is dated (required: within 7 days, breaking class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
     "key": "memory:F01",
     "mode": "fact_verification",
     "status": "completed",
     "error": null,
     "usage": {
      "queries": 5,
-     "requests": 8,
-     "pages": 7,
-     "bytes": 10817,
+     "requests": 9,
+     "pages": 8,
+     "bytes": 13072,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 7,
+    "sources": 8,
     "answer": [
-     "7 sources read; 18 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
+     "8 sources read; 21 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 2 days ago.",
      "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes.",
      "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
     ],
@@ -3574,9 +4573,9 @@
     "live": true,
     "sources": 6,
     "answer": [
-     "6 sources read; 7 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 1 year; these statements may be out of date.",
-     "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region.",
-     "The Varnel River flows from the Coldmere Hills to the Bay of Ostra."
+     "6 sources read; 7 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "The Varnel River is 520 kilometres long, and we paddled every one of them over three weeks.",
+     "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region."
     ],
     "limitations": [
      "corpus: blocked_policy",
@@ -3591,15 +4590,15 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 4,
-     "pages": 4,
-     "bytes": 5005192,
+     "requests": 5,
+     "pages": 5,
+     "bytes": 5006563,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 4,
+    "sources": 5,
     "answer": [
-     "4 sources read; 4 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "5 sources read; 5 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 1 year; these statements may be out of date.",
      "The Halvorsen Bridge is a cable-stayed bridge across the Varnel estuary that opened in 1987.",
      "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
     ],
@@ -3615,16 +4614,16 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 5,
-     "pages": 5,
-     "bytes": 7759,
+     "requests": 7,
+     "pages": 7,
+     "bytes": 11138,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 5,
+    "sources": 7,
     "answer": [
-     "5 sources read; 2 statement clusters had usable evidence; the top statement is contested (2 agreeing independent source groups of 3). Newest cited source: on 2026-04-22.",
-     "Tessaly now has a population of 251,000, according to figures from the 2025 census.",
+     "7 sources read; 5 statement clusters had usable evidence; the top statement is contested (2 agreeing independent source groups of 3). Newest cited source: on 2026-05-20.",
+     "At the 2025 census Tessaly had a population of 248,000 residents.",
      "Tessaly is a coastal city on the Bay of Ostra and the seat of the Ostra regional council."
     ],
     "limitations": [
@@ -3641,15 +4640,15 @@
      "queries": 4,
      "requests": 9,
      "pages": 8,
-     "bytes": 6225,
+     "bytes": 5131,
      "browser_sessions": 0
     },
     "live": true,
     "sources": 8,
     "answer": [
-     "8 sources read; 12 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 4 days ago.",
-     "Lumen-7 was launched on 14 September 2026 from the Andoya launch site.",
-     "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays."
+     "8 sources read; 12 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). Newest cited source: 4 days ago.",
+     "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays.",
+     "Lumen-7 was launched on 14 September 2026 from the Andoya launch site."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -3670,9 +4669,9 @@
     "live": true,
     "sources": 7,
     "answer": [
-     "7 sources read; 7 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). Newest cited source: on 2026-10-08.",
+     "7 sources read; 8 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). Newest cited source: on 2026-10-08.",
      "Orbix supports encryption at rest using AES-256 since version 3.0.",
-     "Version 4.2.0, released 2 October 2026, adds backpressure-aware batching and removes Python 3.9 support."
+     "By default, the Orbix server listens on port 7420 for client connections."
     ],
     "limitations": [
      "corpus: unsupported_type",
@@ -3686,16 +4685,17 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 5,
-     "pages": 5,
-     "bytes": 5074,
+     "requests": 8,
+     "pages": 8,
+     "bytes": 9335,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 5,
+    "sources": 8,
     "answer": [
-     "5 sources read; 1 statement cluster had usable evidence; the top statement is contested (2 agreeing independent source groups of 3). Newest cited source: on 2026-10-08.",
-     "Nimbus-OS 5 ships with Linux kernel 6.14 and the Wayland session by default."
+     "8 sources read; 2 statement clusters had usable evidence; the top statement is contested (2 agreeing independent source groups of 3). Newest cited source: on 2026-11-02.",
+     "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops.",
+     "The default, verify=True, checks the server certificate against the system trust store."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -3708,17 +4708,17 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 3,
-     "pages": 3,
-     "bytes": 3818,
+     "requests": 8,
+     "pages": 7,
+     "bytes": 9239,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 3,
+    "sources": 7,
     "answer": [
-     "3 sources read; 6 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-11-03.",
+     "7 sources read; 10 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-11-03.",
      "Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
-     "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+     "The language is developed in the open by a team of eleven core maintainers."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -3731,7 +4731,7 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 6,
+     "requests": 5,
      "pages": 5,
      "bytes": 9683,
      "browser_sessions": 0
@@ -3741,7 +4741,7 @@
     "answer": [
      "5 sources read; 5 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: on 2026-11-12.",
      "Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region.",
-     "Repairs to the Brightwater dam spillway began on 10 November 2026 and are expected to take five months."
+     "The Brightwater dam is not open to visitors, although the small museum at the car park is."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -3762,9 +4762,9 @@
     "live": true,
     "sources": 7,
     "answer": [
-     "7 sources read; 10 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 5 hours ago.",
-     "Orbix supports encryption at rest using AES-256 since version 3.0.",
-     "Orbix listens on port 7420 by default unless you change listen_port."
+     "7 sources read; 11 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). Newest cited source: 5 hours ago.",
+     "By default, the Orbix server listens on port 7420 for client connections.",
+     "The port can be changed with the listen_port setting in orbix.conf."
     ],
     "limitations": [
      "corpus: unsupported_type",
@@ -3778,17 +4778,183 @@
     "error": null,
     "usage": {
      "queries": 2,
-     "requests": 7,
-     "pages": 7,
-     "bytes": 10420,
+     "requests": 8,
+     "pages": 8,
+     "bytes": 10507,
      "browser_sessions": 0
     },
     "live": true,
-    "sources": 7,
+    "sources": 8,
     "answer": [
-     "7 sources read; 5 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: on 2026-11-03.",
+     "8 sources read; 5 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: on 2026-11-03.",
      "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler.",
      "Programs written for Kestrel 1.x need minor changes to their import statements."
+    ],
+    "limitations": [
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "memory:F12",
+    "mode": "fact_verification",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 2,
+     "requests": 7,
+     "pages": 5,
+     "bytes": 8616,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 5,
+    "answer": [
+     "5 sources read; 4 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: on 2026-06-10.",
+     "The Corran Spire in Harrowgate has stood on the Weir Field since 1911.",
+     "Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire."
+    ],
+    "limitations": [
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "memory:F13",
+    "mode": "fact_verification",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 2,
+     "requests": 8,
+     "pages": 8,
+     "bytes": 11799,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 8,
+    "answer": [
+     "8 sources read; 8 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: on 2026-06-10.",
+     "The Corran Spire in Harrowgate has stood on the Weir Field since 1911.",
+     "Tessaly is a coastal city on the Bay of Ostra and the seat of the Ostra regional council."
+    ],
+    "limitations": [
+     "corpus: blocked_robots",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "memory:F14",
+    "mode": "fact_verification",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 2,
+     "requests": 3,
+     "pages": 3,
+     "bytes": 5003770,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 3,
+    "answer": [
+     "3 sources read; 2 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+     "The bridge carries four road lanes and a separate cycle path."
+    ],
+    "limitations": [
+     "Freshness requirement not met: newest source is from 2025-06-12 (required: within 1 year, stable class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "memory:F15",
+    "mode": "fact_verification",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 2,
+     "requests": 3,
+     "pages": 3,
+     "bytes": 5003770,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 3,
+    "answer": [
+     "3 sources read; 2 statement clusters had usable evidence; the top statement is corroborated (2 agreeing independent source groups of 2). No cited source is dated within the required 1 year; these statements may be out of date.",
+     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+     "The bridge carries four road lanes and a separate cycle path."
+    ],
+    "limitations": [
+     "Freshness requirement not met: newest source is from 2025-06-12 (required: within 1 year, stable class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "memory:F16",
+    "mode": "fact_verification",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 5,
+     "requests": 9,
+     "pages": 8,
+     "bytes": 14177,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 8,
+    "answer": [
+     "8 sources read; 10 statement clusters had usable evidence; the top statement is contested (1 agreeing independent source group of 2). No cited source is dated within the required 30 days; these statements may be out of date.",
+     "The Ostra marsh newt brain has roughly 100 million neurons, researchers said.",
+     "Tessaly is a coastal city on the Bay of Ostra and the seat of the Ostra regional council."
+    ],
+    "limitations": [
+     "Freshness requirement not met: newest source is from 2026-08-14 (required: within 30 days, scientific class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "memory:L01",
+    "mode": "technical",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 3,
+     "requests": 11,
+     "pages": 10,
+     "bytes": 13090,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 10,
+    "answer": [
+     "10 sources read; 18 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 7 days; these statements may be out of date.",
+     "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+     "The release contains no configuration changes."
+    ],
+    "limitations": [
+     "Freshness requirement not met: newest source is from 2026-11-02 (required: within 7 days, release class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ]
+   },
+   {
+    "key": "memory:L02",
+    "mode": "technical",
+    "status": "completed",
+    "error": null,
+    "usage": {
+     "queries": 5,
+     "requests": 11,
+     "pages": 10,
+     "bytes": 12232,
+     "browser_sessions": 0
+    },
+    "live": true,
+    "sources": 10,
+    "answer": [
+     "10 sources read; 16 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: just now.",
+     "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+     "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
     ],
     "limitations": [
      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
@@ -3801,245 +4967,266 @@
    "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
    "per_mode_seconds": {
     "fact_verification": {
-     "n": 11,
-     "p50": 0.0335,
-     "p95": 0.0627,
-     "mean": 0.0366,
-     "max": 0.0758
+     "n": 16,
+     "p50": 0.0477,
+     "p95": 0.1487,
+     "mean": 0.0648,
+     "max": 0.1526
     },
     "quick_lookup": {
-     "n": 14,
-     "p50": 0.0176,
-     "p95": 0.0736,
-     "mean": 0.0264,
-     "max": 0.0747
+     "n": 16,
+     "p50": 0.0221,
+     "p95": 0.1525,
+     "mean": 0.0381,
+     "max": 0.1654
+    },
+    "scientific": {
+     "n": 1,
+     "p50": 0.0556,
+     "p95": 0.0556,
+     "mean": 0.0556,
+     "max": 0.0556
     },
     "technical": {
-     "n": 3,
-     "p50": 0.0468,
-     "p95": 0.1656,
-     "mean": 0.0868,
-     "max": 0.1788
+     "n": 5,
+     "p50": 0.062,
+     "p95": 0.1736,
+     "mean": 0.0865,
+     "max": 0.2009
     }
    },
    "all_tasks_seconds": {
-    "n": 28,
-    "p50": 0.0266,
-    "p95": 0.0754,
-    "mean": 0.0369,
-    "max": 0.1788
+    "n": 38,
+    "p50": 0.0449,
+    "p95": 0.1545,
+    "mean": 0.0562,
+    "max": 0.2009
    },
    "extraction_ms": {
     "scrapling": {
-     "n": 35,
-     "p50": 0.7387,
-     "p95": 1.5037,
-     "mean": 0.8686,
-     "max": 2.1575
+     "n": 53,
+     "p50": 0.5939,
+     "p95": 0.9264,
+     "mean": 0.6266,
+     "max": 1.0505
     },
     "trafilatura": {
-     "n": 35,
-     "p50": 1.9374,
-     "p95": 4.3596,
-     "mean": 2.2041,
-     "max": 4.6176
+     "n": 53,
+     "p50": 1.3106,
+     "p95": 3.8381,
+     "mean": 1.7877,
+     "max": 4.2138
     },
     "auto": {
-     "n": 35,
-     "p50": 0.9878,
-     "p95": 3.3288,
-     "mean": 1.2058,
-     "max": 3.9056
+     "n": 53,
+     "p50": 0.6789,
+     "p95": 3.7698,
+     "mean": 1.1138,
+     "max": 3.9915
     }
    },
    "probe_seconds": {
-    "html_bomb_extract": 0.12,
-    "js_render": 1.097
+    "html_bomb_extract": 0.23,
+    "js_render": 1.219
    },
-   "run_seconds": 3.923
+   "run_seconds": 6.531
   },
   {
    "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
    "per_mode_seconds": {
     "fact_verification": {
-     "n": 11,
-     "p50": 0.03,
-     "p95": 0.0602,
-     "mean": 0.036,
-     "max": 0.0748
+     "n": 16,
+     "p50": 0.045,
+     "p95": 0.1469,
+     "mean": 0.0616,
+     "max": 0.1478
     },
     "quick_lookup": {
-     "n": 14,
-     "p50": 0.017,
-     "p95": 0.0862,
-     "mean": 0.03,
-     "max": 0.116
+     "n": 16,
+     "p50": 0.0219,
+     "p95": 0.1445,
+     "mean": 0.0369,
+     "max": 0.1632
+    },
+    "scientific": {
+     "n": 1,
+     "p50": 0.0561,
+     "p95": 0.0561,
+     "mean": 0.0561,
+     "max": 0.0561
     },
     "technical": {
-     "n": 3,
-     "p50": 0.0453,
-     "p95": 0.1122,
-     "mean": 0.0674,
-     "max": 0.1197
+     "n": 5,
+     "p50": 0.0628,
+     "p95": 0.1243,
+     "mean": 0.0752,
+     "max": 0.139
     }
    },
    "all_tasks_seconds": {
-    "n": 28,
-    "p50": 0.0293,
-    "p95": 0.1016,
-    "mean": 0.0364,
-    "max": 0.1197
+    "n": 38,
+    "p50": 0.0428,
+    "p95": 0.1468,
+    "mean": 0.0529,
+    "max": 0.1632
    },
    "extraction_ms": {
     "scrapling": {
-     "n": 35,
-     "p50": 0.6718,
-     "p95": 1.7361,
-     "mean": 0.9329,
-     "max": 2.2297
+     "n": 53,
+     "p50": 0.6633,
+     "p95": 1.2461,
+     "mean": 0.6984,
+     "max": 1.5312
     },
     "trafilatura": {
-     "n": 35,
-     "p50": 1.9242,
-     "p95": 3.6262,
-     "mean": 2.2254,
-     "max": 6.907
+     "n": 53,
+     "p50": 1.6037,
+     "p95": 3.0274,
+     "mean": 1.7676,
+     "max": 3.9207
     },
     "auto": {
-     "n": 35,
-     "p50": 1.0066,
-     "p95": 2.5849,
-     "mean": 1.2193,
-     "max": 3.3858
+     "n": 53,
+     "p50": 0.7693,
+     "p95": 2.947,
+     "mean": 1.083,
+     "max": 3.4339
     }
    },
    "probe_seconds": {
-    "html_bomb_extract": 0.11,
-    "js_render": 1.298
+    "html_bomb_extract": 0.225,
+    "js_render": 1.136
    },
-   "run_seconds": 4.092
+   "run_seconds": 6.268
   },
   {
    "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
    "per_mode_seconds": {
     "fact_verification": {
-     "n": 11,
-     "p50": 0.0283,
-     "p95": 0.0565,
-     "mean": 0.0335,
-     "max": 0.073
+     "n": 16,
+     "p50": 0.0483,
+     "p95": 0.147,
+     "mean": 0.0637,
+     "max": 0.1493
     },
     "quick_lookup": {
-     "n": 14,
-     "p50": 0.0162,
-     "p95": 0.0808,
-     "mean": 0.0272,
-     "max": 0.0989
+     "n": 16,
+     "p50": 0.0232,
+     "p95": 0.1469,
+     "mean": 0.041,
+     "max": 0.1642
+    },
+    "scientific": {
+     "n": 1,
+     "p50": 0.0552,
+     "p95": 0.0552,
+     "mean": 0.0552,
+     "max": 0.0552
     },
     "technical": {
-     "n": 3,
-     "p50": 0.0422,
-     "p95": 0.0946,
-     "mean": 0.0572,
-     "max": 0.1005
+     "n": 5,
+     "p50": 0.0675,
+     "p95": 0.1101,
+     "mean": 0.0745,
+     "max": 0.12
     }
    },
    "all_tasks_seconds": {
-    "n": 28,
-    "p50": 0.0266,
-    "p95": 0.0898,
-    "mean": 0.0329,
-    "max": 0.1005
+    "n": 38,
+    "p50": 0.0467,
+    "p95": 0.1467,
+    "mean": 0.0553,
+    "max": 0.1642
    },
    "extraction_ms": {
     "scrapling": {
-     "n": 35,
-     "p50": 0.675,
-     "p95": 1.8923,
-     "mean": 0.9746,
-     "max": 3.326
+     "n": 53,
+     "p50": 0.661,
+     "p95": 1.805,
+     "mean": 0.8627,
+     "max": 2.2683
     },
     "trafilatura": {
-     "n": 35,
-     "p50": 1.9003,
-     "p95": 3.6159,
-     "mean": 2.1893,
-     "max": 4.8855
+     "n": 53,
+     "p50": 1.8495,
+     "p95": 3.8124,
+     "mean": 2.2008,
+     "max": 4.8757
     },
     "auto": {
-     "n": 35,
-     "p50": 1.1551,
-     "p95": 2.6145,
-     "mean": 1.2228,
-     "max": 3.2732
+     "n": 53,
+     "p50": 0.9718,
+     "p95": 3.5323,
+     "mean": 1.2999,
+     "max": 3.9118
     }
    },
    "probe_seconds": {
-    "html_bomb_extract": 0.11,
-    "js_render": 1.128
+    "html_bomb_extract": 0.181,
+    "js_render": 1.235
    },
-   "run_seconds": 3.809
+   "run_seconds": 6.464
   }
  ],
  "resources": [
   {
    "per_task_db_growth_bytes": {
-    "n": 28,
-    "p50": 28672.0,
-    "p95": 80282.0,
-    "mean": 36425.0,
-    "max": 86016.0
+    "n": 38,
+    "p50": 36864.0,
+    "p95": 91955.0,
+    "mean": 45918.0,
+    "max": 106496.0
    },
    "per_task_cache_growth_bytes": {
-    "n": 28,
+    "n": 38,
     "p50": 4096.0,
-    "p95": 13517.0,
-    "mean": 3803.0,
+    "p95": 20480.0,
+    "mean": 4204.0,
     "max": 20480.0
    },
-   "db_bytes_final": 1372160,
-   "cache_bytes_final": 163840,
-   "peak_rss_bytes": 139358208,
+   "db_bytes_final": 2101248,
+   "cache_bytes_final": 212992,
+   "peak_rss_bytes": 156336128,
    "peak_rss_note": "process-wide ru_maxrss: includes the in-process fixture server and every earlier run in this process"
   },
   {
    "per_task_db_growth_bytes": {
-    "n": 28,
-    "p50": 28672.0,
-    "p95": 80282.0,
-    "mean": 36571.0,
-    "max": 86016.0
+    "n": 38,
+    "p50": 34816.0,
+    "p95": 91955.0,
+    "mean": 46242.0,
+    "max": 110592.0
    },
    "per_task_cache_growth_bytes": {
-    "n": 28,
+    "n": 38,
     "p50": 4096.0,
-    "p95": 13517.0,
-    "mean": 3803.0,
+    "p95": 20480.0,
+    "mean": 4204.0,
     "max": 20480.0
    },
-   "db_bytes_final": 1376256,
-   "cache_bytes_final": 163840,
-   "peak_rss_bytes": 151252992,
+   "db_bytes_final": 2113536,
+   "cache_bytes_final": 212992,
+   "peak_rss_bytes": 163553280,
    "peak_rss_note": "process-wide ru_maxrss: includes the in-process fixture server and every earlier run in this process"
   },
   {
    "per_task_db_growth_bytes": {
-    "n": 28,
-    "p50": 28672.0,
-    "p95": 77619.0,
-    "mean": 36425.0,
-    "max": 86016.0
+    "n": 38,
+    "p50": 36864.0,
+    "p95": 95437.0,
+    "mean": 46242.0,
+    "max": 106496.0
    },
    "per_task_cache_growth_bytes": {
-    "n": 28,
+    "n": 38,
     "p50": 4096.0,
-    "p95": 13517.0,
-    "mean": 3803.0,
+    "p95": 20480.0,
+    "mean": 4204.0,
     "max": 20480.0
    },
-   "db_bytes_final": 1376256,
-   "cache_bytes_final": 163840,
-   "peak_rss_bytes": 154345472,
+   "db_bytes_final": 2113536,
+   "cache_bytes_final": 212992,
+   "peak_rss_bytes": 164044800,
    "peak_rss_note": "process-wide ru_maxrss: includes the in-process fixture server and every earlier run in this process"
   }
  ],

@@ -1,5 +1,5 @@
 {
-  "as_of": 1795227363.495522,
+  "as_of": 1795253985.345007,
   "budget": {
     "max_browser_sessions": 0,
     "max_bytes": 60000000,
@@ -15,12 +15,12 @@
   "inventory": {
     "count": 49,
     "files": {
-      "open_websearch_lock": "/home/rohn/neuroscifi/deploy/open-websearch/package-lock.json",
-      "package_json": "/home/rohn/neuroscifi/package.json",
-      "pyproject": "/home/rohn/neuroscifi/pyproject.toml"
+      "open_websearch_lock": "<repo>/deploy/open-websearch/package-lock.json",
+      "package_json": "<repo>/package.json",
+      "pyproject": "<repo>/pyproject.toml"
     },
     "notes": [],
-    "root": "/home/rohn/neuroscifi"
+    "root": "<repo>"
   },
   "limitations": [],
   "mode": "full",
@@ -1204,7 +1204,7 @@
   "task": {
     "coverage": "the task plans at most 8 queries (registry + advisories per package), so it covers the first 4 of 49 packages; the direct pass below covers all of them",
     "error": null,
-    "id": "6145554c-e082-43ed-b96c-0401b2c57293",
+    "id": "08ac099f-54dd-4f37-8583-8d1daa0668ff",
     "queued": false,
     "sources": 4,
     "status": "completed"
@@ -1221,11 +1221,11 @@
   },
   "usage": {
     "browser_sessions": 0,
-    "bytes": 9312741,
+    "bytes": 9314135,
     "pages": 0,
     "queries": 0,
     "requests": 98,
-    "seconds": 49.461,
+    "seconds": 48.82,
     "tokens": 0
   }
 }

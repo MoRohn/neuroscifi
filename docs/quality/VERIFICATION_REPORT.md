@@ -160,3 +160,76 @@ The old graph beats the zero predictor on the rewired panel (MSE 0.013 vs 0.018)
 | Browser e2e and accessibility | `bash scripts/e2e.sh` | exit 0. **25 passed**. |
 | Acceptance | `nsf acceptance --all` | exit 0. **7/7 scenarios pass** (`docs/quality/evidence/acceptance.json`). |
 | Orphaned server processes | `pgrep` | 0 |
+
+---
+
+# Verification report — NeuroSciFi 0.6.0 (Web Cortex)
+
+- **Commit verified:** the final commit recorded in `docs/qa/REGRESSION_REPORT.md`, on `build/neuroscifi-v1`.
+- **Host:** NVIDIA DGX Spark (aarch64, 20 cores, GB10), Python 3.12.16, Node 26, system Chromium. No camera, microphone or handset.
+- **Scope:** Web Cortex (governed web research) and the user-acceptance (UAT) phase that followed. The 0.5.0 results above are unchanged.
+
+Every result comes from a run by the integrator or an independent tester. An agent's report is never the evidence. Full detail is in `docs/qa/`.
+
+## 9. Release verdict (0.6.0)
+
+| Area | Result |
+|---|---|
+| Quality gate (`bash scripts/check.sh`) | **PASS**: ruff clean; **1557 passed**, 6 skipped (opt-in live tests), 35 subtests; JavaScript 4/4; reproduction 8/8 bit-exact |
+| Browser end to end (`tests/e2e`) | **107 passed**, twice in a row (test_console 12, test_console_research 6, test_console_uat 26, test_pocket 13, test_pocket_research_e2e 9, test_pocket_uat 41) |
+| Acceptance (`nsf acceptance --all`, installed 0.6.0 wheel) | **7 of 7 pass** (simulated, ADR-014) |
+| Offline benchmark | Deterministic over 3 runs; all safety invariants hold (§10) |
+| Live scenarios A, B, C, D, E, F | Run and recorded; limits in §10 and `docs/web-cortex/TEST_RESULTS.md` |
+| Open critical or high defects | **0**. Open items are medium or lower policy decisions (§12) |
+| Deployment | **Not deployed.** Units are verified offline only (`systemd-analyze verify`, `install.sh --dry-run`) |
+
+The 6 skipped tests are the opt-in live-internet tests (`NSF_LIVE=1`); their live equivalents are the scenarios in `docs/web-cortex/TEST_RESULTS.md` §3.
+
+## 10. Web Cortex measurements
+
+Source: `docs/quality/evidence/webcortex_bench.json` against `webcortex_bench_baseline.json`. The corpus grew from 51 pages and 28 tasks to 70 pages (53 articles) and 38 tasks, so the comparison is **not** same-corpus.
+
+| Metric | Baseline | Final |
+|---|---|---|
+| Retrieval success | 0.90 | 1.00 |
+| Evidence coverage | 0.7619 | 0.875 |
+| Top answer correct | 0.50 | 0.6667 (top answer on-subject 14/14) |
+| Citation precision per cited source | not measured | 1.00 (legacy any-source 1.00 in both) |
+| Verification accuracy | 0.4545 | 0.75 (supported recall 0.4, disputed recall 1.0) |
+| True/false discrimination | not measured | 0/2 (open: undated-source rule) |
+| Contradiction detector F1 / end to end F1 | 0.9231 / 0.60 | 1.0 / 0.9231 |
+| Cross-subject merges, latest-version | not measured | 0, 2/2 |
+| Safety (SSRF, robots, limits, injection, budgets, cancel, crash-resume) | hold | hold; determinism identical across 3 runs |
+
+Live (real internet, bounded, one run each; `webcortex_live.json`, `webcortex_scenario_c.json`): scenarios A, B and E completed; D (monitor, two ticks) reported 0 meaningful changes at `abcd303` after the FR-03 fix, and state survived a reopen; Pocket Scenario F is described in `TEST_RESULTS.md` §3. Scenario C found 49 packages, 1 advisory (zod GHSA-mrhx-c7xc-m3w5, accepted risk), 9 newer releases and 0 unknown, and installed nothing. With the honest User-Agent the key-free search engines returned nothing, so discovery used structured APIs.
+
+## 11. User-acceptance testing and independent reviews
+
+| Round | What ran | Outcome |
+|---|---|---|
+| Independent reviews (architect, security, code) | Read-only reviews with probes | P0 x2 and P1 x14 found; **all P0 and P1 fixed** and re-probed (`DEFECT_RESOLUTION_LOG.md`, commit history) |
+| Discovery on RC1 | 6 workstreams on real processes, Chromium and the live internet | About 90 defects (Pocket, console, research, security, UX); the backend tester stalled and the integrator re-ran that scope |
+| Fix waves RC2 and RC3 | Fixes with regression tests that fail on the earlier commit | Nearly all RC1 defects pass on retest |
+| Retests R1, R2, R4 | Independent browser, live-research and final retesters (the R3 backend retester stalled; the integrator re-ran it) | R2 found 2 new high defects (Wikipedia evidence, location checks), fixed in RC3; R4 found medium and lower defects only |
+| Final fixes | Fixes for R4 findings and order-dependent races in the full suite | Fixed with regression tests |
+| Final regression | Gate, e2e, acceptance, reproducible build, migration from a 0.5.0 instance | See §9; schema 5 migrates to 7 and a newer schema is refused |
+
+Every critical and high defect is fixed and was independently re-verified. Accessibility (axe-core) reports 0 violations of any impact on every view at 390, 1024 and 1280 px.
+
+## 12. Open risks and what is not verified
+
+Open decisions (`docs/qa/PRODUCTION_READINESS.md` §3; defects OPEN-01 to OPEN-04 in `DEFECT_RESOLUTION_LOG.md`):
+- **R-1** Honest User-Agent: key-free search engines return nothing (ADR-032).
+- **R-2** Undated sources: true claims are often not confirmed (ADR-026).
+- **R-3** Lexical evidence reasoning with no model (ADR-022).
+- **R-4** Pocket research and autonomous research enlarge the attack surface; both are off by default.
+- **R-5** Accepted advisory in the loopback search daemon (zod, GHSA-mrhx-c7xc-m3w5).
+- **R-6** A package registry record alone can settle a release statement (ADR-033).
+
+Not verified here: physical phones and tablets, push notifications while Pocket is closed, systemd services under real hardening, a public TLS chain, screen readers, heavy concurrent load, and days-long autonomous operation. The simulated acceptance and fixture-web results are labelled as such.
+
+## 13. Where the evidence lives
+
+- `docs/qa/`: USER_JOURNEY_MATRIX, E2E_TEST_RESULTS, DEFECT_RESOLUTION_LOG, UX_VALIDATION, REGRESSION_REPORT, PRODUCTION_READINESS.
+- `docs/web-cortex/TEST_RESULTS.md` and `docs/quality/evidence/webcortex_*.json`.
+- Decisions ADR-021 to ADR-033 in `docs/architecture/ARCHITECTURAL_DECISIONS.md`.

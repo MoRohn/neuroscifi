@@ -43,5 +43,11 @@ Each task has one accountable owner, a completion check and a risk class (L, M o
 | W2.F | Benchmark corpus, live scenarios, TEST_RESULTS | executor (opus) | W1.D | test_bench.py; evidence JSON | M | DONE (849f7bf; baseline faea282) |
 | W3.R | Remediation from doc audit and benchmark (R1–R16) | executors (opus ×3) | W2 | regression tests fail on old code | H | DONE (df00137) |
 | W4.V | Independent reviews: architect, security, code | reviewers (opus) | W3.R | P0–P3 findings with probes | H | DONE (REJECT ×2, MEDIUM risk) |
-| W4.X | Review remediation lanes V1 (acquisition security), V2 (governance/orchestration), V3 (Pocket) | executors (opus ×3) | W4.V | probes re-run; regression tests | H | RUNNING |
-| W5.E | Evidence regenerated at the final commit; traceability; verification report | architect | W4.X | evidence `git_commit` = verified commit | M | TODO |
+| W4.X | Review remediation lanes V1 (acquisition security), V2 (governance/orchestration), V3 (Pocket) | executors (opus ×3) | W4.V | probes re-run; regression tests | H | DONE (all P0 and P1 fixed; `DEFECT_RESOLUTION_LOG.md`) |
+| W5.E | Evidence regenerated at the final commit; traceability; verification report | architect | W4.X | evidence regenerated; `VERIFICATION_REPORT` §9–13; benchmark and live JSON still record `git_dirty: true` (see `TEST_RESULTS.md` §5) | M | DONE |
+| U1 | UAT discovery on RC1: 6 workstreams on real processes, Chromium and the live internet | testers (6 parallel) | W5.E | `docs/qa/E2E_TEST_RESULTS.md` §2; about 90 defects logged; backend scope re-run by the integrator | H | DONE (RC1 `64da95b`) |
+| U2 | Fix wave RC2: evidence integrity, Pocket safety, console clarity, backend reliability | executors | U1 | each fix has a regression test that fails on the earlier commit | H | DONE (`cce5134`) |
+| U3 | Retests R1 (browser), R2 (live research), R4 (final); R3 (backend) stalled and was re-run by the integrator | independent retesters | U2 | `E2E_TEST_RESULTS.md` §3–5; R2 found 2 new high defects | H | DONE |
+| U4 | Fix wave RC3: Wikipedia evidence, location checks, verdict consistency, ranking | executors | U3 | regression tests; R4 retest of RT-W-01 and RT-W-02 passes | H | DONE (`d7e1bee`) |
+| U5 | Final fixes: release questions, remembered disputes, Pocket timing defects (RT4-01…06, OBS-01/02, FR-01/02) | executors | U3, U4 | regression tests; full suite free of order-dependent failures | M | DONE (`4eeaed1`) |
+| U6 | Final regression: gate, e2e (twice), acceptance from the installed wheel, reproducible build, 0.5.0 migration; QA deliverables in `docs/qa/` | integrator | U5 | `docs/qa/REGRESSION_REPORT.md`; check.sh green, e2e 107 passed twice, acceptance 7/7 | M | DONE (final commit recorded in `REGRESSION_REPORT.md`) |
