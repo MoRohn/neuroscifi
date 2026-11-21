@@ -487,7 +487,9 @@ class ProviderRegistry:
                     lists.append((qi, provider.name, engine, group))
         return done
 
-    def search(self, plan: QueryPlan, *, budget, usage, per_query: int = 8) -> SearchOutcome:
+    def search(self, plan: QueryPlan, *, budget, usage, per_query: int = 8, sent=None) -> SearchOutcome:
+        """`sent`, when given, is called after each query is charged and before it is dispatched (the orchestrator
+        persists the usage there, so a worker killed mid-search leaves every search it sent counted: T5-07)."""
         per_query = max(1, min(int(per_query), 20))
         attempts: list[dict] = []
         failures: list[dict] = []
@@ -513,6 +515,8 @@ class ProviderRegistry:
                     failures.append({"provider": None, "engine": None, "query": query.text, "ok": False, "n": 0,
                                      "error": f"budget_exhausted: {exc}", "latency": 0.0})
                     break
+                if sent is not None:
+                    sent()
                 providers = self._candidates(query)
                 if not providers:
                     failures.append({"provider": None, "engine": None, "query": query.text, "ok": False, "n": 0,

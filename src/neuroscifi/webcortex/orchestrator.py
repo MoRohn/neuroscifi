@@ -681,7 +681,7 @@ class _Run:
             except _OutOfTime:
                 self.limit("time budget exhausted before searching")
                 break
-            outcome = self.services.registry.search(plan, budget=self.budget, usage=self.usage)
+            outcome = self.services.registry.search(plan, budget=self.budget, usage=self.usage, sent=self.save)
             self.renew()
             seen = {r["url"] for r in results}
             results += [r.to_json() for r in outcome.results if r.url not in seen]

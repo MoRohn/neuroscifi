@@ -191,6 +191,24 @@ def test_resume_after_a_crash_at_reading_uses_cached_documents(individual, site,
     assert "resumed" in [e["kind"] for e in state.events(db, task["id"])]
 
 
+def test_a_search_is_charged_when_it_is_sent_not_when_it_returns(individual, site, monkeypatch):
+    """T5-07: a worker killed while searching left the searches it had sent uncounted (7 sent, 4 counted)."""
+    from neuroscifi.webcortex import search
+    db, path = individual
+    task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+
+    def killed(self, *args, **kwargs):
+        raise Crash()          # the worker dies while the charged query is in flight
+
+    monkeypatch.setattr(search.ProviderRegistry, "_round", killed)
+    services = build(db, path, site)
+    with pytest.raises(Crash):
+        orchestrator.run(db, task["id"], services)
+    services.close()
+    crashed = state.task(db, task["id"])
+    assert crashed["usage"]["queries"] == 1 and crashed["checkpoint"]["usage"]["queries"] == 1
+
+
 def test_page_budget_allows_exactly_one_fetch(individual, site):
     db, path = individual
     task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification", budget={"max_pages": 1})
