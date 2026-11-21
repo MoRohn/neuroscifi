@@ -177,3 +177,63 @@ The cases that changed among the original 16: F08 (Kestrel's creator: the offici
 - Attribution detection covers English cue phrases and a fixed list of wire services.
 - Compatibility checking reads `requires_python` specifiers only (`==`, `!=`, `>=`, `<=`, `>`, `<`, `~=`, `.*`). Other markers are unknown, and an unknown marker is never read as support.
 - Consolidation into knowledge uses these rules too (KNOWLEDGE_EVOLUTION §2), so a stable fact supported by two undated sources can become provisional knowledge. The stored `web_knowledge.confidence` is still the cluster score; the ADR-035 posterior is in `verification.confidence`. Rows consolidated before migration 8 passed the ADR-026 bar and record `{"policy": "ADR-026"}`.
+
+## 11. UAT RC1 fixes: what can contradict, what is support, what dates a source
+
+Defects T1-01, T1-05, T1-09, T1-12/T1-14, T1-13, T1-16, T1-18 and T1-19 of the RC1 UAT report. Every fix has a regression test that reproduces the reported case.
+
+**Contradictions are scoped (T1-01; `claims.conflict`).** Two statements conflict only when they are about the same subject and attribute:
+
+| Rule | Code | Reported case |
+|---|---|---|
+| A year is compared with a full date by year, and agrees with any date inside that year | `text._group_conflict` | "released in 2008" vs "released on December 3, 2008" |
+| Two versions of one named product are two subjects, unless either sentence states a one-valued slot (latest, newest, current, most recent, first, initial). A sentence without its own version takes its page title's version | `claims.versioned_subject`, `different_versions` | NumPy 2.5.5 vs 2.5.2 release notes; "12 vs 16 people contributed to this release"; Python 3.0 vs Python 2.0 |
+| Academic records that share a title but carry different identifiers in one scheme (DOI, arXiv id, PMID, OpenAlex id) are two records | `claims.same_identity` | two Qeios "Review of: ..." records; a 2000 conference paper and its 2004 journal version |
+| A pre-positive denial ("does not support X") contradicts only a statement that asserts at least 2 of the first 3 content words after the cue (`DENIAL_MATCH` of `DENIAL_TERMS`). It does not contradict a statement that denies the same word by a prefix. A post-positive cue ("is false", "was debunked") behaves as before | `claims._denies_same` | "not completely backward-compatible" vs "backwards-incompatible" |
+| Figures conflict only when the two sentences' subject phrases overlap. If neither sentence names a subject, their phrases share no word, and one's head noun is absent from the other, they are about different things | `claims._different_things` | cerebral cortex 14–16 billion vs human brain 100 billion |
+| One document is not pitted against itself: a sentence that conflicts with its own page's representative is related, not a contradiction | `claims.bearing` | two sentences of one abstract; two label definitions on one changelog page |
+
+The bench's contradiction pairs are unchanged in both measures: the detector scores P/R 1.0/1.0 and end to end 1.0/0.857. The one-valued-slot exception keeps C3 (Quillstream 4.2.0 vs 3.9 "latest") a conflict, and the shared version keeps C4 (Nimbus-OS 5 kernel 6.14 vs 6.12) a conflict.
+
+**A reported belief is not support (T1-16).** `claims.asserted_text` (formerly `synthesis._asserted`) also drops clauses with "was/were believed (thought, assumed, presumed, supposed) to", "purportedly", "supposedly", "allegedly", "reputedly" and "often viewed/regarded as". `claims.asserted_values` drives value agreement and conflict in clusters, and the fact check reads the same text. "For half a century, the human brain was believed to contain about 100 billion neurons" is therefore neither support for nor a contradiction of 100 billion. A negation whose scope contains the statement's own figure ("does not contain 100 billion neurons") contradicts the statement. A contradiction's "newer value may supersede" leaning is given only for time-varying facts: the question's class ages evidence, or the statement is time-sensitive.
+
+**Dates (T1-05, T1-19).**
+- **Wikipedia revision times.** A Wikipedia article's latest revision time, and a search hit's timestamp, become the document's `modified_at` (`modified_source` `wikipedia:revision`). They never become `published_at`.
+- **Pages with only a modification date.** A page whose only date is its own dateModified, article:modified_time or og:updated_time keeps that date as `modified_at` and stays undated. This supersedes the RC2 L5 "best available date" rule.
+- **Future dates.** A publication date more than a day after the document was read is set aside as `future_published_at` with a `date_note` (`temporal.settle_publication_date`, applied to every page and API document the orchestrator reads).
+- **Effect.** None of these dates counts for freshness or for verification. Report sources carry `modified_at`, `modified_source` and `date_note`, and the console shows "Last edited … (not a publication date)".
+
+**Encyclopedias are tertiary (T1-12/T1-14).** Claims read from Wikipedia carry `source_type` `"tertiary"`, which weighs as a secondary page and is never primary. An encyclopedia is not an academic source, so it does not make a statement `scientific`. The methodology table lists it as `encyclopedia` with no year.
+
+**The reasoning guard (T1-09, T1-13; `reasoning.check_sentence`).**
+- **Caveats pass.** These assert no fact and need no supported claim: an insufficiency statement after a discourse marker ("However, the evidence does not state whether …"), "X is not (directly) evaluated in the available evidence" and "Gaps include …".
+- **Speculation fails.** A prediction ("will", "likely", "may soon") does not hedge an unsupported claim. A speculative sentence that names something no cited claim or source title names ("may enhance NeuroSciFi's capacity …") is rejected.
+- **Inline ids are normalised.** Citation markup in the text ("[1]", "(C3, sources 4)", "As C1 states") is stripped, and its ids are checked like the listed ones, so it no longer fails the number check.
+- **Noun "reports".** A noun "reports" ("amid reports of …") no longer hedges a single-source figure.
+
+**Knowledge versions (T1-18).** `evolution.changes` versions carry `valid_from` and `valid_until` at the top level, as well as under `times`.
+
+**Fixture change (P39 gold).**
+
+| Page | Old gold | New gold | Reason |
+|---|---|---|---|
+| P39 (oldblog.example, dated only by `og:updated_time` epoch 1663021219) | publication date 2022-09-12 (RC2 L5: a page's modification date is its best available date) | no publication date; `modified_at` 2022-09-12 (`gold_published: None`, `gold_modified`) | ADR-035 / T1-05 policy change: an update time is never a publication date. This corrects a label that encoded the superseded rule; it is not score-chasing. The page's markup is unchanged |
+
+No other gold label was changed.
+
+**Benchmark (`nsf web bench --repeat 3`, offline, 2026-11-21).** "Before" is the RC1 tree with the five core-fix commits; "after" is this change.
+
+| Metric | Before | After, old P39 gold | After, new P39 gold |
+|---|---|---|---|
+| Verdict accuracy (legacy) / verification states | 29/29 / 29/29 | 29/29 / 29/29 | 29/29 / 29/29 |
+| Contradiction detector P/R | 1.0 / 1.0 | 1.0 / 1.0 | 1.0 / 1.0 |
+| Contradiction end-to-end P/R | 1.0 / 0.857 | 1.0 / 0.857 | 1.0 / 0.857 |
+| Citation precision | 206/207 | 206/207 | 206/207 |
+| Freshness compliance | 8/8 | 8/8 | 8/8 |
+| Date extraction | 61/61 | 60/61 (P39 undated) | 61/61 |
+| UAT dating (P39, P40) | 2/2 | 1/2 | 2/2 (P39 modified_at checked) |
+| Retrieval / evidence coverage / answer top | 12/12 / 21/24 / 9/12 | unchanged | unchanged |
+| Latest version correct; L01 older version in the answer | 2/2; "2.5.4" listed | 2/2; none | 2/2; none |
+| Fact-check discrimination, memory, safety | 2/2, 1.0/1.0, hold | unchanged | unchanged |
+
+All 3 runs were identical. The "old gold" column was measured with `--repeat 1` before the gold change; every other metric in that run was identical to "after". The L01 change is a side effect of P39 becoming undated: the top answer is still "Corvane 2.5.5 … is the latest stable release", and the older 2.5.4 no longer appears in the answer.

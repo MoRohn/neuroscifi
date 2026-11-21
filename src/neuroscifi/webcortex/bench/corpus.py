@@ -8,7 +8,8 @@ system's output.
 Contents
 - ARTICLES      61 article pages in five layouts (news, blog, docs, wiki, legacy tables) with realistic page chrome
                 (navigation, cookie banners, sidebars, comments, footers). `paras` is the gold main text used to
-                score extraction; `date` the gold publication date (None = undated); SUBJECT the gold subject.
+                score extraction; `date` the page's date (gold publication date unless `gold_published` overrides it: None =
+                undated; `gold_modified` the gold modification date); SUBJECT the gold subject.
                 P36-P53 reproduce the RC1 UAT defect classes: two releases of one package (latest must win), a code
                 literal `verify=False`, og:updated_time in epoch seconds vs an HTTP Last-Modified-only page, three
                 languages sharing "is a general-purpose programming language", two papers from one record template,
@@ -39,6 +40,12 @@ from ..fixtureweb import FixtureWeb
 T0 = 1_795_176_000.0                       # 2026-11-20T12:00:00Z, the benchmark's "now"
 DAY = 86400.0
 JS_TEXT = "The Kestrel playground lets you run Kestrel 2.0 programs directly in the browser."
+
+
+def gold_published(article: dict) -> float | None:
+    """The gold publication date of an article page: `gold_published` when the page states it separately from the
+    date it renders (P39: an og:updated_time page has no publication date), else `date`."""
+    return epoch(article["gold_published"]) if "gold_published" in article else epoch(article["date"])
 
 
 def epoch(iso: str | None) -> float | None:
@@ -296,7 +303,9 @@ _A = [
          "Connection pooling in Corvane is controlled by the pool_size and pool_timeout settings.",
          "A pool_size of twice the number of CPU cores is a reasonable starting point.",
          "Corvane connection pooling recycles idle connections after five minutes by default."],
-     {"last_modified": 3600}),
+     # gold changed in v0.7.0 RC1 (T1-05, ADR-035 dating policy): og:updated_time is an update time, so the page
+     # has no publication date; its modified_at is the og:updated_time value. `date` still renders the meta tag.
+     {"last_modified": 3600, "gold_published": None, "gold_modified": "2022-09-12T22:20:19Z"}),
     ("P40", "mirrorsite.example", "/corvane-pooling-notes", "docs", "Corvane pooling notes", None, "last_modified", [
          "These notes on Corvane connection pooling were copied from an older wiki.",
          "Corvane connection pooling keeps at most pool_size open connections per host.",

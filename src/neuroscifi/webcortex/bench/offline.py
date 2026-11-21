@@ -347,7 +347,7 @@ class _Bench:
                                                   sum(1 for i in items if i["disclosure_required"]))}
 
     def date_accuracy(self):
-        gold = {canon(a["url"]): C.epoch(a["date"]) for a in C.ARTICLES}
+        gold = {canon(a["url"]): C.gold_published(a) for a in C.ARTICLES}
         seen, rows = set(), []
         for rec in self.records:
             for s in rec["report"].get("sources") or []:
@@ -994,15 +994,22 @@ class _Bench:
                 article = C.BY_ID[page]
                 header = C.T0 - article["last_modified"]
                 got = src.get("published_at")
-                gold = C.epoch(article["date"])
+                gold = C.gold_published(article)
+                modified_ok = True
+                if article.get("gold_modified"):       # the page's own update time is kept as modified_at
+                    want, have = C.epoch(article["gold_modified"]), src.get("modified_at")
+                    modified_ok = have is not None and abs(want - have) <= C.DAY
                 rows.append({"page": page, "date_via": article["date_via"], "gold": gold, "extracted": got,
-                             "correct": (gold is None and got is None) or (gold is not None and got is not None and
-                                                                          abs(gold - got) <= C.DAY),
+                             "modified_at": src.get("modified_at"),
+                             "correct": modified_ok and ((gold is None and got is None) or
+                                                         (gold is not None and got is not None and
+                                                          abs(gold - got) <= C.DAY)),
                              "dated_from_last_modified": got is not None and abs(got - header) <= C.DAY})
         return {"pages": len(rows), "correct": sum(r["correct"] for r in rows),
                 "dated_from_last_modified": sum(r["dated_from_last_modified"] for r in rows), "rows": rows,
                 "definition": "pages whose only date-like signal besides og:updated_time (epoch) is the HTTP "
-                              "Last-Modified header: the publication date must come from the page, never the header"}
+                              "Last-Modified header: the publication date must come from the page, never the header; "
+                              "og:updated_time is the page's modified_at, never its publication date (T1-05)"}
 
     def _package_routing(self, recs):
         rows = []
