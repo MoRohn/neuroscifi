@@ -1792,12 +1792,16 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
 
     # freshness and liveness over cited sources
     cited = sources.cited_docs()
-    stamps = [t for t in (_fresh_ts(d) for d in cited) if t is not None]
+    # newest_source_at is a publication date (a registry record's release upload time), never a fetch time (R1-03);
+    # a registry record read live still makes the registry state fresh (observed_at)
+    stamps = [d.published_at for d in cited if d.published_at is not None]
     newest = max(stamps) if stamps else None
+    observed = [d.retrieved_at for d in cited if _observed_live(d) and d.retrieved_at is not None]
     satisfied = any(temporal.window_ok(_fresh_ts(d), required, now) for d in cited)
     live = any(d.retrieval_mode in LIVE_MODES for d in cited)
     freshness = {"class": cls, "window_seconds": window, "ttl_seconds": class_ttl, "required_seconds": required,
-                 "satisfied": bool(satisfied), "newest_source_at": newest}
+                 "satisfied": bool(satisfied), "newest_source_at": newest,
+                 "observed_at": max(observed) if observed else None}
 
     limitations: list[str] = []
     for f in failures:
@@ -1916,8 +1920,10 @@ def _lead(documents, usable, ranked, satisfied, newest, required, now, live, cit
             f"{'s' if len(usable) != 1 else ''} had usable evidence; the top statement is {status} "
             f"({agreeing} agreeing independent source group{'s' if agreeing != 1 else ''} of "
             f"{top.independent_sources}).")
-    if satisfied:
+    if satisfied and newest is not None:
         text += f" Newest cited source: {temporal.describe_age(newest, now)}."
+    elif satisfied:
+        text += " The cited registry records were read live."
     else:
         text += f" No cited source is dated within the required {_span(required)}; these statements may be out of date."
     if cited and not live:

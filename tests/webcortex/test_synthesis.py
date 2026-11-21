@@ -240,7 +240,23 @@ def test_live_encyclopedia_record_does_not_make_a_this_week_question_fresh():
     pypi = doc("https://pypi.org/project/hera/", "", kind="api", mode="api", published=ts(2026, 3, 1),
                metadata={"provider": "pypi", "package": "hera", "latest": "1.0.0", "released_at": ts(2026, 3, 1)})
     r = run("What is the latest hera release this week?", [pypi], week)
-    assert r["freshness"]["satisfied"] is True and r["freshness"]["newest_source_at"] == NOW - 60
+    # R1-03 (RC2 retest): newest_source_at is shown as "published"; a registry record is published at its release
+    # upload time (it was the fetch time, NOW - 60). Its live reading still makes the registry state fresh.
+    assert r["freshness"]["satisfied"] is True and r["freshness"]["newest_source_at"] == ts(2026, 3, 1)
+    assert r["freshness"]["observed_at"] == NOW - 60
+
+
+def test_newest_cited_source_is_the_publication_date_never_the_fetch_time():
+    """R1-03 (RC2 retest r1): "Newest cited source: published 2026-11-21 (within the last hour)" was the PyPI fetch
+    time; numpy 2.5.5 was uploaded on 2026-11-15."""
+    uploaded = NOW - 5 * D
+    pypi = doc("https://pypi.org/project/numpy/", "", kind="api", mode="api", published=uploaded,
+               metadata={"provider": "pypi", "package": "numpy", "latest": "2.5.5", "released_at": uploaded})
+    r = run("Was numpy 2.5.5 released?", [pypi], {"mode": "technical", "freshness_class": "release",
+                                                  "packages": [{"ecosystem": "PyPI", "name": "numpy"}]})
+    assert r["freshness"]["newest_source_at"] == uploaded and r["freshness"]["satisfied"] is True
+    lead = r["answer"][0]["text"]
+    assert "Newest cited source: 5 days ago" in lead and "just now" not in lead, lead
 
 
 def test_synthesize_threads_ttl_overrides():
