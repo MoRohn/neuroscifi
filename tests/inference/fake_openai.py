@@ -5,6 +5,10 @@
   {"tool_calls": [{"name": ..., "arguments": "json text"}]}
   {"status": 503, "headers": {...}, "body": {...}}   an HTTP error
   {"delay": seconds, ...}                   sleep before answering (timeouts)
+  {"body": <any JSON>}  (no status)          that JSON as the 200 answer (malformed shapes)
+  {"sse": [bytes, ...]}                      these raw stream lines, then the connection closes
+  {"drip": seconds, ...}                     the answer's body (or stream) written one byte per `seconds`;
+                                             with "drip_headers": true the status line and headers too
 An empty queue answers {"content": "ok"}. Every request body is kept in `requests`.
 """
 from __future__ import annotations
@@ -17,6 +21,25 @@ import time
 from neuroscifi.inference import config as iconfig
 from neuroscifi.inference.gateway import Gateway
 from neuroscifi.inference.ledger import Ledger
+
+
+class _Drip:
+    """A response writer that sends one byte at a time (a server that keeps every read alive but never finishes)."""
+
+    def __init__(self, raw, delay):
+        self.raw, self.delay = raw, delay
+
+    def write(self, data):
+        try:
+            for b in bytes(data):
+                self.raw.write(bytes([b]))
+                self.raw.flush()
+                time.sleep(self.delay)
+        except OSError:
+            pass
+
+    def flush(self):
+        pass
 
 
 class FakeOpenAI:
@@ -43,6 +66,8 @@ class FakeOpenAI:
                 for k, v in (headers or {}).items():
                     self.send_header(k, v)
                 self.end_headers()
+                if getattr(self, "drip", None):
+                    self.wfile = _Drip(self.wfile, self.drip)
                 self.wfile.write(data)
 
             def do_GET(self):
@@ -70,6 +95,19 @@ class FakeOpenAI:
                 if "status" in reply:
                     return self._json(reply["status"], reply.get("body", {"error": {"message": "fake error"}}),
                                       reply.get("headers"))
+                if "body" in reply:
+                    return self._json(200, reply["body"])
+                if "sse" in reply:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.end_headers()
+                    for line in reply["sse"]:
+                        self.wfile.write(line)
+                    self.close_connection = True
+                    return
+                self.drip = reply.get("drip")
+                if self.drip and reply.get("drip_headers"):
+                    self.wfile, self.drip = _Drip(self.wfile, self.drip), None
                 content = reply.get("content")
                 calls = [{"id": f"call_{i}", "type": "function",
                           "function": {"name": c["name"], "arguments": c["arguments"]}}
@@ -80,10 +118,15 @@ class FakeOpenAI:
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
                     self.end_headers()
+                    if self.drip:
+                        self.wfile = _Drip(self.wfile, self.drip)
 
                     def send(obj):
-                        self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
-                        self.wfile.flush()
+                        try:
+                            self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
+                            self.wfile.flush()
+                        except OSError:   # the client stopped reading (deadline, output cap)
+                            pass
                     text = content or ""
                     pieces = [text[i:i + 7] for i in range(0, len(text), 7)]
                     for piece in pieces:
@@ -95,7 +138,11 @@ class FakeOpenAI:
                     send({"model": body.get("model"), "choices": [{"index": 0, "delta": {},
                                                                    "finish_reason": "tool_calls" if calls else "stop"}]})
                     send({"model": body.get("model"), "choices": [], "usage": usage})
-                    self.wfile.write(b"data: [DONE]\n\n")
+                    send_raw = getattr(self.wfile, "write")
+                    try:
+                        send_raw(b"data: [DONE]\n\n")
+                    except OSError:
+                        pass
                     return
                 message = {"role": "assistant", "content": content}
                 if calls:

@@ -14,7 +14,8 @@ Gateway(cfg, key=..., ledger=...):
 Every call: the endpoint guard (local-first, see config.py; the connection goes to the address the check resolved,
 with the configured host in Host/SNI), the off-host privacy screen, a context budget check
 (estimate of prompt + max_tokens <= cfg.max_context_tokens; else 'context_overflow' before anything is sent),
-a connect timeout and a whole-call deadline (cfg.read_timeout, streaming included), bounded retries with
+a connect timeout and a whole-call deadline (cfg.read_timeout, streaming included; enforced across reads, so a
+server dripping bytes cannot stretch it), shape-checked answers ('bad_response', never an exception), bounded retries with
 exponential backoff for connection errors, 429 and 502-504 (Retry-After honoured up to 10 s; a stream is never
 retried after its first byte), and one ledger row (tokens, latency, first-token latency, attempts; no text).
 A streaming call is also registered in presence.activity while it runs (purpose, task id, streamed token count;
@@ -30,6 +31,7 @@ import json
 import math
 import re
 import socket
+import threading
 import time
 from urllib.parse import urlsplit
 
@@ -43,6 +45,7 @@ ERROR_CODES = ("not_configured", "remote_not_authorised", "private_blocked", "un
 RETRY_STATUS = (429, 502, 503, 504)
 MAX_RESPONSE = 8 * 1024 * 1024
 MAX_RETRY_AFTER = 10.0
+MAX_CHARS_PER_TOKEN = 6        # output cap when the endpoint ignores max_tokens (see chat)
 CHARS_PER_TOKEN = 3.5          # conservative for English and code with BPE tokenizers (Qwen3 ~3.8-4.2)
 MESSAGE_OVERHEAD = 6
 AUTHORIZED_DISCLOSURE = "owner-approved-disclosure"   # same words as webcortex.orchestrator
@@ -104,6 +107,18 @@ def _content_text(content) -> str:
     if isinstance(content, list):
         return " ".join(str(p.get("text", "")) for p in content if isinstance(p, dict))
     return "" if content is None else str(content)
+
+
+def _text(value) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _usage(value) -> dict:
+    """Token counts from a usage object; anything that is not a non-negative integer is unknown (None)."""
+    if not isinstance(value, dict):
+        return {}
+    return {k: v for k in ("prompt_tokens", "completion_tokens")
+            if isinstance(v := value.get(k), int) and not isinstance(v, bool) and v >= 0}
 
 
 def strip_thinking(text: str) -> str:
@@ -250,6 +265,19 @@ class Gateway:
         if payload is not None:
             body = json.dumps(payload).encode()
             headers["Content-Type"] = "application/json"
+        # The socket timeout bounds each read; status line and headers dripped a byte at a time would keep every
+        # read alive, so a watchdog shuts the socket at the deadline (the body is bounded per read in _chunk).
+        fired = []
+
+        def watchdog():
+            fired.append(True)
+            try:
+                conn.sock.shutdown(socket.SHUT_RDWR)
+            except (OSError, AttributeError):
+                pass
+        timer = threading.Timer(max(0.05, remaining), watchdog)
+        timer.daemon = True
+        timer.start()
         try:
             conn.request(method, parts.path.rstrip("/") + path, body=body, headers=headers)
             resp = conn.getresponse()
@@ -258,7 +286,14 @@ class Gateway:
             raise InferenceError("timeout", "no answer within the deadline") from None
         except (OSError, http.client.HTTPException) as exc:
             conn.close()
+            if fired:
+                raise InferenceError("timeout", "no answer within the deadline") from None
             raise InferenceError("unavailable", f"connection failed: {type(exc).__name__}", retryable=True) from None
+        finally:
+            timer.cancel()
+        if fired:
+            conn.close()
+            raise InferenceError("timeout", "no answer within the deadline")
         return conn, resp
 
     def _call(self, method, path, payload=None, *, timeout=None, retries=None):
@@ -272,9 +307,15 @@ class Gateway:
                 conn, resp = self._open(method, path, payload, deadline - self.clock())
                 if 200 <= resp.status < 300:
                     return conn, resp, attempts, deadline
-                raw = resp.read(65536)
-                conn.close()
-                raise self._http_error(resp, raw)
+                raw = bytearray()
+                try:
+                    while len(raw) < 65536 and (chunk := self._chunk(conn, resp, deadline, "error body too slow")):
+                        raw += chunk
+                except InferenceError:
+                    pass       # the status says enough; a dripping error body is not waited for
+                finally:
+                    conn.close()
+                raise self._http_error(resp, bytes(raw[:65536]))
             except InferenceError as err:
                 err.attempts = attempts
                 if not err.retryable or attempts > retries:
@@ -312,15 +353,11 @@ class Gateway:
                               retry_after=retry_after)
 
     def _json(self, method, path, payload=None, *, timeout=None, retries=None):
-        conn, resp, attempts, _ = self._call(method, path, payload, timeout=timeout, retries=retries)
+        conn, resp, attempts, deadline = self._call(method, path, payload, timeout=timeout, retries=retries)
         try:
-            raw = resp.read(MAX_RESPONSE + 1)
-        except (socket.timeout, TimeoutError):
-            raise InferenceError("timeout", "the answer did not arrive within the deadline") from None
+            raw = self._body(conn, resp, deadline)
         finally:
             conn.close()
-        if len(raw) > MAX_RESPONSE:
-            raise InferenceError("bad_response", "answer larger than 8 MiB")
         try:
             return loads(raw), attempts
         except ValueError:
@@ -400,6 +437,8 @@ class Gateway:
             payload["response_format"] = response_format
         if self.cfg.thinking != "default":
             payload["chat_template_kwargs"] = {"enable_thinking": self.cfg.thinking == "on"}
+        # A server that ignores max_tokens cannot hand back more than the cap allows (generous: ~6 chars a token).
+        max_chars = max_tokens * MAX_CHARS_PER_TOKEN
         start = self.clock()
         row = {"at": self.wall(), "purpose": purpose, "model": model, "locality": where, "stream": stream,
                "task_id": self.task_id}
@@ -412,9 +451,11 @@ class Gateway:
                 conn, resp, attempts, deadline = self._call("POST", "/chat/completions", payload, timeout=timeout)
                 try:
                     if stream:
-                        result = self._read_stream(resp, deadline, start, on_delta, count)
+                        result = self._read_stream(conn, resp, deadline, start, on_delta, count, max_chars)
                     else:
-                        result = self._read_once(resp)
+                        result = self._read_once(conn, resp, deadline)
+                        if len(result.text) > max_chars:   # the endpoint ignored max_tokens
+                            result.text, result.finish_reason = result.text[:max_chars], "length"
                 finally:
                     conn.close()
         except InferenceError as err:
@@ -438,54 +479,115 @@ class Gateway:
             except Exception:   # accounting must never break an answer
                 pass
 
-    def _read_once(self, resp) -> ChatResult:
+    def _chunk(self, conn, resp, deadline, message):
+        """At most 64 KiB of the body, waiting no later than `deadline`: the socket timeout bounds one read, the
+        deadline bounds them all (a server dripping one byte per second never times a single read out)."""
+        left = deadline - self.clock()
+        if left <= 0:
+            raise InferenceError("timeout", message)
+        if conn.sock is not None:
+            conn.sock.settimeout(max(0.05, left))
         try:
-            raw = resp.read(MAX_RESPONSE + 1)
+            return resp.read1(65536)
         except (socket.timeout, TimeoutError):
-            raise InferenceError("timeout", "the answer did not arrive within the deadline") from None
+            raise InferenceError("timeout", message) from None
+        except (OSError, http.client.HTTPException) as exc:
+            if self.clock() >= deadline:
+                raise InferenceError("timeout", message) from None
+            raise InferenceError("unavailable", f"answer broken: {type(exc).__name__}") from None
+
+    def _body(self, conn, resp, deadline) -> bytes:
+        raw = bytearray()
+        while chunk := self._chunk(conn, resp, deadline, "the answer did not arrive within the deadline"):
+            raw += chunk
+            if len(raw) > MAX_RESPONSE:
+                raise InferenceError("bad_response", "answer larger than 8 MiB")
+        return bytes(raw)
+
+    def _read_once(self, conn, resp, deadline) -> ChatResult:
+        raw = self._body(conn, resp, deadline)
         try:
             data = loads(raw)
             choice = data["choices"][0]
             message = choice.get("message") or {}
         except (ValueError, KeyError, IndexError, TypeError, AttributeError):
             raise InferenceError("bad_response", "unexpected chat completion shape") from None
-        usage = data.get("usage") or {}
-        return ChatResult(text=message.get("content") or "", model=data.get("model") or "",
-                          finish_reason=choice.get("finish_reason"), tool_calls=list(message.get("tool_calls") or []),
+        if not isinstance(message, dict):
+            raise InferenceError("bad_response", "unexpected chat completion shape: message is not an object")
+        content = message.get("content")
+        if isinstance(content, list):
+            content = _content_text(content)
+        if content is not None and not isinstance(content, str):
+            raise InferenceError("bad_response", "unexpected chat completion shape: content is not text")
+        calls = message.get("tool_calls") or []
+        if not isinstance(calls, list) or not all(isinstance(c, dict) for c in calls):
+            raise InferenceError("bad_response", "unexpected chat completion shape: tool_calls is not a list of objects")
+        usage = _usage(data.get("usage"))
+        return ChatResult(text=content or "", model=_text(data.get("model")),
+                          finish_reason=_text(choice.get("finish_reason")) or None, tool_calls=list(calls),
                           prompt_tokens=usage.get("prompt_tokens"), completion_tokens=usage.get("completion_tokens"))
 
-    def _read_stream(self, resp, deadline, start, on_delta, count=None) -> ChatResult:
-        parts, calls, first, finish, usage, model = [], {}, None, None, {}, ""
+    def _lines(self, conn, resp, deadline):
+        """The stream's lines, each read no later than `deadline` (a line dripped byte by byte, never ending, is
+        cut off by the deadline like a stalled stream); a line over 8 MiB is refused."""
+        buf, eof = bytearray(), False
         while True:
-            if self.clock() > deadline:
-                raise InferenceError("timeout", "the stream did not finish within the deadline")
-            try:
-                line = resp.fp.readline(MAX_RESPONSE)
-            except (socket.timeout, TimeoutError):
-                raise InferenceError("timeout", "the stream stalled past the deadline") from None
-            except OSError as exc:
-                raise InferenceError("unavailable", f"stream broken: {type(exc).__name__}") from None
-            if not line:
-                break
+            nl = buf.find(b"\n")
+            if nl >= 0:
+                line = bytes(buf[:nl + 1])
+                del buf[:nl + 1]
+                yield line
+                continue
+            if eof:
+                if buf:
+                    yield bytes(buf)
+                return
+            if len(buf) > MAX_RESPONSE:
+                raise InferenceError("bad_response", "stream line larger than 8 MiB")
+            chunk = self._chunk(conn, resp, deadline, "the stream did not finish within the deadline")
+            if chunk:
+                buf += chunk
+            else:
+                eof = True
+
+    def _read_stream(self, conn, resp, deadline, start, on_delta, count=None, max_chars=None) -> ChatResult:
+        parts, calls, first, finish, usage, model, done, size = [], {}, None, None, {}, "", False, 0
+        capped = False
+        for line in self._lines(conn, resp, deadline):
             line = line.strip()
             if not line.startswith(b"data:"):
                 continue
             data = line[5:].strip()
             if data == b"[DONE]":
+                done = True
                 break
             try:
                 chunk = loads(data)
             except ValueError:
                 raise InferenceError("bad_response", "unparsable stream chunk") from None
+            if not isinstance(chunk, dict):
+                raise InferenceError("bad_response", "stream chunk is not an object")
             if chunk.get("error"):
                 raise InferenceError("http_error", f"stream error: {str(chunk['error'])[:300]}")
-            model = chunk.get("model") or model
+            model = _text(chunk.get("model")) or model
             if chunk.get("usage"):
-                usage = chunk["usage"]
-            for choice in chunk.get("choices") or []:
+                usage = _usage(chunk["usage"])
+            choices = chunk.get("choices") or []
+            if not isinstance(choices, list):
+                raise InferenceError("bad_response", "stream choices is not a list")
+            for choice in choices:
+                if not isinstance(choice, dict):
+                    raise InferenceError("bad_response", "stream choice is not an object")
                 delta = choice.get("delta") or {}
+                if not isinstance(delta, dict):
+                    raise InferenceError("bad_response", "stream delta is not an object")
                 text = delta.get("content")
+                if text is not None and not isinstance(text, str):
+                    raise InferenceError("bad_response", "stream content is not text")
+                if text and max_chars is not None and size + len(text) > max_chars:
+                    text, capped = text[:max(0, max_chars - size)], True   # the endpoint ignored max_tokens
                 if text:
+                    size += len(text)
                     if first is None:
                         first = round((self.clock() - start) * 1000, 1)
                     parts.append(text)
@@ -493,19 +595,31 @@ class Gateway:
                         count(1)
                     if on_delta is not None:
                         on_delta(text)
-                for tc in delta.get("tool_calls") or []:
+                tool_calls = delta.get("tool_calls") or []
+                if not isinstance(tool_calls, list) or not all(isinstance(tc, dict) for tc in tool_calls):
+                    raise InferenceError("bad_response", "stream tool_calls is not a list of objects")
+                for tc in tool_calls:
                     if first is None:
                         first = round((self.clock() - start) * 1000, 1)
                     if count is not None:
                         count(1)
-                    slot = calls.setdefault(tc.get("index", 0), {"id": None, "type": "function",
-                                                                 "function": {"name": "", "arguments": ""}})
-                    slot["id"] = tc.get("id") or slot["id"]
-                    fn = tc.get("function") or {}
+                    index, fn = tc.get("index", 0), tc.get("function") or {}
+                    if isinstance(index, bool) or not isinstance(index, int) or not isinstance(fn, dict) \
+                            or not all(isinstance(fn.get(k) or "", str) for k in ("name", "arguments")):
+                        raise InferenceError("bad_response", "stream tool call has an unexpected shape")
+                    slot = calls.setdefault(index, {"id": None, "type": "function",
+                                                    "function": {"name": "", "arguments": ""}})
+                    slot["id"] = _text(tc.get("id")) or slot["id"]
                     slot["function"]["name"] += fn.get("name") or ""
                     slot["function"]["arguments"] += fn.get("arguments") or ""
                 if choice.get("finish_reason"):
-                    finish = choice["finish_reason"]
+                    finish = _text(choice["finish_reason"]) or None
+            if capped:
+                finish = "length"
+                break
+        if not done and finish is None:
+            raise InferenceError("bad_response", "the stream ended before the model finished (no finish_reason "
+                                 "and no [DONE]); the partial answer is not used")
         return ChatResult(text="".join(parts), model=model, finish_reason=finish,
                           tool_calls=[calls[i] for i in sorted(calls)], prompt_tokens=usage.get("prompt_tokens"),
                           completion_tokens=usage.get("completion_tokens"), first_token_ms=first)
