@@ -1,14 +1,16 @@
 """Presence performance measurements in a real Chromium (docs/presence/PERFORMANCE_RESULTS.md).
 
-Writes measured numbers to docs/presence/perf/measurements.json; asserts only generous budgets so the suite stays
+Writes measured numbers to a temp file (docs/presence/perf/measurements.json only with NSF_UPDATE_PERF_DOCS=1); asserts only generous budgets so the suite stays
 stable on slower machines. Frame pacing comes from requestAnimationFrame timestamps recorded by the renderer;
 scripting per frame from the renderer's own performance.now() spans AND from the DevTools ScriptDuration metric;
 heap from Performance.getMetrics JSHeapUsedSize after a forced garbage collection.
 """
 import json
+import os
 from pathlib import Path
 import platform
 import re
+import tempfile
 import time
 
 import pytest
@@ -16,7 +18,9 @@ from playwright.sync_api import expect
 
 from test_presence import TOKEN, Spark, open_console
 
-OUT = Path(__file__).resolve().parents[2] / "docs" / "presence" / "perf" / "measurements.json"
+DOCS_OUT = Path(__file__).resolve().parents[2] / "docs" / "presence" / "perf" / "measurements.json"
+# The tracked docs file is rewritten only on request (NSF_UPDATE_PERF_DOCS=1); otherwise a scratch path is used.
+OUT = DOCS_OUT if os.environ.get("NSF_UPDATE_PERF_DOCS") == "1" else Path(tempfile.gettempdir()) / "nsf-presence-perf-measurements.json"
 
 
 def pct(values, q):

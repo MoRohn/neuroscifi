@@ -174,8 +174,16 @@ def test_voice_wer_and_mic_off_stops_capture(launch, tmp_path):
     try:
         page = launch(wav, console)
         start_session(page, "voice_in_text_out")
-        expect(page.locator(".nsfv-user.nsfv-final")).to_have_count(len(WER_SENTENCES), timeout=60_000)
-        heard = finals(page)[:len(WER_SENTENCES)]
+        # Live ASR/TTS may be shared with other runs: poll the final-transcript count up to a bounded 240 s.
+        deadline, seen = time.monotonic() + 240, []
+        while time.monotonic() < deadline:
+            seen = finals(page)
+            if len(seen) >= len(WER_SENTENCES):
+                break
+            page.wait_for_timeout(500)
+        assert len(seen) >= len(WER_SENTENCES), \
+            f"only {len(seen)} of {len(WER_SENTENCES)} final transcripts after 240 s: {seen}"
+        heard = seen[:len(WER_SENTENCES)]
         rows = [{"ref": r, "hyp": h, "wer": round(wer(r, h), 4)} for r, h in zip(WER_SENTENCES, heard)]
         ref_words = sum(len(r.split()) for r in WER_SENTENCES)
         errors = sum(wer(r, h) * len(r.split()) for r, h in zip(WER_SENTENCES, heard))
