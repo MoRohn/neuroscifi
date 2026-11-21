@@ -439,7 +439,7 @@ F4_GAPS = [       # "Gaps include ..." is no caveat
     "Gaps include the fact that numpy 2.5.5 is secure and recommended for all production users.",
     "Gaps remain small, numpy 2.5.5 is the most secure release ever shipped.",
 ]
-SEC_BYPASSES = F1_SPLIT
+SEC_BYPASSES = F1_SPLIT + F4_GAPS
 
 
 @pytest.mark.parametrize("cited", [True, False], ids=["cited", "uncited"])
@@ -458,6 +458,8 @@ REJECTED_CAVEATS = [
     ("No source states when the next Zephyr compiler release is planned.", [], [],
      "F1/F2: 'when' opens a new clause and only whether/if complements are caveats; the question asked for the "
      "latest version, not a release plan"),
+    ("Gaps include direct measurements of build times on ARM boards.", [3], ["C2"],
+     "F4: a list of gaps is the schema's 'gaps' field, never an answer sentence"),
 ]
 
 

@@ -219,8 +219,8 @@ _CLAUSE_SPLIT = re.compile(
     r"|\b(?:and|or)\s+(?=(?:is|are|was|were|has|have|had|will|would|can|could|may|might|must|should|does|do|did|it|"
     r"its|they|their|this|these|there|we|you|everyone|anyone|users?)\b)", re.IGNORECASE)
 _AND_NAME = re.compile(r"\b(?:and|or)\s+(?=[A-Z0-9])")        # "..., and NumPy 2.5.5 is ...": a new subject
-# T1-09: the same caveat after a discourse marker ("However, the evidence does not state whether ...") and a list of
-# gaps ("Gaps include ...") assert no fact.
+# T1-09: the same caveat after a discourse marker ("However, the evidence does not state whether ...") asserts no
+# fact. (F4: "Gaps include ..." is no caveat: gaps belong in the schema's "gaps" field, never in a sentence.)
 _DISCOURSE_LEAD = re.compile(r"^(?:however|but|still|that said|note that|notably|nevertheless|nonetheless|"
                              r"unfortunately|importantly|overall|also|in addition|in short|in summary|currently)\b"
                              r"\s*,?\s*", re.IGNORECASE)
@@ -229,10 +229,6 @@ _JOIN_LEAD = re.compile(r"^(?:and|or|as|so|which|who|whom|whose|whereas|but|howe
                         r"thus|hence|therefore|consequently|unless|until|then|when|where|yet)\b\s*,?\s*",
                         re.IGNORECASE)    # the conjunction that opened the clause (_CLAUSE_SPLIT)
 
-
-
-_GAPS_LIST = re.compile(r"^(?:the\s+)?(?:main\s+|remaining\s+|open\s+|knowledge\s+)?gaps?\s+(?:include|includes|are|"
-                        r"is|remain)\b", re.IGNORECASE)
 
 
 _PUNCT = " ,.;:()[]{}\u2014\u2013\u2012\u2015\u2026!?\"'\u201c\u201d\u2018\u2019-"
@@ -286,8 +282,6 @@ def gap_clause(clause: str) -> bool:
     clause = _DISCOURSE_LEAD.sub("", _JOIN_LEAD.sub("", clause.strip(" ,.;:")))
     if not clause:
         return False
-    if _GAPS_LIST.match(clause):
-        return True
     if _COUNTER.search(clause):
         return False
     raw = _WORD_RX.findall(clause.replace("’", "'"))
