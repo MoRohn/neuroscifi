@@ -317,9 +317,19 @@ def test_two_independent_sources_rule_is_coherent_across_verdict_and_consolidati
     dated = [doc("https://a.example/1", texts[0]), doc("https://b.example/2", texts[1])]
     v = run(claim, dated, assessment)["verdict"]
     assert v["label"] == "supported" and v["confidence"] == pytest.approx(two_dated, abs=1e-3)
+    # ADR-035 (replaces the ADR-026 verdict asserted here before v0.7.0): the 0.75 undated discount now applies
+    # only to scientific, numerical and comparative statements. A stable fact from one dated and one undated
+    # credible source is supported; a numerical one keeps the old 0.706 < 0.72 outcome.
     mixed = [dated[0], doc("https://b.example/2", texts[1], published=None)]
     v = run(claim, mixed, assessment)["verdict"]
-    assert v["label"] == "insufficient" and v["confidence"] == pytest.approx(dated_undated, abs=1e-3)
+    assert v["category"] == "stable" and v["label"] == "supported"
+    assert v["confidence"] == pytest.approx(two_dated, abs=1e-3)
+    count = "The Hera probe carries 2 cubesats with a combined mass of 12 kg."
+    counts = [doc("https://a.example/1", count), doc("https://b.example/2", "ESA's Hera probe carries 2 cubesats "
+                                                     "with a combined mass of 12 kg, the agency said.", published=None)]
+    v = run(count, counts, dict(assessment, claim=count))["verdict"]
+    assert v["category"] == "numerical" and v["label"] == "insufficient"
+    assert v["confidence"] == pytest.approx(dated_undated, abs=1e-3)
     assert run(claim, dated[:1], assessment)["verdict"]["label"] == "insufficient"         # one source
 
 
@@ -619,9 +629,12 @@ def test_a_dated_past_event_is_not_discounted_by_the_age_of_its_sources():
     both = [doc("https://herald.example/b", sentences[0], published=old),
             doc("https://wiki.example/b", sentences[1], published=old)]
     assert run(bridge, both, ask)["verdict"]["label"] == "supported"
+    # ADR-035 (replaces the ADR-026 behaviour asserted here before v0.7.0): a historical fact is not discounted
+    # for an undated credible source, so one dated and one undated source now support it
     mixed = [both[0], doc("https://wiki.example/b", sentences[1], published=None)]
     v = run(bridge, mixed, ask)["verdict"]
-    assert v["label"] == "insufficient" and v["confidence"] == pytest.approx(2.4 / 3.4, abs=1e-3)
+    assert v["category"] == "historical" and v["state"] == "supported" and v["basis"] == "corroboration"
+    assert v["label"] == "supported" and v["confidence"] == pytest.approx(2.6 / 3.6, abs=1e-3)
     # a statement about a date still ahead is a plan, and plans go stale: the age discount applies
     plan = "Quillstream 5.0.0 is released on 2 March 2027"
     plans = [doc("https://q.example/p", "Quillstream 5.0.0 is released on 2 March 2027, the roadmap says.",

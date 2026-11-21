@@ -35,6 +35,7 @@ MAX_CONTRADICTION_PAIRS         bound on listed contradiction pairs per cluster
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import enum
 import functools
 import hashlib
 import math
@@ -78,6 +79,123 @@ HARD_LINE_KINDS = ("page", "feed", "api")     # document kinds whose line breaks
 NOTABLE_PER_PAGE = 5                          # salience extraction: notable statements kept per page (W-19)
 SALIENT_WORDS = (10, 40)                      # sentence length band that informativeness() rates highest
 SALIENCE_HALF = 2.0                           # informativeness mapped to relevance 0.5
+DOC_DUPLICATE_SHINGLE = 0.6                   # 5-word shingle Jaccard of two documents' texts above which one
+DOC_SHINGLE_K = 5                             # is a (lightly edited) copy of the other: one independent source
+DOC_DUPLICATE_MIN_WORDS = 40                  # shorter texts are compared sentence by sentence only (two short
+                                              # independent reports of one fact are often worded alike)
+
+# ---- claim verification (ADR-035, docs/knowledge/CLAIM_VERIFICATION.md) ------------------------------------
+# The fact-verification policy per claim category (temporal.claim_category). Every number is documented in
+# CLAIM_VERIFICATION.md §4 with its derivation:
+#   undated_factor  multiplier on an undated source's weight; None = an undated source does not count at all
+#                   (time-sensitive claims: a source that does not establish its timeframe cannot decide them)
+#   min_groups      independent agreeing source groups needed for "supported" by corroboration
+#   authority       a direct authoritative record alone may support the statement when nothing contradicts it:
+#                   "registry" (the package's own registry record, ADR-033) and/or "official" (the subject's own
+#                   official site, official_source)
+#   timeframe       only evidence dated inside the question's window (timely) decides; otherwise the statement
+#                   is temporally_unresolved
+#   evaluated       False: no evidence can verify it lexically (a judgement): not_evaluated
+VERIFICATION_MIN_CONFIDENCE = 0.72      # posterior mean floor for "supported" (as ADR-026; see §4)
+DISPUTE_WEIGHT_RATIO = 1.5              # contradicting weight must be >= 1.5 x supporting weight (and come from
+                                        # more independent groups) for "disputed"; otherwise "conflicting"
+CATEGORY_POLICY = {
+    "stable":         {"undated_factor": 1.0, "min_groups": 2, "authority": ("official",), "timeframe": False,
+                       "evaluated": True},
+    "historical":     {"undated_factor": 1.0, "min_groups": 2, "authority": ("official",), "timeframe": False,
+                       "evaluated": True},
+    "time_sensitive": {"undated_factor": None, "min_groups": 2, "authority": ("registry",), "timeframe": True,
+                       "evaluated": True},
+    "scientific":     {"undated_factor": UNDATED_FACTOR, "min_groups": 2, "authority": (), "timeframe": False,
+                       "evaluated": True},
+    "numerical":      {"undated_factor": UNDATED_FACTOR, "min_groups": 2, "authority": (), "timeframe": False,
+                       "evaluated": True},
+    "comparative":    {"undated_factor": UNDATED_FACTOR, "min_groups": 2, "authority": (), "timeframe": False,
+                       "evaluated": True},
+    "registry":       {"undated_factor": UNDATED_FACTOR, "min_groups": 2, "authority": ("registry",),
+                       "timeframe": False, "evaluated": True},
+    "interpretive":   {"undated_factor": UNDATED_FACTOR, "min_groups": 2, "authority": (), "timeframe": False,
+                       "evaluated": False},
+}
+assert set(CATEGORY_POLICY) == set(temporal.CLAIM_CATEGORIES)
+
+
+class VerificationState(str, enum.Enum):
+    """The outcome of checking one statement against the evidence read (serialised as its string value)."""
+    SUPPORTED = "supported"                          # enough independent or authoritative evidence agrees
+    DISPUTED = "disputed"                            # credible evidence contradicts it and outweighs support
+    INSUFFICIENT = "insufficient"                    # evidence was examined; too little bears on it
+    CONFLICTING = "conflicting"                      # credible evidence on both sides with comparable support
+    TEMPORALLY_UNRESOLVED = "temporally_unresolved"  # about the current state; no evidence establishes "now"
+    NOT_EVALUATED = "not_evaluated"                  # no evidence was examined (a judgement, an unsupported
+                                                     # statement shape, or no usable source)
+
+
+VERIFICATION_STATES = tuple(s.value for s in VerificationState)
+# The four verdict labels before ADR-035 (still written as verdict["label"] for older readers: Pocket, the
+# console, stored reports) and how the states map onto them, and back.
+LEGACY_LABELS = ("supported", "disputed", "contested", "insufficient")
+STATE_TO_LEGACY = {"supported": "supported", "disputed": "disputed", "conflicting": "contested",
+                   "insufficient": "insufficient", "temporally_unresolved": "insufficient",
+                   "not_evaluated": "insufficient"}
+_LEGACY_TO_STATE = {"supported": "supported", "disputed": "disputed", "contested": "conflicting",
+                    "insufficient": "insufficient"}
+
+
+def normalise_state(value) -> str | None:
+    """A verification state string from a current state or a pre-ADR-035 verdict label ("contested" ->
+    "conflicting"); None for anything else."""
+    if isinstance(value, VerificationState):
+        return value.value
+    if not isinstance(value, str):
+        return None
+    v = value.strip().lower()
+    return v if v in VERIFICATION_STATES else _LEGACY_TO_STATE.get(v)
+
+
+def verdict_state(verdict: dict | None) -> str | None:
+    """The verification state of a stored verdict, normalised on read: its "state" when present and valid, else
+    the old "label" mapped (a pre-ADR-035 "insufficient" verdict with no statement shape counted no source, so it
+    is "not_evaluated")."""
+    if not isinstance(verdict, dict):
+        return None
+    state = normalise_state(verdict.get("state"))
+    if state:
+        return state
+    state = normalise_state(verdict.get("label"))
+    if state == "insufficient" and "shape" in verdict and verdict.get("shape") is None:
+        return "not_evaluated"
+    return state
+
+
+def verification_state(*, sup_groups: int, con_groups: int, sup_weight: float, con_weight: float, mean: float,
+                       min_groups: int = 2, authoritative: bool = False) -> str:
+    """The state from the counted evidence (CLAIM_VERIFICATION.md §3):
+    supported      nothing contradicts and either >= min_groups independent groups agree with posterior mean >=
+                   VERIFICATION_MIN_CONFIDENCE, or a direct authoritative record supports it (`authoritative`)
+    disputed       contradicting groups outnumber supporting ones and their weight is >= DISPUTE_WEIGHT_RATIO x
+                   the supporting weight (with no support, any credible contradiction)
+    conflicting    credible evidence on both sides, neither outweighing the other that clearly
+    insufficient   otherwise (some or no evidence bears on it, not enough to decide)"""
+    if con_groups == 0:
+        if sup_groups and (authoritative or (sup_groups >= min_groups and mean >= VERIFICATION_MIN_CONFIDENCE)):
+            return "supported"
+        return "insufficient"
+    if sup_groups == 0:
+        return "disputed"
+    if con_groups > sup_groups and con_weight >= DISPUTE_WEIGHT_RATIO * sup_weight:
+        return "disputed"
+    return "conflicting"
+
+
+def timely(claim: Claim, *, now: float, window: float) -> bool | None:
+    """Whether the claim's source establishes a timeframe inside `window` seconds before `now`: True (dated inside
+    it), False (dated outside it, or more than temporal.FUTURE_SKEW ahead), None (undated). The source's own time
+    is what it speaks for: a live registry record's retrieval time, else its publication date, else the event
+    date in the sentence."""
+    flags = claim.flags or {}
+    at = flags.get("observed_at") or claim.published_at or claim.event_at
+    return temporal.window_ok(at, window, now)
 
 # ---- lexical cues -------------------------------------------------------------------------------------------
 
@@ -815,6 +933,7 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8, salienc
     s_t = bm.scores(title_stems) if overlap > 0 else [0.0] * len(candidates)
     observed_at = doc.retrieved_at if registry_record(doc) and doc.retrieval_mode != "cache" else None
     adversarial = adversarial_document(doc)
+    origin = origin_keys(doc)
     scored = []
     for i, ((text, kind, extra, floor), sq, st) in enumerate(zip(candidates, s_q, s_t)):
         vals = T.values(text)
@@ -837,6 +956,8 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8, salienc
             flags["truncated"] = True
         if adversarial:
             flags["adversarial_source"] = True
+        if origin:
+            flags["origin"] = origin
         flags.update({k: v for k, v in extra.items() if v is not None})
         if record_ids and "record_id" not in flags:
             flags["record_id"] = list(record_ids)   # a statement of a registry record is about that record
@@ -903,10 +1024,119 @@ def _domain(claim: Claim) -> str:
     return m.group(1).lower() if m else claim.source_url
 
 
-def independence_groups(claims) -> list[list[str]]:
-    """Claim ids grouped into independent sources: claims from the same registrable domain, or with near-duplicate
-    texts (shingle Jaccard >= DUPLICATE_SHINGLE: syndication or copying), collapse into one group. Groups are in
-    order of first appearance; ids keep input order."""
+# ---- syndication: one origin report, many copies --------------------------------------------------------------
+#
+# A copy is not an independent source. Besides the same host and near-identical sentences (independence_groups),
+# a document names its origin when it was republished: a canonical URL on another host, an attribution line
+# ("This story first appeared on Syndicate Wire", "originally published by", "republished from") or a news-wire
+# credit ("(Reuters)", "Associated Press"). origin_keys() turns those into keys; two claims whose keys meet (or
+# whose origin is the other's own site) are one group. Documents whose whole texts are near-identical are joined
+# by document_origins() (DOC_DUPLICATE_SHINGLE).
+_ATTRIBUTION = re.compile(
+    r"\b(?:first\s+(?:appeared|published|ran)|originally\s+(?:appeared|published|ran)|(?:republished|reprinted|"
+    r"syndicated|adapted)(?:\s+with\s+permission)?|this\s+(?:story|article|report)\s+(?:is|was)\s+(?:provided|"
+    r"supplied|distributed)|distributed|provided)[ \t]+(?:on|in|at|by|from)[ \t]+(?:the[ \t]+)?"
+    r"(?P<name>[A-Z][\w&'’-]*(?:[ \t]+(?:[A-Z][\w&'’-]*|of|and|&)){0,4})")
+_WIRES = {"reuters": "reuters", "associated press": "ap", "ap": "ap", "afp": "afp", "agence france-presse": "afp",
+          "dpa": "dpa", "press association": "pa", "pa media": "pa", "upi": "upi", "united press international": "upi",
+          "ansa": "ansa", "efe": "efe", "kyodo": "kyodo", "xinhua": "xinhua", "bloomberg": "bloomberg"}
+_WIRE_CREDIT = re.compile(r"\((?P<w>Reuters|AP|AFP|dpa|DPA|PA Media|UPI|ANSA|EFE|Kyodo|Xinhua|Bloomberg)\)|"
+                          r"\b(?:[Bb]y|[Ss]ource:|[Cc]redit:)\s+(?:the\s+)?(?P<w2>Reuters|Associated Press|AFP|"
+                          r"Agence France-Presse|Press Association|PA Media|United Press International)\b")
+_SECOND_LEVEL = frozenset("co com net org gov ac edu ne or go mil nic".split())
+
+
+def _name_key(name: str) -> str:
+    return "name:" + re.sub(r"[^a-z0-9]", "", (name or "").lower())
+
+
+def site_label(host: str) -> str:
+    """The registrable label of a host ("docs.kestrel-lang.org" -> "kestrel-lang", "news.bbc.co.uk" -> "bbc")."""
+    labels = [x for x in (host or "").lower().split(":")[0].strip(".").split(".") if x]
+    if len(labels) >= 3 and labels[-2] in _SECOND_LEVEL and len(labels[-1]) == 2:
+        labels = labels[:-1]
+    return labels[-2] if len(labels) >= 2 else (labels[0] if labels else "")
+
+
+def _host(url: str) -> str:
+    m = re.match(r"^[a-z][a-z0-9+.-]*://([^/:?#]+)", url or "", re.IGNORECASE)
+    return m.group(1).lower() if m else ""
+
+
+def origin_keys(doc: Document) -> list[str]:
+    """The origin a republished document names (see the section comment): "site:<host>" for a canonical URL on
+    another host, "name:<normalised name>" for an attribution or wire credit. Empty for an original."""
+    keys = []
+    canonical = _host(doc.canonical_url or "")
+    own = (doc.domain or _host(doc.final_url or doc.url or "")).lower()
+    if canonical and own and canonical != own:
+        keys.append("site:" + canonical)
+    text = doc.text or ""
+    for m in _ATTRIBUTION.finditer(text):
+        name = re.sub(r"\s+(?:and|of|&)$", "", m.group("name").strip(" .,'’"))
+        wire = _WIRES.get(name.lower())
+        keys.append("name:" + wire if wire else _name_key(name))
+    for m in _WIRE_CREDIT.finditer(text):
+        keys.append("name:" + _WIRES[(m.group("w") or m.group("w2")).lower()])
+    return list(dict.fromkeys(k for k in keys if k not in ("name:", "site:")))
+
+
+def document_origins(documents) -> dict[str, list[str]]:
+    """{source url: ["doc:<url of the first copy>"]} for documents of at least DOC_DUPLICATE_MIN_WORDS words whose
+    whole texts are near-identical (5-word shingle Jaccard >= DOC_DUPLICATE_SHINGLE): a lightly edited copy of a
+    story is the same source."""
+    docs = [d for d in documents if len((d.text or "").split()) >= DOC_DUPLICATE_MIN_WORDS]
+    shingles = [T.shingles(T.normalise(d.text), DOC_SHINGLE_K) for d in docs]
+    root = list(range(len(docs)))
+    for i in range(len(docs)):
+        for j in range(i + 1, len(docs)):
+            if root[j] == j and shingles[i] and T.jaccard(shingles[i], shingles[j]) >= DOC_DUPLICATE_SHINGLE:
+                root[j] = root[i]
+    out: dict[str, list[str]] = {}
+    for i, d in enumerate(docs):
+        if root[i] != i or any(root[j] == i for j in range(i + 1, len(docs))):
+            first = docs[root[i]]
+            key = "doc:" + (first.canonical_url or first.final_url or first.url)
+            for u in {d.canonical_url, d.final_url, d.url} - {None, ""}:
+                out.setdefault(u, []).append(key)
+    return out
+
+
+def _identity_keys(claim: Claim) -> set:
+    host = _domain(claim)
+    return {"site:" + host, _name_key(site_label(host))}
+
+
+def _origin_of(claim: Claim, origins: dict | None) -> set:
+    keys = set((claim.flags or {}).get("origin") or ())
+    if origins:
+        keys |= set(origins.get(claim.source_url) or ())
+    return keys
+
+
+def official_source(claim: Claim, subject: frozenset) -> bool:
+    """True when the claim comes from the subject's own site: the registrable label of its host, split at
+    hyphens and without generic words (lang, project, official, docs, ...), names exactly the subject's stemmed
+    name tokens ("kestrel-lang.example" for Kestrel, "nimbus-os.example" for Nimbus-OS). A structured record
+    (API) is not a site; an adversarial source is never official."""
+    if not subject or is_primary(claim) or is_adversarial(claim):
+        return False
+    parts = [p for p in re.split(r"[-_]", site_label(_domain(claim))) if p and p not in _GENERIC_SITE_WORDS]
+    if not parts:
+        return False
+    names = {T.stem(t) for t in subject if not t.isdigit()}
+    return bool(names) and {T.stem(p) for p in parts} == names
+
+
+_GENERIC_SITE_WORDS = frozenset("lang language project official org hq dev docs doc app io js py get use try www "
+                                "home site web the team foundation".split())
+
+
+def independence_groups(claims, *, origins: dict | None = None) -> list[list[str]]:
+    """Claim ids grouped into independent sources: claims from the same host, with near-duplicate texts (shingle
+    Jaccard >= DUPLICATE_SHINGLE: syndication or copying), or sharing an origin (origin_keys in
+    flags["origin"], or `origins` {source url: keys} such as document_origins) collapse into one group. Groups
+    are in order of first appearance; ids keep input order."""
     claims = list(claims)
     parent = list(range(len(claims)))
 
@@ -922,9 +1152,12 @@ def independence_groups(claims) -> list[list[str]]:
             parent[max(ri, rj)] = min(ri, rj)
 
     sh = [T.shingles(c.text, SHINGLE_K) for c in claims]     # raw text: a copy keeps its numbers
+    ident = [_identity_keys(c) for c in claims]
+    orig = [_origin_of(c, origins) for c in claims]
     for i in range(len(claims)):
         for j in range(i + 1, len(claims)):
-            if _domain(claims[i]) == _domain(claims[j]) or T.jaccard(sh[i], sh[j]) >= DUPLICATE_SHINGLE:
+            if _domain(claims[i]) == _domain(claims[j]) or T.jaccard(sh[i], sh[j]) >= DUPLICATE_SHINGLE or \
+                    orig[i] & (orig[j] | ident[j]) or orig[j] & ident[i]:
                 union(i, j)
     groups: dict[int, list[str]] = {}
     for i, c in enumerate(claims):
@@ -1029,8 +1262,9 @@ def _effective(c: Claim) -> float:
 
 
 def evidence_weight(claim: Claim, *, now: float | None = None, freshness_class: str | None = None,
-                    ttl_overrides: dict | None = None) -> float:
-    """Base reliability by source type x temporal factor (stale 0.5 in AGE_DISCOUNT_CLASSES only, undated 0.75).
+                    ttl_overrides: dict | None = None, undated_factor: float = UNDATED_FACTOR) -> float:
+    """Base reliability by source type x temporal factor (stale 0.5 in AGE_DISCOUNT_CLASSES only, undated
+    `undated_factor`: 0.75 by default; fact verification passes the claim category's factor, CATEGORY_POLICY).
     Rank and popularity are not inputs. A claim from an adversarial source weighs 0."""
     if is_adversarial(claim):
         return 0.0
@@ -1038,7 +1272,7 @@ def evidence_weight(claim: Claim, *, now: float | None = None, freshness_class: 
     flags = claim.flags or {}
     dated = flags.get("observed_at") or claim.published_at or claim.event_at
     if dated is None:
-        return base * UNDATED_FACTOR
+        return base * undated_factor
     if now is not None and freshness_class in AGE_DISCOUNT_CLASSES:
         if now - dated > temporal.ttl(freshness_class, ttl_overrides):
             return base * STALE_FACTOR
@@ -1097,7 +1331,7 @@ def _latest_record(claims) -> bool:
 
 
 def evaluate(claims, *, now: float | None = None, freshness_class: str | None = None, target: Claim | None = None,
-             ttl_overrides: dict | None = None) -> dict:
+             ttl_overrides: dict | None = None, origins: dict | None = None) -> dict:
     """The full evidence assessment of one cluster's claims (deterministic).
 
     The representative is the claim whose agreeing claims (agrees) span the most independent groups (ties: newest
@@ -1121,7 +1355,7 @@ def evaluate(claims, *, now: float | None = None, freshness_class: str | None = 
              "related": [], "pairs": [], "groups": [], "support_groups": 0, "contra_groups": 0, "order": shown}
     if not order:
         return empty
-    all_groups = independence_groups(order)
+    all_groups = independence_groups(order, origins=origins)
     if target is not None:
         relation = {c.id: ("support" if conflict(target, c) is None else "contradict") for c in order}
         rep = next((c for c in order if relation[c.id] == "support"), None)
@@ -1186,8 +1420,8 @@ def evaluate(claims, *, now: float | None = None, freshness_class: str | None = 
             "order": shown}
 
 
-def _build(claims, *, now=None, freshness_class=None, key: str = "", ttl_overrides=None) -> ClaimCluster:
-    ev = evaluate(claims, now=now, freshness_class=freshness_class, ttl_overrides=ttl_overrides)
+def _build(claims, *, now=None, freshness_class=None, key: str = "", ttl_overrides=None, origins=None) -> ClaimCluster:
+    ev = evaluate(claims, now=now, freshness_class=freshness_class, ttl_overrides=ttl_overrides, origins=origins)
     a, b = ev["alpha"], ev["beta"]
     mean = a / (a + b)
     sd = math.sqrt(a * b / ((a + b) ** 2 * (a + b + 1)))
@@ -1230,13 +1464,14 @@ def cluster(claims) -> list[ClaimCluster]:
 
 
 def score(cluster: ClaimCluster, *, now: float, freshness_class: str,
-          ttl_overrides: dict | None = None) -> ClaimCluster:
+          ttl_overrides: dict | None = None, origins: dict | None = None) -> ClaimCluster:
     """Re-score a cluster with temporal factors: Beta(1,1) prior; each independent group adds weight
     w = reliability(source type) x temporal factor to alpha (agreeing) or beta (contradicting).
     confidence = posterior mean, uncertainty = posterior sd. Rank/popularity are never inputs. `ttl_overrides`
-    (WebConfig.freshness_ttl) replaces the class TTL used for the staleness factor."""
+    (WebConfig.freshness_ttl) replaces the class TTL used for the staleness factor. `origins` (document_origins)
+    joins copies of one document into one independent group."""
     return _build(cluster.claims, now=now, freshness_class=freshness_class, key=cluster.key,
-                  ttl_overrides=ttl_overrides)
+                  ttl_overrides=ttl_overrides, origins=origins)
 
 
 def posterior(cluster: ClaimCluster, *, now: float | None = None, freshness_class: str | None = None) -> dict:
@@ -1268,7 +1503,10 @@ def info_gain(alpha: float, beta: float, reliability: float = RELIABILITY_SECOND
     return max(0.0, _h(p_obs) - _h(r))
 
 
-__all__ = ["CLUSTER_KEY_JACCARD", "CLUSTER_TEXT_SHINGLE", "DUPLICATE_SHINGLE", "KEY_TOKENS", "MAX_WORDS",
+__all__ = ["CATEGORY_POLICY", "DISPUTE_WEIGHT_RATIO", "LEGACY_LABELS", "STATE_TO_LEGACY", "VERIFICATION_MIN_CONFIDENCE",
+           "VERIFICATION_STATES", "VerificationState", "document_origins", "normalise_state", "official_source",
+           "origin_keys", "site_label", "timely", "verdict_state", "verification_state",
+           "CLUSTER_KEY_JACCARD", "CLUSTER_TEXT_SHINGLE", "DUPLICATE_SHINGLE", "KEY_TOKENS", "MAX_WORDS",
            "MIN_WORDS", "PRIOR_ALPHA", "PRIOR_BETA", "RELIABILITY_PRIMARY", "RELIABILITY_SECONDARY",
            "RENDER_ONLY_PATTERNS", "STALE_FACTOR", "UNDATED_FACTOR", "adversarial_document", "agrees", "bearing",
            "claim_key", "claim_kind", "cluster", "conflict", "conflict_sides", "contradictions", "describe_conflict",

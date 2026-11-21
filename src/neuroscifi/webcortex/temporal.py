@@ -66,6 +66,126 @@ def classify(question: str, assessment: dict | None = None) -> str:
     return "stable"
 
 
+# ---- claim categories (ADR-035, docs/knowledge/CLAIM_VERIFICATION.md) ------------------------------------------
+#
+# A freshness class says how long a *verification* stays fresh; a claim category says what kind of evidence can
+# verify a *statement*. Each category maps onto one freshness class (CATEGORY_FRESHNESS), so the TTL table above
+# stays the single source of time limits. claim_category() is deterministic: statement text (+ the question's
+# freshness class, whether the statement is a package-registry statement, and the kinds of sources read).
+CLAIM_CATEGORIES = ("stable", "historical", "time_sensitive", "scientific", "numerical", "comparative", "registry",
+                    "interpretive")
+CATEGORY_FRESHNESS = {"stable": "stable", "historical": "stable", "time_sensitive": "volatile",
+                      "scientific": "scientific", "numerical": "stable", "comparative": "stable",
+                      "registry": "release", "interpretive": "stable"}
+assert set(CATEGORY_FRESHNESS) == set(CLAIM_CATEGORIES) and set(CATEGORY_FRESHNESS.values()) <= set(FRESHNESS)
+
+# Lower-case judgement words (case-sensitive on purpose: "Great Wall", "Good Hope" are names, not judgements).
+_INTERPRETIVE = re.compile(
+    r"\b(?:best|worst|better|worse|should|ought|overrated|underrated|beautiful|ugly|worth(?:while|\s+it)?|"
+    r"deserves?|ideal|recommended|good|bad|great|terrible|awful|excellent|important|unimportant|fair|unfair|"
+    r"ethical|unethical|immoral|morally|pointless|useless|superior|inferior|wrong\s+to|right\s+to)\b")
+_TIME_SENSITIVE = re.compile(
+    r"\b(?:currently|current|now|nowadays|today|tonight|at\s+present|presently|still|no\s+longer|anymore|as\s+of|"
+    r"latest|newest|most\s+recent|recent(?:ly)?|this\s+(?:week|month|year|morning|afternoon|evening|season)|"
+    r"ongoing|right\s+now|so\s+far|yet|prices?|costs?|stock|exchange\s+rate|weather|forecast|status|outage|"
+    r"(?:is|are)\s+(?:down|offline|online|unavailable|available|open|closed|operational)|"
+    r"(?:ceo|chief\s+executive|president|prime\s+minister|chancellor|mayor|governor|chair(?:man|woman|person)?|"
+    r"leader|director)\s+of)\b", re.IGNORECASE)
+# Tense of the first finite verb (a heuristic: auxiliaries, an -ed or irregular past form, or a lower-case
+# third-person -s form). Reading a past statement as present only costs it the "historical" category (the safer
+# direction); the reverse would drop a discount, so an -s form ("carries", "ships") counts as present.
+_PAST_WORD = re.compile(r"^(?:was|were|did|had|[a-z]{3,}ed|built|born|won|began|wrote|made|became|ran|held|sold|"
+                        r"took|died|lost|left|came|went)$")
+_PRESENT_WORD = re.compile(r"^(?:is|are|am|has|have|does|do|will|shall|can|may|must|remains?|stands?|"
+                           r"[a-z]{2,}[^su\W]s)$")
+_WORD = re.compile(r"[A-Za-z][\w'’-]*")
+
+
+def _tense(statement: str) -> str | None:
+    """"past", "present" or None: the first word (after the first) that reads as a finite verb decides."""
+    for w in _WORD.findall(statement)[1:]:
+        if _PAST_WORD.match(w):
+            return "past"
+        if _PRESENT_WORD.match(w):
+            return "present"
+    return None
+_SCIENTIFIC = re.compile(dict(_CUES)["scientific"] + r"|\b(?:species|genes?|proteins?|cells?|cortex|synap\w*|"
+                         r"molecul\w*|bacteri\w*|vir(?:us|al)|patients?|efficacy|dose|placebo)\b", re.IGNORECASE)
+_BOUND = re.compile(r"\b(?:more|less|fewer|greater|other|rather)\s+than\b(?:\s+(?:about\s+)?[~≈]?\d)?",
+                    re.IGNORECASE)
+_COMPARATIVE = re.compile(
+    r"\b(?:than|compared\s+(?:to|with)|versus|vs\.?|outperforms?|beats?|ranks?|ranked|"
+    r"largest|tallest|longest|biggest|highest|fastest|oldest|youngest|smallest|shortest|deepest|widest|"
+    r"heaviest|lightest|slowest|lowest|cheapest|richest|busiest|most\s+[a-z]+|least\s+[a-z]+)\b", re.IGNORECASE)
+_NUMERIC_KINDS = ("number", "percent", "points", "quantity", "money", "version")
+
+
+_YEAR_CONTEXT = re.compile(r"\b(?:in|on|since|from|until|till|by|during|before|after|circa|around|early|mid|late|"
+                           r"of|year)\s+(?:the\s+)?(?:year\s+)?(\d{4})\b(?!\s*(?:[a-z%]|\.\d))", re.IGNORECASE)
+
+
+def _past_values(statement: str, values, now: float | None) -> bool | None:
+    """True when every date or year of the statement lies in the past (before `now`; a year before now's year),
+    False when one does not, None when it states none. A four-digit number is a year only after a temporal
+    preposition ("in 1987", "since 2019"): "port 9000" is not a year."""
+    dated = [(k, p) for k, _, p in (_text.value_kind(v) for v in values) if k == "date"]
+    dated += [("year", int(m.group(1))) for m in _YEAR_CONTEXT.finditer(statement)]
+    if not dated:
+        return None
+    if now is None:
+        return True
+    year = datetime.fromtimestamp(now, timezone.utc).year
+    return all((k == "date" and p <= now) or (k == "year" and p < year) for k, p in dated)
+
+
+def claim_category(statement: str, *, now: float | None = None, freshness_class: str | None = None,
+                   registry: bool = False, source_kinds=()) -> tuple[str, str]:
+    """(category, reason) of a checked statement; rules in this order (the first that applies wins):
+
+    interpretive     a lower-case judgement word ("best", "should", "overrated", "recommended", ...)
+    registry         `registry`: a package-registry statement (synthesis.release_statement)
+    historical       past tense (_tense: the first finite verb is was/were/did/had or a past form) with every date
+                     in the past,
+                     and no present-state cue ("still", "currently")
+    time_sensitive   a present-state cue ("currently", "latest", "price", "CEO of", "is open", ...) or the
+                     question's freshness class is breaking/volatile
+    historical       past tense without a date ("X was created by Y")
+    scientific       a research cue (study, trial, neurons, species, ...) or an academic source was read
+    comparative      a comparison ("than", "versus", a superlative); "more than 40" is a bound, not a comparison
+    numerical        a number, percentage, quantity, amount or version in the statement
+    stable           everything else (definitions, locations, identities)
+    """
+    s = _text.collapse(statement or "")
+    values = _text.values(s)
+    present_cue = _TIME_SENSITIVE.search(s)
+    past_tense = _tense(s) == "past"
+    past = _past_values(s, values, now)
+    if _INTERPRETIVE.search(s):
+        return "interpretive", f"a judgement ('{_INTERPRETIVE.search(s).group(0)}') is not a checkable fact"
+    if registry:
+        return "registry", "a statement about a package's own registry record"
+    if past_tense and past is True and not (present_cue and present_cue.group(0).lower() in
+                                                            ("still", "currently", "now", "no longer", "anymore")):
+        return "historical", "a completed, dated event: whether it happened then does not change with time"
+    if present_cue:
+        return "time_sensitive", f"a statement about the current state ('{present_cue.group(0)}')"
+    if past is False:
+        return "time_sensitive", "a statement about a future or current date"
+    if freshness_class in ("breaking", "volatile"):
+        return "time_sensitive", f"the question asks about the current state ({freshness_class} class)"
+    if past_tense:
+        return "historical", "a past-tense statement about a completed event"
+    if _SCIENTIFIC.search(s) or "academic" in set(source_kinds or ()):
+        return "scientific", "a research finding or measurement"
+    if _COMPARATIVE.search(_BOUND.sub(" ", s)):
+        return "comparative", "a comparison or ranking"
+    years = {m.group(1) for m in _YEAR_CONTEXT.finditer(s)}
+    if any(_text.value_kind(v)[0] in _NUMERIC_KINDS or (_text.value_kind(v)[0] == "year" and v not in years)
+           for v in values):
+        return "numerical", "a stated number or quantity"
+    return "stable", "a definition, identity or location that does not depend on when it was written"
+
+
 def ttl(freshness_class: str, ttl_overrides: dict | None = None) -> float:
     if freshness_class not in FRESHNESS:
         raise ValidationError(f"unknown freshness class: {freshness_class!r}")

@@ -114,7 +114,7 @@ track health per engine with a circuit breaker; fall back across engines and to 
 OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub). The owner's RSS/Atom feeds (`nsf web feeds`) join as a `FeedProvider`.
 Consequence: search keeps working, degraded, when engines fail.
 
-**ADR-026 Web knowledge enters semantic memory as candidates through the executive's question path. R**
+**ADR-026 Web knowledge enters semantic memory as candidates through the executive's question path. R** (verification thresholds superseded by ADR-035)
 Web content must never become verified knowledge automatically. Decision: claims → clusters → `web_knowledge` rows
 with status `provisional` only when ≥2 independent sources agree, nothing contradicts, and confidence ≥ 0.72
 (`auto_provisional_min_confidence`, configurable). The floor is derived, not chosen: with prior Beta(1, 1) and
@@ -183,8 +183,7 @@ record when nothing contradicts it; the verdict says that a single registry reco
 still needs two independent agreeing groups. Consequence: release checks answer from the authoritative record; a
 compromised or wrong registry entry would be believed (mitigated by OSV advisories and the owner's review of knowledge).
 
-**ADR-034 Self-hosted SearXNG is the primary general discovery provider, honest and robots-compliant. R** (
-supersedes ADR-032, amends ADR-025)
+**ADR-034 Self-hosted SearXNG is the primary general discovery provider, honest and robots-compliant. R** (supersedes ADR-032, amends ADR-025)
 
 Context. ADR-032 kept the honest User-Agent for the open-webSearch scrapers; measured on 2026-11-20 all four
 key-free engines then returned nothing, so general web discovery rested on structured APIs and feeds. The v0.7.0
@@ -237,3 +236,69 @@ provider" in its full sense; owner options are a keyed API engine (e.g. Brave Se
 limitation. Disabling the patch (browser impersonation) is not offered.
 Supersedes ADR-032 (the honest-User-Agent rule now covers both search backends; the open-webSearch opt-in
 `search_browser_user_agent` stays for that daemon only).
+
+**ADR-035 Claim verification depends on the kind of statement: categories, six states, syndication-aware
+independence. R** (draft; supersedes ADR-026's verification rule; amends ADR-033, see ADR-033-amendment.md)
+
+Context. ADR-026 used one bar for every checked statement: posterior mean >= 0.72 from >= 2 independent groups,
+with every undated source weighted x 0.75. Two credible agreeing sources stayed "insufficient" when one was undated
+(0.706), which is the usual case for encyclopedias and project pages. The v0.6.0 offline benchmark measured
+supported recall at 0.4 (PRODUCTION_READINESS R-2). The rule also could not tell a current-state claim from a
+historical one, counted a lightly edited syndicated copy as a second source, and had only four labels, so
+"conflicting evidence", "no evidence about now" and "not checkable" all read as "insufficient" or "contested".
+
+Decision.
+1. Each checked statement gets one category (`temporal.claim_category`, deterministic cue rules, mapped onto the
+   existing freshness classes): stable, historical, time_sensitive, scientific, numerical, comparative, registry,
+   interpretive.
+2. The verdict carries a state (`claims.VerificationState`): supported, disputed, insufficient, conflicting,
+   temporally_unresolved, not_evaluated. `verdict["label"]` keeps the four legacy labels (conflicting -> contested,
+   the two new non-decisions -> insufficient); stored reports are normalised on read (`claims.verdict_state`).
+3. Per-category policy (`claims.CATEGORY_POLICY`): undated sources are not discounted for stable and historical
+   statements (two credible undated sources give 2.6/3.6 = 0.722, exactly the two-source bar), keep x 0.75 for
+   scientific/numerical/comparative, and do not count at all for time-sensitive statements, which are decided
+   only by evidence dated inside the question's window and are otherwise temporally_unresolved. The 0.72 floor
+   and the two-group requirement are unchanged. A direct authoritative record suffices alone, only when nothing
+   contradicts: the subject's own official site for narrow stable/historical facts (never quantities), the
+   package registry for publication and latest version (ADR-033).
+4. Disputed requires more contradicting groups and >= 1.5 x the supporting weight; otherwise credible evidence on
+   both sides is conflicting, and no consensus is chosen. Supported still requires that no group contradicts.
+5. Syndicated copies are one source: canonical URL on another host, attribution lines, wire credits and
+   near-identical documents (>= 40 words, 5-shingle Jaccard >= 0.6) join independence groups, in verdicts and in
+   cluster scoring.
+6. Interpretive statements, unsupported shapes and verdicts with no usable source are not_evaluated.
+
+Kept from ADR-026: web knowledge enters memory only as candidates through the owner's question path; the
+consolidation floor (`auto_provisional_min_confidence` 0.72 over cluster confidence with the 0.75 undated factor)
+and versioning are unchanged.
+
+Consequences. On the offline benchmark the original 16 cases go from 12/16 to 16/16 and supported recall from 0.4
+to 1.0, with supported precision 1.0. 13 new cases (undated stable/historical facts, current undated claims,
+official sources, corroboration, syndication, supersession, contradiction, missing evidence, registry aspects)
+score 12/13. The miss is a routing gap: intent does not query the registry for "Is X V stable?". A stable fact can
+now be supported by two undated sources yet not become provisional knowledge, because consolidation keeps the
+ADR-026 bar (an owner decision). Category cues and official-site detection are lexical. A look-alike domain naming
+the subject would be believed for a narrow fact when nothing contradicts it. Details and every number:
+docs/knowledge/CLAIM_VERIFICATION.md.
+
+**ADR-033 (amended) A package's own registry record settles publication and latest version, nothing more. R**
+(draft amendment; ADR-035)
+
+Context. ADR-033 let a package's registry record alone decide "was V released?" and "is V the latest?" (UAT
+RT4-03). Nothing prevented the same record from being read as evidence that a version is stable, compatible,
+secure or advisable, although a record of publication says nothing about these.
+
+Decision. `synthesis.release_statement` distinguishes six aspects, and `_registry_verdict` applies:
+- published, latest: unchanged. The record supports or contradicts the statement, `basis: registry_record`.
+- stable: supported only when the record lists the version with an explicit yank flag of false and the version
+  has no pre-release marker (PEP 440 a/b/rc/dev, SemVer "-pre"). Disputed by a marker, a yank or an unlisted
+  version. Otherwise insufficient.
+- compatible: never supported. Disputed when declared metadata (`requires_python`) excludes the target.
+- secure: never supported. Disputed when an OSV advisory's affected range covers the version. No advisory found
+  stays insufficient. "is vulnerable" is supported by such an advisory.
+- recommended: not_evaluated (a judgement).
+A registry statement gets a verdict in any mode, not only `technical`.
+
+Consequences. R-6 still holds for publication and latest version (a wrong registry entry is believed for those),
+but it no longer spreads to stability, security or recommendation. Tests:
+tests/webcortex/test_claim_verification.py (section 4). Details: docs/knowledge/CLAIM_VERIFICATION.md §5.

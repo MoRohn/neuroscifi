@@ -34,7 +34,8 @@ from . import metrics as M
 LABEL = ("offline benchmark: fictional corpus served by FixtureWeb through the real SafeFetcher; search is "
          "CorpusProvider (BM25 over title and snippet); no network; latency is wall-clock on this host")
 SIMULATED_ACCEPTANCE = "benchmark: simulated owner acceptance of every provisional item (not a real owner decision)"
-VERDICT_LABELS = ["supported", "disputed", "contested", "insufficient"]
+VERDICT_LABELS = ["supported", "disputed", "contested", "insufficient"]     # legacy verdict["label"]
+STATE_LABELS = list(claims_mod.VERIFICATION_STATES)                       # verdict["state"] (ADR-035)
 TIGHT_BUDGETS = [("A01", {"max_queries": 1, "max_requests": 3, "max_pages": 1}),
                  ("A08", {"max_bytes": 15_000})]
 RESOURCES = ("queries", "requests", "pages", "bytes", "browser_sessions")
@@ -362,17 +363,26 @@ class _Bench:
                 "errors": [r for r in rows if not r["correct"]]}
 
     def verification(self, recs):
-        items, pairs = [], []
+        """Two scorings of the same verdicts: `states` compares the verification state (ADR-035; old gold labels
+        read through claims.normalise_state) and `confusion` the legacy four-label verdict (verdict["label"]),
+        comparable with benchmarks before v0.7.0."""
+        items, pairs, legacy = [], [], []
         for q in C.QUESTIONS:
             if q["category"] != "verification" or q["id"] not in recs:
                 continue
             verdict = recs[q["id"]]["report"].get("verdict") or {}
+            gold = claims_mod.normalise_state(q["gold_label"])
+            state = claims_mod.verdict_state(verdict) or "none"
             label = verdict.get("label") or "none"
-            pairs.append((q["gold_label"], label))
-            items.append({"id": q["id"], "status": recs[q["id"]]["status"], "mode": recs[q["id"]]["mode"],
-                          "gold": q["gold_label"], "predicted": label, "correct": label == q["gold_label"],
-                          "confidence": verdict.get("confidence"), "reasons": (verdict.get("reasons") or [])[:3]})
-        return {"items": items, "confusion": M.confusion(pairs, VERDICT_LABELS)}
+            pairs.append((gold, state))
+            legacy.append((claims_mod.STATE_TO_LEGACY[gold], label))
+            items.append({"id": q["id"], "case": q.get("case"), "status": recs[q["id"]]["status"],
+                          "mode": recs[q["id"]]["mode"], "gold": gold, "predicted": state,
+                          "correct": state == gold, "label": label, "category": verdict.get("category"),
+                          "basis": verdict.get("basis"), "confidence": verdict.get("confidence"),
+                          "reasons": (verdict.get("reasons") or [])[:3]})
+        return {"items": items, "states": M.confusion(pairs, STATE_LABELS),
+                "confusion": M.confusion(legacy, VERDICT_LABELS)}
 
     def contradictions(self, recs):
         detector, e2e = [], []

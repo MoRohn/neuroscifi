@@ -422,7 +422,24 @@ _YES_NO_LATEST = re.compile(rf"^(?P<aux>is|was)\s+{_PKG}(?:\s+|==|\s+version\s+)
                             rf"{_LATEST_WORDS}$", re.IGNORECASE)
 _YES_NO_RELEASED = re.compile(rf"^(?P<aux>was|has|is)\s+{_PKG}(?:\s+|==|\s+version\s+){_VER}\s+(?P<neg>not\s+)?"
                               rf"(?:been\s+)?(?:released|published)$", re.IGNORECASE)
-_RELEASE_STATEMENTS = (
+# What a registry record can and cannot establish about one version (ADR-033 as amended, CLAIM_VERIFICATION.md §5):
+# "published" and "latest" are settled by the record itself; "stable" only by the record's pre-release marker
+# and yank flag; "compatible" can only be refuted by declared metadata (requires_python); "secure" can only be
+# refuted, by an OSV advisory (publication never implies it); "recommended" is a judgement: not evaluated.
+_ASPECTS = (
+    ("stable", r"(?:an?\s+)?(?:stable|final|production[- ]ready)(?:\s+(?:release|version))?"),
+    ("compatible", r"compatible\s+with\s+(?P<target>.+)"),
+    ("secure", r"(?:secure|safe(?:\s+to\s+use)?|free\s+(?:of|from)\s+(?:known\s+)?vulnerabilities|"
+               r"(?P<vuln>vulnerable|insecure)(?:\s+to\s+.+)?)"),
+    ("recommended", r"(?:recommended|advisable|a\s+recommended\s+(?:release|version|upgrade))(?:\s+for\s+.+)?"),
+)
+REGISTRY_ASPECTS = ("published", "latest") + tuple(a for a, _ in _ASPECTS)
+_YES_NO_ASPECT = re.compile(rf"^(?P<aux>is|was)\s+{_PKG}(?:\s+|==|\s+version\s+){_VER}\s+(?P<neg>not\s+)?"
+                            rf"(?P<rest>(?:{'|'.join(rx for _, rx in _ASPECTS).replace('(?P<target>', '(?:')
+                                             .replace('(?P<vuln>', '(?:')}))$", re.IGNORECASE)
+_RELEASE_STATEMENTS = tuple(
+    (aspect, re.compile(rf"^{_PKG}(?:\s+|==|\s+version\s+){_VER}\s+(?:is|was)\s+(?P<neg>not\s+)?(?:{rx})$",
+                        re.IGNORECASE)) for aspect, rx in _ASPECTS) + (
     ("latest", re.compile(rf"^{_LATEST_WORDS}\s+of\s+{_PKG}\s+(?:is|was)\s+(?P<neg>not\s+)?(?:version\s+)?{_VER}$",
                           re.IGNORECASE)),
     ("latest", re.compile(rf"^{_PKG}(?:\s+|==|\s+version\s+){_VER}\s+(?:is|was)\s+(?P<neg>not\s+)?{_LATEST_WORDS}"
@@ -433,13 +450,21 @@ _RELEASE_STATEMENTS = (
 
 
 def release_statement(statement: str) -> dict | None:
-    """{name, version, kind: "latest" | "released", polarity} of a package release statement, or None."""
+    """{name, version, kind, polarity[, target]} of a package release statement, or None. kind: "latest",
+    "released" (published), "stable", "compatible" (target: what it is compatible with), "secure" ("vulnerable"
+    and "insecure" read as "secure" with the opposite polarity) or "recommended"."""
     s = _FV_PREFIX.sub("", T.collapse(statement or "")).strip().rstrip(" ?.!")
     for kind, rx in _RELEASE_STATEMENTS:
         m = rx.match(s)
         if m:
-            return {"name": m.group("x"), "version": m.group("v").rstrip("."), "kind": kind,
-                    "polarity": -1 if m.group("neg") else 1}
+            pol = -1 if m.group("neg") else 1
+            groups = m.groupdict()
+            if groups.get("vuln"):
+                pol = -pol
+            out = {"name": m.group("x"), "version": m.group("v").rstrip("."), "kind": kind, "polarity": pol}
+            if groups.get("target"):
+                out["target"] = groups["target"].strip()
+            return out
     return None
 
 
@@ -464,6 +489,10 @@ def checkable_statement(text: str) -> str | None:
     if m:
         verb = "has been" if m.group("aux").lower() == "has" else "was"
         return f"{m.group('x')} {m.group('v')} {verb} {'not ' if m.group('neg') else ''}released"
+    m = _YES_NO_ASPECT.match(s) if question else None
+    if m:                    # "Is corvane 2.5.5 stable?" -> "corvane 2.5.5 is stable" (a registry aspect)
+        return f"{m.group('x')} {m.group('v')} {m.group('aux').lower()} {'not ' if m.group('neg') else ''}" \
+               f"{m.group('rest')}"
     m = _YES_NO.match(s)
     if m and (question or not parse_statement(s)):
         aux, rest = m.group("aux").lower(), m.group("rest")
@@ -949,24 +978,209 @@ def _record_check(rs: dict, claim: Claim, doc: Document | None) -> tuple[str | N
     return rel, why
 
 
+_PRERELEASE = re.compile(r"(?i)(?:\d|\.)(?:a|b|c|rc|alpha|beta|pre|preview|dev)\.?\d*(?:\.(?:post|dev)\d*)?$|"
+                         r"\.dev\d*|\d-[0-9a-z]")
+_SPEC = re.compile(r"^\s*(?P<op>===|==|!=|~=|>=|<=|>|<)\s*(?P<v>[\w.*+!-]+)\s*$")
+_PYTHON_TARGET = re.compile(r"\b(?:c?python|py)\s*(?P<v>\d+(?:\.\d+){0,2})\b", re.IGNORECASE)
+
+
+def prerelease(version: str) -> bool:
+    """True when a version string carries a pre-release or development marker (PEP 440 a/b/rc/dev, SemVer
+    "-beta.1")."""
+    return bool(_PRERELEASE.search(str(version or "").strip()))
+
+
+def _admits(spec: str, version: str) -> bool | None:
+    """Whether a version specifier ("">=3.10,<4"") admits `version` (compared on the release numbers the target
+    states); None when a clause cannot be read."""
+    want = T.version_key(version)
+    if not want:
+        return None
+    width = len(str(version).split("."))
+    for clause in [c for c in str(spec or "").split(",") if c.strip()]:
+        m = _SPEC.match(clause)
+        if not m:
+            return None
+        op, v = m.group("op"), m.group("v")
+        if v.endswith(".*"):
+            prefix = v[:-2].split(".")
+            same = str(version).split(".")[:len(prefix)] == prefix
+            if (op == "==" and not same) or (op == "!=" and same):
+                return False
+            continue
+        have = T.version_key(".".join(v.split(".")[:max(width, len(v.split(".")))]))
+        if not have:
+            return None
+        ok = {"==": want == have, "===": want == have, "!=": want != have, ">=": want >= have, "<=": want <= have,
+              ">": want > have, "<": want < have, "~=": want >= have}[op]
+        if not ok:
+            return False
+    return True
+
+
+def _affects(advisory: dict, version: str) -> bool | None:
+    """Whether an OSV advisory record (its metadata) covers `version`: the query asked for that version, or an
+    ECOSYSTEM/SEMVER range introduces it before any fix; None when the record says nothing about it."""
+    if advisory.get("queried_version") and T.version_key(advisory["queried_version"]) == T.version_key(version):
+        return True
+    want = T.version_key(version)
+    seen = False
+    for rng in advisory.get("affected_ranges") or []:
+        if not isinstance(rng, dict) or str(rng.get("type") or "").upper() == "GIT":
+            continue
+        seen = True
+        start = None                        # events in order: introduced .. fixed / last_affected, repeated
+        for e in rng.get("events") or []:
+            if not isinstance(e, dict):
+                continue
+            if e.get("introduced") is not None:
+                start = () if str(e["introduced"]) == "0" else T.version_key(e["introduced"])
+            elif start is not None and (e.get("fixed") is not None or e.get("last_affected") is not None):
+                end = T.version_key(e.get("fixed") or e.get("last_affected"))
+                if want >= start and (want < end if e.get("fixed") is not None else want <= end):
+                    return True
+                start = None
+        if start is not None and want >= start:
+            return True
+    return False if seen else None
+
+
+def _registry_verdict(rs: dict, base: dict, pool: dict, sources: _Sources) -> dict:
+    """The verdict for a package-registry statement about stability, compatibility, security or recommendation
+    (CLAIM_VERIFICATION.md §5). Publication evidence never yields "supported" for these aspects: "stable" needs
+    the record's own classification (no pre-release marker and a yank flag that is explicitly false);
+    "compatible" and "secure" can only be refuted by the record's declared metadata or an OSV advisory;
+    "recommended" is a judgement and is not evaluated."""
+    aspect, name = rs["kind"], _claims._norm_id(rs["name"])
+    version, target = rs["version"], rs.get("target") or ""
+    records, advisories = [], []
+    for x in pool.values():
+        if x.kind != "metadata":
+            continue
+        doc = sources.doc(x.source_url)
+        md = (doc.metadata or {}) if doc is not None else {}
+        ids = _claims.record_identity(x)
+        if any(r.startswith("package:") and r.rsplit(":", 1)[-1] == name for r in ids) and md.get("latest"):
+            records.append((x, md))
+        elif (x.flags or {}).get("record") == "advisory" and _claims._norm_id(md.get("package") or
+                                                                              (x.flags or {}).get("package")) == name:
+            advisories.append((x, md))
+    reasons, rel, decided_by, why = [], None, [], ""
+    registry = _claims._provider(sources.doc(records[0][0].source_url)) if records else "the registry"
+    entry = None
+    for x, md in records:
+        if md.get("requested") is not None and T.version_key(md["requested"]) == T.version_key(version):
+            entry = {"exists": bool(md.get("requested_exists")), "yanked": md.get("requested_yanked")}
+        else:
+            for v in md.get("versions_recent") or ():
+                if isinstance(v, dict) and T.version_key(v.get("version")) == T.version_key(version):
+                    entry = {"exists": True, "yanked": v.get("yanked")}
+        if entry is not None:
+            decided_by = [x]
+            break
+    if aspect == "stable":
+        if entry is not None and not entry["exists"]:
+            rel, why = "contradict", f"{registry} lists no release {version} of {rs['name']}"
+        elif prerelease(version):
+            rel, why = "contradict", f"{version} carries a pre-release marker"
+        elif entry is not None and entry["yanked"] is True:
+            rel, why = "contradict", f"{registry} marks {rs['name']} {version} as yanked"
+        elif entry is not None and entry["yanked"] is False:
+            rel = "support"
+            reasons.append(f"{registry} lists {rs['name']} {version} as a final release (no pre-release marker) that "
+                           f"is not yanked. 'Stable' here means exactly that; it does not establish compatibility, "
+                           f"security or quality.")
+        else:
+            reasons.append(f"No registry record read states whether {rs['name']} {version} is yanked; publication "
+                           f"alone does not establish that a release is stable.")
+    elif aspect == "compatible":
+        m = _PYTHON_TARGET.search(target)
+        spec = next((md.get("requires_python") for _, md in records if md.get("requires_python")), None)
+        admits = _admits(spec, m.group("v")) if (m and spec) else None
+        if admits is False:
+            rel, why = "contradict", f"{registry} declares requires_python {spec}, which excludes Python {m.group('v')}"
+            decided_by = [records[0][0]]
+        else:
+            reasons.append(("The registry declares requires_python " + spec + ", which admits it; a declaration "
+                            "is not a compatibility test." if admits else
+                            "No registry metadata read decides compatibility with " + (target or "the target") + ".")
+                           + " Publication never establishes compatibility.")
+    elif aspect == "secure":
+        hits = [(x, md) for x, md in advisories if _affects(md, version)]
+        if hits:
+            rel = "contradict"
+            why = "OSV lists " + ", ".join(sorted({str(md.get("id") or "an advisory") for _, md in hits})[:3]) + \
+                  f" affecting {rs['name']} {version}"
+            decided_by = [x for x, _ in hits]
+        else:
+            reasons.append(("No OSV advisory read covers " if advisories else "No OSV record was among the sources "
+                            "for ") + f"{rs['name']} {version}; the absence of known advisories does not establish "
+                           f"that a version is secure, and publication never does.")
+    else:   # recommended
+        reasons.append("Whether a version is recommended is a judgement (fit for a purpose, maintenance, risk), not "
+                       "a fact a registry record or a quoted sentence can verify. Ask about publication, stability, "
+                       "compatibility or advisories instead.")
+    if rel and rs["polarity"] < 0:         # "is not stable", "is vulnerable": the same evidence, the other way
+        rel = {"support": "contradict", "contradict": "support"}[rel]
+    state = "not_evaluated" if aspect == "recommended" else \
+        {"support": "supported", "contradict": "disputed"}.get(rel, "insufficient")
+    if why:
+        reasons.insert(0, why[0].upper() + why[1:] + ".")
+    supporting = [x for x in decided_by if rel == "support"]
+    contradicting = [x for x in decided_by if rel == "contradict"]
+    citations = sorted({sources.cite(x.source_url, x) for x in decided_by})
+    return dict(base, label=_claims.STATE_TO_LEGACY[state], state=state, category="registry",
+                category_reason="a statement about a package's own registry record",
+                aspect=aspect, basis=(("registry_record" if decided_by else "version_marker")
+                                      if state in ("supported", "disputed") else None),
+                confidence=0.5, citations=citations,
+                supporting=[x.id for x in supporting], contradicting=[x.id for x in contradicting],
+                reasons=reasons, timeframe=None,
+                independent_groups={"supporting": len({x.domain for x in supporting}),
+                                    "contradicting": len({x.domain for x in contradicting})},
+                _conflicts=[(None, x, why or "contradicts the checked statement") for x in contradicting])
+
+
 def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *, now: float, cls: str,
-             ttl_overrides: dict | None = None) -> dict:
-    """Fact verification by claim-slot checking (section comment above). Every reportable, non-adversarial claim
-    is classified against the statement; claims that a listed contradiction pits against a supporting claim count
-    as contradicting too, so the verdict never says "0 contradict" next to a contradiction of the checked
-    statement. Independent groups weigh in as in claims.evaluate."""
+             ttl_overrides: dict | None = None, window: float | None = None, origins: dict | None = None) -> dict:
+    """Fact verification by claim-slot checking (section comment above) under the claim-category policy of
+    ADR-035 (claims.CATEGORY_POLICY, docs/knowledge/CLAIM_VERIFICATION.md). Every reportable, non-adversarial
+    claim is classified against the statement; claims that a listed contradiction pits against a supporting
+    claim count as contradicting too, so the verdict never says "0 contradict" next to a contradiction of the
+    checked statement. Independent groups (copies and syndicated stories joined: claims.independence_groups with
+    `origins`) weigh in as in claims.evaluate, with the category's undated factor; a time-sensitive statement is
+    decided only by evidence dated inside `window` (else the class TTL). The verdict carries `state`
+    (claims.VerificationState), `category`, `basis`, `timeframe` and the legacy `label`."""
     slot = parse_statement(statement)
+    rs = release_statement(statement)
     base = {"statement": statement, "shape": slot["shape"] if slot else None}
-    if slot is None:
-        return dict(base, label="insufficient", confidence=0.5, citations=[], supporting=[], contradicting=[],
-                    reasons=["The statement's shape is not one the lexical checker supports (X is in Y; X is the "
-                             "capital of Y; X has N <unit>; X was released in DATE; X is Y; X <verb> ... DATE); "
-                             "no source was counted."])
     pool = {}
     for c in clusters:
         for x in c.claims:
             if _claims.is_reportable(x):
                 pool.setdefault(x.id, x)
+    if rs and rs["kind"] not in ("latest", "released"):
+        return _registry_verdict(rs, base, pool, sources)
+    kinds = {"academic" for d in sources.docs if _is_academic(d)}
+    category, category_reason = temporal.claim_category(statement, now=now, freshness_class=cls,
+                                                        registry=rs is not None, source_kinds=kinds)
+    policy = _claims.CATEGORY_POLICY[category]
+    head = dict(base, category=category, category_reason=category_reason,
+                aspect=("published" if rs["kind"] == "released" else rs["kind"]) if rs else None)
+
+    def unevaluated(reason: str) -> dict:
+        return dict(head, label="insufficient", state="not_evaluated", basis=None, confidence=0.5, citations=[],
+                    supporting=[], contradicting=[], reasons=[reason], timeframe=None,
+                    independent_groups={"supporting": 0, "contradicting": 0}, _conflicts=[])
+
+    if slot is None:
+        return unevaluated("The statement's shape is not one the lexical checker supports (X is in Y; X is the "
+                           "capital of Y; X has N <unit>; X was released in DATE; X is Y; X <verb> ... DATE); "
+                           "no source was counted.")
+    if not policy["evaluated"]:
+        return unevaluated(f"Not evaluated: {category_reason}; no source was counted.")
+    if not pool:
+        return unevaluated("No usable source sentence was read, so no evidence was examined.")
     relation, why = {}, {}
     nests: dict[str, set] = {}
     if slot["shape"] == "location":         # each document's own place nestings (containment, RT-W-02)
@@ -975,7 +1189,6 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
                 doc = sources.doc(x.source_url)
                 nests[x.source_url] = _nests(doc.text if doc is not None else "")
             nests[x.source_url] |= _nests(x.text)
-    rs = release_statement(statement)
     registry_ids = set()
     for x in pool.values():
         rel, reason = _record_check(rs, x, sources.doc(x.source_url)) if rs else (None, "")
@@ -992,16 +1205,29 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
                     relation[other] = "contradict"
                     why[other] = pair.get("reason", "conflicts with a supporting source")
     order = sorted((pool[i] for i in relation), key=lambda x: (-x.relevance, x.source_url, x.sentence_index, x.id))
-    groups = _claims.independence_groups(order)
-    by_id = {x.id: x for x in order}
+    timeframe = None
+    counted = order
+    if policy["timeframe"]:
+        ts_cls = cls if cls in _claims.AGE_DISCOUNT_CLASSES else temporal.CATEGORY_FRESHNESS[category]
+        span = float(window) if window else temporal.ttl(ts_cls, ttl_overrides)
+        status = {x.id: _claims.timely(x, now=now, window=span) for x in order}
+        counted = [x for x in order if status[x.id]]
+        timeframe = {"required": True, "window_seconds": span, "class": ts_cls,
+                     "timely": sum(1 for v in status.values() if v), "undated": sum(1 for v in status.values()
+                                                                         if v is None),
+                     "outside_window": sum(1 for v in status.values() if v is False)}
+    groups = _claims.independence_groups(counted, origins=origins)
+    copies = len(counted) - len(groups)
+    by_id = {x.id: x for x in counted}
     alpha, beta, sup, con = _claims.PRIOR_ALPHA, _claims.PRIOR_BETA, 0, 0
     outvoted = set()
-    age_cls = None if _past_event(slot, now) else cls      # a dated past event does not go stale (_past_event)
+    age_cls = None if _past_event(slot, now) or category == "historical" else cls     # (_past_event)
+    undated = policy["undated_factor"] if policy["undated_factor"] is not None else _claims.UNDATED_FACTOR
     for g in groups:
         members = [by_id[i] for i in g]
         a = sum(1 for x in members if relation[x.id] == "support")
-        w = max(_claims.evidence_weight(x, now=now, freshness_class=age_cls, ttl_overrides=ttl_overrides)
-                for x in members)
+        w = max(_claims.evidence_weight(x, now=now, freshness_class=age_cls, ttl_overrides=ttl_overrides,
+                                        undated_factor=undated) for x in members)
         alpha += w * a / len(members)
         beta += w * (len(members) - a) / len(members)
         if a and a >= len(members) - a:
@@ -1012,37 +1238,65 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
     mean = alpha / (alpha + beta)
     supporting = [x for x in order if relation[x.id] == "support"]
     contradicting = [x for x in order if relation[x.id] == "contradict"]
+    counted_ids = set(by_id)
+    authority = None
+    if con == 0 and "registry" in policy["authority"] and \
+            any(x.id in registry_ids for x in supporting if x.id in counted_ids):
+        authority = "registry_record"   # the package registry is the authority on its own releases (ADR-033)
+    elif con == 0 and "official" in policy["authority"] and slot["entity"] and slot["shape"] != "quantity" and \
+            any(_claims.official_source(x, slot["head"]) for x in supporting if x.id in counted_ids):
+        authority = "official_source"
+    state = _claims.verification_state(sup_groups=sup, con_groups=con, sup_weight=alpha - _claims.PRIOR_ALPHA,
+                                       con_weight=beta - _claims.PRIOR_BETA, mean=mean,
+                                       min_groups=policy["min_groups"], authoritative=authority is not None)
+    corroborated = sup >= policy["min_groups"] and mean >= _claims.VERIFICATION_MIN_CONFIDENCE
+    basis = None
+    if state == "supported":
+        basis = "corroboration" if corroborated else authority
+    elif state in ("disputed", "conflicting"):
+        basis = "contradiction"
+    if policy["timeframe"] and state == "insufficient" and len(counted) < len(order):
+        state = "temporally_unresolved"
     counts = f"{sup} independent source group(s) agree with the statement; {con} contradict it."
     if outvoted:             # the counts are derived from the verdict's own lists, never "0 contradict" beside them
         counts += (f" {len(outvoted)} contradicting sentence(s) come from source groups that otherwise support it "
                    f"({len(supporting)} supporting and {len(contradicting)} contradicting sentence(s) in all).")
     reasons = [counts, f"Posterior mean {mean:.2f} from a Beta(1,1) prior and weighted independent groups."]
+    reasons.append(f"Category: {category} ({category_reason}).")
+    if copies > 0:
+        reasons.append(f"{copies} sentence(s) are copies of another source (same site, syndication or near-identical "
+                       f"text) and count once.")
     conflicts = []
     for x in contradicting:
         within = " (a sentence in a source group that otherwise supports it)" if x.id in outvoted else ""
         line = f"[{sources.cite(x.source_url, x)}]{within} {why[x.id] or 'contradicts the statement'}."
-        if len(reasons) < 6:
+        if len(reasons) < 7:
             reasons.append(line)
         conflicts.append((x, why[x.id] or "contradicts the checked statement"))
-    if mean >= SUPPORTED_MIN_CONFIDENCE and sup >= SUPPORTED_MIN_GROUPS and con == 0:
-        label = "supported"
-    elif con == 0 and any(x.id in registry_ids for x in supporting):
-        label = "supported"         # the package registry is the authority on its own releases (RT4-03)
+    if basis == "registry_record":
         reasons.append(f"The {rs['name']} registry record itself confirms it; a package registry is the "
                        f"authoritative source for its own releases.")
-    elif (beta - _claims.PRIOR_BETA) > (alpha - _claims.PRIOR_ALPHA):
-        label = "disputed"
-    elif sup >= 1 and con >= 1:
-        label = "contested"
-    else:
-        label = "insufficient"
+    elif basis == "official_source":
+        site = next(x.domain for x in supporting if _claims.official_source(x, slot["head"]))
+        reasons.append(f"{site} is the subject's own official site, a direct authoritative record for this narrowly "
+                       f"scoped fact, and no source contradicts it.")
+    elif state == "temporally_unresolved":
+        reasons.append(f"The statement concerns the current state; {timeframe['undated']} undated and "
+                       f"{timeframe['outside_window']} out-of-window sentence(s) bear on it, but no source dated "
+                       f"within {_span(timeframe['window_seconds'])} establishes that it holds now.")
+    elif state == "conflicting":
+        reasons.append("Credible sources disagree and neither side clearly outweighs the other; no consensus is "
+                       "assumed.")
+    elif state == "insufficient":
         if not order:
             reasons.append("No source sentence names the subject together with the checked relation.")
-        elif sup < SUPPORTED_MIN_GROUPS:
-            reasons.append(f"Fewer than {SUPPORTED_MIN_GROUPS} independent source groups support it.")
+        elif sup < policy["min_groups"]:
+            reasons.append(f"Fewer than {policy['min_groups']} independent source groups support it.")
     citations = sorted({sources.cite(x.source_url, x) for x in order})
-    return dict(base, label=label, confidence=round(mean, 3), citations=citations,
-                supporting=[x.id for x in supporting], contradicting=[x.id for x in contradicting], reasons=reasons,
+    return dict(head, label=_claims.STATE_TO_LEGACY[state], state=state, basis=basis, confidence=round(mean, 3),
+                citations=citations, supporting=[x.id for x in supporting],
+                contradicting=[x.id for x in contradicting], reasons=reasons, timeframe=timeframe,
+                independent_groups={"supporting": sup, "contradicting": con},
                 _conflicts=[(supporting[0] if supporting else None, x, reason) for x, reason in conflicts])
 
 
@@ -1354,7 +1608,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
     if aside:                # RT-W-04: another ecosystem's package of the same name is never part of the answer
         clusters = [replace(c, claims=kept) for c in clusters
                     for kept in [[x for x in c.claims if x.source_url not in aside]] if kept]
-    scored = [_claims.score(c, now=now, freshness_class=cls, ttl_overrides=ttl_overrides)
+    origins = _claims.document_origins(documents)      # copies of one story are one source (ADR-035)
+    scored = [_claims.score(c, now=now, freshness_class=cls, ttl_overrides=ttl_overrides, origins=origins)
               for c in clusters if c.claims]
     usable = [c for c in scored if c.status != "insufficient"]
 
@@ -1497,7 +1752,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         uncertainties.append(f"{len(failures)} retrieval failure(s) may have hidden evidence ({labels}).")
 
     verdict = None
-    release_question = mode == "technical" and release_statement(checkable_statement(question) or "") is not None
+    # a package-registry statement gets a verdict in any mode ("Is corvane 2.5.4 stable?" may be a quick lookup)
+    release_question = release_statement(checkable_statement(question) or "") is not None
     if (mode == "fact_verification" or release_question) and any(c.claims for c in scored):   # cancelled: none
         statement = checkable_statement(assessment.get("claim") or question)
         if statement is None:        # RT-B-06: nothing checkable (a wh-question): the answer carries the result
@@ -1505,7 +1761,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
                                "of Y; X has N <unit>; X was released in DATE; X is Y; X <verb> ...); the answer and "
                                "contradictions carry the result")
         else:
-            verdict = _verdict(statement, usable, sources, now=now, cls=cls, ttl_overrides=ttl_overrides)
+            verdict = _verdict(statement, usable, sources, now=now, cls=cls, ttl_overrides=ttl_overrides,
+                               window=window, origins=origins)
             listed = {side["id"] for c in contradictions for side in (c["a"], c["b"])}
             for sup, x, reason in verdict.pop("_conflicts"):     # S-09: every counted contradiction is listed
                 if x.id not in listed and len(contradictions) < MAX_CONTRADICTIONS:

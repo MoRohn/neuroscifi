@@ -105,6 +105,7 @@ def _headline(result: dict) -> str:
         return "\n".join(lines)
     m = result["metrics"]
     auth, time_, ver = m["authoritative"], m["time_sensitive"], m["verification"]["confusion"]
+    states = m["verification"].get("states") or {"correct": None, "n": None}
     con = m["contradictions"]
     pcs, uat = m["citations"]["per_cited_source"], m["uat"]
     lines = [f"Web Cortex offline benchmark ({'quick' if result['quick'] else 'full'}; {result['corpus']['pages']} "
@@ -116,7 +117,8 @@ def _headline(result: dict) -> str:
              f"the quote; {pcs['items_every_source_supports']}/{pcs['items']} items fully supported",
              f"  citation support (legacy, any source) {m['citations']['supported']}/{m['citations']['quote_items']}",
              f"  freshness compliance     {time_['freshness_compliance']['n']}/{time_['freshness_compliance']['of']}",
-             f"  verdict accuracy         {ver['correct']}/{ver['n']}",
+             f"  verdict accuracy         {ver['correct']}/{ver['n']} (legacy labels)",
+             f"  verification states      {states['correct']}/{states['n']}",
              f"  contradiction e2e P/R    {con['end_to_end']['all']['precision']}/{con['end_to_end']['all']['recall']}",
              f"  memory recall@3 / MRR    {m['memory']['recall_at_3']} / {m['memory']['mrr']}",
              f"  fact-check discrimination {uat['fact_check_discrimination']['discriminated']}/"

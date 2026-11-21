@@ -6,14 +6,16 @@ labels below were written together with the pages, before any measurement, and a
 system's output.
 
 Contents
-- ARTICLES      53 article pages in five layouts (news, blog, docs, wiki, legacy tables) with realistic page chrome
+- ARTICLES      61 article pages in five layouts (news, blog, docs, wiki, legacy tables) with realistic page chrome
                 (navigation, cookie banners, sidebars, comments, footers). `paras` is the gold main text used to
                 score extraction; `date` the gold publication date (None = undated); SUBJECT the gold subject.
                 P36-P53 reproduce the RC1 UAT defect classes: two releases of one package (latest must win), a code
                 literal `verify=False`, og:updated_time in epoch seconds vs an HTTP Last-Modified-only page, three
                 languages sharing "is a general-purpose programming language", two papers from one record template,
                 a landmark with a similarly named replica village (true vs false location checks) and a contested
-                neuron count.
+                neuron count. P54-P61 are the v0.7.0 claim-verification cases (ADR-035): undated stable and
+                historical facts, a current-state claim, an official site, a syndicated wire story and a changed
+                timetable.
 - SPECIAL       malicious / malformed / edge-case pages (prompt injection, HTML bomb, wrong content type, SSRF
                 redirects, robots-disallowed, slow, 429, JavaScript shell, PDF, RSS).
 - QUESTIONS     authoritative (A), time-sensitive (T), fact-verification (F) and latest-version (L) questions with
@@ -365,6 +367,55 @@ _A = [
          "The Ostra marsh newt brain has roughly 100 million neurons, researchers said.",
          "The count used a new tissue-clearing method.",
          "The team plans to study related species next year."], {}),
+    # v0.7.0 claim-verification cases (ADR-035, docs/knowledge/CLAIM_VERIFICATION.md §7). Gold labels were written
+    # with the pages, before measurement. A lighthouse described by two undated, independent pages (stable and
+    # historical facts; a current-state claim they cannot date; a height they disagree on).
+    ("P54", "openwiki.example", "/wiki/Tolvane_Lighthouse", "wiki", "Tolvane Lighthouse", None, None, [
+         "The Tolvane Lighthouse is a granite lighthouse on Skerry Point in Varnmouth, a fishing town on the Ostra "
+         "coast.",
+         "The Tolvane Lighthouse was built in 1874 to guard the approach to the Varn estuary.",
+         "The Tolvane Lighthouse is 41 metres tall.",
+         "The Tolvane Lighthouse is open to visitors from May to September."],
+     {"infobox": {"Location": "Varnmouth, Ostra", "Built": "1874"}}),
+    ("P55", "coastheritage.example", "/lighthouses/tolvane", "docs", "Tolvane Lighthouse heritage guide", None, None,
+     [
+         "The Tolvane Lighthouse is in Varnmouth, on the rocky tip of Skerry Point.",
+         "The Tolvane Lighthouse was built in 1874 by the Ostra Harbour Board.",
+         "The Tolvane Lighthouse is 38 metres tall, measured to the top of the lantern.",
+         "The Tolvane Lighthouse is open to visitors every day in summer."], {}),
+    # A build tool described by its own official site (undated) and corroborated by two independent pages.
+    ("P56", "fennick-project.example", "/about", "docs", "About Fennick", None, None, [
+         "Fennick is an incremental build tool for polyglot repositories.",
+         "Fennick was created by Oda Haraldsen, who still leads the project.",
+         "Fennick is written in OCaml and ships as a single static binary."], {}),
+    ("P57", "buildnotes.example", "/fennick-first-look", "blog", "A first look at Fennick", "2026-07-08T10:00:00Z",
+     "meta", [
+         "Fennick is written in OCaml, which explains its fast startup.",
+         "The configuration language takes an afternoon to learn.",
+         "Remote caching works out of the box with any S3-compatible store."], {}),
+    # One wire story and a syndicated copy (lightly edited, attributed), and a ferry timetable that changed.
+    ("P58", "coastline-wire.example", "/stories/marrow-creek-ferry", "news", "New operator for Marrow Creek ferry",
+     "2026-09-01T06:00:00Z", "meta", [
+         "The Marrow Creek ferry is operated by Ostra Lines, the regional transport company.",
+         "The crossing takes eleven minutes and carries up to 60 cars.",
+         "Season tickets for residents will keep their current price."], {}),
+    ("P59", "harbourtimes.example", "/2026/09/marrow-creek-ferry", "news", "Marrow Creek ferry changes hands",
+     "2026-09-02T07:30:00Z", "meta", [
+         "The Marrow Creek ferry is operated by Ostra Lines, the regional transport company, which took over the "
+         "route this summer.",
+         "The crossing takes eleven minutes and carries up to 60 cars.",
+         "Season tickets for residents will keep their current price.",
+         "This story was originally published by Coastline Wire."], {}),
+    ("P60", "ostra-lines.example", "/timetables/marrow-creek", "docs", "Marrow Creek ferry timetable",
+     "2025-04-01T08:00:00Z", "meta", [
+         "The Marrow Creek ferry runs every 30 minutes throughout the day.",
+         "The first crossing leaves Marrow Creek at 06:10.",
+         "Bicycles travel free of charge."], {}),
+    ("P61", "ostranews.example", "/2026/11/marrow-creek-ferry-timetable", "news", "Fewer Marrow Creek crossings",
+     "2026-11-19T08:00:00Z", "meta", [
+         "The Marrow Creek ferry runs every 45 minutes since 18 November 2026, because one vessel is in dry dock.",
+         "The operator expects the normal timetable to return in January.",
+         "Passengers are advised to allow extra time at peak hours."], {}),
 ]
 
 ARTICLES = [{"id": i, "host": h, "path": p, "url": url(h, p), "layout": lay, "title": t, "date": d, "date_via": via,
@@ -381,7 +432,8 @@ _SUBJECT_PAGES = {
     "Corvane": ("P36", "P37", "P38", "P39", "P40"), "Brisa": ("P41", "P42"), "Tamsin": ("P43",), "Moro": ("P44",),
     "paper: dendritic gating": ("P45",), "paper: spine turnover": ("P46",), "Corran Spire": ("P47", "P48"),
     "Harrowgate Falls replica": ("P49",), "Mira Voss exhibition": ("P50",), "Mira Voss": ("P51",),
-    "Ostra marsh newt": ("P52", "P53")}
+    "Ostra marsh newt": ("P52", "P53"), "Tolvane Lighthouse": ("P54", "P55"), "Fennick": ("P56", "P57"),
+    "Marrow Creek ferry": ("P58", "P59", "P60", "P61")}
 SUBJECT = {page: subject for subject, pages in _SUBJECT_PAGES.items() for page in pages}
 assert set(SUBJECT) == set(BY_ID), sorted(set(BY_ID) ^ set(SUBJECT))
 
@@ -398,7 +450,9 @@ _SITE_NAMES = {"devnews.example": "DevNews", "dailyherald.example": "The Daily H
                "riverwanderer.example": "River Wanderer", "orbitnews.example": "Orbit Notes",
                "dbforum.example": "DB Forum", "regionalpost.example": "Regional Post",
                "hydro-review.example": "Hydro Review", "linuxweekly.example": "Linux Weekly",
-               "geoatlas.example": "GeoAtlas"}
+               "geoatlas.example": "GeoAtlas", "coastline-wire.example": "Coastline Wire",
+               "harbourtimes.example": "Harbour Times", "ostranews.example": "Ostra News",
+               "buildnotes.example": "Build Notes"}
 _AUTHORS = ["Mara Lind", "Tomas Reyes", "Aiko Brandt", "Jon Ekberg", "Priya Nair", "Leo Hartmann"]
 _COMMENTS = [
     ("kayakfan", "Great write-up, thanks for sharing all the details!"),
@@ -857,6 +911,37 @@ QUESTIONS = [
     {"id": "F16", "category": "verification",
      "question": "Is it true that the brain of the Ostra marsh newt contains 86 million neurons?",
      "gold_label": "contested", "acceptable": ["contested", "disputed"]},
+    # v0.7.0 claim verification (ADR-035): gold labels are verification states (CLAIM_VERIFICATION.md §7); the
+    # cases before F17 keep their pre-ADR-035 labels, read through claims.normalise_state ("contested" ->
+    # "conflicting").
+    {"id": "F17", "category": "verification", "case": "stable fact, two undated independent sources",
+     "question": "Is it true that the Tolvane Lighthouse is in Varnmouth?", "gold_label": "supported"},
+    {"id": "F18", "category": "verification", "case": "historical fact, two undated independent sources",
+     "question": "Is it true that the Tolvane Lighthouse was built in 1874?", "gold_label": "supported"},
+    {"id": "F19", "category": "verification", "case": "current-state claim, only undated sources",
+     "question": "Is it true that the Tolvane Lighthouse is currently open to visitors?",
+     "gold_label": "temporally_unresolved"},
+    {"id": "F20", "category": "verification", "case": "official primary source alone (narrow historical fact)",
+     "question": "Is it true that Fennick was created by Oda Haraldsen?", "gold_label": "supported"},
+    {"id": "F21", "category": "verification", "case": "independent corroboration (official undated + dated blog)",
+     "question": "Is it true that Fennick is written in OCaml?", "gold_label": "supported"},
+    {"id": "F22", "category": "verification", "case": "syndicated copy is not a second source",
+     "question": "Is it true that the Marrow Creek ferry is operated by Ostra Lines?", "gold_label": "insufficient"},
+    {"id": "F23", "category": "verification", "case": "superseded current-state claim",
+     "question": "Is it true that the Marrow Creek ferry currently runs every 30 minutes?", "gold_label": "disputed"},
+    {"id": "F24", "category": "verification", "case": "contradictory evidence of comparable weight",
+     "question": "Is it true that the Tolvane Lighthouse is 41 metres tall?", "gold_label": "conflicting"},
+    {"id": "F25", "category": "verification", "case": "missing evidence",
+     "question": "Is it true that the Tolvane Lighthouse was designed by Hanne Sollie?",
+     "gold_label": "insufficient"},
+    {"id": "F26", "category": "verification", "case": "registry: a yanked release is not stable",
+     "question": "Is corvane 2.5.4 stable?", "gold_label": "disputed"},
+    {"id": "F27", "category": "verification", "case": "registry: publication does not establish security",
+     "question": "Is corvane 2.5.5 secure?", "gold_label": "insufficient"},
+    {"id": "F28", "category": "verification", "case": "registry: publication settled by the registry record",
+     "question": "Was corvane 2.5.5 released?", "gold_label": "supported"},
+    {"id": "F29", "category": "verification", "case": "registry: a recommendation is a judgement",
+     "question": "Is corvane 2.5.5 recommended?", "gold_label": "not_evaluated"},
     # latest version: two releases on the web (L01); a plain package name answered by the fixture PyPI (L02)
     {"id": "L01", "category": "latest", "question": "What is the latest release of Corvane?",
      "gold_latest": "2.5.5", "older": ["2.5.3", "2.5.4"], "gold_urls": ["P37"]},
