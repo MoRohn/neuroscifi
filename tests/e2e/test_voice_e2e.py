@@ -393,18 +393,76 @@ def test_voice_pocket_https_capture_and_one_device_at_a_time(launch, browser, tm
 
 
 class _ScriptedEngines:
-    """Speech engines that are 'ready' without services (the hand-off flow needs a microphone, not recognition)."""
+    """Speech engines that are 'ready' without services (the hand-off flow needs a microphone, not recognition).
+    `asr_down` makes recognition fail and, with `health_down`, report itself unavailable."""
     signature = "scripted"
+    asr_down = health_down = False
 
     def __init__(self, cfg):
         class ASR:
             def transcribe(self, pcm, rate=16000):
+                if _ScriptedEngines.asr_down:
+                    raise vengines.EngineError("unavailable", "scripted: recognition is down")
                 return {"text": "", "latency": 0.0, "audio_seconds": len(pcm) / 2 / rate}
         self.asr, self.tts = ASR(), None
 
     def health(self, probe=False):
-        return {"asr": {"state": "ready", "reason": None}, "tts": {"state": "ready", "reason": None},
+        asr = "unavailable" if _ScriptedEngines.health_down else "ready"
+        return {"asr": {"state": asr, "reason": None}, "tts": {"state": "ready", "reason": None},
                 "duplex": {"state": "disabled", "reason": "off"}}
+
+
+def _tone_wav(path, parts, rate=48000):
+    """parts: seconds of silence (number) or of a voice-level tone (("tone", seconds)); no speech service needed."""
+    import math
+    out = bytearray()
+    for part in parts:
+        n = int((part[1] if isinstance(part, tuple) else part) * rate)
+        out += (b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * 200 * i / rate))) for i in range(n))
+                if isinstance(part, tuple) else b"\x00\x00" * n)
+    header = (b"RIFF" + struct.pack("<I", 36 + len(out)) + b"WAVEfmt " +
+              struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16) + b"data" + struct.pack("<I", len(out)))
+    Path(path).write_bytes(header + bytes(out))
+    return path
+
+
+def test_voice_asr_failure_turns_the_microphone_off(browser, tmp_path):
+    """T2-08: when recognition fails while the microphone is on, capture stops (track ended, no more uploads) and
+    the user is told; when the status says recognition is unavailable, the same; 'Turn microphone off' is never
+    disabled while the microphone is on."""
+    from neuroscifi.voice.hub import VoiceHub
+    _ScriptedEngines.asr_down = _ScriptedEngines.health_down = False
+    wav = _tone_wav(tmp_path / "tone.wav", [1.5, ("tone", 1.2), 2.0] * 10)
+    console = Console(tmp_path)
+    console.server.voice_hub = hub = VoiceHub(console.path, engines_factory=_ScriptedEngines)
+    b = browser.browser_type.launch(executable_path=os.environ.get("NSF_CHROMIUM") or None, args=[
+        "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
+        f"--use-file-for-fake-audio-capture={wav}"])
+    try:
+        page = b.new_context(viewport={"width": 1280, "height": 900}, permissions=["microphone"]).new_page()
+        page.goto(console.url)
+        page.locator("#nav").get_by_role("link", name="Voice").click()
+        expect(page.locator(".nsfv-health")).to_contain_text("Speech recognition: ready", timeout=15_000)
+        _ScriptedEngines.asr_down = True
+        start_session(page, "voice_in_text_out")
+        expect(page.locator(".nsfv-indicator")).to_have_text("Microphone off", timeout=15_000)   # after a tone
+        expect(page.locator(".nsfv-notice")).to_contain_text("microphone is off")
+        assert page.evaluate("() => window.__nsfVoice.client.tracksLive()") == 0
+        expect(page.get_by_role("button", name="Turn microphone on")).to_be_enabled()
+        # recognition reported unavailable while the microphone is on: the status refresh turns it off
+        _ScriptedEngines.asr_down = False
+        page.get_by_role("button", name="Turn microphone on").click()
+        expect(page.locator(".nsfv-indicator")).to_contain_text("Microphone on")
+        _ScriptedEngines.health_down = True
+        hub._health = (0.0, None)
+        page.evaluate("() => window.__nsfVoice.refreshStatus()")
+        expect(page.locator(".nsfv-indicator")).to_have_text("Microphone off", timeout=5_000)
+        assert page.evaluate("() => window.__nsfVoice.client.tracksLive()") == 0
+        expect(page.get_by_role("button", name="Turn microphone on")).to_be_disabled()   # on needs recognition
+    finally:
+        _ScriptedEngines.asr_down = _ScriptedEngines.health_down = False
+        b.close()
+        console.close()
 
 
 def test_voice_pocket_asks_and_the_owner_hands_over_the_microphone(browser, tmp_path):

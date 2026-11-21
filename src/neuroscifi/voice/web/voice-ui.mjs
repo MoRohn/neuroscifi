@@ -128,7 +128,8 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
   function render() {
     const s = client.snapshot();
     ui.session.textContent = s.session ? "End voice session" : "Start voice session";
-    ui.mic.disabled = !s.session || s.mode === "text_only" || !state.voiceIn;
+    // turning the microphone OFF is always possible; only turning it on needs a session, a voice mode and ASR
+    ui.mic.disabled = !s.micOn && (!s.session || s.mode === "text_only" || !state.voiceIn);
     ui.mic.setAttribute("aria-pressed", String(s.micOn));
     ui.mic.textContent = s.micOn ? "Turn microphone off" : "Turn microphone on";
     ui.mute.setAttribute("aria-pressed", String(s.outputMuted));
@@ -152,6 +153,7 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
     if (st.error) { ui.health.textContent = `Voice status unavailable: ${st.error}`; return st; }
     state.voiceIn = st.available.voice_in;
     state.voiceOut = st.available.voice_out;
+    if (!state.voiceIn && client.micOn) await client.micOff("Speech recognition is unavailable, so the microphone is off. Type instead.");
     const e = st.engines;
     const word = (x) => `${x.state}${x.reason && x.state !== "ready" ? ` (${String(x.reason).slice(0, 80)})` : ""}`;
     ui.health.textContent = `Speech recognition: ${word(e.asr)} · Speech output: ${word(e.tts)} · PersonaPlex ` +

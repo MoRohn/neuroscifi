@@ -47,6 +47,7 @@ MIN_PROVISIONAL_SECONDS = 0.6
 MIN_FINAL_SECONDS = 0.25
 MAX_SESSIONS = 16
 MAX_SESSIONS_PER_PRINCIPAL = 4
+SESSION_IDLE = 120.0         # a session whose client stopped polling (closed tab, lost phone) ends after this
 MAX_REPLY_WORKERS = 8        # concurrent bridge replies (each may run a local model call)
 MAX_FOLLOWERS = 16           # research tasks followed at once
 WRITE_QUEUE = 256            # pending transcript writes
@@ -211,6 +212,7 @@ class VoiceHub:
                 tx.update_session(db, sid, self.clock(), context={k: v for k, v in context.items()
                                                                   if k in ("last_task_id", "last_objective")})
         s = Session(sid, principal, device, label, mode)
+        self._expire_idle()
         try:
             victims = self._admit(s)
         except Conflict:
@@ -222,6 +224,15 @@ class VoiceHub:
         self._state(s, mode=mode, session_active=True, capture_device=None, mic_capturing=False, speaking=False,
                     user_speaking=False, interrupted_at=None)
         return self.public(s)
+
+    def _expire_idle(self):
+        """End sessions whose client has not called for SESSION_IDLE seconds (every open client long-polls events
+        at least every 20 s, so only closed tabs and vanished devices go)."""
+        cutoff = time.monotonic() - SESSION_IDLE
+        with self.lock:
+            idle = [x for x in self.sessions.values() if x.seen < cutoff]
+        for x in idle:
+            self._end(x, "expired")
 
     def _admit(self, s: Session) -> list:
         """Register a new session; returns the sessions it displaces. A principal displaces its own oldest sessions
@@ -295,6 +306,7 @@ class VoiceHub:
     def status(self, principal, sid=None, *, probe=False) -> dict:
         """Settings, engines and the lease as `principal` may see them. A Pocket principal gets its own session's
         state only: no owner snapshot, no hub metrics, no retained-audio count, no other principal's holder label."""
+        self._expire_idle()
         with self.db() as db:
             self._sweep(db)
             cfg = vconfig.effective(db, principal.name, principal.owner)
@@ -869,6 +881,7 @@ class VoiceHub:
                     break
                 s.cond.wait(left)
             items = [e for e in s.events if e["seq"] > since]
+        s.seen = time.monotonic()           # a client still waiting on events is alive
         return {"events": items, "seq": s.seq, "active": s.active}
 
     # ---- long tasks ---------------------------------------------------------------------------------------------------

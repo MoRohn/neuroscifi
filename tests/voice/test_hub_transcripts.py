@@ -507,3 +507,28 @@ def test_audio_chunks_never_wait_for_a_write_transaction(hub, instance):
     with closing(store.connect(instance)) as db:
         assert [(x["status"], x["text"]) for x in tx.listing(db, session_id=s) if x["speaker"] == "user"] == \
             [("final", "show me the evidence")]
+
+
+def test_many_console_session_starts_never_hang(hub):
+    """T2-07: the 17th start in one console process used to deadlock (eviction re-took the hub lock)."""
+    done = []
+
+    def go():
+        for i in range(20):
+            done.append(hub.start(OWNER, f"console:dev{i:04d}", OWNER.label, "text_only")["session"])
+    t = threading.Thread(target=go, daemon=True)
+    t.start()
+    t.join(10)
+    assert len(done) == 20 and done[-1] in hub.sessions
+
+
+def test_sessions_of_closed_clients_expire(hub, instance):
+    """T2-07: a closed tab stops polling; its session ends (and releases the microphone) after SESSION_IDLE."""
+    from neuroscifi.voice import hub as vhub
+    gone = start(hub, device="closedtab")
+    hub.events(start(hub, device="livetab", mic=False), OWNER, 0, wait=0)
+    hub.sessions[gone].seen -= vhub.SESSION_IDLE + 1
+    hub.status(OWNER)
+    assert gone not in hub.sessions and vstate.get(gone)["session_active"] is False
+    with closing(store.connect(instance)) as db:
+        assert tx.session(db, gone)["status"] == "ended" and tx.holder(db, time.time()) is None

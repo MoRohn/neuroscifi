@@ -19,6 +19,7 @@ const PREROLL_MS = 300;
 const BARGE_MS = 300;
 const LEVEL_HZ = 15;
 const RENEW_MS = 5000;
+const ASR_DOWN = "Speech recognition is unavailable, so the microphone is off. Type instead; text works without voice services.";
 const FRAME_MS = 20;
 
 // ---- transports -----------------------------------------------------------------------------------------------
@@ -442,6 +443,7 @@ export class VoiceClient extends EventTarget {
           if (m) { m.final_ack = performance.now(); m.transcript = r.text || ""; m.asr_ms = r.asr_ms; }
         }
         this.emit("upload", { utterance: utt, final, result: r });
+        if ((r.status === "asr_failed" || r.status === "provisional_failed") && this.micOn) await this.micOff(ASR_DOWN);
       } catch (err) {
         this.emit("notice", `Audio not accepted: ${err.message}`);
         if (err.status === 409 && /hold the microphone|text-only|consent/.test(err.message)) await this.micOff();
@@ -506,6 +508,7 @@ export class VoiceClient extends EventTarget {
     else if (e.type === "confirm") { this.pending = e.confirm; this._report(); }
     else if (e.type === "forgotten") { this.session = e.new_session; this.since = 0; this.emit("forgotten", e); this._poll(); }
     else if (e.type === "session" && e.status === "ended") { this.session = null; this.micOff(); this._report(); }
+    else if (e.type === "error" && e.what === "asr" && this.micOn) this.micOff(ASR_DOWN);   // never capture for nothing
     this.emit("event", e);
   }
 

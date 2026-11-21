@@ -92,6 +92,11 @@ microphone is in use on <device>" and "Move the microphone here". Who confirms t
 The previous holder's next renewal or upload is refused and it stops its tracks. Console tabs and Pocket devices
 share the same lease (the console and Pocket processes coordinate through the database).
 
+A session whose client stops calling (closed tab, vanished phone; open clients long-poll events at least every
+20 s) ends after 120 s idle and releases its microphone lease. If speech recognition fails or is reported
+unavailable while the microphone is on, the client stops capture (tracks ended, lease released) and says so;
+"Turn microphone off" is never disabled while the microphone is on.
+
 Principals are kept apart in the hub: at most 4 sessions per principal (a principal's oldest goes first), a Pocket
 device never displaces an owner session (a full hub answers 409), a Pocket principal's mode, voice, speed and
 transcript visibility are its own preferences (meta `voice_pref:<principal>`; the owner's settings are unchanged),
