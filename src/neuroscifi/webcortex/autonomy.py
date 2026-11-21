@@ -717,11 +717,15 @@ def idle(db, now, *, worker=None) -> dict:
 # ---- meaningful findings -> the owner's pending questions ------------------------------------------------------------
 
 def after_task(db, task_id, now) -> dict | None:
-    """For a finished autonomous task: a notification (the owner's pending question web:autonomy:<task>, within the
-    web question budget) only for a meaningful finding - a new verified claim (knowledge candidate from a supported
+    """For a finished autonomous task: a notification (the owner's pending question web:autonomy:<task>) only for a
+    meaningful finding - a new verified claim (knowledge candidate from a supported
     cluster), a resolved contradiction (a settled prediction of a hypothesis that came from a contradiction) or a
-    settled prediction (confirmed or error). Nothing else notifies. Returns the findings or None."""
-    from .knowledge import ask, quote
+    settled prediction (confirmed or error). Nothing else notifies. The question is opened whatever the owner's web
+    question budget (config.max_open_web_questions): reporting a finding is what the owner switched autonomy on for,
+    the autonomous budget already bounds how many there can be, and a capped-out notification used to be dropped
+    while the log said "notified" (R1-01). "notified" is recorded only with the pending id it was delivered as;
+    otherwise "finding not delivered". Returns the findings or None."""
+    from . import knowledge
     task = state.task(db, task_id)
     if scope_of(task.get("origin")) != "autonomous" or task["status"] not in TERMINAL_STATES:
         return None
@@ -747,11 +751,13 @@ def after_task(db, task_id, now) -> dict | None:
     if settled:
         outcome = ", ".join(f"#{s['prediction_id']} {s['outcome']}" for s in settled[:5])
         parts.append(f"{len(settled)} prediction(s) settled ({outcome})")
-    text = (f"Autonomous research «{quote(task['objective'])[:120]}» found: {'; '.join(parts)}. "
+    text = (f"Autonomous research «{knowledge.quote(task['objective'])[:120]}» found: {'; '.join(parts)}. "
             "See the console (Research) or `nsf web evidence` for the sources; answer to dismiss.")
     with store.write(db):
-        findings["pending_id"] = ask(db, f"web:autonomy:{task_id}", text, now)
-        state.log_event(db, task_id, "decision", {"autonomy": "notified", "pending_id": findings["pending_id"],
+        findings["pending_id"] = knowledge.open_question(db, f"web:autonomy:{task_id}", text, now)
+        delivered = findings["pending_id"] is not None
+        state.log_event(db, task_id, "decision", {"autonomy": "notified" if delivered else "finding not delivered",
+                                                  "pending_id": findings["pending_id"],
                                                   "findings": {k: len(v) if isinstance(v, list) else v
                                                                for k, v in findings.items()}}, now)
         store.bump_state_version(db)

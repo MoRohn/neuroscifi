@@ -171,8 +171,10 @@ Modes map to implementations as follows (RD-09):
 - Crash recovery: a crashed task keeps its open allowance and its concurrency slot. Detection works by lease expiry,
   or at once when the holder process is dead on the same host. `claim_next` resumes the task from its checkpoint
   without a second allowance (`test_a_crashed_autonomous_task_resumes_without_a_second_allowance`).
-- Notifications use the existing pending-question mechanism, `web:autonomy:<task>`, within the web question
-  budget. A notification is sent only when the task produced at least one of these:
+- Notifications use the existing pending-question mechanism, `web:autonomy:<task>`. They are opened even when the
+  owner's web question budget (`max_open_web_questions`) is full: the autonomous budget already bounds them, and a
+  finding dropped at the cap was logged "notified" with no question (R1-01). The decision log says "notified" only
+  with the pending id; otherwise "finding not delivered". A notification is sent only when the task produced at least one of these:
   - a newly verified statement: a knowledge candidate from a `supported` cluster;
   - a resolved contradiction: a settled prediction of a hypothesis that came from a contradiction;
   - a settled prediction: `confirmed` or `error`.

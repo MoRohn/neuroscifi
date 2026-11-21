@@ -283,6 +283,27 @@ def test_decisions_show_chosen_signals_and_refusal_reasons(decided, new_page):
     assert not page.problems, page.problems
 
 
+def test_a_notification_is_claimed_only_with_a_delivered_question(owner, new_page):
+    """R1-01: the RC2 log recorded "notified" with pending_id null and the console said "You were notified" although
+    no question existed. Only a decision with a question id says so; the others say "Not delivered"."""
+    with closing(store.open_existing(owner.path)) as db, store.write(db):
+        state.log_event(db, None, "decision", {"autonomy": "notified", "pending_id": None}, NOW - 30)
+        state.log_event(db, None, "decision", {"autonomy": "finding not delivered", "pending_id": None}, NOW - 20)
+        state.log_event(db, None, "decision", {"autonomy": "notified", "pending_id": 42}, NOW - 10)
+        store.bump_state_version(db)
+    page = new_page(1280, 900)
+    page.goto(owner.url)
+    go(page)
+    items = page.locator("#autoDecisionList > li")
+    expect(items).to_have_count(3)
+    expect(items.nth(0)).to_contain_text("You were notified")
+    expect(items.nth(0)).to_contain_text("question #42")
+    for n in (1, 2):
+        expect(items.nth(n)).to_contain_text("Not delivered")
+        expect(items.nth(n)).not_to_contain_text("You were notified")
+    assert not page.problems, page.problems
+
+
 @pytest.mark.parametrize("theme", ["light", "dark"])
 @pytest.mark.parametrize("size", [(390, 844), (1280, 900)], ids=["phone", "desktop"])
 def test_autonomy_axe(decided, new_page, size, theme):

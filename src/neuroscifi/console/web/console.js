@@ -2246,7 +2246,13 @@ function decisionParts(d) {
     case 'enabled': return ['switch', 'Switched on', 'info', [text(`Recorded for ${ownerText(d.by)}.`)]];
     case 'disabled': return ['switch', 'Switched off', 'info', [text(`Recorded for ${ownerText(d.by)}.`)]];
     case 'policy changed': return ['policy', 'Limits changed', 'info', [text(`${cap(changeText(d.changes))}.`)]];
-    case 'notified': return ['finding', 'You were notified', 'ok', [text(`A meaningful finding${d.pending_id ? `: question #${d.pending_id} under Questions` : ''}.`)]];
+    case 'notified':
+      // R1-01: only a delivered question is a notification; an older record without one says it was not delivered
+      if (d.pending_id) return ['finding', 'You were notified', 'ok', [text(`A meaningful finding: question #${d.pending_id} under Questions.`)]];
+      // falls through: an older record without a question id was never delivered
+    case 'finding not delivered':
+      return ['finding', 'Not delivered', 'warn', [text('A meaningful finding was recorded, but no question reached you.'),
+        d.task_id ? h('p', { class: 'dectext' }, h('a', { href: '#research', 'data-task': d.task_id, text: 'Open its task under Research' })) : null]];
     case 'no meaningful finding: no notification':
       return ['finding', 'No notification', 'neutral', [text('The investigation found nothing meaningful, so you were not notified.')]];
     default: return ['other', 'Decision', 'neutral', [text(cap(String(a)))]];

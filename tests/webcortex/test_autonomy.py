@@ -383,6 +383,48 @@ def test_the_lexical_fallback_never_settles_an_unrelated_hypothesis_on_a_link(in
         orchestrator.submit(db, "Zephyr release", T0, origin="curiosity", context={"hypothesis": "1"})
 
 
+def test_a_finding_is_delivered_when_the_owners_question_budget_is_full(individual, site):
+    """R1-01: with max_open_web_questions (10) already open, the confirmed prediction of the owner's hypothesis was
+    logged "notified" with pending_id null and no question existed; the console said "You were notified". The
+    notification is the reason autonomy runs, so it is delivered whatever the interruption budget, and "notified"
+    is recorded only with the pending id it was delivered as."""
+    from neuroscifi.webcortex import knowledge
+    db, path = individual
+    with store.write(db):
+        for n in range(state.get_config(db).max_open_web_questions):
+            knowledge.open_question(db, f"web:contested:filler:{n}", f"filler question {n}", T0)
+    assert not knowledge.question_room(db)
+    hid, pid = hypothesize(db, STATEMENT, 0.5)
+    autonomy.enable(db, T0)
+    autonomy.set_policy(db, {"idle_interval": 0.0}, T0)
+    out = scheduler.work(path, once=True, fixture=site, providers=[corpus()], clock=lambda: T0 + 60, max_tasks=1)
+    task = state.task(db, out["processed"][0]["task_id"])
+    assert evolution.prediction(db, pid)["outcome"] == "confirmed"
+    question = db.execute("SELECT id, question FROM pending WHERE scope=? AND resolved_at IS NULL",
+                          (f"web:autonomy:{task['id']}",)).fetchone()
+    assert question and f"#{pid} confirmed" in question[1]
+    notified = [e["detail"] for e in state.events(db, task["id"])
+                if e["kind"] == "decision" and e["detail"].get("autonomy") == "notified"]
+    assert notified and notified[0]["pending_id"] == question[0]
+
+
+def test_notified_is_never_recorded_without_a_delivered_question(individual, monkeypatch):
+    """Should delivery fail, the decision says so ("not delivered"), never "notified" with a null id."""
+    from neuroscifi.webcortex import knowledge
+    db, _ = individual
+    task = curious(db, "Zephyr compiler release blog")
+    orchestrator.cancel(db, task["id"], T0 + 1)
+    with store.write(db):
+        db.execute("UPDATE web_tasks SET checkpoint=? WHERE id=?", (state.dumps({"predictions_settled": [
+            {"prediction_id": 7, "hypothesis_id": 3, "outcome": "confirmed"}]}), task["id"]))
+    monkeypatch.setattr(knowledge, "open_question", lambda *a, **k: None)
+    found = autonomy.after_task(db, task["id"], T0 + 5)
+    assert found["pending_id"] is None
+    details = [e["detail"] for e in state.events(db, task["id"]) if e["kind"] == "decision"]
+    assert not any(d.get("autonomy") == "notified" for d in details)
+    assert any(d.get("autonomy") == "finding not delivered" for d in details)
+
+
 def test_no_notification_without_a_meaningful_finding(individual):
     db, _ = individual
     task = curious(db, "Zephyr compiler release blog")
