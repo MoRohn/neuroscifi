@@ -41,7 +41,7 @@ function fail(e){
     :e.code==="owned"?"Another of your devices is driving this research right now. Ask it to hand it over."
     :e.code==="not_continuable"?"Only a cancelled, partial or failed question can be continued."
     :e.status===429?"Limit reached: up to 10 questions per hour from your linked devices together. Try again later."
-    :e.code==="private_data"?"Remove personal details such as e-mail addresses, phone numbers or names you marked private. Nothing was sent."
+    :e.code==="private_data"?"Refused by your Spark: the question contains personal details such as an e-mail address, a phone number or a name you marked private. Nothing was stored or searched. Remove personal details and submit again."
     :e.status===507?"Your Spark has paused new research because its storage needs attention. Nothing was queued. Try again after the owner frees space."
     :e.status===400?"Your Spark rejected that request. Keep the question within 300 characters and 1024 bytes."
     :e.status===403?"Your Spark no longer accepts this pairing. Pair again."

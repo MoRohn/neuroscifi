@@ -52,8 +52,15 @@ def test_pocket_submit_hint_and_private_refusal_t4_04_t4_05(spark, new_page):
     expect(page.locator("#researchsubmit")).to_have_attribute("aria-describedby", "researchsubmithint")
     page.locator("#objective").fill("Is jane.doe@example.org a maintainer of Zephyr?")
     expect(page.locator("#researchsubmithint")).to_have_text("")
+    sent = []
+    page.on("request", lambda r: sent.append(r.url) if "/api/research_submit" in r.url else None)
     page.locator("#researchsubmit").click()
     expect(page.locator("#researchmsg")).to_contain_text("Remove personal details")
+    # R2-05: the question was POSTed and refused by the Spark, so the message says that, not "Nothing was sent"
+    expect(page.locator("#researchmsg")).to_contain_text("Refused by your Spark")
+    expect(page.locator("#researchmsg")).to_contain_text("Nothing was stored or searched.")
+    expect(page.locator("#researchmsg")).not_to_contain_text("Nothing was sent")
+    assert sent, "the refusal came from the Spark (the copy must not claim nothing was sent)"
     expect(page.locator("#objective")).to_be_focused()
     expect(page.locator("#objective")).to_have_attribute("aria-invalid", "true")
     assert "researchmsg" in page.locator("#objective").get_attribute("aria-describedby")
