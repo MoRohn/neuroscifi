@@ -51,7 +51,8 @@ What the presence does with it (`presence.mjs Presence.voice`, `interpreter.voic
   the hub sets `interrupted_at` only on barge-in or stop, which gives `user_interruption` for 3 s, and the
   interpreter keeps that server value. A reply that simply ends while the mic stays on is not an interruption. The
   intent carries `user_interruption` for 1.5 s and the scene morphs to listening on springs, without snapping.
-  (Voice lane: the client should add `interrupted: true` to the event it sends on a barge-in or stop.)
+  The voice client adds `interrupted: true` to the event it dispatches when a barge-in or stop cuts a playing
+  reply, at the same moment it tells the server (`/api/voice/interrupt`), so the page and the server agree.
 - **Typing** (T2-11): only text entry (text-like inputs, textareas, contenteditable) sets `user_typing`; radios,
   checkboxes and sliders do not.
 - A level change alone does not re-plan the scene. It updates `engine.level` and keeps the frame loop alive.
@@ -66,6 +67,7 @@ What the presence does with it (`presence.mjs Presence.voice`, `interpreter.voic
 | B listening → the real task after the utterance | same test: capture stops, a real research task is queued, and the presence shows it | event-level voice + real task |
 | F interruption without snapping or stale state | same test: barge-in samples the body path every 16 ms (≤20 units per sample), peak point speed ≤260 | event-level |
 | muted / text-only | same test | event-level |
+| F with real (fake-device) audio: barge-in -> `interrupted: true` event, server `interrupted_at`, Presence `user_interruption` only after it | `tests/e2e/test_voice_e2e.py::test_voice_barge_in_stops_playback` (Kokoro-spoken WAV through Chromium fake capture, Whisper, hub) | fake-device audio |
 
 With real microphone capture these scenarios have **not** been verified in this lane. That needs Lane V's running
 voice session and a person speaking (see `FEATURE_ACCEPTANCE.md`).

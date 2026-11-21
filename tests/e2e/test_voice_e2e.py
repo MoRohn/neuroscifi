@@ -268,16 +268,31 @@ def test_voice_research_question_real_asr_llm_tts_latency(launch, tmp_path):
         console.close()
 
 
+# Presence F with real (fake-device) audio: every nsf:voice event marked interrupted, and the Presence intent
+# sampled every 50 ms (performance.now() ms), so the interruption can be timed against the client's barge-in.
+WATCH_PRESENCE = """() => {
+  window.__interrupts = []; window.__intents = [];
+  addEventListener('nsf:voice', (e) => { if (e.detail.interrupted === true) window.__interrupts.push(performance.now()); });
+  setInterval(() => { const p = window.__nsfPresence; if (!p) return; const i = p.intent();
+    if (i) window.__intents.push({ t: performance.now(), activity: i.activity,
+                                   interrupted: (i.interaction || []).includes('user_interruption') }); }, 50);
+}"""
+
+
 def test_voice_barge_in_stops_playback(launch, tmp_path):
     """While NeuroSciFi speaks a long reply, a 150 ms burst (backchannel-length overlap) does not interrupt; then the
     user says 'Please stop.': playback stops on the client, the server marks the reply interrupted, and the
-    utterance itself is handled as the stop command."""
+    utterance itself is handled as the stop command. Presence F: the client marks the barge-in `interrupted: true`
+    on its nsf:voice event (the same moment it tells the server), the server's voice state carries interrupted_at,
+    and the Presence shows user_interruption after the barge-in and not before it."""
+    from neuroscifi.voice import state as vstate
     need_speech()
     wav = fake_capture_wav(tmp_path / "barge.wav", [1.0, "What can you do?", 2.6, ("burst", 0.15), 2.4,
                                                     "Please stop.", 40.0])
     console = Console(tmp_path)
     try:
         page = launch(wav, console)
+        page.evaluate(WATCH_PRESENCE)
         start_session(page, "voice_text")
         page.wait_for_function("() => window.__nsfVoice.client.metrics.bargeIns.length > 0", timeout=40_000)
         page.wait_for_function("() => document.querySelector('.nsfv-neuroscifi.nsfv-interrupted')", timeout=10_000)
@@ -293,6 +308,22 @@ def test_voice_barge_in_stops_playback(launch, tmp_path):
                             "detect_to_stop_ms": round(b["after_detect_ms"], 2),
                             "hold_before_detect_ms": 300, "server": status, "heard": heard,
                             "note": "onset = first frame above the barge threshold; includes the 300 ms hold"})
+        page.wait_for_timeout(2000)
+        interrupts = page.evaluate("() => window.__interrupts")
+        intents = page.evaluate("() => window.__intents")
+        shown = [x["t"] for x in intents if x["interrupted"]]
+        server_interrupted_at = vstate.snapshot()["interrupted_at"]
+        record("presence_interruption", {
+            "client_interrupted_events": len(interrupts),
+            "barge_stop_to_event_ms": round(interrupts[0] - b["stopped"], 1) if interrupts else None,
+            "barge_stop_to_presence_user_interruption_ms": round(shown[0] - b["stopped"], 1) if shown else None,
+            "presence_user_interruption_shown_ms": round(shown[-1] - shown[0] + 50) if shown else 0,
+            "presence_interrupted_before_barge_in": any(t < b["stopped"] for t in shown),
+            "server_interrupted_at_set": server_interrupted_at is not None,
+            "note": "fake-device audio; Presence intent sampled every 50 ms"})
+        assert len(interrupts) == 1 and interrupts[0] - b["stopped"] < 50, (interrupts, b)
+        assert shown and not any(t < b["stopped"] for t in shown) and shown[0] - b["stopped"] < 1000, shown[:3]
+        assert server_interrupted_at is not None
         assert out_level is False and b["stop_ms"] < 1000
         assert overlaps == 1 and status["barge_ins"] == 1          # the 150 ms burst did not interrupt
         assert any(re.search(r"stop", h, re.I) for h in heard[1:])

@@ -8,8 +8,9 @@
 // Barge-in: while speaking, user speech above the barge threshold for BARGE_MS stops playback at once on the
 // client (no round trip), then the server is told; shorter or quieter speech is an overlap/backchannel and does
 // not interrupt. Presence contract: window "nsf:voice" CustomEvent {mic_capturing, speaking, output_muted, mode,
-// level} on every change and at LEVEL_HZ while capturing or speaking; level = RMS 0..1 from an AnalyserNode (mic
-// while listening, output while speaking).
+// level, interrupted?} on every change and at LEVEL_HZ while capturing or speaking; level = RMS 0..1 from an
+// AnalyserNode (mic while listening, output while speaking); interrupted: true once, when a barge-in or stop cut a
+// playing reply (the same moment the server is told).
 
 export const MODES = ["voice_text", "voice_in_text_out", "text_only"];
 const CHUNK_MS = 500;
@@ -141,20 +142,20 @@ export class VoiceClient extends EventTarget {
 
   emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }
 
-  presence() {
+  presence(extra) {
     const detail = { mic_capturing: this.micOn, speaking: this.speaking && !this.outputMuted,
-                     output_muted: this.outputMuted, mode: this.mode, level: this._level };
+                     output_muted: this.outputMuted, mode: this.mode, level: this._level, ...extra };
     window.dispatchEvent(new CustomEvent("nsf:voice", { detail }));
   }
 
-  _report() {   // tell the server (Presence aggregator) what this client is doing; on change only, debounced
+  _report(extra) {   // tell the server (Presence aggregator) what this client is doing; on change only, debounced
     clearTimeout(this._reportTimer);
     this._reportTimer = setTimeout(() => {
       if (!this.session) return;
       this.t.post("client", { session: this.session, mic_capturing: this.micOn, speaking: this.speaking,
                                user_speaking: this.userSpeaking, output_muted: this.outputMuted }).catch(() => {});
     }, 80);
-    this.presence();
+    this.presence(extra);
     this.emit("state", this.snapshot());
   }
 
@@ -567,9 +568,12 @@ export class VoiceClient extends EventTarget {
     for (const src of pb.sources || []) { try { src.onended = null; src.stop(); src.disconnect(); } catch { /* done */ } }
     const stopped = performance.now();
     const had = pb.turn && (pb.sources || []).length;
+    // a barge-in or stop of a reply that was playing is an interruption: Presence hears it from this event
+    // (`interrupted: true`) and the server from the interrupt call below, so both agree (T2-05)
+    const interrupted = Boolean(had && this.session && (kind === "barge_in" || kind === "stop"));
     this.playback = { turn: null, n: 0, sources: [], nextStart: 0, playing: 0 };
-    if (this.speaking) { this.speaking = false; this._report(); }
-    if (had && this.session && (kind === "barge_in" || kind === "stop")) {
+    if (this.speaking || interrupted) { this.speaking = false; this._report(interrupted ? { interrupted: true } : undefined); }
+    if (interrupted) {
       const sentence = Math.min(pb.total || 0, pb.n || 0);
       this.t.post("interrupt", { session: this.session, kind, turn: pb.turn, sentence,
                                  stop_ms: kind === "barge_in" ? Math.round(stopped - this.vad.onset) : undefined })
