@@ -78,6 +78,9 @@ _SIMPLE_FACT = re.compile(r"^\s*(?:when|who|where|(?:in )?(?:what|which) year|ho
                           r"heavy|deep|high))\b", re.I)
 # Broad current-events questions ("What happened in AI this week?") name a field, not a story: SearXNG news is
 # searched for the field and its spelled-out name, plus general web headlines in the same window (T1-06).
+_FACT_PREDICATE = frozenset("""first last released release founded invented created introduced born died launched discovered
+published built made started began begun named called many much old long tall far big large heavy deep high
+year""".split())
 BROAD_NEWS_MAX_WINDOW = 8 * DAY
 BROAD_NEWS_MAX_WORDS = 2
 _SPELLED_OUT = {"ai": "artificial intelligence", "ml": "machine learning", "llm": "large language models",
@@ -799,9 +802,14 @@ def referent_needed(question: str) -> str | None:
     return m.group(0)
 
 
-def _subject_of(previous: str) -> str | None:
+_VERSION_NOUNS = frozenset({"version", "release"})
+
+
+def _subject_of(previous: str, *, versioned: bool = False) -> str | None:
     """What an earlier question was about: its versioned name ("numpy 2.5.5"), else its named entities, else its
-    first topical words; None when it names nothing (or itself pointed back without naming)."""
+    first topical words; None when it names nothing (or itself pointed back without naming). With `versioned`
+    ("that version", "this release") only a versioned name will do: "What happened in AI this week?" names no
+    version, so "Is that version secure?" after it is not about "AI"."""
     previous = _URL.sub(" ", " ".join(str(previous or "").split()))
     if not previous:
         return None
@@ -809,6 +817,8 @@ def _subject_of(previous: str) -> str | None:
               _COMMON | STOPWORDS | META | {"release", "releases", "version", "versions"}), None)
     if m:
         return f"{m.group(1)} {m.group(2).rstrip('.')}"
+    if versioned:
+        return None
     entities = [e for e in extract_entities(previous) if e.lower() not in _START_WORDS]
     if entities:
         return " ".join(entities[:2])
@@ -827,13 +837,16 @@ def followup(question: str, previous: str | None = None) -> dict | None:
     anaphor = referent_needed(question)
     if anaphor is None:
         return None
-    subject = _subject_of(previous) if previous and referent_needed(previous) is None else None
+    noun = _DEFINITE_ANAPHOR.match(anaphor)
+    what = noun.group("noun").lower() if noun and noun.group("noun").lower() != "one" else "subject"
+    usable = bool(previous) and referent_needed(previous) is None
+    subject = _subject_of(previous, versioned=what in _VERSION_NOUNS) if usable else None
     if not subject:
-        noun = _DEFINITE_ANAPHOR.match(anaphor)
-        what = noun.group("noun").lower() if noun and noun.group("noun").lower() != "one" else "subject"
+        why = (f"your previous question (“{_cap(' '.join(previous.split()), 80)}”) names no {what}" if usable else
+               "there is no earlier question in this conversation to take it from")
         return {"anaphor": anaphor,
-                "clarify": f"Which {what} do you mean? “{anaphor}” refers to something said earlier, and there is no "
-                           f"earlier question in this conversation to take it from. Ask again and name it"
+                "clarify": f"Which {what} do you mean? “{anaphor}” refers to something said earlier, and {why}. "
+                           f"Ask again and name it"
                            + (" (package and version, e.g. “Is numpy 2.5.5 secure?”)." if what in
                               ("version", "release", "package", "library", "module") else ".")}
 
@@ -978,7 +991,11 @@ def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> Quer
         if "academic" in kinds:
             add(1, keywords(kw, limit=5), "academic", f"{label}: scholarly")
         if "encyclopedia" in kinds:
-            add(1, kw, "encyclopedia", f"{label}: encyclopedia")
+            # one fact about a named thing: the encyclopedia is asked for the thing itself ("Python", "Rust
+            # programming language"), whose lead states such facts; the web query keeps the predicate
+            thing = " ".join(w for w in kw.split() if w.lower() not in _FACT_PREDICATE) \
+                if assessment.get("simple_fact") else ""
+            add(1, thing or kw, "encyclopedia", f"{label}: encyclopedia")
     if dependency_check and not assessment.get("packages"):
         notes.append("dependency check without a package inventory: nothing to look up (the orchestrator supplies "
                      "the packages in use)")

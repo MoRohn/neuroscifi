@@ -1634,3 +1634,26 @@ def test_a_security_question_says_that_osv_was_checked(individual, web):
     assert "no known advisory. That does not establish that it is secure" in v["summary"]
     assert v["reasons"][0] == v["summary"] and not any(x.startswith("No OSV record") for x in v["reasons"])
     assert v["advisory_check"]["records"] == 0
+
+
+def test_candidates_are_spread_over_hosts_for_any_question(individual, web):
+    """T1-07 live: 8 of the 9 candidates of "When was Python first released?" were Hacker News items. Every
+    question takes at most max(2, ceil(max_pages / 3)) web candidates per host (2 for news questions)."""
+    db, path = individual
+    hits = [{"url": f"http://hn.example/item?id={i}", "title": f"Python first released story {i}",
+             "snippet": "Python first released"} for i in range(8)]
+    hits += [{"url": "http://encyclo.example/python", "title": "Python (programming language)",
+              "snippet": "Python was first released in 1991"}]
+    task = orchestrator.submit(db, "When was Python first released?", T0)
+    services = svc_mod.build(db, path, fixture=web, providers=[CorpusProvider(hits, name="searxng")],
+                             clock=lambda: T0)
+    services.fetcher = PoliteFetcher(services.fetcher)
+    try:
+        done = orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    selected = json.loads(db.execute("SELECT checkpoint FROM web_tasks WHERE id=?", (done["id"],)).fetchone()[0])[
+        "selected"]
+    cap = max(2, -(-done["budget"]["max_pages"] // 3))
+    assert sum("hn.example" in c["url"] for c in selected) == cap
+    assert "http://encyclo.example/python" in {c["url"] for c in selected}

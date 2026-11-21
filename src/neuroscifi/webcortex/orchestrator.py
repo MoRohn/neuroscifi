@@ -91,7 +91,8 @@ MAX_OBJECTIVE = 2000
 MAX_FOLLOW = 2
 MAX_CONTEXT_PACKAGES = 200
 CANDIDATE_FACTOR = 3          # reading ranks up to 3 x max_pages candidates; failed fetches do not use a page slot
-TIMELY_PER_HOST = 2           # news/time-sensitive questions: at most this many web candidates per host (T1-06)
+TIMELY_PER_HOST = 2           # news/time-sensitive questions: at most this many web candidates per host (T1-06);
+                              # otherwise max(2, ceil(max_pages / 3)) (T1-07: 8 of 9 candidates on Hacker News)
 MAX_UNREAD_HEADLINES = 6      # dated search hits shown when nothing usable could be read (T1-06)
 WEB_RESERVE_MODES = ("scientific", "deep_research")
 API_PROVIDERS = ("wikipedia", "arxiv", "openalex", "crossref", "pubmed", "pypi", "npm", "osv", "github")
@@ -820,10 +821,11 @@ class _Run:
             api = r.provider in API_PROVIDERS and bool(r.metadata) and r.provider not in SNIPPET_ONLY
             early = api or r.provider in SNIPPET_ONLY or (monitor and r.provider == "feeds")
             order.append((0 if i < len(named) else (1 if early else 2), i, r, api))
-        # a news question's hits crowd onto a few hosts (Hacker News items, one publisher's pages): a few per host,
-        # so the candidates a quick lookup can afford cover more than one site (T1-06)
+        # hits crowd onto a few hosts (Hacker News items, one publisher's pages): a few candidates per host, so the
+        # candidates a run can afford cover more than one site (T1-06, T1-07); fewer for a news question
         timely = "news" in (assessment.get("kinds") or []) or \
             assessment.get("freshness_class") in ("breaking", "volatile")
+        host_cap = TIMELY_PER_HOST if timely else max(TIMELY_PER_HOST, math.ceil(self.budget.max_pages / 3))
         picked, seen, per_host = [], set(), {}
         for _, _, r, api in sorted(order, key=lambda x: (x[0], x[1])):
             try:
@@ -836,7 +838,7 @@ class _Run:
                 continue
             seen.add(key)
             host = _host(r.url).removeprefix("www.")
-            if timely and not api and r.provider != "question" and per_host.get(host, 0) >= TIMELY_PER_HOST:
+            if not api and r.provider != "question" and per_host.get(host, 0) >= host_cap:
                 continue
             per_host[host] = per_host.get(host, 0) + 1
             picked.append((r, api))

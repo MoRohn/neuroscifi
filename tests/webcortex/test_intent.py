@@ -582,17 +582,20 @@ def test_a_wh_question_without_a_checkable_statement_is_not_fact_verification():
                          now=NOW)["mode"] == "fact_verification"
 
 
-@pytest.mark.parametrize("question, topic", [
-    ("When was Python first released?", "Python first released"),
-    ("When was the Rust programming language first released?", "Rust programming language first released"),
+@pytest.mark.parametrize("question, topic, thing", [
+    ("When was Python first released?", "Python first released", "Python"),
+    ("When was the Rust programming language first released?", "Rust programming language first released",
+     "Rust programming language"),
+    ("Who founded Wikipedia?", "founded Wikipedia", "Wikipedia"),
 ])
-def test_simple_factual_questions_ask_the_encyclopedia_not_changelogs(question, topic):
+def test_simple_factual_questions_ask_the_encyclopedia_not_changelogs(question, topic, thing):
     """T1-07: "When was Python first released?" searched `Python first released release notes` and `... changelog`.
-    One fact about a named thing is searched in the general web and the encyclopedia (Wikipedia)."""
+    One fact about a named thing is searched in the general web (with the predicate) and in the encyclopedia (the
+    thing itself, whose article lead states such facts)."""
     a = intent.assess(question, now=NOW)
     assert a["simple_fact"] and "encyclopedia" in a["kinds"]
     queries = intent.plan(question, a, now=NOW).queries
-    assert [(x.kind, x.text) for x in queries] == [("web", topic), ("encyclopedia", topic)]
+    assert [(x.kind, x.text) for x in queries] == [("web", topic), ("encyclopedia", thing)]
 
 
 def test_versioned_release_questions_keep_their_registry_and_release_note_queries():
@@ -624,6 +627,13 @@ def test_a_follow_up_without_an_earlier_question_asks_instead_of_guessing(questi
     for previous in (None, "", "Is it recommended?"):
         got = intent.followup(question, previous)
         assert "question" not in got and got["clarify"].startswith("Which ")
+
+
+def test_that_version_needs_a_previous_question_that_names_a_version():
+    """Live RC2: after "What happened in AI this week?" the follow-up was read as "Is AI secure, ...?"."""
+    got = intent.followup("Is that version secure, stable and recommended?", "What happened in AI this week?")
+    assert "question" not in got
+    assert got["clarify"].startswith("Which version do you mean?") and "names no version" in got["clarify"]
 
 
 @pytest.mark.parametrize("question", [
