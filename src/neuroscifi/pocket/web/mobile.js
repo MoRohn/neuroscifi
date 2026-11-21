@@ -2,6 +2,7 @@
 const el = id => document.getElementById(id);
 let key = "", draft = null, selected = null, generation = 0, sharing = false, lastActive = 0;
 let reach = "", refused = false, muting = false, pairingNow = false, messageTimer = 0;
+let probeTimer = 0, probeDelay = 0, restoring = false;
 const shared = new Map();  // ids this tab shared since pairing: memory only, never sent anywhere
 const guards = new Set();  // one-shot actions in flight (double-tap guard), released shortly after they finish
 const paused = channel => "Learning is paused for " + channel + ". Resume it under Evening review, or share without learning.";
@@ -30,11 +31,33 @@ function linkText() {
     : offline ? "Paired · this device is offline" : reach === "checking" ? "Checking your Spark…"
     : reach === "down" ? "Paired · Spark unreachable" : "Paired with Spark";
 }
-function reached(ok) { const next = ok ? "ok" : "down"; if (key && reach !== next) { reach = next; linkText(); } }
+// Paired but unreachable (a bridge restart, a dropped request): check again with backoff (1 s doubling to 30 s) until
+// the Spark answers, then reload state so the header, Research and Voice come back without a reload (R2-01). A reload
+// still forgets a pairing kept only in tab memory (POC-07); one kept in the vault is restored and re-checked.
+function reached(ok) {
+  if (!key) return;
+  const next = ok ? "ok" : "down", was = reach;
+  if (reach !== next) { reach = next; linkText(); }
+  if (!ok) { if (!probeTimer) reprobeLater(); return; }
+  clearTimeout(probeTimer); probeTimer = 0; probeDelay = 0;
+  if (was === "down") restore();
+}
+function reprobeLater() {
+  probeDelay = Math.min(30000, probeDelay ? probeDelay * 2 : 1000);
+  probeTimer = setTimeout(() => { probeTimer = 0; if (key && reach === "down") restore(); }, probeDelay);
+}
+function restore() {
+  if (restoring) return;
+  restoring = true;
+  historyView().then(() => {   // api() records the outcome via reached(); a vault pairing is now confirmed too
+    if (el("pairhelp").textContent.startsWith("Your Spark did not answer")) el("pairhelp").textContent = "This tab is paired from your vault. Shared observations expire after 24 hours.";
+  }, () => {}).finally(() => { restoring = false; });
+}
+function stopProbing() { clearTimeout(probeTimer); probeTimer = 0; probeDelay = 0; }
 // A 403 to a credential this tab holds: the Spark erased the pairing. Say so, forget it here and in the vault.
 function revoked() {
   if (!key) return;
-  key = ""; refused = true; shared.clear();
+  key = ""; refused = true; shared.clear(); stopProbing();
   el("pairform").hidden = false; el("paired").hidden = true;
   el("pairhelp").textContent = "Your Spark no longer accepts this pairing. Enter a new code from your Spark or a linked device.";
   el("history").replaceChildren(); el("forecast").textContent = ""; el("handoff").textContent = "";
@@ -323,7 +346,7 @@ el("pairform").onsubmit=async e=>{
     let reply;
     try { reply=await api("pair",{code:el("code").value.trim()}); }
     catch (err) { statusText(pairFailure(err)); el("code").focus?.(); return; }
-    key=reply.key; refused=false; reach="ok"; shared.clear(); el("code").value=""; el("pairform").hidden=true; el("paired").hidden=false;
+    key=reply.key; refused=false; reach="ok"; stopProbing(); shared.clear(); el("code").value=""; el("pairform").hidden=true; el("paired").hidden=false;
     el("pairhelp").textContent="This tab is paired. Shared observations expire after 24 hours.";
     linkText(); buttons(); el("refresh").focus();
     try { await historyView(); statusText("Paired.", true); }
@@ -383,7 +406,7 @@ window.pocketToken=()=>key;
 window.pocketReach=reached; window.pocketRefused=revoked;
 // A credential restored from the vault is checked with the Spark before the header says "Paired" (P-02).
 window.pocketSetPair=token=>{
- key=token; shared.clear(); refused=false; reach=key?"checking":"";
+ key=token; shared.clear(); refused=false; reach=key?"checking":""; stopProbing();
  el("pairform").hidden=!!key;el("paired").hidden=!key;
  linkText();
  el("pairhelp").textContent=key?"Checking the pairing kept in your vault with your Spark…":"Enter your Spark or linked-device code.";

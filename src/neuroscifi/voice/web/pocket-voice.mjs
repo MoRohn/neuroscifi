@@ -13,7 +13,9 @@ async function available() {
   const res = await fetch("/api/voice_status", { method: "POST", cache: "no-store", credentials: "omit",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ probe: false }) }).catch(() => null);
-  if (!res || !res.ok) return false;
+  // unreachable: tell the pairing (mobile.js re-checks with backoff and re-announces the pairing when it answers)
+  if (!res) { if (window.pocketToken?.() === token) window.pocketReach?.(false); return false; }
+  if (!res.ok) return false;
   const body = await res.json().catch(() => ({}));
   return body.voice !== false;
 }

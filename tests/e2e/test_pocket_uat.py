@@ -647,3 +647,33 @@ def test_back_online_rechecks_the_spark_instead_of_keeping_a_stale_unreachable(b
     expect(page.locator("#linkstate")).to_have_text("Paired · this device is offline")
     page.context.set_offline(False)
     expect(page.locator("#linkstate")).to_have_text("Paired with Spark")
+
+
+def test_restart_right_after_pairing_recovers_without_a_reload(research_spark, new_page):
+    """R2-01: the bridge restarted within a second of pairing, so the first history and voice requests failed; the tab
+    stayed "Spark unreachable" for over a minute with Research and Voice hidden although the credential was valid,
+    and only a reload (which forgets a tab-memory pairing, POC-07) changed anything. The tab now re-checks with
+    backoff and restores the header and both sections as soon as the Spark answers."""
+    page = new_page()
+    page.goto(research_spark.url)
+    failed = []
+
+    def fail_first(route):          # each route's first request dies with the restarting bridge
+        name = route.request.url.rsplit("/", 1)[-1]
+        if name in failed:
+            route.fallback()
+        else:
+            failed.append(name)
+            route.abort()
+    page.route("**/api/episodes", fail_first)
+    page.route("**/api/voice_status", fail_first)
+    page.locator("#code").fill("test-only")
+    page.locator("#pairform button").click()
+    expect(page.locator("#linkstate")).to_have_text("Paired · Spark unreachable")
+    expect(page.locator("#navresearch")).to_be_hidden()
+    expect(page.locator("#linkstate")).to_have_text("Paired with Spark", timeout=10_000)
+    expect(page.locator("#navresearch")).to_be_visible()
+    expect(page.locator("#researchform")).to_be_visible()
+    expect(page.locator("#navvoice")).to_be_visible()
+    assert page.evaluate("() => window.pocketToken()"), "still paired: no reload, no new code"
+    assert failed == ["episodes", "voice_status"], failed
