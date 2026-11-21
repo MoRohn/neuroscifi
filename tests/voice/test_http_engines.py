@@ -346,17 +346,32 @@ def test_voice_http_module_lists_pocket_routes():
 def test_speakable_pronunciation_pass():
     """T2-01: domains, URLs and product names reach Kokoro in sayable form; ordinary words are untouched."""
     from neuroscifi.voice.engines import speakable
-    assert speakable("According to techcrunch.com: yes.") == "According to techcrunch dot com: yes."
+    assert speakable("According to nature.com: yes.") == "According to nature dot com: yes."
     assert speakable("See https://www.example.org/a/b?c=1 now") == "See example dot org now"
-    assert speakable("This is NeuroSciFi on SearXNG.") == "This is Neuro Sci-Fi on Searx N G."
-    assert speakable("Agentic AI on Kubernetes, 3.5 points.") == "Agentic AI on Kubernetes, 3.5 points."
+    assert speakable("Ordinary words, 3.5 points.") == "Ordinary words, 3.5 points."
+    assert speakable("It uses vLLM.") == "It uses V L L M."
+
+
+def test_speakable_gives_unknown_names_inline_phonemes():
+    """T2-01: names and new terms reach Kokoro as misaki inline phonemes, so a server without the espeak-ng fallback
+    still says them (the RC1 container dropped them: "This is NeuroSciFi." -> "This is"); markup in the text itself
+    cannot set a pronunciation, and the length cap never cuts a marker."""
+    from neuroscifi.voice.engines import PHONEMES, speakable
+    assert speakable("This is NeuroSciFi.") == f"This is [NeuroSciFi](/{PHONEMES['neuroscifi']}/)."
+    out = speakable("Agentic AI on Kubernetes and PyTorch, says ycombinator.com.")
+    for word in ("Agentic", "Kubernetes", "PyTorch", "ycombinator"):
+        assert f"[{word}](/{PHONEMES[word.lower()]}/)" in out
+    assert out.endswith(" dot com.")
+    assert speakable("Say [hello](/hˈɛlO/) and [x](http://e.x) now [1].") == "Say hello and x now  1 ."
+    long = speakable("a" * 990 + " agentic")
+    assert len(long) <= 1000 and "[" not in long
 
 
 def test_tts_sends_the_speakable_text(fake_server):
     tts = vengines.KokoroTTS(f"http://127.0.0.1:{fake_server.server_port}", "k")
     fake_server.mode = "ok"
-    tts.synthesize("According to techcrunch.com.", "af_heart")
-    assert fake_server.bodies[-1]["input"] == "According to techcrunch dot com."
+    tts.synthesize("According to nature.com.", "af_heart")
+    assert fake_server.bodies[-1]["input"] == "According to nature dot com."
 
 
 def test_tts_server_refuses_to_run_without_the_espeak_fallback():

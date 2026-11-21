@@ -201,21 +201,48 @@ class WhisperASR(HttpEngine):
 
 
 # ---- pronunciation pass before TTS ---------------------------------------------------------------------------------
-# Kokoro's G2P knows dictionary words and spells capital acronyms (LLM, GPU); the espeak-ng fallback guesses the rest
-# (deploy/voice/run.sh keeps it loadable). This pass fixes what neither gets right: URLs and domains (read as
-# "techcrunch dot com", not dropped or run together) and a few product names.
-LEXICON = {"neuroscifi": "Neuro Sci-Fi", "searxng": "Searx N G", "vllm": "V L L M", "qwen": "Chwen"}
+# Kokoro's G2P (misaki) knows dictionary words and spells capital acronyms (LLM, GPU); the espeak-ng fallback guesses
+# the rest (deploy/voice/run.sh keeps it loadable). This pass fixes what neither gets right: URLs and domains (read as
+# "techcrunch dot com", not dropped or run together) and the names and terms in PHONEMES, which are given to misaki
+# as inline phonemes ("[agentic](/Aʤˈɛntɪk/)"), so they are spoken even by a server whose fallback failed to load
+# (UAT T2-01: the RC1 container dropped every unknown word: "This is NeuroSciFi." -> "This is"). Phonemes are
+# misaki's American set; each was checked by a Kokoro -> Whisper round trip. Markup already in the text is removed
+# first, so only this table can set a pronunciation.
+LEXICON = {"vllm": "V L L M"}
+PHONEMES = {"neuroscifi": "nˈʊɹOsˌIfˌI", "agentic": "Aʤˈɛntɪk", "kubernetes": "kˌubəɹnˈɛtiz",
+            "pytorch": "pˈI tˈɔɹʧ", "searxng": "sˈɜɹʧ ˌɛn ʤˈi", "qwen": "ʧwˈɛn", "ycombinator": "wˈI kˈɑmbənˌAɾəɹ",
+            "techcrunch": "tˈɛkkɹˌʌnʧ", "github": "ɡˈɪthˌʌb", "arxiv": "ˈɑɹkˌIv"}
 _URL = re.compile(r"\bhttps?://([^/\s]+)\S*", re.IGNORECASE)
 _DOMAIN = re.compile(r"\b((?:[a-z0-9-]+\.)+(?:com|org|net|io|ai|dev|edu|gov|co|uk|de|fr|eu|info|app))\b", re.IGNORECASE)
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*")
+_MARKUP = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+MAX_TTS_INPUT = 1000
+
+
+def _say_word(m):
+    word = m.group(0)
+    key = word.lower()
+    if key in PHONEMES:
+        return f"[{word}](/{PHONEMES[key]}/)"
+    return LEXICON.get(key, word)
 
 
 def speakable(text: str) -> str:
     """The text as it should be pronounced: URLs -> their host, domains -> "techcrunch dot com", LEXICON terms
-    respelled. Only what is spoken changes; the transcript keeps the original text."""
-    text = _URL.sub(lambda m: m.group(1), text or "")
+    respelled, PHONEMES terms as inline phonemes. Only what is spoken changes; the transcript keeps the original text.
+    At most MAX_TTS_INPUT characters, never cut inside a phoneme marker."""
+    text = _MARKUP.sub(lambda m: m.group(1), text or "").replace("[", " ").replace("]", " ")
+    text = _URL.sub(lambda m: m.group(1), text)
     text = _DOMAIN.sub(lambda m: " dot ".join(m.group(1).lower().removeprefix("www.").split(".")), text)
-    return _WORD.sub(lambda m: LEXICON.get(m.group(0).lower(), m.group(0)), text)
+    out, n = [], 0
+    for part in re.split(r"(\[[^\]]*\]\(/[^)]*/\))", _WORD.sub(_say_word, text)):
+        if n + len(part) > MAX_TTS_INPUT:
+            if not part.startswith("["):
+                out.append(part[:MAX_TTS_INPUT - n])
+            break
+        out.append(part)
+        n += len(part)
+    return "".join(out)
 
 
 class KokoroTTS(HttpEngine):
@@ -229,7 +256,7 @@ class KokoroTTS(HttpEngine):
     def synthesize(self, text: str, voice: str, speed: float = 1.0) -> dict:
         if voice not in vconfig.VOICES:
             raise EngineError("bad_request", "voice not on the allow-list")
-        body = json.dumps({"input": speakable(text)[:1000], "voice": voice, "speed": speed,
+        body = json.dumps({"input": speakable(text), "voice": voice, "speed": speed,
                            "response_format": "wav"}).encode()
         started = time.perf_counter()
         _, headers, data = self.request("POST", "/v1/audio/speech", body, {"Content-Type": "application/json"})
