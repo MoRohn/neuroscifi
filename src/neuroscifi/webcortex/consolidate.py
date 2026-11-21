@@ -59,6 +59,7 @@ from .curiosity import entropy
 MIN_RELEVANCE = 0.0          # a cluster needs at least one claim with relevance above this
 SIMILAR_KEY = 0.8            # token-set Jaccard above which two keys name the same subject
 MAX_ENTITIES_PER_CLAIM = 12
+MAX_NEW_HYPOTHESES_PER_TASK = 5   # new research opportunities one task may open (T1-17; refreshes do not count)
 
 _ENTITY_PATTERNS = (
     ("identifier", re.compile(r"\b(?:CVE-\d{4}-\d{4,7}|GHSA(?:-[0-9a-z]{4}){3}|10\.\d{4,9}/[^\s\"'<>]+)",
@@ -443,12 +444,27 @@ def _research_opportunity(db, task_id, cluster, verdict, now, summary, *, freshn
                           origin=None):
     """A cluster that is not verified knowledge becomes (or refreshes) a hypothesis with a testable prediction
     (evolution.open_hypothesis), at most evolution.MAX_HYPOTHESES_PER_TASK per task. Returns its id or None."""
+    from .curiosity import claim_shaped
     if len(summary["hypotheses"]) >= evolution.MAX_HYPOTHESES_PER_TASK:
         return None
+    statement = _statement(cluster)
+    if claim_shaped(statement) is not None:     # T1-17: record titles and context-bound sentences are no hypotheses
+        return None
     values, polarity = _values(cluster)
+    same = db.execute("SELECT id FROM web_hypotheses WHERE status='open' AND key!=? AND lower(statement)=?",
+                      (cluster.key, " ".join(statement.split()).lower())).fetchone()
+    if same is not None:        # the same statement under another key: one hypothesis, not two
+        if same[0] not in summary["hypotheses"]:
+            summary["hypotheses"].append(same[0])
+        return same[0]
+    created = db.execute("SELECT count(*) FROM web_hypotheses WHERE task_id=?", (task_id,)).fetchone()[0]
+    if task_id is not None and created >= MAX_NEW_HYPOTHESES_PER_TASK and not any(
+            evolution._relation(values, polarity, h["claim_values"], h["polarity"]) == "same"
+            for h in evolution.hypotheses(db, status="open", key=cluster.key, limit=50)):
+        return None             # this task already opened its share; only an existing hypothesis is refreshed
     origin = origin or (verdict["state"] if verdict["state"] in evolution.HYPOTHESIS_ORIGINS else "insufficient")
     hid, created = evolution.open_hypothesis(
-        db, key=cluster.key, statement=_statement(cluster), origin=origin, verification=verdict,
+        db, key=cluster.key, statement=statement, origin=origin, verification=verdict,
         claims=[c.id for c in cluster.claims], values=values, polarity=polarity, now=now, task_id=task_id,
         knowledge_id=knowledge_id, freshness_class=freshness, ttl_overrides=cfg.freshness_ttl or None)
     if hid not in summary["hypotheses"]:

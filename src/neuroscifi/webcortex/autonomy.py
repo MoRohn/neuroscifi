@@ -30,7 +30,9 @@ goal (word overlap with active owner monitors and the owner's research of the la
 prediction_uncertainty (binary entropy of the forecast), stale, contradiction, source_change (a monitor reported a
 meaningful change of that subject in the last 7 days). cost = curiosity.cost(mode) + estimated spend / spend cap.
 A candidate whose expected information gain is below min_gain bits is refused: no browsing to generate activity.
-A subject investigated autonomously within `cooldown` seconds is skipped.
+A subject investigated autonomously within `cooldown` seconds is skipped. The owner's own records always rank first;
+a subject only autonomous research produced is pursued at most one step from the owner's records and only when it
+stays on the owner subject it came from (UAT T1-02, T1-03).
 """
 from __future__ import annotations
 
@@ -58,6 +60,8 @@ WEIGHTS = {"goal": 1.0, "contradiction": 1.0, "hypothesis": 0.8, "prediction_unc
 GOAL_WINDOW = 7 * 86400.0
 CHANGE_WINDOW = 7 * 86400.0
 MAX_CANDIDATES = 50
+MAX_DERIVATION_DEPTH = 1       # autonomous steps a subject may be away from the owner's records and still be pursued
+MIN_RELEVANCE = 1 / 3          # word overlap (share of the smaller set) with the owner subject it was derived from
 AUTONOMOUS_SQL = "(origin='curiosity' OR origin LIKE 'refresh:%')"
 _WORD = re.compile(r"[^\W_]{3,}")
 _STOP = frozenset("the and for with that this from what which when where will would about into does have has was "
@@ -405,21 +409,73 @@ def _recent(db, now, cooldown) -> set:
                                      "IS NOT NULL", (now - cooldown,)) if k}
 
 
-def _autonomous_only(db) -> set:
-    """Subject keys whose every claim and hypothesis came from autonomous tasks (none from the owner's research
-    or the owner's own hypotheses)."""
-    keys = {}
-    for key, origin in db.execute("SELECT c.key, t.origin FROM web_claims c JOIN web_tasks t ON t.id=c.task_id "
-                                  "UNION ALL SELECT h.key, coalesce(t.origin, 'owner') FROM web_hypotheses h "
-                                  "LEFT JOIN web_tasks t ON t.id=h.task_id"):
-        auto = scope_of(origin) == "autonomous"
-        keys[key] = keys.get(key, True) and auto
-    return {k for k, only in keys.items() if only}
+def _lineage(db):
+    """depth(key) -> (derivation depth, originating owner subjects) from the records (T1-02).
+
+    A subject's depth is the smallest over its records (claims, hypotheses, knowledge, feedback): 0 for the owner's
+    own records (owner hypotheses, owner-asserted or owner-accepted knowledge) and for anything the owner's research
+    found; for a record of an autonomous task, 1 + the depth of the subject that task was queued to investigate (its
+    decision event; a refresh task investigates its knowledge item; an autonomous task without either counts as one
+    step from its own objective). The originating owner subject of a depth-1 subject is the depth-0 subject that
+    the autonomous task investigated (its objective and key). Unknown keys are depth 0."""
+    tasks = {tid: (str(origin), objective) for tid, origin, objective in
+             db.execute("SELECT id, origin, objective FROM web_tasks")}
+    investigated = {}
+    for tid, key in db.execute("SELECT task_id, json_extract(detail,'$.autonomy.key') FROM web_events WHERE "
+                               "kind='decision' AND task_id IS NOT NULL AND json_extract(detail,'$.autonomy.key') "
+                               "IS NOT NULL ORDER BY id"):
+        investigated.setdefault(tid, key)
+    refreshed = {str(kid): key for kid, key in db.execute("SELECT id, key FROM web_knowledge")}
+    sources: dict = {}
+    for key, tid in db.execute("SELECT DISTINCT key, task_id FROM web_claims UNION SELECT DISTINCT key, task_id "
+                               "FROM web_feedback WHERE task_id IS NOT NULL"):
+        sources.setdefault(key, set()).add(tid)
+    for key, tid, origin in db.execute("SELECT key, task_id, origin FROM web_hypotheses"):
+        sources.setdefault(key, set()).add(None if origin == "owner" or tid is None else tid)
+    for key, tid, provenance, status in db.execute("SELECT key, task_id, provenance, status FROM web_knowledge"):
+        owner = provenance == "user_asserted" or status == "accepted" or tid is None
+        sources.setdefault(key, set()).add(None if owner else tid)
+    memo: dict = {}
+
+    def task_depth(tid):
+        origin, objective = tasks.get(tid, ("owner", ""))
+        if tid is None or scope_of(origin) != "autonomous":
+            return 0, frozenset()
+        key = investigated.get(tid) or (refreshed.get(origin.partition(":")[2]) if origin.startswith("refresh:")
+                                        else None)
+        if key is None:
+            return 1, frozenset({objective or ""})
+        d, roots = depth(key)
+        return (1, frozenset({f"{objective} {key}"})) if d == 0 else (d + 1, roots)
+
+    def depth(key):
+        if key in memo:
+            return memo[key]
+        memo[key] = (math.inf, frozenset())       # a cycle of autonomous tasks never reaches the owner
+        if key not in sources:
+            memo[key] = (0, frozenset())
+            return memo[key]
+        found = [task_depth(t) for t in sources[key]]
+        best = min(d for d, _ in found)
+        memo[key] = (best, frozenset().union(*(r for d, r in found if d == best)))
+        return memo[key]
+
+    return depth
+
+
+def _overlap_share(a: set, b: set) -> float:
+    return len(a & b) / min(len(a), len(b)) if a and b else 0.0
 
 
 def candidates(db, now, *, limit=10) -> dict:
     """{"chosen": ranked candidates at or above min_gain, "refused": those below it or cooling down}. Each has
-    kind, key, statement, objective, mode, info_gain, cost, signals, priority and the reason."""
+    kind, key, statement, objective, mode, info_gain, cost, signals, priority, owner, depth and the reason.
+
+    The owner's own records (open owner hypotheses, owner-asserted knowledge without evidence, contested owner
+    assertions) are always considered, never cut by MAX_CANDIDATES, and listed ahead of every derived candidate
+    (chosen and refused alike); `total` counts both lists before `limit`, so nothing is dropped silently (T1-03).
+    A derived subject that only autonomous research produced is pursued only within MAX_DERIVATION_DEPTH steps of
+    an owner record and when it shares MIN_RELEVANCE of its words with the owner subject it came from (T1-02)."""
     from . import claims, curiosity, evolution, intent
     from .config import MODE_BUDGETS
     pol = policy(db)
@@ -430,7 +486,8 @@ def candidates(db, now, *, limit=10) -> dict:
     changed = _changed_keys(db, now)
     changed_words = [_words(k) for k in changed]
     recent = _recent(db, now, cooldown)
-    derived = _autonomous_only(db)
+    lineage = _lineage(db)
+    asserted = {kid for (kid,) in db.execute("SELECT id FROM web_knowledge WHERE provenance='user_asserted'")}
     by_key: dict = {}
 
     def add(kind, key, statement, mode, gain, signals, extra=None):
@@ -447,7 +504,9 @@ def candidates(db, now, *, limit=10) -> dict:
                 found["signals"][s] = max(found["signals"].get(s, 0.0), v)
             if gain > found["info_gain"]:
                 found.update(kind=kind, info_gain=gain, mode=mode)
+            owner = found.get("owner") or (extra or {}).get("owner")
             found.update(extra or {})
+            found["owner"] = bool(owner)
             return
         by_key[key] = {"kind": kind, "key": key, "statement": statement, "mode": mode, "info_gain": gain,
                        "signals": signals} | (extra or {})
@@ -460,6 +519,8 @@ def candidates(db, now, *, limit=10) -> dict:
                    "stale": 1.0 if c["kind"] == "stale" else 0.0, "gap": 1.0 if c["kind"] == "gap" else 0.0,
                    "hypothesis": 1.0 if c["kind"] == "hypothesis" else 0.0}
         extra = {"knowledge_id": target["knowledge_id"]} if "knowledge_id" in target else {}
+        if target.get("knowledge_id") in asserted:
+            extra["owner"] = True
         if c["kind"] == "prediction":
             row = db.execute("SELECT probability FROM web_predictions WHERE id=?",
                              (target.get("prediction_id"),)).fetchone()
@@ -468,16 +529,32 @@ def candidates(db, now, *, limit=10) -> dict:
             extra["prediction_id"] = target.get("prediction_id")
         add(c["kind"], target.get("key"), target.get("statement") or "", c["mode"], float(c["info_gain"]), signals,
             extra)
-    for pid, hid, p in db.execute("SELECT p.id, p.hypothesis_id, p.probability FROM web_predictions p JOIN "
-                                  "web_hypotheses h ON h.id=p.hypothesis_id WHERE p.outcome IS NULL AND "
-                                  "h.status='open' ORDER BY p.id DESC LIMIT ?", (MAX_CANDIDATES,)).fetchall():
+    # Every open owner hypothesis (with its latest open prediction, if any), then the newest derived ones.
+    rows = db.execute("SELECT (SELECT max(p.id) FROM web_predictions p WHERE p.hypothesis_id=h.id AND p.outcome IS "
+                      "NULL), h.id FROM web_hypotheses h WHERE h.status='open' AND h.origin='owner' ORDER BY h.id"
+                      ).fetchall()
+    rows += db.execute("SELECT p.id, p.hypothesis_id FROM web_predictions p JOIN web_hypotheses h ON "
+                       "h.id=p.hypothesis_id WHERE p.outcome IS NULL AND h.status='open' AND h.origin!='owner' "
+                       "ORDER BY p.id DESC LIMIT ?", (MAX_CANDIDATES,)).fetchall()
+    for pid, hid in rows:
         h = evolution.hypothesis(db, hid)
-        p = state.finite(p, 0.5)
+        found = db.execute("SELECT probability FROM web_predictions WHERE id=?", (pid,)).fetchone() if pid else None
+        p = state.finite(found[0] if found else h["verification"].get("confidence"), 0.5)
         add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", curiosity.info_gain(p),
             {"hypothesis": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6),
              "contradiction": 1.0 if h["origin"] in ("conflicting", "disputed") else 0.0,
              "gap": 1.0 if h["origin"] in ("insufficient", "gap", "not_evaluated") else 0.0},
-            {"hypothesis_id": hid, "prediction_id": pid, "forecast": p})
+            {"hypothesis_id": hid, "prediction_id": pid, "forecast": p} |
+            ({"owner": True} if h["origin"] == "owner" else {}))
+    # The owner's assertions that no evidence has been examined for yet (ADR-038: not_evaluated, no support).
+    for kid, key, statement, confidence in db.execute(
+            "SELECT id, key, statement, confidence FROM web_knowledge WHERE provenance='user_asserted' AND "
+            f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))}) AND supporting='[]' ORDER BY id",
+            state.LIVE_KNOWLEDGE).fetchall():
+        p = state.finite(confidence, 0.5)
+        add("owner_assertion", key, statement, "fact_verification", curiosity.info_gain(p),
+            {"gap": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6)}, {"knowledge_id": kid,
+                                                                                    "owner": True})
     chosen, refused = [], []
     for item in by_key.values():
         mode_cost = curiosity.cost(item["mode"])
@@ -495,51 +572,85 @@ def candidates(db, now, *, limit=10) -> dict:
         else:
             item["objective"] = (curiosity.search_terms(statement, item["key"], db) if statement else
                                  curiosity.search_terms(None, item["key"], db))[:300]
+        item["owner"] = bool(item.get("owner"))
+        depth, roots = (0, frozenset()) if item["owner"] else lineage(item["key"])
+        item["depth"] = depth if depth != math.inf else None
+        relevance = max((_overlap_share(_words(statement) | _words(item["key"]), _words(r)) for r in roots),
+                        default=0.0)
+        shape = None if item["owner"] or "knowledge_id" in item else curiosity.claim_shaped(statement)
         if item["info_gain"] < min_gain:
             refused.append(item | {"reason": f"expected information gain {item['info_gain']:.3f} bits < minimum "
                                              f"{min_gain:g}: not researched (no browsing to generate activity)"})
-        elif item["key"] in derived and not item["signals"].get("goal"):
-            refused.append(item | {"reason": "known only from autonomous research and unrelated to an active goal: "
-                                             "not pursued (autonomy does not feed on its own by-products)"})
+        elif depth > MAX_DERIVATION_DEPTH:
+            refused.append(item | {"reason": "derived from autonomous research "
+                                             f"{'in a cycle' if depth == math.inf else f'{depth} steps'} away from "
+                                             f"the owner's records (at most {MAX_DERIVATION_DEPTH}): not pursued "
+                                             "(autonomy does not feed on its own by-products)"})
+        elif depth >= 1 and relevance < MIN_RELEVANCE:
+            root = min(roots, key=len, default="")
+            refused.append(item | {"reason": f"known only from autonomous research and unrelated to the owner subject "
+                                             f"it came from («{' '.join(root.split())[:80]}», overlap "
+                                             f"{relevance:.2f} < {MIN_RELEVANCE:.2f}): not pursued (autonomy does "
+                                             "not feed on its own by-products)"})
         elif item["key"] in recent:
             refused.append(item | {"reason": f"investigated autonomously within the last {cooldown:g} s"})
         elif claims.record_template(statement) is not None:
             refused.append(item | {"reason": "a structured record's template is re-read by its own refresh"})
+        elif shape is not None:
+            refused.append(item | {"reason": f"{shape}: not researched"})
         elif not item["objective"] or not intent.query_text(item["objective"]):
             refused.append(item | {"reason": "nothing searchable in the statement"})
         else:
+            why = ("; the owner's own record: ranked ahead of derived candidates" if item["owner"] else
+                   f"; derived 1 step from an owner subject (overlap {relevance:.2f})" if depth else "")
             chosen.append(item | {"reason": f"priority {item['priority']:.4f} = gain {item['info_gain']:.3f} x "
-                                            f"(1 + {weighted:.3f}) / cost {item['cost']:.3f}"})
-    chosen.sort(key=lambda c: (-c["priority"], c["key"]))
-    refused.sort(key=lambda c: (-c["info_gain"], c["key"]))
-    return {"chosen": chosen[:limit], "refused": refused[:limit], "min_gain": min_gain, "weights": dict(WEIGHTS)}
+                                            f"(1 + {weighted:.3f}) / cost {item['cost']:.3f}{why}"})
+    chosen.sort(key=lambda c: (not c["owner"], -c["priority"], c["key"]))
+    refused.sort(key=lambda c: (not c["owner"], -c["info_gain"], c["key"]))
+    return {"chosen": chosen[:limit], "refused": refused[:limit], "min_gain": min_gain, "weights": dict(WEIGHTS),
+            "total": {"chosen": len(chosen), "refused": len(refused)}}
 
 
 # ---- the idle investigator -----------------------------------------------------------------------------------------
 
-def _decide(db, now, detail, task_id=None):
+MAX_IDLE_WORKERS = 32
+
+
+def _worker() -> str:
+    """The calling worker: its process and thread (scheduler.work runs one worker per thread or process)."""
+    import os
+    import threading
+    return f"{os.getpid()}:{threading.get_ident()}"
+
+
+def _decide(db, now, detail, task_id=None, *, worker=None):
     with store.write(db):
         state.log_event(db, task_id, "decision", {"autonomy": detail} if isinstance(detail, str) else detail, now)
         raw = _meta(db)
         raw["last_idle_at"] = now
+        if worker is not None:
+            idle_at = dict(raw.get("idle_at") or {}) | {worker: now}
+            raw["idle_at"] = dict(sorted(idle_at.items(), key=lambda kv: -float(kv[1] or 0))[:MAX_IDLE_WORKERS])
         _write_meta(db, raw)
 
 
-def idle(db, now) -> dict:
+def idle(db, now, *, worker=None) -> dict:
     """One idle-investigation decision of a worker with nothing queued: when autonomy is enabled (recorded), the
     budget has room, fewer than `concurrent` investigations run and the best candidate clears min_gain, queue it
-    as an autonomous task (origin 'curiosity') with its ranking inputs logged. At most once per idle_interval."""
+    as an autonomous task (origin 'curiosity') with its ranking inputs logged. At most once per idle_interval per
+    worker (default: the calling process and thread), so two workers can run two investigations at once."""
     from ..instance.errors import Conflict, WritesPaused
     from . import orchestrator
     if not enabled(db):
         return {"action": "off"}
     pol = policy(db)
-    last = state.finite(_meta(db).get("last_idle_at"))
+    worker = str(worker or _worker())
+    last = state.finite((_meta(db).get("idle_at") or {}).get(worker))
     if last is not None and now - last < float(pol["idle_interval"]):
         return {"action": "waiting", "next_at": last + float(pol["idle_interval"])}
     reason = refusal(db, "autonomous", now)
     if reason:
-        _decide(db, now, {"autonomy": "refused", "reason": reason})
+        _decide(db, now, {"autonomy": "refused", "reason": reason}, worker=worker)
         return {"action": "refused", "reason": reason}
     if full(db, now):
         return {"action": "busy", "running": running(db, now)}
@@ -548,9 +659,12 @@ def idle(db, now) -> dict:
         best = ranked["refused"][0] if ranked["refused"] else None
         why = best["reason"] if best else "no candidate in the records"
         _decide(db, now, {"autonomy": "nothing worth researching", "reason": why,
-                          "best_gain": best["info_gain"] if best else None, "min_gain": ranked["min_gain"]})
+                          "best_gain": best["info_gain"] if best else None, "min_gain": ranked["min_gain"]},
+                worker=worker)
         return {"action": "nothing", "reason": why, "refused": ranked["refused"]}
     for pick in ranked["chosen"]:
+        if pick["key"] in _recent(db, now, float(pol["cooldown"])):
+            continue            # another worker queued this subject since the ranking was read
         try:
             # a hypothesis' task carries its id, so the prediction settles on that link (evolution.observe)
             context = {"hypothesis": pick["hypothesis_id"]} if pick.get("hypothesis_id") else None
@@ -558,15 +672,17 @@ def idle(db, now) -> dict:
                                        context=context)
         except (ValidationError, Conflict, WritesPaused) as exc:
             if isinstance(exc, BudgetRefused):
-                _decide(db, now, {"autonomy": "refused", "reason": str(exc)})
+                _decide(db, now, {"autonomy": "refused", "reason": str(exc)}, worker=worker)
                 return {"action": "refused", "reason": str(exc)}
             continue
         inputs = {k: pick[k] for k in ("kind", "key", "mode", "info_gain", "cost", "priority", "signals", "reason")}
-        inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast") if k in pick}
+        inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast", "owner",
+                                        "depth") if k in pick}
         _decide(db, now, {"autonomy": inputs | {"weights": dict(WEIGHTS), "min_gain": ranked["min_gain"]}},
-                task_id=task["id"])
+                task_id=task["id"], worker=worker)
         return {"action": "queued", "task_id": task["id"], "candidate": inputs}
-    _decide(db, now, {"autonomy": "nothing worth researching", "reason": "every candidate was refused at submit"})
+    _decide(db, now, {"autonomy": "nothing worth researching", "reason": "every candidate was refused at submit"},
+            worker=worker)
     return {"action": "nothing", "reason": "every candidate was refused at submit"}
 
 

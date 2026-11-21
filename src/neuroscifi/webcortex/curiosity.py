@@ -111,6 +111,32 @@ def _terms(key):
     return " ".join(t for t in re.findall(r"[^\W_]+", key or "") if t not in ("num", "ver"))[:200]
 
 
+# A research opportunity must be a statement that can be checked on its own (T1-17): a sentence lifted from an
+# abstract or release notes that leans on its context ("It has been employed ...", "We present ...", "for this
+# release", "these procedures") names nothing a later search could verify.
+_CONTEXT_START = re.compile(r"^(?:it|its|this|these|those|they|their|them|such|he|she|his|her|here|both|thus|hence|"
+                            r"therefore|moreover|furthermore|however|additionally|also|in addition|as a result|"
+                            r"as such)\b", re.I)
+_AUTHORIAL = re.compile(r"\b(?:we|our|ours|us|you|your|yours)\b|^(?:We|Our|You|Your)\b")
+_DEICTIC = re.compile(r"\b(?:this|these|those)\b", re.I)
+
+
+def claim_shaped(statement) -> str | None:
+    """None when `statement` is a self-contained, checkable claim; else why it is not (a structured record's
+    template, a question, a fragment, too few words, or wording that depends on the text it was taken from)."""
+    from . import claims
+    s = " ".join(str(statement or "").split())
+    if claims.record_template(s) is not None:
+        return "a structured record's template, not a claim"
+    if not s or s.endswith("?"):
+        return "not a statement"
+    if claims.fragment(s) or len(re.findall(r"[^\W\d_]{2,}", s)) < 3:
+        return "a fragment, not a self-contained claim"
+    if _CONTEXT_START.match(s) or _AUTHORIAL.search(s) or _DEICTIC.search(s):
+        return "depends on the text it was taken from (a pronoun, 'we', 'you' or 'this ...'), not a self-contained claim"
+    return None
+
+
 def search_terms(statement=None, key=None, db=None) -> str:
     """Search words for a subject: the statement's own words (intent.query_text, never claim-key stems) when the
     statement is known (for a bare key, a stored claim's sentence with that key), else the key's terms."""
