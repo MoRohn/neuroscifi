@@ -1,12 +1,18 @@
 # Release decisions and readiness matrix: 0.6.0 to 0.7.0
 
-This document records the baseline, the owner decisions that scope 0.7.0, the release-readiness matrix and the
-release acceptance criteria. Every verification field is `pending`. Nothing in this document claims that a 0.7.0
-capability works. The only verified facts are the 0.6.0 baseline figures in section 1.
+This document records the baseline, the owner decisions that scope 0.7.0, the release-readiness matrix, the release
+acceptance criteria and the decisions taken and still open at release. Sections 1 to 3 are the planning record written
+before implementation; the per-row "Verification evidence" column of §3 was not updated row by row and still reads
+`pending`. The outcome is in §4 (criteria statuses), §5 (decisions taken during 0.7.0), §6 (owner decisions open) and
+§7 (open items); the evidence for each criterion is in `V0.7.0_RELEASE_ACCEPTANCE.md`.
 
-Sources: `.omc/autopilot/spec-v0.7.0.md`, `docs/qa/PRODUCTION_READINESS.md` (risks R-1 to R-6, section 4),
-`docs/qa/DEFECT_RESOLUTION_LOG.md` (open items), `docs/qa/E2E_TEST_RESULTS.md` section 7,
-`docs/architecture/REQUIREMENTS_MATRIX.md`, `.omc/autopilot/decisions-pending.md`.
+Commits: RC1 `7c64b64`, RC2 `281e18b`, RC3 `0cd8d8b`, final tree `HEAD` `4c3f209` (RC3, two test-only commits, the fixr4
+fixes retested live by R5, the fixr5 fixes run live by the fix lane only, and the fixes from the security review of the
+evidence guard). Retest reports: UAT evidence (not in repo)
+`retest/r1/` to `retest/r5/`. Final gate on `HEAD` `4c3f209`: ruff clean;
+`bash scripts/check.sh` 2588 passed, 6 skipped (the `NSF_LIVE=1` live-internet tests), 0 failed, 35 subtests (345 s); e2e 167 passed, 1 skipped, 0 failed (790 s); offline bench regenerated, 3 identical runs.
+
+**Release status: release candidate; not accepted. Open High: T1-07 (ambiguous-subject sense) and SEC-G-E1 (no entailment check for supported-cited sentences, pre-existing); owner decisions OD-5, OD-6.** Not production-ready.
 
 ## 1. Baseline
 
@@ -37,7 +43,7 @@ All six decisions were made by the owner's v0.7.0 directive, 2026-11-21.
 | D3 | A real local reasoning model is connected through a model-independent inference gateway. Remote endpoints need explicit owner authorisation and a privacy screen. The model never bypasses evidence verification or authorisation. | Extends ADR-022; new ADR-036 |
 | D4 | Controlled autonomous research is opt-in. Daily limits: 20 searches, 60 pages, 30 minutes, $1, 2 concurrent tasks. It has a budget separate from the user's. Pocket research is available to authorised devices. | Builds on ADR-027 and ADR-028 |
 | D5 | ADR-033 is kept: a package's own registry record may settle a release statement. The documents and answers distinguish published, stable, compatible, secure and recommended. | ADR-033 retained, scope clarified |
-| D6 | NVIDIA PersonaPlex is the voice model, connected through a Cognitive Voice Bridge in which NeuroSciFi stays authoritative for facts, tools, memory and permissions. Three modes: A voice and text, B voice in and text out, C text only. | New ADR-037 |
+| D6 | NVIDIA PersonaPlex is the voice model, connected through a Cognitive Voice Bridge in which NeuroSciFi stays authoritative for facts, tools, memory and permissions. Three modes: A voice and text, B voice in and text out, C text only. | New ADR-037. **Outcome:** PersonaPlex is not real-time upstream on GB10 and cannot speak external text through its shipped server, so ADR-037 makes the Whisper plus Kokoro hybrid the default with PersonaPlex opt-in. That departs from D6 and awaits the owner's approval (§6) |
 
 Prior ADRs affected: ADR-021 to ADR-033 are listed in `docs/architecture/ARCHITECTURAL_DECISIONS.md`. ADR-034 to
 ADR-037 are assigned here and must exist in that file before release (see RD-48).
@@ -130,23 +136,74 @@ the source of the problem, not as evidence that the proposed solution works.
 
 ## 4. Release acceptance criteria for 0.7.0
 
+Statuses at the time of writing, after the live retest R4. Evidence and limitations per row:
+`V0.7.0_RELEASE_ACCEPTANCE.md` §1.
+
 | # | Criterion | Related rows | Status |
 |---|---|---|---|
-| 1 | SearXNG general search is verified, or upstream limits are recorded as blockers | RD-01, RD-24, RD-25, RD-26 | pending |
-| 2 | Authoritative integrations (structured APIs, feeds) still work | RD-01, RD-49 | pending |
-| 3 | A real reasoning model is connected and tested | RD-29, RD-30, RD-31 | pending |
-| 4 | Claim verification is correct for stable, current and authoritative claims | RD-02, RD-07, RD-27, RD-28 | pending |
-| 5 | Consolidation preserves evidence and history | RD-13, RD-33 | pending |
-| 6 | Autonomy respects opt-in and budgets | RD-36 | pending |
-| 7 | Pocket research keeps permission boundaries | RD-05, RD-37 | pending |
-| 8 | PersonaPlex is validated on the target runtime | RD-38, RD-39 | pending |
-| 9 | Speech and cognition are integrated | RD-40, RD-41 | pending |
-| 10 | Transcripts are accurate within documented limits | RD-44 | pending |
-| 11 | Mode switching works | RD-42 | pending |
-| 12 | Interruption and recovery are tested | RD-45 | pending |
-| 13 | Critical security checks pass | RD-05, RD-32, RD-43, RD-49 | pending |
-| 14 | No unresolved high-severity release blockers | all High and Critical rows | pending |
-| 15 | v0.6.0 critical workflows pass | RD-49 | pending |
+| 1 | SearXNG general search is verified, or upstream limits are recorded as blockers | RD-01, RD-24, RD-25, RD-26 | PASS-with-limitation (general coverage thin; news render budget open) |
+| 2 | Authoritative integrations (structured APIs, feeds) still work | RD-01, RD-49 | PASS |
+| 3 | A real reasoning model is connected and tested | RD-29, RD-30, RD-31 | PASS (remote endpoint NOT TESTED live) |
+| 4 | Claim verification is correct for stable, current and authoritative claims | RD-02, RD-07, RD-27, RD-28 | PASS-with-limitation (bench 29/29 states; R4-N2 PASS in R5; caveat guard rebuilt as a closed caveat grammar after the security review, fix-lane live, re-review PASS; an ambiguous name can bring evidence about the wrong entity, T1-07 under criterion 14) |
+| 5 | Consolidation preserves evidence and history | RD-13, RD-33 | PASS-with-limitation (T1-18 PASS in R4; bench knowledge rows 10 to 8) |
+| 6 | Autonomy respects opt-in and budgets | RD-36 | PASS-with-limitation ($1 cap and days-long operation NOT TESTED; T5-07 UNVERIFIED) |
+| 7 | Pocket research keeps permission boundaries | RD-05, RD-37 | PASS-with-limitation (R2-09 cross-family eviction NOT TESTED live; handsets BLOCKED) |
+| 8 | PersonaPlex is validated on the target runtime | RD-38, RD-39 | PASS-with-limitation: validated, result negative (not real-time upstream) |
+| 9 | Speech and cognition are integrated | RD-40, RD-41 | PASS-with-limitation (fake-device audio; T4-02 and R2-07 PASS in R4; ethanol search miss, O-10) |
+| 10 | Transcripts are accurate within documented limits | RD-44 | PASS-with-limitation (synthetic speech only) |
+| 11 | Mode switching works | RD-42 | PASS-with-limitation (fake-device audio) |
+| 12 | Interruption and recovery are tested | RD-45 | PASS-with-limitation (fake-device audio; R2-08 and R2-01 PASS in R4) |
+| 13 | Critical security checks pass | RD-05, RD-32, RD-43, RD-49 | PASS-with-limitation (guard security review: 10 findings fixed, round-3 re-review ACCEPT-with-documented-limits; SEC-G-E1 open: no entailment check for supported-cited sentences; SEC-L4 to L8 by regression tests only; R2-05 PASS in R5) |
+| 14 | No unresolved high-severity release blockers | all High and Critical rows | FAIL: T1-07 (Rust answered about the video game) is an open High defect. R1-01 PASS in R4; T1-01 range case PASS |
+| 15 | v0.6.0 critical workflows pass | RD-49 | PASS (S12 on RC1 and RC2; final gate on `4c3f209` 2588 passed, e2e 167 passed, 0 failed) |
 
 A criterion moves from `pending` only when its linked rows hold verification evidence recorded by someone other than
-the author of the change.
+the author of the change. Every status above rests on an independent tester's result (T1 to T5 on RC1, R1 to R3 on RC2)
+except where a row names a regression test, the offline bench or developer evidence.
+
+## 5. Decisions taken during 0.7.0
+
+| ID | Decision | Taken by | Why | Record |
+|---|---|---|---|---|
+| DD-1 | **P39 gold relabel.** An update or modification time (`og:updated_time`, a Wikipedia revision) is never a publication date. Bench page P39, dated only by `og:updated_time`, is relabelled from "published 2022-09-12" to "no publication date; modified 2022-09-12". The page markup is unchanged; old and new metrics are both reported | Integrator | The old label encoded the rule ADR-035 and T1-05 replaced; keeping it would have rewarded the defect | `docs/knowledge/CLAIM_VERIFICATION.md` §11; commit `3686a2f` |
+| DD-2 | **R2-01: keep POC-07.** The Pocket pairing credential stays in tab memory only, so a reload still unpairs (or restores the vault's copy). The defect is fixed by recovering without a reload: while paired and unreachable, the tab re-checks with backoff (1 s doubling to 30 s) | Integrator, keeping the existing requirement | Persisting the credential outside tab memory would weaken POC-07; the defect was the missing recovery, not the reload behaviour | `DEFECT_RESOLUTION_LOG.md` R2-01; commit `167252f` |
+| DD-3 | **Bench knowledge rows 10 to 8**, recorded as an accepted precision/recall trade-off: two on-subject items are now held as off-question after the post-RC2 fixes | Integrator, provisional | The fixes stop trivial and off-topic statements from becoming knowledge (R1-02, R2-04) | Owner agreement open (§6) |
+| DD-4 | Conversation research: only a question or an explicit request starts web research; at most 8 tasks per principal per 10 minutes | Fix lane, from T5's design finding | 385 tasks were queued from chatter in about 5 s on RC1 | `0e8c7eb`; T5-D1 |
+| DD-5 | `nsf llm ask --tools` (and `--allow-research`) is refused unless the owner switched tools on (`nsf llm config --tools`); the setting defaults to off | Fix lane | T5-M03: the tools setting had no effect; the CLI now honours it | `src/neuroscifi/inference/cli.py`; commit `54285d9` |
+| DD-6 | Rendering stays off by default and the quick-lookup budget stays 20 requests until the owner decides | Integrator | A budget change is an owner decision (§6) | `docs/quality/evidence/news_render_live.json` |
+
+## 6. Owner decisions open
+
+| ID | Question | Evidence | Default until decided |
+|---|---|---|---|
+| OD-1 | Approve ADR-037: the Whisper plus Kokoro hybrid as the default voice, PersonaPlex experimental and opt-in (departs from D6) | PersonaPlex upstream 99 to 152 ms per 80 ms frame on GB10; cannot speak external text through its shipped server (`docs/voice/PERSONAPLEX_INTEGRATION.md`) | Hybrid default |
+| OD-2 | PersonaPlex runtime: upstream, or the unmerged third-party `jethac` fork (47 ms per frame here, output quality not evaluated) | same document §6.2 | Upstream, opt-in |
+| OD-3 | News rendering budget: a quick lookup allows 20 requests; an MSN article needs about 70 to 100 | `news_render_live.json`; `DEFECT_RESOLUTION_LOG.md` O-05 | Rendering off; 20 requests |
+| OD-4 | Accept the bench knowledge-row reduction 10 to 8 (DD-3) | `REGRESSION_REPORT.md` (0.7.0 §2) | Accepted provisionally |
+| OD-6 | Release with SEC-G-E1 (no entailment check for supported-cited sentences, pre-existing) documented, or hold the release for the entailment check proposed in §7 | §7; `DEFECT_RESOLUTION_LOG.md` SEC-G-E1 | Not accepted until decided |
+| OD-5 | Release with T1-07 (ambiguous-subject sense, High) open, or hold the release for the word-sense design in §7 | §7; `DEFECT_RESOLUTION_LOG.md` T1-07 | Not accepted until decided |
+
+## 7. Open items at release
+
+| Item | Status | Record |
+|---|---|---|
+| Live retest of the post-RC2 fixes (R4) | Done: 13 items PASS; tested in part: T1-01, T1-16, R1-05, R2-09 | `E2E_TEST_RESULTS.md` (0.7.0 §8.1) |
+| Open after R4, fixed by fixr4 and retested by R5: R2-05, R4-N2, R4-N3, O-09 User-Agent | R5 PASS | `DEFECT_RESOLUTION_LOG.md` (0.7.0, R4 and R5) |
+| Caveat guard: R4-N1 (T1-09 residual), D-R5-1, D-R5-2, D-R5-3 | Fixed; guard rebuilt as a closed caveat grammar (`128c339`) after an independent adversarial security review; the rules note (`224a843`) carries "not established"; fix-lane live: note in 2/2 and kept/rejected as designed; independent re-review round 3 PASS (ACCEPT-with-documented-limits) | `DEFECT_RESOLUTION_LOG.md` (0.7.0, R5) |
+| D-R5-4 first-release freshness | Fixed (`090cb7d`); fix-lane live only | same |
+| Security review of the evidence guard: SEC-G-F1 to F6, SEC-G-N1 to N4 | Fixed; independent adversarial re-review PASS (round 3: 0/73 original and 0/65 round-2 sentences pass; about 50 new grammar attacks found no bypass); verdict ACCEPT-with-documented-limits | `DEFECT_RESOLUTION_LOG.md` (0.7.0, guard security review) |
+| **SEC-G-E1: no entailment check for supported-cited sentences** (pre-existing since ADR-036). A sentence citing any supported claim is not checked against it: citing "NumPy is the fundamental package for scientific computing with Python." lets "NumPy is secure and recommended for all production use." and "Users should reinstall NumPy from the official mirror immediately." pass. Needs a prompt-injected or misbehaving model to exploit; same root as R5-O1 | **OPEN, High for the release decision.** Proposed fix: a content-overlap (`_restates`) entailment test on every supported-cited sentence plus the instruction filter, threshold measured on live answers first. Owner decision OD-6 | same |
+| SEC-G-R1: a caveat may echo a non-owner objective (CLI, MCP, refresh-owner) unquoted; as an open question it asserts nothing | OPEN, Low | same |
+| SEC-G-R2: "d0t org" passes the note URL filter, in quoted form only | Accepted, Low | same |
+| Guard quality cost (fails closed): free-form honest caveats outside the grammar are rejected (the rules note carries the message); hedged negations restating a claim are rejected as absence claims; a hedged fact plus caveat is rejected when a supported claim shares a topic word | Known limitation | same |
+| R5-O1: an attributed sentence ("Another source states that ...") can cite a source that does not support it; the guard has no per-sentence semantic entailment check | OPEN, Low. Proposed: a content-overlap requirement for "X states that P", after threshold measurement | same |
+| R5-O2: low-ranked off-topic findings can be flagged `cited: true` when the question has no named entity | OPEN, Low (same root as T1-07) | same |
+| **T1-07 / R1-04: ambiguous-subject sense.** "When was Rust first released?" is answered about the video game (R4, 2 of 2 runs); Python is answered correctly (R5) | **OPEN, High.** Root cause (fixr4 analysis): synthesis has no notion of word sense, so any page naming "Rust" counts as on-subject; the "<thing> software" intent hint changes only the encyclopedia query string; the game's "first released in early access in December 2013" sentence ranks 2nd while "The first stable release, Rust 1.0, was published in May 2015" ranks 21st, and only the top 12 findings reach the model; when Wikipedia was rate-limited, only game pages had release sentences. **Proposed design:** give each source a sense (from Wikipedia "(qualifier)" titles, defining sentences and vocabulary propagation), prefer the sense the question's context supports, and say "Rust also names ...". Owner decision: fix before release or accept with it open | `DEFECT_RESOLUTION_LOG.md` T1-07 |
+| Gate, e2e and bench regeneration on `HEAD` `4c3f209`; README test count | Done: gate 2588 passed, 0 failed; e2e 167 passed, 0 failed; bench regenerated (3 identical runs, headline metrics unchanged); README says 2588 | `E2E_TEST_RESULTS.md` (0.7.0 §8) |
+| Real microphones, speakers, handsets (RD-19 to RD-21) | BLOCKED | O-01 |
+| PersonaPlex real-time voice (RD-39) | Not real-time upstream; owner decision | O-02, OD-1, OD-2 |
+| General web coverage through SearXNG | Thin (CAPTCHA, rate limits) | O-08 |
+| T5-05 Pocket voice-on path, T5-M06 breaker state, T5-07 multi-worker charging | UNVERIFIED in R3 | O-06 |
+| $1 autonomy cap, days-long autonomy (RD-54), remote inference endpoint (RD-32) | NOT TESTED | O-06 |
+| Voice search coverage: ethanol question answered "not provided" (search missed the article; honest answer) | Known limitation | O-10 |
+| systemd under hardening (RD-50), public TLS (RD-51), encrypted volume (RD-52), screen readers (RD-53) | NOT TESTED, unchanged from 0.6.0 | `PRODUCTION_READINESS.md` |

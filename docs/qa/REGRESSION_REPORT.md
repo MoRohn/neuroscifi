@@ -90,3 +90,106 @@ comparison.
 
 See `PRODUCTION_READINESS.md` §4. In short: real handsets and sensors, push notifications, systemd services started
 under hardening, a public TLS chain, screen readers, concurrent heavy load, and long-running autonomous operation.
+
+---
+
+# 0.7.0
+
+**Code under test:** RC3 `0cd8d8b` and the final tree `HEAD` = `4c3f209` (RC3 plus two test-only commits, 9 fixes from
+fix lanes fixr4 and fixr5, and the fixes from the security review of the evidence guard). Version 0.7.0
+on `build/neuroscifi-v1`. Same host as above. The full 0.7.0 regression record, including build, migration and live
+evidence, is `FINAL_REGRESSION_REPORT.md`; this section holds the 0.6.0 to 0.7.0 comparison.
+
+## 1. Test-count history
+
+| Point | Commit | Gate (`bash scripts/check.sh`) | e2e (`tests/e2e`, system Chromium) | Source |
+|---|---|---|---|---|
+| 0.6.0 final | `abcd303` | 1557 passed, 6 skipped | 107 passed | §1 above |
+| Lane B (inference gateway) | `06c171c` | 1705 passed, 6 skipped | 107 passed | integrator log |
+| Presence and voice UI | `e0bd7df` | 1854 passed, 6 skipped | 128 passed, 1 skipped | integrator log |
+| RC1 | `7c64b64` | 1911 passed, 6 skipped | 144 passed, 1 skipped (T3 runs 1 and 3); run 2: 1 failed (T3-03, flaky) | T3 |
+| README count commit | `cdb66ba` | 1916 passed | | commit message |
+| RC2 | `281e18b` | 2154 passed, 1 failed (G-01), 6 skipped | 164 passed, 1 skipped, twice | integrator |
+| RC3 | `0cd8d8b` | 2207 passed, 6 skipped | 166 passed, 1 failed (R2-01-flake), 1 skipped | integrator |
+| `373104e` | `373104e` | 2207 passed, 6 skipped | 167 passed, 1 skipped | integrator |
+| fixr4 (R5 ran here) | `1e8bf3b` | 2213 passed, 6 skipped | 167 passed, 1 skipped | integrator |
+| fixr5 | `090cb7d` | 2259 passed, 6 skipped | 167 passed, 1 skipped | integrator |
+| Guard review, round 1 fixes | `bca1ad9` | 2392 passed, 6 skipped | 167 passed, 1 skipped | integrator |
+| `HEAD` (final tree) | `4c3f209` | 2588 passed, 6 skipped, 0 failed (ruff clean) | 167 passed, 1 skipped, 0 failed | integrator |
+
+Every gate above had 0 failures except RC2's G-01; every e2e run had 0 failures except RC3's R2-01-flake. From 0.6.0 to
+the final tree the gate grew by 1031 tests (1557 to 2588) and the e2e suite from 107 to 167. The 6
+skipped gate tests are the opt-in live-internet tests (`NSF_LIVE=1`), as in 0.6.0.
+
+## 2. Offline benchmark: 0.6.0 against 0.7.0
+
+Files: `docs/quality/evidence/webcortex_bench.json` (0.6.0, `abcd303`) and `docs/quality/evidence/webcortex_bench_v070.json`
+(0.7.0, regenerated on the final tree `4c3f209` on 2026-11-21, `nsf web bench --repeat 3`, offline fictional corpus). Both files record 3
+identical runs (`regression.identical: true`).
+
+**The corpus grew**, so this is not a same-corpus comparison: 70 to 78 pages, 53 to 61 articles, 40 to 47 hosts,
+16 to 29 verification questions, 79 to 105 tasks. The counts of authoritative questions (12), time-sensitive
+questions (8), contradiction pairs (12), memory queries (11) and safety probes (18) are unchanged.
+
+| Metric | 0.6.0 (`abcd303`) | 0.7.0 (`4c3f209`) |
+|---|---|---|
+| Retrieval success | 12/12 | 12/12 |
+| Evidence coverage | 21/24 | 21/24 |
+| Top answer correct | 8/12 | 9/12 |
+| Correct answer among any quote | 9/12 | 10/12 |
+| Top answer on-subject | 14/14 | 14/14 |
+| Noise page supplies the top quote (rank-noise questions) | 1 of 3 | 0 of 3 |
+| Citation precision per cited source (every cited source contains the quote) | 148/148 (1.00) | 193/194 (0.9948) |
+| Answer items whose every citation is supported | 145/145 | 189/190 |
+| Citation, legacy (any cited source contains the quote) | 145/145 | 190/190 |
+| Verification accuracy, legacy four labels | 12/16 (0.75) | 29/29 (1.00) |
+| `supported` recall | 2/5 (0.4) | 10/10 (1.0) |
+| Verification states (six ADR-035 states) | not measured | 29/29 |
+| Fact-check true/false discrimination | 0/2 | 2/2 |
+| Contradiction detector precision / recall | 1.0 / 1.0 | 1.0 / 1.0 |
+| Contradiction end-to-end precision / recall (F1) | 1.0 / 0.8571 (0.9231) | 1.0 / 0.8571 (0.9231) |
+| Cross-subject merged answer items | 0 (18 findings checked) | 0 (19 findings checked) |
+| Latest-version correctness | 2/2 | 2/2 |
+| Freshness compliance | 8/8 | 8/8 |
+| Date extraction | 53/53 | 61/61 |
+| Memory recall@3 / MRR (simulated owner acceptance) | 1.0 / 1.0 | 1.0 / 1.0 |
+| Knowledge rows written by consolidation | 2 | 8 |
+| Extraction F1, auto / scrapling / trafilatura | 0.838 / 0.853 / 0.885 | 0.834 / 0.849 / 0.887 |
+| Safety invariants (SSRF 11/11, robots, limits, injection 6/6 contained, budgets, honest live flag, cancel, crash and resume) | all hold | all hold |
+
+Notes on the comparison:
+
+- **Citation precision.** The one unsupported citation is task F22 ("The Marrow Creek ferry is operated by Ostra Lines
+  ...", citation 2, `coastline-wire.example`). F22 is one of the verification questions added in 0.7.0; it does not
+  exist in the 0.6.0 corpus. `docs/knowledge/CLAIM_VERIFICATION.md` §8 and §11 quote 206/207 from an earlier 0.7.0
+  snapshot with the same F22 citation as the only miss. The final figure is 193/194 because later fixes stopped citing
+  off-subject sources, so fewer citations are counted (194 instead of 207). CLAIM_VERIFICATION was not edited.
+- **P39 gold relabel.** The 0.7.0 bench uses the relabelled P39 gold (an `og:updated_time` page has no publication date),
+  documented with before and after metrics in `docs/knowledge/CLAIM_VERIFICATION.md` §11 and recorded as decision in
+  `RELEASE_DECISIONS.md` §5.
+- **Knowledge rows.** RC2 wrote 10 knowledge rows; RC3 writes 8, because two on-subject items are now held as
+  off-question. This is recorded as a precision/recall trade-off awaiting the owner's agreement (`RELEASE_DECISIONS.md` §5).
+- **Environment block.** `environment.packages.neuroscifi` reads `0.5.0` in both files. That is the installed
+  distribution metadata in the virtual environment, not the source version (`pyproject.toml` says 0.7.0).
+  `git_dirty: true` in the 0.7.0 file reflects uncommitted documentation.
+- **Final tree.** The fix lane found all 393 metric keys on `090cb7d` identical to the `373104e` regeneration; the
+  integrator's regeneration on `4c3f209` has the same headline metrics.
+
+## 3. Regressions found and fixed in the 0.7.0 cycle
+
+"Regression" here means a behaviour that passed at 0.6.0 or at an earlier 0.7.0 candidate and failed later.
+
+| ID | What regressed | Found by | Fix | Status |
+|---|---|---|---|---|
+| 0.6.0 critical journeys | None regressed: create, teach, change, resolve, explain, governance, forget, checkpoints, graphs, Pocket pairing, migration, crash safety, CLI | T3 (RC1), R3 (RC2) | none needed | PASS |
+| G-01 | A gate test (`test_pathological_page_extraction_is_bounded`) failed under load on RC2; it had passed at RC1 | RC2 gate | `8044251` CPU time instead of wall time | PASS in the RC3 gate |
+| R2-01-flake | The new R2-01 e2e test failed once in the RC3 full run (Pocket's service worker let `/api` requests bypass `page.route`) | RC3 e2e | `373104e` (test only) | Fixed (373104e); final e2e PASS |
+| T3-03 | `test_voice_wer_and_mic_off_stops_capture` failed once in 3 RC1 runs (fixed 60 s wait under shared load) | T3 | `d315fb7` bounded wait | PASS (R3) |
+| T3-04 | The committed 0.7.0 bench file did not match a fresh run (RC1: 28/29 against 29/29; RC2: 8/12 top answers against 9/12) | T3, R3 | regenerated on `373104e` and on the final tree `4c3f209` | Regenerated on `4c3f209` |
+| T3-05 | The e2e suite rewrote a tracked document; the README badge lagged the gate count | T3, R3 | `d315fb7`; README count from the final gate | Perf part PASS (R3); README says 2588 (Fixed) |
+| Knowledge rows | Offline bench knowledge rows 10 (RC2) to 8 (RC3) | integrator | none; accepted trade-off pending owner agreement | Open (owner decision) |
+
+Intentional behaviour changes from 0.6.0 (not regressions): `nsf llm ask --tools` is refused unless the owner switched tools on (`nsf llm config --tools`, default off); a remark that is
+neither a question nor an explicit request no longer starts web research, and each principal starts at most 8 tasks
+from conversation per 10 minutes (`0e8c7eb`); version answers distinguish published, stable, compatible, secure and
+recommended (ADR-033 amended); an update or modification time is never a publication date (ADR-035, T1-05).
