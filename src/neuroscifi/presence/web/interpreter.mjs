@@ -70,7 +70,8 @@ export function interpret(server, local, now = Date.now()) {
   const interaction = new Set(server.interaction ?? []);
   const voice = local.voice;
   if (voice) {
-    for (const k of ['user_speaking', 'responding', 'voice_muted', 'text_only', 'user_interruption']) interaction.delete(k);
+    // the server's user_interruption stays: it comes from the hub's interrupted_at, set only by a real barge-in/stop
+    for (const k of ['user_speaking', 'responding', 'voice_muted', 'text_only']) interaction.delete(k);
     if (voice.mode === 'text_only') interaction.add('text_only');
     else {
       if (voice.output_muted) interaction.add('voice_muted');

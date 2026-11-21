@@ -266,8 +266,16 @@ def test_voice_events_listening_level_interrupt_and_mute(idle_spark, new_page):
     voice(page, mic_capturing=True, speaking=True, output_muted=False, mode="voice_text", level=0.7)
     expect(root).to_have_attribute("data-activity", "responding", timeout=2000)
     page.wait_for_timeout(120)
+    # T2-05: a reply that simply ends while the mic stays on is not an interruption
+    voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.0)
+    page.wait_for_timeout(400)
+    assert "user_interruption" not in page.evaluate("window.__nsfPresence.intent()")["interaction"]
+    voice(page, mic_capturing=True, speaking=True, output_muted=False, mode="voice_text", level=0.7)
+    expect(root).to_have_attribute("data-activity", "responding", timeout=2000)
+    page.wait_for_timeout(120)
     samples = []
-    voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.6)   # barge-in
+    voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.6,
+          interrupted=True)   # barge-in, as the voice client reports it
     for _ in range(40):
         samples.append(nums(body_d(page)))
         page.wait_for_timeout(16)
@@ -288,6 +296,27 @@ def test_voice_events_listening_level_interrupt_and_mute(idle_spark, new_page):
 
 
 # ---- J: rapid transitions -------------------------------------------------------------------------------------------
+
+def test_only_text_entry_counts_as_typing(idle_spark, new_page):
+    """T2-11: choosing a voice mode (a radio) or ticking a box is not typing; a text field or textarea is."""
+    page = new_page(1280, 900)
+    open_console(page, idle_spark)
+    page.evaluate("""() => {
+      const box = document.createElement('div'); box.id = 't211';
+      box.innerHTML = '<input type=radio name=m id=r1><input type=checkbox id=c1><input type=text id=t1><textarea id=a1></textarea>';
+      document.body.append(box);
+    }""")
+
+    def typing():
+        return "user_typing" in page.evaluate("window.__nsfPresence.intent()")["interaction"]
+    for sel in ("#r1", "#c1"):
+        page.click(sel)
+        page.wait_for_timeout(400)
+        assert not typing(), sel
+    page.fill("#t1", "hello")
+    page.wait_for_timeout(400)
+    assert typing()
+
 
 def test_rapid_transitions_do_not_accumulate(idle_spark, new_page):
     page = new_page(1280, 900)

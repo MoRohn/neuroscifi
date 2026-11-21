@@ -189,3 +189,22 @@ def test_version_ignores_timestamps_and_counters_but_not_state(inst):
 def test_unavailable_state_is_idle(inst):
     s = aggregator.unavailable("family", "Research is off")
     assert s["primary"]["activity"] == "idle" and s["sources"]["webcortex"] == "off" and s["version"]
+
+
+@pytest.mark.parametrize("origin", ["voice", "refresh-owner:7"])
+def test_a_spoken_or_owner_requested_task_is_foreground_not_autonomous(inst, origin):
+    """T2-02: a question asked by voice (origin 'voice') is the owner's own research, never shown as autonomous
+    background research; curiosity still is."""
+    db, path = inst
+    task = orchestrator.submit(db, "When did the Zephyr compiler 4.2 ship?", NOW - 30, origin="console")
+    db.execute("UPDATE web_tasks SET origin=? WHERE id=?", (origin, task["id"]))
+    run(db, task["id"], "reading")
+    s = derive(db, path)
+    assert s["primary"]["task_id"] == task["id"] and s["primary"]["priority"] == "foreground"
+    assert s["primary"]["origin"] == "owner" and "autonomous_research" not in s["interaction"]
+    db.execute("UPDATE web_tasks SET status='completed', finished_at=? WHERE id=?", (NOW - 2, task["id"]))
+    s = derive(db, path)
+    assert "background_task_completed" not in s["interaction"]
+    bg = orchestrator.submit(db, "Okapi conservation status", NOW - 20, origin="curiosity")
+    run(db, bg["id"], "reading")
+    assert "autonomous_research" in derive(db, path)["interaction"]

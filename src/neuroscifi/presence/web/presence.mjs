@@ -10,6 +10,11 @@ import { Announcer, reducedMotion, onSystemReducedMotion } from './a11y.mjs';
 import { initTheme, themePref, setThemePref, THEME_PREFS } from './theme.mjs';
 import { validateSpec } from './validator.mjs';
 
+// Text entry only: typing into these means the owner is writing (a radio, checkbox or slider change is not typing).
+const TEXT_ENTRY = 'textarea, [contenteditable=""], [contenteditable="true"], input:not([type]), '
+  + 'input[type=text], input[type=search], input[type=email], input[type=url], input[type=tel], input[type=password], '
+  + 'input[type=number]';
+
 export const COMMIT_GAP_MS = 220;   // rapid state changes are coalesced: at most one scene commit per gap
 
 export function loadPrefs() {
@@ -97,7 +102,7 @@ export class Presence {
     addEventListener('nsf:voice', this.onVoice);
     this.onInput = (e) => {
       if (this.root.contains(e.target)) return;
-      if (e.target?.matches?.('input, textarea, [contenteditable]')) { this.local.typingAt = Date.now(); this.request(); }
+      if (e.target?.matches?.(TEXT_ENTRY)) { this.local.typingAt = Date.now(); this.request(); }   // not radios etc. (T2-11)
     };
     document.addEventListener('input', this.onInput, true);
     this.onInteract = () => { const now = Date.now(); if (now - this.local.interactedAt > 5000) { this.local.interactedAt = now; this.request(); } };
@@ -204,8 +209,12 @@ export class Presence {
       mode: ['voice_text', 'voice_in_text_out', 'text_only'].includes(d.mode) ? d.mode : 'voice_text',
       level: Number.isFinite(d.level) ? Math.max(0, Math.min(1, d.level)) : null, at: now,
       micSince: prev?.mic_capturing ? prev.micSince : now, speakingSince: prev?.speaking ? prev.speakingSince : now,
-      interruptedAt: prev?.interruptedAt ?? 0 };
-    if (prev?.speaking && !v.speaking && v.mic_capturing) v.interruptedAt = now;   // barge-in: output stopped, mic on
+      interruptedAt: prev?.interruptedAt ?? 0, interruptedSrc: prev?.interruptedSrc ?? null };
+    // Only a real barge-in or stop is an interruption (T2-05): the voice client says so (`interrupted: true` or
+    // `interrupted_at`), or the server state carries it (hub interrupted_at -> user_interruption). Speech that
+    // simply ended while the mic stays on is a finished reply, not an interruption.
+    const src = Number.isFinite(d.interrupted_at) && d.interrupted_at > 0 ? d.interrupted_at : null;
+    if (d.interrupted === true || (src !== null && src !== v.interruptedSrc)) { v.interruptedAt = now; v.interruptedSrc = src; }
     const changed = !prev || ['mic_capturing', 'speaking', 'output_muted', 'mode'].some((k) => prev[k] !== v[k]);
     this.local.voice = v;
     this.engine.level = this.intent?.audio ? (v.mode === 'text_only' || (this.intent.audio === 'output' && v.output_muted) ? null : v.level) : null;

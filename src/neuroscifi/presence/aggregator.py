@@ -41,7 +41,7 @@ INTERACTIONS = ("user_speaking", "user_typing", "responding", "user_interruption
                 "autonomous_research", "voice_muted", "text_only", "background_task_completed")
 # Arbitration (spec): user-critical > active communication > foreground cognition > tool execution > background > idle
 RANK = {"user_critical": 5, "communication": 4, "foreground": 3, "tool": 2, "background": 1, "idle": 0}
-FOREGROUND_ORIGINS = ("console", "pocket", "cli")
+FOREGROUND_ORIGINS = ("console", "pocket", "cli", "voice")   # asked by the owner (T2-02: a spoken question)
 STAGES = ("discovering", "reading", "evaluating", "synthesizing")
 TERMINAL = ("completed", "partial", "failed", "cancelled")
 RECENT = 30.0              # seconds of events / tokens that feed intensity
@@ -81,7 +81,7 @@ def _short(text, n=80):
 
 def _origin_class(origin):
     origin = origin or ""
-    if origin in FOREGROUND_ORIGINS:
+    if origin in FOREGROUND_ORIGINS or origin.startswith("refresh-owner:"):
         return "owner" if origin != "pocket" else "pocket"
     if origin.startswith("monitor:"):
         return "monitor"

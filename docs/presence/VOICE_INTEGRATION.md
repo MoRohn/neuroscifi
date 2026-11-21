@@ -46,8 +46,14 @@ What the presence does with it (`presence.mjs Presence.voice`, `interpreter.voic
   the microphone.
 - `output_muted` keeps the cognitive state (research, idle, …) and never depicts audible speech.
 - `mode = text_only` gives no audio-driven motion (level `null`) and no voice activity.
-- **Interruption**: `speaking` turning false while `mic_capturing` stays true sets `interruptedAt`. The intent
-  carries `user_interruption` for 1.5 s and the scene morphs to listening on springs, without snapping.
+- **Interruption** (T2-05): only a real barge-in or stop counts. The `nsf:voice` event marks it with
+  `interrupted: true` (or a new `interrupted_at`), and that sets `interruptedAt`. The server state also carries it:
+  the hub sets `interrupted_at` only on barge-in or stop, which gives `user_interruption` for 3 s, and the
+  interpreter keeps that server value. A reply that simply ends while the mic stays on is not an interruption. The
+  intent carries `user_interruption` for 1.5 s and the scene morphs to listening on springs, without snapping.
+  (Voice lane: the client should add `interrupted: true` to the event it sends on a barge-in or stop.)
+- **Typing** (T2-11): only text entry (text-like inputs, textareas, contenteditable) sets `user_typing`; radios,
+  checkboxes and sliders do not.
 - A level change alone does not re-plan the scene. It updates `engine.level` and keeps the frame loop alive.
 - An event older than 8 s that reports neither capture nor speech no longer drives anything.
 
