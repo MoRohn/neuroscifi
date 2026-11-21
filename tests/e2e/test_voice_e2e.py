@@ -390,3 +390,74 @@ def test_voice_pocket_https_capture_and_one_device_at_a_time(launch, browser, tm
         srv.shutdown()
         srv.server_close()
         console.close()
+
+
+class _ScriptedEngines:
+    """Speech engines that are 'ready' without services (the hand-off flow needs a microphone, not recognition)."""
+    signature = "scripted"
+
+    def __init__(self, cfg):
+        class ASR:
+            def transcribe(self, pcm, rate=16000):
+                return {"text": "", "latency": 0.0, "audio_seconds": len(pcm) / 2 / rate}
+        self.asr, self.tts = ASR(), None
+
+    def health(self, probe=False):
+        return {"asr": {"state": "ready", "reason": None}, "tts": {"state": "ready", "reason": None},
+                "duplex": {"state": "disabled", "reason": "off"}}
+
+
+def test_voice_pocket_asks_and_the_owner_hands_over_the_microphone(browser, tmp_path):
+    """M2: while the owner console holds the microphone, a paired phone cannot take it by confirming its own request;
+    it asks, the console shows the request, the owner confirms, and the phone's microphone turns on. The two servers
+    have separate hubs (like the console and Pocket processes) and share only the database."""
+    from neuroscifi.pocket import server as pocket
+    from neuroscifi.voice.hub import VoiceHub
+    wav = fake_capture_wav(tmp_path / "quiet.wav", [30.0])
+    console = Console(tmp_path)
+    with closing(store.connect(console.path)) as db:
+        wstate.set_config(db, {"enabled": True, "pocket_research": True}, time.time())
+    console.server.voice_hub = VoiceHub(console.path, engines_factory=_ScriptedEngines)
+    srv = pocket.PocketServer(("127.0.0.1", 0), pocket.Handler)
+    srv.store = pocket.Store(tmp_path / "mobile.sqlite")
+    srv.pair_lock = threading.Lock()
+    srv.invitation, srv.invitation_deadline = "invite-code", time.monotonic() + 120
+    srv.instance_db = str(console.path)
+    srv.voice_hub = VoiceHub(console.path, engines_factory=_ScriptedEngines)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    b = browser.browser_type.launch(executable_path=os.environ.get("NSF_CHROMIUM") or None, args=[
+        "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
+        f"--use-file-for-fake-audio-capture={wav}"])
+    try:
+        page = b.new_context(viewport={"width": 1280, "height": 900}, permissions=["microphone"]).new_page()
+        page.goto(console.url)
+        page.locator("#nav").get_by_role("link", name="Voice").click()
+        expect(page.locator(".nsfv-health")).to_contain_text("Speech recognition: ready", timeout=15_000)
+        start_session(page, "voice_in_text_out")
+        phone = b.new_context(viewport={"width": 390, "height": 844}, permissions=["microphone"]).new_page()
+        phone.goto(f"http://127.0.0.1:{srv.server_port}/")
+        phone.locator("#code").fill("invite-code")
+        phone.locator("#pairform button").click()
+        expect(phone.locator("#navvoice")).to_be_visible(timeout=15_000)
+        phone.locator("#navvoice").click()
+        root = phone.locator("#voicemount")
+        root.get_by_role("button", name="Start voice session").click()
+        root.locator(".nsfv-modes input[value='voice_in_text_out']").check()
+        root.get_by_role("button", name="Turn microphone on").click()
+        root.get_by_role("button", name="Allow microphone").click()
+        expect(root.locator(".nsfv-handoff")).to_contain_text("in use on another device")   # holder stays anonymous
+        root.get_by_role("button", name="Move the microphone here").click()
+        expect(root.locator(".nsfv-notice")).to_contain_text("Asked the device that holds the microphone")
+        expect(root.locator(".nsfv-confirm")).to_be_hidden()            # the phone has nothing to confirm itself
+        expect(page.locator(".nsfv-indicator")).to_contain_text("Microphone on")
+        expect(page.locator(".nsfv-confirm")).to_contain_text("Another device asks for the microphone",
+                                                              timeout=12_000)   # the holder's next renewal
+        page.locator(".nsfv-confirm").get_by_role("button", name="Confirm").click()
+        expect(page.locator(".nsfv-indicator")).to_have_text("Microphone off", timeout=5_000)
+        assert page.evaluate("() => window.__nsfVoice.client.tracksLive()") == 0
+        expect(root.locator(".nsfv-indicator")).to_contain_text("Microphone on", timeout=10_000)
+    finally:
+        b.close()
+        srv.shutdown()
+        srv.server_close()
+        console.close()
