@@ -148,7 +148,11 @@ def snapshot(db, task_id) -> dict:
         if head is None:
             continue
         members = [claims[c] for c in cluster["claims"] if c in claims]
-        keys[cluster["key"]] = {"values": head["claim_values"], "polarity": head["polarity"],
+        # A structured record (paper, advisory, release, package) is identified by its record id, not by the stemmed
+        # key of its template sentence: different papers share "OpenAlex record ..." keys (final live run, Scenario D).
+        record = ((head.get("flags") or {}).get("record_id") or [None])
+        record = record[0] if isinstance(record, list) else record
+        keys["record:" + record if record else cluster["key"]] = {"values": head["claim_values"], "polarity": head["polarity"],
                                 "status": cluster["status"],
                                 "primary": any(c["canonical_url"] in api for c in members),
                                 "groups": int(cluster.get("independent_sources") or 0),
@@ -190,10 +194,13 @@ def compare(baseline: dict, current: dict, consolidation=None) -> dict:
     for key, info in current["claims"].items():
         corroborated = info["status"] == "corroborated" and int(info.get("groups", 2)) >= 2
         primary = info["status"] == "single_source" and bool(info["primary"])
-        if key in old_claims:
+        if key in old_claims and (old_claims[key].get("values") or not info["values"]):
             before = old_claims[key]
-            if (before["polarity"] != info["polarity"] or sorted(before["values"]) != sorted(info["values"])) and \
-                    (corroborated or primary):
+            # A value change needs a value before and after: a value appearing where none was stated is a new
+            # statement, judged below like any new claim, not a change of a known one.
+            values_changed = bool(before["values"]) and bool(info["values"]) and \
+                sorted(before["values"]) != sorted(info["values"])
+            if (before["polarity"] != info["polarity"] or values_changed) and (corroborated or primary):
                 changed_values.append({"key": key, "before": before["values"], "after": info["values"],
                                        "polarity": [before["polarity"], info["polarity"]]})
             continue

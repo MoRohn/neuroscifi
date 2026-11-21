@@ -492,3 +492,28 @@ def test_curiosity_researches_a_statements_own_words_never_a_record_template(ind
     assert any(s.get("target", {}).get("knowledge_id") == 1 and "template" in s["reason"] for s in report["skipped"])
     [queued] = report["queued"]
     assert state.task(db, queued["task_id"])["objective"] == "Varnel River 412 kilometres long drains Ostra basin"
+
+
+def test_a_value_appearing_under_a_shared_record_template_key_is_not_a_change():
+    """Integrator, final live run (Scenario D): two ticks minutes apart reported a 'meaningful change' because a
+    different OpenAlex paper's date appeared under the shared template key "cod openalex predictiv record" whose
+    previous value list was empty. A value appearing where none was stated is a new statement (subject to the
+    new-claim rule), and record claims are compared by record id."""
+    from neuroscifi.webcortex.scheduler import compare
+    baseline = {"urls": {"https://api.openalex.org/W1": "h1"},
+                "claims": {"cod openalex predictiv record": {"values": [], "polarity": 1, "status": "single_source",
+                                                             "primary": True, "groups": 1, "relevance": 0.6}},
+                "seen_keys": ["cod openalex predictiv record"]}
+    current = {"urls": {"https://api.openalex.org/W2": "h2"},
+               "claims": {"cod openalex predictiv record": {"values": ["2016-01-19"], "polarity": 1,
+                                                            "status": "single_source", "primary": True, "groups": 1,
+                                                            "relevance": 0.6}}}
+    out = compare(baseline, current)
+    assert out["changed_values"] == [] and out["meaningful"] is False
+    # a real change of a stated value on a known key still counts
+    baseline["claims"]["k"] = {"values": ["2.5.4"], "polarity": 1, "status": "single_source", "primary": True,
+                               "groups": 1, "relevance": 0.9}
+    current["claims"]["k"] = {"values": ["2.5.5"], "polarity": 1, "status": "single_source", "primary": True,
+                              "groups": 1, "relevance": 0.9}
+    out = compare(baseline, current)
+    assert [c["key"] for c in out["changed_values"]] == ["k"] and out["meaningful"] is True
