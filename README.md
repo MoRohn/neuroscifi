@@ -6,6 +6,7 @@
 
 [![CI](https://github.com/MoRohn/neuroscifi/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MoRohn/neuroscifi/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/badge/version-0.5.0-818CF8)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-E879F9)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-22D3EE?logo=python&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-303%20passed-22C55E)
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-22C55E)
@@ -256,7 +257,13 @@ The reference model, the sensory front end and the neural graph benchmark are se
 
 ## License
 
-This repository does not yet include a project-wide license file. The vendored TufaZip code in `src/neuroscifi/vendor_tufazip` is distributed under its own upstream `LICENSE` and `NOTICE`. The wordmark is set in Adwaita Sans (SIL Open Font License 1.1).
+Copyright © 2026 Rohn Springfield.
+
+NeuroSciFi is free software: you can redistribute it and/or modify it under the terms of the **[GNU Affero General Public License v3.0](LICENSE)**, as published by the Free Software Foundation, either version 3 of the License or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see the license for details.
+
+The AGPL extends the GPL to network use. If you run a modified version that users interact with over a network, such as the Pocket bridge or the owner console, you must offer those users the corresponding source code (section 13).
+
+The vendored TufaZip code in `src/neuroscifi/vendor_tufazip` keeps its upstream MIT `LICENSE` and `NOTICE`. The wordmark is set in Adwaita Sans (SIL Open Font License 1.1).
 
 <div align="center">
 <br>
