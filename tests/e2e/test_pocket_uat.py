@@ -654,7 +654,9 @@ def test_restart_right_after_pairing_recovers_without_a_reload(research_spark, n
     stayed "Spark unreachable" for over a minute with Research and Voice hidden although the credential was valid,
     and only a reload (which forgets a tab-memory pairing, POC-07) changed anything. The tab now re-checks with
     backoff and restores the header and both sections as soon as the Spark answers."""
-    page = new_page()
+    # No service worker: once it controls the page, Chromium can send /api requests past page.route (the failure
+    # this test injects never happens, and the header simply says "Paired with Spark"). R2-01 does not involve it.
+    page = new_page(service_workers="block")
     page.goto(research_spark.url)
     failed = []
 
