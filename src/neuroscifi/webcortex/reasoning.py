@@ -821,7 +821,8 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     cites += [n for n in inline_sources if n not in cites]
     ids += [c for c in inline_claims if c not in ids]
     reasons = []
-    if _MORE_SENTENCES.search(text.translate(_PUNCT_ASCII)):
+    if _MORE_SENTENCES.search(_ABBREVIATION.sub(lambda m: m.group(0).replace(".", ""),
+                                                 text.translate(_PUNCT_ASCII))):
         reasons.append("holds more than one sentence")
     honest_gap = insufficiency(text, question)      # T2-03: "the evidence does not contain X" needs no supported claim
     if not cites and not honest_gap:
@@ -893,6 +894,12 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
 _UNHEDGED = "as fact without hedging"
 # One sentence per item: a sentence end followed by more text ("secure. Upgrade now", "secure.Everyone ...").
 _MORE_SENTENCES = re.compile(r"[.!?]+[\"')\]]*(?:\s+\S|(?=[A-Z]))")
+# A closed list of abbreviations whose full stop ends no sentence ("released on Nov. 17, 2026 by U.S.-based ...",
+# "e.g. wheels"); their stops are removed only for the one-sentence check. The caveat grammar still sees the text as
+# written, and no token outside its lists can match it, so this list cannot widen what counts as a caveat.
+_ABBREVIATION = re.compile(r"(?<![\w.])(?:e\.g|i\.e|etc|vs|cf|al|approx|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|"
+                           r"Oct|Nov|Dec|Dr|Mr|Mrs|Ms|Prof|Inc|Ltd|Corp|Vol|Fig|pp|U\.S|U\.K|E\.U)\.",
+                           re.IGNORECASE)
 _LOWER_LEAD = re.compile(r"^(?:The|A|An|In|On|At|By|Its|Their|This|These|Those|Some|Most|Many|Each|Every|One|Two|"
                          r"Both|All|After|Before|During|Since|Until|Over|Under|From)\b")
 
