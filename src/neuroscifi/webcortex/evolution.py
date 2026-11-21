@@ -679,6 +679,7 @@ def changes(db, topic, now, *, since=None, limit=5, phrase=False, gateway=None) 
                              "verification": {k: v.get(k) for k in ("policy", "state", "category", "basis",
                                                                      "confidence", "independent_groups")},
                              "confidence": r["confidence"],
+                             "valid_from": r["valid_from"], "valid_until": r["valid_until"],   # T1-18
                              "times": {"published_at": r.get("published_at"), "event_at": r.get("event_at"),
                                        "retrieved_at": r.get("retrieved_at"),
                                        "first_verified_at": r["first_verified_at"],

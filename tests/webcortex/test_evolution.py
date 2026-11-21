@@ -268,6 +268,11 @@ def test_what_has_changed_returns_versions_supersessions_evidence_and_dates(db):
     assert [e["at"] for e in subject["timeline"]] == sorted(e["at"] for e in subject["timeline"])
     assert out["summary"]["generated_by"] == "template" and "superseded on" in out["summary"]["text"]
     assert evolution.changes(db, "okapi habitat", T0)["subjects"] == []
+    # T1-18: versions[].valid_from / valid_until were null while versions[].times held them
+    old, new = subject["versions"]
+    assert old["valid_from"] == old["times"]["valid_from"] is not None
+    assert old["valid_until"] == old["times"]["valid_until"] is not None
+    assert new["valid_from"] == new["times"]["valid_from"] is not None and new["valid_until"] is None
 
 
 class _Gateway:
