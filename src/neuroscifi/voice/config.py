@@ -91,6 +91,37 @@ def update(db, changes: dict, *, owner=True) -> dict:
     return current
 
 
+# A Pocket principal's own preferences (meta key 'voice_pref:<principal>'); they never rewrite the owner's settings.
+PREF_KEYS = ("mode", "voice", "speed", "transcript_visible")
+
+
+def effective(db, principal: str | None = None, owner: bool = True) -> dict:
+    """The settings as one principal sees them: the owner's, overlaid with a non-owner's own preferences."""
+    cfg = get(db)
+    if owner or not principal:
+        return cfg
+    row = db.execute("SELECT value FROM meta WHERE key=?", ("voice_pref:" + principal,)).fetchone()
+    prefs = json.loads(row[0]) if row else {}
+    return {**cfg, **{k: v for k, v in prefs.items() if k in PREF_KEYS}}
+
+
+def update_pref(db, principal: str, changes: dict) -> dict:
+    """Record a non-owner's preferences (mode, voice, speed, transcript visibility) for that principal only."""
+    unknown = sorted(set(changes) - (set(DEFAULTS) - {"consent"}))
+    if unknown:
+        raise ValidationError("unknown voice setting(s): " + ", ".join(unknown))
+    if set(changes) - set(PREF_KEYS):
+        raise ValidationError("only the owner console may change " + ", ".join(sorted(set(changes) - set(PREF_KEYS))))
+    key = "voice_pref:" + principal
+    with store.write(db):
+        row = db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        prefs = json.loads(row[0]) if row else {}
+        prefs.update({k: _validate(k, v) for k, v in changes.items()})
+        db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                   (key, json.dumps(prefs, sort_keys=True)))
+    return effective(db, principal, owner=False)
+
+
 def record_consent(db, device: str, now: float, accept: bool) -> dict:
     with store.write(db):
         current = get(db)

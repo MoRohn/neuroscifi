@@ -1,7 +1,8 @@
 """In-process voice state for the Presence Cortex (contract with Lane P).
 
 snapshot() -> {mode, session_active, capture_device, mic_capturing, output_muted, speaking, user_speaking,
-               interrupted_at, updated_at}
+               interrupted_at, updated_at}       (the owner's sessions only: what the owner's Presence shows)
+get(session_id) -> the same fields for one session (a Pocket principal's own status)
 `mode` is "voice_text" | "voice_in_text_out" | "text_only". Values are facts reported by the voice hub of this
 process: the session and mode from the server, the capture device from the ownership lease, and mic_capturing /
 speaking / user_speaking / output_muted as last reported by the client that holds the session (the client reports
@@ -26,10 +27,12 @@ def _idle(mode="text_only"):
             "updated_at": None}
 
 
-def update(session_id: str, **changes) -> dict:
-    """Record changes for one session (unknown keys are ignored). Returns the session's state."""
+def update(session_id: str, *, owner: bool = True, **changes) -> dict:
+    """Record changes for one session (unknown keys are ignored). Returns the session's state. `owner` False marks
+    a non-owner (Pocket) session: it never becomes what snapshot() shows."""
     with _LOCK:
         cur = _SESSIONS.setdefault(session_id, _idle())
+        cur["_owner"] = bool(owner)
         changed = False
         for key, value in changes.items():
             if key in FIELDS and key != "updated_at" and cur.get(key) != value:
@@ -46,11 +49,19 @@ def end(session_id: str) -> None:
         _SESSIONS.pop(session_id, None)
 
 
+def get(session_id: str) -> dict:
+    """One session's state (text-only idle when unknown)."""
+    with _LOCK:
+        cur = _SESSIONS.get(session_id)
+        return _idle() if cur is None else {k: cur[k] for k in FIELDS}
+
+
 def snapshot() -> dict:
-    """The most recently updated active session of this process, else text-only idle."""
+    """The most recently updated active OWNER session of this process, else text-only idle. Non-owner sessions
+    never change what the owner's Presence shows."""
     with _LOCK:
         now = time.monotonic()
-        live = [s for s in _SESSIONS.values() if s.get("session_active")]
+        live = [s for s in _SESSIONS.values() if s.get("session_active") and s.get("_owner", True)]
         if not live:
             return _idle()
         cur = max(live, key=lambda s: s["updated_at"] or 0)

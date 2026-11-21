@@ -77,10 +77,33 @@ Forward-only migration 9 (`instance/schema.py`; v8 is Lane D's knowledge-evoluti
 ## 5. Capture ownership (one device at a time)
 
 The lease row is per individual. `acquire` by another device while a live lease exists is refused with the
-holder's label; the UI shows "The microphone is in use on <device>" and "Move the microphone here", which asks for
-an explicit confirmation (`capture {action: request_handoff}` → confirm id) before `capture {action: handoff}`.
+holder's label (a Pocket device sees "another device" for a holder of another principal); the UI shows "The
+microphone is in use on <device>" and "Move the microphone here". Who confirms the move:
+
+- the owner (from any device), or a device taking it from its own principal: the requester confirms
+  (`capture {action: request_handoff}` → confirm id → `capture {action: handoff, confirm}`);
+- a Pocket device taking it from another principal (e.g. the owner console): `request_handoff` answers
+  `{requested: {id, expires_at}}` and files one request (meta `voice_handoff`, 60 s). The holder's next renewal
+  returns `handoff_request`; its UI asks "Another device asks for the microphone. Hand it over?" and answers with
+  `capture {action: grant_handoff | refuse_handoff, confirm: id}`. On grant the lease moves to the requester, whose
+  client (polling `status` every 2 s) then turns its microphone on. The spoken "use this device for the microphone"
+  files the same request.
+
 The previous holder's next renewal or upload is refused and it stops its tracks. Console tabs and Pocket devices
 share the same lease (the console and Pocket processes coordinate through the database).
+
+Principals are kept apart in the hub: at most 4 sessions per principal (a principal's oldest goes first), a Pocket
+device never displaces an owner session (a full hub answers 409), a Pocket principal's mode, voice, speed and
+transcript visibility are its own preferences (meta `voice_pref:<principal>`; the owner's settings are unchanged),
+and its `status` carries only its own session's state (no owner snapshot, metrics or retained-audio count).
+
+Upload path: audio requests do no database writes. Chunks are buffered in memory; consent and the lease are read
+(WAL reads never wait for a writer); provisional segments, the final segment and (with retention on) its raw
+audio in the same transaction are written by one writer thread in order. Measured with an emulated research
+worker holding 0.5 s write transactions back to back (`HOLD=0.5`, 120 chunks of 0.5 s, fake ASR): chunk-ack p95
+534 ms → 5.9 ms, max 1632 ms → 27.5 ms (before/after this change). Replies run on at most 8 threads and research
+follow-ups on 16; beyond that typed text answers 409 "busy" and a spoken utterance is transcribed with a "busy"
+notice instead of a reply.
 
 ## 6. Presence contract (Lane P)
 

@@ -382,7 +382,7 @@ def test_voice_pocket_https_capture_and_one_device_at_a_time(launch, browser, tm
         expect(page.locator(".nsfv-indicator")).to_contain_text("Microphone on")
         expect(root.locator(".nsfv-indicator")).to_have_text("Microphone off", timeout=12_000)   # lease renewal
         assert phone.evaluate("() => window.__nsfVoice.client.tracksLive()") == 0
-        expect(phone.locator(".nsfv-notice")).to_contain_text("moved to Owner console")
+        expect(phone.locator(".nsfv-notice")).to_contain_text("moved to another device")   # holder stays anonymous
         record("multi_device", {"pocket_https": True, "pocket_heard": heard, "console_refused_while_phone_held": True,
                                 "handoff_needed_confirmation": True, "phone_stopped_after_handoff": True})
     finally:

@@ -10,6 +10,8 @@ from neuroscifi.instance.errors import Conflict, NotFound, ValidationError
 from neuroscifi.voice import config as vconfig, state as vstate, transcripts as tx
 from neuroscifi.webcortex import orchestrator, scheduler
 
+from neuroscifi.voice.bridge import Principal
+
 from .conftest import OWNER, pcm, pocket_principal, wait_for
 
 
@@ -115,17 +117,60 @@ def test_audio_refused_without_consent_lease_or_in_text_mode(hub):
 
 
 def test_second_device_refused_then_explicit_handoff(hub):
+    """The owner takes the microphone from a Pocket device on the owner's own confirmation."""
+    phone = pocket_principal()
+    b = start(hub, phone, device="phoneB")
+    a = start(hub, device="consoleA", mic=False)
+    assert hub.capture(a, OWNER, "acquire")["granted"] is False
+    with pytest.raises(Conflict, match="confirmation"):
+        hub.capture(a, OWNER, "handoff", handoff_confirm="nope")
+    confirm = hub.capture(a, OWNER, "request_handoff")["confirm"]
+    assert hub.capture(a, OWNER, "handoff", handoff_confirm=confirm["id"])["granted"]
+    assert hub.capture(b, phone, "renew")["granted"] is False      # the first device learns it lost the mic
+    with pytest.raises(Conflict):
+        hub.audio(b, phone, "u0001", 0, False, pcm(0.1))
+
+
+def test_pocket_handoff_from_the_owner_needs_the_owners_consent(hub):
+    """M2: a Pocket device cannot move the owner's microphone by confirming its own request; the holder decides."""
     a = start(hub, device="consoleA")
     phone = pocket_principal()
     b = start(hub, phone, device="phoneB", mic=False)
-    assert hub.capture(b, phone, "acquire")["granted"] is False
-    with pytest.raises(Conflict, match="confirmation"):
-        hub.capture(b, phone, "handoff", handoff_confirm="nope")
-    confirm = hub.capture(b, phone, "request_handoff")["confirm"]
-    assert hub.capture(b, phone, "handoff", handoff_confirm=confirm["id"])["granted"]
-    assert hub.capture(a, OWNER, "renew")["granted"] is False      # the first device learns it lost the mic
+    assert hub.capture(b, phone, "acquire") == {"granted": False, "holder": {"label": "another device"}}
+    out = hub.capture(b, phone, "request_handoff")
+    assert "confirm" not in out and out["requested"]["id"]
     with pytest.raises(Conflict):
-        hub.audio(a, OWNER, "u0001", 0, False, pcm(0.1))
+        hub.capture(b, phone, "handoff", handoff_confirm=out["requested"]["id"])
+    hub.sessions[b].pending = {"id": "self", "action": "handoff", "summary": "x", "expires_at": time.time() + 60}
+    with pytest.raises(Conflict, match="must allow"):              # even a self-held confirmation is not enough
+        hub.capture(b, phone, "handoff", handoff_confirm="self")
+    with pytest.raises(Conflict):                                  # only the holder can grant it
+        hub.capture(b, phone, "grant_handoff", handoff_confirm=out["requested"]["id"])
+    assert hub.capture(a, OWNER, "renew")["granted"]               # the owner still holds it ...
+    request = hub.capture(a, OWNER, "renew")["handoff_request"]    # ... and is asked
+    assert request["id"] == out["requested"]["id"]
+    assert hub.capture(a, OWNER, "refuse_handoff", handoff_confirm=request["id"]) == {"refused": True}
+    assert hub.capture(a, OWNER, "renew") == {"granted": True, "holder": hub.capture(a, OWNER, "renew")["holder"],
+                                              "handoff_request": None}
+    again = hub.capture(b, phone, "request_handoff")["requested"]
+    assert hub.capture(a, OWNER, "grant_handoff", handoff_confirm=again["id"])["handed_off"]
+    assert hub.capture(a, OWNER, "renew")["granted"] is False
+    assert hub.capture(b, phone, "acquire")["granted"]
+    assert hub.status(phone, b)["capture"]["this_device"]
+
+
+def test_pocket_voice_handoff_command_asks_the_holder(hub):
+    a = start(hub, device="consoleA")
+    phone = pocket_principal()
+    b = start(hub, phone, device="phoneB", mic=False)
+    hub.text(b, phone, "Use this device for the microphone")
+    pending = wait_for(lambda: [e for e in hub.events(b, phone, 0, wait=0.1)["events"] if e["type"] == "reply"
+                                and e["reply"]["confirm"]])[0]["reply"]["confirm"]
+    hub.confirm(b, phone, pending["id"], True)
+    assert hub.capture(a, OWNER, "renew")["granted"]               # not moved by the requester's own confirmation
+    assert hub.capture(a, OWNER, "renew")["handoff_request"]
+    reply = [e for e in hub.events(b, phone, 0, wait=0)["events"] if e["type"] == "reply"][-1]["reply"]
+    assert "asked" in reply["text"]
 
 
 def test_utterance_streaming_provisional_final_and_reply(hub):
@@ -137,7 +182,10 @@ def test_utterance_streaming_provisional_final_and_reply(hub):
     with pytest.raises(Conflict, match="expected chunk"):
         hub.audio(s, OWNER, "u0001", 5, False, pcm(0.1))
     final = hub.audio(s, OWNER, "u0001", 2, True, pcm(0.2))
-    assert final == {"status": "final", "text": "show me the evidence", "segment": prov["segment"], "asr_ms": 10.0}
+    assert final == {"status": "final", "text": "show me the evidence", "asr_ms": 10.0}
+    hub.drain()
+    transcript = [e["segment"] for e in events(hub, s, kind="transcript")]
+    assert [x["status"] for x in transcript] == ["provisional", "final"] and len({x["id"] for x in transcript}) == 1
     reply = wait_for(lambda: events(hub, s, kind="reply"))[0]
     assert reply["reply"]["intent"] == "show_evidence" and reply["turn"]["sentences"] == 1
     assert reply["segment"]["authority"] == "authoritative" and reply["segment"]["detail"]["responding_to"] == "u0001"
@@ -154,6 +202,7 @@ def test_retention_on_keeps_final_utterance_with_ttl(hub):
     hub.settings(OWNER, {"retain_audio": True, "audio_ttl_hours": 2})
     hub.fake.asr.script = ["hello there friend"]
     hub.audio(s, OWNER, "u0001", 0, True, pcm(0.5))
+    hub.drain()
     with closing(store.connect(hub.db_path)) as db:
         row = db.execute("SELECT length(pcm), expires_at-created_at FROM voice_audio").fetchone()
     assert row == (16000, 7200.0)
@@ -332,3 +381,129 @@ def test_research_answer_delivered_from_real_worker(hub, instance, monkeypatch, 
     assert r["source"] in ("model", "template") and r["task_id"] and r["text"]
     assert done["turn"] and r["speech"]                               # mode A: spoken concisely
     assert any(e["type"] == "task_done" for e in events(hub, s))
+
+
+# ---- principals kept apart (M2, M3), concurrency and the audio path ---------------------------------------------------
+
+def test_pocket_sessions_never_evict_the_owners(hub, monkeypatch):
+    from neuroscifi.voice import hub as vhub
+    owner = start(hub, device="consoleA", mic=False)
+    phone = pocket_principal()
+    for i in range(3 * vhub.MAX_SESSIONS):
+        start(hub, phone, device=f"phone{i:04d}", consent=False, mic=False)
+    assert owner in hub.sessions and hub.sessions[owner].active
+    assert sum(x.principal.name == phone.name for x in hub.sessions.values()) == vhub.MAX_SESSIONS_PER_PRINCIPAL
+    monkeypatch.setattr(vhub, "MAX_SESSIONS", 3)                    # a full hub: other families cannot push it out
+    others = [Principal(name=f"pocket:fam{i}", owner=False, research=True, family=f"f{i}", label=f"P{i}",
+                        device_prefix=f"pocket:fam{i}:") for i in range(4)]
+    for p in others:
+        try:
+            start(hub, p, device="phone0001", consent=False, mic=False)
+        except Conflict:
+            pass
+    assert owner in hub.sessions
+
+
+def test_pocket_settings_and_mode_are_its_own(hub, instance):
+    owner = start(hub, device="consoleA", mic=False)
+    phone = pocket_principal()
+    b = start(hub, phone, device="phoneB", mic=False)
+    assert hub.settings(phone, {"voice": "bm_george", "speed": 1.5})["voice"] == "bm_george"
+    hub.set_mode(b, phone, "text_only")
+    with closing(store.connect(instance)) as db:
+        cfg = vconfig.get(db)
+    assert (cfg["voice"], cfg["speed"], cfg["mode"]) == ("af_heart", 1.0, "voice_text")   # the owner's untouched
+    assert hub.status(OWNER, owner)["settings"]["voice"] == "af_heart"
+    st = hub.status(phone, b)["settings"]
+    assert (st["voice"], st["speed"], st["mode"]) == ("bm_george", 1.5, "text_only")
+    assert hub.start(phone, "pocket:abcd1234:phoneC", phone.label)["mode"] == "text_only"
+    assert hub.start(OWNER, "console:consoleB", OWNER.label)["mode"] == "voice_text"
+    with pytest.raises(ValidationError):
+        hub.settings(phone, {"retain_audio": True})
+
+
+def test_pocket_status_is_scoped_and_cannot_steer_the_owners_presence(hub):
+    owner = start(hub, device="consoleA")
+    hub.client_status(owner, OWNER, mic_capturing=True, user_speaking=True)
+    phone = pocket_principal()
+    st = hub.status(phone)
+    assert st["snapshot"]["session_active"] is False and st["metrics"] is None
+    assert st["retained_audio_segments"] is None and st["capture"] == {"held": True, "this_device": False,
+                                                                        "label": "another device"}
+    b = start(hub, phone, device="phoneB", mic=False)
+    hub.set_mode(b, phone, "voice_in_text_out")
+    hub.client_status(b, phone, output_muted=True)
+    snap = vstate.snapshot()                                         # still the owner's session
+    assert snap["capture_device"] == "Owner console" and snap["mode"] == "voice_text" and snap["mic_capturing"]
+    mine = hub.status(phone, b)["snapshot"]
+    assert mine["mode"] == "voice_in_text_out" and mine["output_muted"] and not mine["mic_capturing"]
+    assert hub.status(OWNER, owner)["metrics"] is not None
+
+
+def test_a_confirmation_executes_once(hub, monkeypatch):
+    s = start(hub)
+    hub.text(s, OWNER, "Turn on autonomous research")
+    pending = wait_for(lambda: events(hub, s, kind="reply"))[0]["reply"]["confirm"]
+    ran = []
+    real = hub.bridge.execute
+
+    def slow(*a):
+        ran.append(1)
+        time.sleep(0.3)
+        return real(*a)
+    monkeypatch.setattr(hub.bridge, "execute", slow)
+    results = []
+
+    def go():
+        try:
+            results.append(hub.confirm(s, OWNER, pending["id"], True)["done"])
+        except Conflict:
+            results.append("conflict")
+    threads = [threading.Thread(target=go) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(map(str, results)) == ["True", "conflict"] and len(ran) == 1
+
+
+def test_reply_threads_are_bounded_with_a_busy_answer(hub, monkeypatch):
+    from neuroscifi.voice import hub as vhub
+    s = start(hub)
+    gate = threading.Event()
+    real = hub.bridge.handle
+    monkeypatch.setattr(hub.bridge, "handle", lambda *a: (gate.wait(5), real(*a))[1])
+    try:
+        for i in range(vhub.MAX_REPLY_WORKERS):
+            hub.text(s, OWNER, f"help {i}")
+        with pytest.raises(Conflict, match="busy"):
+            hub.text(s, OWNER, "help again")
+        hub.fake.asr.script = ["what is the weather on mars"]
+        out = hub.audio(s, OWNER, "u0001", 0, True, pcm(0.5))
+        assert out["status"] == "busy" and events(hub, s, kind="error")[-1]["code"] == "busy"
+    finally:
+        gate.set()
+    wait_for(lambda: len(events(hub, s, kind="reply")) == vhub.MAX_REPLY_WORKERS)
+    hub.text(s, OWNER, "help")                                     # slots come back
+
+
+def test_audio_chunks_never_wait_for_a_write_transaction(hub, instance):
+    """(c) A research worker holding the write lock does not delay chunk acknowledgements; the transcript lands
+    when the lock is free."""
+    s = start(hub)
+    hub.fake.asr.script = ["show me the evidence"]
+    worker = store.connect(instance)
+    worker.execute("BEGIN IMMEDIATE")
+    try:
+        started = time.monotonic()
+        assert hub.audio(s, OWNER, "u0001", 0, False, pcm(0.3))["status"] == "buffered"
+        assert hub.audio(s, OWNER, "u0001", 1, False, pcm(0.5))["status"] == "provisional"
+        assert hub.audio(s, OWNER, "u0001", 2, True, pcm(0.2))["status"] == "final"
+        assert time.monotonic() - started < 1.0
+    finally:
+        worker.execute("COMMIT")
+        worker.close()
+    hub.drain()
+    with closing(store.connect(instance)) as db:
+        assert [(x["status"], x["text"]) for x in tx.listing(db, session_id=s) if x["speaker"] == "user"] == \
+            [("final", "show me the evidence")]

@@ -90,7 +90,7 @@ Parsing is deterministic (regular expressions over the normalised transcript); n
 | "forget the last research" | forget | `governance.forget_research` | **yes** (owner only) |
 | "turn on autonomous research" | enable_autonomy | `webcortex.autonomy.enable(by="owner:voice")` (the switch and its enable record; the reply says the resulting state) | **yes** (owner only) |
 | "turn off autonomous research" | disable_autonomy | `webcortex.autonomy.disable(by="owner:voice")`, recorded | — (owner only) |
-| "use this device for the microphone" | handoff | moves the capture lease | **yes** |
+| "use this device for the microphone" | handoff | moves the capture lease (a Pocket device taking it from another principal: asks the holder, who grants or refuses) | **yes** |
 | "confirm" / "no" | confirm / deny | answers the pending confirmation of this session | — |
 
 A confirmation is held server-side per session for 60 s; it is executed only by the same session ("confirm" spoken,

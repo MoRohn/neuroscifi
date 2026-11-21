@@ -332,6 +332,10 @@ export class VoiceClient extends EventTarget {
     try {
       const r = await this.t.post("capture", { session: this.session, action: "renew" });
       if (!r.granted) await this.micOff(`The microphone moved to ${r.holder && r.holder.label ? r.holder.label : "another device"}.`);
+      else if (r.handoff_request && !(this.pending && this.pending.id === r.handoff_request.id)) {
+        this.pending = { ...r.handoff_request, action: "handoff_grant" };   // another device asks: this holder decides
+        this._report();
+      }
     } catch (err) {
       if (err.status === 404) await this.micOff("The voice session ended.");
     }
@@ -339,9 +343,25 @@ export class VoiceClient extends EventTarget {
 
   async requestHandoff() {
     const r = await this.t.post("capture", { session: this.session, action: "request_handoff" });
+    if (r.requested) {   // the microphone belongs to another principal: only its holder can hand it over
+      this.emit("notice", "Asked the device that holds the microphone to hand it over; it moves here when that device allows it.");
+      this._awaitHandoff();
+      return null;
+    }
     this.pending = r.confirm;
     this._report();
     return r.confirm;
+  }
+
+  async _awaitHandoff() {
+    const sid = this.session;
+    const deadline = Date.now() + 65000;
+    while (this.session === sid && !this.micOn && Date.now() < deadline) {
+      await new Promise((ok) => setTimeout(ok, 2000));
+      const st = await this.status().catch(() => null);
+      if (st && st.capture && st.capture.this_device) { this.emit("handoff_granted", {}); return; }
+    }
+    if (this.session === sid && !this.micOn) this.emit("notice", "The other device did not hand over the microphone.");
   }
 
   // ---- VAD and upload -------------------------------------------------------------------------------------------------
@@ -435,9 +455,15 @@ export class VoiceClient extends EventTarget {
 
   async confirm(accept) {
     if (!this.pending) return null;
-    const id = this.pending.id;
+    const { id, action } = this.pending;
     this.pending = null;
     this._report();
+    if (action === "handoff_grant") {   // this device holds the microphone and another one asked for it
+      const r = await this.t.post("capture", { session: this.session, action: accept ? "grant_handoff" : "refuse_handoff",
+                                               confirm: id });
+      if (accept) await this.micOff("The microphone moved to the other device.");
+      return r;
+    }
     return this.t.post("confirm", { session: this.session, id, accept });
   }
 

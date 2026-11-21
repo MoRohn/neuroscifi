@@ -91,29 +91,48 @@ def upsert(db, sid, utterance, *, speaker, source, status, text, now, started_at
            detail=None) -> dict:
     """Insert or update one segment (utterance id unique per session). seq is assigned on first insert, so the
     order is the order utterances began."""
+    with store.write(db):
+        seg_id = _upsert(db, sid, utterance, speaker=speaker, source=source, status=status, text=text, now=now,
+                         started_at=started_at, ended_at=ended_at, task_id=task_id, detail=detail)
+    return segment(db, seg_id)
+
+
+def finalize(db, sid, utterance, *, text, now, started_at, detail, pcm=None, rate=16000, ttl_hours=None) -> dict:
+    """The final segment of a spoken utterance and, when retention is on (ttl_hours), its raw audio: one write
+    transaction (the voice hub batches them off the audio request path)."""
+    with store.write(db):
+        seg_id = _upsert(db, sid, utterance, speaker="user", source="asr", status="final", text=text, now=now,
+                         started_at=started_at, ended_at=now, detail=detail)
+        if pcm is not None and ttl_hours:
+            db.execute("INSERT OR REPLACE INTO voice_audio(segment_id,pcm,rate,created_at,expires_at) "
+                       "VALUES(?,?,?,?,?)", (int(seg_id), pcm, int(rate), now, now + 3600.0 * ttl_hours))
+    return segment(db, seg_id)
+
+
+def _upsert(db, sid, utterance, *, speaker, source, status, text, now, started_at=None, ended_at=None, task_id=None,
+            detail=None) -> int:
     if speaker not in ("user", "neuroscifi") or source not in AUTHORITY:
         raise ValidationError("bad speaker or source")
     text = str(text or "")[:MAX_TEXT]
-    with store.write(db):
-        row = db.execute("SELECT id, detail FROM voice_segments WHERE session_id=? AND utterance=?",
-                         (sid, utterance)).fetchone()
-        if row is None:
-            seq = db.execute("SELECT coalesce(max(seq),0)+1 FROM voice_segments WHERE session_id=?",
-                             (sid,)).fetchone()[0]
-            cur = db.execute(
-                "INSERT INTO voice_segments(session_id,utterance,seq,speaker,source,status,authority,text,detail,"
-                "task_id,started_at,ended_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (sid, utterance, seq, speaker, source, status, AUTHORITY[source], text,
-                 json.dumps(detail or {}, sort_keys=True), task_id, started_at or now, ended_at, now, now))
-            seg_id = cur.lastrowid
-        else:
-            seg_id = row[0]
-            merged = {**json.loads(row[1] or "{}"), **(detail or {})}
-            db.execute("UPDATE voice_segments SET source=?, status=?, authority=?, text=?, detail=?, "
-                       "task_id=coalesce(?,task_id), ended_at=coalesce(?,ended_at), updated_at=? WHERE id=?",
-                       (source, status, AUTHORITY[source], text, json.dumps(merged, sort_keys=True), task_id,
-                        ended_at, now, seg_id))
-    return segment(db, seg_id)
+    row = db.execute("SELECT id, detail FROM voice_segments WHERE session_id=? AND utterance=?",
+                     (sid, utterance)).fetchone()
+    if row is None:
+        seq = db.execute("SELECT coalesce(max(seq),0)+1 FROM voice_segments WHERE session_id=?",
+                         (sid,)).fetchone()[0]
+        cur = db.execute(
+            "INSERT INTO voice_segments(session_id,utterance,seq,speaker,source,status,authority,text,detail,"
+            "task_id,started_at,ended_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (sid, utterance, seq, speaker, source, status, AUTHORITY[source], text,
+             json.dumps(detail or {}, sort_keys=True), task_id, started_at or now, ended_at, now, now))
+        seg_id = cur.lastrowid
+    else:
+        seg_id = row[0]
+        merged = {**json.loads(row[1] or "{}"), **(detail or {})}
+        db.execute("UPDATE voice_segments SET source=?, status=?, authority=?, text=?, detail=?, "
+                   "task_id=coalesce(?,task_id), ended_at=coalesce(?,ended_at), updated_at=? WHERE id=?",
+                   (source, status, AUTHORITY[source], text, json.dumps(merged, sort_keys=True), task_id,
+                    ended_at, now, seg_id))
+    return seg_id
 
 
 def segment(db, seg_id) -> dict:
@@ -267,3 +286,51 @@ def release(db, device) -> bool:
 def holds(db, device, now) -> bool:
     return db.execute("SELECT 1 FROM voice_capture WHERE scope=? AND device=? AND expires_at>?",
                       (SCOPE, device, now)).fetchone() is not None
+
+
+# ---- hand-off requests across principals ----------------------------------------------------------------------------
+# A device that may not take the microphone on its own confirmation (a Pocket device while another principal holds the
+# lease) files one request; only the HOLDER's session can grant or refuse it. Kept in `meta` (key HANDOFF_KEY) because
+# the console and Pocket processes share only the database. One request at a time; a newer one replaces it.
+
+HANDOFF_KEY = "voice_handoff"
+HANDOFF_SECONDS = 60.0
+
+
+def request_handoff(db, *, device, label, principal, session_id, holder_device, now) -> dict:
+    req = {"id": secrets.token_hex(8), "to_device": device, "to_label": label, "to_principal": principal,
+           "to_session": session_id, "from_device": holder_device, "expires_at": now + HANDOFF_SECONDS}
+    with store.write(db):
+        db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                   (HANDOFF_KEY, json.dumps(req, sort_keys=True)))
+    return req
+
+
+def handoff_request(db, now, *, holder_device=None) -> dict | None:
+    """The live request (for `holder_device` only, when given), else None."""
+    row = db.execute("SELECT value FROM meta WHERE key=?", (HANDOFF_KEY,)).fetchone()
+    req = json.loads(row[0]) if row else None
+    if not req or req.get("expires_at", 0) <= now:
+        return None
+    if holder_device is not None and req.get("from_device") != holder_device:
+        return None
+    return req
+
+
+def answer_handoff(db, req_id, holder_device, now, accept: bool) -> dict | None:
+    """The holder grants (the lease moves to the requester) or refuses a request. None when there is no such live
+    request for this holder, or it no longer holds the microphone."""
+    with store.write(db):
+        row = db.execute("SELECT value FROM meta WHERE key=?", (HANDOFF_KEY,)).fetchone()
+        req = json.loads(row[0]) if row else None
+        if not req or req.get("id") != req_id or req.get("from_device") != holder_device or req["expires_at"] <= now:
+            return None
+        db.execute("DELETE FROM meta WHERE key=?", (HANDOFF_KEY,))
+        if not db.execute("SELECT 1 FROM voice_capture WHERE scope=? AND device=? AND expires_at>?",
+                          (SCOPE, holder_device, now)).fetchone():
+            return None
+        if accept:
+            db.execute("UPDATE voice_capture SET device=?, label=?, principal=?, session_id=?, acquired_at=?, "
+                       "expires_at=? WHERE scope=?", (req["to_device"], req["to_label"], req["to_principal"],
+                                                     req["to_session"], now, now + LEASE_SECONDS, SCOPE))
+    return req

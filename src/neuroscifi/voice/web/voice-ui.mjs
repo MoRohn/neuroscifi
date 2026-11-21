@@ -268,6 +268,7 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
   client.addEventListener("segment", (e) => upsertSegment(e.detail));
   client.addEventListener("notice", (e) => notice(e.detail));
   client.addEventListener("forgotten", () => { ui.list.replaceChildren(); segments.clear(); });
+  client.addEventListener("handoff_granted", () => act(() => micOn()));
   client.addEventListener("event", (e) => {
     const ev = e.detail;
     if (ev.type === "progress") notice(ev.text);
