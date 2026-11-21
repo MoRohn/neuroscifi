@@ -391,3 +391,31 @@ def test_forget_research_returns_unshared_cache_keys_and_the_cli_drops_them(tmp_
         assert cache.lookup("http://only.example/a") is None and cache.lookup("http://shared.example/b") is not None
     finally:
         cache.close()
+
+
+# ---- UAT RC1 regressions (lane L2) --------------------------------------------------------------------------------
+
+def test_forget_knowledge_forgets_its_unfinished_refresh_tasks(db):
+    """C-08: an owner refresh is recorded as 'refresh-owner:<id>' (shown "Refresh of knowledge #<id>", not
+    autonomous); forgetting the item forgets its queued/running refreshes (their objective is the forgotten
+    statement) - also a refresh queued before this origin existed (cli, same statement, parent = item's task) - and
+    the result says to rebuild stale checkpoints (S-11)."""
+    from neuroscifi.webcortex import orchestrator
+    tid, out = consolidated(db, [two_sources()])
+    kid = out["provisional"][0]
+    statement = knowledge.row(db, kid)["statement"]
+    owner = knowledge.refresh(db, kid, T0 + 1, origin="console")
+    assert owner["origin"] == f"refresh-owner:{kid}" and owner["origin_label"] == f"Refresh of knowledge #{kid}"
+    legacy = orchestrator.prepare(db, statement, T0 + 2, mode="fact_verification", origin="cli", parent=tid)
+    with store.write(db):
+        legacy_id = orchestrator.insert(db, legacy, T0 + 2)
+        state.update_task(db, owner["id"], T0 + 2, status="reading", lease_holder="elsewhere:1:1",
+                          lease_expires_at=T0 + 600)
+    finished = orchestrator.submit(db, "An unrelated question about pandas releases?", T0 + 3,
+                                   mode="fact_verification")
+    checkpoint_row(db)
+    gone = governance.forget_knowledge(db, kid, T0 + 4)
+    assert sorted(gone["effects"]["refresh_tasks_forgotten"]) == sorted([owner["id"], legacy_id])
+    assert db.execute("SELECT count(*) FROM web_tasks WHERE objective=?", (statement,)).fetchone()[0] == 0
+    assert db.execute("SELECT 1 FROM web_tasks WHERE id=?", (finished["id"],)).fetchone() is not None
+    assert gone["next_steps"] and "nsf checkpoint rebuild" in gone["next_steps"][0]

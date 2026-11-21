@@ -57,13 +57,15 @@ def start_epoch(db, name, now, note=None, context=None):
     """Create a calibration epoch. Idempotent: an existing name returns created=False.
 
     context: the graph context of the epoch's panel (epoch_contexts); given for an existing epoch it replaces the
-    association. With a context the result also carries "context".
+    association. With a context the result also carries "context". WritesPaused while instance regulation pauses
+    writes (free space of the instance's own file included).
     """
     _text("epoch name", name, 64)
     if note is not None and (not isinstance(note, str) or len(note) > 1024):
         raise ValidationError("note must be a string of at most 1024 characters")
     if context is not None:
         datasets._check_context(context)
+    store.require_write_allowed(db)
     with store.write(db):
         created = db.execute("INSERT OR IGNORE INTO epochs(name,created_at,note) VALUES(?,?,?)",
                              (name, now, note)).rowcount == 1

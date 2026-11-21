@@ -5,11 +5,12 @@
 import {vaultOpen,findings,keepFinding,forgetFinding} from "./field-ui.mjs";
 const $=id=>document.getElementById(id);
 const TERMINAL=["completed","partial","failed","cancelled"], STAGES=["discovering","reading","evaluating","synthesizing"];
+// Labels shared with the console (U-21): stages and statuses as the console's TASK_LABELS, kinds as #researchmode.
 const LABEL={queued:"Queued",discovering:"Discovering",reading:"Reading",evaluating:"Evaluating",synthesizing:"Synthesizing",
-  completed:"Completed",partial:"Partial report",failed:"Failed",cancelled:"Cancelled"};
+  completed:"Completed",partial:"Partial",failed:"Failed",cancelled:"Cancelled"};
 const STATUS={corroborated:"Corroborated",single_source:"Single source",contested:"Contested",insufficient:"Insufficient evidence"};
 const VERDICT={supported:"Supported",disputed:"Disputed",contested:"Contested",insufficient:"Not enough evidence"};
-const MAX=300, MAX_SAVED_BYTES=64000, SUMMARIZE="Summarize: ";
+const MAX=300, MAX_BYTES=1024, MAX_SAVED_BYTES=64000, SUMMARIZE="Summarize: ";
 let research=false, paired=false, tasks=[], current=null, timer=0, generation=0, busy=false, dictation=null, savedSignature="";
 let sharing=false, notify=false, away=null, reading=null;
 const say=t=>{$("researchmsg").textContent=t;};
@@ -18,19 +19,25 @@ const active=t=>!TERMINAL.includes(t.status);
 async function call(route,data){
   const token=window.pocketToken?.();
   if(!token)throw Object.assign(Error("Not paired"),{status:403});
-  const response=await fetch("/api/"+route,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
-    body:JSON.stringify(data),cache:"no-store",credentials:"omit"});
+  let response;
+  try{
+    response=await fetch("/api/"+route,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
+      body:JSON.stringify(data),cache:"no-store",credentials:"omit"});
+  }catch{if(window.pocketToken?.()===token)window.pocketReach?.(false);throw Object.assign(Error("Spark unreachable"),{status:0});}
+  if(window.pocketToken?.()===token){if(response.status===403)window.pocketRefused?.();else window.pocketReach?.(true);}
   const body=await response.json().catch(()=>({}));
   if(!response.ok)throw Object.assign(Error("Spark returned "+response.status),{status:response.status,code:body.error});
   return body;
 }
 function fail(e){
   if(e.status===404){research=false;tasks=[];if(current&&!current.saved)close();layout();say("Research is not available from this Spark.");return;}
-  say(e.status===429?"Limit reached: up to 10 questions per hour from this device. Try again later."
+  say(e.status===429?"Limit reached: up to 10 questions per hour from your linked devices together. Try again later."
     :e.code==="private_data"?"Remove personal details such as e-mail addresses, phone numbers or names you marked private. Nothing was sent."
-    :e.status===400?"Your Spark rejected that request. Keep the question under 300 characters."
+    :e.status===507?"Your Spark has paused new research because its storage needs attention. Nothing was queued. Try again after the owner frees space."
+    :e.status===400?"Your Spark rejected that request. Keep the question within 300 characters and 1024 bytes."
     :e.status===403?"Your Spark no longer accepts this pairing. Pair again."
-    :"Spark unreachable. Saved findings stay readable on this device.");
+    :e.status===0?"Spark unreachable. Saved findings stay readable on this device."
+    :"Your Spark could not do that right now (error "+e.status+"). Try again in a moment.");
 }
 function node(tag,text,cls){const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;}
 function safeUrl(u){try{const x=new URL(u);return x.protocol==="http:"||x.protocol==="https:"?x.href:null;}catch{return null;}}
@@ -52,10 +59,13 @@ function layout(){
     "Saved findings on this device. Pair with a research-enabled Spark to ask new questions.";
   buttons();
 }
+// The request is limited in bytes, not characters (S-08): count what will actually be sent.
+function body(){const data={objective:$("objective").value.trim()};if($("researchmode").value)data.mode=$("researchmode").value;return data;}
+const bytes=data=>new TextEncoder().encode(JSON.stringify(data)).length;
 function buttons(){
-  const text=$("objective").value;
-  $("objectivecount").textContent=text.length+" / "+MAX+" characters";
-  $("researchsubmit").disabled=!paired||!research||busy||!text.trim()||text.length>MAX;
+  const text=$("objective").value, size=bytes(body()), chars=[...text].length;
+  $("objectivecount").textContent=chars+" / "+MAX+" characters · "+size+" / "+MAX_BYTES+" bytes"+(size>MAX_BYTES?" · too long to send":"");
+  $("researchsubmit").disabled=!paired||!research||busy||!text.trim()||chars>MAX||size>MAX_BYTES;
   $("dictate").disabled=!!dictation;
 }
 function drawList(){
@@ -99,11 +109,13 @@ function rated(status,confidence){
   const text=[status==="summary"?null:STATUS[status],pct(confidence)].filter(Boolean).join(" · ");
   return text?node("small",text,"rconf"):null;
 }
+// One persistent live region (#researchstage) announces stage changes; only #researchbody is rebuilt (U-27).
 function show(t,saved=false){
   if(reading&&reading.id!==t.id)stopReading();
-  const view=$("researchview");view.replaceChildren();view.hidden=false;
-  view.append(node("h3",t.objective));
-  const stage=node("p",saved?"Saved copy · "+(LABEL[t.status]||t.status):stageText(t),"rstage");stage.setAttribute("role","status");view.append(stage);
+  $("researchview").hidden=false;$("researchq").textContent=t.objective;
+  const stageLine=saved?"Saved copy · "+(LABEL[t.status]||t.status):stageText(t);
+  if($("researchstage").textContent!==stageLine)$("researchstage").textContent=stageLine;
+  const view=$("researchbody");view.replaceChildren();
   const r=t.report;
   if(r){
     const v=r.verdict;
@@ -160,7 +172,7 @@ function show(t,saved=false){
   const shut=node("button","Close");shut.onclick=()=>{close();$("research").focus();};actions.append(shut);
   view.append(actions);
 }
-function close(){stopReading();current=null;$("researchview").replaceChildren();$("researchview").hidden=true;}
+function close(){stopReading();current=null;$("researchbody").replaceChildren();$("researchq").textContent="";$("researchstage").textContent="";$("researchview").hidden=true;}
 // Read aloud: only the quoted answer sentences, each followed by "Source n" for its citations. A voice the browser
 // marks as remote (localService false) is never used, so the text stays on this device.
 function spoken(r){
@@ -289,12 +301,11 @@ $("dictate").onclick=async()=>{
   say("Microphone active · dictating on this device");
   try{rec.start();}catch{stopDictation();say("Dictation unavailable. Type your question.");}
 };
-$("objective").oninput=buttons;
+$("objective").oninput=buttons;$("researchmode").onchange=buttons;
 $("researchform").onsubmit=async e=>{
   e.preventDefault();
-  const objective=$("objective").value.trim();
-  if(busy||!paired||!research||!objective||objective.length>MAX)return;
-  const data={objective};if($("researchmode").value)data.mode=$("researchmode").value;
+  const data=body(), objective=data.objective;
+  if(busy||!paired||!research||!objective||[...objective].length>MAX||bytes(data)>MAX_BYTES)return;
   busy=true;buttons();const g=generation;
   try{
     const {id}=await call("research_submit",data);if(g!==generation)return;
@@ -335,7 +346,7 @@ const shared=sharedLink();
 if(shared!==undefined){
   sharing=true;
   if(!shared)say("Pocket can summarize shared web links (http or https) only. Nothing was sent.");
-  else if((SUMMARIZE+shared).length>MAX)say("That link is too long for a 300-character question. Nothing was sent.");
+  else if([...(SUMMARIZE+shared)].length>MAX||bytes({objective:SUMMARIZE+shared})>MAX_BYTES)say("That link is too long for a 300-character question. Nothing was sent.");
   else{$("objective").value=SUMMARIZE+shared;say("Shared link ready. Review the question, then submit it yourself.");}
 }
 speechGate().then(R=>{$("dictate").hidden=!R;});

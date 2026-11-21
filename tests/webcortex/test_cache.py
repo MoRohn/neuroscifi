@@ -128,3 +128,53 @@ def test_forget_deletes_only_orphaned_bodies(tmp_path):
     assert cache.body(moved) == b"moved body"                        # the final URL's row still references it
     cache.forget_url("http://c.example/new")
     assert cache.body(moved) is None and cache.stats()["documents"] == 0
+
+
+# ---- UAT RC1 regressions (lane L2) --------------------------------------------------------------------------------
+
+def test_a_corrupt_cache_is_quarantined_and_rebuilt_on_open_and_on_use(tmp_path):
+    """S-05: the cache is disposable: a file that is not a database (on open), or that turns out corrupt later (on
+    use), is renamed <name>.corrupt-<time> and a fresh cache takes its place; events records each quarantine."""
+    path = tmp_path / "x.webcache.sqlite"
+    path.write_bytes(os.urandom(8192))
+    cache = PublicCache(path)
+    assert cache.lookup("http://a.example/") is None and cache.stats()["documents"] == 0
+    assert len(cache.events) == 1 and list(tmp_path.glob("x.webcache.sqlite.corrupt-*"))
+    cache.put(result("http://a.example/", b"body"))
+    cache.close()
+
+    cache = PublicCache(path)
+    calls = {"n": 0}
+
+    class Broken:                                   # the connection reports corruption once
+        def __init__(self, inner):
+            self.inner = inner
+
+        def execute(self, *a):
+            calls["n"] += 1
+            raise sqlite3.DatabaseError("database disk image is malformed")
+
+        def close(self):
+            self.inner.close()
+
+    cache._db = Broken(cache._db)
+    assert cache.body(hashlib.sha256(b"body").hexdigest()) is None   # served by the rebuilt (empty) cache
+    assert calls["n"] == 1 and len(cache.events) == 1
+    assert len(list(tmp_path.glob("x.webcache.sqlite.corrupt-*"))) == 2
+    cache.put(result("http://b.example/", b"fresh"))
+    assert cache.lookup("http://b.example/")["sha256"] == hashlib.sha256(b"fresh").hexdigest()
+    cache.close()
+
+
+def test_rendered_pages_are_kept_by_hash_and_never_served_for_the_page_url(tmp_path):
+    """W-23: put_rendered stores the rendered DOM under its hash (a resume re-reads it), keyed by <url>#nsf-rendered,
+    so a later fetch of the page URL is not answered with the rendered body; forget_url removes it too."""
+    cache = PublicCache(tmp_path / "x.webcache.sqlite")
+    cache.put(result("http://a.example/app", b"<div id=root></div>", etag='"v1"'))
+    rendered = result("http://a.example/app", b"<p>rendered text</p>")
+    sha = cache.put_rendered(rendered)
+    assert cache.body(sha) == b"<p>rendered text</p>"
+    assert cache.lookup("http://a.example/app")["sha256"] == hashlib.sha256(b"<div id=root></div>").hexdigest()
+    cache.forget_url("http://a.example/app")
+    assert cache.body(sha) is None
+    cache.close()

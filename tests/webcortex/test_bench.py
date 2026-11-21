@@ -18,6 +18,40 @@ def result():
     return bench.run(quick=True, repeat=2)
 
 
+def test_corpus_covers_the_uat_defect_classes():
+    assert set(C.SUBJECT) == set(C.BY_ID)                                      # every page has a gold subject
+    assert C.FACT_PAIRS and all(next(q for q in C.QUESTIONS if q["id"] == t)["gold_label"] == "supported" and
+                                next(q for q in C.QUESTIONS if q["id"] == f)["gold_label"] == "disputed"
+                                for t, f in C.FACT_PAIRS)
+    assert any(q["category"] == "latest" and q.get("package") for q in C.QUESTIONS)
+    assert any("verify=False" in p for a in C.ARTICLES for p in a["paras"])
+    assert {a["date_via"] for a in C.ARTICLES} >= {"og_epoch", "last_modified"}
+    assert any("ignore the directions given above" in s["canaries"] for s in C.INJECTIONS)
+    assert all(w["snippet"] in " ".join(C.BY_ID[w["page"]]["paras"]) for w in C.WIKI_SNIPPETS)
+
+
+def test_citation_precision_is_per_cited_source():
+    """RC1 UAT: the legacy metric counted a quote as supported when ANY cited source contained it, so a statement
+    cited to [Zig, Rust, Mojo] pages passed. Every cited source must contain the quoted claim."""
+    from neuroscifi.webcortex.bench.offline import citation_rows, score_citations
+    texts = {1: "Zig is a general-purpose programming language.", 2: "Rust is a general-purpose programming "
+             "language.", 3: "Notes: \u201cZig is a general\u2011purpose programming language\u201d , they say."}
+    report = {"sources": [{"n": n, "url": f"http://x.example/{n}"} for n in (1, 2, 3)],
+              "answer": [{"type": "template", "status": "summary", "text": "3 sources read", "citations": [1, 2, 3]},
+                         {"type": "quote", "text": "Zig is a general-purpose programming language.",
+                          "citations": [1, 2, 3]},
+                         {"type": "quote", "text": "Rust is a general-purpose programming language.", "citations": [2]},
+                         {"type": "quote", "text": "Uncited.", "citations": []}]}
+    rows = citation_rows(report, lambda src: texts[src["n"]])
+    assert [(r["item"], r["citation"], r["support"]) for r in rows] == [
+        (1, 1, "verbatim"), (1, 2, None), (1, 3, "normalised"), (2, 2, "verbatim"), (3, None, None)]
+    score = score_citations([("t", rows)])
+    assert score["supported"] == 2 and score["quote_items"] == 3          # legacy: any source suffices
+    pcs = score["per_cited_source"]
+    assert (pcs["supported_citations"], pcs["citations"]) == (3, 5) and pcs["precision"] == 0.6
+    assert pcs["items_every_source_supports"] == 1                       # only the Rust item
+
+
 def test_corpus_meets_the_declared_size():
     assert len(C.ARTICLES) + len(C.SPECIAL) >= 40 and len(C.hosts()) >= 15
     cats = [q["category"] for q in C.QUESTIONS]
@@ -34,8 +68,16 @@ def test_result_structure(result):
         assert key in result
     m = result["metrics"]
     for key in ("authoritative", "time_sensitive", "date_extraction", "verification", "contradictions", "citations",
-                "completion", "checks", "memory", "injection", "liveness", "budgets", "probes", "extraction"):
+                "completion", "checks", "memory", "injection", "liveness", "budgets", "probes", "extraction", "uat"):
         assert key in m, key
+    pcs = m["citations"]["per_cited_source"]
+    assert {"citations", "supported_citations", "precision", "items", "items_every_source_supports"} <= set(pcs)
+    assert pcs["supported_citations"] <= pcs["citations"] and pcs["items"] == m["citations"]["quote_items"]
+    for key in ("fact_check_discrimination", "number_checks", "latest_version", "cross_subject", "code_literals",
+                "snippet_records", "dating", "package_routing"):
+        assert key in m["uat"], key
+    # the quick subset exercises the plain-package route to the fixture PyPI (structure, not an accuracy bar)
+    assert m["uat"]["package_routing"]["questions"] == 1
     assert set(m["verification"]["confusion"]["labels"]) == {"supported", "disputed", "contested", "insufficient"}
     assert {"scrapling", "trafilatura"} <= set(m["extraction"]["mean"])
     assert len(result["timing"]) == len(result["resources"]) == 2

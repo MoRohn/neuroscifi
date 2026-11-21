@@ -163,3 +163,15 @@ def test_feeds_are_validated_bounded_and_kept_outside_webconfig(db):
     with pytest.raises(NotFound):
         state.remove_feed(db, "https://lab.example/rss", T0)
     assert "feeds" not in state.get_config(db).to_json()
+
+
+# ---- UAT RC1 regressions (lane L2) --------------------------------------------------------------------------------
+
+def test_feed_urls_must_pass_the_network_address_policy(db):
+    """W-13: `feeds add` refuses loopback, private, link-local and local host names (net.check_url) up front."""
+    for bad in ("http://127.0.0.1:8080/feed", "http://10.0.0.5/rss", "http://169.254.169.254/latest",
+                "http://printer.local/feed", "http://[::1]/feed"):
+        with pytest.raises(ValidationError, match="network policy"):
+            state.add_feed(db, bad, T0)
+    assert state.get_feeds(db) == []
+    assert state.add_feed(db, "https://lab.example/rss", T0) == ["https://lab.example/rss"]

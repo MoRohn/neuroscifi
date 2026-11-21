@@ -111,10 +111,27 @@ def _terms(key):
     return " ".join(t for t in re.findall(r"[^\W_]+", key or "") if t not in ("num", "ver"))[:200]
 
 
+def search_terms(statement=None, key=None, db=None) -> str:
+    """Search words for a subject: the statement's own words (intent.query_text, never claim-key stems) when the
+    statement is known (for a bare key, a stored claim's sentence with that key), else the key's terms."""
+    from . import intent
+    query_text = getattr(intent, "query_text", None)
+    if query_text is not None:
+        if not statement and key and db is not None:
+            found = db.execute("SELECT text FROM web_claims WHERE key=? ORDER BY created_at DESC LIMIT 1",
+                               (key,)).fetchone()
+            statement = found[0] if found else None
+        if statement:
+            words = query_text(statement)
+            if words:
+                return words[:200]
+    return _terms(key)
+
+
 def hypotheses(item, now) -> list[dict]:
     """Competing hypotheses for a contested knowledge item and a query that would distinguish each."""
     from datetime import datetime, timezone
-    terms = _terms(item["key"])
+    terms = search_terms(item.get("statement"), item["key"])
     year = datetime.fromtimestamp(now, timezone.utc).year
     first = item["contradicting"][0] if item["contradicting"] else {}
     return [
@@ -204,11 +221,12 @@ def rank(db, now, *, limit=10) -> list[dict]:
             continue
         factor, futile = _futility(db, key)
         gain = categorical_gain([0.35, 0.35, 0.15, 0.15])
+        terms = search_terms(None, key, db)
         entry = _entry("hypothesis", {"key": key}, gain, "gap_resolution", IMPORTANCE["held"],
                        f"sources disagree and nothing is known yet; distinguishing hypotheses gains {gain:.3f} bits"
                        f"{futile}", factor=factor,
-                       extra={"hypotheses": [{"label": "A holds", "query": f"{_terms(key)} official source"},
-                                             {"label": "B holds", "query": f"{_terms(key)} latest"}]})
+                       extra={"hypotheses": [{"label": "A holds", "query": f"{terms} official source"},
+                                             {"label": "B holds", "query": f"{terms} latest"}]})
         (chosen if gain * factor >= MIN_GAIN else excluded).append(entry)
     # Knowledge gaps: single-source claims of recent tasks that no knowledge row covers.
     gaps = db.execute("SELECT key, max(confidence), min(text) FROM web_claims WHERE cluster_status='single_source' "
@@ -234,13 +252,16 @@ def propose(db, candidate: dict, now) -> dict:
 
     The task is created queued with stage 'proposed'; the worker skips it until the owner confirms. Task and
     question are written in one transaction (one state bump). Conflict when the web question budget
-    (config.max_open_web_questions) is spent: a proposal is a question, and the owner is not interrupted further."""
+    (config.max_open_web_questions) is spent: a proposal is a question, and the owner is not interrupted further.
+    Its request/byte budget is sized to the daily autonomous allowance left now (ValidationError, no proposal, when
+    nothing is left); confirming it and starting it check the allowance again (knowledge.apply_review,
+    orchestrator._claim)."""
     from ..instance import store
     from ..instance.errors import Conflict
     from . import orchestrator
     from .knowledge import open_question, question_room, quote
     target = candidate.get("target") or {}
-    objective = target.get("statement") or _terms(target.get("key", ""))
+    objective = target.get("statement") or search_terms(None, target.get("key", ""), db)
     if candidate.get("hypotheses"):
         objective = f"{objective} ({candidate['hypotheses'][0]['query']})"
     prepared = orchestrator.prepare(db, objective, now, mode=candidate.get("mode", "fact_verification"),

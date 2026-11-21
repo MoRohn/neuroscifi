@@ -216,7 +216,30 @@ def database_checks(path):
         checks.append(_check("free_space", status, f"{free} bytes free; reserve {min_free} bytes"
                                                    + ("; writes are paused" if status == "fail" else "")))
     checks.extend(_storage_checks(path))
+    checks.append(_cache_check(path))
     return checks
+
+
+def _cache_check(path):
+    """The public web cache next to the instance (<stem>.webcache.sqlite, ADR-023): absent is fine; a file that is
+    not a readable SQLite database is reported (warn: the cache is disposable and is quarantined and rebuilt on
+    its next use, but until then every page is fetched again)."""
+    cache = path.resolve().with_name(f"{path.resolve().stem}.webcache.sqlite")
+    if not cache.exists():
+        return _check("public_cache", "ok", f"no public cache file ({cache.name}); it is created on first use")
+    try:
+        db = sqlite3.connect(f"{cache.as_uri()}?mode=ro", uri=True)
+        try:
+            integrity = db.execute("PRAGMA quick_check").fetchone()[0]
+            db.execute("SELECT count(*) FROM urls").fetchone()
+        finally:
+            db.close()
+    except sqlite3.Error as error:
+        integrity = str(error)
+    if integrity == "ok":
+        return _check("public_cache", "ok", f"{cache.name}: quick_check ok")
+    return _check("public_cache", "warn", f"{cache.name} is corrupt ({integrity[:120]}); it is disposable: the next "
+                                          "research run renames it to .corrupt-<time> and starts an empty cache")
 
 
 def run(db=None):

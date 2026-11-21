@@ -8,6 +8,8 @@ Constants
 BM25_K1, BM25_B        Okapi BM25 parameters (Robertson/Zaragoza defaults: k1 = 1.5, b = 0.75).
 NUMERIC_TOLERANCE      Two numbers of the same kind conflict only when they differ by more than 1 % relative.
 DATE_TOLERANCE         Two calendar dates conflict only when they differ by more than one day.
+QUOTE_SPAN             A sentence boundary is ignored inside a double quotation opened at most this many characters
+                       earlier (a stray unbalanced quote further back does not glue a whole block together).
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ BM25_K1 = 1.5
 BM25_B = 0.75
 NUMERIC_TOLERANCE = 0.01
 DATE_TOLERANCE = 86400.0
+QUOTE_SPAN = 300
 
 STOPWORDS = frozenset("""
 a about above after again against all also am an and any are aren't as at be because been before being below
@@ -107,6 +110,22 @@ def _is_abbreviation(word: str, following: str) -> bool:
     return False
 
 
+def _open_quote(block: str, start: int, end: int) -> bool:
+    """True when a double quotation opened in block[start:end] (at most QUOTE_SPAN characters before `end`) is
+    still open at `end`: a boundary there would start the next sentence inside the quotation."""
+    part = block[start:end]
+    straight = [i for i, ch in enumerate(part) if ch == '"']
+    if len(straight) % 2:
+        return len(part) - straight[-1] <= QUOTE_SPAN
+    depth, opened = 0, -1
+    for i, ch in enumerate(part):
+        if ch in "“„":
+            depth, opened = depth + 1, i
+        elif ch == "”" and depth:
+            depth -= 1
+    return depth > 0 and len(part) - opened <= QUOTE_SPAN
+
+
 def _line_blocks(s: str, hard_newlines: bool = False) -> list[tuple[int, int]]:
     """Spans of text that may contain several sentences. Blank lines, list items, headings and lines that end
     with terminal punctuation are hard boundaries; a soft-wrapped line is joined with the next. With
@@ -149,6 +168,8 @@ def sentence_spans(s: str, *, hard_newlines: bool = False) -> list[tuple[int, in
             following = block[m.end():]
             if not _OPENER.match(following):
                 continue                                   # next word is lower-case: not a boundary
+            if _open_quote(block, cut, m.end()):
+                continue                                   # inside a quotation: the sentence goes on
             before = block[cut:m.start() + 1]
             word = before.split()[-1] if before.split() else ""
             if block[m.start()] == "." and _is_abbreviation(word, following):
@@ -417,9 +438,25 @@ def values(s: str) -> list[str]:
     "520 km"; joiners: en/em dash, "to", "or", "and" after "between"). Numbers glued to letters (cuda13, H100,
     COVID-19), ordinals and bracketed citation markers are ignored.
     """
+    return [v for v, _ in _scan_values(s)]
+
+
+def value_nouns(s: str) -> dict[str, str]:
+    """For each plain number (no unit, currency or date) among values(s): the stem of the word right after it
+    ("55 countries" -> "countri"), or "" when a stopword, punctuation or the end follows. Two plain numbers are
+    the same kind of quantity only when these nouns agree (values_conflict with `nouns`)."""
+    out: dict[str, str] = {}
+    for v, noun in _scan_values(s):
+        if noun is not None:
+            out.setdefault(v, noun)
+    return out
+
+
+def _scan_values(s: str) -> list[tuple[str, str | None]]:
+    """[(canonical value, noun after it for a plain number else None)] in order, deduplicated (see values)."""
     s = s or ""
     found: list[tuple[int, str]] = []
-    numbers: list[list] = []                # [start, end, x, unit or None, index in found] for plain numbers
+    numbers: list[list] = []                # [start, end, x, unit or None, index in found, magnitude] per number
     masked = list(s)
     for a, b, v in _date_values(s):
         found.append((a, v))
@@ -444,8 +481,8 @@ def values(s: str) -> list[str]:
             if re.match(r"(?:st|nd|rd|th)\b", after, re.IGNORECASE):
                 continue
             x = _num(raw)
-            if g["mag"]:
-                x *= _MAGNITUDE[g["mag"].lower()]
+            mag = _MAGNITUDE[g["mag"].lower()] if g["mag"] else 1.0
+            x *= mag
             if not math.isfinite(x):
                 continue
             if g["curw"]:
@@ -453,21 +490,38 @@ def values(s: str) -> list[str]:
                 continue
             unit = _unit(g["unit"] or "")
             if unit:
-                numbers.append([m.start(), m.end(), x, unit, len(found)])
+                numbers.append([m.start(), m.end(), x, unit, len(found), mag])
                 found.append((m.start(), _with_unit(x, unit)))
             elif re.fullmatch(r"\d{4}", raw) and 1000 <= x <= 2999:
                 found.append((m.start(), raw))                 # a year
             else:
-                numbers.append([m.start(), m.end(), x, None, len(found)])
+                numbers.append([m.start(), m.end(), x, None, len(found), mag])
                 found.append((m.start(), _fmt(x)))
     for here, nxt in reversed(list(zip(numbers, numbers[1:]))):
         join = _RANGE_JOIN.fullmatch(text[here[1]:nxt[0]])
-        if here[3] is None and nxt[3] and join and \
-                ("and" not in join.group(0).lower() or _BETWEEN.search(text[:here[0]])):
+        if not join or ("and" in join.group(0).lower() and not _BETWEEN.search(text[:here[0]])):
+            continue
+        if here[5] == 1.0 and nxt[5] != 1.0 and here[3] is None and math.isfinite(here[2] * nxt[5]):
+            here[2], here[5] = here[2] * nxt[5], nxt[5]       # "14–16 billion": both ends in billions
+            found[here[4]] = (here[0], _fmt(here[2]))
+        if here[3] is None and nxt[3]:
             here[3] = nxt[3]
             found[here[4]] = (here[0], _with_unit(here[2], nxt[3]))
+    plain = {}
+    for start, end, _x, unit, index, _mag in numbers:
+        if unit is None and index < len(found) and found[index][0] == start:
+            m = _NEXT_WORD.match(text, end)
+            word = m.group(1).lower() if m else ""
+            plain[start] = "" if not word or word in STOPWORDS else stem(word)
     found.sort(key=lambda p: p[0])
-    return list(dict.fromkeys(v for _, v in found))
+    out: dict[str, str | None] = {}
+    for start, v in found:
+        if v not in out:
+            out[v] = plain.get(start)
+    return list(out.items())
+
+
+_NEXT_WORD = re.compile(r"[ \t]+([^\W\d_][\w'’-]*)")
 
 
 def _unit(raw: str) -> str:
@@ -568,7 +622,7 @@ def _attach_bare(x: dict, y: dict) -> None:
             x.setdefault(group, []).append((hits[0][0], hits[0][1] * factor, "quantity"))
 
 
-def _group_conflict(va: list[str], vb: list[str], temporal: bool) -> str | None:
+def _group_conflict(va: list[str], vb: list[str], temporal: bool, nouns=None) -> str | None:
     """Like-for-like comparison: every comparison group present on both sides is compared on its own, and the
     first group with no equal pair is a conflict, so a value shared in one group ("Nimbus-OS 5") cannot mask a
     disagreement in another ("kernel 6.14" vs "6.12"). Integers and decimals are separate groups, merged only
@@ -589,6 +643,16 @@ def _group_conflict(va: list[str], vb: list[str], temporal: bool) -> str | None:
         _attach_bare(ga, gb)
         _attach_bare(gb, ga)
     for group in sorted(set(ga) & set(gb)):
+        if nouns is not None and group in (*_BARE, "number"):
+            na, nb = nouns
+            pairs = [(x, y) for x in ga[group] for y in gb[group] if _same_count(x, y, na, nb)]
+            if not pairs:
+                continue                                   # plain numbers counting different things
+            if any(_same(x[2], x[1], y[1], x[0], y[0]) for x, y in pairs):
+                continue
+            left = ", ".join(dict.fromkeys(x[0] for x, _ in pairs))
+            right = ", ".join(dict.fromkeys(y[0] for _, y in pairs))
+            return f"different values: {left} vs {right}"
         overlap = any(_same(ka, pa, pb, sa, sb) for sa, pa, ka in ga[group] for sb, pb, _ in gb[group])
         if not overlap:
             left = ", ".join(v for v, _, _ in ga[group])
@@ -599,8 +663,21 @@ def _group_conflict(va: list[str], vb: list[str], temporal: bool) -> str | None:
     return None
 
 
-def values_conflict(va: list[str], vb: list[str]) -> str | None:
+def _same_count(x, y, na: dict, nb: dict) -> bool:
+    """Two plain numbers count the same thing: the same noun after both, or no noun after one of them and the same
+    order of magnitude ("248,000 residents" vs "251,000," but not "1" vs "55")."""
+    a, b = na.get(x[0], ""), nb.get(y[0], "")
+    if a and b:
+        return a == b
+    return _magnitude(x[0]) == _magnitude(y[0])
+
+
+def values_conflict(va: list[str], vb: list[str], *, nouns: tuple[dict, dict] | None = None) -> str | None:
     """Reason string when two value lists disagree, else None.
+
+    `nouns` = (value_nouns(text_a), value_nouns(text_b)): plain numbers are then compared only with plain numbers
+    counting the same thing (_same_count: "55 countries" never against "1 winner"); without it all plain numbers
+    compare.
 
     Values are compared like for like within one comparison group (value_kind; _group_conflict). A group
     conflicts when no pair is equal within tolerance (numbers > 1 % relative unless written to the same
@@ -612,11 +689,53 @@ def values_conflict(va: list[str], vb: list[str]) -> str | None:
         # "is 2.3" next to "version 2.4": a bare dotted decimal is compared as a version
         va = ["v" + v if re.fullmatch(r"\d+\.\d+", v) else v for v in va]
         vb = ["v" + v if re.fullmatch(r"\d+\.\d+", v) else v for v in vb]
-    other = _group_conflict(va, vb, temporal=False)
+    other = _group_conflict(va, vb, temporal=False, nouns=nouns)
     when = _group_conflict(va, vb, temporal=True)
     if other and when:
         return None
     return other or when
+
+
+def values_equal(a: str, b: str, *, rel_tol: float | None = None) -> bool | None:
+    """None when two canonical values are not comparable (different comparison groups), else whether they are
+    equal within tolerance (as in values_conflict; `rel_tol` overrides the relative tolerance of numbers and
+    quantities). A year and a date compare by year."""
+    ka, ga, pa = value_kind(a)
+    kb, gb, pb = value_kind(b)
+    if {ka, kb} == {"year", "date"}:
+        year = lambda k, p: p if k == "year" else datetime.fromtimestamp(p, timezone.utc).year   # noqa: E731
+        return year(ka, pa) == year(kb, pb)
+    if ga != gb:
+        if {ga, gb} <= {"number:int", "number:dec"}:
+            ga = gb
+        else:
+            return None
+    if rel_tol is not None and ka not in ("date", "year", "version") and not ka.startswith("text"):
+        scale = max(abs(pa), abs(pb))
+        return scale == 0 or abs(pa - pb) / scale <= rel_tol
+    return _same(ka, pa, pb, a, b)
+
+
+def values_agree(va: list[str], vb: list[str]) -> bool:
+    """True when the two lists share at least one equal value and do not conflict (values_conflict)."""
+    if not va or not vb or values_conflict(va, vb):
+        return False
+    return any(values_equal(x, y) for x in va for y in vb)
+
+
+_PRE_RANK = {"dev": 0, "a": 1, "alpha": 1, "b": 2, "beta": 2, "rc": 3, "": 4, "post": 5}
+
+
+def version_key(v) -> tuple:
+    """Sort key for version strings ("v2.5.5" > "2.5.4" > "2.5.5rc1" > "2.5.5.dev1"; numeric, not lexical);
+    () for text without a version number."""
+    m = re.search(r"(\d+(?:\.\d+)*)(?:[-.]?(dev|alpha|beta|post|rc|a|b)(\d*))?", str(v or ""), re.IGNORECASE)
+    if not m:
+        return ()
+    nums = tuple(int(x) for x in m.group(1).split("."))
+    nums = nums + (0,) * max(0, 4 - len(nums))
+    tag = (m.group(2) or "").lower()
+    return nums + (_PRE_RANK.get(tag, 4), int(m.group(3) or 0))
 
 
 # ---- claim keys ---------------------------------------------------------------------------------------------
@@ -650,4 +769,5 @@ def stem(t: str) -> str:
 
 __all__ = ["BM25", "BM25_B", "BM25_K1", "DATE_TOLERANCE", "MONTHS", "MONTH_RE", "NUMERIC_TOLERANCE", "STOPWORDS",
            "collapse", "content_tokens", "is_number", "is_version", "jaccard", "normalise", "sentence_spans",
-           "sentences", "shingles", "stem", "tokens", "value_kind", "values", "values_conflict"]
+           "sentences", "shingles", "stem", "tokens", "value_kind", "value_nouns", "values", "values_agree",
+           "values_conflict", "values_equal", "version_key"]

@@ -159,9 +159,10 @@ def test_owner_journey(console, new_page):
     expect(page.locator("#changeScope")).to_have_text("camera:cam1")
     expect(page.locator("#change")).to_contain_text("Change suspected")
     badge = page.locator('#probs [data-scope="camera:cam1"] .suspect')
-    expect(badge).to_contain_text("change suspected (llr ")
+    expect(badge).to_contain_text("change suspected since evidence #")   # U-14: the llr sits under Technical detail
+    expect(page.locator('#probs [data-scope="camera:cam1"] details.tech')).to_contain_text("log-likelihood ratio")
     expect(page.locator('#probs [data-scope="partner:alice"] .suspect')).to_have_count(0)
-    partner_before = page.locator('#probs [data-scope="partner:alice"] .probnum').inner_text()
+    partner_before = page.locator('#probs [data-scope="partner:alice"] .probnum').text_content()   # under Technical detail
     expect(page.locator("#changeEvents li")).to_have_count(6)
     for event_id in flipped:
         expect(page.locator(f'#changeEvents li[data-id="{event_id}"]')).to_contain_text("camera · cam1 · action 0 → reading 1")

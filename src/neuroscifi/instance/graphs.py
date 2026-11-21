@@ -178,8 +178,10 @@ def register_founding(db, nsg_blob, now):
 
 
 def learn(db, context, now, *, train, validation, holder):
-    """Fit a candidate revision from a train and a validation dataset of `context`, holding its lease."""
+    """Fit a candidate revision from a train and a validation dataset of `context`, holding its lease. WritesPaused
+    while instance regulation pauses writes (store.require_write_allowed, free space of the instance's own file)."""
     datasets._check_context(context)
+    store.require_write_allowed(db)
     with lease(db, context, holder, now):
         meta = {}
         for dataset_id, split in ((train, "train"), (validation, "validation")):

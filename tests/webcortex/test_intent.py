@@ -315,6 +315,9 @@ def test_refine_when_all_failed_and_none_when_enough():
     p = intent.plan(S1, a, now=NOW)
     r = intent.refine(p, outcome(0, ok=False), a, now=NOW)
     assert r.notes[0].startswith("refinement: every provider failed")
+    # quick_lookup may send 3 queries; the plan used 2, so the refinement round has exactly 1 left (W-20)
+    assert [(q.text, q.kind) for q in r.queries] == [("open-source AI inference", "news")]
+    r = intent.refine(p, outcome(0, ok=False), a, now=NOW, remaining=2)
     assert [(q.text, q.kind) for q in r.queries] == [("open-source AI inference", "news"),
                                                      ("open-source AI inference", "web")]
     assert intent.refine(p, outcome(5), a, now=NOW) is None
@@ -352,3 +355,69 @@ def test_related_knowledge_that_does_not_cover_the_question_does_not_answer_it()
     assert any("do not cover the question's terms" in r for r in a["reasons"])
     b = intent.assess("Which port does the Orbix server listen on?", now=NOW, known=[port])
     assert b["needs_web"] is False and b["memory_items"] == [1]
+
+
+# ---- UAT RC1 regressions (W-11 / C-03 plain package names, W-20 planning hygiene) ---------------------------------
+
+def test_plain_package_name_with_a_release_cue_queries_the_registries():
+    q = "What is the latest stable release of numpy?"
+    a = intent.assess(q, now=NOW)
+    assert a["mode"] == "technical"
+    assert [(p["ecosystem"], p["name"], p["version"], p["inferred"]) for p in a["packages"]] == [
+        ("PyPI", "numpy", None, True), ("npm", "numpy", None, True)]
+    p = intent.plan(q, a, now=NOW)
+    assert texts(p, "technical") == ["pypi:numpy", "npm:numpy"]        # no version, no advisory cue: no osv
+    q = "Any security advisories for zstandard 0.25.0?"
+    p = intent.plan(q, intent.assess(q, now=NOW), now=NOW)
+    assert "osv:PyPI:zstandard@0.25.0" in texts(p, "technical")
+    q = "What is the latest release of the requests Python library?"     # the question names the ecosystem
+    assert [(x["ecosystem"], x["name"]) for x in intent.assess(q, now=NOW)["packages"]] == [("PyPI", "requests")]
+
+
+def test_comparison_sides_do_not_swallow_the_predicate():
+    for q in ("numpy vs pandas latest release dates", "Compare the latest release dates of numpy and pandas"):
+        a = intent.assess(q, now=NOW)
+        assert a["comparison"] == ["numpy", "pandas"] and a["mode"] == "comparative"
+        p = intent.plan(q, a, now=NOW)
+        assert texts(p, "technical") == ["pypi:numpy", "npm:numpy", "pypi:pandas", "npm:pandas"]
+        assert {"numpy release dates", "pandas release dates"} <= set(texts(p, "web"))
+    assert intent.assess("Should I use PyTorch vs JAX for research workloads?", now=NOW)["comparison"] == \
+        ["PyTorch", "JAX"]
+
+
+def test_package_inference_keeps_common_words_and_local_context_out():
+    assert intent.assess(S3, now=NOW)["packages"] == []                      # "the libraries we use" is local
+    assert intent.assess("Is there an update for the weather today?", now=NOW)["packages"] == []
+    assert intent.assess("What is the latest version of Quillstream?", now=NOW)["packages"] == []
+    q = "What is the latest stable release of quillbase?"                    # an owner's private term
+    a = intent.assess(q, now=NOW)
+    assert not any("quillbase" in x.text.lower() for x in intent.plan(q, a, now=NOW, local_terms=["Quillbase"]).queries)
+    assert intent.assess("Notify me when numpy releases a new version", now=NOW)["packages"] == []   # monitor
+
+
+def test_no_query_is_only_stopwords_or_temporal_words():
+    q = "What has changed on https://quotes.toscrape.com/ since last week?"
+    a = intent.assess(q, now=NOW)
+    p = intent.plan(q, a, now=NOW)
+    assert all(intent.searchable_text(x.text) for x in p.queries)
+    assert not any(x.text.split()[0].lower() == "last" for x in p.queries)
+    assert not intent.searchable_text("last 2026") and not intent.searchable_text("the past week")
+    assert intent.searchable_text("pypi:numpy") and intent.searchable_text("Lumen-7 launch")
+
+
+def test_refine_never_overshoots_the_mode_query_budget():
+    q = "What changed in the Quillstream changelog since last week?"         # change_detection: 2 queries
+    a = intent.assess(q, now=NOW)
+    p = intent.plan(q, a, now=NOW)
+    assert a["mode"] == "change_detection" and len(p.queries) == 2
+    assert intent.refine(p, outcome(0, ok=False), a, now=NOW) is None
+    assert intent.refine(p, outcome(0, ok=False), a, now=NOW, remaining=0) is None
+    r = intent.refine(p, outcome(0, ok=False), a, now=NOW, remaining=1)
+    assert r is not None and len(r.queries) == 1
+
+
+def test_query_text_uses_the_statement_words_not_stems():
+    assert intent.query_text("PyPI reports requests latest version 2.34.2 [3]") == "PyPI reports requests version 2.34.2"
+    assert intent.query_text("The Varnel River is 412 kilometres long.") == "Varnel River 412 kilometres long"
+    assert intent.query_text("last week") == ""
+    assert "NeuroSciFi" not in intent.query_text("NeuroSciFi's learning rule uses dendritic gating")

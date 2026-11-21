@@ -279,13 +279,69 @@ def test_request_rules(spark, devices):
         assert orchestrator.listing(db) == [], "nothing was queued by a rejected request"
 
 
-def test_rate_limit_per_device(spark, devices):
-    a, b, _ = devices
+def test_rate_limit_per_family_survives_a_restart(spark, devices):
+    """UAT S-02: the hourly limit is per pairing family (a linked device does not get its own ten) and is kept in
+    the Pocket database, so restarting the bridge does not reset it."""
+    a, b, c = devices
     for n in range(bridge.SUBMISSIONS_PER_HOUR):
         assert submit(spark, a, f"Zephyr compiler question {n}", mode="quick_lookup")[0] == 201
     assert submit(spark, a, "Zephyr compiler question 11", mode="quick_lookup")[0] == 429
-    assert submit(spark, b, "Zephyr compiler question 12", mode="quick_lookup")[0] == 201, "per device"
-    assert len(spark.req("research_list", {}, b)[1]["tasks"]) == 11
+    assert submit(spark, b, "Zephyr compiler question 12", mode="quick_lookup")[0] == 429, "per family"
+    assert submit(spark, c, "Zephyr compiler question 13", mode="quick_lookup")[0] == 201, "another family"
+    spark.server.store = bridge.Store(spark.server.store.path)   # a restarted bridge on the same database
+    assert submit(spark, b, "Zephyr compiler question 14", mode="quick_lookup")[0] == 429
+    assert len(spark.req("research_list", {}, b)[1]["tasks"]) == 10
+    with closing(bridge.connect(spark.server.store.path)) as db:
+        assert db.execute("SELECT count(*) FROM submissions").fetchone()[0] == 11
+    assert spark.req("unpair", {"family": True}, a)[0] == 200
+    spark.server.store.sweep()
+    with closing(bridge.connect(spark.server.store.path)) as db:
+        assert db.execute("SELECT count(*) FROM submissions").fetchone()[0] == 1, "erased family leaves no trace"
+
+
+def test_writes_paused_is_507_not_a_dropped_connection(spark, devices, monkeypatch):
+    """UAT S-04: instance regulation pausing writes answers 507 with a code the page can explain."""
+    from neuroscifi.instance.errors import WritesPaused
+
+    def paused(*args, **kwargs):
+        raise WritesPaused("web memory writes are paused: low disk")
+    monkeypatch.setattr(orchestrator, "submit", paused)
+    a, _, _ = devices
+    assert submit(spark, a) == (507, {"error": "writes_paused"})
+    assert spark.req("research_list", {}, a)[0] == 200
+
+
+def test_non_latin_question_fits_the_research_body_cap(spark, devices):
+    """UAT S-08: 300 characters of CJK are ~900 UTF-8 bytes. research_submit accepts up to 1024 bytes; every other
+    route keeps 512."""
+    a, _, _ = devices
+    question = "量子" * 150
+    body = json.dumps({"objective": question, "mode": "quick_lookup"}, ensure_ascii=False).encode()
+    assert 900 < len(body) <= bridge.RESEARCH_BODY_LIMIT
+    assert spark.req("research_submit", token=a, raw=body)[0] == 201
+    too_long = json.dumps({"objective": "量" * 301}, ensure_ascii=False).encode()
+    assert spark.req("research_submit", token=a, raw=too_long)[0] == 400, "still at most 300 characters"
+    oversized = json.dumps({"objective": "量" * 300, "mode": "x" * 200}, ensure_ascii=False).encode()
+    assert len(oversized) > bridge.RESEARCH_BODY_LIMIT and spark.req("research_submit", token=a, raw=oversized)[0] == 400
+    assert spark.req("research_list", token=a, raw=json.dumps({"x": "y" * 600}))[0] == 400
+    assert spark.req("state", token=a, raw=json.dumps({"x": "y" * 600}))[0] == 400
+
+
+def test_family_cap_over_http(spark, devices):
+    """UAT S-02: a pairing family holds at most six devices; link refuses to mint a code for a full family and a code
+    minted before it filled up is refused at pairing."""
+    a, b, _ = devices
+    first = spark.req("link", {}, a)[1]["code"]
+    second = spark.req("link", {}, b)[1]["code"]
+    status, latest = spark.req("pair", {"code": first})   # the third device
+    assert status == 201
+    for _ in range(bridge.FAMILY_DEVICES - 3):            # fourth to sixth, each linked by the previous one
+        code = spark.req("link", {}, latest["key"])[1]["code"]
+        status, latest = spark.req("pair", {"code": code})
+        assert status == 201
+    assert spark.req("link", {}, a) == (409, {"error": "family_full"})
+    assert spark.req("pair", {"code": second}) == (409, {"error": "family_full"})
+    assert len([p for p in spark.server.store.pairings() if p[1] == bridge.family_tag(spark.server.store.family(a))]) == 6
 
 
 def test_scenario_f_phone_queues_spark_runs_tablet_reads(spark, devices, web):

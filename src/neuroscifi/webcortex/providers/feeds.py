@@ -1,5 +1,14 @@
-"""RSS/Atom feeds as a search provider: fetch each configured feed (purpose='feed', robots apply), keep items that
-share words with the query, rank by lexical overlap and recency, honour `query.since`.
+"""RSS/Atom feeds as a search provider: fetch each configured feed (purpose='feed', robots apply), keep the items
+relevant to the query, rank by lexical overlap and recency, honour `query.since`.
+
+Relevance (W-14: an owner's feeds must not pollute unrelated research): query terms are the query's topical words
+(stopwords, cue and temporal words and years dropped) compared as 5-letter stems. An item is relevant only when it
+matches at least min(2, number of terms) distinct terms, or every word of every named entity in the query, and its
+BM25 score (over the items of this search, smoothed with FEED_BM25_BACKGROUND absent documents so a tiny feed does
+not inflate rare-word weights) reaches FEED_BM25_FLOOR. One shared word is not enough.
+
+Each feed is one attempt in `last_attempts` (thread-local, like open-webSearch's engines): a feed that failed while
+others answered is recorded there (the registry lists it as a failed attempt), never dropped silently.
 
 Parsing uses `extract.parse_feed` when the extraction module is installed; otherwise a minimal local parser over
 `safety.safe_xml_parse` (DOCTYPE/ENTITY declarations refused in any encoding, UTF-16 included; no entity
@@ -9,6 +18,7 @@ planned query.
 """
 from __future__ import annotations
 
+from collections import Counter
 from email.utils import parsedate_to_datetime
 import math
 import re
@@ -23,6 +33,9 @@ _STOP = frozenset("a an and are as at be by for from has have how in is it its o
                   "were what when where which who why will with".split())
 HALF_LIFE_DAYS = 14.0
 MEMO_SECONDS = 300.0
+FEED_BM25_FLOOR = 1.0
+FEED_BM25_BACKGROUND = 10
+_K1, _B = 1.5, 0.75
 
 
 class _HTTPError(Exception):
@@ -31,6 +44,44 @@ class _HTTPError(Exception):
 
 def words(text: str) -> list[str]:
     return [w for w in re.findall(r"[^\W_]+", (text or "").lower()) if w not in _STOP]
+
+
+def _stems(text: str) -> list[str]:
+    from ..intent import META, STOPWORDS, _TEMPORAL
+    out = []
+    for w in words(text):
+        if w in STOPWORDS or w in META or w in _TEMPORAL or re.fullmatch(r"(?:19|20)\d{2}", w):
+            continue
+        out.append(w[:5])
+    return out
+
+
+def _entity_stems(text: str) -> list[set]:
+    from ..intent import extract_entities
+    return [set(_stems(e)) for e in extract_entities(text or "") if _stems(e)]
+
+
+def _bm25(query_terms, docs: list[list[str]]) -> list[float]:
+    n = len(docs) + FEED_BM25_BACKGROUND
+    avg = sum(len(d) for d in docs) / len(docs) if docs else 0.0
+    df = Counter(t for d in docs for t in set(d))
+    out = []
+    for doc in docs:
+        tf = Counter(doc)
+        norm = _K1 * (1 - _B + _B * len(doc) / avg) if avg else _K1
+        out.append(sum(math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5)) * tf[t] * (_K1 + 1) / (tf[t] + norm)
+                       for t in query_terms if t in tf))
+    return out
+
+
+def relevant(query_text: str, item_text: str, score: float) -> bool:
+    """The W-14 relevance rule for one feed item (see the module docstring); `score` is its BM25 score."""
+    terms = set(_stems(query_text))
+    if not terms or score < FEED_BM25_FLOOR:
+        return False
+    have = set(_stems(item_text))
+    entities = _entity_stems(query_text)
+    return len(terms & have) >= min(2, len(terms)) or (bool(entities) and all(e <= have for e in entities))
 
 
 def _date(text) -> float | None:
@@ -96,6 +147,12 @@ class FeedProvider:
         self.fetcher, self._clock, self.name = fetcher, clock, name
         self._memo: dict = {}     # feed url -> (parsed at, items): one fetch per feed per MEMO_SECONDS, not per query
         self._lock = threading.Lock()
+        self._local = threading.local()
+
+    @property
+    def last_attempts(self) -> list[dict]:
+        """Per-feed attempts of this thread's most recent search: {engine: feed url, ok, n, error, latency}."""
+        return list(getattr(self._local, "attempts", []))
 
     def _items(self, feed_url, parse, budget, usage):
         """Parsed items of one feed (memoised MEMO_SECONDS). Raises FetchError / ValueError-like parser errors."""
@@ -113,26 +170,33 @@ class FeedProvider:
         return items
 
     def search(self, query: Query, limit: int, *, budget=None, usage=None) -> list[SearchResult]:
+        attempts: list[dict] = []
+        self._local.attempts = attempts
         if self.fetcher is None:
             raise ProviderError(self.name, "no fetcher configured", retryable=False, code="disabled")
         limit = max(1, min(int(limit), 20))
-        qwords = set(words(query.text))
-        if not qwords or not self.feed_urls:
+        qterms = set(_stems(query.text))
+        if not qterms or not self.feed_urls:
             return []
         parse = _parser()
         now = self._clock()
-        scored, errors = [], []
+        candidates, errors = [], []
         for feed_url in self.feed_urls:
+            started = time.perf_counter()
+            error = None
             try:
                 items = self._items(feed_url, parse, budget, usage)
             except FetchError as exc:
-                errors.append(f"{feed_url}: {exc.code}")
-                continue
+                error = f"{exc.code}: {exc.detail}"[:200] if exc.detail else exc.code
             except _HTTPError as exc:
-                errors.append(f"{feed_url}: {exc}")
-                continue
+                error = str(exc)
             except Exception as exc:   # any parser failure on untrusted bytes is a per-feed error, recorded
-                errors.append(f"{feed_url}: unparseable feed: {exc}"[:200])
+                error = f"unparseable feed: {exc}"[:200]
+            attempt = {"engine": feed_url[:200], "ok": error is None, "n": 0, "error": error,
+                       "latency": round(time.perf_counter() - started, 4)}
+            attempts.append(attempt)
+            if error is not None:
+                errors.append(f"{feed_url}: {error}")
                 continue
             for item in items:
                 url = item.get("url") or ""
@@ -143,25 +207,33 @@ class FeedProvider:
                 published = item.get("published_at")
                 if query.since is not None and published is not None and published < query.since:
                     continue
-                overlap = len(qwords & set(words(f"{item.get('title', '')} {item.get('summary', '')}")))
-                if not overlap:
-                    continue
-                age_days = max(0.0, (now - published) / 86400.0) if published is not None else None
-                recency = math.exp(-age_days * math.log(2) / HALF_LIFE_DAYS) if age_days is not None else 0.0
-                score = overlap / len(qwords) + 0.5 * recency
-                scored.append((score, published or 0.0, url, item, feed_url))
+                text = f"{item.get('title', '')} {item.get('summary', '')}"
+                if qterms & set(_stems(text)):
+                    candidates.append((text, url, item, feed_url, attempt))
         if errors and len(errors) == len(self.feed_urls):
             raise ProviderError(self.name, "every feed failed: " + "; ".join(errors)[:280])
+        bm25 = _bm25(qterms, [_stems(c[0]) for c in candidates])
+        scored = []
+        for (text, url, item, feed_url, attempt), score in zip(candidates, bm25):
+            if not relevant(query.text, text, score):
+                continue
+            published = item.get("published_at")
+            overlap = len(qterms & set(_stems(text)))
+            age_days = max(0.0, (now - published) / 86400.0) if published is not None else None
+            recency = math.exp(-age_days * math.log(2) / HALF_LIFE_DAYS) if age_days is not None else 0.0
+            scored.append((overlap / len(qterms) + 0.5 * recency, published or 0.0, url, item, feed_url, attempt,
+                           score))
         scored.sort(key=lambda t: (-t[0], -t[1], t[2]))
         out, seen = [], set()
-        for score, _, url, item, feed_url in scored:
+        for match, _, url, item, feed_url, attempt, score in scored:
             if url in seen:
                 continue
             seen.add(url)
+            attempt["n"] += 1
             out.append(SearchResult(url=url, title=str(item.get("title") or url)[:500],
                                     snippet=str(item.get("summary") or "")[:400], provider=self.name,
                                     rank=len(out) + 1, kind="feed", published_at=item.get("published_at"),
-                                    metadata={"feed": feed_url, "match": round(score, 4)}))
+                                    metadata={"feed": feed_url, "match": round(match, 4), "bm25": round(score, 4)}))
             if len(out) >= limit:
                 break
         return out

@@ -7,7 +7,7 @@
   <dl class="meta" aria-label="Instance status">
     <div><dt>Instance</dt><dd><code id="instanceId">—</code></dd></div>
     <div><dt>State version</dt><dd id="stateVersion">—</dd></div>
-    <div><dt>Writes</dt><dd><span id="writes" class="badge neutral">unknown</span></dd></div>
+    <div><dt>Writes</dt><dd><span id="writes" class="badge neutral">unknown</span> <span id="writesWhy" class="why"></span></dd></div>
   </dl>
 </header>
 <div class="shell">
@@ -23,15 +23,16 @@
   <li><a href="#memory" data-view="memory">Memory log</a></li>
 </ul></nav>
 <main id="main" tabindex="-1">
+<p id="offline" class="banner" role="alert" hidden>Server stopped. Restart <code>nsf console</code> and open the new URL it prints. Buttons that change anything are off until the server answers again; Refresh tries again.</p>
 
 <section id="locked" class="view locked" aria-labelledby="h-locked">
   <h1 id="h-locked">Owner console</h1>
-  <p id="lockedText">Open the URL printed by <code>nsf console</code>. It carries a one-time session token after the <code>#</code>, which this page keeps in memory only.</p>
-  <p class="hint">The console listens on 127.0.0.1 only. Restarting <code>nsf console</code> issues a new token.</p>
+  <p id="lockedText">Open the URL printed by <code>nsf console</code> (or the one in its <code>--url-file</code>) again. The session token after the <code>#</code> is valid for as long as this console runs; this page keeps it in memory only, so reloading or opening a new tab needs that URL again.</p>
+  <p class="hint">The console listens on 127.0.0.1 only. Restarting <code>nsf console</code> issues a new token and the old URL stops working.</p>
 </section>
 
 <section id="overview" class="view" aria-labelledby="h-overview" hidden>
-  <div class="viewhead"><h1 id="h-overview" tabindex="-1">Overview</h1><button type="button" id="refreshOverview">Refresh</button></div>
+  <div class="viewhead"><h1 id="h-overview" tabindex="-1">Overview</h1><button type="button" id="refreshOverview" data-keep>Refresh</button></div>
   <p class="lede">Who this individual is, what it remembers and whether it may accept new evidence.</p>
   <div class="grid">
     <article class="card" aria-labelledby="h-birth"><h2 id="h-birth">Birth record</h2><div id="birth" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
@@ -43,7 +44,7 @@
 </section>
 
 <section id="teach" class="view" aria-labelledby="h-teach" hidden>
-  <div class="viewhead"><h1 id="h-teach" tabindex="-1">Teach &amp; beliefs</h1><button type="button" id="refreshTeach">Refresh</button></div>
+  <div class="viewhead"><h1 id="h-teach" tabindex="-1">Teach &amp; beliefs</h1><button type="button" id="refreshTeach" data-keep>Refresh</button></div>
   <p class="lede">Record what was commanded and what was observed. Beliefs, change detection and the executive's next step update from the stored evidence.</p>
   <div class="grid">
     <article class="card" aria-labelledby="h-epoch"><h2 id="h-epoch">Calibration epoch</h2>
@@ -100,7 +101,7 @@
   </article>
   <div class="grid">
     <article class="card" aria-labelledby="h-fepoch"><h2 id="h-fepoch">Forget this epoch</h2>
-      <p>Deletes every evidence row of the selected epoch, marks affected checkpoints stale and supersedes its open questions.</p>
+      <p>Deletes every evidence row of the selected epoch and its questions, decisions and belief revisions, and marks affected checkpoints stale.</p>
       <button type="button" class="danger" id="forgetEpoch" disabled>Forget epoch</button></article>
     <article class="card" aria-labelledby="h-fpartner"><h2 id="h-fpartner">Forget a partner</h2>
       <form id="forgetPartnerForm" novalidate><label for="partnerRoot">Partner root</label><input id="partnerRoot" maxlength="128" autocomplete="off" list="partnerList" required><datalist id="partnerList"></datalist>
@@ -110,7 +111,7 @@
 </section>
 
 <section id="questions" class="view" aria-labelledby="h-questions" hidden>
-  <div class="viewhead"><h1 id="h-questions" tabindex="-1">Questions</h1><button type="button" id="refreshQuestions">Refresh</button></div>
+  <div class="viewhead"><h1 id="h-questions" tabindex="-1">Questions</h1><button type="button" id="refreshQuestions" data-keep>Refresh</button></div>
   <p class="lede">Questions the executive asked instead of acting. Your answer is recorded as a teacher intervention.</p>
   <label class="check"><input type="checkbox" id="showResolved"> Include resolved questions</label>
   <div id="pendingList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
@@ -118,7 +119,7 @@
 </section>
 
 <section id="research" class="view" aria-labelledby="h-research" hidden>
-  <div class="viewhead"><h1 id="h-research" tabindex="-1">Research</h1><button type="button" id="refreshResearch">Refresh</button></div>
+  <div class="viewhead"><h1 id="h-research" tabindex="-1">Research</h1><button type="button" id="refreshResearch" data-keep>Refresh</button></div>
   <p class="lede">Ask the individual to research the public web. Every answer sentence is quoted from a cited source or computed from them, and nothing enters accepted knowledge without your review.</p>
   <article id="webOff" class="card notice" aria-labelledby="h-weboff" hidden><h2 id="h-weboff">Web access is off</h2>
     <p>This individual does not contact the network. Turning web access on lets research tasks ask search providers and read public pages through the safe fetcher: robots.txt is honoured, private addresses are refused, and size, time and request budgets apply. You can turn it off again under Web settings.</p>
@@ -129,9 +130,11 @@
     <article class="card" aria-labelledby="h-ask"><h2 id="h-ask">Ask a research question</h2>
       <form id="askForm" novalidate>
         <label for="askObjective">Question or objective</label>
-        <textarea id="askObjective" maxlength="2000" rows="3" required aria-describedby="askHelp"></textarea>
-        <p id="askHelp" class="sub">Do not include private names, e-mail addresses or other personal details: the question is sent to search providers.</p>
-        <label for="askMode">Research mode</label><select id="askMode"></select>
+        <textarea id="askObjective" rows="3" required aria-describedby="askHelp askCount"></textarea>
+        <p id="askCount" class="msg sub" aria-live="polite"></p>
+        <p id="askHelp" class="sub">Up to 2000 characters. Do not include private names, e-mail addresses or other personal details: the question is sent to search providers.</p>
+        <div id="askDiscloseRow" hidden><label class="check"><input type="checkbox" id="askDisclose"> Send these details to search providers anyway</label></div>
+        <label for="askMode">Kind of research</label><select id="askMode"></select>
         <button class="primary" id="askBtn">Start research</button>
       </form>
       <p id="askStatus" class="msg" role="status"></p>
@@ -166,7 +169,7 @@
       <form id="monitorForm" novalidate>
         <label for="monTopic">Topic</label><input id="monTopic" maxlength="2000" autocomplete="off" required>
         <label for="monHours">Every (hours, at least 1)</label><input id="monHours" type="number" min="1" max="8784" step="1" inputmode="numeric" required value="24">
-        <label for="monMode">Research mode</label><select id="monMode"></select>
+        <label for="monMode">Kind of research</label><select id="monMode"></select>
         <button class="primary" id="monitorBtn">Add monitor</button>
       </form>
       <p id="monitorStatus" class="msg" role="status"></p>
@@ -182,18 +185,19 @@
 </section>
 
 <section id="knowledge" class="view" aria-labelledby="h-knowledge" hidden>
-  <div class="viewhead"><h1 id="h-knowledge" tabindex="-1">Knowledge</h1><button type="button" id="refreshKnowledge">Refresh</button></div>
+  <div class="viewhead"><h1 id="h-knowledge" tabindex="-1">Knowledge</h1><button type="button" id="refreshKnowledge" data-keep>Refresh</button></div>
   <p class="lede">What the individual learned from the web, version by version. Provisional items wait for your review; accepted items answer later questions without searching while they are fresh.</p>
   <article class="card" aria-labelledby="h-ksearch"><h2 id="h-ksearch">Find knowledge</h2>
     <form id="kSearch" novalidate><label for="kTopic">Topic (leave empty for the most recently changed items)</label>
-      <div class="inline"><input id="kTopic" maxlength="2000" autocomplete="off"><button class="primary" id="kSearchBtn">Search</button></div></form>
+      <div class="inline"><input id="kTopic" maxlength="2000" autocomplete="off"><button class="primary" id="kSearchBtn">Search</button></div>
+      <label for="kStatus">Show</label><select id="kStatus"><option value="">All statuses</option><option value="provisional">Awaiting review (provisional)</option><option value="accepted">Accepted</option><option value="stale">Stale</option><option value="contested">Contested</option><option value="archived">Archived</option><option value="rejected">Rejected</option></select></form>
   </article>
   <div id="knowledgeList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
   <p id="knowledgeStatus" class="msg" role="status"></p>
 </section>
 
 <section id="graphs" class="view" aria-labelledby="h-graphs" hidden>
-  <div class="viewhead"><h1 id="h-graphs" tabindex="-1">Graphs</h1><button type="button" id="refreshGraphs">Refresh</button></div>
+  <div class="viewhead"><h1 id="h-graphs" tabindex="-1">Graphs</h1><button type="button" id="refreshGraphs" data-keep>Refresh</button></div>
   <p class="lede">Population datasets, learned candidate graphs and the promotion gate that decides whether a candidate replaces the active graph.</p>
   <div class="grid">
     <article class="card" aria-labelledby="h-sim"><h2 id="h-sim">Simulate a dataset</h2>
@@ -248,7 +252,7 @@
 </section>
 
 <section id="checkpoints" class="view" aria-labelledby="h-checkpoints" hidden>
-  <div class="viewhead"><h1 id="h-checkpoints" tabindex="-1">Checkpoints</h1><button type="button" id="refreshCheckpoints">Refresh</button></div>
+  <div class="viewhead"><h1 id="h-checkpoints" tabindex="-1">Checkpoints</h1><button type="button" id="refreshCheckpoints" data-keep>Refresh</button></div>
   <p class="lede">Verified archives of the whole individual, written next to the instance file in a <code>.checkpoints</code> folder. Forgetting evidence or datasets marks older checkpoints stale.</p>
   <div class="grid">
     <article class="card" aria-labelledby="h-ckcreate"><h2 id="h-ckcreate">Create a checkpoint</h2>
@@ -262,28 +266,37 @@
         <label for="ckKeep">Valid checkpoints to keep (newest)</label><input id="ckKeep" type="number" min="1" max="1000" step="1" inputmode="numeric" required value="7">
         <label for="ckRebuildPolicy">Compression policy for a rebuild</label>
         <select id="ckRebuildPolicy"><option value="cold">cold: smallest file, slower</option><option value="fast">fast: quicker, larger file</option><option value="experimental">experimental</option></select>
-        <div class="buttons"><button type="button" id="ckPrune">Prune (keep 7)</button><button type="button" id="ckRebuild">Rebuild stale (keep 7)</button></div></form>
+        <div class="buttons"><button type="button" id="ckPrune">Prune (keep 7)</button><button type="button" id="ckRebuild">Rebuild stale archives (keep 7)</button></div></form>
       <p id="ckKeepStatus" class="msg" role="status"></p></article>
     <article class="card wide" aria-labelledby="h-cklist"><h2 id="h-cklist">Archive registry</h2><div id="ckTable" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
   </div>
 </section>
 
 <section id="memory" class="view" aria-labelledby="h-memory" hidden>
-  <div class="viewhead"><h1 id="h-memory" tabindex="-1">Memory log</h1><button type="button" id="refreshMemory">Refresh</button></div>
-  <p class="lede">What was deleted and what the executive decided, newest first.</p>
+  <div class="viewhead"><h1 id="h-memory" tabindex="-1">Memory log</h1><button type="button" id="refreshMemory" data-keep>Refresh</button></div>
+  <p class="lede">What was deleted and what the executive decided, newest first, and every other kind of memory on request.</p>
   <div class="grid">
     <article class="card wide" aria-labelledby="h-dellog"><h2 id="h-dellog">Deletion log</h2><div id="deletionLog" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
     <article class="card wide" aria-labelledby="h-declog"><h2 id="h-declog">Recorded decisions</h2><div id="decisionLog" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card wide" aria-labelledby="h-browse"><h2 id="h-browse">Browse memory</h2>
+      <label for="memKind">Kind of memory</label><select id="memKind"></select>
+      <div id="memoryBrowse" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card wide" aria-labelledby="h-cli"><h2 id="h-cli">Only from the command line</h2>
+      <p class="sub">These change the individual in ways the console does not offer. Run them where the instance file lives:</p>
+      <ul class="reasons">
+        <li>Re-activate an archived graph revision: <code>nsf graph rollback --db PATH CONTEXT REVISION</code></li>
+        <li>Restore a checkpoint into a new file: <code>nsf checkpoint restore --db PATH ID DEST</code></li>
+        <li>Read any memory kind as JSON: <code>nsf memory --db PATH KIND</code></li>
+      </ul></article>
   </div>
 </section>
 
 </main>
 </div>
-<p id="announce" class="toast" aria-live="off"></p>
 <dialog id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmText">
   <h2 id="confirmTitle">Confirm</h2>
   <p id="confirmText"></p>
   <div class="buttons"><button type="button" id="confirmCancel">Cancel</button><button type="button" class="danger" id="confirmOk">Confirm</button></div>
 </dialog>
-<footer class="foot">NeuroSciFi · Owner console · loopback only</footer>
+<footer class="foot">NeuroSciFi · Owner console · loopback only<p id="announce" class="toast" aria-live="off"></p></footer>
 </body></html>

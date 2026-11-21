@@ -513,3 +513,24 @@ def test_cli_graph_lifecycle(tmp_path, capsys):
     assert code == 0 and added["latest"] == "gate-v2"
     code, err = _nsf(capsys, "graph", "reject", str(rev), "--reason", "late", "--db", db)
     assert code == 2 and "only candidates" in err
+
+
+def test_every_write_path_honours_the_free_space_reserve_without_a_path(instance):
+    """S-03: datasets.simulate, graphs.learn and evidence.start_epoch refuse while free space is below the reserve
+    even when the caller (the console) passes no path: regulation reads the instance's own file."""
+    from neuroscifi.instance import evidence
+    from neuroscifi.instance.errors import WritesPaused
+    db, _ = instance
+    ids = datasets.simulate(db, "desk", T0, seed=SEED, steps=512)
+    with store.write(db):
+        cfg = json.loads(db.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
+        db.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(cfg | {"min_free_bytes": 2 ** 62}),))
+    assert store.regulation(db)["writes_allowed"] is False
+    with pytest.raises(WritesPaused, match="reserve"):
+        datasets.simulate(db, "desk", T0 + 1, seed=SEED + 1, steps=512)
+    with pytest.raises(WritesPaused, match="reserve"):
+        graphs.learn(db, "desk", T0 + 2, train=ids["train"], validation=ids["validation"], holder="console:x")
+    with pytest.raises(WritesPaused, match="reserve"):
+        evidence.start_epoch(db, "desk-2", T0 + 3)
+    assert db.execute("SELECT count(*) FROM graph_revisions WHERE origin='learner'").fetchone()[0] == 0
+    assert db.execute("SELECT count(*) FROM epochs WHERE name='desk-2'").fetchone()[0] == 0

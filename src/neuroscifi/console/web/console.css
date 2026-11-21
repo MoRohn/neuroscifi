@@ -1,9 +1,12 @@
-/* Design tokens copied from Pocket (pocket/web/style.css): palette, type, 44px targets, focus ring. */
+/* Design tokens copied from Pocket (pocket/web/style.css): palette, type, 44px targets, focus ring.
+   Palette: deep green --primary #184e42 (brand, current nav item, primary buttons) on --paper #f4f7f5; --link #185448;
+   --rust #a8401f for destructive actions and warnings; --focus #0876a5 for the focus ring; ok/info/neutral badge pairs.
+   Type: the system sans-serif stack (no web font is loaded) and Georgia for headings. */
 :root{
   --ink:#183338;--muted:#42645b;--paper:#f4f7f5;--card:#fff;--line:#c6d2cb;--soft:#e7f1ea;--softline:#abc8ba;
   --primary:#184e42;--link:#185448;--focus:#0876a5;--rust:#a8401f;--rust-soft:#fbe6dc;--ok:#14513f;--ok-soft:#dcefe3;
   --info:#0b4f74;--info-soft:#e1eef8;--neutral:#24423f;--neutral-soft:#e6ecea;
-  font-family:"DM Sans",system-ui,sans-serif;color:var(--ink);background:var(--paper);line-height:1.5
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--paper);line-height:1.5
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);overflow-wrap:anywhere}
@@ -24,13 +27,19 @@ a{color:var(--link)}
 .product{color:var(--muted);font-size:.92rem}
 .meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0;font-size:.86rem}
 .meta div{display:flex;gap:6px;align-items:center}
-.meta dt{color:var(--muted)}
-.meta dd{margin:0;font-weight:600}
+.meta dt{color:var(--muted);white-space:nowrap}
+.meta dd{margin:0;font-weight:600;display:flex;flex-wrap:wrap;gap:2px 6px;align-items:center;min-width:0}
+.meta .badge{white-space:normal}
+.meta .why{font-weight:500;color:#8a3417;font-size:.82rem}
+.why:empty{display:none}
+p.why{margin:4px 0 0}
+.banner{margin:12px 0 0;padding:12px 16px;border:2px solid var(--rust);border-radius:10px;background:var(--rust-soft);color:#8a3417;font-weight:650}
 
 /* navigation */
 .shell{max-width:1320px;margin:0 auto;padding:0 16px 40px}
-nav ul{list-style:none;margin:0;padding:12px 0;display:flex;flex-wrap:wrap;gap:4px 6px;border-bottom:1px solid var(--line)}
-nav a{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 12px;border-radius:8px;font-weight:650;text-decoration:none;color:var(--link)}
+nav ul{list-style:none;margin:0;padding:8px 2px;display:flex;flex-wrap:nowrap;gap:4px 6px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:thin}
+nav li{flex:none}
+nav a{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 12px;border-radius:8px;font-weight:650;text-decoration:none;color:var(--link);white-space:nowrap}
 nav a:hover{background:var(--soft)}
 nav a[aria-current="page"]{background:var(--primary);color:#fff}
 .count{font-size:.78rem;font-weight:700}
@@ -45,7 +54,8 @@ main{outline:none;min-width:0}
 /* cards and grid */
 .grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
-.card+.grid,.grid+.card{margin-top:16px}
+.card+.grid,.grid+.card,.card+.slot,.slot+.msg{margin-top:16px}
+.slot>.grid{gap:16px}
 .slot[aria-busy="true"],.card[aria-busy="true"]{cursor:progress}
 .empty{color:var(--muted);font-style:italic}
 
@@ -140,7 +150,7 @@ td.actions button{min-height:44px;padding:6px 10px;margin:2px 4px 2px 0}
 .checklist .detail{grid-column:2;color:#3e5958;font-size:.9rem}
 .heatwrap{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:start}
 .heatmap{width:100%;max-width:520px;height:auto;display:block}
-.heatmap text{font:9px system-ui,sans-serif;fill:#3e5958}
+.heatmap text{font:13px system-ui,sans-serif;fill:#3e5958}
 .legend{width:100%;max-width:300px;height:auto;display:block}
 .legend text{font:10px system-ui,sans-serif;fill:#3e5958}
 figure{margin:12px 0}
@@ -168,6 +178,9 @@ textarea{resize:vertical;min-height:5.5rem;line-height:1.45}
 .template{margin:4px 0}
 .answermeta{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;margin:2px 0 0;font-size:.88rem}
 a.cite{display:inline-flex;align-items:center;justify-content:center;min-width:28px;min-height:28px;padding:0 4px;font-weight:700;text-decoration:none;border-radius:6px}
+a.related{font-weight:600}
+.copies,.seealso{font-size:.88rem}
+@media (pointer:coarse){a.cite{min-width:44px;min-height:44px}a.related{display:inline-flex;align-items:center;min-height:44px;padding:0 4px}}
 a.cite:hover{background:var(--soft)}
 .sources li:focus{outline:3px solid var(--focus);outline-offset:2px;border-radius:4px}
 .srctitle,.srcurl{margin:2px 0}
@@ -186,6 +199,12 @@ a.url,span.url{overflow-wrap:anywhere;word-break:break-word}
 td .objective{display:block;min-width:12rem}
 td.actions button.danger{color:var(--rust)}
 
+details.tech{margin:6px 0;font-size:.9rem;color:#3e5958}
+details.tech>summary{font-weight:600;color:var(--link)}
+.plain{margin:6px 0}
+.verdictline{margin:4px 0}
+.stalled{color:#8a3417;font-weight:600}
+
 /* dialog */
 dialog{border:1px solid #66847d;border-radius:12px;padding:20px;max-width:min(92vw,520px);color:var(--ink)}
 dialog::backdrop{background:rgba(24,51,56,.45)}
@@ -195,6 +214,20 @@ dialog .buttons{justify-content:flex-end}
 [hidden]{display:none!important}
 .vh{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 
+/* below 640px, tables of three or more columns become labelled stacked rows: every cell and its actions on screen */
+@media(max-width:639.98px){
+  table.stack,table.stack.many{min-width:0}
+  table.stack thead{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  table.stack tr{display:block;border-bottom:1px solid #d9e0db;padding:6px 0}
+  table.stack td{display:grid;grid-template-columns:minmax(6.5rem,38%) minmax(0,1fr);gap:8px;border:0;padding:3px 4px;min-width:0;text-align:left}
+  table.stack td::before{content:attr(data-label);font-weight:650;color:var(--neutral)}
+  table.stack td.num{text-align:left}
+  table.stack td.actions{white-space:normal}
+  table.stack td.actions::before{align-self:center}
+  table.stack td.actions .cellgroup{display:flex;flex-wrap:wrap;gap:4px}
+  table.stack td.actions .cellgroup button{margin:0}
+  table.stack td .objective{min-width:0}
+}
 @media(min-width:640px){
   .filters{grid-template-columns:repeat(3,minmax(0,1fr)) auto}
   .evlists{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -203,7 +236,7 @@ dialog .buttons{justify-content:flex-end}
 }
 @media(min-width:1000px){
   .shell{display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px;padding:0 28px 40px}
-  nav ul{flex-direction:column;position:sticky;top:12px;border-bottom:0;padding:22px 0}
+  nav ul{flex-direction:column;position:sticky;top:12px;border-bottom:0;padding:22px 0;overflow:visible}
   nav a{width:100%}
   .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .grid .wide{grid-column:1 / -1}

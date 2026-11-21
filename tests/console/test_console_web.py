@@ -135,7 +135,9 @@ def test_web_routes_require_token_host_origin_and_small_bodies(console):
     status, _, _ = c.call("POST", "/api/web/tasks", {"objective": QUESTION},
                           headers={"Origin": "http://evil.example"})
     assert status == 403
-    status, data = c.post("/api/web/tasks", {"objective": "x" * 5000})
+    status, data = c.post("/api/web/tasks", {"objective": "x" * 9000})    # 8 KiB for questions (C-13)
+    assert status == 413 and "8192" in data["error"]
+    status, data = c.post("/api/web/config", {"enabled": True, "pad": "x" * 5000})
     assert status == 413 and "4096" in data["error"]
     status, _, data = c.call("POST", "/api/web/config", raw=b'{"enabled":true}', headers={"Content-Type": "text/plain"})
     assert status == 400 and "application/json" in data["error"]
@@ -313,7 +315,8 @@ def test_knowledge_review_archive_refresh_and_forget(console):
     reviewed = c.ok("POST", f"/api/web/knowledge/{kid}/review", {"accept": True, "note": "checked the release notes"})
     assert reviewed["status"] == "accepted" and reviewed["previous_status"] == "provisional"
     refreshed = c.ok("POST", f"/api/web/knowledge/{kid}/refresh", {})
-    assert refreshed["origin"] == "console" and refreshed["mode"] == "fact_verification"   # the owner's refresh
+    # the owner's refresh (C-08: L2 records it as refresh-owner:<id>, so forgetting the item finds it)
+    assert refreshed["origin"] in ("console", f"refresh-owner:{kid}") and refreshed["mode"] == "fact_verification"
     wait_for(c, refreshed["id"])
     assert c.ok("POST", f"/api/web/knowledge/{kid}/archive", {"note": "kept for history"})["status"] == "archived"
     code, data = c.post(f"/api/web/knowledge/{kid}/refresh", {})
@@ -327,6 +330,7 @@ def test_knowledge_review_archive_refresh_and_forget(console):
 def test_monitor_lifecycle(console):
     c = console
     assert c.ok("GET", "/api/web/monitors") == []
+    enable(c)
     for bad in ({"topic": "Zephyr compiler releases", "interval_hours": 0.5},
                 {"topic": "Zephyr compiler releases", "interval_hours": True},
                 {"topic": "", "interval_hours": 24},

@@ -353,12 +353,13 @@ def test_cli_bounds_are_checked_before_anything_runs(capsys, db, argv):
 
 
 def test_cli_refresh_is_the_owners_task_not_autonomous(capsys, db, offline):
-    """A-P2-2: `nsf web refresh` works while the daily autonomous allowance is zero (origin 'cli')."""
+    """A-P2-2: `nsf web refresh` works while the daily autonomous allowance is zero (origin 'refresh-owner:<id>',
+    the owner's refresh of that item, C-08)."""
     enable(capsys, db, "--set", 'daily_autonomous={"tasks":0,"requests":0,"bytes":0}')
     code, task = nsf(capsys, "web", "ask", QUESTION, "--mode", "fact_verification", "--db", db)
     kid = task["result"]["consolidation"]["provisional"][0]
     code, out = nsf(capsys, "web", "refresh", str(kid), "--db", db)
-    assert code == 0 and out["origin"] == "cli" and out["budget"]["max_requests"] > 0
+    assert code == 0 and out["origin"] == f"refresh-owner:{kid}" and out["budget"]["max_requests"] > 0
 
 
 def test_crawl_investigates_sources_into_a_task(capsys, db, offline):
@@ -387,3 +388,28 @@ def test_feeds_discover_lists_advertised_feeds(capsys, db, offline):
     code, out = nsf(capsys, "web", "feeds", "discover", "http://news-one.example/blog", "--add", "--db", db)
     assert out["feeds_added"] == ["http://news-one.example/feed.xml"]
     assert nsf(capsys, "web", "feeds", "list", "--db", db)[1]["feeds"] == ["http://news-one.example/feed.xml"]
+
+
+# ---- UAT RC1 regressions (lane L2) --------------------------------------------------------------------------------
+
+def test_privacy_refusal_names_the_cli_flag_and_status_survives_a_corrupt_cache(capsys, db, offline, tmp_path):
+    """W-21: the CLI's privacy refusal names --allow-private-terms (not the API argument). S-05: `nsf web status`
+    and `nsf web work --once` keep working over a corrupt public cache (quarantined and rebuilt, recorded)."""
+    enable(capsys, db, "--set", 'private_terms=["Quokkazz"]')
+    code, err = nsf(capsys, "web", "ask", "Where does Quokkazz live?", "--queue", "--db", db)
+    assert code == 2 and "--allow-private-terms" in err and "authorization=" not in err
+    from pathlib import Path
+    cache = Path(db).with_name("individual.webcache.sqlite")
+    cache.write_bytes(b"\x00garbage" * 2048)
+    code, out = nsf(capsys, "web", "status", "--db", db)
+    assert code == 0 and out["public_cache"]["exists"] and out["public_cache"]["quarantined"]
+    cache.write_bytes(b"\x00garbage" * 2048)
+    code, out = nsf(capsys, "web", "work", "--once", "--db", db)
+    assert code == 0
+    from neuroscifi.instance import store
+    conn = store.open_existing(db)
+    try:
+        warnings = [r[0] for r in conn.execute("SELECT detail FROM web_events WHERE task_id IS NULL AND kind='error'")]
+    finally:
+        conn.close()
+    assert any("public_cache" in w for w in warnings)

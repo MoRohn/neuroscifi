@@ -1,15 +1,65 @@
 "use strict";
 const el = id => document.getElementById(id);
 let key = "", draft = null, selected = null, generation = 0, sharing = false, lastActive = 0;
+let reach = "", refused = false, muting = false, pairingNow = false, messageTimer = 0;
 const shared = new Map();  // ids this tab shared since pairing: memory only, never sent anywhere
+const guards = new Set();  // one-shot actions in flight (double-tap guard), released shortly after they finish
 const paused = channel => "Learning is paused for " + channel + ". Resume it under Evening review, or share without learning.";
-const statusText = text => { el("message").textContent = text; };
+const UNREACHABLE = "Your Spark is unreachable. Check that this device is on the same network and Pocket is running on your Spark.";
+// One status line (U-09): it clears itself after 8 seconds or with Dismiss, so it never hides controls for long.
+const statusText = text => {
+  el("message").textContent = text;
+  clearTimeout(messageTimer);
+  if (text) messageTimer = setTimeout(() => { if (el("message").textContent === text) el("message").textContent = ""; }, 8000);
+};
+// Focus moves only when the control that had it was disabled or hidden by the action (WCAG 2.4.3).
+function rescue(target) {
+  const active = document.activeElement;
+  if (!active || active === document.body || active.disabled || active.checkVisibility?.() === false) target.focus?.();
+}
+async function once(name, action) {
+  if (guards.has(name)) return;
+  guards.add(name);
+  try { return await action(); } finally { setTimeout(() => guards.delete(name), 600); }
+}
+// The header tells the truth about the Spark: paired and answering, unreachable, offline, or refused (U-19).
+function linkText() {
+  const offline = navigator.onLine === false;
+  el("linkstate").textContent = !key ? (refused ? "Not paired · pair again" : "Phone only") + (offline ? " · offline" : "")
+    : offline ? "Paired · this device is offline" : reach === "checking" ? "Checking your Spark…"
+    : reach === "down" ? "Paired · Spark unreachable" : "Paired with Spark";
+}
+function reached(ok) { const next = ok ? "ok" : "down"; if (key && reach !== next) { reach = next; linkText(); } }
+// A 403 to a credential this tab holds: the Spark erased the pairing. Say so, forget it here and in the vault.
+function revoked() {
+  if (!key) return;
+  key = ""; refused = true; shared.clear();
+  el("pairform").hidden = false; el("paired").hidden = true;
+  el("pairhelp").textContent = "Your Spark no longer accepts this pairing. Enter a new code from your Spark or a linked device.";
+  el("history").replaceChildren(); el("forecast").textContent = ""; el("handoff").textContent = "";
+  linkText(); statusText("Your Spark no longer accepts this pairing. Pair again.");
+  window.pocketDropPair?.();
+  pairing(false); buttons();
+}
 
 async function api(route, data) {
-  const headers = {"Content-Type": "application/json"};
+  const headers = {"Content-Type": "application/json"}, sent = key;
   if (key) headers.Authorization = "Bearer " + key;
-  const response = await fetch("/api/" + route, {method:"POST", headers, body:JSON.stringify(data), cache:"no-store", credentials:"omit"});
-  if (!response.ok) throw Object.assign(Error("Spark returned " + response.status), {status: response.status});
+  let response;
+  try {
+    response = await fetch("/api/" + route, {method:"POST", headers, body:JSON.stringify(data), cache:"no-store", credentials:"omit"});
+  } catch {
+    if (sent && sent === key) reached(false);
+    throw Object.assign(Error("Spark unreachable"), {status: 0});
+  }
+  if (sent && sent === key) {
+    if (response.status === 403 && route !== "pair") { revoked(); throw Object.assign(Error("Pairing refused"), {status: 403, revoked: true}); }
+    reached(true);
+  }
+  if (!response.ok) {
+    const body = await Promise.resolve(response.json?.()).catch(() => ({}));
+    throw Object.assign(Error("Spark returned " + response.status), {status: response.status, code: body?.error});
+  }
   if ((route === "save" || route === "episode") && data.id) shared.set(data.id, route === "save" ? "forget" : "forget_episode");
   return response.json();
 }
@@ -54,6 +104,7 @@ function stop(reason = "Sensors off") {
   sensorTime();
   el("status").textContent = reason;
   buttons();
+  if (old) rescue(draft ? el("draft") : el(old.origin || "sound"));
 }
 async function acquire(kind, timed = false, survey = false) {
   if (selected || document.hidden) return;
@@ -61,8 +112,8 @@ async function acquire(kind, timed = false, survey = false) {
     statusText("Open this page over trusted HTTPS, or use localhost on the same device."); return;
   }
   const serial = ++generation;
-  const run = {auto:timed && !!key && el("auto").checked, pending:false};
-  selected = run; buttons();
+  const run = {auto:timed && !!key && el("auto").checked, pending:false, origin:timed ? "listen" : survey ? "survey" : kind};
+  selected = run; buttons(); rescue(el("stop"));
   el("status").textContent = "Requesting " + (kind === "sound" ? "microphone" : "camera");
   // Also bounds a pending request or a camera that never produces a frame.
   run.deadline = setTimeout(()=>{ if (serial === generation) stop("Session ended"); },timed ? 300000 : 20000);
@@ -125,7 +176,7 @@ async function acquire(kind, timed = false, survey = false) {
       if (run.auto && !run.pending && now-lastShare >= 60000) {
         lastShare=now; run.pending=true;
         try { await api("save",{...reading,learn:true}); if (generation===serial) await historyView(); }
-        catch (e) { if (generation===serial) { stop(); statusText(e.status===423 ? paused("sound")+" Automatic sharing stopped." : "Sync interrupted. Check history before restarting."); } }
+        catch (e) { if (generation===serial) { stop(); if (!e.revoked) statusText(e.status===423 ? paused("sound")+" Automatic sharing stopped." : e.status===0 ? UNREACHABLE+" Automatic sharing stopped." : "Sync interrupted. Check history before restarting."); } }
         finally {run.pending=false;}
       }
     },100);
@@ -140,8 +191,8 @@ async function spokenActivity() {
   if (!window.isSecureContext || !Recognizer?.available || !("processLocally" in Recognizer.prototype)) {
     statusText("On-device recognition unavailable. Tap an activity instead."); return;
   }
-  const serial = ++generation, run = {};
-  selected = run; buttons();
+  const serial = ++generation, run = {origin:"speak"};
+  selected = run; buttons(); rescue(el("stop"));
   el("status").textContent = "Checking local speech support";
   run.deadline = setTimeout(()=>{if (serial===generation) stop("Voice input ended");},10000);
   try {
@@ -172,15 +223,27 @@ async function spokenActivity() {
     rec.start();
   } catch {if(serial===generation){stop();statusText("Local speech unavailable. Tap an activity instead.");}}
 }
-async function forgetItem(r) {
-  try {await api(r.episode?"forget_episode":"forget",{id:r.id}); await historyView(); el("refresh").focus();} catch {statusText("Could not confirm deletion. Refresh and retry.");}
+function failure(e, text) {
+  if (!e.revoked) statusText(e.status === 0 ? UNREACHABLE + " " + text : e.status === 507 ? "Your Spark has paused new writes because its storage needs attention. " + text : text);
 }
+async function forgetItem(r) {
+  try {await api(r.episode?"forget_episode":"forget",{id:r.id}); await historyView(); el("refresh").focus();} catch (e) {failure(e, "Could not confirm deletion. Refresh and retry.");}
+}
+let patternButtons = new Map();
 async function setMute(channel, on) {
+  if (muting) return;  // a double click sends one request and reports its count (P-05)
+  muting = true; for (const b of patternButtons.values()) b.disabled = true;
   try {
     const reply = await api(on ? "mute" : "unmute", {channel});
-    await historyView(); el("refresh").focus();
-    statusText(on ? "Learning paused for "+channel+". "+reply.unlearned+" observation(s) no longer change the forecast." : "Learning resumed for "+channel+". New observations can opt in again.");
-  } catch {statusText("Could not confirm the change. Refresh and retry.");}
+    await historyView();
+    const n = reply.unlearned;
+    statusText(on ? "Learning paused for "+channel+". "+(n === 1 ? "1 observation no longer changes" : n+" observations no longer change")+" the forecast."
+      : "Learning resumed for "+channel+". New observations can opt in again.");
+  } catch (e) {failure(e, "Could not confirm the change. Refresh and retry.");}
+  finally {
+    muting = false; for (const b of patternButtons.values()) b.disabled = false;
+    (patternButtons.get(channel) || el("refresh")).focus?.();
+  }
 }
 function reviewView(records, muted) {
   const learning = records.filter(r => r.learn), counts = {};
@@ -193,11 +256,12 @@ function reviewView(records, muted) {
     li.append(btn); el("changed").append(li);
   }
   if (!learning.length) { const li = document.createElement("li"); li.append(document.createTextNode("Nothing shared is changing the forecast.")); el("changed").append(li); }
+  patternButtons = new Map();
   for (const channel of [...new Set([...Object.keys(counts), ...muted])].sort()) {
     const on = !muted.includes(channel), li = document.createElement("li"), btn = document.createElement("button");
     li.append(document.createTextNode(channel+(on ? " · "+counts[channel]+" learning" : " · learning paused")));
     btn.textContent = on ? "Stop learning this pattern" : "Resume learning"; btn.ariaLabel = btn.textContent+": "+channel;
-    btn.onclick = () => setMute(channel, on); li.append(btn); el("patterns").append(li);
+    btn.disabled = muting; btn.onclick = () => setMute(channel, on); patternButtons.set(channel, btn); li.append(btn); el("patterns").append(li);
   }
 }
 async function forgetSession() {
@@ -241,16 +305,29 @@ el("survey").onclick=()=>acquire("sound",false,true);
 el("sound").onclick=()=>acquire("sound"); el("light").onclick=()=>acquire("light"); el("listen").onclick=()=>acquire("sound",true);
 el("speak").onclick=spokenActivity;
 el("forgetsession").onclick=forgetSession;
-el("stop").onclick=()=>stop(); el("drop").onclick=()=>review(null);
+el("stop").onclick=()=>stop(); el("drop").onclick=()=>{review(null); rescue(el("draft"));};
 document.querySelectorAll("[data-tag]").forEach(b=>b.onclick=()=>review(item("activity",b.dataset.tag)));
+// Wrong, expired or reused codes are told apart from a Spark that cannot be reached (UX 1, U-20).
+function pairFailure(e) {
+  return e.status === 0 ? "Could not reach your Spark. Check that this device is on the same network as your Spark and that Pocket is running there, then try again."
+    : e.status === 409 && e.code === "family_full" ? "That pairing already has 6 devices. Forget one of them (on that device, or on your Spark), then ask for a new code."
+    : e.status === 403 || e.status === 400 ? "That code was not accepted. Codes work once and expire after 5 minutes. Check it, or get a new code from your Spark or a linked device."
+    : "Your Spark could not pair right now (error " + e.status + "). Try again in a moment.";
+}
 el("pairform").onsubmit=async e=>{
   e.preventDefault();
+  if (pairingNow) return;
+  pairingNow=true;
   try {
-    const reply=await api("pair",{code:el("code").value.trim()});
-    key=reply.key; shared.clear(); el("code").value=""; el("pairform").hidden=true; el("paired").hidden=false;
+    let reply;
+    try { reply=await api("pair",{code:el("code").value.trim()}); }
+    catch (err) { statusText(pairFailure(err)); el("code").focus?.(); return; }
+    key=reply.key; refused=false; reach="ok"; shared.clear(); el("code").value=""; el("pairform").hidden=true; el("paired").hidden=false;
     el("pairhelp").textContent="This tab is paired. Shared observations expire after 24 hours.";
-    el("linkstate").textContent="Paired with Spark"; buttons(); el("refresh").focus(); await historyView(); statusText("Paired.");
-  } catch {statusText("Pairing or history unavailable. Check the code and connection.");}
+    linkText(); buttons(); el("refresh").focus();
+    try { await historyView(); statusText("Paired."); }
+    catch (err) { failure(err, "Paired, but history is unavailable right now. Use Refresh history."); }
+  } finally { pairingNow=false; }
 };
 el("save").onclick=async ()=>{
   if (!draft || sharing) return;
@@ -259,15 +336,23 @@ el("save").onclick=async ()=>{
     await api("save",{...current,learn:el("learn").checked});
     if (draft===current) review(null);
     await historyView(); statusText("Shared.");
-  } catch (e) {statusText(e.status===423 ? paused(current.channel) : "Could not confirm sharing. Refresh history before retrying.");}
-  finally {sharing=false; buttons();}
+  } catch (e) {failure(e, e.status===423 ? paused(current.channel) : e.status===0 ? "Nothing was shared; the observation is still waiting." : "Could not confirm sharing. Refresh history before retrying.");}
+  finally {sharing=false; buttons(); rescue(draft ? el("save") : el("draft"));}
 };
-el("refresh").onclick=()=>historyView().catch(()=>statusText("History unavailable."));
-el("unpair").onclick=async ()=>{
-  if (!confirm("Erase this pairing, its observations, and its learned counts?")) return;
+el("refresh").onclick=()=>historyView().catch(e=>failure(e, "History will load when it answers."));
+async function forgetPairing(family) {
+  if (!confirm(family ? "Erase this pairing and every phone or tablet linked with it? Each loses access and its records on your Spark."
+    : "Erase this pairing, its observations, and its learned counts?")) return;
   stop(); review(null);
-  try {await api("unpair",{}); key=""; location.reload();} catch {statusText("Could not confirm erasure. Retry or erase the pairing on your Spark.");}
-};
+  try {
+    await api("unpair", family ? {family:true} : {});
+    key=""; await window.pocketDropPair?.(); location.reload();
+  } catch (e) {failure(e, "Could not confirm erasure. Retry or erase the pairing on your Spark.");}
+}
+el("unpair").onclick=()=>once("unpair", ()=>forgetPairing(false));
+el("unpairall").onclick=()=>once("unpair", ()=>forgetPairing(true));
+el("dismiss").onclick=()=>{statusText(""); el("main").focus?.();};
+window.addEventListener("online",linkText); window.addEventListener("offline",linkText);
 function privatePause() { stop(); review(null); el("handoff").textContent=""; }
 document.addEventListener("visibilitychange",()=>{if (document.hidden) privatePause();});
 window.addEventListener("pagehide",privatePause);
@@ -276,19 +361,26 @@ navigator.mediaDevices?.addEventListener?.("devicechange",()=>{if(selected) stop
 
 window.pocketBridge=api; window.pocketHistory=historyView; window.pocketSound=()=>["sound","dynamics"].includes(draft?.channel)?{[draft.channel]:[draft.value,"mic"]}:null;
 
-el("linkdevice").onclick=async()=>{
+// One dialog and one code per tap, however fast the taps (UX 10).
+el("linkdevice").onclick=()=>once("link", async()=>{
   if(!confirm("Allow your other device to read and forget shared field episodes? Keep this code private."))return;
-  try{const current=key;const reply=await api("link",{});if(document.hidden||key!==current)return;el("handoff").textContent="Enter on your other device within five minutes: "+reply.code;}catch{statusText("Link unavailable.");}
-};
+  try{const current=key;const reply=await api("link",{});if(document.hidden||key!==current)return;el("handoff").textContent="Enter on your other device within five minutes: "+reply.code;}
+  catch(e){failure(e, e.code==="family_full" ? "This pairing already has 6 devices. Forget one before linking another." : "Link unavailable.");}
+});
 
 
 window.pocketToken=()=>key;
+window.pocketReach=reached; window.pocketRefused=revoked;
+// A credential restored from the vault is checked with the Spark before the header says "Paired" (P-02).
 window.pocketSetPair=token=>{
- key=token; shared.clear();
+ key=token; shared.clear(); refused=false; reach=key?"checking":"";
  el("pairform").hidden=!!key;el("paired").hidden=!key;
- el("linkstate").textContent=key?"Paired with Spark":"Phone only";
- el("pairhelp").textContent=key?"This tab has a pairing credential. Refresh history to check connectivity.":"Enter your Spark or linked-device code.";
+ linkText();
+ el("pairhelp").textContent=key?"Checking the pairing kept in your vault with your Spark…":"Enter your Spark or linked-device code.";
  if(!key){el("history").replaceChildren();el("forecast").textContent="";el("handoff").textContent="";}
  pairing(false);
  buttons();
+ if(!key)return Promise.resolve(false);
+ return historyView().then(()=>{el("pairhelp").textContent="This tab is paired from your vault. Shared observations expire after 24 hours.";return true;},
+   e=>{if(e.revoked)return false;el("pairhelp").textContent="Your Spark did not answer, so this pairing is not confirmed yet. Use Refresh history when it is reachable.";return null;});
 };

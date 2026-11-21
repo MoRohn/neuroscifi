@@ -236,10 +236,20 @@ def _stale_all(db, stale=()):
     return sorted({*stale, *more})
 
 
+REBUILD_HINT = ("{n} checkpoint archive(s) still hold the forgotten data and are now marked stale: rebuild them "
+                "with `nsf checkpoint rebuild` (console: Checkpoints, Rebuild stale archives)")
+
+
 def _result(db, effects):
+    """The forget result. When checkpoint archives became stale, `next_steps` says how to rebuild them (a stale
+    archive keeps the forgotten payload until it is rebuilt or pruned)."""
     if effects:
         effects = effects | {"wal_checkpoint": store.truncate_wal(db)}
-    return {"status": "forgotten" if effects else "absent", "effects": effects or {}}
+    out = {"status": "forgotten" if effects else "absent", "effects": effects or {}}
+    stale = (effects or {}).get("checkpoints_stale") or []
+    if stale:
+        out["next_steps"] = [REBUILD_HINT.format(n=len(stale))]
+    return out
 
 
 def forget_evidence(db, event_id, now, *, reason="forgotten"):
@@ -577,25 +587,65 @@ def _knowledge_chain(db, knowledge_id):
     return sorted(chain)
 
 
+_OPEN_TASK = ("queued", "discovering", "reading", "evaluating", "synthesizing")
+
+
+def _refresh_tasks(db, chain):
+    """Unfinished refresh tasks of the knowledge rows in `chain`: origin 'refresh-owner:<id>' (the owner's) or
+    'refresh:<id>' (a due prediction), and the owner refreshes recorded before those origins existed (origin cli or
+    console, fact_verification of the item's statement, parent = the item's task). Their objective is the
+    forgotten statement."""
+    items = []
+    for part in _chunks(sorted(chain)):
+        items += db.execute(f"SELECT id, statement, task_id FROM web_knowledge WHERE id IN ({_in(part)})",
+                            part).fetchall()
+    origins = {f"{prefix}{kid}" for kid, _, _ in items for prefix in ("refresh:", "refresh-owner:")}
+    legacy = {(statement, parent) for _, statement, parent in items}
+    found = []
+    for task_id, origin, mode, objective, parent in db.execute(
+            f"SELECT id, origin, mode, objective, parent_id FROM web_tasks WHERE status IN ({_in(_OPEN_TASK)}) "
+            "ORDER BY rowid", _OPEN_TASK).fetchall():
+        if origin in origins or (origin in ("cli", "console") and mode == "fact_verification"
+                                 and (objective, parent) in legacy):
+            found.append(task_id)
+    return found
+
+
 def _forget_knowledge_core(db, knowledge_id, now):
-    """Caller owns the txn. Returns effects or None when absent."""
+    """Caller owns the txn. Returns effects or None when absent. Unfinished refresh tasks of the chain (their
+    objective is the forgotten statement) are forgotten with it (a worker running one stops at its next fenced
+    write); effects["refresh_tasks_forgotten"] lists them and effects["cache"] their unshared public-cache keys."""
     chain = _knowledge_chain(db, knowledge_id)
     if not chain:
         return None
+    refreshes, cache = [], {"urls": [], "sha256": []}
+    for task_id in _refresh_tasks(db, chain):
+        out = _forget_research_core(db, task_id, now)
+        if out is not None:
+            refreshes.append(task_id)
+            cache = {k: sorted(set(cache[k]) | set(out[1].get(k) or [])) for k in cache}
+    chain = [kid for kid in chain if db.execute("SELECT 1 FROM web_knowledge WHERE id=?", (kid,)).fetchone()]
     effects = _drop_knowledge(db, chain, now)
     db.execute("DELETE FROM web_entities WHERE id NOT IN (SELECT entity_id FROM web_mentions)")
+    effects["refresh_tasks_forgotten"] = refreshes
+    if refreshes:
+        effects["cache"] = cache
     return effects
 
 
 def forget_knowledge(db, knowledge_id, now):
-    """Forget a knowledge item and every version in its supersession chain (claims stay with their tasks)."""
+    """Forget a knowledge item and every version in its supersession chain (claims stay with their tasks), and the
+    queued or running refresh tasks of that chain (C-08: the statement is their objective)."""
     if isinstance(knowledge_id, bool) or not isinstance(knowledge_id, int):
         raise ValidationError("knowledge id must be an integer")
     with store.write(db):
         effects = _forget_knowledge_core(db, knowledge_id, now)
         if effects is None:
             return {"status": "absent", "effects": {}}
+        cache = effects.pop("cache", None)
         _web_finish(db, "knowledge", str(knowledge_id), effects, now)
+    if cache is not None:
+        effects["cache"] = cache
     return _result(db, effects)
 
 

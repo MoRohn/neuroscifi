@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import stat
 from pathlib import Path
 import socket
 import sys
@@ -303,7 +304,10 @@ def test_daemon_start_status_stop(fake_package, tmp_path):
         assert d.pid_path.read_text().split()[0] == str(started["pid"])
         assert d.start()["started"] is False                       # already running: not started twice
         other = Daemon(node=sys.executable, package_dir=fake_package, port=d.port, state_dir=tmp_path / "state")
-        assert other.status()["pid"] == started["pid"] and other.status()["owned"] is False
+        # W-16: another process judges ownership from the pid file (pid + start time + entry script) and /proc
+        seen = other.status()
+        assert seen["pid"] == started["pid"] and seen["owned"] is True and seen["started_here"] is False
+        assert seen["owned_by_pid_file"] is True and seen["alive"] is True and seen["running"] is True
         stopped = other.stop()                                     # pid file + cmdline check, no pattern kill
         assert stopped == {"stopped": True, "pid": started["pid"]}
         deadline = time.monotonic() + 5
@@ -529,3 +533,41 @@ def test_provider_health_reports_honest_user_agent(daemon, fake_package):
     fake_engines(fake_package)
     assert run_patch(fake_package).returncode == 0
     assert p.health()["honest_user_agent"] is True
+
+
+# ---- UAT RC1 regressions (W-15 port held by another process, S-10 file modes) -----------------------------------
+
+def test_port_held_by_a_non_daemon_process_is_a_clear_port_in_use_error(fake_package, tmp_path):
+    holder = socket.socket()
+    holder.bind(("127.0.0.1", 0))
+    holder.listen(1)                                   # accepts connections, speaks no HTTP
+    port = holder.getsockname()[1]
+    try:
+        d = Daemon(node=sys.executable, package_dir=fake_package, port=port, state_dir=tmp_path / "s")
+        assert d.status()["port_in_use"] is True and d.status()["owned"] is False
+        with pytest.raises(ProviderError) as info:
+            d.start(timeout=5, allow_browser_user_agent=True)
+        assert info.value.code == "port_in_use" and f"port {port}" in str(info.value)
+        assert not d.pid_path.exists()                 # nothing was spawned
+    finally:
+        holder.close()
+
+
+def test_daemon_state_files_are_private(fake_package, tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o755)
+    old = os.umask(0o022)
+    try:
+        d = Daemon(node=sys.executable, package_dir=fake_package, port=free_port(), state_dir=state)
+        d.log_path.write_text("old log\n")
+        os.chmod(d.log_path, 0o644)
+        d.start(timeout=10, allow_browser_user_agent=True)
+    finally:
+        os.umask(old)
+    try:
+        assert stat.S_IMODE(os.stat(state).st_mode) == 0o700
+        assert stat.S_IMODE(os.stat(d.pid_path).st_mode) == 0o600
+        assert stat.S_IMODE(os.stat(d.log_path).st_mode) == 0o600
+        assert d.log_path.read_text().startswith("old log")   # appended, not truncated
+    finally:
+        d.stop()

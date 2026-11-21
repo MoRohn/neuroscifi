@@ -293,11 +293,22 @@ def _counted(origin, mcp):
     return origin == "mcp" if mcp else (origin == "curiosity" or origin.startswith("refresh:"))
 
 
+_WINDOW = (f"(created_at>? OR started_at>? OR (status NOT IN ({','.join('?' * len(TERMINAL_STATES))}) AND "
+           "coalesce(stage,'')!='proposed'))")
+
+
+def _window(now):
+    """Tasks of the daily window: created or started in the last 24 h, or still open (not a waiting proposal).
+    A proposal confirmed days after it was made counts from its confirmation (it is open) and its start."""
+    return _WINDOW, (now - DAY, now - DAY, *TERMINAL_STATES)
+
+
 def autonomous_usage(db, now, *, mcp=False) -> dict:
     """Tasks, requests and bytes spent by autonomous research (curiosity/refresh; mcp=True: MCP-origin tasks) in
-    the last 24 h."""
+    the last 24 h (_window)."""
     tasks = requests = volume = 0
-    for origin, usage in db.execute("SELECT origin, usage FROM web_tasks WHERE created_at>?", (now - DAY,)):
+    where, params = _window(now)
+    for origin, usage in db.execute(f"SELECT origin, usage FROM web_tasks WHERE {where}", params):
         if _counted(origin, mcp):
             used = state.loads(usage, {})
             tasks += 1
@@ -306,15 +317,17 @@ def autonomous_usage(db, now, *, mcp=False) -> dict:
     return {"tasks": tasks, "requests": requests, "bytes": volume}
 
 
-def autonomous_remaining(db, now, cfg, *, mcp=False) -> dict:
+def autonomous_remaining(db, now, cfg, *, mcp=False, exclude=None) -> dict:
     """Requests and bytes of the daily autonomous allowance (mcp=True: config.daily_mcp for MCP-origin tasks) not
-    yet committed: caps minus what finished tasks of the last 24 h spent and what open ones may still spend (their
-    whole budget). Proposals waiting for the owner are not counted until the owner authorises them."""
+    yet committed: caps minus what finished tasks of the window (_window) spent and what open ones may still spend
+    (their whole budget). Proposals waiting for the owner are not counted until the owner authorises them; a
+    confirmed one counts like any queued task. `exclude`: a task id left out (the one being checked)."""
     committed = {"requests": 0, "bytes": 0}
     caps = cfg.daily_mcp if mcp else cfg.daily_autonomous
-    for origin, status, stage, usage, budget in db.execute(
-            "SELECT origin, status, stage, usage, budget FROM web_tasks WHERE created_at>?", (now - DAY,)):
-        if not _counted(origin, mcp) or stage == "proposed":
+    where, params = _window(now)
+    for task_id, origin, status, stage, usage, budget in db.execute(
+            f"SELECT id, origin, status, stage, usage, budget FROM web_tasks WHERE {where}", params):
+        if not _counted(origin, mcp) or stage == "proposed" or task_id == exclude:
             continue
         used, limits = state.loads(usage, {}), state.loads(budget, {})
         for key in committed:
@@ -451,25 +464,35 @@ def _retention(report, services, now):
 # ---- worker ------------------------------------------------------------------------------------------------------
 
 def claim_next(db, holder, now, *, lease=None):
-    """Claim one runnable task: a queued task, else a running task whose lease expired (its worker crashed).
+    """Claim one runnable task: a queued task, else a running task whose lease expired or whose worker process is
+    dead (same host: services.holder_alive, so a crash is recovered without waiting for the lease to expire).
     Returns (task_id, resume) or None."""
     from . import orchestrator
+    from .services import holder_alive
     lease = orchestrator.LEASE_SECONDS if lease is None else lease
     with store.write(db):
-        row = db.execute("SELECT id FROM web_tasks WHERE status='queued' AND coalesce(stage,'')!='proposed' "
-                         "AND (lease_holder IS NULL OR lease_expires_at<?) ORDER BY created_at, rowid LIMIT 1",
-                         (now,)).fetchone()
+        row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status='queued' AND "
+                         "coalesce(stage,'')!='proposed' AND (lease_holder IS NULL OR lease_expires_at<?) "
+                         "ORDER BY created_at, rowid LIMIT 1", (now,)).fetchone()
         resume = False
         if row is None:
-            row = db.execute("SELECT id FROM web_tasks WHERE status IN ('discovering','reading','evaluating',"
-                             "'synthesizing') AND lease_expires_at IS NOT NULL AND lease_expires_at<? "
+            row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status IN ('discovering','reading',"
+                             "'evaluating','synthesizing') AND lease_expires_at IS NOT NULL AND lease_expires_at<? "
                              "ORDER BY lease_expires_at LIMIT 1", (now,)).fetchone()
             resume = True
         if row is None:
+            row = next((r for r in db.execute(
+                "SELECT id, lease_holder FROM web_tasks WHERE status IN ('queued','discovering','reading',"
+                "'evaluating','synthesizing') AND coalesce(stage,'')!='proposed' AND lease_holder IS NOT NULL "
+                "AND lease_expires_at>=? ORDER BY lease_expires_at LIMIT 50", (now,)).fetchall()
+                if r[1] != holder and holder_alive(r[1]) is False), None)
+            if row is not None:
+                resume = db.execute("SELECT status FROM web_tasks WHERE id=?", (row[0],)).fetchone()[0] != "queued"
+        if row is None:
             return None
         claimed = db.execute("UPDATE web_tasks SET lease_holder=?, lease_expires_at=?, updated_at=? WHERE id=? AND "
-                             "(lease_holder IS NULL OR lease_expires_at<?)",
-                             (holder, now + lease, now, row[0], now)).rowcount
+                             "(lease_holder IS NULL OR lease_expires_at<? OR lease_holder=?)",
+                             (holder, now + lease, now, row[0], now, row[1])).rowcount
         if not claimed:
             return None
         state.log_event(db, row[0], "decision", {"claimed": True, "recovered_lease": resume}, now)

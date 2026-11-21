@@ -4,8 +4,9 @@ Security controls (SYSTEM_ARCHITECTURE.md §5):
 - binds 127.0.0.1 only; there is no option to choose another address;
 - a per-start session token, sent by the page as `Authorization: Bearer`, compared in constant time;
 - Host must name the loopback address and port (DNS-rebinding defence), and any Origin must match it;
-- POST bodies are JSON objects of at most 4 KiB; GET carries no body;
-- strict CSP, nosniff, no-referrer, no-store; no access logs.
+- POST bodies are JSON objects of at most 4 KiB (8 KiB for research questions and monitor topics, so 2000 CJK
+  characters fit); GET carries no body;
+- strict CSP, nosniff, no-referrer, no-store on every response, error pages included; no access logs.
 Every request opens its own connection, expires due evidence first, and closes it afterwards.
 """
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,6 +31,8 @@ from ..webcortex.types import MODES, TASK_STATES, TERMINAL_STATES
 BIND = "127.0.0.1"
 DEFAULT_PORT = 8766
 MAX_BODY = 4096
+MAX_TEXT_BODY = 8192          # POST /api/web/tasks and /api/web/monitors: objective or topic of 2000 characters
+TEXT_ROUTES = ("/api/web/tasks", "/api/web/monitors")
 MAX_ID = 2**63 - 1             # SQLite INTEGER range: a larger id cannot exist
 SWEEP_EVERY = 60.0             # seconds between expiry sweeps triggered by GET requests
 GET_SWEEP_BUSY_MS = 200        # a GET never waits longer than this for the write lock
@@ -420,6 +423,7 @@ def _web_monitors(c, p, q, b):
 
 def _web_monitor_add(c, p, q, b):
     from ..webcortex import scheduler
+    wstate.require_enabled(c.db)   # API_CONTRACTS §8: 409 while web access is disabled
     _fields(b, ("topic", "interval_hours"), ("mode",))
     hours = b["interval_hours"]
     if isinstance(hours, bool) or not isinstance(hours, (int, float)) or not 1 <= hours <= 24 * 366:
@@ -431,6 +435,7 @@ def _web_monitor_add(c, p, q, b):
 def _web_monitor_action(action):
     def handler(c, p, q, b):
         from ..webcortex import scheduler
+        wstate.require_enabled(c.db)
         _fields(b)
         return getattr(scheduler, f"monitor_{action}")(c.db, int(p[0]), c.now)
     return handler
@@ -514,6 +519,20 @@ class Handler(BaseHTTPRequestHandler):
     def fail(self, code, message):
         self.reply(code, {"error": message})
 
+    def send_error(self, code, message=None, explain=None):
+        """http.server's own errors (bad request line, 414, 431, 501, ...) as JSON with the security headers;
+        the default HTML page would echo request text and miss the CSP."""
+        self.close_connection = True
+        short = self.responses.get(code, ("error",))[0]
+        body = json.dumps({"error": short.lower()}).encode()
+        self.send_response(code)
+        for name, value in {"Content-Type": "application/json", "Content-Length": str(len(body)), **HEADERS,
+                            "Connection": "close"}.items():
+            self.send_header(name, value)
+        self.end_headers()
+        if self.command != "HEAD" and code >= 200 and code not in (204, 304):
+            self.wfile.write(body)
+
     def _trusted_origin(self):
         """Host must name this loopback server; a present Origin must be exactly http://<Host>."""
         port = self.server.server_port
@@ -577,9 +596,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("Transfer-Encoding"):
             self.fail(400, "chunked bodies are not accepted")
             return None
-        if size > MAX_BODY:
+        limit = MAX_TEXT_BODY if urlsplit(self.path).path in TEXT_ROUTES else MAX_BODY
+        if size > limit:
             self.close_connection = True
-            self.fail(413, f"body exceeds {MAX_BODY} bytes")
+            self.fail(413, f"body exceeds {limit} bytes")
             return None
         if self.headers.get_content_type() != "application/json":
             self.fail(400, "Content-Type must be application/json")

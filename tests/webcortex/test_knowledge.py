@@ -75,7 +75,9 @@ def test_refresh_submits_a_fact_verification_task_without_running_it(db):
     kid = out["provisional"][0]
     task = knowledge.refresh(db, kid, T0 + 10 * DAY)
     assert task["status"] == "queued" and task["mode"] == "fact_verification"
-    assert task["origin"] == "cli" and task["parent_id"] == tid   # the owner's refresh (A-P2-2)
+    assert task["origin"] == f"refresh-owner:{kid}" and task["parent_id"] == tid   # the owner's refresh (A-P2-2)
+    assert task["origin_label"] == f"Refresh of knowledge #{kid}"           # C-08: shown as a refresh
+    assert not orchestrator.is_autonomous(task["origin"])                    # never clamped as autonomous
     assert task["objective"] == knowledge.row(db, kid)["statement"]
     assert orchestrator.get(db, task["id"])["stages_done"] == []
 
@@ -136,8 +138,9 @@ def test_owner_refresh_is_not_autonomous_but_prediction_refresh_is(db):
     _, out = consolidated(db, [two_sources()])
     kid = out["provisional"][0]
     task = knowledge.refresh(db, kid, T0 + 5)
-    assert task["origin"] == "cli" and task["budget"]["max_requests"] > 0
-    assert knowledge.refresh(db, kid, T0 + 5, origin="console")["origin"] == "console"
+    assert task["origin"] == f"refresh-owner:{kid}" and task["budget"]["max_requests"] > 0
+    again = knowledge.refresh(db, kid, T0 + 5, origin="console")     # S-14: the same refresh is already queued
+    assert again["id"] == task["id"] and again["deduplicated"] is True
     assert not orchestrator.is_autonomous("cli") and orchestrator.is_autonomous(f"refresh:{kid}")
     with pytest.raises(ValidationError, match="daily autonomous cap"):
         knowledge.refresh(db, kid, T0 + 5, origin=f"refresh:{kid}")
@@ -149,3 +152,31 @@ def test_query_limit_must_be_an_integer(db):
         knowledge.query(db, "numpy", T0, limit="ten")
     with pytest.raises(ValidationError):
         knowledge.query(db, "numpy", T0, limit=0)
+
+
+# ---- UAT RC1 regressions (lane L2) --------------------------------------------------------------------------------
+
+def test_review_after_resolve_revises_the_decision_on_the_question_with_history(db):
+    """W-22: knowledge.review and `nsf resolve` share one transition (knowledge.decide). Rejecting an item the owner
+    accepted through its question records the new decision on that question's resolution (history kept); re-
+    accepting a rejected item is allowed and says so in the item's note."""
+    from neuroscifi.instance import executive
+    _, out = consolidated(db, [two_sources()])
+    kid = out["provisional"][0]
+    pid = db.execute("SELECT id FROM pending WHERE scope=?", (f"web:knowledge:{kid}",)).fetchone()[0]
+    executive.resolve(db, pid, "looks right", T0 + 1, confirm=True)
+    assert knowledge.row(db, kid)["status"] == "accepted"
+    done = knowledge.review(db, kid, False, T0 + DAY, note="the release was withdrawn")
+    assert done["status"] == "rejected" and done["previous_status"] == "accepted" and done["decisions_revised"] == [pid]
+    resolution = db.execute("SELECT resolution FROM pending WHERE id=?", (pid,)).fetchone()[0]
+    assert resolution.startswith("looks right\n") and "rejected it after an earlier acceptance" in resolution
+    assert "the release was withdrawn" in resolution
+    assert knowledge.review_outcome(db, {"id": pid, "scope": f"web:knowledge:{kid}"}) is False   # consistent
+    back = knowledge.review(db, kid, True, T0 + 2 * DAY, note="re-released")
+    assert back["status"] == "accepted" and back["previous_status"] == "rejected"
+    item = knowledge.row(db, kid)
+    assert item["status"] == "accepted" and "re-accepted it after an earlier rejection" in item["note"]
+    assert db.execute("SELECT resolution FROM pending WHERE id=?", (pid,)).fetchone()[0].count("\n") == 2
+    knowledge.archive(db, kid, T0 + 3 * DAY)
+    with pytest.raises(Conflict):
+        knowledge.review(db, kid, True, T0 + 3 * DAY)          # archived is history, not reviewable

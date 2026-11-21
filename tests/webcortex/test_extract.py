@@ -102,12 +102,45 @@ def test_time_element_date():
     assert doc.published_at == 1793725200.0 and doc.metadata["date_source"] == "time-element"
 
 
-def test_last_modified_header_is_the_last_resort():
+def test_last_modified_header_is_never_a_publication_date():
+    # W-05: a 2022 blog post redeployed today was dated today from Last-Modified and satisfied 'breaking'.
     headers = {"content-type": "text/html; charset=utf-8", "last-modified": "Tue, 03 Nov 2026 10:00:00 GMT"}
     doc = html_doc(f"<html><body><p>{PARA * 3}</p></body></html>", headers=headers)
-    assert doc.published_at == 1793700000.0 and doc.metadata["date_source"] == "http-last-modified"
+    assert doc.published_at is None and "date_source" not in doc.metadata
+    assert doc.modified_at == 1793700000.0 and doc.metadata["modified_source"] == "http-last-modified"
     dated = html_doc(ARTICLE, headers=headers)
-    assert dated.metadata["date_source"] == "json-ld"
+    assert dated.metadata["date_source"] == "json-ld" and dated.published_at == 1793700000.0
+    assert "modified_source" not in dated.metadata                  # the page's own dateModified wins
+    result = FetchResult(url="http://t.example/x", final_url="http://t.example/x", status=200,
+                         headers={"content-type": "text/plain", "last-modified": "Tue, 03 Nov 2026 10:00:00 GMT"},
+                         content_type="text/plain", body=b"plain text body", retrieved_at=5.0)
+    plain = extract(result)
+    assert plain.published_at is None and plain.modified_at == 1793700000.0
+
+
+@pytest.mark.parametrize("value", ["1663021219", "1663021219000", "1663021219.5"])
+def test_unix_epoch_meta_dates_are_parsed(value):
+    # W-05: og:updated_time="1663021219" (simonwillison.net) was not parsed.
+    page = (f'<html><head><meta property="article:published_time" content="{value}">'
+            f'<meta property="og:updated_time" content="{value}"></head><body><p>{PARA * 3}</p></body></html>')
+    doc = html_doc(page)
+    assert doc.published_at == pytest.approx(1663021219.0, abs=1) and doc.modified_at == doc.published_at
+    assert doc.metadata["date_source"] == "meta:article:published_time"
+    assert ex._parse_date("12345") is None and ex._parse_date("99999999999999") is None
+
+
+def test_feed_item_date_wins_as_published_hint():
+    # W-05: pages reached from a feed kept the Last-Modified date although the feed item was dated.
+    headers = {"content-type": "text/html; charset=utf-8", "last-modified": "Fri, 20 Nov 2026 10:00:00 GMT"}
+    doc = extract_html(ARTICLE, "http://news.example/a", retrieved_at=1.0, retrieval_mode="live", headers=headers,
+                       published_hint="2022-09-12T08:00:00Z")
+    assert doc.published_at == 1662969600.0 and doc.metadata["date_source"] == "feed"
+    result = FetchResult(url="http://news.example/a", final_url="http://news.example/a", status=200,
+                         headers=headers, content_type="text/html", body=f"<p>{PARA * 3}</p>".encode(),
+                         retrieved_at=5.0)
+    via = extract(result, published_hint=1662969600.0)
+    assert via.published_at == 1662969600.0 and via.metadata["date_source"] == "feed"
+    assert extract(result).published_at is None                      # no hint: Last-Modified is not used
 
 
 @pytest.mark.parametrize("text,expected", [

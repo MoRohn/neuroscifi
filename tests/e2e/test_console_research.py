@@ -184,7 +184,8 @@ def test_research_journey(research, new_page):
     expect(page.locator("#taskStatusMsg")).to_contain_text(re.compile("Cancel requested|Cancelled"))
     expect(page.locator("#report .stages li.end-cancelled")).to_have_text(re.compile("Cancelled"), timeout=30_000)
     expect(page.locator("#report")).to_contain_text("cancelled by request")
-    expect(row.get_by_role("button", name=re.compile("^Resume research task"))).to_be_visible()
+    expect(row.get_by_role("button", name=re.compile("^Run again research task"))).to_be_visible()   # W-21: requeue wording
+    expect(page.locator("#reportResume")).to_have_text("Run again as a new task")
 
     # the history filter
     page.locator("#taskStatus").select_option("cancelled")
@@ -197,12 +198,12 @@ def test_research_journey(research, new_page):
     # knowledge: the provisional item from the first run is accepted by the owner
     go(page, "knowledge", "Knowledge")
     card = page.locator("#knowledgeList article[data-knowledge]", has_text="4.2.0").first
-    expect(card.locator(".badge").first).to_have_text("provisional")
+    expect(card.locator(".badge").first).to_have_text("Provisional")
     expect(card).to_contain_text("Sources")
     card.get_by_role("button", name=re.compile("^Accept")).click()
     expect(page.locator("#knowledgeStatus")).to_contain_text("Accepted knowledge #")
     accepted = page.locator("#knowledgeList article[data-knowledge]", has_text="4.2.0").first
-    expect(accepted.locator(".badge").first).to_have_text("accepted")
+    expect(accepted.locator(".badge").first).to_have_text("Accepted")
     page.locator("#kTopic").fill("Zephyr compiler version")
     page.locator("#kSearchBtn").click()
     expect(page.locator("#knowledgeList article[data-knowledge]").first).to_contain_text("4.2.0")
@@ -217,7 +218,7 @@ def test_research_journey(research, new_page):
     expect(page.locator("#monitorList thead")).to_contain_text("Recent findings")   # A-P2-7
     expect(page.locator("#monitorList tbody")).to_contain_text("none yet")
     page.locator("#monitorList").get_by_role("button", name=re.compile("^Pause monitor")).click()
-    expect(page.locator("#monitorList .badge")).to_have_text("paused")
+    expect(page.locator("#monitorList .badge")).to_have_text("Paused")
     expect(page.locator("#providerTable")).to_contain_text("corpus")
     page.locator("#webSettings summary").click()
     page.locator("#swEnabled").uncheck()

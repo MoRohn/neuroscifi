@@ -387,8 +387,8 @@ def _starttime(pid: int) -> str | None:
         return None
 
 
-def _listens(pid: int, port: int) -> bool | None:
-    """Whether process pid owns a socket listening on TCP `port` (Linux /proc); None where /proc/net is absent."""
+def _listen_inodes(port: int) -> set | None:
+    """Socket inodes listening on TCP `port` (Linux /proc/net); None where /proc/net is absent."""
     inodes = set()
     tables = [Path("/proc/net/tcp"), Path("/proc/net/tcp6")]
     if not any(t.exists() for t in tables):
@@ -402,6 +402,14 @@ def _listens(pid: int, port: int) -> bool | None:
             fields = line.split()
             if len(fields) > 9 and fields[3] == "0A" and int(fields[1].rsplit(":", 1)[1], 16) == int(port):
                 inodes.add(f"socket:[{fields[9]}]")
+    return inodes
+
+
+def _listens(pid: int, port: int) -> bool | None:
+    """Whether process pid owns a socket listening on TCP `port` (Linux /proc); None where /proc/net is absent."""
+    inodes = _listen_inodes(port)
+    if inodes is None:
+        return None
     try:
         fds = os.listdir(f"/proc/{pid}/fd")
     except OSError:
@@ -413,6 +421,29 @@ def _listens(pid: int, port: int) -> bool | None:
         except OSError:
             continue
     return False
+
+
+def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
+    """Whether some process holds host:port: a listening socket in /proc/net (any process, even one that never
+    accepts), else a TCP connection being accepted (whatever speaks there)."""
+    if _listen_inodes(port):
+        return True
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _private_open(path: Path, flags: int):
+    """Open a daemon state file owner-only (0600), whatever the umask or the file's earlier mode (S-10)."""
+    fd = os.open(path, flags | os.O_CREAT, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+    except OSError:
+        os.close(fd)
+        raise
+    return fd
 
 
 def _alive(pid: int) -> bool:
@@ -431,7 +462,12 @@ class Daemon:
     `stop()` terminates only the process this object started, or the one recorded in `<state_dir>/
     openwebsearch.pid` ("<pid> <start time>") while that pid still has the recorded start time and this daemon's
     entry script on its command line. It never kills by name pattern. `start(allow_browser_user_agent=False)`
-    refuses a build without the honest User-Agent patch, and refuses a port another process already serves.
+    refuses a build without the honest User-Agent patch, and refuses a port another process already holds
+    (ProviderError code 'port_in_use' naming the port), whether or not that process speaks HTTP.
+
+    Ownership is judged the same way from any process: the pid file's pid + /proc start time + entry script on the
+    command line (`owned_by_pid_file`) and the process being alive. The state directory is 0700 and the pid and
+    log files 0600 (S-10): the log can contain queries.
     """
     node: str = "node"
     package_dir: Path | str = DEFAULT_PACKAGE_DIR
@@ -513,20 +549,24 @@ class Daemon:
         pid, _owned = self._owned_pid()
         if self._healthy(pid):
             return {**self.status(), "started": False, "reason": "already running"}
-        if self._status_payload() is not None:
-            raise ProviderError("openwebsearch", f"{self.base_url} is served by a process NeuroSciFi did not start; "
-                                "choose another port", code="port_in_use")
+        if pid is not None and _alive(pid) and _listens(pid, self.port):
+            return {**self.status(), "started": False, "reason": "already running (not answering /status yet)"}
+        if self._status_payload() is not None or _port_open(str(self.host), self.port):
+            raise ProviderError("openwebsearch", f"port {int(self.port)} on {self.host} is in use by another process "
+                                "(not an open-webSearch daemon NeuroSciFi started); stop that process or choose "
+                                "another port", code="port_in_use")
         if not self.entry.is_file():
             raise ValidationError(f"open-webSearch is not installed: {self.entry} missing "
                                   f"(run `npm ci` in {self.package_dir})")
         if not allow_browser_user_agent and not honest_user_agent(self.package_dir):
             raise ValidationError(f"open-webSearch at {self.package_dir} sends forged browser User-Agents: run "
                                   f"`npm run patch-ua` there, or pass allow_browser_user_agent=True to accept that")
-        Path(self.state_dir).mkdir(parents=True, exist_ok=True)
+        Path(self.state_dir).mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(self.state_dir, 0o700)
         child_env = {k: v for k, v in os.environ.items() if k in _ENV_KEEP or k.startswith(_ENV_PREFIXES)}
         child_env.update({"OPEN_WEBSEARCH_QUIET_STARTUP": "true", "ENABLE_CORS": "false"})
         child_env.update(env or {})
-        log = open(self.log_path, "ab")
+        log = os.fdopen(_private_open(self.log_path, os.O_WRONLY | os.O_APPEND), "ab")
         try:
             self._proc = subprocess.Popen(
                 [self.node, str(self.entry), "serve", "--host", str(self.host), "--port", str(int(self.port))],
@@ -534,7 +574,8 @@ class Daemon:
                 stderr=subprocess.STDOUT, start_new_session=True)
         finally:
             log.close()
-        self.pid_path.write_text(f"{self._proc.pid} {_starttime(self._proc.pid) or ''}".strip())
+        with os.fdopen(_private_open(self.pid_path, os.O_WRONLY | os.O_TRUNC), "w") as fh:
+            fh.write(f"{self._proc.pid} {_starttime(self._proc.pid) or ''}".strip())
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
@@ -574,11 +615,19 @@ class Daemon:
         return {"stopped": True, "pid": pid}
 
     def status(self) -> dict:
-        """`running`: a daemon NeuroSciFi started answers as EXPECTED_VERSION on its own socket; `port_answering`:
-        anything answers /status on the port; `honest_user_agent`: the install carries the honest-UA patch."""
-        pid, owned = self._owned_pid()
-        out = {"base_url": self.base_url, "running": self._healthy(pid), "pid": pid, "owned": owned,
-               "port_answering": self._status_payload() is not None, "log": str(self.log_path),
+        """`running`: a daemon NeuroSciFi started answers as EXPECTED_VERSION on its own socket; `owned`: the
+        process is NeuroSciFi's, judged the same from any process — `started_here` (this object started it) or
+        `owned_by_pid_file` (the pid file's pid, /proc start time and entry script all match); `alive`: that
+        process exists; `port_answering`: anything answers /status on the port; `port_in_use`: anything accepts
+        connections on it; `honest_user_agent`: the install carries the honest-UA patch."""
+        pid, started_here = self._owned_pid()
+        by_file = self._recorded_pid()
+        pid = pid if pid is not None else by_file
+        out = {"base_url": self.base_url, "running": self._healthy(pid), "pid": pid,
+               "owned": started_here or by_file is not None, "started_here": started_here,
+               "owned_by_pid_file": by_file is not None and by_file == pid, "alive": pid is not None and _alive(pid),
+               "port_answering": self._status_payload() is not None,
+               "port_in_use": _port_open(str(self.host), self.port), "log": str(self.log_path),
                "entry": str(self.entry), "installed": self.entry.is_file(),
                "honest_user_agent": honest_user_agent(self.package_dir)}
         if out["running"]:

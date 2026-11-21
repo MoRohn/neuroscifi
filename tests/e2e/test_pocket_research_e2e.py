@@ -87,7 +87,8 @@ def posts(page):
 def ask(page, text=QUESTION):
     expect(page.locator("#research")).to_be_visible()
     page.locator("#objective").fill(text)
-    expect(page.locator("#objectivecount")).to_have_text(f"{len(text)} / 300 characters")
+    expect(page.locator("#objectivecount")).to_have_text(
+        f"{len(text)} / 300 characters · {len(json.dumps({'objective': text}, ensure_ascii=False, separators=(',', ':')).encode())} / 1024 bytes")
     page.locator("#researchsubmit").click()
     expect(page.locator("#researchmsg")).to_contain_text("Queued on your Spark")
     expect(page.locator("#researchview h3")).to_have_text(text)

@@ -40,6 +40,11 @@ INJECTION_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
         r"\b(?:ignore|forget|override|bypass|skip)\s+(?:(?:all|any|the|your|these|those|my|of)\s+){0,3}"
         r"(?:previous|prior|above|preceding|earlier|existing|system|original|initial|safety)\s+"
         r"(?:instructions?|prompts?|directions|directives|rules|guidelines|guardrails|context|messages)", _I)),
+    ("ignore_instructions", re.compile(        # "ignore the directions given above", "ignore the prompt above"
+        r"\b(?:ignore|disregard|forget|override|bypass|skip)\s+(?:(?:all|any|the|your|these|those|my|of)\s+){0,3}"
+        r"(?:instructions?|prompts?|directions|directives|rules|guidelines|text|context|messages)\s+"
+        r"(?:(?:given|stated|written|provided|listed|shown|written|you\s+(?:were\s+)?(?:got|given))\s+)?"
+        r"(?:above|before|earlier|previously|so\s+far|until\s+now)\b", _I)),
     ("disregard_instructions", re.compile(
         r"\bdisregard\s+(?:[\w'-]+\s+){0,4}?(?:instructions?|prompts?|directives|rules|guidelines|guardrails)\b", _I)),
     ("role_reassignment", re.compile(
@@ -93,6 +98,15 @@ INJECTION_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
         rf"(?:{_AGENT})s?(?:\s+(?:{_AGENT})s?)?\s*[:,!]|\b(?:message|instructions?)\s+(?:to|for)\s+(?:all\s+|any\s+)?(?:{_AGENT})s?\b"
         rf"|\bif\s+you\s+are\s+an?\s+(?:{_AGENT})\b|\b(?:new|updated|additional|hidden|secret|real)\s+"
         rf"instructions?\s*:", _I)),
+    ("translate_as", re.compile(
+        r"\btranslate\s+(?:this|that|the\s+(?:following|above|next))\s+(?:sentence|text|phrase|input|line|"
+        r"message)\s+as\b", _I)),
+    ("say_exactly", re.compile(
+        r"\b(?:say|output|print|write|return)\s+(?:only\s+)?exactly\s*[:\"“'‘]"
+        r"|\b(?:respond|reply|answer)\s+(?:only\s+)?with\s+(?:only\s+)?exactly\b|\brepeat\s+after\s+me\b", _I)),
+    ("new_instructions", re.compile(
+        r"\bnew\s+instructions?\s*:|\bfrom\s+now\s+on,?\s+you\s+(?:will|must|are|should|shall|have\s+to|need\s+to|"
+        r"may\s+only|can\s+only|only|always|never|respond|answer|reply|act|say)\b", _I)),
     ("base64_blob", re.compile(r"(?<![A-Za-z0-9+/])(?=[A-Za-z0-9+/]*\d)(?=[A-Za-z0-9+/]*[A-Za-z])"
                                r"[A-Za-z0-9+/]{201,}={0,2}")),
     ("hidden_characters", re.compile(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069]+")),
@@ -235,17 +249,48 @@ def _accept(kind: str, raw: str, query: str, start: int) -> bool:
     if kind == "iban":
         return _iban_ok(re.sub(r"\s", "", raw))
     if kind == "phone":
-        digits = re.sub(r"\D", "", raw)
-        if not 9 <= len(digits) <= 15:
-            return False
-        if re.fullmatch(r"\d{4}\.\d{4,5}", raw.strip()) or re.fullmatch(r"\d+\.\d+", raw.strip()):
-            return False                                     # arXiv ids and decimals
-        if re.fullmatch(r"\d{4}\s*[-\u2013]\s*\d{4}", raw.strip()):
-            return False                                     # year ranges
-        return True
+        return _phone_ok(raw, query, start)
     if kind == "secret":
         return not raw.isdigit() and not raw.isalpha()
     return True
+
+
+_PHONE_CONTEXT = re.compile(r"\b(?:phone|tel|telephone|call|calling|mobile|cell|cellphone|fax|ring|whatsapp|sms|"
+                            r"text\s+me|dial|number\s+is|contact)\b\W*(?:\w+\W+){0,3}$", re.IGNORECASE)
+_ISBN_CONTEXT = re.compile(r"\bisbn(?:-1[03])?\W*$", re.IGNORECASE)
+
+
+def _isbn13(digits: str) -> bool:
+    return len(digits) == 13 and digits[:3] in ("978", "979") and \
+        sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(digits)) % 10 == 0
+
+
+def _phone_ok(raw: str, query: str, start: int) -> bool:
+    """A phone number needs phone formatting or phone context, not just 9-15 digits: an international prefix (+ or
+    00), an area code in parentheses, three or more digit groups that are not thousands grouping (3-3-4, 2-4-4,
+    ...), two groups behind a trunk prefix 0 ("07700 900123"), or a word such as phone/tel/call/mobile just before
+    it. Bare digit runs (299792458, 86000000000), decimals, arXiv ids, year ranges and ISBNs are not phones."""
+    text = raw.strip()
+    digits = re.sub(r"\D", "", text)
+    if not 9 <= len(digits) <= 15:
+        return False
+    if re.fullmatch(r"\d{4}\.\d{4,5}", text) or re.fullmatch(r"\d+\.\d+", text):
+        return False                                     # arXiv ids and decimals
+    if re.fullmatch(r"\d{4}\s*[-\u2013]\s*\d{4}", text):
+        return False                                     # year ranges
+    before = query[max(0, start - 40):start]
+    if _ISBN_CONTEXT.search(before) or _isbn13(digits):
+        return False
+    if _PHONE_CONTEXT.search(before):
+        return True
+    if text.startswith(("+", "00")) or re.search(r"\(\d{2,5}\)", text):
+        return True
+    groups = [g for g in re.split(r"[\s().-]+", text) if g]
+    if len(groups) >= 3:
+        thousands = all(len(g) == 3 for g in groups[1:]) and len(groups[0]) <= 3 and \
+            len({sep for sep in re.findall(r"[\s.-]+", text)}) == 1 and not re.search(r"-", text)
+        return not thousands
+    return len(groups) == 2 and groups[0].startswith("0") and 3 <= len(groups[0]) <= 5
 
 
 def _iban_ok(iban: str) -> bool:
@@ -319,7 +364,8 @@ def _mask(raw: str) -> str:
 def privacy_screen(query: str, *, private_terms=()) -> list[dict]:
     """Findings [{kind, offset, length, excerpt}] for private data in an outbound query; [] = safe to send.
 
-    Detects e-mail addresses (also obfuscated: "(at)", "[at]", " at ... dot "), phone numbers (>= 9 digits), IPv4/
+    Detects e-mail addresses (also obfuscated: "(at)", "[at]", " at ... dot "), phone numbers (9-15 digits with
+    phone formatting or a phone/tel/call/mobile word before them: _phone_ok), IPv4/
     IPv6 literals, MAC addresses, absolute file paths, API-key prefixes, JSON Web Tokens, IBANs (check digits),
     credit-card numbers (Luhn-valid), long mixed hex/base64 secrets (>= 24 chars), words mixing Latin with
     Cyrillic/Greek letters (confusables) and owner-listed private terms (case-folded, whole word, separator and

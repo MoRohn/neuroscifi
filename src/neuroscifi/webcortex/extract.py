@@ -12,10 +12,13 @@ Contract (ARCHITECTURE §4.1)
   is removed and counted in `flags["boilerplate_removed"]`. Page text is data: nothing here executes or follows it.
 - JavaScript shells (little visible text plus scripts, an empty #root/#app/#__next mount, or a <noscript> asking for
   JavaScript) set `flags["js_suspected"]` so the orchestrator may escalate to browser rendering.
-- Dates: JSON-LD, then meta (article:*, citation_*, Dublin Core, itemprop), then `<time datetime>`, then the HTTP
-  Last-Modified header; `metadata["date_source"]` names the source used for `published_at`. Parsing goes through
-  temporal.parse_date_precision first (time-zone offsets kept); a bare year ("2019") is year precision, not a
-  publication time, and is never used as `published_at`. JSON-LD is walked breadth-first over at most
+- Dates: a `published_hint` from the caller (the feed item's date when the page was reached from a feed) wins;
+  then JSON-LD, meta (article:*, citation_*, Dublin Core, itemprop), then `<time datetime>`;
+  `metadata["date_source"]` names the source used for `published_at` ("feed" for the hint). The HTTP Last-Modified
+  header is never a publication date (servers stamp it on every deploy): it only fills `modified_at`, with
+  `metadata["modified_source"] = "http-last-modified"`. Parsing goes through temporal.parse_date_precision first
+  (time-zone offsets kept), Unix epochs in seconds or milliseconds (og:updated_time="1663021219") are accepted;
+  a bare year ("2019") is year precision, not a publication time, and is never used as `published_at`. JSON-LD is walked breadth-first over at most
   MAX_LD_NODES nodes and depth 6.
 - Hostile markup is refused before parsing (FetchError('decode_error')): a tag longer than MAX_TAG_CHARS, a tag
   with more than MAX_TAG_ATTRIBUTES attributes (libxml2's attribute handling is quadratic per element) or more than
@@ -192,9 +195,18 @@ def _parse_date(value) -> float | None:
     a publication time and returns None; so do years outside 1900..2200."""
     if value is None:
         return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        value = repr(float(value))
     text = " ".join(str(value).split())[:120]
     if not text:
         return None
+    epoch = re.fullmatch(r"(\d{9,10}|\d{12,13})(?:\.\d+)?", text)
+    if epoch:                                            # Unix seconds, or milliseconds (13 digits)
+        seconds = float(text) / (1000.0 if len(epoch.group(1)) >= 12 else 1.0)
+        try:
+            return _to_epoch(datetime.fromtimestamp(seconds, timezone.utc))
+        except (OverflowError, OSError, ValueError):
+            return None
     got = temporal.parse_date_precision(text)
     if got is not None:
         if got[1] == "year":
@@ -487,21 +499,30 @@ def _trafilatura(tree, url: str, *, fast: bool = False) -> str | None:
 
 
 def _apply_last_modified(doc: Document, headers: dict | None):
-    if doc.published_at is not None:
+    """The HTTP Last-Modified header fills `modified_at` only (never `published_at`: a 2022 post redeployed today
+    is not news from today)."""
+    if doc.modified_at is not None:
         return
     value = (headers or {}).get("last-modified")
     when = _parse_date(value) if value else None
     if when is not None:
+        doc.modified_at = when
+        doc.metadata["modified_source"] = "http-last-modified"
+
+
+def _apply_hint(doc: Document, published_hint) -> None:
+    """A caller-supplied publication date (the feed item's date) wins over the page's own metadata."""
+    when = _parse_date(published_hint) if published_hint not in (None, "") else None
+    if when is not None:
         doc.published_at = when
-        doc.metadata["date_source"] = "http-last-modified"
-        if doc.modified_at is None:
-            doc.modified_at = when
+        doc.metadata["date_source"] = "feed"
 
 
 def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine="auto", headers=None,
-                 final_url=None) -> Document:
-    """`headers` (lower-case FetchResult headers) supply the charset and Last-Modified; `final_url` is the URL
-    after redirects (defaults to `url`)."""
+                 final_url=None, published_hint=None) -> Document:
+    """`headers` (lower-case FetchResult headers) supply the charset and Last-Modified (-> modified_at only);
+    `final_url` is the URL after redirects (defaults to `url`); `published_hint` (epoch seconds or a date string,
+    e.g. the feed item's date) becomes `published_at` with date_source "feed"."""
     final_url = final_url or url
     text_in = _decode(bytes(body), headers)
     zero_width = len(_ZERO_WIDTH.findall(text_in))
@@ -685,6 +706,7 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
                    markdown=markdown, published_at=published, modified_at=modified, authors=authors,
                    language=language, links=links, flags=flags, metadata=metadata)
     _apply_last_modified(doc, headers)
+    _apply_hint(doc, published_hint)
     return doc
 
 
@@ -840,7 +862,9 @@ def parse_sitemap(body: bytes, url: str) -> list[dict]:
 
 # ---- dispatch ---------------------------------------------------------------------------------------------------
 
-def extract(result: FetchResult, *, engine="auto") -> Document:
+def extract(result: FetchResult, *, engine="auto", published_hint=None) -> Document:
+    """Dispatch by content type. `published_hint` (the feed item's date when the URL came from a feed) becomes the
+    document's `published_at` (date_source "feed") for HTML and text documents."""
     body = bytes(result.body)
     content_type = (result.content_type or "").lower()
     headers = result.headers or {}
@@ -850,7 +874,7 @@ def extract(result: FetchResult, *, engine="auto") -> Document:
         doc = extract_pdf(body, result.url, retrieval_mode=result.retrieval_mode, final_url=final, **common)
     elif content_type in HTML_TYPES or (not content_type and b"<html" in body[:2048].lower()):
         doc = extract_html(body, result.url, retrieval_mode=result.retrieval_mode, engine=engine, headers=headers,
-                           final_url=final, **common)
+                           final_url=final, published_hint=published_hint, **common)
         doc.content_type = content_type or "text/html"
     else:
         host = urlsplit(final).hostname or ""
@@ -880,6 +904,7 @@ def extract(result: FetchResult, *, engine="auto") -> Document:
                        content_type=content_type or "text/plain",
                        content_sha256=hashlib.sha256(body).hexdigest(), markdown="", links=links)
         _apply_last_modified(doc, headers)
+        _apply_hint(doc, published_hint)
     if result.truncated:
         doc.flags["truncated"] = True
     elif "truncated" not in doc.flags:

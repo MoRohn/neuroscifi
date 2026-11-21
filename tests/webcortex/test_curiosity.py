@@ -132,3 +132,54 @@ def test_propose_is_one_transaction_and_respects_the_question_budget(db):
     assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == tasks   # nothing half-written
     with pytest.raises(ValidationError):
         curiosity.rank(db, T0, limit="10")
+
+
+# ---- UAT RC1 regressions (lane L2) --------------------------------------------------------------------------------
+
+def test_curiosity_proposals_count_against_the_daily_autonomous_cap(db):
+    """W-12: a proposal is sized to the allowance left; confirming re-checks (nothing left -> the proposal stays
+    open), so does the start (an autonomous task with nothing left is cancelled, never run); with nothing left
+    no proposal is made at all."""
+    from neuroscifi.instance.errors import Conflict, ValidationError
+    from neuroscifi.webcortex import scheduler
+    kid = accepted(db, "zlib latest version", "zlib 1.3.1 is the latest zlib release.", ("a.example", "b.example"),
+                   T0)
+    with store.write(db):
+        db.execute("UPDATE web_tasks SET status='completed'")
+    now = T0 + 20 * DAY
+    state.set_config(db, {"daily_autonomous": {"tasks": 10, "requests": 25, "bytes": 10_000_000}}, now)
+    candidate = next(c for c in curiosity.rank(db, now) if c["target"].get("knowledge_id") == kid)
+    proposal = curiosity.propose(db, candidate, now)
+    assert proposal["budget"]["max_requests"] == 25                     # sized to what is left, not 40
+    spender = orchestrator.submit(db, "zlib compression level defaults", now, mode="fact_verification",
+                                  origin="curiosity")                    # commits the whole allowance meanwhile
+    assert spender["budget"]["max_requests"] == 25
+    with pytest.raises(Conflict, match="allowance is spent"):
+        executive.resolve(db, proposal["pending_id"], "go", now + 1, confirm=True)
+    assert orchestrator.get(db, proposal["id"])["proposed"] is True    # still open
+    with pytest.raises(ValidationError, match="daily autonomous cap reached"):
+        curiosity.propose(db, candidate, now + 2)
+    with store.write(db):   # the allowance frees up; the proposal is confirmed; then something else spends it all
+        state.update_task(db, spender["id"], now, status="completed", usage={"requests": 0, "bytes": 0})
+    executive.resolve(db, proposal["pending_id"], "go", now + 3, confirm=True)
+    with store.write(db):
+        db.execute("UPDATE web_tasks SET budget=json_set(budget, '$.max_requests', 0) WHERE id=?", (proposal["id"],))
+        state.update_task(db, spender["id"], now, status="completed", usage={"requests": 25, "bytes": 0})
+    assert scheduler.claim_next(db, "worker", now + 4) == (proposal["id"], False)
+    out = orchestrator.run(db, proposal["id"], type("S", (), {"holder": "worker", "clock": lambda self: now + 5})())
+    assert out["status"] == "cancelled" and "daily autonomous cap" in out["error"]
+
+
+def test_curiosity_queries_use_the_statements_words_not_key_stems(db):
+    """W-20: hypotheses and gap queries are built from the statement (intent.query_text), never from stems such
+    as 'releas'."""
+    a = claim("http://n1.example/req", "Requests 2.32.3 is the latest PyPI release of requests.",
+              key="latest pypi releas request")
+    b = claim("http://n2.example/req", "Requests 2.31.0 is the latest PyPI release of requests.",
+              key="latest pypi releas request")
+    noisy = cluster([a, b], status="contested", confidence=0.5,
+                    contradicting=[{"a": a.id, "b": b.id, "reason": "different values"}])
+    consolidated(db, [noisy], T0)
+    entry = next(c for c in curiosity.rank(db, T0 + DAY) if c["target"].get("key") == "latest pypi releas request")
+    queries = [h["query"] for h in entry["hypotheses"]]
+    assert all("releas " not in q + " " for q in queries) and all("Requests" in q or "requests" in q for q in queries)

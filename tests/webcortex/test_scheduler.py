@@ -289,9 +289,9 @@ def test_autonomous_budgets_are_clamped_to_the_daily_allowance(individual, site)
     if left:
         second = orchestrator.submit(db, "Zephyr compiler targets", T0, mode="fact_verification", origin="curiosity")
         assert second["budget"]["max_requests"] == left
-    proposal = orchestrator.submit(db, "Zephyr compiler boards", T0, mode="fact_verification", origin="curiosity",
-                                   proposed=True)        # the owner authorises proposals; not clamped at proposal
-    assert proposal["budget"]["max_requests"] == 40
+    with pytest.raises(ValidationError, match="daily autonomous cap reached"):   # W-12: nothing left, no proposal
+        orchestrator.submit(db, "Zephyr compiler boards", T0, mode="fact_verification", origin="curiosity",
+                            proposed=True)
 
 
 def test_tick_and_runs_apply_cache_retention(individual, site, monkeypatch):
@@ -455,3 +455,21 @@ def test_monitor_findings_and_pocket_proposals_respect_the_question_budget(indiv
     finally:
         sch.compare = real
     assert changes["meaningful"] and changes["pending_id"] is None
+
+
+# ---- UAT RC1 regressions (lane L2) --------------------------------------------------------------------------------
+
+def test_the_worker_recovers_a_dead_workers_task_without_waiting_for_the_lease(individual, site):
+    """W-17/S-06: a running task whose lease holder is a dead process on this host is claimed at once (resumed from
+    its checkpoint); a live holder's unexpired lease is respected."""
+    from test_orchestrator import _dead_holder
+    db, path = individual
+    crashed = orchestrator.submit(db, "Zephyr compiler release date", T0, mode="quick_lookup")
+    live = orchestrator.submit(db, "Zephyr compiler targets", T0, mode="quick_lookup")
+    with store.write(db):
+        state.update_task(db, crashed["id"], T0, status="reading", stage="reading", lease_holder=_dead_holder(),
+                          lease_expires_at=T0 + 10 * HOUR)
+        state.update_task(db, live["id"], T0, status="reading", stage="reading", lease_holder=svc_mod.holder_id(),
+                          lease_expires_at=T0 + 10 * HOUR)
+    assert scheduler.claim_next(db, "worker-2", T0 + 1) == (crashed["id"], True)
+    assert scheduler.claim_next(db, "worker-2", T0 + 2) is None

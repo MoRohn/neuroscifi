@@ -8,6 +8,15 @@
   loaded from procedural memory (web_strategies) and saved back by `persist()` after a run;
 - a BrowserRenderer only when `browser_rendering` is on;
 - `fixture` (a FixtureWeb) injects its resolver/connector so tests and the offline bench never reach the network.
+
+The public cache is disposable (ADR-023): a corrupt cache file is quarantined (renamed `<name>.corrupt-<time>`) and
+rebuilt empty by PublicCache itself; each quarantine is recorded as a warning event (kind 'error', stage
+'public_cache', no task) by build() and persist(), so research never stops over it.
+
+Lease holders (`holder_id`) are "<hostname digest>:<pid>:<thread>:<process start time>". `holder_alive` tells
+whether a holder on THIS host is still running (the pid exists with the same start time, so a reused pid is not
+mistaken for the crashed worker); a holder on another host, or in the older 3-part form without a start time on
+a live pid, is unknown (None).
 """
 from __future__ import annotations
 
@@ -22,10 +31,56 @@ import time
 from . import state
 
 
+def host_digest() -> str:
+    return hashlib.sha256(socket.gethostname().encode()).hexdigest()[:12]
+
+
+def process_start(pid) -> str | None:
+    """Start time of process `pid` (clock ticks since boot, /proc/<pid>/stat field 22), or None when unknown."""
+    try:
+        with open(f"/proc/{int(pid)}/stat", "rb") as handle:
+            data = handle.read().decode("ascii", "replace")
+        return data[data.rindex(")") + 2:].split()[19]
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def holder_id() -> str:
-    """Lease holder name of this process and thread (the host appears only as a digest)."""
-    host = hashlib.sha256(socket.gethostname().encode()).hexdigest()[:12]
-    return f"{host}:{os.getpid()}:{threading.get_ident()}"
+    """Lease holder name of this process and thread: hostname digest, pid, thread, process start time."""
+    return f"{host_digest()}:{os.getpid()}:{threading.get_ident()}:{process_start(os.getpid()) or 0}"
+
+
+def _pid_exists(pid) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return True
+    return True
+
+
+def holder_alive(holder) -> bool | None:
+    """Whether the worker named by a lease holder is still running: True / False for a holder on this host (pid
+    and, when recorded, process start time), None when it cannot be told (another host, no holder, foreign
+    form)."""
+    parts = str(holder or "").split(":")
+    if len(parts) < 3 or parts[0] != host_digest():
+        return None
+    try:
+        pid = int(parts[1])
+    except ValueError:
+        return None
+    if pid <= 0 or not _pid_exists(pid):
+        return False
+    recorded = parts[3] if len(parts) > 3 else ""
+    if recorded and recorded != "0":
+        current = process_start(pid)
+        if current is not None and current != recorded:
+            return False            # the pid was reused by another process
+    return True
 
 
 @dataclass
@@ -40,9 +95,28 @@ class Services:
     db_path: str | None = None
 
     def persist(self, db, now=None):
-        """Save the registry's provider health (procedural memory)."""
+        """Save the registry's provider health (procedural memory) and record public-cache quarantines."""
+        now = self.clock() if now is None else now
         if self.registry is not None and hasattr(self.registry, "dump_state"):
-            state.save_strategies(db, self.registry.dump_state(), self.clock() if now is None else now)
+            state.save_strategies(db, self.registry.dump_state(), now)
+        self.record_cache_warnings(db, now)
+
+    def record_cache_warnings(self, db, now=None):
+        """One warning event (kind 'error', stage 'public_cache', no task) per public-cache quarantine not yet
+        recorded. Returns how many were recorded."""
+        pending = list(getattr(self.cache, "events", None) or [])
+        if not pending:
+            return 0
+        from ..instance import store
+        now = self.clock() if now is None else now
+        with store.write(db):
+            for event in pending:
+                state.log_event(db, None, "error", {"stage": "public_cache", "warning": "the public cache was "
+                                                    "corrupt; it was quarantined and rebuilt empty (pages are "
+                                                    "fetched again)", "quarantined_as": event.get("quarantined_as"),
+                                                    "error": event.get("error")}, now)
+        del self.cache.events[:len(pending)]
+        return len(pending)
 
     def prune_cache(self, now=None):
         """Public-cache retention (ADR-023): drop entries older than config.cache_max_age_days, then the oldest
@@ -84,5 +158,7 @@ def build(db, db_path, *, fixture=None, providers=None, clock=time.time, sleep=t
     if cfg.browser_rendering:
         from .browser import BrowserRenderer
         renderer = BrowserRenderer(fetcher)
-    return Services(fetcher=fetcher, cache=cache, registry=registry, renderer=renderer, clock=clock, config=cfg,
-                    db_path=str(db_path))
+    services = Services(fetcher=fetcher, cache=cache, registry=registry, renderer=renderer, clock=clock, config=cfg,
+                        db_path=str(db_path))
+    services.record_cache_warnings(db)
+    return services

@@ -88,13 +88,59 @@ def _safe_xml(body: bytes, provider: str):
 
 # ---- encyclopedia ----------------------------------------------------------------------------------------------
 
+_WIKI_TITLE = re.compile(r"[^\x00-\x1f\x7f#<>\[\]{}|]{1,255}")
+ARTICLE_MAX_CHARS = 20_000
+
+
 class WikipediaProvider(_Api):
+    """Search hits are discovery hints only: a search snippet is a highlighted fragment ("She married the Eiffel
+    Tower in"), so every result carries metadata `snippet_only: True` and must never be read as the document.
+    `article(title)` returns the article's plain-text lead (the document to read instead; or fetch the page URL)."""
     name = "wikipedia"
     kinds = frozenset({"encyclopedia", "web"})
     BASE = "https://{lang}.wikipedia.org"
 
+    @staticmethod
+    def _lang(language) -> str:
+        return language if isinstance(language, str) and re.fullmatch(r"[a-z]{2,3}", language) else "en"
+
+    @staticmethod
+    def page_url(title: str, lang: str = "en") -> str:
+        return f"https://{lang}.wikipedia.org/wiki/{quote(title.replace(' ', '_'), safe='()_,:')}"
+
+    def article(self, title: str, *, budget=None, usage=None, lang: str = "en",
+                max_chars: int = ARTICLE_MAX_CHARS) -> dict:
+        """The plain-text lead section of one article: {title, extract, last_edited, url} (one 'api' request,
+        redirects followed, text bounded to `max_chars`). ProviderError code 'not_found' when there is no such
+        article, 'bad_response' for an unexpected answer; FetchError codes as for search."""
+        title = " ".join(str(title or "").split())
+        if not _WIKI_TITLE.fullmatch(title):
+            raise ProviderError(self.name, f"invalid article title {title[:80]!r}", code="bad_request",
+                                retryable=False)
+        lang = self._lang(lang)
+        params = {"action": "query", "prop": "extracts|revisions", "explaintext": 1, "exintro": 1,
+                  "rvprop": "timestamp", "redirects": 1, "titles": title, "format": "json", "formatversion": 2}
+        data = self._json(f"{self.BASE.format(lang=lang)}/w/api.php?{urlencode(params)}", budget=budget,
+                          usage=usage)
+        pages = (data.get("query") or {}).get("pages") if isinstance(data, dict) else None
+        if isinstance(pages, dict):                                   # formatversion 1 shape
+            pages = list(pages.values())
+        if not isinstance(pages, list) or not pages or not isinstance(pages[0], dict):
+            if isinstance(data, dict) and data.get("error"):
+                raise self._bad(f"API error: {str(data['error'])[:200]}")
+            raise self._bad("missing query.pages")
+        page = pages[0]
+        if page.get("missing") is not None or page.get("invalid") is not None or "extract" not in page:
+            raise ProviderError(self.name, f"no article titled {title[:80]!r}", code="not_found", retryable=False)
+        found = str(page.get("title") or title)
+        revisions = page.get("revisions") if isinstance(page.get("revisions"), list) else []
+        edited = revisions[0].get("timestamp") if revisions and isinstance(revisions[0], dict) else None
+        extract = str(page.get("extract") or "").strip()[:max(0, int(max_chars))]
+        return {"title": found, "extract": extract, "last_edited": edited if isinstance(edited, str) else None,
+                "url": self.page_url(found, lang)}
+
     def search(self, query: Query, limit: int, *, budget=None, usage=None) -> list[SearchResult]:
-        lang = query.language if query.language and re.fullmatch(r"[a-z]{2,3}", query.language) else "en"
+        lang = self._lang(query.language)
         base = self.BASE.format(lang=lang)
         params = {"action": "query", "list": "search", "srsearch": query.text[:300], "format": "json",
                   "srlimit": _clamp(limit), "srprop": "snippet|timestamp"}
@@ -111,10 +157,11 @@ class WikipediaProvider(_Api):
             title = str(hit["title"])
             edited = parse_iso_date(hit.get("timestamp"))
             out.append(SearchResult(
-                url=f"https://{lang}.wikipedia.org/wiki/{quote(title.replace(' ', '_'), safe='()_,:')}", title=title,
+                url=self.page_url(title, lang), title=title,
                 snippet=strip_html(hit.get("snippet"))[:_SNIPPET], provider=self.name, rank=len(out) + 1,
                 kind="encyclopedia", published_at=edited,
-                metadata={"pageid": hit.get("pageid"), "last_edited": hit.get("timestamp"), "language": lang}))
+                metadata={"pageid": hit.get("pageid"), "last_edited": hit.get("timestamp"), "language": lang,
+                          "snippet_only": True}))
         return out[:_clamp(limit)]
 
 

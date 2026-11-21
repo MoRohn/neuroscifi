@@ -1,8 +1,10 @@
 """Claims: extraction from documents, clustering, source independence, contradiction and confidence.
 
 Deterministic and lexical (ADR-022). A claim is one source sentence (or a templated statement over a structured API
-record); nothing is paraphrased. Confidence is a Beta posterior over "the cluster's representative statement holds",
-updated once per *independent* source group. Search rank, provider score, popularity and domain reputation are never
+record); nothing is paraphrased. Claims cluster only when their subjects are compatible (primary subject or record
+identity, see subjects_compatible); inside a cluster each claim supports the representative (restates it: agrees),
+contradicts it, or is merely related (cited nowhere, no evidence). Confidence is a Beta posterior over "the
+cluster's representative statement holds", updated once per *independent* source group that bears on it. Search rank, provider score, popularity and domain reputation are never
 read here: they cannot raise confidence. The only source-level prior is the documented source *type* constant
 (primary structured record vs. secondary page).
 
@@ -17,6 +19,9 @@ KEY_TOKENS                      size of the subject signature (claim key)
 KEY_WEIGHT_*                    token scores for the key: question term, entity-like, noun-like, other
 CLUSTER_KEY_JACCARD             key-token Jaccard needed to join a cluster
 CLUSTER_TEXT_SHINGLE            or: shingle Jaccard of normalised texts
+SUPPORT_TEXT_SHINGLE            shingle Jaccard of normalised texts above which one claim restates another (support)
+YEAR_ONLY_KEY_JACCARD           a conflict that is only about years needs this key overlap (or near-identical text):
+                                different years usually date different events ("started in 2020" vs "1.0 in 2015")
 DUPLICATE_SHINGLE               shingle Jaccard above which two texts are copies (syndication) -> one source group
 SHINGLE_K                       words per shingle for sentence comparisons (sentences are short; 3 not 5)
 PRIOR_ALPHA, PRIOR_BETA         Beta(1, 1) prior
@@ -29,6 +34,7 @@ MAX_CONTRADICTION_PAIRS         bound on listed contradiction pairs per cluster
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import functools
 import hashlib
 import math
 import re
@@ -51,6 +57,9 @@ KEY_WEIGHT_NOUN = 1.0
 KEY_WEIGHT_OTHER = 0.5
 CLUSTER_KEY_JACCARD = 0.5
 CLUSTER_TEXT_SHINGLE = 0.6
+SUPPORT_TEXT_SHINGLE = 0.6
+YEAR_ONLY_KEY_JACCARD = 0.75
+SHOUT_SHARE = 0.6                     # share of ALL-CAPS words above which a line is a heading/shout, not a claim
 DUPLICATE_SHINGLE = 0.8
 SHINGLE_K = 3
 PRIOR_ALPHA = 1.0
@@ -177,6 +186,20 @@ def is_adversarial(claim: Claim) -> bool:
     return bool((claim.flags or {}).get("adversarial_source"))
 
 
+RENDER_ONLY_PATTERNS = ("markdown_beacon",)
+
+
+def adversarial_document(doc: Document) -> bool:
+    """A document with instruction-like content: any injection finding except an image beacon found only in the
+    Markdown rendering. Claims come from `text`, which has no images, and quarantine already cut the beacon from
+    the Markdown; a page's own thumbnails with tracking parameters (every Wikipedia article) would otherwise make
+    the whole page adversarial."""
+    for f in (doc.flags or {}).get("injection") or []:
+        if not isinstance(f, dict) or f.get("pattern") not in RENDER_ONLY_PATTERNS or f.get("field") != "markdown":
+            return True
+    return False
+
+
 def is_primary(claim: Claim) -> bool:
     """A primary structured record (API-derived) rather than a secondary page."""
     return claim.kind == "metadata" or (claim.flags or {}).get("source_type") == "primary"
@@ -190,15 +213,40 @@ def _main_clause(sentence: str) -> str:
     return s[:cut.start()] if cut else s
 
 
+# Code, not prose: `inline code`, identifiers and calls (verify=False, requests.Session(), extract_zipped_paths),
+# and the literals False/None/True/null/nil/NaN/undefined. Negation is read from prose only (W-03).
+_CODE = re.compile(
+    r"`[^`]*`"
+    r"|[^\s`]*(?:=|\(\)|[A-Za-z0-9]_[A-Za-z0-9]|[a-z0-9]\.[A-Za-z_]\w*\(|::|->)[^\s`]*"
+    r"|(?-i:\b(?:False|None|True|null|nil|NaN|undefined)\b)")
+
+
+def _prose(clause: str) -> str:
+    return _CODE.sub(" ", clause)
+
+
 def polarity(sentence: str) -> int:
-    """-1 when the main clause is negated ("did not", "no evidence", "false", "debunked"), else +1."""
-    clause = _NEGATION_EXEMPT.sub(" ", _main_clause(sentence))
+    """-1 when the main clause is negated in prose ("did not", "no evidence", "false", "debunked"), else +1. Code
+    literals and identifiers (`verify=False`, None, null) are not negation."""
+    clause = _NEGATION_EXEMPT.sub(" ", _prose(_main_clause(sentence)))
     return -1 if _NEGATION.search(clause) else 1
 
 
 def negation_cue(sentence: str) -> str | None:
-    m = _NEGATION.search(_NEGATION_EXEMPT.sub(" ", _main_clause(sentence)))
+    m = _NEGATION.search(_NEGATION_EXEMPT.sub(" ", _prose(_main_clause(sentence))))
     return m.group(0) if m else None
+
+
+def fragment(sentence: str) -> bool:
+    """True for text that is not a self-contained sentence: it starts inside or right after a quotation or with
+    closing punctuation (a split at a quotation mark lost its subject: 'security releases " in October 2026'), its
+    double quotes do not balance, or it is mostly ALL-CAPS words (a heading or a shout)."""
+    s = sentence.strip()
+    if not s or s[0] in "”’)]},;:.!?" or s.count('"') % 2 or s.count("“") != s.count("”"):
+        return True
+    words = [w for w in re.findall(r"[^\W\d_]{2,}", s)]
+    caps = [w for w in words if w.isupper()]
+    return len(words) >= 4 and len(caps) >= SHOUT_SHARE * len(words)
 
 
 def claim_kind(sentence: str) -> str:
@@ -303,7 +351,9 @@ def _metadata_statements(doc: Document) -> list[tuple[str, dict, bool]]:
         published = _day(md.get("published") or md.get("modified")) or _day(doc.published_at)
         if published:
             text += f"; published {published}"
-        out.append((text + ".", {"package": str(name) if name else None, "record": "advisory"}, True))
+        out.append((text + ".", {"package": str(name) if name else None, "record": "advisory",
+                                 "record_id": _record_ids(doc, "advisory", advisory=advisory, aliases=aliases)},
+                    True))
     elif md.get("tag") or md.get("tag_name"):
         tag = md.get("tag") or md.get("tag_name")
         repo = md.get("repo") or md.get("repository") or name or doc.title
@@ -311,12 +361,14 @@ def _metadata_statements(doc: Document) -> list[tuple[str, dict, bool]]:
         when = released or _day(doc.published_at)
         if when:
             text += f", published {when}"
-        out.append((text + ".", {"package": str(repo), "record": "release"}, True))
+        out.append((text + ".", {"package": str(repo), "record": "release",
+                                 "record_id": _record_ids(doc, "release", tag=tag, repo=repo)}, True))
     elif name and version:
         text = f"{provider} reports {_clip(name, 80)} latest version {_clip(version, 40)}"
         if released:
             text += f" released {released}"
-        out.append((text + ".", {"package": str(name), "record": "package"}, True))
+        out.append((text + ".", {"package": str(name), "record": "package",
+                                 "record_id": _record_ids(doc, "package", name=name)}, True))
     if provider in _ACADEMIC_PROVIDERS or md.get("doi") or md.get("arxiv_id"):
         title = md.get("title") or doc.title
         if title:
@@ -329,25 +381,320 @@ def _metadata_statements(doc: Document) -> list[tuple[str, dict, bool]]:
                 text += f", dated {when}"
             if md.get("preprint") or provider in ("arXiv", "bioRxiv", "medRxiv"):
                 text += ", a preprint (not peer reviewed)"
-            out.append((text + ".", {"record": "academic"}, False))
+            out.append((text + ".", {"record": "academic", "record_id": _record_ids(doc, "academic", title=title)},
+                        False))
     return out
+
+
+# ---- subjects and record identities ------------------------------------------------------------------------
+#
+# A claim's *primary subject* is the first named-entity-like span of its main clause that starts before the main
+# verb: a run of capitalised words (connectors such as "of", "de", "for" allowed inside: "Champ de Mars", "Rust for
+# Linux"), a CamelCase or alphanumeric token ("NumPy", "H100", "CVE-2024-35195") or an acronym ("ESA"). Reporting
+# frames are skipped ("The agency confirmed that X ...", "According to Y, X ..."), a possessor names the owner,
+# not the subject ("ESA's Hera probe" -> Hera), and a sentence that starts with a pronoun ("It is ...") is about
+# the subject of its document's title ("Mojo (programming language)" -> Mojo; a title qualifier naming a place,
+# "Eiffel Tower (Paris, Texas)", stays part of the subject). A structured record's subject is its *identity*
+# (DOI / arXiv id / PMID / title for academic records, advisory id and aliases, repository + tag, ecosystem +
+# package). Clustering, support and contradiction all require compatible subjects (subjects_compatible).
+
+_PRONOUN_START = re.compile(r"^\W*(?:it|its|this|these|those|they|their|he|she|his|her)\b", re.IGNORECASE)
+_REPORTING_FRAME = re.compile(
+    r"^.{0,120}?\b(?:said|says|say|reported|reports|confirmed|confirms|announced|announces|stated|states|noted|"
+    r"notes|found|finds|showed|shows|argued|argues|claimed|claims|estimated|estimates|wrote|writes|believe|"
+    r"believes)\s+that\s+", re.IGNORECASE)
+_ACCORDING = re.compile(r"^\W*according\s+to\s+[^,]{1,80},\s*", re.IGNORECASE)
+_LEAD_PHRASE = re.compile(
+    r"^\W*(?:in|on|at|by|for|from|during|after|before|since|under|over|with|as|throughout|within|across|among|"
+    r"following|despite|unlike|until|by)\b[^,]{0,80},\s*", re.IGNORECASE)
+_CONNECTORS = frozenset("of de du des la le von van der den del da di y for upon am sur".split())
+_DISCOURSE = frozenset("""
+overall moreover furthermore additionally finally first second third notably importantly meanwhile instead hence
+indeed similarly conversely specifically ultimately initially previously here still yet however thus therefore
+nevertheless nonetheless consequently accordingly besides otherwise likewise yes no so but and or then
+""".split())
+_CALENDAR = frozenset(list(T.MONTHS) + "monday tuesday wednesday thursday friday saturday sunday".split())
+_AUX = frozenset("is are was were be been being am has have had will would can could may might shall should must "
+                 "does do did remains remain became becomes become isn't aren't wasn't weren't hasn't haven't "
+                 "hadn't won't can't doesn't don't didn't".split())
+_VERB_CUE = re.compile(
+    r"^(?:says|said|shows|ships|runs|uses|makes|gets|adds|brings|supports|reports|reaches|opens|launches|offers|"
+    r"includes|contains|provides|requires|remains|becomes|takes|gives|lists|drops|rises|falls|grows|holds|leads|"
+    r"wins|loses|lies|flows|drains|needs|means|stands|sits|costs|weighs|measures|carries|has|have|had|began|"
+    r"begins|became|chose|found|made|took|gave|grew|rose|fell|won|lost|led|held|built|ran|"
+    r"[a-z]{2,}ed)$", re.IGNORECASE)
+_WORD = re.compile(r"[^\W_](?:[\w'’.\-]*[^\W_])?")
+_POSSESSIVE = re.compile(r"['’]s?$", re.IGNORECASE)
+_TITLE_QUALIFIER = re.compile(r"^(?P<base>.*?)\s*\((?P<qual>[^()]{1,80})\)\s*$")
+_TITLE_SPLIT = re.compile(r"\s+[|–—-]\s+|:\s+")
+
+
+def _bare(tok: str) -> str:
+    return _POSSESSIVE.sub("", tok) if len(tok) > 2 else tok
+
+
+def _entity_token(tok: str) -> bool | None:
+    """True for an entity-like token, False for an ordinary word, None for a capitalised word whose status
+    depends on its position (sentence-initial words are capitalised anyway)."""
+    core = _bare(tok)
+    low = core.lower()
+    if not core or T.is_version(low) or T.is_number(low) or re.fullmatch(r"\d+(?:st|nd|rd|th|[a-z])?", low):
+        return False
+    if low in _CALENDAR or low in ("i", "a"):
+        return False
+    if any(c.isdigit() for c in core) and any(c.isalpha() for c in core):
+        return True
+    letters = [c for c in core if c.isalpha()]
+    if len(letters) > 1 and all(c.isupper() for c in letters):
+        return True
+    if core[:1].isalpha() and any(c.isupper() for c in core[1:]) and not core[1:].isupper():
+        return True                                                   # CamelCase: NumPy, iPhone, eBay
+    if core[:1].isupper():
+        return None
+    return False
+
+
+def _initial_is_entity(words: list[tuple[str, int, int]], text: str) -> bool:
+    """A capitalised first word is a name when it is part of a multi-word name, stands in apposition ("Hera, the
+    ESA probe, ...") or is directly followed by a verb ("Zig is", "Hera reached")."""
+    tok = _bare(words[0][0])
+    low = tok.lower()
+    if low in T.STOPWORDS or low in _KEY_EXCLUDE or low in _DISCOURSE or low.endswith(("ly", "ing")):
+        return False
+    if len(words) == 1:
+        return True
+    nxt = words[1][0]
+    gap = text[words[0][2]:words[1][1]]
+    if gap.strip() == ",":
+        return True
+    if gap.strip():
+        return False
+    if _entity_token(nxt) is not False and nxt[:1].isupper():
+        return True
+    if nxt.lower() in _CONNECTORS and len(words) > 2 and words[2][0][:1].isupper() and \
+            not text[words[1][2]:words[2][1]].strip():
+        return True
+    return nxt.lower() in _AUX or bool(_VERB_CUE.match(nxt))
+
+
+def _spans(clause: str) -> tuple[list[tuple[str, int, bool]], int | None]:
+    """([(span text, start word index, is_possessor)], index of the first verb-like word or None)."""
+    words = [(m.group(0), m.start(), m.end()) for m in _WORD.finditer(clause)]
+    if not words:
+        return [], None
+    flags = []
+    for i, (w, _, _) in enumerate(words):
+        e = _entity_token(w)
+        if e is None:
+            e = _initial_is_entity(words, clause) if i == 0 else True
+        flags.append(bool(e))
+    verb = next((i for i, (w, _, _) in enumerate(words)
+                 if i > 0 and not flags[i] and (w.lower() in _AUX or _VERB_CUE.match(w))), None)
+    spans, i = [], 0
+    while i < len(words):
+        if not flags[i]:
+            i += 1
+            continue
+        j = i
+        while True:
+            if re.search(r"['’]s?$", words[j][0]) and len(words[j][0]) > 2:
+                break                                                   # a possessor ends the span
+            nxt = j + 1
+            if nxt < len(words) and flags[nxt] and not clause[words[j][2]:words[nxt][1]].strip():
+                j = nxt
+                continue
+            if nxt + 1 < len(words) and words[nxt][0].lower() in _CONNECTORS and flags[nxt + 1] and \
+                    not clause[words[j][2]:words[nxt + 1][1]].replace(words[nxt][0], "").strip():
+                j = nxt + 1
+                continue
+            break
+        text = clause[words[i][1]:words[j][2]]
+        possessor = bool(re.search(r"['’]s?$", words[j][0])) and len(words[j][0]) > 2 and j + 1 < len(words) \
+            and flags[j + 1]
+        spans.append((_POSSESSIVE.sub("", text) if possessor or text.endswith(("'s", "’s")) else text, i,
+                      possessor))
+        i = j + 1
+    return spans, verb
+
+
+def title_subject(title: str) -> str | None:
+    """The subject a document title names: "Mojo (programming language)" -> "Mojo"; a qualifier with a capitalised
+    word stays ("Eiffel Tower (Paris, Texas)"); site suffixes after " | ", " - " or ": " are dropped."""
+    t = T.collapse(title or "")
+    if not t:
+        return None
+    m = _TITLE_QUALIFIER.match(t)
+    if m:
+        base, qual = m.group("base"), m.group("qual")
+        t = f"{base} ({qual})" if re.search(r"\b[A-Z]", qual) else base
+    else:
+        t = _TITLE_SPLIT.split(t)[0]
+    return t if 0 < len(t.split()) <= 8 else None
+
+
+def _subject_clause(sentence: str) -> str:
+    s = _main_clause(sentence)
+    for rx in (_ACCORDING, _REPORTING_FRAME, _LEAD_PHRASE):
+        m = rx.match(s)
+        if m and len(s) - m.end() > 10:
+            s = s[m.end():]
+    return s.lstrip(" \"'“‘([")
+
+
+def primary_subject(sentence: str, title: str = "") -> str | None:
+    """The claim's primary subject (see the section comment), or None when the sentence names none before its
+    verb ("Most neurons are covered by spines")."""
+    clause = _subject_clause(sentence)
+    if _PRONOUN_START.match(clause):
+        return title_subject(title)
+    spans, verb = _spans(clause)
+    for text, start, possessor in spans:
+        if verb is not None and start >= verb:
+            break
+        if not possessor:
+            return text
+    if verb is None:
+        return next((t for t, _, p in spans if not p), None)
+    return None
+
+
+def subject_tokens(subject: str | None) -> frozenset:
+    """Comparable form of a subject: stemmed lower-case tokens without connectors and stopwords."""
+    if not subject:
+        return frozenset()
+    return frozenset(T.stem(t) for t in T.tokens(subject) if t not in _CONNECTORS and t not in T.STOPWORDS
+                     and t not in ("s",))
+
+
+def same_subject(a: frozenset, b: frozenset) -> bool:
+    """Equal token sets, or a one-word name inside the other ("Yuste" / "Rafael Yuste"); "Eiffel Tower" and
+    "Eiffel Tower (Paris, Texas)" are different subjects."""
+    if not a or not b:
+        return False
+    return a == b or (len(a) == 1 and a <= b) or (len(b) == 1 and b <= a)
+
+
+def _norm_id(value) -> str:
+    v = str(value or "").strip().lower()
+    v = re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:|arxiv:|https?://arxiv\.org/abs/|https?://openalex\.org/)", "", v)
+    return re.sub(r"v\d+$", "", v) if re.fullmatch(r"\d{4}\.\d{4,5}v\d+", v) else v
+
+
+def _norm_title(value) -> str:
+    return " ".join(T.tokens(str(value or "")))[:200]
+
+
+def _record_ids(doc: Document, record: str, *, name=None, advisory=None, aliases=(), tag=None, repo=None,
+                title=None) -> list[str]:
+    md = doc.metadata or {}
+    if record == "advisory":
+        return [f"advisory:{_norm_id(x)}" for x in [advisory, *list(aliases or [])] if x]
+    if record == "release":
+        return [f"release:{_norm_id(repo)}@{_norm_id(tag).lstrip('v')}"]
+    if record == "package":
+        eco = md.get("ecosystem") or _provider(doc)
+        return [f"package:{_norm_id(eco)}:{_norm_id(name)}"]
+    ids = [f"{k}:{_norm_id(md.get(k))}" for k in ("doi", "arxiv_id", "pmid", "openalex_id") if md.get(k)]
+    if title:
+        ids.append(f"title:{_norm_title(title)}")
+    return ids
+
+
+_RECORD_TEXT = (
+    (re.compile(r"^\S+ lists advisory (\S+?)(?: \(([^)]*)\))?(?: for |: |; |\.$)"), "advisory"),
+    (re.compile(r"^\S+ lists release (\S+) of (\S+?)(?:, published|\.$)"), "release"),
+    (re.compile(r"^(\S+) reports (\S+) latest version"), "package"),
+    (re.compile(r"^\S+ record: \"(.+?)\"(?: \(v\d+\))?(?:, dated|, a preprint|\.$)"), "academic"),
+)
+
+
+def record_identity(claim: Claim) -> frozenset:
+    """Identity of the structured record a 'metadata' claim states (flags["record_id"], else parsed from the
+    template text); empty for every other claim. Two record claims are about the same record only when their
+    identities intersect: two different papers, advisories or releases never corroborate each other."""
+    if claim.kind != "metadata":
+        return frozenset()
+    rid = (claim.flags or {}).get("record_id")
+    if rid:
+        return frozenset(rid)
+    for rx, kind in _RECORD_TEXT:
+        m = rx.search(claim.text or "")
+        if not m:
+            continue
+        if kind == "advisory":
+            ids = [m.group(1)] + [x.strip() for x in (m.group(2) or "").split(",") if x.strip()]
+            return frozenset(f"advisory:{_norm_id(x)}" for x in ids)
+        if kind == "release":
+            return frozenset({f"release:{_norm_id(m.group(2))}@{_norm_id(m.group(1)).lstrip('v')}"})
+        if kind == "package":
+            return frozenset({f"package:{_norm_id(m.group(1))}:{_norm_id(m.group(2))}"})
+        return frozenset({f"title:{_norm_title(m.group(1))}"})
+    return frozenset({f"claim:{claim.id}"})
+
+
+def _subject_of(claim: Claim) -> frozenset:
+    flags = claim.flags or {}
+    if "primary_subject" in flags:
+        return _subject_cached(flags.get("primary_subject") or "", None)
+    return _subject_cached(claim.text or "", claim.title or "")
+
+
+@functools.lru_cache(maxsize=65536)
+def _subject_cached(text: str, title: str | None) -> frozenset:
+    return subject_tokens(text if title is None else primary_subject(text, title))
+
+
+def _stem_set(claim: Claim) -> frozenset:
+    return _stems_cached(claim.text or "")
+
+
+@functools.lru_cache(maxsize=65536)
+def _stems_cached(text: str) -> frozenset:
+    return frozenset(T.stem(t) for t in T.tokens(text))
+
+
+def subjects_compatible(a: Claim, b: Claim) -> bool:
+    """May `a` and `b` be about the same thing? Record claims: only with a record claim of the same identity.
+    Otherwise: the same primary subject (same_subject); when only one claim names a subject, the other must
+    mention it; when neither does, the lexical key decides (similarity)."""
+    ra, rb = record_identity(a), record_identity(b)
+    if ra or rb:
+        return bool(ra & rb)
+    pa, pb = _subject_of(a), _subject_of(b)
+    if pa and pb:
+        return same_subject(pa, pb)
+    if pa:
+        return pa <= _stem_set(b)
+    if pb:
+        return pb <= _stem_set(a)
+    return True
+
+
+def is_reportable(claim: Claim) -> bool:
+    """False for text that must never appear in any report field: claims from adversarial sources, text with an
+    injection finding (safety.scan_injection) and snippet-only discovery hints."""
+    flags = claim.flags or {}
+    return not (is_adversarial(claim) or flags.get("snippet_only") or safety.scan_injection(claim.text or ""))
 
 
 # ---- extraction ---------------------------------------------------------------------------------------------
 
 def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list[Claim]:
-    """Up to `max_claims` claims from one document, most relevant first.
+    """Up to `max_claims` claims from one document, most relevant first. A document whose metadata says
+    `snippet_only` (a search-result snippet, not the page) yields none: it is a discovery hint, not evidence.
 
     Sentences of MIN_WORDS..MAX_WORDS words that are not boilerplate/navigation, not a heading or the page title
     (text.heading_like) and carry no injection finding are scored by BM25 against the question (document title as
     a weak prior, small bonus for values and dates). In HTML pages, feeds and API records every line is a block,
     so no sentence spans a line break. Structured API records also yield templated 'metadata' claims ("PyPI
     reports numpy latest version 2.3.5 released 2026-11-03.") and, for academic records, their abstract
-    sentences. A document with injection findings (doc.flags["injection"]) is adversarial: its claims carry
+    sentences. A document with injection findings (adversarial_document) is adversarial: its claims carry
     flags["adversarial_source"] = True and no evidence weight (evaluate)."""
+    md = doc.metadata or {}
+    if md.get("snippet_only"):
+        return []                       # a search snippet is a discovery hint, never a citable claim (W-10)
     primary = doc.kind == "api" or doc.retrieval_mode == "api"
     source_url = doc.canonical_url or doc.final_url or doc.url
-    md = doc.metadata or {}
     candidates: list[tuple[str, str, dict, bool]] = []      # (text, kind, extra flags, relevance floor)
     if primary:
         for text, extra, floor in _metadata_statements(doc):
@@ -362,6 +709,8 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
             continue
         if _BOILERPLATE.search(sentence) or _NAV.search(sentence) or T.heading_like(sentence, doc.title or ""):
             continue
+        if fragment(sentence):
+            continue
         if safety.scan_injection(sentence):
             continue
         candidates.append((sentence, claim_kind(sentence), {}, False))
@@ -375,7 +724,7 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
     overlap = (len(set(title_stems) & set(q_stems)) / len(set(q_stems))) if q_stems else 0.0
     s_t = bm.scores(title_stems) if overlap > 0 else [0.0] * len(candidates)
     observed_at = doc.retrieved_at if registry_record(doc) and doc.retrieval_mode != "cache" else None
-    adversarial = bool(doc.flags.get("injection"))
+    adversarial = adversarial_document(doc)
     scored = []
     for i, ((text, kind, extra, floor), sq, st) in enumerate(zip(candidates, s_q, s_t)):
         vals = T.values(text)
@@ -399,6 +748,8 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
         flags.update({k: v for k, v in extra.items() if v is not None})
         key = claim_key(text, q_stems)
         flags["subject"] = sorted(set(key.split()) & set(q_stems))
+        if kind != "metadata":
+            flags["primary_subject"] = primary_subject(text, doc.title or "")
         claim = Claim(id=_claim_id(source_url, text), text=text, source_url=source_url, domain=doc.domain,
                       title=doc.title, retrieved_at=doc.retrieved_at, key=key, kind=kind,
                       polarity=polarity(text) if kind != "metadata" else 1, values=vals,
@@ -412,8 +763,13 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
 
 # ---- similarity, independence, contradiction ----------------------------------------------------------------
 
-def _shingles(claim: Claim) -> set:
-    return T.shingles(T.normalise(claim.text), SHINGLE_K)
+def _shingles(claim: Claim) -> frozenset:
+    return _shingles_cached(claim.text or "")
+
+
+@functools.lru_cache(maxsize=65536)
+def _shingles_cached(text: str) -> frozenset:
+    return frozenset(T.shingles(T.normalise(text), SHINGLE_K))
 
 
 def different_subjects(a: Claim, b: Claim) -> bool:
@@ -427,13 +783,17 @@ def different_subjects(a: Claim, b: Claim) -> bool:
 
 def similarity(a: Claim, b: Claim) -> float:
     """max(key-token Jaccard, shingle Jaccard of normalised texts) — 0 when neither passes its threshold or the
-    claims are about different subjects (different_subjects)."""
-    if different_subjects(a, b):
+    claims are about different subjects (different_subjects: question terms; subjects_compatible: primary subject
+    or record identity). Two record claims with the same identity are always similar (one record, two
+    providers)."""
+    if different_subjects(a, b) or not subjects_compatible(a, b):
         return 0.0
     kj = T.jaccard(a.key.split(), b.key.split())
     sj = T.jaccard(_shingles(a), _shingles(b))
     if kj >= CLUSTER_KEY_JACCARD or sj >= CLUSTER_TEXT_SHINGLE:
         return max(kj, sj)
+    if record_identity(a):
+        return CLUSTER_KEY_JACCARD
     return 0.0
 
 
@@ -486,18 +846,58 @@ def _cue_conflict(ta: str, tb: str) -> str | None:
     return None
 
 
+def _value_conflict(a: Claim, b: Claim) -> str | None:
+    """Values of the same kind attached to the same thing: plain numbers only against plain numbers counting the
+    same noun (unless the two sentences are the same template with different numbers), and a disagreement that
+    is only about years only between near-identical statements (different years usually date different
+    events)."""
+    va, vb = list(a.values or []), list(b.values or [])
+    if not va or not vb:
+        return None
+    template = T.jaccard(_shingles(a), _shingles(b)) >= CLUSTER_TEXT_SHINGLE
+    nouns = None if template else (T.value_nouns(a.text), T.value_nouns(b.text))
+    reason = T.values_conflict(va, vb, nouns=nouns)
+    if reason and reason.startswith("different years") and not template and \
+            T.jaccard(a.key.split(), b.key.split()) < YEAR_ONLY_KEY_JACCARD:
+        return None
+    return reason
+
+
 def conflict(a: Claim, b: Claim) -> str | None:
     """Reason two claims (assumed to be about the same subject) disagree: opposite polarity, different values of the
-    same type, or an explicit conflict cue pair. None when they are compatible."""
+    same kind (_value_conflict), or an explicit conflict cue pair. None when they are compatible. Record claims
+    of different identities never conflict (two releases are not two answers to one question)."""
+    ra, rb = record_identity(a), record_identity(b)
+    if (ra or rb) and not ra & rb:
+        return None
     if a.polarity != b.polarity:
         neg = b if b.polarity < 0 else a
         cue = negation_cue(neg.text) or "negation"
         which = "the second" if neg is b else "the first"
         return f"opposite polarity: {which} statement negates ('{cue}')"
-    reason = T.values_conflict(list(a.values or []), list(b.values or []))
+    reason = _value_conflict(a, b)
     if reason:
         return reason
     return _cue_conflict(a.text, b.text)
+
+
+def describe_conflict(a: Claim, b: Claim, reason: str | None = None) -> str:
+    """A plain-language sentence for a contradiction, for owner questions and UIs: what the sources disagree
+    about and what each side says ("Sources disagree about NumPy: one says 2.3, another says 2.4.")."""
+    reason = reason or conflict(a, b) or ""
+    subject = primary_subject(a.text, a.title) or primary_subject(b.text, b.title)
+    about = f" about {subject}" if subject else ""
+    m = re.match(r"different (?:values|versions|dates|years): (.+) vs (.+)$", reason)
+    if m:
+        return f"Sources disagree{about}: one says {m.group(1)}, another says {m.group(2)}."
+    if reason.startswith("opposite polarity"):
+        cue = re.search(r"\('([^']*)'\)", reason)
+        return (f"Sources disagree{about}: one states it, another denies it"
+                f"{' (' + repr(cue.group(1)) + ')' if cue else ''}.")
+    m = re.match(r"conflicting statements \(([^)]*)\): '([^']*)' vs '([^']*)'", reason)
+    if m:
+        return f"Sources disagree{about}: one says '{m.group(2)}', another says '{m.group(3)}'."
+    return f"Sources disagree{about}." if reason else ""
 
 
 def contradictions(a: Claim, b: Claim) -> str | None:
@@ -531,72 +931,114 @@ def evidence_weight(claim: Claim, *, now: float | None = None, freshness_class: 
     return base
 
 
+def agrees(a: Claim, b: Claim) -> bool:
+    """`b` restates `a` (so `b`'s source may be cited for `a`): the same claim, a near-duplicate text (normalised
+    shingle Jaccard >= SUPPORT_TEXT_SHINGLE), the same structured record, or a statement about the same subject
+    (similarity > 0) with at least one equal value and no conflict. Mere topical overlap is not agreement."""
+    if a.id == b.id:
+        return True
+    if is_adversarial(b) or similarity(a, b) <= 0 or conflict(a, b):
+        return False
+    if T.jaccard(_shingles(a), _shingles(b)) >= SUPPORT_TEXT_SHINGLE:
+        return True
+    if record_identity(a) & record_identity(b):
+        return True
+    return T.values_agree(list(a.values or []), list(b.values or []))
+
+
+def bearing(rep: Claim, x: Claim) -> str | None:
+    """How `x` bears on the representative `rep`: "support" (agrees), "contradict" (same subject, conflicts) or
+    None (related: same cluster, neither restates nor contradicts it)."""
+    if x.id == rep.id:
+        return "support"
+    if similarity(rep, x) <= 0:
+        return None
+    if conflict(rep, x):
+        return "contradict"
+    return "support" if agrees(rep, x) else None
+
+
+def _version_rank(c: Claim) -> tuple:
+    versions = [T.version_key(v) for v in (c.values or []) if T.value_kind(v)[0] == "version"]
+    return max(versions) if versions else ()
+
+
+def _latest_record(claims) -> bool:
+    return bool(claims) and all(c.kind == "metadata" and (c.flags or {}).get("record") in ("release", "package")
+                                for c in claims)
+
+
 def evaluate(claims, *, now: float | None = None, freshness_class: str | None = None, target: Claim | None = None,
              ttl_overrides: dict | None = None) -> dict:
     """The full evidence assessment of one cluster's claims (deterministic).
 
-    Positions are maximal sets of mutually compatible claims (greedy, most relevant first). The representative
-    position has the most independent groups (tie: newest effective date, then highest relevance); with `target`
-    (fact verification) agreement is measured against the target statement instead. Each independent group adds
-    its weight to alpha (agreeing share) and beta (contradicting share). Returns alpha, beta, representative,
-    agreeing ids, contradiction pairs, groups, supporting/contradicting group counts.
+    The representative is the claim whose agreeing claims (agrees) span the most independent groups (ties: newest
+    effective date, then highest relevance); for release/package records it is the highest version (semver-aware,
+    then newest date), never provider order. Every other claim bears on it as support, contradiction or nothing
+    (bearing: "related" claims share the topic but neither restate nor contradict it; they are not cited and
+    carry no evidence). Each independent group with bearing claims adds its weight to alpha (supporting share)
+    and beta (contradicting share). With `target` agreement is measured against the target statement instead
+    (no conflict with it). Returns alpha, beta, representative, agreeing ids, contradicting ids, related ids,
+    contradiction pairs (conflicting, directly similar claims from different groups), groups (of bearing
+    claims), supporting/contradicting group counts.
 
     Claims from adversarial sources (is_adversarial) stay in "order" (they are shown) but carry evidence weight 0:
-    they are not in any group, position, agreeing set or contradiction pair, so they never change the
-    representative, the posterior, the independent-source count or a verdict."""
+    they are not in any group, agreeing set or contradiction pair, so they never change the representative, the
+    posterior, the independent-source count or a verdict."""
     unique = list({c.id: c for c in claims}.values())
     order = sorted(unique, key=lambda c: (-c.relevance, -_effective(c), c.source_url, c.sentence_index, c.id))
     shown = order
     order = [c for c in order if not is_adversarial(c)]
-    groups = independence_groups(order)
-    by_id = {c.id: c for c in order}
+    empty = {"alpha": PRIOR_ALPHA, "beta": PRIOR_BETA, "representative": None, "agree": [], "contra": [],
+             "related": [], "pairs": [], "groups": [], "support_groups": 0, "contra_groups": 0, "order": shown}
     if not order:
-        return {"alpha": PRIOR_ALPHA, "beta": PRIOR_BETA, "representative": None, "agree": [], "pairs": [],
-                "groups": [], "support_groups": 0, "contra_groups": 0, "order": shown}
+        return empty
+    all_groups = independence_groups(order)
     if target is not None:
-        agree = {c.id for c in order if conflict(target, c) is None}
-        rep = next((c for c in order if c.id in agree), None)
+        relation = {c.id: ("support" if conflict(target, c) is None else "contradict") for c in order}
+        rep = next((c for c in order if relation[c.id] == "support"), None)
     else:
-        positions: list[list[Claim]] = []
-        for c in order:
-            for p in positions:
-                if all(conflict(c, m) is None for m in p):
-                    p.append(c)
-                    break
-            else:
-                positions.append([c])
+        group_of = {i: n for n, g in enumerate(all_groups) for i in g}
 
-        def rank(p: list[Claim]):
-            ids = {c.id for c in p}
-            n = sum(1 for g in groups if ids & set(g))
-            return (-n, -max(_effective(c) for c in p), -max(c.relevance for c in p))
+        def rank(c: Claim):
+            n = len({group_of[x.id] for x in order if bearing(c, x) == "support"})
+            if _latest_record(order):
+                return (_version_rank(c), _effective(c), n, c.relevance)
+            return (n, _effective(c), c.relevance)
 
-        best = sorted(positions, key=rank)[0]
-        rep = best[0]
-        agree = {c.id for c in order if all(conflict(c, m) is None for m in best)}
+        ranks = {c.id: rank(c) for c in order}
+        best = max(ranks.values())
+        rep = next(c for c in order if ranks[c.id] == best)
+        relation = {c.id: bearing(rep, c) for c in order}
+    bearing_ids = {i for i, r in relation.items() if r}
+    groups = [g for g in ([i for i in g if i in bearing_ids] for g in all_groups) if g]
+    by_id = {c.id: c for c in order}
     alpha, beta, support_groups, contra_groups = PRIOR_ALPHA, PRIOR_BETA, 0, 0
     for g in groups:
         members = [by_id[i] for i in g]
-        k = len(members)
-        a = sum(1 for c in members if c.id in agree)
+        a = sum(1 for c in members if relation[c.id] == "support")
+        d = len(members) - a
         w = max(evidence_weight(c, now=now, freshness_class=freshness_class, ttl_overrides=ttl_overrides)
                 for c in members)
-        alpha += w * a / k
-        beta += w * (k - a) / k
-        if a and a >= k - a:
+        alpha += w * a / len(members)
+        beta += w * d / len(members)
+        if a and a >= d:
             support_groups += 1
         else:
             contra_groups += 1
-    group_of = {i: n for n, g in enumerate(groups) for i in g}
+    group_of = {i: n for n, g in enumerate(all_groups) for i in g}
     pairs = []
     for i, x in enumerate(order):
         for y in order[i + 1:]:
-            if group_of[x.id] == group_of[y.id]:
+            if group_of[x.id] == group_of[y.id] or similarity(x, y) <= 0:
                 continue
             reason = conflict(x, y)
             if reason and len(pairs) < MAX_CONTRADICTION_PAIRS:
-                pairs.append({"a": x.id, "b": y.id, "reason": reason})
-    return {"alpha": alpha, "beta": beta, "representative": rep, "agree": [c.id for c in order if c.id in agree],
+                pairs.append({"a": x.id, "b": y.id, "reason": reason, "description": describe_conflict(x, y, reason)})
+    return {"alpha": alpha, "beta": beta, "representative": rep,
+            "agree": [c.id for c in order if relation[c.id] == "support"],
+            "contra": [c.id for c in order if relation[c.id] == "contradict"],
+            "related": [c.id for c in order if not relation[c.id]],
             "pairs": pairs, "groups": groups, "support_groups": support_groups, "contra_groups": contra_groups,
             "order": shown}
 
@@ -622,8 +1064,10 @@ def _build(claims, *, now=None, freshness_class=None, key: str = "", ttl_overrid
 
 
 def cluster(claims) -> list[ClaimCluster]:
-    """Group claims about the same subject (key Jaccard >= CLUSTER_KEY_JACCARD or normalised-text shingle Jaccard
-    >= CLUSTER_TEXT_SHINGLE; a claim joins the most similar existing cluster). Claims are visited most relevant
+    """Group claims about the same subject (compatible subjects — the same primary subject, or the same record
+    identity for structured records — and key Jaccard >= CLUSTER_KEY_JACCARD or normalised-text shingle Jaccard
+    >= CLUSTER_TEXT_SHINGLE; a claim joins the most similar existing cluster). `supporting` lists only claims that
+    restate the representative; `independent_sources` counts groups that support or contradict it. Claims are visited most relevant
     first (ties by id), so the result does not depend on input order. Each cluster is scored without a staleness
     assessment; call score() with `now` and the freshness class for the final confidence."""
     unique = list({c.id: c for c in claims}.values())
@@ -682,8 +1126,10 @@ def info_gain(alpha: float, beta: float, reliability: float = RELIABILITY_SECOND
 
 
 __all__ = ["CLUSTER_KEY_JACCARD", "CLUSTER_TEXT_SHINGLE", "DUPLICATE_SHINGLE", "KEY_TOKENS", "MAX_WORDS",
-           "MIN_WORDS", "PRIOR_ALPHA", "PRIOR_BETA", "RELIABILITY_PRIMARY", "RELIABILITY_SECONDARY", "STALE_FACTOR",
-           "UNDATED_FACTOR", "claim_key", "claim_kind", "cluster", "conflict", "contradictions", "evaluate",
-           "different_subjects", "evidence_weight", "extract_claims", "independence_groups", "info_gain",
-           "is_adversarial", "is_primary", "negation_cue", "registry_record",
-           "polarity", "posterior", "score", "similarity"]
+           "MIN_WORDS", "PRIOR_ALPHA", "PRIOR_BETA", "RELIABILITY_PRIMARY", "RELIABILITY_SECONDARY",
+           "RENDER_ONLY_PATTERNS", "STALE_FACTOR", "UNDATED_FACTOR", "adversarial_document", "agrees", "bearing",
+           "claim_key", "claim_kind", "cluster", "conflict", "contradictions", "describe_conflict",
+           "different_subjects", "evaluate", "evidence_weight", "extract_claims", "fragment", "independence_groups",
+           "info_gain", "is_adversarial", "is_primary", "is_reportable", "negation_cue", "polarity", "posterior",
+           "primary_subject", "record_identity", "registry_record", "same_subject", "score", "similarity",
+           "subject_tokens", "subjects_compatible", "title_subject"]

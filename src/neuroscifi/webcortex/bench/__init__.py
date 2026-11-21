@@ -106,16 +106,24 @@ def _headline(result: dict) -> str:
     m = result["metrics"]
     auth, time_, ver = m["authoritative"], m["time_sensitive"], m["verification"]["confusion"]
     con = m["contradictions"]
+    pcs, uat = m["citations"]["per_cited_source"], m["uat"]
     lines = [f"Web Cortex offline benchmark ({'quick' if result['quick'] else 'full'}; {result['corpus']['pages']} "
              f"pages, {result['corpus']['hosts']} hosts; fictional corpus, no network)",
              f"  retrieval success        {auth['retrieval_success']['n']}/{auth['retrieval_success']['of']}",
              f"  evidence coverage        {auth['evidence_coverage']['found']}/{auth['evidence_coverage']['gold']}",
              f"  answer correct (top)     {auth['answer_correct_top']['n']}/{auth['answer_correct_top']['of']}",
-             f"  citation support         {m['citations']['supported']}/{m['citations']['quote_items']}",
+             f"  citation precision       {pcs['supported_citations']}/{pcs['citations']} cited sources contain "
+             f"the quote; {pcs['items_every_source_supports']}/{pcs['items']} items fully supported",
+             f"  citation support (legacy, any source) {m['citations']['supported']}/{m['citations']['quote_items']}",
              f"  freshness compliance     {time_['freshness_compliance']['n']}/{time_['freshness_compliance']['of']}",
              f"  verdict accuracy         {ver['correct']}/{ver['n']}",
              f"  contradiction e2e P/R    {con['end_to_end']['all']['precision']}/{con['end_to_end']['all']['recall']}",
              f"  memory recall@3 / MRR    {m['memory']['recall_at_3']} / {m['memory']['mrr']}",
+             f"  fact-check discrimination {uat['fact_check_discrimination']['discriminated']}/"
+             f"{uat['fact_check_discrimination']['pairs']} true/false pairs",
+             f"  latest version correct   {uat['latest_version']['correct_top']}/{uat['latest_version']['questions']}",
+             f"  cross-subject merges     {uat['cross_subject']['answer_items_merged']} answer items, "
+             f"{uat['cross_subject']['findings_merged']} findings",
              f"  safety invariants hold   {result['safety']['all_hold']}",
              f"  identical across {result['regression']['runs']} run(s): {result['regression']['identical']}"]
     return "\n".join(lines)

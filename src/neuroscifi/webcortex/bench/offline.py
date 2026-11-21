@@ -2,9 +2,10 @@
 
 What runs for real: intent, the orchestrator (submit/run/cancel/resume), SafeFetcher (address policy, robots,
 limits, budgets, cache, ETag revalidation), extraction (scrapling / trafilatura), quarantine, claims, synthesis,
-consolidation and knowledge.query. What is substituted: DNS and sockets (FixtureWeb's resolver/connector serve the
-corpus from a loopback HTTP server) and the search engines (providers.corpus.CorpusProvider: BM25 over title and
-snippet of one result per page). The task clock is fixed per task (so `budget.max_seconds` is never reached);
+consolidation, knowledge.query and the PyPI / npm providers (pointed at fixture registries). What is substituted:
+DNS and sockets (FixtureWeb's resolver/connector serve the corpus from a loopback HTTP server) and the search
+engines (providers.corpus.CorpusProvider: BM25 over title and snippet of one result per page; a second one named
+"wikipedia" returns snippet-only encyclopedia hits). The task clock is fixed per task (so `budget.max_seconds` is never reached);
 latency is wall-clock on this host and is excluded from the determinism comparison.
 """
 from __future__ import annotations
@@ -24,6 +25,7 @@ from .. import extract, knowledge, orchestrator, safety, state
 from .. import services as svc_mod
 from ..net import NetPolicy, SafeFetcher
 from ..providers.corpus import CorpusProvider
+from ..providers.structured import NpmProvider, PyPIProvider
 from ..synthesis import LIVE_MODES
 from ..types import Budget, FetchError, FetchResult, Query, Usage
 from . import corpus as C
@@ -37,6 +39,83 @@ TIGHT_BUDGETS = [("A01", {"max_queries": 1, "max_requests": 3, "max_pages": 1}),
                  ("A08", {"max_bytes": 15_000})]
 RESOURCES = ("queries", "requests", "pages", "bytes", "browser_sessions")
 MEMORY_CONFIG = {"auto_provisional_min_confidence": 0.0}
+
+
+class _FixturePyPI(PyPIProvider):
+    BASE = f"http://{C.PYPI_HOST}"
+
+
+class _FixtureNpm(NpmProvider):
+    BASE = f"http://{C.NPM_HOST}"
+
+
+_CODE_LITERAL = re.compile(r"\b\w+\s*=\s*(?:False|None|0)\b")
+_NEGATION_WORD = re.compile(r"\b(?:not|no|never|none|nobody|nothing|neither|nor|cannot|without)\b|n't\b", re.I)
+
+
+def citation_rows(report: dict, text_of) -> list[dict]:
+    """One row per (quote answer item, cited source): does THAT source contain the quoted claim (verbatim, or as the
+    same normalised sentence)? `text_of(source)` returns the cited source's extracted text (None when unknown)."""
+    by_n = {s["n"]: s for s in report.get("sources") or []}
+    rows = []
+    for i, item in enumerate(report.get("answer") or []):
+        if item.get("type") != "quote":
+            continue
+        quote = item.get("text") or ""
+        cites = list(item.get("citations") or [])
+        if not cites:
+            rows.append({"item": i, "text": quote, "citation": None, "url": None, "resolves": False, "support": None,
+                         "supported": False})
+        for n in cites:
+            source = by_n.get(n)
+            how = M.quote_support(quote, text_of(source)) if source is not None else None
+            rows.append({"item": i, "text": quote, "citation": n, "url": source["url"] if source else None,
+                         "resolves": source is not None, "support": how, "supported": how is not None})
+    return rows
+
+
+def score_citations(rows_by_task: list[tuple[str, list[dict]]]) -> dict:
+    """Citation metrics over `citation_rows` of many reports.
+
+    per_cited_source (the headline since the RC1 UAT): precision = cited sources that contain the quoted claim /
+    all citations of quote answer items (an uncited quote counts as one unsupported citation); an item is fully
+    supported only when EVERY cited source contains it. legacy_any_source (the first baseline's metric, kept for
+    comparison): an item is supported when its citations all resolve and at least ONE cited source contains it
+    verbatim."""
+    items, unsupported = [], []
+    for task, rows in rows_by_task:
+        grouped: dict = {}
+        for r in rows:
+            grouped.setdefault(r["item"], []).append(r)
+        for i, group in grouped.items():
+            cited = [r for r in group if r["citation"] is not None]
+            items.append({"task": task, "item": i, "text": group[0]["text"], "citations": len(cited),
+                          "supported_citations": sum(r["supported"] for r in cited),
+                          "resolves": bool(cited) and all(r["resolves"] for r in cited),
+                          "any_verbatim": any(r["support"] == "verbatim" for r in cited),
+                          "all_supported": bool(cited) and all(r["supported"] for r in cited)})
+            unsupported += [{"task": task, "text": r["text"][:200], "citation": r["citation"], "url": r["url"]}
+                            for r in group if not r["supported"]]
+    n = len(items)
+    total = sum(max(1, i["citations"]) for i in items)
+    good = sum(i["supported_citations"] for i in items)
+    legacy = sum(1 for i in items if i["resolves"] and i["any_verbatim"])
+    return {
+        "quote_items": n, "supported": legacy, "rate": M._r(legacy / n if n else None),
+        "unresolved_citations": sum(1 for i in items if not i["resolves"]),
+        "not_verbatim": [{"task": i["task"], "text": i["text"], "citations": i["citations"]}
+                         for i in items if not i["any_verbatim"]][:50],
+        "definition": "LEGACY (any source): quote answer items whose text (whitespace-collapsed) is a substring of at "
+                      "least one cited source's extracted text and whose citations all resolve to report sources",
+        "per_cited_source": {
+            "citations": total, "supported_citations": good, "precision": M._r(good / total if total else None),
+            "items_every_source_supports": sum(i["all_supported"] for i in items), "items": n,
+            "item_rate": M._r(sum(i["all_supported"] for i in items) / n if n else None),
+            "unsupported": unsupported[:50],
+            "definition": "for every quote answer item, EVERY cited source must contain the quoted claim (verbatim "
+                          "or as the same normalised sentence); precision = supported citations / all citations "
+                          "(an uncited quote item counts as one unsupported citation)"},
+    }
 
 
 class _Clock:
@@ -101,6 +180,7 @@ class _Bench:
     def __init__(self, root: Path, web, quick: bool):
         self.root, self.web, self.quick = root, web, quick
         self.provider = CorpusProvider(C.search_results())
+        self.wiki = CorpusProvider(C.wiki_snippet_results(), name="wikipedia", kinds=("encyclopedia", "web"))
         self.clock = _Clock(C.T0)
         self.path = root / "bench.sqlite"
         self.db = self._individual(self.path)
@@ -118,8 +198,12 @@ class _Bench:
         return db
 
     def _services(self, db, path):
-        return svc_mod.build(db, path, fixture=self.web, providers=[self.provider], clock=self.clock,
-                             sleep=lambda seconds: None)
+        registries = [_FixturePyPI(None), _FixtureNpm(None)]
+        services = svc_mod.build(db, path, fixture=self.web, providers=[self.provider, self.wiki, *registries],
+                                 clock=self.clock, sleep=lambda seconds: None)
+        for provider in registries:           # the structured providers fetch through this run's SafeFetcher
+            provider.fetcher = services.fetcher
+        return services
 
     def tick(self):
         self.minute += 1
@@ -172,25 +256,16 @@ class _Bench:
     def sources(report):
         return {canon(s["url"]): s for s in report.get("sources") or []}
 
-    def citation_items(self, report):
-        by_n = {s["n"]: s for s in report.get("sources") or []}
-        out = []
-        for item in report.get("answer") or []:
-            if item.get("type") != "quote":
-                continue
-            cites = list(item.get("citations") or [])
-            resolves = bool(cites) and all(n in by_n for n in cites)
-            text = M.collapse(item["text"])
-            verbatim = False
-            for n in cites:
-                if n in by_n:
-                    doc = self.doc(by_n[n]["url"])
-                    if doc is not None and text and text in M.collapse(doc.text):
-                        verbatim = True
-                        break
-            out.append({"text": item["text"], "citations": cites, "resolves": resolves, "verbatim": verbatim,
-                        "supported": resolves and verbatim})
-        return out
+    def source_text(self, rec, source):
+        """Extracted text of a report source: the API record the run read (from its checkpoint) for api sources,
+        else the corpus page as the system's own extractor sees it."""
+        if source.get("retrieval_mode") == "api":
+            checkpoint = state.task(rec["db"], rec["task_id"])["checkpoint"] or {}
+            for entry in checkpoint.get("documents") or []:
+                if canon(entry.get("url") or "") == canon(source["url"]) and entry.get("doc"):
+                    return entry["doc"].get("text")
+        doc = self.doc(source["url"])
+        return doc.text if doc is not None else None
 
     def authoritative(self, recs):
         items = []
@@ -385,6 +460,7 @@ class _Bench:
             texts += [f.get("statement") or "" for f in report.get("findings") or []]
             for c in report.get("contradictions") or []:
                 texts += [c["a"].get("text") or "", c["b"].get("text") or ""]
+            texts += [h.get("statement") or "" for h in (report.get("consolidation") or {}).get("held") or []]
             texts += [c["text"] for c in state.claims(rec["db"], rec["task_id"])]
             blob = "\n".join(texts).lower()
             for canary in all_canaries:
@@ -403,8 +479,9 @@ class _Bench:
                 "pages": sorted(rows, key=lambda r: r["url"]), "leaks_into_claims_or_answers": leaks,
                 "contained": not leaks,
                 "canary_mentions_elsewhere_in_reports": dict(sorted(Counter(report_mentions).items())),
-                "note": "mentions outside claims/answers are where the report quotes the flagged text as evidence of "
-                        "the flag (e.g. sources[].flags.injection[].excerpt)"}
+                "note": "leaks are searched in answers, findings, contradictions, consolidation.held statements, "
+                        "stored claims and knowledge; mentions elsewhere are where the report quotes the flagged text "
+                        "as evidence of the flag (e.g. sources[].flags.injection[].excerpt)"}
 
     def task_failures(self):
         by_code, by_page = Counter(), {}
@@ -705,6 +782,7 @@ class _Bench:
             "verification": self.verification(recs),
             "contradictions": self.contradictions(recs),
             "citations": self._citations(),
+            "uat": self.uat(recs),
             "completion": dict(sorted(Counter(r["status"] for r in main).items())),
             "modes": dict(sorted(Counter(r["mode"] for r in main).items())),
             "answered_from_memory": [r["key"] for r in self.records
@@ -749,6 +827,169 @@ class _Bench:
         deterministic["tasks"] = tasks
         return {"deterministic": deterministic, "timing": timing, "resources": resources}
 
+    # ---- UAT RC1 defect classes ------------------------------------------------------------------------------
+    def uat(self, recs):
+        """Measurements of the defect classes the RC1 UAT found (fact-check discrimination, number checks, latest
+        version, cross-subject merging, code literals, snippet-only records, date provenance, package routing)."""
+        main = [r for r in self.records if r["key"] in recs]
+        return {"fact_check_discrimination": self._discrimination(recs), "number_checks": self._number_checks(recs),
+                "latest_version": self._latest(recs), "cross_subject": self._cross_subject(main),
+                "code_literals": self._code_literals(main), "snippet_records": self._snippets(main),
+                "dating": self._dating(), "package_routing": self._package_routing(recs)}
+
+    @staticmethod
+    def _label(rec):
+        return (rec["report"].get("verdict") or {}).get("label") or "none"
+
+    def _discrimination(self, recs):
+        rows = []
+        for true_id, false_id in C.FACT_PAIRS:
+            if true_id not in recs or false_id not in recs:
+                continue
+            t, f = self._label(recs[true_id]), self._label(recs[false_id])
+            rows.append({"true": true_id, "false": false_id, "true_label": t, "false_label": f, "differ": t != f,
+                         "discriminated": t == "supported" and f in ("disputed", "contested")})
+        return {"pairs": len(rows), "labels_differ": sum(r["differ"] for r in rows),
+                "discriminated": sum(r["discriminated"] for r in rows), "rows": rows,
+                "definition": "a true/false claim pair is discriminated when the true claim is 'supported' and the "
+                              "false one 'disputed' or 'contested'"}
+
+    def _number_checks(self, recs):
+        rows = []
+        for qid in C.NUMBER_CHECKS:
+            if qid not in recs:
+                continue
+            q = next(x for x in C.QUESTIONS if x["id"] == qid)
+            label = self._label(recs[qid])
+            rows.append({"id": qid, "predicted": label, "acceptable": q["acceptable"],
+                         "ok": label in q["acceptable"], "wrongly_supported": label == "supported"})
+        return {"checks": len(rows), "ok": sum(r["ok"] for r in rows),
+                "wrongly_supported": sum(r["wrongly_supported"] for r in rows), "rows": rows}
+
+    @staticmethod
+    def _top_item(report):
+        items = [a for a in report.get("answer") or [] if a.get("status") != "summary"]
+        return (items[0].get("text") or "") if items else ""
+
+    def _latest(self, recs):
+        rows = []
+        for q in C.QUESTIONS:
+            if q["category"] != "latest" or q["id"] not in recs:
+                continue
+            report = recs[q["id"]]["report"]
+            top = self._top_item(report)
+            texts = [a.get("text") or "" for a in report.get("answer") or []]
+            rows.append({"id": q["id"], "status": recs[q["id"]]["status"], "top": top[:300],
+                         "correct_top": q["gold_latest"] in top and not any(o in top for o in q["older"]),
+                         "older_in_answer": sorted({o for o in q["older"] for t in texts if o in t}),
+                         "gold_in_answer": any(q["gold_latest"] in t for t in texts)})
+        return {"questions": len(rows), "correct_top": sum(r["correct_top"] for r in rows), "rows": rows,
+                "definition": "the first non-summary answer item names the latest version and no older one"}
+
+    def _page_of(self):
+        return {canon(a["url"]): a["id"] for a in C.ARTICLES}
+
+    def _cross_subject(self, records):
+        page_of, rows = self._page_of(), []
+        checked = {"answer": 0, "findings": 0}
+        for rec in records:
+            report = rec["report"]
+            by_n = {s["n"]: canon(s["url"]) for s in report.get("sources") or []}
+            for where, items, text_key in (("answer", report.get("answer") or [], "text"),
+                                           ("findings", report.get("findings") or [], "statement")):
+                for item in items:
+                    if item.get("status") == "summary":      # the run summary cites what was read, not a claim
+                        continue
+                    pages = {page_of.get(by_n.get(n)) for n in item.get("citations") or []} - {None}
+                    if len(pages) < 2:
+                        continue
+                    checked[where] += 1
+                    subjects = sorted({C.SUBJECT[p] for p in pages})
+                    if len(subjects) > 1:
+                        rows.append({"task": rec["key"], "where": where, "text": str(item.get(text_key))[:200],
+                                     "subjects": subjects})
+        return {"answer_items_checked": checked["answer"],
+                "answer_items_merged": sum(1 for r in rows if r["where"] == "answer"),
+                "findings_checked": checked["findings"],
+                "findings_merged": sum(1 for r in rows if r["where"] == "findings"), "rows": rows[:50],
+                "definition": "answer items (the run summary excluded) and findings citing >= 2 corpus pages whose "
+                              "gold subjects differ"}
+
+    def _code_literals(self, records):
+        contradictions, negated = [], []
+        for rec in records:
+            for c in rec["report"].get("contradictions") or []:
+                a, b = c["a"].get("text") or "", c["b"].get("text") or ""
+                if _CODE_LITERAL.search(a) or _CODE_LITERAL.search(b):
+                    contradictions.append({"task": rec["key"], "reason": c.get("reason"), "a": a[:160],
+                                           "b": b[:160]})
+            for claim in state.claims(rec["db"], rec["task_id"]):
+                text = claim["text"] or ""
+                if (claim.get("polarity") or 0) < 0 and _CODE_LITERAL.search(text) and not _NEGATION_WORD.search(
+                        text):
+                    negated.append({"task": rec["key"], "text": text[:200]})
+        return {"contradictions_on_code_literals": len(contradictions), "negated_code_literal_claims": len(negated),
+                "rows": (contradictions + negated)[:30],
+                "definition": "contradictions with a code literal (name=False/None/0) on either side, and claims "
+                              "marked negative only because of such a literal (no negation word)"}
+
+    def _snippets(self, records):
+        pages = {canon(C.U(w["page"])) for w in C.WIKI_SNIPPETS}
+        fragments = {M.collapse(w["snippet"]) for w in C.WIKI_SNIPPETS}
+        read = cited = quoted = 0
+        for rec in records:
+            report = rec["report"]
+            for src in report.get("sources") or []:
+                if canon(src["url"]) in pages and src.get("retrieval_mode") == "api":
+                    read += 1
+                    cited += bool(src.get("cited"))
+            quoted += sum(1 for a in report.get("answer") or [] if M.collapse(a.get("text") or "") in fragments)
+        return {"snippet_records_read_as_documents": read, "snippet_records_cited": cited,
+                "answer_items_quoting_a_snippet": quoted,
+                "definition": "encyclopedia search snippets (metadata snippet_only) read or cited as documents "
+                              "instead of the article"}
+
+    def _dating(self):
+        rows, seen = [], set()
+        for rec in self.records:
+            for src in rec["report"].get("sources") or []:
+                page = self._page_of().get(canon(src["url"]))
+                if page is None or page in seen or not C.BY_ID[page].get("last_modified"):
+                    continue
+                seen.add(page)
+                article = C.BY_ID[page]
+                header = C.T0 - article["last_modified"]
+                got = src.get("published_at")
+                gold = C.epoch(article["date"])
+                rows.append({"page": page, "date_via": article["date_via"], "gold": gold, "extracted": got,
+                             "correct": (gold is None and got is None) or (gold is not None and got is not None and
+                                                                          abs(gold - got) <= C.DAY),
+                             "dated_from_last_modified": got is not None and abs(got - header) <= C.DAY})
+        return {"pages": len(rows), "correct": sum(r["correct"] for r in rows),
+                "dated_from_last_modified": sum(r["dated_from_last_modified"] for r in rows), "rows": rows,
+                "definition": "pages whose only date-like signal besides og:updated_time (epoch) is the HTTP "
+                              "Last-Modified header: the publication date must come from the page, never the header"}
+
+    def _package_routing(self, recs):
+        rows = []
+        for q in C.QUESTIONS:
+            if not q.get("package") or q["id"] not in recs:
+                continue
+            rec = recs[q["id"]]
+            queries = [e["detail"].get("text") for e in state.events(rec["db"], rec["task_id"])
+                       if e["kind"] == "query" and isinstance(e.get("detail"), dict)]
+            sources = rec["report"].get("sources") or []
+            registry = [s for s in sources if "pypi.org/project/" in s["url"]]
+            rows.append({"id": q["id"], "package": q["package"],
+                         "pypi_queried": f"pypi:{q['package']}" in queries,
+                         "npm_queried": f"npm:{q['package']}" in queries,
+                         "registry_source_read": bool(registry),
+                         "registry_source_cited": any(s.get("cited") for s in registry)})
+        return {"questions": len(rows), "routed": sum(r["pypi_queried"] and r["registry_source_read"] for r in rows),
+                "rows": rows,
+                "definition": "a plain package name with a release cue is looked up in the (fixture) PyPI registry "
+                              "and the registry record is read"}
+
     def consolidation(self, recs):
         """What the default owner configuration let into memory from the main run (no acceptance applied)."""
         counts, held = Counter(), Counter()
@@ -764,17 +1005,8 @@ class _Bench:
                 "knowledge_rows": len(knowledge.rows(self.db))}
 
     def _citations(self):
-        rows = []
-        for rec in self.records:
-            for item in self.citation_items(rec["report"]):
-                rows.append({"task": rec["key"], **item})
-        n = len(rows)
-        return {"quote_items": n, "supported": sum(r["supported"] for r in rows),
-                "rate": M._r(sum(r["supported"] for r in rows) / n if n else None),
-                "unresolved_citations": sum(not r["resolves"] for r in rows),
-                "not_verbatim": [r for r in rows if not r["verbatim"]],
-                "definition": "quote answer items whose text (whitespace-collapsed) is a substring of at least one "
-                              "cited source's extracted text and whose citations all resolve to report sources"}
+        return score_citations([(rec["key"], citation_rows(rec["report"], lambda src, rec=rec: self.source_text(
+            rec, src))) for rec in self.records])
 
     def close(self):
         self.services.close()
@@ -815,6 +1047,10 @@ def corpus_summary() -> dict:
     cats = Counter(q["category"] for q in C.QUESTIONS)
     return {"pages": len(C.ARTICLES) + len(C.SPECIAL), "article_pages": len(C.ARTICLES),
             "special_pages": len(C.SPECIAL), "hosts": len(C.hosts()), "questions": dict(sorted(cats.items())),
+            "uat_classes": {"fact_pairs": len(C.FACT_PAIRS), "number_checks": len(C.NUMBER_CHECKS),
+                            "latest_version_questions": cats.get("latest", 0),
+                            "subjects": len(set(C.SUBJECT.values())), "wiki_snippets": len(C.WIKI_SNIPPETS),
+                            "fixture_registries": ["pypi", "npm"]},
             "contradiction_pairs": {"conflicts": sum(p["conflict"] for p in C.PAIRS),
                                     "controls": sum(not p["conflict"] for p in C.PAIRS)},
             "injection_pages": len(C.INJECTIONS), "probes": len(C.PROBES), "memory_queries": len(C.MEMORY),

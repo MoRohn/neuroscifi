@@ -195,6 +195,9 @@ def get_feeds(db) -> list[str]:
 
 
 def _feed_url(url) -> str:
+    """A validated feed URL: http(s), a host, no credentials, and an address the fetcher may reach (net.check_url:
+    no loopback, private, link-local or reserved local host). A host name that resolves to a private address is
+    still refused at fetch time."""
     if not isinstance(url, str) or not 0 < len(url.strip()) <= MAX_FEED_URL:
         raise ValidationError(f"a feed is an http(s) URL of at most {MAX_FEED_URL} characters")
     url = url.strip()
@@ -205,6 +208,12 @@ def _feed_url(url) -> str:
         raise ValidationError(f"feed URL has an invalid port: {url}") from None
     if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
         raise ValidationError(f"a feed must be an http(s) URL with a host and no credentials: {url}")
+    from . import net
+    from .types import FetchError
+    try:   # the fetcher's address policy, checked now rather than on every task: no loopback/private/local hosts
+        net.check_url(url, net.NetPolicy())
+    except FetchError as exc:
+        raise ValidationError(f"feed URL refused by the network policy ({exc.detail}): {url}") from None
     return url
 
 

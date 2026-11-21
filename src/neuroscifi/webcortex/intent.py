@@ -7,7 +7,9 @@ kept verbatim and tagged with its language — nothing is translated, because th
     assess(question, now=, known=)  -> assessment dict (ARCHITECTURE §4.2)
     plan(question, assessment, now=, local_terms=) -> QueryPlan   decomposition, expansion, temporal/site/kind
                                                                    routing, ≤ 8 queries
-    refine(plan, outcome, assessment, now=, local_terms=) -> QueryPlan | None   one broader round when results are thin
+    refine(plan, outcome, assessment, now=, local_terms=, remaining=) -> QueryPlan | None   one broader round when
+                                                                   results are thin, within the query budget
+    query_text(statement, limit=, local_terms=) -> str   search text for a stored statement (curiosity/refresh)
 
 Local context: references to the individual's own system — its name (SELF_NAMES), "our/my <thing>", "this
 individual", "the libraries we use", and the caller's `local_terms` (owner-listed private terms) — are answered
@@ -24,6 +26,7 @@ from .types import Query, QueryPlan
 
 DAY = 86400.0
 MAX_PLAN_QUERIES = 8
+MAX_REFINE_QUERIES = 4
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
           "November", "December")
 
@@ -121,6 +124,61 @@ tell give summarize summarise investigate determine please keep track notify wat
 _CLAUSE_VERBS = frozenset("""determine check compare find explain list research investigate monitor update verify
 summarize summarise show tell identify evaluate assess analyze analyse see look decide estimate describe confirm
 notify track is are does do did has have was were can will should which what how why when who where""".split())
+# Words that only place a statement in time: a query made of them (and stopwords) searches for nothing.
+_TEMPORAL = frozenset("""last past ago next previous earlier later since until till day days hour hours minute
+minutes tomorrow morning evening weekend weekly daily monthly quarterly""".split())
+
+# ---- plain package names (W-11) --------------------------------------------------------------------------------
+# A release cue makes lower-case identifiers in a technical / comparative / quick question registry candidates.
+_RELEASE_CUE = re.compile(
+    r"\b(?:latest|newest|current|most recent)\s+(?:stable\s+)?(?:release|version)s?\b|\blatest stable\b|"
+    r"\brelease (?:dates?|notes|history)\b|\bsecurity advisor(?:y|ies)\b|\badvisor(?:y|ies)\b|"
+    r"\bvulnerabilit(?:y|ies)\b|\bnew(?:er|est)? (?:stable )?(?:releases?|versions?)\b")
+# weak cues admit only names that look like package names (code style, "X library", digits/hyphens/dots)
+_WEAK_RELEASE_CUE = re.compile(r"\bupdates?\b|\bupgrades?\b|\bchangelogs?\b")
+MAX_PLAIN_QUESTION_WORDS = 14   # plain lower-case words are candidates only in short questions
+_ADVISORY_CUE = re.compile(r"\b(?:advisor(?:y|ies)|vulnerabilit(?:y|ies)|cves?|security)\b", re.I)
+_CODE_NAME = re.compile(r"`([A-Za-z0-9@][\w.@/-]{0,99})`")
+_NAMED_PACKAGE = re.compile(r"\b([A-Za-z0-9][\w.-]{0,99})\s+(?:(?:python|javascript|js|node(?:\.js)?|npm|pypi|"
+                            r"typescript)\s+)?(?:package|library|lib|module)s?\b", re.I)
+_LOWER_NAME = re.compile(r"(?<![\w.:/@`'’-])([a-z][a-z0-9]*(?:[._-][a-z0-9]+)*)(?![\w:/@`'’-])")
+_PKG_NAME = re.compile(r"@?[a-z0-9](?:[a-z0-9._/-]{0,98}[a-z0-9])?")
+_NOT_PACKAGES = frozenset("""python python3 javascript typescript node nodejs java rust golang go ruby php perl kotlin
+swift scala linux windows macos android ios chrome firefox safari pypi npm pip github gitlab conda homebrew brew
+package packages library libraries lib libs module modules framework frameworks tool tools app apps software
+release releases released version versions stable dates date notes advisory advisories security vulnerability
+vulnerabilities changelog changelogs patch patches fix fixes bug bugs""".split())
+_COMMON = frozenset("""
+able about above across actually after again against ago all almost alone along already also although always
+among amount and another answer any anyone anything are area around ask asked available away back bad base based
+basic be became because become been before began begin behind being believe below best better between big bit
+both bring broken build built but buy by call called came can cannot case cases cause change changed changes
+cheap check choose city class clear close code come comes coming common company compare complete consider
+could country course current data date day days deal default did different difficult do does doing done down
+during each early easy either else end enough even ever every example expected fact fast feature features few
+file files final find first fix fixed follow following for found free from full future get gets getting give
+given go goes going good got great group had happen happened hard has have help here high history hold home how
+however idea if important improve include included includes including info information install installed
+instead interest into issue issues it its just keep kind know known large last late later least less let level
+life like likely line list little live local long look looking lot low made main major make makes many may mean
+means might minor more most move much must my name names near need needed needs never new newer newest news next
+no none not note nothing now number of off often old older on once one only open or order other others our out
+over own page part people per perhaps place plan point possible post power present pretty previous price problem
+problems product program public put question questions quick quite rather read ready real really reason recent
+recently related remove report reports required result results return right run running safe said same say see
+seem seen send server set setup several should show side similar simple since site small so some someone
+something soon source sources start state still stop such support supported sure system take team tell test than
+that the their them then there these they thing things think this those though through time times to today
+together too top total try trying turn type under until up upgrade upgraded upgrades upgrading upon us use used
+user users using usual value very via want was way ways we web well went were what when where whether which while
+who whole why will with within without work working works world would write year years yet you your
+""".split())
+_PYPI_HINT = re.compile(r"\b(?:python|pypi|pip)\b", re.I)
+_NPM_HINT = re.compile(r"\b(?:npm|node(?:\.js)?|nodejs|javascript|typescript)\b", re.I)
+MAX_INFERRED_PACKAGES = 3
+_SIDE_PREDICATE = frozenset("""latest newest newer recent current stable lts release releases released version
+versions date dates update updates updated changelog changelogs advisory advisories security vulnerability
+vulnerabilities news""".split())
 
 
 def strip_local(text: str, local_terms=()) -> tuple[str, int]:
@@ -217,6 +275,49 @@ def _packages(question: str) -> list[dict]:
     return out
 
 
+def _plain_packages(question: str, known=(), *, plain_words: bool = True) -> list[dict]:
+    """Registry candidates named plainly ("numpy", "`left-pad`", "the requests library") in a question that carries a
+    release cue. Candidates: code-style names, names followed by package/library/module, and lower-case identifiers
+    that are not stopwords, cue vocabulary or common English — a plain word ("numpy") only when `plain_words` (a
+    strong release cue) and the question is short (MAX_PLAIN_QUESTION_WORDS); otherwise only identifier-shaped ones
+    ("left-pad", "py3dns", "zope.interface"). The ecosystem is PyPI and npm (both; the registry that does not know
+    the name answers 404, a soft miss) unless the question names one; `inferred` marks them. References to the
+    individual's own system are removed first (strip_local)."""
+    text = _URL.sub(" ", strip_local(question)[0])
+    plain_words = plain_words and len(text.split()) <= MAX_PLAIN_QUESTION_WORDS
+    found: list[tuple[int, str]] = []
+    for pattern in (_CODE_NAME, _NAMED_PACKAGE):
+        for m in pattern.finditer(text):
+            found.append((m.start(1), m.group(1).lower()))
+    for m in _LOWER_NAME.finditer(text):
+        if plain_words or re.search(r"[\d._-]", m.group(1)):
+            found.append((m.start(1), m.group(1)))
+    skip = STOPWORDS | META | _TEMPORAL | _START_WORDS | _CLAUSE_VERBS | _COMMON | _NOT_PACKAGES | _HYPHEN_WORDS | {
+        m.lower() for m in MONTHS} | {str(k).lower() for k in known}
+    names: list[str] = []
+    for _, name in sorted(found):
+        name = name.rstrip(".-_")
+        if (len(name) < 2 or name in skip or name in names or not _PKG_NAME.fullmatch(name)
+                or re.fullmatch(r"[\d.]+", name) or name.startswith(_HYPHEN_PREFIX)):
+            continue
+        names.append(name)
+    if _PYPI_HINT.search(text) and not _NPM_HINT.search(text):
+        ecosystems = ("PyPI",)
+    elif _NPM_HINT.search(text) and not _PYPI_HINT.search(text):
+        ecosystems = ("npm",)
+    else:
+        ecosystems = ("PyPI", "npm")
+    out = []
+    for name in names[:MAX_INFERRED_PACKAGES]:
+        m = re.search(rf"(?<![\w.-]){re.escape(name)}\s+v?(\d+(?:\.\d+)+[\w.+-]*)", text, re.I)
+        version = m.group(1).rstrip(".") if m else None
+        for eco in ecosystems:
+            if eco == "npm" and name.startswith("@") and "/" not in name:
+                continue
+            out.append({"ecosystem": eco, "name": name, "version": version, "inferred": True})
+    return out
+
+
 def _month_window(month: int, now: float) -> float:
     today = datetime.fromtimestamp(now, tz=timezone.utc)
     year = today.year if month <= today.month else today.year - 1
@@ -258,6 +359,14 @@ def _side(text: str, *, left: bool) -> str:
         if not left else text
     words = text.split()
     words = words[-5:] if left else words[:5]
+    # the question's predicate is not part of a side: "numpy vs pandas latest release dates" -> numpy | pandas,
+    # "the latest release dates of numpy and pandas" -> numpy | pandas
+    if left:
+        while len(words) > 1 and (words[0].lower() in _SIDE_PREDICATE or words[0].lower() in STOPWORDS):
+            words = words[1:]
+    else:
+        cut = next((i for i, w in enumerate(words) if i and w.lower().strip(".,;:") in _SIDE_PREDICATE), None)
+        words = words[:cut] if cut else words
     return re.sub(r"^\W+|\W+$", "", " ".join(words))
 
 
@@ -391,6 +500,17 @@ def assess(question: str, *, now: float, known=()) -> dict:
     else:
         mode, why["mode"] = "quick_lookup", "no mode cue: a quick lookup"
 
+    # plain package names with a release cue -> registry lookups (W-11)
+    strong_cue = bool(_RELEASE_CUE.search(low))
+    if mode in ("technical", "comparative", "quick_lookup") and (strong_cue or _WEAK_RELEASE_CUE.search(low)):
+        inferred = _plain_packages(question, known=[p["name"] for p in packages], plain_words=strong_cue)
+        if inferred:
+            packages = packages + inferred
+            tech.append("package name with a release cue")
+            technical = True
+            if mode == "quick_lookup":
+                mode, why["mode"] = "technical", f"package name(s) with a release cue: {inferred[0]['name']!r}"
+
     # recency window: the most restrictive explicit window
     window, window_label = None, None
     for label, value in recency:
@@ -495,11 +615,31 @@ def keywords(text: str, *, limit: int = 8) -> str:
     for token in re.findall(r"[^\W_][\w.+#'’-]*", text or ""):
         token = re.sub(r"(?:'s|’s|[.'’-])+$", "", token)
         low = token.lower()
-        if not token or low in STOPWORDS or low in META or re.fullmatch(r"(?:19|20)\d{2}", token):
+        if (not token or low in STOPWORDS or low in META or low in _TEMPORAL
+                or re.fullmatch(r"(?:19|20)\d{2}", token)):
             continue
         if low not in (o.lower() for o in out):
             out.append(token)
     return " ".join(out[:limit])
+
+
+_REGISTRY_QUERY = re.compile(r"^(?:pypi|npm|osv|github):\S", re.I)
+
+
+def searchable_text(text: str) -> bool:
+    """A query worth sending: a registry lookup (pypi:/npm:/osv:/github:) or text with at least one topical word.
+    Text made only of stopwords, cue words, temporal words ("last", "past week") and years searches for nothing."""
+    text = str(text or "").strip()
+    return bool(_REGISTRY_QUERY.match(text) or keywords(text))
+
+
+def query_text(statement: str, *, limit: int = 8, local_terms=()) -> str:
+    """Search text for a stored statement (curiosity, refresh, hypotheses): the statement's own topical words in
+    their original form and order — never claim-key stems — without URLs, citation markers, function, cue and
+    temporal words or references to the individual's own system. '' when nothing searchable remains."""
+    text = re.sub(r"\[\d+(?:[,\s]+\d+)*\]", " ", _URL.sub(" ", str(statement or "")))
+    text = text.replace("«", " ").replace("»", " ").replace("“", " ").replace("”", " ").replace('"', " ")
+    return keywords(strip_local(text, local_terms)[0], limit=limit)
 
 
 def decompose(question: str) -> list[str]:
@@ -535,21 +675,31 @@ def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> Quer
 
     def add(priority, text, kind, purpose, *, site=None, when=since):
         text = " ".join(str(text).split())[:300]
-        if text:
+        if searchable_text(text):
             items.append((priority, Query(text=text, kind=kind, since=when, site=site, language=lang,
                                           purpose=purpose)))
 
+    advisory_cue = bool(_ADVISORY_CUE.search(question))
     for pkg in assessment.get("packages") or []:
         eco, name, ver = str(pkg.get("ecosystem") or "PyPI"), str(pkg.get("name") or ""), pkg.get("version")
         if not name:
             continue
+        inferred = bool(pkg.get("inferred"))
+        if inferred and strip_local(name, local_terms)[1]:
+            continue          # a plain name that is one of the owner's private terms is local context
         at = f"@{ver}" if ver else ""
+        # a plain (inferred) name: both registries are asked; advisories only when a version or an advisory cue
+        # makes them answerable
+        osv = not inferred or bool(ver) or advisory_cue
+        how = " (plain name; a registry that does not know it is a soft miss)" if inferred else ""
         if eco.lower() == "pypi":
-            add(0, f"pypi:{name}", "technical", f"registry: latest release of {name}", when=None)
-            add(0, f"osv:PyPI:{name}{at}", "technical", f"advisories for {name}{at}", when=None)
+            add(0, f"pypi:{name}", "technical", f"registry: latest release of {name}{how}", when=None)
+            if osv:
+                add(0, f"osv:PyPI:{name}{at}", "technical", f"advisories for {name}{at}", when=None)
         elif eco.lower() == "npm":
-            add(0, f"npm:{name}", "technical", f"registry: latest release of {name}", when=None)
-            add(0, f"osv:npm:{name}{at}", "technical", f"advisories for {name}{at}", when=None)
+            add(0, f"npm:{name}", "technical", f"registry: latest release of {name}{how}", when=None)
+            if osv:
+                add(0, f"osv:npm:{name}{at}", "technical", f"advisories for {name}{at}", when=None)
         elif eco.lower() == "github":
             add(0, f"github:{name}", "technical", f"releases of {name}", when=None)
         else:
@@ -646,10 +796,21 @@ def _outside(entities, local_terms) -> list[str]:
     return [e for e in entities if strip_local(e, local_terms)[1] == 0]
 
 
-def refine(plan: QueryPlan, outcome, assessment: dict, *, now: float, local_terms=()) -> QueryPlan | None:
+def refine(plan: QueryPlan, outcome, assessment: dict, *, now: float, local_terms=(),
+           remaining: int | None = None) -> QueryPlan | None:
     """One broader round when discovery was thin (< 3 results) or every provider failed; else None.
-    Broader = no `since`, no `site`, text shortened to the key entities (or the first three keywords)."""
+    Broader = no `since`, no `site`, text shortened to the key entities (or the first three keywords).
+
+    The round never exceeds the query budget: `remaining` is the number of queries the run may still send
+    (callers with a live budget pass `budget.max_queries - usage.queries`); by default it is the mode's
+    MODE_BUDGETS max_queries minus the queries already planned. None when no query is left."""
     if any(str(n).startswith("refinement") for n in plan.notes):
+        return None
+    if remaining is None:
+        mode = assessment.get("mode") or "quick_lookup"
+        remaining = MODE_BUDGETS.get(mode, MODE_BUDGETS["quick_lookup"]).max_queries - len(plan.queries)
+    remaining = min(MAX_REFINE_QUERIES, int(remaining))
+    if remaining <= 0:
         return None
     attempts = [a for a in outcome.attempts if a.get("provider")]
     all_failed = bool(attempts) and not any(a.get("ok") and a.get("n") for a in attempts)
@@ -671,7 +832,7 @@ def refine(plan: QueryPlan, outcome, assessment: dict, *, now: float, local_term
         if q.kind == "technical":
             continue
         short = " ".join(keywords(strip_local(q.text, local_terms)[0]).split()[:3])
-        if short and short.lower() not in (t.lower() for t in texts):
+        if short and searchable_text(short) and short.lower() not in (t.lower() for t in texts):
             texts.append(short)
     original = {(q.text.lower(), q.kind) for q in plan.queries if q.since is None and q.site is None}
     queries, seen = [], set()
@@ -685,9 +846,10 @@ def refine(plan: QueryPlan, outcome, assessment: dict, *, now: float, local_term
                                  purpose=f"refinement: broadened after {reason} (no date/site limit, key terms)"))
     if not queries:
         return None
-    return QueryPlan(queries=tuple(queries[:4]), subquestions=plan.subquestions, max_sources=plan.max_sources,
+    return QueryPlan(queries=tuple(queries[:remaining]), subquestions=plan.subquestions,
+                     max_sources=plan.max_sources,
                      notes=(f"refinement: {reason}; dropped date and site limits, shortened to key terms",))
 
 
-__all__ = ["assess", "plan", "refine", "keywords", "decompose", "extract_entities", "detect_language", "strip_local",
-           "SELF_NAMES"]
+__all__ = ["assess", "plan", "refine", "keywords", "query_text", "searchable_text", "decompose", "extract_entities",
+           "detect_language", "strip_local", "SELF_NAMES"]

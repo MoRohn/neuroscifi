@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import Counter
 import math
 import re
+import unicodedata
 
 _WORD = re.compile(r"\w+", re.UNICODE)
 
@@ -76,3 +77,29 @@ def _r(x, digits=4):
 
 def collapse(text: str) -> str:
     return " ".join((text or "").split())
+
+
+_QUOTES = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'", "\u2032": "'",
+                         "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u2033": '"', "\u00ab": '"', "\u00bb": '"',
+                         "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-", "\u2212": "-",
+                         "\u00a0": " ", "\u200b": "", "\u200c": "", "\u200d": "", "\ufeff": ""})
+
+
+def normalise_sentence(text: str) -> str:
+    """One canonical form of a sentence for "same sentence" comparisons: NFKC, lower case, typographic quotes and
+    dashes unified, zero-width characters removed, no space before punctuation, whitespace collapsed, no
+    terminal punctuation or wrapping quotes."""
+    text = unicodedata.normalize("NFKC", text or "").translate(_QUOTES).lower()
+    text = re.sub(r"\s+([,.;:!?)\]])", r"\1", " ".join(text.split()))
+    return text.strip(" \"'.!?;:")
+
+
+def quote_support(quote: str, source_text) -> str | None:
+    """How `source_text` contains the quoted claim: 'verbatim' (whitespace-collapsed substring), 'normalised' (the
+    same normalised sentence), or None."""
+    if not quote or not source_text:
+        return None
+    if collapse(quote) in collapse(source_text):
+        return "verbatim"
+    q = normalise_sentence(quote)
+    return "normalised" if q and q in normalise_sentence(source_text) else None

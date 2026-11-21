@@ -271,3 +271,48 @@ def test_values_skip_numbers_that_overflow_to_infinity():
     assert T.values("The value is " + "1" * 400 + " units.") == []
     assert T.values("It cost $" + "9" * 400 + " and 5 mg.") == ["5 mg"]
     assert T.values("Between " + "7" * 330 + " million and 12 km.") == ["12 km"]
+
+
+# ---- UAT fixes (RC1) ---------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text, expected", [
+    # C-09: a boundary inside a quotation started a sentence there ('security releases " in October 2026 ...')
+    ('Python moved to "bugfix only. Then security releases" in October 2026, following its cycle. Next one.',
+     ['Python moved to "bugfix only. Then security releases" in October 2026, following its cycle.', "Next one."]),
+    ("He said “It works. It is fast.” Then he left.", ["He said “It works. It is fast.”", "Then he left."]),
+    ('He said "Stop." Then he left.', ['He said "Stop."', "Then he left."]),
+])
+def test_no_sentence_starts_inside_an_open_quotation(text, expected):
+    assert T.sentences(text) == expected
+
+
+def test_a_stray_quote_far_back_does_not_glue_the_block():
+    text = 'A stray " mark. ' + "Filler words here. " * 30 + "Last sentence."
+    assert T.sentences(text)[-1] == "Last sentence."
+
+
+def test_ranges_share_magnitude_and_unit():
+    # C-16 evidence: "14–16 billion neurons" and "55–70 billion" became 14 neurons / bare 55
+    assert T.values("approximately 14–16 billion neurons, and 55–70 billion in the cerebellum") == \
+        ["14000000000 neurons", "16000000000 neurons", "55000000000", "70000000000"]
+
+
+def test_plain_numbers_compare_only_when_they_count_the_same_thing():
+    a, b = "ranked 1 winner overall", "found in 55 countries and 70 billion parameters"
+    assert T.value_nouns(a) == {"1": "winner"}
+    assert T.values_conflict(T.values(a), T.values(b)) is not None                # without nouns: compared
+    assert T.values_conflict(T.values(a), T.values(b), nouns=(T.value_nouns(a), T.value_nouns(b))) is None
+    c, d = "Nimbus-OS 5 ships with kernel 6.14 and more", "Nimbus-OS 5 ships with kernel 6.12, says the team"
+    assert T.values_conflict(T.values(c), T.values(d), nouns=(T.value_nouns(c), T.value_nouns(d))) == \
+        "different values: 6.14 vs 6.12"
+
+
+def test_values_equal_agree_and_version_order():
+    assert T.values_equal("2015", "2015-05-15") is True and T.values_equal("2012", "2015-05-15") is False
+    assert T.values_equal("412 km", "412000 m") is True and T.values_equal("412 km", "5 mg") is None
+    assert T.values_equal("86000000000 neurons", "80000000000 neurons") is False
+    assert T.values_equal("86000000000 neurons", "80000000000 neurons", rel_tol=0.1) is True
+    assert T.values_agree(["2026-11-03", "5"], ["2026-11-03"]) and not T.values_agree(["2.3"], ["2.4"])
+    assert not T.values_agree([], ["2.4"])
+    order = ["2.5.5.dev1", "2.5.5rc1", "2.5.5", "v2.5.10", "2.6.0"]
+    assert sorted(reversed(order), key=T.version_key) == order and T.version_key("no version") == ()

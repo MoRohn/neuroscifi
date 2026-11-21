@@ -104,15 +104,21 @@ def _daemon(db, db_path):
                   state_dir=path.parent / f"{path.stem}.websearch")
 
 
-def _cache_stats(db_path):
-    from .services import cache_path
+def _cache_stats(db_path, db=None, now=None):
+    """Public-cache statistics. A corrupt cache is quarantined and rebuilt by PublicCache (S-05); with `db` the
+    quarantine is recorded as a warning event like the worker does."""
+    from .services import Services, cache_path
     path = cache_path(db_path)
     if not path.exists():
         return {"path": str(path), "exists": False}
     from .cache import PublicCache
     cache = PublicCache(path)
     try:
-        return {"exists": True, **cache.stats()}
+        out = {"exists": True, **cache.stats()}
+        if db is not None and cache.events:
+            Services(fetcher=None, cache=cache, registry=None, renderer=None, clock=lambda: now, config=None,
+                     holder="cli").record_cache_warnings(db, now)
+        return out
     finally:
         cache.close()
 
@@ -221,7 +227,7 @@ def _status(db, a, now):
                        "openwebsearch_url": cfg.openwebsearch_url, "budget_ceiling": cfg.budget_ceiling,
                        "daily_autonomous": cfg.daily_autonomous, "deny_domains": len(cfg.deny_domains),
                        "private_terms": len(cfg.private_terms)},
-            "provider_health": _health_view(db, now), "daemon": daemon, "public_cache": _cache_stats(path),
+            "provider_health": _health_view(db, now), "daemon": daemon, "public_cache": _cache_stats(path, db, now),
             "tasks": tasks, "memory": state.counts(db), "node": node_info()}
 
 
@@ -336,11 +342,24 @@ def _run_task(db, a, task_id, *, resume=False):
         services.close()
 
 
+def _cli_words(fn, *args, **kwargs):
+    """Run a submission; a privacy refusal names the command-line override (--allow-private-terms), not the API
+    argument."""
+    from . import orchestrator
+    try:
+        return fn(*args, **kwargs)
+    except ValidationError as exc:
+        text = str(exc)
+        if orchestrator.PRIVACY_OVERRIDE in text:
+            raise ValidationError(text.replace(orchestrator.PRIVACY_OVERRIDE, "pass --allow-private-terms")) from None
+        raise
+
+
 def _ask(db, a, now):
     from . import orchestrator
     budget = _json_arg(a.budget_json, "--budget-json") if a.budget_json else None
-    task = orchestrator.submit(db, a.objective, now, mode=a.mode, budget=budget, origin="cli",
-                               authorization=orchestrator.AUTHORIZED_DISCLOSURE if a.allow_private_terms else None)
+    task = _cli_words(orchestrator.submit, db, a.objective, now, mode=a.mode, budget=budget, origin="cli",
+                      authorization=orchestrator.AUTHORIZED_DISCLOSURE if a.allow_private_terms else None)
     if a.queue:
         return task | {"note": "queued for the worker (nsf web work)"}
     return _run_task(db, a, task["id"])
@@ -412,10 +431,10 @@ def _crawl(db, a, now):
     objective = "Investigate these sources: " + " ".join(urls)
     if len(objective) > orchestrator.MAX_OBJECTIVE:
         objective = objective[:orchestrator.MAX_OBJECTIVE - 1] + "…"
-    task = orchestrator.submit(db, objective, now, mode="deep_research", origin="cli",
-                               budget={"max_pages": a.max_pages, "max_depth": a.depth},
-                               context={"crawl": {"seeds": urls, "max_pages": a.max_pages, "max_depth": a.depth}},
-                               authorization=orchestrator.AUTHORIZED_DISCLOSURE if a.allow_private_terms else None)
+    task = _cli_words(orchestrator.submit, db, objective, now, mode="deep_research", origin="cli",
+                      budget={"max_pages": a.max_pages, "max_depth": a.depth},
+                      context={"crawl": {"seeds": urls, "max_pages": a.max_pages, "max_depth": a.depth}},
+                      authorization=orchestrator.AUTHORIZED_DISCLOSURE if a.allow_private_terms else None)
     if a.queue:
         return task | {"note": "queued for the worker (nsf web work)"}
     return _run_task(db, a, task["id"])

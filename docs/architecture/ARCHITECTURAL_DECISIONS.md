@@ -45,7 +45,7 @@ The brief: "Decouple ingestion from training so incoming events do not contend w
 The brief's milestones (p.19, p.34) assume a Spark, cameras and people. Decision: `nsf acceptance` runs each milestone against simulated evidence with `provenance='simulated'` and reports its thresholds. Consequence: nothing in this release claims physical validation.
 
 **ADR-015 The service worker precache list grows to include the manifest and icon. R**
-Home-screen shortcuts (p.20) need a web app manifest. Decision: precache 8 assets instead of the brief's "six named program assets". Recorded as a deviation from p.29. **0.6:** grows to 9 with `research-ui.mjs` (cache `neuroscifi-pocket-shell-7`) so research findings saved in the encrypted vault reopen offline (ADR-028); API traffic is still never cached.
+Home-screen shortcuts (p.20) need a web app manifest. Decision: precache 8 assets instead of the brief's "six named program assets". Recorded as a deviation from p.29. **0.6:** grows to 9 with `research-ui.mjs` (cache `neuroscifi-pocket-shell-8`) so research findings saved in the encrypted vault reopen offline (ADR-028); API traffic is still never cached.
 
 **ADR-016 Founding graph and development counters. R**
 INS-01 says each instance has a founding scaffold, but the brief does not specify its contents. Inventing weights would be a placeholder. Decision: the founding graph is owner-supplied (`nsf init --founding-graph FILE.nsg`). Without one, birth records `initial_graph: null`. `replay_updates` counts graph operations over stored datasets (learn, evaluate, promote, lesion, recall). `teacher_interventions` counts owner answers to questions.
@@ -138,7 +138,7 @@ every background action is a visible, cancellable task with an episode log.
 
 **ADR-028 Pocket can request research, scoped to its pairing family. R** (amends ADR-013's remote surface note)
 Decision: when `pocket_research` is on and the bridge is started with `--instance-db`, paired devices may
-submit (≤ 300-character objective), list, read and cancel tasks of their own family, and read the report. They
+submit (≤ 300-character objective; the `research_submit` body may be up to 1024 bytes so 300 non-Latin characters fit, every other route stays at 512), list, read and cancel tasks of their own family, and read the report. Submissions are limited to 10 per hour per pairing family, persisted across restarts; a family holds at most 6 devices, and `nsf pocket erase-pairing LABEL --family` (or "Forget all linked devices" on a device) revokes a whole family (UAT S-02). They
 cannot accept knowledge, change configuration, forget memory or see other families' tasks. A device may submit 10
 tasks per hour, with a privacy-screened objective and no budget field. Consequence: the LAN surface grows by four
 actions under the existing bearer, origin, size and TLS controls (tests: `tests/test_pocket_research.py`).

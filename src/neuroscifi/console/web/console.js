@@ -12,9 +12,14 @@ const CHECK_LABELS = {
   lineage_intact: 'Trained only on data that still exists',
 };
 const MAX_BODY = 4096;
+const MAX_TEXT_BODY = 8192;   // the server's limit for research questions and monitor topics (2000 characters)
+const TEXT_ROUTES = ['/api/web/tasks', '/api/web/monitors'];
+const MATCH_LAST = 12;        // beliefs.MATCH_EVENTS: the executive's match question is asked only this early
+const MEMORY_KINDS = ['evidence', 'belief', 'graph', 'dataset', 'checkpoint', 'deletion', 'decision', 'pending',
+                      'research', 'claim', 'knowledge', 'source', 'monitor'];
 
 const state = { token: null, view: null, epoch: '', epochs: [], semantics: null, datasets: [], graphs: [],
-                selectedGraph: null, graph: null, seq: {}, busy: new Set() };
+                selectedGraph: null, graph: null, seq: {}, busy: new Set(), offline: false };
 const $ = (id) => document.getElementById(id);
 
 class ApiError extends Error {
@@ -32,7 +37,7 @@ function h(tag, attrs = {}, ...kids) {
     else if (key.startsWith('on')) el.addEventListener(key.slice(2), value);
     else el.setAttribute(key, value === true ? '' : String(value));
   }
-  for (const kid of kids.flat()) {
+  for (const kid of kids.flat(Infinity)) {
     if (kid === null || kid === undefined || kid === false) continue;
     el.append(kid instanceof Node ? kid : String(kid));
   }
@@ -55,15 +60,31 @@ function fill(slot, ...nodes) {
 function empty(text) { return h('p', { class: 'empty', text }); }
 
 // Captions are visually hidden unless they add to the card heading; screen readers always get them.
+// Tables of three or more columns stack into labelled rows below 640px (CSS uses data-label), so row actions stay
+// on screen; the explicit roles keep the table semantics when CSS changes the display of its parts.
 function table(caption, headers, rows, { showCaption = false } = {}) {
-  const head = h('tr', {}, headers.map((col) => h('th', { scope: 'col', class: col.num ? 'num' : null, text: col.label ?? col })));
-  const body = rows.map((cells) => h('tr', {}, cells.map((cell, i) => {
+  const label = (col) => col.label ?? col;
+  const head = h('tr', { role: 'row' }, headers.map((col) => h('th', { scope: 'col', role: 'columnheader', class: col.num ? 'num' : null, text: label(col) })));
+  const body = rows.map((cells) => h('tr', { role: 'row' }, cells.map((cell, i) => {
     const cls = [headers[i]?.num ? 'num' : null, cell?.actions ? 'actions' : null].filter(Boolean).join(' ') || null;
     const content = cell?.actions ? cell.actions : cell;
-    return h('td', { class: cls }, content instanceof Node || Array.isArray(content) ? content : String(content ?? '—'));
+    return h('td', { class: cls, role: 'cell', 'data-label': headers[i] ? label(headers[i]) : null },
+      Array.isArray(content) ? h('span', { class: 'cellgroup' }, content) : content instanceof Node ? content : String(content ?? '—'));
   })));
-  const t = h('table', { class: headers.length >= 5 ? 'many' : null }, h('caption', { class: showCaption ? null : 'vh', text: caption }), h('thead', {}, head), h('tbody', {}, body));
+  const cls = [headers.length >= 5 ? 'many' : null, headers.length >= 3 ? 'stack' : null].filter(Boolean).join(' ') || null;
+  const t = h('table', { class: cls, role: 'table' }, h('caption', { class: showCaption ? null : 'vh', text: caption }),
+    h('thead', { role: 'rowgroup' }, head), h('tbody', { role: 'rowgroup' }, body));
   return h('div', { class: 'tablewrap', tabindex: '0', role: 'region', 'aria-label': caption }, t);
+}
+
+// Plain words first, the numbers behind them in a disclosure.
+function technical(...kids) {
+  return h('details', { class: 'tech' }, h('summary', { text: 'Technical detail' }), ...kids);
+}
+
+// Message text may name commands in `backticks`: they are shown as <code>, never as literal backticks.
+function rich(text) {
+  return String(text ?? '').split(/`([^`]+)`/).map((part, i) => (i % 2 ? h('code', { text: part }) : part)).filter((x) => x !== '');
 }
 
 function kv(pairs) {
@@ -75,6 +96,19 @@ function badge(text, tone) { return h('span', { class: `badge ${tone}`, text });
 function fmtTime(t) {
   if (t === null || t === undefined) return '—';
   return new Date(t * 1000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+}
+
+// Relative age computed in this page when it renders (server text like "3 days ago" would freeze).
+function ago(t) {
+  if (t === null || t === undefined) return 'undated';
+  const s = Date.now() / 1000 - t;
+  if (s < 0) return 'in the future';
+  if (s < 3600) return 'within the last hour';
+  if (s < 86400) { const n = Math.floor(s / 3600); return `${n} hour${n === 1 ? '' : 's'} ago`; }
+  const d = Math.floor(s / 86400);
+  if (d < 60) return d === 1 ? 'yesterday' : `${d} days ago`;
+  const m = Math.floor(d / 30.4);
+  return m < 24 ? `${m} months ago` : `${Math.floor(d / 365.25)} years ago`;
 }
 
 function fmtNum(x, digits = 4) {
@@ -97,7 +131,7 @@ function statusTone(status) {
 }
 
 function say(el, text, tone = 'ok') {
-  el.textContent = text;
+  el.replaceChildren(...rich(text));
   el.className = `msg ${tone}`;
 }
 
@@ -109,15 +143,34 @@ function announce(text, tone = 'ok', anchor = null) {
     const box = anchor.getBoundingClientRect();
     if (box.bottom > 0 && box.top < window.innerHeight) { el.textContent = ''; return; }
   }
-  el.textContent = text;
+  el.replaceChildren(...rich(text));
   el.className = `toast ${tone}`;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { el.textContent = ''; }, 6000);
 }
 
+const WEB_OFF_TEXT = 'Web access is off for this individual, so nothing was sent. Turn it on with “Turn on web access” to research.';
+const isWebOff = (error) => error instanceof ApiError && error.status === 409 && /web access is (disabled|off)/i.test(error.message);
+
 function errorText(error) {
-  if (error instanceof ApiError) return error.status ? `${error.message} (HTTP ${error.status})` : error.message;
-  return 'Unexpected error in the console page.';
+  if (!(error instanceof ApiError)) return 'Unexpected error in the console page.';
+  if (isWebOff(error)) return WEB_OFF_TEXT;
+  if (error.status === 409 && /allowance is spent/i.test(error.message)) {
+    return 'Today’s allowance for autonomous research is used up, so this proposal cannot start now. ' +
+      'Approve it again tomorrow, or raise the daily allowance with `nsf web config`.';
+  }
+  if (error.status === 507) {
+    const reason = error.message.replace(/^(web memory )?writes are paused:\s*/i, '');
+    return `Writes are paused by regulation (${reason}), so nothing was saved. Free disk space, forget evidence or raise the limit, then try again.`;
+  }
+  return error.status ? `${error.message} (HTTP ${error.status})` : error.message;
+}
+
+// Side effects of an error the page can act on: web access turned off elsewhere, writes paused, server gone.
+function reactTo(error) {
+  if (!(error instanceof ApiError)) return;
+  if (isWebOff(error)) showWebOff();
+  if (error.status === 507) loadHeader().catch(() => {});
 }
 
 function newEventId() {
@@ -150,25 +203,56 @@ async function request(method, path, body) {
   const options = { method, cache: 'no-store', credentials: 'omit', headers: { Authorization: `Bearer ${state.token}` } };
   if (method === 'POST') {
     options.body = JSON.stringify(body ?? {});
-    if (new TextEncoder().encode(options.body).length > MAX_BODY) throw new ApiError(0, `Request is larger than ${MAX_BODY} bytes; shorten the text fields.`);
+    const limit = TEXT_ROUTES.includes(path) ? MAX_TEXT_BODY : MAX_BODY;
+    if (new TextEncoder().encode(options.body).length > limit) throw new ApiError(0, `Request is larger than ${limit} bytes; shorten the text fields.`);
     options.headers['Content-Type'] = 'application/json';
   }
   let response;
   try {
     response = await fetch(path, options);
   } catch {
-    throw new ApiError(0, 'The console server is not reachable. Is `nsf console` still running?');
+    setOffline(true);
+    throw new ApiError(0, OFFLINE_TEXT);
   }
+  if (state.offline) setOffline(false);
   let data = null;
   try { data = await response.json(); } catch { data = null; }
   if (!response.ok) {
-    if (response.status === 403) lock('The session token was rejected. Open the URL printed by `nsf console`; each start issues a new token.');
+    if (response.status === 403) lock('The session token was rejected. Open the URL printed by `nsf console` (or the one in its URL file) again; each start of the console issues a new token.');
     throw new ApiError(response.status, data?.error ?? response.statusText);
   }
   return data;
 }
 
 const enc = encodeURIComponent;
+
+// ---- server stopped ------------------------------------------------------------------------------------
+
+const OFFLINE_TEXT = 'Server stopped. Restart `nsf console` and open the new URL it prints.';
+
+// One banner instead of an error in every slot; controls that change anything are disabled until the server answers.
+function setOffline(on) {
+  if (state.offline === on) return;
+  state.offline = on;
+  $('offline').hidden = !on;
+  document.documentElement.dataset.offline = on ? '1' : '0';
+  if (on) { $('writes').textContent = 'unknown'; $('writes').className = 'badge neutral'; $('writesWhy').textContent = ''; }
+  syncControls();
+  if (!on) refreshView();
+}
+
+function applyOffline() {
+  for (const el of document.querySelectorAll('#main :is(button, input, select, textarea)')) {
+    if (el.dataset.keep !== undefined) continue;   // Refresh buttons stay usable: they are how the owner retries
+    if (state.offline) {
+      if (el.dataset.offlineDisabled === undefined) el.dataset.offlineDisabled = el.disabled ? '1' : '0';
+      el.disabled = true;
+    } else if (el.dataset.offlineDisabled !== undefined) {
+      el.disabled = el.dataset.offlineDisabled === '1';
+      delete el.dataset.offlineDisabled;
+    }
+  }
+}
 
 // Run one mutation: disable its control, mark the region busy, report the outcome, never double-submit.
 async function act(control, statusEl, work) {
@@ -184,6 +268,7 @@ async function act(control, statusEl, work) {
   } catch (error) {
     say(statusEl, errorText(error), 'error');
     announce(errorText(error), 'error', statusEl);
+    reactTo(error);
   } finally {
     if (control) { state.busy.delete(control); control.disabled = false; }
     region?.removeAttribute('aria-busy');
@@ -202,7 +287,12 @@ async function load(key, slots, work) {
     const result = await work();
     if (ticket === state.seq[key]) return result;
   } catch (error) {
-    if (ticket === state.seq[key]) for (const slot of slots) fill(slot, h('p', { class: 'msg error', text: errorText(error) }));
+    if (ticket !== state.seq[key]) return undefined;
+    if (state.offline) {   // keep what is shown; the banner says why nothing updates
+      for (const slot of slots) { slot.removeAttribute('aria-busy'); if (slot.querySelector(':scope > .empty:only-child')?.textContent === 'Loading…') fill(slot, empty('Not loaded: the server stopped.')); }
+    } else {
+      for (const slot of slots) fill(slot, h('p', { class: 'msg error' }, rich(errorText(error))));
+    }
   }
   return undefined;
 }
@@ -240,10 +330,12 @@ async function loadHeader() {
   $('instanceId').title = inv.birth.instance_id;
   $('stateVersion').textContent = String(inv.state_version);
   const writes = $('writes');
-  writes.textContent = inv.regulation.writes_allowed ? 'allowed' : `paused: ${inv.regulation.reason}`;
+  writes.textContent = inv.regulation.writes_allowed ? 'allowed' : 'paused';
   writes.className = `badge ${inv.regulation.writes_allowed ? 'ok' : 'warn'}`;
+  $('writesWhy').textContent = inv.regulation.writes_allowed ? '' : inv.regulation.reason ?? '';
   const open = inv.memory.open_questions;
   $('openCount').textContent = open ? `${open} open` : '';
+  if (inv.web) $('activeCount').textContent = inv.web.open_tasks ? `${inv.web.open_tasks} active` : '';
   renderSemantics();
   return inv;
 }
@@ -265,7 +357,9 @@ async function loadOverview() {
   ]), h('h3', { text: 'Priors' }), kv(Object.entries(b.priors).map(([k, v]) => [k.replaceAll('_', ' '), v])));
   const r = inv.regulation;
   fill($('regulation'), h('p', {}, badge(r.writes_allowed ? 'Writes allowed' : 'Writes paused', r.writes_allowed ? 'ok' : 'warn'),
-    r.reason ? ` ${r.reason}` : ''), kv([
+    r.reason ? ` · ${r.reason}` : ''),
+    r.writes_allowed ? null : h('p', { class: 'sub', text: 'New evidence, research and other writes are refused until this clears. Free disk space, forget evidence or raise the limit.' }),
+    kv([
     ['Evidence rows', `${r.evidence_rows} of ${r.config.max_evidence_rows}`],
     ['Open questions', r.open_questions],
     ['Evidence written', r.write_volume],
@@ -275,12 +369,19 @@ async function loadOverview() {
   ]));
   const mem = inv.memory;
   fill($('inventory'), table('Memory inventory', ['Record', { label: 'Count', num: true }],
-    Object.entries(mem).map(([k, v]) => [k.replaceAll('_', ' '), v])));
+    Object.entries(mem).map(([k, v]) => [k.replaceAll('_', ' '), v])),
+    inv.web ? [h('h3', { text: 'Web memory' }), table('Web memory inventory', ['Record', { label: 'Count', num: true }],
+      Object.entries(inv.web).map(([k, v]) => [WEB_INVENTORY[k] ?? k.replaceAll('_', ' '), v]))] : null);
   const dev = Object.entries(inv.development);
   fill($('development'), dev.length
     ? table('Development counters', ['Counter', { label: 'Value', num: true }], dev.map(([k, v]) => [k.replaceAll('_', ' '), v]))
     : empty('No development yet: record evidence or run a graph job.'));
 }
+
+const WEB_INVENTORY = { tasks: 'research tasks', open_tasks: 'research tasks still running or queued', sources: 'sources read',
+  claims: 'claims extracted', knowledge: 'knowledge items (all versions)', accepted_knowledge: 'accepted knowledge',
+  provisional_knowledge: 'knowledge awaiting review', entities: 'entities', monitors: 'monitors',
+  predictions_open: 'open predictions', feedback: 'knowledge feedback records' };
 
 // ---- epochs ---------------------------------------------------------------------------------------------
 
@@ -352,16 +453,25 @@ async function loadTeach() {
   $('partnerList').replaceChildren(...Object.keys(explain.beliefs.partners).map((r) => h('option', { value: r })));
 }
 
+// "Reads as declared, 99% sure" instead of P(inverted) = 0.010.
+function plainBelief(p) {
+  if (p <= 0.13) return `Reads as declared (${Math.round((1 - p) * 100)}% sure).`;
+  if (p >= 0.87) return `Reads inverted (${Math.round(p * 100)}% sure).`;
+  return `Not settled yet: either reading still fits (${Math.round((1 - p) * 100)}% as declared).`;
+}
+
 function probCard(label, scope, p, identifiable, detail, suspect) {
   const bar = h('div', { class: 'bar', 'aria-hidden': 'true' }, h('span', { class: 'zone' }), h('span', { class: 'fill' }), h('span', { class: 'mid' }));
   bar.querySelector('.fill').style.width = `${(p * 100).toFixed(1)}%`;
   return h('div', { class: 'prob', 'data-scope': scope },
     h('div', { class: 'probhead' }, h('span', { class: 'probname', text: label }),
       badge(identifiable ? 'Identifiable' : 'Unidentifiable', identifiable ? 'ok' : 'warn')),
-    suspect?.suspected_change ? h('p', { class: 'suspect' }, badge(`change suspected (llr ${suspect.llr.toFixed(2)})`, 'warn'),
+    suspect?.suspected_change ? h('p', { class: 'suspect' }, badge('change suspected', 'warn'),
       ` since evidence #${suspect.suspected_since_seq}${suspect.ambiguous ? ', ambiguous' : ''}`) : null,
     bar,
-    h('p', { class: 'probnum', text: `P(inverted) = ${p.toFixed(3)} · P(as declared) = ${(1 - p).toFixed(3)}${detail}` }));
+    h('p', { class: 'plain', text: plainBelief(p) }),
+    technical(h('p', { class: 'probnum', text: `P(inverted) = ${p.toFixed(3)} · P(as declared) = ${(1 - p).toFixed(3)}${detail}` }),
+      suspect?.suspected_change ? h('p', { class: 'sub', text: `Change score (log-likelihood ratio): ${suspect.llr.toFixed(2)}` }) : null));
 }
 
 function renderBeliefs(b) {
@@ -384,11 +494,17 @@ function renderBeliefs(b) {
           b.confirmed_changes.map((c) => h('li', { text: `${changeName(c.scope)} since #${c.since_seq}` })))
       : null,
     h('div', { class: 'probs', id: 'probs' }, cards),
-    h('p', { class: 'sub', text: 'Bars show P(inverted). The hatched band (0.13 to 0.87) is where a factor counts as unidentifiable.' }),
+    h('p', { class: 'sub', text: 'A bar at the left means the factor reads as declared, at the right inverted. Inside the hatched band the evidence cannot tell yet (unidentifiable).' }),
     b.unidentifiable.length
       ? [h('h3', { text: 'Why some factors are unidentifiable' }), h('ul', { class: 'reasons', id: 'unidentifiable' },
-          b.unidentifiable.map((u) => h('li', {}, h('strong', { text: `${u.scope}: ` }), u.why)))]
+          b.unidentifiable.map((u) => h('li', {}, h('strong', { text: `${scopeName(u.scope)}: ` }), u.why)))]
       : h('p', { id: 'unidentifiable', text: 'Every factor is identifiable from the current evidence.' }));
+}
+
+function scopeName(scope) {
+  if (scope === 'mechanism') return 'Mechanism';
+  const [kind, ...root] = scope.split(':');
+  return kind === 'camera' ? `Camera ${root.join(':')}` : kind === 'partner' ? `Partner ${root.join(':')}` : scope;
 }
 
 function changeName(scope) {
@@ -401,10 +517,13 @@ function renderMatch(m) {
   card.hidden = !m?.best;
   if (!m?.best) { $('matchPanel').replaceChildren(); return; }
   fill($('matchPanel'),
-    h('p', { id: 'matchBest' }, h('strong', { text: m.best }), ` explains this epoch's last ${m.events} learning reading(s) with posterior ${m.best_posterior.toFixed(3)}.`),
-    table('Earlier epochs ranked by fit', ['Epoch', 'Segments', { label: 'Log-likelihood', num: true }, { label: 'Posterior', num: true }, { label: 'Readings', num: true }],
+    h('p', { id: 'matchBest' }, `This epoch's last ${m.events} learning reading(s) look like `, h('strong', { text: m.best }),
+      ` (${Math.round(m.best_posterior * 100)}% likely; a new setup: ${Math.round(m.new_setup_posterior * 100)}%).`),
+    h('p', { class: 'sub', id: 'matchRule', text: `The executive asks whether to continue that calibration only within this epoch's first ${MATCH_LAST} learning readings, ` +
+      `and only when the best earlier setup is at least ${Math.round(m.ask_posterior * 100)}% likely (3:1 against everything else). Later readings never trigger this question.` }),
+    technical(table('Earlier epochs ranked by fit', ['Epoch', 'Segments', { label: 'Log-likelihood', num: true }, { label: 'Posterior', num: true }, { label: 'Readings', num: true }],
       m.ranking.map((r) => [r.epoch, Object.values(r.segments).join(', '), r.log_likelihood.toFixed(2), r.posterior.toFixed(3), r.events])),
-    h('p', { class: 'sub', text: `A new setup: posterior ${m.new_setup_posterior.toFixed(3)}. The executive asks only when the best earlier setup reaches ${m.ask_posterior} (3:1 against everything else).` }));
+      h('p', { class: 'sub', text: `Posterior of a new setup: ${m.new_setup_posterior.toFixed(3)}; asking threshold ${m.ask_posterior}.` })));
 }
 
 function inScope(e, scope) {
@@ -419,20 +538,23 @@ function renderChange(c, events) {
   if (!c.window) parts.push(empty('No learning evidence to test yet.'));
   else if (c.suspected) {
     parts.push(h('p', {}, badge(c.ambiguous ? 'Change suspected · ambiguous' : 'Change suspected', 'warn')));
-    parts.push(kv([['Scope', h('code', { id: 'changeScope', text: c.scope })], ['Since', `evidence #${c.since_seq}`],
-      ['Penalised log-likelihood gain', `${c.llr.toFixed(2)} nats (threshold ${threshold.toFixed(2)})`],
-      ['Ambiguous', c.ambiguous ? 'yes: the runner-up is within 1 nat' : 'no']]));
+    parts.push(h('p', { class: 'plain', text: `${scopeName(c.scope)} seems to have flipped: its readings since evidence #${c.since_seq} fit the opposite mapping much better than the old one.` +
+      (c.ambiguous ? ' Another factor explains the readings almost as well, so it is not yet clear which one changed.' : '') }));
+    parts.push(kv([['Scope', h('code', { id: 'changeScope', text: c.scope })], ['Since', `evidence #${c.since_seq}`]]));
+    parts.push(technical(kv([['Penalised log-likelihood gain', `${c.llr.toFixed(2)} nats (threshold ${threshold.toFixed(2)})`],
+      ['Ambiguous', c.ambiguous ? 'yes: the runner-up is within 1 nat' : 'no']])));
     const after = events.filter((e) => e.seq >= c.since_seq && inScope(e, c.scope));
     parts.push(h('h3', { text: `Experience behind the change (${after.length})` }),
       h('p', { class: 'sub', text: `${c.scope} readings from evidence #${c.since_seq} on, which fit a flipped mapping better than the old one.` }),
       h('ul', { class: 'events', id: 'changeEvents', tabindex: '0', 'aria-label': 'Readings after the changepoint' }, after.slice().reverse().map(eventLine)));
   } else {
     parts.push(h('p', {}, badge('No change suspected', 'ok')));
-    parts.push(kv([['Best gain', `${c.llr.toFixed(2)} nats (threshold ${threshold.toFixed(2)})`]]));
+    parts.push(h('p', { class: 'plain', text: 'Every factor still reads the way it did: no flip explains the recent readings better.' }));
+    parts.push(technical(kv([['Best gain', `${c.llr.toFixed(2)} nats (threshold ${threshold.toFixed(2)})`]])));
   }
   if (c.window) {
     parts.push(h('p', { class: 'sub', text: `Tested ${c.tried} changepoints over the last ${c.window} learning events.` }));
-    if (c.alternatives.length) parts.push(table('Alternative scopes', ['Scope', { label: 'Gain (nats)', num: true }], c.alternatives.map((a) => [a.scope, a.llr.toFixed(2)])));
+    if (c.alternatives.length) parts.push(technical(table('Alternative scopes', ['Scope', { label: 'Gain (nats)', num: true }], c.alternatives.map((a) => [a.scope, a.llr.toFixed(2)]))));
   }
   fill($('change'), parts);
 }
@@ -461,7 +583,7 @@ function splitNote(f, events) {
 
 function renderExplain(factors, events) {
   fill($('explain'), factors.map((f) => h('section', { class: 'factor', 'data-scope': f.scope, 'aria-label': `Factor ${f.scope}` },
-    h('div', { class: 'factorhead' }, h('h3', { text: f.scope }), h('span', { class: 'sub', text: `P(inverted) = ${f.p_inverted.toFixed(3)}` })),
+    h('div', { class: 'factorhead' }, h('h3', { text: scopeName(f.scope) }), h('span', { class: 'sub', text: plainBelief(f.p_inverted) })),
     h('p', { class: 'uncertainty' }, h('strong', { text: 'Remaining uncertainty: ' }), f.uncertainty),
     splitNote(f, events),
     h('div', { class: 'evlists' },
@@ -524,16 +646,18 @@ function forgetSummary(result) {
   if (e.invalidated?.length) parts.push(`graph revision(s) ${e.invalidated.join(', ')} invalidated`);
   if (e.reactivated) parts.push(`revision ${e.reactivated} re-activated`);
   if (e.pending_superseded) parts.push(`${e.pending_superseded} open question(s) superseded`);
+  if (e.derived_deleted?.pending) parts.push(`${e.derived_deleted.pending} question(s) of the epoch deleted`);
   if (e.checkpoints_stale?.length) parts.push(`checkpoint(s) ${e.checkpoints_stale.join(', ')} now stale`);
   if (result.failure) parts.push(`warning: ${result.failure}`);
-  return parts.join('; ') + '.';
+  const next = (result.next_steps ?? []).map((x) => `${cap(x).replace(/\.?$/, '.')}`).join(' ');
+  return parts.join('; ') + '.' + (next ? ` ${next}` : '');
 }
 
 async function forgetEvidence(button, e) {
   const ok = await confirmAction(`Forget evidence ${e.id}?`,
     `The ${e.channel} reading from ${e.root} (action ${e.action} → reading ${e.bit}) is deleted. Only a payload-free tombstone remains, ` +
-    'so this id can never be recorded again. Beliefs are recomputed without it, checkpoints that contain it become stale, ' +
-    'and open questions of this epoch are superseded.', 'Forget evidence');
+    'so this id can never be recorded again. Beliefs are recomputed without it and checkpoints that contain it become stale. ' +
+    'Open questions stay open for now: the executive closes a question whose premise disappeared at its next recorded decision.', 'Forget evidence');
   if (!ok) return;
   await act(button, $('evidenceStatus'), async () => {
     const result = await api('POST', '/api/forget', { kind: 'evidence', target: e.id });
@@ -572,29 +696,62 @@ async function loadQuestions() {
     const change = open && q.kind === 'calibrate' && !epochTarget;
     const quick = (id, text, work) => h('button', { type: 'button', id: `${id}-${q.id}`, 'aria-label': `${text} (question ${q.id})`, text,
       onclick: (ev) => answerQuestion(q, ev.currentTarget, status, work) });
-    const shortcuts = !open ? null : change
-      ? h('div', { class: 'buttons', role: 'group', 'aria-label': `Quick answers to question ${q.id}` },
-          quick('yes', 'Yes, it changed — relearn only that', { resolution: `Confirmed: ${q.scope} changed`, confirm: true }),
-          quick('no', 'No, nothing changed', { resolution: `Rejected: ${q.scope} did not change`, confirm: false }))
-      : epochTarget
-        ? h('div', { class: 'buttons', role: 'group', 'aria-label': `Quick answers to question ${q.id}` },
-            quick('continue', 'Continue there', { resolution: `Continue with the calibration of epoch ${epochTarget}`, confirm: true }),
-            quick('new', 'No, this is new', { resolution: `This is a new setup, not epoch ${epochTarget}`, confirm: false }))
-        : null;
+    const group = (...buttons) => h('div', { class: 'buttons', role: 'group', 'aria-label': `Quick answers to question ${q.id}` }, buttons);
+    const web = webScope(q.scope);
+    let shortcuts = null;
+    if (open && change) {
+      shortcuts = group(quick('yes', 'Yes, it changed — relearn only that', { resolution: `Confirmed: ${q.scope} changed`, confirm: true }),
+        quick('no', 'No, nothing changed', { resolution: `Rejected: ${q.scope} did not change`, confirm: false }));
+    } else if (open && epochTarget) {
+      shortcuts = group(quick('continue', 'Continue there', { resolution: `Continue with the calibration of epoch ${epochTarget}`, confirm: true }),
+        quick('new', 'No, this is new', { resolution: `This is a new setup, not epoch ${epochTarget}`, confirm: false }));
+    } else if (open && web.kind === 'knowledge') {
+      shortcuts = group(quick('accept', 'Accept', { resolution: 'Accepted by the owner', confirm: true }),
+        quick('reject', 'Reject', { resolution: 'Rejected by the owner', confirm: false }));
+    } else if (open && (web.kind === 'monitor' || web.kind === 'research')) {
+      shortcuts = group(quick('approve', 'Approve', { resolution: 'Approved by the owner', confirm: true }),
+        quick('decline', 'Decline', { resolution: 'Declined by the owner', confirm: false }));
+    } else if (open && web.kind === 'contested') {
+      const values = contestedValues(q);
+      if (values.length) shortcuts = group(...values.map((v, i) => quick(`value${i}`, `${v} holds`, { resolution: v })));
+    }
     return h('article', { class: 'card', 'data-pending': q.id, 'aria-label': `Question ${q.id}` },
-      h('p', {}, badge(q.resolved_at ? 'Resolved' : 'Open', q.resolved_at ? 'neutral' : 'info'), ` #${q.id} · ${q.kind.replace('_', ' ')} · ${q.scope}`),
+      h('p', {}, badge(q.resolved_at ? 'Resolved' : 'Open', q.resolved_at ? 'neutral' : 'info'), ` #${q.id} · ${q.kind.replace('_', ' ')} · ${web.label ?? q.scope}`),
       h('p', { class: 'question', text: q.question }),
       kv([['Epoch', q.epoch ?? '—'], q.context ? ['Context', q.context] : null, ['Asked', fmtTime(q.created_at)],
         q.resolved_at ? ['Answered', `${fmtTime(q.resolved_at)}: ${q.resolution}`] : null]),
+      web.label ? technical(kv([['Scope', h('code', { text: q.scope })]])) : null,
       shortcuts, q.resolved_at ? null : form, status);
   })));
 }
 
+// Web Cortex question scopes in words (raw scopes such as web:contested:<uuid>:3 go under Technical detail).
+function webScope(scope) {
+  const [head, kind, ...rest] = scope.split(':');
+  if (head !== 'web') return { kind: null, label: scope.startsWith('epoch:') ? `earlier setup ${scope.slice(6)}` : null };
+  const id = rest.join(':');
+  const label = { knowledge: `knowledge #${id}`, contested: 'sources disagree', research: 'research proposal',
+                  monitor: `monitor #${id}`, finding: 'monitor finding', review: 'research review' }[kind] ?? 'web question';
+  return { kind, label };
+}
+
+// The values a contested question offers, e.g. «…» (different values: 389 km vs 412 km); Which holds?
+function contestedValues(q) {
+  if (Array.isArray(q.values) && q.values.length) return q.values.map(String).slice(0, 4);
+  const m = /different (?:values|versions|dates|years): ([^;)]+)/.exec(q.question ?? '');
+  if (!m) return [];
+  const values = m[1].split(' vs ').map((v) => v.trim()).filter(Boolean);
+  return values.length >= 2 && values.length <= 4 && values.every((v) => v.length <= 80) ? values : [];
+}
+
 async function answerQuestion(q, button, status, body) {
   const continued = body.confirm === true && q.scope.startsWith('epoch:');
+  const web = webScope(q.scope).kind;
   const text = `Question ${q.id} resolved and recorded as a teacher intervention.` + (continued
     ? ` Epoch ${q.epoch} now continues the calibration of ${q.scope.slice(6)}.`
-    : body.confirm === true ? ' Only that factor is relearned.' : '');
+    : web === 'knowledge' ? (body.confirm ? ' The knowledge item is accepted.' : ' The knowledge item is rejected.')
+      : web ? (body.confirm === undefined ? ` Recorded: ${body.resolution}.` : '')
+        : body.confirm === true ? ' Only that factor is relearned.' : '');
   await act(button, status, async () => {
     await api('POST', `/api/pending/${q.id}/resolve`, body);
     if (continued) { state.epoch = q.epoch; $('epochSelect').value = q.epoch; $('evEpoch').value = q.epoch; }
@@ -647,9 +804,18 @@ function renderRevisionGroups() {
     h('h3', { text: `Context ${ctx}` }),
     table(`Revisions of context ${ctx}`, [{ label: 'Revision', num: true }, 'Status', 'Encoding', { label: 'Bytes', num: true }, { label: 'Validation MSE', num: true }, { label: 'Held-out MSE', num: true }, 'Created', 'Actions'],
       state.graphs.filter((g) => g.context === ctx).map((g) => [g.id, badge(g.status, statusTone(g.status)),
-        g.origin === 'founding' ? 'founding' : `${g.bits}-bit, degree ${g.degree}`, g.byte_size, fmtNum(g.metrics?.validation_mse), fmtNum(g.metrics?.heldout_mse),
+        g.origin === 'founding' ? 'founding' : `${g.bits}-bit, degree ${g.degree}`, g.byte_size, fmtNum(g.metrics?.validation_mse), heldoutText(g),
         fmtTime(g.created_at), { actions: [h('button', { type: 'button', 'aria-label': `View revision ${g.id}`, 'data-view-graph': g.id, text: 'View',
           onclick: (ev) => { state.selectedGraph = g.id; showGraph(g.id, ev.currentTarget); } })] }])))));
+}
+
+// Held-out error from an explicit evaluation, else the one the promotion gate measured.
+function heldoutMse(g) {
+  return g.metrics?.heldout_mse ?? g.decision?.checks?.heldout_gain?.candidate_mse ?? null;
+}
+function heldoutText(g) {
+  const x = heldoutMse(g);
+  return x === null ? 'not evaluated' : fmtNum(x);
 }
 
 function option(value, text) { return h('option', { value, text }); }
@@ -732,7 +898,8 @@ function renderGraph(g) {
     kv([['Origin', g.origin], ['Scoring rule', g.rule_version], ['Encoding', `${g.bits}-bit, degree ${g.degree}, ${g.rows}×${g.cols}`],
       ['Snapshot size', `${g.byte_size} bytes`], ['Edges', g.edges],
       ['Validation MSE', `${fmtNum(m.validation_mse)} (dense ${fmtNum(m.dense_validation_mse)})`],
-      ['Held-out MSE', m.heldout_mse === undefined ? 'not evaluated yet' : fmtNum(m.heldout_mse)],
+      ['Held-out MSE', m.heldout_mse !== undefined && m.heldout_mse !== null ? fmtNum(m.heldout_mse)
+        : heldoutMse(g) !== null ? `${fmtNum(heldoutMse(g))} (measured by the promotion gate)` : 'not evaluated yet'],
       ['Lineage', g.lineage.length ? g.lineage.map((l) => `${l.role} #${l.dataset_id}${l.deleted ? ' (deleted)' : ''}`).join(', ') : 'none'],
       ['Created', fmtTime(g.created_at)], ['Decided', fmtTime(g.decided_at)]]));
   $('graphActions').hidden = false;
@@ -813,7 +980,7 @@ function renderHeatmap(g) {
   const rows = matrix.length, cols = matrix[0]?.length ?? 0;
   const values = matrix.flat();
   const max = Math.max(...values.map(Math.abs), 1e-12);
-  const cell = 16, pad = 26;
+  const cell = 16, pad = 34;   // labels are 13 units: about 11 px when the matrix is scaled down to a phone
   const svg = s('svg', { class: 'heatmap', id: 'heatmap', viewBox: `0 0 ${pad + cols * cell + 2} ${pad + rows * cell + 2}`, role: 'img', 'aria-labelledby': 'heatTitle heatSummary' });
   svg.append(s('title', { id: 'heatTitle' }, `Weight matrix of revision ${g.id}`));
   svg.append(s('rect', { x: pad, y: pad, width: cols * cell, height: rows * cell, fill: '#ffffff', stroke: '#c6d2cb' }));
@@ -827,8 +994,8 @@ function renderHeatmap(g) {
     }
   }
   for (let k = 0; k < Math.max(rows, cols); k += 4) {
-    if (k < cols) svg.append(s('text', { x: pad + k * cell + cell / 2, y: pad - 6, 'text-anchor': 'middle' }, k));
-    if (k < rows) svg.append(s('text', { x: pad - 5, y: pad + k * cell + cell / 2 + 3, 'text-anchor': 'end' }, k));
+    if (k < cols) svg.append(s('text', { x: pad + k * cell + cell / 2, y: pad - 8, 'text-anchor': 'middle' }, k));
+    if (k < rows) svg.append(s('text', { x: pad - 6, y: pad + k * cell + cell / 2 + 4, 'text-anchor': 'end' }, k));
   }
   const steps = 9;
   const legend = s('svg', { class: 'legend', viewBox: '0 0 300 46', role: 'img', 'aria-label': `Colour legend from ${(-max).toFixed(3)} (rust) through 0 (white) to +${max.toFixed(3)} (blue)` });
@@ -874,7 +1041,7 @@ async function loadCheckpoints() {
   const rows = await load('checkpoints', [$('ckTable')], () => api('GET', '/api/checkpoints'));
   if (!rows) return;
   fill($('ckTable'), rows.length
-    ? table('Checkpoints', [{ label: 'Id', num: true }, 'Status', 'Policy', { label: 'Size', num: true }, { label: 'State', num: true }, 'Created', 'Last verified', 'File', 'Actions'],
+    ? table('Checkpoint archives', [{ label: 'Id', num: true }, 'Status', 'Policy', { label: 'Size', num: true }, { label: 'State', num: true }, 'Created', 'Last verified', 'File', 'Actions'],
         rows.slice().reverse().map((c) => [c.id, badge(c.status, statusTone(c.status)), c.policy, fmtBytes(c.bytes), c.state_version, fmtTime(c.created_at),
           c.verified_at ? fmtTime(c.verified_at) : 'never', h('code', { text: c.path.split('/').at(-1) }), { actions: [
             h('button', { type: 'button', 'aria-label': `Verify checkpoint ${c.id}`, 'data-verify': c.id, text: 'Verify', disabled: c.status === 'deleted',
@@ -928,10 +1095,13 @@ async function rebuildCheckpoints(button) {
 // ---- memory log ----------------------------------------------------------------------------------------
 
 async function loadMemory() {
-  const result = await load('memory', [$('deletionLog'), $('decisionLog')], () => Promise.all([
-    api('GET', '/api/memory?kind=deletion&limit=100'), api('GET', '/api/memory?kind=decision&limit=100')]));
+  const kind = $('memKind').value || 'research';
+  const result = await load('memory', [$('deletionLog'), $('decisionLog'), $('memoryBrowse')], () => Promise.all([
+    api('GET', '/api/memory?kind=deletion&limit=100'), api('GET', '/api/memory?kind=decision&limit=100'),
+    api('GET', `/api/memory?kind=${enc(kind)}&limit=100`)]));
   if (!result) return;
-  const [deletions, decisions] = result;
+  const [deletions, decisions, browsed] = result;
+  renderMemoryBrowse(kind, browsed.items);
   fill($('deletionLog'), deletions.items.length
     ? table('Deletion log, newest first', [{ label: 'Id', num: true }, 'Time', 'Target', 'Effects', 'Failure'],
         deletions.items.map((d) => [d.id, fmtTime(d.time), `${d.payload.target_kind} ${d.payload.target_id}`,
@@ -943,22 +1113,78 @@ async function loadMemory() {
     : empty('No decisions recorded yet. Use “Record decision” under Teach & beliefs.'));
 }
 
+function scopeText(scope) {
+  if (scope === null || scope === undefined) return '—';
+  if (typeof scope !== 'object') return String(scope);
+  return Object.entries(scope).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => `${k} ${v}`).join(' · ') || '—';
+}
+
+// Any memory kind: id, time, scope and the stored record as text (records are shown as data, never as markup).
+function renderMemoryBrowse(kind, items) {
+  fill($('memoryBrowse'), items.length
+    ? table(`Memory of kind ${kind}, newest first`, ['Id', 'Time', 'Scope', 'Record'], items.map((r) => [
+        h('code', { text: String(r.id) }), fmtTime(r.time), scopeText(r.scope),
+        h('details', {}, h('summary', { text: 'Show record' }), h('pre', { text: JSON.stringify(r.payload, null, 2) }))]))
+    : empty(`No ${kind} records.`));
+}
+
 // ---- research (Web Cortex) ---------------------------------------------------------------------------------
 // Everything a source supplies (titles, quotes, claims, URLs) is untrusted: it is set with textContent only, and a
 // URL becomes a link only when it parses as http(s).
 
+// Canonical research wording, shared with Pocket (pocket/web, lane L4) — keep both in step:
+//   field label "Kind of research"; auto "Let NeuroSciFi choose" (Pocket: "Let your Spark choose");
+//   quick_lookup "Quick lookup"; deep_research "Deep research"; fact_verification "Check a claim";
+//   comparative "Compare options"; scientific "Scientific literature"; technical "Technical (packages, releases,
+//   advisories)"; console-only: continuous "Continuous investigation"; change_detection "What changed";
+//   gap_resolution "Fill a knowledge gap".
+//   Stages: Queued, Discovering, Reading, Evaluating, Synthesizing, Completed, Partial, Failed, Cancelled.
+//   Verdicts: Supported / Disputed / Contested / Not enough evidence.
+//   Answer status: Corroborated / Single source / Contested / Insufficient evidence. Source badge: Live / From cache.
+//   Other badges are sentence case ("Provisional", "Paused").
 const MODE_LABELS = {
-  auto: 'Automatic (chosen from the question)', quick_lookup: 'Quick lookup', deep_research: 'Deep research',
-  continuous: 'Continuous', comparative: 'Comparison of two things', scientific: 'Scientific literature',
-  technical: 'Technical (packages, releases, advisories)', change_detection: 'Change detection',
-  fact_verification: 'Fact verification', gap_resolution: 'Gap resolution',
+  auto: 'Let NeuroSciFi choose', quick_lookup: 'Quick lookup', deep_research: 'Deep research',
+  fact_verification: 'Check a claim', comparative: 'Compare options', scientific: 'Scientific literature',
+  technical: 'Technical (packages, releases, advisories)', continuous: 'Continuous investigation',
+  change_detection: 'What changed', gap_resolution: 'Fill a knowledge gap',
 };
+const ANSWER_STATUS = { corroborated: 'Corroborated', single_source: 'Single source', contested: 'Contested',
+                        insufficient: 'Insufficient evidence', insufficient_evidence: 'Insufficient evidence' };
+const statusText = (x) => ANSWER_STATUS[x] ?? cap(String(x).replaceAll('_', ' '));
+const cap = (text) => (text ? text[0].toUpperCase() + text.slice(1) : text);
+// Retrieval limitation codes (FETCH_ERROR_CODES and provider errors) in words.
+const LIMITATION_TEXT = {
+  budget_exhausted: 'the run used up its request, time or query budget before reading everything',
+  rate_limited: 'the service asked us to slow down (rate limited), so it was skipped',
+  blocked_robots: 'the site’s robots.txt does not allow reading this page',
+  blocked_policy: 'the safe fetcher refused the address (private or disallowed)',
+  timeout: 'the site did not answer in time',
+  decode_error: 'the document could not be read (unreadable or hostile markup)',
+  daemon_unreachable: 'the local search service (open-webSearch) is not reachable',
+  daemon_failed: 'the local search service (open-webSearch) failed to start',
+  dns_failure: 'the site’s name could not be resolved',
+  connect_failed: 'the site could not be reached',
+  http_error: 'the site answered with an error',
+  too_large: 'the document is larger than the size limit',
+  unsupported_type: 'the document type is not supported',
+  too_many_redirects: 'the page redirected too many times',
+  tls_error: 'the secure connection failed',
+  disabled: 'web access was turned off',
+  circuit_open: 'the provider failed repeatedly and is cooling down',
+  internal_error: 'an internal error stopped reading this source',
+  failed: 'the request failed',
+};
+const RETRIEVAL_TEXT = { live: 'read live', cache: 'from the cache', api: 'from an API', feed: 'from a feed', rendered: 'rendered with JavaScript' };
+const KIND_TEXT = { page: 'Web page', pdf: 'PDF', api: 'Structured record', feed: 'Feed item' };
+const LIVE_MODES = ['live', 'api', 'feed', 'rendered'];
 const STAGES = [['discovering', 'Discovering'], ['reading', 'Reading'], ['evaluating', 'Evaluating'], ['synthesizing', 'Synthesizing']];
 const TASK_LABELS = { queued: 'Queued', discovering: 'Discovering', reading: 'Reading', evaluating: 'Evaluating',
                       synthesizing: 'Synthesizing', completed: 'Completed', partial: 'Partial', failed: 'Failed', cancelled: 'Cancelled' };
 const TERMINAL = ['completed', 'partial', 'failed', 'cancelled'];
 const POLL_MS = 2000;
-const web = { status: null, tasks: [], taskId: null, task: null, taskSig: '', listSig: '', seen: new Map(), timer: null, polling: false };
+const QUEUED_HINT_S = 30;   // a task queued this long with no worker gets the "is the worker running?" hint
+const web = { status: null, tasks: [], taskId: null, task: null, taskSig: '', listSig: '', seen: new Map(), timer: null, polling: false,
+              queuedSince: new Map(), privacy: null };
 
 const modeLabel = (m) => MODE_LABELS[m] ?? m ?? '—';
 const short = (text, n = 70) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
@@ -980,10 +1206,12 @@ function taskTone(t) {
 }
 
 function originLabel(t) {
+  if (t.origin_label) return t.origin_label;   // the backend's own wording when it provides one
   const o = t.origin ?? '';
   if (t.family || o.startsWith('pocket')) return 'Pocket device';
   if (o.startsWith('monitor:')) return `Monitor #${o.slice(8)}`;
   if (o.startsWith('refresh:')) return `Refresh of knowledge #${o.slice(8)}`;
+  if (o.startsWith('refresh-owner:')) return `Refresh of knowledge #${o.slice(14)}`;
   return { console: 'Owner console', cli: 'Command line', mcp: 'MCP client', curiosity: 'Curiosity (autonomous)' }[o] ?? o;
 }
 
@@ -1056,11 +1284,19 @@ function renderWebStatus(s) {
     ? empty('Curiosity is shown while web access is on.')
     : cur.length
       ? h('ol', { class: 'reasons' }, cur.map((x) => h('li', {}, h('strong', { text: x.target.statement ?? x.target.key ?? '—' }),
-          h('br'), `${x.kind} · ${modeLabel(x.mode)} · utility ${fmtNum(x.utility, 3)} · gain ${fmtNum(x.info_gain, 3)} bits`,
-          h('br'), h('span', { class: 'sub', text: x.reason }))))
+          h('br'), h('span', { class: 'sub', text: `${modeLabel(x.mode)}: ${x.reason}` }),
+          technical(h('p', { text: `${x.kind} · utility ${fmtNum(x.utility, 3)} · expected information gain ${fmtNum(x.info_gain, 3)} bits` })))))
       : empty('Nothing is worth investigating now: what is known is fresh or well supported.'));
   $('activeCount').textContent = s.active ? `${s.active} active` : '';
   syncControls();
+  if (web.task && web.taskId) rerenderReportIfStalled();
+}
+
+// The queued-without-worker hint depends on the worker state and on time, not only on the task row.
+function rerenderReportIfStalled() {
+  const t = web.task;
+  const sig = JSON.stringify([t.id, t.status, t.cancel_requested, t.updated_at, t.worker_alive, workerMissing(t)]);
+  if (sig !== web.taskSig) { web.taskSig = sig; rerender($('report'), renderReport(t)); }
 }
 
 async function loadTaskList() {
@@ -1090,14 +1326,17 @@ function renderTaskList() {
   const filter = $('taskStatus').value;
   const needle = $('taskText').value.trim().toLowerCase();
   const shown = web.tasks.filter((t) => (filter !== 'active' || isActive(t)) && (!needle || t.objective.toLowerCase().includes(needle)));
-  const sig = JSON.stringify([filter, needle, shown.map((t) => [t.id, t.status, t.cancel_requested, t.updated_at]), web.taskId]);
+  const sig = JSON.stringify([filter, needle, shown.map((t) => [t.id, t.status, t.cancel_requested, t.updated_at, t.worker_alive, workerMissing(t)]), web.taskId]);
   if (sig === web.listSig && $('taskList').querySelector('table, .empty')) { $('taskList').removeAttribute('aria-busy'); return; }
   web.listSig = sig;
   rerender($('taskList'), shown.length
-    ? table('Research tasks, newest first', ['Status', 'Mode', 'Objective', 'Created', 'Origin', 'Actions'], shown.map((t) => [
-        badge(taskLabel(t), taskTone(t)), modeLabel(t.mode), h('span', { class: 'objective', text: t.objective }), fmtTime(t.created_at),
+    ? table('Research tasks, newest first', ['Status', 'Kind of research', 'Objective', 'Created', 'Origin', 'Actions'], shown.map((t) => [
+        h('span', {}, badge(taskLabel(t), taskTone(t)), workerMissing(t) ? h('span', { class: 'sub stalled', text: ' no worker yet' }) : null),
+        modeLabel(t.mode), h('span', { class: 'objective', text: t.objective }), fmtTime(t.created_at),
         originLabel(t), { actions: taskActions(t, $('taskStatusMsg')) }]))
-    : empty(web.tasks.length ? 'No task matches the filter.' : 'No research yet. Ask a question above.'));
+    : empty(needle ? 'No task matches the filter.'
+      : filter ? `No ${$('taskStatus').selectedOptions[0].textContent.toLowerCase()} tasks.`
+        : 'No research yet. Ask a question above.'));
 }
 
 function taskActions(t, statusEl) {
@@ -1113,16 +1352,40 @@ function taskActions(t, statusEl) {
       }) }));
   }
   if (['failed', 'partial', 'cancelled'].includes(t.status)) {
-    out.push(h('button', { type: 'button', id: `resume-${t.id}`, text: 'Resume', 'aria-label': `Resume research task: ${what}`,
-      onclick: (ev) => act(ev.currentTarget, statusEl, async () => {
-        const next = await api('POST', `/api/web/tasks/${t.id}/resume`, {});
-        web.taskId = next.id;
-        await refreshTasks();
-        return next.id === t.id ? `Queued “${what}” again; it continues from its last checkpoint.`
-          : `Continuing “${what}” as a new linked task; sources read before are reused from the cache where possible.`;
-      }) }));
+    const label = t.status === 'failed' ? 'Resume' : 'Run again';
+    out.push(h('button', { type: 'button', id: `resume-${t.id}`, text: label, 'aria-label': `${label} research task: ${what}`,
+      onclick: (ev) => resumeTask(t, ev.currentTarget, statusEl) }));
   }
   return out;
+}
+
+function resumeTask(t, control, statusEl) {
+  const what = short(t.objective, 60);
+  return act(control, statusEl, async () => {
+    const next = await api('POST', `/api/web/tasks/${t.id}/resume`, {});
+    web.taskId = next.id;
+    web.taskSig = '';
+    await refreshTasks();
+    if (next.requeued === 'existing' || next.deduplicated) return `Already running — opened the existing task for “${what}”.`;
+    return next.id === t.id ? `Queued “${what}” again; it continues from its last checkpoint.`
+      : `Continuing “${what}” as a new linked task; sources read before are reused from the cache where possible.`;
+  });
+}
+
+// U-06: web access was turned off behind the page's back: show the notice and put focus on its switch.
+function showWebOff() {
+  $('webOff').hidden = false;
+  if (web.status) web.status.config.enabled = false;
+  syncControls();
+  loadWebStatus().catch(() => {}).finally(() => { if (!$('webOff').hidden) $('webEnable').focus(); });
+}
+
+// U-13: from a report to the knowledge items it proposed, focused and filtered to those awaiting review.
+async function reviewKnowledge(ids) {
+  web.focusKnowledge = ids[0];
+  $('kStatus').value = 'provisional';
+  $('kTopic').value = '';
+  location.hash = '#knowledge';
 }
 
 async function refreshTasks() {
@@ -1143,7 +1406,7 @@ async function loadTask(id) {
   try { task = await api('GET', `/api/web/tasks/${id}`); } catch (error) { say($('reportStatus'), errorText(error), 'error'); return; }
   if (id !== web.taskId) return;
   web.task = task;
-  const sig = JSON.stringify([task.id, task.status, task.cancel_requested, task.updated_at]);
+  const sig = JSON.stringify([task.id, task.status, task.cancel_requested, task.updated_at, task.worker_alive, workerMissing(task)]);
   if (sig === web.taskSig) return;
   web.taskSig = sig;
   rerender($('report'), renderReport(task));
@@ -1165,29 +1428,106 @@ function stageList(t) {
   return h('ol', { class: 'stages', 'aria-label': 'Progress' }, items);
 }
 
+// A queued task nobody picks up: the task's own worker field when the backend reports one, else the worker state
+// in /api/web/status, else time (QUEUED_HINT_S after the page or the server first saw it queued).
+function workerMissing(t) {
+  if (t.status !== 'queued' || t.proposed) return false;
+  if (typeof t.worker_alive === 'boolean') return false;   // true: running fine; false: the "stopped responding" line
+  const w = web.status?.worker ?? {};
+  if (w.embedded && w.running) return false;
+  if (typeof w.alive === 'boolean' && w.alive) return false;
+  if (!web.queuedSince.has(t.id)) web.queuedSince.set(t.id, Date.now());
+  const waited = Math.max((Date.now() - web.queuedSince.get(t.id)) / 1000, Date.now() / 1000 - (t.created_at ?? Infinity));
+  return typeof w.alive === 'boolean' ? !w.alive || waited >= QUEUED_HINT_S : waited >= QUEUED_HINT_S;
+}
+
+function queuedHint() {
+  return h('p', { class: 'msg error', id: 'queuedHint' }, ...rich('No research worker has picked this task up yet. Is the research service running? ' +
+    'Start `neuroscifi-webcortex` (or run `nsf web work`), or restart the console with `--web-worker`.'));
+}
+
+// Technical failures become a plain sentence; the raw text stays under Technical detail.
+const TECHNICAL = /[A-Z][A-Za-z]+(Error|Exception)\b|Traceback|\w+_\w+|\.py\b/;
+function errorBlock(t) {
+  if (!t.error) return null;
+  if (t.status === 'failed') {
+    return h('div', { class: 'failure' }, h('p', { class: 'msg error', text: 'This research stopped because of an error inside the research worker. ' +
+      'Resume it to continue from its last checkpoint; sources already read are reused.' }), technical(h('pre', { text: t.error })));
+  }
+  if (TECHNICAL.test(t.error)) return h('div', { class: 'failure' }, h('p', { class: 'msg error', text: `This research ended early (${taskLabel(t).toLowerCase()}).` }), technical(h('pre', { text: t.error })));
+  return h('p', { class: 'msg error', text: `This research ended: ${t.error.replace(/\.$/, '')}.` });
+}
+
+function reportActions(t) {
+  if (!['failed', 'partial', 'cancelled'].includes(t.status)) return null;
+  const label = t.status === 'failed' ? 'Resume from checkpoint' : 'Run again as a new task';
+  return h('div', { class: 'buttons' }, h('button', { type: 'button', id: 'reportResume', class: 'primary', text: label,
+    onclick: (ev) => resumeTask(t, ev.currentTarget, $('reportStatus')) }));
+}
+
 function renderReport(t) {
   const r = t.result;
   const head = [
     h('h3', { class: 'question', text: t.objective }),
-    h('p', { class: 'badges' }, badge(taskLabel(t), taskTone(t)), r ? badge(r.live ? 'Live' : 'From cache', r.live ? 'info' : 'neutral') : null,
+    h('p', { class: 'badges' }, badge(taskLabel(t), taskTone(t)), r ? liveBadge(r) : null,
       r?.memory?.answered_from_memory ? badge('Answered from memory', 'neutral') : null,
       ` ${modeLabel(t.mode)} · ${originLabel(t)} · created ${fmtTime(t.created_at)}${t.finished_at ? ` · finished ${fmtTime(t.finished_at)}` : ''}`),
     stageList(t),
     t.cancel_requested && isActive(t) ? h('p', { class: 'msg busy', text: 'Cancel requested: the run stops before its next network request.' }) : null,
-    t.error ? h('p', { class: 'msg error', text: `Error: ${t.error}` }) : null,
+    workerMissing(t) ? queuedHint() : null,
+    isActive(t) && t.worker_alive === false
+      ? h('p', { class: 'msg error', id: 'workerStopped', text: 'The research worker running this task stopped responding. Cancel it, or resume it once the worker runs again.' }) : null,
+    errorBlock(t),
+    reportActions(t),
   ];
   if (!r) {
     return [...head, empty(isActive(t) ? 'The report appears when the run finishes. The stage above is the one the worker reports; nothing is estimated.'
       : 'This task ended without a report.')];
   }
-  return [...head, ...reportBody(r), usageBlock(t), evidenceBlock(t)];
+  return [...head, ...reportBody(r, t), usageBlock(t), evidenceBlock(t)];
 }
 
-function answerItem(a) {
-  const meta = [a.status && a.status !== 'summary' ? badge(a.status.replace('_', ' '), a.status === 'corroborated' ? 'ok' : a.status === 'contested' ? 'warn' : 'neutral') : null,
-    typeof a.confidence === 'number' ? badge(`confidence ${pct(a.confidence)}`, 'neutral') : null];
-  const body = a.type === 'quote' ? h('blockquote', { class: 'quote', text: a.text }) : h('p', { class: 'template', text: a.text });
+// Live / From cache from the sources actually read (cited first), never from a run that read nothing.
+function liveBadge(r) {
+  const sources = r.sources ?? [];
+  const cited = sources.filter((x) => x.cited !== false);
+  const pool = cited.length ? cited : sources;
+  if (!pool.length) return null;
+  return pool.some((x) => LIVE_MODES.includes(x.retrieval_mode)) ? badge('Live', 'info') : badge('From cache', 'neutral');
+}
+
+// "3 copies, 1 independent source" when several cited documents repeat one origin (U-18; fields from L1a).
+function copiesText(x) {
+  const copies = x?.copies, independent = x?.independent_sources;
+  if (typeof copies !== 'number' || typeof independent !== 'number' || copies <= independent) return null;
+  return `${copies} copies, ${independent} independent source${independent === 1 ? '' : 's'}`;
+}
+
+// Sources about the same subject that are not cited as support: listed as "See also", never as citations.
+function seeAlso(numbers) {
+  if (!numbers?.length) return null;
+  return h('span', { class: 'seealso' }, 'See also ', numbers.map((n, i) => [i ? ', ' : '',
+    h('a', { href: `#src-${n}`, class: 'related', 'aria-label': `related source ${n}, not cited as support`, text: `source ${n}`,
+      onclick: (ev) => { ev.preventDefault(); const el = $(`src-${n}`); if (el) { el.scrollIntoView({ block: 'center' }); el.focus(); } } })]));
+}
+
+function answerItem(a, r) {
+  const finding = a.status === 'summary' ? null : (r.findings ?? []).find((f) => f.statement === a.text);
+  const copies = copiesText(a) ?? copiesText(finding);
+  const meta = [a.status && a.status !== 'summary' ? badge(statusText(a.status), a.status === 'corroborated' ? 'ok' : a.status === 'contested' ? 'warn' : 'neutral') : null,
+    finding?.superseded ? badge('Older release', 'neutral') : null,
+    typeof a.confidence === 'number' ? badge(`confidence ${pct(a.confidence)}`, 'neutral') : null,
+    copies ? h('span', { class: 'sub copies', text: copies }) : null, seeAlso(a.related ?? finding?.related)];
+  const text = a.status === 'summary' ? freshLead(a.text, r) : a.text;
+  const body = a.type === 'quote' ? h('blockquote', { class: 'quote', text }) : h('p', { class: 'template', text });
   return h('li', {}, body, h('p', { class: 'answermeta' }, citeLinks(a.citations), ' ', meta));
+}
+
+// "Newest cited source: 3 days ago." was true when the report was written; say the date and the age now.
+function freshLead(text, r) {
+  const t = r.freshness?.newest_source_at;
+  if (t === null || t === undefined) return text;
+  return text.replace(/Newest cited source: [^.]*\./, `Newest cited source: published ${fmtDay(t)} (${ago(t)}).`);
 }
 
 function side(label, x) {
@@ -1195,12 +1535,62 @@ function side(label, x) {
     x.type === 'quote' ? h('blockquote', { class: 'quote', text: x.text }) : h('p', { text: x.text }));
 }
 
-function reportBody(r) {
-  const out = [h('h4', { text: 'Answer' }), h('ol', { class: 'answers' }, (r.answer ?? []).map(answerItem))];
-  if (r.verdict) {
-    out.push(h('h4', { text: 'Verdict' }), h('p', {}, badge(r.verdict.label, r.verdict.label === 'supported' ? 'ok' : r.verdict.label === 'insufficient' ? 'neutral' : 'warn'),
-      ` confidence ${pct(r.verdict.confidence)}`), h('ul', { class: 'reasons' }, (r.verdict.reasons ?? []).map((x) => h('li', { text: x }))));
+const VERDICT_TEXT = {
+  supported: ['The sources support this claim.', 'ok', 'Supported'],
+  disputed: ['The sources contradict this claim.', 'warn', 'Disputed'],
+  contested: ['The sources disagree about this claim.', 'warn', 'Contested'],
+  insufficient: ['There is not enough evidence to decide this claim.', 'neutral', 'Not enough evidence'],
+};
+
+// The verdict in one sentence plus the claim that was checked. A verdict never says "0 contradict" next to listed
+// contradictions: such reasons are dropped and the contradictions are pointed to instead.
+function verdictBlock(r) {
+  const v = r.verdict;
+  const [sentence, tone, word] = VERDICT_TEXT[v.label] ?? [v.label, 'neutral', cap(v.label)];
+  const conflicts = (r.contradictions ?? []).filter((c) => !v.citations?.length || v.citations.includes(c.a?.citation) || v.citations.includes(c.b?.citation));
+  let reasons = v.reasons ?? [];
+  let plain = v.summary ?? v.plain ?? sentence;
+  const counted = Array.isArray(v.supporting) && Array.isArray(v.contradicting);
+  if (counted) {   // the backend's own classification of the checked claim (L1a); never a count made here
+    const [s, c] = [v.supporting.length, v.contradicting.length];
+    if (s || c) plain = `${plain} ${s} source sentence${s === 1 ? '' : 's'} support${s === 1 ? 's' : ''} it; ${c} contradict${c === 1 ? 's' : ''} it.`;
+  } else if (conflicts.length) {   // older reports: drop "0 contradict" beside a listed contradiction
+    reasons = reasons.filter((x) => !/\b0 contradict/.test(x));
+    if (v.label === 'supported' || v.label === 'insufficient') {
+      plain = `${plain} The sources also disagree with each other: see the ${conflicts.length} contradiction${conflicts.length === 1 ? '' : 's'} below.`;
+    }
   }
+  return [h('h4', { text: 'Verdict' }),
+    h('p', { class: 'verdictline', id: 'verdictText' }, badge(word, tone), ` ${plain}`),
+    v.statement ? h('p', { class: 'sub', id: 'claimChecked' }, h('strong', { text: 'Claim checked: ' }), v.statement) : null,
+    technical(h('p', { text: `Support estimate ${pct(v.confidence)}${v.citations?.length ? ` from sources ${v.citations.map((n) => `[${n}]`).join(' ')}` : ''}.` }),
+      reasons.length ? h('ul', { class: 'reasons' }, reasons.map((x) => h('li', { text: x }))) : null)];
+}
+
+// Limitation strings such as "wikipedia: rate_limited" or "budget_exhausted: budget exhausted: …" in words.
+function plainLimitation(text, r) {
+  const m = /^([^:]+): ([a-z_]+)(?::\s*(.*))?$/.exec(text);
+  if (m && LIMITATION_TEXT[m[2]]) {
+    const who = m[1] === m[2] || m[1] === 'retrieval' ? null : m[1];
+    return `${who ? `${who}: ` : ''}${cap(LIMITATION_TEXT[m[2]])}.`;
+  }
+  const code = /^([a-z_]+): (.*)$/.exec(text);
+  if (code && LIMITATION_TEXT[code[1]]) {
+    const rest = code[2].replace(new RegExp(`^${code[1].replace(/_/g, '[ _]')}:?\\s*`, 'i'), '');
+    return `${cap(LIMITATION_TEXT[code[1]])}${rest ? ` (${rest})` : ''}.`;
+  }
+  const cache = /^Served from cache retrieved [^;]*; not re-verified live$/.exec(text);
+  if (cache) {
+    const read = (r.sources ?? []).filter((x) => x.cited !== false).map((x) => x.retrieved_at).filter((x) => typeof x === 'number');
+    if (read.length) return `Served from the cache (read ${fmtDay(Math.min(...read))}, ${ago(Math.min(...read))}); not re-checked live.`;
+  }
+  return text;
+}
+
+function reportBody(r, t) {
+  const out = [h('h4', { text: 'Answer' }), h('ol', { class: 'answers' }, (r.answer ?? []).map((a) => answerItem(a, r)))];
+  const claims = (r.sources ?? []).length > 0;
+  if (r.verdict && claims) out.push(...verdictBlock(r));
   if (r.comparison?.rows?.length) {
     const [a, b] = r.comparison.items;
     const cell = (x) => (x ? h('span', {}, x.text, ' ', citeLinks(x.citations)) : '—');
@@ -1212,19 +1602,30 @@ function reportBody(r) {
   }
   if (r.contradictions?.length) {
     out.push(h('h4', { text: 'Contradictions' }), ...r.contradictions.map((c) => h('div', { class: 'contradiction' },
-      h('p', { class: 'reason', text: `Disagreement: ${c.reason}` }), h('div', { class: 'sides' }, side('A', c.a), side('B', c.b)),
+      h('p', { class: 'reason', text: c.description ?? `Disagreement: ${c.reason}` }), h('div', { class: 'sides' }, side('A', c.a), side('B', c.b)),
+      c.description ? technical(h('p', {}, h('code', { text: c.reason }))) : null,
       h('p', { class: 'sub', text: c.assessment }))));
   }
-  const listed = (title, items) => (items?.length ? [h('h4', { text: title }), h('ul', { class: 'reasons' }, items.map((x) => h('li', { text: x })))] : []);
-  out.push(...listed('Uncertainties', r.uncertainties), ...listed('Limitations', r.limitations));
+  if (r.uncertainties?.length) out.push(h('h4', { text: 'Uncertainties' }), h('ul', { class: 'reasons' }, r.uncertainties.map((x) => h('li', { text: x }))));
+  if (r.limitations?.length) {
+    const plain = r.limitations.map((x) => plainLimitation(x, r));
+    out.push(h('h4', { text: 'Limitations' }), h('ul', { class: 'reasons', id: 'limitations' }, plain.map((x) => h('li', { text: x }))));
+    if (plain.some((x, i) => x !== r.limitations[i])) out.push(technical(h('ul', { class: 'reasons' }, r.limitations.map((x) => h('li', {}, h('code', { text: x }))))));
+  }
   const f = r.freshness;
   if (f) {
     out.push(h('h4', { text: 'Freshness' }), kv([['Required', `${f.class}${f.window_seconds ? ` (within ${(f.window_seconds / 86400).toFixed(f.window_seconds < 86400 ? 2 : 0)} days)` : ''}`],
-      ['Satisfied', badge(f.satisfied ? 'yes' : 'no', f.satisfied ? 'ok' : 'warn')], ['Newest source', fmtDay(f.newest_source_at)]]));
+      ['Satisfied', badge(f.satisfied ? 'Yes' : 'No', f.satisfied ? 'ok' : 'warn')],
+      ['Newest source', f.newest_source_at === null || f.newest_source_at === undefined ? 'undated' : `${fmtDay(f.newest_source_at)} (${ago(f.newest_source_at)})`]]));
   }
   out.push(h('h4', { text: 'Sources' }), (r.sources ?? []).length ? h('ol', { class: 'sources' }, r.sources.map(sourceItem)) : empty('No sources were read.'));
   const k = r.consolidation;
-  if (k?.provisional?.length) out.push(h('p', { class: 'msg ok', text: `${k.provisional.length} new provisional knowledge item(s) await your review under Knowledge.` }));
+  if (k?.provisional?.length) {
+    const n = k.provisional.length;
+    out.push(h('p', { class: 'msg ok', id: 'reviewLink' }, `${n} new provisional knowledge item${n === 1 ? '' : 's'} await${n === 1 ? 's' : ''} your review: `,
+      h('a', { href: '#knowledge', text: n === 1 ? 'review it under Knowledge' : 'review them under Knowledge',
+        onclick: (ev) => { ev.preventDefault(); reviewKnowledge(k.provisional); } }), '.'));
+  }
   return out;
 }
 
@@ -1240,11 +1641,16 @@ function sourceFlags(s) {
   return out;
 }
 
+function sourceHow(s) {
+  if (s.kind === 'api' && s.retrieval_mode === 'api') return 'Structured record from an API';
+  return `${KIND_TEXT[s.kind] ?? cap(s.kind ?? 'document')}, ${RETRIEVAL_TEXT[s.retrieval_mode] ?? s.retrieval_mode}`;
+}
+
 function sourceItem(s) {
   return h('li', { id: `src-${s.n}`, tabindex: '-1', value: String(s.n), 'data-source': s.n },
     h('p', { class: 'srctitle' }, h('strong', { text: s.title || s.domain || 'Untitled' }), ` · ${s.domain}`),
     h('p', { class: 'srcurl' }, safeLink(s.url)),
-    h('p', { class: 'sub', text: `Published ${fmtDay(s.published_at)} · retrieved ${fmtTime(s.retrieved_at)} · ${s.retrieval_mode === 'cache' ? 'from cache' : s.retrieval_mode} · ${s.kind}` }),
+    h('p', { class: 'sub', text: `Published ${fmtDay(s.published_at)} · retrieved ${fmtTime(s.retrieved_at)} · ${sourceHow(s)}` }),
     h('p', { class: 'flags' }, sourceFlags(s)));
 }
 
@@ -1273,7 +1679,7 @@ function evidenceBlock(t) {
       fill(slot, groups.length || orphans.length ? [
         ...groups.map((g) => h('div', { class: 'evsource' }, h('p', { class: 'srctitle' }, h('strong', { text: g.source.title || g.source.domain }), ` · ${g.source.domain} · `, safeLink(g.source.url)),
           h('ul', { class: 'claims' }, g.claims.map((c) => h('li', {}, h('span', { text: c.text }), ' ',
-            badge(c.cluster_status ? c.cluster_status.replace('_', ' ') : c.kind, 'neutral')))))),
+            badge(c.cluster_status ? statusText(c.cluster_status) : c.kind, 'neutral')))))),
         orphans.length ? h('ul', { class: 'claims' }, orphans.map((c) => h('li', { text: c.text }))) : null,
       ] : empty('No claims were extracted.'));
     } catch (error) {
@@ -1287,7 +1693,7 @@ function evidenceBlock(t) {
 // A monitor finding (meaningful change) in one line; keys and values are untrusted web text, set as text only.
 function findingText(f) {
   const parts = (f.changed_values || []).slice(0, 2).map((c) =>
-    `${short(String(c.key), 60)}: ${(c.before || []).join(', ') || '—'} → ${(c.after || []).join(', ') || '—'}`);
+    `${(c.before || []).join(', ') || '—'} → ${(c.after || []).join(', ') || '—'}`);
   if (f.new_claims?.length) parts.push(`${f.new_claims.length} new corroborated subject${f.new_claims.length === 1 ? '' : 's'}`);
   if (f.superseded?.length) parts.push(`${f.superseded.length} knowledge item${f.superseded.length === 1 ? '' : 's'} superseded`);
   return parts.join('; ') || 'change detected';
@@ -1303,8 +1709,8 @@ function monitorFindings(m) {
 
 function renderMonitors(monitors) {
   fill($('monitorList'), monitors.length
-    ? table('Monitors', ['Topic', 'Mode', 'Every', 'Status', 'Last run', { label: 'Runs', num: true }, 'Recent findings', 'Actions'], monitors.map((m) => [
-        h('span', { text: m.topic }), modeLabel(m.mode), `${fmtNum(m.interval_seconds / 3600, 0)} h`, badge(m.status, m.status === 'active' ? 'ok' : m.status === 'proposed' ? 'info' : 'neutral'),
+    ? table('Monitors', ['Topic', 'Kind of research', 'Every', 'Status', 'Last run', { label: 'Runs', num: true }, 'Recent findings', 'Actions'], monitors.map((m) => [
+        h('span', { text: m.topic }), modeLabel(m.mode), `${fmtNum(m.interval_seconds / 3600, 0)} h`, badge(cap(m.status), m.status === 'active' ? 'ok' : m.status === 'proposed' ? 'info' : 'neutral'),
         fmtTime(m.last_run_at), m.runs, monitorFindings(m), { actions: monitorActions(m) }]))
     : empty('No monitors. Add a topic below to re-check it on a schedule.'));
 }
@@ -1354,10 +1760,38 @@ const KNOWLEDGE_TONE = { accepted: 'ok', provisional: 'info', stale: 'warn', arc
 
 async function loadKnowledge() {
   const topic = $('kTopic').value.trim();
+  const wanted = $('kStatus').value;
   const out = await load('knowledge', [$('knowledgeList')], () => api('GET', `/api/web/knowledge${topic ? `?topic=${enc(topic)}` : ''}`));
   if (!out) return;
-  fill($('knowledgeList'), out.items.length ? h('div', { class: 'grid' }, out.items.map(knowledgeCard))
-    : empty(topic ? `Nothing known about “${topic}”. Research it under Research.` : 'Nothing learned from the web yet.'));
+  web.knowledge = out.items;
+  renderKnowledge(topic, wanted);
+}
+
+function knowledgeMatches(k, wanted) {
+  if (!wanted) return true;
+  if (wanted === 'contested') return !!k.contested;
+  if (wanted === 'stale') return k.status === 'stale' || !!k.stale;
+  return k.status === wanted;
+}
+
+function renderKnowledge(topic = $('kTopic').value.trim(), wanted = $('kStatus').value) {
+  const items = (web.knowledge ?? []).filter((k) => knowledgeMatches(k, wanted));
+  const what = wanted ? `${$('kStatus').selectedOptions[0].textContent.toLowerCase()} ` : '';
+  fill($('knowledgeList'), items.length ? h('div', { class: 'grid' }, items.map(knowledgeCard))
+    : empty(wanted && web.knowledge?.length ? `No ${what}knowledge${topic ? ` about “${topic}”` : ''}.`
+      : topic ? `Nothing known about “${topic}”. Research it under Research.` : 'Nothing learned from the web yet.'));
+  const target = web.focusKnowledge;
+  if (target !== undefined && target !== null) {
+    web.focusKnowledge = null;
+    const title = $(`k-title-${target}`) ?? $('knowledgeList').querySelector('h2.kstatement');
+    if (title) { title.scrollIntoView({ block: 'center' }); title.focus(); }
+  }
+}
+
+// knowledge.decide reports earlier answered questions whose record now carries this revised decision.
+function revised(out) {
+  const ids = out?.decisions_revised ?? [];
+  return ids.length ? ` Your earlier answer${ids.length === 1 ? '' : 's'} to question${ids.length === 1 ? '' : 's'} ${ids.map((i) => `#${i}`).join(', ')} now record${ids.length === 1 ? 's' : ''} this change.` : '';
 }
 
 function knowledgeCard(k) {
@@ -1374,8 +1808,8 @@ function knowledgeCard(k) {
   });
   const live = ['provisional', 'accepted', 'stale'].includes(k.status);
   const buttons = [
-    k.status === 'provisional' || k.status === 'stale' ? action('accept', 'Accept', 'primary', (c) => run(c, 'review', { accept: true }, () => `Accepted knowledge #${k.id}.`)) : null,
-    k.status === 'provisional' || k.status === 'stale' ? action('reject', 'Reject', null, (c) => run(c, 'review', { accept: false }, () => `Rejected knowledge #${k.id}.`)) : null,
+    k.status === 'provisional' || k.status === 'stale' ? action('accept', 'Accept', 'primary', (c) => run(c, 'review', { accept: true }, (o) => `Accepted knowledge #${k.id}.${revised(o)}`)) : null,
+    k.status === 'provisional' || k.status === 'stale' ? action('reject', 'Reject', null, (c) => run(c, 'review', { accept: false }, (o) => `Rejected knowledge #${k.id}.${revised(o)}`)) : null,
     live ? action('refresh', 'Refresh', null, (c) => run(c, 'refresh', {}, (t) => `Re-checking knowledge #${k.id}: research task queued (${modeLabel(t.mode)}).`)) : null,
     live ? action('archive', 'Archive', null, (c) => run(c, 'archive', {}, () => `Archived knowledge #${k.id}; it is kept for history only.`)) : null,
     action('forget', 'Forget', 'danger', async (c) => {
@@ -1385,11 +1819,11 @@ function knowledgeCard(k) {
   ].filter(Boolean);
   const superseded = (k.versions ?? []).filter((v) => v.id !== k.id && (v.status === 'superseded' || v.superseded_by));
   return h('article', { class: 'card', 'data-knowledge': k.id, 'aria-labelledby': `k-title-${k.id}` },
-    h('h2', { id: `k-title-${k.id}`, class: 'kstatement', text: k.statement }),
-    h('p', { class: 'badges' }, badge(k.status, KNOWLEDGE_TONE[k.status] ?? 'neutral'), k.stale && k.status !== 'stale' ? badge('stale', 'warn') : null,
-      k.contested ? badge('contested', 'warn') : null, badge(`confidence ${pct(k.confidence)}`, 'neutral'), ` #${k.id} · version ${k.version}`),
-    kv([['Freshness class', k.freshness_class], ['Last verified', fmtTime(k.last_verified_at)], ['First verified', fmtTime(k.first_verified_at)],
-      k.stale ? ['Why stale', k.stale_reason] : null, k.note ? ['Note', k.note] : null, k.pending_id ? ['Open question', `#${k.pending_id}`] : null]),
+    h('h2', { id: `k-title-${k.id}`, class: 'kstatement', tabindex: '-1', text: k.statement }),
+    h('p', { class: 'badges' }, badge(cap(k.status), KNOWLEDGE_TONE[k.status] ?? 'neutral'), k.stale && k.status !== 'stale' ? badge('Stale', 'warn') : null,
+      k.contested ? badge('Contested', 'warn') : null, badge(`confidence ${pct(k.confidence)}`, 'neutral'), ` #${k.id} · version ${k.version}`),
+    kv([['Freshness class', k.freshness_class], ['Last verified', `${fmtTime(k.last_verified_at)} (${ago(k.last_verified_at)})`], ['First verified', fmtTime(k.first_verified_at)],
+      k.stale ? ['Why stale', String(k.stale_reason ?? '').replace(/^stale:\s*/i, '')] : null, k.note ? ['Note', k.note] : null, k.pending_id ? ['Open question', `#${k.pending_id}`] : null]),
     h('h3', { text: 'Sources' }), k.sources.length ? h('ul', { class: 'reasons' }, k.sources.map((s) => h('li', {}, h('span', { text: `${s.title || s.domain} · ${fmtDay(s.published_at)} · ` }), safeLink(s.url))))
       : empty('No sources recorded.'),
     h('details', { id: `k-versions-${k.id}` }, h('summary', { text: `Version history (${(k.versions ?? []).length})` }),
@@ -1398,38 +1832,73 @@ function knowledgeCard(k) {
     superseded.length || k.feedback?.length ? h('div', { class: 'changed' }, h('h3', { text: 'What changed' }),
       superseded.length ? h('ul', { class: 'reasons' }, superseded.map((v) => h('li', { text: `Version ${v.version} (${v.status}) said: ${v.statement}` }))) : null,
       k.feedback?.length ? h('ul', { class: 'reasons' }, k.feedback.map((f) => h('li', {
-        text: `${fmtTime(f.created_at)}: ${f.effect} (confidence ${pct(f.before_confidence)} → ${pct(f.after_confidence)}, ${fmtNum(f.info_gain ?? 0, 3)} bits)` }))) : null) : null,
+        text: `${fmtTime(f.created_at)}: ${String(f.effect).replaceAll('_', ' ')} (confidence ${pct(f.before_confidence)} → ${pct(f.after_confidence)})` }))) : null) : null,
+    technical(kv([['Key', h('code', { text: k.key ?? '—' })],
+      k.feedback?.length ? ['Information gained', k.feedback.map((f) => `${fmtNum(f.info_gain ?? 0, 3)} bits`).join(', ')] : null])),
     h('div', { class: 'buttons', role: 'group', 'aria-label': `Actions for knowledge #${k.id}` }, buttons), status);
 }
 
 // ---- controls ------------------------------------------------------------------------------------------
 
-// A control stays disabled while its own request is in flight, whatever the data says.
-function enable(id, allowed) {
+// A control stays disabled while its own request is in flight, whatever the data says. A button disabled by the
+// data says why in a line after it, linked with aria-describedby (U-30).
+function enable(id, allowed, why = null) {
   const el = $(id);
   el.disabled = state.busy.has(el) || !allowed;
+  if (why === null) return;
+  let note = $(`${id}-why`);
+  if (!note) {
+    note = h('p', { class: 'sub why', id: `${id}-why` });
+    el.after(note);
+    el.setAttribute('aria-describedby', [el.getAttribute('aria-describedby'), note.id].filter(Boolean).join(' '));
+  }
+  note.textContent = allowed ? '' : why;
 }
+
+const WEB_OFF_WHY = 'Turn on web access first.';
 
 function syncControls() {
   const hasEpoch = !!state.epoch;
-  for (const id of ['observeBtn', 'recordDecision', 'forgetEpoch']) enable(id, hasEpoch);
+  for (const id of ['observeBtn', 'recordDecision', 'forgetEpoch']) enable(id, hasEpoch, 'Start or choose an epoch first.');
   $('forgetEpoch').textContent = hasEpoch ? `Forget epoch ${state.epoch}` : 'Forget epoch';
-  enable('learnBtn', $('learnTrain').value && $('learnValidation').value);
-  enable('recallBtn', $('recallDataset').value && state.graphs.some((g) => g.status === 'active'));
+  enable('learnBtn', $('learnTrain').value && $('learnValidation').value, 'Needs a training and a validation dataset: simulate one first.');
+  enable('recallBtn', $('recallDataset').value && state.graphs.some((g) => g.status === 'active'), 'Needs a stored dataset and an active graph.');
   const g = state.graph;
   const candidate = g?.status === 'candidate';
-  enable('gPromote', candidate);
+  enable('gPromote', candidate, g ? `Revision #${g.id} is ${g.status}: only a candidate can be promoted or rejected.` : '');
   enable('gReject', candidate);
   enable('gRejectReason', candidate);
   enable('gEvaluate', !!g);
-  enable('fmapBtn', !!$('fmapDataset').value);
+  enable('fmapBtn', !!$('fmapDataset').value, 'Needs a stored dataset: simulate one first.');
   $('ckPrune').textContent = `Prune (keep ${$('ckKeep').value.trim() || 'N'})`;
-  $('ckRebuild').textContent = `Rebuild stale (keep ${$('ckKeep').value.trim() || 'N'})`;
+  $('ckRebuild').textContent = `Rebuild stale archives (keep ${$('ckKeep').value.trim() || 'N'})`;
   $('obsRootLabel').textContent = CHANNEL_ROOT[$('obsChannel').value];
-  enable('askBtn', !!web.status?.config?.enabled);
+  const webOn = !!web.status?.config?.enabled;
+  enable('askBtn', webOn, web.status ? WEB_OFF_WHY : '');
+  enable('monitorBtn', webOn, web.status ? WEB_OFF_WHY : '');
+  for (const b of document.querySelectorAll('#monitorList button')) {
+    b.disabled = state.busy.has(b) || !webOn;
+    b.setAttribute('aria-describedby', 'monitorBtn-why');
+  }
+  applyOffline();
+}
+
+// U8: Tab and Shift+Tab stay inside the open confirmation dialog.
+function trapFocus(ev) {
+  if (ev.key !== 'Tab') return;
+  const items = [...ev.currentTarget.querySelectorAll('button:not(:disabled), input:not(:disabled), [href]')];
+  if (!items.length) return;
+  const first = items[0], last = items.at(-1);
+  if (ev.shiftKey && (document.activeElement === first || !ev.currentTarget.contains(document.activeElement))) { ev.preventDefault(); last.focus(); }
+  else if (!ev.shiftKey && (document.activeElement === last || !ev.currentTarget.contains(document.activeElement))) { ev.preventDefault(); first.focus(); }
 }
 
 function wire() {
+  $('confirmDialog').addEventListener('keydown', trapFocus);
+  $('memKind').replaceChildren(...MEMORY_KINDS.map((k) => option(k, k)));
+  $('memKind').value = 'research';
+  $('memKind').addEventListener('change', loadMemory);
+  $('kStatus').addEventListener('change', () => renderKnowledge());
   $('refreshOverview').addEventListener('click', loadOverview);
   $('refreshTeach').addEventListener('click', loadTeach);
   $('refreshQuestions').addEventListener('click', loadQuestions);
@@ -1504,8 +1973,8 @@ function wire() {
   $('forgetEpoch').addEventListener('click', async (ev) => {
     const button = ev.currentTarget, epoch = state.epoch;
     const ok = await confirmAction(`Forget every evidence row of epoch ${epoch}?`,
-      'All camera, word and reference evidence of this epoch is deleted and tombstoned. Beliefs return to their priors, ' +
-      'open questions of the epoch are superseded and checkpoints that contain the rows become stale. The epoch name stays.', 'Forget epoch');
+      'All camera, word and reference evidence of this epoch is deleted and tombstoned. Beliefs return to their priors; ' +
+      'the epoch\'s questions, decisions, belief revisions and detected changes are deleted, and checkpoints that contain the rows become stale. The epoch name stays.', 'Forget epoch');
     if (!ok) return;
     act(button, $('evidenceStatus'), async () => {
       const result = await api('POST', '/api/forget', { kind: 'epoch', target: epoch });
@@ -1629,6 +2098,86 @@ function wire() {
   window.addEventListener('hashchange', () => { if (!takeToken()) route(true); });
 }
 
+// Privacy refusal (U-03, C-06): plain words naming what was found, the field marked invalid and focused, and an
+// explicit owner override that resends with authorization 'owner-approved-disclosure' after a confirmation.
+const PRIVATE_KINDS = { email: 'an e-mail address', phone: 'a phone number', api_key: 'an API key', jwt: 'a login token',
+  iban: 'a bank account number (IBAN)', credit_card: 'a card number', mac_address: 'a device (MAC) address',
+  ipv4: 'an IP address', ipv6: 'an IP address', file_path: 'a file path on this computer', private_term: 'a term you marked private',
+  evidence_root: 'a name from this individual’s own evidence', root: 'a name from this individual’s own evidence',
+  mixed_script: 'text that mixes alphabets (a look-alike trick)' };
+
+function kindList(kinds) {
+  const words = [...new Set(kinds.map((k) => PRIVATE_KINDS[k] ?? `private data (${k.replaceAll('_', ' ')})`))];
+  if (!words.length) return 'private details';
+  return words.length === 1 ? words[0] : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`;
+}
+
+function privacyKinds(error) {
+  if (!(error instanceof ApiError) || error.status !== 400) return null;
+  const m = /private data \(([^)]*)\)/i.exec(error.message);
+  return m ? m[1].split(',').map((k) => k.trim()).filter(Boolean) : null;
+}
+
+function clearPrivacy() {
+  if (web.privacy === null) return;
+  web.privacy = null;
+  $('askObjective').removeAttribute('aria-invalid');
+  $('askDisclose').checked = false;
+  $('askDiscloseRow').hidden = true;
+}
+
+// U-09/S-14: the backend may answer an identical running question with the existing task (deduplicated).
+async function submitResearch(disclose) {
+  const objective = $('askObjective').value.trim();
+  if (!objective) { say($('askStatus'), 'Write a question or objective first.', 'error'); $('askObjective').focus(); return; }
+  if (!askCount()) { $('askObjective').focus(); return; }
+  const status = $('askStatus');
+  let refused = null;
+  await act($('askBtn'), status, async () => {
+    const body = { objective, mode: $('askMode').value || 'auto' };
+    if (disclose) body.authorization = 'owner-approved-disclosure';
+    let t;
+    try {
+      t = await api('POST', '/api/web/tasks', body);
+    } catch (error) {
+      refused = privacyKinds(error);
+      if (refused) return null;
+      throw error;
+    }
+    $('askObjective').value = '';
+    clearPrivacy();
+    askCount();
+    web.taskId = t.id;
+    web.taskSig = '';
+    await refreshTasks();
+    if (t.deduplicated || t.existing) return 'Already running — opened the existing task. Its progress and report are under Report.';
+    return `Research queued (${modeLabel(t.mode)}). Its progress and report appear under Report.`;
+  });
+  if (refused) {
+    web.privacy = refused;
+    say(status, `Nothing was sent. Your question contains ${kindList(refused)}. Remove personal details such as e-mail addresses, ` +
+      'phone numbers or names you marked private, or tick “Send these details to search providers anyway”.', 'error');
+    $('askObjective').setAttribute('aria-invalid', 'true');
+    $('askDiscloseRow').hidden = false;
+    $('askDisclose').checked = false;
+    $('askObjective').focus();
+  }
+}
+
+// C-13: the limit is in bytes (UTF-8), so CJK text runs out sooner than the character count suggests.
+function askCount() {
+  const text = $('askObjective').value;
+  const chars = [...text].length;
+  const bytes = new TextEncoder().encode(JSON.stringify({ objective: text, mode: 'technical' })).length;
+  const left = MAX_TEXT_BODY - 200 - bytes;
+  const el = $('askCount');
+  if (chars > 2000) { say(el, `${chars} characters: the limit is 2000. Shorten the question; nothing is cut off for you.`, 'error'); return false; }
+  if (left < 0) { say(el, `Too long by ${-left} bytes. Shorten the question.`, 'error'); return false; }
+  el.className = 'msg sub';
+  el.textContent = chars ? `${chars} of 2000 characters` : '';
+  return true;
+}
+
 const SWITCH_LABELS = { enabled: 'Web access', autonomous: 'Autonomous research', pocket_research: 'Pocket research',
                         browser_rendering: 'JavaScript rendering' };
 
@@ -1659,18 +2208,16 @@ function wireResearch() {
       });
     });
   }
-  $('askForm').addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    const objective = $('askObjective').value.trim();
-    if (!objective) { say($('askStatus'), 'Write a question or objective first.', 'error'); $('askObjective').focus(); return; }
-    act($('askBtn'), $('askStatus'), async () => {
-      const t = await api('POST', '/api/web/tasks', { objective, mode: $('askMode').value || 'auto' });
-      $('askObjective').value = '';
-      web.taskId = t.id;
-      web.taskSig = '';
-      await refreshTasks();
-      return `Research queued (${modeLabel(t.mode)}). Its progress and report appear under Report.`;
-    });
+  $('askForm').addEventListener('submit', (ev) => { ev.preventDefault(); submitResearch(false); });
+  $('askObjective').addEventListener('input', () => { clearPrivacy(); askCount(); });
+  $('askDisclose').addEventListener('change', async (ev) => {
+    if (!ev.currentTarget.checked) return;
+    const kinds = web.privacy ?? [];
+    const ok = await confirmAction('Send private details to search providers?',
+      `Your question contains ${kindList(kinds)}. If you continue, the question is sent as written to search providers and to the sites they return, ` +
+      'which may log it. This is recorded as your authorisation for this question only.', 'Send anyway');
+    if (!ok) { ev.target.checked = false; ev.target.focus(); return; }
+    submitResearch(true);
   });
   $('taskFilter').addEventListener('submit', (ev) => ev.preventDefault());
   $('taskStatus').addEventListener('change', () => loadTaskList().catch((error) => say($('taskStatusMsg'), errorText(error), 'error')));
@@ -1705,7 +2252,7 @@ function renderRecall(r) {
 
 function lock(text) {
   state.token = null;
-  $('lockedText').textContent = text;
+  $('lockedText').replaceChildren(...rich(text));
   for (const id of VIEWS) $(id).hidden = true;
   $('nav').hidden = true;
   $('locked').hidden = false;
@@ -1738,9 +2285,23 @@ function route(moveFocus) {
   for (const a of document.querySelectorAll('nav a')) {
     if (a.dataset.view === view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
+  showCurrentNav();
   if (moveFocus) $(`h-${view}`).focus();
   schedulePoll();
   refreshView();
+  if (view !== 'overview') loadHeader().catch(() => {});   // nav counts stay current on every view (U-29)
+}
+
+// U-12: below 1000px the navigation is one scrollable row; keep the current item in view without moving the page.
+function showCurrentNav() {
+  const list = $('nav').querySelector('ul');
+  const current = list.querySelector('a[aria-current="page"]');
+  if (!current || list.scrollWidth <= list.clientWidth) return;
+  const item = current.parentElement;
+  const left = item.offsetLeft - list.offsetLeft;
+  if (left < list.scrollLeft || left + item.offsetWidth > list.scrollLeft + list.clientWidth) {
+    list.scrollLeft = Math.max(0, left - (list.clientWidth - item.offsetWidth) / 2);
+  }
 }
 
 async function start() {

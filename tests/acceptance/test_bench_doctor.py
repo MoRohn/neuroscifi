@@ -82,3 +82,14 @@ def test_doctor_without_database_checks_runtime_only():
     report = doctor.run()
     assert {c["name"] for c in report["checks"]} == {"python", "numpy", "zstandard", "sqlite", "json"}
     assert all(c["status"] in ("ok", "warn", "fail") for c in report["checks"])
+
+
+def test_doctor_checks_the_public_cache_file(tmp_path):
+    """S-05: `nsf doctor --db` checks the public web cache next to the instance; a corrupt one is reported (warn:
+    it is disposable and rebuilt on its next use), an absent one is fine."""
+    path = _instance(tmp_path)
+    assert _statuses(doctor.run(path))["public_cache"] == "ok"
+    cache = path.with_name(f"{path.stem}.webcache.sqlite")
+    cache.write_bytes(b"not a database" * 512)
+    check = next(c for c in doctor.run(path)["checks"] if c["name"] == "public_cache")
+    assert check["status"] == "warn" and "corrupt" in check["detail"]

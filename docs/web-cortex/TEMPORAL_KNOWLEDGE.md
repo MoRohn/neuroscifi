@@ -1,6 +1,6 @@
 # Web Cortex: temporal knowledge
 
-Status: describes the code at `df00137` (`temporal.py`, `knowledge.py`, `consolidate.py`, `predictions.py`, `curiosity.py`, `instance/governance.py`). Test names are given where a property is verified. Contracts: [ARCHITECTURE.md](ARCHITECTURE.md) §4.3-4.4, §6. Decision: ADR-026. Related: [EVIDENCE_AND_PROVENANCE.md](EVIDENCE_AND_PROVENANCE.md), [MEMORY_INTEGRATION.md](MEMORY_INTEGRATION.md).
+Status: describes the working tree on top of `64da95b`, including the UAT fixes not yet committed (`temporal.py`, `knowledge.py`, `consolidate.py`, `predictions.py`, `curiosity.py`, `instance/governance.py`). Test names are given where a property is verified. Contracts: [ARCHITECTURE.md](ARCHITECTURE.md) §4.3-4.4, §6. Decision: ADR-026. Related: [EVIDENCE_AND_PROVENANCE.md](EVIDENCE_AND_PROVENANCE.md), [MEMORY_INTEGRATION.md](MEMORY_INTEGRATION.md).
 
 All times are Unix seconds in UTC. Nothing in `temporal.py` reads the clock: relative expressions ("yesterday", "2 days ago") resolve only against an explicit `now` or reference date. A date without a zone is UTC.
 
@@ -11,8 +11,8 @@ A statement from the web has several different times. The code keeps them apart.
 | Field | Where | Meaning | Source |
 |---|---|---|---|
 | `event_at` | `web_claims` | When the thing the sentence describes happened ("released on 17 November 2026") | First date mentioned in the sentence (`temporal.event_dates`); partial or relative dates resolve against the publication date |
-| `published_at` | `web_claims`, `web_sources` | When the source was published | Page metadata, in the priority order of SEARCH_AND_ACQUISITION §7; structured records use the registry's own date |
-| `modified_at` | `web_sources` | When the source says it was modified | JSON-LD, meta, PDF; never used as the publication date |
+| `published_at` | `web_claims`, `web_sources` | When the source was published | The date of the feed item a page was reached from (`published_hint`), else page metadata, in the priority order of SEARCH_AND_ACQUISITION §7; structured records use the registry's own date. The HTTP `Last-Modified` header is never used |
+| `modified_at` | `web_sources` | When the source says it was modified | JSON-LD, meta, PDF, and the HTTP `Last-Modified` header (`metadata["modified_source"] = "http-last-modified"`); never used as the publication date, so a page with only a `Last-Modified` header stays undated (`test_last_modified_header_is_never_a_publication_date`) |
 | `retrieved_at` | `web_claims`, `web_sources` | When this system fetched the bytes | The fetcher's clock |
 | `verified_at` | `web_claims` | When the claim was last written by an evidence stage | Task clock at save time |
 | `first_verified_at`, `last_verified_at` | `web_knowledge` | When the knowledge item was created, and when a task last confirmed it | Consolidation; `last_verified_at` moves forward when a later task finds the same values again |
@@ -100,7 +100,7 @@ In reports (`synthesize`), a contradiction between two sources is called a *lean
 
 ## 7. Versioned knowledge rows
 
-`web_knowledge` has `UNIQUE(key, version)`. A new value for a key is a new row with `version + 1`; the older row keeps its text, confidence and validity interval and gains `superseded_by`. **Rows are never overwritten.** Status values:
+`web_knowledge` has `UNIQUE(key, version)`. A new value for a key is a new row with `consolidate.next_version`, which is `MAX(version) + 1` over **every** row of the key (live, archived, rejected and superseded), so the constraint never collides after the owner rejected or archived an earlier version; the older row keeps its text, confidence and validity interval and gains `superseded_by`. **Rows are never overwritten.** Status values:
 
 | Status | Meaning | Reviewable by the owner |
 |---|---|---|
@@ -108,7 +108,8 @@ In reports (`synthesize`), a contradiction between two sources is called a *lean
 | `accepted` | The owner confirmed it (`nsf resolve --confirm`, or `nsf web review`) | yes |
 | `stale` | Part of its support was forgotten; needs re-verification | yes |
 | `superseded` | A newer version exists (`superseded_by`) | no |
-| `archived`, `rejected` | Owner decisions; kept for history | no |
+| `archived` | Owner decision; kept for history | no |
+| `rejected` | Owner decision; kept for history. The owner may later accept it again (`knowledge.decide` records the revision on the item and on its question); a new statement with the same values and polarity is held, not proposed again (MEMORY_INTEGRATION §3) | yes |
 
 `knowledge.versions(db, key)` lists the chain with each version's validity interval. When a stale item is re-verified by a later task (duplication path), it returns to `provisional`. `refresh` on a superseded item is refused: refresh the current version instead (`test_reject_and_superseded_items_cannot_be_reviewed`, `test_refresh_submits_a_fact_verification_task_without_running_it`).
 
@@ -160,3 +161,4 @@ pytest -q tests/webcortex/test_instance_integration.py -k forget
 - An undated source can support a statement but starts its validity at the retrieval time, which is later than the truth.
 - Series detection is by comparing value groups; a sentence with unrelated extra numbers can be misread as a series or a conflict.
 - Event dates come from regular expressions over English month names and relative phrases.
+- Among release and package records the newest **version** leads, by semver order (`text.version_key`), not by date: a backported patch of an older line that is dated later does not displace a higher version in a "latest release" report; the older records are marked `superseded` in it (EVIDENCE_AND_PROVENANCE §3, §9).

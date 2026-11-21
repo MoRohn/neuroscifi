@@ -347,3 +347,21 @@ def test_outcome_is_json_serialisable():
     out, _ = run(reg, plan("q"))
     # SearchOutcome.to_json() leaves nested SearchResult objects (shared JsonMixin); serialise them explicitly
     json.dumps({**out.to_json(), "results": [r.to_json() for r in out.results]})
+
+
+# ---- UAT RC1 regressions (W-11: a registry that does not know a plain name is a soft miss) -----------------------
+
+def test_registry_404_is_a_soft_miss_and_never_falls_back_to_web_search():
+    pypi = Fake("pypi", ("technical",), behaviour=lambda q: ["https://pypi.org/project/numpy/"]
+                if q.text == "pypi:numpy" else [], accepts=lambda q: q.text.startswith("pypi:"))
+    npm = Fake("npm", ("technical",), behaviour=[], accepts=lambda q: q.text.startswith("npm:"))   # 404 -> []
+    web = Fake("web", ("web",), behaviour=["https://kungfu.example/panda"], general_web=True)
+    reg = ProviderRegistry([pypi, npm, web], clock=Clock())
+    out, _ = run(reg, plan("pypi:numpy", "npm:numpy", kind="technical"))
+    assert [r.url for r in out.results] == ["https://pypi.org/project/numpy/"]
+    assert web.calls == []                                  # "npm:numpy" is never sent to a general search engine
+    assert out.failures == []                               # the empty npm answer is not a failure ...
+    assert any(a["provider"] == "npm" and a["ok"] and a["n"] == 0 for a in out.attempts)   # ... but is recorded
+    assert state_of(reg, "npm")["failures"] == 0
+    out, _ = run(reg, plan(Query("dendritic spines", "technical")))     # ordinary text still falls back
+    assert web.calls == [("dendritic spines", "technical", 8)]

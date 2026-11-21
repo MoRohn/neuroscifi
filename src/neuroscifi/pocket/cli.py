@@ -14,16 +14,19 @@ def register(sub):
     serve.add_argument("--allowed-host", action="append", metavar="NAME",
                        help="accept only this Host (name or name:port); repeatable; others get 421")
     serve.add_argument("--invitation-file", metavar="PATH",
-                       help="write the one-use code to this new 0600 file instead of stdout")
+                       help="write the one-use code to this 0600 file instead of stdout; only a stale invitation "
+                            "left by an earlier bridge is replaced")
     serve.add_argument("--instance-db", metavar="PATH",
                        help="the individual's database; with `nsf web config` pocket_research on, paired devices "
                             "may queue and read research tasks of their own family (the Spark's worker runs them)")
     serve.set_defaults(handler=_serve)
-    listing = ops.add_parser("list-pairings", help="print paired device labels")
+    listing = ops.add_parser("list-pairings", help="print paired devices: label, family, sponsor, created (UTC)")
     listing.add_argument("--db", default="mobile-private.sqlite")
     listing.set_defaults(handler=_list)
     erase = ops.add_parser("erase-pairing", help="remove a paired device")
     erase.add_argument("label")
+    erase.add_argument("--family", action="store_true",
+                       help="also remove every device in the label's pairing family (linked phones and tablets)")
     erase.add_argument("--db", default="mobile-private.sqlite")
     erase.set_defaults(handler=_erase)
 
@@ -48,4 +51,4 @@ def _list(a):
 
 
 def _erase(a):
-    server.main(["--db", a.db, "--erase-pairing", a.label])
+    server.main(["--db", a.db, "--erase-pairing", a.label, *(["--family"] if a.family else [])])

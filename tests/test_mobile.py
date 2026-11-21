@@ -1,3 +1,6 @@
+import contextlib
+import io
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -156,6 +159,57 @@ class MuteChannel(unittest.TestCase):
         bridge.Store(path, lambda: self.now)  # second open stays idempotent
         self.assertEqual(other.action(token, "mute", {"channel": "dynamics"})[0], 200)
         self.assertEqual(other.action(token, "state", {})[1]["muted"], ["dynamics"])
+
+
+class OwnerCommands(unittest.TestCase):
+    """UAT S-02: `nsf pocket list-pairings` shows family, sponsor and creation time; `erase-pairing --family`."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = str(Path(self.tmp.name) / "m.sqlite")
+        self.store = bridge.Store(self.db)
+        self.a = self.store.pair()
+        self.b = self.store.pair(sponsor=bridge.fingerprint(self.a))
+        self.other = self.store.pair()
+
+    def nsf(self, *argv):
+        from neuroscifi import cli
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            cli.main(["pocket", *argv, "--db", self.db])
+        return out.getvalue().splitlines()
+
+    def test_list_and_erase_family(self):
+        lines = self.nsf("list-pairings")
+        self.assertEqual(len(lines), 3)
+        pattern = re.compile(r"^([0-9a-f]{12})  family=([0-9a-f]{8})  sponsor=(invitation|[0-9a-f]{12})  "
+                             r"created=\d{4}-\d\d-\d\dT\d\d:\d\dZ$")
+        rows = [pattern.match(line).groups() for line in lines]
+        (la, fa, sa), (lb, fb, sb), (lo, fo, so) = rows
+        self.assertEqual((sa, sb, so), ("invitation", la, "invitation"))
+        self.assertEqual(fa, fb)
+        self.assertNotEqual(fa, fo)
+        self.assertEqual(self.nsf("erase-pairing", lb, "--family"), ["Erased pairings: 2"])
+        self.assertEqual([line.split()[0] for line in self.nsf("list-pairings")], [lo])
+        for token in (self.a, self.b):
+            with self.assertRaises(PermissionError):
+                self.store.action(token, "state", {})
+        self.assertEqual(self.nsf("erase-pairing", lo), ["Erased pairings: 1"])
+
+    def test_old_members_table_gains_sponsor_and_created(self):
+        path = Path(self.tmp.name) / "old-members.db"
+        with bridge.closing(bridge.connect(path)) as db, db:
+            db.executescript("CREATE TABLE devices(key TEXT PRIMARY KEY, label TEXT UNIQUE NOT NULL);"
+                             "INSERT INTO devices VALUES('k','aaaaaaaaaaaa');"
+                             "CREATE TABLE members(device TEXT PRIMARY KEY REFERENCES devices(key) ON DELETE CASCADE,"
+                             " family TEXT NOT NULL);")
+        old = bridge.Store(path)
+        bridge.Store(path)
+        self.assertEqual(old.pairings(), [("aaaaaaaaaaaa", bridge.family_tag("k"), None, None)])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            bridge.main(["--db", str(path), "--list-pairings"])
+        self.assertIn("sponsor=invitation  created=unknown", out.getvalue())
 
 
 if __name__ == "__main__":

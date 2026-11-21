@@ -17,7 +17,11 @@ Steps for each scored cluster of the task (state.load_clusters):
    knowledge (contradicting list), a 'contradicts' link is stored and the owner is asked -> feedback 'weakened';
 5. provenance and time: sources, supporting claim ids, freshness class, validity interval;
 6. commit: a new item is written only as 'provisional', and only with >= config.auto_provisional_min_sources
-   independent sources, no contradiction and confidence >= config.auto_provisional_min_confidence; each new item
+   independent sources, no contradiction and confidence >= config.auto_provisional_min_confidence. It takes the
+   key's next version (MAX(version) + 1 over every row of the key, live or archived/rejected/superseded). The
+   owner's rejection stands: a statement with the same values and polarity as a rejected row of the same (or a
+   near-identical) key is *held* ("owner rejected this before"), never proposed again; a different value may
+   become a new version. Each new item
    gets a pending question (scope web:knowledge:<id>) so acceptance stays the owner's decision - within the web
    question budget: at most config.max_web_questions_per_task new questions per task and none while
    config.max_open_web_questions are open; the rest stay provisional (or recorded) without a question of their
@@ -26,6 +30,8 @@ A contested cluster about live knowledge compares values first: when its support
 the item is strengthened by it and never lowered; only claims that really conflict with the item are recorded as
 contradictions, each citing that claim (see _contested_against).
 Nothing is written while instance regulation pauses writes (WritesPaused).
+Statements in the summary (held[], contested) are report-safe: text a claim check marks unreportable (instruction-like
+content, claims.is_reportable / synthesis.report_safe_text when available, else safety.scan_injection) is withheld.
 Entities and mentions are extracted from claim text (capitalised names, CamelCase, package names, acronyms,
 identifiers). Feedback rows record before/after confidence and the information gain (entropy reduction, bits).
 The binary-belief tables are never touched.
@@ -174,10 +180,14 @@ def _primary_structured(db, task_id, cluster) -> bool:
 
 
 def _adversarial_urls(db, task_id) -> set:
-    """Canonical URLs of this task's sources whose quarantine found instruction-like content."""
+    """Canonical URLs of this task's sources whose quarantine found instruction-like content
+    (claims.adversarial_document: an image beacon found only in the Markdown rendering, such as a Wikipedia
+    thumbnail with tracking parameters, does not make a page adversarial)."""
+    from types import SimpleNamespace
+    from .claims import adversarial_document
     out = set()
     for url, flags in db.execute("SELECT canonical_url, flags FROM web_sources WHERE task_id=?", (task_id,)):
-        if (state.loads(flags, {}) or {}).get("injection"):
+        if adversarial_document(SimpleNamespace(flags=state.loads(flags, {}) or {})):
             out.add(url)
     return out
 
@@ -272,6 +282,56 @@ def _existing(db, cluster):
     return knowledge.row(db, best[2]) if best else None
 
 
+def next_version(db, key) -> int:
+    """MAX(version) + 1 over every row of `key` (live, archived, rejected, superseded): UNIQUE(key, version)."""
+    top = db.execute("SELECT max(version) FROM web_knowledge WHERE key=?", (key,)).fetchone()[0]
+    return int(top or 0) + 1
+
+
+def _rejected_before(db, keys, values, polarity):
+    """The owner's rejected row stating the same values and polarity under one of `keys` (or a near-identical key),
+    else None: a rejected statement is never proposed again."""
+    keys = [k for k in dict.fromkeys(keys) if k]
+    for item in knowledge.rows(db, "status='rejected'"):
+        if item["key"] not in keys and not any(_similar(k, item["key"]) >= SIMILAR_KEY for k in keys):
+            continue
+        if _compare(values, polarity, item)[0] == "same":
+            return item
+    return None
+
+
+WITHHELD = "(withheld: the statement carries instruction-like content)"
+
+
+def safe_text(claim_or_text) -> str:
+    """Report-safe text of a claim (or of a plain statement): synthesis.report_safe_text / claims.is_reportable
+    when the installed modules provide them, else the injection scanner. Unreportable text becomes WITHHELD."""
+    from . import claims as claims_mod, safety, synthesis
+    text = getattr(claim_or_text, "text", claim_or_text)
+    text = "" if text is None else str(text)
+    if hasattr(claim_or_text, "text"):
+        reportable = getattr(claims_mod, "is_reportable", None)
+        if reportable is not None and not reportable(claim_or_text):
+            return WITHHELD
+        report_safe = getattr(synthesis, "report_safe_text", None)
+        if report_safe is not None:
+            out = report_safe(claim_or_text)
+            return WITHHELD if out is None else str(out)
+    return WITHHELD if text and safety.scan_injection(text) else text
+
+
+def _statement(cluster) -> str:
+    """The cluster's statement, report-safe (the claim stating it is checked when it is a member)."""
+    statement = cluster.statement or (_head(cluster).text if cluster.claims else "")
+    source = next((c for c in cluster.claims if c.text == statement), None)
+    return safe_text(source if source is not None else statement)
+
+
+def _held(cluster, reasons, status=None) -> dict:
+    return {"key": cluster.key, "statement": _statement(cluster), "status": status or cluster.status,
+            "reasons": list(reasons)}
+
+
 def _bits_gain(before, after):
     """Entropy reduction (bits) of the binary posterior that the statement holds."""
     return round(entropy(0.5 if before is None else before) - entropy(after), 6)
@@ -335,7 +395,7 @@ def _insert_knowledge(db, task_id, cluster, freshness, now, *, key, version, que
          state.finite(cluster.uncertainty, 0.0), freshness, now, now, valid_from, valid_until,
          state.dumps(list(cluster.supporting) or [c.id for c in cluster.claims]), state.dumps(_sources(cluster)),
          state.dumps(values), polarity, task_id, now, now)).lastrowid
-    pid = questions.ask(f"web:knowledge:{kid}", _question(cluster.statement or _head(cluster).text,
+    pid = questions.ask(f"web:knowledge:{kid}", _question(_statement(cluster),
                                                           cluster.independent_sources, confidence, freshness), now)
     if pid is not None:
         db.execute("UPDATE web_knowledge SET pending_id=? WHERE id=?", (pid, kid))
@@ -377,7 +437,7 @@ def _contradict(db, task_id, cluster, item, reason, now, summary, questions, *, 
     known = {a.get("claim") for a in against if isinstance(a, dict)}
     fresh = head.id not in known
     if fresh:
-        against.append({"claim": head.id, "task": task_id, "reason": reason, "text": knowledge.quote(head.text),
+        against.append({"claim": head.id, "task": task_id, "reason": reason, "text": knowledge.quote(safe_text(head)),
                         "url": head.source_url})
         db.execute("UPDATE web_knowledge SET contradicting=?, updated_at=? WHERE id=?",
                    (state.dumps(against), now, item["id"]))
@@ -387,7 +447,7 @@ def _contradict(db, task_id, cluster, item, reason, now, summary, questions, *, 
                        {"reason": reason, "knowledge_id": item["id"]}, now)
     pid = questions.ask(
         f"web:knowledge:{item['id']}",
-        f"Sources now contradict known «{knowledge.quote(item['statement'])}»: «{knowledge.quote(head.text)}» "
+        f"Sources now contradict known «{knowledge.quote(item['statement'])}»: «{knowledge.quote(safe_text(head))}» "
         f"({reason}). Keep it as knowledge?", now)
     before = state.finite(item["confidence"], 0.0)
     after = before if not (fresh and weaken) else round(before * (1 - state.finite(cluster.confidence, 0.0) / 2), 6)
@@ -476,7 +536,7 @@ def run(db, task_id, now, *, holder=None) -> dict:
             cluster, removed = _without_adversarial(cluster, adversarial)
             cleaned.append(cluster)
             if not cluster.claims:
-                summary["held"].append({"key": cluster.key, "statement": cluster.statement, "status": cluster.status,
+                summary["held"].append({"key": cluster.key, "statement": WITHHELD, "status": cluster.status,
                                         "reasons": ["every claim comes from a source with instruction-like content "
                                                     "(held, never knowledge)"]})
                 continue
@@ -487,10 +547,12 @@ def run(db, task_id, now, *, holder=None) -> dict:
                 if item is not None:
                     _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key)
                     continue
+                described = "; ".join(sorted({c.get("description") or c.get("reason") or ""
+                                              for c in cluster.contradicting} - {""})) or "the sources disagree"
                 pid = questions.ask(
                     f"web:contested:{task_id}:{n}",
-                    f"Sources disagree about «{knowledge.quote(cluster.statement or _head(cluster).text)}» "
-                    f"({reason}); nothing was stored as knowledge. Which holds?", now)
+                    f"«{knowledge.quote(_statement(cluster))}»: {described} Nothing was stored as knowledge. "
+                    "Which holds?", now)
                 prior = db.execute("SELECT count(*) FROM web_feedback WHERE key=?", (cluster.key,)).fetchone()[0]
                 conf = state.finite(cluster.confidence, 0.5)
                 _feedback(db, task_id, None, cluster.key, "unchanged" if prior else "new", conf, conf,
@@ -502,8 +564,7 @@ def run(db, task_id, now, *, holder=None) -> dict:
                 continue
             eligible, reasons = _eligibility(db, task_id, cluster, removed)
             if not eligible:
-                summary["held"].append({"key": cluster.key, "statement": cluster.statement, "reasons": reasons,
-                                        "status": cluster.status})
+                summary["held"].append(_held(cluster, reasons))
                 continue
             values, polarity = _values(cluster)
             if item is not None:
@@ -517,16 +578,19 @@ def run(db, task_id, now, *, holder=None) -> dict:
                 else:   # a later statement of a series updates the item; the old version keeps its period
                     newer = _later(new_t, old_t)
                     if not newer:
-                        summary["held"].append({"key": cluster.key, "statement": cluster.statement, "status":
-                                                cluster.status, "reasons": [f"older statement of a series than "
-                                                                            f"knowledge #{item['id']} ({differ})"]})
+                        summary["held"].append(_held(cluster, [f"older statement of a series than knowledge "
+                                                               f"#{item['id']} ({differ})"]))
                         continue
+                rejected = _rejected_before(db, [cluster.key, item["key"]], values, polarity)
+                if rejected is not None:
+                    summary["held"].append(_held(cluster, [f"owner rejected this before (knowledge "
+                                                           f"#{rejected['id']})"]))
+                    continue
                 ok, bar = _meets_bar(cluster, cfg)
                 if newer and ok:
-                    version = db.execute("SELECT max(version) FROM web_knowledge WHERE key=?",
-                                         (item["key"],)).fetchone()[0] + 1
                     kid, pid, valid_from = _insert_knowledge(db, task_id, cluster, freshness, now,
-                                                             key=item["key"], version=version, questions=questions)
+                                                             key=item["key"], version=next_version(db, item["key"]),
+                                                             questions=questions)
                     db.execute("UPDATE web_knowledge SET status='superseded', valid_until=?, superseded_by=?, "
                                "updated_at=? WHERE id=?", (valid_from, kid, now, item["id"]))
                     knowledge.close_questions(db, f"web:knowledge:{item['id']}",
@@ -546,13 +610,16 @@ def run(db, task_id, now, *, holder=None) -> dict:
                 why = differ if newer is False else f"{differ}; newer but below the provisional bar ({'; '.join(bar)})"
                 _contradict(db, task_id, cluster, item, why, now, summary, questions)
                 continue
+            rejected = _rejected_before(db, [cluster.key], values, polarity)
+            if rejected is not None:
+                summary["held"].append(_held(cluster, [f"owner rejected this before (knowledge #{rejected['id']})"]))
+                continue
             ok, bar = _meets_bar(cluster, cfg)
             if not ok:
-                summary["held"].append({"key": cluster.key, "statement": cluster.statement, "reasons": bar,
-                                        "status": cluster.status})
+                summary["held"].append(_held(cluster, bar))
                 continue
-            kid, pid, _ = _insert_knowledge(db, task_id, cluster, freshness, now, key=cluster.key, version=1,
-                                            questions=questions)
+            kid, pid, _ = _insert_knowledge(db, task_id, cluster, freshness, now, key=cluster.key,
+                                            version=next_version(db, cluster.key), questions=questions)
             _feedback(db, task_id, kid, cluster.key, "new", None, state.finite(cluster.confidence, 0.0),
                       {"independent_sources": cluster.independent_sources}, now)
             summary["provisional"].append(kid)

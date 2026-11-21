@@ -669,3 +669,395 @@ def test_report_carries_a_token_bounded_context_pack_charged_to_usage(individual
     done = run_with(db, path, site, task, [corpus()])
     pack = done["result"]["context_pack"]
     assert 0 < pack["tokens"] <= 120 and done["usage"]["tokens"] == pack["tokens"]
+
+
+# ---- UAT RC1 regressions (lane L2) --------------------------------------------------------------------------------
+
+def _other(path, fn):
+    """Run fn(connection) on a second connection (another process's view)."""
+    other = store.connect(path)
+    try:
+        return fn(other)
+    finally:
+        other.close()
+
+
+def test_turning_web_access_off_mid_run_stops_the_task_partial(individual, site, monkeypatch):
+    """W-06: check() re-reads the configuration (throttled by CONFIG_RECHECK): web access turned off while a task
+    runs stops it at the next check, 'partial', with a plain limitation."""
+    monkeypatch.setattr(orchestrator, "CONFIG_RECHECK", 0.0)
+    db, path = individual
+    task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+
+    def off(n):
+        if n == 1:
+            _other(path, lambda o: state.set_config(o, {"enabled": False}, T0))
+
+    services = build(db, path, site)
+    services.fetcher = HookFetcher(services.fetcher, off)
+    try:
+        done = orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    assert done["status"] == "partial" and services.fetcher.pages == 1 and len(page_hits(site)) == 1
+    assert orchestrator.WEB_OFF in done["result"]["limitations"]
+
+
+def test_a_domain_denied_mid_run_is_never_fetched(individual, site, monkeypatch):
+    """W-06: a deny_domains change during the run applies to the next request (the host is skipped and recorded)."""
+    monkeypatch.setattr(orchestrator, "CONFIG_RECHECK", 0.0)
+    db, path = individual
+    task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+
+    def deny(n):
+        if n == 1:
+            _other(path, lambda o: state.set_config(o, {"deny_domains": ["example"]}, T0))
+
+    services = build(db, path, site)
+    services.fetcher = HookFetcher(services.fetcher, deny)
+    try:
+        done = orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    assert len(page_hits(site)) == 1 and services.fetcher.pages == 1
+    failures = state.task(db, task["id"])["checkpoint"]["failures"]
+    assert sum(1 for f in failures if f.get("detail") == "domain is on the deny list") == 2
+    assert done["status"] in ("completed", "partial")
+
+
+class DownProvider:
+    """Every search fails (no network, circuit open upstream)."""
+    general_web, name = False, "down"
+
+    def __init__(self):
+        from neuroscifi.webcortex.types import QUERY_KINDS
+        self.kinds = frozenset(QUERY_KINDS)
+
+    def search(self, query, limit, *, budget=None, usage=None):
+        from neuroscifi.webcortex.types import FetchError
+        raise FetchError("connect_failed", "http://search.example/", "network is unreachable")
+
+
+def test_when_every_provider_fails_and_nothing_is_read_the_task_fails(individual, web):
+    """W-07: all providers failed, nothing read -> 'failed' with a limitation naming the failures, never 'completed';
+    the retry searches again (stages cleared). Every candidate page failing is the same."""
+    db, path = individual
+    task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+    done = run_with(db, path, web, task, [DownProvider()])
+    assert done["status"] == "failed" and done["stages_done"] == []
+    why = done["result"]["limitations"][0]
+    assert why.startswith("Nothing could be read: every search provider failed") and "down: " in why
+    assert not any(x.startswith("No claim relevant") for x in done["result"]["limitations"])
+    assert done["error"] == why
+
+    dead = [{"url": f"http://gone{i}.example/page", "title": "Zephyr compiler", "snippet": "Zephyr"} for i in range(2)]
+    second = orchestrator.submit(db, "Zephyr compiler version 4.2 release notes", T0, mode="fact_verification")
+    done = run_with(db, path, web, second, [ListProvider(dead)])
+    assert done["status"] == "failed" and done["result"]["limitations"][0].startswith(
+        "Nothing could be read: every source tried failed")
+
+
+def test_an_empty_search_is_not_a_retrieval_failure(individual, web):
+    """W-21: providers that answer with no results are not 'retrieval failures' in the report."""
+    db, path = individual
+    task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+    done = run_with(db, path, web, task, [ListProvider([])])
+    assert done["status"] == "completed"
+    assert not any("retrieval failure" in u for u in done["result"]["uncertainties"])
+    assert not any(x.startswith("listed:") for x in done["result"]["limitations"])
+
+
+JS_SHELL = ("<html><head><title>Zephyr app</title></head><body><div id='root'></div>"
+            "<script src='/app.js'></script></body></html>")
+RENDERED = ("<html><head><title>Zephyr compiler 4.2</title></head><body><article><p>The Zephyr compiler version "
+            "4.2.0 was released on 17 November 2026 by the Zephyr project team.</p></article></body></html>")
+
+
+class FakeRenderer:
+    """Renders every page as RENDERED; last_events reports `events` (BrowserRenderer's sub-request log)."""
+
+    def __init__(self, events=()):
+        self.calls, self.events, self.last_events = 0, list(events), []
+
+    def available(self):
+        return True, "fake"
+
+    def render(self, url, *, budget, usage, main=None):
+        from neuroscifi.webcortex.types import FetchResult
+        self.calls += 1
+        usage.charge(budget, browser_sessions=1)
+        self.last_events = list(self.events)
+        return FetchResult(url=main.url, final_url=main.final_url, status=200, headers={},
+                           content_type="text/html", body=RENDERED.encode(), retrieved_at=T0,
+                           retrieval_mode="rendered")
+
+
+def test_render_budget_shortfall_is_a_limitation_and_rendered_pages_are_cached(individual, web, monkeypatch):
+    """W-08: sub-requests refused for lack of budget (renderer.last_events) make the run 'partial' with a limitation
+    and the render event ok false. W-23: the rendered page is kept in the public cache, so a resume re-reads it and
+    never renders again."""
+    db, path = individual
+    state.set_config(db, {"browser_rendering": True}, T0)
+    web.add("spa.example", "/zephyr", JS_SHELL)
+    task = orchestrator.submit(db, "Zephyr compiler 4.2 release", T0, mode="fact_verification",
+                               budget={"max_browser_sessions": 1, "max_pages": 1})
+    real_done = orchestrator._Run.done
+
+    def crash_after_reading(self, name, **updates):
+        if name == "reading":
+            raise Crash()
+        return real_done(self, name, **updates)
+
+    monkeypatch.setattr(orchestrator._Run, "done", crash_after_reading)
+    services = svc_mod.build(db, path, fixture=web, providers=[ListProvider([
+        {"url": "http://spa.example/zephyr", "title": "Zephyr", "snippet": "Zephyr"}])], clock=lambda: T0)
+    renderer = FakeRenderer([{"url": "http://spa.example/app.js", "outcome": "served"},
+                             {"url": "http://spa.example/data.json", "outcome": "refused", "code": "budget_exhausted"},
+                             {"url": None, "outcome": "budget_exhausted"}])
+    services.renderer = renderer
+    with pytest.raises(Crash):
+        orchestrator.run(db, task["id"], services)
+    services.close()
+    assert renderer.calls == 1
+    render = next(e["detail"] for e in state.events(db, task["id"]) if e["kind"] == "render")
+    assert render["ok"] is False and render["budget_exhausted"] is True
+    monkeypatch.setattr(orchestrator._Run, "done", real_done)
+    later = svc_mod.build(db, path, fixture=web, providers=[ListProvider([])], clock=lambda: T0 + 60)
+    again = FakeRenderer()
+    later.renderer = again
+    try:
+        done = orchestrator.resume(db, task["id"], later)
+    finally:
+        later.close()
+    assert again.calls == 0 and done["result"]["sources"][0]["retrieval_mode"] == "cache"
+    assert done["status"] == "partial"
+    assert any("ran out of request budget" in x for x in done["result"]["limitations"])
+    assert any("4.2.0" in c["text"] for c in state.claims(db, task["id"]))
+
+
+class WikiProvider(ListProvider):
+    """Search hits with snippets only; article() returns the lead section (L1b's WikipediaProvider.article)."""
+
+    def __init__(self, results, extract=None):
+        super().__init__(results, name="wikipedia")
+        self.extract, self.articles = extract, []
+
+    def article(self, title, *, budget=None, usage=None, lang="en"):
+        self.articles.append(title)
+        return {"title": title, "extract": self.extract, "last_edited": "2026-11-01T00:00:00Z",
+                "url": f"https://{lang}.wikipedia.org/wiki/{title.replace(' ', '_')}"}
+
+
+def test_wikipedia_hits_are_read_as_articles_never_as_snippets(individual, web):
+    """W-10: a Wikipedia search snippet is never the document: the article is (article(), else the page)."""
+    db, path = individual
+    hit = {"url": "https://en.wikipedia.org/wiki/Eiffel_Tower", "title": "Eiffel Tower", "kind": "encyclopedia",
+           "snippet": "She married the Eiffel Tower in", "metadata": {"pageid": 1, "language": "en"}}
+    lead = ("The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It is named "
+            "after the engineer Gustave Eiffel, whose company designed and built the tower from 1887 to 1889.")
+    provider = WikiProvider([hit], extract=lead)
+    task = orchestrator.submit(db, "Is the Eiffel Tower in Paris?", T0, mode="fact_verification")
+    done = run_with(db, path, web, task, [provider])
+    assert provider.articles == ["Eiffel Tower"]
+    texts = [c["text"] for c in state.claims(db, task["id"])]
+    assert texts and not any("She married" in t for t in texts) and any("Champ de Mars" in t for t in texts)
+    assert done["status"] in ("completed", "partial")
+
+    web.add("wiki.example", "/wiki/Okapi", html("Okapi", "2026-10-01T00:00:00Z", [
+        "The okapi is a giraffid artiodactyl mammal native to the northeast of the Democratic Republic of the Congo."]))
+    plain = ListProvider([{"url": "http://wiki.example/wiki/Okapi", "title": "Okapi", "kind": "encyclopedia",
+                           "snippet": "She is an okapi", "metadata": {"pageid": 2}}], name="wikipedia")
+    second = orchestrator.submit(db, "Where does the okapi live?", T0, mode="fact_verification")
+    run_with(db, path, web, second, [plain])
+    assert web.requests_to("wiki.example", "/wiki/Okapi")                     # no article(): the page is read
+    assert not any("She is an okapi" in c["text"] for c in state.claims(db, second["id"]))
+
+
+def _dead_holder():
+    import os
+    import subprocess
+    import sys
+    proc = subprocess.Popen([sys.executable, "-c", "pass"])
+    proc.wait()
+    return f"{svc_mod.host_digest()}:{proc.pid}:1:{svc_mod.process_start(os.getpid())}"
+
+
+def test_a_dead_workers_task_is_cancelled_resumed_or_requeued_at_once(individual, site):
+    """W-17/S-06: a lease held by a dead process on this host (pid gone) does not block cancel, resume or requeue
+    until the 600 s lease expires; task JSON says worker_alive false."""
+    db, path = individual
+    holder = _dead_holder()
+    tasks = [orchestrator.submit(db, f"{QUESTION} ({n})", T0, mode="fact_verification") for n in range(3)]
+    with store.write(db):
+        for t in tasks:
+            state.update_task(db, t["id"], T0, status="reading", stage="reading", lease_holder=holder,
+                              lease_expires_at=T0 + 600, checkpoint={"stages_done": []})
+    assert orchestrator.get(db, tasks[0]["id"])["worker_alive"] is False
+    assert orchestrator.cancel(db, tasks[0]["id"], T0 + 1)["status"] == "cancelled"
+    requeued = orchestrator.requeue(db, tasks[1]["id"], T0 + 1)
+    assert requeued["requeued"] == "same" and requeued["status"] == "queued" and requeued["worker_alive"] is None
+    services = build(db, path, site)
+    try:
+        done = orchestrator.resume(db, tasks[2]["id"], services)
+    finally:
+        services.close()
+    assert done["status"] in ("completed", "partial")
+    live = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+    with store.write(db):
+        state.update_task(db, live["id"], T0, status="reading", lease_holder=svc_mod.holder_id(),
+                          lease_expires_at=T0 + 600)
+    assert orchestrator.get(db, live["id"])["worker_alive"] is True
+    assert orchestrator.cancel(db, live["id"], T0 + 1)["status"] == "reading"     # a live worker: cancel requested
+
+
+def test_requeue_is_idempotent_and_identical_submissions_are_deduplicated(individual):
+    """S-07: requeueing a cancelled task while its child is queued returns that child. S-14: an identical
+    objective/mode/origin/family while one is queued returns it (deduplicated), a different mode does not."""
+    db, _ = individual
+    task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+    again = orchestrator.submit(db, QUESTION, T0 + 1, mode="fact_verification")
+    assert again["id"] == task["id"] and again["deduplicated"] is True
+    assert orchestrator.submit(db, QUESTION, T0 + 1, mode="quick_lookup")["id"] != task["id"]
+    assert orchestrator.submit(db, QUESTION, T0 + 1, mode="fact_verification", origin="console")["id"] != task["id"]
+    orchestrator.cancel(db, task["id"], T0 + 2)
+    children = [orchestrator.requeue(db, task["id"], T0 + 3) for _ in range(3)]
+    assert len({c["id"] for c in children}) == 1
+    assert [c["requeued"] for c in children] == ["child", "existing", "existing"]
+    assert db.execute("SELECT count(*) FROM web_tasks WHERE parent_id=?", (task["id"],)).fetchone()[0] == 1
+
+
+CRAWL_SITE = {
+    "/": ("Zephyr compiler project", ["The Zephyr compiler project builds firmware for small boards.",
+                                       "<a href='/a'>a</a> <a href='/b'>b</a> <a href='/c'>c</a>"]),
+    "/a": ("Zephyr 4.2 release", ["The Zephyr compiler version 4.2.0 was released on 17 November 2026."]),
+    "/b": ("Zephyr targets", ["The Zephyr compiler supports 42 microcontroller families in version 4.2."]),
+    "/c": ("Zephyr builds", ["Incremental builds in Zephyr 4.2 are 30 percent faster than in 4.1."]),
+}
+
+
+def serve_crawl(web):
+    for p, (title, paragraphs) in CRAWL_SITE.items():
+        web.add("docs.example", p, html(title, "2026-11-18T10:00:00Z", paragraphs))
+
+
+class CountingFetcher(HookFetcher):
+    """hook(n) after the n-th fetch of any purpose except robots/sitemaps."""
+
+    def fetch(self, url, **kwargs):
+        result = self.inner.fetch(url, **kwargs)
+        if not url.endswith(("/robots.txt", "/sitemap.xml")):
+            self.pages += 1
+            self.hook(self.pages)
+        return result
+
+
+def test_crawl_records_each_page_as_it_arrives_and_honours_cancel_between_pages(individual, web):
+    """W-18: each crawled page is a source and a checkpoint entry as soon as it is read; a cancel stops the crawl
+    before the next page."""
+    db, path = individual
+    serve_crawl(web)
+    task = orchestrator.submit(db, "Investigate these sources: http://docs.example/", T0, mode="deep_research",
+                               context={"crawl": {"seeds": ["http://docs.example/"], "max_pages": 4,
+                                                  "max_depth": 1}})
+    services = svc_mod.build(db, path, fixture=web, providers=[], clock=lambda: T0)
+    with store.write(db):
+        state.update_task(db, task["id"], T0, lease_holder=services.holder, lease_expires_at=T0 + 600)
+    seen = []
+
+    def cancel_after_two(n):
+        seen.append(len(state.task(db, task["id"])["checkpoint"].get("documents", [])) if n > 1 else 0)
+        if n == 2:
+            _other(path, lambda o: orchestrator.cancel(o, task["id"], T0 + 1))
+
+    services.fetcher = CountingFetcher(services.fetcher, cancel_after_two)
+    try:
+        done = orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    assert done["status"] == "cancelled" and services.fetcher.pages == 2
+    assert seen == [0, 1]                       # page 1 was checkpointed before page 2 was fetched
+    assert len(state.sources(db, task["id"])) == 2
+
+
+def test_crawl_without_topic_words_extracts_by_salience_and_names_blocked_urls(individual, web):
+    """W-19: "Investigate these sources: URL" names no topic: claims come from each page's own salience (title
+    terms) and a seed that could not be read is named in the limitations."""
+    db, path = individual
+    serve_crawl(web)
+    seeds = ["http://docs.example/a", "http://intranet.local/private"]
+    task = orchestrator.submit(db, "Investigate these sources: " + " ".join(seeds), T0, mode="deep_research",
+                               context={"crawl": {"seeds": seeds, "max_pages": 3, "max_depth": 0}})
+    done = run_with(db, path, web, task, [])
+    assert any("4.2.0" in c["text"] for c in state.claims(db, task["id"]))
+    assert any(x.startswith("http://intranet.local/private was not read") for x in done["result"]["limitations"])
+
+
+def test_report_wording_for_memory_answers_cancellation_and_resume(individual, web):
+    """W-21: an answer from memory does not claim sources were read; a run cancelled before extraction says so;
+    resuming a cancelled task points to requeue."""
+    db, path = individual
+    statement = "The okapi is a giraffid mammal native to the Ituri rainforest of the Democratic Republic of the Congo."
+    _, out = consolidated(db, [cluster([claim(f"http://{h}/okapi", statement, key="okapi giraffid mammal native")
+                                        for h in ("zoo.example", "museum.example")])], T0 - 3600,
+                          objective="What is an okapi?")
+    knowledge.review(db, out["provisional"][0], True, T0 - 3000)
+    task = orchestrator.submit(db, "Where is the okapi native to?", T0)
+    done = run_with(db, path, web, task, [corpus()])
+    lead = done["result"]["answer"][0]["text"]
+    assert done["result"]["memory"]["answered_from_memory"] and lead.startswith("Answered from memory: 1 knowledge")
+    assert "sources read" not in lead
+
+    queued = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+    services = svc_mod.build(db, path, fixture=web, providers=[corpus()], clock=lambda: T0)
+    with store.write(db):
+        state.update_task(db, queued["id"], T0, lease_holder=services.holder, lease_expires_at=T0 + 600,
+                          cancel_requested=1)
+    try:
+        cancelled = orchestrator.run(db, queued["id"], services)
+    finally:
+        services.close()
+    assert cancelled["status"] == "cancelled"
+    limitations = cancelled["result"]["limitations"]
+    assert "Cancelled before claims were extracted: no statement was evaluated" in limitations
+    assert not any(x.startswith("No claim relevant") for x in limitations)
+    with pytest.raises(Conflict, match="requeue"):
+        orchestrator.resume(db, queued["id"], None)
+
+
+def test_a_task_forgotten_while_it_runs_stops_and_leaves_nothing_behind(individual, site):
+    """C-08 (running refresh) / privacy: forgetting a task mid-run stops the worker at its next fenced write; no
+    event, source or row with that id is written afterwards."""
+    from neuroscifi.instance import governance
+    db, path = individual
+    task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+
+    def forget(n):
+        if n == 1:
+            _other(path, lambda o: governance.forget_research(o, task["id"], T0 + 1))
+
+    services = build(db, path, site)
+    services.fetcher = HookFetcher(services.fetcher, forget)
+    try:
+        done = orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    assert done["status"] == "forgotten"
+    for table in ("web_tasks", "web_events", "web_sources", "web_claims"):
+        column = "id" if table == "web_tasks" else "task_id"
+        assert db.execute(f"SELECT count(*) FROM {table} WHERE {column}=?", (task["id"],)).fetchone()[0] == 0
+
+
+def test_a_page_reached_from_a_feed_item_takes_the_items_date(individual, web):
+    """L1a wiring (W-05): the feed item's date is the document's publication date (extract published_hint), also
+    when the page is re-read from the cache on resume."""
+    db, path = individual
+    web.add("blog.example", "/zephyr", "<html><head><title>Zephyr 4.2</title></head><body><article><p>The Zephyr "
+                                       "compiler version 4.2.0 was released with faster builds.</p></article></body>"
+                                       "</html>")
+    item = {"url": "http://blog.example/zephyr", "title": "Zephyr 4.2", "snippet": "Zephyr", "kind": "feed",
+            "published_at": T0 - 2 * 86400}
+    task = orchestrator.submit(db, "Zephyr compiler 4.2 release", T0, mode="fact_verification")
+    run_with(db, path, web, task, [ListProvider([item], name="feeds")])
+    source = state.sources(db, task["id"])[0]
+    assert source["published_at"] == T0 - 2 * 86400
+    assert state.task(db, task["id"])["checkpoint"]["documents"][0]["published_hint"] == T0 - 2 * 86400

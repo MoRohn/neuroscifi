@@ -184,7 +184,7 @@ CLI (W2-C): `nsf memory KIND [filters]`, `nsf forget evidence ID | epoch NAME | 
 
 ## 5. Pocket bridge HTTP API (owner: W2-D; prototype contract preserved)
 
-All routes are `POST /api/<route>`. Requests must be `Content-Type: application/json`, between 2 and 512 bytes, and carry the same `Origin` if any. Everything except `pair` needs `Authorization: Bearer <credential>`. Responses are `no-store` and carry the CSP shown in `pocket/server.py`.
+All routes are `POST /api/<route>`. Requests must be `Content-Type: application/json`, between 2 and 512 bytes (`research_submit`: up to 1024, so 300 non-Latin characters fit), and carry the same `Origin` if any. Everything except `pair` needs `Authorization: Bearer <credential>`. Responses are `no-store` and carry the CSP shown in `pocket/server.py`.
 
 | Route | Body | Success | Errors |
 |---|---|---|---|
@@ -357,12 +357,12 @@ JSON content type and 512-byte body rules apply.
 
 | Action | Body | Result |
 |---|---|---|
-| research_submit | `{objective: 1–300 chars, mode?: quick_lookup\|deep_research\|fact_verification\|comparative\|scientific\|technical}` | 201 `{id}`; 400 `private_data` on the privacy screen; 429 after 10 per device per hour |
+| research_submit | `{objective: 1–300 chars, mode?: quick_lookup\|deep_research\|fact_verification\|comparative\|scientific\|technical}` | 201 `{id}`; 400 `private_data` on the privacy screen; 429 after 10 per pairing family per hour (persisted); 507 `writes_paused` |
 | research_list | `{}` | the caller's pairing family's tasks, newest first, ≤ 50 |
 | research_get | `{id}` | status, stage and a phone-sized report; 404 for unknown ids and other families |
 | research_cancel | `{id}` | 200; 404 as above |
 
-`state` gains `"research": true` only when the feature is on.
+`state` gains `"research": true` only when the feature is on. A pairing family holds at most 6 devices (`link` → 409 `family_full`); `unpair {"family": true}` revokes the whole family.
 
 **MCP (`nsf web mcp`, stdio JSON-RPC 2.0, protocol 2025-06-18).** Tools: `web_search`, `web_research`, `web_task`,
 `web_evidence`, `web_knowledge`. Retrieved content is wrapped in `safety.untrusted` envelopes. There are no forget,

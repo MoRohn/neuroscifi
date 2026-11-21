@@ -264,14 +264,55 @@ def _close_questions(db, scope, resolution, now) -> list[int]:
 
 # ---- review --------------------------------------------------------------------------------------------------
 
-def _set_status(db, item, status, now, note=None):
-    if item["status"] == status:
-        return
-    if item["status"] not in REVIEWABLE:
-        raise Conflict(f"Knowledge item {item['id']} is {item['status']}; only provisional, accepted or stale items "
-                       "can be reviewed")
-    db.execute("UPDATE web_knowledge SET status=?, note=coalesce(?, note), updated_at=? WHERE id=?",
-               (status, note, now, item["id"]))
+DECIDABLE = ("provisional", "accepted", "stale", "rejected")   # the owner may accept or reject these
+MAX_RESOLUTION_HISTORY = 4000
+
+
+def decide(db, item, accept: bool, now, *, note="", via="review", question_id=None) -> dict:
+    """The owner's accept/reject of a knowledge item: the ONE transition shared by review() and `nsf resolve`
+    (apply_review). Caller owns the transaction.
+
+    provisional/stale/accepted/rejected -> accepted or rejected (archived and superseded rows: Conflict). An owner
+    decision may be revised: rejecting an accepted item, or re-accepting a rejected one, records the revision in
+    the item's note ("re-accepted after an earlier rejection" / "rejected after an earlier acceptance") and appends
+    it to the resolution of every already-resolved question of scope web:knowledge:<id>, so the question's record
+    never contradicts the item. Open questions of that scope are closed (except `question_id`, the question the
+    caller is resolving itself). Returns {id, previous_status, status, pending_closed, decisions_revised}."""
+    verdict = "accepted" if accept else "rejected"
+    before = item["status"]
+    if before not in DECIDABLE:
+        raise Conflict(f"Knowledge item {item['id']} is {before}; only provisional, accepted, stale or rejected "
+                       "items can be accepted or rejected")
+    revised = before in ("accepted", "rejected") and before != verdict
+    text = f"owner {verdict}"
+    if revised:
+        text = "owner re-accepted it after an earlier rejection" if accept else \
+            "owner rejected it after an earlier acceptance"
+    text += f" ({via})" if via else ""
+    if note:
+        text += f": {note}"
+    if before != verdict:
+        db.execute("UPDATE web_knowledge SET status=?, note=?, updated_at=? WHERE id=?",
+                   (verdict, text, now, item["id"]))
+    scope = f"web:knowledge:{item['id']}"
+    closed = [pid for pid in (r[0] for r in db.execute("SELECT id FROM pending WHERE scope=? AND resolved_at IS NULL",
+                                                        (scope,)).fetchall()) if pid != question_id]
+    for pid in closed:
+        db.execute("UPDATE pending SET resolved_at=?, resolution=? WHERE id=?", (now, note or verdict, pid))
+    history = []
+    if revised:
+        from datetime import datetime, timezone
+        day = datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        for pid, resolution in db.execute("SELECT id, resolution FROM pending WHERE scope=? AND resolved_at IS NOT "
+                                          "NULL", (scope,)).fetchall():
+            if pid == question_id or pid in closed:
+                continue
+            entry = f"[{day}] {text}"
+            updated = f"{resolution or ''}\n{entry}".strip()[-MAX_RESOLUTION_HISTORY:]
+            db.execute("UPDATE pending SET resolution=? WHERE id=?", (updated, pid))
+            history.append(pid)
+    return {"id": item["id"], "previous_status": before, "status": verdict, "pending_closed": closed,
+            "decisions_revised": history}
 
 
 def _parse_scope(scope):
@@ -292,12 +333,11 @@ def apply_review(db, current: dict, confirm: bool, now) -> dict:
     """
     kind, ident = _parse_scope(current["scope"])
     if kind == "knowledge":
-        item = row(db, _int(ident))
-        before = item["status"]
-        _set_status(db, item, "accepted" if confirm else "rejected", now,
-                    f"owner {'accepted' if confirm else 'rejected'} (question #{current['id']})")
-        return {"kind": "knowledge", "id": item["id"], "previous_status": before,
-                "status": "accepted" if confirm else "rejected"}
+        done = decide(db, row(db, _int(ident)), bool(confirm), now, via=f"question #{current['id']}",
+                      question_id=current["id"])
+        out = {"kind": "knowledge", "id": done["id"], "previous_status": done["previous_status"],
+               "status": done["status"]}
+        return out | ({"decisions_revised": done["decisions_revised"]} if done["decisions_revised"] else {})
     if kind == "monitor":
         mid = _int(ident)
         found = db.execute("SELECT status FROM web_monitors WHERE id=?", (mid,)).fetchone()
@@ -316,8 +356,10 @@ def apply_review(db, current: dict, confirm: bool, now) -> dict:
         if found != ("queued", "proposed"):
             raise Conflict(f"Research task {ident} is not an open proposal")
         if confirm:
+            clamped = _within_allowance(db, ident, now)
             state.update_task(db, ident, now, stage=None)
-            state.log_event(db, ident, "decision", {"decision": "proposal authorised by the owner"}, now)
+            state.log_event(db, ident, "decision", {"decision": "proposal authorised by the owner"} |
+                            ({"clamped_to_daily_allowance": clamped} if clamped else {}), now)
             return {"kind": "research", "id": ident, "status": "queued"}
         state.update_task(db, ident, now, status="cancelled", stage=None, finished_at=now,
                           error="proposal declined by the owner")
@@ -325,6 +367,29 @@ def apply_review(db, current: dict, confirm: bool, now) -> dict:
         return {"kind": "research", "id": ident, "status": "cancelled"}
     raise ValidationError(f"Question {current['id']} ({current['scope']}) is informational; answer it without "
                           "confirm")
+
+
+def _within_allowance(db, task_id, now) -> dict:
+    """W-12: confirming an autonomous proposal commits it to the daily autonomous allowance. Its request/byte
+    budget is clamped to what is left now (other autonomous tasks may have run since it was proposed); with
+    nothing left -> Conflict and the proposal stays open. Returns the clamped fields. Caller owns the txn."""
+    from dataclasses import replace
+    from . import orchestrator, scheduler
+    from .types import Budget
+    task = state.task(db, task_id)
+    if not orchestrator.is_autonomous(task["origin"]):
+        return {}
+    cfg = state.get_config(db)
+    left = scheduler.autonomous_remaining(db, now, cfg, exclude=task_id)
+    for key in ("requests", "bytes"):
+        if left[key] < 1:
+            raise Conflict(f"the daily autonomous allowance is spent (no {key} left of "
+                           f"{cfg.daily_autonomous.get(key, 0)}); the proposal stays open, confirm it later")
+    budget = Budget.from_json(task["budget"])
+    clamped = {f"max_{k}": left[k] for k in ("requests", "bytes") if getattr(budget, f"max_{k}") > left[k]}
+    if clamped:
+        state.update_task(db, task_id, now, budget=replace(budget, **clamped).to_json())
+    return clamped
 
 
 def review_outcome(db, current: dict):
@@ -362,22 +427,20 @@ def _maybe_int(text):
 
 
 def review(db, knowledge_id, accept: bool, now, *, note="") -> dict:
-    """Accept (provisional/stale -> accepted) or reject an item; closes its open question in the same transaction
-    and counts as a teacher intervention, exactly like answering it with `nsf resolve`."""
+    """Accept or reject an item (decide(): provisional/stale/rejected -> accepted, provisional/stale/accepted ->
+    rejected); closes its open question in the same transaction and counts as a teacher intervention, exactly like
+    answering it with `nsf resolve`. Revising an earlier decision is recorded on the item and on the question's
+    resolution (decisions_revised lists those questions)."""
     if not isinstance(accept, bool):
         raise ValidationError("accept must be true or false")
     if not isinstance(note, str) or len(note) > 1024:
         raise ValidationError("note must be a string of at most 1024 characters")
     with store.write(db):
         item = row(db, knowledge_id)
-        before = item["status"]
-        verdict = "accepted" if accept else "rejected"
-        _set_status(db, item, verdict, now, f"owner {verdict}" + (f": {note}" if note else ""))
-        closed = _close_questions(db, f"web:knowledge:{item['id']}", note or verdict, now)
+        done = decide(db, item, accept, now, note=note, via="review")
         store.bump(db, "teacher_interventions")
         version = store.bump_state_version(db)
-    return {"id": item["id"], "previous_status": before, "status": verdict, "pending_closed": closed,
-            "state_version": version}
+    return done | {"state_version": version}
 
 
 def _owner_status(db, knowledge_id, status, now, note) -> dict:
@@ -409,14 +472,22 @@ def forget(db, knowledge_id, now) -> dict:
     return governance.forget_knowledge(db, knowledge_id, now)
 
 
+OWNER_REFRESH = "refresh-owner:"
+
+
 def refresh(db, knowledge_id, now, *, origin="cli") -> dict:
     """Submit (not run) a fact-verification task for the item's statement; returns the queued task.
 
-    `origin` names who asked: the owner's paths pass 'cli' or 'console' (an owner task, never clamped to the
-    autonomous allowance); only a due prediction passes 'refresh:<id>', which is autonomous research."""
+    `origin` names who asked. The owner's paths pass 'cli' or 'console': the task is recorded with origin
+    'refresh-owner:<id>' (orchestrator.origin_label shows "Refresh of knowledge #<id>"), an owner task never
+    clamped to the autonomous allowance (orchestrator.is_autonomous is False). Only a due prediction passes
+    'refresh:<id>', which is autonomous research. Either way the task is tied to the item, so forgetting the item
+    forgets its unfinished refreshes (governance.forget_knowledge)."""
     from . import orchestrator
     item = row(db, knowledge_id)
     if item["status"] not in REVIEWABLE:
         raise Conflict(f"Knowledge item {knowledge_id} is {item['status']}; refresh the current version instead")
+    if origin in ("cli", "console"):
+        origin = f"{OWNER_REFRESH}{item['id']}"
     return orchestrator.submit(db, item["statement"], now, mode="fact_verification", origin=origin,
                                parent=item["task_id"])

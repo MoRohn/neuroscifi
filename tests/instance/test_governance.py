@@ -242,6 +242,9 @@ def test_bulk_writes_check_free_space_when_given_the_db_path(tmp_path):
             legacy.import_legacy(db, proto, T0, path=path)
         assert db.execute("SELECT count(*) FROM datasets").fetchone()[0] == 0
         assert db.execute("SELECT count(*) FROM evidence").fetchone()[0] == 0
-        assert datasets.add(db, "c", "train", states, states, "observed", T0) >= 1  # without a path: unchanged
+        with pytest.raises(WritesPaused, match="reserve"):   # S-03: without a path the instance's own file counts
+            datasets.add(db, "c", "train", states, states, "observed", T0)
+        with pytest.raises(WritesPaused, match="reserve"):
+            datasets.simulate(db, "c", T0, seed=1, steps=64)
     finally:
         db.close()

@@ -11,11 +11,14 @@ the circuit for `cooldown` seconds; after that one trial call is allowed (half_o
 re-opens it.
 
 Empty-answer rule (defined here; ARCHITECTURE §4.2 leaves it open): an empty result list is a *soft* failure.
+(Only a general provider's empty answer is listed in `failures`; every empty answer stays in `attempts`.)
 It counts as a health failure only for a provider that declares `general_web = True` (a general search engine:
 open-webSearch), only for a general query (kind 'web' or 'news'), and only when some other provider answered the
 same query with results — the "engine answered 200 with nothing" failure mode. When nobody found anything the query is simply obscure and the
 empty answer is health-neutral. For specialist providers (Wikipedia, arXiv, PyPI, ...) an empty answer means
-"nothing matches" and counts as a success. Provider errors whose code is not about the provider's health
+"nothing matches" (a registry's 404 for a name it does not know: a soft miss) and counts as a success; it is not a
+failure. A specialist query nobody answered falls back to the general web providers, except a registry lookup
+(REGISTRY_QUERY): "npm:numpy" is not a web search. Provider errors whose code is not about the provider's health
 (budget exhausted, network disabled, blocked by policy) are recorded as failed attempts but never move a breaker.
 
 Providers may also expose:
@@ -45,6 +48,8 @@ GENERAL_KINDS = ("web", "news")
 # Error codes that say nothing about a provider's health: never move a breaker.
 NON_HEALTH_CODES = frozenset({"budget_exhausted", "disabled", "blocked_policy", "blocked_robots", "circuit_open",
                               "not_applicable"})
+# Registry lookups ("pypi:numpy", "osv:PyPI:x@1.0") are never re-sent to general web search when nobody answers.
+REGISTRY_QUERY = re.compile(r"^(?:pypi|npm|osv|github):\S", re.I)
 _USAGE_LOCK = threading.Lock()   # Usage.charge is not atomic; discovery charges go through this lock
 
 
@@ -403,12 +408,13 @@ class ProviderRegistry:
         done = [f.result() for f in calls]
         anyone_found = any(d["results"] for d in done)
         for provider, d in zip(runnable, done):
+            general = getattr(provider, "general_web", False)
             for ea in d["engine_attempts"]:
                 entry = {"provider": provider.name, "engine": ea.get("engine"), "query": query.text,
                          "ok": bool(ea.get("ok")), "n": int(ea.get("n") or 0), "error": ea.get("error"),
                          "latency": float(ea.get("latency") or 0.0)}
                 attempts.append(entry)
-                if not entry["ok"] or entry["n"] == 0:
+                if not entry["ok"] or (entry["n"] == 0 and general):
                     failures.append(entry)
             n = len(d["results"])
             error = f"{d['code']}: {d['error']}" if d["code"] else (None if n else "empty")
@@ -421,9 +427,10 @@ class ProviderRegistry:
             elif n:
                 verdict = "ok"
             else:
-                failures.append(entry)
-                soft = getattr(provider, "general_web", False) and query.kind in GENERAL_KINDS and anyone_found
-                verdict = "fail" if soft else ("neutral" if getattr(provider, "general_web", False) else "ok")
+                if general:            # a specialist's empty answer ("no such package": 404) is a soft miss
+                    failures.append(entry)
+                soft = general and query.kind in GENERAL_KINDS and anyone_found
+                verdict = "fail" if soft else ("neutral" if general else "ok")
             self._settle(provider.name, verdict, d["latency"], error)
             if d["results"]:
                 by_engine: dict = {}
@@ -465,7 +472,7 @@ class ProviderRegistry:
                                      "error": f"no provider serves kind {query.kind!r}", "latency": 0.0})
                     continue
                 done = self._round(pool, providers, query, per_query, budget, usage, attempts, failures, lists, qi)
-                if query.kind != "web" and not any(d["results"] for d in done):
+                if query.kind != "web" and not any(d["results"] for d in done) and not REGISTRY_QUERY.match(query.text):
                     # fallback: specialist providers produced nothing usable -> general web providers
                     fallback = [p for p in self._candidates(Query(query.text, "web", query.since, query.site,
                                                                   query.language, query.purpose),
@@ -521,4 +528,4 @@ def fuse(lists: list[tuple]) -> list[SearchResult]:
 
 
 __all__ = ["SearchProvider", "ProviderError", "ProviderRegistry", "Breaker", "canonical_url", "fuse", "charge",
-           "strip_html", "parse_iso_date", "date_string", "RRF_K", "NON_HEALTH_CODES"]
+           "strip_html", "parse_iso_date", "date_string", "RRF_K", "NON_HEALTH_CODES", "REGISTRY_QUERY"]

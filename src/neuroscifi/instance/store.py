@@ -237,10 +237,14 @@ def _hottest_zone():
 def write_allowed(db, path=None):
     """Regulation: return (allowed, reason). Reads stay available while writes are paused.
 
-    Pauses on journal size, on free space below the reserve (when `path` is given) and, when
-    config.max_thermal_celsius is set, on any thermal zone above that temperature.
+    Pauses on journal size, on free space below the reserve and, when config.max_thermal_celsius is set, on any
+    thermal zone above that temperature. The free-space check uses `path`, else the connection's own file (PRAGMA
+    database_list), so every caller is covered whether or not it knows the path; an in-memory database has no
+    free-space check.
     """
     cfg = config(db)
+    if path is None:
+        path = database_path(db)
     rows = db.execute("SELECT count(*) FROM evidence").fetchone()[0]
     if rows >= cfg.max_evidence_rows:
         return False, f"evidence journal holds {rows} rows (limit {cfg.max_evidence_rows})"

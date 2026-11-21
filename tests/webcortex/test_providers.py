@@ -462,10 +462,11 @@ def test_feed_provider_ranks_filters_and_tolerates_bad_feeds():
                       "file:///etc/passwd"], fetcher=f, clock=lambda: NOW)
     out = p.search(Query("dendritic computation"), 10)
     assert {r["purpose"] for r in f.requests} == {"feed"} and "file:///etc/passwd" not in f.urls
-    assert [r.url for r in out] == ["https://lab.example/a", "https://lab.example/old", "https://blog.example/p"]
-    assert out[0].snippet == "New dendritic results." and out[0].kind == "feed"
+    # terms match as stems ("dendrites" ~ "dendritic"): the primer matches both terms and is the newest
+    assert [r.url for r in out] == ["https://blog.example/p", "https://lab.example/a", "https://lab.example/old"]
+    assert out[1].snippet == "New dendritic results." and out[1].kind == "feed"
     out = p.search(Query("dendritic computation", since=NOW - 30 * 86400), 10)
-    assert [r.url for r in out] == ["https://lab.example/a", "https://blog.example/p"]
+    assert [r.url for r in out] == ["https://blog.example/p", "https://lab.example/a"]
 
 
 def test_feed_parser_refuses_doctype_and_all_failing_raises():
@@ -626,3 +627,68 @@ def test_osv_fixed_versions_exclude_git_commit_hashes():
     out = OSVProvider(FakeFetcher({url: {"vulns": [vuln]}})).search(Query("osv:PyPI:zstandard@0.25.0"), 5)
     assert out[0].metadata["fixed_versions"] == ["0.25.1"]
     assert {r["type"] for r in out[0].metadata["affected_ranges"]} == {"ECOSYSTEM", "GIT"}
+
+
+# ---- UAT RC1 regressions (W-10 Wikipedia snippets, W-14 / W-13 feeds) ------------------------------------------
+
+def test_wikipedia_hits_are_snippet_only_and_article_returns_the_lead():
+    url = ("https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=dendritic+computation&format=json"
+           "&srlimit=20&srprop=snippet%7Ctimestamp")
+    f = FakeFetcher({url: WIKI})
+    out = WikipediaProvider(f).search(Query("dendritic computation", "encyclopedia"), 50)
+    assert all(r.metadata["snippet_only"] is True for r in out)
+    art = ("https://en.wikipedia.org/w/api.php?action=query&prop=extracts%7Crevisions&explaintext=1&exintro=1"
+           "&rvprop=timestamp&redirects=1&titles=Eiffel+Tower&format=json&formatversion=2")
+    f.routes[art] = {"batchcomplete": True, "query": {"pages": [{
+        "pageid": 9232, "ns": 0, "title": "Eiffel Tower",
+        "extract": "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. " * 400,
+        "revisions": [{"timestamp": "2026-11-18T10:00:00Z"}]}]}}
+    budget, usage = Budget(max_requests=5), Usage()
+    got = WikipediaProvider(f).article("Eiffel Tower", budget=budget, usage=usage, max_chars=500)
+    assert f.requests[-1]["purpose"] == "api" and usage.requests == 1
+    assert got["title"] == "Eiffel Tower" and got["url"] == "https://en.wikipedia.org/wiki/Eiffel_Tower"
+    assert got["extract"].startswith("The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris")
+    assert len(got["extract"]) <= 500 and got["last_edited"] == "2026-11-18T10:00:00Z"
+    missing = art.replace("Eiffel+Tower", "Nope")
+    f.routes[missing] = {"query": {"pages": [{"ns": 0, "title": "Nope", "missing": True}]}}
+    with pytest.raises(ProviderError) as err:
+        WikipediaProvider(f).article("Nope")
+    assert err.value.code == "not_found"
+    with pytest.raises(ProviderError) as err:
+        WikipediaProvider(f).article("a|b")
+    assert err.value.code == "bad_request"
+
+
+FEED_MIXED = """<?xml version="1.0"?><rss version="2.0"><channel><title>Mixed</title>
+<item><title>Injection molding plant opens</title><link>https://news.example/molding</link>
+<pubDate>Wed, 18 Nov 2026 10:00:00 GMT</pubDate><description>A new injection molding plant.</description></item>
+<item><title>Prompt injection in LLM agents</title><link>https://news.example/prompt</link>
+<pubDate>Wed, 18 Nov 2026 11:00:00 GMT</pubDate><description>Prompt injection attacks on agents.</description></item>
+<item><title>Quillstream community call</title><link>https://news.example/qs</link>
+<pubDate>Wed, 18 Nov 2026 12:00:00 GMT</pubDate><description>Notes from the call.</description></item>
+</channel></rss>"""
+
+
+def test_feed_items_need_two_query_terms_or_every_entity():
+    f = FakeFetcher({"https://news.example/rss": (200, FEED_MIXED, "application/rss+xml")})
+    p = FeedProvider(["https://news.example/rss"], fetcher=f, clock=lambda: NOW)
+    # one shared word ("injection") is not relevance: the molding item stays out
+    assert [r.url for r in p.search(Query("latest prompt injection attacks this week"), 10)] == \
+        ["https://news.example/prompt"]
+    assert p.search(Query("injection molding"), 10)[0].url == "https://news.example/molding"
+    assert [r.url for r in p.search(Query("Quillstream release"), 10)] == ["https://news.example/qs"]  # entity
+    assert p.search(Query("release plan"), 10) == []
+    assert p.search(Query("last week"), 10) == []                       # nothing topical to match
+
+
+def test_feed_partial_failures_are_recorded_as_attempts():
+    f = FakeFetcher({"https://news.example/rss": (200, FEED_MIXED, "application/rss+xml"),
+                     "https://down.example/rss": FetchError("timeout", "https://down.example/rss", "read timed out")})
+    p = FeedProvider(["https://news.example/rss", "https://down.example/rss"], fetcher=f, clock=lambda: NOW)
+    reg = ProviderRegistry([p], clock=lambda: NOW)
+    out = reg.search(QueryPlan(queries=(Query("prompt injection attacks", "news"),)), budget=Budget(), usage=Usage())
+    assert [r.url for r in out.results] == ["https://news.example/prompt"]
+    feeds = {a["engine"]: a for a in out.attempts if a["engine"]}
+    assert feeds["https://news.example/rss"]["ok"] and feeds["https://news.example/rss"]["n"] == 1
+    assert not feeds["https://down.example/rss"]["ok"] and "timeout" in feeds["https://down.example/rss"]["error"]
+    assert [a["engine"] for a in out.failures] == ["https://down.example/rss"]

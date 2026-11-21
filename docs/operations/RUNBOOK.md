@@ -62,16 +62,19 @@ Pocket issues one invitation per run, valid five minutes, usable once. The servi
 1. Start or restart Pocket: `sudo systemctl restart neuroscifi-pocket.service`. The journal says `Invitation written to /run/neuroscifi/invitation`.
 2. Read the code within five minutes: `sudo cat /run/neuroscifi/invitation`.
 3. On the phone, open the HTTPS address and enter the code. The file is deleted the moment the pairing succeeds, when the five minutes expire, and when the service stops. A wrong code does not consume it.
-4. For another phone or after expiry, restart the service (a new invitation each time). A paired phone can instead hand off to a tablet with **Link my phone or tablet**, which needs no operator step.
+4. For another phone or after expiry, restart the service (a new invitation each time). A paired phone can instead hand off to a tablet with **Link my phone or tablet**, which needs no operator step. A device and the devices linked from it form a **pairing family**; a family holds at most 6 devices, and the page refuses a hand-off code when it is full (HTTP 409 `family_full`).
 
 List and erase pairings:
 
 ```sh
 sudo -u neuroscifi /opt/neuroscifi/venv/bin/nsf pocket list-pairings --db /var/lib/neuroscifi/pocket.sqlite
 sudo -u neuroscifi /opt/neuroscifi/venv/bin/nsf pocket erase-pairing LABEL --db /var/lib/neuroscifi/pocket.sqlite
+sudo -u neuroscifi /opt/neuroscifi/venv/bin/nsf pocket erase-pairing LABEL --family --db /var/lib/neuroscifi/pocket.sqlite
 ```
 
-Without the service (foreground, loopback, code on the terminal): `nsf pocket serve --db PATH`. If you pass `--invitation-file PATH` and the file already exists, `serve` exits with an error and leaves it alone; the file must not exist.
+`list-pairings` prints one line per device: `LABEL  family=TAG  sponsor=invitation|LABEL  created=UTC|unknown`. Devices with the same `family=` tag were linked from one another; `sponsor=` names the device that issued a hand-off code, or `invitation` for a device paired with the terminal code. `erase-pairing LABEL` removes one device; with `--family` it removes every device of that label's family. A device can do the same for its own family with **Forget all linked devices** (the `unpair` action with `{"family": true}`). Research submissions are limited to 10 per hour per family, and the count survives a bridge restart.
+
+Without the service (foreground, loopback, code on the terminal): `nsf pocket serve --db PATH`. If you pass `--invitation-file PATH` and the file already exists, `serve` replaces it only when it is a stale invitation of an earlier bridge (a regular 0600 file of your user, not a symlink, holding one code, with no running bridge holding its lock or older than five minutes). Any other existing file makes `serve` exit with an error and stays as it was. A busy port prints `nsf: cannot listen on ADDRESS:PORT: Address already in use` and exits 2.
 
 ## 4. Console access over an SSH tunnel *(available from 0.5.0)*
 
@@ -146,7 +149,7 @@ Out of scope for the erasure guarantee, which you must state to the requester: c
 nsfs regulation
 ```
 
-Writes pause when the evidence journal reaches `max_evidence_rows` (default 1,000,000) or free space on the database's filesystem falls below `min_free_bytes` (default 64 MiB). Reads, `nsfs memory`, `nsfs explain` and checkpoint restore keep working. A paused write returns exit 2 with a "writes paused" message and HTTP 507 where applicable.
+Writes pause when the evidence journal reaches `max_evidence_rows` (default 1,000,000) or free space on the database's filesystem falls below `min_free_bytes` (default 64 MiB). The free-space check always uses the instance's own file, so console writes (simulate, learn, start an epoch) pause exactly like the command line. Reads, `nsfs memory`, `nsfs explain`, forgetting and checkpoint restore keep working. A paused write returns exit 2 with a "writes paused" message and HTTP 507 where applicable.
 
 Procedure:
 
@@ -168,7 +171,7 @@ sudo -u neuroscifi /opt/neuroscifi/venv/bin/nsf pocket erase-pairing LABEL --db 
 
 `list-pairings` shows random labels only, not owners. If you cannot tell which label belongs to the lost phone, erase every pairing and re-pair the phones you still have (section 3). Then:
 
-1. Linked tablets from a hand-off are separate pairings; erase them too if they could be affected.
+1. Linked tablets from a hand-off are separate pairings in the same family. If they could be affected, erase the whole family with `nsf pocket erase-pairing LABEL --family --db /var/lib/neuroscifi/pocket.sqlite`; `list-pairings` shows which devices share a `family=` tag.
 2. Records the phone shared to the instance journal through you (not through Pocket) are ordinary evidence: forget them if wanted (section 6).
 3. If the phone had a field vault open, its local data is protected only by the person's passphrase. Advise changing it where reused. The server cannot clear a phone remotely.
 4. If the lost phone also held TLS private-key material or you suspect the key leaked, replace the certificate and key (ENVIRONMENT.md) and restart.
@@ -185,6 +188,8 @@ sudo -u neuroscifi /opt/neuroscifi/venv/bin/nsf pocket erase-pairing LABEL --db 
 **Corrupted checkpoint.** `nsfs checkpoint verify ID` exits 2 with "fails verification". Do not restore from it. Verify the next older id; create a fresh checkpoint from the live database with `nsfs checkpoint create --policy cold` and verify it. Investigate the volume (`dmesg`, SMART data) before trusting the disk.
 
 **Corrupted live database.** Stop services, keep the damaged file, restore the newest verified checkpoint (section 5), then re-forget anything erased after that checkpoint was taken (`nsfs memory deletion` on the restored copy shows what it knows; `restore` re-applies the tombstones it knows about). Record the incident.
+
+**Corrupted public web cache.** `<db stem>.webcache.sqlite` holds only downloaded public pages and validators (ADR-023) and is disposable. A corrupt file is renamed `<name>.corrupt-<unix time>` and an empty cache replaces it the next time the worker, `nsfs web status` or the console opens it; research continues (pages are fetched again) and an `error` event with stage `public_cache` records the quarantine. `nsfs doctor --db PATH` reports a corrupt cache as `public_cache: warn`. Delete the `.corrupt-*` files once you have kept what you need for the incident record.
 
 **Pocket database damaged.** It holds only 24-hour records and pairings. Move it aside and start the service. A new file is created; every phone must pair again.
 
@@ -272,6 +277,14 @@ nsfs web status                                                # switches, provi
 - Web questions have their own budget: at most `max_open_web_questions` (default 10) open, and at most `max_web_questions_per_task` (default 3) new per task. Beyond that, candidates stay provisional and one aggregate question per task (scope `web:review:<task>`) says how many await review. Review them in the console (Research) or with `nsfs web knowledge --status provisional` and `nsfs web review ID --accept|--reject`. `nsfs regulation` reports `open_web_questions` separately.
 - A monitor's meaningful change is a `finding` event and an informational question `web:finding:<monitor>:<task>`; the console's monitors table lists recent findings.
 - While regulation pauses writes (section 7), nothing web-related is written: submissions, consolidation, monitors and proposals return "writes paused", the worker claims nothing (one decision event), and a running task stops at its next step as `partial` without consolidating.
+- Turning web access off (`nsfs web config --disable`) or adding a domain to `deny_domains` takes effect in a running task within a few seconds: it stops as `partial` ("Web access was turned off during the run"), or skips the denied hosts.
+- A task that could read nothing because every provider or page failed (network down, all circuits open) ends `failed` with a limitation naming the failures. `nsfs web requeue TASK_ID` searches again once the network is back.
+- An identical submission (same objective, mode and origin) while one is queued or running returns that task (`deduplicated: true`). `requeue` of a partial or cancelled task returns the child already queued instead of creating another.
+- Curiosity proposals are sized to the daily autonomous allowance left when they are made, and are checked again when you confirm them and when the worker starts them.
+
+### Crashed worker
+
+Each lease records the worker's host digest, pid and process start time. On the same host a dead worker is detected at once: `cancel`, `resume` and `requeue` act immediately and the worker service picks the task up from its checkpoint without waiting for the 600 s lease to expire. Task JSON carries `worker_alive` (`true`, `false`, or `null` when no worker holds it or it runs on another host).
 
 ### Forgetting web memory
 
@@ -280,6 +293,8 @@ nsfs web status                                                # switches, provi
 | A research task, its evidence and the knowledge resting only on it (also its pages in the public cache that no other task read) | `nsfs forget research TASK_ID` |
 | A knowledge item and every version of it | `nsfs forget knowledge ID` (or `nsfs web forget ID`) |
 | A source URL (as requested, original or final) or every source of a domain, also from the public cache | `nsfs forget source URL_OR_DOMAIN` |
+
+Forgetting a knowledge item also forgets its queued or running refresh tasks (their objective is the forgotten statement); the result lists them in `refresh_tasks_forgotten`. Every forget result whose checkpoints became stale carries `next_steps` naming `nsf checkpoint rebuild`.
 
 Each web forget records a payload-free tombstone (`web_forgotten`, an instance-salted digest), marks every checkpoint stale and logs only a digest label for a URL or domain in `deletion_log`. `checkpoint restore` replays those tombstones on the restored copy, so a forgotten task, knowledge version or source never comes back. Then follow the erasure steps of section 6 (`checkpoint rebuild`). Forgetting a partner (`nsfs forget partner NAME`) also replaces the name in research objectives, reports, events, claims and knowledge.
 

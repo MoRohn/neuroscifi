@@ -1,14 +1,19 @@
 """NeuroSciFi mobile bridge. Run with --help for pairing and local administration."""
 import argparse
+import errno
+import fcntl
 import hashlib
 import hmac
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import signal
+import socket
 import sqlite3
 import ssl
+import stat
 import sys
 import threading
 import time
@@ -35,6 +40,15 @@ FIELD = {
 }
 DAY = 86400
 MAX_CONNECTIONS = 32
+PER_IP_CONNECTIONS = 8   # one address cannot hold more than a quarter of the slots
+HEAD_DEADLINE = 10       # seconds from accept to a complete request (TLS handshake, head and body included)
+FAMILY_DEVICES = 6       # devices in one pairing family (the invited device and those linked from it)
+BODY_LIMIT = 512
+# A 300-character question in a non-Latin script needs up to 3 bytes a character; research_submit alone may send
+# 1 KiB (README: deviation from the 512-byte cap of every other route).
+RESEARCH_BODY_LIMIT = 1024
+INVITATION_SECONDS = 300
+INVITATION_FORMAT = re.compile(r"[A-Za-z0-9_-]{32}\n?")
 ROUTES = {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link","mute","unmute"}
 # Web Cortex research (ADR-028): exist only with --instance-db and the individual's pocket_research switch on.
 RESEARCH = {"research_submit","research_list","research_get","research_cancel"}
@@ -42,8 +56,12 @@ RESEARCH = {"research_submit","research_list","research_get","research_cancel"}
 RESEARCH_MODES = ("quick_lookup","deep_research","fact_verification","comparative","scientific","technical")
 MAX_OBJECTIVE = 300
 VERDICTS = ("supported", "disputed", "contested", "insufficient")
-SUBMISSIONS_PER_HOUR = 10
+SUBMISSIONS_PER_HOUR = 10   # per pairing family, kept in the Pocket database so a restart does not reset it
 _RATE_LOCK = threading.Lock()
+
+
+class FamilyFull(Exception):
+    """The pairing family already has FAMILY_DEVICES devices."""
 
 
 def fingerprint(token):
@@ -84,8 +102,9 @@ class Store:
                   device TEXT REFERENCES devices(key) ON DELETE CASCADE, id TEXT, ch TEXT, val TEXT,
                   learn INTEGER, until INTEGER, asked INTEGER, PRIMARY KEY(device,id));
                 CREATE TABLE IF NOT EXISTS members(device TEXT PRIMARY KEY REFERENCES devices(key) ON DELETE CASCADE,
-                  family TEXT NOT NULL);
-                INSERT OR IGNORE INTO members SELECT key,key FROM devices;
+                  family TEXT NOT NULL, sponsor TEXT, created INTEGER);
+                INSERT OR IGNORE INTO members(device,family) SELECT key,key FROM devices;
+                CREATE TABLE IF NOT EXISTS submissions(family TEXT NOT NULL, at REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS episodes(device TEXT REFERENCES devices(key) ON DELETE CASCADE,
                   id TEXT, body TEXT, until INTEGER,PRIMARY KEY(device,id));
                 CREATE TABLE IF NOT EXISTS retired_episodes(device TEXT REFERENCES devices(key) ON DELETE CASCADE,
@@ -107,19 +126,63 @@ class Store:
             """)
             if "asked" not in [r[1] for r in db.execute("PRAGMA table_info(events)")]:
                 db.execute("ALTER TABLE events ADD COLUMN asked INTEGER")  # learn value originally requested
+            columns = [r[1] for r in db.execute("PRAGMA table_info(members)")]
+            for column in ("sponsor TEXT", "created INTEGER"):  # who linked a device and when (list-pairings)
+                if column.split()[0] not in columns:
+                    db.execute("ALTER TABLE members ADD COLUMN " + column)
 
     def pair(self, sponsor=None):
         key = secrets.token_urlsafe(32)
         with closing(connect(self.path)) as db, db:
             db.execute("BEGIN IMMEDIATE")
-            family=fingerprint(key)
+            family, label = fingerprint(key), None
             if sponsor is not None:
-                row=db.execute("SELECT family FROM members WHERE device=?",(sponsor,)).fetchone()
+                row=db.execute("SELECT m.family,d.label FROM members m JOIN devices d ON d.key=m.device "
+                               "WHERE m.device=?",(sponsor,)).fetchone()
                 if not row: raise PermissionError()
-                family=row[0]
+                family, label = row
+                if db.execute("SELECT count(*) FROM members WHERE family=?",(family,)).fetchone()[0] >= FAMILY_DEVICES:
+                    raise FamilyFull()
             db.execute("INSERT INTO devices VALUES (?,?)", (fingerprint(key), secrets.token_hex(6)))
-            db.execute("INSERT INTO members VALUES(?,?)",(fingerprint(key),family))
+            db.execute("INSERT INTO members VALUES(?,?,?,?)",(fingerprint(key),family,label,int(self.clock())))
         return key
+
+    def family_full(self, token):
+        """True when the credential's family cannot take another linked device (PermissionError when unknown)."""
+        family = self.family(token)
+        with closing(connect(self.path)) as db:
+            return db.execute("SELECT count(*) FROM members WHERE family=?", (family,)).fetchone()[0] >= FAMILY_DEVICES
+
+    def admit(self, family, submit):
+        """Run `submit` unless the family already queued SUBMISSIONS_PER_HOUR tasks in the last hour."""
+        with _RATE_LOCK:
+            now = self.clock()
+            with closing(connect(self.path)) as db:
+                recent = db.execute("SELECT count(*) FROM submissions WHERE family=? AND at>?",
+                                    (family, now - 3600)).fetchone()[0]
+            if recent >= SUBMISSIONS_PER_HOUR:
+                return None
+            result = submit()
+            with closing(connect(self.path)) as db, db:
+                db.execute("INSERT INTO submissions VALUES(?,?)", (family, now))
+            return result
+
+    def pairings(self):
+        """(label, family tag, sponsor label or None, created epoch or None) per device, oldest first."""
+        with closing(connect(self.path)) as db:
+            rows = db.execute("SELECT d.label,m.family,m.sponsor,m.created FROM devices d "
+                              "LEFT JOIN members m ON m.device=d.key ORDER BY d.rowid").fetchall()
+        return [(label, family_tag(family), sponsor, created) for label, family, sponsor, created in rows]
+
+    def erase(self, label, family=False):
+        """Erase one pairing by label, or with `family` every device of its family. Returns the number erased."""
+        with closing(connect(self.path)) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            if not family:
+                return db.execute("DELETE FROM devices WHERE label=?", (label,)).rowcount
+            return db.execute("DELETE FROM devices WHERE key IN (SELECT device FROM members WHERE family IN "
+                              "(SELECT m.family FROM members m JOIN devices d ON d.key=m.device WHERE d.label=?))",
+                              (label,)).rowcount
 
     def family(self, token):
         """The pairing family fingerprint of a live credential (PermissionError when unknown or revoked)."""
@@ -135,6 +198,7 @@ class Store:
         db.execute("DELETE FROM events WHERE until<=?", (now,))
         db.execute("INSERT OR IGNORE INTO retired_episodes SELECT device,id FROM episodes WHERE until<=?", (now,))
         db.execute("DELETE FROM episodes WHERE until<=?",(now,))
+        db.execute("DELETE FROM submissions WHERE at<=? OR family NOT IN (SELECT family FROM members)", (now - 3600,))
 
     def sweep(self):
         with closing(connect(self.path)) as db, db:
@@ -221,7 +285,10 @@ class Store:
                     return 200, {}
                 db.execute("INSERT OR IGNORE INTO muted VALUES (?,?)", (key, channel))
                 return 200, {"unlearned": db.execute("UPDATE events SET learn=0 WHERE device=? AND ch=? AND learn=1", (key, channel)).rowcount}
-            if operation == "unpair" and not data:
+            if operation == "unpair" and (not data or (set(data) == {"family"} and data["family"] is True)):
+                if data:  # revoke the whole family: this device and every device linked with it
+                    db.execute("DELETE FROM devices WHERE key IN (SELECT device FROM members WHERE family="
+                               "(SELECT family FROM members WHERE device=?))", (key,))
                 db.execute("DELETE FROM devices WHERE key=?", (key,))
                 return 200, {}
             if operation == "state" and not data:
@@ -333,23 +400,14 @@ def task_detail(task):
                                  "report": phone_report(task.get("result"))}
 
 
-def admit_submission(server, device, submit):
-    """Run `submit` unless this device already submitted SUBMISSIONS_PER_HOUR tasks in the last hour (in memory)."""
-    with _RATE_LOCK:
-        recent = server.__dict__.setdefault("research_submissions", {})
-        now = time.monotonic()
-        times = [t for t in recent.get(device, ()) if now - t < 3600]
-        if len(times) >= SUBMISSIONS_PER_HOUR:
-            recent[device] = times
-            return None
-        result = submit()
-        recent[device] = [*times, now]
-        return result
+def family_tag(family):
+    """A short, stable name for a pairing family in list-pairings (not the credential fingerprint itself)."""
+    return hashlib.sha256(("pocket-family:" + family).encode()).hexdigest()[:8] if family else "-"
 
 
 def research(server, token, route, data):
     """Family-scoped research actions (ADR-028). Pocket queues and reads; the Spark's worker runs the task."""
-    from ..instance.errors import Conflict, NotFound, ValidationError
+    from ..instance.errors import Conflict, InstanceError, NotFound, ValidationError, WritesPaused
     from ..webcortex import orchestrator, state
     family = server.store.family(token)
     db = research_db(server)
@@ -369,7 +427,7 @@ def research(server, token, route, data):
                 cfg = state.get_config(db)
                 if orchestrator.screen(db, objective, cfg):
                     return 400, {"error": "private_data"}
-                task = admit_submission(server, fingerprint(token), lambda: orchestrator.submit(
+                task = server.store.admit(family, lambda: orchestrator.submit(
                     db, objective, time.time(), mode=mode, origin="pocket", family=digest))
                 return (429, {}) if task is None else (201, {"id": task["id"]})
             if route == "research_list":
@@ -386,16 +444,35 @@ def research(server, token, route, data):
             return 404, {}  # another family's task, a forgotten one, or web access switched off meanwhile
         except ValidationError:
             return 400, {"error": "invalid"}
+        except WritesPaused:
+            return 507, {"error": "writes_paused"}  # instance regulation (disk pressure); reads keep working
+        except InstanceError as error:
+            return error.http_status, {}
 
 
 class Handler(BaseHTTPRequestHandler):
     timeout = 8
+    replied = False
+
     def log_message(self, *args):
         pass  # No observation, address, URL, request body, or token in access logs.
+
+    def version_string(self):
+        return "NeuroSciFi-Pocket"  # no Python or library version
+
+    def send_error(self, code, message=None, explain=None):
+        """Malformed requests (400, 414, 431, 501) get an empty reply with the same security headers."""
+        self.close_connection = True
+        if getattr(self, "request_version", "") in ("", "HTTP/0.9"):
+            self.request_version = "HTTP/1.0"  # a status line and headers even for an unparsable request line
+        if not self.replied:
+            self.reply(code)
 
     def reply(self, code, body=b"", mime="application/json"):
         if not isinstance(body, bytes):
             body = json.dumps(body, allow_nan=False).encode()
+        self.replied = True
+        getattr(self.server, "replying", lambda: None)()  # the request is complete: its deadline no longer applies
         self.send_response(code)
         for name, value in {
             "Content-Type": mime, "Content-Length": str(len(body)), "Cache-Control": "no-store",
@@ -447,7 +524,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not research_on(self.server):
                     return self.reply(404)  # invisible while off, like an unknown route
             size = int(self.headers.get("Content-Length", "0"))
-            if self.headers.get_content_type() != "application/json" or not 2 <= size <= 512:
+            limit = RESEARCH_BODY_LIMIT if route == "research_submit" else BODY_LIMIT
+            if self.headers.get_content_type() != "application/json" or not 2 <= size <= limit:
                 return self.reply(400)
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
@@ -465,7 +543,10 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         link=getattr(self.server,"handoffs",{}).pop(fingerprint(code),None)
                         if not link or now>=link[1]: return self.reply(403)
-                        key=self.server.store.pair(sponsor=link[0])
+                        try:
+                            key=self.server.store.pair(sponsor=link[0])
+                        except FamilyFull:
+                            return self.reply(409, {"error": "family_full"})
                 return self.reply(201, {"key":key})
             auth = self.headers.get("Authorization","")
             if not auth.startswith("Bearer "):
@@ -473,6 +554,8 @@ class Handler(BaseHTTPRequestHandler):
             if route=="link":
                 if data: raise ValueError()
                 self.server.store.action(auth[7:],"authorize_link",{})
+                if self.server.store.family_full(auth[7:]):
+                    return self.reply(409, {"error": "family_full"})
                 with self.server.pair_lock:
                     now=time.monotonic(); sponsor=fingerprint(auth[7:])
                     handoffs={k:v for k,v in getattr(self.server,"handoffs",{}).items() if now<v[1] and v[0]!=sponsor}
@@ -492,50 +575,172 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(400)
         except sqlite3.Error:
             self.reply(503, {})
+        except Exception:
+            if self.replied:
+                raise
+            print("nsf-pocket: request failed", file=sys.stderr, flush=True)  # no body, token or traceback
+            self.reply(500, {})
+
+
+class _Connection:
+    __slots__ = ("sock", "ip", "accepted", "phase", "evicted")
+
+    def __init__(self, sock, ip):
+        self.sock, self.ip, self.accepted, self.phase, self.evicted = sock, ip, time.monotonic(), "handshake", False
+
+
+def _abort(sock):
+    """Wake a thread blocked on this socket: the raw shutdown, also beneath an SSLSocket, makes its read return EOF."""
+    try:
+        socket.socket.shutdown(sock, socket.SHUT_RDWR)
+    except OSError:
+        pass
 
 
 class PocketServer(ThreadingHTTPServer):
-    """Threaded server whose TLS handshake runs in the worker thread under a timeout, with a connection cap.
+    """Threaded server whose TLS handshake runs in the worker thread, with connection limits.
 
     Wrapping the listening socket would handshake inside accept(), so one silent TCP connection froze every client.
+    Slow clients cannot lock phones out: each connection must deliver its whole request (handshake, head, body)
+    within HEAD_DEADLINE seconds of accept; one address holds at most PER_IP_CONNECTIONS; and when a cap is reached,
+    a new connection evicts the oldest one still waiting for its request (a pre-handshake one first), from its own
+    address when that address is at its cap.
     """
-    def __init__(self, address, handler=Handler, tls=None, limit=MAX_CONNECTIONS):
+    def __init__(self, address, handler=Handler, tls=None, limit=MAX_CONNECTIONS, per_ip=PER_IP_CONNECTIONS,
+                 deadline=HEAD_DEADLINE):
         super().__init__(address, handler)
-        self.tls, self.slots = tls, threading.BoundedSemaphore(limit)
+        self.tls, self.limit, self.per_ip, self.deadline = tls, limit, per_ip, deadline
+        self.live, self.live_lock, self.current = set(), threading.Lock(), threading.local()
 
     def process_request(self, request, client_address):
-        if not self.slots.acquire(blocking=False):
-            self.shutdown_request(request)  # over the cap: drop at once
+        conn = _Connection(request, client_address[0])
+        with self.live_lock:
+            active = [c for c in self.live if not c.evicted]
+            same = [c for c in active if c.ip == conn.ip]
+            # Over a cap, the newcomer replaces the oldest connection still waiting for its request: from its own
+            # address when that address is at its cap, else from anyone. If every candidate is replying, drop it.
+            pool = same if len(same) >= self.per_ip else active if len(active) >= self.limit else None
+            admitted = True
+            if pool is not None:
+                waiting = sorted((c for c in pool if c.phase != "reply"),
+                                 key=lambda c: (c.phase != "handshake", c.accepted))
+                admitted = bool(waiting)
+                if waiting:
+                    waiting[0].evicted = True
+                    _abort(waiting[0].sock)
+            if admitted:
+                self.live.add(conn)
+        if not admitted:
+            self.shutdown_request(request)  # over a cap: drop at once
             return
         try:
-            super().process_request(request, client_address)
+            threading.Thread(target=self.process_request_thread, args=(request, client_address, conn),
+                             daemon=True).start()
         except BaseException:
-            self.slots.release()
+            with self.live_lock:
+                self.live.discard(conn)
             raise
 
-    def process_request_thread(self, request, client_address):
+    def process_request_thread(self, request, client_address, conn):
+        self.current.conn = conn
         try:
             try:
                 request.settimeout(Handler.timeout)
                 if self.tls:
-                    request = self.tls.wrap_socket(request, server_side=True)
-            except OSError:
+                    request = self.tls.wrap_socket(request, server_side=True, do_handshake_on_connect=False)
+                    with self.live_lock:
+                        conn.sock = request
+                    if conn.evicted:
+                        raise OSError()
+                    request.do_handshake()
+                with self.live_lock:
+                    if conn.evicted:
+                        raise OSError()
+                    conn.phase = "head"
+            except (OSError, ValueError):
                 self.shutdown_request(request)
                 return
-            super().process_request_thread(request, client_address)
+            try:
+                self.finish_request(request, client_address)
+            except Exception:
+                if not conn.evicted:
+                    self.handle_error(request, client_address)
+            finally:
+                self.shutdown_request(request)
         finally:
-            self.slots.release()
+            with self.live_lock:
+                self.live.discard(conn)
+
+    def replying(self):
+        """Called by the handler once the request is complete: from now on only the per-send timeout applies."""
+        conn = getattr(self.current, "conn", None)
+        if conn is not None:
+            with self.live_lock:
+                conn.phase = "reply"
+
+    def service_actions(self):
+        """Every poll of serve_forever: cut connections that have not delivered their request in time."""
+        now = time.monotonic()
+        with self.live_lock:
+            for conn in self.live:
+                if conn.phase != "reply" and not conn.evicted and now - conn.accepted > self.deadline:
+                    conn.evicted = True
+                    _abort(conn.sock)
 
     def handle_error(self, request, client_address):
         print("nsf-pocket: connection error", file=sys.stderr, flush=True)  # no address, no traceback
 
 
+def stale_invitation(path):
+    """True for a leftover of an earlier bridge: a regular 0600 file we own, not a symlink, holding one code, that
+    no running bridge holds locked or whose code has expired (older than INVITATION_SECONDS)."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return False
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) != 0o600):
+            return False
+        if not INVITATION_FORMAT.fullmatch(os.read(fd, 64).decode("ascii", "replace")):
+            return False
+        if time.time() - info.st_mtime >= INVITATION_SECONDS:
+            return True
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False  # a running bridge holds it: its code may still be valid
+        return True
+    finally:
+        os.close(fd)
+
+
 def write_invitation_file(path, code):
-    """Create `path` exclusively with mode 0600 holding the code. Raises FileExistsError rather than overwrite."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w") as handle:
-        os.fchmod(handle.fileno(), 0o600)
-        handle.write(code + "\n")
+    """Write the code to `path` with mode 0600 and return the open descriptor, which holds a lock for as long as the
+    bridge runs. An existing file is replaced (temporary file, then rename) only when it is a stale invitation of an
+    earlier bridge; anything else, including a symlink, raises FileExistsError."""
+    path = Path(path)
+    stale = os.path.lexists(path)
+    if stale and not stale_invitation(path):
+        raise FileExistsError(errno.EEXIST, "exists and is not a stale invitation", str(path))
+    target = path.with_name(f".{path.name}.{os.getpid()}.tmp") if stale else path
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.write(fd, (code + "\n").encode())
+        if stale:
+            os.replace(target, path)  # rename never follows a symlink at `path`
+    except BaseException:
+        os.close(fd)
+        if stale:
+            try:
+                os.unlink(target)
+            except FileNotFoundError:
+                pass
+        raise
+    return fd
 
 
 def remove_invitation_file(server):
@@ -555,7 +760,8 @@ def main(argv=None):
     p.add_argument("--cert")
     p.add_argument("--key")
     p.add_argument("--invitation-file", metavar="PATH",
-                   help="write the one-use code to this new 0600 file instead of stdout; removed when used, expired or at shutdown")
+                   help="write the one-use code to this 0600 file instead of stdout; removed when used, expired or at "
+                        "shutdown; only a stale invitation left by an earlier bridge is replaced")
     p.add_argument("--allowed-host", action="append", metavar="NAME",
                    help="accept only this Host (name or name:port); repeatable; others get 421")
     p.add_argument("--instance-db", metavar="PATH",
@@ -563,18 +769,21 @@ def main(argv=None):
                         "and read research tasks of their own family")
     p.add_argument("--list-pairings", action="store_true")
     p.add_argument("--erase-pairing", metavar="LABEL")
+    p.add_argument("--family", action="store_true",
+                   help="with --erase-pairing: erase every device of that label's pairing family")
     a = p.parse_args(argv)
+    if a.family and not a.erase_pairing:
+        p.error("--family needs --erase-pairing LABEL")
     os.umask(0o077)
     store = Store(a.db)
     store.sweep()
-    if a.list_pairings or a.erase_pairing:
-        with closing(connect(a.db)) as db, db:
-            if a.erase_pairing:
-                n = db.execute("DELETE FROM devices WHERE label=?", (a.erase_pairing,)).rowcount
-                print(f"Erased pairings: {n}")
-            else:
-                for row in db.execute("SELECT label FROM devices ORDER BY rowid"):
-                    print(row[0])
+    if a.erase_pairing:
+        print(f"Erased pairings: {store.erase(a.erase_pairing, family=a.family)}")
+        return
+    if a.list_pairings:
+        for label, family, sponsor, created in store.pairings():
+            when = time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(created)) if created else "unknown"
+            print(f"{label}  family={family}  sponsor={sponsor or 'invitation'}  created={when}")
         return
     if bool(a.cert) != bool(a.key) or (a.bind not in {"127.0.0.1","localhost"} and not a.cert):
         p.error("LAN access requires both --cert and --key for HTTPS.")
@@ -590,25 +799,31 @@ def main(argv=None):
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.load_cert_chain(a.cert,a.key)
-    server = PocketServer((a.bind,a.port), Handler, tls=ctx)
+    try:
+        server = PocketServer((a.bind,a.port), Handler, tls=ctx)
+    except OSError as error:
+        print(f"nsf: cannot listen on {a.bind}:{a.port}: {error.strerror or error}", file=sys.stderr)
+        raise SystemExit(2)
     server.allowed_hosts = {h.lower() for h in a.allowed_host or ()}
     server.store, server.pair_lock = store, threading.Lock()
     server.instance_db = a.instance_db
     server.invitation = secrets.token_urlsafe(24)
-    server.invitation_deadline = time.monotonic() + 300
+    server.invitation_deadline = time.monotonic() + INVITATION_SECONDS
     server.invitation_file = a.invitation_file
+    held = None
     if a.invitation_file:
         try:
             signal.signal(signal.SIGTERM, signal.default_int_handler)  # service stop runs the cleanup below
         except ValueError:
             pass  # not the main thread
         try:
-            write_invitation_file(a.invitation_file, server.invitation)
+            held = write_invitation_file(a.invitation_file, server.invitation)
         except OSError as error:
             server.server_close()
-            p.error(f"cannot create invitation file {a.invitation_file} (it is never overwritten): {error}")
+            p.error(f"cannot create invitation file {a.invitation_file} (only a stale invitation of an earlier "
+                    f"bridge is replaced; other files are never overwritten): {error.strerror or error}")
         announcement = f"Invitation written to {a.invitation_file}"
-        expiry = threading.Timer(300, lambda: remove_invitation_file(server))
+        expiry = threading.Timer(INVITATION_SECONDS, lambda: remove_invitation_file(server))
         expiry.daemon = True
         expiry.start()
     else:
@@ -627,6 +842,8 @@ def main(argv=None):
         stop.set()
         server.server_close()
         remove_invitation_file(server)
+        if held is not None:
+            os.close(held)
 
 
 if __name__ == "__main__":

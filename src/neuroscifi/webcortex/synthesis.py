@@ -1,11 +1,16 @@
 """Synthesis: the research report (ARCHITECTURE §5) and the bounded working-memory pack.
 
 There is no language model (ADR-022). Every answer sentence is either
-  (a) a claim quoted verbatim from a source (type "quote"), with citations to every source that supports it, or
+  (a) a claim quoted verbatim from a source (type "quote"), with citations to exactly the sources whose own claim
+      restates it (claims.agrees; other cluster members are "related", listed as such, never cited), plus
+      "copies" (cited documents) and "independent_sources" (independent groups among them), or
   (b) a template over measured quantities (type "template"): counts, statuses, dates, or a structured API record's
       fields ("PyPI reports numpy latest version 2.3.5 ...").
-Nothing asserts a fact that is not in a source. Contradictions are shown with both sides and the basis of any
-assessment; failures, staleness, cache use, undated and injection-flagged sources are always surfaced.
+Nothing asserts a fact that is not in a source. Contradictions are shown with both sides, a plain description and
+the basis of any assessment; failures, staleness, cache use, undated and injection-flagged sources are always
+surfaced. No report field carries text from an adversarial source or text with an injection finding
+(report_safe_text). Among release/package records of one package the newest version (semver) leads; older ones
+are marked "superseded". Fact verification checks claim slots, not word overlap (see _verdict).
 
 Constants
 ---------
@@ -144,6 +149,12 @@ class _Sources:
         return (d.canonical_url or d.final_url or d.url) if d else url
 
     def cite(self, url: str, claim: Claim | None = None) -> int:
+        n = self.ref(url, claim)
+        self.entries[n - 1]["cited"] = True
+        return n
+
+    def ref(self, url: str, claim: Claim | None = None) -> int:
+        """The source's number without marking it cited (a related source listed next to a finding)."""
         key = self._key(url)
         if key in self.numbers:
             return self.numbers[key]
@@ -153,14 +164,14 @@ class _Sources:
         if d is not None:
             entry = {"n": n, "title": d.title, "url": key, "domain": d.domain, "published_at": d.published_at,
                      "retrieved_at": d.retrieved_at, "retrieval_mode": d.retrieval_mode, "kind": d.kind,
-                     "flags": _report_flags(d.flags), "cited": True}
+                     "flags": _report_flags(d.flags), "cited": False}
         else:
             flags = (claim.flags or {}) if claim else {}
             entry = {"n": n, "title": claim.title if claim else "", "url": key,
                      "domain": claim.domain if claim else "", "published_at": claim.published_at if claim else None,
                      "retrieved_at": claim.retrieved_at if claim else None,
                      "retrieval_mode": flags.get("retrieval_mode", "live"), "kind": flags.get("doc_kind", "page"),
-                     "flags": {}, "cited": True}
+                     "flags": {}, "cited": False}
         self.entries.append(entry)
         return n
 
@@ -173,6 +184,8 @@ class _Sources:
     def cited_docs(self) -> list[Document]:
         seen, out = set(), []
         for e in self.entries:
+            if not e["cited"]:
+                continue
             d = self.by_url.get(e["url"])
             if d is not None and id(d) not in seen:
                 seen.add(id(d))
@@ -193,12 +206,65 @@ class _Sources:
 
 
 def _cite_cluster(c: ClaimCluster, sources: _Sources) -> list[int]:
+    """Only the sources whose own claim supports the representative (claims.agrees): related cluster members are
+    not cited."""
     support = set(c.supporting)
     nums = []
     for x in c.claims:
-        if x.id in support:
+        if x.id in support and _claims.is_reportable(x):
             nums.append(sources.cite(x.source_url, x))
     return sorted(set(nums))
+
+
+def _support_counts(c: ClaimCluster) -> tuple[int, int]:
+    """(copies, independent_sources) of a cluster's supporting claims: cited documents, and independent groups
+    among them (near-duplicate copies and one domain count once), so a UI can say "3 copies, 1 independent
+    source"."""
+    support = set(c.supporting)
+    claims = [x for x in c.claims if x.id in support and _claims.is_reportable(x)]
+    docs = {x.source_url for x in claims}
+    return len(docs), len(_claims.independence_groups(claims))
+
+
+def _related(c: ClaimCluster, sources: _Sources) -> list[int]:
+    """Numbers of sources of cluster members that neither support nor contradict the representative."""
+    bearing = set(c.supporting) | {i for p in c.contradicting for i in (p.get("a"), p.get("b"))}
+    return sorted({sources.ref(x.source_url, x) for x in c.claims
+                   if x.id not in bearing and _claims.is_reportable(x)} - set(_cite_numbers(c, sources)))
+
+
+def _cite_numbers(c: ClaimCluster, sources: _Sources) -> list[int]:
+    return [sources.numbers[k] for k in (sources._key(x.source_url) for x in c.claims if x.id in set(c.supporting))
+            if k in sources.numbers]
+
+
+def report_safe_text(claim: Claim | None) -> str | None:
+    """The claim's text if it may appear in a report field, else None (adversarial source, injection-like text,
+    snippet-only hint). Every producer of report text (answer, findings, contradictions, consolidation.held)
+    goes through it."""
+    if claim is None or not _claims.is_reportable(claim):
+        return None
+    return claim.text
+
+
+def _superseded(ranked: list[tuple[ClaimCluster, float]]) -> set[int]:
+    """Indices of release/package record clusters for which a newer version of the same package or repository
+    was read (semver order, then date): "latest release" questions answer with the newest one."""
+    best: dict[str, tuple] = {}
+    keys = {}
+    for i, (c, _) in enumerate(ranked):
+        rep = _representative(c)
+        flags = (rep.flags or {}) if rep else {}
+        if rep is None or rep.kind != "metadata" or flags.get("record") not in ("release", "package"):
+            continue
+        name = str(flags.get("package") or "").lower()
+        if not name:
+            continue
+        rank = (_claims._version_rank(rep), _claims._effective(rep))
+        keys[i] = (name, rank)
+        if name not in best or rank > best[name]:
+            best[name] = rank
+    return {i for i, (name, rank) in keys.items() if rank < best[name]}
 
 
 def _failure_label(f) -> tuple[str, str]:
@@ -218,57 +284,347 @@ def _failure_label(f) -> tuple[str, str]:
 
 # ---- mode-specific sections ---------------------------------------------------------------------------------
 
-def _target_claim(statement: str, now: float) -> Claim:
-    stems = [T.stem(t) for t in T.content_tokens(statement)]
-    return Claim(id="target", text=statement, source_url="", domain="", title="", retrieved_at=now,
-                 key=_claims.claim_key(statement, stems), polarity=_claims.polarity(statement),
-                 values=T.values(statement))
+# ---- fact verification: claim-slot checking -----------------------------------------------------------------
+#
+# Without a model, a statement is checked slot by slot: it is parsed into subject + relation + object, and each
+# extracted claim (one source sentence) is classified against it:
+#   SUPPORTS     it names the subject (or starts with a pronoun in a document titled by the subject) and states
+#                the same object in the same relation (same place / capital / value within tolerance / date);
+#   CONTRADICTS  it names the subject with the same relation and a different object of the same type (another
+#                place, value, date or version), or the same relation and object with opposite polarity;
+#   IRRELEVANT   anything else. Word overlap alone is never agreement.
+# Supported statement shapes (case-insensitive, an optional "is it true that" prefix and "not"/"never" allowed):
+#   location   "X is in Y", "X is located/situated/based in Y" (Y capitalised: a place)
+#   capital    "X is the capital of Y" (contradicted by "Z is the capital of Y" with Z != X)
+#   quantity   "X has/contains/is/measures ... N <unit>" (numbers compare within 1 %, 10 % when either side says
+#              about/approximately/around/roughly/nearly)
+#   date       "X was released/launched/published/founded/built/completed/born in/on DATE" (year or day)
+#   is         "X is Y" (every name in Y and >= 60 % of its other words after X; with numbers or versions, X's
+#              whole phrase must appear)
+#   event      "X <verb> ... [on DATE / N <unit>]" (same verb stem, Y's words as for "is", equal dates/values)
+# When X is a name, the source sentence must be *about* X (its primary subject, claims.primary_subject), not
+# mention it in passing ("a steel model of the Corran Spire in Tessaly"); a number in X ("Quillstream 4.2.0")
+# must not differ in the sentence (another release is another subject).
+# A document titled "X (Qualifier)" whose qualifier names something the statement does not ("Eiffel Tower
+# (Paris, Texas)") is about another X and is irrelevant. Statements of any other shape get "insufficient" with
+# no sources counted.
+
+_FV_PREFIX = re.compile(
+    r"^\s*(?:(?:is|was)\s+it\s+(?:really\s+)?(?:true|correct|accurate|the\s+case|a\s+fact)\s+that|is\s+it\s+true:?|"
+    r"(?:fact[- ]?check|verify|check)(?:\s+(?:whether|if|that))?:?|true\s+or\s+false:?|did\s+you\s+know\s+that)\s+",
+    re.IGNORECASE)
+_NEG = r"(?:(?:not|never|no\s+longer)\s+)?"
+_SHAPES = (
+    ("capital", re.compile(rf"^(?P<s>.+?)\s+(?:is|was|has\s+been)\s+{_NEG}the\s+capital(?:\s+city)?\s+of\s+(?P<o>.+)$",
+                           re.IGNORECASE)),
+    ("location", re.compile(rf"^(?P<s>.+?)\s+(?:(?:is|are|was|were|lies|lie|sits|stands|remains)\s+{_NEG}"
+                            rf"(?:(?:located|situated|found|based|placed)\s+)?|(?:located|situated|based)\s+)"
+                            rf"(?:in|on|at|near)\s+(?P<o>[A-Z].*)$")),
+    ("date", re.compile(rf"^(?P<s>.+?)\s+(?:was|were|is|got)\s+{_NEG}(?:first\s+|initially\s+|officially\s+)?"
+                        r"(?P<v>released|launched|published|introduced|announced|founded|built|completed|opened|"
+                        r"created|established|discovered|invented|born)\s+(?:in|on)\s+(?P<o>.+)$", re.IGNORECASE)),
+    ("quantity", re.compile(rf"^(?P<s>.+?)\s+(?:has|have|had|contains?|contained|is|are|was|were|measures?|measured|"
+                            rf"weighs?|weighed|spans?|holds?|employs?|counts?|totals?)\s+{_NEG}(?P<o>.*\d.*)$",
+                            re.IGNORECASE)),
+    ("is", re.compile(rf"^(?P<s>.+?)\s+(?:is|are|was|were)\s+{_NEG}(?P<o>.+)$", re.IGNORECASE)),
+)
+_RELEASE_CUE = re.compile(r"\b(?:released|release|launched|launch|published|introduced|announced|founded|built|"
+                          r"completed|opened|created|established|discovered|invented|born|came\s+out|debuted|"
+                          r"first\s+appeared|unveiled|shipped)\b", re.IGNORECASE)
+_APPROX = re.compile(r"\b(?:about|approximately|approx\.?|around|roughly|nearly|almost|some|an\s+estimated|"
+                     r"estimated|circa|ca\.)\s|~", re.IGNORECASE)
+_PLACE = re.compile(
+    r"\b(?:in|at|on|near|inside|within)\s+(?:the\s+)?(?:(?:city|town|village|state|country|centre|center|heart|"
+    r"outskirts|suburbs?|region|province|county|district|area|commune|municipality)\s+of\s+)?"
+    r"(?:(?:central|downtown|northern|southern|eastern|western|north|south|east|west)\s+)?"
+    r"(?P<p>[A-Z][\w'’.-]*(?:\s+(?:(?:de|du|des|la|le|of|von|van|der|del|da|di|y|sur|am|upon)\s+)?[A-Z][\w'’.-]*)*"
+    r"(?:\s*,\s*[A-Z][\w'’.-]*(?:\s+[A-Z][\w'’.-]*)*)*)")
+_CAPITAL_OF = re.compile(
+    r"(?P<z>[A-Z][\w'’.-]*(?:\s+[A-Z][\w'’.-]*)*)\s+(?:is|was|has\s+been|became|remains)\s+(?:the\s+)?"
+    r"(?:national\s+)?capital(?:\s+city)?\s+of\s+(?:the\s+)?(?P<o>[A-Z][\w'’.-]*(?:\s+(?:of\s+)?[A-Z][\w'’.-]*)*)"
+    r"|capital(?:\s+city)?\s+of\s+(?:the\s+)?(?P<o2>[A-Z][\w'’.-]*(?:\s+(?:of\s+)?[A-Z][\w'’.-]*)*)\s*,?\s+"
+    r"(?:is|was)\s+(?P<z2>[A-Z][\w'’.-]*(?:\s+[A-Z][\w'’.-]*)*)")
+_DETERMINERS = frozenset("the a an this that these those its their his her".split())
+_WORDS = re.compile(r"[^\W_][\w'’.-]*")
 
 
-def _match(target: Claim, c: ClaimCluster) -> float:
-    best = max((_claims.similarity(target, x) for x in c.claims), default=0.0)
-    if best > 0:
-        return 1.0 + best
-    t = {T.stem(w) for w in T.content_tokens(target.text)}
-    lex = max((T.jaccard(t, {T.stem(w) for w in T.content_tokens(x.text)}) for x in c.claims), default=0.0)
-    return lex if lex >= 0.25 else 0.0
+def _stems(text: str) -> list[str]:
+    return [T.stem(t) for t in T.content_tokens(text)]
+
+
+def _phrase(text: str) -> frozenset:
+    return frozenset(T.stem(t) for t in T.tokens(text) if t not in T.STOPWORDS and t not in _DETERMINERS)
+
+
+def parse_statement(statement: str) -> dict | None:
+    """{shape, subject, head, phrase, object, object_tokens, values, verb, polarity} of a checkable statement
+    (see the section comment), or None for an unsupported shape."""
+    s = _FV_PREFIX.sub("", T.collapse(re.sub(r"\bhttps?://\S+", " ", statement or ""))).rstrip(" ?.!")
+    if not s:
+        return None
+    pol = _claims.polarity(s)
+    for shape, rx in _SHAPES:
+        m = rx.match(s)
+        if m:
+            subject, obj = m.group("s").strip(" ,"), m.group("o").strip(" ,")
+            verb = T.stem(m.group("v").lower()) if "v" in rx.groupindex else None
+            return _slot(shape, subject, obj, pol, verb)
+    words = [(w.group(0), w.start()) for w in _WORDS.finditer(s)]
+    verb_at = next((i for i, (w, _) in enumerate(words) if i > 0 and
+                    (w.lower() in _claims._AUX or _claims._VERB_CUE.match(w))), None)
+    if verb_at is None:
+        verb_at = next((i for i, (w, _) in enumerate(words) if i > 0 and re.fullmatch(r"[a-z]{3,}e?s", w)), None)
+    if verb_at is None:
+        return None
+    i = verb_at
+    while i < len(words) and (words[i][0].lower() in _claims._AUX or words[i][0].lower() in ("not", "never")) \
+            and i + 1 < len(words):
+        i += 1
+    verb = words[i][0]
+    subject = s[:words[verb_at][1]].strip(" ,")
+    obj = s[words[i][1] + len(verb):].strip(" ,")
+    if not subject:
+        return None
+    return _slot("event", subject, obj, pol, T.stem(verb.lower()))
+
+
+def _slot(shape: str, subject: str, obj: str, polarity: int, verb: str | None) -> dict | None:
+    entity = _claims.primary_subject(subject + " is", "") or _claims.primary_subject(subject, "")
+    head = _claims.subject_tokens(entity) if entity else _phrase(subject)
+    if not head:
+        return None
+    values = T.values(obj)
+    if shape == "location" and (not re.search(r"[A-Z]", obj) or obj.split()[0].lower().rstrip(".,") in
+                                _claims._CALENDAR):
+        return None
+    if shape in ("quantity", "date") and not values:
+        return None
+    return {"shape": shape, "subject": subject, "head": head, "entity": bool(entity), "phrase": _phrase(subject),
+            "subject_values": T.values(subject), "object": obj,
+            "object_tokens": _phrase(re.sub(r"[\d.,%]+", " ", obj)),
+            "object_names": _claims.subject_tokens(" ".join(re.findall(r"\b[A-Z][\w'’-]*", obj))),
+            "values": values, "verb": verb, "polarity": polarity}
+
+
+def _mention(slot: dict, claim: Claim) -> int | None:
+    """Character offset where `claim` names the slot's subject (0 for a pronoun-led sentence in a document
+    titled by the subject), or None. A title qualifier the statement does not share makes it another subject."""
+    title = _claims.title_subject(claim.title or "") or ""
+    m = re.match(r"^(?P<base>.*?)\s*\((?P<qual>[^()]*)\)$", title)
+    if m:
+        base, qual = _claims.subject_tokens(m.group("base")), _claims.subject_tokens(m.group("qual"))
+        if slot["head"] <= base and not qual <= (slot["phrase"] | slot["object_tokens"] | slot["head"]):
+            return None
+    words = [(T.stem(w.group(0).lower().replace(",", "")), w.start())
+             for w in T._TOKEN_RE.finditer(claim.text or "")]
+    have = {w for w, _ in words}
+    if slot["head"] <= have:
+        return next(pos for w, pos in words if w in slot["head"])
+    alias = _claims.subject_tokens(title)
+    if _claims._PRONOUN_START.match(claim.text or "") and alias and _claims.same_subject(alias, slot["head"]):
+        return 0
+    return None
+
+
+def _compare_values(want: list[str], have: list[str], approx: bool) -> str | None:
+    """"same" when a value of `have` equals one of `want`, "different" when values of the same kind exist and none
+    is equal, None when nothing is comparable."""
+    comparable = False
+    for v in want:
+        for w in have:
+            eq = T.values_equal(v, w, rel_tol=0.1 if approx else None)
+            if eq is None:
+                continue
+            comparable = True
+            if eq:
+                return "same"
+    return "different" if comparable else None
+
+
+def _check(slot: dict, claim: Claim) -> tuple[str | None, str]:
+    """("support" | "contradict" | None, why) for one claim against the parsed statement."""
+    text = claim.text or ""
+    shape = slot["shape"]
+    same_polarity = claim.polarity == slot["polarity"]
+    flip = {"support": "contradict", "contradict": "support"}
+    if shape == "capital":                   # functional: another city named capital of Y contradicts
+        for m in _CAPITAL_OF.finditer(text):
+            z, o = m.group("z") or m.group("z2"), m.group("o") or m.group("o2")
+            if not slot["object_tokens"] <= _claims.subject_tokens(o):
+                continue
+            rel = "support" if _claims.same_subject(_claims.subject_tokens(z), slot["head"]) else "contradict"
+            if claim.polarity < 0:
+                if rel == "contradict":
+                    continue
+                rel = "contradict"
+            why = "" if rel == "support" else f"names {z} as the capital of {o}"
+            return (rel if slot["polarity"] > 0 else flip[rel]), why
+        return None, ""
+    at = _mention(slot, claim)
+    if at is None:
+        return None, ""
+    if slot["entity"]:                      # the sentence must be about the subject, not mention it in passing
+        own = _claims.subject_tokens((claim.flags or {}).get("primary_subject") if "primary_subject" in
+                                     (claim.flags or {}) else _claims.primary_subject(text, claim.title or ""))
+        if own and not _claims.same_subject(own, slot["head"]):
+            return None, ""
+    have = list(claim.values or [])
+    if slot["subject_values"]:              # "Quillstream 4.2.0": another version of it is another subject
+        same = [v for v in have if any(T.values_equal(v, w) for w in slot["subject_values"])]
+        other = [v for v in have if v not in same and any(T.values_equal(v, w) is not None and
+                                                          T.value_kind(v)[0] == T.value_kind(w)[0]
+                                                          for w in slot["subject_values"])]
+        if other and not same:
+            return None, ""
+        have = [v for v in have if v not in same]
+    after = text[at:]
+    stems = set(_stems(text))
+    if shape == "location":
+        places = []
+        for m in _PLACE.finditer(after):
+            place = m.group("p").rstrip(".,;:")
+            toks = _claims.subject_tokens(place)
+            if toks and not toks <= slot["head"] and not toks & _claims._CALENDAR:
+                places.append((place, toks))
+        if not places:
+            return None, ""
+        match = any(slot["object_tokens"] <= toks for _, toks in places)
+        if claim.polarity < 0:
+            return ("contradict" if match else None), "denies the place" if match else ""
+        rel = "support" if match else "contradict"
+        why = "" if match else f"places it in {' and '.join(dict.fromkeys(p for p, _ in places))}, " \
+                                 f"not {slot['object']}"
+        return (rel if slot["polarity"] > 0 else flip[rel]), why
+    text = claim.text or ""
+    shape = slot["shape"]
+    same_polarity = claim.polarity == slot["polarity"]
+    flip = {"support": "contradict", "contradict": "support"}
+    if shape == "capital":                   # functional: another city named capital of Y contradicts
+        for m in _CAPITAL_OF.finditer(text):
+            z, o = m.group("z") or m.group("z2"), m.group("o") or m.group("o2")
+            if not slot["object_tokens"] <= _claims.subject_tokens(o):
+                continue
+            rel = "support" if _claims.same_subject(_claims.subject_tokens(z), slot["head"]) else "contradict"
+            if claim.polarity < 0:
+                if rel == "contradict":
+                    continue
+                rel = "contradict"
+            why = "" if rel == "support" else f"names {z} as the capital of {o}"
+            return (rel if slot["polarity"] > 0 else flip[rel]), why
+        return None, ""
+    at = _mention(slot, claim)
+    if at is None:
+        return None, ""
+    after = text[at:]
+    stems = set(_stems(text))
+    want = slot["values"]
+    if shape == "quantity" or (shape in ("is", "event") and want):
+        if shape != "event" and not slot["phrase"] <= stems | slot["head"]:
+            return None, ""
+        if shape == "event" and slot["verb"] not in stems:
+            return None, ""
+        found = _compare_values([v for v in want if T.value_kind(v)[0] not in ("date", "year")] or want, have,
+                                bool(_APPROX.search(text) or _APPROX.search(slot["object"])))
+        if found is None:
+            return None, ""
+        if not same_polarity and shape != "event":
+            return None, ""                  # a negation elsewhere in the sentence: its scope is unknown
+        if found == "different":
+            return ("contradict" if slot["polarity"] > 0 else None), \
+                f"reports {', '.join(have)} instead of {', '.join(want)}"
+        return ("support" if same_polarity else "contradict"), "" if same_polarity else "opposite polarity"
+    if shape == "date":
+        if not _RELEASE_CUE.search(text):
+            return None, ""
+        found = _compare_values(want, [v for v in have if T.value_kind(v)[0] in ("date", "year", "version")], False)
+        if found is None or not same_polarity:
+            return None, ""
+        if found == "different":
+            return ("contradict" if slot["polarity"] > 0 else None), \
+                f"dates it {', '.join(have)}, not {', '.join(want)}"
+        return ("support" if same_polarity else "contradict"), "" if same_polarity else "opposite polarity"
+    # "is" without values, or an event without values: the object's words after the subject, same verb
+    if shape == "event" and slot["verb"] not in stems:
+        return None, ""
+    obj = slot["object_tokens"]
+    if not obj:
+        return None, ""
+    after_stems = {T.stem(t) for t in T.tokens(after)}
+    if not slot["object_names"] <= after_stems or len(obj & after_stems) < 0.6 * len(obj):
+        return None, ""             # every name in the object, and most of its other words
+    return ("support" if same_polarity else "contradict"), "" if same_polarity else \
+        f"opposite polarity ('{_claims.negation_cue(text) or _claims.negation_cue(slot['subject']) or 'not'}')"
 
 
 def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *, now: float, cls: str,
              ttl_overrides: dict | None = None) -> dict:
-    target = _target_claim(statement, now)
-    ranked = sorted(((_match(target, c), i, c) for i, c in enumerate(clusters)), key=lambda t: (-t[0], t[1]))
-    if not ranked or ranked[0][0] <= 0:
-        return {"label": "insufficient", "confidence": 0.5, "statement": statement, "citations": [],
-                "reasons": ["No extracted claim addresses the statement."]}
-    c = ranked[0][2]
-    ev = _claims.evaluate(c.claims, now=now, freshness_class=cls, target=target, ttl_overrides=ttl_overrides)
-    a, b = ev["alpha"], ev["beta"]
-    mean = a / (a + b)
-    sup, con = ev["support_groups"], ev["contra_groups"]
-    agree = set(ev["agree"])
+    """Fact verification by claim-slot checking (section comment above). Every reportable, non-adversarial claim
+    is classified against the statement; claims that a listed contradiction pits against a supporting claim count
+    as contradicting too, so the verdict never says "0 contradict" next to a contradiction of the checked
+    statement. Independent groups weigh in as in claims.evaluate."""
+    slot = parse_statement(statement)
+    base = {"statement": statement, "shape": slot["shape"] if slot else None}
+    if slot is None:
+        return dict(base, label="insufficient", confidence=0.5, citations=[], supporting=[], contradicting=[],
+                    reasons=["The statement's shape is not one the lexical checker supports (X is in Y; X is the "
+                             "capital of Y; X has N <unit>; X was released in DATE; X is Y; X <verb> ... DATE); "
+                             "no source was counted."])
+    pool = {}
+    for c in clusters:
+        for x in c.claims:
+            if _claims.is_reportable(x):
+                pool.setdefault(x.id, x)
+    relation, why = {}, {}
+    for x in pool.values():
+        rel, reason = _check(slot, x)
+        if rel:
+            relation[x.id], why[x.id] = rel, reason
+    for c in clusters:
+        for pair in c.contradicting:
+            for mine, other in ((pair.get("a"), pair.get("b")), (pair.get("b"), pair.get("a"))):
+                if relation.get(mine) == "support" and other in pool and other not in relation:
+                    relation[other] = "contradict"
+                    why[other] = pair.get("reason", "conflicts with a supporting source")
+    order = sorted((pool[i] for i in relation), key=lambda x: (-x.relevance, x.source_url, x.sentence_index, x.id))
+    groups = _claims.independence_groups(order)
+    by_id = {x.id: x for x in order}
+    alpha, beta, sup, con = _claims.PRIOR_ALPHA, _claims.PRIOR_BETA, 0, 0
+    outvoted = set()
+    for g in groups:
+        members = [by_id[i] for i in g]
+        a = sum(1 for x in members if relation[x.id] == "support")
+        w = max(_claims.evidence_weight(x, now=now, freshness_class=cls, ttl_overrides=ttl_overrides)
+                for x in members)
+        alpha += w * a / len(members)
+        beta += w * (len(members) - a) / len(members)
+        if a and a >= len(members) - a:
+            sup += 1
+            outvoted |= {x.id for x in members if relation[x.id] == "contradict"}
+        else:
+            con += 1
+    mean = alpha / (alpha + beta)
     reasons = [f"{sup} independent source group(s) agree with the statement; {con} contradict it.",
                f"Posterior mean {mean:.2f} from a Beta(1,1) prior and weighted independent groups."]
-    for x in c.claims:
-        if x.id not in agree and not _claims.is_adversarial(x):
-            why = _claims.conflict(target, x)
-            if why:
-                reasons.append(f"[{sources.cite(x.source_url, x)}] {why}.")
-            if len(reasons) >= 5:
-                break
-    if mean >= SUPPORTED_MIN_CONFIDENCE and sup >= SUPPORTED_MIN_GROUPS and con == 0 and not ev["pairs"]:
+    for x in order:
+        if relation[x.id] == "contradict" and len(reasons) < 6:
+            within = " (a sentence in a source group that otherwise supports it)" if x.id in outvoted else ""
+            reasons.append(f"[{sources.cite(x.source_url, x)}]{within} {why[x.id] or 'contradicts the statement'}.")
+    if mean >= SUPPORTED_MIN_CONFIDENCE and sup >= SUPPORTED_MIN_GROUPS and con == 0:
         label = "supported"
-    elif (b - _claims.PRIOR_BETA) > (a - _claims.PRIOR_ALPHA):
+    elif (beta - _claims.PRIOR_BETA) > (alpha - _claims.PRIOR_ALPHA):
         label = "disputed"
     elif sup >= 1 and con >= 1:
         label = "contested"
     else:
         label = "insufficient"
-        if sup < SUPPORTED_MIN_GROUPS:
+        if not order:
+            reasons.append("No source sentence names the subject together with the checked relation.")
+        elif sup < SUPPORTED_MIN_GROUPS:
             reasons.append(f"Fewer than {SUPPORTED_MIN_GROUPS} independent source groups support it.")
-    citations = sorted({sources.cite(x.source_url, x) for x in c.claims if not _claims.is_adversarial(x)})
-    return {"label": label, "confidence": round(mean, 3), "statement": statement, "citations": citations,
-            "reasons": reasons}
+    citations = sorted({sources.cite(x.source_url, x) for x in order})
+    return dict(base, label=label, confidence=round(mean, 3), citations=citations,
+                supporting=[x.id for x in order if relation[x.id] == "support"],
+                contradicting=[x.id for x in order if relation[x.id] == "contradict"], reasons=reasons)
 
 
 def _mentions(item: str, text: str) -> bool:
@@ -381,29 +737,43 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         factor = 1.0 if ok else (UNDATED_VALUE if ok is None else STALE_VALUE)
         return c.confidence * (rep.relevance if rep else 0.0) * factor
 
-    ranked = sorted(((c, value(c)) for c in usable), key=lambda t: (-t[1], t[0].key, t[0].statement))
+    ranked = sorted(((c, value(c)) for c in usable if report_safe_text(_representative(c)) == c.statement),
+                    key=lambda t: (-t[1], t[0].key, t[0].statement))
+    old = _superseded(ranked)
+    if old:      # a newer release of the same package was read: older ones follow it (C-02)
+        flagged = [(c, v, i in old) for i, (c, v) in enumerate(ranked)]
+        ranked = [(c, v) for c, v, _ in sorted(flagged, key=lambda t: t[2])]
+        old_ids = {id(c) for c, v, is_old in flagged if is_old}
+    else:
+        old_ids = set()
 
     # answer items (quotes) first: they get the lowest source numbers
     items = []
     for c, v in ranked[:MAX_ANSWER_ITEMS]:
         rep = _representative(c)
+        copies, independent = _support_counts(c)
         items.append({"text": c.statement, "type": "template" if rep and rep.kind == "metadata" else "quote",
                       "citations": _cite_cluster(c, sources), "confidence": c.confidence,
-                      "uncertainty": c.uncertainty, "status": c.status,
-                      "independent_sources": c.independent_sources, "value": round(v, 6)})
+                      "uncertainty": c.uncertainty, "status": c.status, "copies": copies,
+                      "independent_sources": independent, "value": round(v, 6)})
 
     packages = assessment.get("packages") or []
     findings = []
     for c, v in ranked:
         rep = _representative(c)
-        findings.append({"statement": c.statement,
-                         "type": "template" if rep and rep.kind == "metadata" else "quote",
-                         "kind": rep.kind if rep else "statement", "key": c.key,
-                         "citations": _cite_cluster(c, sources), "confidence": c.confidence,
-                         "uncertainty": c.uncertainty, "status": c.status,
-                         "independent_sources": c.independent_sources, "value": round(v, 6),
-                         "published_at": rep.published_at if rep else None, "event_at": rep.event_at if rep else None,
-                         "claims": [x.id for x in c.claims], "package": _package_of(c, packages)})
+        copies, independent = _support_counts(c)
+        finding = {"statement": c.statement,
+                   "type": "template" if rep and rep.kind == "metadata" else "quote",
+                   "kind": rep.kind if rep else "statement", "key": c.key,
+                   "citations": _cite_cluster(c, sources), "related": [], "confidence": c.confidence,
+                   "uncertainty": c.uncertainty, "status": c.status, "copies": copies,
+                   "independent_sources": independent, "value": round(v, 6),
+                   "published_at": rep.published_at if rep else None, "event_at": rep.event_at if rep else None,
+                   "claims": [x.id for x in c.claims], "package": _package_of(c, packages)}
+        if id(c) in old_ids:
+            finding["superseded"] = True
+        findings.append(finding)
+    related = list(zip(findings, [c for c, _ in ranked]))     # numbered last, after every cited source
     if mode == "scientific":
         for f in findings:
             f["section"] = "interpretations" if f["kind"] == "interpretation" else "findings"
@@ -420,7 +790,7 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
             if len(contradictions) >= MAX_CONTRADICTIONS:
                 break
             a, b = by_id.get(pair["a"]), by_id.get(pair["b"])
-            if a is None or b is None:
+            if report_safe_text(a) is None or report_safe_text(b) is None:
                 continue
             contradictions.append(_contradiction(a, b, pair["reason"], c, sources))
 
@@ -476,7 +846,7 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
             q = d.flags.get("quarantined_sentences", 0)
             uncertainties.append(f"Instruction-like content in {ref}{d.domain} ({d.canonical_url or d.url}): "
                                  f"{patterns}; {q} sentence(s) quarantined and not used as evidence.")
-    adversarial = sum(1 for d in documents if d.flags.get("injection"))
+    adversarial = sum(1 for d in documents if _claims.adversarial_document(d))
     if adversarial:
         uncertainties.append(f"{adversarial} source(s) excluded as adversarial: they carry instruction-like content, "
                              f"so their remaining statements are shown but carry no evidence weight.")
@@ -490,7 +860,7 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         uncertainties.append(f"{len(failures)} retrieval failure(s) may have hidden evidence ({labels}).")
 
     verdict = None
-    if mode == "fact_verification":
+    if mode == "fact_verification" and any(c.claims for c in scored):     # no claims (cancelled): no verdict
         verdict = _verdict(assessment.get("claim") or question, usable, sources, now=now, cls=cls,
                            ttl_overrides=ttl_overrides)
     comparison = _comparison(assessment.get("comparison"), ranked, sources) if mode == "comparative" else None
@@ -500,6 +870,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
     answer = [{"text": _lead(documents, usable, ranked, satisfied, newest, required, now, live, cited),
                "type": "template", "citations": lead_citations, "confidence": None, "status": "summary"}] + items
 
+    for f, c in related:
+        f["related"] = _related(c, sources)
     if usage is None:
         usage_json = {}
     elif hasattr(usage, "to_json"):
@@ -576,7 +948,8 @@ def _contradiction(a: Claim, b: Claim, reason: str, c: ClaimCluster, sources: _S
                      f"Not independently confirmed.")
     else:
         parts.append(UNRESOLVED)
-    return {"a": sa, "b": sb, "reason": reason, "assessment": " ".join(parts)}
+    return {"a": sa, "b": sb, "reason": reason, "description": _claims.describe_conflict(a, b, reason),
+            "assessment": " ".join(parts)}
 
 
 # ---- working memory -----------------------------------------------------------------------------------------
@@ -632,4 +1005,5 @@ def context_pack(report: dict, *, max_tokens: int) -> dict:
     return {"tokens": used, "items": items, "uncertainty": uncertainty, "sources": sources}
 
 
-__all__ = ["LIVE_MODES", "MAX_ANSWER_ITEMS", "UNRESOLVED", "context_pack", "synthesize"]
+__all__ = ["LIVE_MODES", "MAX_ANSWER_ITEMS", "UNRESOLVED", "context_pack", "parse_statement", "report_safe_text",
+           "synthesize"]

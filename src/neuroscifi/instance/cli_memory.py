@@ -46,6 +46,13 @@ def _forget_research(db, args, now):
     return result | {"public_cache": _drop_cached(args, urls=urls)}
 
 
+def _forget_knowledge(db, args, now):
+    """governance.forget_knowledge, then drop the public-cache pages of the refresh tasks forgotten with it."""
+    result = governance.forget_knowledge(db, args.target, now)
+    urls = ((result.get("effects") or {}).get("cache") or {}).get("urls") or []
+    return result | ({"public_cache": _drop_cached(args, urls=urls)} if urls else {})
+
+
 def register(sub, *, with_db, run):
     p = sub.add_parser("memory", help="retrieve records of one memory kind")
     store.add_db_argument(p)
@@ -78,7 +85,7 @@ def register(sub, *, with_db, run):
     q = fsub.add_parser("knowledge", help="a web knowledge item and every version of it")
     store.add_db_argument(q)
     q.add_argument("target", type=int, help="knowledge id")
-    q.set_defaults(handler=with_db(lambda db, a, now: governance.forget_knowledge(db, a.target, now)))
+    q.set_defaults(handler=with_db(_forget_knowledge))
     q = fsub.add_parser("source", help="a source URL or every source of a domain, also from the public cache")
     store.add_db_argument(q)
     q.add_argument("target", help="URL or registrable domain")
