@@ -2,9 +2,11 @@
 
 Default: not configured (no endpoint), so nothing contacts a model until the owner runs `nsf llm config --url ...`.
 The API key is never stored in the instance: `key_file` names a file (default DEFAULT_KEY_FILE, written by
-deploy/vllm/run.sh with mode 0600). Local-first: an endpoint must resolve to loopback or private addresses; any
-other endpoint needs the owner's explicit `remote_allowed`, must use https, and then every outbound message passes
-webcortex.safety.privacy_screen and messages marked private are refused unless `remote_private_memory` is also set.
+deploy/vllm/run.sh with mode 0600). Local-first: an endpoint must resolve to loopback addresses; any other
+endpoint (LAN, tailnet and private ranges included) needs the owner's explicit `remote_allowed`, and then every
+outbound message passes webcortex.safety.privacy_screen and messages marked private are refused unless
+`remote_private_memory` is also set. A public (or CGNAT) endpoint must use https; the API key is never sent over
+plain http to a non-loopback address.
 """
 from __future__ import annotations
 
@@ -34,7 +36,7 @@ class InferenceConfig:
     reasoning: bool = True             # research answers are written by the model when it is ready
     self_critique: bool = True         # one bounded critique pass that may only remove sentences
     tools: bool = False                # `nsf llm ask` may offer the allow-listed read-only tools
-    remote_allowed: bool = False       # owner authorisation for an endpoint that is not loopback/private
+    remote_allowed: bool = False       # owner authorisation for any endpoint that is not loopback
     remote_private_memory: bool = False   # ... and for sending private memory to it
     connect_timeout: float = 3.0       # seconds to open the connection
     read_timeout: float = 180.0        # seconds for one whole call (streaming included)
@@ -151,10 +153,12 @@ def read_key(cfg: InferenceConfig) -> str | None:
     return key or None
 
 
-def locality(url: str, *, resolver=socket.getaddrinfo) -> tuple[str, str]:
-    """('loopback' | 'private' | 'remote', detail) for an endpoint URL. A host name counts as local only when
-    every address it resolves to is loopback (or private, which is any non-global address: RFC 1918, ULA,
-    link-local, CGNAT/tailnet). An unresolvable name is 'remote' (it cannot be shown to be local)."""
+CGNAT = ipaddress.ip_network("100.64.0.0/10")     # shared address space (carrier NAT, tailnets): other people's hosts
+
+
+def resolve(url: str, *, resolver=socket.getaddrinfo) -> tuple[str, str, list[str]]:
+    """(locality, detail, addresses) for an endpoint URL. The gateway connects only to these addresses (pinned), so
+    a name cannot resolve to one address for the check and another for the connection."""
     host = urlsplit(url).hostname or ""
     try:
         addrs = [ipaddress.ip_address(host)]
@@ -162,21 +166,31 @@ def locality(url: str, *, resolver=socket.getaddrinfo) -> tuple[str, str]:
         try:
             infos = resolver(host, None, 0, socket.SOCK_STREAM)
         except (OSError, UnicodeError):
-            return "remote", f"{host} does not resolve"
+            return "remote", f"{host} does not resolve", []
         addrs = []
         for info in infos:
             try:
                 addrs.append(ipaddress.ip_address(info[4][0].split("%")[0]))
             except ValueError:
-                return "remote", f"{host} resolves to an unparsable address"
+                return "remote", f"{host} resolves to an unparsable address", []
     if not addrs:
-        return "remote", f"{host} has no address"
+        return "remote", f"{host} has no address", []
+    pinned = list(dict.fromkeys(str(a) for a in addrs))
     if all(a.is_loopback for a in addrs):
-        return "loopback", host
-    if all(a.is_loopback or not a.is_global for a in addrs):
-        return "private", host
-    return "remote", host
+        return "loopback", host, pinned
+    if all(a.is_loopback or (not a.is_global and not (a.version == 4 and a in CGNAT)) for a in addrs):
+        return "private", host, pinned
+    return "remote", host, pinned
+
+
+def locality(url: str, *, resolver=socket.getaddrinfo) -> tuple[str, str]:
+    """('loopback' | 'private' | 'remote', detail) for an endpoint URL. A host name counts as loopback (or private:
+    RFC 1918, ULA, link-local) only when every address it resolves to is; CGNAT/tailnet (100.64.0.0/10) is remote.
+    An unresolvable name is 'remote' (it cannot be shown to be local). Only 'loopback' is this host: anything else
+    needs the owner's remote_allowed and passes the privacy screen (gateway.guard / screen)."""
+    where, detail, _ = resolve(url, resolver=resolver)
+    return where, detail
 
 
 __all__ = ["DEFAULT_KEY_FILE", "InferenceConfig", "META_KEY", "get_config", "key_path", "locality", "public",
-           "read_key", "set_config"]
+           "read_key", "resolve", "set_config"]

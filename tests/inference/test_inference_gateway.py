@@ -244,7 +244,7 @@ def test_locality():
     assert iconfig.locality("http://127.0.0.1:8811/v1")[0] == "loopback"
     assert iconfig.locality("http://[::1]:8811/v1")[0] == "loopback"
     assert iconfig.locality("http://192.168.1.20:8000/v1")[0] == "private"
-    assert iconfig.locality("http://100.101.1.2:8000/v1")[0] == "private"   # CGNAT / tailnet
+    assert iconfig.locality("http://100.101.1.2:8000/v1")[0] == "remote"   # CGNAT / tailnet: other people's hosts
     assert iconfig.locality("https://api.example.com/v1", resolver=remote_resolver)[0] == "remote"
 
 
@@ -279,6 +279,57 @@ def test_remote_privacy_screen_and_private_memory():
     gw.screen([{"role": "user", "content": "mail me at owner@example.org"}], authorization="owner-approved-disclosure")
     gw.cfg.remote_private_memory = True
     gw.screen([{"role": "user", "content": "what I remember", "private": True}])
+
+
+def lan_resolver(host, *args):
+    return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.20", 0))]
+
+
+@pytest.mark.parametrize("url", ["http://192.168.1.20:8000/v1", "http://10.0.0.5:8000/v1", "http://[fd00::5]:8000/v1",
+                                 "http://100.101.1.2:8000/v1", "http://spark.lan:8000/v1"])
+def test_any_non_loopback_endpoint_needs_owner_authorisation(url):
+    """LAN, tailnet and private addresses are not 'this host': remote_allowed is required (L4)."""
+    gw = Gateway(iconfig.InferenceConfig(base_url=url, model="m"), resolver=lan_resolver)
+    with pytest.raises(InferenceError) as err:
+        gw.guard()
+    assert err.value.code == "remote_not_authorised"
+    assert gw.health()["state"] == "not_configured"
+    url = url.replace("http://", "https://")                   # CGNAT counts as remote: https only
+    gw = Gateway(iconfig.InferenceConfig(base_url=url, model="m", remote_allowed=True), resolver=lan_resolver)
+    gw.guard()
+    with pytest.raises(InferenceError) as err:                    # authorised: privacy-screened like remote
+        gw.screen([{"role": "user", "content": "mail me at owner@example.org"}])
+    assert err.value.code == "private_blocked"
+
+
+def test_bearer_key_never_goes_over_plain_http_off_loopback():
+    cfg = iconfig.InferenceConfig(base_url="http://192.168.1.20:8000/v1", model="m", remote_allowed=True)
+    with pytest.raises(InferenceError) as err:
+        Gateway(cfg, key="secret", resolver=lan_resolver).guard()
+    assert err.value.code == "remote_not_authorised" and "http" in str(err.value)
+    Gateway(cfg, key=None, resolver=lan_resolver).guard()          # without a key, plain http on the LAN may be used
+    https = iconfig.InferenceConfig(base_url="https://192.168.1.20:8000/v1", model="m", remote_allowed=True)
+    Gateway(https, key="secret", resolver=lan_resolver).guard()
+
+
+def test_connection_goes_to_the_address_that_passed_the_check(fake):
+    """No DNS rebinding between the locality check and the connection (L4): the gateway connects to the address
+    the check resolved, and still names the host in the Host header."""
+    answers = iter([[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 0))],
+                    [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]])
+    seen = []
+
+    def rebinding(host, *args):
+        seen.append(host)
+        return next(answers)
+    port = fake.url.rsplit(":", 1)[1].split("/")[0]
+    gw = Gateway(iconfig.InferenceConfig(base_url=f"http://model.invalid:{port}/v1", model="fake-model"),
+                 key=fake.key, resolver=rebinding)
+    assert gw.guard() == "loopback"
+    assert gw.chat([{"role": "user", "content": "hi"}], purpose="t").text == "ok"
+    assert gw.chat([{"role": "user", "content": "again"}], purpose="t").text == "ok"
+    assert seen == ["model.invalid"]                     # resolved once; both calls reached 127.0.0.1
+    assert fake.hosts[-1] == f"model.invalid:{port}"
 
 
 def test_local_endpoint_is_not_privacy_screened(gateway, fake):

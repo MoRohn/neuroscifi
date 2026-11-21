@@ -480,7 +480,7 @@ def _web_monitor_action(action):
 
 def _llm_status(c, p, q, b):
     """Inference gateway health (an explicit state, never a guess), reasoning settings and the last 24 h of token
-    accounting. Contacts only the owner-configured endpoint (loopback/private, or remote with remote_allowed);
+    accounting. Contacts only the owner-configured endpoint (loopback, or off-host with remote_allowed);
     ?probe=1 also generates a one-word reply."""
     from ..inference import config as iconfig
     from ..inference.gateway import Gateway

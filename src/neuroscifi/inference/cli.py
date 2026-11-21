@@ -51,8 +51,8 @@ def _config(db, a, now):
     if cfg.configured:
         where, _ = config.locality(cfg.base_url)
         out["locality"] = where
-        if where == "remote" and not cfg.remote_allowed:
-            out["note"] = "remote endpoint: refused until the owner passes --remote-allowed"
+        if where != "loopback" and not cfg.remote_allowed:
+            out["note"] = "endpoint off this host: refused until the owner passes --remote-allowed"
     return out
 
 
@@ -138,8 +138,8 @@ def register(sub):
     _switch(p, "reasoning", "reasoning", "write research answers with the model", "extractive answers only")
     _switch(p, "self-critique", "self_critique", "one bounded critique pass", "no critique pass")
     _switch(p, "tools", "tools", "allow read-only tools in `nsf llm ask`", "no tools")
-    _switch(p, "remote-allowed", "remote_allowed", "authorise a non-local endpoint (https, privacy-screened)",
-            "local endpoints only (default)")
+    _switch(p, "remote-allowed", "remote_allowed", "authorise an endpoint off this host (LAN included; privacy-screened)",
+            "loopback endpoints only (default)")
     _switch(p, "remote-private-memory", "remote_private_memory",
             "also authorise sending private memory to a remote endpoint", "never (default)")
     p.add_argument("--set", action="append", metavar="KEY=JSON", help="set one field, e.g. --set read_timeout=60")

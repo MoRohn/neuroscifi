@@ -7,9 +7,10 @@ extending ADR-022. Live evidence: `docs/quality/evidence/inference_live.json`.
 
 NeuroSciFi now runs a language model on the Spark and lets it write research answers, under three rules:
 
-1. **Local-first.** The model is a local vLLM server on `127.0.0.1:8811`. A non-local endpoint is refused unless the
-   owner authorises it; then it must be https, every message passes the web privacy screen, and private memory needs
-   a second authorisation.
+1. **Local-first.** The model is a local vLLM server on `127.0.0.1:8811`. Any endpoint that is not loopback (LAN,
+   tailnet and private ranges included) is refused unless the owner authorises it (`remote_allowed`); then every
+   message passes the web privacy screen, private memory needs a second authorisation, a public or CGNAT endpoint
+   must be https, and the API key is never sent over plain http off this host.
 2. **Evidence-only.** The model writes the answer *after* verification, from the verified evidence bundle only, and
    every sentence is checked by local code before it is shown. It never changes a claim's state, and its text never
    becomes knowledge.
@@ -33,7 +34,7 @@ intent ─▶ memory ─▶ discovery/reading ─▶ claims + verification ─�
 
 | Module | Role |
 |---|---|
-| `config.py` | Per-individual settings in the instance `meta` table (key `inference`); default not configured. Endpoint locality (loopback / private = any non-global address / remote). API key read from a file (`key_file`, else `NSF_INFERENCE_KEY_FILE`, else `~/.config/neuroscifi/inference/api_key`); a world-readable key file is refused. |
+| `config.py` | Per-individual settings in the instance `meta` table (key `inference`); default not configured. Endpoint locality (loopback / private = RFC 1918, ULA, link-local / remote, CGNAT 100.64.0.0/10 included); only loopback is used without `remote_allowed`. The host is resolved once per gateway and the connection goes to that address (pinned; Host header, SNI and certificate check keep the configured name), so DNS rebinding cannot move it between check and connect. API key read from a file (`key_file`, else `NSF_INFERENCE_KEY_FILE`, else `~/.config/neuroscifi/inference/api_key`); a world-readable key file is refused. |
 | `gateway.py` | `Gateway.models()`, `health(probe=)`, `chat(stream=, tools=, response_format=)`, `structured(schema)`. Stdlib `http.client`; no SDK. |
 | `jsonschema.py` | The schema subset used for structured output and tool arguments, validated locally. |
 | `tools.py` | Allow-listed tools; the model suggests, NeuroSciFi decides and executes. |
@@ -44,13 +45,13 @@ intent ─▶ memory ─▶ discovery/reading ─▶ claims + verification ─�
 
 | State | Meaning |
 |---|---|
-| `not_configured` | no endpoint, or a remote endpoint without `remote_allowed` / https |
+| `not_configured` | no endpoint; or an endpoint off this host without `remote_allowed`, a public/CGNAT one without https, or an API key over plain http off this host |
 | `unauthorised` | the endpoint answered 401/403 (missing or wrong key) |
 | `unavailable` | connection refused, timeout, 5xx, unparsable answer |
 | `degraded` | it answers, but the configured model is not served, nothing is served, or the `--probe` generation failed |
 | `ready` | it lists the model (and with `--probe` generated a reply) |
 
-**Call discipline.** Endpoint guard and remote privacy screen first; a context budget (prompt estimate at 3.5
+**Call discipline.** Endpoint guard and off-host privacy screen first; a context budget (prompt estimate at 3.5
 characters per token + `max_tokens` ≤ `max_context_tokens`, default 24 000) is checked before anything is sent;
 connect timeout 3 s and a whole-call deadline (`read_timeout`, 180 s, streaming included); retries only for connection
 errors, 429 and 502–504, at most `max_retries` (2) with backoff 0.5 s doubling, Retry-After honoured up to 10 s; a

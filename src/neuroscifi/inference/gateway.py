@@ -11,7 +11,8 @@ Gateway(cfg, key=..., ledger=...):
   chat(messages, purpose=..., stream=False, tools=None, response_format=None, ...) -> ChatResult
   structured(messages, schema, name=..., purpose=...) -> (value, [ChatResult])   local validation, one repair retry
 
-Every call: the endpoint guard (local-first, see config.py), the remote privacy screen, a context budget check
+Every call: the endpoint guard (local-first, see config.py; the connection goes to the address the check resolved,
+with the configured host in Host/SNI), the off-host privacy screen, a context budget check
 (estimate of prompt + max_tokens <= cfg.max_context_tokens; else 'context_overflow' before anything is sent),
 a connect timeout and a whole-call deadline (cfg.read_timeout, streaming included), bounded retries with
 exponential backoff for connection errors, 429 and 502-504 (Retry-After honoured up to 10 s; a stream is never
@@ -133,6 +134,33 @@ def parse_json(text: str):
         raise
 
 
+def _connect(conn):
+    """A TCP connection to the first reachable pinned address (the ones the locality check accepted)."""
+    error = None
+    for address in conn.addresses:
+        try:
+            return socket.create_connection((address, conn.port), conn.timeout, conn.source_address)
+        except OSError as exc:
+            error = exc
+    raise error or OSError("no address")
+
+
+class _PinnedHTTP(http.client.HTTPConnection):
+    """HTTP to a pinned address; the Host header still names the configured host."""
+    addresses: list = []
+
+    def connect(self):
+        self.sock = _connect(self)
+
+
+class _PinnedHTTPS(http.client.HTTPSConnection):
+    """HTTPS to a pinned address; SNI and certificate verification use the configured host name."""
+    addresses: list = []
+
+    def connect(self):
+        self.sock = self._context.wrap_socket(_connect(self), server_hostname=self.host)
+
+
 class Gateway:
     def __init__(self, cfg: iconfig.InferenceConfig, *, key=None, ledger=None, clock=time.monotonic,
                  wall=time.time, sleep=time.sleep, resolver=socket.getaddrinfo, task_id=None):
@@ -140,6 +168,7 @@ class Gateway:
         self.clock, self.wall, self.sleep, self.resolver = clock, wall, sleep, resolver
         self.task_id = task_id
         self._locality = None
+        self._addresses: list[str] = []
         self._model = cfg.model or None
 
     @classmethod
@@ -152,27 +181,35 @@ class Gateway:
 
     # ---- endpoint policy ------------------------------------------------------------------------------------
     def locality(self) -> tuple[str, str]:
+        """Resolved once per gateway; the connection goes to these same addresses (_open), never a fresh lookup."""
         if self._locality is None:
-            self._locality = iconfig.locality(self.cfg.base_url, resolver=self.resolver)
+            where, detail, self._addresses = iconfig.resolve(self.cfg.base_url, resolver=self.resolver)
+            self._locality = (where, detail)
         return self._locality
 
     def guard(self) -> str:
-        """Raise unless this endpoint may be used; returns its locality."""
+        """Raise unless this endpoint may be used; returns its locality. Only loopback is this host: LAN, tailnet
+        and private addresses need the owner's remote_allowed like a public endpoint."""
         if not self.cfg.configured:
             raise InferenceError("not_configured", "no model endpoint configured (nsf llm config --url URL)")
         where, detail = self.locality()
-        if where == "remote":
+        if where != "loopback":
             if not self.cfg.remote_allowed:
-                raise InferenceError("remote_not_authorised", f"endpoint {detail} is not loopback or private; the "
-                                     "owner has not authorised remote inference (nsf llm config --remote-allowed)")
-            if urlsplit(self.cfg.base_url).scheme != "https":
+                raise InferenceError("remote_not_authorised", f"endpoint {detail} is not on this host (loopback); "
+                                     "the owner has not authorised a non-local endpoint (nsf llm config "
+                                     "--remote-allowed)")
+            scheme = urlsplit(self.cfg.base_url).scheme
+            if where == "remote" and scheme != "https":
                 raise InferenceError("remote_not_authorised", "a remote endpoint must use https")
+            if scheme != "https" and self.key:
+                raise InferenceError("remote_not_authorised", "the API key is never sent over plain http to an "
+                                     "address off this host; use https (or no key)")
         return where
 
     def screen(self, messages, authorization=None) -> None:
-        """Remote endpoints only: refuse private memory (messages marked private) unless separately authorised,
-        and any message the web privacy screen flags unless the owner approved this disclosure."""
-        if self.guard() != "remote":
+        """Every endpoint off this host: refuse private memory (messages marked private) unless separately
+        authorised, and any message the web privacy screen flags unless the owner approved this disclosure."""
+        if self.guard() == "loopback":
             return
         from ..webcortex import safety
         for m in messages:
@@ -190,9 +227,13 @@ class Gateway:
     # ---- HTTP -------------------------------------------------------------------------------------------------
     def _open(self, method, path, payload, remaining):
         parts = urlsplit(self.cfg.base_url)
-        cls = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
+        self.guard()
+        if not self._addresses:
+            raise InferenceError("unavailable", "the endpoint has no address", retryable=True)
+        cls = _PinnedHTTPS if parts.scheme == "https" else _PinnedHTTP
         conn = cls(parts.hostname, parts.port or (443 if parts.scheme == "https" else 80),
                    timeout=min(self.cfg.connect_timeout, max(0.05, remaining)))
+        conn.addresses = self._addresses
         try:
             conn.connect()
         except (socket.timeout, TimeoutError) as exc:

@@ -22,7 +22,7 @@ from neuroscifi.inference.ledger import Ledger
 class FakeOpenAI:
     def __init__(self, *, key="test-key", models=("fake-model",)):
         self.key, self.models = key, list(models)
-        self.replies, self.requests, self.paths = [], [], []
+        self.replies, self.requests, self.paths, self.hosts = [], [], [], []
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -58,6 +58,7 @@ class FakeOpenAI:
 
             def do_POST(self):
                 fake.paths.append(("POST", self.path))
+                fake.hosts.append(self.headers.get("Host"))
                 length = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(length) or b"{}")
                 if not self._auth():
