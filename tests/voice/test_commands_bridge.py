@@ -192,6 +192,23 @@ def test_compose_answer_extractive_is_attributed_and_labelled():
     assert "did not finish" in failed.text
 
 
+def test_compose_answer_speaks_what_was_not_established_when_the_guard_rejected_everything():
+    """T2-03 follow-up: when reasoning rejects every model sentence, voice says what could not be established (the
+    report's reasoning.unanswered, as the console shows it) instead of an unrelated extractive quote; the text
+    answer leads with the same sentence and keeps the quotes below it as evidence."""
+    from neuroscifi.webcortex import reasoning
+    objective = "the latest developments in agentic AI"
+    report = dict(REPORT_MODEL, reasoning={"status": "rejected", "generated_by": "template",
+                                           "reason": "every model sentence failed NeuroSciFi's checks",
+                                           "unanswered": reasoning.unanswered(objective)})
+    r = vbridge.compose_answer({"id": "t", "status": "completed", "objective": objective, "result": report})
+    said = r.speech[0]
+    assert said == "The sources read do not establish an answer to: the latest developments in agentic AI."
+    assert not any("According to" in s for s in r.speech) and r.source == "template"
+    lines = r.text.splitlines()
+    assert lines[0] == said and "Zephyr 4.2.0" in r.text and r.text.index("Zephyr") > r.text.index(said)
+
+
 def test_spoken_budget():
     out = vbridge.spoken(["word " * 50 + "end.", "second [3] sentence.", "third."])
     assert out == ["word " * 50 + "end.", "second sentence."]

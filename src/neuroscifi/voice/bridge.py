@@ -138,13 +138,21 @@ def compose_answer(task) -> Reply:
         quotes = [a for a in items if a.get("status") != "summary"]
         by_n = {s["n"]: s for s in _sources(report)}
         speech = []
-        if quotes:
+        unanswered = reasoning.get("unanswered") if isinstance(reasoning.get("unanswered"), dict) else {}
+        unanswered = str(unanswered.get("text") or "").strip()[:400]
+        if unanswered:
+            # the guard rejected every model sentence: say what was not established, as the console does, instead of
+            # a quote that may not address the question (T2-03); the quotes stay below as the evidence of record
+            speech = spoken([unanswered], 1)
+        elif quotes:
             first = quotes[0]
             domain = next((by_n[n]["domain"] for n in first.get("citations") or [] if n in by_n), "")
             speech = spoken([(f"According to {domain}: " if domain else "One source says: ") + first["text"]], 1)
         elif lead:
             speech = spoken([lead[0]["text"]], 1)
         lines = [_cited(a) for a in items]
+        if unanswered:
+            lines = [unanswered] + (["Quoted evidence (it may not answer the question):", *lines] if lines else [])
         label = LABEL_EXTRACTIVE
         if reasoning.get("reason"):
             label += f" ({str(reasoning['reason'])[:160]})"
