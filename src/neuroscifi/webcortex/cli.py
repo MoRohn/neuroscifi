@@ -239,7 +239,11 @@ def _config(db, a, now):
         if not sep or not key.strip():
             raise ValidationError(f"--set expects KEY=JSON, got {item!r}")
         changes[key.strip()] = _json_arg(raw, f"--set {key.strip()}")
+    before = state.get_config(db).autonomous
     cfg = state.set_config(db, changes, now) if changes else state.get_config(db)
+    if "autonomous" in changes and (changes["autonomous"] or before):   # the owner's switch is recorded (D4)
+        from . import autonomy
+        autonomy.record_switch(db, bool(changes["autonomous"]), now, by="owner:cli")
     return {"config": cfg.to_json(), "changed": sorted(changes)}
 
 
@@ -853,6 +857,17 @@ def register(sub):
     p.add_argument("--once", action="store_true", help="return when nothing is runnable")
     p.add_argument("--poll", type=float, default=5.0, help="seconds between queue checks")
     p.add_argument("--max-tasks", type=_count)
+
+    from . import autonomy, nodes
+    p = cmd("autonomy", autonomy.cli, "controlled autonomy (D4): status, enable, disable, set limits, candidates")
+    p.add_argument("autonomy_action", nargs="?", default="status",
+                   choices=("status", "enable", "disable", "set", "candidates", "idle"))
+    p.add_argument("--policy-json", help='set: e.g. \'{"autonomous_daily": {"searches": 10}}\'')
+    p.add_argument("--limit", type=_positive_int, default=10)
+    p = cmd("node", nodes.cli, "research nodes: enrol a paired Pocket device as a node, revoke, list (RD-11)")
+    p.add_argument("node_action", choices=("list", "enrol", "revoke"))
+    p.add_argument("label", nargs="?")
+    p.add_argument("--pocket-db", help="enrol: the Pocket bridge's private database (read only)")
 
     p = cmd("curiosity", _curiosity, "rank what would be most informative to research next")
     p.add_argument("--limit", type=_positive_int, default=10)

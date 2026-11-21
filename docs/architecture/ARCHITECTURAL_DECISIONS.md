@@ -462,3 +462,94 @@ binding all interfaces; Whisper large-v3-turbo (vLLM) and Kokoro-82M measured fa
 - Thresholds, echo cancellation and accents are unmeasured with real hardware (no microphone/speaker here).
 - Shared files touched (small edits): console server/index/js, Pocket server/index/sw.js, instance schema, the top
   CLI module list, tests/js/offline_check.mjs (shell count).
+
+# ADR-039 (draft) Controlled autonomy: two day-bounded budgets enforced at claim, research chosen from records, and explicit session ownership for research nodes. R
+
+Status: draft for docs/architecture/ARCHITECTURAL_DECISIONS.md (Lane F, v0.7.0). Implements owner decision D4.
+Builds on ADR-027 (the worker drains queued tasks), ADR-028 (Pocket family scope) and ADR-031 (one executing node).
+Records the RD-11 scope. All rules are in docs/autonomy/RESEARCH_POLICY.md.
+
+## Context
+
+In 0.6, autonomous research was bounded only by a rolling 24-hour cap on tasks, requests and bytes, applied when a
+task was submitted and again when it started. That cap had several gaps:
+
+- No search, page, time or spend limit matched the owner's terms.
+- User research had no budget of its own.
+- There was no concurrency bound across worker processes.
+- Forgetting a task removed its usage from the cap.
+- Nothing scheduled research to settle Lane D's hypotheses and predictions.
+
+Pocket could submit, list, read and cancel research. It could not continue a task, review its evidence or hand work
+between devices. RD-11 asked for a multi-node scope decision before any implementation.
+
+## Decision
+
+1. **Two daily budgets, charged per UTC day of an explicit `now`.**
+   - Autonomous research (origins `curiosity` and `refresh:`) gets 20 searches, 60 pages, 1800 s of active time,
+     $1 of spend and 2 concurrent investigations.
+   - User research (every other origin) gets 400 searches, 1200 pages, 14400 s and $5.
+   - The owner can configure both, through the `webcortex.autonomy` meta key.
+   - Spend is a price model: searches x price plus pages x price, with both prices 0.0 by default.
+   - SearXNG requests and upstream engine requests are counted separately, as observations.
+2. **Charging and recording happen at claim.**
+   - `autonomy.admit` runs inside `orchestrator._claim`'s `BEGIN IMMEDIATE` transaction.
+   - It refuses the task when any limit is spent; the task is cancelled and the reason recorded.
+   - Otherwise it clamps `max_queries`, `max_pages` and `max_seconds` to what is left and records the allowance in
+     the new `autonomy_ledger` table (migration 10).
+   - An autonomous task waits while 2 are open, and `claim_next` skips it meanwhile.
+   - `settle` records what the task actually used.
+   - Ledger rows outlive forgetting and hold only numbers and the task id.
+   - A submission against a spent budget is refused with `BudgetRefused`; Pocket answers 429 `daily_budget`.
+3. **Opt-in with a record.**
+   - The idle investigator needs the `autonomous` switch and a recorded owner enable (CLI, console or API).
+   - The 0.6 timer behaviour stays keyed on the switch.
+4. **What to research comes from the records.**
+   - Candidates come from `curiosity.rank` and from open hypotheses with open predictions.
+   - Priority is info_gain x (1 + sum of weight x signal) / cost.
+   - The signals are goal, contradiction, hypothesis, prediction uncertainty, source change, stale and gap. The
+     weights are documented.
+   - A candidate is refused when its expected gain is below `min_gain` (0.05 bits), when its subject is within the
+     24-hour cooldown, or when it is known only from autonomous research and unrelated to an owner goal.
+   - The ranking inputs are logged on each task.
+5. **Notifications only for meaningful findings.** A pending question `web:autonomy:<task>` is raised for a newly
+   verified statement, a resolved contradiction or a settled prediction, and for nothing else.
+6. **Pocket.** Three routes are added:
+   - `research_evidence`: ADR-035 state and basis per subject;
+   - `research_continue`: continue the task, counted in the hourly limit;
+   - `research_session`: session ownership.
+
+   `research_get` gains `spent` and `continued_from`. Family scope, the 512-byte bodies, the rate limits and
+   invisibility while off are unchanged.
+7. **RD-11 minimal multi-node.**
+   - A node is a paired Pocket device that the owner enrolled with the `node` capability (`nsf web node enrol`).
+     It is stored as salted digests.
+   - Nodes submit, continue, read and own sessions. They never execute, which keeps ADR-031.
+   - A session (a chain of continued tasks) has at most one owner, enforced by the primary key, under a 15-minute
+     lease.
+   - Ownership moves only on expiry or through an explicit offer and accept: one conditional `UPDATE` within 5
+     minutes.
+   - Other devices cannot cancel or continue an owned session.
+
+## Alternatives rejected
+
+- Keeping the rolling 24-hour window: it does not match "per day", it refunds budget on forget, and it cannot
+  bound concurrency.
+- Charging at submit only: a queued task can wait for days, and several processes would race on the last
+  allowance.
+- Counting each SearXNG call as one search: it hides the upstream engine load. Counting engine requests as searches
+  would make one query cost 7.
+- Letting autonomy research every single-source claim it creates: the live run showed this would spend the budget
+  on boilerplate sentences.
+- Worker federation across devices: it needs enrolment, attestation and result signing, none of which exist.
+  RD-11 stays deferred beyond the minimal scope above.
+
+## Consequences
+
+- Every background action is bounded per day and visible (`nsf web autonomy status`, `GET /api/web/autonomy`).
+  User research can no longer be starved by autonomy.
+- Searches and pages cannot pass a cap. Active time can pass it by at most the step in flight.
+- Settling a hypothesis's prediction depends on Lane D's key matching. Live, a verified registry statement reached
+  the owner as a knowledge candidate but did not settle the prediction, because the keys differed.
+- Tests: `tests/webcortex/test_autonomy.py`, `tests/test_pocket_autonomy.py`, `tests/console/test_console_autonomy.py`,
+  `tests/e2e/test_pocket_autonomy_e2e.py`. Live: `docs/quality/evidence/autonomy_live.json`.

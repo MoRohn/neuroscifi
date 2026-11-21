@@ -383,6 +383,27 @@ MIGRATIONS = [
       rate INTEGER NOT NULL, created_at REAL NOT NULL, expires_at REAL NOT NULL);
     CREATE INDEX voice_audio_expiry ON voice_audio(expires_at);
     """,
+    # ---- version 10 (controlled autonomy, D4 / ADR-039 draft; docs/autonomy/RESEARCH_POLICY.md) -------------------
+    """
+    -- webcortex/autonomy.py: one row per research task that started, charged to the UTC day it started on, in the
+    -- autonomous or the user budget. 'open' rows count their allowance (the clamped task budget), settled rows what
+    -- the task used. Numbers and the task id only: no objective, query or URL. Forgetting a task keeps its row, so
+    -- forgetting never refunds a budget.
+    CREATE TABLE autonomy_ledger(
+      task_id TEXT PRIMARY KEY, scope TEXT NOT NULL CHECK(scope IN ('autonomous','user')), day TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('open','settled')), allowed TEXT NOT NULL DEFAULT '{}',
+      used TEXT NOT NULL DEFAULT '{}', opened_at REAL NOT NULL, settled_at REAL);
+    CREATE INDEX autonomy_ledger_day ON autonomy_ledger(scope, day, state);
+    -- webcortex/nodes.py: Pocket-paired devices the owner enrolled as research nodes (instance-salted digests of
+    -- the device and family fingerprints, never the credential), and research-session ownership: one owner per
+    -- session (primary key), a lease that expires, and an explicit hand-off offer the target must accept.
+    CREATE TABLE autonomy_nodes(
+      device TEXT PRIMARY KEY, family TEXT NOT NULL, label TEXT NOT NULL, capabilities TEXT NOT NULL DEFAULT '[]',
+      enrolled_by TEXT NOT NULL, enrolled_at REAL NOT NULL, revoked_at REAL);
+    CREATE TABLE autonomy_sessions(
+      session TEXT PRIMARY KEY, family TEXT NOT NULL, owner TEXT NOT NULL, acquired_at REAL NOT NULL,
+      expires_at REAL NOT NULL, offered_to TEXT, offer_expires_at REAL);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

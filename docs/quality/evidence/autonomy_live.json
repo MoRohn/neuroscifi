@@ -1,0 +1,1798 @@
+{
+ "evidence": "autonomy_live",
+ "lane": "F (controlled autonomy, Pocket research, multi-node)",
+ "generated_at": "2026-11-21",
+ "environment": {
+  "searxng": "SearXNG on 127.0.0.1:8888 (loopback, JSON API)",
+  "model": "vLLM OpenAI-compatible server on 127.0.0.1:8811 (nsf llm config --url)",
+  "individual": "fresh scratch database <scratch>/autonomy_live.sqlite (not the owner's instance); web enabled, searxng_url set; every other setting default"
+ },
+ "steps": [
+  {
+   "step": "off by default",
+   "at": 1795266474.637,
+   "status": {
+    "argv": [
+     "nsf",
+     "web",
+     "autonomy",
+     "status"
+    ],
+    "exit": 0,
+    "json": {
+     "autonomous": {
+      "committed": {
+       "pages": 0.0,
+       "searches": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "concurrent": 2,
+       "pages": 60,
+       "searches": 20,
+       "seconds": 1800.0,
+       "spend_usd": 1.0
+      },
+      "open": 0,
+      "refusal": null,
+      "remaining": {
+       "pages": 60.0,
+       "searches": 20.0,
+       "seconds": 1800.0,
+       "spend_usd": 1.0
+      },
+      "running": 0,
+      "tasks": 0,
+      "used": {
+       "engine_requests": 0.0,
+       "pages": 0.0,
+       "searches": 0.0,
+       "searxng_requests": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      }
+     },
+     "cooldown": 86400.0,
+     "day": "2026-11-21",
+     "decisions": [],
+     "enabled": false,
+     "idle_interval": 300.0,
+     "min_gain": 0.05,
+     "prices_usd": {
+      "page": 0.0,
+      "search": 0.0
+     },
+     "record": {},
+     "switch": false,
+     "user": {
+      "committed": {
+       "pages": 0.0,
+       "searches": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "pages": 1200,
+       "searches": 400,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "open": 0,
+      "refusal": null,
+      "remaining": {
+       "pages": 1200.0,
+       "searches": 400.0,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "tasks": 0,
+      "used": {
+       "engine_requests": 0.0,
+       "pages": 0.0,
+       "searches": 0.0,
+       "searxng_requests": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      }
+     },
+     "weights": {
+      "contradiction": 1.0,
+      "gap": 0.5,
+      "goal": 1.0,
+      "hypothesis": 0.8,
+      "prediction_uncertainty": 0.8,
+      "source_change": 0.7,
+      "stale": 0.6
+     }
+    },
+    "seconds": 0.12
+   },
+   "idle": {
+    "argv": [
+     "nsf",
+     "web",
+     "autonomy",
+     "idle"
+    ],
+    "exit": 0,
+    "json": {
+     "action": "off"
+    },
+    "seconds": 0.13
+   }
+  },
+  {
+   "step": "owner records a hypothesis (a knowledge gap with a testable prediction)",
+   "at": 1795266474.79,
+   "result": {
+    "argv": [
+     "nsf",
+     "knowledge",
+     "hypothesize",
+     "numpy 2.5.5 was released",
+     "--probability",
+     "0.5",
+     "--deadline-days",
+     "30"
+    ],
+    "exit": 0,
+    "json": {
+     "hypothesis": {
+      "alternatives": [],
+      "claim_values": [
+       "v2.5.5"
+      ],
+      "claims": [],
+      "created_at": 1795266474.7601702,
+      "id": 1,
+      "key": "numpy releas",
+      "knowledge_id": null,
+      "note": null,
+      "origin": "owner",
+      "parent_id": null,
+      "polarity": 1,
+      "provenance": "provisional_claim",
+      "resolved_at": null,
+      "statement": "numpy 2.5.5 was released",
+      "status": "open",
+      "task_id": null,
+      "updated_at": 1795266474.7601702,
+      "verification": {
+       "basis": "owner_hypothesis",
+       "confidence": 0.5,
+       "policy": "ADR-035",
+       "state": "not_evaluated"
+      }
+     },
+     "prediction": {
+      "check_after": 1795266474.7601702,
+      "checked_at": null,
+      "created_at": 1795266474.7601702,
+      "criteria": {
+       "confirmed_when": "a later task verifies (supported) the same values and polarity",
+       "error_when": "a later task verifies conflicting values or polarity, or disputes it",
+       "inconclusive_when": "no decisive evidence by 2026-12-21",
+       "key": "numpy releas",
+       "polarity": 1,
+       "values": [
+        "v2.5.5"
+       ]
+      },
+      "deadline": 1797858474.7601702,
+      "detail": {},
+      "expectation": "\u00abnumpy 2.5.5 was released\u00bb will be confirmed by independent evidence by 2026-12-21",
+      "hypothesis_id": 1,
+      "id": 1,
+      "knowledge_id": null,
+      "outcome": null,
+      "probability": 0.5,
+      "task_id": null
+     }
+    },
+    "seconds": 0.15
+   }
+  },
+  {
+   "step": "ranking from the records",
+   "at": 1795266474.947,
+   "candidates": {
+    "argv": [
+     "nsf",
+     "web",
+     "autonomy",
+     "candidates",
+     "--limit",
+     "5"
+    ],
+    "exit": 0,
+    "json": {
+     "chosen": [
+      {
+       "cost": 1.0,
+       "forecast": 0.5,
+       "hypothesis_id": 1,
+       "info_gain": 0.278072,
+       "key": "numpy releas",
+       "kind": "hypothesis_prediction",
+       "mode": "fact_verification",
+       "objective": "numpy 2.5.5 was released",
+       "prediction_id": 1,
+       "priority": 0.722987,
+       "reason": "priority 0.7230 = gain 0.278 x (1 + 1.600) / cost 1.000",
+       "signals": {
+        "contradiction": 0.0,
+        "gap": 0.0,
+        "goal": 0.0,
+        "hypothesis": 1.0,
+        "prediction_uncertainty": 1.0,
+        "source_change": 0.0
+       },
+       "statement": "numpy 2.5.5 was released"
+      }
+     ],
+     "min_gain": 0.05,
+     "refused": [],
+     "weights": {
+      "contradiction": 1.0,
+      "gap": 0.5,
+      "goal": 1.0,
+      "hypothesis": 0.8,
+      "prediction_uncertainty": 0.8,
+      "source_change": 0.7,
+      "stale": 0.6
+     }
+    },
+    "seconds": 0.16
+   }
+  },
+  {
+   "step": "owner enables autonomy (recorded)",
+   "at": 1795266475.082,
+   "result": {
+    "argv": [
+     "nsf",
+     "web",
+     "autonomy",
+     "enable"
+    ],
+    "exit": 0,
+    "json": {
+     "autonomous": {
+      "committed": {
+       "pages": 0.0,
+       "searches": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "concurrent": 2,
+       "pages": 60,
+       "searches": 20,
+       "seconds": 1800.0,
+       "spend_usd": 1.0
+      },
+      "open": 0,
+      "refusal": null,
+      "remaining": {
+       "pages": 60.0,
+       "searches": 20.0,
+       "seconds": 1800.0,
+       "spend_usd": 1.0
+      },
+      "running": 0,
+      "tasks": 0,
+      "used": {
+       "engine_requests": 0.0,
+       "pages": 0.0,
+       "searches": 0.0,
+       "searxng_requests": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      }
+     },
+     "cooldown": 86400.0,
+     "day": "2026-11-21",
+     "decisions": [
+      {
+       "at": 1795266475.0651276,
+       "autonomy": "enabled",
+       "by": "owner:cli",
+       "task_id": null
+      }
+     ],
+     "enabled": true,
+     "idle_interval": 300.0,
+     "min_gain": 0.05,
+     "prices_usd": {
+      "page": 0.0,
+      "search": 0.0
+     },
+     "record": {
+      "disabled_at": null,
+      "enabled_at": 1795266475.0651276,
+      "enabled_by": "owner:cli"
+     },
+     "switch": true,
+     "user": {
+      "committed": {
+       "pages": 0.0,
+       "searches": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "pages": 1200,
+       "searches": 400,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "open": 0,
+      "refusal": null,
+      "remaining": {
+       "pages": 1200.0,
+       "searches": 400.0,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "tasks": 0,
+      "used": {
+       "engine_requests": 0.0,
+       "pages": 0.0,
+       "searches": 0.0,
+       "searxng_requests": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      }
+     },
+     "weights": {
+      "contradiction": 1.0,
+      "gap": 0.5,
+      "goal": 1.0,
+      "hypothesis": 0.8,
+      "prediction_uncertainty": 0.8,
+      "source_change": 0.7,
+      "stale": 0.6
+     }
+    },
+    "seconds": 0.14
+   }
+  },
+  {
+   "step": "budget before",
+   "at": 1795266475.201,
+   "status": {
+    "argv": [
+     "nsf",
+     "web",
+     "autonomy",
+     "status"
+    ],
+    "exit": 0,
+    "json": {
+     "autonomous": {
+      "committed": {
+       "pages": 0.0,
+       "searches": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "concurrent": 2,
+       "pages": 60,
+       "searches": 20,
+       "seconds": 1800.0,
+       "spend_usd": 1.0
+      },
+      "open": 0,
+      "refusal": null,
+      "remaining": {
+       "pages": 60.0,
+       "searches": 20.0,
+       "seconds": 1800.0,
+       "spend_usd": 1.0
+      },
+      "running": 0,
+      "tasks": 0,
+      "used": {
+       "engine_requests": 0.0,
+       "pages": 0.0,
+       "searches": 0.0,
+       "searxng_requests": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      }
+     },
+     "cooldown": 86400.0,
+     "day": "2026-11-21",
+     "decisions": [
+      {
+       "at": 1795266475.0651276,
+       "autonomy": "enabled",
+       "by": "owner:cli",
+       "task_id": null
+      }
+     ],
+     "enabled": true,
+     "idle_interval": 300.0,
+     "min_gain": 0.05,
+     "prices_usd": {
+      "page": 0.0,
+      "search": 0.0
+     },
+     "record": {
+      "disabled_at": null,
+      "enabled_at": 1795266475.0651276,
+      "enabled_by": "owner:cli"
+     },
+     "switch": true,
+     "user": {
+      "committed": {
+       "pages": 0.0,
+       "searches": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "pages": 1200,
+       "searches": 400,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "open": 0,
+      "refusal": null,
+      "remaining": {
+       "pages": 1200.0,
+       "searches": 400.0,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "tasks": 0,
+      "used": {
+       "engine_requests": 0.0,
+       "pages": 0.0,
+       "searches": 0.0,
+       "searxng_requests": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      }
+     },
+     "weights": {
+      "contradiction": 1.0,
+      "gap": 0.5,
+      "goal": 1.0,
+      "hypothesis": 0.8,
+      "prediction_uncertainty": 0.8,
+      "source_change": 0.7,
+      "stale": 0.6
+     }
+    },
+    "seconds": 0.12
+   }
+  },
+  {
+   "step": "worker run: idle investigation",
+   "at": 1795266492.354,
+   "result": {
+    "argv": [
+     "nsf",
+     "web",
+     "work",
+     "--once"
+    ],
+    "exit": 0,
+    "json": {
+     "processed": [
+      {
+       "resumed": false,
+       "status": "completed",
+       "task_id": "d7c8d0ab-88e4-4262-994d-fa3016c21e14"
+      }
+     ],
+     "stopped_by_signal": false
+    },
+    "seconds": 17.15
+   }
+  },
+  {
+   "step": "budget after",
+   "at": 1795266492.532,
+   "status": {
+    "argv": [
+     "nsf",
+     "web",
+     "autonomy",
+     "status"
+    ],
+    "exit": 0,
+    "json": {
+     "autonomous": {
+      "committed": {
+       "pages": 8.0,
+       "searches": 6.0,
+       "seconds": 16.856,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "concurrent": 2,
+       "pages": 60,
+       "searches": 20,
+       "seconds": 1800.0,
+       "spend_usd": 1.0
+      },
+      "open": 0,
+      "refusal": null,
+      "remaining": {
+       "pages": 52.0,
+       "searches": 14.0,
+       "seconds": 1783.144,
+       "spend_usd": 1.0
+      },
+      "running": 0,
+      "tasks": 1,
+      "used": {
+       "engine_requests": 14.0,
+       "pages": 8.0,
+       "searches": 6.0,
+       "searxng_requests": 2.0,
+       "seconds": 16.856,
+       "spend_usd": 0.0
+      }
+     },
+     "cooldown": 86400.0,
+     "day": "2026-11-21",
+     "decisions": [
+      {
+       "at": 1795266492.1132588,
+       "autonomy": "notified",
+       "findings": {
+        "new_verified": 1,
+        "pending_id": 2,
+        "resolved_contradictions": 0,
+        "settled_predictions": 0
+       },
+       "pending_id": 2,
+       "task_id": "d7c8d0ab-88e4-4262-994d-fa3016c21e14"
+      },
+      {
+       "at": 1795266475.3512707,
+       "autonomy": {
+        "cost": 1.0,
+        "forecast": 0.5,
+        "hypothesis_id": 1,
+        "info_gain": 0.278072,
+        "key": "numpy releas",
+        "kind": "hypothesis_prediction",
+        "min_gain": 0.05,
+        "mode": "fact_verification",
+        "prediction_id": 1,
+        "priority": 0.722987,
+        "reason": "priority 0.7230 = gain 0.278 x (1 + 1.600) / cost 1.000",
+        "signals": {
+         "contradiction": 0.0,
+         "gap": 0.0,
+         "goal": 0.0,
+         "hypothesis": 1.0,
+         "prediction_uncertainty": 1.0,
+         "source_change": 0.0
+        },
+        "weights": {
+         "contradiction": 1.0,
+         "gap": 0.5,
+         "goal": 1.0,
+         "hypothesis": 0.8,
+         "prediction_uncertainty": 0.8,
+         "source_change": 0.7,
+         "stale": 0.6
+        }
+       },
+       "task_id": "d7c8d0ab-88e4-4262-994d-fa3016c21e14"
+      },
+      {
+       "at": 1795266475.0651276,
+       "autonomy": "enabled",
+       "by": "owner:cli",
+       "task_id": null
+      }
+     ],
+     "enabled": true,
+     "idle_interval": 300.0,
+     "min_gain": 0.05,
+     "prices_usd": {
+      "page": 0.0,
+      "search": 0.0
+     },
+     "record": {
+      "disabled_at": null,
+      "enabled_at": 1795266475.0651276,
+      "enabled_by": "owner:cli"
+     },
+     "switch": true,
+     "user": {
+      "committed": {
+       "pages": 0.0,
+       "searches": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "pages": 1200,
+       "searches": 400,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "open": 0,
+      "refusal": null,
+      "remaining": {
+       "pages": 1200.0,
+       "searches": 400.0,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "tasks": 0,
+      "used": {
+       "engine_requests": 0.0,
+       "pages": 0.0,
+       "searches": 0.0,
+       "searxng_requests": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      }
+     },
+     "weights": {
+      "contradiction": 1.0,
+      "gap": 0.5,
+      "goal": 1.0,
+      "hypothesis": 0.8,
+      "prediction_uncertainty": 0.8,
+      "source_change": 0.7,
+      "stale": 0.6
+     }
+    },
+    "seconds": 0.18
+   }
+  },
+  {
+   "step": "investigation outcome",
+   "at": 1795266492.548,
+   "tasks": [
+    {
+     "id": "d7c8d0ab-88e4-4262-994d-fa3016c21e14",
+     "origin": "curiosity",
+     "mode": "fact_verification",
+     "status": "completed",
+     "usage": {
+      "browser_sessions": 0,
+      "bytes": 707028,
+      "pages": 8,
+      "queries": 6,
+      "requests": 28,
+      "seconds": 16.856,
+      "tokens": 385
+     },
+     "budget": {
+      "max_browser_sessions": 0,
+      "max_bytes": 20000000,
+      "max_concurrency": 4,
+      "max_context_tokens": 2000,
+      "max_depth": 0,
+      "max_pages": 8,
+      "max_queries": 6,
+      "max_requests": 40,
+      "max_seconds": 120
+     },
+     "search_counts": {
+      "engine_requests": 14,
+      "searxng_requests": 2
+     },
+     "ledger": {
+      "scope": "autonomous",
+      "day": "2026-11-21",
+      "state": "settled",
+      "allowed": {
+       "pages": 8,
+       "searches": 6,
+       "seconds": 120.0,
+       "spend_usd": 0.0
+      },
+      "used": {
+       "bytes": 707028,
+       "engine_requests": 14,
+       "pages": 8,
+       "requests": 28,
+       "searches": 6,
+       "searxng_requests": 2,
+       "seconds": 16.856,
+       "spend_usd": 0.0
+      }
+     },
+     "ranking_inputs": [
+      {
+       "cost": 1.0,
+       "forecast": 0.5,
+       "hypothesis_id": 1,
+       "info_gain": 0.278072,
+       "key": "numpy releas",
+       "kind": "hypothesis_prediction",
+       "min_gain": 0.05,
+       "mode": "fact_verification",
+       "prediction_id": 1,
+       "priority": 0.722987,
+       "reason": "priority 0.7230 = gain 0.278 x (1 + 1.600) / cost 1.000",
+       "signals": {
+        "contradiction": 0.0,
+        "gap": 0.0,
+        "goal": 0.0,
+        "hypothesis": 1.0,
+        "prediction_uncertainty": 1.0,
+        "source_change": 0.0
+       },
+       "weights": {
+        "contradiction": 1.0,
+        "gap": 0.5,
+        "goal": 1.0,
+        "hypothesis": 0.8,
+        "prediction_uncertainty": 0.8,
+        "source_change": 0.7,
+        "stale": 0.6
+       }
+      }
+     ],
+     "autonomy_decisions": [
+      {
+       "autonomy": "notified",
+       "findings": {
+        "new_verified": 1,
+        "pending_id": 2,
+        "resolved_contradictions": 0,
+        "settled_predictions": 0
+       },
+       "pending_id": 2
+      }
+     ],
+     "sources": [
+      {
+       "domain": "pypi.org",
+       "url": "https://pypi.org/project/numpy",
+       "kind": "api",
+       "published_at": 1794778210.0
+      },
+      {
+       "domain": "npmjs.com",
+       "url": "https://npmjs.com/package/numpy",
+       "kind": "api",
+       "published_at": 1504086381.0
+      },
+      {
+       "domain": "numpy.org",
+       "url": "https://numpy.org/devdocs/release/2.5.5-notes.html",
+       "kind": "page",
+       "published_at": null
+      },
+      {
+       "domain": "numpy.org",
+       "url": "https://numpy.org/doc/stable/release.html",
+       "kind": "page",
+       "published_at": null
+      },
+      {
+       "domain": "newreleases.io",
+       "url": "https://newreleases.io/project/github/numpy/numpy/release/v2.5.5",
+       "kind": "page",
+       "published_at": 1794785710.0
+      },
+      {
+       "domain": "joomla.org",
+       "url": "https://joomla.org/announcements/release-news/joomla-255-released.html",
+       "kind": "page",
+       "published_at": 1339977600.0
+      },
+      {
+       "domain": "mongodb.com",
+       "url": "https://mongodb.com/community/forums/t/mongodb-c-driver-2-5-5-released/343721",
+       "kind": "page",
+       "published_at": 1790253305.0
+      },
+      {
+       "domain": "psycopg.org",
+       "url": "https://psycopg.org/articles/2015/02/09/psycopg-26-and-255-released",
+       "kind": "page",
+       "published_at": 1423440000.0
+      }
+     ],
+     "providers": [
+      "npm:None",
+      "pypi:None",
+      "searxng:None",
+      "searxng:docker hub",
+      "searxng:duckduckgo",
+      "searxng:mwmbl"
+     ],
+     "verification": [
+      {
+       "basis": "registry_record",
+       "category": "time_sensitive",
+       "key": "numpy pypi releas version",
+       "state": "supported"
+      },
+      {
+       "basis": null,
+       "category": "numerical",
+       "key": "bug cast input releas",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "historical",
+       "key": "contribut peopl releas total",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "numerical",
+       "key": "fix numpy patch releas",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "stable",
+       "key": "larg patch releas unusual",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "numerical",
+       "key": "pull releas request total",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "numerical",
+       "key": "python releas version",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "time_sensitive",
+       "key": "ci github infrastructur releas",
+       "state": "temporally_unresolved"
+      },
+      {
+       "basis": null,
+       "category": "time_sensitive",
+       "key": "numpy stringdtyp typeerror utf",
+       "state": "temporally_unresolved"
+      },
+      {
+       "basis": null,
+       "category": "numerical",
+       "key": "python releas version",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "numerical",
+       "key": "blak maas releas rous",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "historical",
+       "key": "contribut everyon releas thank",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "numerical",
+       "key": "driver libbson libmongoc mongodb",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "numerical",
+       "key": "issu resolv",
+       "state": "insufficient"
+      },
+      {
+       "basis": null,
+       "category": "numerical",
+       "key": "psycopg releas two version",
+       "state": "insufficient"
+      }
+     ],
+     "predictions_settled": [],
+     "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+     "consolidation": {
+      "contested": [],
+      "held": [
+       {
+        "hypothesis_id": 2,
+        "key": "bug cast input releas",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.643 (numerical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "#33294: BUG: release the input of casts to object when move_references...",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 3,
+        "key": "contribut peopl releas total",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.643 (historical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "A total of 12 people contributed to this release.",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 4,
+        "key": "fix numpy patch releas",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.643 (numerical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "NumPy 2.5.5 is a patch release that fixes bugs discovered after the 2.5.4",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 5,
+        "key": "larg patch releas unusual",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.643 (stable: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "It is unusually large for a patch release due to bugs discovered",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 6,
+        "key": "pull releas request total",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.643 (numerical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "A total of 37 pull requests were merged for this release.",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 7,
+        "key": "python releas version",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.643 (numerical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "This release supports Python versions 3.12-3.15.",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 8,
+        "key": "ci github infrastructur releas",
+        "reasons": [
+         "verification state temporally_unresolved (0 independent group(s) support, 0 contradict; posterior 0.500 (time_sensitive: 2 group(s) needed, undated sources do not count)): kept as a research opportunity, not knowledge",
+         "0 independent source(s) < 2 required",
+         "no source dated inside the time window establishes that it holds now"
+        ],
+        "statement": "It is unusually large for a patch release due to bugs discovered during continuing work on strings for the upcoming 2.6.0 release, ongoing threading work, the eMudhra compromise fixes, and updates in GitHub CI infrastructure.",
+        "status": "single_source",
+        "verification": "temporally_unresolved"
+       },
+       {
+        "hypothesis_id": 9,
+        "key": "numpy stringdtyp typeerror utf",
+        "reasons": [
+         "verification state temporally_unresolved (0 independent group(s) support, 0 contradict; posterior 0.500 (time_sensitive: 2 group(s) needed, undated sources do not count)): kept as a research opportunity, not knowledge",
+         "0 independent source(s) < 2 required",
+         "no source dated inside the time window establishes that it holds now"
+        ],
+        "statement": "Casting a structured void dtype or subarray dtype to numpy.dtypes.StringDType now raises a TypeError instead of interpreting the raw bytes of each element as UTF-8.",
+        "status": "single_source",
+        "verification": "temporally_unresolved"
+       },
+       {
+        "hypothesis_id": 7,
+        "key": "python releas version",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.615 (numerical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "This release supports Python versions 3.12-3.15.",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 10,
+        "key": "blak maas releas rous",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.583 (numerical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "I wish to thank all the people who have contributed to these releases, and especially Blake Rouse and the MAAS Team for the development of the large objects 64 bits API support.",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 11,
+        "key": "contribut everyon releas thank",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.643 (historical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "Thanks to everyone who contributed to this release.",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 12,
+        "key": "driver libbson libmongoc mongodb",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.583 (numerical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "Announcing 2.5.5 of libbson and libmongoc, the libraries constituting the MongoDB C Driver.",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 13,
+        "key": "issu resolv",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.583 (numerical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "All the issues resolved in 2.5.5",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "hypothesis_id": 14,
+        "key": "psycopg releas two version",
+        "reasons": [
+         "verification state insufficient (1 independent group(s) support, 0 contradict; posterior 0.583 (numerical: 2 group(s) needed)): kept as a research opportunity, not knowledge",
+         "1 independent source(s) < 2 required (single source that is not an authoritative record)"
+        ],
+        "statement": "We have just released two Psycopg versions: 2.5.5 containing a few bug fixes and 2.6 introducing some new features.",
+        "status": "single_source",
+        "verification": "insufficient"
+       },
+       {
+        "key": "",
+        "reasons": [
+         "every claim comes from a source with instruction-like content (held, never knowledge)"
+        ],
+        "statement": "(withheld: the statement carries instruction-like content)",
+        "status": "insufficient"
+       },
+       {
+        "key": "",
+        "reasons": [
+         "every claim comes from a source with instruction-like content (held, never knowledge)"
+        ],
+        "statement": "(withheld: the statement carries instruction-like content)",
+        "status": "insufficient"
+       },
+       {
+        "key": "",
+        "reasons": [
+         "every claim comes from a source with instruction-like content (held, never knowledge)"
+        ],
+        "statement": "(withheld: the statement carries instruction-like content)",
+        "status": "insufficient"
+       },
+       {
+        "key": "",
+        "reasons": [
+         "every claim comes from a source with instruction-like content (held, never knowledge)"
+        ],
+        "statement": "(withheld: the statement carries instruction-like content)",
+        "status": "insufficient"
+       },
+       {
+        "key": "",
+        "reasons": [
+         "every claim comes from a source with instruction-like content (held, never knowledge)"
+        ],
+        "statement": "(withheld: the statement carries instruction-like content)",
+        "status": "insufficient"
+       },
+       {
+        "key": "",
+        "reasons": [
+         "every claim comes from a source with instruction-like content (held, never knowledge)"
+        ],
+        "statement": "(withheld: the statement carries instruction-like content)",
+        "status": "insufficient"
+       },
+       {
+        "key": "",
+        "reasons": [
+         "every claim comes from a source with instruction-like content (held, never knowledge)"
+        ],
+        "statement": "(withheld: the statement carries instruction-like content)",
+        "status": "insufficient"
+       },
+       {
+        "key": "",
+        "reasons": [
+         "every claim comes from a source with instruction-like content (held, never knowledge)"
+        ],
+        "statement": "(withheld: the statement carries instruction-like content)",
+        "status": "insufficient"
+       }
+      ],
+      "pending": [
+       1
+      ],
+      "provisional": [
+       1
+      ],
+      "questions_deferred": 0,
+      "review_question": null,
+      "strengthened": [],
+      "superseded": [],
+      "unchanged": []
+     },
+     "limitations": [
+      "wikipedia: rate_limited: HTTP 429",
+      "wikipedia: rate_limited: host backoff in force",
+      "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+      "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 1 sentence(s) passed the citation and claim-state guard, 4 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+     ]
+    }
+   ],
+   "notifications": [
+    {
+     "scope": "web:autonomy:d7c8d0ab-88e4-4262-994d-fa3016c21e14",
+     "question": "Autonomous research \u00abnumpy 2.5.5 was released\u00bb found: 1 newly verified statement(s) (knowledge candidates). See the console (Research) or `nsf web evidence` for the sources; answer to dismiss."
+    }
+   ],
+   "predictions": [
+    {
+     "id": 1,
+     "hypothesis_id": 1,
+     "probability": 0.5,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 2,
+     "hypothesis_id": 2,
+     "probability": 0.642857,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 3,
+     "hypothesis_id": 3,
+     "probability": 0.642857,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 4,
+     "hypothesis_id": 4,
+     "probability": 0.642857,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 5,
+     "hypothesis_id": 5,
+     "probability": 0.642857,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 6,
+     "hypothesis_id": 6,
+     "probability": 0.642857,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 7,
+     "hypothesis_id": 7,
+     "probability": 0.642857,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 8,
+     "hypothesis_id": 8,
+     "probability": 0.5,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 9,
+     "hypothesis_id": 9,
+     "probability": 0.5,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 10,
+     "hypothesis_id": 10,
+     "probability": 0.583333,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 11,
+     "hypothesis_id": 11,
+     "probability": 0.642857,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 12,
+     "hypothesis_id": 12,
+     "probability": 0.583333,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 13,
+     "hypothesis_id": 13,
+     "probability": 0.583333,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 14,
+     "hypothesis_id": 14,
+     "probability": 0.583333,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    },
+    {
+     "id": 15,
+     "hypothesis_id": null,
+     "probability": 0.655172,
+     "outcome": null,
+     "checked_at": null,
+     "observation": null
+    }
+   ]
+  },
+  {
+   "step": "suggestions after the run (new research opportunities ranked from the records)",
+   "at": 1795266492.707,
+   "candidates": {
+    "argv": [
+     "nsf",
+     "web",
+     "autonomy",
+     "candidates",
+     "--limit",
+     "5"
+    ],
+    "exit": 0,
+    "json": {
+     "chosen": [],
+     "min_gain": 0.05,
+     "refused": [
+      {
+       "cost": 1.0,
+       "forecast": 0.5,
+       "hypothesis_id": 8,
+       "info_gain": 0.278072,
+       "key": "ci github infrastructur releas",
+       "kind": "hypothesis_prediction",
+       "mode": "fact_verification",
+       "objective": "It is unusually large for a patch release due to bugs discovered during continuing work on strings for the upcoming 2.6.0 release, ongoing threading work, the eMudhra compromise fixes, and updates in GitHub CI infrastructure.",
+       "prediction_id": 8,
+       "priority": 0.862023,
+       "reason": "known only from autonomous research and unrelated to an active goal: not pursued (autonomy does not feed on its own by-products)",
+       "signals": {
+        "contradiction": 0.0,
+        "gap": 1.0,
+        "goal": 0.0,
+        "hypothesis": 1.0,
+        "prediction_uncertainty": 1.0,
+        "source_change": 0.0,
+        "stale": 0.0
+       },
+       "statement": "It is unusually large for a patch release due to bugs discovered during continuing work on strings for the upcoming 2.6.0 release, ongoing threading work, the eMudhra compromise fixes, and updates in GitHub CI infrastructure."
+      },
+      {
+       "cost": 1.0,
+       "forecast": 0.5,
+       "hypothesis_id": 1,
+       "info_gain": 0.278072,
+       "key": "numpy releas",
+       "kind": "hypothesis_prediction",
+       "mode": "fact_verification",
+       "objective": "numpy 2.5.5 was released",
+       "prediction_id": 1,
+       "priority": 0.722987,
+       "reason": "investigated autonomously within the last 86400 s",
+       "signals": {
+        "contradiction": 0.0,
+        "gap": 0.0,
+        "goal": 0.0,
+        "hypothesis": 1.0,
+        "prediction_uncertainty": 1.0,
+        "source_change": 0.0
+       },
+       "statement": "numpy 2.5.5 was released"
+      },
+      {
+       "cost": 1.0,
+       "forecast": 0.5,
+       "hypothesis_id": 9,
+       "info_gain": 0.278072,
+       "key": "numpy stringdtyp typeerror utf",
+       "kind": "hypothesis_prediction",
+       "mode": "fact_verification",
+       "objective": "Casting a structured void dtype or subarray dtype to numpy.dtypes.StringDType now raises a TypeError instead of interpreting the raw bytes of each element as UTF-8.",
+       "prediction_id": 9,
+       "priority": 0.862023,
+       "reason": "known only from autonomous research and unrelated to an active goal: not pursued (autonomy does not feed on its own by-products)",
+       "signals": {
+        "contradiction": 0.0,
+        "gap": 1.0,
+        "goal": 0.0,
+        "hypothesis": 1.0,
+        "prediction_uncertainty": 1.0,
+        "source_change": 0.0,
+        "stale": 0.0
+       },
+       "statement": "Casting a structured void dtype or subarray dtype to numpy.dtypes.StringDType now raises a TypeError instead of interpreting the raw bytes of each element as UTF-8."
+      },
+      {
+       "cost": 1.0,
+       "forecast": 0.583333,
+       "hypothesis_id": 10,
+       "info_gain": 0.270846,
+       "key": "blak maas releas rous",
+       "kind": "hypothesis_prediction",
+       "mode": "fact_verification",
+       "objective": "I wish to thank all the people who have contributed to these releases, and especially Blake Rouse and the MAAS Team for the development of the large objects 64 bits API support.",
+       "prediction_id": 10,
+       "priority": 0.835262,
+       "reason": "known only from autonomous research and unrelated to an active goal: not pursued (autonomy does not feed on its own by-products)",
+       "signals": {
+        "contradiction": 0.0,
+        "gap": 1.0,
+        "goal": 0.0,
+        "hypothesis": 1.0,
+        "prediction_uncertainty": 0.979869,
+        "source_change": 0.0,
+        "stale": 0.0
+       },
+       "statement": "I wish to thank all the people who have contributed to these releases, and especially Blake Rouse and the MAAS Team for the development of the large objects 64 bits API support."
+      },
+      {
+       "cost": 0.75,
+       "forecast": 0.642857,
+       "hypothesis_id": 11,
+       "info_gain": 0.270846,
+       "key": "contribut everyon releas thank",
+       "kind": "gap",
+       "mode": "gap_resolution",
+       "objective": "Thanks everyone contributed release",
+       "prediction_id": 11,
+       "priority": 1.102245,
+       "reason": "known only from autonomous research and unrelated to an active goal: not pursued (autonomy does not feed on its own by-products)",
+       "signals": {
+        "contradiction": 0.0,
+        "gap": 1.0,
+        "goal": 0.0,
+        "hypothesis": 1.0,
+        "prediction_uncertainty": 0.940286,
+        "source_change": 0.0,
+        "stale": 0.0
+       },
+       "statement": "Thanks to everyone who contributed to this release."
+      }
+     ],
+     "weights": {
+      "contradiction": 1.0,
+      "gap": 0.5,
+      "goal": 1.0,
+      "hypothesis": 0.8,
+      "prediction_uncertainty": 0.8,
+      "source_change": 0.7,
+      "stale": 0.6
+     }
+    },
+    "seconds": 0.16
+   }
+  },
+  {
+   "step": "owner lowers the daily autonomous search limit to what was used",
+   "at": 1795266492.842,
+   "result": {
+    "argv": [
+     "nsf",
+     "web",
+     "autonomy",
+     "set",
+     "--policy-json",
+     "{\"autonomous_daily\": {\"searches\": 6}, \"idle_interval\": 0}"
+    ],
+    "exit": 0,
+    "json": {
+     "autonomous": {
+      "committed": {
+       "pages": 8.0,
+       "searches": 6.0,
+       "seconds": 16.856,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "concurrent": 2,
+       "pages": 60,
+       "searches": 6,
+       "seconds": 1800.0,
+       "spend_usd": 1.0
+      },
+      "open": 0,
+      "refusal": "daily autonomous research budget exhausted on 2026-11-21: searches 6 of 6",
+      "remaining": {
+       "pages": 52.0,
+       "searches": 0.0,
+       "seconds": 1783.144,
+       "spend_usd": 1.0
+      },
+      "running": 0,
+      "tasks": 1,
+      "used": {
+       "engine_requests": 14.0,
+       "pages": 8.0,
+       "searches": 6.0,
+       "searxng_requests": 2.0,
+       "seconds": 16.856,
+       "spend_usd": 0.0
+      }
+     },
+     "cooldown": 86400.0,
+     "day": "2026-11-21",
+     "decisions": [
+      {
+       "at": 1795266492.8215215,
+       "autonomy": "policy changed",
+       "changes": {
+        "autonomous_daily": {
+         "searches": 6
+        },
+        "idle_interval": 0.0
+       },
+       "task_id": null
+      },
+      {
+       "at": 1795266492.1132588,
+       "autonomy": "notified",
+       "findings": {
+        "new_verified": 1,
+        "pending_id": 2,
+        "resolved_contradictions": 0,
+        "settled_predictions": 0
+       },
+       "pending_id": 2,
+       "task_id": "d7c8d0ab-88e4-4262-994d-fa3016c21e14"
+      },
+      {
+       "at": 1795266475.3512707,
+       "autonomy": {
+        "cost": 1.0,
+        "forecast": 0.5,
+        "hypothesis_id": 1,
+        "info_gain": 0.278072,
+        "key": "numpy releas",
+        "kind": "hypothesis_prediction",
+        "min_gain": 0.05,
+        "mode": "fact_verification",
+        "prediction_id": 1,
+        "priority": 0.722987,
+        "reason": "priority 0.7230 = gain 0.278 x (1 + 1.600) / cost 1.000",
+        "signals": {
+         "contradiction": 0.0,
+         "gap": 0.0,
+         "goal": 0.0,
+         "hypothesis": 1.0,
+         "prediction_uncertainty": 1.0,
+         "source_change": 0.0
+        },
+        "weights": {
+         "contradiction": 1.0,
+         "gap": 0.5,
+         "goal": 1.0,
+         "hypothesis": 0.8,
+         "prediction_uncertainty": 0.8,
+         "source_change": 0.7,
+         "stale": 0.6
+        }
+       },
+       "task_id": "d7c8d0ab-88e4-4262-994d-fa3016c21e14"
+      },
+      {
+       "at": 1795266475.0651276,
+       "autonomy": "enabled",
+       "by": "owner:cli",
+       "task_id": null
+      }
+     ],
+     "enabled": true,
+     "idle_interval": 0.0,
+     "min_gain": 0.05,
+     "prices_usd": {
+      "page": 0.0,
+      "search": 0.0
+     },
+     "record": {
+      "disabled_at": null,
+      "enabled_at": 1795266475.0651276,
+      "enabled_by": "owner:cli"
+     },
+     "switch": true,
+     "user": {
+      "committed": {
+       "pages": 0.0,
+       "searches": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "pages": 1200,
+       "searches": 400,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "open": 0,
+      "refusal": null,
+      "remaining": {
+       "pages": 1200.0,
+       "searches": 400.0,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "tasks": 0,
+      "used": {
+       "engine_requests": 0.0,
+       "pages": 0.0,
+       "searches": 0.0,
+       "searxng_requests": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      }
+     },
+     "weights": {
+      "contradiction": 1.0,
+      "gap": 0.5,
+      "goal": 1.0,
+      "hypothesis": 0.8,
+      "prediction_uncertainty": 0.8,
+      "source_change": 0.7,
+      "stale": 0.6
+     }
+    },
+    "seconds": 0.13
+   }
+  },
+  {
+   "step": "idle investigator refuses",
+   "at": 1795266492.952,
+   "result": {
+    "argv": [
+     "nsf",
+     "web",
+     "autonomy",
+     "idle"
+    ],
+    "exit": 0,
+    "json": {
+     "action": "refused",
+     "reason": "daily autonomous research budget exhausted on 2026-11-21: searches 6 of 6"
+    },
+    "seconds": 0.11
+   }
+  },
+  {
+   "step": "autonomous submit refused; user research unaffected (separate budget)",
+   "at": 1795266492.954,
+   "autonomous_refusal": "daily autonomous research budget exhausted on 2026-11-21: searches 6 of 6",
+   "user_task": {
+    "id": "0bb53e61-e57a-4e1a-9c4d-d2ec7e872fe0",
+    "status": "queued",
+    "origin": "cli"
+   }
+  },
+  {
+   "step": "final status",
+   "at": 1795266493.059,
+   "status": {
+    "argv": [
+     "nsf",
+     "web",
+     "autonomy",
+     "status"
+    ],
+    "exit": 0,
+    "json": {
+     "autonomous": {
+      "committed": {
+       "pages": 8.0,
+       "searches": 6.0,
+       "seconds": 16.856,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "concurrent": 2,
+       "pages": 60,
+       "searches": 6,
+       "seconds": 1800.0,
+       "spend_usd": 1.0
+      },
+      "open": 0,
+      "refusal": "daily autonomous research budget exhausted on 2026-11-21: searches 6 of 6",
+      "remaining": {
+       "pages": 52.0,
+       "searches": 0.0,
+       "seconds": 1783.144,
+       "spend_usd": 1.0
+      },
+      "running": 0,
+      "tasks": 1,
+      "used": {
+       "engine_requests": 14.0,
+       "pages": 8.0,
+       "searches": 6.0,
+       "searxng_requests": 2.0,
+       "seconds": 16.856,
+       "spend_usd": 0.0
+      }
+     },
+     "cooldown": 86400.0,
+     "day": "2026-11-21",
+     "decisions": [
+      {
+       "at": 1795266492.9352436,
+       "autonomy": "refused",
+       "reason": "daily autonomous research budget exhausted on 2026-11-21: searches 6 of 6",
+       "task_id": null
+      },
+      {
+       "at": 1795266492.8215215,
+       "autonomy": "policy changed",
+       "changes": {
+        "autonomous_daily": {
+         "searches": 6
+        },
+        "idle_interval": 0.0
+       },
+       "task_id": null
+      },
+      {
+       "at": 1795266492.1132588,
+       "autonomy": "notified",
+       "findings": {
+        "new_verified": 1,
+        "pending_id": 2,
+        "resolved_contradictions": 0,
+        "settled_predictions": 0
+       },
+       "pending_id": 2,
+       "task_id": "d7c8d0ab-88e4-4262-994d-fa3016c21e14"
+      },
+      {
+       "at": 1795266475.3512707,
+       "autonomy": {
+        "cost": 1.0,
+        "forecast": 0.5,
+        "hypothesis_id": 1,
+        "info_gain": 0.278072,
+        "key": "numpy releas",
+        "kind": "hypothesis_prediction",
+        "min_gain": 0.05,
+        "mode": "fact_verification",
+        "prediction_id": 1,
+        "priority": 0.722987,
+        "reason": "priority 0.7230 = gain 0.278 x (1 + 1.600) / cost 1.000",
+        "signals": {
+         "contradiction": 0.0,
+         "gap": 0.0,
+         "goal": 0.0,
+         "hypothesis": 1.0,
+         "prediction_uncertainty": 1.0,
+         "source_change": 0.0
+        },
+        "weights": {
+         "contradiction": 1.0,
+         "gap": 0.5,
+         "goal": 1.0,
+         "hypothesis": 0.8,
+         "prediction_uncertainty": 0.8,
+         "source_change": 0.7,
+         "stale": 0.6
+        }
+       },
+       "task_id": "d7c8d0ab-88e4-4262-994d-fa3016c21e14"
+      },
+      {
+       "at": 1795266475.0651276,
+       "autonomy": "enabled",
+       "by": "owner:cli",
+       "task_id": null
+      }
+     ],
+     "enabled": true,
+     "idle_interval": 0.0,
+     "min_gain": 0.05,
+     "prices_usd": {
+      "page": 0.0,
+      "search": 0.0
+     },
+     "record": {
+      "disabled_at": null,
+      "enabled_at": 1795266475.0651276,
+      "enabled_by": "owner:cli"
+     },
+     "switch": true,
+     "user": {
+      "committed": {
+       "pages": 0.0,
+       "searches": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      },
+      "limits": {
+       "pages": 1200,
+       "searches": 400,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "open": 0,
+      "refusal": null,
+      "remaining": {
+       "pages": 1200.0,
+       "searches": 400.0,
+       "seconds": 14400.0,
+       "spend_usd": 5.0
+      },
+      "tasks": 0,
+      "used": {
+       "engine_requests": 0.0,
+       "pages": 0.0,
+       "searches": 0.0,
+       "searxng_requests": 0.0,
+       "seconds": 0.0,
+       "spend_usd": 0.0
+      }
+     },
+     "weights": {
+      "contradiction": 1.0,
+      "gap": 0.5,
+      "goal": 1.0,
+      "hypothesis": 0.8,
+      "prediction_uncertainty": 0.8,
+      "source_change": 0.7,
+      "stale": 0.6
+     }
+    },
+    "seconds": 0.1
+   }
+  }
+ ]
+}

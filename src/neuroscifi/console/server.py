@@ -337,7 +337,36 @@ def _web_status(c, p, q, b):
 
 def _web_config_set(c, p, q, b):
     _fields(b, (), WEB_SWITCHES)
-    return {"config": _web_config(wstate.set_config(c.db, b, c.now))}
+    before = wstate.get_config(c.db).autonomous
+    cfg = wstate.set_config(c.db, b, c.now)
+    if "autonomous" in b and (b["autonomous"] or before):   # the owner's switch is recorded (D4)
+        from ..webcortex import autonomy
+        autonomy.record_switch(c.db, bool(b["autonomous"]), c.now, by="owner:console")
+    return {"config": _web_config(cfg)}
+
+
+def _web_autonomy(c, p, q, b):
+    """Controlled autonomy (D4): switch and enable record, both daily budgets, policy, recent decisions and the
+    current ranking (chosen candidates with their signals, and refused ones with the reason)."""
+    from ..webcortex import autonomy
+    out = autonomy.status(c.db, c.now)
+    out["candidates"] = autonomy.candidates(c.db, c.now, limit=5) if wstate.get_config(c.db).enabled else None
+    return out
+
+
+def _web_autonomy_set(c, p, q, b):
+    """{"enabled": bool} and/or policy changes (autonomous_daily, user_daily, prices_usd, min_gain, idle_interval,
+    cooldown)."""
+    from ..webcortex import autonomy
+    _fields(b, (), ("enabled",) + tuple(autonomy.DEFAULTS))
+    changes = {k: v for k, v in b.items() if k != "enabled"}
+    if changes:
+        autonomy.set_policy(c.db, changes, c.now)
+    if "enabled" in b:
+        if not isinstance(b["enabled"], bool):
+            raise ValidationError("enabled must be true or false")
+        (autonomy.enable if b["enabled"] else autonomy.disable)(c.db, c.now, by="owner:console")
+    return autonomy.status(c.db, c.now)
 
 
 def _web_tasks(c, p, q, b):
@@ -512,6 +541,8 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("POST", "presence/scene", _presence_scene),
     ("GET", "web/status", _web_status),
     ("POST", "web/config", _web_config_set),
+    ("GET", "web/autonomy", _web_autonomy),
+    ("POST", "web/autonomy", _web_autonomy_set),
     ("GET", "web/tasks", _web_tasks),
     ("POST", "web/tasks", _web_submit),
     ("GET", f"web/tasks/{SEGMENT}", _web_task),

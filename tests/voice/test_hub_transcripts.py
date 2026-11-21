@@ -18,7 +18,7 @@ def test_migration_is_forward_only_and_creates_voice_tables(instance):
         assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
         names = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"voice_sessions", "voice_segments", "voice_capture", "voice_audio"} <= names
-    assert "voice_sessions" in schema.MIGRATIONS[-1]
+    assert "voice_sessions" in schema.MIGRATIONS[8]     # version 9 (version 10 is controlled autonomy)
 
 
 def test_transcript_model_order_status_authority_correction_search(instance):

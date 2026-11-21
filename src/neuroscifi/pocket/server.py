@@ -55,7 +55,8 @@ INVITATION_SECONDS = 300
 INVITATION_FORMAT = re.compile(r"[A-Za-z0-9_-]{32}\n?")
 ROUTES = {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link","mute","unmute"}
 # Web Cortex research (ADR-028): exist only with --instance-db and the individual's pocket_research switch on.
-RESEARCH = {"research_submit","research_list","research_get","research_cancel"}
+RESEARCH = {"research_submit","research_list","research_get","research_cancel",
+            "research_evidence","research_continue","research_session"}   # 0.7.0: pocket/research_routes.py
 # An omitted mode lets the Spark assess one from the question, as the console does.
 RESEARCH_MODES = ("quick_lookup","deep_research","fact_verification","comparative","scientific","technical")
 MAX_OBJECTIVE = 300
@@ -404,9 +405,13 @@ def task_summary(task):
 
 
 def task_detail(task):
+    usage = task.get("usage") if isinstance(task.get("usage"), dict) else {}
     return task_summary(task) | {"stages_done": task.get("stages_done", []),
                                  "cancel_requested": bool(task.get("cancel_requested")),
                                  "error": _text(task.get("error"), 200) or None,
+                                 # incremental progress (0.7.0): what the Spark has spent on it so far
+                                 "spent": {"searches": _count(usage.get("queries")), "pages": _count(usage.get("pages"))},
+                                 "continued_from": task.get("parent_id") if isinstance(task.get("parent_id"), str) else None,
                                  "report": phone_report(task.get("result"))}
 
 
@@ -418,7 +423,8 @@ def family_tag(family):
 def research(server, token, route, data):
     """Family-scoped research actions (ADR-028). Pocket queues and reads; the Spark's worker runs the task."""
     from ..instance.errors import Conflict, InstanceError, NotFound, ValidationError, WritesPaused
-    from ..webcortex import orchestrator, state
+    from ..webcortex import autonomy, nodes, orchestrator, state
+    from . import research_routes
     family = server.store.family(token)
     db = research_db(server)
     if db is None:
@@ -437,18 +443,22 @@ def research(server, token, route, data):
                 cfg = state.get_config(db)
                 if orchestrator.screen(db, objective, cfg):
                     return 400, {"error": "private_data"}
-                task = server.store.admit(family, lambda: orchestrator.submit(
-                    db, objective, time.time(), mode=mode, origin="pocket", family=digest))
+                try:
+                    task = server.store.admit(family, lambda: orchestrator.submit(
+                        db, objective, time.time(), mode=mode, origin="pocket", family=digest))
+                except autonomy.BudgetRefused:
+                    return 429, {"error": "daily_budget"}   # the owner's daily research budget is spent (D4)
                 return (429, {}) if task is None else (201, {"id": task["id"]})
             if route == "research_list":
                 if data:
                     raise ValueError()
                 return 200, {"tasks": [task_summary(t) for t in orchestrator.listing(db, family=digest, limit=50)]}
+            if route in research_routes.ROUTES or route == "research_cancel":   # 0.7.0: evidence, continue, sessions
+                return research_routes.handle(server, db, digest, nodes.device_digest(db, fingerprint(token)), route,
+                                              data, token_family=family)
             if set(data) != {"id"}:
                 raise ValueError()
             ident = event_id(data["id"])
-            if route == "research_cancel":
-                orchestrator.cancel(db, ident, time.time(), family=digest)
             return 200, task_detail(orchestrator.get(db, ident, family=digest))
         except (NotFound, Conflict):
             return 404, {}  # another family's task, a forgotten one, or web access switched off meanwhile

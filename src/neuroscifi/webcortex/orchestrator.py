@@ -280,6 +280,9 @@ def prepare(db, objective, now, *, mode=None, budget=None, origin="cli", family=
     if mode not in MODES:
         raise ValidationError(f"mode must be one of {', '.join(MODES)}")
     chosen = _budget(cfg, mode, budget)
+    if not proposed:     # D4: a spent daily budget refuses at once (BudgetRefused); _claim charges it atomically
+        from . import autonomy
+        autonomy.require_room(db, origin, now)
     clamped = None
     if is_autonomous(origin):      # a proposal is sized to what is left now; confirm and claim check again
         chosen, clamped = _clamp_autonomous(db, cfg, chosen, now)
@@ -455,6 +458,8 @@ def cancel(db, task_id, now, *, family=None) -> dict:
             reason = "cancelled before it ran" if task["status"] == "queued" or not task["lease_holder"] else \
                 "cancelled: its worker stopped responding"
             state.log_event(db, task_id, "cancelled", {"reason": reason}, now)
+            from . import autonomy
+            autonomy.settle(db, task_id, task["usage"] or {}, task["checkpoint"] or {}, now)
         store.bump_state_version(db)
     return get(db, task_id, family=family)
 
@@ -663,6 +668,10 @@ class _Run:
             results += [r.to_json() for r in outcome.results if r.url not in seen]
             attempts += outcome.attempts
             failures += outcome.failures
+            from .autonomy import search_counts
+            counted = self.checkpoint.setdefault("search_counts", {"searxng_requests": 0, "engine_requests": 0})
+            for key, n in search_counts(outcome.attempts).items():
+                counted[key] = int(counted.get(key, 0)) + n
             self.event("search", {"results": len(outcome.results), "attempts": len(outcome.attempts),
                                   "failures": [f.get("error") for f in outcome.failures][:10], "round": round_no},
                        "discovering")
@@ -1507,6 +1516,10 @@ def _claim(db, task_id, services, *, resume):
                 state.log_event(db, task_id, "cancelled", {"reason": refused}, now)
                 store.bump_state_version(db)
                 return None
+        admitted = _admit(db, task, now, services)
+        if admitted is not None:
+            return None
+        task = state.task(db, task_id)
         changes = {"lease_holder": services.holder, "lease_expires_at": now + LEASE_SECONDS,
                    "executed_on": executed_on(), "started_at": task["started_at"] or now}
         if task["status"] == "failed":
@@ -1516,6 +1529,29 @@ def _claim(db, task_id, services, *, resume):
                         {"holder": services.holder.split(":")[0], "stages_done":
                          (task["checkpoint"] or {}).get("stages_done", [])}, now)
     return state.task(db, task_id)
+
+
+def _admit(db, task, now, services):
+    """D4 (autonomy.admit) inside _claim's transaction: charge the task to its scope's daily budget and clamp its
+    budget to what is left. An autonomous task waits (stays queued, a claim_next lease of this worker released)
+    while the concurrency cap is reached; with its budget spent it is cancelled with the reason. Returns None when
+    the task may start, else a short outcome."""
+    from . import autonomy
+    verdict = autonomy.admit(db, task, now)
+    if verdict.get("wait"):
+        if task["lease_holder"] == services.holder and task["status"] == "queued":
+            state.update_task(db, task["id"], now, lease_holder=None, lease_expires_at=None)
+        return "wait"
+    if verdict.get("refused"):
+        reason = verdict["refused"]
+        state.update_task(db, task["id"], now, status="cancelled", finished_at=now, lease_holder=None,
+                          lease_expires_at=None, error=reason, cancel_requested=1)
+        state.log_event(db, task["id"], "cancelled", {"reason": reason}, now)
+        store.bump_state_version(db)
+        return "refused"
+    if verdict.get("budget"):
+        state.update_task(db, task["id"], now, budget=verdict["budget"])
+    return None
 
 
 def _autonomous_at_claim(db, task, now):
@@ -1646,6 +1682,8 @@ def _execute(db, task_id, services, *, resume):
         try:
             from . import consolidate
             consolidation = consolidate.run(db, task_id, now, holder=run.holder)
+            run.checkpoint["verification"] = list(consolidation.get("verification") or [])[:200]
+            run.checkpoint["predictions_settled"] = list(consolidation.get("predictions_settled") or [])[:50]
             report["consolidation"] = {k: consolidation[k] for k in ("provisional", "strengthened", "unchanged",
                                                                       "superseded", "contested", "held", "pending",
                                                                       "questions_deferred", "review_question")}
@@ -1670,6 +1708,8 @@ def _execute(db, task_id, services, *, resume):
                                                   "limitations": len((report or {}).get("limitations") or []),
                                                   "error": error}, now)
             state.record_mode_outcome(db, run.mode, status, run.usage.to_json(), now)
+            from . import autonomy
+            autonomy.settle(db, task_id, run.usage.to_json(), run.checkpoint, now)
             store.bump_state_version(db)
     except state.LostLease:
         return _lost_lease(db, task_id, run)
@@ -1872,9 +1912,14 @@ def _memory_lead(report, items):
 
 def _after_run(db, task_id, now):
     """Change detection for a monitor's task, however it ran (inline tick, worker, resume): the monitor's
-    comparison with its baseline (scheduler.after_monitor_task). A failure is recorded; the outcome stands."""
+    comparison with its baseline (scheduler.after_monitor_task); for an autonomous task, the owner is notified of
+    meaningful findings only (autonomy.after_task). A failure is recorded; the outcome stands."""
     try:
         origin = db.execute("SELECT origin FROM web_tasks WHERE id=?", (task_id,)).fetchone()
+        if origin is not None and is_autonomous(origin[0]):
+            from . import autonomy
+            autonomy.after_task(db, task_id, now)
+            return
         if origin is None or not str(origin[0]).startswith("monitor:"):
             return
         from . import scheduler

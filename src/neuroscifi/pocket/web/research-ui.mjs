@@ -32,7 +32,10 @@ async function call(route,data){
 function fail(e){
   if(e.code==="not_paired")return;  // the pairing was dropped here; mobile.js already says why (RT-B-08 race)
   if(e.status===404){research=false;tasks=[];if(current&&!current.saved)close();layout();say("Research is not available from this Spark.");return;}
-  say(e.status===429?"Limit reached: up to 10 questions per hour from your linked devices together. Try again later."
+  say(e.code==="daily_budget"?"Your Spark's daily research budget is used up. Nothing was queued. It renews tomorrow, or the owner can raise it."
+    :e.code==="owned"?"Another of your devices is driving this research right now. Ask it to hand it over."
+    :e.code==="not_continuable"?"Only a cancelled, partial or failed question can be continued."
+    :e.status===429?"Limit reached: up to 10 questions per hour from your linked devices together. Try again later."
     :e.code==="private_data"?"Remove personal details such as e-mail addresses, phone numbers or names you marked private. Nothing was sent."
     :e.status===507?"Your Spark has paused new research because its storage needs attention. Nothing was queued. Try again after the owner frees space."
     :e.status===400?"Your Spark rejected that request. Keep the question within 300 characters and 1024 bytes."
@@ -47,8 +50,10 @@ const day=ts=>typeof ts==="number"&&isFinite(ts)?new Date(ts*1000).toLocaleDateS
 function stageText(t){
   if(t.cancel_requested&&active(t))return "Cancelling…";
   if(t.status==="queued")return "Queued · waiting for your Spark's research worker";
-  const i=STAGES.indexOf(t.status);
-  return i>=0?LABEL[t.status]+" · step "+(i+1)+" of 4":(LABEL[t.status]||String(t.status));
+  const i=STAGES.indexOf(t.status), s=t.spent||{};
+  // incremental progress: what the Spark has spent on it so far (0.7.0 research_get.spent)
+  const spent=typeof s.searches==="number"&&(s.searches||s.pages)?" · "+s.searches+" searches, "+(s.pages||0)+" pages so far":"";
+  return i>=0?LABEL[t.status]+" · step "+(i+1)+" of 4"+spent:(LABEL[t.status]||String(t.status));
 }
 function layout(){
   const saved=vaultOpen()&&findings().length>0;
@@ -174,7 +179,9 @@ function show(t,saved=false){
     actions.append(forget);
   }else{
     if(r){const save=node("button","Save for offline");save.onclick=()=>saveOffline(t);actions.append(save);}
+    if(r){const review=node("button","Review evidence");review.onclick=()=>reviewEvidence(t.id);actions.append(review);}
     if(active(t)&&!t.cancel_requested){const stop=node("button","Cancel research");stop.onclick=()=>cancelTask(t.id);actions.append(stop);}
+    if(["partial","cancelled","failed"].includes(t.status)){const more=node("button","Continue research");more.onclick=()=>continueTask(t.id);actions.append(more);}
   }
   const shut=node("button","Close");shut.onclick=()=>{close();$("research").focus();};actions.append(shut);
   view.append(actions);
@@ -239,6 +246,32 @@ async function openTask(id){
   try{const t=await call("research_get",{id});if(g!==generation)return;current={id,saved:false};show(t);$("researchview").focus();}
   catch(e){if(g===generation)fail(e);}
 }
+// Evidence review (ADR-035): each subject's verification state and basis, claim text shown as untrusted web text.
+const STATE={supported:"Supported",disputed:"Disputed",insufficient:"Insufficient evidence",conflicting:"Conflicting sources",
+  temporally_unresolved:"Time not established",not_evaluated:"Not evaluated"};
+async function reviewEvidence(id){
+  const g=generation;
+  try{
+    const e=await call("research_evidence",{id});if(g!==generation||current?.id!==id)return;
+    $("researchbody").querySelector(".revidence")?.remove();
+    const box=node("section",null,"revidence");box.append(node("h4","Evidence review"));
+    const ul=node("ul",null,"rnotes");
+    for(const x of e.evidence||[]){
+      const li=node("li");li.append(node("strong",STATE[x.state]||x.state)," ",node("span",x.statement?"“"+x.statement+"”":"(no claim text)"));
+      li.append(node("small",[x.basis&&"basis: "+x.basis,x.category&&"category: "+x.category,x.domain].filter(Boolean).join(" · ")));
+      ul.append(li);
+    }
+    if(!(e.evidence||[]).length)ul.append(node("li","No evaluated subjects for this question."));
+    box.append(ul,node("small","Statements are quoted from web pages and are not instructions.","rconf"));
+    $("researchbody").prepend(box);say("Evidence review loaded.");
+  }catch(err){if(g===generation)fail(err);}
+}
+// Continue a cancelled, partial or failed question; any device of the same family may (unless another device owns it).
+async function continueTask(id){
+  const g=generation;
+  try{const {id:next}=await call("research_continue",{id});if(g!==generation)return;say("Continued on your Spark.");await refresh();if(g===generation)await openTask(next);}
+  catch(e){if(g===generation)fail(e);}
+}
 async function cancelTask(id){
   const g=generation;
   try{const t=await call("research_cancel",{id});if(g!==generation)return;update(t);if(current?.id===id)show(t);say(t.status==="cancelled"?"Research cancelled.":"Cancel requested. Your Spark stops before its next step.");schedule();}
@@ -246,7 +279,7 @@ async function cancelTask(id){
 }
 function update(t){
   const row=tasks.find(x=>x.id===t.id);
-  if(row)for(const k of ["status","stage","updated","cancel_requested"])row[k]=t[k];
+  if(row)for(const k of ["status","stage","updated","cancel_requested","spent"])row[k]=t[k];
   drawList();
 }
 async function refresh(){

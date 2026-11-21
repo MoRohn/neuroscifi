@@ -14,6 +14,10 @@ tick(db, now, services):
        (>= 2 independent groups) or comes from a primary structured record with relevance >= PRIMARY_RELEVANCE.
    New URLs alone, or a different mix of search results saying the same things, never count.
    A meaningful change is recorded as a 'finding' event ({monitor_id, changes}); the baseline is updated.
+Controlled autonomy (D4, webcortex/autonomy.py) applies on top: every task is charged to the autonomous or the user
+daily budget when it starts (orchestrator._claim), claim_next holds autonomous tasks back while `concurrent` are
+open, and work() asks autonomy.idle for one idle investigation when nothing is queued.
+
 2. only when config.autonomous: due predictions (refresh tasks) and the top curiosity candidates, restricted to
    items already in knowledge or owner monitors, within config.daily_autonomous (tasks, requests and bytes of
    origin curiosity/refresh in the last 24 h). Each autonomous task's request/byte budget is clamped at submit to
@@ -482,13 +486,15 @@ def claim_next(db, holder, now, *, lease=None):
     """Claim one runnable task: a queued task, else a running task whose lease expired or whose worker process is
     dead (same host: services.holder_alive, so a crash is recovered without waiting for the lease to expire).
     Returns (task_id, resume) or None."""
-    from . import orchestrator
+    from . import autonomy, orchestrator
     from .services import holder_alive
     lease = orchestrator.LEASE_SECONDS if lease is None else lease
     with store.write(db):
+        # D4: while `concurrent` autonomous investigations are open, queued autonomous tasks wait their turn.
+        waiting = f" AND NOT {autonomy.AUTONOMOUS_SQL}" if autonomy.full(db, now) else ""
         row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status='queued' AND "
-                         "coalesce(stage,'')!='proposed' AND (lease_holder IS NULL OR lease_expires_at<?) "
-                         "ORDER BY created_at, rowid LIMIT 1", (now,)).fetchone()
+                         "coalesce(stage,'')!='proposed' AND (lease_holder IS NULL OR lease_expires_at<?)"
+                         f"{waiting} ORDER BY created_at, rowid LIMIT 1", (now,)).fetchone()
         resume = False
         if row is None:
             row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status IN ('discovering','reading',"
@@ -515,9 +521,10 @@ def claim_next(db, holder, now, *, lease=None):
 
 
 def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=time.time, fixture=None,
-         providers=None, max_tasks=None) -> dict:
+         providers=None, max_tasks=None, idle=True) -> dict:
     """Drain queued tasks with its own connection. once=True returns when nothing is runnable; otherwise polls
-    every `poll` seconds until `stop` (a threading.Event) is set.
+    every `poll` seconds until `stop` (a threading.Event) is set. With nothing claimable and `idle`, the worker asks
+    autonomy.idle for one autonomous investigation (only when the owner enabled autonomy; D4 budgets apply).
 
     The services (fetcher, public cache, provider registry) are built once and reused across tasks, so per-host
     request spacing and Retry-After backoffs carry over from one task to the next; they are rebuilt when the
@@ -555,6 +562,13 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=ti
                 svc, built_for = service_builder.build(db, db_path, fixture=fixture, providers=providers,
                                                        clock=clock), wanted
             claimed = claim_next(db, svc.holder, float(clock()))
+            if claimed is None and idle:
+                # Nothing queued: an idle investigation when the owner enabled autonomy (autonomy.idle decides,
+                # within the D4 budgets and the minimum expected gain; at most once per idle_interval).
+                from . import autonomy
+                planned = autonomy.idle(db, float(clock()))
+                if planned.get("action") == "queued":
+                    continue
             if claimed is None:
                 if once:
                     break
