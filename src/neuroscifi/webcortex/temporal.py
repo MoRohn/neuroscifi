@@ -367,6 +367,9 @@ _EVENT_RELATIVE = re.compile(      # (?<![\d,.]): "12,900 years ago" is not "900
     r"(?:second|sec|minute|min|hour|hr|day|week|month|year)s?\s+ago)\b", re.IGNORECASE)
 
 
+_SAME_DAY = re.compile(r"today|tonight|this (?:morning|afternoon|evening)", re.IGNORECASE)
+
+
 def _is_may_modal(match_text: str) -> bool:
     return match_text.lstrip().lower().startswith(("may", "on may")) and "May" not in match_text
 
@@ -376,7 +379,9 @@ def event_dates(sentence: str, *, reference: float | None = None) -> list[float]
 
     Absolute dates (full or month-year) are always returned; "Nov 3" without a year and relative expressions
     ("yesterday", "2 days ago", "last Tuesday") need `reference` (normally the publication date) and are skipped
-    without one. Bare years are not event dates (too coarse); text.values() reports them as values."""
+    without one. Bare years are not event dates (too coarse); text.values() reports them as values. An explicit
+    date wins over a same-day word in the same sentence: in "... today, Oct. 28, 2026." the event is on Oct 28,
+    not on the page's publication day (T1-08)."""
     s = sentence or ""
     found: list[tuple[int, int, float]] = []
 
@@ -401,8 +406,9 @@ def event_dates(sentence: str, *, reference: float | None = None) -> list[float]
                 ts = _day(ref.year - 1, _month(month), int(day))   # "Nov 3" said in January means last year
             if ts is not None:
                 found.append((m.start(), m.end(), ts))
+        explicit = bool(found)
         for m in _EVENT_RELATIVE.finditer(s):
-            if not free(m.start(), m.end()):
+            if not free(m.start(), m.end()) or (explicit and _SAME_DAY.fullmatch(m.group(0))):
                 continue
             got = _relative(m.group(0), reference)
             if got is not None:

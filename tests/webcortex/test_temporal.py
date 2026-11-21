@@ -111,6 +111,23 @@ def test_event_dates_absolute_partial_and_relative():
     assert TM.event_dates("Revenue in 2024 was flat.", reference=ref) == []
 
 
+@pytest.mark.parametrize("sentence, expected", [
+    ("Cloud and AI infrastructure demand remains robust despite tech spending concerns, today, Oct. 28, 2026.",
+     [(2026, 10, 28)]),
+    ("Nvidia shares fell today, Nov. 17, 2026.", [(2026, 11, 17)]),
+    ("Nvidia shares fell today, Nov. 17.", [(2026, 11, 17)]),
+    ("Nvidia shares fell this morning (17 November 2026).", [(2026, 11, 17)]),
+    ("Nvidia shares fell today.", [(2026, 11, 20)]),
+    ("Shares fell yesterday after the 3 November 2026 report.", [(2026, 11, 19), (2026, 11, 3)]),
+])
+def test_an_explicit_date_wins_over_today_in_the_same_sentence(sentence, expected):
+    """T1-08: a fool.com listing published 2026-11-20 said "..., today, Oct. 28, 2026."; event_at was the page date
+    (2026-11-20), so a three-week-old item looked timely for "this week". Same-day words (today, tonight, this
+    morning) give way to an explicit date in the sentence; other relative dates are kept."""
+    ref = datetime(2026, 11, 20, 22, 15, 13, tzinfo=timezone.utc).timestamp()
+    assert TM.event_dates(sentence, reference=ref) == [ts(*d) for d in expected]
+
+
 # ---- staleness and windows ---------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("cls", list(TM.FRESHNESS))
