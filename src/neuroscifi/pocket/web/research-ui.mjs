@@ -16,6 +16,20 @@ let sharing=false, notify=false, away=null, reading=null, session=null, shown=nu
 const say=t=>{$("researchmsg").textContent=t;};
 const active=t=>!TERMINAL.includes(t.status);
 
+// R2-05: a question with personal details is refused here, before anything is sent, as the Spark would refuse it.
+// The rules are webcortex/safety.py _PRIVACY_PATTERNS whose rule is the pattern alone, copied verbatim
+// (tests/test_pocket_research.py keeps them identical); kinds that need a check beyond the pattern (card, IBAN,
+// phone, IP address, secret) and the owner's private terms stay with the Spark, which still screens every question.
+const PRIVATE_RULES=[
+  ["api_key",String.raw`(?<![\w-])(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{16,}|sk_(?:live|test)_[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|gh[ousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|AKIA[0-9A-Z]{16}|xox[bpars]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,})`,""],
+  ["jwt",String.raw`(?<![\w-])eyJ[A-Za-z0-9_-]{4,}\.eyJ[A-Za-z0-9_-]{2,}\.[A-Za-z0-9_-]*`,""],
+  ["email",String.raw`(?<![\w.+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b`,""],
+  ["email",String.raw`(?<![\w.+-])[A-Za-z0-9_%+-]+(?:(?:\.|\s*[(\[{<]\s*dot\s*[)\]}>]\s*|\s+dot\s+)[A-Za-z0-9_%+-]+)*(?:\s*[(\[{<]\s*at\s*[)\]}>]\s*|\s+at\s+)[A-Za-z0-9-]+(?:(?:\.|\s*[(\[{<]\s*dot\s*[)\]}>]\s*|\s+dot\s+)[A-Za-z0-9-]+)*(?:\.|\s*[(\[{<]\s*dot\s*[)\]}>]\s*|\s+dot\s+)[A-Za-z]{2,}\b`,"i"],
+  ["mac_address",String.raw`(?<![\w:-])[0-9A-Fa-f]{2}(?:([:-])[0-9A-Fa-f]{2})(?:\1[0-9A-Fa-f]{2}){4}(?![\w:-])`,""],
+  ["file_path",String.raw`(?<![\w:/.~-])(?:/(?:home|Users|root|etc|var|tmp|opt|srv|mnt|media|private|usr|run|proc|data)/[^\s'\"<>]*|~/[^\s'\"<>]+|[A-Za-z]:\\[^\s'\"<>]*|\\\\[\w.-]+\\[^\s'\"<>]+)`,""],
+].map(([kind,source,flags])=>[kind,new RegExp(source,flags)]);
+const PRIVATE_WORDS={api_key:"an API key",jwt:"a login token",email:"an e-mail address",mac_address:"a device (MAC) address",file_path:"a file path"};
+export function privateKinds(text){return [...new Set(PRIVATE_RULES.filter(([,rx])=>rx.test(text)).map(([kind])=>kind))];}
 async function call(route,data){
   const token=window.pocketToken?.();
   if(!token)throw Object.assign(Error("Not paired"),{status:0,code:"not_paired"});  // local state, not a Spark refusal
@@ -461,6 +475,12 @@ $("researchform").onsubmit=async e=>{
   e.preventDefault();
   const data=body(), objective=data.objective;
   if(busy||!paired||!research||!objective||[...objective].length>MAX||bytes(data)>MAX_BYTES)return;
+  const found=privateKinds(objective);
+  if(found.length){
+    const words=found.map(k=>PRIVATE_WORDS[k]), list=words.length>1?words.slice(0,-1).join(", ")+" and "+words.at(-1):words[0];
+    const f=$("objective");f.setAttribute("aria-invalid","true");f.setAttribute("aria-describedby","objectivecount researchmsg");
+    say("Nothing was sent. The question contains "+list+". Remove personal details and submit again.");f.focus();return;
+  }
   busy=true;buttons();const g=generation;
   try{
     const {id}=await call("research_submit",data);if(g!==generation)return;

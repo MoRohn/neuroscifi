@@ -56,16 +56,25 @@ def test_pocket_submit_hint_and_private_refusal_t4_04_t4_05(spark, new_page):
     page.on("request", lambda r: sent.append(r.url) if "/api/research_submit" in r.url else None)
     page.locator("#researchsubmit").click()
     expect(page.locator("#researchmsg")).to_contain_text("Remove personal details")
-    # R2-05: the question was POSTed and refused by the Spark, so the message says that, not "Nothing was sent"
-    expect(page.locator("#researchmsg")).to_contain_text("Refused by your Spark")
-    expect(page.locator("#researchmsg")).to_contain_text("Nothing was stored or searched.")
-    expect(page.locator("#researchmsg")).not_to_contain_text("Nothing was sent")
-    assert sent, "the refusal came from the Spark (the copy must not claim nothing was sent)"
+    # R2-05 (R4): an e-mail address is refused on the phone before anything is sent; no request leaves the page
+    expect(page.locator("#researchmsg")).to_contain_text("Nothing was sent. The question contains an e-mail address.")
+    page.wait_for_timeout(300)
+    assert sent == [], sent
     expect(page.locator("#objective")).to_be_focused()
     expect(page.locator("#objective")).to_have_attribute("aria-invalid", "true")
     assert "researchmsg" in page.locator("#objective").get_attribute("aria-describedby")
     page.locator("#objective").fill("Is the Zephyr maintainer list public?")
     expect(page.locator("#objective")).not_to_have_attribute("aria-invalid", "true")
+    # a kind only the Spark can judge (a phone number needs its context check) is still POSTed and refused there,
+    # and the copy says so rather than "Nothing was sent"
+    page.locator("#objective").fill("Who answers the Zephyr support phone +44 7700 900123?")
+    page.locator("#researchsubmit").click()
+    expect(page.locator("#researchmsg")).to_contain_text("Refused by your Spark")
+    expect(page.locator("#researchmsg")).to_contain_text("Nothing was stored or searched.")
+    expect(page.locator("#researchmsg")).not_to_contain_text("Nothing was sent")
+    assert len(sent) == 1, sent
+    expect(page.locator("#objective")).to_be_focused()
+    expect(page.locator("#objective")).to_have_attribute("aria-invalid", "true")
 
 
 def test_pocket_queued_message_cleared_and_basis_wording_t4_04(spark, new_page):
@@ -273,7 +282,8 @@ def test_changed_views_axe_clean(spark, owner, new_page, width, theme):
     page.locator("#objective").fill("x@y.org")
     page.locator("#researchsubmit").click()
     expect(page.locator("#objective")).to_have_attribute("aria-invalid", "true")
-    expect(page.locator("#researchmsg")).to_contain_text("Refused by your Spark")
+    # R2-05 (R4): an e-mail address is refused on the phone before sending; the refused state is what axe checks
+    expect(page.locator("#researchmsg")).to_contain_text("Nothing was sent. The question contains an e-mail address.")
     assert page.evaluate(AXE_ALL) == []
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     # R2-06: the evidence review with each no-basis wording

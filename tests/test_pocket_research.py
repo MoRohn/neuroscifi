@@ -413,3 +413,21 @@ def test_phone_report_carries_copies_and_independent_sources():
     items = report["answer"]
     assert (items[0]["copies"], items[0]["independent_sources"]) == (3, 1)
     assert (items[1]["copies"], items[1]["independent_sources"]) == (None, None)
+
+
+def test_pocket_private_data_rules_are_the_sparks_own():
+    """R2-05 (R4 retest): Pocket POSTed a question with an e-mail address to research_submit and showed the Spark's
+    400 refusal. research-ui.mjs now refuses before sending, with copies of the webcortex/safety.py patterns whose
+    rule is the pattern alone; this keeps the copies identical (source and flags) and the Spark still screens."""
+    import re
+    from pathlib import Path
+    from neuroscifi.webcortex import safety
+    js = (Path(bridge.__file__).parent / "web" / "research-ui.mjs").read_text()
+    block = re.search(r"const PRIVATE_RULES=\[\n(.*?)\n\]\.map", js, re.S).group(1)
+    copied = re.findall(r'\["(\w+)",String\.raw`([^`]*)`,"(i?)"\],', block)
+    assert len(copied) == len(block.splitlines()), block
+    expected = [(k, rx.pattern, "i" if rx.flags & re.IGNORECASE else "") for k, rx in safety._PRIVACY_PATTERNS
+                if k in {k for k, _, _ in copied}]
+    assert copied == expected
+    for kind in ("credit_card", "iban", "phone", "ipv4", "ipv6", "secret"):     # need a check beyond the pattern
+        assert kind not in {k for k, _, _ in copied}
