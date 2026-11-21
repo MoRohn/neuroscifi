@@ -242,6 +242,36 @@ def test_honest_uncertainty_and_meta_statements_about_the_evidence_pass():
     assert ok == [] and "2.5.5" in bad[0]["reasons"][0] and "verified" in bad[1]["reasons"][0]
 
 
+def test_a_missing_evidence_clause_may_name_the_questions_numbers():
+    """N1 (R4 retest, T1-09 residual): "There is insufficient evidence to determine whether NumPy 2.5.5 is secure"
+    and "..., the evidence does not state whether version 2.5.5 is recommended" were rejected with "number(s) not in
+    the cited evidence: 2.5.5". A question's number inside the clause that says the evidence is missing names what
+    is missing; it asserts no figure. A number outside that clause, or one the question does not hold, is still
+    checked against the evidence."""
+    b = numpy_bundle()
+    b["question"] = "Is numpy 2.5.5 secure?"
+    ok, bad = reasoning.guard([
+        {"text": "There is insufficient evidence to determine whether NumPy 2.5.5 is secure, as no claims about its "
+                 "security status are supported.", "sources": [1], "claims": ["C1"]},
+        {"text": "According to one source, NumPy is the fundamental package for scientific computing, but the "
+                 "evidence does not state "
+                 "whether version 2.5.5 is secure.", "sources": [1], "claims": ["C1"]},
+        {"text": "Whether numpy 2.5.5 is secure remains unclear.", "sources": [1], "claims": ["C1"]},
+        {"text": "The security of numpy 2.5.5 is not addressed in the cited sources.", "sources": [1],
+         "claims": ["C1"]}], b)
+    assert bad == [] and len(ok) == 4, bad
+    ok, bad = reasoning.guard([
+        # speculation outside the caveat: the question's number is asserted, not named as missing
+        {"text": "NumPy 2.5.5 will likely be secure, though it is unclear.", "sources": [1], "claims": ["C1"]},
+        {"text": "There is insufficient evidence, but numpy 2.5.5 is probably secure.", "sources": [1],
+         "claims": ["C1"]},
+        # a figure the question does not hold, inside the caveat
+        {"text": "There is insufficient evidence to determine whether numpy 2.5.6 is secure.", "sources": [1],
+         "claims": ["C1"]}], b)
+    assert ok == [] and len(bad) == 3
+    assert all(any("not in the cited evidence" in r for r in x["reasons"]) for x in bad), bad
+
+
 def test_sources_disagree_passes_when_the_verdict_is_conflicting():
     """R1-05 (s4a): the verdict was conflicting (100 vs 86 billion) but each cited claim's own state was
     insufficient, so "Sources disagree on the exact number ..." was rejected. The guard uses the verdict's state too."""

@@ -197,6 +197,49 @@ _UNCERTAINTY = re.compile(r"\b(?:it\s+is|it's|it\s+remains|remains|is\s+still|ar
                           r"(?:unclear|uncertain|unknown|not\s+clear|not\s+known|undetermined)\b"
                           r"|^(?:it\s+is\s+)?(?:unclear|uncertain|unknown)\s+(?:whether|if|how|when|which|what)\b",
                           re.IGNORECASE)
+# N1 (R4, T1-09 residual): a clause that says the evidence is missing ("There is insufficient evidence to determine
+# whether NumPy 2.5.5 is secure", "..., but the evidence does not state whether version 2.5.5 is recommended",
+# "Whether 2.5.5 is secure remains unclear") names what is missing; the question's own numbers in that clause assert
+# no figure. The clause runs from the marker to the next ";", ":" or contrastive conjunction; a leading
+# "Whether ..." subject and the subject of a passive "... is not addressed in the evidence" belong to it.
+_GAP_MARK = re.compile(
+    r"\b(?:insufficient|not\s+enough|too\s+little|inadequate|limited|no\s+(?:clear\s+|direct\s+|specific\s+)?)"
+    r"\s*(?:evidence|information|data)\s+(?:to\s+(?:determine|establish|confirm|say|assess|judge|conclude|know)|"
+    r"(?:on|about|regarding|whether|as\s+to|for|that)\b)"
+    r"|\black(?:s|ing)?\s+(?:of\s+)?(?:\w+\s+)?(?:evidence|information|data)\b"
+    r"|\b(?:evidence|sources?|claims?|documents?)(?:\s+(?:provided|available|cited|retrieved|read))?\s+(?:do|does|did)"
+    r"\s+not\s+(?:\w+\s+)?(?:contain|provide|include|specify|state|mention|establish|say|give|identify|address|answer|"
+    r"report|cover|confirm|show|indicate|clarify|determine|reveal|describe|explain)\b"
+    r"|\bno\s+(?:provided\s+|available\s+|cited\s+)?(?:evidence|sources?|claims?|documents?)\s+(?:states?|provides?|"
+    r"mentions?|gives?|establish(?:es)?|specif(?:y|ies)|contains?|reports?|says?|confirms?|addresses|answers?)\b"
+    r"|\bcannot\s+be\s+(?:established|determined|confirmed|answered)\b", re.IGNORECASE)
+_GAP_PASSIVE = re.compile(
+    r"\b(?:is|are|was|were|has|have)\s+not\s+(?:been\s+)?(?:\w+\s+){0,2}?(?:evaluated|addressed|covered|discussed|"
+    r"established|stated|mentioned|reported|specified|examined|assessed|described|provided|given|confirmed)\s+(?:in|by)"
+    r"\s+(?:the\s+|any\s+of\s+the\s+)?(?:provided\s+|available\s+|cited\s+|retrieved\s+)?"
+    r"(?:evidence|sources?|claims?|documents?)\b", re.IGNORECASE)
+_CLAUSE_BREAK = re.compile(r"[;:]|,?\s*\b(?:but|however|although|though|while|whereas|yet|nevertheless)\b",
+                           re.IGNORECASE)
+_WHETHER_LEAD = re.compile(r"\s*(?:whether|if)\b", re.IGNORECASE)
+
+
+def _gap_spans(text: str) -> list[tuple[int, int]]:
+    """Character spans of `text` that state missing or insufficient evidence (see _GAP_MARK)."""
+    breaks = [0] + [m.start() for m in _CLAUSE_BREAK.finditer(text)] + [len(text)]
+    spans = []
+    for a, z in zip(breaks, breaks[1:]):
+        clause = text[a:z]
+        for m in _GAP_MARK.finditer(clause):
+            start = a if _WHETHER_LEAD.match(_CLAUSE_BREAK.sub("", clause[:m.start()], count=1)) else a + m.start()
+            spans.append((start, z))
+        for m in _UNCERTAINTY.finditer(clause):
+            start = a if _WHETHER_LEAD.match(_CLAUSE_BREAK.sub("", clause[:m.start()], count=1)) else a + m.start()
+            spans.append((start, z))
+        for m in _GAP_PASSIVE.finditer(clause):
+            spans.append((a + (clause.rfind(",", 0, m.start()) + 1), z))
+    return spans
+
+
 # R2-03: "Another source states ..." must cite a source the answer has not cited yet; "several sources say ..." must
 # cite at least two distinct sources.
 _ANOTHER_SOURCE = re.compile(r"\b(?:another|a\s+second|a\s+different|a\s+separate|a\s+further)\s+(?:\w+\s+)?"
@@ -378,12 +421,16 @@ def hedged(text: str) -> bool:
 
 
 def _numbers(text: str) -> list[str]:
+    return [n for n, _ in _number_positions(text)]
+
+
+def _number_positions(text: str) -> list[tuple[str, int]]:
     out = []
-    text = _CLAIM_ID.sub(" ", text or "")          # "As C1 states": a claim id, not a figure
+    text = _CLAIM_ID.sub(lambda m: " " * len(m.group(0)), text or "")   # "As C1 states": a claim id, not a figure
     for m in _NUMBER.finditer(text):
         if _COUNT.match(text, m.end()) and len(m.group(0)) <= 2:
             continue      # "two sources" written as "2 sources": a count of citations, not a claimed figure
-        out.append(m.group(0).replace(",", ""))
+        out.append((m.group(0).replace(",", ""), m.start()))
     return out
 
 
@@ -505,9 +552,10 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
         reasons.append("attributes it to several sources, but cites fewer than 2 distinct sources")
     cited_sources = [by_source[n] for n in cites if n in by_source]
     allowed = _allowed_numbers(used, cited_sources)
-    if honest_gap or _UNCERTAINTY.search(text):
-        allowed |= set(n.replace(",", "") for n in _NUMBER.findall(b.get("question") or ""))
-    invented = [n for n in _numbers(text) if not _number_ok(n, allowed)]
+    asked = set(n.replace(",", "") for n in _NUMBER.findall(b.get("question") or ""))
+    gaps = [(0, len(text))] if honest_gap else _gap_spans(text)
+    invented = [n for n, at in _number_positions(text) if not _number_ok(n, allowed) and
+                not (n in asked and any(a <= at < z for a, z in gaps))]
     if invented:
         reasons.append(f"number(s) not in the cited evidence: {', '.join(dict.fromkeys(invented))}")
     mismatched = _unit_mismatches(text, [c["text"] for c in used] + [x.get("title") or "" for x in cited_sources])
