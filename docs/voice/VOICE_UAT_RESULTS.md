@@ -67,3 +67,91 @@ WAV fetch + decode + scheduling the rest. From the owner's **last word** add the
 - Whisper occasionally returns "Thank you." / "you" for noise; such finals are dropped (`_noise`).
 - Checkpoints copy the instance database, so a voice session forgotten after a checkpoint still exists in older
   checkpoint files until they are pruned (voice forgets are not replayed on restore).
+
+## RC2 voice follow-ups (2026-11-21, fake-device audio)
+
+All audio below is **fake-device**: Chromium `--use-fake-device-for-media-stream
+--use-file-for-fake-audio-capture=<WAV>` playing speech the deployed Kokoro (am_michael) synthesised, so the
+recognition numbers prove the plumbing, not recognition of the owner's own voice in a room. Services were live on
+loopback: Whisper (ASR :18431), Kokoro (TTS :18432), Qwen3-30B-A3B (vLLM :8811), SearXNG (:8888).
+
+### T2-01: TTS round trip of the reported sentences
+
+Kokoro speaks each sentence and Whisper transcribes the reply WAV back (24 kHz to 16 kHz). Corpus WER is over
+the four sentences ("This is NeuroSciFi.", "The word agentic is new, and NeuroSciFi can say it.", "Kubernetes and
+PyTorch are tools.", "According to ycombinator.com, agentic tools are spreading.").
+
+| TTS server | Pronunciation pass | Corpus WER | What Whisper heard |
+|---|---|---|---|
+| RC1 container (image built 07:26, `/tmp` noexec, no espeak-ng fallback) | RC1 (`Neuro Sci-Fi` respelling) | **30.8 %** | "This is" / "The word is new and can say it." / "and torch our tools." / "According to .com, tools are spreading."; the words NeuroSciFi, agentic and Kubernetes alone gave **0 s** of audio |
+| RC1 container | RC2 (inline phonemes) | 7.7 % | every word spoken; the only mismatch is the spelling "Y Combinator.com" |
+| rebuilt image, `/tmp` exec (fallback loaded) | RC1 | 11.5 % | "Accombinator.com" for ycombinator.com; the rest exact |
+| rebuilt image | RC2 | **7.7 %** | "This is NeuroSciFi." / "... and NeurosciFi can say it." / "Kubernetes and PyTorch are tools." / "According to Y Combinator.com, agentic tools are spreading." |
+
+Root cause: the running container was still the RC1 deployment. Its `/tmp` was mounted noexec and its
+`tts_server.py` predated 976946f, so misaki had no out-of-vocabulary fallback. The image was rebuilt from
+`deploy/voice` and only the TTS container was restarted with `run.sh` (`/tmp` exec). That took 28 s of TTS
+downtime, and `nsf voice health` was ready afterwards (round-trip WER 0.0, Kokoro 65 ms, Whisper 234 ms).
+`engines.speakable` now sends the names in `engines.PHONEMES` as misaki inline phonemes. Each phoneme string is
+what misaki's own espeak fallback gives for that word, and each was checked by round trip. The names are therefore
+spoken even by a server whose fallback failed (defence in depth). Domains are still read as "x dot com".
+
+### S7: the spoken research request, end to end (two runs)
+
+"NeuroSciFi, research the latest developments in agentic AI and summarize their importance." Kokoro now says it
+in full, so the original wording was used.
+
+| | Run 1 | Run 2 |
+|---|---|---|
+| Heard (Whisper) | "NeurosciFi. Research the latest developments in agentic AI and summarize their importance." (WER 0) | same (WER 0) |
+| Task objective / context | `the latest developments in agentic AI` / `{"presentation": "summarize their importance"}` | same |
+| End of utterance → final transcript | 392 ms | 404 ms |
+| End of utterance → acknowledgement audio | 480 ms | 562 ms |
+| End of utterance → answer audio | 17.7 s | 24.1 s |
+| Model answer and guard | `model`: 1 sentence passed the guard, 3 rejected ("states C… (insufficient) as fact without hedging") | `model`: 2 passed, 3 rejected |
+| Spoken text | "Some analysts believe Anthropic may outlast OpenAI amid increasing price competition, though growth is expected to slow." | "Anthropic's recent IPO saw its stock open 33% above the $83 price, …" + "According to one source, Anthropic is seen as more likely than OpenAI to survive the commoditization of agentic AI …" |
+| Spoken reply transcribed back | identical (WER 0.0) | WER 1.7 % ("Anthropik's") |
+
+The instruction reached the answer prompt as a style instruction and was not searched for. The guard ran
+unchanged, and in both runs it removed unhedged sentences built on insufficient claims. RC1 spoke an unrelated
+extractive quote in both of its runs. In RC2 both runs spoke model text that passed the guard. When no sentence
+passes, voice now speaks `reasoning.unanswered` ("The sources read do not establish an answer to: …") and puts the
+quotes below it in the text (unit test). The answer's relevance is limited by what SearXNG returned (IPO and
+pricing news about one vendor), which is a research-quality limit and not a voice defect. Raw records:
+`scratchpad/v07/fv2work/s7_run{1,2}.json`.
+
+### S8: barge-in and Presence F (`test_voice_barge_in_stops_playback`, two runs)
+
+| | Run 1 (alone) | Run 2 (full e2e suite) |
+|---|---|---|
+| User speech onset → playback stopped (includes the 300 ms hold) | 363.4 ms | 287.8 ms |
+| Detection → all sources stopped | 0 ms | 0.1 ms |
+| 150 ms burst while speaking | ignored (overlaps 1, barge-ins 1) | same |
+| Heard back | "What can you do?", "Please stop." (handled as the stop command) | same |
+| Client stop → `nsf:voice` event with `interrupted: true` | 0.5 ms, exactly 1 event | 0.1 ms, 1 event |
+| Client stop → Presence intent shows `user_interruption` | 176.6 ms | 26.9 ms |
+| `user_interruption` before the barge-in | none | none |
+| `user_interruption` shown for | 3.4 s (the client's 1.5 s, then the server's 3 s window) | 3.4 s |
+| Server voice state `interrupted_at` set | yes | yes |
+| Hub averages | ASR 135 ms, reply 151 ms, first sentence 389 ms | ASR 194 ms, reply 194 ms, first sentence 428 ms |
+
+The client and the server now agree on interruptions. A barge-in or stop that cuts a playing reply is marked
+`interrupted: true` on the page's `nsf:voice` event at the same moment `/api/voice/interrupt` is called. A reply
+that simply finishes is not marked (`test_presence.py`). The new assertions fail on the RC1 client: it sent no
+`interrupted` flag, so 0 events were recorded.
+
+### Other RC2 voice fixes (unit-tested)
+
+- A follow-up question that only points back ("Is that version secure?") takes its subject from the conversation's
+  previous question, as the console does. With no earlier question, the reply asks which one is meant and no search
+  starts.
+- An instruction such as "… and summarize their importance" is task context `presentation`, not part of the search
+  terms. It is privacy-screened like the objective, kept on resume, given to the answer prompt as a style
+  instruction only, and recorded in `report.reasoning.presentation`. The guard is unchanged.
+
+### Test counts (RC2 voice lane)
+
+- `pytest -q` (everything but e2e): **2155 passed**, 6 skipped.
+- `tests/e2e/test_voice_e2e.py tests/e2e/test_presence.py tests/e2e/test_console*.py tests/e2e/test_pocket*.py`:
+  **146 passed**, 1 skipped (the opt-in degraded scenario).
+- `ruff check .` clean; `node tests/js/offline_check.mjs` passed.
