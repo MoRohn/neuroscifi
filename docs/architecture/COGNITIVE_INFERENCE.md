@@ -92,50 +92,58 @@ included); failed and cancelled runs keep the extractive report only.
   vs "86 million", "17 days" vs "17 November", "$1.5 million" vs "1.5 billion dollars"; units and scale words are
   normalised, "%" = "percent"; an ambiguous one-letter unit such as "5m" is not judged), or contains
   instruction-like text. `check_sentence` holds these checks.
-- **Honest caveats** (`gap_clause`, `insufficiency`, `_parse_gap`). A sentence that only says what the evidence does
-  not establish asserts no fact: it needs no supported claim, no hedge and (T2-03) no citation, and it may repeat the
-  question's own numbers. The rule fails closed (security review SECREVIEW_GUARD F1–F5): an honest caveat it rejects
-  costs little, because the verdict note below states the gap deterministically. A clause is a caveat about the
-  question when ALL of these hold:
-  1. *Shape.* A negator or absence quantifier (no, not, n't, cannot, never, none, nothing, lack/absence of,
-     insufficient, unable/fail to, too little) scopes over an evidence noun or a confirmation verb (evidence,
-     information, data, source, indication; confirm, establish, indicate, state, show, determine, verify, address,
-     evaluate) with only function words and degree or epistemic modifiers between them, or a knowledge-absence
-     adjective (unclear, unknown, unverified) is its predicate; a verbal predicate hangs on an auxiliary and names the
-     evidence or says it cannot be done; nothing argues against something (`_COUNTER`: disputes, contradicts,
-     otherwise).
-  2. *Before the negation* (F3) every word is a question term (the question's own word, or one sharing its stem:
-     "security" for "secure"), an evidence noun or a function word (`_PREFIX_WORDS`: determiners, prepositions,
-     expletives, aspect nouns such as status/version/release, evidence adjectives such as cited/available/read). An
-     attribute, apposition or endorsement ("the fully audited numpy 2.5.5 release") makes it content. An embedded
-     question ("Whether numpy 2.5.5 is secure cannot be determined") may hold one verb group; "If ..." is no lead.
-  3. *After the evidence predicate* (F2) what is missing is named only as an embedded question (whether/if, one verb
-     group; its words are free in a cited caveat because it asserts nothing) or as a topic of question terms and
-     function words ("about / on / regarding / of the security of numpy 2.5.5", "addresses its security"). A
-     that-complement ("no evidence THAT numpy 2.5.5 is not secure", also "no clear indication that X is secure") and
-     an existential complement ("reports ANY / A SINGLE vulnerability", "no sign OF vulnerability") are absence
-     claims, not caveats; a second negation or a second finite verb outside the embedded question ends it.
-  Clauses (F1) break at every comma, semicolon, colon, dash, bracket, quote, ellipsis and sentence end, and at
-  causal and subordinating conjunctions (so, thus, hence, therefore, because, when, which, but, though ...) and at
-  "and/or" before a new subject or verb; a leading discourse marker ("However, ...") is stripped first. A sentence is
-  a caveat only when every clause is one. The guard reads the sentence NFKC-normalised without format characters
-  (zero-width spaces, direction marks), and its words in any script.
-  *Absence claims and the bundle* (F2, `_absence_problems`): a clause with the shape of rule 1 that is not a caveat
-  and says the evidence holds nothing ("No source reports any vulnerability in numpy 2.5.5"), or has a that- or
-  existential complement, is rejected in any sentence, cited or not: the guard cannot check a claim about what the
-  evidence lacks. A caveat that passes is compared with every bundle claim: one that says the evidence holds nothing
-  ("no source states", "does not address") is rejected when ANY claim contains its topic words (the words that are
-  not the question's, else all of them); one that says the evidence is too weak ("cannot be confirmed",
-  "insufficient evidence", "unclear") when a SUPPORTED claim does.
-  *Uncited caveats* (F5) may hold only the question's terms, stopwords, evidence nouns and verbs, negators and
-  function words; no non-ASCII letter (a Cyrillic "О" in "Оpenssl"); no number in words ("twelve"). Digits are left to
-  the number check, which allows only the question's own inside a caveat.
-  The same negation scope decides the other checks: "cannot be confirmed" calls nothing confirmed, "not reported" or
-  "does not indicate" attributes (hedges) nothing, and a caveat clause does not hedge the factual clause beside it,
-  so "X fixes a critical flaw, but the evidence does not indicate whether it is recommended" is judged on "X fixes a
-  critical flaw". "Gaps include ..." is no caveat (F4): gaps belong in the schema's `gaps` field. Caveats the strict
-  rule rejects on purpose are listed with their reasons in `REJECTED_CAVEATS`
-  (tests/inference/test_inference_reasoning.py).
+- **Honest caveats: a closed grammar** (`_caveat`, `insufficiency`, `gap_clause`). A sentence that only says what the
+  evidence does not establish asserts no fact: it needs no supported claim, no hedge and (T2-03) no citation, and it
+  may repeat the question's own numbers. Two security reviews (SECREVIEW_GUARD F1–F6, SECREVIEW2_GUARD N1–N4) showed
+  that recognising caveats by open-ended structure leaks: a statement after a comma or inside "whether ...", the
+  question's predicate as an attribute ("the secure numpy 2.5.5 release"), a word sharing a stem with the question
+  ("withdrawn" for "with"). **Free-form caveats are therefore rejected on purpose; the deterministic rules note (below)
+  carries the message.** A sentence is a caveat only when, after NFKC, unicode punctuation as ASCII and lower case, the
+  whole of it is one of these forms (one sentence, a final "." at most):
+  - `[LEAD] SUBJECT NEGATED-PREDICATE whether|if Q-CLAUSE [ADVERBIAL]` — "No source states whether numpy 2.5.5 is
+    secure."
+  - `[LEAD] whether Q-CLAUSE PASSIVE-NEGATION [ADVERBIAL]` — "Whether numpy 2.5.5 is secure cannot be determined
+    from the evidence."
+  - `[LEAD] it is|remains unclear|unknown|uncertain|not established|not known|not clear whether Q-CLAUSE [ADVERBIAL]`
+  - `[LEAD] there is insufficient|no|not enough evidence|information|data to determine|establish|confirm|verify
+    whether Q-CLAUSE [ADVERBIAL]`, and `the evidence is insufficient to determine whether Q-CLAUSE`
+  - `[LEAD] [the] ATTRIBUTE of ENTITY PASSIVE-NEGATION [ADVERBIAL]` — "The security of numpy 2.5.5 cannot be confirmed
+    based on the available evidence."
+  - `[LEAD] SUBJECT NEGATED-PREDICATE the ATTRIBUTE of ENTITY [ADVERBIAL]` — "None of the sources addresses the
+    security of numpy 2.5.5."
+  - `[LEAD] there is insufficient|no|not enough|a lack of evidence|information|data on|about|regarding the ATTRIBUTE of
+    ENTITY [ADVERBIAL]`
+
+  SUBJECT: the (available|cited|provided) evidence, the (cited) sources, the provided claims, no (cited) source, none of
+  the (cited) sources, no claim. NEGATED-PREDICATE: does not / do not / did not / cannot (and their contractions)
+  + state, establish, confirm, show, indicate, address, evaluate, determine, verify, say, specify (the third-person form
+  after "no source" / "none of the sources" / "no claim"), optionally with yet / independently / directly.
+  PASSIVE-NEGATION: is/are/was not, has/have not been, cannot be + addressed, established, confirmed, evaluated,
+  verified, determined, stated, shown, indicated, specified; remains unknown/unclear/unconfirmed/unverified/
+  undetermined; lacks (independent) evidence. LEAD: however, but, still, also, currently, overall, unfortunately,
+  importantly, notably, that said, in short, in summary, note that (and, in a compound sentence, a joining and / while /
+  although / though / yet / as). ADVERBIAL: in the (available|cited|provided) evidence/sources, in the provided claims,
+  based on the available evidence, from the (available|cited) evidence/sources, by any of the cited sources, by the
+  (cited) sources, independently, directly, yet. **Q-CLAUSE**: exactly the question's own tokens, in the question's
+  order, plus at most one "the"/"a" and one copula (is/are/was): no new word of any kind, no stem or prefix matching.
+  **ATTRIBUTE of ENTITY**: the question's predicate mapped by a closed table (secure → security / security status,
+  safe → safety, recommended → recommendation / recommendation status, compatible → compatibility, stable → stability,
+  vulnerable → vulnerability status, supported → support status, maintained → maintenance status) "of" exactly the
+  question's words between its leading copula and that predicate ("Is numpy 2.5.5 secure?" → "numpy 2.5.5"); nothing
+  but "the" stands before it. Any other token, any other punctuation (arrows, bullets, pipes, brackets, quotes) and any
+  second sentence fails the grammar; an item holding more than one sentence is rejected outright.
+  A caveat of the grammar is still rejected when the verdict **decided** the question (any state but not_evaluated,
+  insufficient, temporally_unresolved or none): it would be false; when a **supported** claim shares any of its topic
+  words (words cannot tell whether "NumPy 2.5.5 is affected by a critical RCE vulnerability" answers "is it secure?",
+  so the caveat yields to the verdict and the note); and when it says the evidence holds nothing while a claim holds all
+  its topic words. Outside the grammar, a clause shaped as an absence claim (a negator scoping over an evidence noun or
+  verb: "No source reports any vulnerability in numpy 2.5.5", "no evidence that ...") is rejected when it says the
+  evidence holds nothing or has a that- or existential complement (F2); a hedge such as "not yet confirmed by a third
+  source" is left to the hedge and state checks. An uncited caveat may hold no non-ASCII letter and no number in words
+  (F5). In a compound sentence a clause of the grammar neither hedges the factual clause beside it nor counts as
+  calling anything confirmed, and may name the question's numbers; every number, unit, id and injection check still
+  applies. "Gaps include ..." is no caveat (F4). Caveats rejected on purpose are listed with their reasons in
+  `REJECTED_CAVEATS` (tests/inference/test_inference_reasoning.py).
 - **Uncited caveats and the verdict note (D-R5-3).** The question was whether the guard should accept an uncited
   sentence that asserts no fact. It already did (T2-03), and the structural rule widens what is recognised, so an
   uncited caveat may now hold no number and no name the question does not hold. The R5 retest showed the deeper
@@ -148,12 +156,14 @@ included); failed and cancelled runs keep the extractive report only.
   read does not establish whether numpy 2.5.5 is secure."), on the model path and on every degraded path. It is
   built from the verdict's statement (derived from the question, injection-scanned) and state only, never from
   model text, is never mixed into the model's sentences, and is shown by the console (`#reasoningNote`) and
-  said by voice. F6: the statement must be one plain clause (one verb group, no URL or domain, no address to the
-  reader or the model, no instruction), else there is no note. An autonomous task's statement (curiosity, refresh)
-  may come from web text: without the owner's authorisation of the proposal there is no note; with it the statement
-  is quoted as the question in guillemets ("NeuroSciFi note: «numpy 2.5.5 is recommended?» is a judgement the
-  evidence does not establish."). `apply(asked=owner|confirmed|autonomous)`; the orchestrator derives it from the
-  task's origin and its "proposal authorised by the owner" decision.
+  said by voice. F6: the statement must be one plain clause (one verb group, no URL or domain, including "dot org"
+  and the ideographic and fullwidth full stops, no address to the reader or the model, no instruction), else there is
+  no note. `apply(asked=owner|confirmed|autonomous)`: the plain wording only for tasks the owner typed or said in the
+  console, by voice or on Pocket (`orchestrator.OWNER_NOTE_ORIGINS`). Every other origin gets the statement quoted as
+  the question in guillemets ("NeuroSciFi note: «numpy 2.5.5 is recommended?» is a judgement the evidence does not
+  establish."): the CLI (the model's own `web_research` tool in `nsf llm ask` also submits as "cli", so the two
+  cannot be told apart), MCP clients, refresh-owner, monitors, the bench, and an autonomous task (curiosity,
+  refresh) the owner authorised. An autonomous task without that authorisation gets no note.
 - **Self-critique.** One call (≤ 400 tokens): each accepted sentence is marked `fine`, `unsupported`, `overstated` or
   `missing_hedge`. A mark removes a sentence only when `check_sentence` confirms an objective failure (unknown
   source or claim, a claim state that is not supported stated without a hedge, a number or unit not in the cited
@@ -254,16 +264,15 @@ nsf llm usage                                                 # token ledger
 ## 6. Limitations
 
 - The guard is lexical. A hedge word anywhere outside a caveat clause ("could", "reports") satisfies the hedge rule.
-  The caveat rule reads structure from word classes, not a parse. What bounds it is vocabulary: outside an embedded
-  question a caveat may hold only the question's terms, evidence words and function words, so it can say nothing
-  the question did not ask; inside a cited caveat's "whether ..." the words are free (an embedded question asserts
-  nothing, though it can presuppose: "whether the audited release is secure"). Question terms match by a shared
-  5-letter prefix, so a near word of the question ("securities" for "secure") counts as the question's. The bundle
-  check compares words, not meaning: "None of the sources addresses the security of numpy 2.5.5" passes beside a
-  supported claim of a critical vulnerability (no shared topic word), and an absence claim about a subject the
-  claim does not name is not matched; the verdict and the rules note carry that case. Honest caveats are lost by
-  design: that-complements, off-question topics, synonyms the question does not use ("suitability" for
-  "recommended"), "when" complements. The live R5 paraphrase set keeps 14 of 15. Number
+  Caveats are a closed grammar: it bounds what a caveat can say to the question's own words and closed lists, at the
+  price of honest caveats in any other wording (another subject, "nothing in the sources", a compound caveat, "its
+  security", a synonym such as "suitability", a "when" or "that" complement, a question without a mapped predicate for
+  the topic form). Those are rejected by design and the rules note carries the message; the live R5 paraphrases keep
+  9 of 15 as worded (all 15 in their in-grammar rewrites). The Q-clause may still reorder the question's words ("numpy
+  2.5.5 secure is"), and a question that itself carries a claim ("Is numpy 2.5.5 secure despite the backdoor?") lends
+  its words to the caveat. The bundle check compares words: a caveat beside a supported claim on its subject is
+  rejected even when that claim answers something else, and a claim that answers the question without sharing a word
+  with the caveat is not seen; the decided-verdict rule covers the case the verdict decides. Number
   grounding checks that a number appears in the cited evidence with the same unit or scale word, not that it means
   the same thing (a bare number is matched by value only; "5m" is not judged). Names and dates written in words are
   not checked. The self-critique is a model judging a model; its marks are shown as flags and remove nothing on
