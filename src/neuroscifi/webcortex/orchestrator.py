@@ -92,6 +92,7 @@ MCP_ORIGIN = "mcp"
 # The owner's own refreshes are 'refresh-owner:<id>'. Presence and the voice bridge both read user_initiated().
 USER_ORIGINS = ("console", "cli", "voice", "pocket", "pocket-voice", "owner", MCP_ORIGIN)
 USER_ORIGIN_PREFIXES = ("refresh-owner:",)
+OWNER_NOTE_ORIGINS = frozenset({"console", "voice", "pocket", "pocket-voice"})   # reasoning.verdict_note unquoted
 MAX_OBJECTIVE = 2000
 MAX_FOLLOW = 2
 MAX_CONTEXT_PACKAGES = 200
@@ -1998,8 +1999,10 @@ def _reason(db, run, report):
     from ..resources import policy as rpolicy
     db_path = getattr(run.services, "db_path", None)
 
-    # F6: an autonomous task's verdict statement may come from web text; its rules note needs the owner's authorisation
-    asked = "owner" if not is_autonomous(run.origin) else "autonomous"
+    # F6, N4: the plain note only for what the owner typed or said in the console, by voice or on Pocket. Any other
+    # origin (the CLI, which the model's own web_research tool also uses; MCP; refresh-owner; monitors; the bench) may
+    # carry a statement the owner did not word: quoted. An autonomous task needs the owner's authorisation.
+    asked = "owner" if run.origin in OWNER_NOTE_ORIGINS else "autonomous" if is_autonomous(run.origin) else "confirmed"
     if asked == "autonomous":
         try:
             if any(e["kind"] == "decision" and e["detail"].get("decision") == "proposal authorised by the owner"

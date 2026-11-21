@@ -997,7 +997,8 @@ NOTE_LEAD = "NeuroSciFi note: "
 # F6 (security review): the note's statement is web-derived for an autonomous task (curiosity proposes a target
 # statement read on the web). It is used only when it is one plain clause: no URL or domain, no address to the
 # reader or the model, no instruction.
-_NOTE_URL = re.compile(r"https?://|www\.|@|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b", re.IGNORECASE)
+_NOTE_URL = re.compile(r"https?://|www\.|@|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b|[\u3002\uff0e\uff61]"
+                       r"|\bdot\s+[a-z]{2,}\b|\[\s*dot\s*\]|\(\s*dot\s*\)", re.IGNORECASE)
 _NOTE_ADDRESS = re.compile(
     r"\b(?:you|your|yours|we|us|our|users?|everyone|anyone|readers?|assistants?|ai|models?|llms?|please|ignore|"
     r"disregard|forget|override|must|should|ought|need\s+to|go|visit|click|download|install|reinstall|uninstall|"
