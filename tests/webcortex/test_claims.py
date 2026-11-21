@@ -856,3 +856,130 @@ def test_a_personal_account_does_not_lead_a_reference_statement_on_equal_support
         assert {cl.contradicting[0]["a"], cl.contradicting[0]["b"]} == {ref.id, blog.id}
     assert C.first_person(blog) and not C.first_person(ref)
     assert not C.first_person(mk("Use the US mirror for faster downloads of the 4.2 build."))   # "US" is not "us"
+
+
+# ---- T1-01 (UAT RC1): false contradictions between consistent statements or different subjects ----------------
+
+def _page(url, text, title, published=None):
+    return doc(url, text, title=title, published=published)
+
+
+def _only(d, q="Is numpy 2.5.5 stable?"):
+    return [c for c in C.extract_claims(d, q, max_claims=20)]
+
+
+def test_a_year_agrees_with_a_full_date_inside_it_and_conflicts_with_another_year():
+    # T1-01 (5b34f012): "Python 3.0, released in 2008" against "... released on December 3, 2008" was contested.
+    assert T.values_conflict(["2008"], ["2008-12-03"]) is None
+    assert T.values_agree(["2008"], ["2008-12-03"])
+    assert T.values_conflict(["2007"], ["2008-12-03"]) == "different years: 2007 vs 2008-12-03"
+    a = mk("Python 3.0, released in 2008, was a major revision and not completely backward-compatible with earlier "
+           "versions.", domain="en.wikipedia.org")
+    b = mk("Python 3.0, a major, backwards-incompatible release, was released on December 3, 2008 after a long "
+           "period of testing.", domain="history.example")
+    assert C.conflict(a, b) is None                       # same year; both deny backward compatibility
+    assert C.conflict(mk("Python 3.0 was released in 2007."), mk("Python 3.0 was released on December 3, 2008.",
+                                                                    domain="b.example")).startswith("different years")
+
+
+def test_a_denial_contradicts_only_the_same_predicate():
+    # T1-01: "not completely backward-compatible" was read as denying "was released on December 3, 2008".
+    neg = mk("Orbix does not support encryption at rest, so you need full-disk encryption on the host.",
+             domain="forum.example")
+    assert C.conflict(mk("Orbix supports encryption at rest using AES-256 since version 3.0."), neg) \
+        .startswith("opposite polarity")
+    assert C.conflict(mk("There is no evidence that coffee causes cancer in adults."),
+                      mk("Coffee causes cancer in adults, one small study claims.", domain="b.example"))
+    assert C.conflict(mk("Orbix was released in 2019 and is written in Rust."), neg) is None
+    assert C.conflict(mk("The claim that Orbix leaks keys is false."),          # post-positive: no scope, as before
+                      mk("Orbix leaks keys when the cache is full.", domain="b.example"))
+
+
+def test_two_versions_of_one_product_are_different_subjects():
+    # T1-01 (s3_stable, cb7ae3e0): numpy 2.5.5 release notes against 2.5.2 release notes ("different versions") and
+    # each page's "this release" figures (12 vs 16 people, 37 vs 28 pull requests) were contested.
+    p555 = _page("https://numpy.org/devdocs/release/2.5.5-notes.html",
+                 "NumPy 2.5.5 is a patch release that fixes bugs discovered after the 2.5.4 release.\n"
+                 "A total of 12 people contributed to this release.\n"
+                 "A total of 37 pull requests were merged for this release.",
+                 "NumPy 2.5.5 Release Notes — NumPy v2.6.dev0 Manual")
+    p552 = _page("https://numpy.org/devdocs/release/2.5.2-notes.html",
+                 "The NumPy 2.5.2 is a patch release that fixes bugs discovered after the 2.5.1 release.\n"
+                 "A total of 16 people contributed to this release.\n"
+                 "A total of 28 pull requests were merged for this release.",
+                 "NumPy 2.5.2 Release Notes — NumPy v2.6.dev0 Manual")
+    claims = _only(p555) + _only(p552)
+    assert len(claims) == 6
+    clusters = [C.score(k, now=NOW, freshness_class="release") for k in C.cluster(claims)]
+    assert not [k for k in clusters if k.contradicting], [(k.statement, k.contradicting) for k in clusters]
+    for x in claims[:3]:
+        for y in claims[3:]:
+            assert C.contradictions(x, y) is None and C.different_versions(x, y)
+    # Python 3.0 vs Python 2.0 (History of Python): two releases, not two answers
+    py3 = mk("Python 3.0, released in 2008, was a major revision and not completely backward-compatible.")
+    py2 = mk("Python 2.0 was released on October 16, 2000, with many major new features.", domain="b.example")
+    assert C.similarity(py3, py2) == 0 and C.conflict(py3, py2) is None
+    # a one-valued slot ("the latest version") still compares across versions: real contradictions stay
+    latest = mk("Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the "
+                "Quillstream streaming library.")
+    rival = mk("Quillstream 3.9 is the latest version of the library and the one we recommend for new projects.",
+               domain="b.example")
+    assert C.contradictions(latest, rival) == "different versions: v4.2.0 vs v3.9"
+    kernel = mk("Nimbus-OS 5 ships with Linux kernel 6.14 and the Wayland session by default.")
+    assert C.contradictions(kernel, mk("Nimbus-OS 5 ships with Linux kernel 6.12, according to the beta images we "
+                                       "tested.", domain="b.example")) == "different values: 6.14 vs 6.12"
+
+
+def test_records_sharing_a_title_but_not_a_doi_are_different_records():
+    # T1-01 (predictive coding): two Qeios reviews titled 'Review of: "..."' (different DOIs) were contested as
+    # "different dates: 2025-04-23 vs 2025-04-21"; a conference paper and its journal version (2000 vs 2004) too.
+    title = 'Review of: "Predictive Coding Explains Asymmetric Connectivity in the Brain: A Neural Network Study"'
+    r1 = _record("crossref", "https://doi.org/10.32388/z3ygmg", {"doi": "10.32388/z3ygmg", "title": title,
+                                                               "published": "2025-04-23"}, title=title)
+    r2 = _record("crossref", "https://doi.org/10.32388/0r9fd9", {"doi": "10.32388/0r9fd9", "title": title,
+                                                               "published": "2025-04-21"}, title=title)
+    same = _record("openalex", "https://openalex.org/W1", {"doi": "10.32388/z3ygmg", "openalex_id": "W1",
+                                                          "title": title, "published": "2025-04-23"}, title=title)
+    q = "What is predictive coding in the brain?"
+    a, b, c = (next(x for x in C.extract_claims(r, q) if x.kind == "metadata") for r in (r1, r2, same))
+    assert C.conflict(a, b) is None and C.similarity(a, b) == 0
+    assert C.similarity(a, c) > 0 and C.agrees(a, c)           # one record, two providers: still the same record
+    assert C.same_identity(frozenset({"doi:x", "title:t"}), frozenset({"arxiv_id:y", "title:t"}))
+
+
+def test_figures_about_different_things_do_not_conflict():
+    # T1-01 (S4): Wikipedia's cerebral cortex "14–16 billion" against the whole brain's "100 billion".
+    cortex = mk("In humans, the cerebral cortex contains approximately 14–16 billion neurons, and the estimated "
+                "number of neurons in the cerebellum is 55–70 billion.", domain="en.wikipedia.org")
+    brain = mk("The human brain contains about 86 billion neurons.", domain="b.example")
+    assert C.conflict(cortex, brain) is None
+    assert C.conflict(brain, mk("The human brain contains about 100 billion neurons.", domain="c.example")) \
+        == "different values: 86000000000 neurons vs 100000000000 neurons"
+
+
+def test_one_document_is_not_pitted_against_itself():
+    # T1-01 (S5 run 2): two sentences of one abstract on opposite sides ("1 side with [1], 1 with [1]").
+    url = "https://doi.org/10.1523/jneurosci.0545-26.2026"
+    rep = mk("A1 neurons show enhanced responses to unexpected stimulus repetitions in the auditory cortex.",
+             url=url, domain="doi.org", relevance=0.9)
+    same = mk("A1 neurons did not show enhanced responses to unexpected stimulus repetitions in the cortex.",
+              url=url, domain="doi.org", relevance=0.5)
+    other = replace(same, id="x" * 24, source_url="https://other.example/a", domain="other.example")
+    assert C.conflict(rep, same)
+    assert C.bearing(rep, same) is None and C.bearing(rep, other) == "contradict"
+    k = C.score(C.cluster([rep, same])[0], now=NOW, freshness_class="stable")
+    assert not k.contradicting and k.status != "contested"
+
+
+def test_a_reported_belief_is_not_the_sentences_own_figure():
+    # T1-16: "was believed to contain about 100 billion neurons" neither supports nor contradicts 100 billion.
+    believed = mk("For half a century, the human brain was believed to contain about 100 billion neurons and one "
+                  "trillion glial cells, with a glia:neuron ratio of 10:1.", domain="doi.org")
+    assert "100000000000 neurons" not in C.asserted_values(believed)
+    stated = mk("The human brain contains about 100 billion neurons.", domain="b.example")
+    count = mk("The human brain contains about 86 billion neurons.", domain="c.example")
+    assert not C.agrees(stated, believed) and C.conflict(count, believed) is None
+    assert C.conflict(count, stated)
+    purported = mk("The human brain is endowed with an overdeveloped cerebral cortex, and purportedly containing "
+                   "100 billion neurons.", domain="d.example")
+    assert "100000000000 neurons" not in C.asserted_values(purported)

@@ -658,6 +658,13 @@ def _group_conflict(va: list[str], vb: list[str], temporal: bool, nouns=None) ->
                     groups["number"] = merged
         _attach_bare(ga, gb)
         _attach_bare(gb, ga)
+    if temporal:
+        # granularity: a year on one side and only full dates on the other are compared by year ("2008" agrees
+        # with "December 3, 2008"; "2007" does not), never as two unrelated groups (T1-01)
+        for x, y in ((ga, gb), (gb, ga)):
+            if "year" in x and "date" not in x and "date" in y and "year" not in y:
+                y["year"] = [(v, datetime.fromtimestamp(p, timezone.utc).year, "year") for v, p, _ in y.pop("date")]
+                break
     for group in sorted(set(ga) & set(gb)):
         if nouns is not None and group in (*_BARE, "number"):
             na, nb = nouns

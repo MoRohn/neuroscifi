@@ -262,6 +262,61 @@ _CUE_PAIRS = (
      re.compile(r"\b(?:false|inaccurate|incorrect|fake|hoax)\b", re.I)),
 )
 
+# A sentence may report a figure or belief it does not assert: a myth, an old estimate, a superseded belief or the
+# alternative it rejects ("long cited as having 100 billion neurons", "the commonly quoted 100 billion", "rather
+# than the often-cited 100 billion", "For half a century, the human brain was believed to contain about 100 billion
+# neurons", "purportedly containing 100 billion neurons"). asserted_text drops those parts (per clause: a contrast
+# cue drops the rest of its clause, an attribution cue the whole clause) before values and polarity are compared
+# (C-09, T1-16): what a source reports as believed is neither support nor a contradiction of the belief.
+_CONTRAST_CUE = re.compile(r"\b(?:rather\s+than|instead\s+of|as\s+opposed\s+to|contrary\s+to|in\s+contrast\s+to)\b",
+                           re.IGNORECASE)
+_ATTRIBUTION_CUE = re.compile(
+    r"\b(?:(?:long|often|commonly|widely|frequently|traditionally|popularly|generally|usually|once|previously|"
+    r"formerly)[- ](?:been\s+)?(?:cited|quoted|stated|said|claimed|believed|reported|repeated|assumed|held|thought|"
+    r"accepted|estimated|given|viewed|regarded|portrayed)|myths?|misconceptions?|"
+    r"popular\s+(?:belief|claim|figure|estimate|notion)|"
+    r"(?:old|older|earlier|outdated|previous)\s+(?:estimates?|figures?|counts?)|it\s+(?:was|is|has\s+been)\s+"
+    r"(?:once\s+|long\s+|often\s+|commonly\s+|widely\s+|previously\s+)?(?:thought|believed|said|claimed|assumed|"
+    r"estimated|stated)|(?:was|were|had\s+been|has\s+been|have\s+been)\s+(?:long\s+|once\s+|widely\s+|commonly\s+|"
+    r"often\s+|generally\s+|previously\s+)?(?:believed|thought|assumed|presumed|supposed)\s+to|"
+    r"purportedly|supposedly|allegedly|reputedly|ostensibly)\b", re.IGNORECASE)
+_CLAUSE_SPLIT = re.compile(r"([,;:()—]|\s(?:but|whereas|while|although|though)\s)", re.IGNORECASE)
+
+
+@functools.lru_cache(maxsize=65536)
+def asserted_text(text: str) -> str:
+    """`text` without the parts that report a figure or belief rather than assert it (see the comment above);
+    `text` itself when it has no such part."""
+    if not (_CONTRAST_CUE.search(text) or _ATTRIBUTION_CUE.search(text)):
+        return text
+    parts = _CLAUSE_SPLIT.split(text)
+    out = []
+    for i in range(0, len(parts), 2):
+        seg = parts[i]
+        m = _CONTRAST_CUE.search(seg)
+        if m:
+            seg = seg[:m.start()]
+        elif _ATTRIBUTION_CUE.search(seg):
+            seg = ""
+        out.append(seg)
+        if i + 1 < len(parts):
+            out.append(parts[i + 1])
+    return T.collapse("".join(out))
+
+
+def asserted_values(claim: Claim) -> list[str]:
+    """The claim's values that its sentence asserts (asserted_text): a figure it only reports as a myth, an old
+    estimate or a former belief is left out. Structured templates assert all their values."""
+    values = list(claim.values or [])
+    if claim.kind == "metadata" or not values:
+        return values
+    text = claim.text or ""
+    asserted = asserted_text(text)
+    if asserted == text:
+        return values
+    keep = T.values(asserted)
+    return [v for v in values if v in keep]
+
 _KEY_EXCLUDE = frozenset("""
 not no never neither nor cannot fail fails failed false debunked refuted unfounded disproved disproven denied denies
 without evidence suggest suggests suggested suggesting might could would should likely unlikely possibly perhaps
@@ -825,13 +880,83 @@ def _stems_cached(text: str) -> frozenset:
     return frozenset(T.stem(t) for t in T.tokens(text))
 
 
+_STRONG_IDS = ("doi", "arxiv_id", "pmid", "openalex_id")
+
+
+def same_identity(ra: frozenset, rb: frozenset) -> bool:
+    """Two record identities (record_identity) name the same record: they share an identifier, and no persistent
+    identifier scheme both carry (DOI, arXiv id, PMID, OpenAlex id) tells them apart. Two Crossref records with
+    one title but different DOIs (two reviews "Review of: ...", a conference paper and its journal version) are
+    two records (T1-01)."""
+    if not ra & rb:
+        return False
+    for scheme in _STRONG_IDS:
+        xa = {r for r in ra if r.startswith(scheme + ":")}
+        xb = {r for r in rb if r.startswith(scheme + ":")}
+        if xa and xb and not xa & xb:
+            return False
+    return True
+
+
+# A versioned subject is a name followed by its version at the start of the subject ("NumPy 2.5.5 is a patch
+# release", "The NumPy 2.5.2 ...", "Python 3.0, released in 2008, ..."). Two versions of one product are two
+# subjects: what is true of 2.5.2 (its patch notes, its contributor count) is not a rival answer about 2.5.5. A
+# sentence without its own version that names no other subject (or names the product only) is about the version
+# its document's title names ("A total of 12 people contributed to this release." in "NumPy 2.5.5 Release Notes").
+# Statements of a one-valued slot ("the latest / current / newest / first release") stay comparable across
+# versions: "Quillstream 4.2.0 is the latest version" and "Quillstream 3.9 is the latest version" conflict.
+_VERSIONED = re.compile(r"^\W*(?:[Tt]he\s+)?(?P<name>[A-Z][\w+#.-]*?(?:\s+[A-Z][\w+#-]*){0,2})\s+v?"
+                        r"(?P<ver>\d+(?:\.\d+){0,3})(?![\w.]*\w)")
+_ONE_VALUED_SLOT = re.compile(r"\b(?:latest|newest|current|most\s+recent|first|initial)\b", re.IGNORECASE)
+
+
+def _versioned(text: str) -> tuple[frozenset, tuple] | None:
+    m = _VERSIONED.match(text or "")
+    if not m or m.group("name").split()[0].lower() in _CALENDAR:
+        return None
+    name = subject_tokens(m.group("name"))
+    return (name, T.version_key(m.group("ver"))) if name else None
+
+
+@functools.lru_cache(maxsize=65536)
+def _versioned_subject_cached(text: str, title: str) -> tuple[frozenset, tuple] | None:
+    own = _versioned(_subject_clause(text))
+    if own is not None:
+        return own
+    page = _versioned(title_subject(title) or "")
+    if page is None:
+        return None
+    subject = subject_tokens(primary_subject(text, ""))
+    if subject and not same_subject(subject, page[0]):
+        return None                                   # the sentence is about another subject than its page
+    return page
+
+
+def versioned_subject(claim: Claim) -> tuple[frozenset, tuple] | None:
+    """(name tokens, version key) of the claim's versioned subject (section comment), or None."""
+    if claim.kind == "metadata":
+        return None
+    return _versioned_subject_cached(claim.text or "", claim.title or "")
+
+
+def different_versions(a: Claim, b: Claim) -> bool:
+    """`a` and `b` are about two versions of one named subject (section comment above), not one slot's values."""
+    va, vb = versioned_subject(a), versioned_subject(b)
+    if va is None or vb is None or not same_subject(va[0], vb[0]) or va[1] == vb[1]:
+        return False
+    return not (_ONE_VALUED_SLOT.search(a.text or "") or _ONE_VALUED_SLOT.search(b.text or ""))
+
+
 def subjects_compatible(a: Claim, b: Claim) -> bool:
-    """May `a` and `b` be about the same thing? Record claims: only with a record claim of the same identity.
-    Otherwise: the same primary subject (same_subject); when only one claim names a subject, the other must
-    mention it; when neither does, the lexical key decides (similarity)."""
+    """May `a` and `b` be about the same thing? Record claims: only with a record claim of the same identity
+    (same_identity). Two versions of one product are different subjects (different_versions). Otherwise: the same
+    primary subject (same_subject); when only one claim names a subject, the other must mention it; when neither
+    does, the lexical key decides (similarity)."""
     ra, rb = record_identity(a), record_identity(b)
     if ra or rb:
-        return bool(ra & rb)
+        return same_identity(ra, rb)
+    if different_versions(a, b):
+        return False
     pa, pb = _subject_of(a), _subject_of(b)
     if pa and pb:
         return same_subject(pa, pb)
@@ -1025,7 +1150,7 @@ def similarity(a: Claim, b: Claim) -> float:
 
 def _same_record(a: Claim, b: Claim) -> bool:
     """Two templates over the same structured record (one record, two providers or two fields)."""
-    return a.kind == "metadata" and b.kind == "metadata" and bool(record_identity(a) & record_identity(b))
+    return a.kind == "metadata" and b.kind == "metadata" and same_identity(record_identity(a), record_identity(b))
 
 
 def _domain(claim: Claim) -> str:
@@ -1201,12 +1326,42 @@ def _cue_conflict(ta: str, tb: str) -> str | None:
     return None
 
 
+# The subject phrase of a sentence without a named subject: its content words before the main verb ("the cerebral
+# cortex", "the human brain"). Two counts of the same noun about disjoint subject phrases are figures for two
+# different things (the cortex's 16 billion neurons are not a rival answer to the brain's 86 billion, T1-01).
+_PHRASE_SKIP = frozenset("approximately about around roughly nearly almost some total number".split())
+
+
+@functools.lru_cache(maxsize=65536)
+def _subject_phrase(text: str) -> tuple[str, ...]:
+    clause = _subject_clause(text)
+    words = [m.group(0) for m in _WORD.finditer(clause)]
+    _, verb = _spans(clause)
+    if not verb:
+        return ()
+    return tuple(T.stem(w.lower()) for w in words[:verb]
+                 if w.lower() not in T.STOPWORDS and w.lower() not in _PHRASE_SKIP and not T.is_number(w.lower())
+                 and not T.is_version(w.lower()) and not w.lower().endswith("ly"))
+
+
+def _different_things(a: Claim, b: Claim) -> bool:
+    """Neither sentence names a primary subject, their subject phrases share no word, and one's head noun (the last
+    word of its phrase) is absent from the other sentence (see the comment above)."""
+    if _subject_of(a) or _subject_of(b):
+        return False
+    pa, pb = _subject_phrase(a.text or ""), _subject_phrase(b.text or "")
+    if not pa or not pb or set(pa) & set(pb):
+        return False
+    return pa[-1] not in _stem_set(b) or pb[-1] not in _stem_set(a)
+
+
 def _value_conflict(a: Claim, b: Claim) -> str | None:
     """Values of the same kind attached to the same thing: plain numbers only against plain numbers counting the
     same noun (unless the two sentences are the same template with different numbers), and a disagreement that
     is only about years only between near-identical statements (different years usually date different
-    events)."""
-    va, vb = list(a.values or []), list(b.values or [])
+    events). Only asserted values count (asserted_values: a figure a sentence reports as a myth or a former belief
+    is not its own)."""
+    va, vb = asserted_values(a), asserted_values(b)
     if not va or not vb:
         return None
     template = T.jaccard(_shingles(a), _shingles(b)) >= CLUSTER_TEXT_SHINGLE
@@ -1218,18 +1373,70 @@ def _value_conflict(a: Claim, b: Claim) -> str | None:
     return reason
 
 
+# A denial contradicts an assertion only of the same predicate: the first content words after a pre-positive
+# negation cue ("does not support encryption at rest", "is not open to visitors", "no evidence that X causes Y"; at
+# least DENIAL_MATCH of DENIAL_TERMS) must occur in what the other sentence asserts, and the other sentence must
+# not deny the same word by a negative prefix ("not completely backward-compatible" and "backwards-incompatible"
+# agree, T1-01). A post-positive cue ("the claim was debunked", "X is false") has no scope to read, so the polarity
+# difference is the conflict, as before.
+_POSTPOSITIVE_NEGATION = frozenset("false debunked refuted unfounded disproved disproven denied denies".split())
+_DENIAL_SKIP = frozenset(_AUX | set("be been being yet ever even always really quite entirely fully completely "
+                                    "directly necessarily just only much very so too any longer more".split()))
+_NEGATIVE_PREFIXES = ("non", "un", "in", "im", "ir", "il", "dis")
+DENIAL_TERMS = 3          # content words read after the negation cue
+DENIAL_MATCH = 2          # of which the other sentence must assert at least this many (all, when fewer were read)
+
+
+@functools.lru_cache(maxsize=65536)
+def _denied_terms(text: str) -> tuple[str, ...]:
+    clause = _NEGATION_EXEMPT.sub(" ", _prose(_main_clause(text)))
+    m = _NEGATION.search(clause)
+    if not m or m.group(0).lower() in _POSTPOSITIVE_NEGATION:
+        return ()
+    out = []
+    for tok in T.tokens(clause[m.end():]):
+        if tok in T.STOPWORDS or tok in _DENIAL_SKIP or tok.endswith("ly") or T.is_number(tok) or T.is_version(tok):
+            continue
+        out.append(T.stem(tok))
+        if len(out) == DENIAL_TERMS:
+            break
+    return tuple(out)
+
+
+def _denies_same(neg: Claim, pos: Claim) -> bool:
+    """The negated claim denies what the other asserts (see the comment above)."""
+    terms = set(_denied_terms(neg.text or ""))
+    if not terms:
+        return True
+    asserted = asserted_text(pos.text or "")
+    if len(terms & _stems_cached(asserted)) < min(DENIAL_MATCH, len(terms)):
+        return False                  # the other sentence does not assert the denied predicate (or only reports it)
+    for tok in T.tokens(asserted):
+        for prefix in _NEGATIVE_PREFIXES:
+            if tok.startswith(prefix) and len(tok) > len(prefix) + 3 and \
+                    T.stem(tok[len(prefix):].lstrip("-")) in terms:
+                return False
+    return True
+
+
 def conflict(a: Claim, b: Claim) -> str | None:
-    """Reason two claims (assumed to be about the same subject) disagree: opposite polarity, different values of the
-    same kind (_value_conflict), or an explicit conflict cue pair. None when they are compatible. Record claims
-    of different identities never conflict (two releases are not two answers to one question)."""
+    """Reason two claims (assumed to be about the same subject) disagree: opposite polarity about the same predicate
+    (_denies_same), different values of the same kind (_value_conflict), or an explicit conflict cue pair. None when
+    they are compatible. Record claims of different identities never conflict (two releases are not two answers
+    to one question), nor do statements about two versions of one product (different_versions) or about two
+    different things (_different_things: "the cerebral cortex" vs "the human brain")."""
     ra, rb = record_identity(a), record_identity(b)
-    if (ra or rb) and not ra & rb:
+    if (ra or rb) and not same_identity(ra, rb):
+        return None
+    if different_versions(a, b) or (_different_things(a, b) and
+                                    T.jaccard(_shingles(a), _shingles(b)) < CLUSTER_TEXT_SHINGLE):
         return None
     if a.polarity != b.polarity:
-        neg = b if b.polarity < 0 else a
-        cue = negation_cue(neg.text) or "negation"
-        which = "the second" if neg is b else "the first"
-        return f"opposite polarity: {which} statement negates ('{cue}')"
+        neg, pos = (b, a) if b.polarity < 0 else (a, b)
+        if _denies_same(neg, pos):
+            cue = negation_cue(neg.text) or "negation"
+            which = "the second" if neg is b else "the first"
+            return f"opposite polarity: {which} statement negates ('{cue}')"
     reason = _value_conflict(a, b)
     if reason:
         return reason
@@ -1328,7 +1535,7 @@ def agrees(a: Claim, b: Claim) -> bool:
         return False
     if _same_statement(a, b):
         return True
-    return T.values_agree(list(a.values or []), list(b.values or []))
+    return T.values_agree(asserted_values(a), asserted_values(b))
 
 
 def bearing(rep: Claim, x: Claim) -> str | None:
@@ -1339,7 +1546,9 @@ def bearing(rep: Claim, x: Claim) -> str | None:
     if similarity(rep, x) <= 0:
         return None
     if conflict(rep, x):
-        return "contradict"
+        # one document is not pitted against itself: two of its sentences that disagree (a superseded belief and
+        # the finding, two label definitions) are one source, related but not a contradiction (T1-01)
+        return None if x.source_url == rep.source_url else "contradict"
     return "support" if agrees(rep, x) else None
 
 
