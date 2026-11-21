@@ -265,6 +265,15 @@ const STATE={supported:"Supported",disputed:"Disputed",insufficient:"Insufficien
 const GLYPH={supported:"✓",disputed:"✗",insufficient:"?",conflicting:"≠",temporally_unresolved:"~",not_evaluated:"–"};
 const BASIS={corroboration:"independent sources agree",official_source:"the subject's own site",registry_record:"the package registry record",
   version_marker:"the version number (pre-release marker)",contradiction:"contradicting evidence",owner_hypothesis:"your own hypothesis"};
+// No basis: say what the evidence actually is (R2-06). A quoted statement came from at least one listed source; it was
+// not confirmed independently. "No supporting evidence" only when no source states it.
+function noBasis(x){
+  if(x.state!=="insufficient")return "not stated";
+  const n=typeof x.sources==="number"&&x.sources>0?x.sources:x.statement?1:0;
+  return n===0?"none: no source states it"
+    :n===1?"none yet: stated by one source only, not confirmed by an independent source"
+    :"none yet: stated by "+n+" sources, not enough independent agreement to support it";
+}
 async function reviewEvidence(id){
   const g=generation;
   try{
@@ -283,7 +292,7 @@ async function reviewEvidence(id){
       st.firstChild.setAttribute("aria-hidden","true");
       li.append(st,node("p",x.statement?"“"+x.statement+"”":"(no claim text)","revclaim"));
       const basis=node("p",null,"revbasis");
-      basis.append("basis: ",node("strong",x.basis?BASIS[x.basis]||x.basis.replaceAll("_"," "):x.state==="insufficient"?"none: no supporting evidence was found":"not stated"));
+      basis.append("basis: ",node("strong",x.basis?BASIS[x.basis]||x.basis.replaceAll("_"," "):noBasis(x)));
       for(const extra of [x.category&&"category: "+x.category.replaceAll("_"," "),x.domain])if(extra)basis.append(" · "+extra);
       li.append(basis);ul.append(li);
     }

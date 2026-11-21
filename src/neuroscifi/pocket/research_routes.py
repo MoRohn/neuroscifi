@@ -1,7 +1,8 @@
 """Pocket research routes added in 0.7.0 (D4; ADR-028 family scope kept; ADR-039 draft).
 
 research_evidence  {id}                     the task's evidence review: ADR-035 state, basis and category per
-                                            subject, with the claim text (untrusted) and the report's sources
+                                            subject, with the claim text (untrusted), the number of sites that
+                                            state it (`sources`) and the report's sources
 research_continue  {id}                     continue a partial, cancelled or failed task (orchestrator.requeue),
                                             counted in the family's 10 submissions per hour
 research_session   {id, action[, to]}       session ownership (webcortex/nodes.py): status for any device of the
@@ -29,9 +30,10 @@ def evidence(db, task, family):
     """The review a phone can show: each subject's verification state and basis (ADR-035), never more than
     MAX_ITEMS, with the first claim sentence of that subject (untrusted web text) and the source list."""
     from ..webcortex import state
-    claims = {}
+    claims, domains = {}, {}
     for c in state.claims(db, task["id"]):
         claims.setdefault(c["key"], c)
+        domains.setdefault(c["key"], set()).add(c.get("domain") or c.get("source_url") or c.get("id"))
     checkpoint = task.get("checkpoint") or {}
     rows = checkpoint.get("verification")
     if rows is None:      # a task consolidated before 0.7.0: the cluster status only
@@ -42,7 +44,8 @@ def evidence(db, task, family):
         claim = claims.get(row.get("key")) or {}
         items.append({"statement": _text(claim.get("text"), 300), "state": _text(row.get("state"), 40),
                       "basis": _text(row.get("basis"), 40) or None, "category": _text(row.get("category"), 40) or None,
-                      "domain": _text(claim.get("domain"), 255) or None, "untrusted": True})
+                      "domain": _text(claim.get("domain"), 255) or None,
+                      "sources": len(domains.get(row.get("key")) or ()), "untrusted": True})
     from .server import phone_report
     report = phone_report(task.get("result")) or {}
     return {"id": task["id"], "status": task["status"], "evidence": items,

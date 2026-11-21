@@ -87,7 +87,11 @@ def test_pocket_insufficient_basis_says_why_t4_04(spark, new_page):
     page.goto(spark.url)
     pair(page)
     page.route("**/api/research_evidence*", lambda r: r.fulfill(
-        json={"subjects": 1, "evidence": [{"state": "insufficient", "statement": "A claim", "basis": None}]}))
+        json={"subjects": 4, "evidence": [
+            {"state": "insufficient", "statement": "A claim", "basis": None, "sources": 1, "domain": "one.example"},
+            {"state": "insufficient", "statement": "Another claim", "basis": None, "sources": 2},
+            {"state": "insufficient", "statement": "", "basis": None, "sources": 0},
+            {"state": "insufficient", "statement": "Legacy reply", "basis": None}]}))
     page.locator("#objective").fill("What is the latest version of the Zephyr compiler?")
     page.locator("#researchsubmit").click()
     expect(page.locator("#researchmsg")).to_contain_text("Queued on your Spark")
@@ -95,7 +99,14 @@ def test_pocket_insufficient_basis_says_why_t4_04(spark, new_page):
     expect(page.locator("#researchstage")).to_contain_text("Completed", timeout=15_000)
     page.get_by_role("button", name="Review evidence").click()
     expect(page.locator(".revbasis").first).not_to_contain_text("not stated", timeout=10_000)
-    expect(page.locator(".revbasis").first).to_contain_text("no supporting evidence")
+    # R2-06: a statement quoted from a listed source is not "no supporting evidence": say what the basis lacks
+    basis = page.locator(".revbasis")
+    expect(basis.nth(0)).to_contain_text("stated by one source only, not confirmed by an independent source")
+    expect(basis.nth(1)).to_contain_text("stated by 2 sources, not enough independent agreement")
+    expect(basis.nth(2)).to_contain_text("none: no source states it")
+    expect(basis.nth(3)).to_contain_text("stated by one source only")
+    for i in range(4):
+        expect(basis.nth(i)).not_to_contain_text("no supporting evidence was found")
 
 
 def test_pocket_volume_slider_and_checkbox_targets_t4_07(spark, new_page):

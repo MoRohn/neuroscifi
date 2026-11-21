@@ -81,6 +81,21 @@ def test_evidence_review_and_family_isolation(spark, devices, web):
     assert detail["spent"]["searches"] >= 1 and detail["spent"]["pages"] == 3
 
 
+def test_evidence_review_counts_the_sites_that_state_each_subject(spark, devices, web):
+    """R2-06: Pocket said "no supporting evidence was found" for a statement quoted from a listed source. Each subject
+    now carries how many sites state it, so the phone can say "stated by one source only"."""
+    a, _, _ = devices
+    task_id = submit(spark, a, QUESTION)[1]["id"]
+    scheduler.work(spark.instance, once=True, fixture=web, providers=[corpus()])
+    review = spark.req("research_evidence", {"id": task_id}, a)[1]
+    assert all(isinstance(e["sources"], int) for e in review["evidence"])
+    assert all(e["sources"] >= 1 for e in review["evidence"] if e["statement"])
+    insufficient = [e for e in review["evidence"] if e["state"] == "insufficient" and e["statement"]]
+    assert insufficient and all(e["sources"] == 1 for e in insufficient)       # each quoted from one listed site
+    supported = [e for e in review["evidence"] if e["state"] == "supported" and e["basis"] == "corroboration"]
+    assert all(e["sources"] >= 2 for e in supported)
+
+
 def test_continue_on_another_device_of_the_family(spark, devices, web):
     a, b, c = devices
     first = submit(spark, a, QUESTION)[1]["id"]
