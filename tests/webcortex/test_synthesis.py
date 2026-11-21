@@ -1092,6 +1092,28 @@ def test_a_page_about_another_entity_that_contains_the_subjects_name_is_set_asid
     assert report["findings"]
 
 
+def test_a_fact_check_never_cites_a_record_that_only_shares_the_number():
+    """N2 (R4 retest, neurons.json / neurons2.json): checking "The human brain contains 100 billion neurons." cited
+    "Milky Way contains 100 billion planets" and "2020 Projections of Climate Finance Towards the USD 100 Billion
+    Goal", and the model cited the climate-finance record alone. A source that never names the statement's subject
+    is read, never cited, when another source names it."""
+    claim = "The human brain contains 100 billion neurons."
+    docs = [doc("https://doi.org/10.1093/brain/awaf049", "Yes, the human brain has around 86 billion neurons.",
+                title="Reply: Yes, the human brain has around 86 billion neurons", kind="api"),
+            doc("https://doi.org/10.64628/aai.chq7v5t4g", "Mapping how the 100 billion cells in the brain all fit "
+                "together is the brave new world of neuroscience.", title="Mapping the brain", kind="api"),
+            doc("https://doi.org/10.1002/scin.5591810410", "Analysis suggests Milky Way contains 100 billion planets.",
+                title="Atom & cosmos: Planets common as stars in galaxy", kind="api"),
+            doc("https://doi.org/10.1787/9789264274204-en", "Developed countries committed to mobilise USD 100 billion "
+                "a year in climate finance by 2020.",
+                title="2020 Projections of Climate Finance Towards the USD 100 Billion Goal", kind="api")]
+    report = run(claim, docs, {"mode": "fact_verification", "claim": claim, "freshness_class": "stable"})
+    cited = _cited_urls(report)
+    assert not any(u.endswith(("scin.5591810410", "9789264274204-en")) for u in cited), report["findings"]
+    assert any(u.endswith("awaf049") for u in cited) and any(u.endswith("chq7v5t4g") for u in cited), cited
+    assert report["verdict"]["citations"]
+
+
 def test_the_first_release_sentence_leads_a_first_release_question():
     """R1-04 / T1-07 (RC2 live, "When was Python first released?"): the Python article's "Van Rossum first released
     it in 1991 as Python 0.9.0." ranked 36th (its head is "Van Rossum", and "it" was not read as the article's

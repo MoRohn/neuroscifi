@@ -1583,6 +1583,33 @@ def off_subject_sources(clusters, focus: dict) -> set:
     return {url for url, hit in on.items() if not hit}
 
 
+def statement_off_subject(clusters, statement: str | None) -> set:
+    """Source URLs that never name the checked statement's subject (N2, R4 retest: "The human brain contains 100
+    billion neurons." cited "Milky Way contains 100 billion planets" and a "USD 100 Billion" climate-finance record,
+    which share only the number). Named means: every capitalised word of a proper-name subject ("Eiffel Tower"), or the head
+    noun of a common-noun subject ("brain" of "The human brain"), appears in one of the source's claims or its
+    title ("Hera" of "The Hera probe"). Only when another source names it, so a fact check is never emptied by a misparsed subject."""
+    slot = parse_statement(statement) if statement else None
+    if not slot or not slot.get("subject"):
+        return set()
+    words = [w for w in T.tokens(slot["subject"]) if w.isalpha() and w not in T.STOPWORDS]
+    names = [w for w in re.findall(r"[\w'’-]+", slot["subject"]) if w[:1].isupper() and w.lower() not in T.STOPWORDS]
+    if slot.get("entity") and names:
+        needed = _claims.subject_tokens(" ".join(names))
+    else:
+        needed = frozenset({T.stem(words[-1])}) if words else frozenset()
+    if not needed:
+        return set()
+    on: dict[str, bool] = {}
+    for c in clusters:
+        for x in c.claims:
+            hit = needed <= _claims.subject_tokens(f"{x.text or ''} {x.title or ''}")
+            on[x.source_url] = on.get(x.source_url, False) or hit
+    if not any(on.values()):
+        return set()
+    return {url for url, hit in on.items() if not hit}
+
+
 def relation_coverage(claim: Claim | None, focus: dict) -> float:
     """Share of the question's relation words (each with its alternatives: "how long" -> long/length) the claim
     contains; 0 when the question has none."""
@@ -1717,6 +1744,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
                     for kept in [[x for x in c.claims if x.source_url not in aside]] if kept]
     focus = question_focus(question, assessment)
     unrelated = off_subject_sources(clusters, focus)
+    if mode == "fact_verification":      # N2: a record that shares only the number is not about the statement
+        unrelated |= statement_off_subject(clusters, checkable_statement(assessment.get("claim") or question))
     if unrelated:            # T1-07: a page about another entity is a source read, never cited
         clusters = [replace(c, claims=kept) for c in clusters
                     for kept in [[x for x in c.claims if x.source_url not in unrelated]] if kept]
