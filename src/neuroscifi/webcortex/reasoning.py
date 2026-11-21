@@ -210,29 +210,39 @@ _COUNTER = re.compile(r"\b(?:disput\w*|contradict\w*|refut\w*|challeng\w*|doubt\
                       r"reject\w*|otherwise|against|contrary)\b", re.IGNORECASE)
 _LEAD_VERB = re.compile(r"^[a-z]{2,}(?:[^su\W]s|ed)$")     # "fixes", "supports", "fixed": a finite verb after a name
 _CLAUSE_SPLIT = re.compile(
-    r"[;:]|,\s*(?:and|or|as|so|which|who|whereas)\b"
-    r"|\b(?:but|however|although|though|while|whereas|nevertheless|nonetheless|because|since|despite|except|"
-    r"instead|rather|due\s+to|so\s+that|(?<!not\s)yet)\b"
+    # F1 (security review): EVERY punctuation boundary (comma, dash, bracket, quote, ellipsis, sentence end) and every
+    # subordinating or causal conjunction starts a new clause; a caveat clause cannot carry a statement after it
+    r"[;:,()\[\]{}\u2014\u2013\u2012\u2015\u2026!?\"\u201c\u201d]|\.{2,}|\.(?=\s|$)|\s-+\s"
+    r"|\b(?:as|so(?!\s+far\b)|which|who|whom|whose|whereas|but|however|although|though|while|nevertheless|"
+    r"nonetheless|because|since|despite|except|instead|rather|due\s+to|thus|hence|therefore|consequently|unless|"
+    r"until|then|when|where|(?<!not\s)yet)\b"
     r"|\b(?:and|or)\s+(?=(?:is|are|was|were|has|have|had|will|would|can|could|may|might|must|should|does|do|did|it|"
-    r"its|they|their|this|these|there|we)\b)", re.IGNORECASE)
+    r"its|they|their|this|these|there|we|you|everyone|anyone|users?)\b)", re.IGNORECASE)
 _AND_NAME = re.compile(r"\b(?:and|or)\s+(?=[A-Z0-9])")        # "..., and NumPy 2.5.5 is ...": a new subject
 # T1-09: the same caveat after a discourse marker ("However, the evidence does not state whether ...") and a list of
 # gaps ("Gaps include ...") assert no fact.
 _DISCOURSE_LEAD = re.compile(r"^(?:however|but|still|that said|note that|notably|nevertheless|nonetheless|"
                              r"unfortunately|importantly|overall|also|in addition|in short|in summary|currently)\b"
                              r"\s*,?\s*", re.IGNORECASE)
-_JOIN_LEAD = re.compile(r"^(?:and|or|as|so|which|who|whereas|but|however|although|though|while|nevertheless|"
-                        r"nonetheless|because|since|despite|except|instead|rather|due\s+to|so\s+that|yet)\b\s*,?\s*",
+_JOIN_LEAD = re.compile(r"^(?:and|or|as|so|which|who|whom|whose|whereas|but|however|although|though|while|"
+                        r"nevertheless|nonetheless|because|since|despite|except|instead|rather|due\s+to|so\s+that|"
+                        r"thus|hence|therefore|consequently|unless|until|then|when|where|yet)\b\s*,?\s*",
                         re.IGNORECASE)    # the conjunction that opened the clause (_CLAUSE_SPLIT)
+
+
+
 _GAPS_LIST = re.compile(r"^(?:the\s+)?(?:main\s+|remaining\s+|open\s+|knowledge\s+)?gaps?\s+(?:include|includes|are|"
                         r"is|remain)\b", re.IGNORECASE)
+
+
+_PUNCT = " ,.;:()[]{}\u2014\u2013\u2012\u2015\u2026!?\"'\u201c\u201d\u2018\u2019-"
 
 
 def _clauses(text: str) -> list[tuple[int, int]]:
     """Character spans of the clauses of `text` (see _CLAUSE_SPLIT)."""
     cuts = sorted({m.start() for m in _CLAUSE_SPLIT.finditer(text)} | {m.start() for m in _AND_NAME.finditer(text)})
     bounds = [0] + [c for c in cuts if c > 0] + [len(text)]
-    return [(a, z) for a, z in zip(bounds, bounds[1:]) if text[a:z].strip(" ,.;:")]
+    return [(a, z) for a, z in zip(bounds, bounds[1:]) if text[a:z].strip(_PUNCT)]
 
 
 def _scoped(words: list[str], i: int, limit: int = 4) -> int | None:
@@ -250,11 +260,20 @@ def _scoped(words: list[str], i: int, limit: int = 4) -> int | None:
 
 
 def _subject_ok(prefix: list[str], raw: list[str], whether: bool) -> bool:
-    """The words before the negation assert nothing (rule 3)."""
-    if whether:
-        return True
+    """The words before the negation assert nothing (rule 3). An embedded question ("Whether X is Y cannot be
+    determined") may hold one verb group, nothing else that is finite (F1: the lead is no longer a free pass)."""
+    verbs, prev = 0, False
     for k, w in enumerate(prefix):
-        if w in _AUX or w in _SUBORDINATE or _SPECULATIVE.fullmatch(w):
+        if whether and k == 0:
+            continue                                  # the "whether" itself
+        if whether and w in _AUX and not _SPECULATIVE.fullmatch(w):
+            verbs += not prev
+            prev = True
+            if verbs > 1:
+                return False
+            continue
+        prev = False
+        if w in _AUX or w in _SUBORDINATE or w == "whether" or _SPECULATIVE.fullmatch(w):
             return False
         if k and _LEAD_VERB.match(raw[k]) and (any(ch.isdigit() for ch in raw[k - 1]) or
                                                (k == 1 and raw[0][:1].isupper() and prefix[0] not in _DETERMINERS)):
@@ -273,7 +292,7 @@ def gap_clause(clause: str) -> bool:
         return False
     raw = _WORD_RX.findall(clause.replace("’", "'"))
     words = [w.lower() for w in raw]
-    whether = bool(words) and words[0] in ("whether", "if")
+    whether = bool(words) and words[0] == "whether"
     has_evidence_noun = any(w in _EVIDENCE_NOUNS for w in words)
     for i, w in enumerate(words):
         start = i
@@ -320,7 +339,7 @@ def _gap_spans(text: str) -> list[tuple[int, int]]:
 
 def insufficiency(text: str) -> bool:
     """Every clause of the sentence only says that the evidence does not establish something (gap_clause)."""
-    text = _clean(text)
+    text = _DISCOURSE_LEAD.sub("", _clean(text))
     spans = _clauses(text)
     return bool(spans) and all(gap_clause(text[a:z]) for a, z in spans)
 

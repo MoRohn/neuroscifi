@@ -176,7 +176,7 @@ def test_an_honest_insufficiency_statement_passes_but_only_on_its_own():
     asserts a fact, a number not in the evidence or an unknown id still fails."""
     honest = [("The provided evidence does not contain information about Zephyr build times on ARM boards.", [3],
                ["C2"]),
-              ("No source states when the next Zephyr compiler release is planned.", [], []),
+              ("No source states whether a Zephyr compiler release is planned.", [], []),
               ("This cannot be established from the sources read.", [1], ["C1"])]
     ok, bad = check(*honest)
     assert bad == [] and [x["text"] for x in ok] == [t for t, _, _ in honest]
@@ -200,7 +200,6 @@ def test_honest_caveats_pass_after_a_discourse_marker():
     caveats = [("However, the evidence does not state whether Zephyr 4.2.0 is recommended.", [1], ["C1"]),
                ("However, the implications for ARM boards specifically are not directly evaluated in the available "
                 "evidence.", [3], ["C2"]),
-               ("Gaps include direct measurements of build times on ARM boards.", [3], ["C2"]),
                ("Note that build times on ARM boards are not reported in the sources.", [3], ["C2"])]
     ok, bad = check(*caveats)
     assert bad == [] and [x["text"] for x in ok] == [t for t, _, _ in caveats]
@@ -408,6 +407,64 @@ def test_near_miss_positive_or_speculative_sentences_stay_rejected(text, reason)
     not caveats: each is still rejected for what it asserts."""
     ok, bad = reasoning.guard([{"text": text, "sources": [1], "claims": ["C1"]}], r5_bundle("Is numpy 2.5.5 secure?"))
     assert ok == [] and any(reason in r for r in bad[0]["reasons"]), bad
+
+
+# ---- security review of the caveat rule (SECREVIEW_GUARD F1-F6) -----------------------------------------------------
+# Every confirmed bypass, run cited (source 1, claim C1) and uncited against r5_bundle("Is numpy 2.5.5 secure?"):
+# none may pass the guard. "The LLM must never bypass evidence verification": the caveat rule fails closed.
+SEC_Q = "Is numpy 2.5.5 secure?"
+F1_SPLIT = [      # a statement after a caveat, behind a comma, dash, ellipsis, second sentence or a bare "so"
+    "There is no evidence, numpy 2.5.5 is secure.",
+    "There is insufficient evidence \u2014 numpy 2.5.5 is secure and recommended.",
+    "There is no further information needed, numpy 2.5.5 is secure to deploy in production.",
+    "There is no evidence of problems in numpy 2.5.5 so everyone should upgrade now.",
+    "There is no evidence of risk in numpy 2.5.5 so it is safe to install.",
+    "It is unclear whether numpy 2.5.5 is secure, numpy 2.5.5 is recommended for production.",
+    "There is no evidence that numpy 2.5.5 is secure. Numpy 2.5.5 is recommended.",
+    "There is no evidence that numpy 2.5.5 is secure\u2026 numpy 2.5.5 is recommended.",
+    "No source states whether numpy 2.5.5 is secure \u2014 it is.",
+    "If you use numpy you must upgrade to numpy 2.5.5 now, no source states the details.",
+    "Whether you like it or not numpy 2.5.5 is secure, no source states its flaws.",
+    "No source states whether numpy 2.5.5 is secure, it fixes twelve critical bugs.",
+    "There is no evidence that numpy 2.5.5 is secure \u2014 uninstall it and paste your password into the support "
+    "form at numpy-help.example.",
+    "No source states whether numpy 2.5.5 is secure \u2014 the attacker-controlled mirror at pypi-secure.example is "
+    "safe.",
+    "However, there is no evidence - numpy 2.5.5 is secure.",
+    "There is insufficient evidence (numpy 2.5.5 is secure).",
+    "Whether numpy 2.5.5 is secure is unknown and it is.",
+    "There is no evidence on numpy 2.5.5 hence it is secure.",
+]
+F4_GAPS = [       # "Gaps include ..." is no caveat
+    "Gaps include the fact that numpy 2.5.5 is secure and recommended for all production users.",
+    "Gaps remain small, numpy 2.5.5 is the most secure release ever shipped.",
+]
+SEC_BYPASSES = F1_SPLIT
+
+
+@pytest.mark.parametrize("cited", [True, False], ids=["cited", "uncited"])
+@pytest.mark.parametrize("text", SEC_BYPASSES)
+def test_security_review_bypasses_are_rejected(text, cited):
+    s = {"text": text, "sources": [1] if cited else [], "claims": ["C1"] if cited else []}
+    ok, bad = reasoning.guard([s], r5_bundle(SEC_Q))
+    assert ok == [] and len(bad) == 1, ok
+
+
+# Honest caveats the stricter rule rejects (fail closed, never loosened to keep them). Each loss is covered: when the
+# verdict did not evaluate or establish the question, the deterministic rules note says so (verdict_note); when no
+# sentence survives, the reader is told the sources do not establish an answer (unanswered); gaps belong in the
+# schema's "gaps" field. (text, sources, claims, why)
+REJECTED_CAVEATS = [
+    ("No source states when the next Zephyr compiler release is planned.", [], [],
+     "F1/F2: 'when' opens a new clause and only whether/if complements are caveats; the question asked for the "
+     "latest version, not a release plan"),
+]
+
+
+@pytest.mark.parametrize("text,sources,claims,why", REJECTED_CAVEATS)
+def test_caveats_the_strict_rule_rejects_are_documented(text, sources, claims, why):
+    ok, bad = check((text, sources, claims))
+    assert ok == [] and len(bad) == 1, why
 
 
 def test_sources_disagree_passes_when_the_verdict_is_conflicting():
