@@ -526,39 +526,7 @@ def checkable_statement(text: str) -> str | None:
     return s if parse_statement(s) is not None else None
 
 
-# A sentence may report a figure it does not assert: a myth, an old estimate or the alternative it rejects ("long
-# cited as having 100 billion neurons", "the commonly quoted 100 billion", "rather than the often-cited 100
-# billion"). _asserted drops those parts (per clause: a contrast cue drops the rest of its clause, an attribution
-# cue the whole clause) before values and polarity are compared (C-09).
-_CONTRAST_CUE = re.compile(r"\b(?:rather\s+than|instead\s+of|as\s+opposed\s+to|contrary\s+to|in\s+contrast\s+to)\b",
-                           re.IGNORECASE)
-_ATTRIBUTION_CUE = re.compile(
-    r"\b(?:(?:long|often|commonly|widely|frequently|traditionally|popularly|generally|usually|once|previously|"
-    r"formerly)[- ](?:been\s+)?(?:cited|quoted|stated|said|claimed|believed|reported|repeated|assumed|held|thought|"
-    r"accepted|estimated|given)|myths?|misconceptions?|popular\s+(?:belief|claim|figure|estimate|notion)|"
-    r"(?:old|older|earlier|outdated|previous)\s+(?:estimates?|figures?|counts?)|it\s+(?:was|is|has\s+been)\s+"
-    r"(?:once\s+|long\s+|often\s+|commonly\s+|widely\s+|previously\s+)?(?:thought|believed|said|claimed|assumed|"
-    r"estimated|stated))\b", re.IGNORECASE)
-_CLAUSE_SPLIT = re.compile(r"([,;:()\u2014]|\s(?:but|whereas|while|although|though)\s)", re.IGNORECASE)
-
-
-def _asserted(text: str) -> str:
-    """`text` without the parts that report a figure rather than assert it (see the comment above)."""
-    if not (_CONTRAST_CUE.search(text) or _ATTRIBUTION_CUE.search(text)):
-        return text
-    parts = _CLAUSE_SPLIT.split(text)
-    out = []
-    for i in range(0, len(parts), 2):
-        seg = parts[i]
-        m = _CONTRAST_CUE.search(seg)
-        if m:
-            seg = seg[:m.start()]
-        elif _ATTRIBUTION_CUE.search(seg):
-            seg = ""
-        out.append(seg)
-        if i + 1 < len(parts):
-            out.append(parts[i + 1])
-    return T.collapse("".join(out))
+_asserted = _claims.asserted_text      # what a sentence asserts, without reported myths or beliefs (C-09)
 
 
 def parse_statement(statement: str) -> dict | None:
@@ -898,7 +866,13 @@ def _check(slot: dict, claim: Claim, nests: set | None = None) -> tuple[str | No
         if found is None:
             return None, ""
         if not same_polarity and shape != "event":
-            return None, ""                  # a negation elsewhere in the sentence: its scope is unknown
+            # the negation denies the statement's own figure only when that figure is in its scope ("does not
+            # contain 100 billion neurons"); a negation elsewhere in the sentence has an unknown scope (T1-16)
+            cue = _claims._NEGATION.search(asserted)
+            denied = T.values(asserted[cue.end():]) if cue else []
+            if found == "same" and slot["polarity"] > 0 and _compare_values(want, denied, False) == "same":
+                return "contradict", f"denies {', '.join(want)}"
+            return None, ""
         if found == "different":
             return ("contradict" if slot["polarity"] > 0 else None), \
                 f"reports {', '.join(have)} instead of {', '.join(want)}"
@@ -1734,7 +1708,7 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
             a, b = by_id.get(pair["a"]), by_id.get(pair["b"])
             if report_safe_text(a) is None or report_safe_text(b) is None:
                 continue
-            contradictions.append(_contradiction(a, b, pair["reason"], c, sources))
+            contradictions.append(_contradiction(a, b, pair["reason"], c, sources, now=now, cls=cls))
 
     # freshness and liveness over cited sources
     cited = sources.cited_docs()
@@ -1895,7 +1869,8 @@ def _side(x: Claim, sources: _Sources) -> dict:
             "kind": x.kind}
 
 
-def _contradiction(a: Claim, b: Claim, reason: str, c: ClaimCluster, sources: _Sources) -> dict:
+def _contradiction(a: Claim, b: Claim, reason: str, c: ClaimCluster, sources: _Sources, *, now: float | None = None,
+                   cls: str | None = None) -> dict:
     sa, sb = _side(a, sources), _side(b, sources)
     na, nb = sa["citation"], sb["citation"]
     parts = []
@@ -1924,7 +1899,11 @@ def _contradiction(a: Claim, b: Claim, reason: str, c: ClaimCluster, sources: _S
     db = {"key": c.key, "values": b.values, "published_at": b.published_at, "event_at": b.event_at,
           "retrieved_at": b.retrieved_at, "polarity": b.polarity}
     value_change = not reason.startswith("opposite polarity") and not reason.startswith("conflicting statements")
-    if value_change and (temporal.supersedes(da, db) or temporal.supersedes(db, da)):
+    # a newer value supersedes an older one only for a time-varying fact: the question's class ages evidence, or
+    # the statement is about the current state; never for an anatomical count or a historical date (T1-16)
+    time_varying = cls in _claims.AGE_DISCOUNT_CLASSES or \
+        temporal.claim_category(a.text or "", now=now, freshness_class=cls)[0] == "time_sensitive"
+    if value_change and time_varying and (temporal.supersedes(da, db) or temporal.supersedes(db, da)):
         newer_n = na if temporal.supersedes(da, db) else nb
         parts.append(f"Leaning: [{newer_n}] (basis: its effective date is later and it reports a different value "
                      f"for the same subject; a newer value may supersede an older one for time-varying facts). "

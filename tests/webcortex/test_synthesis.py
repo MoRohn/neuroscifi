@@ -279,6 +279,18 @@ def test_value_supersession_states_its_basis():
     assert f"Leaning: [{newer}] (basis:" in c["assessment"] and "Not independently confirmed" in c["assessment"]
 
 
+def test_no_recency_leaning_for_a_fact_that_does_not_vary_with_time():
+    # T1-16: "Leaning: [1] (basis: its effective date is later ... a newer value may supersede an older one for
+    # time-varying facts)" was given for an anatomical count.
+    old = doc("https://old.example/a", "The human brain contains about 100 billion neurons in total.",
+              published=ts(2009, 6, 1))
+    new = doc("https://new.example/b", "The human brain contains about 86 billion neurons in total.",
+              published=ts(2025, 2, 6))
+    r = run("How many neurons does the human brain contain?", [old, new], {"freshness_class": "stable"})
+    [c] = r["contradictions"]
+    assert "Leaning" not in c["assessment"] and S.UNRESOLVED in c["assessment"]
+
+
 # ---- fact verification -------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("pairs, label", [
@@ -746,6 +758,33 @@ def test_a_sentence_reporting_a_myth_does_not_assert_it():
     assert myth["supporting"] == [] and myth["label"] == "disputed", myth
     assert S._asserted(NEURONS[3][1]) == "The human brain has 86 billion neurons,"
     assert S._asserted("The human brain has 86 billion neurons.") == "The human brain has 86 billion neurons."
+
+
+def test_a_debunked_or_reported_belief_is_not_support():
+    # T1-16 (ba10d143): von Bartheld 2016 "For half a century, the human brain was believed to contain about 100
+    # billion neurons ..." and Herculano-Houzel's "purportedly containing 100 billion neurons" were the supporting
+    # side of "The human brain contains 100 billion neurons"; the cortex's 14-16 billion was its contradiction.
+    docs = [doc("https://en.wikipedia.org/wiki/Brain", "In humans, the cerebral cortex contains approximately 14–16 "
+                "billion neurons, and the estimated number of neurons in the cerebellum is 55–70 billion.",
+                title="Brain"),
+            doc("https://doi.org/10.1002/cne.24040", "For half a century, the human brain was believed to contain "
+                "about 100 billion neurons and one trillion glial cells, with a glia:neuron ratio of 10:1.",
+                title="The search for true numbers of neurons and glial cells in the human brain"),
+            doc("https://doi.org/10.3389/neuro.09.031.2009", "The human brain has often been viewed as outstanding "
+                "among mammalian brains: the most cognitively able, endowed with an overdeveloped cerebral cortex "
+                "that represents over 80% of brain mass, and purportedly containing 100 billion neurons and 10x "
+                "more glial cells.", title="The human brain in numbers"),
+            doc("https://myths.example/n", "The idea that the human brain has 100 billion neurons is a myth.",
+                title="Neuron myths")]
+    v = _fv("The human brain contains 100 billion neurons.", docs)
+    assert v["supporting"] == [] and v["state"] != "supported", v
+    denied = docs + [doc("https://facts.example/n", "Contrary to popular belief, the human brain does not contain "
+                         "100 billion neurons.", title="Neuron facts")]
+    v = _fv("The human brain contains 100 billion neurons.", denied)
+    assert v["supporting"] == [] and len(v["contradicting"]) == 1 and v["state"] == "disputed", v
+    assert any("denies 100000000000 neurons" in r for r in v["reasons"])
+    assert S._asserted("For half a century, the human brain was believed to contain about 100 billion neurons.") \
+        == "For half a century,"
 
 
 @pytest.mark.parametrize("question, statement", [
