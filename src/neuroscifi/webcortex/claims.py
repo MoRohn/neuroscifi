@@ -1674,6 +1674,13 @@ def evaluate(claims, *, now: float | None = None, freshness_class: str | None = 
         ranks = {c.id: rank(c) for c in order}
         best = max(ranks.values())
         rep = next(c for c in order if ranks[c.id] == best)
+        top = order[0]       # the most relevant claim
+        if rep is not top and not _latest_record(order) and ranks[top.id][:2] == best[:2] and \
+                bearing(rep, top) is None:
+            # the newer date decides only between statements of one slot (that agree or conflict); a merely
+            # related newer sentence ("In December 2023, the first drivers written in Rust were accepted") never
+            # leads the most relevant one ("The first stable release, Rust 1.0, was published in May 2015", R1-04)
+            rep = top
         relation = {c.id: bearing(rep, c) for c in order}
     bearing_ids = {i for i, r in relation.items() if r}
     groups = [g for g in ([i for i in g if i in bearing_ids] for g in all_groups) if g]

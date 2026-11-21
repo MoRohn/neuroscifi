@@ -518,13 +518,61 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     return text, cites, ids, used, is_hedged, reasons
 
 
+_UNHEDGED = "as fact without hedging"
+_LOWER_LEAD = re.compile(r"^(?:The|A|An|In|On|At|By|Its|Their|This|These|Those|Some|Most|Many|Each|Every|One|Two|"
+                         r"Both|All|After|Before|During|Since|Until|Over|Under|From)\b")
+
+
+# Only a lack of corroboration is cured by naming the source; a claim that may be out of date
+# (temporally_unresolved) or that sources dispute needs the model's own caveat.
+ATTRIBUTABLE_STATES = frozenset({"insufficient", "not_evaluated"})
+RESTATE_SENTENCE = 0.8     # share of the sentence's content words found in the cited claims
+RESTATE_CLAIM = 0.6        # share of one cited claim's content words the sentence repeats
+
+
+def _restates(text: str, used) -> bool:
+    """The sentence repeats a cited claim in other words (and adds almost nothing): attributing it to its source
+    is then faithful. A relayed instruction or an added clause does not qualify."""
+    from .claims import _stems
+    if ";" in text or not used:
+        return False
+    own = set(_stems(text))
+    if not own:
+        return False
+    claimed = set().union(*(set(_stems(c["text"])) for c in used))
+    if len(own & claimed) < RESTATE_SENTENCE * len(own):
+        return False
+    return any(len(own & set(_stems(c["text"]))) >= RESTATE_CLAIM * len(set(_stems(c["text"])) or {""})
+               for c in used)
+
+
+def _attributed(text: str, cites) -> str:
+    """`text` attributed to its cited source(s): "According to one source, the first stable release ..." (R1-04)."""
+    lead = "According to one source, " if len(set(cites)) == 1 else "According to the cited sources, "
+    m = _LOWER_LEAD.match(text)
+    return lead + (text[0].lower() + text[1:] if m else text)
+
+
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
+    """Accepted and rejected model sentences (see the module docstring). A sentence whose ONLY fault is stating an
+    unsupported claim plainly, and that restates its cited claim (_restates), is attributed to its source(s)
+    ("According to one source, ...") and checked again:
+    the quote the evidence holds is used rather than "the sources do not establish an answer" (R1-04: "The first
+    stable release of Rust, version 1.0, was published in May 2015." from one Wikipedia lead). Accepted items so
+    repaired carry "attributed": True."""
     accepted, rejected = [], []
     earlier = set()          # sources the accepted sentences before this one cite (R2-03 "another source")
     for s in sentences or []:
         if not _clean(s.get("text")):
             continue
         text, cites, ids, used, is_hedged, reasons = check_sentence(s, b)
+        attributed = False
+        if reasons and cites and all(r.endswith(_UNHEDGED) for r in reasons) and _restates(text, used) and \
+                all(c["state"] in ATTRIBUTABLE_STATES for c in used):
+            again = check_sentence({"text": _attributed(text, cites), "sources": cites, "claims": ids}, b)
+            if not again[5]:
+                text, cites, ids, used, is_hedged, reasons = again
+                attributed = True
         if _ANOTHER_SOURCE.search(text) and cites and set(cites) <= earlier:
             reasons = reasons + [f"attributes it to another source, but cites the same source(s) {sorted(set(cites))} "
                                  "as an earlier sentence"]
@@ -534,7 +582,8 @@ def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
             earlier.update(cites)
             accepted.append({"text": text, "citations": sorted(set(cites)), "claims": list(dict.fromkeys(ids)),
                              "states": {c["id"]: c["state"] for c in used}, "hedged": is_hedged}
-                            | ({"insufficiency": True} if insufficiency(text) else {}))
+                            | ({"insufficiency": True} if insufficiency(text) else {})
+                            | ({"attributed": True} if attributed else {}))
     return accepted, rejected
 
 

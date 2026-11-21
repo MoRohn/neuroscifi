@@ -1031,3 +1031,20 @@ def test_reported_belief_framing_is_not_the_sentences_own_figure(reported):
     assert C.conflict(claim, mk(TED86, domain="b.example")) is None
     assert not C.agrees(mk("The human brain contains about 100 billion neurons.", domain="c.example"), claim)
     assert C.asserted_values(mk("Scientists said on Tuesday that the probe holds 3 kg of samples.")) == ["3 kg"]
+
+
+def test_a_newer_merely_related_sentence_never_leads_the_most_relevant_one():
+    """R1-04 (RC2 live, "When was Rust first released?"): the Wikipedia sentences "The first stable release, Rust 1.0,
+    was published in May 2015." and "On May 15, 2015, Rust 1.0 became the first stable release." were clustered with
+    "In December 2023, the first drivers written in Rust were accepted, ..." (Rust for Linux), which led the cluster
+    by its newer date; the answer then said the sources do not establish when Rust was released."""
+    q = "When was Rust first released?"
+    wiki = doc("https://en.wikipedia.org/wiki/Rust_(programming_language)", "Rust is a general-purpose programming "
+               "language. The first stable release, Rust 1.0, was published in May 2015. On May 15, 2015, Rust 1.0 "
+               "became the first stable release.", title="Rust (programming language)", published=None)
+    linux = doc("https://en.wikipedia.org/wiki/Rust_for_Linux", "In December 2023, the first drivers written in Rust "
+                "were accepted, and released in kernel version 6.8.", title="Rust for Linux", published=None)
+    claims = C.extract_claims(wiki, q) + C.extract_claims(linux, q)
+    clusters = [C.score(k, now=NOW, freshness_class="release") for k in C.cluster(claims)]
+    lead = next(k for k in clusters if any("Rust 1.0" in c.text for c in k.claims))
+    assert "Rust 1.0" in lead.statement, lead.statement
