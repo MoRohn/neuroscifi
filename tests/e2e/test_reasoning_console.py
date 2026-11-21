@@ -18,7 +18,7 @@ from test_console_research import NOW, QUESTION, Research, ask, enable_web, fini
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "inference"))
 from fake_openai import FakeOpenAI  # noqa: E402
 
-LABEL_DEGRADED = "Advanced reasoning unavailable — showing extractive summary"
+LABEL_DEGRADED = "Model-written summary unavailable — showing the extractive summary quoted from the sources"
 
 
 def evidence_of(body):

@@ -62,9 +62,11 @@ import time
 
 from . import safety
 
-LABEL_DEGRADED = "Advanced reasoning unavailable — showing extractive summary"
-LABEL_MODEL = ("Advanced reasoning by {model}: written only from the verified evidence; each sentence cites its "
-               "sources and passed NeuroSciFi's citation and claim-state checks.")
+# Labels say what the answer is, no more (T4-02): one model call over the collected evidence, which may include
+# single-source claims; the guard checks each sentence against its cited sources and claim states.
+LABEL_DEGRADED = "Model-written summary unavailable — showing the extractive summary quoted from the sources"
+LABEL_MODEL = ("Model-written summary by {model} from the collected evidence — each sentence checked against its cited "
+               "sources; single-source statements are marked")
 TEMPLATE = "template"
 SUPPORTED_STATES = frozenset({"supported"})   # ADR-035 state only: "corroborated" (a legacy label) is not enough
 MAX_CLAIMS = 12

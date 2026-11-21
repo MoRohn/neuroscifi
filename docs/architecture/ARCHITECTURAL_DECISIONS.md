@@ -330,7 +330,7 @@ Decision.
    evidence; no instruction-like text. A bounded self-critique may only remove sentences. The model never changes a
    claim's state and its text never becomes knowledge (consolidation reads claims only).
 4. `report.generated_by` is `model:<served name>` only when at least one sentence passed; otherwise `template`, with
-   the label "Advanced reasoning unavailable — showing extractive summary" and the reason. The extractive answer is
+   the label "Model-written summary unavailable — showing the extractive summary quoted from the sources" and the reason. The extractive answer is
    always kept unchanged.
 5. Tool calls: the model suggests; NeuroSciFi checks the allow-list, the granted permission and the argument schema,
    and executes through existing functions (knowledge.query, orchestrator.get, orchestrator.submit with its web

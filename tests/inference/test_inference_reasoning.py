@@ -274,7 +274,7 @@ def test_model_answer_is_validated_labelled_and_accounted(gateway, fake):
     assert r["generated_by"] == "model:fake-model" == out["generated_by"] and out["status"] == "model"
     assert [s["text"] for s in out["answer"]] == ["Zephyr 4.2.0 was released on 17 November 2026.",
                                                   "According to one source, build times dropped by 30 percent."]
-    assert len(out["rejected"]) == 1 and out["label"].startswith("Advanced reasoning by fake-model")
+    assert len(out["rejected"]) == 1 and out["label"].startswith("Model-written summary by fake-model")
     assert {"text": "benchmarks on more boards", "by": "model"} in out["gaps"]
     assert any(g["by"] == "rules" and "single source" in g["text"] for g in out["gaps"])
     assert out["usage"]["calls"] == 2 and out["usage"]["first_token_ms"] is not None
@@ -339,7 +339,7 @@ def test_unavailable_model_degrades_to_the_labelled_template(tmp_path, key_file)
     r = report()
     out = reasoning.apply(None, r, None, question=Q, now=T0, gateway=Gateway(cfg, key="k", sleep=lambda s: None))
     assert out["status"] == "unavailable" and r["generated_by"] == "template"
-    assert out["label"] == "Advanced reasoning unavailable — showing extractive summary"
+    assert out["label"] == "Model-written summary unavailable — showing the extractive summary quoted from the sources"
     assert r["answer"] == REPORT["answer"] and r["limitations"] == REPORT["limitations"]
 
 

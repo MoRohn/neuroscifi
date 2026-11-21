@@ -15,7 +15,7 @@ NeuroSciFi now runs a language model on the Spark and lets it write research ans
    every sentence is checked by local code before it is shown. It never changes a claim's state, and its text never
    becomes knowledge.
 3. **Honest labels.** `generated_by` is `model:<name>` only when a checked model answer is shown; otherwise it is
-   `template` and the report says "Advanced reasoning unavailable — showing extractive summary" and why. The extractive
+   `template` and the report says "Model-written summary unavailable — showing the extractive summary quoted from the sources" and why. The extractive
    answer of ADR-022 is always kept, unchanged.
 
 ```
