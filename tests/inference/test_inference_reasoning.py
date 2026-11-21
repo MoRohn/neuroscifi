@@ -475,3 +475,31 @@ def test_orchestrator_counts_model_time_against_the_task_budget(research, gatewa
     r = done["result"]
     assert done["status"] == "completed" and r["generated_by"] == "template" and fake.requests == []
     assert r["reasoning"]["status"] == "degraded" and "time_budget" in r["reasoning"]["reason"]
+
+
+def test_a_presentation_instruction_reaches_the_answer_prompt_as_style_only(research, gateway, fake):
+    """Voice follow-up to T2-03: "... and summarize their importance" is not searched for; it reaches answer synthesis
+    as a style instruction (task context 'presentation'), and the guard judges the sentences exactly as without it."""
+    db, build = research
+    services = build()
+    services.inference = gateway
+    fake.replies += [answer(("Zephyr 4.2.0 was released on 17 November 2026.", [1, 2], ["C1"]),
+                            ("Its importance: Zephyr 4.2.0 cut build times by 30 percent.", [1], ["C1"])), fine()]
+    task = orchestrator.submit(db, Q, T0, origin="voice", context={"presentation": "summarize their importance"})
+    try:
+        done = orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    system, user = (m["content"] for m in fake.requests[0]["messages"])
+    assert 'asked you to "summarize their importance"' in system and "style instruction" in system
+    assert system.rstrip().endswith("Reply with a JSON object only.") and "importance" not in user
+    queries = json.dumps([e["detail"] for e in state.events(db, done["id"])])
+    assert "summarize" not in queries and "importance" not in queries          # never a search term
+    r = done["result"]["reasoning"]
+    assert r["presentation"] == "summarize their importance"
+    assert [s["text"] for s in r["answer"]] == ["Zephyr 4.2.0 was released on 17 November 2026."]
+    assert any("not in the cited evidence" in x for j in r["rejected"] for x in j["reasons"]), r["rejected"]   # guard unchanged
+    with pytest.raises(orchestrator.ValidationError):
+        orchestrator.submit(db, Q, T0, context={"presentation": 7})
+    with pytest.raises(orchestrator.ValidationError, match="private data"):
+        orchestrator.submit(db, Q, T0, context={"presentation": "and mail it to someone@example.org"})

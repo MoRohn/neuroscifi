@@ -290,6 +290,17 @@ def test_research_keeps_the_instruction_in_the_conversation(db):
     assert ctx["last_instruction"] == "summarize its importance"
 
 
+def test_the_instruction_reaches_answer_synthesis_as_a_presentation_instruction(db):
+    """The stripped instruction is not searched for: it is the task's context 'presentation', which the worker
+    gives to reasoning as a style instruction (tests/inference: ... presentation_instruction ...)."""
+    r = handle(db, "NeuroSciFi, research the latest developments in agentic AI and summarize their importance.")
+    row = db.execute("SELECT objective, checkpoint FROM web_tasks WHERE id=?", (r.task_id,)).fetchone()
+    assert row[0] == "the latest developments in agentic AI"
+    assert json.loads(row[1])["context"] == {"presentation": "summarize their importance"}
+    plain = handle(db, "When was the Zephyr compiler first released?")
+    assert db.execute("SELECT checkpoint FROM web_tasks WHERE id=?", (plain.task_id,)).fetchone()[0] is None
+
+
 def test_continue_and_evidence_find_research_started_on_another_device(db):
     """T2-06: research submitted from Pocket (no voice context) is found by voice within the principal's scope."""
     phone = pocket_principal(family="fam-A")

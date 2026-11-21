@@ -290,9 +290,13 @@ class Bridge:
         if limited is not None:
             return limited
 
+        # the instruction ("summarize their importance") is how to write the answer, not what to search for: it
+        # reaches answer synthesis as a style instruction (task context), under the same evidence guard
+        context = {"presentation": " ".join(instruction.split())[:200]} if instruction and instruction.strip() else None
+
         def submit():
             return orchestrator.submit(db, objective, self.clock(), origin=principal.origin, family=principal.family,
-                                       authorization=authorization)
+                                       authorization=authorization, context=context)
         try:
             task = principal.admit(submit) if principal.admit else submit()
         except ValidationError as err:
@@ -463,7 +467,7 @@ class Bridge:
         if not task:
             last = ctx.get("last_objective")
             if last:
-                return self._submit(db, principal, ctx, last)
+                return self._submit(db, principal, ctx, last, instruction=ctx.get("last_instruction"))
             return _say("continue_research", "There is no previous investigation to continue.")
         if task["status"] in ("partial", "cancelled", "failed"):
             if not principal.research:
@@ -481,7 +485,9 @@ class Bridge:
                          text=f"Continuing: {task['objective'][:300]}", task_id=queued["id"], follow=queued["id"],
                          actions=[{"kind": "context", "last_task_id": queued["id"]}])
         if task["status"] == "completed":
-            return self._submit(db, principal, ctx, task["objective"])
+            same = ctx.get("last_task_id") == task["id"]
+            return self._submit(db, principal, ctx, task["objective"],
+                                instruction=ctx.get("last_instruction") if same else None)
         return _say("continue_research", "That investigation is still running; I'll tell you when it's done.",
                     task_id=task["id"])
 

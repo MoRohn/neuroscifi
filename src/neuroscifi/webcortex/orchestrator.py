@@ -90,6 +90,7 @@ MCP_ORIGIN = "mcp"
 MAX_OBJECTIVE = 2000
 MAX_FOLLOW = 2
 MAX_CONTEXT_PACKAGES = 200
+MAX_PRESENTATION = 200
 CANDIDATE_FACTOR = 3          # reading ranks up to 3 x max_pages candidates; failed fetches do not use a page slot
 TIMELY_PER_HOST = 2           # news/time-sensitive questions: at most this many web candidates per host (T1-06);
                               # otherwise max(2, ceil(max_pages / 3)) (T1-07: 8 of 9 candidates on Hacker News)
@@ -198,11 +199,20 @@ def _context(context):
     """Validate the structured task context: {"packages": [{ecosystem, name, version|None}, ...]} (<= 200) and/or
     {"crawl": {seeds, max_pages, max_depth}} (a bounded same-site crawl instead of searching) and/or
     {"hypothesis": id} (the hypothesis the task investigates: evolution.observe settles its prediction on this
-    explicit link, lexical key matching being only the fallback)."""
+    explicit link, lexical key matching being only the fallback) and/or {"presentation": text} (how the owner
+    wants the answer written, e.g. "summarize their importance" from a spoken request: given to answer synthesis
+    as a style instruction only, never searched for and never a reason to relax the evidence guard)."""
     if context is None:
         return None
-    if not isinstance(context, dict) or set(context) - {"packages", "crawl", "hypothesis"}:
-        raise ValidationError("context accepts only 'packages', 'crawl' and 'hypothesis'")
+    if not isinstance(context, dict) or set(context) - {"packages", "crawl", "hypothesis", "presentation"}:
+        raise ValidationError("context accepts only 'packages', 'crawl', 'hypothesis' and 'presentation'")
+    presentation = context.get("presentation")
+    if presentation is not None:
+        if not isinstance(presentation, str) or not presentation.strip() or len(presentation) > MAX_PRESENTATION \
+                or any(ord(c) < 32 or 127 <= ord(c) < 160 for c in presentation):
+            raise ValidationError(f"context.presentation must be text of at most {MAX_PRESENTATION} characters "
+                                  "without control characters")
+        presentation = " ".join(presentation.split())
     crawl = _crawl_spec(context["crawl"]) if "crawl" in context else None
     hypothesis = context.get("hypothesis")
     if hypothesis is not None and (isinstance(hypothesis, bool) or not isinstance(hypothesis, int)
@@ -220,7 +230,9 @@ def _context(context):
                 and (version is None or isinstance(version, str) and 0 < len(version) <= 64)):
             raise ValidationError("package ecosystem (<= 32), name (<= 214) and version (<= 64 or null) are strings")
         out.append({"ecosystem": eco, "name": name, "version": version})
-    validated = {"packages": out} if out or (crawl is None and hypothesis is None) else {}
+    validated = {"packages": out} if out or (crawl is None and hypothesis is None and presentation is None) else {}
+    if presentation is not None:
+        validated["presentation"] = presentation
     if crawl is not None:
         validated["crawl"] = crawl
     if hypothesis is not None:
@@ -281,6 +293,8 @@ def prepare(db, objective, now, *, mode=None, budget=None, origin="cli", family=
     if authorization not in (None, AUTHORIZED_DISCLOSURE):
         raise ValidationError(f"authorization must be omitted or '{AUTHORIZED_DISCLOSURE}'")
     findings = screen(db, objective, cfg)
+    if context and context.get("presentation"):      # it reaches the model endpoint, so it is screened the same way
+        findings = findings + screen(db, context["presentation"], cfg)
     if findings and authorization != AUTHORIZED_DISCLOSURE:
         kinds = sorted({f["kind"] for f in findings})
         raise ValidationError(f"objective contains private data ({', '.join(kinds)}); it was not sent anywhere. "
@@ -1949,7 +1963,8 @@ def _reason(db, run, report):
 
     def apply():
         return reasoning.apply(db, report, run.services, question=run.objective, now=run.clock(), task_id=run.id,
-                               time_left=run.budget.max_seconds - run.elapsed())
+                               time_left=run.budget.max_seconds - run.elapsed(),
+                               presentation=(run.checkpoint.get("context") or {}).get("presentation"))
     try:
         if not is_autonomous(run.origin):
             out = apply()

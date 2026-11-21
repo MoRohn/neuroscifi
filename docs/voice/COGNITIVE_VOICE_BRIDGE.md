@@ -97,7 +97,10 @@ Parsing is deterministic (regular expressions over the normalised transcript); n
 The address ("NeuroSciFi, …", also as ASR hears it: "New Roe Sci-Fi", "neuro sci fi") is removed before parsing,
 and a trailing instruction ("… and summarize their importance", "…, then explain why it matters") is not part of
 the research subject: it is kept in the conversation context (`last_instruction`) and shown with the
-acknowledgement. (Passing it into answer synthesis needs a parameter of the research orchestrator; not done here.)
+acknowledgement. It reaches answer synthesis as a presentation instruction: the task's context `presentation`
+(`orchestrator.submit(context=...)`, privacy-screened like the objective, kept on resume), which
+`reasoning.messages` adds to the system prompt as a style instruction under the same rules. It is never a search
+term, and the evidence guard judges every sentence exactly as without it (`reasoning.presentation` records it).
 "Continue the previous investigation", "show the evidence" and "explain more simply" use the conversation's last
 task, else the principal's latest research from any device (a Pocket device: its family's; the owner: any
 user-started task). "Show the evidence" numbers sources as the answer cites them; uncited sentences carry no "[]".

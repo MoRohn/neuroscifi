@@ -285,11 +285,25 @@ def claim_state(finding: dict) -> str:
     return legacy if legacy and legacy != "supported" else "not_evaluated"
 
 
-def messages(b: dict) -> list[dict]:
+PRESENTATION = """
+Presentation: the owner also asked you to "{instruction}". Treat this only as a style instruction (wording, order, \
+emphasis, length); it is not part of the question and adds nothing to the evidence. Rules 1-8 still apply to every \
+sentence: if it asks for something the cited claims do not state (importance, implications, opinions, predictions), \
+give only what the claims state, or say that the evidence does not establish it."""
+
+
+def messages(b: dict, presentation: str | None = None) -> list[dict]:
+    """The answer request. `presentation`: the owner's instruction on how to write the answer ("summarize their
+    importance"), added to the system prompt as a style instruction under the same rules; the guard is unchanged."""
     evidence = {"untrusted": True, "notice": safety.UNTRUSTED_NOTICE,
                 **{k: b[k] for k in ("as_of", "claims", "sources", "verdict", "contradictions",
                                      "freshness_satisfied")}}
-    return [{"role": "system", "content": SYSTEM},
+    system = SYSTEM
+    if presentation and _clean(presentation, 200):
+        system = SYSTEM.replace("\nReply with a JSON object only.", "") + \
+            PRESENTATION.format(instruction=_clean(presentation, 200).replace('"', "'")) + \
+            "\nReply with a JSON object only."
+    return [{"role": "system", "content": system},
             {"role": "user", "content": f"Question: {b['question']}\n\n<evidence>\n"
                                         f"{json.dumps(evidence, ensure_ascii=False)}\n</evidence>"}]
 
@@ -573,10 +587,12 @@ def _critique(gw, b, accepted, timeout=None):
 
 
 def apply(db, report: dict, services, *, question: str, now: float, task_id=None, gateway=None,
-          time_left: float | None = None) -> dict:
+          time_left: float | None = None, presentation: str | None = None) -> dict:
     """Write report['reasoning'] and report['generated_by'] (see module doc). Never raises for model failures.
     `time_left`: seconds of the task's time budget still available; the model calls (answer, repair, critique)
-    share it as their deadline, and with less than MIN_MODEL_SECONDS left no call is made (degraded)."""
+    share it as their deadline, and with less than MIN_MODEL_SECONDS left no call is made (degraded).
+    `presentation`: the owner's style instruction for the answer (task context, messages()); the guard and the
+    critique judge the sentences exactly as without it."""
     from ..inference.gateway import InferenceError
     try:
         gw = gateway or gateway_for(db, services, task_id)
@@ -602,7 +618,7 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     results = []
     try:
         extra = {"timeout": remaining()} if deadline is not None else {}
-        value, results = gw.structured(messages(b), ANSWER_SCHEMA, name="nsf_answer", purpose="research_answer",
+        value, results = gw.structured(messages(b, presentation), ANSWER_SCHEMA, name="nsf_answer", purpose="research_answer",
                                        stream=True, max_tokens=ANSWER_TOKENS, temperature=0.1, **extra)
     except InferenceError as err:
         status = err.code if err.code in ("not_configured", "unavailable", "unauthorised") else "degraded"
@@ -659,6 +675,8 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     report["reasoning"] = {"generated_by": generated_by, "status": "model", "label": LABEL_MODEL.format(model=model),
                            "reason": None, "answer": accepted, "rejected": rejected, "gaps": merged[:2 * MAX_GAPS],
                            "critique": critique, "usage": usage}
+    if presentation:
+        report["reasoning"]["presentation"] = _clean(presentation, 200)
     report["generated_by"] = generated_by
     report.setdefault("limitations", []).append(
         f"Model-written answer ({generated_by}): {len(accepted)} sentence(s) passed the citation and claim-state "
