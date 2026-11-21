@@ -259,6 +259,30 @@ def test_newest_cited_source_is_the_publication_date_never_the_fetch_time():
     assert "Newest cited source: 5 days ago" in lead and "just now" not in lead, lead
 
 
+def test_freshness_counts_only_the_sources_the_answer_cites():
+    """N3 (R4 retest s2_pc.json, rust_first.json): a source cited only by a low-ranked finding (an off-topic PubMed
+    cuproptosis record dated a week ago; in the Rust case a job advert published 25 minutes ago) set
+    newest_source_at and satisfied the freshness check, so "these statements may be out of date" was never said.
+    Freshness is decided by the sources the answer's quoted statements cite."""
+    old = NOW - 400 * D
+    facts = ["Predictive coding treats the brain as a hierarchy that predicts its sensory input.",
+             "Predictive coding models explain hallucinations as overweighted prior beliefs.",
+             "Predictive coding links psychosis to aberrant precision of prediction errors.",
+             "Predictive coding accounts of autism propose weak priors in perception.",
+             "Predictive coding frameworks guide computational psychiatry research on depression.",
+             "Predictive coding is tested with mismatch negativity experiments in schizophrenia."]
+    docs = [doc(f"https://journal{i}.example/a", fact, title="Predictive coding", published=old)
+            for i, fact in enumerate(facts)]
+    docs.append(doc("https://pubmed.example/cuproptosis", "The role of cuproptosis in breast cancer: molecular "
+                    "mechanisms and therapeutic implications.", title="Cuproptosis", published=NOW - 7 * D))
+    r = run("Summarize current research on predictive coding and its implications for psychiatry", docs,
+            {"freshness_class": "scientific"})
+    by_n = {s["n"]: s["url"] for s in r["sources"]}
+    assert not any("cuproptosis" in by_n[n] for a in r["answer"][1:] for n in a["citations"])
+    assert r["freshness"]["newest_source_at"] == old and r["freshness"]["satisfied"] is False, r["freshness"]
+    assert "may be out of date" in r["answer"][0]["text"], r["answer"][0]["text"]
+
+
 def test_synthesize_threads_ttl_overrides():
     # R7: WebConfig.freshness_ttl did not reach scoring or the freshness requirement.
     docs = _docs(AGREE, published=NOW - 3 * D)

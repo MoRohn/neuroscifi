@@ -1838,12 +1838,16 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
 
     # freshness and liveness over cited sources
     cited = sources.cited_docs()
+    # N3 (R4): freshness is decided by the sources the answer's quoted statements cite; a source cited only by a
+    # low-ranked finding (an off-topic record, a job advert) neither dates the answer nor makes it fresh
+    answered = {n for item in items for n in item["citations"]}
+    answer_docs = [d for d in cited if sources.number(d) in answered]
     # newest_source_at is a publication date (a registry record's release upload time), never a fetch time (R1-03);
     # a registry record read live still makes the registry state fresh (observed_at)
-    stamps = [d.published_at for d in cited if d.published_at is not None]
+    stamps = [d.published_at for d in answer_docs if d.published_at is not None]
     newest = max(stamps) if stamps else None
-    observed = [d.retrieved_at for d in cited if _observed_live(d) and d.retrieved_at is not None]
-    satisfied = any(temporal.window_ok(_fresh_ts(d), required, now) for d in cited)
+    observed = [d.retrieved_at for d in answer_docs if _observed_live(d) and d.retrieved_at is not None]
+    satisfied = any(temporal.window_ok(_fresh_ts(d), required, now) for d in answer_docs)
     live = any(d.retrieval_mode in LIVE_MODES for d in cited)
     freshness = {"class": cls, "window_seconds": window, "ttl_seconds": class_ttl, "required_seconds": required,
                  "satisfied": bool(satisfied), "newest_source_at": newest,
