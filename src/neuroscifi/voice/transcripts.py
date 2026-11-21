@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import json
 import secrets
+import time
 
-from ..instance import store
+from ..instance import governance, store
 from ..instance.errors import Conflict, NotFound, ValidationError
 
 LEASE_SECONDS = 20.0
@@ -183,19 +184,20 @@ def search(db, query, *, principal=None, limit=50) -> list[dict]:
     return [_public(r) for r in _rows(db, sql, params)]
 
 
-def forget_session(db, sid, *, principal=None) -> dict:
-    """Delete a voice session, its transcript and any retained audio (cascade), then truncate the WAL."""
+def forget_session(db, sid, *, principal=None, now=None) -> dict:
+    """Delete a voice session, its transcript and any retained audio, record its payload-free tombstone (a restored
+    checkpoint drops it again; governance.forget_voice_session), then truncate the WAL."""
+    now = time.time() if now is None else now
     with store.write(db):
         row = db.execute("SELECT principal FROM voice_sessions WHERE id=?", (sid,)).fetchone()
         if row is None or (principal is not None and row[0] != principal):
             raise NotFound("voice session not found")
-        n = db.execute("SELECT count(*) FROM voice_segments WHERE session_id=?", (sid,)).fetchone()[0]
-        db.execute("DELETE FROM voice_audio WHERE segment_id IN (SELECT id FROM voice_segments WHERE session_id=?)",
-                   (sid,))
-        db.execute("DELETE FROM voice_segments WHERE session_id=?", (sid,))
-        db.execute("DELETE FROM voice_sessions WHERE id=?", (sid,))
+        effects = governance.forget_voice_session(db, sid, now)
     store.truncate_wal(db)
-    return {"forgotten": sid, "segments": n}
+    out = {"forgotten": sid, "segments": effects["segments"]}
+    if effects["checkpoints_stale"]:
+        out["next_steps"] = [governance.REBUILD_HINT.format(n=len(effects["checkpoints_stale"]))]
+    return out
 
 
 # ---- retained audio (off by default) ---------------------------------------------------------------------------

@@ -316,6 +316,38 @@ def test_restore_scrubs_roots_forgotten_after_the_checkpoint(instance, tmp_path)
     assert out["derived_rows_scrubbed"] > 0
 
 
+def test_restore_drops_voice_sessions_and_audio_forgotten_after_the_checkpoint(instance, tmp_path):
+    """A voice session forgotten after a checkpoint, and raw audio swept since, stay gone in a restored copy;
+    deletion_log keeps only a digest label (no session id, no transcript text)."""
+    db, path = instance
+    from neuroscifi.voice import transcripts as tx
+    secret = "my bank PIN is 4417-zq"
+    gone = tx.start_session(db, "owner", "console:x", "voice_text", T0)
+    seg = tx.upsert(db, gone, "u1", speaker="user", source="asr", status="final", text=secret, now=T0 + 1)
+    tx.retain_audio(db, seg["id"], b"\x01\x02" * 50, 16000, T0 + 1, 24)
+    kept = tx.start_session(db, "owner", "console:x", "voice_text", T0 + 2)
+    swept = tx.upsert(db, kept, "u1", speaker="user", source="asr", status="final", text="keep me", now=T0 + 3)
+    tx.retain_audio(db, swept["id"], b"\x03" * 100, 16000, T0 + 3, 1)
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 4)
+    assert tx.forget_session(db, gone, now=T0 + 5)["segments"] == 1
+    assert tx.sweep(db, T0 + 2 * 3600) == 1                     # the kept session's audio expired since
+    out = checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 2 * 3600 + 1)
+    assert out["voice_sessions_removed"] == 1 and out["voice_audio_removed"] == 1   # the swept row
+    with sqlite3.connect(tmp_path / "r.sqlite") as copy:
+        assert [r[0] for r in copy.execute("SELECT id FROM voice_sessions")] == [kept]
+        assert [r[0] for r in copy.execute("SELECT text FROM voice_segments")] == ["keep me"]
+        assert copy.execute("SELECT count(*) FROM voice_audio").fetchone()[0] == 0
+    assert secret.encode() not in (tmp_path / "r.sqlite").read_bytes()
+    log = db.execute("SELECT target_kind,target_id,effects FROM deletion_log").fetchall()
+    assert len(log) == 1 and log[0][0] == "voice_session" and log[0][1].startswith("voice_session:#")
+    assert gone not in str(log) and secret not in str(log)
+    assert db.execute("SELECT status FROM checkpoints WHERE id=?", (cp["id"],)).fetchone()[0] == "stale"
+    raw = tmp_path / "raw.sqlite"                                # the guarantee is the replay, not an accident
+    checkpoints.restore(db, cp["id"], raw, T0 + 2 * 3600 + 1, apply_tombstones=False)
+    with sqlite3.connect(raw) as copy:
+        assert copy.execute("SELECT count(*) FROM voice_sessions").fetchone()[0] == 2
+
+
 def test_verify_decodes_next_to_the_archive(instance, tmp_path, monkeypatch):
     db, path = instance
     add(db, "a")

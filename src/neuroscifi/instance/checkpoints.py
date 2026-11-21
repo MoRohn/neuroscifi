@@ -4,8 +4,9 @@
 A deletion that commits while the archive is being written makes the new checkpoint 'stale' at once.
 `restore` never publishes a partial file and re-applies current tombstones, forgotten datasets (with their
 graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
-the same cascade as the live forget: governance.replay_web_forgets), and drops epoch streams the instance no
-longer holds, so nothing forgotten comes back.
+the same cascade as the live forget: governance.replay_web_forgets; forgotten voice sessions with their
+transcripts and audio: governance.replay_voice_forgets), and drops epoch streams and retained voice audio the
+instance no longer holds, so nothing forgotten comes back.
 `prune` keeps the newest valid archives and deletes the rest.
 
 Archives live in `default_dir(db_path)` = `<db parent>/<db stem>.checkpoints`, one folder per instance.
@@ -157,7 +158,10 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
     web = db.execute("SELECT kind,digest,forgotten_at FROM web_forgotten").fetchall() if apply_tombstones else []
     # Epoch streams leave no tombstone: a stream the live instance no longer holds was forgotten or expired.
     live_streams = set(db.execute("SELECT id,sha256 FROM epoch_streams").fetchall()) if apply_tombstones else None
-    removed = blobs = scrubbed = streams = 0
+    # Retained raw audio likewise: a row the live instance no longer holds was forgotten, swept or expired.
+    live_audio = set(db.execute("SELECT segment_id,created_at FROM voice_audio").fetchall()) \
+        if apply_tombstones else None
+    removed = blobs = scrubbed = streams = voice = audio = 0
     web_removed = {"tasks": 0, "knowledge": 0, "sources": 0}
     invalidated = []
     old_umask = os.umask(0o077)
@@ -194,6 +198,11 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
                     copy.executemany("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)",
                                      web)
                     web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now)
+                    voice = governance.replay_voice_forgets(copy, {(k, d) for k, d, _ in web}, now)
+                if live_audio is not None:
+                    for row in copy.execute("SELECT segment_id,created_at FROM voice_audio").fetchall():
+                        if row not in live_audio:
+                            audio += copy.execute("DELETE FROM voice_audio WHERE segment_id=?", (row[0],)).rowcount
                 copy.execute("COMMIT")
                 copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
                 copy.execute("PRAGMA journal_mode=DELETE")
@@ -207,7 +216,7 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
     return {"checkpoint": checkpoint_id, "path": str(dest), "tombstones_applied": len(tombstones),
             "evidence_removed": removed, "datasets_blanked": blobs, "graphs_invalidated": invalidated,
             "derived_rows_scrubbed": scrubbed, "streams_removed": streams, "web_forgotten_applied": len(web),
-            "web_removed": web_removed}
+            "web_removed": web_removed, "voice_sessions_removed": voice, "voice_audio_removed": audio}
 
 
 def _root_candidates(copy):

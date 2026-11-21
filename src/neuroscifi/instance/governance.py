@@ -911,3 +911,51 @@ def replay_web_forgets(db, forgotten, now):
         if wanted("source_domain", domain) and _forget_source_core(db, domain, now) is not None:
             out["sources"] += 1
     return out
+
+
+# ---- Voice (migration 9, ADR-037) --------------------------------------------------------------------------------
+# Forgetting a voice session deletes its row, its transcript segments (corrections included) and any retained raw
+# audio. Like a web forget it records a payload-free tombstone in web_forgotten, so checkpoints.restore drops the
+# session again from an older archive (replay_voice_forgets). The tombstone reuses the 'task' kind with the subject
+# "voice:<session id>" (research task ids are UUIDs, so the namespaces cannot collide; the table's kind CHECK has no
+# voice kind and adding one would be a schema change). deletion_log keeps only the digest label, never the session
+# id or any transcript text. Raw audio swept on expiry leaves no tombstone: restore drops every voice_audio row the
+# live instance no longer holds (checkpoints.restore), as it does for epoch streams.
+
+VOICE_KIND = "task"
+
+
+def _voice_subject(session_id):
+    return f"voice:{session_id}"
+
+
+def _delete_voice_session(db, session_id):
+    """Delete a voice session, its segments and their audio explicitly (a restored copy may not enforce foreign
+    keys). Caller owns the txn. Returns (segments, audio rows) deleted."""
+    audio = db.execute("DELETE FROM voice_audio WHERE segment_id IN "
+                       "(SELECT id FROM voice_segments WHERE session_id=?)", (session_id,)).rowcount
+    segments = db.execute("DELETE FROM voice_segments WHERE session_id=?", (session_id,)).rowcount
+    db.execute("DELETE FROM voice_sessions WHERE id=?", (session_id,))
+    return segments, audio
+
+
+def forget_voice_session(db, session_id, now):
+    """Delete one voice session with its transcript and retained audio, record its tombstone, stale the checkpoints
+    and log the digest label. Caller owns the txn (voice/transcripts.forget_session). Returns the effects."""
+    segments, audio = _delete_voice_session(db, session_id)
+    digest = _web_tombstones(db, VOICE_KIND, [_voice_subject(session_id)], now)[0]
+    return _web_finish(db, "voice_session", "voice_session:#" + digest, {"segments": segments, "audio": audio}, now)
+
+
+def replay_voice_forgets(db, forgotten, now):
+    """Re-apply voice tombstones ({(kind, digest)}, as replay_web_forgets) to a restored copy. Caller owns the txn.
+    Returns the number of sessions removed again."""
+    if not forgotten:
+        return 0
+    instance_id = store.birth(db)["instance_id"]
+    removed = 0
+    for (session_id,) in db.execute("SELECT id FROM voice_sessions").fetchall():
+        if (VOICE_KIND, web_digest(instance_id, VOICE_KIND, _voice_subject(session_id))) in forgotten:
+            _delete_voice_session(db, session_id)
+            removed += 1
+    return removed

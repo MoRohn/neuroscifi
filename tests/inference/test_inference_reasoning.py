@@ -129,6 +129,42 @@ def test_guard_allows_hedged_weak_claims_counts_and_version_prefixes():
     assert bad == [] and len(ok) == 3 and ok[0]["hedged"]
 
 
+def zod_bundle(advisory_state="single_source"):
+    """The live dependency-check case (docs/quality/evidence/search_reasoning_live.json): the registry gives the
+    latest version, the OSV advisory is about the version in use."""
+    return {"claims": [
+        {"id": "C3", "state": "single_source", "sources": [3], "published": "2026-10-12", "event": None,
+         "text": "npm reports zod latest version 4.6.7 released 2026-10-12."},
+        {"id": "C4", "state": advisory_state, "sources": [5], "published": "2026-10-01", "event": None,
+         "text": "OSV lists advisory GHSA-mrhx-c7xc-m3w5 for zod 3.25.76: Zod can exhaust memory while validating "
+                 "oversized constrained collections; fixed in version 4.6.6; published 2026-10-01."}],
+        "sources": [{"id": 3, "title": "zod - npm", "published": "2026-10-12"},
+                    {"id": 5, "title": "GHSA-mrhx-c7xc-m3w5", "published": "2026-10-01"}]}
+
+
+LIVE_ZOD = ("Sources disagree on whether zod's latest version, 4.6.7, is affected by a vulnerability; one source "
+            "states the issue was fixed in version 4.6.6.")
+
+
+def test_a_hedge_cannot_invent_a_disagreement_or_a_version():
+    """Live case: the disagreement hedge let a sentence bind the registry's 4.6.7 to an advisory about 3.25.76."""
+    both = {"sources": [3, 5], "claims": ["C3", "C4"]}
+    ok, bad = reasoning.guard([{"text": LIVE_ZOD, **both}], zod_bundle())
+    assert ok == [] and any("no cited claim is contested" in r for r in bad[0]["reasons"]), bad
+    ok, bad = reasoning.guard([
+        {"text": "According to one source, advisory GHSA-mrhx-c7xc-m3w5 affects zod 3.25.76 and is fixed in "
+                 "version 4.6.6.", "sources": [5], "claims": ["C4"]},
+        {"text": "According to one source, zod 4.6.7 is affected by advisory GHSA-mrhx-c7xc-m3w5.",
+         "sources": [5], "claims": ["C4"]},                  # hedged, but 4.6.7 is not in the cited evidence
+        {"text": "According to one source, the advisory is not disputed.", "sources": [5], "claims": ["C4"]}],
+        zod_bundle())
+    assert [x["text"][:40] for x in ok] == ["According to one source, advisory GHSA-m",
+                                            "According to one source, the advisory is"]
+    assert bad[0]["reasons"] == ["number(s) not in the cited evidence: 4.6.7"]
+    ok, bad = reasoning.guard([{"text": LIVE_ZOD, **both}], zod_bundle("contested"))   # a real conflict may say so
+    assert bad == [] and ok[0]["hedged"]
+
+
 # ---- apply ---------------------------------------------------------------------------------------------------
 
 def test_model_answer_is_validated_labelled_and_accounted(gateway, fake):

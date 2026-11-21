@@ -22,6 +22,10 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
   - relies on a claim whose state is not supported (SUPPORTED_STATES) without hedging in its own words (the
     model's say-so is not used: HEDGE patterns are matched locally);
   - calls something verified/confirmed/proven while any cited claim is not supported (never upgrade a state);
+  - says the sources disagree (conflicting, disputed, contested, contradict) while no cited claim is in a conflict
+    state (CONFLICT_STATES): such a hedge asserts a disagreement the evidence does not hold, and would otherwise let
+    a single-source claim through bound to another claim's version or subject (live case: "Sources disagree on
+    whether zod's latest version, 4.6.7, is affected", where the advisory is about the version in use);
   - contains a number that appears in none of its cited claims or their sources' dates (no invented figures);
   - gives a number a unit (or scale) that the cited evidence does not give that number ("41 feet" when the claim
     says "41 metres", "86 neurons" vs "86 million neurons" is fine only without a unit; "$3 million" vs "3 billion"
@@ -107,6 +111,13 @@ _HEDGE = re.compile(
     r"appears?|unconfirmed|alleged|disputed|contested|conflicting|disagree|disagreement|unclear|uncertain|"
     r"(?:[Oo]nly|[Aa]) single source|[Oo]ne source|[Oo]nly one source|not (?:yet |been |independently )*"
     r"(?:confirmed|verified|corroborated|established))\b")
+# A hedge that says the sources disagree is itself an assertion about the evidence: it holds only when a cited claim
+# is contested (conflicting/disputed). Negated forms ("not disputed") assert no conflict and are not matched.
+_DISAGREE = re.compile(r"\b(?:disagree(?:s|d|ment)?|disputed|contested|conflicting|contradict(?:s|ory)?)\b",
+                       re.IGNORECASE)
+_NEGATED_DISAGREE = re.compile(r"\b(?:not|no|never|without)\s+(?:\w+\s+)?(?:disagree(?:s|d|ment)?|disputed?|"
+                               r"contested|conflicting|contradict(?:s|ory)?)\b", re.IGNORECASE)
+CONFLICT_STATES = frozenset({"contested", "conflicting", "disputed"})
 _UPGRADE = re.compile(r"\b(?:verified|confirmed|proven|proved|definitely|certainly|undisputed|corroborated|"
                       r"established fact)\b", re.IGNORECASE)
 _NEGATED_UPGRADE = re.compile(r"\b(?:not|never|un)\s*(?:yet\s+|been\s+|independently\s+)*(?:verified|confirmed|"
@@ -315,6 +326,8 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
                        " as fact without hedging")
     if weak and _UPGRADE.search(_NEGATED_UPGRADE.sub(" ", text)):
         reasons.append("calls an unverified claim verified or confirmed")
+    if _DISAGREE.search(_NEGATED_DISAGREE.sub(" ", text)) and not any(c["state"] in CONFLICT_STATES for c in used):
+        reasons.append("says the sources disagree, but no cited claim is contested")
     cited_sources = [by_source[n] for n in cites if n in by_source]
     allowed = _allowed_numbers(used, cited_sources)
     invented = [n for n in _numbers(text) if not _number_ok(n, allowed)]

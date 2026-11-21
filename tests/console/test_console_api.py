@@ -339,9 +339,12 @@ def test_graph_learn_uses_a_lease_holder_per_request(console):
 
 def test_connection_errors_print_a_fixed_line(console):
     err = io.StringIO()
+    # A valid Host (with the port) so the server blocks reading the body when the RST arrives. Without the port the
+    # server answered 403 before reading the body, and the test raced that write against the RST (~2% no error).
     with contextlib.redirect_stderr(err):
         sock = socket.create_connection(("127.0.0.1", console.port))
-        sock.sendall(b"POST /api/epochs HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+        sock.sendall(f"POST /api/epochs HTTP/1.1\r\nHost: 127.0.0.1:{console.port}\r\n".encode() +
+                     b"Content-Type: application/json\r\n"
                      b"Authorization: Bearer " + TOKEN.encode() + b"\r\nContent-Length: 50\r\n\r\n{")
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
         sock.close()

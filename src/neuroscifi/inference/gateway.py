@@ -16,10 +16,13 @@ Every call: the endpoint guard (local-first, see config.py), the remote privacy 
 a connect timeout and a whole-call deadline (cfg.read_timeout, streaming included), bounded retries with
 exponential backoff for connection errors, 429 and 502-504 (Retry-After honoured up to 10 s; a stream is never
 retried after its first byte), and one ledger row (tokens, latency, first-token latency, attempts; no text).
+A streaming call is also registered in presence.activity while it runs (purpose, task id, streamed token count;
+no text), so the Presence aggregator sees it before its ledger row exists.
 <think>...</think> blocks (reasoning models) are removed from returned text.
 """
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 import http.client
 import json
@@ -29,6 +32,7 @@ import socket
 import time
 from urllib.parse import urlsplit
 
+from ..presence import activity
 from . import config as iconfig
 from .jsonschema import check_schema, validate
 
@@ -349,15 +353,20 @@ class Gateway:
         start = self.clock()
         row = {"at": self.wall(), "purpose": purpose, "model": model, "locality": where, "stream": stream,
                "task_id": self.task_id}
+        # The ledger row is written when the call ends; while a stream runs it is visible to Presence only through
+        # the in-process registry (presence/activity.py), with the content and tool-call deltas counted as tokens.
+        inflight = activity.track("generating", subsystem="reasoning", purpose=purpose, task_id=self.task_id,
+                                  clock=self.wall) if stream else nullcontext(None)
         try:
-            conn, resp, attempts, deadline = self._call("POST", "/chat/completions", payload, timeout=timeout)
-            try:
-                if stream:
-                    result = self._read_stream(resp, deadline, start, on_delta)
-                else:
-                    result = self._read_once(resp)
-            finally:
-                conn.close()
+            with inflight as count:
+                conn, resp, attempts, deadline = self._call("POST", "/chat/completions", payload, timeout=timeout)
+                try:
+                    if stream:
+                        result = self._read_stream(resp, deadline, start, on_delta, count)
+                    else:
+                        result = self._read_once(resp)
+                finally:
+                    conn.close()
         except InferenceError as err:
             self._record(row | {"status": err.code, "error": str(err)[:300], "attempts": getattr(err, "attempts", 1),
                                 "latency_ms": round((self.clock() - start) * 1000, 1)})
@@ -395,7 +404,7 @@ class Gateway:
                           finish_reason=choice.get("finish_reason"), tool_calls=list(message.get("tool_calls") or []),
                           prompt_tokens=usage.get("prompt_tokens"), completion_tokens=usage.get("completion_tokens"))
 
-    def _read_stream(self, resp, deadline, start, on_delta) -> ChatResult:
+    def _read_stream(self, resp, deadline, start, on_delta, count=None) -> ChatResult:
         parts, calls, first, finish, usage, model = [], {}, None, None, {}, ""
         while True:
             if self.clock() > deadline:
@@ -430,11 +439,15 @@ class Gateway:
                     if first is None:
                         first = round((self.clock() - start) * 1000, 1)
                     parts.append(text)
+                    if count is not None:
+                        count(1)
                     if on_delta is not None:
                         on_delta(text)
                 for tc in delta.get("tool_calls") or []:
                     if first is None:
                         first = round((self.clock() - start) * 1000, 1)
+                    if count is not None:
+                        count(1)
                     slot = calls.setdefault(tc.get("index", 0), {"id": None, "type": "function",
                                                                  "function": {"name": "", "arguments": ""}})
                     slot["id"] = tc.get("id") or slot["id"]

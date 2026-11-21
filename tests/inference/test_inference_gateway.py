@@ -93,6 +93,22 @@ def test_streaming_delivers_deltas_and_first_token_latency(gateway, fake, tmp_pa
     assert Ledger(tmp_path / "x.inference.sqlite").recent(1)[0]["stream"] == 1
 
 
+def test_a_running_stream_is_visible_to_presence_with_its_token_count(gateway, fake):
+    """The ledger row exists only after the call; while it streams, presence.activity lists it (no text)."""
+    from neuroscifi.presence import activity
+    fake.replies.append({"content": "Streaming works in small pieces."})
+    seen = []
+    gateway.chat([{"role": "user", "content": "stream"}], purpose="web_answer", stream=True,
+                 on_delta=lambda text: seen.append([e for e in activity.snapshot() if e["purpose"] == "web_answer"]))
+    assert seen and all(len(entries) == 1 for entries in seen)
+    assert [entries[0]["tokens"] for entries in seen] == list(range(1, len(seen) + 1))
+    assert seen[0][0]["activity"] == "generating" and seen[0][0]["subsystem"] == "reasoning"
+    assert not [e for e in activity.snapshot() if e["purpose"] == "web_answer"]      # gone once the call ends
+    fake.replies.append({"content": "Not streamed."})
+    gateway.chat([{"role": "user", "content": "x"}], purpose="web_answer")
+    assert not [e for e in activity.snapshot() if e["purpose"] == "web_answer"]
+
+
 def test_streaming_tool_call_fragments_are_assembled(gateway, fake):
     fake.replies.append({"tool_calls": [{"name": "knowledge_query", "arguments": '{"topic": "rivers"}'}]})
     result = gateway.chat([{"role": "user", "content": "x"}], purpose="s", stream=True,

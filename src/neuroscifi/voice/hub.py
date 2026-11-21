@@ -513,7 +513,7 @@ class VoiceHub:
                 self._apply_mode(s, action["mode"])
             elif action["kind"] == "forget_conversation":
                 with self.db() as db:
-                    tx.forget_session(db, s.id)
+                    tx.forget_session(db, s.id, now=self.clock())
                     sid = tx.start_session(db, s.principal.name, s.device, s.mode, self.clock())
                 self._emit(s, "forgotten", new_session=sid)
                 with self.lock:
@@ -739,7 +739,8 @@ class VoiceHub:
 
     def forget(self, principal, session_id) -> dict:
         with self.db() as db:
-            out = tx.forget_session(db, session_id, principal=None if principal.owner else principal.name)
+            out = tx.forget_session(db, session_id, principal=None if principal.owner else principal.name,
+                                    now=self.clock())
         s = self.sessions.get(session_id)
         if s is not None:
             self._end(s, "forgotten")
