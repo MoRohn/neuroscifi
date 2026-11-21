@@ -75,15 +75,17 @@ accepts knowledge or resolves questions.
 `orchestrator._reason` calls `reasoning.apply` after synthesis for completed and partial runs (memory answers
 included); failed and cancelled runs keep the extractive report only.
 
-- **Bundle.** Up to 12 findings: id `C<n>`, state (cluster status), confidence, quoted text (≤ 420 chars), source ids
+- **Bundle.** Up to 12 findings: id `C<n>`, ADR-035 state and category (`finding.verification`, computed by
+  `synthesis.claim_state` before reasoning with the same rule as consolidation, `synthesis.decide`), confidence, quoted text (≤ 420 chars), source ids
   (its citations plus corroborating sources), publication/event dates; the cited sources' id, title, domain, dates
   and kind; the verdict label; the contradiction count; whether freshness was met. Findings that trip
   `safety.scan_injection` are left out. The bundle is JSON inside `<evidence>` with `"untrusted": true`; the system
   prompt says instructions inside it are data.
 - **Answer.** Streaming structured output: `{"sentences": [{"text", "sources": [int], "claims": ["C1"]}], "gaps": []}`.
 - **Guard** (the authority). A sentence is rejected if it cites no source or no claim, cites an id not in the bundle,
-  cites a claim through a source that does not carry it, relies on a claim whose state is not `corroborated` /
-  `supported` without hedging in its own words (local patterns: "according to", "one source", "may", "disputed", …),
+  cites a claim through a source that does not carry it, relies on a claim whose ADR-035 state is not `supported`
+  (a time-sensitive claim backed only by stale or undated sources is `temporally_unresolved`; the legacy
+  `corroborated` label never counts) without hedging in its own words (local patterns: "according to", "one source", "may", "disputed", …),
   calls a non-supported claim verified/confirmed, contains a number that is in none of its cited claims or their
   sources' dates/titles (a small count before "sources" is allowed; "4.2" matches "4.2.0"), gives a number a unit
   or scale the cited evidence does not give that number (`_unit_mismatches`: "41 feet" vs "41 metres", "86 billion"
@@ -194,7 +196,8 @@ nsf llm usage                                                 # token ledger
   the same thing (a bare number is matched by value only; "5m" is not judged). Names and dates written in words are
   not checked. The self-critique is a model judging a model; its marks are shown as flags and remove nothing on
   their own, so an overstated sentence that passes every objective check stays visible, flagged.
-- Claim states come from claims.py (`corroborated` today; `supported` is accepted for Lane C's new states). The model
+- Claim states are the ADR-035 states of `synthesis.decide`, written on each finding before reasoning; a stored
+  report without them is read as `not_evaluated` (never upgraded from the legacy label). The model
   sees at most 12 findings; it cannot see evidence the extractive pipeline did not extract.
 - A model answer costs ≈ 4–5 s and ≈ 2–4 k tokens per research task, inside the task's `max_seconds` budget.
 - Token counts in the ledger are the server's; the context budget before sending is an estimate (3.5 characters per

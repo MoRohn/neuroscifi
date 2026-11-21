@@ -79,10 +79,13 @@ def _support_and_contra(cluster, members):
     return head, support - contra, contra - {head.id}
 
 
-def cluster_verdict(cluster, *, now, freshness_class, ttl_overrides=None, window=None) -> dict:
-    """The verification state of a scored cluster's representative statement under the ADR-035 policy
-    (claims.CATEGORY_POLICY, the same rules as synthesis._verdict, applied to the cluster's own bearing: its
-    supporting claims and the claims its contradiction pairs set against them). Adversarial claims never count.
+def cluster_verdict(cluster, *, now, freshness_class, ttl_overrides=None, window=None, origins=None) -> dict:
+    """The verification state of a scored cluster's representative statement under the ADR-035 policy: the
+    cluster's own bearing (its supporting claims and the claims its contradiction pairs set against them) decided
+    by synthesis.decide, the same rule as the report verdict and the per-claim states the reasoning guard reads.
+    Adversarial claims never count. `origins` (claims.document_origins) joins copies of one document; claims also
+    carry their origin keys in flags["origin"] (stamped at extraction), so a caller without the documents
+    (consolidation) groups syndicated copies the same way.
 
     {state, category, category_reason, basis, confidence (posterior mean under the category's undated factor),
      independent_groups {supporting, contradicting}, timeframe, policy 'ADR-035', verified_at}."""
@@ -104,58 +107,15 @@ def cluster_verdict(cluster, *, now, freshness_class, ttl_overrides=None, window
     if not policy["evaluated"]:
         return out | {"state": "not_evaluated", "reason": f"not evaluated: {why}"}
     relation = {cid: "support" for cid in support} | {cid: "contradict" for cid in contra}
-    order = [c for c in members if c.id in relation]
-    counted = order
-    if policy["timeframe"]:
-        ts_cls = freshness_class if freshness_class in C.AGE_DISCOUNT_CLASSES else temporal.CATEGORY_FRESHNESS[category]
-        span = float(window) if window else temporal.ttl(ts_cls, ttl_overrides)
-        timely = {c.id: C.timely(c, now=now, window=span) for c in order}
-        counted = [c for c in order if timely[c.id]]
-        out["timeframe"] = {"required": True, "window_seconds": span, "class": ts_cls,
-                            "timely": sum(1 for v in timely.values() if v),
-                            "undated": sum(1 for v in timely.values() if v is None),
-                            "outside_window": sum(1 for v in timely.values() if v is False)}
-    by_id = {c.id: c for c in counted}
-    age_cls = None if category == "historical" else freshness_class
-    undated = policy["undated_factor"] if policy["undated_factor"] is not None else C.UNDATED_FACTOR
-    alpha, beta, sup, con = C.PRIOR_ALPHA, C.PRIOR_BETA, 0, 0
-    for group in C.independence_groups(counted):
-        members_g = [by_id[i] for i in group]
-        a = sum(1 for x in members_g if relation[x.id] == "support")
-        w = max(C.evidence_weight(x, now=now, freshness_class=age_cls, ttl_overrides=ttl_overrides,
-                                  undated_factor=undated) for x in members_g)
-        alpha += w * a / len(members_g)
-        beta += w * (len(members_g) - a) / len(members_g)
-        if a and a >= len(members_g) - a:
-            sup += 1
-        else:
-            con += 1
-    mean = alpha / (alpha + beta)
-    backing = [c for c in counted if relation[c.id] == "support"]
-    authority = None
-    if con == 0 and "registry" in policy["authority"] and \
-            any(c.kind == "metadata" and (c.flags or {}).get("record") in ("package", "release") for c in backing):
-        authority = "registry_record"
-    elif con == 0 and "official" in policy["authority"] and backing:
-        slot = synthesis.parse_statement(statement)
-        if slot and slot.get("entity") and slot.get("shape") != "quantity" and \
-                any(C.official_source(c, slot["head"]) for c in backing):
-            authority = "official_source"
-    found = C.verification_state(sup_groups=sup, con_groups=con, sup_weight=alpha - C.PRIOR_ALPHA,
-                                 con_weight=beta - C.PRIOR_BETA, mean=mean, min_groups=policy["min_groups"],
-                                 authoritative=authority is not None)
-    basis = None
-    if found == "supported":
-        basis = "corroboration" if sup >= policy["min_groups"] and mean >= C.VERIFICATION_MIN_CONFIDENCE \
-            else authority
-    elif found in ("disputed", "conflicting"):
-        basis = "contradiction"
-    if policy["timeframe"] and found == "insufficient" and len(counted) < len(order):
-        found = "temporally_unresolved"
+    registry = {c.id for c in members if c.kind == "metadata" and (c.flags or {}).get("record") in ("package", "release")}
+    d = synthesis.decide(statement, members, relation, category=category, now=now, cls=freshness_class,
+                         ttl_overrides=ttl_overrides, window=window, origins=origins, registry_ids=registry)
+    sup, con, mean = d["supporting_groups"], d["contradicting_groups"], d["confidence"]
     reason = (f"{sup} independent group(s) support, {con} contradict; posterior {mean:.3f} "
               f"({category}: {policy['min_groups']} group(s) needed"
               + (", undated sources do not count" if policy["undated_factor"] is None else "") + ")")
-    return out | {"state": found, "basis": basis, "confidence": round(mean, 6), "min_groups": policy["min_groups"],
+    return out | {"state": d["state"], "basis": d["basis"], "confidence": round(mean, 6),
+                  "min_groups": policy["min_groups"], "timeframe": d["timeframe"],
                   "independent_groups": {"supporting": sup, "contradicting": con}, "reason": reason}
 
 

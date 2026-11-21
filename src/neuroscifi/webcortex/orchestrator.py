@@ -1358,9 +1358,10 @@ class _Run:
                 continue
             per_doc.append((doc, len(extracted)))
             found += extracted
+        origins = claims.stamp_origins(found, self.documents)   # copies of one story are one source (ADR-035)
         now = self.clock()
-        scored = [claims.score(c, now=now, freshness_class=freshness, ttl_overrides=self.ttl_overrides())
-                  for c in claims.cluster(found)]
+        scored = [claims.score(c, now=now, freshness_class=freshness, ttl_overrides=self.ttl_overrides(),
+                               origins=origins) for c in claims.cluster(found)]
         sources = {}
         for entry in self.checkpoint.get("documents", []):
             for key in ("canonical_url", "url", "final_url"):

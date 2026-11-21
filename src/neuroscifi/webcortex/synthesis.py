@@ -1141,6 +1141,86 @@ def _registry_verdict(rs: dict, base: dict, pool: dict, sources: _Sources) -> di
                 _conflicts=[(None, x, why or "contradicts the checked statement") for x in contradicting])
 
 
+def decide(statement: str, pool, relation: dict, *, category: str, now: float, cls: str,
+           ttl_overrides: dict | None = None, window: float | None = None, origins: dict | None = None,
+           registry_ids=frozenset()) -> dict:
+    """The ADR-035 decision for one checked statement: the ONE rule shared by the report verdict (_verdict), the
+    per-claim states the reasoning guard reads (claim_states -> evolution.cluster_verdict) and consolidation
+    (evolution.cluster_verdict). Callers differ only in how each claim bears on the statement (`relation`
+    {claim id: "support" | "contradict"}: the lexical checker for a question's statement, the cluster's own
+    agreement and contradiction pairs for a cluster's representative) and which claims are the package's own
+    registry record (`registry_ids`).
+
+    Policy (claims.CATEGORY_POLICY[category]): a time-sensitive statement counts only evidence dated inside
+    `window` (else the class TTL); copies and syndicated stories are one independent group (claims.
+    independence_groups with `origins` and the claims' own origin flags); each group adds its weight (the category's
+    undated factor; no age discount for completed past events or historical statements) to a Beta(1,1) posterior;
+    claims.verification_state decides, a direct authoritative record (registry record, or the subject's official
+    site for a narrow non-quantity fact) suffices only when nothing contradicts.
+
+    -> {state, basis, confidence (posterior mean, unrounded), supporting_groups, contradicting_groups, min_groups,
+        timeframe, order, counted, supporting, contradicting, outvoted (contradicting ids inside supporting groups),
+        copies, authority}"""
+    policy = _claims.CATEGORY_POLICY[category]
+    slot = parse_statement(statement)
+    order = sorted((x for x in pool if x.id in relation),
+                   key=lambda x: (-x.relevance, x.source_url, x.sentence_index, x.id))
+    timeframe = None
+    counted = order
+    if policy["timeframe"]:
+        ts_cls = cls if cls in _claims.AGE_DISCOUNT_CLASSES else temporal.CATEGORY_FRESHNESS[category]
+        span = float(window) if window else temporal.ttl(ts_cls, ttl_overrides)
+        status = {x.id: _claims.timely(x, now=now, window=span) for x in order}
+        counted = [x for x in order if status[x.id]]
+        timeframe = {"required": True, "window_seconds": span, "class": ts_cls,
+                     "timely": sum(1 for v in status.values() if v), "undated": sum(1 for v in status.values()
+                                                                         if v is None),
+                     "outside_window": sum(1 for v in status.values() if v is False)}
+    groups = _claims.independence_groups(counted, origins=origins)
+    by_id = {x.id: x for x in counted}
+    alpha, beta, sup, con = _claims.PRIOR_ALPHA, _claims.PRIOR_BETA, 0, 0
+    outvoted = set()
+    age_cls = None if (slot is not None and _past_event(slot, now)) or category == "historical" else cls
+    undated = policy["undated_factor"] if policy["undated_factor"] is not None else _claims.UNDATED_FACTOR
+    for g in groups:
+        members = [by_id[i] for i in g]
+        a = sum(1 for x in members if relation[x.id] == "support")
+        w = max(_claims.evidence_weight(x, now=now, freshness_class=age_cls, ttl_overrides=ttl_overrides,
+                                        undated_factor=undated) for x in members)
+        alpha += w * a / len(members)
+        beta += w * (len(members) - a) / len(members)
+        if a and a >= len(members) - a:
+            sup += 1
+            outvoted |= {x.id for x in members if relation[x.id] == "contradict"}
+        else:
+            con += 1
+    mean = alpha / (alpha + beta)
+    supporting = [x for x in order if relation[x.id] == "support"]
+    contradicting = [x for x in order if relation[x.id] == "contradict"]
+    backing = [x for x in supporting if x.id in by_id]
+    authority = None
+    if con == 0 and "registry" in policy["authority"] and any(x.id in registry_ids for x in backing):
+        authority = "registry_record"   # the package registry is the authority on its own releases (ADR-033)
+    elif con == 0 and "official" in policy["authority"] and slot and slot.get("entity") and \
+            slot.get("shape") != "quantity" and any(_claims.official_source(x, slot["head"]) for x in backing):
+        authority = "official_source"
+    state = _claims.verification_state(sup_groups=sup, con_groups=con, sup_weight=alpha - _claims.PRIOR_ALPHA,
+                                       con_weight=beta - _claims.PRIOR_BETA, mean=mean,
+                                       min_groups=policy["min_groups"], authoritative=authority is not None)
+    basis = None
+    if state == "supported":
+        corroborated = sup >= policy["min_groups"] and mean >= _claims.VERIFICATION_MIN_CONFIDENCE
+        basis = "corroboration" if corroborated else authority
+    elif state in ("disputed", "conflicting"):
+        basis = "contradiction"
+    if policy["timeframe"] and state == "insufficient" and len(counted) < len(order):
+        state = "temporally_unresolved"
+    return {"state": state, "basis": basis, "confidence": mean, "supporting_groups": sup, "contradicting_groups": con,
+            "min_groups": policy["min_groups"], "timeframe": timeframe, "order": order, "counted": counted,
+            "supporting": supporting, "contradicting": contradicting, "outvoted": outvoted,
+            "copies": len(counted) - len(groups), "authority": authority}
+
+
 def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *, now: float, cls: str,
              ttl_overrides: dict | None = None, window: float | None = None, origins: dict | None = None) -> dict:
     """Fact verification by claim-slot checking (section comment above) under the claim-category policy of
@@ -1204,59 +1284,13 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
                 if relation.get(mine) == "support" and other in pool and other not in relation:
                     relation[other] = "contradict"
                     why[other] = pair.get("reason", "conflicts with a supporting source")
-    order = sorted((pool[i] for i in relation), key=lambda x: (-x.relevance, x.source_url, x.sentence_index, x.id))
-    timeframe = None
-    counted = order
-    if policy["timeframe"]:
-        ts_cls = cls if cls in _claims.AGE_DISCOUNT_CLASSES else temporal.CATEGORY_FRESHNESS[category]
-        span = float(window) if window else temporal.ttl(ts_cls, ttl_overrides)
-        status = {x.id: _claims.timely(x, now=now, window=span) for x in order}
-        counted = [x for x in order if status[x.id]]
-        timeframe = {"required": True, "window_seconds": span, "class": ts_cls,
-                     "timely": sum(1 for v in status.values() if v), "undated": sum(1 for v in status.values()
-                                                                         if v is None),
-                     "outside_window": sum(1 for v in status.values() if v is False)}
-    groups = _claims.independence_groups(counted, origins=origins)
-    copies = len(counted) - len(groups)
-    by_id = {x.id: x for x in counted}
-    alpha, beta, sup, con = _claims.PRIOR_ALPHA, _claims.PRIOR_BETA, 0, 0
-    outvoted = set()
-    age_cls = None if _past_event(slot, now) or category == "historical" else cls     # (_past_event)
-    undated = policy["undated_factor"] if policy["undated_factor"] is not None else _claims.UNDATED_FACTOR
-    for g in groups:
-        members = [by_id[i] for i in g]
-        a = sum(1 for x in members if relation[x.id] == "support")
-        w = max(_claims.evidence_weight(x, now=now, freshness_class=age_cls, ttl_overrides=ttl_overrides,
-                                        undated_factor=undated) for x in members)
-        alpha += w * a / len(members)
-        beta += w * (len(members) - a) / len(members)
-        if a and a >= len(members) - a:
-            sup += 1
-            outvoted |= {x.id for x in members if relation[x.id] == "contradict"}
-        else:
-            con += 1
-    mean = alpha / (alpha + beta)
-    supporting = [x for x in order if relation[x.id] == "support"]
-    contradicting = [x for x in order if relation[x.id] == "contradict"]
-    counted_ids = set(by_id)
-    authority = None
-    if con == 0 and "registry" in policy["authority"] and \
-            any(x.id in registry_ids for x in supporting if x.id in counted_ids):
-        authority = "registry_record"   # the package registry is the authority on its own releases (ADR-033)
-    elif con == 0 and "official" in policy["authority"] and slot["entity"] and slot["shape"] != "quantity" and \
-            any(_claims.official_source(x, slot["head"]) for x in supporting if x.id in counted_ids):
-        authority = "official_source"
-    state = _claims.verification_state(sup_groups=sup, con_groups=con, sup_weight=alpha - _claims.PRIOR_ALPHA,
-                                       con_weight=beta - _claims.PRIOR_BETA, mean=mean,
-                                       min_groups=policy["min_groups"], authoritative=authority is not None)
-    corroborated = sup >= policy["min_groups"] and mean >= _claims.VERIFICATION_MIN_CONFIDENCE
-    basis = None
-    if state == "supported":
-        basis = "corroboration" if corroborated else authority
-    elif state in ("disputed", "conflicting"):
-        basis = "contradiction"
-    if policy["timeframe"] and state == "insufficient" and len(counted) < len(order):
-        state = "temporally_unresolved"
+    d = decide(statement, list(pool.values()), relation, category=category, now=now, cls=cls,
+               ttl_overrides=ttl_overrides, window=window, origins=origins, registry_ids=registry_ids)
+    state, basis, mean, sup, con = d["state"], d["basis"], d["confidence"], d["supporting_groups"], \
+        d["contradicting_groups"]
+    order, supporting, contradicting, outvoted, timeframe = d["order"], d["supporting"], d["contradicting"], \
+        d["outvoted"], d["timeframe"]
+    copies = d["copies"]
     counts = f"{sup} independent source group(s) agree with the statement; {con} contradict it."
     if outvoted:             # the counts are derived from the verdict's own lists, never "0 contradict" beside them
         counts += (f" {len(outvoted)} contradicting sentence(s) come from source groups that otherwise support it "
@@ -1588,6 +1622,18 @@ def _package_of(c: ClaimCluster, packages) -> str | None:
 
 # ---- the report ---------------------------------------------------------------------------------------------
 
+def claim_state(cluster: ClaimCluster, *, now: float, cls: str, ttl_overrides: dict | None = None,
+                window: float | None = None, origins: dict | None = None) -> dict:
+    """{state, category, basis, reason}: the ADR-035 verification state of one reported statement (a cluster's
+    representative), exactly as consolidation will decide it (evolution.cluster_verdict, i.e. decide). Written
+    on every finding and answer item before reasoning, so the reasoning guard reads this state and never the
+    legacy cluster label ("corroborated" counts sources, not timeliness or category)."""
+    from . import evolution
+    v = evolution.cluster_verdict(cluster, now=now, freshness_class=cls, ttl_overrides=ttl_overrides, window=window,
+                                  origins=origins)
+    return {"state": v["state"], "category": v.get("category"), "basis": v.get("basis"), "reason": v.get("reason")}
+
+
 def synthesize(question: str, assessment: dict | None, documents, clusters, *, now: float, usage=None,
                failures=(), ttl_overrides: dict | None = None) -> dict:
     """The research report (ARCHITECTURE §5). Clusters are re-scored with `now` and the question's freshness
@@ -1635,6 +1681,11 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
     else:
         old_ids = set()
 
+    # the ADR-035 state of each reported statement, decided now (before reasoning reads it) by the same rule as
+    # consolidation (evolution.cluster_verdict -> decide); `status` keeps the legacy cluster label
+    verified = {id(c): claim_state(c, now=now, cls=cls, ttl_overrides=ttl_overrides, window=window, origins=origins)
+                for c, _ in ranked}
+
     # answer items (quotes) first: they get the lowest source numbers
     items = []
     for c, v in ranked[:MAX_ANSWER_ITEMS]:
@@ -1642,8 +1693,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         copies, independent = _support_counts(c)
         items.append({"text": c.statement, "type": "template" if rep and rep.kind == "metadata" else "quote",
                       "citations": _cite_cluster(c, sources), "corroborating": [], "confidence": c.confidence,
-                      "uncertainty": c.uncertainty, "status": c.status, "copies": copies,
-                      "independent_sources": independent, "value": round(v, 6)})
+                      "uncertainty": c.uncertainty, "status": c.status, "verification": verified[id(c)],
+                      "copies": copies, "independent_sources": independent, "value": round(v, 6)})
 
     packages = assessment.get("packages") or []
     findings = []
@@ -1655,8 +1706,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
                    "kind": rep.kind if rep else "statement", "key": c.key,
                    "citations": _cite_cluster(c, sources), "corroborating": [], "related": [],
                    "confidence": c.confidence,
-                   "uncertainty": c.uncertainty, "status": c.status, "copies": copies,
-                   "independent_sources": independent, "value": round(v, 6),
+                   "uncertainty": c.uncertainty, "status": c.status, "verification": verified[id(c)],
+                   "copies": copies, "independent_sources": independent, "value": round(v, 6),
                    "published_at": rep.published_at if rep else None, "event_at": rep.event_at if rep else None,
                    "claims": [x.id for x in c.claims], "package": _package_of(c, packages)}
         if id(c) in old_ids:
@@ -1937,5 +1988,5 @@ def context_pack(report: dict, *, max_tokens: int) -> dict:
     return {"tokens": used, "items": items, "uncertainty": uncertainty, "sources": sources}
 
 
-__all__ = ["LIVE_MODES", "MAX_ANSWER_ITEMS", "UNRESOLVED", "context_pack", "parse_statement", "report_safe_text",
-           "synthesize"]
+__all__ = ["LIVE_MODES", "MAX_ANSWER_ITEMS", "UNRESOLVED", "claim_state", "context_pack", "decide", "parse_statement",
+           "report_safe_text", "synthesize"]

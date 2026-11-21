@@ -1102,6 +1102,18 @@ def document_origins(documents) -> dict[str, list[str]]:
     return out
 
 
+def stamp_origins(claims, documents) -> dict[str, list[str]]:
+    """Add each claim's document_origins keys to its flags["origin"] (in place) and return the origins: copies
+    of one story then form one independence group wherever the claims go next (scoring, the report verdict,
+    per-claim states, consolidation from stored clusters), not only where the documents are at hand."""
+    origins = document_origins(documents)
+    for c in claims:
+        extra = origins.get(c.source_url)
+        if extra:
+            c.flags = dict(c.flags or {}, origin=list(dict.fromkeys([*((c.flags or {}).get("origin") or ()), *extra])))
+    return origins
+
+
 def _identity_keys(claim: Claim) -> set:
     host = _domain(claim)
     return {"site:" + host, _name_key(site_label(host))}
@@ -1505,7 +1517,7 @@ def info_gain(alpha: float, beta: float, reliability: float = RELIABILITY_SECOND
 
 __all__ = ["CATEGORY_POLICY", "DISPUTE_WEIGHT_RATIO", "LEGACY_LABELS", "STATE_TO_LEGACY", "VERIFICATION_MIN_CONFIDENCE",
            "VERIFICATION_STATES", "VerificationState", "document_origins", "normalise_state", "official_source",
-           "origin_keys", "site_label", "timely", "verdict_state", "verification_state",
+           "origin_keys", "site_label", "stamp_origins", "timely", "verdict_state", "verification_state",
            "CLUSTER_KEY_JACCARD", "CLUSTER_TEXT_SHINGLE", "DUPLICATE_SHINGLE", "KEY_TOKENS", "MAX_WORDS",
            "MIN_WORDS", "PRIOR_ALPHA", "PRIOR_BETA", "RELIABILITY_PRIMARY", "RELIABILITY_SECONDARY",
            "RENDER_ONLY_PATTERNS", "STALE_FACTOR", "UNDATED_FACTOR", "adversarial_document", "agrees", "bearing",
