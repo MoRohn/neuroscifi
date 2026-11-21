@@ -72,6 +72,20 @@ _ARITH = re.compile(r"^\s*(?:what(?:'s| is)|compute|calculate|evaluate|how much 
 _DEFINE = re.compile(r"^\s*(?:what is|what's|what are|who is|who was|who were|define|definition of|meaning of|"
                      r"explain)\s+"
                      r"(?:an?\s+|the\s+)?(?P<t>[\w'’ -]{1,60}?)\s*[?.]?\s*$", re.I)
+# "When was Python first released?", "Who founded ...", "How many neurons ...": one fact about a named thing, which an
+# encyclopedia states in its lead (T1-07); the encyclopedia is searched as well as the general web.
+_SIMPLE_FACT = re.compile(r"^\s*(?:when|who|where|(?:in )?(?:what|which) year|how (?:many|old|long|tall|far|big|large|"
+                          r"heavy|deep|high))\b", re.I)
+# Broad current-events questions ("What happened in AI this week?") name a field, not a story: SearXNG news is
+# searched for the field and its spelled-out name, plus general web headlines in the same window (T1-06).
+BROAD_NEWS_MAX_WINDOW = 8 * DAY
+BROAD_NEWS_MAX_WORDS = 2
+_SPELLED_OUT = {"ai": "artificial intelligence", "ml": "machine learning", "llm": "large language models",
+                "llms": "large language models", "nlp": "natural language processing", "ev": "electric vehicles",
+                "evs": "electric vehicles", "vr": "virtual reality", "ar": "augmented reality"}
+# A wh-question with a verification cue but no statement to check ("How many neurons ..., and what can be
+# established about that number?") is researched, not fact-checked: there is nothing checkable (T1-07).
+_WH_QUESTION = re.compile(r"^\s*(?:how|what|when|where|which|who|whom|whose|why)\b", re.I)
 _URL = re.compile(r"https?://[^\s<>\"'`)\]]+", re.I)
 _DOMAIN = re.compile(r"(?<![@\w.-])(?:site:)?((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,12})(?![\w-])",
                      re.I)
@@ -531,6 +545,8 @@ def assess(question: str, *, now: float, known=()) -> dict:
     arithmetic = bool(_ARITH.match(question)) and bool(re.search(r"\d\s*[-+*/×÷^x%]\s*\d", question))
     definitional = _DEFINE.match(question)
     definitional = bool(definitional) and len(definitional.group("t").split()) <= 6 and not recency
+    simple_fact = bool(_SIMPLE_FACT.match(question)) and not recency and not packages and not \
+        _NAME_WITH_VERSION.search(low)
 
     why: dict[str, str] = {}
     # mode: first match wins
@@ -538,7 +554,7 @@ def assess(question: str, *, now: float, known=()) -> dict:
         mode, why["mode"] = "continuous", f"monitoring requested ({monitor[0]!r})"
     elif change:
         mode, why["mode"] = "change_detection", f"change requested ({change[0]!r})"
-    elif verify:
+    elif verify and (claim or not _WH_QUESTION.match(question)):
         mode, why["mode"] = "fact_verification", f"verification cue ({verify[0]!r})"
     elif compare:
         mode = "comparative"
@@ -608,12 +624,13 @@ def assess(question: str, *, now: float, known=()) -> dict:
         kinds.append("academic")
     if technical:
         kinds.append("technical")
-    if definitional and not (scientific or technical):
+    if definitional and not (scientific or technical) or simple_fact:
         kinds.append("encyclopedia")
     if recency and not (scientific or technical):
         kinds.append("news")
     kinds.append("web")       # a dependency check plans no topic query of any kind (plan)
-    why["kinds"] = ", ".join(kinds) + (" (scientific)" if scientific else "") + (" (technical)" if technical else "")
+    why["kinds"] = ", ".join(kinds) + (" (scientific)" if scientific else "") + (" (technical)" if technical else "") \
+        + (" (one fact about a named thing: the encyclopedia too)" if simple_fact else "")
 
     # ---- web decision ----
     qwords = {w for w in _words(question) if w not in STOPWORDS}
@@ -669,7 +686,7 @@ def assess(question: str, *, now: float, known=()) -> dict:
             "memory_items": [k["id"] for k in fresh if "id" in k] if not needs_web else [],
             "recency_window": window, "kinds": kinds, "entities": entities, "urls": urls,
             "comparison": comparison, "claim": claim, "packages": packages, "sites": sites, "language": language,
-            "notes": notes, "why": why, "dependency_check": dependencies}
+            "notes": notes, "why": why, "dependency_check": dependencies, "simple_fact": simple_fact}
 
 
 # ---- plan --------------------------------------------------------------------------------------------------------
@@ -729,6 +746,133 @@ def decompose(question: str) -> list[str]:
                 current = f"{current} and {piece}"
         clauses.append(current)
     return [c.strip(" .!") for c in clauses if c.strip(" .!")]
+
+
+# ---- references to something said earlier (T1-07, T1-10) --------------------------------------------------------
+# "that version", "this paper", "the same package": a definite reference to something named before; "it", "its",
+# "they", "their": a pronoun. Inside one question they point back to its first clause ("... and evaluate their
+# implications"); a whole question made of them points back to the previous question of the conversation.
+_ANAPHOR_NOUNS = ("version|release|package|library|module|framework|tool|project|language|model|paper|study|article|"
+                  "claim|result|number|figure|value|estimate|topic|one")
+_DEFINITE_ANAPHOR = re.compile(rf"\b(?:that|this|the same|those|these)\s+(?P<noun>{_ANAPHOR_NOUNS})s?\b", re.I)
+_PRONOUN = re.compile(r"(?<![\w'’-])(?P<p>it|its|they|them|their)(?![\w'’-])", re.I)
+# "Is it true that ...", "it is said that ...": an expletive "it" refers to nothing
+_EXPLETIVE = re.compile(r"\b(?:is|was) it (?:really |actually |still )?(?:true|false|possible|likely|the case|known)\b|"
+                        r"\bit (?:is|was|'s|’s) (?:true|false|said|claimed|reported|known|possible)\b", re.I)
+# words that ask about an aspect of a subject without naming one ("Is it maintained?", "What is its license?")
+_ASPECT_WORDS = frozenset("""maintained popular deprecated supported fast slow reliable worth license licensed licence
+free open-source production ready mature alive abandoned safe official""".split())
+_VERSIONED_NAME = re.compile(r"(?<![\w.:/@-])(@?[A-Za-z][\w.-]*(?:/[\w.-]+)?)\s+(?:version\s+)?v?(\d+(?:\.\d+)+[\w.+-]*)")
+
+
+def _named(text: str) -> bool:
+    """Does the text name a subject: a URL, a package reference, or a name that is not just a language / platform
+    word ("Python" in "compatible with Python 3.13")?"""
+    if _URL.search(text) or _packages(text):
+        return True
+    if any(m.group(1).lower() not in _NOT_PACKAGES for m in _VERSIONED_NAME.finditer(text)):
+        return True
+    return any(e.lower() not in _NOT_PACKAGES for e in extract_entities(_URL.sub(" ", text)))
+
+
+def _topical(text: str) -> list[str]:
+    """Topical words that are not aspect, cue, common or number words: what a question is about by itself."""
+    skip = _NOT_PACKAGES | _COMMON | _CLAUSE_VERBS | _ASPECT_WORDS
+    return [w for w in keywords(text, limit=12).split() if w.lower() not in skip and not re.fullmatch(r"[\d.]+", w)]
+
+
+def referent_needed(question: str) -> str | None:
+    """The phrase of a question that refers to something said before and that the question itself does not name
+    ("that version", "it"), else None. It needs one when, without that phrase, the question names no subject and
+    no topical word is left ("Is that version secure?", "When was it released?", "What is its license?"); an
+    expletive "it" ("Is it true that ...") refers to nothing, and a reference inside a question that names its own
+    topic points back within the question ("... the human brain, and what is established about that number?")."""
+    question = " ".join(str(question or "").split())
+    if not question:
+        return None
+    m = _DEFINITE_ANAPHOR.search(question) or (None if _EXPLETIVE.search(question) else _PRONOUN.search(question))
+    if m is None:
+        return None
+    rest = _PRONOUN.sub(" ", _DEFINITE_ANAPHOR.sub(" ", question))
+    if _named(rest) or _topical(rest):
+        return None
+    return m.group(0)
+
+
+def _subject_of(previous: str) -> str | None:
+    """What an earlier question was about: its versioned name ("numpy 2.5.5"), else its named entities, else its
+    first topical words; None when it names nothing (or itself pointed back without naming)."""
+    previous = _URL.sub(" ", " ".join(str(previous or "").split()))
+    if not previous:
+        return None
+    m = next((m for m in _VERSIONED_NAME.finditer(previous) if m.group(1).lower() not in
+              _COMMON | STOPWORDS | META | {"release", "releases", "version", "versions"}), None)
+    if m:
+        return f"{m.group(1)} {m.group(2).rstrip('.')}"
+    entities = [e for e in extract_entities(previous) if e.lower() not in _START_WORDS]
+    if entities:
+        return " ".join(entities[:2])
+    words = keywords(previous, limit=5)
+    return words or None
+
+
+def followup(question: str, previous: str | None = None) -> dict | None:
+    """Resolve a question that points back to the previous one of the same conversation (a console or voice
+    session; T1-10). None when the question names its own subject. Otherwise either
+    {"question": rewritten, "subject", "anaphor", "previous"} — the reference replaced by what `previous` was about
+    ("Is that version secure?" after "Is numpy 2.5.5 recommended?" -> "Is numpy 2.5.5 secure?") — or
+    {"clarify": text, "anaphor"} when there is no earlier question to take the subject from. Never guesses: a
+    subject comes only from `previous`."""
+    question = " ".join(str(question or "").split())
+    anaphor = referent_needed(question)
+    if anaphor is None:
+        return None
+    subject = _subject_of(previous) if previous and referent_needed(previous) is None else None
+    if not subject:
+        noun = _DEFINITE_ANAPHOR.match(anaphor)
+        what = noun.group("noun").lower() if noun and noun.group("noun").lower() != "one" else "subject"
+        return {"anaphor": anaphor,
+                "clarify": f"Which {what} do you mean? “{anaphor}” refers to something said earlier, and there is no "
+                           f"earlier question in this conversation to take it from. Ask again and name it"
+                           + (" (package and version, e.g. “Is numpy 2.5.5 secure?”)." if what in
+                              ("version", "release", "package", "library", "module") else ".")}
+
+    def replace(m):
+        word = m.group(0).lower()
+        return f"{subject}'s" if word in ("its", "their") else subject
+    rewritten = _DEFINITE_ANAPHOR.sub(replace, question)
+    if rewritten == question:
+        rewritten = _PRONOUN.sub(replace, question)
+    return {"question": rewritten, "subject": subject, "anaphor": anaphor, "previous": " ".join(previous.split())}
+
+
+# ---- questions about the individual's own knowledge history (T1-04) ---------------------------------------------
+# "What has changed in your understanding of predictive coding?" asks for the stored record (versions,
+# supersessions, hypotheses, dates: evolution.changes), not for a new web search.
+_HISTORY = re.compile(
+    r"^\s*(?:"
+    r"what(?:'s| has| have| is)?\s+changed\s+(?:in|about|with)\s+(?:your|its|the individual's|the individual’s)\s+"
+    r"(?:understanding|knowledge|view|views|picture|beliefs?|thinking|model)\s+(?:of|about|on|regarding)\s+(?P<a>.+?)"
+    r"|how\s+(?:has|have|did)\s+(?:your|its)\s+(?:understanding|knowledge|view|views|picture|beliefs?|thinking)\s+"
+    r"(?:of|about|on|regarding)\s+(?P<b>.+?)\s+(?:changed|evolved|developed|shifted)"
+    r"|(?:has|have|did)\s+(?:your|its)\s+(?:understanding|knowledge|view|views|beliefs?|thinking)\s+(?:of|about|on|"
+    r"regarding)\s+(?P<c>.+?)\s+(?:changed|evolved|shift(?:ed)?|change)"
+    r"|what\s+(?:have|did)\s+you\s+(?:learn(?:ed|t)?|revised?|changed?|updated?)\s+(?:about|on|regarding)\s+(?P<d>.+?)"
+    r"|(?:show|tell)\s+(?:me\s+)?(?:the\s+)?(?:history|evolution|timeline)\s+of\s+(?:your\s+)?(?:understanding|"
+    r"knowledge|beliefs?)\s+(?:of|about|on)\s+(?P<e>.+?)"
+    r")(?:\s+(?:since|over|recently|lately)\b.*?)?\s*[?.!]*\s*$", re.I)
+
+
+def history_topic(question: str) -> str | None:
+    """The topic of a question about how the individual's own understanding changed ("What has changed in your
+    understanding of predictive coding?" -> "predictive coding"), else None. Such a question is answered from the
+    stored history (evolution.changes); a fresh web search is a separate, explicit action."""
+    m = _HISTORY.match(" ".join(str(question or "").split()))
+    if not m:
+        return None
+    topic = next(g for g in m.groups() if g)
+    topic = re.sub(r"^(?:the|a|an)\s+", "", topic.strip(" ,;:\"'“”"), flags=re.I)
+    return topic or None
 
 
 def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> QueryPlan:
@@ -814,8 +958,16 @@ def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> Quer
         add(3, f"{kw} fact check", "web", "expansion: verification")
         topics.append(kw)
     subquestions = tuple(clauses) if len(clauses) > 1 else ()
+    subject = ""
     for i, clause in enumerate(clauses):
         kw = keywords(clause)
+        if subject and (_DEFINITE_ANAPHOR.search(clause) or _PRONOUN.search(clause)):
+            # "... and evaluate their implications", "what is established about that number": the clause is about
+            # the first clause's subject; searched alone it sends "evaluate implications" or "number" (T1-07)
+            own = " ".join(w for w in kw.split() if w.lower() not in _CLAUSE_VERBS)
+            kw = keywords(f"{subject} {own}")
+            notes.append(f"sub-question {i + 1} refers back to sub-question 1: searched with its subject ({subject})")
+        subject = subject or keywords(clause, limit=4)
         label = f"sub-question {i + 1}" if subquestions else "question"
         if not kw:
             if subquestions:
@@ -824,7 +976,7 @@ def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> Quer
         topics.append(kw)
         add(1, kw, general, label)
         if "academic" in kinds:
-            add(1, keywords(clause, limit=5), "academic", f"{label}: scholarly")
+            add(1, keywords(kw, limit=5), "academic", f"{label}: scholarly")
         if "encyclopedia" in kinds:
             add(1, kw, "encyclopedia", f"{label}: encyclopedia")
     if dependency_check and not assessment.get("packages"):
@@ -840,13 +992,24 @@ def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> Quer
     for site in assessment.get("sites") or []:
         for topic in topics[:1]:
             add(2, topic, "web", f"site: user named {site}", site=site)
+    broad_news = (general == "news" and since is not None and window <= BROAD_NEWS_MAX_WINDOW and len(topics) == 1
+                  and len(topics[0].split()) <= BROAD_NEWS_MAX_WORDS and not comparison and not claim
+                  and not assessment.get("packages"))
+    if broad_news:
+        topic = topics[0]
+        spelled = " ".join(_SPELLED_OUT.get(w.lower(), w) for w in topic.split())
+        if spelled.lower() != topic.lower():
+            add(1, spelled, "news", "broad news: the field spelled out")
+        add(2, f"{topic} news", "web", "broad news: general web headlines in the same window")
+        notes.append(f"broad current-events question: news for {topic!r} in the last "
+                     f"{round(window / DAY)} days; the year expansion is left out (the window already limits it)")
     for topic in topics[:2]:
-        if since is not None and str(year) not in topic:
+        if since is not None and str(year) not in topic and not broad_news:
             add(3, f"{topic} {year}", general, "expansion: year for the recency window")
         if "academic" in kinds:
             add(3, f"{keywords(topic, limit=5)} review", "academic", "expansion: reviews")
             add(4, f"{topic} study", "web", "expansion: studies")
-        if "technical" in kinds:
+        if "technical" in kinds and not (assessment.get("simple_fact") and not assessment.get("packages")):
             add(3, f"{topic} release notes", "web", "expansion: release notes")
             add(4, f"{topic} changelog", "web", "expansion: changelog")
 

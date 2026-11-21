@@ -530,3 +530,126 @@ def test_package_names_are_detected_whatever_their_case(question, expected):
                                       "What is the latest version of Microsoft Word?"])
 def test_capitalised_proper_nouns_without_a_version_stay_out_of_the_registries(question):
     assert intent.assess(question, now=NOW)["packages"] == []
+
+
+# ---- UAT T1 (v0.7.0 RC1): query planning and conversation references ----------------------------------------
+
+def test_broad_news_question_searches_the_field_in_news_within_the_window():
+    """T1-06: "What happened in AI this week?" sent only `AI` and `AI 2026`. The field and its spelled-out name are
+    searched in news, general web headlines in the same window are added, and the year expansion is left out; the
+    plan stays within the quick-lookup query budget."""
+    q = "What happened in AI this week?"
+    a = intent.assess(q, now=NOW)
+    plan = intent.plan(q, a, now=NOW)
+    assert a["mode"] == "quick_lookup"
+    assert [(x.kind, x.text) for x in plan.queries] == [("news", "AI"), ("news", "artificial intelligence"),
+                                                        ("web", "AI news")]
+    assert len(plan.queries) <= intent.MODE_BUDGETS["quick_lookup"].max_queries
+    for x in plan.queries:
+        assert x.since == NOW - 7 * DAY
+        route = intent.searxng_route(x, now=NOW)
+        assert route["time_range"] == "week"
+        assert route["categories"] == ("news" if x.kind == "news" else "general")
+    assert any("broad current-events" in n for n in plan.notes)
+
+
+def test_a_specific_news_question_keeps_the_year_expansion():
+    q = "Latest developments in open-source LLM inference this week"
+    texts_ = [x.text for x in intent.plan(q, intent.assess(q, now=NOW), now=NOW).queries]
+    assert texts_ == ["open-source LLM inference", "open-source LLM inference 2026"]
+
+
+@pytest.mark.parametrize("question, subject", [
+    ("Research recent advances in dendritic computation and evaluate their implications for NeuroSciFi.",
+     "dendritic computation"),
+    ("How many neurons are in the human brain, and what can actually be established about that number?",
+     "neurons human brain"),
+])
+def test_a_clause_that_refers_back_keeps_the_subject(question, subject):
+    """T1-07: SearXNG received `evaluate implications` and `number`. A clause that refers back (their, that number)
+    is searched with the first clause's subject."""
+    plan = intent.plan(question, intent.assess(question, now=NOW), now=NOW)
+    for x in plan.queries:
+        assert subject in x.text, x
+        assert not x.text.startswith("evaluate")
+    assert any("refers back to sub-question 1" in n for n in plan.notes)
+
+
+def test_a_wh_question_without_a_checkable_statement_is_not_fact_verification():
+    q = "How many neurons are in the human brain, and what can actually be established about that number?"
+    assert intent.assess(q, now=NOW)["mode"] == "scientific"
+    assert intent.assess("These two sources disagree. Determine what can actually be established.",
+                         now=NOW)["mode"] == "fact_verification"
+
+
+@pytest.mark.parametrize("question, topic", [
+    ("When was Python first released?", "Python first released"),
+    ("When was the Rust programming language first released?", "Rust programming language first released"),
+])
+def test_simple_factual_questions_ask_the_encyclopedia_not_changelogs(question, topic):
+    """T1-07: "When was Python first released?" searched `Python first released release notes` and `... changelog`.
+    One fact about a named thing is searched in the general web and the encyclopedia (Wikipedia)."""
+    a = intent.assess(question, now=NOW)
+    assert a["simple_fact"] and "encyclopedia" in a["kinds"]
+    queries = intent.plan(question, a, now=NOW).queries
+    assert [(x.kind, x.text) for x in queries] == [("web", topic), ("encyclopedia", topic)]
+
+
+def test_versioned_release_questions_keep_their_registry_and_release_note_queries():
+    a = intent.assess("When was numpy 2.5.5 released?", now=NOW)
+    assert not a["simple_fact"]
+    got = [x.text for x in intent.plan("When was numpy 2.5.5 released?", a, now=NOW).queries]
+    assert "pypi:numpy==2.5.5" in got and any(t.endswith("release notes") for t in got)
+
+
+@pytest.mark.parametrize("question, previous, expected", [
+    ("Is that version secure, stable and recommended?", "Is numpy 2.5.5 recommended?",
+     "Is numpy 2.5.5 secure, stable and recommended?"),
+    ("Is it secure?", "Was NumPy 2.5.5 released?", "Is NumPy 2.5.5 secure?"),
+    ("When was it first released?", "What is the Rust programming language?", "When was Rust first released?"),
+    ("What is its license?", "Is numpy 2.5.5 stable?", "What is numpy 2.5.5's license?"),
+    ("Is that version compatible with Python 3.13?", "Is numpy 2.5.5 stable?",
+     "Is numpy 2.5.5 compatible with Python 3.13?"),
+])
+def test_a_follow_up_takes_its_subject_from_the_previous_question(question, previous, expected):
+    """T1-10: "Is that version secure, stable and recommended?" after the numpy questions was researched about Go 1.
+    The reference is resolved from the previous question of the same conversation."""
+    got = intent.followup(question, previous)
+    assert got["question"] == expected
+    assert got["previous"] == previous
+
+
+@pytest.mark.parametrize("question", ["Is that version secure, stable and recommended?", "Is it stable?"])
+def test_a_follow_up_without_an_earlier_question_asks_instead_of_guessing(question):
+    for previous in (None, "", "Is it recommended?"):
+        got = intent.followup(question, previous)
+        assert "question" not in got and got["clarify"].startswith("Which ")
+
+
+@pytest.mark.parametrize("question", [
+    "Is numpy 2.5.5 secure?", "Is it true that the human brain contains 100 billion neurons?",
+    "What happened in AI this week?", "When was Python first released?",
+    "How many neurons are in the human brain, and what can actually be established about that number?",
+    "Research recent advances in dendritic computation and evaluate their implications for NeuroSciFi.",
+    "Summarise this paper https://arxiv.org/abs/2601.00001",
+])
+def test_questions_that_name_their_subject_are_not_follow_ups(question):
+    assert intent.referent_needed(question) is None
+    assert intent.followup(question, "Is numpy 2.5.5 recommended?") is None
+
+
+@pytest.mark.parametrize("question, topic", [
+    ("What has changed in your understanding of predictive coding?", "predictive coding"),
+    ("How has your understanding of the free energy principle changed?", "free energy principle"),
+    ("Has your view on predictive coding changed since October?", "predictive coding"),
+    ("What have you learned about dendritic computation?", "dendritic computation"),
+])
+def test_questions_about_the_individuals_own_understanding_name_the_history_topic(question, topic):
+    """T1-04: these are answered from the stored history (evolution.changes), not by a new web search."""
+    assert intent.history_topic(question) == topic
+
+
+@pytest.mark.parametrize("question", ["What changed in the numpy changelog since the last check?",
+                                      "What has changed in predictive coding research this year?"])
+def test_change_detection_about_the_world_is_not_a_history_question(question):
+    assert intent.history_topic(question) is None
