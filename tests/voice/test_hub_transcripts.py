@@ -425,6 +425,40 @@ def test_pocket_sessions_never_evict_the_owners(hub, monkeypatch):
     assert owner in hub.sessions
 
 
+def test_a_pocket_family_never_evicts_another_familys_sessions(hub, monkeypatch):
+    """Low (R2): with the hub full, one Pocket family's new session pushed out another family's. A family now only
+    displaces its own sessions (beyond its cap) and is refused when the hub is full; the owner may still make room."""
+    from neuroscifi.voice import hub as vhub
+    monkeypatch.setattr(vhub, "MAX_SESSIONS", 3)
+    fam = [Principal(name=f"pocket:fam{i}", owner=False, research=True, family=f"f{i}", label=f"P{i}",
+                     device_prefix=f"pocket:fam{i}:") for i in range(3)]
+    a = start(hub, fam[0], device="phone0001", consent=False, mic=False)
+    b = start(hub, fam[1], device="phone0001", consent=False, mic=False)
+    b2 = start(hub, fam[1], device="phone0002", consent=False, mic=False)
+    with pytest.raises(Conflict, match="too many voice sessions"):
+        start(hub, fam[2], device="phone0001", consent=False, mic=False)
+    assert {a, b, b2} <= set(hub.sessions)
+    c = start(hub, fam[1], device="phone0003", consent=False, mic=False)   # hub full: family 1 replaces its own
+    assert a in hub.sessions and b not in hub.sessions and c in hub.sessions
+    owner = start(hub, device="consoleA", mic=False)                        # the owner makes room
+    assert owner in hub.sessions and a not in hub.sessions
+
+
+def test_refused_handoff_tells_the_requester_at_once(hub):
+    """Low (R2): a requester whose hand-off the holder refused heard nothing until its 65 s wait ran out. The hub now
+    sends the requester's session a notice event (handoff: refused) as soon as the holder refuses."""
+    a = start(hub, device="consoleA")
+    phone = pocket_principal()
+    b = start(hub, phone, device="phoneB", mic=False)
+    req = hub.capture(b, phone, "request_handoff")["requested"]
+    seen = hub.events(b, phone, 0, wait=0)["events"]
+    since = max(e["seq"] for e in seen)
+    assert hub.capture(a, OWNER, "refuse_handoff", handoff_confirm=req["id"]) == {"refused": True}
+    told = [e for e in hub.events(b, phone, since, wait=0)["events"] if e["type"] == "notice"]
+    assert told and told[-1]["handoff"] == "refused" and "did not hand it over" in told[-1]["text"]
+    assert not hub.status(phone, b)["capture"]["this_device"]
+
+
 def test_pocket_settings_and_mode_are_its_own(hub, instance):
     owner = start(hub, device="consoleA", mic=False)
     phone = pocket_principal()

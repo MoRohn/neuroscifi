@@ -15,8 +15,8 @@ Capture ownership is enforced here as well as in the client: audio is accepted o
 microphone lease, that recorded consent, in a mode with mic input. A device takes the lease from another device of
 its own principal (or the owner from anyone) on its own confirmation; a Pocket device asks, and only the holder's
 session grants it (transcripts.request_handoff / answer_handoff).
-Principals are kept apart: at most MAX_SESSIONS_PER_PRINCIPAL sessions each, the owner's sessions are never evicted
-for a Pocket one, a Pocket principal's mode and voice preferences are its own (config.update_pref), and its status
+Principals are kept apart: at most MAX_SESSIONS_PER_PRINCIPAL sessions each, a Pocket family never evicts the owner's
+or another family's sessions, a Pocket principal's mode and voice preferences are its own (config.update_pref), and its status
 shows only its own session (no owner snapshot, metrics or holder label).
 Audio requests do no database writes: chunks are buffered in memory, consent and the lease are read, and the
 provisional and final segments (with raw audio when retention is on, in the same transaction) are written by one
@@ -237,8 +237,9 @@ class VoiceHub:
 
     def _admit(self, s: Session) -> list:
         """Register a new session; returns the sessions it displaces. A principal displaces its own oldest sessions
-        beyond MAX_SESSIONS_PER_PRINCIPAL; when the hub is full, the oldest non-owner session goes. The owner's
-        sessions are displaced only by the owner, never by a Pocket device."""
+        beyond MAX_SESSIONS_PER_PRINCIPAL. When the hub is full, the owner displaces the oldest Pocket session (then
+        its own); a Pocket family displaces only its own oldest session, never another family's or the owner's
+        (with none of its own, it is refused until a session ends or expires)."""
         by_age = (lambda xs: sorted(xs, key=lambda x: x.seen))
         with self.lock:
             live = list(self.sessions.values())
@@ -247,9 +248,11 @@ class VoiceHub:
             rest = [x for x in live if x not in victims]
             over = len(rest) - MAX_SESSIONS + 1
             if over > 0:
-                pool = by_age(x for x in rest if not x.principal.owner)
                 if s.principal.owner:
-                    pool += by_age(x for x in rest if x.principal.owner)
+                    pool = by_age(x for x in rest if not x.principal.owner) + by_age(x for x in rest
+                                                                                    if x.principal.owner)
+                else:
+                    pool = by_age(x for x in rest if x.principal.name == s.principal.name)
                 if len(pool) < over:
                     raise Conflict("too many voice sessions are open; end one first")
                 victims += pool[:over]
@@ -443,6 +446,10 @@ class VoiceHub:
                 if req is None:
                     raise Conflict("no such hand-off request (it may have expired)")
                 if action == "refuse_handoff":
+                    other = self.sessions.get(req["to_session"])
+                    if other is not None:   # tell the requester now, not when its own wait runs out
+                        self._emit(other, "notice", handoff="refused",
+                                   text="The device that holds the microphone did not hand it over.")
                     return {"refused": True}
                 with s.lock:
                     s.utterances.clear()

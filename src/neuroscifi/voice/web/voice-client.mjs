@@ -358,8 +358,10 @@ export class VoiceClient extends EventTarget {
   async _awaitHandoff() {
     const sid = this.session;
     const deadline = Date.now() + 65000;
+    this._handoffRefused = null;
     while (this.session === sid && !this.micOn && Date.now() < deadline) {
       await new Promise((ok) => setTimeout(ok, 2000));
+      if (this._handoffRefused === sid) return;   // the holder refused: the server's notice already said so
       const st = await this.status().catch(() => null);
       if (st && st.capture && st.capture.this_device) { this.emit("handoff_granted", {}); return; }
     }
@@ -510,6 +512,7 @@ export class VoiceClient extends EventTarget {
     else if (e.type === "forgotten") { this.session = e.new_session; this.since = 0; this.emit("forgotten", e); this._poll(); }
     else if (e.type === "session" && e.status === "ended") { this.session = null; this.micOff(); this._report(); }
     else if (e.type === "error" && e.what === "asr" && this.micOn) this.micOff(ASR_DOWN);   // never capture for nothing
+    else if (e.type === "notice" && e.handoff === "refused") this._handoffRefused = this.session;
     this.emit("event", e);
   }
 

@@ -86,8 +86,13 @@ microphone is in use on <device>" and "Move the microphone here". Who confirms t
   `{requested: {id, expires_at}}` and files one request (meta `voice_handoff`, 60 s). The holder's next renewal
   returns `handoff_request`; its UI asks "Another device asks for the microphone. Hand it over?" and answers with
   `capture {action: grant_handoff | refuse_handoff, confirm: id}`. On grant the lease moves to the requester, whose
-  client (polling `status` every 2 s) then turns its microphone on. The spoken "use this device for the microphone"
-  files the same request.
+  client (polling `status` every 2 s) then turns its microphone on. On refusal the requester's session gets a
+  `notice` event at once (`handoff: "refused"`, "The device that holds the microphone did not hand it over."), which
+  ends its wait. The spoken "use this device for the microphone" files the same request.
+
+Sessions: at most 4 per principal (the owner; each Pocket family) and 16 in all. When the hub is full the owner
+displaces the oldest Pocket session; a Pocket family displaces only its own oldest session, never another family's
+or the owner's, and is refused when it has none.
 
 The previous holder's next renewal or upload is refused and it stops its tracks. Console tabs and Pocket devices
 share the same lease (the console and Pocket processes coordinate through the database).
