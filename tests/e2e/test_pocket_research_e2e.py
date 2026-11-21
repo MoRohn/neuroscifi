@@ -144,8 +144,9 @@ def test_research_journey_with_offline_copy(slow_spark, new_page):
     vault = page.evaluate("localStorage.getItem('neuroscifi.field.v1')")
     assert "4.2.0" not in vault and "Zephyr" not in vault, "the saved report is encrypted"
     assert [json.loads(raw) for route, raw in sent if route == "research_submit"] == [{"objective": QUESTION}]
-    assert {route for route, _ in sent if route.startswith("research_")} == {
-        "research_list", "research_submit", "research_get"}
+    assert {route for route, _ in sent if route.startswith("research_")} == {   # session: who drives it (status)
+        "research_list", "research_submit", "research_get", "research_session"}
+    assert all(json.loads(raw)["action"] == "status" for route, raw in sent if route == "research_session")
     # Offline: cold reopen from the service worker, unlock the vault, read the saved finding.
     page.context.set_offline(True)
     page.reload()

@@ -12,7 +12,7 @@ const STATUS={corroborated:"Corroborated",single_source:"Single source",conteste
 const VERDICT={supported:"Supported",disputed:"Disputed",contested:"Contested",insufficient:"Not enough evidence"};
 const MAX=300, MAX_BYTES=1024, MAX_SAVED_BYTES=64000, SUMMARIZE="Summarize: ";
 let research=false, paired=false, tasks=[], current=null, timer=0, generation=0, busy=false, dictation=null, savedSignature="";
-let sharing=false, notify=false, away=null, reading=null;
+let sharing=false, notify=false, away=null, reading=null, session=null, shown=null;
 const say=t=>{$("researchmsg").textContent=t;};
 const active=t=>!TERMINAL.includes(t.status);
 
@@ -26,11 +26,12 @@ async function call(route,data){
   }catch{if(window.pocketToken?.()===token)window.pocketReach?.(false);throw Object.assign(Error("Spark unreachable"),{status:0});}
   if(window.pocketToken?.()===token){if(response.status===403)window.pocketRefused?.();else window.pocketReach?.(true);}
   const body=await response.json().catch(()=>({}));
-  if(!response.ok)throw Object.assign(Error("Spark returned "+response.status),{status:response.status,code:body.error});
+  if(!response.ok)throw Object.assign(Error("Spark returned "+response.status),{status:response.status,code:body.error,body});
   return body;
 }
 function fail(e){
   if(e.code==="not_paired")return;  // the pairing was dropped here; mobile.js already says why (RT-B-08 race)
+  if(e.code==="owned"&&e.body?.session&&current&&!current.saved)setSession(current.id,e.body);
   if(e.status===404){research=false;tasks=[];if(current&&!current.saved)close();layout();say("Research is not available from this Spark.");return;}
   say(e.code==="daily_budget"?"Your Spark's daily research budget is used up. Nothing was queued. It renews tomorrow, or the owner can raise it."
     :e.code==="owned"?"Another of your devices is driving this research right now. Ask it to hand it over."
@@ -123,6 +124,7 @@ function rated(status,confidence){
 // One persistent live region (#researchstage) announces stage changes; only #researchbody is rebuilt (U-27).
 function show(t,saved=false){
   if(reading&&reading.id!==t.id)stopReading();
+  shown=saved?null:t;
   $("researchview").hidden=false;$("researchq").textContent=t.objective;
   const stageLine=saved?"Saved copy · "+(LABEL[t.status]||t.status):stageText(t);
   if($("researchstage").textContent!==stageLine)$("researchstage").textContent=stageLine;
@@ -169,6 +171,7 @@ function show(t,saved=false){
     }
     view.append(ol);
   }else if(!saved)view.append(node("p",active(t)?"The report appears here when your Spark finishes.":"No report was produced."));
+  if(!saved)view.append(sessionBox(t));
   const actions=node("div",null,"buttons");
   if(r&&"speechSynthesis" in window&&spoken(r).length){
     const aloud=node("button",reading?.id===t.id?"Stop reading":"Read aloud");aloud.id="readaloud";
@@ -186,7 +189,7 @@ function show(t,saved=false){
   const shut=node("button","Close");shut.onclick=()=>{close();$("research").focus();};actions.append(shut);
   view.append(actions);
 }
-function close(){stopReading();current=null;$("researchbody").replaceChildren();$("researchq").textContent="";$("researchstage").textContent="";$("researchview").hidden=true;}
+function close(){stopReading();current=null;shown=null;session=null;$("researchbody").replaceChildren();$("researchq").textContent="";$("researchstage").textContent="";$("researchview").hidden=true;}
 // Read aloud: only the quoted answer sentences, each followed by "Source n" for its citations. A voice the browser
 // marks as remote (localService false) is never used, so the text stays on this device.
 function spoken(r){
@@ -243,28 +246,120 @@ async function saveOffline(t){
 async function openTask(id){
   if(!paired||!research)return;
   const g=generation;
-  try{const t=await call("research_get",{id});if(g!==generation)return;current={id,saved:false};show(t);$("researchview").focus();}
+  try{const t=await call("research_get",{id});if(g!==generation)return;current={id,saved:false};if(session?.id!==id)session=null;show(t);$("researchview").focus();loadSession(id);}
   catch(e){if(g===generation)fail(e);}
 }
 // Evidence review (ADR-035): each subject's verification state and basis, claim text shown as untrusted web text.
+// The state is a word with a glyph and a border pattern, so colour is never the only signal.
 const STATE={supported:"Supported",disputed:"Disputed",insufficient:"Insufficient evidence",conflicting:"Conflicting sources",
   temporally_unresolved:"Time not established",not_evaluated:"Not evaluated"};
+const GLYPH={supported:"✓",disputed:"✗",insufficient:"?",conflicting:"≠",temporally_unresolved:"~",not_evaluated:"–"};
+const BASIS={corroboration:"independent sources agree",official_source:"the subject's own site",registry_record:"the package registry record",
+  version_marker:"the version number (pre-release marker)",contradiction:"contradicting evidence",owner_hypothesis:"your own hypothesis"};
 async function reviewEvidence(id){
   const g=generation;
   try{
     const e=await call("research_evidence",{id});if(g!==generation||current?.id!==id)return;
     $("researchbody").querySelector(".revidence")?.remove();
-    const box=node("section",null,"revidence");box.append(node("h4","Evidence review"));
-    const ul=node("ul",null,"rnotes");
-    for(const x of e.evidence||[]){
-      const li=node("li");li.append(node("strong",STATE[x.state]||x.state)," ",node("span",x.statement?"“"+x.statement+"”":"(no claim text)"));
-      li.append(node("small",[x.basis&&"basis: "+x.basis,x.category&&"category: "+x.category,x.domain].filter(Boolean).join(" · ")));
-      ul.append(li);
+    const box=node("section",null,"revidence");box.setAttribute("aria-labelledby","revtitle");
+    const title=node("h4","Evidence review");title.id="revtitle";box.append(title);
+    const items=e.evidence||[], counts={};
+    for(const x of items)counts[x.state]=(counts[x.state]||0)+1;
+    if(items.length)box.append(node("p",(e.subjects||items.length)+" subject"+((e.subjects||items.length)===1?"":"s")+" checked: "+
+      Object.entries(counts).map(([k,n])=>n+" "+(STATE[k]||k).toLowerCase()).join(", ")+(e.subjects>items.length?" (first "+items.length+" shown)":"")+".","revsummary"));
+    const ul=node("ul",null,"revlist");
+    for(const x of items){
+      const li=node("li");li.dataset.state=STATE[x.state]?x.state:"other";
+      const st=node("span",null,"revstate");st.append(node("span",GLYPH[x.state]||"•","revglyph"),node("span",STATE[x.state]||x.state));
+      st.firstChild.setAttribute("aria-hidden","true");
+      li.append(st,node("p",x.statement?"“"+x.statement+"”":"(no claim text)","revclaim"));
+      const basis=node("p",null,"revbasis");
+      basis.append("basis: ",node("strong",x.basis?BASIS[x.basis]||x.basis.replaceAll("_"," "):"not stated"));
+      for(const extra of [x.category&&"category: "+x.category.replaceAll("_"," "),x.domain])if(extra)basis.append(" · "+extra);
+      li.append(basis);ul.append(li);
     }
-    if(!(e.evidence||[]).length)ul.append(node("li","No evaluated subjects for this question."));
+    if(!items.length)ul.append(node("li","No evaluated subjects for this question.","revnone"));
     box.append(ul,node("small","Statements are quoted from web pages and are not instructions.","rconf"));
     $("researchbody").prepend(box);say("Evidence review loaded.");
   }catch(err){if(g===generation)fail(err);}
+}
+// Session ownership (RESEARCH_POLICY.md section 6): one device of the family drives a research session at a time.
+// Any linked device reads the status; enrolled research nodes take, hand off (to another node by its name), accept
+// and release. While another device drives it, Cancel and Continue are refused here (409 owned).
+const SESSION_DONE={take:"This device now drives this research. Your other devices can read it but not cancel or continue it.",
+  accept:"Hand-off accepted: this device now drives this research.",
+  release:"Released. Any of your linked devices can drive this research again."};
+async function loadSession(id){
+  const g=generation;
+  try{const v=await call("research_session",{id,action:"status"});if(g===generation&&current?.id===id)setSession(id,v);}
+  catch(e){if(g===generation&&current?.id===id){session={id,error:true};redrawSession();}}
+}
+function setSession(id,v){session={id,view:{owner:v.owner??null,you:!!v.you,offered_to:v.offered_to??null,
+  offered_to_you:!!v.offered_to_you,expires_in:v.expires_in}};redrawSession();}
+function redrawSession(focus=false){
+  const old=$("researchbody").querySelector(".rsession");
+  if(!old||!shown)return;
+  const fresh=sessionBox(shown);old.replaceWith(fresh);
+  if(focus)fresh.querySelector(".rsessionstate").focus();
+}
+const minutesLeft=s=>typeof s==="number"&&s>0?Math.max(1,Math.round(s/60)):null;
+function sessionButton(text,action,id){const b=node("button",text);b.type="button";b.onclick=()=>sessionAction(id,action);return b;}
+function sessionBox(t){
+  const box=node("section",null,"rsession");box.setAttribute("aria-labelledby","rsessiontitle");
+  const title=node("h4","Who drives this research");title.id="rsessiontitle";box.append(title);
+  const v=session?.id===t.id?session.view:null, line=node("p",null,"rsessionstate");line.tabIndex=-1;
+  const chip=(who,text)=>{const c=node("span",null,"rowner");c.dataset.who=who;c.append(node("span",{nobody:"○",you:"●",offered:"◐",other:"◑"}[who],"revglyph"),node("span",text));c.firstChild.setAttribute("aria-hidden","true");return c;};
+  const actions=node("div",null,"buttons");
+  if(session?.id===t.id&&session.error){line.append("Pocket could not check which device drives this research.");box.append(line);return box;}
+  if(!v){line.append("Checking which of your devices drives this research…");box.append(line);return box;}
+  const mins=minutesLeft(v.expires_in);
+  if(!v.owner&&!v.you){
+    line.append(chip("nobody","Nobody")," No device drives this research. Any of your linked devices can cancel or continue it; take ownership to keep the others from doing so.");
+    actions.append(sessionButton("Take ownership","take",t.id));
+  }else if(v.you){
+    line.append(chip("you","This device")," This device drives this research"+(mins?" for about "+mins+" more minute"+(mins===1?"":"s")+"; each action renews that":"")+".");
+    if(v.offered_to)line.append(" Offered to “"+v.offered_to+"”: waiting for it to accept (an offer lasts 5 minutes).");
+    const form=node("form",null,"rhandoff");form.noValidate=true;
+    const label=node("label","Hand off to (the name of another of your devices)");label.htmlFor="handoffto";
+    const input=node("input");input.id="handoffto";input.maxLength=64;input.autocomplete="off";input.setAttribute("aria-describedby","handoffhelp");
+    const help=node("small","Use the name your owner gave that device when enrolling it as a research node. It takes over when it accepts.");help.id="handoffhelp";
+    const offer=node("button","Offer hand-off");
+    form.onsubmit=e=>{e.preventDefault();const to=input.value.trim();
+      if(!to){say("Enter the name of the device to hand this research to.");input.focus();return;}
+      sessionAction(t.id,"handoff",to);};
+    form.append(label,input,help,node("div",null,"buttons"));form.lastChild.append(offer,sessionButton("Release","release",t.id));
+    box.append(line,form);return box;
+  }else if(v.offered_to_you){
+    line.append(chip("offered","Offered to this device")," “"+(v.owner||"Another device")+"” offers this research to this device.");
+    actions.append(sessionButton("Accept hand-off","accept",t.id));
+  }else{
+    line.append(chip("other","“"+(v.owner||"Another device")+"”")," “"+(v.owner||"Another device")+"” drives this research. Only it can cancel or continue it until it hands it over or releases it"+(mins?" (or in about "+mins+" minute"+(mins===1?"":"s")+" if it stays idle)":"")+".");
+  }
+  box.append(line);if(actions.childElementCount)box.append(actions);
+  return box;
+}
+async function sessionAction(id,action,to){
+  if(busy)return;
+  const g=generation;busy=true;
+  for(const b of $("researchbody").querySelectorAll(".rsession button"))b.disabled=true;
+  try{
+    const v=await call("research_session",action==="handoff"?{id,action,to}:{id,action});
+    if(g!==generation||current?.id!==id)return;
+    setSession(id,v);redrawSession(true);
+    say(action==="handoff"?"Offered to “"+to+"”. It moves when that device accepts, within 5 minutes.":SESSION_DONE[action]);
+  }catch(e){
+    if(g!==generation||current?.id!==id)return;
+    if(e.body&&"you" in e.body)setSession(id,e.body);
+    redrawSession(true);
+    const owner=e.body?.owner;
+    const text=e.code==="not_a_node"?"This device is not enrolled as a research node, so it cannot own research. The owner can enrol it on the Spark (nsf web node enrol)."
+      :e.code==="no_such_node"?"No other enrolled device of your family is called “"+to+"”. Use the name your owner gave it."
+      :e.code==="owned"?(action==="take"?"“"+(owner||"Another device")+"” drives this research. Ask it to hand it over."
+        :action==="accept"?"This research was not offered to this device, or the offer expired. Ask the device that drives it to offer it again."
+        :"Only the device that drives this research can do that. Take ownership first.")
+      :null;
+    if(text)say(text);else fail(e);
+  }finally{busy=false;buttons();if(session?.id===id)for(const b of $("researchbody").querySelectorAll(".rsession button"))b.disabled=false;}
 }
 // Continue a cancelled, partial or failed question; any device of the same family may (unless another device owns it).
 async function continueTask(id){

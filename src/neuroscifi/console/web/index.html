@@ -18,6 +18,7 @@
   <li><a href="#evidence" data-view="evidence">Evidence</a></li>
   <li><a href="#questions" data-view="questions">Questions <span id="openCount" class="count"></span></a></li>
   <li><a href="#research" data-view="research">Research <span id="activeCount" class="count"></span></a></li>
+  <li><a href="#autonomy" data-view="autonomy">Autonomy</a></li>
   <li><a href="#knowledge" data-view="knowledge">Knowledge</a></li>
   <li><a href="#graphs" data-view="graphs">Graphs</a></li>
   <li><a href="#checkpoints" data-view="checkpoints">Checkpoints</a></li>
@@ -187,6 +188,56 @@
       <div id="curiosityList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
   </div>
   <p id="researchLive" class="vh" aria-live="polite"></p>
+</section>
+
+<section id="autonomy" class="view" aria-labelledby="h-autonomy" hidden>
+  <div class="viewhead"><h1 id="h-autonomy" tabindex="-1">Autonomy</h1><button type="button" id="refreshAutonomy" data-keep>Refresh</button></div>
+  <p class="lede">Research the individual starts on its own. It is off until you switch it on, it spends only its own daily budget, and it runs only when its records give a reason worth the expected information gain. Nothing it finds is accepted without your review.</p>
+  <div class="grid">
+    <article class="card" aria-labelledby="h-autoswitch"><h2 id="h-autoswitch">Owner switch</h2>
+      <div id="autoState" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+      <label class="check switch" for="autoSwitch"><input type="checkbox" role="switch" id="autoSwitch" aria-describedby="autoSwitchHelp"><span class="switchtrack" aria-hidden="true"><span class="knob"></span></span><span>Autonomous research</span><span id="autoSwitchWord" class="switchword" aria-hidden="true"></span></label>
+      <p id="autoSwitchHelp" class="sub">Switching on asks you to confirm, then records you as the owner who enabled it and when. Switching off is recorded too and stops new investigations at once; running ones finish or can be cancelled under Research.</p>
+      <p id="autoSwitchStatus" class="msg" role="status"></p>
+    </article>
+    <article class="card" aria-labelledby="h-autolimits"><h2 id="h-autolimits">Daily limits</h2>
+      <p class="sub">Each day is a UTC calendar day. The two budgets are separate: when autonomy runs out, your own research is not affected, and the reverse also holds.</p>
+      <form id="autoLimits" novalidate>
+        <fieldset class="limits" data-scope="autonomous"><legend>Autonomous research</legend>
+          <div class="limitgrid">
+            <div><label for="lim-autonomous-searches">Searches</label><input id="lim-autonomous-searches" data-scope="autonomous" data-key="searches" type="number" min="0" step="1" inputmode="numeric" required></div>
+            <div><label for="lim-autonomous-pages">Pages read</label><input id="lim-autonomous-pages" data-scope="autonomous" data-key="pages" type="number" min="0" step="1" inputmode="numeric" required></div>
+            <div><label for="lim-autonomous-seconds">Active time (minutes)</label><input id="lim-autonomous-seconds" data-scope="autonomous" data-key="seconds" type="number" min="0" step="any" inputmode="decimal" required></div>
+            <div><label for="lim-autonomous-spend_usd">External spend (US$)</label><input id="lim-autonomous-spend_usd" data-scope="autonomous" data-key="spend_usd" type="number" min="0" step="0.01" inputmode="decimal" required></div>
+            <div><label for="lim-autonomous-concurrent">At the same time (investigations)</label><input id="lim-autonomous-concurrent" data-scope="autonomous" data-key="concurrent" type="number" min="0" max="16" step="1" inputmode="numeric" required></div>
+          </div></fieldset>
+        <fieldset class="limits" data-scope="user"><legend>Your research (console, command line, Pocket, monitors)</legend>
+          <div class="limitgrid">
+            <div><label for="lim-user-searches">Searches</label><input id="lim-user-searches" data-scope="user" data-key="searches" type="number" min="0" step="1" inputmode="numeric" required></div>
+            <div><label for="lim-user-pages">Pages read</label><input id="lim-user-pages" data-scope="user" data-key="pages" type="number" min="0" step="1" inputmode="numeric" required></div>
+            <div><label for="lim-user-seconds">Active time (minutes)</label><input id="lim-user-seconds" data-scope="user" data-key="seconds" type="number" min="0" step="any" inputmode="decimal" required></div>
+            <div><label for="lim-user-spend_usd">External spend (US$)</label><input id="lim-user-spend_usd" data-scope="user" data-key="spend_usd" type="number" min="0" step="0.01" inputmode="decimal" required></div>
+          </div></fieldset>
+        <label for="lim-min_gain">Minimum expected information gain (bits, 0 to 1)</label>
+        <input id="lim-min_gain" data-key="min_gain" type="number" min="0" max="1" step="0.001" inputmode="decimal" required aria-describedby="lim-min_gain-help">
+        <p id="lim-min_gain-help" class="sub">A subject whose expected gain is below this is refused and shown with its reason: nothing browses just to generate activity. A forecast of 0.995 gains about 0.012 bits.</p>
+        <div class="buttons"><button class="primary" id="autoSave">Save limits</button><button type="button" id="autoReset">Undo changes</button></div>
+      </form>
+      <p id="autoLimitsStatus" class="msg" role="status"></p>
+    </article>
+    <article class="card wide" aria-labelledby="h-autobudget"><h2 id="h-autobudget">Today’s budgets</h2>
+      <div id="autoBudgets" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+    </article>
+    <article class="card wide" aria-labelledby="h-autocand"><h2 id="h-autocand">Ranked candidates</h2>
+      <p class="sub">What the records give a reason to investigate now: priority = gain × (1 + weighted signals) ÷ cost. Read only; the worker picks the top one when it is idle.</p>
+      <div id="autoCandidates" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+    </article>
+    <article class="card wide" aria-labelledby="h-autodec"><h2 id="h-autodec">Recent decisions</h2>
+      <p class="sub">The last ten autonomy decisions, newest first: what was chosen and on which signals, and what was refused and why.</p>
+      <div id="autoDecisions" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+    </article>
+  </div>
+  <p id="autoLive" class="vh" aria-live="polite"></p>
 </section>
 
 <section id="knowledge" class="view" aria-labelledby="h-knowledge" hidden>

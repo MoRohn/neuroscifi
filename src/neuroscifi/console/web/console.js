@@ -1,8 +1,8 @@
 // NeuroSciFi owner console. Vanilla ES module, no framework, CSP-compatible (no inline code or styles in markup).
 // The session token arrives in the URL fragment, is kept in this module only and removed from the address bar.
 
-const VIEWS = ['overview', 'teach', 'evidence', 'questions', 'research', 'knowledge', 'graphs', 'checkpoints', 'memory',
-               'voice'];
+const VIEWS = ['overview', 'teach', 'evidence', 'questions', 'research', 'autonomy', 'knowledge', 'graphs', 'checkpoints',
+               'memory', 'voice'];
 const CHANNEL_ROOT = { camera: 'Camera root', word: 'Partner (word root)', reference: 'Reference root' };
 const MAP_TEXT = { 0: 'as declared', 1: 'inverted', null: 'tied' };
 const CHECK_LABELS = {
@@ -1978,6 +1978,367 @@ function knowledgeCard(k) {
     h('div', { class: 'buttons', role: 'group', 'aria-label': `Actions for knowledge #${k.id}` }, buttons), status);
 }
 
+// ---- autonomy (D4; docs/autonomy/RESEARCH_POLICY.md) -----------------------------------------------------
+// GET /api/web/autonomy: the switch and its owner record, both daily budgets (UTC day), policy, the last ten decisions
+// and, while web access is on, the current ranking. POST /api/web/autonomy records the owner's switch and limits.
+
+const AUTO_POLL_MS = 15000;
+const AUTO_SCOPES = [['autonomous', 'Autonomous research'], ['user', 'Your research']];
+const AUTO_METRICS = [['searches', 'Searches', 'count'], ['pages', 'Pages read', 'count'], ['seconds', 'Active time', 'min'],
+                      ['spend_usd', 'External spend', 'usd']];
+const SIGNAL_TEXT = { goal: 'Matches an active goal', contradiction: 'Contradiction', hypothesis: 'Open hypothesis',
+  prediction_uncertainty: 'Uncertain prediction', source_change: 'A monitored source changed', stale: 'Past its freshness window',
+  gap: 'Only one source' };
+const CANDIDATE_KIND = { contested: 'Contested knowledge', stale: 'Stale knowledge', prediction: 'Prediction due',
+  gap: 'Single-source gap', hypothesis: 'Contested subject', hypothesis_prediction: 'Open hypothesis' };
+const auto = { status: null, sig: '', dirty: false, timer: null };
+
+const two = (x) => (Number(x) || 0).toFixed(2);
+const three = (x) => (Number(x) || 0).toFixed(3);
+const minutes = (seconds) => +((Number(seconds) || 0) / 60).toFixed(1);
+// One amount in the unit of its limit: counts, minutes or US dollars (the API stores seconds and dollars).
+function amount(x, unit, withUnit = true) {
+  if (unit === 'usd') return `$${two(x)}`;
+  if (unit === 'min') return `${minutes(x)}${withUnit ? ' min' : ''}`;
+  return String(Math.round(Number(x) || 0));
+}
+function duration(seconds) {
+  const s = Number(seconds) || 0;
+  if (s < 120) return `${+s.toFixed(1)} s`;
+  if (s < 7200) return `${+(s / 60).toFixed(1)} minutes`;
+  return `${+(s / 3600).toFixed(1)} hours`;
+}
+// Server reasons give durations in seconds ("within the last 86400 s"): say them in minutes or hours.
+const humane = (text) => cap(String(text ?? '').replace(/\b(\d+(?:\.\d+)?) s\b/g, (_, n) => duration(Number(n))));
+function ownerText(by) {
+  return { 'owner:console': 'you, in this console', 'owner:cli': 'you, on the command line', owner: 'you' }[by] ?? by ?? 'unknown';
+}
+
+async function loadAutonomy() {
+  const s = await load('autonomy', ['autoState', 'autoBudgets', 'autoCandidates', 'autoDecisions'].map($),
+    () => api('GET', '/api/web/autonomy'));
+  if (!s) return;
+  auto.sig = '';
+  renderAutonomy(s);
+  scheduleAutoPoll();
+}
+
+// Budgets move while research runs anywhere (worker, Pocket, CLI): poll the open view, re-render only on a change.
+function scheduleAutoPoll() {
+  clearTimeout(auto.timer);
+  auto.timer = null;
+  if (!state.token || state.view !== 'autonomy') return;
+  auto.timer = setTimeout(async () => {
+    auto.timer = null;
+    if (state.view !== 'autonomy') return;
+    if (!document.hidden && !state.offline) {
+      try { renderAutonomy(await api('GET', '/api/web/autonomy')); } catch { /* retried on the next tick */ }
+    }
+    scheduleAutoPoll();
+  }, AUTO_POLL_MS);
+}
+
+function renderAutonomy(s) {
+  const sig = JSON.stringify(s);
+  if (sig === auto.sig) return;
+  const before = auto.status;
+  auto.sig = sig;
+  auto.status = s;
+  const box = $('autoSwitch');
+  if (!state.busy.has(box)) box.checked = !!s.enabled;
+  $('autoSwitchWord').textContent = box.checked ? 'On' : 'Off';
+  rerender($('autoState'), autoStateBlock(s));
+  rerender($('autoBudgets'), autoBudgetsBlock(s));
+  if (s.candidates !== undefined) rerender($('autoCandidates'), autoCandidatesBlock(s.candidates, s));
+  rerender($('autoDecisions'), autoDecisionsBlock(s.decisions ?? []));
+  if (!auto.dirty) fillLimits(s);
+  if (before) announceBudget(before, s);
+}
+
+function autoStateBlock(s) {
+  const r = s.record ?? {};
+  const [word, tone] = s.enabled ? ['On', 'ok'] : s.switch ? ['Switch on, not recorded', 'warn'] : ['Off', 'neutral'];
+  const a = s.autonomous;
+  const out = [kv([
+    ['State', h('span', { id: 'autoStateBadge' }, badge(word, tone))],
+    ['Enabled by', r.enabled_by ? `${ownerText(r.enabled_by)}, ${fmtTime(r.enabled_at)}` : 'never enabled'],
+    r.disabled_at ? ['Last switched off', `${ownerText(r.disabled_by)}, ${fmtTime(r.disabled_at)}`] : null,
+    ['Running now', `${a.running ?? 0} of ${a.limits.concurrent ?? 0} autonomous investigations`],
+    ['Idle check', `at most every ${duration(s.idle_interval)}`],
+    ['Cooldown', `a subject waits ${duration(s.cooldown)} before it is investigated again`],
+  ])];
+  if (s.switch && !s.enabled) {
+    out.push(h('p', { class: 'msg error' }, 'The switch is on but no owner decision is recorded (it was set without one), so the idle investigator stays off. Switch it on here to record your decision.'));
+  }
+  if (s.candidates === null) {
+    out.push(h('p', { class: 'sub' }, 'Web access is off, so nothing runs whatever this switch says. Turn it on under ',
+      h('a', { href: '#research', text: 'Research → Web settings' }), '.'));
+  }
+  return out;
+}
+
+// A budget as segmented meters: solid = used, hatched = held by tasks still running (their allowance), rest = left.
+function meter(scope, key, name, unit, values) {
+  const { used, limit, held = 0, left, free = false } = values;
+  // as autonomy._exhausted: fewer than one search, page or second left (spend: nothing left)
+  const out = limit <= 0 || (unit === 'usd' ? left <= 0 : left < 1) ? 'out' : left / limit < 0.2 ? 'low' : 'ok';
+  const pctOf = (x) => (limit > 0 ? Math.max(0, Math.min(100, (x / limit) * 100)) : 0);
+  const usedBar = h('span', { class: 'used' }), heldBar = h('span', { class: 'held' });
+  usedBar.style.width = `${pctOf(used)}%`;
+  heldBar.style.width = `${Math.min(100 - pctOf(used), pctOf(held))}%`;
+  const foot = [free ? (out === 'out' ? 'No free slot: new investigations wait' : `${amount(left, unit)} free`) : out === 'out' ? 'None left today' : `${amount(left, unit)} left`];
+  if (held > 0) foot.push(`${amount(held, unit)} held by running tasks`);
+  return h('li', { class: 'meter', 'data-key': key, 'data-state': out },
+    h('div', { class: 'meterhead' }, h('span', { class: 'metername', id: `m-${scope}-${key}`, text: name }),
+      h('span', { class: 'meterval' }, h('strong', { text: amount(used, unit, unit === 'usd') }), ` of ${amount(limit, unit)}`)),
+    h('div', { class: 'mtrack', 'aria-hidden': 'true' }, usedBar, heldBar),
+    h('p', { class: 'meterfoot', text: foot.join(' · ') }));
+}
+
+function autoBudgetsBlock(s) {
+  const panels = AUTO_SCOPES.map(([scope, title]) => {
+    const b = s[scope];
+    const meters = AUTO_METRICS.map(([key, name, unit]) => {
+      const used = Number(b.used[key]) || 0, committed = Number(b.committed[key]) || 0;
+      return meter(scope, key, name, unit, { used, limit: Number(b.limits[key]) || 0, held: Math.max(0, committed - used),
+                                             left: Number(b.remaining[key]) || 0 });
+    });
+    if (scope === 'autonomous') {
+      const limit = Number(b.limits.concurrent) || 0, running = Number(b.running) || 0;
+      meters.push(meter(scope, 'concurrent', 'At the same time', 'count', { used: running, limit, left: Math.max(0, limit - running), free: true }));
+    }
+    const observed = h('dl', { class: 'kv observed' },
+      h('dt', { text: 'SearXNG requests' }), h('dd', { 'data-key': 'searxng_requests', text: amount(b.used.searxng_requests, 'count') }),
+      h('dt', { text: 'Upstream engine requests' }), h('dd', { 'data-key': 'engine_requests', text: amount(b.used.engine_requests, 'count') }));
+    return h('section', { class: 'scope', 'data-scope': scope, 'data-exhausted': b.refusal ? '' : null, 'aria-labelledby': `bud-${scope}` },
+      h('div', { class: 'scopehead' }, h('h3', { id: `bud-${scope}`, text: title }),
+        b.refusal ? badge('Exhausted', 'warn') : badge('Room left', 'ok')),
+      b.refusal ? h('p', { class: 'refusal', text: `New ${scope === 'user' ? 'research of yours' : 'investigations'} are refused: ${b.refusal}.` }) : null,
+      h('ul', { class: 'meters', 'aria-label': `${title}: today’s budget` }, meters),
+      observed,
+      h('p', { class: 'meterfoot', text: `${b.tasks} task${b.tasks === 1 ? '' : 's'} charged today, ${b.open} still running. SearXNG and engine requests are observed, not limited; cache hits count as neither.` }));
+  });
+  const prices = s.prices_usd ?? {};
+  return [h('p', { class: 'sub', text: `UTC day ${s.day}. Prices: $${two(prices.search)} per search, $${two(prices.page)} per page${!Number(prices.search) && !Number(prices.page) ? ' (no paid provider, so spend stays at $0.00)' : ''}.` }),
+          h('div', { class: 'budgets' }, panels)];
+}
+
+// Changes since the last render, for screen readers (aria-live polite): only the amounts left that moved.
+function announceBudget(before, s) {
+  const words = [];
+  for (const [scope, title] of AUTO_SCOPES) {
+    for (const [key, name, unit] of AUTO_METRICS) {
+      const was = before[scope]?.remaining?.[key], now = s[scope]?.remaining?.[key];
+      if (was !== now && now !== undefined) words.push(`${title}, ${name.toLowerCase()}: ${amount(now, unit)} of ${amount(s[scope].limits[key], unit)} left`);
+    }
+    if (!before[scope]?.refusal && s[scope]?.refusal) words.push(`${title} budget exhausted`);
+  }
+  if (words.length) $('autoLive').textContent = `Budget updated. ${words.join('; ')}.`;
+}
+
+function candidateTitle(x) {
+  return x.statement || x.objective || CANDIDATE_KIND[x.kind] || 'An open question';
+}
+
+function signalList(signals) {
+  const on = Object.entries(signals ?? {}).filter(([, v]) => Number(v) > 0).sort((a, b) => b[1] - a[1]);
+  if (!on.length) return h('p', { class: 'candmeta', text: 'No weighted signal: ranked on expected gain alone.' });
+  return h('ul', { class: 'signals', 'aria-label': 'Signals' },
+    on.map(([k, v]) => h('li', { 'data-signal': k }, SIGNAL_TEXT[k] ?? k.replaceAll('_', ' '), h('span', { class: 'sv', text: two(v) }))));
+}
+
+function autoCandidatesBlock(c, s) {
+  if (c === null) return [empty('Candidates are ranked while web access is on; with it off nothing can be researched.')];
+  const out = [];
+  if (!s.enabled && c.chosen.length) out.push(h('p', { class: 'sub', text: 'Autonomy is off: this is what it would investigate. Nothing is queued.' }));
+  out.push(h('h3', { text: `Would investigate (${c.chosen.length})` }));
+  out.push(c.chosen.length
+    ? h('ol', { class: 'candidates', id: 'autoChosen' }, c.chosen.map((x) => h('li', { 'data-key': x.key }, h('div', {},
+        h('p', { class: 'kstatement', text: candidateTitle(x) }),
+        h('p', { class: 'candmeta', text: `${CANDIDATE_KIND[x.kind] ?? x.kind} · ${modeLabel(x.mode)} · priority ${three(x.priority)} · gain ${three(x.info_gain)} bits` }),
+        signalList(x.signals),
+        technical(kv([['Ranking', x.reason], ['Cost', three(x.cost)], ['Search terms', x.objective || '—'], ['Index key', h('code', { text: x.key })]]))))))
+    : empty(c.refused.length ? 'Nothing clears the bar now: every candidate was refused for the reason shown below.'
+      : 'Nothing in the records gives a reason to research: no contested, stale or single-source knowledge and no open hypothesis with a prediction.'));
+  if (c.refused.length) {
+    out.push(h('h3', { text: `Refused (${c.refused.length})` }),
+      h('ul', { class: 'refused', id: 'autoRefused' }, c.refused.map((x) => h('li', { 'data-key': x.key },
+        h('strong', { text: candidateTitle(x) }),
+        h('p', { class: 'refreason' }, badge('Refused', 'warn'), ' ', humane(x.reason)),
+        h('p', { class: 'candmeta', text: `gain ${three(x.info_gain)} bits · minimum ${c.min_gain}` })))));
+  }
+  return out;
+}
+
+const POLICY_WORDS = { autonomous_daily: 'autonomous', user_daily: 'your', prices_usd: 'price per' };
+function changeText(changes) {
+  const parts = [];
+  for (const [key, value] of Object.entries(changes ?? {})) {
+    if (value && typeof value === 'object') {
+      for (const [k, v] of Object.entries(value)) {
+        const unit = k === 'seconds' ? 'min' : k === 'spend_usd' || key === 'prices_usd' ? 'usd' : 'count';
+        const name = { spend_usd: 'spend', seconds: 'active time', concurrent: 'investigations at once' }[k] ?? k;
+        parts.push(`${POLICY_WORDS[key] ?? key} ${name} ${amount(v, unit)}`);
+      }
+    } else {
+      parts.push(key === 'min_gain' ? `minimum gain ${value} bits` : `${key.replaceAll('_', ' ')} ${duration(value)}`);
+    }
+  }
+  return parts.join('; ') || 'no values';
+}
+
+function decisionParts(d) {
+  const a = d.autonomy;
+  if (a && typeof a === 'object') {
+    return ['chosen', 'Chosen', 'ok', [
+      h('p', { class: 'dectext', text: `${CANDIDATE_KIND[a.kind] ?? a.kind}, researched as “${modeLabel(a.mode)}”: priority ${three(a.priority)}, gain ${three(a.info_gain)} bits.` }),
+      signalList(a.signals),
+      d.task_id ? h('p', { class: 'dectext' }, h('a', { href: '#research', 'data-task': d.task_id, text: 'Open its task under Research' })) : null,
+      technical(kv([['Ranking', a.reason], ['Cost', three(a.cost)], ['Minimum gain', `${a.min_gain} bits`], ['Index key', h('code', { text: a.key ?? '—' })]]))]];
+  }
+  const text = (t) => h('p', { class: 'dectext' }, ...rich(t));
+  switch (a) {
+    case 'refused': return ['refused', 'Refused', 'warn', [text(humane(d.reason ?? 'refused'))]];
+    case 'nothing worth researching':
+      return ['refused', 'Nothing researched', 'neutral', [text(humane(d.reason ?? 'no candidate')
+        + (typeof d.best_gain === 'number' ? ` (best gain ${three(d.best_gain)} bits, minimum ${d.min_gain}).` : ''))]];
+    case 'enabled': return ['switch', 'Switched on', 'info', [text(`Recorded for ${ownerText(d.by)}.`)]];
+    case 'disabled': return ['switch', 'Switched off', 'info', [text(`Recorded for ${ownerText(d.by)}.`)]];
+    case 'policy changed': return ['policy', 'Limits changed', 'info', [text(`${cap(changeText(d.changes))}.`)]];
+    case 'notified': return ['finding', 'You were notified', 'ok', [text(`A meaningful finding${d.pending_id ? `: question #${d.pending_id} under Questions` : ''}.`)]];
+    case 'no meaningful finding: no notification':
+      return ['finding', 'No notification', 'neutral', [text('The investigation found nothing meaningful, so you were not notified.')]];
+    default: return ['other', 'Decision', 'neutral', [text(cap(String(a)))]];
+  }
+}
+
+function autoDecisionsBlock(decisions) {
+  if (!decisions.length) return [empty('No autonomy decision yet. Decisions appear when you switch autonomy, change its limits, or the idle worker chooses or refuses an investigation.')];
+  return [h('ol', { class: 'decisions', id: 'autoDecisionList' }, decisions.map((d) => {
+    const [kind, title, tone, body] = decisionParts(d);
+    return h('li', { 'data-kind': kind },
+      h('div', { class: 'dechead' }, badge(title, tone), h('span', { class: 'dectime', text: `${fmtTime(d.at)} · ${ago(d.at)}` })), body);
+  }))];
+}
+
+// ---- limits form ----
+
+const limitInputs = () => [...$('autoLimits').querySelectorAll('input[data-key]')];
+function storedLimit(s, input) {
+  const { scope, key } = input.dataset;
+  if (!scope) return s[key];
+  return s[scope].limits[key];
+}
+function fillLimits(s) {
+  for (const input of limitInputs()) {
+    const v = storedLimit(s, input);
+    input.value = input.dataset.key === 'seconds' ? String(+(Number(v) / 60).toFixed(2)) : String(v ?? '');
+    setFieldError(input, null);
+  }
+}
+function setFieldError(input, text) {
+  let note = $(`${input.id}-err`);
+  if (!note) {
+    note = h('p', { class: 'fielderr', id: `${input.id}-err` });
+    input.after(note);
+    input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), note.id].filter(Boolean).join(' '));
+  }
+  note.textContent = text ?? '';
+  if (text) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+}
+// Returns {body, changes, errors}: integers for counts (at most 16 investigations at once), non-negative numbers
+// for minutes and dollars, 0 to 1 bits for the minimum gain - the API's own rules, checked before sending.
+function readLimits(s) {
+  const body = {}, changes = [], errors = [];
+  for (const input of limitInputs()) {
+    const { scope, key } = input.dataset;
+    const raw = input.value.trim(), label = $('autoLimits').querySelector(`label[for="${input.id}"]`).textContent;
+    const integer = ['searches', 'pages', 'concurrent'].includes(key);
+    let error = null;
+    const value = Number(raw);
+    if (raw === '') error = 'Enter a value.';
+    else if (!Number.isFinite(value) || value < 0) error = 'Must be a number of 0 or more.';
+    else if (integer && !/^\d+$/.test(raw)) error = 'Must be a whole number.';
+    else if (key === 'concurrent' && value > 16) error = 'At most 16 at the same time.';
+    else if (key === 'min_gain' && value > 1) error = 'At most 1 bit.';
+    else if (!integer && value > 1e9) error = 'That is too large.';
+    setFieldError(input, error);
+    if (error) { errors.push(input); continue; }
+    const next = key === 'seconds' ? Math.round(value * 60 * 1000) / 1000 : value;
+    const was = Number(storedLimit(s, input));
+    if (Math.abs(next - was) < 1e-9) continue;
+    const scopeName = scope === 'autonomous' ? 'autonomous' : scope === 'user' ? 'your' : '';
+    changes.push(`${scopeName ? `${scopeName} ` : ''}${label.replace(/\s*\(.*\)$/, '').toLowerCase()} ${input.dataset.key === 'seconds' ? `${minutes(was)} → ${minutes(next)} min` : key === 'spend_usd' ? `$${two(was)} → $${two(next)}` : `${was} → ${next}`}`);
+    if (scope) (body[`${scope}_daily`] ??= {})[key] = next; else body[key] = next;
+  }
+  return { body, changes, errors };
+}
+
+function wireAutonomy() {
+  $('refreshAutonomy').addEventListener('click', loadAutonomy);
+  $('autoLimits').addEventListener('input', () => { auto.dirty = true; });
+  $('autoReset').addEventListener('click', () => {
+    auto.dirty = false;
+    if (auto.status) fillLimits(auto.status);
+    say($('autoLimitsStatus'), 'Changes undone: the fields show the stored limits.', 'ok');
+  });
+  $('autoLimits').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const s = auto.status;
+    if (!s) return;
+    const { body, changes, errors } = readLimits(s);
+    if (errors.length) {
+      say($('autoLimitsStatus'), `Nothing was saved: correct ${errors.length === 1 ? 'the marked field' : `the ${errors.length} marked fields`}.`, 'error');
+      errors[0].focus();
+      return;
+    }
+    if (!changes.length) { say($('autoLimitsStatus'), 'Nothing to save: the fields match the stored limits.', 'ok'); return; }
+    act($('autoSave'), $('autoLimitsStatus'), async () => {
+      await api('POST', '/api/web/autonomy', body);
+      auto.dirty = false;
+      await loadAutonomy();
+      return `Saved: ${changes.join('; ')}.`;
+    });
+  });
+  $('autoSwitch').addEventListener('change', async (ev) => {
+    const box = ev.currentTarget, on = box.checked;
+    if (on) {
+      box.checked = false;   // stays off until the owner confirms
+      $('autoSwitchWord').textContent = 'Off';
+      const lim = auto.status?.autonomous?.limits ?? {};
+      const ok = await confirmAction('Let the individual research on its own?',
+        `When its worker is idle it may start investigations that its records give a reason for: up to ${lim.searches} searches, ` +
+        `${lim.pages} pages, ${minutes(lim.seconds)} minutes of active time and $${two(lim.spend_usd)} a day, ${lim.concurrent} at a time, each with an ` +
+        `expected gain of at least ${auto.status?.min_gain} bits. Nothing it finds is accepted without your review, and you are notified only of ` +
+        'meaningful findings. Your decision is recorded with the time.' +
+        (auto.status?.candidates === null ? ' Web access is off, so nothing runs until you turn it on.' : ''), 'Switch on');
+      box.focus();
+      if (!ok) { say($('autoSwitchStatus'), 'Autonomous research stays off. Nothing was recorded.', 'ok'); return; }
+      box.checked = true;
+    }
+    $('autoSwitchWord').textContent = on ? 'On' : 'Off';
+    act(box, $('autoSwitchStatus'), async () => {
+      let s;
+      try {
+        s = await api('POST', '/api/web/autonomy', { enabled: on });
+      } catch (error) {
+        box.checked = !on;
+        $('autoSwitchWord').textContent = box.checked ? 'On' : 'Off';
+        throw error;
+      }
+      await loadAutonomy();
+      return on ? `Autonomous research is on, recorded as enabled by ${ownerText(s.record.enabled_by)} at ${fmtTime(s.record.enabled_at)}.`
+        : 'Autonomous research is off and the switch-off is recorded. No new investigation starts.';
+    });
+  });
+  $('autoDecisions').addEventListener('click', (ev) => {
+    const link = ev.target.closest('a[data-task]');
+    if (!link) return;
+    web.taskId = link.dataset.task;   // the Research view opens this task's report when it loads
+    web.taskSig = '';
+  });
+}
+
 // ---- controls ------------------------------------------------------------------------------------------
 
 // A control stays disabled while its own request is in flight, whatever the data says. A button disabled by the
@@ -2235,6 +2596,7 @@ function wire() {
   });
 
   wireResearch();
+  wireAutonomy();
   window.addEventListener('hashchange', () => { if (!takeToken()) route(true); });
 }
 
@@ -2412,7 +2774,7 @@ function takeToken() {
 window.nsfConsoleToken = () => state.token;
 
 const LOADERS = { overview: loadOverview, teach: loadTeach, evidence: loadEvidence, questions: loadQuestions,
-                  research: loadResearch, knowledge: loadKnowledge, graphs: loadGraphs, checkpoints: loadCheckpoints,
+                  research: loadResearch, autonomy: loadAutonomy, knowledge: loadKnowledge, graphs: loadGraphs, checkpoints: loadCheckpoints,
                   memory: loadMemory, voice: loadVoice };
 
 // Voice Cortex panel (src/neuroscifi/voice/web): loaded on first visit; it keeps its own session and event stream.
@@ -2438,6 +2800,7 @@ function route(moveFocus) {
   showCurrentNav();
   if (moveFocus) $(`h-${view}`).focus();
   schedulePoll();
+  scheduleAutoPoll();
   refreshView();
   if (view !== 'overview') loadHeader().catch(() => {});   // nav counts stay current on every view (U-29)
 }
