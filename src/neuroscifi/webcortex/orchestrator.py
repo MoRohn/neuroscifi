@@ -79,7 +79,7 @@ import uuid
 
 from ..instance import store
 from ..instance.errors import Conflict, LeaseHeld, ValidationError
-from . import state
+from . import state, temporal
 from .types import (FETCH_ERROR_CODES, MODES, TERMINAL_STATES, Budget, BudgetExceeded, Claim, ClaimCluster, Document,
                     FetchError, FetchResult, QueryPlan, SearchResult, Usage)
 
@@ -859,10 +859,12 @@ class _Run:
         body = meta.pop("body", None)      # a release's whole body: the document text (the snippet is display only)
         abstract = str(meta.get("abstract") or meta.get("summary") or "")
         text = "\n".join(x for x in (r.title, body if isinstance(body, str) and body else r.snippet, abstract) if x)
-        return Document(url=r.url, final_url=r.url, canonical_url=canonical_url(r.url),
-                        domain=registrable_domain(urlsplit(r.url).hostname or ""), title=r.title, text=text,
-                        retrieved_at=now, retrieval_mode="api", kind="api", content_type="application/json",
-                        published_at=r.published_at, metadata=meta | {"provider": r.provider})
+        doc = Document(url=r.url, final_url=r.url, canonical_url=canonical_url(r.url),
+                       domain=registrable_domain(urlsplit(r.url).hostname or ""), title=r.title, text=text,
+                       retrieved_at=now, retrieval_mode="api", kind="api", content_type="application/json",
+                       published_at=r.published_at, metadata=meta | {"provider": r.provider})
+        temporal.settle_publication_date(doc)       # a future issue date is not a publication date (T1-19)
+        return doc
 
     def wikipedia(self, r: SearchResult):
         """A Wikipedia hit read as the document it points to, never its search snippet: the article's plain-text
@@ -888,11 +890,17 @@ class _Run:
         from .search import parse_iso_date
         edited = parse_iso_date(found.get("last_edited"))
         meta.pop("snippet_only", None)      # the hit was a snippet; this document is the article itself (RT-W-01)
+        # the latest revision time is when someone last edited the article, not when its facts were published: it
+        # is the document's modified_at and never dates it for freshness or verification (T1-05)
         page = SearchResult(url=found.get("url") or r.url, title=found.get("title") or r.title, snippet="",
-                            provider=r.provider, rank=r.rank, kind=r.kind, published_at=edited or r.published_at,
+                            provider=r.provider, rank=r.rank, kind=r.kind, published_at=None,
                             metadata=meta | {"abstract": text, "last_edited": found.get("last_edited") or
                                              meta.get("last_edited"), "source": "article"})
-        return safety.quarantine(self.api_document(page, self.clock())), True
+        doc = self.api_document(page, self.clock())
+        doc.modified_at = edited or parse_iso_date(meta.get("last_edited"))
+        if doc.modified_at is not None:
+            doc.metadata["modified_source"] = "wikipedia:revision"
+        return safety.quarantine(doc), True
 
     def record(self, doc, *, provider, api, published_hint=None, search_date=None):
         now = self.clock()
@@ -1614,11 +1622,15 @@ def _dependencies(report, summary):
 
 
 def _extract(result, published_hint=None):
-    """extract.extract, with the feed item's date as `published_hint` (it wins over the page's own metadata)."""
+    """extract.extract, with the feed item's date as `published_hint` (it wins over the page's own metadata); a
+    publication date more than a day after the page was read is set aside (temporal.settle_publication_date)."""
     from . import extract
     if published_hint is None:
-        return extract.extract(result)
-    return extract.extract(result, published_hint=published_hint)
+        doc = extract.extract(result)
+    else:
+        doc = extract.extract(result, published_hint=published_hint)
+    temporal.settle_publication_date(doc)
+    return doc
 
 
 def _empty_result(failure) -> bool:
@@ -2186,7 +2198,7 @@ def needs_web_report(report) -> bool:
 
 def _predict(db, knowledge_ids, now):
     """'still holds at next refresh' for each new provisional item, checked after its freshness TTL."""
-    from . import knowledge, predictions, temporal
+    from . import knowledge, predictions
     if not knowledge_ids:
         return
     cfg = state.get_config(db)

@@ -16,11 +16,12 @@ Contract (ARCHITECTURE §4.1)
   then JSON-LD, meta (article:*, citation_*, Dublin Core, itemprop), then `<time datetime>`;
   `metadata["date_source"]` names the source used for `published_at` ("feed" for the hint). The HTTP Last-Modified
   header is never a publication date (servers stamp it on every deploy): it only fills `modified_at`, with
-  `metadata["modified_source"] = "http-last-modified"`. A page with no publication date but its own modification
-  date (JSON-LD dateModified, article:modified_time, og:updated_time, dcterms.modified, datemodified) is dated by
-  it as the best available date: `published_at` = that date, `date_source` "json-ld:dateModified" or
-  "meta:<name>" (e.g. "meta:og:updated_time"), so consumers can tell a modification date from a publication date.
-  `<meta http-equiv="last-modified">` mirrors the server header and is never used. Parsing goes through
+  `metadata["modified_source"] = "http-last-modified"`. The page's own modification date (JSON-LD dateModified,
+  article:modified_time, og:updated_time, dcterms.modified, datemodified) is not a publication date either, even
+  when it is the page's only date (T1-05): it fills `modified_at` with `modified_source` "json-ld:dateModified" or
+  "meta:<name>", and a page with no publication date stays undated for freshness and verification.
+  `<meta http-equiv="last-modified">` mirrors the server header and is never used. (A publication date more than a
+  day after the page was read is set aside by the reader: temporal.settle_publication_date.) Parsing goes through
   temporal.parse_date_precision first (time-zone offsets kept), Unix epochs in seconds or milliseconds (og:updated_time="1663021219") are accepted;
   a bare year ("2019") is year precision, not a publication time, and is never used as `published_at`. JSON-LD is walked breadth-first over at most
   MAX_LD_NODES nodes and depth 6.
@@ -616,10 +617,10 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
             if modified is not None:
                 modified_source = f"meta:{name}"
                 break
-    if published is None and modified is not None and modified_source != "meta:last-modified":
-        published, source = modified, modified_source     # best available: the page's own last-modified date
     if source:
         metadata["date_source"] = source
+    if modified is not None and modified_source:
+        metadata["modified_source"] = modified_source   # the page's own modification date: never `published_at`
 
     # scholarly / typing metadata
     doi, _ = _first(metas, "citation_doi", "prism.doi", "bepress_citation_doi", "dc.identifier", "dc.identifier.doi")

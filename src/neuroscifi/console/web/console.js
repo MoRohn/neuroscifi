@@ -1784,6 +1784,8 @@ function sourceFlags(s) {
   if (f.truncated) out.push(badge('truncated', 'warn'));
   if (s.published_at === null || s.published_at === undefined) out.push(badge('undated', 'neutral'));
   if (s.date_source === 'search_engine' && s.search_published_at) out.push(badge(`search engine reports ${fmtDay(s.search_published_at)} (lower trust)`, 'neutral'));
+  if (s.future_published_at) out.push(badge(`future date ${fmtDay(s.future_published_at)} set aside`, 'warn'));
+  if (s.source_type === 'tertiary') out.push(badge('encyclopedia (tertiary)', 'neutral'));
   if (f.js_suspected) out.push(badge('needs JavaScript', 'neutral'));
   if (f.hidden_removed) out.push(badge(`${f.hidden_removed} hidden element${f.hidden_removed === 1 ? '' : 's'} removed`, 'neutral'));
   if (s.cited === false) out.push(badge('read, not cited', 'neutral'));
@@ -1795,11 +1797,19 @@ function sourceHow(s) {
   return `${KIND_TEXT[s.kind] ?? cap(s.kind ?? 'document')}, ${RETRIEVAL_TEXT[s.retrieval_mode] ?? s.retrieval_mode}`;
 }
 
+function sourceDate(s) {
+  // a revision or modification time is never shown as a publication date (T1-05)
+  if ((s.published_at === null || s.published_at === undefined) && s.modified_at) {
+    return `${s.modified_source === 'wikipedia:revision' ? 'Last edited' : 'Last modified'} ${fmtDay(s.modified_at)} (not a publication date)`;
+  }
+  return `Published ${fmtDay(s.published_at)}`;
+}
+
 function sourceItem(s) {
   return h('li', { id: `src-${s.n}`, tabindex: '-1', value: String(s.n), 'data-source': s.n },
     h('p', { class: 'srctitle' }, h('strong', { text: s.title || s.domain || 'Untitled' }), ` · ${s.domain}`),
     h('p', { class: 'srcurl' }, safeLink(s.url)),
-    h('p', { class: 'sub', text: `Published ${fmtDay(s.published_at)} · retrieved ${fmtTime(s.retrieved_at)} · ${sourceHow(s)}` }),
+    h('p', { class: 'sub', text: `${sourceDate(s)} · retrieved ${fmtTime(s.retrieved_at)} · ${sourceHow(s)}` }),
     h('p', { class: 'flags' }, sourceFlags(s)));
 }
 

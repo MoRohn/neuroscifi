@@ -240,11 +240,10 @@ class WikipediaProvider(_Api):
             if not isinstance(hit, dict) or not hit.get("title"):
                 continue
             title = str(hit["title"])
-            edited = parse_iso_date(hit.get("timestamp"))
-            out.append(SearchResult(
+            out.append(SearchResult(     # the hit's timestamp is the last edit, not a publication date (T1-05)
                 url=self.page_url(title, lang), title=title,
                 snippet=_clip(strip_html(hit.get("snippet")), _SNIPPET), provider=self.name, rank=len(out) + 1,
-                kind="encyclopedia", published_at=edited,
+                kind="encyclopedia", published_at=None,
                 metadata={"pageid": hit.get("pageid"), "last_edited": hit.get("timestamp"), "language": lang,
                           "snippet_only": True}))
         return out[:_clamp(limit)]

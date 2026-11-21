@@ -495,6 +495,15 @@ def _clip(value, limit: int) -> str:
     return s if len(s) <= limit else s[:limit - 1].rstrip() + "…"
 
 
+ENCYCLOPEDIA_PROVIDERS = ("Wikipedia",)
+
+
+def encyclopedia(doc: Document) -> bool:
+    """A tertiary reference (Wikipedia, read through its API or as a page): it summarises other sources. Its claims
+    are flagged source_type "tertiary", never "primary", however it was read (T1-12/T1-14)."""
+    return _provider(doc) in ENCYCLOPEDIA_PROVIDERS
+
+
 def registry_record(doc: Document) -> bool:
     """A structured record of registry *state* (package, advisory, release: PyPI, npm, OSV, GitHub). Its content
     is current as of retrieval; encyclopedia and academic records are dated by their own published or
@@ -1068,6 +1077,7 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8, salienc
     overlap = (len(set(title_stems) & set(q_stems)) / len(set(q_stems))) if q_stems else 0.0
     s_t = bm.scores(title_stems) if overlap > 0 else [0.0] * len(candidates)
     observed_at = doc.retrieved_at if registry_record(doc) and doc.retrieval_mode != "cache" else None
+    tertiary = encyclopedia(doc)
     adversarial = adversarial_document(doc)
     origin = origin_keys(doc)
     scored = []
@@ -1084,8 +1094,8 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8, salienc
             relevance = max(relevance, METADATA_RELEVANCE_FLOOR)
         if relevance <= 0:
             continue
-        flags = {"source_type": "primary" if primary else "secondary", "retrieval_mode": doc.retrieval_mode,
-                 "doc_kind": doc.kind}
+        flags = {"source_type": "tertiary" if tertiary else ("primary" if primary else "secondary"),
+                 "retrieval_mode": doc.retrieval_mode, "doc_kind": doc.kind}
         if observed_at is not None:
             flags["observed_at"] = observed_at
         if doc.flags.get("truncated"):
@@ -1744,7 +1754,7 @@ __all__ = ["CATEGORY_POLICY", "DISPUTE_WEIGHT_RATIO", "LEGACY_LABELS", "STATE_TO
            "MIN_WORDS", "PRIOR_ALPHA", "PRIOR_BETA", "RELIABILITY_PRIMARY", "RELIABILITY_SECONDARY",
            "RENDER_ONLY_PATTERNS", "STALE_FACTOR", "UNDATED_FACTOR", "adversarial_document", "agrees", "bearing",
            "claim_key", "claim_kind", "cluster", "conflict", "conflict_sides", "contradictions", "describe_conflict",
-           "different_subjects", "evaluate", "evidence_weight", "extract_claims", "fragment", "independence_groups",
+           "different_subjects", "encyclopedia", "evaluate", "evidence_weight", "extract_claims", "fragment", "independence_groups",
            "info_gain", "is_adversarial", "is_primary", "is_reportable", "negation_cue", "polarity", "posterior",
            "primary_subject", "record_identity", "record_template", "registry_record", "restates", "same_subject", "score", "similarity",
            "subject_tokens", "subjects_compatible", "title_subject"]

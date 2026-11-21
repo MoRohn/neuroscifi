@@ -110,7 +110,7 @@ def test_last_modified_header_is_never_a_publication_date():
     assert doc.modified_at == 1793700000.0 and doc.metadata["modified_source"] == "http-last-modified"
     dated = html_doc(ARTICLE, headers=headers)
     assert dated.metadata["date_source"] == "json-ld" and dated.published_at == 1793700000.0
-    assert "modified_source" not in dated.metadata                  # the page's own dateModified wins
+    assert dated.metadata["modified_source"] == "json-ld:dateModified"   # the page's own dateModified wins
     result = FetchResult(url="http://t.example/x", final_url="http://t.example/x", status=200,
                          headers={"content-type": "text/plain", "last-modified": "Tue, 03 Nov 2026 10:00:00 GMT"},
                          content_type="text/plain", body=b"plain text body", retrieved_at=5.0)
@@ -436,13 +436,15 @@ def test_utf16_xml_parses_but_declarations_are_refused(codec):
     ('<script type="application/ld+json">{"@type": "Article", "dateModified": "2022-09-12T22:20:19Z"}</script>',
      "json-ld:dateModified"),
 ])
-def test_a_page_modified_date_is_the_best_available_date(meta, source):
-    # RC2 L5: a page dated only by og:updated_time (epoch seconds) came out undated. With no publication date, the
-    # page's own modification date is the best available one; date_source names it as a modification date.
+def test_a_page_modification_date_is_kept_but_never_a_publication_date(meta, source):
+    # RC2 L5: a page dated only by og:updated_time (epoch seconds) came out with no date at all. T1-05 (UAT RC1): a
+    # modification or revision time dated the page as "Published" and met a "this week" freshness. The page's own
+    # modification date is recorded as modified_at (named by modified_source); the page stays undated.
     headers = {"content-type": "text/html; charset=utf-8", "last-modified": "Fri, 20 Nov 2026 10:00:00 GMT"}
     doc = html_doc(f"<html><head>{meta}</head><body><p>{PARA * 3}</p></body></html>", headers=headers)
-    assert doc.published_at == pytest.approx(1663021219.0, abs=1) and doc.metadata["date_source"] == source
-    assert doc.modified_at == doc.published_at                         # the page's own date, not the header's
+    assert doc.published_at is None and "date_source" not in doc.metadata
+    assert doc.modified_at == pytest.approx(1663021219.0, abs=1)        # the page's own date, not the header's
+    assert doc.metadata["modified_source"] == source
 
 
 def test_a_publication_date_wins_and_last_modified_is_never_the_fallback():

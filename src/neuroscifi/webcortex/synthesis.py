@@ -121,6 +121,29 @@ def _report_flags(flags: dict) -> dict:
     return out
 
 
+def _source_dates(doc: Document) -> dict:
+    """The dates a report source shows besides published_at (T1-05, T1-19): `modified_at` (a revision or
+    modification time, labelled as such, never a publication date), a future date set aside
+    (`future_published_at`), the `date_note` saying why, and `source_type` "tertiary" for an encyclopedia."""
+    md = doc.metadata or {}
+    out = {}
+    if doc.modified_at is not None:
+        out["modified_at"] = doc.modified_at
+        if md.get("modified_source"):
+            out["modified_source"] = md["modified_source"]
+    if md.get("future_published_at") is not None:
+        out["future_published_at"] = md["future_published_at"]
+        out["date_note"] = md.get("date_note")
+    elif doc.published_at is None and doc.modified_at is not None and \
+            md.get("modified_source") != "http-last-modified":
+        how = {"wikipedia:revision": "the article's latest revision"}.get(md.get("modified_source"),
+                                                                           "the page's own modification date")
+        out["date_note"] = temporal.MODIFIED_DATE_NOTE.format(day=_day(doc.modified_at), how=how)
+    if _claims.encyclopedia(doc):
+        out["source_type"] = "tertiary"
+    return out
+
+
 def _claim_fresh_ts(claim: Claim) -> float | None:
     return (claim.flags or {}).get("observed_at") or claim.published_at or claim.event_at
 
@@ -166,7 +189,7 @@ class _Sources:
         if d is not None:
             entry = {"n": n, "title": d.title, "url": key, "domain": d.domain, "published_at": d.published_at,
                      "retrieved_at": d.retrieved_at, "retrieval_mode": d.retrieval_mode, "kind": d.kind,
-                     "flags": _report_flags(d.flags), "cited": False}
+                     "flags": _report_flags(d.flags), "cited": False} | _source_dates(d)
         else:
             flags = (claim.flags or {}) if claim else {}
             entry = {"n": n, "title": claim.title if claim else "", "url": key,
@@ -203,7 +226,7 @@ class _Sources:
                 self.entries.append({"n": self.numbers[key], "title": d.title, "url": key, "domain": d.domain,
                                      "published_at": d.published_at, "retrieved_at": d.retrieved_at,
                                      "retrieval_mode": d.retrieval_mode, "kind": d.kind,
-                                     "flags": _report_flags(d.flags), "cited": False})
+                                     "flags": _report_flags(d.flags), "cited": False} | _source_dates(d))
         return self.entries
 
 
@@ -1343,6 +1366,8 @@ def _comparison(items, ranked: list[tuple[ClaimCluster, float]], sources: _Sourc
 
 
 def _is_academic(doc: Document) -> bool:
+    if _claims.encyclopedia(doc):
+        return False                        # an article lead in metadata["abstract"] is not a paper (T1-14)
     md = doc.metadata or {}
     if any(md.get(k) for k in ("doi", "arxiv_id", "pmid", "abstract", "venue", "journal")):
         return True
@@ -1353,6 +1378,10 @@ def _is_academic(doc: Document) -> bool:
 def _methodology(documents: list[Document], sources: _Sources) -> list[dict]:
     out = []
     for d in documents:
+        if _claims.encyclopedia(d):
+            out.append({"source": sources.cite(d.canonical_url or d.final_url or d.url), "design": None,
+                        "sample": None, "kind": "encyclopedia", "preprint": False, "year": None})
+            continue                        # a tertiary reference: no study design, no publication year (T1-14)
         if not _is_academic(d):
             continue
         md = d.metadata or {}
@@ -1865,7 +1894,8 @@ def _verdict_contradiction(statement: str, sup: Claim | None, x: Claim, reason: 
 def _side(x: Claim, sources: _Sources) -> dict:
     return {"id": x.id, "text": x.text, "type": "template" if x.kind == "metadata" else "quote",
             "citation": sources.cite(x.source_url, x), "domain": x.domain, "published_at": x.published_at,
-            "event_at": x.event_at, "source_type": "primary" if _claims.is_primary(x) else "secondary",
+            "event_at": x.event_at, "source_type": "primary" if _claims.is_primary(x) else
+            ((x.flags or {}).get("source_type") if (x.flags or {}).get("source_type") == "tertiary" else "secondary"),
             "kind": x.kind}
 
 
@@ -1882,7 +1912,7 @@ def _contradiction(a: Claim, b: Claim, reason: str, c: ClaimCluster, sources: _S
         return out + (f" (event {_day(x.event_at)})" if x.event_at is not None else "")
 
     parts.append(f"{dated(na, a)}; {dated(nb, b)}.")
-    if sa["source_type"] != sb["source_type"]:
+    if sa["source_type"] != sb["source_type"] and "primary" in (sa["source_type"], sb["source_type"]):
         prim = na if sa["source_type"] == "primary" else nb
         sec = nb if prim == na else na
         parts.append(f"[{prim}] is a primary structured record; [{sec}] is a secondary page.")

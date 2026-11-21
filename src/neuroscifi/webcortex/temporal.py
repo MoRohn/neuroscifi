@@ -483,6 +483,27 @@ def window_ok(published_at: float | None, window: float | None, now: float) -> b
     return published_at >= now - window
 
 
+FUTURE_DATE_NOTE = ("dated {day}, more than a day after it was read: a journal issue not yet out, a scheduled post "
+                    "or a misread date; not a publication date, not used for freshness or verification")
+MODIFIED_DATE_NOTE = ("last modified {day} ({how}): a modification or revision time, not a publication date; it does "
+                      "not date the facts on the page and is not used for freshness or verification")
+
+
+def settle_publication_date(doc) -> None:
+    """A Document's `published_at` is a publication date or nothing (T1-05, T1-19). A date more than FUTURE_SKEW
+    after the document was read is moved to metadata["future_published_at"] with metadata["date_note"]; the
+    document is then undated. Modification times (Wikipedia revisions, dateModified) live in `modified_at` only."""
+    when = getattr(doc, "published_at", None)
+    read = getattr(doc, "retrieved_at", None)
+    if when is None or read is None or when <= read + FUTURE_SKEW:
+        return
+    doc.metadata["future_published_at"] = when
+    doc.metadata["date_note"] = FUTURE_DATE_NOTE.format(day=datetime.fromtimestamp(when, timezone.utc)
+                                                        .strftime("%Y-%m-%d"))
+    doc.metadata.pop("date_source", None)
+    doc.published_at = None
+
+
 # ---- supersession and validity ------------------------------------------------------------------------------
 
 def effective_time(claim: dict) -> float | None:
@@ -534,5 +555,5 @@ def validity(claim: dict, *, now: float) -> dict:
     return {"valid_from": start, "valid_until": until, "basis": basis}
 
 
-__all__ = ["DAY", "FRESHNESS", "FUTURE_SKEW", "HOUR", "classify", "describe_age", "effective_time", "event_dates",
+__all__ = ["DAY", "FRESHNESS", "FUTURE_DATE_NOTE", "FUTURE_SKEW", "MODIFIED_DATE_NOTE", "HOUR", "classify", "describe_age", "effective_time", "event_dates",
            "is_stale", "parse_date", "parse_date_precision", "supersedes", "ttl", "validity", "window_ok"]

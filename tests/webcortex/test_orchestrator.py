@@ -1070,6 +1070,51 @@ def test_a_wikipedia_hit_marked_snippet_only_yields_cited_claims_from_its_articl
     assert not any(x.startswith("No claim relevant") for x in report["limitations"])
 
 
+class EditedWikiProvider(WikiProvider):
+    def article(self, title, *, budget=None, usage=None, lang="en"):
+        found = super().article(title, budget=budget, usage=usage, lang=lang)
+        return found | {"last_edited": "2026-11-21T09:00:00Z"}              # edited 5 hours before T0's evening
+
+
+def test_a_wikipedia_revision_time_is_not_a_publication_date_and_meets_no_freshness(individual, web):
+    """T1-05 (UAT RC1): with SearXNG down, "What happened in AI this week?" showed "Claude (AI) · wikipedia.org ...
+    Published 2026-11-21" and freshness "Satisfied", from the article's latest revision. The revision time is the
+    document's modified_at, labelled as such; the source is undated and a this-week question stays unsatisfied.
+    Wikipedia is a tertiary reference, not a primary record (T1-12/T1-14)."""
+    db, path = individual
+    hit = {"url": "https://en.wikipedia.org/wiki/Large_language_model", "title": "Large language model",
+           "kind": "encyclopedia", "snippet": "A large language model", "published_at": T0 - 3600,
+           "metadata": {"pageid": 1, "language": "en", "last_edited": "2026-11-21T09:00:00Z", "snippet_only": True}}
+    lead = ("A large language model (LLM) is a language model trained with self-supervised machine learning on a "
+            "vast amount of text. The largest and most capable LLMs are generative pretrained transformers.")
+    provider = EditedWikiProvider([hit], extract=lead)
+    task = orchestrator.submit(db, "What happened with large language models this week?", T0, mode="quick_lookup")
+    report = run_with(db, path, web, task, [provider])["result"]
+    [source] = [s for s in report["sources"] if "wikipedia.org" in s["url"]]
+    assert source["published_at"] is None and source["modified_at"] == 1795251600.0
+    assert source["modified_source"] == "wikipedia:revision" and "not a publication date" in source["date_note"]
+    assert source["source_type"] == "tertiary"
+    assert report["freshness"]["satisfied"] is False and report["freshness"].get("newest_source_at") is None
+    claims = state.claims(db, task["id"])
+    assert claims and all(c["flags"]["source_type"] == "tertiary" for c in claims)
+    assert all(m["kind"] == "encyclopedia" and m["year"] is None for m in report["methodology"] or [])
+
+
+def test_a_future_journal_issue_date_is_set_aside(individual, web):
+    """T1-19 (UAT RC1): a PubMed record with issue date 2027-06-01 was shown "Published 2027-06-01"."""
+    db, path = individual
+    future = T0 + 192 * 86400.0
+    hit = {"url": "https://pubmed.ncbi.nlm.nih.gov/41000001/", "kind": "academic", "published_at": future,
+           "title": "Super-speciality medicine in India: the neuron count of the human brain",
+           "snippet": "Natl Med J India, 2027 Jun", "metadata": {"pmid": "41000001", "pubdate": "2027 Jun"}}
+    task = orchestrator.submit(db, "How many neurons are in the human brain?", T0, mode="quick_lookup")
+    report = run_with(db, path, web, task, [ListProvider([hit], name="pubmed")])["result"]
+    [source] = report["sources"]
+    assert source["published_at"] is None and source["future_published_at"] == future
+    assert "not a publication date" in source["date_note"]
+    assert report["freshness"].get("newest_source_at") is None
+
+
 def test_a_same_named_npm_placeholder_is_read_but_never_evidence_for_a_pypi_package(individual, web):
     """RT-W-04: "latest stable numpy" looks the name up on PyPI and npm; npm numpy 0.0.1 (2017, no description) is
     another package: no claim is taken from it, so it never becomes knowledge or part of the answer."""

@@ -76,7 +76,8 @@ def test_wikipedia():
     assert [r.url for r in out] == ["https://en.wikipedia.org/wiki/Dendritic_computation",
                                     "https://en.wikipedia.org/wiki/Neuron_(software)"]
     assert out[0].snippet == "Dendritic computation is the ability of the dendrites & neurons"
-    assert out[0].kind == "encyclopedia" and out[0].published_at == 1789373523.0
+    # T1-05: the hit's timestamp is the article's last edit, never a publication date
+    assert out[0].kind == "encyclopedia" and out[0].published_at is None
     assert out[0].metadata["pageid"] == 23514590 and out[0].metadata["last_edited"] == "2026-09-14T08:12:03Z"
 
 
