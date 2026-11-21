@@ -93,7 +93,10 @@ def test_report_keys_and_invariants():
     check_invariants(r, docs)
     assert r["question"] == Q and r["mode"] == "deep_research" and r["as_of"] == NOW and r["budget"] is None
     assert r["usage"] == usage.to_json() and r["live"] is True
-    assert r["answer"][1]["status"] == "corroborated" and r["answer"][1]["citations"] == [1, 2, 3]
+    assert r["answer"][1]["status"] == "corroborated" and r["answer"][1]["citations"] == [1, 2]
+    # c.example says it in other words ("After a two-year cruise, ESA's Hera probe reached asteroid Didymos ..."):
+    # evidence, listed as corroborating, but not cited for a sentence it does not contain
+    assert r["answer"][1]["corroborating"] == [3] and r["answer"][1]["independent_sources"] == 3
     assert "3 sources read" in r["answer"][0]["text"]
     assert r["verdict"] is None and r["comparison"] is None and r["methodology"] is None
     assert r["freshness"]["satisfied"] is True and r["contradictions"] == []
@@ -543,11 +546,11 @@ def test_verdict_shapes_quantity_capital_and_date():
 
 
 def test_unsupported_shapes_and_no_claims():
-    # honest limit: other shapes are "insufficient" with the reason; U-16: no claims at all -> no verdict
-    v = run("Eiffel Tower in Paris", EIFFEL_DOCS, {"mode": "fact_verification", "claim": "Why would anyone climb it",
-                                                   "freshness_class": "stable"})["verdict"]
-    assert v["label"] == "insufficient" and v["shape"] is None and v["citations"] == []
-    assert "shape is not one the lexical checker supports" in v["reasons"][0]
+    # honest limit (RT-B-06): nothing checkable -> no verdict, and a limitation says why; U-16: no claims -> none
+    r = run("Eiffel Tower in Paris", EIFFEL_DOCS, {"mode": "fact_verification", "claim": "Why would anyone climb it",
+                                                   "freshness_class": "stable"})
+    assert r["verdict"] is None
+    assert any(x.startswith("No verdict: the question is not a checkable statement") for x in r["limitations"])
     nothing = run("Is the Eiffel Tower in Paris?", [doc("https://x.example/a", "Short.")],
                   {"mode": "fact_verification", "claim": "the Eiffel Tower is in Paris"})
     assert nothing["verdict"] is None
@@ -568,3 +571,330 @@ def test_injection_variants_never_reach_any_report_field():
     assert claims and all(S.report_safe_text(c) is None for c in claims)
     clean = C.extract_claims(_docs(AGREE[:1])[0], Q)[0]
     assert S.report_safe_text(clean) == clean.text and S.report_safe_text(None) is None
+
+
+def test_answer_cites_only_sources_that_contain_the_statement():
+    # RC2 L5: 16 of 164 citations named a source that only shared a value with the quote (a wiki sentence "... that
+    # opened in 1987" cited for "... opened in 1987 and now carries about 42,000 vehicles a day").
+    q = "When did the Halvorsen Bridge open?"
+    docs = [doc("https://herald.example/bridge", "The Halvorsen Bridge opened in 1987 and now carries about 42,000 "
+                "vehicles a day.", title="Halvorsen Bridge at 38"),
+            doc("https://wiki.example/Halvorsen_Bridge", "The Halvorsen Bridge is a cable-stayed bridge across the "
+                "Varnel estuary that opened in 1987.", title="Halvorsen Bridge", published=None)]
+    r = run(q, docs, {"freshness_class": "stable"})
+    check_invariants(r, docs)
+    by_n = {s["n"]: s for s in r["sources"]}
+    for entry in r["answer"][1:] + r["findings"]:
+        text = entry.get("text") or entry.get("statement")
+        for n in entry["citations"]:                    # every cited source contains the statement itself
+            assert text in next(d.text for d in docs if d.canonical_url == by_n[n]["url"])
+    top = next(it for it in r["answer"][1:] if "42,000" in it["text"])
+    assert by_n[top["citations"][0]]["domain"] == "herald.example" and len(top["citations"]) == 1
+    assert [by_n[n]["domain"] for n in top["corroborating"]] == ["wiki.example"]
+    assert top["copies"] == 1 and top["independent_sources"] == 2 and top["status"] == "corroborated"
+    # the corroborating source is evidence: its missing date is still surfaced
+    assert any(x.startswith("Undated source:") and "wiki.example" in x for x in r["uncertainties"])
+
+
+def test_a_dated_past_event_is_not_discounted_by_the_age_of_its_sources():
+    # RC2 L5 (F01): "Quillstream 4.2.0 was released on 2 October 2026" had two dated independent sources, but the
+    # question's 'release' class (7-day TTL) halved both weights for being 7 weeks old: 0.643, "insufficient".
+    # When a past release happened does not change as its sources age.
+    claim = "Quillstream 4.2.0 was released on 2 October 2026"
+    assessment = {"mode": "fact_verification", "claim": claim, "freshness_class": "release"}
+    old = ts(2026, 10, 3)
+    texts = ["Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version.",
+             "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."]
+    dated = [doc("https://q.example/r", texts[0], published=old), doc("https://news.example/q", texts[1],
+                                                                      published=old)]
+    v = run(claim, dated, assessment)["verdict"]
+    assert v["shape"] == "date" and v["label"] == "supported" and v["confidence"] == pytest.approx(2.6 / 3.6,
+                                                                                                abs=1e-3)
+    # a year-dated past event, same class: two old dated sources pass, an undated one keeps its 0.75 discount
+    bridge = "the Halvorsen Bridge opened in 1987"
+    ask = dict(assessment, claim=bridge)
+    sentences = ["The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+                 "The Halvorsen Bridge is a cable-stayed bridge across the Varnel estuary that opened in 1987."]
+    both = [doc("https://herald.example/b", sentences[0], published=old),
+            doc("https://wiki.example/b", sentences[1], published=old)]
+    assert run(bridge, both, ask)["verdict"]["label"] == "supported"
+    mixed = [both[0], doc("https://wiki.example/b", sentences[1], published=None)]
+    v = run(bridge, mixed, ask)["verdict"]
+    assert v["label"] == "insufficient" and v["confidence"] == pytest.approx(2.4 / 3.4, abs=1e-3)
+    # a statement about a date still ahead is a plan, and plans go stale: the age discount applies
+    plan = "Quillstream 5.0.0 is released on 2 March 2027"
+    plans = [doc("https://q.example/p", "Quillstream 5.0.0 is released on 2 March 2027, the roadmap says.",
+                 published=old),
+             doc("https://news.example/p", "Quillstream 5.0.0 is released on 2 March 2027 according to the team.",
+                 published=old)]
+    v = run(plan, plans, dict(assessment, claim=plan))["verdict"]
+    assert v["shape"] == "date" and v["label"] == "insufficient" and v["confidence"] < S.SUPPORTED_MIN_CONFIDENCE
+
+
+@pytest.mark.parametrize("statement, past", [
+    ("Quillstream 4.2.0 was released on 2 October 2026", True),
+    ("the Halvorsen Bridge opened in 1987", True),
+    ("Quillstream 5.0.0 is released on 2 March 2027", False),
+    ("the Halvorsen Bridge opened in 2026", False),                 # this year: not yet known to be complete
+    ("the Brightwater dam is 186 metres tall", False),
+    ("Tessaly has a population of 251,000", False),
+])
+def test_past_event_statements(statement, past):
+    assert S._past_event(S.parse_statement(statement), NOW) is past
+
+
+# ---- L6 (RC2 live retest) ------------------------------------------------------------------------------------
+
+EIFFEL_LEAD = ("The Eiffel Tower ( EYE-fəl; French: Tour Eiffel [tuʁ ɛfɛl] ) is a lattice tower on the Champ de Mars "
+               "in Paris, France. It is named after the engineer Gustave Eiffel, whose company designed and built the "
+               "tower from 1887 to 1889. Excluding transmitters, the Eiffel Tower is the second tallest free-standing "
+               "structure in France after the Millau Viaduct. The Eiffel Tower was the tallest man-made structure in "
+               "the world until the Chrysler Building in New York City was finished in 1930.")
+EIFFEL_LIVE = [_wiki("Eiffel Tower", EIFFEL_LEAD),
+               doc("https://travel.example/eiffel", "The Eiffel Tower stands in France and is lit every evening. It "
+                   "was built in Paris, France, for the 1889 World's Fair.", title="Eiffel Tower")]
+
+
+def test_location_checks_attach_places_to_the_subject_and_accept_containment():
+    # RT-W-02 (p_q7_paris3): "is in Paris" was disputed because "[1] places it in France" (a containing place) and
+    # "[1] places it in New York City" (the Chrysler Building's place, in an "until" clause).
+    paris = _fv("the Eiffel Tower is in Paris", EIFFEL_LIVE)
+    assert paris["label"] in ("supported", "insufficient") and paris["contradicting"] == []
+    assert not any("France, not" in x or "New York" in x for x in paris["reasons"])
+    berlin = _fv("the Eiffel Tower is in Berlin", EIFFEL_LIVE)
+    assert berlin["label"] == "disputed" and any("Paris, France, not Berlin" in x for x in berlin["reasons"])
+    assert not any("New York" in x for x in berlin["reasons"])
+    slot = S.parse_statement("the Eiffel Tower is in Paris")
+    chrysler = C.extract_claims(EIFFEL_LIVE[0], "Eiffel Tower Paris", max_claims=20)
+    distractor = next(c for c in chrysler if "Chrysler" in c.text)
+    assert S._check(slot, distractor, S._nests(EIFFEL_LEAD)) == (None, "")
+    scope = next(c for c in chrysler if "second tallest" in c.text)      # a ranking's scope is not an address
+    assert S._check(S.parse_statement("the Eiffel Tower is in Berlin"), scope, set()) == (None, "")
+    assert S._check(S.parse_statement("the Eiffel Tower is in France"), scope, set())[0] == "support"
+    nests = S._nests(EIFFEL_LEAD)
+    assert S._within(frozenset({"pari"}), frozenset({"franc"}), nests)
+    assert S._within(C.subject_tokens("Champ de Mars"), C.subject_tokens("France"), nests)
+    assert S._nests("Canberra is the capital of Australia.") == {(frozenset({"canberra"}), frozenset({"australia"}))}
+
+
+def test_a_place_after_another_verb_or_owned_by_a_modifier_is_not_where_the_subject_is():
+    slot = S.parse_statement("the Eiffel Tower is in Paris")
+    for text in ("The Eiffel Tower is depicted in Hitchcock's films about Rome.",
+                 "A replica of the Eiffel Tower stands in Las Vegas, Nevada, near the Strip."):
+        c = C.extract_claims(doc("https://x.example/a", text, title="Towers"), "Eiffel Tower", max_claims=5)[0]
+        assert S._check(slot, c, S._nests(text)) == (None, ""), text
+    owned = C.extract_claims(doc("https://x.example/b", "Berlin's Eiffel Tower attracts few visitors each year.",
+                                 title="Towers"), "Eiffel Tower", max_claims=5)[0]
+    assert S._check(slot, owned, set())[0] == "contradict"
+
+
+def _listed_ids(report):
+    return {side["id"] for c in report["contradictions"] for side in (c["a"], c["b"])}
+
+
+def test_every_contradiction_the_verdict_counts_is_listed_with_a_description():
+    # S-09 (q7/q6 live): "disputed" with an empty contradictions list; reasons said "0 contradict" next to
+    # contradicting claims.
+    for claim in ("the Eiffel Tower is in Berlin", "the Eiffel Tower is in Paris"):
+        r = run(claim, EIFFEL_LIVE + [doc("https://other.example/e", "The Eiffel Tower stands in Lyon, near the "
+                                          "river.", title="Eiffel Tower")],
+                {"mode": "fact_verification", "claim": claim, "freshness_class": "stable"})
+        v = r["verdict"]
+        assert v["contradicting"], claim
+        assert set(v["contradicting"]) <= _listed_ids(r)
+        for c in r["contradictions"]:
+            assert c["description"].endswith(".") and c["reason"]
+        groups = int(v["reasons"][0].split("; ")[1].split()[0])
+        assert groups > 0 or "contradicting sentence(s) come from source groups" in v["reasons"][0]
+    berlin = run("the Eiffel Tower is in Berlin", EIFFEL_LIVE, {"mode": "fact_verification",
+                                                               "claim": "the Eiffel Tower is in Berlin"})
+    statement_side = [c for c in berlin["contradictions"] if c["a"]["type"] == "statement"]
+    assert statement_side and statement_side[0]["a"]["text"] == "the Eiffel Tower is in Berlin"
+    assert statement_side[0]["description"].startswith("A source contradicts the checked statement: [")
+
+
+NEURONS = [
+    ("https://a.example/n", "Using isotropic fractionation, the adult human brain was found to have 86 billion "
+                            "neurons, rather than the often-cited 100 billion."),
+    ("https://b.example/n", "The human brain has long been cited as having 100 billion neurons, but the count found "
+                            "86 billion neurons."),
+    ("https://c.example/n", "The human brain has 86 billion neurons rather than the commonly quoted 100 billion."),
+    ("https://d.example/n", "The human brain has 86 billion neurons, not 100 billion as commonly cited."),
+]
+
+
+def test_a_sentence_reporting_a_myth_does_not_assert_it():
+    # C-09: papers that debunk the 100 billion figure were counted as contradicting "86 billion" (and asserting 100).
+    docs = [doc(u, t, title="How many neurons") for u, t in NEURONS]
+    v = _fv("the human brain has 86 billion neurons", docs)
+    assert v["contradicting"] == [] and v["label"] == "supported", v
+    myth = _fv("the human brain has 100 billion neurons", docs)
+    assert myth["supporting"] == [] and myth["label"] == "disputed", myth
+    assert S._asserted(NEURONS[3][1]) == "The human brain has 86 billion neurons,"
+    assert S._asserted("The human brain has 86 billion neurons.") == "The human brain has 86 billion neurons."
+
+
+@pytest.mark.parametrize("question, statement", [
+    ("How long is the Varnel River?", None),
+    ("What is the latest version of Zephyr?", None),
+    ("Was the Zephyr compiler 4.2.0 released?", "the Zephyr compiler 4.2.0 was released"),
+    ("Is the Eiffel Tower in Paris?", "the Eiffel Tower is in Paris"),
+    ("Does the human brain have 86 billion neurons?", "the human brain has 86 billion neurons"),
+    ("Is the Varnel River 412 km long?", "the Varnel River is 412 km long"),
+    ("Is Canberra the capital of Australia?", "Canberra is the capital of Australia"),
+    ("Did the Hera probe reach the asteroid Didymos?", "the Hera probe did reach the asteroid Didymos"),
+    ("Is it true that the Eiffel Tower is in Berlin?", "the Eiffel Tower is in Berlin"),
+    ("the Eiffel Tower is in Paris.", "the Eiffel Tower is in Paris."),
+])
+def test_yes_no_questions_become_checkable_statements(question, statement):
+    assert S.checkable_statement(question) == statement
+
+
+def test_a_verdict_only_for_a_checkable_statement_and_never_against_the_answer():
+    # RT-B-06: "How long is the Varnel River?" showed a Contested answer (389 vs 412 km) and a "Not enough
+    # evidence" 0/0 verdict; "Was the Zephyr compiler 4.2.0 released?" a Corroborated answer and the same verdict.
+    varnel = [doc(u, t, title="Varnel River") for u, t in VARNEL]
+    r = run("How long is the Varnel River?", varnel, {"mode": "fact_verification", "freshness_class": "stable"})
+    assert r["verdict"] is None and r["contradictions"] and r["answer"][1]["status"] == "contested"
+    zephyr = [doc("https://news.example/z", "The Zephyr compiler version 4.2.0 was released on 17 November 2026 by "
+                  "the Zephyr project team.", title="Zephyr 4.2"),
+              doc("https://blog.example/z", "The Zephyr compiler version 4.2.0 was released on 17 November 2026 after "
+                  "a long beta.", title="Zephyr 4.2 is out")]
+    r = run("Was the Zephyr compiler 4.2.0 released?", zephyr, {"mode": "fact_verification",
+                                                               "freshness_class": "stable"})
+    assert r["answer"][1]["status"] == "corroborated"
+    assert r["verdict"]["statement"] == "the Zephyr compiler 4.2.0 was released"
+    assert r["verdict"]["label"] == "supported" and len(r["verdict"]["supporting"]) == 2
+
+
+def _registry(eco, name, version, released, summary, versions=3):
+    host = "pypi.org/project" if eco == "PyPI" else "www.npmjs.com/package"
+    when = datetime.fromtimestamp(released, timezone.utc).strftime("%Y-%m-%d")
+    written = f"Latest release {version} {'uploaded' if eco == 'PyPI' else 'published'} {when}."
+    md = {"provider": eco.lower(), "package": name, "ecosystem": eco, "latest": version, "released_at": released,
+          "summary": summary, "provider_text": written,
+          "versions_recent": [{"version": version, "released_at": released}] * versions}
+    return doc(f"https://{host}/{name}", f"{name} {version} ({eco})\n{written} {summary}", kind="api", mode="api",
+               title=f"{name} {version} ({eco})", published=released, metadata=md)
+
+
+NUMPY_PYPI = _registry("PyPI", "numpy", "2.5.5", ts(2026, 11, 15), "Fundamental package for array computing in Python")
+NUMPY_NPM = _registry("npm", "numpy", "0.0.1", ts(2017, 8, 30), "numpy", versions=1)
+
+
+def test_a_same_named_package_of_another_ecosystem_never_joins_the_answer():
+    # RT-W-04 (c03_numpy): npm "numpy" 0.0.1 (2017) was reported next to PyPI numpy 2.5.5 for a Python question.
+    docs = [NUMPY_PYPI, NUMPY_NPM]
+    r = run("What is the latest stable release of numpy?", docs, {"mode": "technical", "freshness_class": "release"})
+    texts = [a["text"] for a in r["answer"][1:]] + [f["statement"] for f in r["findings"]]
+    assert texts and not any("0.0.1" in t or "npm" in t for t in texts)
+    assert r["answer"][1]["text"] == "PyPI reports numpy latest version 2.5.5 released 2026-11-15."
+    assert any(u.startswith("numpy also exists on npm (0.0.1, 2017): a different package") for u in r["uncertainties"])
+    npm = next(s for s in r["sources"] if "npmjs" in s["url"])
+    assert not npm["cited"]
+    # the wording decides first: a JavaScript question keeps the npm record
+    js = S.package_ecosystems("latest numpy for javascript", {}, docs)["aside"]
+    assert list(js) == [NUMPY_PYPI.canonical_url]
+    # two substantive, active packages of one name are both kept (different records, never one cluster)
+    active = _registry("npm", "numpy", "1.4.0", ts(2026, 6, 1), "NumPy-like arrays for JavaScript", versions=5)
+    assert S.package_ecosystems("latest numpy", {}, [NUMPY_PYPI, active])["aside"] == {}
+    # an explicitly named ecosystem wins
+    assert list(S.package_ecosystems("latest numpy", {"packages": [{"ecosystem": "npm", "name": "numpy"}]},
+                                      [NUMPY_PYPI, active])["aside"]) == [NUMPY_PYPI.canonical_url]
+
+
+def test_comparison_never_mixes_ecosystems():
+    pandas = _registry("PyPI", "pandas", "3.0.1", ts(2026, 11, 2), "Powerful data structures for data analysis")
+    r = run("Compare numpy and pandas latest versions", [NUMPY_PYPI, NUMPY_NPM, pandas],
+            {"mode": "comparative", "comparison": ["numpy", "pandas"], "freshness_class": "release"})
+    cells = [row[k]["text"] for row in r["comparison"]["rows"] for k in ("A", "B") if row[k]]
+    assert cells and not any("0.0.1" in t or t.startswith("npm") for t in cells)
+
+
+def test_a_pages_statement_about_an_older_release_follows_the_registrys_newest():
+    # L6 bench delta (L02): with the client's own sentence now a template, a page's "Corvane 2.5.3 was released on
+    # ..." moved into the answer of "What is the latest stable release of corvane?".
+    record = _registry("PyPI", "corvane", "2.5.5", ts(2026, 10, 30), "Connection pooling for Python services.")
+    page = doc("https://corvane.example/253", "Corvane 2.5.3 was released on 4 September 2026 and fixes a connection "
+               "leak in the pool.", title="Corvane 2.5.3")
+    r = run("What is the latest stable release of corvane?", [page, record],
+            {"mode": "technical", "freshness_class": "release"})
+    old = next(f for f in r["findings"] if "2.5.3" in f["statement"])
+    assert old.get("superseded") is True
+    assert r["findings"][0]["statement"].startswith("PyPI reports corvane latest version 2.5.5")
+
+
+# UAT-W-24: sentences captured live (retest/r2/outl6, l1_canberra and l4_numpy), in their articles' order.
+CANBERRA_DOCS = [
+    _wiki("Capital punishment in Australia", "Capital punishment in Australia has been abolished in all jurisdictions "
+          "since 1985. Victoria did so in 1975, South Australia in 1976, and Western Australia in 1984. In 2010, the "
+          "Commonwealth Parliament passed legislation prohibiting the re-establishment of capital punishment by any "
+          "state or territory. The last execution in Australia took place in 1967, when Ronald Ryan was hanged in "
+          "Victoria following his conviction for killing a prison officer while escaping from Pentridge Prison."),
+    _wiki("Australian Capital Territory", "The Australian Capital Territory (ACT), known as the Federal Capital "
+          "Territory until 1938, is an internal territory of Australia. Canberra, the capital city of Australia, is "
+          "situated within the territory and is the territory's primate city. The Australian Capital Territory is "
+          "located in southeastern Australia as an enclave surrounded by the state of New South Wales."),
+    _wiki("List of Australian capital cities", "There are eight capital cities in Australia, each of which "
+          "functions as the seat of government for its state or territory. In each state and internal territory, the "
+          "capital is also the jurisdiction's most populous city."),
+]
+NUMPY_DOCS = [
+    _wiki("Python (programming language)", "Python 3.15 the latest stable release defaults to UTF-8, unlike previous "
+          "versions. Python 3.0, released in 2008, was a major revision and not completely backward-compatible with "
+          "earlier versions."),
+    _wiki("CUDA", "CUDA was created in 2004 and was officially released in 2007."),
+    _wiki("NumPy", "NumPy is fiscally sponsored by NumFOCUS. NumPy is open-source software and has many contributors."),
+    NUMPY_PYPI,
+]
+
+
+def test_answers_about_the_questions_subject_rank_above_sentences_about_something_else():
+    # UAT-W-24 (live l1_canberra): "Capital punishment in Australia has been abolished ..." led the answer to
+    # "What is the capital of Australia?"; the Canberra sentence was third.
+    q = "What is the capital of Australia?"
+    r = run(q, CANBERRA_DOCS, {"mode": "quick_lookup", "freshness_class": "stable"})
+    assert r["answer"][1]["text"].startswith("Canberra, the capital city of Australia")
+    findings = [f["statement"] for f in r["findings"]]
+    off = [i for i, t in enumerate(findings) if t.startswith(("Capital punishment", "In 2010, the Commonwealth"))]
+    assert off, "sentences about another subject are kept (lower), never dropped"
+    assert findings.index(next(t for t in findings if t.startswith("Canberra"))) < min(off)
+    focus = S.question_focus(q, {})
+    claims = {c.text[:20]: c for d in CANBERRA_DOCS for c in C.extract_claims(d, q, max_claims=20)}
+    assert S.subject_tier(claims["Capital punishment i"], focus) == 2
+    assert S.subject_tier(claims["Canberra, the capita"], focus) == 0
+
+
+def test_a_package_question_ranks_the_packages_own_record_and_statements_first():
+    # UAT-W-24 (live l4_numpy): "Python 3.15 the latest stable release defaults to UTF-8 ..." and a CUDA sentence
+    # led the answer to "What is the latest stable release of numpy?".
+    q = "What is the latest stable release of numpy?"
+    assessment = {"mode": "technical", "freshness_class": "release",
+                  "packages": [{"ecosystem": "PyPI", "name": "numpy", "inferred": True}]}
+    r = run(q, NUMPY_DOCS, assessment)
+    assert r["answer"][1]["text"] == "PyPI reports numpy latest version 2.5.5 released 2026-11-15."
+    for texts in ([a["text"] for a in r["answer"][1:]], [f["statement"] for f in r["findings"]]):
+        numpy_last = max(i for i, t in enumerate(texts) if "NumPy" in t or "numpy" in t)
+        other_first = min(i for i, t in enumerate(texts) if t.startswith(("Python", "CUDA")))
+        assert numpy_last < other_first, texts
+    # without an entity in the question the order is the value order, as before
+    assert S.subject_tier(C.extract_claims(NUMPY_DOCS[1], q)[0], S.question_focus("What changed?", {})) == 1
+
+
+def test_question_focus_and_tiers_read_the_head_noun_and_attribute_questions():
+    focus = S.question_focus("How long is the Varnel River?", {})
+    assert focus["relation"] == [frozenset({T.stem("long"), T.stem("length")})]
+    newt = S.question_focus("Is it true that the brain of the Ostra marsh newt contains 86 million neurons?", {})
+    assert newt["entities"] == [C.subject_tokens("Ostra marsh newt")]
+    bridge = S.question_focus("When did the Halvorsen Bridge open?", {})     # the last word is the verb
+    assert bridge["entities"] == [C.subject_tokens("Halvorsen Bridge")] and bridge["relation"] == [frozenset({"open"})]
+    tessaly = S.question_focus("What is the population of Tessaly?", {})
+    population = C.extract_claims(doc("https://a.example/t", "According to the 2025 census, the population of Tessaly "
+                                      "is 248,000.", title="Tessaly"), "population Tessaly")[0]
+    survey = C.extract_claims(doc("https://b.example/t", "The Ostra Regional Survey publishes its annual report each "
+                                  "spring for the region.", title="Survey"), "Ostra survey")[0]
+    assert S.subject_tier(population, tessaly) == 0              # "the population of Tessaly": its head noun
+    assert S.subject_tier(survey, newt) == 2                     # "Ostra" alone is not the Ostra marsh newt
+    length = C.extract_claims(doc("https://c.example/v", "With a length of 412 km, the Varnel is the longest river "
+                                  "of the region.", title="Varnel"), "Varnel length")[0]
+    assert S.relation_coverage(length, focus) == 1.0

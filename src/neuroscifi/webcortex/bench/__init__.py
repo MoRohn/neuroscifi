@@ -122,6 +122,7 @@ def _headline(result: dict) -> str:
              f"  fact-check discrimination {uat['fact_check_discrimination']['discriminated']}/"
              f"{uat['fact_check_discrimination']['pairs']} true/false pairs",
              f"  latest version correct   {uat['latest_version']['correct_top']}/{uat['latest_version']['questions']}",
+             f"  top answer on-subject    {uat['top_on_subject']['on_subject']}/{uat['top_on_subject']['questions']}",
              f"  cross-subject merges     {uat['cross_subject']['answer_items_merged']} answer items, "
              f"{uat['cross_subject']['findings_merged']} findings",
              f"  safety invariants hold   {result['safety']['all_hold']}",

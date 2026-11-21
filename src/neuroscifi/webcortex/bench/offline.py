@@ -430,8 +430,9 @@ class _Bench:
         rows = []
         for f in report.get("findings") or []:
             cited = {by_n.get(n) for n in f.get("citations") or []}
-            if a in cited and b in cited:
-                domains = {urlsplit(u).hostname for u in cited if u}
+            if a in cited and b in cited:      # independent_sources counts corroborating sources too
+                domains = {urlsplit(u).hostname for u in cited | {by_n.get(n) for n in f.get("corroborating") or []}
+                           if u}
                 rows.append({"statement": f["statement"], "independent_sources": f["independent_sources"],
                              "cited_domains": len(domains),
                              "counted_once": f["independent_sources"] <= len(domains) - 1})
@@ -835,7 +836,8 @@ class _Bench:
         return {"fact_check_discrimination": self._discrimination(recs), "number_checks": self._number_checks(recs),
                 "latest_version": self._latest(recs), "cross_subject": self._cross_subject(main),
                 "code_literals": self._code_literals(main), "snippet_records": self._snippets(main),
-                "dating": self._dating(), "package_routing": self._package_routing(recs)}
+                "dating": self._dating(), "package_routing": self._package_routing(recs),
+                "top_on_subject": self._top_on_subject(recs)}
 
     @staticmethod
     def _label(rec):
@@ -871,6 +873,27 @@ class _Bench:
         items = [a for a in report.get("answer") or [] if a.get("status") != "summary"]
         return (items[0].get("text") or "") if items else ""
 
+    def _top_on_subject(self, recs):
+        """UAT-W-24: the first answer item cites a page about the question's gold subject."""
+        page_of, rows = self._page_of(), []
+        for q in C.QUESTIONS:
+            gold = {C.SUBJECT[p] for p in q.get("gold_urls") or [] if p in C.SUBJECT}
+            if not gold or q["id"] not in recs:
+                continue
+            report = recs[q["id"]]["report"]
+            items = [a for a in report.get("answer") or [] if a.get("status") != "summary"]
+            by_n = {s["n"]: canon(s["url"]) for s in report.get("sources") or []}
+            pages = {page_of.get(by_n.get(n)) for n in (items[0].get("citations") or [] if items else [])} - {None}
+            if not pages:
+                continue
+            subjects = sorted({C.SUBJECT[p] for p in pages})
+            rows.append({"id": q["id"], "top": (items[0].get("text") or "")[:200], "subjects": subjects,
+                         "on_subject": bool(gold & set(subjects))})
+        return {"questions": len(rows), "on_subject": sum(r["on_subject"] for r in rows),
+                "rows": [r for r in rows if not r["on_subject"]],
+                "definition": "questions whose first answer item cites a corpus page; on-subject when a cited page's "
+                              "gold subject is the subject of the question's gold pages"}
+
     def _latest(self, recs):
         rows = []
         for q in C.QUESTIONS:
@@ -900,7 +923,8 @@ class _Bench:
                 for item in items:
                     if item.get("status") == "summary":      # the run summary cites what was read, not a claim
                         continue
-                    pages = {page_of.get(by_n.get(n)) for n in item.get("citations") or []} - {None}
+                    evidence = list(item.get("citations") or []) + list(item.get("corroborating") or [])
+                    pages = {page_of.get(by_n.get(n)) for n in evidence} - {None}
                     if len(pages) < 2:
                         continue
                     checked[where] += 1
@@ -912,8 +936,8 @@ class _Bench:
                 "answer_items_merged": sum(1 for r in rows if r["where"] == "answer"),
                 "findings_checked": checked["findings"],
                 "findings_merged": sum(1 for r in rows if r["where"] == "findings"), "rows": rows[:50],
-                "definition": "answer items (the run summary excluded) and findings citing >= 2 corpus pages whose "
-                              "gold subjects differ"}
+                "definition": "answer items (the run summary excluded) and findings citing or listing as "
+                              "corroborating >= 2 corpus pages whose gold subjects differ"}
 
     def _code_literals(self, records):
         contradictions, negated = [], []
@@ -1000,7 +1024,9 @@ class _Bench:
             for h in cons.get("held") or []:
                 for reason in h.get("reasons") or []:
                     held[re.sub(r"[\d.]+", "N", reason)] += 1
-        return {"config": {"auto_provisional_min_sources": 2, "auto_provisional_min_confidence": 0.75},
+        cfg = state.get_config(self.db)          # the configuration the main run used (WebConfig defaults)
+        return {"config": {"auto_provisional_min_sources": cfg.auto_provisional_min_sources,
+                           "auto_provisional_min_confidence": cfg.auto_provisional_min_confidence},
                 "counts": dict(sorted(counts.items())), "held_reasons": dict(held.most_common()),
                 "knowledge_rows": len(knowledge.rows(self.db))}
 

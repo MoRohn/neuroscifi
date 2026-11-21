@@ -427,3 +427,31 @@ def test_utf16_xml_parses_but_declarations_are_refused(codec):
         with pytest.raises(FetchError) as info:
             parse_feed(hostile.encode(codec), "http://feeds.example/rss")
         assert info.value.code == "decode_error" and "DOCTYPE" in info.value.detail
+
+
+@pytest.mark.parametrize("meta, source", [
+    ('<meta property="og:updated_time" content="1663021219">', "meta:og:updated_time"),
+    ('<meta name="og:updated_time" content="1663021219000">', "meta:og:updated_time"),
+    ('<meta property="article:modified_time" content="2022-09-12T22:20:19Z">', "meta:article:modified_time"),
+    ('<script type="application/ld+json">{"@type": "Article", "dateModified": "2022-09-12T22:20:19Z"}</script>',
+     "json-ld:dateModified"),
+])
+def test_a_page_modified_date_is_the_best_available_date(meta, source):
+    # RC2 L5: a page dated only by og:updated_time (epoch seconds) came out undated. With no publication date, the
+    # page's own modification date is the best available one; date_source names it as a modification date.
+    headers = {"content-type": "text/html; charset=utf-8", "last-modified": "Fri, 20 Nov 2026 10:00:00 GMT"}
+    doc = html_doc(f"<html><head>{meta}</head><body><p>{PARA * 3}</p></body></html>", headers=headers)
+    assert doc.published_at == pytest.approx(1663021219.0, abs=1) and doc.metadata["date_source"] == source
+    assert doc.modified_at == doc.published_at                         # the page's own date, not the header's
+
+
+def test_a_publication_date_wins_and_last_modified_is_never_the_fallback():
+    published = ('<meta property="article:published_time" content="2022-09-01T00:00:00Z">'
+                 '<meta property="og:updated_time" content="1663021219">')
+    doc = html_doc(f"<html><head>{published}</head><body><p>{PARA * 3}</p></body></html>")
+    assert doc.published_at == 1661990400.0 and doc.metadata["date_source"] == "meta:article:published_time"
+    assert doc.modified_at == pytest.approx(1663021219.0, abs=1)
+    header_only = '<meta http-equiv="last-modified" content="Fri, 20 Nov 2026 10:00:00 GMT">'
+    doc = html_doc(f"<html><head>{header_only}</head><body><p>{PARA * 3}</p></body></html>",
+                   headers={"content-type": "text/html", "last-modified": "Fri, 20 Nov 2026 10:00:00 GMT"})
+    assert doc.published_at is None and "date_source" not in doc.metadata

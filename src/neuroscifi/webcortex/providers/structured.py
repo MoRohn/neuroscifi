@@ -467,11 +467,13 @@ class PyPIProvider(_Api):
                              "requested_released_at": released(files), "requested_yanked": yanked(files),
                              "requested_is_latest": wanted == latest})
         when = date_string(released_at) if released_at else "unknown date"
+        # written here, not by the package: claims.extract_claims makes it a template, never a quote (RT-W-03)
+        metadata["provider_text"] = f"Latest release {latest} uploaded {when}; requires Python " \
+                                    f"{info.get('requires_python') or 'any'}."
         return [SearchResult(
             url=f"https://pypi.org/project/{quote(metadata['package'])}/",
             title=f"{metadata['package']} {latest} (PyPI)",
-            snippet=f"Latest release {latest} uploaded {when}; requires Python {info.get('requires_python') or 'any'}."
-                    f" {metadata['summary']}"[:_SNIPPET],
+            snippet=f"{metadata['provider_text']} {metadata['summary']}"[:_SNIPPET],
             provider=self.name, rank=1, kind="package", published_at=released_at, metadata=metadata)]
 
 
@@ -526,11 +528,13 @@ class NpmProvider(_Api):
                     "dist_tags": {str(k): str(v) for k, v in list(tags.items())[:10]},
                     "versions_recent": [{"version": v, "released_at": t, "released": date_string(t) if t else None}
                                         for t, v in recent],
-                    "homepage": info.get("homepage") or data.get("homepage")}
+                    "homepage": info.get("homepage") or data.get("homepage"),
+                    "summary": strip_html(data.get("description") or "")[:300]}
         when = date_string(released_at) if released_at else "unknown date"
+        metadata["provider_text"] = f"Latest release {latest} published {when}."     # a template (RT-W-03)
         return [SearchResult(
             url=f"https://www.npmjs.com/package/{quote(name, safe='@/')}", title=f"{name} {latest} (npm)",
-            snippet=f"Latest release {latest} published {when}. {strip_html(data.get('description') or '')}"[:_SNIPPET],
+            snippet=f"{metadata['provider_text']} {metadata['summary']}"[:_SNIPPET],
             provider=self.name, rank=1, kind="package", published_at=released_at, metadata=metadata)]
 
 

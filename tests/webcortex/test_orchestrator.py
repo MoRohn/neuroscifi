@@ -1,5 +1,6 @@
 """Orchestrator end to end on the REAL acquisition, discovery, evidence and synthesis modules, offline: FixtureWeb
 impersonates the public hosts and providers.corpus.CorpusProvider stands in for the search engines."""
+from datetime import datetime, timezone
 import json
 
 import pytest
@@ -295,6 +296,42 @@ def test_owner_authorisation_applies_to_the_tasks_own_queries(individual, site):
         with pytest.raises(ValidationError, match="authori"):
             orchestrator.submit(db, QUESTION, T0, mode="quick_lookup", origin=origin,
                                 authorization=orchestrator.AUTHORIZED_DISCLOSURE)
+
+
+def test_an_authorised_value_survives_the_planners_reformatting(individual, site):
+    """RT-B-03 (consent integrity): with owner-approved disclosure the planner rewrote "+1 (415) 555-0100" to
+    "1 415 555 0100" and the screen, comparing exact text, dropped the authorised query. Findings compare in
+    normalised form; a value changed beyond that is restored to the authorised original; both are logged."""
+    db, path = individual
+    objective = "Who answers the phone +1 (415) 555-0100 and the address Ada.Lovelace@Example.org for Zephyr?"
+    with pytest.raises(ValidationError, match="private data"):
+        orchestrator.submit(db, objective, T0, mode="quick_lookup")
+    task = orchestrator.submit(db, objective, T0, mode="quick_lookup",
+                               authorization=orchestrator.AUTHORIZED_DISCLOSURE)
+    done = run_with(db, path, site, task, [corpus()])
+    sent = query_texts(db, task["id"])
+    assert sent and any("415" in t for t in sent), sent
+    decisions = [e["detail"] for e in state.events(db, task["id"]) if e["kind"] == "decision"]
+    assert any(d.get("disclosed_under_authorization") for d in decisions)
+    assert not any("dropped_queries" in d for d in decisions), decisions
+    assert done["status"] in ("completed", "partial")
+
+    from neuroscifi.webcortex.types import Query, QueryPlan
+    services = svc_mod.build(db, path, fixture=site, providers=[corpus()], clock=lambda: T0)
+    with store.write(db):
+        state.update_task(db, task["id"], T0, lease_holder=services.holder, lease_expires_at=T0 + 600)
+    try:
+        run = orchestrator._Run(db, state.task(db, task["id"]), services, False)
+        plan = QueryPlan(queries=(Query("phone 1 415 555 0100", "web"), Query("ada.lovelace@example.org", "web"),
+                                  Query("call 415 555 0100 today", "web"), Query("phone +44 20 7946 0958", "web")))
+        kept = [q.text for q in run.screened(plan).queries]
+    finally:
+        services.close()
+    assert kept[:2] == ["phone 1 415 555 0100", "ada.lovelace@example.org"]        # same values, reformatted
+    assert kept[2] == "call +1 (415) 555-0100 today"         # changed beyond that: the authorised original
+    assert len(kept) == 3                                    # a number the owner never authorised is dropped
+    detail = [e["detail"] for e in state.events(db, task["id"]) if e["kind"] == "decision"][-2:]
+    assert detail[0]["authorized_text_restored"] == 1 and detail[1]["dropped_queries"] == 1
 
 
 def test_self_references_are_local_context_not_web_queries(individual, site):
@@ -722,7 +759,18 @@ def test_a_domain_denied_mid_run_is_never_fetched(individual, site, monkeypatch)
     assert len(page_hits(site)) == 1 and services.fetcher.pages == 1
     failures = state.task(db, task["id"])["checkpoint"]["failures"]
     assert sum(1 for f in failures if f.get("detail") == "domain is on the deny list") == 2
-    assert done["status"] in ("completed", "partial")
+    # RT-W-07: the run no longer covers what was asked when it started: partial, and the report says why
+    assert done["status"] == "partial"
+    assert "the owner denied example during the run: sources on it were not read" in done["result"]["limitations"]
+
+
+def test_a_domain_denied_before_the_run_does_not_make_it_partial(individual, site):
+    db, path = individual
+    state.set_config(db, {"deny_domains": ["tech-two.example"]}, T0)
+    task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+    done = run_with(db, path, site, task, [corpus()])
+    assert done["status"] == "completed"
+    assert not any("during the run" in x for x in done["result"]["limitations"])
 
 
 class DownProvider:
@@ -765,6 +813,45 @@ def test_an_empty_search_is_not_a_retrieval_failure(individual, web):
     assert done["status"] == "completed"
     assert not any("retrieval failure" in u for u in done["result"]["uncertainties"])
     assert not any(x.startswith("listed:") for x in done["result"]["limitations"])
+
+
+class EnginesFoundNothing:
+    """A general web search (open-webSearch) whose engines failed or came back empty: no results, no error."""
+    general_web, name = True, "openwebsearch"
+
+    def __init__(self):
+        from neuroscifi.webcortex.types import QUERY_KINDS
+        self.kinds, self.last_attempts = frozenset(QUERY_KINDS), []
+
+    def search(self, query, limit, *, budget=None, usage=None):
+        self.last_attempts = [{"engine": "duckduckgo", "ok": True, "n": 0, "error": "empty"},
+                              {"engine": "brave", "ok": False, "n": 0, "error": "ERR_BAD_REQUEST: status code 429"}]
+        return []
+
+
+def test_nothing_read_because_engines_failed_or_were_empty_is_a_failure(individual, web):
+    """W-21/RT-W-08 (q6b live): engines empty or failing plus a failed provider read nothing: 'failed' like an
+    all-failed search, and no line speaks of "the sources read"."""
+    db, path = individual
+    task = orchestrator.submit(db, "Is it true that the Eiffel Tower is in Berlin?", T0, mode="fact_verification")
+    done = run_with(db, path, web, task, [EnginesFoundNothing(), DownProvider()])
+    assert done["status"] == "failed"
+    why = done["result"]["limitations"][0]
+    assert why.startswith("Nothing could be read: every search provider failed or found nothing (")
+    assert not any("sources read" in x for x in done["result"]["limitations"] + [done["result"]["answer"][0]["text"]])
+
+
+def test_a_registry_that_knows_no_such_package_is_an_answer_and_says_nothing_was_read(individual, web):
+    """W-21 (q8_halluc live): PyPI/npm answered "no such package" while web search failed: completed, but neither
+    the lead nor the limitations claim that sources were read."""
+    db, path = individual
+    task = orchestrator.submit(db, "What is the latest release of the zorblaxian package?", T0, mode="technical")
+    done = run_with(db, path, web, task, [ListProvider([], name="pypi"), DownProvider()])
+    assert done["status"] == "completed"
+    report = done["result"]
+    assert report["answer"][0]["text"] == "No source was read: the searches returned nothing that could be read."
+    assert "No source was read, so no claim could be extracted" in report["limitations"]
+    assert not any("from the sources read" in x for x in report["limitations"])
 
 
 JS_SHELL = ("<html><head><title>Zephyr app</title></head><body><div id='root'></div>"
@@ -871,6 +958,57 @@ def test_wikipedia_hits_are_read_as_articles_never_as_snippets(individual, web):
     run_with(db, path, web, second, [plain])
     assert web.requests_to("wiki.example", "/wiki/Okapi")                     # no article(): the page is read
     assert not any("She is an okapi" in c["text"] for c in state.claims(db, second["id"]))
+
+
+def test_a_wikipedia_hit_marked_snippet_only_yields_cited_claims_from_its_article(individual, web):
+    """RT-W-01: WikipediaProvider marks every search hit `snippet_only`; the article read for it is the document,
+    not the snippet, so it must not inherit the flag: its sentences are claims and the report cites the article."""
+    db, path = individual
+    hit = {"url": "https://en.wikipedia.org/wiki/Australian_Capital_Territory", "title": "Australian Capital Territory",
+           "kind": "encyclopedia", "snippet": "the capital city of Australia, is situated within the territory",
+           "metadata": {"pageid": 1, "language": "en", "last_edited": "2026-11-18T00:00:00Z", "snippet_only": True}}
+    lead = ("The Australian Capital Territory (ACT) is an internal territory of Australia. Canberra, the capital city "
+            "of Australia, is situated within the territory and is the territory's primate city.")
+    provider = WikiProvider([hit], extract=lead)
+    task = orchestrator.submit(db, "What is the capital of Australia?", T0, mode="quick_lookup")
+    done = run_with(db, path, web, task, [provider])
+    assert provider.articles == ["Australian Capital Territory"]
+    source = state.task(db, task["id"])["checkpoint"]["documents"][0]
+    assert "snippet_only" not in source["doc"]["metadata"]
+    texts = [c["text"] for c in state.claims(db, task["id"])]
+    assert any(t.startswith("Canberra, the capital city of Australia") for t in texts)
+    report = done["result"]
+    quoted = [a for a in report["answer"] if a["type"] == "quote"]
+    assert any(a["text"].startswith("Canberra, the capital city") and a["citations"] == [1] for a in quoted)
+    assert report["sources"][0]["cited"] and report["sources"][0]["url"].endswith("/Australian_Capital_Territory")
+    assert not any(x.startswith("No claim relevant") for x in report["limitations"])
+
+
+def test_a_same_named_npm_placeholder_is_read_but_never_evidence_for_a_pypi_package(individual, web):
+    """RT-W-04: "latest stable numpy" looks the name up on PyPI and npm; npm numpy 0.0.1 (2017, no description) is
+    another package: no claim is taken from it, so it never becomes knowledge or part of the answer."""
+    db, path = individual
+    when = 1794778210.0
+    pypi = {"url": "https://pypi.org/project/numpy/", "title": "numpy 2.5.5 (PyPI)", "kind": "package",
+            "snippet": "Latest release 2.5.5 uploaded 2026-11-15; requires Python >=3.12. Fundamental package for "
+                       "array computing in Python", "published_at": when,
+            "metadata": {"package": "numpy", "ecosystem": "PyPI", "latest": "2.5.5", "released_at": when,
+                         "summary": "Fundamental package for array computing in Python",
+                         "provider_text": "Latest release 2.5.5 uploaded 2026-11-15; requires Python >=3.12.",
+                         "versions_recent": [{"version": "2.5.5"}, {"version": "2.5.4"}]}}
+    npm = {"url": "https://www.npmjs.com/package/numpy", "title": "numpy 0.0.1 (npm)", "kind": "package",
+           "snippet": "Latest release 0.0.1 published 2017-08-30. numpy", "published_at": 1504086381.0,
+           "metadata": {"package": "numpy", "ecosystem": "npm", "latest": "0.0.1", "released_at": 1504086381.0,
+                        "summary": "numpy", "provider_text": "Latest release 0.0.1 published 2017-08-30.",
+                        "versions_recent": [{"version": "0.0.1"}]}}
+    task = orchestrator.submit(db, "What is the latest stable release of numpy?", T0, mode="technical")
+    done = run_with(db, path, web, task, [ListProvider([pypi], name="pypi"), ListProvider([npm], name="npm")])
+    assert len(state.sources(db, task["id"])) == 2
+    assert {c["canonical_url"] for c in state.claims(db, task["id"])} == {"https://pypi.org/project/numpy"}
+    report = done["result"]
+    assert report["answer"][1]["text"] == "PyPI reports numpy latest version 2.5.5 released 2026-11-15."
+    assert all(a["type"] == "template" for a in report["answer"])
+    assert any("numpy also exists on npm (0.0.1, 2017)" in u for u in report["uncertainties"])
 
 
 def _dead_holder():
@@ -990,6 +1128,85 @@ def test_crawl_without_topic_words_extracts_by_salience_and_names_blocked_urls(i
     done = run_with(db, path, web, task, [])
     assert any("4.2.0" in c["text"] for c in state.claims(db, task["id"]))
     assert any(x.startswith("http://intranet.local/private was not read") for x in done["result"]["limitations"])
+
+
+QUOTES = [
+    ("The world as we have created it is a process of our thinking. It cannot be changed without changing our "
+     "thinking.", "Albert Einstein", ("change", "thinking")),
+    ("It is our choices, Harry, that show what we truly are, far more than our abilities.", "J.K. Rowling",
+     ("abilities", "choices")),
+    ("There are only two ways to live your life. One is as though nothing is a miracle. The other is as though "
+     "everything is a miracle.", "Albert Einstein", ("life", "miracle")),
+    ("I have not failed. I've just found 10,000 ways that won't work.", "Thomas A. Edison", ("failure",)),
+    ("A day without sunshine is like, you know, night.", "Steve Martin", ("humor",)),
+]
+
+
+def quotes_page(quotes, links=()):
+    """quotes.toscrape.com's markup: a title that names no topic, curly-quoted texts, authors and tag links."""
+    body = "".join(
+        f"<div class='quote'><span class='text'>“{text}”</span><span>by <small class='author'>{author}</small> "
+        f"<a href='/author/{author.replace(' ', '-')}'>(about)</a></span><div class='tags'>Tags: "
+        + "".join(f"<a class='tag' href='/tag/{t}/page/1/'>{t}</a> " for t in tags) + "</div></div>"
+        for text, author, tags in quotes)
+    nav = "".join(f"<li class='next'><a href='{u}'>Next <span>→</span></a></li>" for u in links)
+    return (f"<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Quotes to Scrape</title></head><body>"
+            f"<div class='container'><div class='row header-box'><h1><a href='/'>Quotes to Scrape</a></h1>"
+            f"<p><a href='/login'>Login</a></p></div><div class='row'>{body}<nav><ul class='pager'>{nav}</ul></nav>"
+            f"</div></div><footer><p>Quotes by: GoodReads.com</p><p>Made with by Zyte</p></footer></body></html>")
+
+
+def test_a_crawl_without_a_question_reports_each_pages_notable_statements(individual, web):
+    """W-19 (crawl1 live): "Investigate these sources: https://quotes.toscrape.com/" read 3 pages and extracted 0
+    claims (the title "Quotes to Scrape" was the topic). Without a topic every page yields its most informative
+    sentences, labelled notable statements, not answers."""
+    db, path = individual
+    web.add("quotes.example", "/", quotes_page(QUOTES[:3], ["/page/2/"]))
+    web.add("quotes.example", "/page/2/", quotes_page(QUOTES[3:], ["/page/3/"]))
+    web.add("quotes.example", "/login", "<html><head><title>Quotes to Scrape</title></head><body><form>"
+                                        "<label>Username</label><input name='u'><label>Password</label>"
+                                        "<input name='p' type='password'></form></body></html>")
+    seed = "http://quotes.example/"
+    task = orchestrator.submit(db, f"Investigate these sources: {seed}", T0, mode="deep_research",
+                               context={"crawl": {"seeds": [seed], "max_pages": 3, "max_depth": 1}})
+    done = run_with(db, path, web, task, [])
+    stored = state.claims(db, task["id"])
+    assert len({c["canonical_url"] for c in stored}) >= 2 and len(stored) >= 4
+    assert any("Harry, that show what we truly are" in c["text"] for c in stored)
+    assert all(c["kind"] == "statement" for c in stored)
+    report = done["result"]
+    assert report["answer"][0]["text"].startswith("Notable statements: the request asks no question")
+    assert all(a.get("notable") for a in report["answer"][1:]) and len(report["answer"]) > 1
+    assert not any(x.startswith("No claim relevant") for x in report["limitations"])
+    for item in report["answer"][1:]:     # quoted from the pages, never generated
+        assert item["type"] == "quote" and any(q[0][:40] in item["text"] for q in QUOTES), item["text"]
+
+
+def test_a_second_change_check_compares_with_the_previous_snapshot(individual, web):
+    """W-20 (q9/q9b live): two change_detection runs on the same URL each said "No usable claims were extracted";
+    the second must compare with the first run's snapshot (content hash + statements)."""
+    db, path = individual
+    url = "http://quotes.example/"
+    question = f"What has changed on {url} since last week?"
+    web.add("quotes.example", "/", quotes_page(QUOTES[:3]))
+    first = run_with(db, path, web, orchestrator.submit(db, question, T0, mode="change_detection"), [])
+    assert first["result"]["answer"][0]["text"].startswith(f"First check of {url}: no earlier snapshot")
+    assert len(state.claims(db, first["id"])) >= 2
+    second = run_with(db, path, web, orchestrator.submit(db, question, T0 + 3600, mode="change_detection"), [],
+                      clock=lambda: T0 + 3600)
+    change = second["result"]["change"]
+    assert change["baseline_task"] == first["id"] and change["unchanged"] is True
+    day = datetime.fromtimestamp(T0, timezone.utc).strftime("%Y-%m-%d")
+    assert second["result"]["answer"][0]["text"].startswith(f"Unchanged since {day}: the same content")
+    web.add("quotes.example", "/", quotes_page(QUOTES[:2] + QUOTES[3:4]))
+    third = run_with(db, path, web, orchestrator.submit(db, question, T0 + 7200, mode="change_detection"), [],
+                     clock=lambda: T0 + 7200)
+    change = third["result"]["change"]
+    assert change["baseline_task"] == second["id"] and change["unchanged"] is False
+    [page] = change["pages"]
+    assert page["content_changed"] and any("10,000 ways" in t for t in page["added"])
+    assert any("two ways to live your life" in t for t in page["removed"])
+    assert third["result"]["answer"][0]["text"].startswith(f"Changed since {day} (previous check: task ")
 
 
 def test_report_wording_for_memory_answers_cancellation_and_resume(individual, web):

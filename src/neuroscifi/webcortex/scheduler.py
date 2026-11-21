@@ -349,7 +349,7 @@ def _over_cap(db, now, cfg, *, ignore_tasks=False):
 
 def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     """One timer pass: due monitors, then (autonomous only) predictions and curiosity. Returns what happened."""
-    from . import curiosity, orchestrator, predictions
+    from . import claims, curiosity, intent, orchestrator, predictions
     report = {"at": now, "ran": [], "queued": [], "skipped": [], "findings": [], "predictions": []}
     cfg = state.get_config(db)
     if not cfg.enabled:
@@ -442,7 +442,15 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         if cap or budget_left <= 0:
             report["skipped"].append({"target": candidate["target"], "reason": cap or f"max_tasks {max_tasks} reached"})
             continue
-        objective = candidate["target"]["statement"]
+        statement = candidate["target"].get("statement") or ""
+        if claims.record_template(statement) is not None:
+            report["skipped"].append({"target": candidate["target"], "reason": "a structured record's template is "
+                                      "not a statement to research; the record is re-read by its own refresh"})
+            continue
+        objective = intent.query_text(statement)      # the statement's own words (W-20), never a template frame
+        if not objective:
+            report["skipped"].append({"target": candidate["target"], "reason": "nothing searchable in the statement"})
+            continue
         try:
             launch(objective, mode=candidate["mode"], origin="curiosity")
         except (ValidationError, WritesPaused) as exc:

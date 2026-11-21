@@ -316,3 +316,18 @@ def test_values_equal_agree_and_version_order():
     assert not T.values_agree([], ["2.4"])
     order = ["2.5.5.dev1", "2.5.5rc1", "2.5.5", "v2.5.10", "2.6.0"]
     assert sorted(reversed(order), key=T.version_key) == order and T.version_key("no version") == ()
+
+
+@pytest.mark.parametrize("sentence, out", [
+    ("Abstract A key challenge in biophysically detailed modeling is determining effective synaptic weights.",
+     "A key challenge in biophysically detailed modeling is determining effective synaptic weights."),
+    ("Background: The adult human brain contains about 86 billion neurons.",
+     "The adult human brain contains about 86 billion neurons."),
+    ("ABSTRACT We counted neurons in four adult male brains.", "We counted neurons in four adult male brains."),
+    ("Results show that the count was 86 billion neurons.", "Results show that the count was 86 billion neurons."),
+    ("Summary of the findings is given below in the text.", "Summary of the findings is given below in the text."),
+    ("Abstract Art", "Abstract Art"),
+])
+def test_strip_heading(sentence, out):
+    # RT-W-06: "Abstract A key challenge ..." was quoted with the section heading glued to the sentence.
+    assert T.strip_heading(sentence) == out

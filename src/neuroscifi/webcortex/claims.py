@@ -29,6 +29,7 @@ RELIABILITY_SECONDARY           evidence weight of an ordinary page
 RELIABILITY_PRIMARY             evidence weight of a primary structured record (arXiv/PubMed/OSV/PyPI/... API)
 STALE_FACTOR, UNDATED_FACTOR    temporal multipliers on a group's weight (adversarial sources: weight 0, see evaluate)
 HARD_LINE_KINDS                 document kinds whose line breaks end sentences (HTML pages, feeds, API records)
+NOTABLE_PER_PAGE, SALIENT_WORDS, SALIENCE_HALF   salience extraction for requests without a topic (informativeness)
 MAX_CONTRADICTION_PAIRS         bound on listed contradiction pairs per cluster
 """
 from __future__ import annotations
@@ -74,6 +75,9 @@ UNDATED_FACTOR = 0.75
 AGE_DISCOUNT_CLASSES = ("breaking", "volatile", "release")
 MAX_CONTRADICTION_PAIRS = 50
 HARD_LINE_KINDS = ("page", "feed", "api")     # document kinds whose line breaks are block boundaries
+NOTABLE_PER_PAGE = 5                          # salience extraction: notable statements kept per page (W-19)
+SALIENT_WORDS = (10, 40)                      # sentence length band that informativeness() rates highest
+SALIENCE_HALF = 2.0                           # informativeness mapped to relevance 0.5
 
 # ---- lexical cues -------------------------------------------------------------------------------------------
 
@@ -167,6 +171,7 @@ _PROVIDER_LABELS = (("pypi.org", "PyPI"), ("npmjs.org", "npm"), ("npmjs.com", "n
 _ACADEMIC_PROVIDERS = ("arXiv", "PubMed", "Crossref", "OpenAlex", "bioRxiv", "medRxiv")
 REGISTRY_PROVIDERS = ("PyPI", "npm", "OSV", "GitHub")
 REGISTRY_KEYS = ("latest", "latest_version", "ecosystem", "tag", "tag_name", "advisory_id", "osv_id")
+REGISTRY_RECORDS = ("package", "advisory", "release")
 
 
 # ---- helpers ------------------------------------------------------------------------------------------------
@@ -608,15 +613,43 @@ _RECORD_TEXT = (
 )
 
 
+_PROVIDER_TEXT = re.compile(r"^Latest release \S+ (?:uploaded|published) ")
+
+
+def record_template(text: str) -> str | None:
+    """For a templated statement over a structured record ("OpenAlex record: \"T\", dated ...", "PyPI reports X
+    latest version ...", "GitHub lists release v1 of o/r ...", "OSV lists advisory ID ...", the registry clients'
+    "Latest release ... uploaded ..."), the record's own subject words (the title, the package, the repository and
+    tag, the advisory); None for any other text. Searches and research objectives are built from these, never from
+    the template's frame ("OpenAlex record Yes human brain ...", W-20)."""
+    text = T.collapse(text or "")
+    for rx, kind in _RECORD_TEXT:
+        m = rx.search(text)
+        if not m:
+            continue
+        if kind == "advisory":
+            target = re.search(r" for (\S+?)(?::|;|\.$)", text)
+            return " ".join(x for x in (m.group(1), target.group(1) if target else "") if x)
+        if kind == "release":
+            return f"{m.group(2)} {m.group(1)}"
+        if kind == "package":
+            return m.group(2)
+        return m.group(1)
+    return "" if _PROVIDER_TEXT.match(text) else None
+
+
 def record_identity(claim: Claim) -> frozenset:
-    """Identity of the structured record a 'metadata' claim states (flags["record_id"], else parsed from the
-    template text); empty for every other claim. Two record claims are about the same record only when their
-    identities intersect: two different papers, advisories or releases never corroborate each other."""
-    if claim.kind != "metadata":
-        return frozenset()
+    """Identity of the structured record a claim is about: flags["record_id"] (set on a 'metadata' template and,
+    for a registry record — package, advisory, release — on every statement of that record's document: release
+    notes of v2.5.4 are about v2.5.4, a package summary about that package), else parsed from a template's text;
+    empty for every other claim. Two record claims are about the same record only when their identities
+    intersect: two different papers, advisories, packages or releases never corroborate or contradict each
+    other, and a statement is cited only to its own record."""
     rid = (claim.flags or {}).get("record_id")
     if rid:
         return frozenset(rid)
+    if claim.kind != "metadata":
+        return frozenset()
     for rx, kind in _RECORD_TEXT:
         m = rx.search(claim.text or "")
         if not m:
@@ -679,7 +712,19 @@ def is_reportable(claim: Claim) -> bool:
 
 # ---- extraction ---------------------------------------------------------------------------------------------
 
-def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list[Claim]:
+def informativeness(sentence: str, index: int, count: int) -> float:
+    """Salience of a sentence on a page read without a question (W-19): 1 for a sentence of SALIENT_WORDS
+    words (0.5 outside that band), + 0.5 per named entity (at most 4: names, acronyms, alphanumeric tokens, not
+    the sentence's first word), + 0.5 per value (at most 3), + up to 0.25 for an early position on the page."""
+    words = sentence.split()
+    band = 1.0 if SALIENT_WORDS[0] <= len(words) <= SALIENT_WORDS[1] else 0.5
+    toks = [m.group(0) for m in _WORD.finditer(sentence)]
+    names = sum(1 for i, t in enumerate(toks) if _entity_token(t) or (i > 0 and _entity_token(t) is None))
+    position = 1.0 - index / max(1, count)
+    return band + 0.5 * min(names, 4) + 0.5 * min(len(T.values(sentence)), 3) + 0.25 * position
+
+
+def extract_claims(doc: Document, question: str, *, max_claims: int = 8, salience: bool = False) -> list[Claim]:
     """Up to `max_claims` claims from one document, most relevant first. A document whose metadata says
     `snippet_only` (a search-result snippet, not the page) yields none: it is a discovery hint, not evidence.
 
@@ -689,21 +734,38 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
     so no sentence spans a line break. Structured API records also yield templated 'metadata' claims ("PyPI
     reports numpy latest version 2.3.5 released 2026-11-03.") and, for academic records, their abstract
     sentences. A document with injection findings (adversarial_document) is adversarial: its claims carry
-    flags["adversarial_source"] = True and no evidence weight (evaluate)."""
+    flags["adversarial_source"] = True and no evidence weight (evaluate).
+
+    `salience` (the request names no topic: "investigate these sources: URL", W-19): there is no question to
+    score against, so sentences are ranked by informativeness() instead and the top NOTABLE_PER_PAGE become
+    'statement' claims flagged "notable" (notable statements of the page, not answers to a question); relevance
+    is informativeness / (informativeness + SALIENCE_HALF)."""
     md = doc.metadata or {}
     if md.get("snippet_only"):
         return []                       # a search snippet is a discovery hint, never a citable claim (W-10)
     primary = doc.kind == "api" or doc.retrieval_mode == "api"
     source_url = doc.canonical_url or doc.final_url or doc.url
     candidates: list[tuple[str, str, dict, bool]] = []      # (text, kind, extra flags, relevance floor)
+    record_ids: list[str] = []          # the registry record this document is (package, advisory, release)
     if primary:
         for text, extra, floor in _metadata_statements(doc):
+            if extra.get("record") in REGISTRY_RECORDS:
+                record_ids += [r for r in extra.get("record_id") or () if r not in record_ids]
             if not safety.scan_injection(text):
                 candidates.append((text, "metadata", extra, floor))
     body = doc.text or ""
     if primary and not body.strip() and isinstance(md.get("abstract"), str):
         body = md["abstract"]
+    provider_text = md.get("provider_text") if primary else None
+    if isinstance(provider_text, str) and provider_text.strip() and provider_text in body:
+        # a sentence the registry client wrote ("Latest release 2.5.5 uploaded ...; requires Python >=3.12."): a
+        # template over the record, never a quote from it (RT-W-03)
+        body = body.replace(provider_text, "\n")
+        if not safety.scan_injection(provider_text):
+            candidates.append((T.collapse(provider_text), "metadata",
+                               {"record_id": list(record_ids) or None, "provider_text": True}, True))
     for sentence in T.sentences(body, hard_newlines=doc.kind in HARD_LINE_KINDS):
+        sentence = T.strip_heading(sentence)            # "Abstract A key challenge ..." (RT-W-06)
         n = len(sentence.split())
         if n < MIN_WORDS or n > MAX_WORDS:
             continue
@@ -716,6 +778,13 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
         candidates.append((sentence, claim_kind(sentence), {}, False))
     if not candidates:
         return []
+    if salience:
+        max_claims = min(max_claims, NOTABLE_PER_PAGE)
+        sentences = [i for i, c in enumerate(candidates) if c[1] != "metadata"]
+        rank = {i: informativeness(candidates[i][0], n, len(sentences)) for n, i in enumerate(sentences)}
+        candidates = [(t, "metadata" if k == "metadata" else "statement",
+                       extra if k == "metadata" else dict(extra, notable=True), floor)
+                      for t, k, extra, floor in candidates]
     q_stems = list(dict.fromkeys(_stems(question or "")))
     title_stems = list(dict.fromkeys(_stems(doc.title or "")))
     corpus = [_stems(c[0]) for c in candidates]
@@ -733,6 +802,8 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
         if raw > 0:
             raw *= 1.0 + (VALUE_BONUS if vals else 0.0) + (DATE_BONUS if events else 0.0)
         relevance = raw / (raw + RELEVANCE_HALF) if raw > 0 else 0.0
+        if salience and i in rank:
+            relevance = rank[i] / (rank[i] + SALIENCE_HALF)
         if floor:
             relevance = max(relevance, METADATA_RELEVANCE_FLOOR)
         if relevance <= 0:
@@ -746,6 +817,8 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
         if adversarial:
             flags["adversarial_source"] = True
         flags.update({k: v for k, v in extra.items() if v is not None})
+        if record_ids and "record_id" not in flags:
+            flags["record_id"] = list(record_ids)   # a statement of a registry record is about that record
         key = claim_key(text, q_stems)
         flags["subject"] = sorted(set(key.split()) & set(q_stems))
         if kind != "metadata":
@@ -784,7 +857,7 @@ def different_subjects(a: Claim, b: Claim) -> bool:
 def similarity(a: Claim, b: Claim) -> float:
     """max(key-token Jaccard, shingle Jaccard of normalised texts) — 0 when neither passes its threshold or the
     claims are about different subjects (different_subjects: question terms; subjects_compatible: primary subject
-    or record identity). Two record claims with the same identity are always similar (one record, two
+    or record identity). Two record templates with the same identity are always similar (one record, two
     providers)."""
     if different_subjects(a, b) or not subjects_compatible(a, b):
         return 0.0
@@ -792,9 +865,14 @@ def similarity(a: Claim, b: Claim) -> float:
     sj = T.jaccard(_shingles(a), _shingles(b))
     if kj >= CLUSTER_KEY_JACCARD or sj >= CLUSTER_TEXT_SHINGLE:
         return max(kj, sj)
-    if record_identity(a):
+    if _same_record(a, b):
         return CLUSTER_KEY_JACCARD
     return 0.0
+
+
+def _same_record(a: Claim, b: Claim) -> bool:
+    """Two templates over the same structured record (one record, two providers or two fields)."""
+    return a.kind == "metadata" and b.kind == "metadata" and bool(record_identity(a) & record_identity(b))
 
 
 def _domain(claim: Claim) -> str:
@@ -900,6 +978,21 @@ def describe_conflict(a: Claim, b: Claim, reason: str | None = None) -> str:
     return f"Sources disagree{about}." if reason else ""
 
 
+def conflict_sides(reason: str | None) -> list[str] | None:
+    """What each side of a conflict says, machine-readable ([A, B]) for UIs and owner questions: the two values
+    ("412 km", "389 km"), the two cue words, or ["states it", "denies it"]; None when the reason names neither."""
+    reason = reason or ""
+    m = re.match(r"different (?:values|versions|dates|years): (.+) vs (.+)$", reason)
+    if m:
+        return [m.group(1), m.group(2)]
+    m = re.match(r"conflicting statements \([^)]*\): '([^']*)' vs '([^']*)'", reason)
+    if m:
+        return [m.group(1), m.group(2)]
+    if reason.startswith("opposite polarity"):
+        return ["denies it", "states it"] if "the first" in reason else ["states it", "denies it"]
+    return None
+
+
 def contradictions(a: Claim, b: Claim) -> str | None:
     """Reason string when `a` and `b` are about the same subject (cluster similarity) and disagree, else None."""
     if a.id == b.id or similarity(a, b) <= 0:
@@ -931,17 +1024,31 @@ def evidence_weight(claim: Claim, *, now: float | None = None, freshness_class: 
     return base
 
 
-def agrees(a: Claim, b: Claim) -> bool:
-    """`b` restates `a` (so `b`'s source may be cited for `a`): the same claim, a near-duplicate text (normalised
-    shingle Jaccard >= SUPPORT_TEXT_SHINGLE), the same structured record, or a statement about the same subject
-    (similarity > 0) with at least one equal value and no conflict. Mere topical overlap is not agreement."""
+def _same_statement(a: Claim, b: Claim) -> bool:
+    return T.jaccard(_shingles(a), _shingles(b)) >= SUPPORT_TEXT_SHINGLE or _same_record(a, b)
+
+
+def restates(a: Claim, b: Claim) -> bool:
+    """`b` states `a` itself, so `b`'s source may be cited for `a`'s text: the same claim, a near-duplicate text
+    (normalised shingle Jaccard >= SUPPORT_TEXT_SHINGLE) or the same structured record, about a compatible subject
+    and without conflict. A sentence that only shares a value with `a` ("... opened in 1987" for "... opened in
+    1987 and now carries 42,000 vehicles a day") corroborates it (agrees) but does not contain it."""
     if a.id == b.id:
         return True
     if is_adversarial(b) or similarity(a, b) <= 0 or conflict(a, b):
         return False
-    if T.jaccard(_shingles(a), _shingles(b)) >= SUPPORT_TEXT_SHINGLE:
+    return _same_statement(a, b)
+
+
+def agrees(a: Claim, b: Claim) -> bool:
+    """`b` supports `a` (evidence for it): `b` restates it (restates), or `b` is a statement about the same subject
+    (similarity > 0) with at least one equal value and no conflict (corroboration in other words: it counts as
+    evidence, but its source is not cited for `a`'s text). Mere topical overlap is not agreement."""
+    if a.id == b.id:
         return True
-    if record_identity(a) & record_identity(b):
+    if is_adversarial(b) or similarity(a, b) <= 0 or conflict(a, b):
+        return False
+    if _same_statement(a, b):
         return True
     return T.values_agree(list(a.values or []), list(b.values or []))
 
@@ -1027,14 +1134,29 @@ def evaluate(claims, *, now: float | None = None, freshness_class: str | None = 
         else:
             contra_groups += 1
     group_of = {i: n for n, g in enumerate(all_groups) for i in g}
-    pairs = []
+    pairs, paired = [], set()
+
+    def add_pair(x: Claim, y: Claim, reason: str) -> None:
+        # one orientation per pair: the side that agrees with the representative first (C-16/RT-B-07: the owner's
+        # question never states one disagreement twice, once in each order)
+        if relation.get(y.id) == "support" and relation.get(x.id) != "support":
+            x, y, reason = y, x, conflict(y, x) or reason
+        if len(pairs) < MAX_CONTRADICTION_PAIRS:
+            pairs.append({"a": x.id, "b": y.id, "reason": reason, "description": describe_conflict(x, y, reason),
+                          "values": conflict_sides(reason)})
+            paired.update((x.id, y.id))
+
     for i, x in enumerate(order):
         for y in order[i + 1:]:
             if group_of[x.id] == group_of[y.id] or similarity(x, y) <= 0:
                 continue
             reason = conflict(x, y)
-            if reason and len(pairs) < MAX_CONTRADICTION_PAIRS:
-                pairs.append({"a": x.id, "b": y.id, "reason": reason, "description": describe_conflict(x, y, reason)})
+            if reason:
+                add_pair(x, y, reason)
+    if rep is not None:      # a contradiction counted against the representative is always listed (C-16)
+        for c in order:
+            if relation[c.id] == "contradict" and c.id not in paired:
+                add_pair(rep, c, conflict(rep, c) or "conflicts with the representative statement")
     return {"alpha": alpha, "beta": beta, "representative": rep,
             "agree": [c.id for c in order if relation[c.id] == "support"],
             "contra": [c.id for c in order if relation[c.id] == "contradict"],
@@ -1128,8 +1250,8 @@ def info_gain(alpha: float, beta: float, reliability: float = RELIABILITY_SECOND
 __all__ = ["CLUSTER_KEY_JACCARD", "CLUSTER_TEXT_SHINGLE", "DUPLICATE_SHINGLE", "KEY_TOKENS", "MAX_WORDS",
            "MIN_WORDS", "PRIOR_ALPHA", "PRIOR_BETA", "RELIABILITY_PRIMARY", "RELIABILITY_SECONDARY",
            "RENDER_ONLY_PATTERNS", "STALE_FACTOR", "UNDATED_FACTOR", "adversarial_document", "agrees", "bearing",
-           "claim_key", "claim_kind", "cluster", "conflict", "contradictions", "describe_conflict",
+           "claim_key", "claim_kind", "cluster", "conflict", "conflict_sides", "contradictions", "describe_conflict",
            "different_subjects", "evaluate", "evidence_weight", "extract_claims", "fragment", "independence_groups",
            "info_gain", "is_adversarial", "is_primary", "is_reportable", "negation_cue", "polarity", "posterior",
-           "primary_subject", "record_identity", "registry_record", "same_subject", "score", "similarity",
+           "primary_subject", "record_identity", "record_template", "registry_record", "restates", "same_subject", "score", "similarity",
            "subject_tokens", "subjects_compatible", "title_subject"]

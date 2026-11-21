@@ -102,7 +102,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .kv{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:4px 14px;margin:0}
 .kv dt{color:var(--muted);font-size:.9rem}
 .kv dd{margin:0;font-weight:550}
-.tablewrap{overflow-x:auto;max-width:100%;margin:6px 0}
+.tablewrap{overflow-x:auto;max-width:100%;margin:6px 0;container-type:inline-size}
 .tablewrap:focus-visible{outline:3px solid var(--focus)}
 table{border-collapse:collapse;width:100%;font-size:.9rem;overflow-wrap:normal}
 caption{text-align:left;font-weight:650;padding:4px 0}
@@ -214,8 +214,9 @@ dialog .buttons{justify-content:flex-end}
 [hidden]{display:none!important}
 .vh{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 
-/* below 640px, tables of three or more columns become labelled stacked rows: every cell and its actions on screen */
-@media(max-width:639.98px){
+/* where the table's own box is narrower than 880px (phones, tablets, a 1024px window beside the navigation), tables of three
+   or more columns become labelled stacked rows: every cell and its actions on screen (U-01, RT-B-05) */
+@container (max-width:879.98px){
   table.stack,table.stack.many{min-width:0}
   table.stack thead{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   table.stack tr{display:block;border-bottom:1px solid #d9e0db;padding:6px 0}

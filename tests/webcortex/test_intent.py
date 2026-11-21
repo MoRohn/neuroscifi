@@ -417,7 +417,22 @@ def test_refine_never_overshoots_the_mode_query_budget():
 
 
 def test_query_text_uses_the_statement_words_not_stems():
-    assert intent.query_text("PyPI reports requests latest version 2.34.2 [3]") == "PyPI reports requests version 2.34.2"
+    # W-20: a record template searches for the record's subject, never for its frame ("PyPI reports ...")
+    assert intent.query_text("PyPI reports requests latest version 2.34.2 [3]") == "requests"
+    assert intent.query_text('OpenAlex record: "Yes, the human brain has around 86 billion neurons", dated '
+                             '2025-02-06.') == "Yes human brain around 86 billion neurons"
+    assert intent.query_text("GitHub lists release v2.5.5 of numpy/numpy, published 2026-11-15.") == "numpy v2.5.5"
+    assert intent.query_text("Latest release 2.5.5 uploaded 2026-11-15; requires Python >=3.12.") == ""
     assert intent.query_text("The Varnel River is 412 kilometres long.") == "Varnel River 412 kilometres long"
     assert intent.query_text("last week") == ""
     assert "NeuroSciFi" not in intent.query_text("NeuroSciFi's learning rule uses dendritic gating")
+
+
+@pytest.mark.parametrize("text, eco", [
+    ("latest numpy version for data science", "PyPI"), ("pip install numpy latest", "PyPI"),
+    ("latest numpy in a jupyter notebook", "PyPI"), ("latest left-pad for node", "npm"),
+    ("latest numpy for javascript", "npm"), ("latest stable numpy", None), ("numpy python vs javascript", None),
+])
+def test_ecosystem_hint(text, eco):
+    # RT-W-04: the question's own wording decides the registry before the records do.
+    assert intent.ecosystem_hint(text) == eco

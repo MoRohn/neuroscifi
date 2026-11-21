@@ -200,6 +200,22 @@ def sentences(s: str, *, hard_newlines: bool = False) -> list[str]:
 
 
 # A heading or title is a line that does not end a sentence, names no finite verb, and is short or in Title Case.
+_SECTION_HEADING = re.compile(
+    r"^\s*(?i:abstract|summary|simple\s+summary|graphical\s+abstract|background|introduction|objectives?|aims?|"
+    r"purpose|context|methods?|materials\s+and\s+methods|results?|findings|conclusions?|discussion|"
+    r"significance(?:\s+statement)?|highlights|key\s+points)\s*[:.\u2014\u2013-]?\s+(?=[\"“‘(\[]?[A-Z0-9])")
+
+
+def strip_heading(sentence: str) -> str:
+    """`sentence` without a section heading glued to its start ("Abstract A key challenge ..." -> "A key challenge
+    ...", "Background: ..."), as academic abstracts arrive from Crossref/OpenAlex. A heading word that is the
+    sentence's subject ("Results show ...") is kept: the next word must start a new sentence (capital or digit)."""
+    m = _SECTION_HEADING.match(sentence or "")
+    if not m or len(sentence[m.end():].split()) < 3:
+        return sentence
+    return sentence[m.end():]
+
+
 HEADING_MAX_WORDS = 12
 _SENTENCE_END = re.compile(r"[.!?][\"'”’)\]]*$")
 _FINITE_VERB = re.compile(
@@ -769,5 +785,5 @@ def stem(t: str) -> str:
 
 __all__ = ["BM25", "BM25_B", "BM25_K1", "DATE_TOLERANCE", "MONTHS", "MONTH_RE", "NUMERIC_TOLERANCE", "STOPWORDS",
            "collapse", "content_tokens", "is_number", "is_version", "jaccard", "normalise", "sentence_spans",
-           "sentences", "shingles", "stem", "tokens", "value_kind", "value_nouns", "values", "values_agree",
+           "sentences", "shingles", "stem", "strip_heading", "tokens", "value_kind", "value_nouns", "values", "values_agree",
            "values_conflict", "values_equal", "version_key"]

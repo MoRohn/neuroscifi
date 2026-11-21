@@ -16,6 +16,7 @@ Constants
 ---------
 MAX_ANSWER_ITEMS        quoted statements in the answer (besides the lead template)
 MAX_CONTRADICTIONS      contradiction entries listed in the report
+RELATION_WINDOW         words between a question relation word and its entity for "states the relation" (ranking)
 LIVE_MODES              retrieval modes that count as "retrieved live during this task"
 SUPPORTED_MIN_CONFIDENCE, SUPPORTED_MIN_GROUPS   fact-verification thresholds for "supported": the decisive
                         criteria are >= 2 agreeing independent groups and no contradiction; the confidence floor
@@ -28,6 +29,7 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from . import claims as _claims
@@ -205,25 +207,40 @@ class _Sources:
         return self.entries
 
 
-def _cite_cluster(c: ClaimCluster, sources: _Sources) -> list[int]:
-    """Only the sources whose own claim supports the representative (claims.agrees): related cluster members are
-    not cited."""
+def _supporting(c: ClaimCluster) -> list[Claim]:
     support = set(c.supporting)
-    nums = []
-    for x in c.claims:
-        if x.id in support and _claims.is_reportable(x):
-            nums.append(sources.cite(x.source_url, x))
-    return sorted(set(nums))
+    return [x for x in c.claims if x.id in support and _claims.is_reportable(x)]
+
+
+def _restating(c: ClaimCluster) -> list[Claim]:
+    rep = _representative(c)
+    return [x for x in _supporting(c) if rep is not None and _claims.restates(rep, x)]
+
+
+def _cite_cluster(c: ClaimCluster, sources: _Sources) -> list[int]:
+    """Only the sources whose own claim restates the representative (claims.restates: the statement itself, a
+    near-copy or the same record), so every cited source contains the quoted statement. Sources that support it
+    in other words are corroborating (_corroborating), related cluster members are neither."""
+    return sorted({sources.cite(x.source_url, x) for x in _restating(c)})
+
+
+def _corroborating(c: ClaimCluster, sources: _Sources) -> list[int]:
+    """Numbers of sources that support the representative without restating it (claims.agrees by an equal value,
+    not claims.restates): evidence for its confidence and independent_sources, so the source list marks them
+    cited (freshness, liveness and undated-source notes cover all evidence), but never in the item's
+    `citations`, which promise the quoted text."""
+    restating = _restating(c)
+    cited = {sources.ref(x.source_url, x) for x in restating}
+    ids = {x.id for x in restating}
+    return sorted({sources.cite(x.source_url, x) for x in _supporting(c) if x.id not in ids} - cited)
 
 
 def _support_counts(c: ClaimCluster) -> tuple[int, int]:
-    """(copies, independent_sources) of a cluster's supporting claims: cited documents, and independent groups
-    among them (near-duplicate copies and one domain count once), so a UI can say "3 copies, 1 independent
-    source"."""
-    support = set(c.supporting)
-    claims = [x for x in c.claims if x.id in support and _claims.is_reportable(x)]
-    docs = {x.source_url for x in claims}
-    return len(docs), len(_claims.independence_groups(claims))
+    """(copies, independent_sources): documents that contain the statement (the cited ones), and independent
+    groups among all supporting claims, corroborating ones included (near-duplicate copies and one domain count
+    once), so a UI can say "3 copies, 1 independent source"."""
+    docs = {x.source_url for x in _restating(c)}
+    return len(docs), len(_claims.independence_groups(_supporting(c)))
 
 
 def _related(c: ClaimCluster, sources: _Sources) -> list[int]:
@@ -264,7 +281,19 @@ def _superseded(ranked: list[tuple[ClaimCluster, float]]) -> set[int]:
         keys[i] = (name, rank)
         if name not in best or rank > best[name]:
             best[name] = rank
-    return {i for i, (name, rank) in keys.items() if rank < best[name]}
+    old = {i for i, (name, rank) in keys.items() if rank < best[name]}
+    for i, (c, _) in enumerate(ranked):        # a page's statement about an older release of a package read above
+        rep = _representative(c)               # ("Corvane 2.5.3 was released on ...") follows the newest one too
+        if i in keys or rep is None or rep.kind == "metadata":
+            continue
+        named = re.search(r"\bv?\d+(?:\.\d+)+", rep.text or "")       # "Corvane 2.5.3 ...": the words before it
+        subject = _claims.subject_tokens((rep.flags or {}).get("primary_subject")) or \
+            (_claims.subject_tokens(rep.text[:named.start()]) if named else frozenset())
+        version = _claims._version_rank(rep)
+        newest = [rank for name, rank in best.items() if subject and _claims.subject_tokens(name) <= subject]
+        if newest and version and version < newest[0][0]:
+            old.add(i)
+    return old
 
 
 def _failure_label(f) -> tuple[str, str]:
@@ -356,6 +385,112 @@ def _phrase(text: str) -> frozenset:
     return frozenset(T.stem(t) for t in T.tokens(text) if t not in T.STOPWORDS and t not in _DETERMINERS)
 
 
+_WH_QUESTION = re.compile(r"^\W*(?:how|what|what's|whats|which|who|whom|whose|when|where|why)\b", re.IGNORECASE)
+_YES_NO = re.compile(r"^(?P<aux>is|are|was|were|does|do|did|has|have|had)\s+(?P<rest>\S.*)$", re.IGNORECASE)
+_BE_PREDICATE = re.compile(
+    r"\s(?=(?:not\s+|never\s+)?(?:in|on|at|near|inside|within|located|situated|based|found|the\s+capital|a|an|"
+    r"(?:first\s+|initially\s+|officially\s+)?(?-i:[a-z]+ed|built|born|made|known|held|run|shown|written)|"
+    r"about|approximately|around|roughly|nearly|over|under|more\s+than|less\s+than)\b)", re.IGNORECASE)
+_NUMBER_PREDICATE = re.compile(r"\s(?=[\d~≈])")
+_HAVE_PREDICATE = re.compile(r"\s(?=(?:not\s+|never\s+)?(?:been|(?-i:[a-z]+ed|built|made|known|held|shown|grown|"
+                             r"risen|fallen|won|lost))\b)", re.IGNORECASE)
+_DO_VERBS = frozenset("""have contain support use include require run reach need weigh measure cost hold employ span
+exist work ship list offer provide allow affect cause increase reduce release launch count total mean make take win
+lose own sell produce orbit flow drain border host join speak live occur happen change cover cross connect serve
+carry follow rank remain stand sit lie""".split())
+
+
+def _third_person(verb: str) -> str:
+    if verb == "have":
+        return "has"
+    if verb.endswith(("s", "sh", "ch", "x", "z", "o")):
+        return verb + "es"
+    if verb.endswith("y") and len(verb) > 2 and verb[-2] not in "aeiou":
+        return verb[:-1] + "ies"
+    return verb + "s"
+
+
+def checkable_statement(text: str) -> str | None:
+    """The statement a fact check can verify, or None (RT-B-06): a declarative statement as given (an optional "is
+    it true that" prefix removed), or a yes/no question turned into one ("Was X released?" -> "X was released";
+    "Is X in Y?" -> "X is in Y"; "Does X have N ...?" -> "X has N ..."; "Did X reach Y?" -> "X did reach Y").
+    A wh-question ("How long is X?") states nothing to check; neither does text whose shape parse_statement does
+    not support. Without a checkable statement there is no verdict: the answer and contradictions carry the
+    result, and a verdict can never contradict the answer it would summarise."""
+    raw = T.collapse(re.sub(r"\bhttps?://\S+", " ", text or ""))
+    s = _FV_PREFIX.sub("", raw).strip()
+    question = s.endswith("?") and s == raw.strip()     # "Is it true that X is Y?" states X is Y
+    s = s.rstrip(" ?.!")
+    if not s or _WH_QUESTION.match(s):
+        return None
+    m = _YES_NO.match(s)
+    if m and (question or not parse_statement(s)):
+        aux, rest = m.group("aux").lower(), m.group("rest")
+        words = list(re.finditer(r"\S+", rest))
+        if len(words) < 2:
+            return None
+        tail = rest[words[1].start() - 1:]
+        if aux in ("is", "are", "was", "were"):
+            cut = _BE_PREDICATE.search(tail) or _NUMBER_PREDICATE.search(tail)
+            if cut is None:          # "Is Orbix free?": the last word is the predicate
+                cut = re.search(r"\s(?=\S+$)", tail)
+            at = words[1].start() - 1 + cut.start()
+            s = f"{rest[:at].strip()} {aux} {rest[at:].strip()}"
+        elif aux in ("has", "have", "had"):
+            cut = _HAVE_PREDICATE.search(tail)
+            if cut is None:
+                return None
+            at = words[1].start() - 1 + cut.start()
+            s = f"{rest[:at].strip()} {aux} {rest[at:].strip()}"
+        else:
+            verb = next((w for w in words[1:] if w.group(0).lower() in _DO_VERBS), None)
+            if verb is None:
+                return None
+            base = verb.group(0).lower()
+            form = f"did {base}" if aux == "did" else (_third_person(base) if aux == "does" else base)
+            s = f"{rest[:verb.start()].strip()} {form} {rest[verb.end():].strip()}".strip()
+    elif question:
+        return None
+    elif _FV_PREFIX.sub("", raw).strip() == raw.strip():
+        s = text.strip()                    # already a statement: checked (and shown) as given
+    return s if parse_statement(s) is not None else None
+
+
+# A sentence may report a figure it does not assert: a myth, an old estimate or the alternative it rejects ("long
+# cited as having 100 billion neurons", "the commonly quoted 100 billion", "rather than the often-cited 100
+# billion"). _asserted drops those parts (per clause: a contrast cue drops the rest of its clause, an attribution
+# cue the whole clause) before values and polarity are compared (C-09).
+_CONTRAST_CUE = re.compile(r"\b(?:rather\s+than|instead\s+of|as\s+opposed\s+to|contrary\s+to|in\s+contrast\s+to)\b",
+                           re.IGNORECASE)
+_ATTRIBUTION_CUE = re.compile(
+    r"\b(?:(?:long|often|commonly|widely|frequently|traditionally|popularly|generally|usually|once|previously|"
+    r"formerly)[- ](?:been\s+)?(?:cited|quoted|stated|said|claimed|believed|reported|repeated|assumed|held|thought|"
+    r"accepted|estimated|given)|myths?|misconceptions?|popular\s+(?:belief|claim|figure|estimate|notion)|"
+    r"(?:old|older|earlier|outdated|previous)\s+(?:estimates?|figures?|counts?)|it\s+(?:was|is|has\s+been)\s+"
+    r"(?:once\s+|long\s+|often\s+|commonly\s+|widely\s+|previously\s+)?(?:thought|believed|said|claimed|assumed|"
+    r"estimated|stated))\b", re.IGNORECASE)
+_CLAUSE_SPLIT = re.compile(r"([,;:()\u2014]|\s(?:but|whereas|while|although|though)\s)", re.IGNORECASE)
+
+
+def _asserted(text: str) -> str:
+    """`text` without the parts that report a figure rather than assert it (see the comment above)."""
+    if not (_CONTRAST_CUE.search(text) or _ATTRIBUTION_CUE.search(text)):
+        return text
+    parts = _CLAUSE_SPLIT.split(text)
+    out = []
+    for i in range(0, len(parts), 2):
+        seg = parts[i]
+        m = _CONTRAST_CUE.search(seg)
+        if m:
+            seg = seg[:m.start()]
+        elif _ATTRIBUTION_CUE.search(seg):
+            seg = ""
+        out.append(seg)
+        if i + 1 < len(parts):
+            out.append(parts[i + 1])
+    return T.collapse("".join(out))
+
+
 def parse_statement(statement: str) -> dict | None:
     """{shape, subject, head, phrase, object, object_tokens, values, verb, polarity} of a checkable statement
     (see the section comment), or None for an unsupported shape."""
@@ -426,6 +561,177 @@ def _mention(slot: dict, claim: Claim) -> int | None:
     return None
 
 
+# ---- location statements: subject-attached places and containment (RT-W-02) --------------------------------
+#
+# A place bears on "X is in Y" only when the sentence attaches it to X itself, in the same clause:
+#   locative   X [, apposition,] (is|was|stands|sits|lies|remains|located|situated|based|built ...) ... in/on/at P
+#              (up to the end of X's clause: a subordinate clause "until the Chrysler Building in New York City was
+#              finished" belongs to another subject), "P's X" and "X in P ...";
+#   scope      the same slot after a superlative or ranking ("the second tallest structure in France"): it confirms
+#              P but never contradicts another place (a ranking's scope is not an address).
+# A place after another verb form ("is depicted in Hitchcock's films") is not where X is. Without a gazetteer,
+# containment comes from the source document itself (_nests): "Paris, France", "on the Champ de Mars in Paris",
+# "Paris is the capital of France", "France's capital Paris". A place the document nests inside Y supports
+# "X is in Y"; one that contains Y ("in France" for Paris) is compatible (neither); any other locative place is a
+# different place and contradicts.
+
+_PARENS = re.compile(r"\([^()]*\)|\[[^\[\]]*\]")
+_LOCATIVE_PARTICIPLES = ("located|situated|found|based|built|erected|constructed|placed|sited|housed|"
+                         "headquartered|set|standing|sitting|lying|perched|nestled")
+_PREDICATE = re.compile(
+    r"^\s*(?:,[^,;]{1,120},\s*)?(?:(?:is|are|was|were|has\s+been|had\s+been|remains|remained|stands|stood|sits|sat|"
+    r"lies|lay|rises|rose)\b(?:\s+(?:not|never|no\s+longer))?(?:\s+(?:" + _LOCATIVE_PARTICIPLES + r")\b)?"
+    r"|(?:" + _LOCATIVE_PARTICIPLES + r")\b)", re.IGNORECASE)
+_CLAUSE_END = re.compile(
+    r"[;:!?]|\.(?:\s|$)|\s(?:until|when|whenever|while|after|before|since|because|although|though|whereas|unless|"
+    r"where|which|who|whom|whose|that|but|if|than)\b|,\s*(?:and|or)\s", re.IGNORECASE)
+_OTHER_VERB = re.compile(
+    r"\b(?!(?:" + _LOCATIVE_PARTICIPLES + r")\b)(?:[a-z]{3,}ed|shown|seen|known|made|held|drawn|written|sung|told|"
+    r"given|taken|sold|won|lost|named|called|featured|used)\b")
+_SUPERLATIVE = re.compile(
+    r"\b(?:most|least|first|second|third|only|next|(?!(?:interest|forest|honest|modest|request|guest|harvest|protest|"
+    r"contest|manifest|suggest|invest|arrest|digest|conquest|earnest|inquest|behest|everest|budapest|bucharest|"
+    r"southwest|northwest|midwest|southeast|northeast)\b)[a-z]{3,}est)\b", re.IGNORECASE)
+_PLACE_START = re.compile(r"\s*(?=(?:in|at|on|near)\s+(?:the\s+)?[A-Z])")
+_POSSESSOR_PLACE = re.compile(r"(?P<p>[A-Z][\w'’.-]*(?:\s+[A-Z][\w'’.-]*)*)['’]s?\s+$")
+_CAPITAL_POSSESSIVE = re.compile(
+    r"(?P<o>[A-Z][\w'’.-]*(?:\s+[A-Z][\w'’.-]*)*)['’]s\s+capital(?:\s+city)?,?\s+(?:is\s+)?"
+    r"(?P<z>[A-Z][\w'’.-]*(?:\s+[A-Z][\w'’.-]*)*)")
+
+
+def _place_parts(place: str) -> list[frozenset]:
+    return [t for t in (_claims.subject_tokens(p) for p in place.rstrip(".,;:").split(",")) if t]
+
+
+def _nests(text: str) -> set:
+    """(inner, outer) place token sets that `text` nests: "Paris, France" (and longer chains), adjacent place
+    phrases ("on the Champ de Mars in Paris"), "Paris is the capital of France", "France's capital Paris"."""
+    text = text or ""
+    out = set()
+    matches = list(_PLACE.finditer(text))
+    for m in matches:
+        parts = _place_parts(m.group("p"))
+        out |= set(zip(parts, parts[1:]))
+    for m1, m2 in zip(matches, matches[1:]):
+        if m1.end() <= m2.start() and not text[m1.end():m2.start()].strip():
+            a, b = _place_parts(m1.group("p")), _place_parts(m2.group("p"))
+            if a and b:
+                out.add((a[-1], b[0]))
+    for m in _CAPITAL_OF.finditer(text):
+        z, o = _claims.subject_tokens(m.group("z") or m.group("z2")), _claims.subject_tokens(m.group("o") or m.group("o2"))
+        if z and o:
+            out.add((z, o))
+    for m in _CAPITAL_POSSESSIVE.finditer(text):
+        z, o = _claims.subject_tokens(m.group("z")), _claims.subject_tokens(m.group("o"))
+        if z and o:
+            out.add((z, o))
+    return out
+
+
+def _within(inner: frozenset, outer: frozenset, nests: set) -> bool:
+    """`inner` lies inside `outer` by the document's own nestings (transitively)."""
+    frontier, seen = [inner], {inner}
+    while frontier:
+        x = frontier.pop()
+        for i, o in nests:
+            if _claims.same_subject(i, x) and o not in seen:
+                if _claims.same_subject(o, outer):
+                    return True
+                seen.add(o)
+                frontier.append(o)
+    return False
+
+
+def _subject_span(slot: dict, text: str, at: int) -> tuple[int, int]:
+    """(start, end) of the subject's mention: the first run of consecutive words covering the subject's head
+    tokens; a pronoun-led sentence about the document's subject: the pronoun."""
+    if at == 0 and _claims._PRONOUN_START.match(text):
+        m = re.match(r"\W*\w+", text)
+        return 0, m.end() if m else 0
+    words = list(T._TOKEN_RE.finditer(text))
+    stems = [T.stem(w.group(0).lower().replace(",", "")) for w in words]
+    for i in range(len(words)):
+        if stems[i] not in slot["head"]:
+            continue
+        j, have = i, set()
+        while j < len(words) and (stems[j] in slot["head"] or words[j].group(0).lower() in _claims._CONNECTORS) \
+                and (j == i or not text[words[j - 1].end():words[j].start()].strip()):
+            have.add(stems[j])
+            j += 1
+        if slot["head"] <= have:
+            return words[i].start(), words[j - 1].end()
+    w = next((w for w in words if w.start() >= at), None)
+    return at, w.end() if w else at
+
+
+def _attached_places(slot: dict, text: str, at: int) -> list[tuple[str, frozenset, frozenset, bool]]:
+    """[(place, most specific part's tokens, all tokens, locative)] attached to the subject (section comment)."""
+    start, end = _subject_span(slot, text, at)
+    if re.search(r"\b(?:of|from|like)\s+(?:the\s+|a\s+|an\s+)?$", text[:start], re.IGNORECASE):
+        return []                           # "a replica of the Eiffel Tower ...": the sentence is about the replica
+    found = []
+
+    def add(place, locative):
+        parts = _place_parts(place)
+        toks = frozenset().union(*parts) if parts else frozenset()
+        if parts and not toks <= slot["head"] and not toks & _claims._CALENDAR:
+            found.append((place.rstrip(".,;:"), parts[0], toks, locative))
+
+    m = _POSSESSOR_PLACE.search(text[:start])
+    if m:
+        add(m.group("p"), True)
+    rest = _PARENS.sub(" ", text[end:])
+    if _PLACE_START.match(rest):            # "X in P ..."
+        m = _PLACE.match(rest.lstrip())
+        if m:
+            add(m.group("p"), True)
+            rest = rest.lstrip()[m.end():]
+    verb = _PREDICATE.match(rest)
+    if not verb:
+        return found
+    cut = _CLAUSE_END.search(rest, verb.end())
+    predicate = rest[:cut.start() if cut else len(rest)]
+    scope = False
+    for m in _PLACE.finditer(predicate, verb.end()):
+        gap = predicate[verb.end():m.start()]
+        if _OTHER_VERB.search(gap):
+            break                           # "is depicted in ...": another predicate's place
+        scope = scope or bool(_SUPERLATIVE.search(gap))
+        add(m.group("p"), not scope)
+    return found
+
+
+def _location(slot: dict, claim: Claim, nests: set) -> tuple[str | None, str]:
+    """("support" | "contradict" | None, why) of one claim for "X is in Y" taken as asserted (the caller flips it
+    for a negated statement); see the section comment."""
+    text = claim.text or ""
+    at = _mention(slot, claim)
+    if at is None:
+        return None, ""
+    places = _attached_places(slot, text, at)
+    if not places:
+        return None, ""
+    parts = _place_parts(slot["object"])
+    want = parts[0] if parts else slot["object_tokens"]
+    outer = frozenset().union(*parts[1:]) if len(parts) > 1 else frozenset()
+    same, other = [], []
+    for place, specific, toks, locative in places:
+        if want <= toks or _within(specific, want, nests):
+            same.append(place)
+        elif _within(want, specific, nests) or (outer and specific <= outer):
+            continue                        # a broader place that contains Y: compatible, not evidence
+        elif locative:
+            other.append(place)
+    if claim.polarity < 0:
+        return ("contradict", "denies the place") if same else (None, "")
+    if same:
+        return "support", ""
+    if other:
+        return "contradict", f"places it in {' and '.join(dict.fromkeys(other))}, not {slot['object']}"
+    return None, ""
+
+
+
 def _compare_values(want: list[str], have: list[str], approx: bool) -> str | None:
     """"same" when a value of `have` equals one of `want`, "different" when values of the same kind exist and none
     is equal, None when nothing is comparable."""
@@ -441,8 +747,9 @@ def _compare_values(want: list[str], have: list[str], approx: bool) -> str | Non
     return "different" if comparable else None
 
 
-def _check(slot: dict, claim: Claim) -> tuple[str | None, str]:
-    """("support" | "contradict" | None, why) for one claim against the parsed statement."""
+def _check(slot: dict, claim: Claim, nests: set | None = None) -> tuple[str | None, str]:
+    """("support" | "contradict" | None, why) for one claim against the parsed statement. `nests`: the place
+    containments its document states (_nests), for location statements."""
     text = claim.text or ""
     shape = slot["shape"]
     same_polarity = claim.polarity == slot["polarity"]
@@ -480,20 +787,9 @@ def _check(slot: dict, claim: Claim) -> tuple[str | None, str]:
     after = text[at:]
     stems = set(_stems(text))
     if shape == "location":
-        places = []
-        for m in _PLACE.finditer(after):
-            place = m.group("p").rstrip(".,;:")
-            toks = _claims.subject_tokens(place)
-            if toks and not toks <= slot["head"] and not toks & _claims._CALENDAR:
-                places.append((place, toks))
-        if not places:
+        rel, why = _location(slot, claim, nests or set())
+        if rel is None:
             return None, ""
-        match = any(slot["object_tokens"] <= toks for _, toks in places)
-        if claim.polarity < 0:
-            return ("contradict" if match else None), "denies the place" if match else ""
-        rel = "support" if match else "contradict"
-        why = "" if match else f"places it in {' and '.join(dict.fromkeys(p for p, _ in places))}, " \
-                                 f"not {slot['object']}"
         return (rel if slot["polarity"] > 0 else flip[rel]), why
     text = claim.text or ""
     shape = slot["shape"]
@@ -517,6 +813,10 @@ def _check(slot: dict, claim: Claim) -> tuple[str | None, str]:
         return None, ""
     after = text[at:]
     stems = set(_stems(text))
+    asserted = _asserted(text)
+    if asserted != text:                    # a myth or old figure the sentence reports is not what it asserts (C-09)
+        have = [v for v in T.values(asserted) if not any(T.values_equal(v, w) for w in slot["subject_values"])]
+        same_polarity = _claims.polarity(asserted) == slot["polarity"]
     want = slot["values"]
     if shape == "quantity" or (shape in ("is", "event") and want):
         if shape != "event" and not slot["phrase"] <= stems | slot["head"]:
@@ -556,6 +856,23 @@ def _check(slot: dict, claim: Claim) -> tuple[str | None, str]:
         f"opposite polarity ('{_claims.negation_cue(text) or _claims.negation_cue(slot['subject']) or 'not'}')"
 
 
+def _past_event(slot: dict, now: float) -> bool:
+    """The statement dates a completed event ("X was released on 2 October 2026", "X opened in 1987"): a date
+    shape, or an event whose values are all dates or years, every one before `now` (a year: before `now`'s year).
+    Whether it happened then does not change as its sources age, so the age discount of the question's freshness
+    class (claims.AGE_DISCOUNT_CLASSES: "is it still true?") does not apply; undated sources keep their discount."""
+    values = slot["values"]
+    if not values or not (slot["shape"] == "date" or slot["shape"] == "event"):
+        return False
+    year = datetime.fromtimestamp(now, timezone.utc).year
+    for v in values:
+        kind, _, parsed = T.value_kind(v)
+        if kind == "date" and parsed <= now or kind == "year" and parsed < year:
+            continue
+        return False
+    return True
+
+
 def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *, now: float, cls: str,
              ttl_overrides: dict | None = None) -> dict:
     """Fact verification by claim-slot checking (section comment above). Every reportable, non-adversarial claim
@@ -575,8 +892,15 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
             if _claims.is_reportable(x):
                 pool.setdefault(x.id, x)
     relation, why = {}, {}
+    nests: dict[str, set] = {}
+    if slot["shape"] == "location":         # each document's own place nestings (containment, RT-W-02)
+        for x in pool.values():
+            if x.source_url not in nests:
+                doc = sources.doc(x.source_url)
+                nests[x.source_url] = _nests(doc.text if doc is not None else "")
+            nests[x.source_url] |= _nests(x.text)
     for x in pool.values():
-        rel, reason = _check(slot, x)
+        rel, reason = _check(slot, x, nests.get(x.source_url))
         if rel:
             relation[x.id], why[x.id] = rel, reason
     for c in clusters:
@@ -590,10 +914,11 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
     by_id = {x.id: x for x in order}
     alpha, beta, sup, con = _claims.PRIOR_ALPHA, _claims.PRIOR_BETA, 0, 0
     outvoted = set()
+    age_cls = None if _past_event(slot, now) else cls      # a dated past event does not go stale (_past_event)
     for g in groups:
         members = [by_id[i] for i in g]
         a = sum(1 for x in members if relation[x.id] == "support")
-        w = max(_claims.evidence_weight(x, now=now, freshness_class=cls, ttl_overrides=ttl_overrides)
+        w = max(_claims.evidence_weight(x, now=now, freshness_class=age_cls, ttl_overrides=ttl_overrides)
                 for x in members)
         alpha += w * a / len(members)
         beta += w * (len(members) - a) / len(members)
@@ -603,12 +928,20 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
         else:
             con += 1
     mean = alpha / (alpha + beta)
-    reasons = [f"{sup} independent source group(s) agree with the statement; {con} contradict it.",
-               f"Posterior mean {mean:.2f} from a Beta(1,1) prior and weighted independent groups."]
-    for x in order:
-        if relation[x.id] == "contradict" and len(reasons) < 6:
-            within = " (a sentence in a source group that otherwise supports it)" if x.id in outvoted else ""
-            reasons.append(f"[{sources.cite(x.source_url, x)}]{within} {why[x.id] or 'contradicts the statement'}.")
+    supporting = [x for x in order if relation[x.id] == "support"]
+    contradicting = [x for x in order if relation[x.id] == "contradict"]
+    counts = f"{sup} independent source group(s) agree with the statement; {con} contradict it."
+    if outvoted:             # the counts are derived from the verdict's own lists, never "0 contradict" beside them
+        counts += (f" {len(outvoted)} contradicting sentence(s) come from source groups that otherwise support it "
+                   f"({len(supporting)} supporting and {len(contradicting)} contradicting sentence(s) in all).")
+    reasons = [counts, f"Posterior mean {mean:.2f} from a Beta(1,1) prior and weighted independent groups."]
+    conflicts = []
+    for x in contradicting:
+        within = " (a sentence in a source group that otherwise supports it)" if x.id in outvoted else ""
+        line = f"[{sources.cite(x.source_url, x)}]{within} {why[x.id] or 'contradicts the statement'}."
+        if len(reasons) < 6:
+            reasons.append(line)
+        conflicts.append((x, why[x.id] or "contradicts the checked statement"))
     if mean >= SUPPORTED_MIN_CONFIDENCE and sup >= SUPPORTED_MIN_GROUPS and con == 0:
         label = "supported"
     elif (beta - _claims.PRIOR_BETA) > (alpha - _claims.PRIOR_ALPHA):
@@ -623,8 +956,8 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
             reasons.append(f"Fewer than {SUPPORTED_MIN_GROUPS} independent source groups support it.")
     citations = sorted({sources.cite(x.source_url, x) for x in order})
     return dict(base, label=label, confidence=round(mean, 3), citations=citations,
-                supporting=[x.id for x in order if relation[x.id] == "support"],
-                contradicting=[x.id for x in order if relation[x.id] == "contradict"], reasons=reasons)
+                supporting=[x.id for x in supporting], contradicting=[x.id for x in contradicting], reasons=reasons,
+                _conflicts=[(supporting[0] if supporting else None, x, reason) for x, reason in conflicts])
 
 
 def _mentions(item: str, text: str) -> bool:
@@ -698,6 +1031,210 @@ def _methodology(documents: list[Document], sources: _Sources) -> list[dict]:
     return out
 
 
+# ---- subject-aware ranking (UAT-W-24) -----------------------------------------------------------------------
+#
+# The question's focus is its entities (intent.extract_entities, completed by the lower-case nouns that follow a
+# name: "the Ostra marsh newt"; the packages and compared items the assessment names) and its relation words (its
+# remaining topical words: "capital", "stable release", "population"; "how long" also matches "length"). A claim
+#   tier 0  is about a question entity: its head (the noun phrase before the main verb, up to the first comma or
+#           preposition; a pronoun stands for the document's title subject) names the entity, its structured
+#           record is the entity's (package, repository, title), or the sentence states a relation word about the
+#           entity, within RELATION_WINDOW words of it ("Canberra, the capital city of Australia", "the population
+#           of Tessaly is ..."); inside the head only its head noun counts ("Capital punishment" is punishment);
+#   tier 1  cannot be placed (the question names no entity, or the claim has no head);
+#   tier 2  is about something else: its head names another thing ("Capital punishment in Australia ...",
+#           "Python 3.15 the latest stable release ...") and the sentence does not state a relation word about the
+#           entity outside that head.
+# Answer items and findings are ordered by tier, then by the share of relation words the claim contains, then
+# by value (confidence x relevance x freshness). Nothing is dropped: tier 2 claims follow every tier 0 one.
+RELATION_WINDOW = 4        # words between a relation word and the entity it is stated about ("capital city of X")
+_HEAD_CUT = re.compile(r"[,;:(\[]|\s(?:in|of|for|on|at|from|with|by|to|about|near|under|over|after|before|during|"
+                       r"since|until|into|than)\s", re.IGNORECASE)
+
+
+# "How <adjective> is X?" asks for an attribute that sources state as the adjective or its noun.
+_HOW_ATTRIBUTE = {"long": ("long", "length"), "tall": ("tall", "height", "high"), "high": ("high", "height", "tall"),
+                  "old": ("old", "age", "aged"), "far": ("far", "distance"), "big": ("big", "size", "large"),
+                  "large": ("large", "size", "big"), "deep": ("deep", "depth"), "wide": ("wide", "width"),
+                  "heavy": ("heavy", "weight", "weighs"), "fast": ("fast", "speed")}
+
+
+def _entity_phrase(question: str, name: str) -> str:
+    """A capitalised entity with the lower-case nouns that complete it ("Ostra" -> "Ostra marsh newt"), up to the
+    next function word, verb or punctuation. The question's last word is never absorbed: in "When did the
+    Halvorsen Bridge open?" it is the verb."""
+    m = re.search(rf"(?<![\w-]){re.escape(name)}(?P<tail>(?:\s+[a-z][a-z-]*){{1,3}})(?=\s+\w)", question)
+    if not m:
+        return name
+    words = []
+    for w in m.group("tail").split():
+        if w in T.STOPWORDS or w in _claims._AUX or _claims._VERB_CUE.match(w) or w in _HOW_ATTRIBUTE:
+            break
+        words.append(w)
+    return " ".join([name, *words])
+
+
+def question_focus(question: str, assessment: dict | None) -> dict:
+    """{"entities": [token sets], "relation": [alternative stem sets]} of the question (section comment above)."""
+    from . import intent
+    assessment = assessment or {}
+    question = question or ""
+    names = [_entity_phrase(question, n) for n in intent.extract_entities(question)]
+    names += [str(p.get("name")) for p in assessment.get("packages") or [] if isinstance(p, dict) and p.get("name")]
+    names += [str(x) for x in assessment.get("comparison") or [] if x]
+    entities = list(dict.fromkeys(t for t in (_claims.subject_tokens(n) for n in names) if t))
+    named = frozenset().union(*entities) if entities else frozenset()
+    words = intent.keywords(_FV_PREFIX.sub("", question), limit=12)
+    how = {m.group(1).lower() for m in re.finditer(r"\bhow\s+([a-z]+)\b", question, re.IGNORECASE)}
+    relation = []
+    for t in T.content_tokens(words):
+        stem = T.stem(t)
+        if stem in named or t.lower() in {n.lower() for n in names}:
+            continue
+        alternatives = _HOW_ATTRIBUTE.get(t.lower()) if t.lower() in how else None
+        slot = frozenset(T.stem(a) for a in alternatives) if alternatives else frozenset({stem})
+        if slot not in relation:
+            relation.append(slot)
+    return {"entities": entities, "relation": relation}
+
+
+def _head(claim: Claim) -> tuple[frozenset, list[str]]:
+    """(head tokens, stemmed tokens of the rest of the sentence, in order) of a quoted claim (section comment)."""
+    text = _PARENS.sub(" ", claim.text or "")
+    clause = _claims._subject_clause(text)
+    if _claims._PRONOUN_START.match(clause):
+        subject = _claims.title_subject(claim.title or "") or ""
+        return _claims.subject_tokens(subject), [T.stem(t) for t in T.tokens(clause)]
+    words = list(re.finditer(r"[^\W_][\w'’.-]*", clause))
+    verb = next((w for i, w in enumerate(words) if i > 0 and (w.group(0).lower() in _claims._AUX or
+                                                             _claims._VERB_CUE.match(w.group(0)))), None)
+    before = clause[:verb.start()] if verb else " ".join(w.group(0) for w in words[:6])
+    cut = _HEAD_CUT.search(before)
+    head = before[:cut.start()] if cut else before
+    # the head phrase stands in the rest by its head noun only: "the population of Tessaly" keeps "population"
+    # next to "Tessaly", "Capital punishment in Australia" keeps "punishment", not "capital"
+    noun = ([w for w in T.tokens(head) if w not in T.STOPWORDS] or [""])[-1]
+    rest = text.replace(head, f" {noun} ", 1) if head.strip() else text
+    return _claims.subject_tokens(head), [T.stem(t) for t in T.tokens(rest)]
+
+
+def _states_relation(rest: list[str], relation: frozenset, entity: frozenset) -> bool:
+    """A relation word within RELATION_WINDOW words of every word of the entity ("the capital city of
+    Australia"): the sentence states that relation about the entity, not two unrelated mentions."""
+    at = [i for i, t in enumerate(rest) if t in relation]
+    spots = [[i for i, t in enumerate(rest) if t == e] for e in entity]
+    return bool(at) and all(spots) and any(all(any(abs(i - j) <= RELATION_WINDOW for j in s) for s in spots)
+                                           for i in at)
+
+
+def subject_tier(claim: Claim | None, focus: dict) -> int:
+    """0 about a question entity, 1 undecided, 2 about something else (section comment above)."""
+    entities = focus.get("entities") or []
+    if claim is None or not entities:
+        return 1
+    if claim.kind == "metadata":            # a structured record: its package, repository or title names it
+        flags = claim.flags or {}
+        own = _claims.subject_tokens(" ".join(str(x) for x in (flags.get("package") or "",
+                                                               _claims.record_template(claim.text or "") or "")))
+        return 0 if any(e <= own for e in entities) else 2
+    head, rest = _head(claim)
+    if not head:
+        return 1
+    if any(e <= head or _claims.same_subject(e, head) for e in entities):
+        return 0
+    words = frozenset().union(*focus["relation"]) if focus.get("relation") else frozenset()
+    if any(_states_relation(rest, words, e) for e in entities):
+        return 0                            # it states the question's relation about the entity
+    return 2
+
+
+def relation_coverage(claim: Claim | None, focus: dict) -> float:
+    """Share of the question's relation words (each with its alternatives: "how long" -> long/length) the claim
+    contains; 0 when the question has none."""
+    relation = focus.get("relation") or []
+    if claim is None or not relation:
+        return 0.0
+    have = _claims._stem_set(claim)
+    return round(sum(1 for slot in relation if slot & have) / len(relation), 6)
+
+
+# ---- ecosystem relevance (RT-W-04) ---------------------------------------------------------------------------
+#
+# A plain package name ("numpy") is looked up on PyPI and npm when the question names neither ecosystem; the same
+# name on the other registry is usually another, unrelated package (npm "numpy" 0.0.1, 2017). When both answer:
+#   1. the question's own wording decides (intent.ecosystem_hint: python/pip/pypi/conda/jupyter/data science vs
+#      npm/node/javascript/typescript/react ...);
+#   2. otherwise the records do: a *placeholder* record (deprecated, latest version below 0.1, or a single release
+#      whose description is empty or only repeats the name) gives way to a substantive one, and so does a record
+#      whose latest release is more than PACKAGE_STALE_SECONDS older than the other's;
+#   3. otherwise (two substantive, active packages) both are kept: they are different records and never cluster.
+# A record set aside is still a source read, but no claim is taken from it (orchestrator.evaluate) and it never
+# reaches the answer, findings or comparison; one uncertainty line names it ("numpy also exists on npm (0.0.1,
+# 2017): a different package, set aside").
+PACKAGE_STALE_SECONDS = 2 * 365 * temporal.DAY
+
+
+def _package_record(d: Document) -> tuple[str, str] | None:
+    md = d.metadata or {}
+    eco, name = md.get("ecosystem"), md.get("package")
+    if (d.kind != "api" and d.retrieval_mode != "api") or eco not in ("PyPI", "npm") or not name:
+        return None
+    return str(eco), str(name).lower()
+
+
+def _placeholder(d: Document) -> bool:
+    md = d.metadata or {}
+    versions = md.get("versions_recent") or []
+    summary = T.collapse(str(md.get("summary") or "")).lower().strip(" .")
+    bare = not summary or summary == str(md.get("package") or "").lower()
+    latest = T.version_key(md.get("latest") or "")
+    return bool(md.get("deprecated")) or (bool(latest) and latest < T.version_key("0.1")) or \
+        (len(versions) <= 1 and bare)
+
+
+def package_ecosystems(question: str, assessment: dict | None, documents) -> dict:
+    """{"aside": {canonical url: note}} for package records of another ecosystem that the same plain name matched
+    (see the section comment above). Deterministic; reads only the question and the records' own metadata."""
+    from . import intent
+    named = {(str(p.get("ecosystem")), str(p.get("name")).lower()) for p in (assessment or {}).get("packages") or []
+             if isinstance(p, dict) and not p.get("inferred")}
+    by_name: dict[str, dict[str, Document]] = {}
+    for d in documents or []:
+        rec = _package_record(d)
+        if rec:
+            by_name.setdefault(rec[1], {}).setdefault(rec[0], d)
+    hint = intent.ecosystem_hint(question)
+    aside = {}
+    for name, recs in sorted(by_name.items()):
+        if len(recs) < 2:
+            continue
+        keep = None
+        explicit = [eco for eco in recs if (eco, name) in named]
+        if len(explicit) == 1:
+            keep = explicit[0]
+        elif hint in recs:
+            keep = hint
+        else:
+            when = {eco: float((d.metadata or {}).get("released_at") or d.published_at or 0.0) for eco, d in recs.items()}
+            for a, b in (("PyPI", "npm"), ("npm", "PyPI")):
+                if not _placeholder(recs[a]) and (_placeholder(recs[b]) or
+                                                  when[a] - when[b] > PACKAGE_STALE_SECONDS):
+                    keep = a
+                    break
+        if keep is None:
+            continue
+        for eco, d in recs.items():
+            if eco == keep:
+                continue
+            md = d.metadata or {}
+            year = _day(md.get("released_at") or d.published_at)
+            detail = ", ".join(x for x in (str(md.get("latest") or ""), year[:4] if year else "") if x)
+            aside[d.canonical_url or d.final_url or d.url] = (
+                f"{md.get('package') or name} also exists on {eco}{f' ({detail})' if detail else ''}: a different "
+                f"package from the {keep} one this answer is about; set aside, not mixed into the answer.")
+    return {"aside": aside}
+
+
 def _package_of(c: ClaimCluster, packages) -> str | None:
     for x in c.claims:
         p = (x.flags or {}).get("package")
@@ -727,6 +1264,10 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
     required = float(window) if window else class_ttl
     sources = _Sources(documents)
 
+    aside = package_ecosystems(question, assessment, documents)["aside"]
+    if aside:                # RT-W-04: another ecosystem's package of the same name is never part of the answer
+        clusters = [replace(c, claims=kept) for c in clusters
+                    for kept in [[x for x in c.claims if x.source_url not in aside]] if kept]
     scored = [_claims.score(c, now=now, freshness_class=cls, ttl_overrides=ttl_overrides)
               for c in clusters if c.claims]
     usable = [c for c in scored if c.status != "insufficient"]
@@ -737,8 +1278,14 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         factor = 1.0 if ok else (UNDATED_VALUE if ok is None else STALE_VALUE)
         return c.confidence * (rep.relevance if rep else 0.0) * factor
 
+    focus = question_focus(question, assessment)
+
+    def order(t):            # UAT-W-24: on-subject first, then relation coverage, then value
+        rep = _representative(t[0])
+        return (subject_tier(rep, focus), -relation_coverage(rep, focus), -t[1], t[0].key, t[0].statement)
+
     ranked = sorted(((c, value(c)) for c in usable if report_safe_text(_representative(c)) == c.statement),
-                    key=lambda t: (-t[1], t[0].key, t[0].statement))
+                    key=order)
     old = _superseded(ranked)
     if old:      # a newer release of the same package was read: older ones follow it (C-02)
         flagged = [(c, v, i in old) for i, (c, v) in enumerate(ranked)]
@@ -753,7 +1300,7 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         rep = _representative(c)
         copies, independent = _support_counts(c)
         items.append({"text": c.statement, "type": "template" if rep and rep.kind == "metadata" else "quote",
-                      "citations": _cite_cluster(c, sources), "confidence": c.confidence,
+                      "citations": _cite_cluster(c, sources), "corroborating": [], "confidence": c.confidence,
                       "uncertainty": c.uncertainty, "status": c.status, "copies": copies,
                       "independent_sources": independent, "value": round(v, 6)})
 
@@ -765,7 +1312,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         finding = {"statement": c.statement,
                    "type": "template" if rep and rep.kind == "metadata" else "quote",
                    "kind": rep.kind if rep else "statement", "key": c.key,
-                   "citations": _cite_cluster(c, sources), "related": [], "confidence": c.confidence,
+                   "citations": _cite_cluster(c, sources), "corroborating": [], "related": [],
+                   "confidence": c.confidence,
                    "uncertainty": c.uncertainty, "status": c.status, "copies": copies,
                    "independent_sources": independent, "value": round(v, 6),
                    "published_at": rep.published_at if rep else None, "event_at": rep.event_at if rep else None,
@@ -773,6 +1321,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         if id(c) in old_ids:
             finding["superseded"] = True
         findings.append(finding)
+    for entry, (c, _) in [*zip(items, ranked), *zip(findings, ranked)]:     # numbered after the restating ones
+        entry["corroborating"] = _corroborating(c, sources)
     related = list(zip(findings, [c for c, _ in ranked]))     # numbered last, after every cited source
     if mode == "scientific":
         for f in findings:
@@ -820,11 +1370,12 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         oldest = min(d.retrieved_at for d in cited)
         limitations.append(f"Served from cache retrieved {temporal.describe_age(oldest, now)}; not re-verified live")
     if not usable:
-        limitations.append("No claim relevant to the question could be extracted from the sources read")
+        limitations.append("No claim relevant to the question could be extracted from the sources read" if documents
+                           else "No source was read, so no claim could be extracted")
     limitations.append("Extractive synthesis: statements are quoted from sources, not generated; contradiction "
                        "detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)")
 
-    uncertainties: list[str] = []
+    uncertainties: list[str] = list(dict.fromkeys(aside.values()))
     for c, _ in ranked:
         rep = _representative(c)
         if c.status == "single_source" and rep is not None:
@@ -861,13 +1412,31 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
 
     verdict = None
     if mode == "fact_verification" and any(c.claims for c in scored):     # no claims (cancelled): no verdict
-        verdict = _verdict(assessment.get("claim") or question, usable, sources, now=now, cls=cls,
-                           ttl_overrides=ttl_overrides)
+        statement = checkable_statement(assessment.get("claim") or question)
+        if statement is None:        # RT-B-06: nothing checkable (a wh-question): the answer carries the result
+            limitations.append("No verdict: the question is not a checkable statement (X is in Y; X is the capital "
+                               "of Y; X has N <unit>; X was released in DATE; X is Y; X <verb> ...); the answer and "
+                               "contradictions carry the result")
+        else:
+            verdict = _verdict(statement, usable, sources, now=now, cls=cls, ttl_overrides=ttl_overrides)
+            listed = {side["id"] for c in contradictions for side in (c["a"], c["b"])}
+            for sup, x, reason in verdict.pop("_conflicts"):     # S-09: every counted contradiction is listed
+                if x.id not in listed and len(contradictions) < MAX_CONTRADICTIONS:
+                    contradictions.append(_verdict_contradiction(statement, sup, x, reason, sources))
+                    listed.add(x.id)
     comparison = _comparison(assessment.get("comparison"), ranked, sources) if mode == "comparative" else None
     methodology = _methodology(documents, sources) if mode == "scientific" else None
 
     lead_citations = sorted({n for it in items for n in it["citations"]})
-    answer = [{"text": _lead(documents, usable, ranked, satisfied, newest, required, now, live, cited),
+    quoted = [r for r in (_representative(c) for c, _ in ranked) if r is not None and r.kind != "metadata"]
+    notable = bool(quoted) and all((r.flags or {}).get("notable") for r in quoted)
+    lead = _lead(documents, usable, ranked, satisfied, newest, required, now, live, cited)
+    if notable:            # W-19: a request without a question gets the pages' notable statements, not answers
+        for entry in items + findings:
+            entry["notable"] = True
+        lead = ("Notable statements: the request asks no question, so the most informative sentences of the pages "
+                "read are listed; they are not answers. " + lead)
+    answer = [{"text": lead,
                "type": "template", "citations": lead_citations, "confidence": None, "status": "summary"}] + items
 
     for f, c in related:
@@ -886,6 +1455,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
 
 def _lead(documents, usable, ranked, satisfied, newest, required, now, live, cited) -> str:
     n_docs = len(documents)
+    if not n_docs:
+        return "No source was read: the searches returned nothing that could be read."
     if not ranked:
         return f"No usable claims were extracted from {n_docs} source{'s' if n_docs != 1 else ''} read."
     top = ranked[0][0]
@@ -903,6 +1474,23 @@ def _lead(documents, usable, ranked, satisfied, newest, required, now, live, cit
     if cited and not live:
         text += " All cited sources were served from cache."
     return text
+
+
+def _verdict_contradiction(statement: str, sup: Claim | None, x: Claim, reason: str, sources: _Sources) -> dict:
+    """A sentence the verdict counts against the checked statement, listed as a contradiction: the supporting
+    sentence it conflicts with (or, when no source supports the statement, the checked statement itself) vs it."""
+    b = _side(x, sources)
+    if sup is not None:
+        a = _side(sup, sources)
+        description = (f"Sources disagree about the checked statement: [{a['citation']}] supports it, "
+                       f"[{b['citation']}] {reason}.")
+    else:
+        a = {"id": None, "text": statement, "type": "statement", "citation": None, "domain": "", "published_at": None,
+             "event_at": None, "source_type": "checked statement", "kind": "statement"}
+        description = f"A source contradicts the checked statement: [{b['citation']}] {reason}."
+    return {"a": a, "b": b, "reason": f"fact check: {reason}", "description": description, "verdict": True,
+            "values": None,
+            "assessment": f"Counted against «{_short(statement)}» in the verdict. " + UNRESOLVED}
 
 
 def _side(x: Claim, sources: _Sources) -> dict:
@@ -949,7 +1537,7 @@ def _contradiction(a: Claim, b: Claim, reason: str, c: ClaimCluster, sources: _S
     else:
         parts.append(UNRESOLVED)
     return {"a": sa, "b": sb, "reason": reason, "description": _claims.describe_conflict(a, b, reason),
-            "assessment": " ".join(parts)}
+            "values": _claims.conflict_sides(reason), "assessment": " ".join(parts)}
 
 
 # ---- working memory -----------------------------------------------------------------------------------------

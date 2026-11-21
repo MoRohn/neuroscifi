@@ -692,3 +692,15 @@ def test_feed_partial_failures_are_recorded_as_attempts():
     assert feeds["https://news.example/rss"]["ok"] and feeds["https://news.example/rss"]["n"] == 1
     assert not feeds["https://down.example/rss"]["ok"] and "timeout" in feeds["https://down.example/rss"]["error"]
     assert [a["engine"] for a in out.failures] == ["https://down.example/rss"]
+
+
+def test_registry_clients_mark_the_sentence_they_write():
+    # RT-W-03: the "Latest release ..." sentence is the client's template over the record, not the package's text;
+    # the npm description is kept as the record's summary (ecosystem relevance reads it, RT-W-04).
+    r = PyPIProvider(FakeFetcher({"https://pypi.org/pypi/zstandard/json": PYPI})).search(Query("pypi:zstandard"), 5)[0]
+    assert r.metadata["provider_text"] == "Latest release 0.25.0 uploaded 2025-09-14; requires Python >=3.9."
+    assert r.snippet.startswith(r.metadata["provider_text"] + " Zstandard bindings")
+    url = "https://registry.npmjs.org/@scope%2Fpkg"
+    n = NpmProvider(FakeFetcher({url: NPM_FULL})).search(Query("npm:@scope/pkg"), 5)[0]
+    assert n.metadata["provider_text"] == "Latest release 2.1.0 published 2026-10-30."
+    assert n.metadata["summary"] == "A thing" and n.snippet == "Latest release 2.1.0 published 2026-10-30. A thing"

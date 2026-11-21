@@ -1,7 +1,7 @@
 import {checkFeatures,deviceReceipt,forecast,texture,outcomes,liveRows,vaultKey,newSalt,seal,openBox} from "./field-model.mjs";
 const $=id=>document.getElementById(id), msg=t=>$("fieldmsg").textContent=t;
 let linkedEvidence=[],managedPair=false,pendingId=null, context={}, rows=[], prediction=null, measured=null, vault=null, epoch=0, busy=false, imageGeneration=0;
-let recording=false, sendingEpisode=false, actedAt=-1e9;
+let recording=false, sharingEpisodes=new Set(), actedAt=-1e9;
 const OUTCOME={continued:"Continued",switched:"Switched tasks",paused:"Paused"};
 // After an outcome is recorded, controls drawn where the finger was ignore taps for a moment (P-01).
 const settled=()=>performance.now()-actedAt>700;
@@ -37,14 +37,14 @@ function paint(){
      mutate(list=>list.filter(x=>x.id!==r.id && !(x.pending?.ids.includes(r.id)))).then(()=>{if(prediction?.ids.includes(r.id))reset();msg("Episode forgotten on this device.");$("fieldmsg").focus?.();}).catch(report);
    };
    const send=document.createElement("button");send.textContent="Share episode";send.ariaLabel="Share episode: "+name;send.onclick=async()=>{
-     if(sendingEpisode)return;  // one dialog and one POST per tap (UX 10)
-     sendingEpisode=true;
+     if(sharingEpisodes.has(r.id))return;  // one dialog and one POST per episode while its request is in flight (UX 10, RT-B-01)
+     sharingEpisodes.add(r.id);
      try{
        if(!confirm("Share these categories, outcome and learning choice with the paired Spark for up to 24 hours?"))return;
        await window.pocketBridge("episode",{id:r.id,features:r.features,outcome:r.outcome,learn:r.learn});
        msg("Spark received episode. Manage its copy under Your Spark.");await window.pocketHistory();
      }catch(e){if(!e.revoked)msg(e.status===0?"Your Spark is unreachable. Nothing was shared; retry the same episode when it is back.":"Sharing unconfirmed. Pair or reconnect, then retry the same episode.");}
-     finally{setTimeout(()=>{sendingEpisode=false;},600);}
+     finally{sharingEpisodes.delete(r.id);}
    };
    li.append(block,forget,send);$("historyLocal").append(li);
  }

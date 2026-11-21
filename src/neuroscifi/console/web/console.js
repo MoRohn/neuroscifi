@@ -698,6 +698,7 @@ async function loadQuestions() {
       onclick: (ev) => answerQuestion(q, ev.currentTarget, status, work) });
     const group = (...buttons) => h('div', { class: 'buttons', role: 'group', 'aria-label': `Quick answers to question ${q.id}` }, buttons);
     const web = webScope(q.scope);
+    const parts = questionParts(q);
     let shortcuts = null;
     if (open && change) {
       shortcuts = group(quick('yes', 'Yes, it changed — relearn only that', { resolution: `Confirmed: ${q.scope} changed`, confirm: true }),
@@ -717,10 +718,10 @@ async function loadQuestions() {
     }
     return h('article', { class: 'card', 'data-pending': q.id, 'aria-label': `Question ${q.id}` },
       h('p', {}, badge(q.resolved_at ? 'Resolved' : 'Open', q.resolved_at ? 'neutral' : 'info'), ` #${q.id} · ${q.kind.replace('_', ' ')} · ${web.label ?? q.scope}`),
-      h('p', { class: 'question', text: q.question }),
+      parts.body,
       kv([['Epoch', q.epoch ?? '—'], q.context ? ['Context', q.context] : null, ['Asked', fmtTime(q.created_at)],
         q.resolved_at ? ['Answered', `${fmtTime(q.resolved_at)}: ${q.resolution}`] : null]),
-      web.label ? technical(kv([['Scope', h('code', { text: q.scope })]])) : null,
+      web.label || parts.detail.length ? technical(kv([web.label ? ['Scope', h('code', { text: q.scope })] : null, ...parts.detail])) : null,
       shortcuts, q.resolved_at ? null : form, status);
   })));
 }
@@ -735,13 +736,37 @@ function webScope(scope) {
   return { kind, label };
 }
 
-// The values a contested question offers, e.g. «…» (different values: 389 km vs 412 km); Which holds?
+// The values a contested question offers. Newest form first: a final machine-readable line "values: A | B", then the
+// prose "one says A, another says B", then the older "(different values: A vs B)"; an explicit q.values wins (RT-B-07).
 function contestedValues(q) {
   if (Array.isArray(q.values) && q.values.length) return q.values.map(String).slice(0, 4);
-  const m = /different (?:values|versions|dates|years): ([^;)]+)/.exec(q.question ?? '');
-  if (!m) return [];
-  const values = m[1].split(' vs ').map((v) => v.trim()).filter(Boolean);
+  const text = q.question ?? '';
+  const unquote = (v) => v.trim().replace(/^(['"“‘])(.*)(['"”’])$/, '$2').trim();
+  const lastLine = text.trimEnd().split('\n').pop();
+  let values = [];
+  const marker = /^values:\s*(.+)$/i.exec(lastLine);
+  if (marker) values = marker[1].split('|').map(unquote);
+  else {
+    const says = /one says (.+?), another says (.+?)(?:\.(?=\s|$)|;|\)|$)/.exec(text);
+    if (says) values = [says[1], says[2]].map(unquote);
+    else {
+      const m = /different (?:values|versions|dates|years): ([^;)]+)/.exec(text);
+      if (m) values = m[1].split(' vs ').map((v) => v.trim());
+    }
+  }
+  values = values.filter(Boolean);
   return values.length >= 2 && values.length <= 4 && values.every((v) => v.length <= 80) ? values : [];
+}
+
+// The question in a plain sentence (U-14, U-28): "(gain 8.73 nats)" numbers, a stemmed index key and the machine-readable
+// "values:" line move under Technical detail; `commands` become <code>.
+function questionParts(q) {
+  let text = q.question ?? '';
+  const detail = [];
+  text = text.replace(/\s*\((?:penalised )?(?:gain|llr|log-likelihood)[^)]*\)/gi, (m) => { detail.push(['Evidence strength', m.trim().replace(/^\(|\)$/g, '')]); return ''; });
+  text = text.replace(/(found a meaningful change: )«([a-z0-9]+(?: [a-z0-9]+)+)»/, (m, lead, key) => { detail.push(['Index key', h('code', { text: key })]); return `${lead}the tracked fact`; });
+  text = text.replace(/\n?values:\s*[^\n]+\s*$/i, '');
+  return { body: h('p', { class: 'question' }, ...rich(text)), detail };
 }
 
 async function answerQuestion(q, button, status, body) {
@@ -1798,11 +1823,21 @@ function knowledgeCard(k) {
   const status = h('p', { class: 'msg', role: 'status' });
   const what = short(k.statement, 60);
   const action = (verb, label, cls, work) => h('button', { type: 'button', id: `k-${verb}-${k.id}`, class: cls, text: label,
-    'aria-label': `${label}: ${what}`, onclick: (ev) => work(ev.currentTarget) });
+    'aria-label': `${label}: ${what}`, onclick: (ev) => { web.focusAfterReview = true; work(ev.currentTarget); } });
   const run = (control, path, body, text) => act(control, status, async () => {
     const out = await api('POST', `/api/web/knowledge/${k.id}/${path}`, body);
     const message = text(out);
+    const order = [...$('knowledgeList').querySelectorAll('article[data-knowledge]')].map((a) => a.dataset.knowledge);
     await Promise.all([loadKnowledge(), loadHeader()]);
+    // RT-B-04: the re-render removed the button that had focus. Keep it where the person was: this item's heading, else
+    // the next (then the previous) item's, else the view heading.
+    const hadFocus = web.focusAfterReview;
+    web.focusAfterReview = false;
+    if (hadFocus && !$('knowledgeList').contains(document.activeElement)) {
+      const at = order.indexOf(String(k.id));
+      const next = [k.id, ...order.slice(at + 1), ...order.slice(0, at).reverse()].map((id) => $(`k-title-${id}`)).find(Boolean);
+      (next ?? $('h-knowledge')).focus();
+    }
     say($('knowledgeStatus'), message);
     return message;
   });

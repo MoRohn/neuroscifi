@@ -105,6 +105,11 @@ function list(title,items,view){
   for(const text of items)ul.append(node("li",text));
   view.append(ul);
 }
+// "3 copies, 1 independent source" when several cited documents repeat one origin (parity with the console).
+function copies(x){
+  const c=x?.copies,i=x?.independent_sources;
+  return typeof c==="number"&&typeof i==="number"&&c>i?c+" copies, "+i+" independent source"+(i===1?"":"s"):null;
+}
 function rated(status,confidence){
   const text=[status==="summary"?null:STATUS[status],pct(confidence)].filter(Boolean).join(" · ");
   return text?node("small",text,"rconf"):null;
@@ -131,6 +136,7 @@ function show(t,saved=false){
       const block=item.type==="quote"?node("blockquote"):node("p");
       block.append(node("span",item.type==="quote"?"“"+item.text+"”":item.text),cites(item.citations||[]));
       const rating=rated(item.status,item.confidence);if(rating)block.append(rating);
+      const dup=copies(item)||copies((r.findings||[]).find(f=>f.statement===item.text));if(dup)block.append(node("small",dup,"rcopies"));
       view.append(block);
     }
     if(r.contradictions?.length){
@@ -317,6 +323,7 @@ $("researchform").onsubmit=async e=>{
 document.addEventListener("pocketpair",e=>{
   const next=!!e.detail?.paired, allowed=next&&e.detail?.research===true;
   if(next===paired&&allowed===research){refresh();return;}
+  if(paired&&!next)say("");  // a revoked or erased pairing: no stale outcome of the old one (RT-B-08)
   generation++;clearTimeout(timer);paired=next;research=allowed;tasks=[];away=null;
   if(current&&!current.saved)close();
   drawList();layout();refresh();

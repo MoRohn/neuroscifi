@@ -350,6 +350,11 @@ def _citations(value, n=12):
     return [c for c in value[:n] if type(c) is int] if isinstance(value, list) else []
 
 
+def _count(value):
+    """A small non-negative integer for display, else None (never trusts report JSON blindly)."""
+    return value if type(value) is int and 0 <= value <= 1000 else None
+
+
 def phone_report(report):
     """The report trimmed for a phone: answer, verdict, contradictions, uncertainties, limitations, freshness,
     sources."""
@@ -369,7 +374,8 @@ def phone_report(report):
         "live": bool(report.get("live")),
         "answer": [{"text": _text(a.get("text")), "type": "quote" if a.get("type") == "quote" else "template",
                     "citations": _citations(a.get("citations")),
-                    "status": _text(a.get("status"), 40), "confidence": _confidence(a.get("confidence"))}
+                    "status": _text(a.get("status"), 40), "confidence": _confidence(a.get("confidence")),
+                    "copies": _count(a.get("copies")), "independent_sources": _count(a.get("independent_sources"))}
                    for a in items("answer", 20)],
         "verdict": {"label": verdict["label"], "confidence": _confidence(verdict.get("confidence")),
                     "statement": _text(verdict.get("statement"), 300), "citations": _citations(verdict.get("citations"))}

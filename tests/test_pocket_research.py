@@ -358,7 +358,8 @@ def test_scenario_f_phone_queues_spark_runs_tablet_reads(spark, devices, web):
     assert set(report) == {"live", "answer", "verdict", "contradictions", "uncertainties", "limitations", "freshness",
                            "sources"}
     assert report["verdict"] is None, "only a claim check has a verdict"
-    assert all(set(x) == {"text", "type", "citations", "status", "confidence"} for x in report["answer"])
+    assert all(set(x) == {"text", "type", "citations", "status", "confidence", "copies", "independent_sources"}
+                   for x in report["answer"])
     assert all(x["confidence"] is None or 0 <= x["confidence"] <= 1 for x in report["answer"])
     assert {x["status"] for x in report["answer"][1:]} <= {"corroborated", "single_source", "contested"}
     assert report["live"] is True and len(report["sources"]) == 3
@@ -398,3 +399,17 @@ def test_main_rejects_missing_instance(tmp_path, capsys):
     with pytest.raises(SystemExit):
         bridge.main(["--db", str(tmp_path / "m.sqlite"), "--instance-db", str(tmp_path / "missing.sqlite")])
     assert "cannot open instance" in capsys.readouterr().err
+
+
+def test_phone_report_carries_copies_and_independent_sources():
+    """Integrator fix after L7: the Pocket projection forwarded only text/type/citations/status/confidence, so the
+    "N copies, M independent sources" line never reached a phone. Values are bounded integers or None."""
+    from neuroscifi.pocket.server import phone_report
+    report = phone_report({"answer": [{"text": "q", "type": "quote", "citations": [1, 2, 3], "status": "single_source",
+                                       "confidence": 0.6, "copies": 3, "independent_sources": 1},
+                                      {"text": "r", "type": "quote", "citations": [1], "copies": "3",
+                                       "independent_sources": -1}],
+                           "sources": []})
+    items = report["answer"]
+    assert (items[0]["copies"], items[0]["independent_sources"]) == (3, 1)
+    assert (items[1]["copies"], items[1]["independent_sources"]) == (None, None)

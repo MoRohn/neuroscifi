@@ -74,7 +74,7 @@ def test_result_structure(result):
     assert {"citations", "supported_citations", "precision", "items", "items_every_source_supports"} <= set(pcs)
     assert pcs["supported_citations"] <= pcs["citations"] and pcs["items"] == m["citations"]["quote_items"]
     for key in ("fact_check_discrimination", "number_checks", "latest_version", "cross_subject", "code_literals",
-                "snippet_records", "dating", "package_routing"):
+                "snippet_records", "dating", "package_routing", "top_on_subject"):
         assert key in m["uat"], key
     # the quick subset exercises the plain-package route to the fixture PyPI (structure, not an accuracy bar)
     assert m["uat"]["package_routing"]["questions"] == 1
@@ -142,3 +142,12 @@ def test_implications_are_proposals_with_citations_on_both_sides(tmp_path):
     assert first["web_sources"] == ["https://example.org/paper"]
     assert any(a.startswith("docs/architecture/REQUIREMENTS_MATRIX.md:1") for a in first["repo_anchors"])
     assert implications({"sources": [], "findings": []}, tmp_path)["proposals"] == []
+
+
+def test_consolidation_reports_the_configuration_the_run_used(result):
+    # RC2 L5: the report hard-coded auto_provisional_min_confidence 0.75 while the WebConfig default is 0.72.
+    from neuroscifi.webcortex.config import WebConfig
+    cfg = WebConfig()
+    assert result["metrics"]["consolidation"]["config"] == {
+        "auto_provisional_min_sources": cfg.auto_provisional_min_sources,
+        "auto_provisional_min_confidence": cfg.auto_provisional_min_confidence}

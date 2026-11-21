@@ -515,3 +515,94 @@ def test_research_counter_counts_bytes(research_spark, new_page):
     page.locator("#objective").dispatch_event("input")
     expect(page.locator("#objectivecount")).to_contain_text("too long to send")
     expect(page.locator("#researchsubmit")).to_be_disabled()
+
+
+# ---- RC2 retest (lane L7): RT-B-01, RT-B-02, RT-B-08 ---------------------------------------------------------------
+def test_share_episode_on_a_different_row_is_never_dropped(bridge, new_page):
+    """RT-B-01: only the same episode is guarded, and only while its request is in flight."""
+    page = new_page()
+    sent = posts(page)
+    asked = dialogs(page)
+    page.goto(bridge.url)
+    pair(page)
+    for outcome in ("Continued", "Paused"):
+        predict(page)
+        page.get_by_role("button", name=outcome).click()
+        page.wait_for_timeout(800)
+    shares = page.get_by_role("button", name=re.compile("^Share episode"))
+    expect(shares).to_have_count(2)
+    shares.nth(0).click()
+    shares.nth(1).click()
+    expect(page.locator("#fieldmsg")).to_contain_text("Spark received episode")
+    page.wait_for_timeout(500)
+    routes = [r for r, _ in sent]
+    assert routes.count("episode") == 2, routes
+    assert len(asked) == 2, asked
+    assert not page.problems, page.problems
+
+
+def test_pairing_refusal_explanation_stays_until_dismissed(bridge, new_page):
+    """RT-B-02: errors and stops are not blanket-cleared after 8 seconds; confirmations still are."""
+    page = new_page()
+    page.clock.install()
+    page.goto(bridge.url)
+    pair(page)
+    page.clock.run_for(8100)
+    expect(page.locator("#message")).to_have_text("")  # "Paired." is transient
+    erase_on_spark(bridge)
+    page.locator("#refresh").click()
+    expect(page.locator("#message")).to_have_text("Your Spark no longer accepts this pairing. Pair again.")
+    page.clock.run_for(60_000)
+    expect(page.locator("#message")).to_have_text("Your Spark no longer accepts this pairing. Pair again.")
+    page.locator("#dismiss").click()
+    expect(page.locator("#message")).to_have_text("")
+
+
+def test_revoked_pairing_clears_the_research_message(research_spark, new_page):
+    """RT-B-08: nothing from the old pairing is left in the research panel."""
+    page = new_page()
+    page.goto(research_spark.url)
+    pair(page)
+    page.locator("#objective").fill("Zephyr compiler release notes")
+    page.locator("#researchsubmit").click()
+    expect(page.locator("#researchmsg")).to_contain_text("Queued on your Spark")
+    erase_on_spark(research_spark.bridge)
+    page.locator("#unpair").evaluate("b => b.ownerDocument.defaultView.pocketBridge('state', {}).catch(() => {})")  # next poll
+    expect(page.locator("#linkstate")).to_contain_text("Not paired")
+    expect(page.locator("#researchmsg")).to_have_text("")
+
+
+def test_expired_link_code_is_removed(bridge, new_page):
+    """RT-B-08: the code shown on the sponsoring device disappears when it stops working (five minutes)."""
+    page = new_page()
+    page.clock.install()
+    page.goto(bridge.url)
+    pair(page)
+    page.locator("#linkdevice").click()
+    expect(page.locator("#handoff")).to_contain_text("Enter on your other device")
+    page.clock.run_for(290_000)
+    expect(page.locator("#handoff")).to_contain_text("Enter on your other device")
+    page.clock.run_for(11_000)
+    expect(page.locator("#handoff")).to_have_text("")
+
+
+def test_pocket_shows_copies_and_independent_sources(research_spark, new_page):
+    """Parity with the console (U-18): "N copies, 1 independent source" when the report carries the fields."""
+    page = new_page()
+
+    def patched(route):
+        body = route.fetch().json()
+        for item in (body.get("report") or {}).get("answer", []):
+            if item.get("status") not in (None, "summary"):
+                item["copies"], item["independent_sources"] = 3, 1
+        route.fulfill(json=body)
+
+    page.route("**/api/research_get", patched)
+    page.goto(research_spark.url)
+    pair(page)
+    page.locator("#objective").fill("What is the latest version of the Zephyr compiler?")
+    page.locator("#researchsubmit").click()
+    expect(page.locator("#researchstage")).to_contain_text("Queued")
+    research_spark.work()
+    expect(page.locator("#researchstage")).to_have_text("Completed", timeout=15_000)
+    expect(page.locator("#researchbody .rcopies").first).to_have_text("3 copies, 1 independent source")

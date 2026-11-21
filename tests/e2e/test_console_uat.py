@@ -683,3 +683,114 @@ def test_axe_every_view(research, new_page, size):
     scan(page, found, "dialog")
     page.keyboard.press("Escape")
     assert found == {}, found
+
+
+# ---- RC2 retest (lane L7): RT-B-04, RT-B-05, RT-B-07, U-14/U-28 leftovers ---------------------------------------------
+
+@pytest.mark.parametrize("width,height", [(768, 1024), (1024, 1366), (1280, 900)])
+def test_row_actions_stay_inside_the_table_box_on_tablets(uat, new_page, width, height):
+    """RT-B-05: Research history (768 px of columns) and Monitors (805 px) clipped their actions beside the navigation."""
+    for k in range(2):
+        task(uat, f"How long is river number {k} in the Varnel basin of the northern province?")
+    db = uat.db()
+    scheduler.monitor_add(db, "Varnel River length re-measurements and survey reports", time.time(), interval=86400,
+                          authorized_by="owner")
+    db.close()
+    page = new_page(width, height)
+    page.goto(uat.url)
+    go(page, "research")
+    for slot in ("#taskList", "#monitorList"):
+        wrap = page.locator(f"{slot} .tablewrap")
+        expect(wrap).to_be_visible()
+        assert page.evaluate(f"(() => {{ const w = document.querySelector('{slot} .tablewrap'); "
+                             "return w.scrollWidth <= w.clientWidth; })()"), (slot, width)
+        box = wrap.bounding_box()
+        for b in page.locator(f"{slot} tbody button").all():
+            r = b.bounding_box()
+            assert r["x"] >= box["x"] - 1 and r["x"] + r["width"] <= box["x"] + box["width"] + 1, (slot, width, r, box)
+    assert not page.problems, page.problems
+
+
+def test_knowledge_review_keeps_keyboard_focus(research, new_page):
+    """RT-B-04: Accept / Reject / Forget re-render the list; focus must not fall to the page body."""
+    page = new_page(1280, 900)
+    page.goto(research.url)
+    go(page, "research")
+    enable_web(page)
+    page.locator("#askObjective").fill(QUESTION)
+    page.locator("#askMode").select_option("fact_verification")
+    page.locator("#askBtn").click()
+    finish(page)
+    page.locator("#reviewLink a").click()
+    settle(page, "knowledge")
+    page.locator("#kStatus").select_option("")
+    first = page.locator("#knowledgeList article[data-knowledge]").first
+    kid = first.get_attribute("data-knowledge")
+    first.get_by_role("button", name=re.compile("^Accept")).focus()
+    page.keyboard.press("Enter")
+    expect(page.locator("#knowledgeStatus")).to_contain_text(f"Accepted knowledge #{kid}")
+    focus = page.evaluate("[document.activeElement.tagName, document.activeElement.id]")
+    assert focus[0] != "BODY" and (focus[1].startswith("k-") or focus[1] == "h-knowledge"), focus
+    page.locator(f"#k-forget-{kid}").focus()
+    page.keyboard.press("Enter")
+    page.locator("#confirmDialog").get_by_role("button", name="Forget").click()
+    expect(page.locator("#knowledgeStatus")).to_contain_text(f"Forgot knowledge #{kid}")
+    focus = page.evaluate("[document.activeElement.tagName, document.activeElement.id]")
+    assert focus[0] != "BODY", focus
+    assert not page.problems, page.problems
+
+
+def ask_web(u, scope, text):
+    db = u.db()
+    with store.write(db):
+        qid = knowledge.open_question(db, scope, text, time.time())
+    db.close()
+    return qid
+
+
+@pytest.mark.parametrize("text,values", [
+    ("«The Varnel River is 389 kilometres long»: one says 389 km, another says 412 km. Nothing was stored as knowledge. "
+     "Which holds?", ["389 km", "412 km"]),
+    ("Sources disagree about NumPy: one says 2.3, another says 2.4. Nothing was stored. Which holds?", ["2.3", "2.4"]),
+    ("Sources disagree about the river. Which holds?\nvalues: 389 km | 412 km | 400 km", ["389 km", "412 km", "400 km"]),
+    ("Sources disagree about the river (different values: 389 km vs 412 km). Which holds?", ["389 km", "412 km"]),
+])
+def test_contested_question_has_one_button_per_value(uat, new_page, text, values):
+    """RT-B-07: the backend wording changed ("one says A, another says B"; a final "values: A | B" line)."""
+    qid = ask_web(uat, "web:contested:00000000-0000-4000-8000-000000000002:0", text)
+    page = new_page(1280, 900)
+    page.goto(uat.url)
+    go(page, "questions")
+    card = page.locator(f"article[data-pending='{qid}']")
+    for v in values:
+        expect(card.get_by_role("button", name=re.compile("^" + re.escape(v) + " holds"))).to_be_visible()
+    assert card.get_by_role("button", name=re.compile(" holds ")).count() == len(values)
+    assert not re.search(r"^values:", card.locator("p.question").inner_text(), re.M), "the machine-readable line is not shown"
+
+
+def test_question_text_is_plain_with_numbers_and_keys_under_technical_detail(uat, new_page):
+    """U-14, U-28 leftovers: no nats or stemmed keys in the sentence; `nsf web evidence` is <code>, not backticks."""
+    calibrate = uat.db()
+    with store.write(calibrate):
+        cid = calibrate.execute(
+            "INSERT INTO pending(epoch,kind,scope,question,created_at) VALUES(NULL,'calibrate','camera:cam-north',?,?)",
+            ("The readings for camera:cam-north since evidence #17 fit a flipped mapping (gain 8.73 nats). Did "
+             "camera:cam-north change? Please confirm and recalibrate. (evidence through #28)", time.time())).lastrowid
+    calibrate.close()
+    mid = ask_web(uat, "web:finding:1", "Monitor #1 «Zephyr compiler releases» found a meaningful change: «compiler "
+                  "releas version zephyr» changed from v4.2.0 to v4.3.0. See the console (Research, Monitors) or "
+                  "`nsf web evidence` for the task; answer to keep tracking it.")
+    page = new_page(1280, 900)
+    page.goto(uat.url)
+    go(page, "questions")
+    first = page.locator(f"article[data-pending='{cid}']")
+    sentence = first.locator("p.question").inner_text()
+    assert "nats" not in sentence and "gain" not in sentence, sentence
+    assert "Did camera:cam-north change?" in sentence
+    assert first.locator("details.tech").text_content().count("8.73 nats") == 1
+    second = page.locator(f"article[data-pending='{mid}']")
+    text = second.locator("p.question").inner_text()
+    assert "releas version" not in text and "`" not in text, text
+    expect(second.locator("p.question code")).to_have_text("nsf web evidence")
+    assert "compiler releas version zephyr" in second.locator("details.tech").text_content()
+    assert not page.problems, page.problems

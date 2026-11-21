@@ -16,8 +16,12 @@ Contract (ARCHITECTURE §4.1)
   then JSON-LD, meta (article:*, citation_*, Dublin Core, itemprop), then `<time datetime>`;
   `metadata["date_source"]` names the source used for `published_at` ("feed" for the hint). The HTTP Last-Modified
   header is never a publication date (servers stamp it on every deploy): it only fills `modified_at`, with
-  `metadata["modified_source"] = "http-last-modified"`. Parsing goes through temporal.parse_date_precision first
-  (time-zone offsets kept), Unix epochs in seconds or milliseconds (og:updated_time="1663021219") are accepted;
+  `metadata["modified_source"] = "http-last-modified"`. A page with no publication date but its own modification
+  date (JSON-LD dateModified, article:modified_time, og:updated_time, dcterms.modified, datemodified) is dated by
+  it as the best available date: `published_at` = that date, `date_source` "json-ld:dateModified" or
+  "meta:<name>" (e.g. "meta:og:updated_time"), so consumers can tell a modification date from a publication date.
+  `<meta http-equiv="last-modified">` mirrors the server header and is never used. Parsing goes through
+  temporal.parse_date_precision first (time-zone offsets kept), Unix epochs in seconds or milliseconds (og:updated_time="1663021219") are accepted;
   a bare year ("2019") is year precision, not a publication time, and is never used as `published_at`. JSON-LD is walked breadth-first over at most
   MAX_LD_NODES nodes and depth 6.
 - Hostile markup is refused before parsing (FetchError('decode_error')): a tag longer than MAX_TAG_CHARS, a tag
@@ -576,13 +580,14 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
 
     # dates
     published = modified = None
-    source = None
+    source = modified_source = None
     for obj in ld:
         if published is None and obj.get("datePublished"):
             published = _parse_date(obj.get("datePublished"))
             source = "json-ld" if published is not None else None
         if modified is None and obj.get("dateModified"):
             modified = _parse_date(obj.get("dateModified"))
+            modified_source = "json-ld:dateModified" if modified is not None else None
     if published is None:
         for name in ("article:published_time", "citation_publication_date", "citation_date", "citation_online_date",
                      "dc.date", "dc.date.issued", "dcterms.issued", "dcterms.created", "dc.date.created",
@@ -609,7 +614,10 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
             value, _ = _first(metas, name)
             modified = _parse_date(value) if value else None
             if modified is not None:
+                modified_source = f"meta:{name}"
                 break
+    if published is None and modified is not None and modified_source != "meta:last-modified":
+        published, source = modified, modified_source     # best available: the page's own last-modified date
     if source:
         metadata["date_source"] = source
 

@@ -6,11 +6,12 @@ const shared = new Map();  // ids this tab shared since pairing: memory only, ne
 const guards = new Set();  // one-shot actions in flight (double-tap guard), released shortly after they finish
 const paused = channel => "Learning is paused for " + channel + ". Resume it under Evening review, or share without learning.";
 const UNREACHABLE = "Your Spark is unreachable. Check that this device is on the same network and Pocket is running on your Spark.";
-// One status line (U-09): it clears itself after 8 seconds or with Dismiss, so it never hides controls for long.
-const statusText = text => {
+// One status line (U-09): plain confirmations (`transient`) clear themselves after 8 seconds; errors, stops and refusals
+// stay until Dismiss (RT-B-02) so the explanation is still there when the person looks back.
+const statusText = (text, transient = false) => {
   el("message").textContent = text;
   clearTimeout(messageTimer);
-  if (text) messageTimer = setTimeout(() => { if (el("message").textContent === text) el("message").textContent = ""; }, 8000);
+  if (text && transient) messageTimer = setTimeout(() => { if (el("message").textContent === text) el("message").textContent = ""; }, 8000);
 };
 // Focus moves only when the control that had it was disabled or hidden by the action (WCAG 2.4.3).
 function rescue(target) {
@@ -212,7 +213,7 @@ async function spokenActivity() {
       if (results.length===1 && results[0].isFinal) {
         const label=results[0][0].transcript.trim().toLowerCase().replace(/[.!?]$/,"");
         if (["focus","walk","rest","other"].includes(label)) {
-          review(item("activity",label)); statusText("Review the suggested activity before sharing.");
+          review(item("activity",label)); statusText("Review the suggested activity before sharing.", true);
         } else statusText("Speech discarded. Tap an activity or try a single label.");
       }
       stop();
@@ -325,7 +326,7 @@ el("pairform").onsubmit=async e=>{
     key=reply.key; refused=false; reach="ok"; shared.clear(); el("code").value=""; el("pairform").hidden=true; el("paired").hidden=false;
     el("pairhelp").textContent="This tab is paired. Shared observations expire after 24 hours.";
     linkText(); buttons(); el("refresh").focus();
-    try { await historyView(); statusText("Paired."); }
+    try { await historyView(); statusText("Paired.", true); }
     catch (err) { failure(err, "Paired, but history is unavailable right now. Use Refresh history."); }
   } finally { pairingNow=false; }
 };
@@ -335,7 +336,7 @@ el("save").onclick=async ()=>{
   try {
     await api("save",{...current,learn:el("learn").checked});
     if (draft===current) review(null);
-    await historyView(); statusText("Shared.");
+    await historyView(); statusText("Shared.", true);
   } catch (e) {failure(e, e.status===423 ? paused(current.channel) : e.status===0 ? "Nothing was shared; the observation is still waiting." : "Could not confirm sharing. Refresh history before retrying.");}
   finally {sharing=false; buttons(); rescue(draft ? el("save") : el("draft"));}
 };
@@ -364,7 +365,9 @@ window.pocketBridge=api; window.pocketHistory=historyView; window.pocketSound=()
 // One dialog and one code per tap, however fast the taps (UX 10).
 el("linkdevice").onclick=()=>once("link", async()=>{
   if(!confirm("Allow your other device to read and forget shared field episodes? Keep this code private."))return;
-  try{const current=key;const reply=await api("link",{});if(document.hidden||key!==current)return;el("handoff").textContent="Enter on your other device within five minutes: "+reply.code;}
+  try{const current=key;const reply=await api("link",{});if(document.hidden||key!==current)return;const text="Enter on your other device within five minutes: "+reply.code;el("handoff").textContent=text;
+    // The code stops working after five minutes: stop showing it then (RT-B-08).
+    setTimeout(()=>{if(el("handoff").textContent===text)el("handoff").textContent="";},300000);}
   catch(e){failure(e, e.code==="family_full" ? "This pairing already has 6 devices. Forget one before linking another." : "Link unavailable.");}
 });
 

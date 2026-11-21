@@ -473,3 +473,22 @@ def test_the_worker_recovers_a_dead_workers_task_without_waiting_for_the_lease(i
                           lease_expires_at=T0 + 10 * HOUR)
     assert scheduler.claim_next(db, "worker-2", T0 + 1) == (crashed["id"], True)
     assert scheduler.claim_next(db, "worker-2", T0 + 2) is None
+
+
+def test_curiosity_researches_a_statements_own_words_never_a_record_template(individual, monkeypatch):
+    """W-20 (w12 live): curiosity objectives were built from record templates ("OpenAlex record Yes human brain
+    ..."); a template is skipped, any other statement is researched by its own words (intent.query_text)."""
+    from neuroscifi.webcortex import curiosity
+    db, _ = individual
+    state.set_config(db, {"autonomous": True, "daily_autonomous": {"tasks": 5, "requests": 100,
+                                                                    "bytes": 10_000_000}}, T0)
+    template = 'OpenAlex record: "Yes, the human brain has around 86 billion neurons", dated 2025-02-06.'
+    plain = "The Varnel River is 412 kilometres long and drains the Ostra basin."
+    candidates = [{"excluded": False, "kind": "gap", "mode": "gap_resolution", "reason": "single source",
+                   "target": {"knowledge_id": n, "key": "k", "statement": text}}
+                  for n, text in ((1, template), (2, plain))]
+    monkeypatch.setattr(curiosity, "rank", lambda db, now, limit=10: candidates)
+    report = scheduler.tick(db, T0, None, queue=True)
+    assert any(s.get("target", {}).get("knowledge_id") == 1 and "template" in s["reason"] for s in report["skipped"])
+    [queued] = report["queued"]
+    assert state.task(db, queued["task_id"])["objective"] == "Varnel River 412 kilometres long drains Ostra basin"

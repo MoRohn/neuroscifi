@@ -173,8 +173,10 @@ together too top total try trying turn type under until up upgrade upgraded upgr
 user users using usual value very via want was way ways we web well went were what when where whether which while
 who whole why will with within without work working works world would write year years yet you your
 """.split())
-_PYPI_HINT = re.compile(r"\b(?:python|pypi|pip)\b", re.I)
-_NPM_HINT = re.compile(r"\b(?:npm|node(?:\.js)?|nodejs|javascript|typescript)\b", re.I)
+_PYPI_HINT = re.compile(r"\b(?:python3?|pypi|pip|conda|anaconda|jupyter|ipython|dataframes?|data\s+science|"
+                        r"machine\s+learning|scientific\s+(?:python|computing)|array\s+computing)\b", re.I)
+_NPM_HINT = re.compile(r"\b(?:npm|node(?:\.js)?|nodejs|javascript|typescript|js|ts|yarn|pnpm|deno|react|vue|"
+                       r"angular|webpack|frontend|front-end)\b", re.I)
 MAX_INFERRED_PACKAGES = 3
 _SIDE_PREDICATE = frozenset("""latest newest newer recent current stable lts release releases released version
 versions date dates update updates updated changelog changelogs advisory advisories security vulnerability
@@ -301,12 +303,8 @@ def _plain_packages(question: str, known=(), *, plain_words: bool = True) -> lis
                 or re.fullmatch(r"[\d.]+", name) or name.startswith(_HYPHEN_PREFIX)):
             continue
         names.append(name)
-    if _PYPI_HINT.search(text) and not _NPM_HINT.search(text):
-        ecosystems = ("PyPI",)
-    elif _NPM_HINT.search(text) and not _PYPI_HINT.search(text):
-        ecosystems = ("npm",)
-    else:
-        ecosystems = ("PyPI", "npm")
+    hint = ecosystem_hint(text)
+    ecosystems = (hint,) if hint else ("PyPI", "npm")
     out = []
     for name in names[:MAX_INFERRED_PACKAGES]:
         m = re.search(rf"(?<![\w.-]){re.escape(name)}\s+v?(\d+(?:\.\d+)+[\w.+-]*)", text, re.I)
@@ -316,6 +314,14 @@ def _plain_packages(question: str, known=(), *, plain_words: bool = True) -> lis
                 continue
             out.append({"ecosystem": eco, "name": name, "version": version, "inferred": True})
     return out
+
+
+def ecosystem_hint(text: str) -> str | None:
+    """The package ecosystem the wording points to: "PyPI" (python, pip, pypi, conda, jupyter, data science,
+    scientific/array computing ...), "npm" (npm, node, javascript, typescript, yarn, react ...), or None when it
+    names neither or both (synthesis.package_ecosystems then decides from the records themselves)."""
+    py, js = bool(_PYPI_HINT.search(text or "")), bool(_NPM_HINT.search(text or ""))
+    return "PyPI" if py and not js else ("npm" if js and not py else None)
 
 
 def _month_window(month: int, now: float) -> float:
@@ -636,7 +642,13 @@ def searchable_text(text: str) -> bool:
 def query_text(statement: str, *, limit: int = 8, local_terms=()) -> str:
     """Search text for a stored statement (curiosity, refresh, hypotheses): the statement's own topical words in
     their original form and order — never claim-key stems — without URLs, citation markers, function, cue and
-    temporal words or references to the individual's own system. '' when nothing searchable remains."""
+    temporal words or references to the individual's own system. '' when nothing searchable remains. A templated
+    statement over a structured record ("OpenAlex record: \"T\", dated ...") searches for the record's subject (T),
+    never for the template's frame (W-20: "OpenAlex record Yes human brain ...")."""
+    from .claims import record_template
+    subject = record_template(str(statement or ""))
+    if subject is not None:
+        statement = subject
     text = re.sub(r"\[\d+(?:[,\s]+\d+)*\]", " ", _URL.sub(" ", str(statement or "")))
     text = text.replace("«", " ").replace("»", " ").replace("“", " ").replace("”", " ").replace('"', " ")
     return keywords(strip_local(text, local_terms)[0], limit=limit)

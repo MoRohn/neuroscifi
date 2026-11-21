@@ -18,7 +18,7 @@ vm.runInContext(readFileSync(new URL("../../src/neuroscifi/pocket/web/sw.js",imp
 async function lifecycle(name){let work;callbacks[name]({waitUntil:p=>work=p});await work;}
 async function read(path,method="GET"){let answer;callbacks.fetch({request:{url:"https://example.test"+path,method},respondWith:p=>answer=p});return answer;}
 await lifecycle("install");await lifecycle("activate");
-const installed=[...stores.get("neuroscifi-pocket-shell-8").keys()];
+const installed=[...stores.get("neuroscifi-pocket-shell-9").keys()];
 // Plan p.20 names six shell assets; the manifest and its icon make eight (ADR-015) and the Research module nine
 // (ADR-028: saved findings must reopen offline). Documented deviations.
 assert.equal(installed.length,9);assert(installed.includes("/manifest.webmanifest")&&installed.includes("/icon.svg"));

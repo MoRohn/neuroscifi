@@ -61,9 +61,11 @@ autonomous.
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timezone
 import hashlib
 import math
 import os
+import re
 import socket
 import sqlite3
 import time
@@ -88,6 +90,8 @@ API_PROVIDERS = ("wikipedia", "arxiv", "openalex", "crossref", "pubmed", "pypi",
 SNIPPET_ONLY = ("wikipedia",)  # search hits whose metadata is a snippet: read the article, never the snippet
 CONFIG_RECHECK = 2.0          # seconds between re-reads of the web configuration (enabled, deny_domains) in a run
 WEB_OFF = "Web access was turned off during the run"
+NO_CLAIM_LEADS = ("No usable claims were extracted", "No source was read")       # synthesis._lead without claims
+NO_CLAIM_LIMITATIONS = ("No claim relevant", "No source was read")             # synthesis limitations, likewise
 _PUBLIC = ("id", "objective", "mode", "status", "stage", "origin", "family", "parent_id", "budget", "usage",
            "result", "error", "executed_on", "created_at", "updated_at", "started_at", "finished_at",
            "cancel_requested")
@@ -473,6 +477,7 @@ class _Run:
         self.stage_failed = []
         self.holder = services.holder
         self.deny_list = tuple(self.cfg.deny_domains)
+        self.denied_at_start = frozenset(d.strip(".").lower() for d in self.deny_list)
         self.config_read = time.monotonic()
 
     def clock(self):
@@ -568,23 +573,29 @@ class _Run:
                 pass
         self.event("decision", {"deny_domains_updated": len(denied)}, None)
 
-    def denied(self, url) -> bool:
-        """`url`'s host is on the owner's deny list as last read (recheck_config)."""
+    def denied(self, url) -> str | None:
+        """The owner's deny-list entry (as last read, recheck_config) that `url`'s host falls under, else None."""
         from urllib.parse import urlsplit
         try:
             host = (urlsplit(url).hostname or "").lower().rstrip(".")
         except ValueError:
-            return False
-        return any(host == d.strip(".") or host.endswith("." + d.strip(".")) for d in self.deny_list if d.strip("."))
+            return None
+        return next((d.strip(".").lower() for d in self.deny_list if d.strip(".") and
+                     (host == d.strip(".").lower() or host.endswith("." + d.strip(".").lower()))), None)
 
     def skip_denied(self, url, provider) -> bool:
-        """Record and skip a candidate whose host the owner denied during the run."""
-        if not self.denied(url):
+        """Record and skip a candidate whose host the owner denied. A domain denied *during* the run (not on the
+        list when it started) makes the run 'partial' and says so (RT-W-07): the report no longer covers what the
+        question asked for when it was submitted."""
+        domain = self.denied(url)
+        if domain is None:
             return False
         failure = {"stage": "reading", "provider": provider, "code": "blocked_policy", "url": url,
                    "detail": "domain is on the deny list"}
         self.failures.append(failure)
         self.event("error", failure, "reading")
+        if domain not in self.denied_at_start:
+            self.limit(f"the owner denied {domain} during the run: sources on it were not read")
         return True
 
     def note(self, why):
@@ -672,25 +683,49 @@ class _Run:
 
     def screened(self, plan: QueryPlan) -> QueryPlan:
         """Drop planned queries the privacy screen flags. Under owner-approved disclosure a query is kept when every
-        finding in it is private text the objective itself contained (the authorisation covers exactly that), and
-        the disclosure is recorded as a decision event (counts and kinds only)."""
+        finding in it is private text the objective itself contained (the authorisation covers exactly that),
+        compared in normalised form (_finding_key: NFKC, digits only for phone numbers, case-folded e-mail
+        addresses and terms), so a value the planner reformatted ("+1 (415) 555-0100" -> "1 415 555 0100") is
+        still the authorised one (RT-B-03). A finding the planner shortened beyond that (a part of exactly one
+        authorised value of its kind: "415 555 0100") is replaced in the query by the authorised original instead
+        of dropping the query; any other private value still drops it. The disclosure is recorded as a decision
+        event (counts and kinds only)."""
         cfg = state.get_config(self.db)
-        allowed = set()
+        allowed, originals = set(), {}
         if self.authorized:
-            allowed = {_found_text(self.objective, f) for f in screen(self.db, self.objective, cfg)}
-        kept, dropped, disclosed = [], [], []
+            for f in screen(self.db, self.objective, cfg):
+                key = _finding_key(self.objective, f)
+                allowed.add(key)
+                originals.setdefault(f["kind"], {})[key] = self.objective[f["offset"]:f["offset"] + f["length"]]
+        kept, dropped, disclosed, restored = [], [], [], 0
         for q in plan.queries:
             found = screen(self.db, q.text, cfg)
-            if found and allowed and all(_found_text(q.text, f) in allowed for f in found):
+            if found and allowed and not all(_finding_key(q.text, f) in allowed for f in found):
+                text = q.text
+                for f in sorted(found, key=lambda f: -f["offset"]):       # right to left: offsets stay valid
+                    key = _finding_key(q.text, f)
+                    if key in allowed:
+                        continue
+                    value = key.split(":", 1)[1]
+                    same = [o for k, o in (originals.get(f["kind"]) or {}).items()
+                            if value and (k.split(":", 1)[1].endswith(value) or value in k.split(":", 1)[1])]
+                    if len(same) == 1:          # the authorised value, shortened by the planner (+1 dropped)
+                        text = text[:f["offset"]] + same[0] + text[f["offset"] + f["length"]:]
+                if text != q.text:
+                    refound = screen(self.db, text, cfg)
+                    if all(_finding_key(text, f) in allowed for f in refound):
+                        q, found, restored = replace(q, text=text), refound, restored + 1
+            if found and allowed and all(_finding_key(q.text, f) in allowed for f in found):
                 disclosed.append((q, found))
                 kept.append((q, found))
             else:
                 (dropped if found else kept).append((q, found))
         if disclosed:
-            self.event("decision", {"disclosed_under_authorization": len(disclosed),
-                                    "authorization": AUTHORIZED_DISCLOSURE,
-                                    "findings": sorted({f["kind"] for _, fs in disclosed for f in fs})},
-                       "discovering")
+            detail = {"disclosed_under_authorization": len(disclosed), "authorization": AUTHORIZED_DISCLOSURE,
+                      "findings": sorted({f["kind"] for _, fs in disclosed for f in fs})}
+            if restored:
+                detail["authorized_text_restored"] = restored
+            self.event("decision", detail, "discovering")
         if dropped:
             self.event("decision", {"dropped_queries": len(dropped),
                                     "findings": sorted({f["kind"] for _, fs in dropped for f in fs})}, "discovering")
@@ -768,6 +803,7 @@ class _Run:
             raise FetchError("decode_error", r.url, "the article has no readable text")
         from .search import parse_iso_date
         edited = parse_iso_date(found.get("last_edited"))
+        meta.pop("snippet_only", None)      # the hit was a snippet; this document is the article itself (RT-W-01)
         page = SearchResult(url=found.get("url") or r.url, title=found.get("title") or r.title, snippet="",
                             provider=r.provider, rank=r.rank, kind=r.kind, published_at=edited or r.published_at,
                             metadata=meta | {"abstract": text, "last_edited": found.get("last_edited") or
@@ -1171,8 +1207,16 @@ class _Run:
         salience = self.by_salience()
         if salience:
             self.event("decision", {"extraction": "document salience: the objective names no topic, so each "
-                                                  "page's title is its topic"}, "evaluating")
+                                                  "page's most informative sentences are its notable statements"},
+                       "evaluating")
+        from . import synthesis
+        aside = synthesis.package_ecosystems(self.objective, assessment, self.documents)["aside"]
+        if aside:       # RT-W-04: another ecosystem's package of the same name is read, never evidence
+            self.event("decision", {"packages_set_aside": sorted(aside)}, "evaluating")
         for doc in self.documents:
+            if (doc.canonical_url or doc.final_url or doc.url) in aside:
+                per_doc.append((doc, 0))
+                continue
             try:
                 extracted = self.extract_claims(doc, salience)
             except Exception as exc:   # one untrusted document never costs the task its other claims
@@ -1208,31 +1252,18 @@ class _Run:
         self.done("evaluating", clusters=saved)
 
     def by_salience(self) -> bool:
-        """Claims are extracted by document salience when the objective names no topic: a crawl ("investigate
-        these sources: URL ...") or an objective with no topical word once URLs are removed."""
-        if (self.checkpoint.get("context") or {}).get("crawl"):
-            return True
+        """Claims are extracted by document salience when the objective names no topic once URLs and request
+        words are removed ("Investigate these sources: URL", "What has changed on URL since last week?")."""
         from . import intent
-        query_text = getattr(intent, "query_text", None)
-        return query_text is not None and not query_text(self.objective)
+        return not intent.query_text(self.objective)
 
     def extract_claims(self, doc, salience):
-        """claims.extract_claims for one document; by salience the topic is the page's title (and the objective's
-        own words), passed as `topic` when extract_claims accepts it, else as the question."""
-        import inspect
+        """claims.extract_claims for one document; without a topic, by salience (claims.informativeness): the
+        page's notable statements, not answers to a question (W-19)."""
         from . import claims
         if not salience:
             return claims.extract_claims(doc, self.objective)
-        from . import intent
-        words = getattr(intent, "query_text", lambda text: "")(self.objective)
-        topic = " ".join(x for x in (doc.title or "", words) if x).strip() or (doc.domain or self.objective)
-        try:
-            takes_topic = "topic" in inspect.signature(claims.extract_claims).parameters
-        except (TypeError, ValueError):
-            takes_topic = False
-        if takes_topic:
-            return claims.extract_claims(doc, self.objective, topic=topic)
-        return claims.extract_claims(doc, topic)
+        return claims.extract_claims(doc, "", salience=True)
 
     # ---- synthesizing -------------------------------------------------------------------------------------------
     def synthesize(self):
@@ -1288,6 +1319,21 @@ def _host(url) -> str:
 
 def _found_text(text, finding) -> str:
     return text[finding["offset"]:finding["offset"] + finding["length"]].casefold()
+
+
+def _finding_key(text, finding) -> str:
+    """A privacy finding's value in comparable form: NFKC and case-folded; a phone number as its digits only; an
+    e-mail address or other value without whitespace; a term with separators collapsed (RT-B-03)."""
+    import unicodedata
+    raw = unicodedata.normalize("NFKC", _found_text(text, finding))
+    kind = finding.get("kind")
+    if kind == "phone":
+        value = re.sub(r"[^0-9]", "", raw)
+    elif kind == "private_term":
+        value = " ".join(x for x in re.split(r"[\s_.·-]+", raw) if x)
+    else:
+        value = re.sub(r"\s+", "", raw)
+    return f"{kind}:{value}"
 
 
 def _same_site(url, domain):
@@ -1431,6 +1477,8 @@ def _execute(db, task_id, services, *, resume):
                 status, error = _nothing_read(db, run, report, failed)
                 if status == "failed":   # a retry (requeue/resume) searches and reads again
                     run.checkpoint["stages_done"] = []
+            elif run.mode == "change_detection":
+                _compare_with_previous(db, run, report)
     except state.LostLease:
         return _lost_lease(db, task_id, run)
     except _Cancelled:
@@ -1556,18 +1604,27 @@ def _retrieval_failed(run):
         return f"Nothing could be read: every source tried failed ({_labels(reading)})"
     searching = [f for f in real if f.get("stage") == "discovering"]
     attempts = run.checkpoint.get("attempts") or []
-    if searching and not run.checkpoint.get("results") and not any(a.get("ok") for a in attempts):
-        return f"Nothing could be read: every search provider failed ({_labels(searching)})"
-    return None
+    if not searching or run.checkpoint.get("results") or any(a.get("n") for a in attempts):
+        return None
+    # An empty answer counts as an answer only from a specialist ("no such package": the registry knows); a general
+    # web provider whose engines came back empty while others failed found nothing, which is not an answer
+    # (W-21/RT-W-08: brave 429, startpage error, duckduckgo/bing empty and wikipedia circuit_open read nothing).
+    general = {getattr(p, "name", None) for p in getattr(run.services.registry, "providers", None) or []
+               if getattr(p, "general_web", False)}
+    if any(a.get("ok") and not a.get("engine") and a.get("provider") not in general for a in attempts):
+        return None
+    empty = any(a.get("ok") for a in attempts)
+    return f"Nothing could be read: every search provider failed{' or found nothing' if empty else ''} " \
+           f"({_labels(searching)})"
 
 
 def _nothing_read(db, run, report, why):
     """A run that read nothing because retrieval failed is 'failed', not 'completed' (or 'partial' when the
     individual already knows something about the question: the report points at that knowledge). Returns
     (status, error)."""
-    limitations = [x for x in report.get("limitations") or [] if not str(x).startswith("No claim relevant")]
+    limitations = [x for x in report.get("limitations") or [] if not str(x).startswith(NO_CLAIM_LIMITATIONS)]
     report["limitations"] = [why] + limitations
-    _reword_lead(report, "No usable claims were extracted", f"{why}.")
+    _reword_lead(report, NO_CLAIM_LEADS, f"{why}.")
     known = []
     try:
         from . import knowledge
@@ -1582,6 +1639,57 @@ def _nothing_read(db, run, report, why):
         report["memory"] = {"answered_from_memory": False, "knowledge_ids": [i["id"] for i in known[:3]]}
         return "partial", None
     return "failed", why
+
+
+def _compare_with_previous(db, run, report):
+    """change_detection (W-20): compare the pages read with the previous finished change_detection run that read
+    the same page (its snapshot: content hash and extracted statements, as stored with its sources and claims).
+    report["change"] = {"baseline_task", "since", "unchanged", "pages": [{url, content_changed, added, removed}]}
+    and the lead says "Unchanged since <date>" or what changed; without an earlier run this run is the baseline."""
+    pages = {d.canonical_url: d for d in run.documents if d.kind != "api" and d.canonical_url}
+    if not pages:
+        return
+    marks = ",".join("?" * len(pages))
+    row = db.execute(f"SELECT t.id, t.finished_at FROM web_tasks t JOIN web_sources s ON s.task_id = t.id "
+                     f"WHERE t.mode = 'change_detection' AND t.status IN ('completed', 'partial') AND t.id != ? "
+                     f"AND s.canonical_url IN ({marks}) ORDER BY t.finished_at DESC, t.rowid DESC LIMIT 1",
+                     (run.id, *pages)).fetchone()
+    lead = (report.get("answer") or [{}])[0]
+    if row is None:
+        report["change"] = {"baseline_task": None, "since": None, "unchanged": None, "pages": []}
+        lead["text"] = (f"First check of {', '.join(sorted(pages))[:300]}: no earlier snapshot to compare with; "
+                        f"this run is the baseline. {lead.get('text') or ''}").strip()
+        return
+    base_id, since = row
+    before = {s["canonical_url"]: s["content_sha256"] for s in state.sources(db, base_id)}
+    old_claims, new_claims = {}, {}
+    for c in state.claims(db, base_id):
+        old_claims.setdefault(c["canonical_url"], set()).add(" ".join(c["text"].split()))
+    for c in state.claims(db, run.id):
+        new_claims.setdefault(c["canonical_url"], set()).add(" ".join(c["text"].split()))
+    rows = []
+    for url, doc in sorted(pages.items()):
+        if url not in before:
+            continue
+        old, new = old_claims.get(url, set()), new_claims.get(url, set())
+        rows.append({"url": url, "content_changed": bool(doc.content_sha256 and before[url] and
+                                                         doc.content_sha256 != before[url]),
+                     "added": sorted(new - old), "removed": sorted(old - new)})
+    unchanged = all(not r["content_changed"] and not r["added"] and not r["removed"] for r in rows)
+    day = datetime.fromtimestamp(float(since), timezone.utc).strftime("%Y-%m-%d")
+    report["change"] = {"baseline_task": base_id, "since": since, "unchanged": unchanged, "pages": rows}
+    if unchanged:
+        text = f"Unchanged since {day}: the same content as the previous check (task {base_id[:8]})."
+    else:
+        added = sum(len(r["added"]) for r in rows)
+        removed = sum(len(r["removed"]) for r in rows)
+        changed = sum(1 for r in rows if r["content_changed"])
+        text = (f"Changed since {day} (previous check: task {base_id[:8]}): {changed} page(s) with different "
+                f"content; {added} statement(s) new, {removed} no longer present (listed under change).")
+        if not added and not removed:
+            text = (f"Changed since {day} (previous check: task {base_id[:8]}): the content differs, but the "
+                    "extracted statements are the same.")
+    lead["text"] = f"{text} {lead.get('text') or ''}".strip()
 
 
 def _short(text, n=90):
@@ -1600,9 +1708,10 @@ def _reword_lead(report, prefix, replacement):
 def _cancelled_before_extraction(report, n_docs):
     """W-21: a run cancelled before evaluating never extracted claims; the report says so instead of 'no relevant
     claim could be extracted'."""
-    report["limitations"] = [x for x in report.get("limitations") or [] if not str(x).startswith("No claim relevant")]
+    report["limitations"] = [x for x in report.get("limitations") or []
+                             if not str(x).startswith(NO_CLAIM_LIMITATIONS)]
     report["limitations"].append("Cancelled before claims were extracted: no statement was evaluated")
-    _reword_lead(report, "No usable claims were extracted",
+    _reword_lead(report, NO_CLAIM_LEADS,
                  f"Cancelled before claims were extracted from the {n_docs} source{'s' if n_docs != 1 else ''} read.")
 
 
@@ -1616,7 +1725,7 @@ def _memory_lead(report, items):
         if re.match(r"^\d+ sources? read;", lead):
             entry["text"] = re.sub(r"^\d+ sources? read", text, lead, count=1)
             return
-        if lead.startswith("No usable claims were extracted"):
+        if lead.startswith(NO_CLAIM_LEADS):
             entry["text"] = f"{text}."
             return
 
