@@ -1992,7 +1992,10 @@ function knowledgeCard(k) {
     h('h2', { id: `k-title-${k.id}`, class: 'kstatement', tabindex: '-1', text: k.statement }),
     h('p', { class: 'badges' }, badge(cap(k.status), KNOWLEDGE_TONE[k.status] ?? 'neutral'), k.stale && k.status !== 'stale' ? badge('Stale', 'warn') : null,
       k.contested ? badge('Contested', 'warn') : null, badge(`confidence ${pct(k.confidence)}`, 'neutral'), ` #${k.id} · version ${k.version}`),
-    kv([['Freshness class', k.freshness_class], [k.status === 'provisional' ? 'Last checked against sources' : 'Last verified', `${fmtTime(k.last_verified_at)} (${ago(k.last_verified_at)})`], [k.status === 'provisional' ? 'First seen' : 'First verified', fmtTime(k.first_verified_at)],
+    // T1-18: dates are labelled by provenance; the owner's own assertion was never verified against sources
+    kv([['Freshness class', k.freshness_class], ...(k.provenance === 'user_asserted'
+      ? [['Asserted by you', `on ${fmtTime(k.first_verified_at)} (${ago(k.first_verified_at)})`]]
+      : [[k.status === 'provisional' ? 'Last checked against sources' : 'Last verified', `${fmtTime(k.last_verified_at)} (${ago(k.last_verified_at)})`], [k.status === 'provisional' ? 'First seen' : 'First verified', fmtTime(k.first_verified_at)]]),
       k.stale ? ['Why stale', String(k.stale_reason ?? '').replace(/^stale:\s*/i, '')] : null, k.note ? ['Note', k.note] : null, k.pending_id ? ['Open question', `#${k.pending_id}`] : null]),
     h('h3', { text: 'Sources' }), k.sources.length ? h('ul', { class: 'reasons' }, k.sources.map((s) => h('li', {}, h('span', { text: `${s.title || s.domain} · ${fmtDay(s.published_at)} · ` }), safeLink(s.url))))
       : empty('No sources recorded.'),

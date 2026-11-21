@@ -215,6 +215,34 @@ def test_knowledge_empty_state_has_a_next_step_and_provisional_wording_t4_03_t4_
         c.close()
 
 
+def test_an_owner_assertion_is_labelled_by_its_provenance_not_as_verified_t1_18(tmp_path, new_page):
+    """T1-18 (RC2 retest r1, s5_kview): owner-asserted rows (verification not_evaluated) showed "Last verified" and
+    "First verified". They say who asserted them and when; a verified conclusion keeps its verification dates."""
+    from contextlib import closing
+    from datetime import datetime, timezone
+    from neuroscifi.instance import store
+    from neuroscifi.webcortex import knowledge
+    c = AutoConsole(tmp_path)
+    try:
+        when = 1_795_200_000.0
+        with closing(store.open_existing(c.path)) as db:
+            kid = knowledge.assert_fact(db, "Rao and Ballard published the predictive coding model of the visual "
+                                        "cortex in 1999.", when)["id"]
+        page = new_page(1280, 900)
+        page.goto(c.url)
+        page.locator("#nav").get_by_role("link", name=re.compile("^Knowledge")).click()
+        page.locator("#kTopic").fill("predictive coding")
+        page.keyboard.press("Enter")
+        card = page.locator(f"[data-knowledge='{kid}']")
+        day = datetime.fromtimestamp(when, timezone.utc).strftime("%Y-%m-%d")
+        expect(card).to_contain_text("Asserted by you")
+        expect(card).to_contain_text(day)
+        expect(card).not_to_contain_text("verified")
+        assert not page.problems, page.problems
+    finally:
+        c.close()
+
+
 AXE_ALL = "axe.run(document,{resultTypes:['violations']}).then(r => r.violations.map(v => v.id + ': ' + v.nodes.map(n => n.target.join(' ')).join(' | ')))"
 
 
