@@ -19,6 +19,9 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv venv .venv -p 3.12
       - run: uv pip install -p .venv/bin/python -e '.[dev,research,web,web-extract]'
+      - run: .venv/bin/python -m playwright install --with-deps chromium
+      # the runner's /usr/bin/chromium is a snap shim whose cold start exceeds the render timeout
+      - run: echo "NSF_CHROMIUM=$(.venv/bin/python -c 'from playwright.sync_api import sync_playwright as p; m = p().start(); print(m.chromium.executable_path); m.stop()')" >> "$GITHUB_ENV"
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0   # Chromium's sandbox needs user namespaces (Ubuntu 24.04 runners restrict them); NeuroSciFi never disables the sandbox
       - run: bash scripts/check.sh
 
