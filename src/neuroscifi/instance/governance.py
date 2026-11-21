@@ -943,13 +943,40 @@ def _delete_voice_session(db, session_id):
     return segments, audio
 
 
+_VOICE_RESEARCH_INTENTS = ("research", "continue_research")
+
+
+def _voice_research_tasks(db, session_id):
+    """Research tasks this voice session created from its utterances: the tasks its research / continue replies
+    name, created while the session ran (a reply that points at an older task did not create it)."""
+    started = db.execute("SELECT started_at FROM voice_sessions WHERE id=?", (session_id,)).fetchone()
+    if started is None:
+        return []
+    found = []
+    for task_id, detail in db.execute("SELECT task_id, detail FROM voice_segments WHERE session_id=? AND "
+                                      "task_id IS NOT NULL ORDER BY seq", (session_id,)).fetchall():
+        try:
+            intent = json.loads(detail or "{}").get("intent")
+        except (ValueError, AttributeError):
+            intent = None
+        if intent in _VOICE_RESEARCH_INTENTS and task_id not in found and db.execute(
+                "SELECT 1 FROM web_tasks WHERE id=? AND created_at>=?", (task_id, started[0])).fetchone():
+            found.append(task_id)
+    return found
+
+
 def forget_voice_session(db, session_id, now):
-    """Delete one voice session with its transcript and retained audio, record its tombstone, stale the checkpoints
-    and log the digest label. Caller owns the txn (voice/transcripts.forget_session). Returns the effects."""
+    """Delete one voice session with its transcript and retained audio, and the research tasks it created from
+    what was said (their objective is the spoken sentence; forgotten like forget_research, a running one stops at
+    its next fenced write: UAT T5-C02), record its tombstone, stale the checkpoints and log the digest label.
+    Caller owns the txn (voice/transcripts.forget_session). Returns the effects."""
+    research = _voice_research_tasks(db, session_id)
     segments, audio = _delete_voice_session(db, session_id)
+    forgotten = [task_id for task_id in research if _forget_research_core(db, task_id, now) is not None]
     digest = voice_digest(store.birth(db)["instance_id"], session_id)
     db.execute("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", (VOICE_KIND, digest, now))
-    return _web_finish(db, "voice_session", "voice_session:#" + digest, {"segments": segments, "audio": audio}, now)
+    return _web_finish(db, "voice_session", "voice_session:#" + digest,
+                       {"segments": segments, "audio": audio, "research_tasks_forgotten": forgotten}, now)
 
 
 def replay_voice_forgets(db, forgotten, now):

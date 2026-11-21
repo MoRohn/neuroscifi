@@ -304,6 +304,27 @@ def test_forget_conversation_by_voice(hub, instance):
     assert new in hub.sessions
 
 
+def test_forgetting_a_conversation_forgets_the_research_its_words_created(hub, instance):
+    """T5-C02: after the session was forgotten its research task still held the spoken sentence, queued for web
+    search. An older task the conversation only pointed at is not the session's to forget."""
+    with closing(store.connect(instance)) as db:
+        older = orchestrator.submit(db, "Zephyr compiler supported boards", time.time() - 60, mode="quick_lookup")
+    s = start(hub)
+    hub.text(s, OWNER, "Research the Zephyr compiler release for my clinic in Ashford")
+    ack = wait_for(lambda: [e for e in events(hub, s, kind="reply") if e["reply"]["intent"] == "research"])[0]
+    task_id = ack["reply"]["task_id"]
+    with closing(store.connect(instance)) as db:
+        tx.upsert(db, s, "r-old", speaker="neuroscifi", source="template", status="final", text="see that",
+                  now=time.time(), task_id=older["id"], detail={"intent": "research"})
+        out = tx.forget_session(db, s)
+        assert out["research_tasks_forgotten"] == [task_id]
+        assert db.execute("SELECT count(*) FROM web_tasks WHERE id=?", (task_id,)).fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM web_tasks WHERE objective LIKE '%Ashford%'").fetchone()[0] == 0
+        assert orchestrator.get(db, older["id"])["status"] == "queued"
+    wal = instance.parent / (instance.name + "-wal")
+    assert b"Ashford" not in instance.read_bytes() + (wal.read_bytes() if wal.exists() else b"")
+
+
 def test_snapshot_contract(hub):
     assert vstate.snapshot() == {"mode": "text_only", "session_active": False, "capture_device": None,
                                  "mic_capturing": False, "output_muted": False, "speaking": False,

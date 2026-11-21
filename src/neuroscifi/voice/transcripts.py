@@ -213,7 +213,8 @@ def forget_session(db, sid, *, principal=None, now=None) -> dict:
             raise NotFound("voice session not found")
         effects = governance.forget_voice_session(db, sid, now)
     store.truncate_wal(db)
-    out = {"forgotten": sid, "segments": effects["segments"]}
+    out = {"forgotten": sid, "segments": effects["segments"],
+           "research_tasks_forgotten": effects["research_tasks_forgotten"]}
     if effects["checkpoints_stale"]:
         out["next_steps"] = [governance.REBUILD_HINT.format(n=len(effects["checkpoints_stale"]))]
     return out
