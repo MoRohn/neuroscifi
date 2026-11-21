@@ -532,3 +532,21 @@ def test_sessions_of_closed_clients_expire(hub, instance):
     assert gone not in hub.sessions and vstate.get(gone)["session_active"] is False
     with closing(store.connect(instance)) as db:
         assert tx.session(db, gone)["status"] == "ended" and tx.holder(db, time.time()) is None
+
+
+def test_unrelated_pocket_families_are_isolated(hub):
+    """T2-04: a device of another family sees no holder identity and cannot take the microphone on its own."""
+    fam1 = pocket_principal()
+    fam2 = Principal(name="pocket:feedbeef0000", owner=False, research=True, family="other", label="Pocket (x)",
+                     device_prefix="pocket:feedbeef0000:")
+    a = start(hub, fam1, device="phoneA")
+    b = start(hub, fam2, device="phoneB", mic=False)
+    assert hub.status(fam2, b)["capture"] == {"held": True, "this_device": False, "label": "another device"}
+    assert hub.capture(b, fam2, "acquire")["holder"] == {"label": "another device"}
+    req = hub.capture(b, fam2, "request_handoff")["requested"]
+    with pytest.raises(Conflict):
+        hub.capture(b, fam2, "handoff", handoff_confirm=req["id"])
+    assert hub.capture(a, fam1, "renew")["granted"] and hub.capture(a, fam1, "renew")["handoff_request"]
+    same = start(hub, fam1, device="tabletA", mic=False)              # the same family confirms on its own
+    confirm = hub.capture(same, fam1, "request_handoff")["confirm"]
+    assert hub.capture(same, fam1, "handoff", handoff_confirm=confirm["id"])["granted"]
