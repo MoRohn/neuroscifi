@@ -280,6 +280,7 @@ class Gateway:
         timer.start()
         try:
             conn.request(method, parts.path.rstrip("/") + path, body=body, headers=headers)
+            conn.body_sock = conn.sock   # getresponse drops conn.sock when the server closes; the body still reads it
             resp = conn.getresponse()
         except (socket.timeout, TimeoutError):
             conn.close()
@@ -485,8 +486,11 @@ class Gateway:
         left = deadline - self.clock()
         if left <= 0:
             raise InferenceError("timeout", message)
-        if conn.sock is not None:
-            conn.sock.settimeout(max(0.05, left))
+        sock = getattr(conn, "body_sock", None) or conn.sock
+        try:
+            sock.settimeout(max(0.05, left))
+        except (OSError, AttributeError):
+            pass         # the body was read to its end and the socket closed: read1 answers b""
         try:
             return resp.read1(65536)
         except (socket.timeout, TimeoutError):

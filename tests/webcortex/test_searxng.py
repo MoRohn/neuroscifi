@@ -7,6 +7,7 @@ import hashlib
 import json
 import subprocess
 import threading
+import time
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -54,6 +55,7 @@ class FakeSearXNG:
     def __init__(self, reply=None):
         self.reply = reply if reply is not None else {"results": [], "unresponsive_engines": []}
         self.requests = []
+        self.config = CONFIG
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -75,11 +77,24 @@ class FakeSearXNG:
                 if parts.path == "/healthz":
                     return self._send(200, b"OK", ctype="text/plain")
                 if parts.path == "/config":
-                    return self._send(200, CONFIG)
+                    return self._send(200, fake.config)
                 if parts.path != "/search":
                     return self._send(404, {"error": "nope"})
                 fake.requests.append({k: v[0] for k, v in parse_qs(parts.query).items()})
                 reply = fake.reply(fake.requests[-1]) if callable(fake.reply) else fake.reply
+                if isinstance(reply, tuple) and reply[0] == "drip":     # one byte every reply[1] seconds
+                    raw = json.dumps({"results": [RESULTS[1]]}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    for b in raw:
+                        try:
+                            self.wfile.write(bytes([b]))
+                            self.wfile.flush()
+                        except OSError:
+                            return
+                        time.sleep(reply[1])
+                    return
                 if isinstance(reply, tuple):
                     return self._send(reply[1], {"error": "x"}, reply[2] if len(reply) > 2 else None)
                 return self._send(200, {"query": fake.requests[-1].get("q"), "number_of_results": 0,
@@ -254,6 +269,48 @@ def test_http_failures(fake):
     with pytest.raises(ProviderError) as exc:
         provider(fake).search(Query("y", "web"), 5)
     assert exc.value.code == "searxng_error"
+
+
+def test_a_dripping_searxng_cannot_hold_a_search_past_its_timeout(fake):
+    """T5-M05: one byte a second kept every read alive; web search and health --probe hung past 120 s."""
+    fake.reply = ("drip", 0.2)
+    started = time.monotonic()
+    with pytest.raises(ProviderError) as exc:
+        provider(fake, timeout=1.0).search(Query("x", "web"), 5)
+    assert exc.value.code == "timeout" and time.monotonic() - started < 2.5
+
+
+def test_odd_result_shapes_never_raise_or_open_phantom_breakers(fake):
+    """T5-M06: engines 7, a dict title, unresponsive [[None, None], [], [5]] -> TypeError (provider_error) and
+    breakers named 'None', '5' and ''."""
+    fake.reply = {"results": [
+        {"url": "https://w1.example/a", "title": {"x": 1}, "content": 5, "engines": 7, "score": "NaN",
+         "publishedDate": "not a date"},
+        {"url": "https://w2.example/b", "title": None, "content": None, "engines": "google", "engine": 9,
+         "publishedDate": 1e300, "score": 1e308},
+        {"url": "https://w3.example/c", "title": "t", "content": "c", "engines": ["mwmbl", None, 4, ""],
+         "publishedDate": "2026-13-45T99:99:99"},
+        "string-item", None, 5], "unresponsive_engines": [[None, None], [], [5], ["", "x"], "duckduckgo"]}
+    p = provider(fake)
+    results = p.search(Query("x", "web"), 5)
+    assert [r.url for r in results] == ["https://w1.example/a", "https://w2.example/b", "https://w3.example/c"]
+    assert results[2].metadata["engines"] == ["mwmbl"] and results[0].published_at is None
+    assert set(p.engine_snapshot()) <= {"mwmbl", "duckduckgo"}
+    for reply in ({"results": {"a": 1}, "unresponsive_engines": "duckduckgo"}, {"results": [], "unresponsive_engines": 5}):
+        fake.reply = reply
+        assert p.search(Query("y" + str(len(fake.requests)), "web"), 5) == []
+    assert set(p.engine_snapshot()) <= {"mwmbl", "duckduckgo"}
+
+
+def test_odd_config_shapes_are_ignored(fake):
+    fake.config = {"engines": [{"name": "x", "enabled": True, "categories": 5}, "str", None,
+                               {"name": 7, "enabled": True, "categories": ["general"]},
+                               {"name": "ok", "enabled": "yes", "categories": ["general"]}], "version": {"v": 1}}
+    p = provider(fake)
+    assert p.category_engines("general") == []
+    assert p.health()["reachable"] is True
+    fake.reply = {"results": [RESULTS[1]]}
+    assert len(p.search(Query("x", "web"), 5)) == 1
 
 
 def test_unreachable():

@@ -41,6 +41,7 @@ from collections import deque
 from dataclasses import dataclass, field
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import secrets
@@ -48,14 +49,13 @@ import socket
 import subprocess
 import threading
 import time
-from urllib.error import HTTPError, URLError
+from urllib.error import URLError
 from urllib.parse import urlencode
-import urllib.request
 
 from ...instance.errors import ValidationError
 from ..search import REGISTRY_QUERY, Breaker, ProviderError, _canonical, charge, parse_iso_date, strip_html
 from ..types import BudgetExceeded, Query, SearchResult
-from .openwebsearch import _OPENER, NotLoopback, _clean_url, _is_loopback_host, _port_open, loopback_base
+from .openwebsearch import NotLoopback, _clean_url, _is_loopback_host, _port_open, bounded_request, loopback_base
 
 DEFAULT_PORT = 8888
 DEFAULT_URL = f"http://127.0.0.1:{DEFAULT_PORT}"
@@ -105,15 +105,13 @@ def verdict(reachable: bool, last_ok_at: float | None, now: float, *, engines_op
 
 
 def _http(url: str, timeout: float) -> tuple[int, dict, bytes]:
-    req = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
-    try:
-        with _OPENER.open(req, timeout=timeout) as resp:
-            status, headers, raw = resp.status, dict(resp.headers.items()), resp.read(MAX_RESPONSE_BYTES + 1)
-    except HTTPError as exc:
-        status, headers, raw = exc.code, dict((exc.headers or {}).items()), exc.read(MAX_RESPONSE_BYTES + 1)
-    if len(raw) > MAX_RESPONSE_BYTES:
-        raise ValueError("response too large")
-    return status, {k.lower(): v for k, v in headers.items()}, raw
+    """GET -> (status, headers, body); `timeout` bounds the whole exchange, not each read (T5-M05)."""
+    return bounded_request("GET", url, None, {"Accept": "application/json"}, timeout, max_bytes=MAX_RESPONSE_BYTES)
+
+
+def _engine_name(value) -> bool:
+    """A SearXNG engine name as SearXNG writes them ('duckduckgo', 'bing news'); anything else is not an engine."""
+    return isinstance(value, str) and 0 < len(value) <= 40 and value.strip() == value and value.isprintable()
 
 
 def _retry_after(headers: dict) -> float | None:
@@ -211,8 +209,10 @@ class SearXNGProvider:
 
     def _enabled(self, category: str) -> list[str]:
         cfg = self.config()
-        return [str(e.get("name")) for e in cfg.get("engines") or []
-                if isinstance(e, dict) and e.get("enabled") and category in (e.get("categories") or [])]
+        engines = cfg.get("engines")
+        return [e["name"] for e in (engines if isinstance(engines, list) else [])
+                if isinstance(e, dict) and e.get("enabled") is True and _engine_name(e.get("name"))
+                and isinstance(e.get("categories"), list) and category in e["categories"]]
 
     def config(self) -> dict:
         """SearXNG's /config (engines, categories, version), cached CONFIG_TTL seconds; {} when unavailable."""
@@ -305,17 +305,19 @@ class SearXNGProvider:
             if since is not None and published is not None and published < since:
                 continue
             seen.add(url)
-            engines = [str(e)[:40] for e in item.get("engines") or [] if e] or [str(item.get("engine") or "")[:40]]
+            listed = item.get("engines") if isinstance(item.get("engines"), list) else []
+            engines = [e for e in listed if _engine_name(e)] or \
+                ([item["engine"]] if _engine_name(item.get("engine")) else [])
             metadata = {"engines": engines, "category": str(item.get("category") or category)[:40],
                         "retrieved_at": retrieved_at, "canonical_url": _canonical(url)}
             score = item.get("score")
-            if isinstance(score, (int, float)) and not isinstance(score, bool):
+            if isinstance(score, (int, float)) and not isinstance(score, bool) and math.isfinite(score):
                 metadata["searxng_score"] = round(float(score), 4)
             if cached:
                 metadata["cache"] = True
             out.append(SearchResult(url=url, title=strip_html(item.get("title"))[:500] or url,
                                     snippet=strip_html(item.get("content"))[:1000], provider=self.name,
-                                    engine=str(item.get("engine") or engines[0])[:40], rank=len(out) + 1,
+                                    engine=(engines or [""])[0], rank=len(out) + 1,
                                     kind=kind, published_at=published, metadata=metadata))
         return out
 
@@ -370,9 +372,11 @@ class SearXNGProvider:
         retrieved_at = self._clock()
         results = self._parse(payload, category, query.since, retrieved_at, False)
         failed = {}
-        for entry in payload.get("unresponsive_engines") or []:
-            if isinstance(entry, (list, tuple)) and entry:
-                failed[str(entry[0])] = str(entry[1] if len(entry) > 1 else "error")[:200]
+        unresponsive = payload.get("unresponsive_engines")
+        for entry in unresponsive if isinstance(unresponsive, list) else []:
+            # only a real engine name opens a breaker: [None, None], [5] or [] name nothing (no phantom breakers)
+            if isinstance(entry, (list, tuple)) and entry and _engine_name(entry[0]):
+                failed[entry[0]] = str(entry[1] if len(entry) > 1 and entry[1] is not None else "error")[:200]
         found: dict[str, int] = {}
         for r in results:
             for engine in r.metadata.get("engines") or []:

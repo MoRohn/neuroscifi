@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import http.client
 import ipaddress
 import json
 import os
@@ -38,7 +39,7 @@ import socket
 import subprocess
 import threading
 import time
-from urllib.error import HTTPError, URLError
+from urllib.error import URLError
 from urllib.parse import parse_qs, urlsplit
 import urllib.request
 
@@ -114,17 +115,63 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)   # never via a shell proxy
 
 
+def bounded_request(method: str, url: str, data: bytes | None, headers: dict, timeout: float, *,
+                    max_bytes: int = MAX_RESPONSE_BYTES) -> tuple[int, dict, bytes]:
+    """One HTTP exchange with a loopback daemon -> (status, lower-cased headers, body), never via a proxy and never
+    following a redirect (a 3xx is returned as is). `timeout` bounds the WHOLE exchange - connect, status line,
+    headers and every read of the body - not each read: a daemon dripping one byte at a time cannot hold a search
+    past it (UAT T5-M05). Raises socket.timeout at the deadline, URLError when the connection fails, ValueError
+    for a body over max_bytes."""
+    parts = urlsplit(url)
+    deadline = time.monotonic() + timeout
+    conn = http.client.HTTPConnection(parts.hostname, parts.port or 80, timeout=timeout)
+    fired = []
+
+    def watchdog():      # status line and headers dripped byte by byte: shut the socket at the deadline
+        fired.append(True)
+        try:
+            conn.sock.shutdown(socket.SHUT_RDWR)
+        except (OSError, AttributeError):
+            pass
+    timer = threading.Timer(timeout, watchdog)
+    timer.daemon = True
+    timer.start()
+    try:
+        conn.request(method, (parts.path or "/") + (f"?{parts.query}" if parts.query else ""), body=data,
+                     headers=headers)
+        sock = conn.sock          # getresponse drops conn.sock when the server closes; the response still reads it
+        resp = conn.getresponse()
+        raw = bytearray()
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise socket.timeout("the answer did not arrive within the deadline")
+            try:
+                sock.settimeout(left)
+            except OSError:
+                pass     # read to the end and closed: read1 answers b""
+            chunk = resp.read1(65536)
+            if not chunk:
+                break
+            raw += chunk
+            if len(raw) > max_bytes:
+                raise ValueError("response too large")
+        return resp.status, {k.lower(): v for k, v in resp.getheaders()}, bytes(raw)
+    except (socket.timeout, TimeoutError):
+        raise
+    except (OSError, http.client.HTTPException) as exc:
+        if fired or time.monotonic() >= deadline:
+            raise socket.timeout("the answer did not arrive within the deadline") from None
+        raise URLError(exc) from None
+    finally:
+        timer.cancel()
+        conn.close()
+
+
 def _http_json(method: str, url: str, body: dict | None, timeout: float) -> tuple[int, dict]:
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method,
-                                 headers={"Content-Type": "application/json", "Accept": "application/json"})
-    try:
-        with _OPENER.open(req, timeout=timeout) as resp:
-            status, raw = resp.status, resp.read(MAX_RESPONSE_BYTES + 1)
-    except HTTPError as exc:
-        status, raw = exc.code, exc.read(MAX_RESPONSE_BYTES + 1)
-    if len(raw) > MAX_RESPONSE_BYTES:
-        raise ValueError("response too large")
+    status, _, raw = bounded_request(method, url, data, {"Content-Type": "application/json",
+                                                         "Accept": "application/json"}, timeout)
     payload = json.loads(raw.decode("utf-8", "replace"))
     if not isinstance(payload, dict):
         raise ValueError("response is not a JSON object")
