@@ -168,6 +168,41 @@ def test_a_hedge_cannot_invent_a_disagreement_or_a_version():
     assert bad == [] and ok[0]["hedged"]
 
 
+def test_an_honest_insufficiency_statement_passes_but_only_on_its_own():
+    """T2-03 (UAT, live): the model wrote "The provided evidence does not contain information about ..." citing
+    single-source claims; the hedging rule rejected it and the fallback spoke an unrelated quote. A sentence that only
+    says the evidence lacks something asserts no fact: it passes, with or without citations. A second clause that
+    asserts a fact, a number not in the evidence or an unknown id still fails."""
+    honest = [("The provided evidence does not contain information about Zephyr build times on ARM boards.", [3],
+               ["C2"]),
+              ("No source states when the next Zephyr compiler release is planned.", [], []),
+              ("This cannot be established from the sources read.", [1], ["C1"])]
+    ok, bad = check(*honest)
+    assert bad == [] and [x["text"] for x in ok] == [t for t, _, _ in honest]
+    assert all(x.get("insufficiency") and x["hedged"] for x in ok)
+    ok, bad = check(("The evidence does not specify the build time, but builds are 3 times faster on ARM.", [3],
+                     ["C2"]),
+                    ("The evidence does not contain information about the 2027 roadmap.", [3], ["C2"]),
+                    ("The evidence does not contain information about ARM builds.", [9], ["C2"]),
+                    ("No source disputes that the Zephyr compiler is safe.", [3], ["C2"]))
+    assert ok == [] and len(bad) == 4
+    assert "states C2 (insufficient) as fact without hedging" in bad[0]["reasons"]
+    assert any("2027" in r for r in bad[1]["reasons"]) and any("unknown source" in r for r in bad[2]["reasons"])
+    assert "states C2 (insufficient) as fact without hedging" in bad[3]["reasons"]
+
+
+def test_when_no_sentence_survives_the_report_says_what_was_not_established(gateway, fake):
+    """T2-03: with every model sentence rejected the reader is told the question was not answered from the
+    sources (reasoning.unanswered), not handed a quote that may not address it; the extractive answer stays."""
+    fake.replies += [answer(("Build times dropped by 45 percent.", [3], ["C2"])), fine()]
+    r = report()
+    out = reasoning.apply(None, r, None, question=Q, now=T0, gateway=gateway)
+    assert out["status"] == "rejected" and out["generated_by"] == "template"
+    assert out["unanswered"] == {"text": "The sources read do not establish an answer to: What is the latest version "
+                                         "of the Zephyr compiler.", "by": "rules"}
+    assert r["answer"] == REPORT["answer"]
+
+
 # ---- apply ---------------------------------------------------------------------------------------------------
 
 def test_model_answer_is_validated_labelled_and_accounted(gateway, fake):

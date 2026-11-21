@@ -7,8 +7,9 @@ knowledge).
 apply(db, report, services, question=, now=, task_id=) adds to the report:
   report["generated_by"] = "model:<served name>" when at least one model sentence passed the guard, else "template"
   report["reasoning"] = {"generated_by", "status", "label", "answer": [{"text", "citations", "claims", "states",
-                         "hedged"}], "rejected": [{"text", "reasons"}], "gaps": [{"text", "by"}], "critique",
-                         "usage", "reason"}
+                         "hedged", "insufficiency"?}], "rejected": [{"text", "reasons"}], "gaps": [{"text", "by"}],
+                         "critique", "usage", "reason", "unanswered"? {"text", "by": "rules"} (status "rejected":
+                         no sentence survived; say this rather than an unrelated quote)}
 The extractive `answer` is never changed: it stays the evidence of record and the degraded view.
 
 The model sees only the bundle(): the question, claim ids with their ADR-035 verification state and category
@@ -35,6 +36,9 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
     says "41 metres", "86 neurons" vs "86 million neurons" is fine only without a unit; "$3 million" vs "3 billion"
     is not): every number with a unit must appear with the same unit in a cited claim or source title;
   - contains instruction-like text (safety.scan_injection).
+An honest insufficiency statement ("The provided evidence does not contain information about X.", insufficiency())
+asserts no fact, so it needs no supported claim and no citation (T2-03); it is accepted only when that is all the
+sentence says (no second clause), and the number, unit, id and injection checks still apply.
 A bounded self-critique (one call, cfg.self_critique) may FLAG accepted sentences and add gaps. A flag removes a
 sentence only when an objective check confirms it (unknown source or claim, an unsupported claim state without a
 hedge, a number or unit not in the cited evidence: the same checks as the guard); otherwise the sentence stays,
@@ -123,6 +127,30 @@ _DISAGREE = re.compile(r"\b(?:disagree(?:s|d|ment)?|disputed|contested|conflicti
 _NEGATED_DISAGREE = re.compile(r"\b(?:not|no|never|without)\s+(?:\w+\s+)?(?:disagree(?:s|d|ment)?|disputed?|"
                                r"contested|conflicting|contradict(?:s|ory)?)\b", re.IGNORECASE)
 CONFLICT_STATES = frozenset({"contested", "conflicting", "disputed"})
+# An honest insufficiency statement ("The provided evidence does not contain information about X.") asserts nothing
+# about the world, only that the evidence lacks something, so it needs no supported claim (T2-03). It must be that
+# statement alone: its subject is the evidence (or "no source ..."), and no second clause adds a fact ("..., but X is
+# lower at altitude", "though Y is noted as ..."); numbers, units, ids and injection are still checked.
+_INSUFFICIENT = re.compile(
+    r"^(?:(?:the\s+)?(?:provided\s+|available\s+|cited\s+|retrieved\s+)?(?:evidence|sources?|claims?|documents?)"
+    r"(?:\s+(?:provided|available|cited|retrieved|read))?\s+(?:do|does|did)\s+not\s+(?:\w+\s+)?"
+    r"(?:contain|provide|include|specify|state|mention|establish|say|give|identify|address|answer|report|cover)"
+    r"|(?:no|none\s+of\s+the)\s+(?:provided\s+|available\s+|cited\s+)?(?:evidence|sources?|claims?|documents?)"
+    r"(?:\s+(?:in|among|read|cited|provided)(?:\s+the)?(?:\s+(?:provided|cited|available))?"
+    r"(?:\s+(?:evidence|sources|claims|documents))?)?\s+(?:states?|provides?|mentions?|gives?|establish(?:es)?|"
+    r"specif(?:y|ies)|contains?|reports?|says?|identif(?:y|ies)|includes?|address(?:es)?|answers?)"
+    r"|(?:this|it|the\s+answer)\s+cannot\s+be\s+(?:established|determined|confirmed|answered)\s+from\s+the\s+"
+    r"(?:provided\s+|available\s+)?(?:evidence|sources?))\b", re.IGNORECASE)
+_EXTRA_CLAUSE = re.compile(r";|:|\b(?:but|though|although|however|while|whereas|despite|except|because|since|due\s+to"
+                           r"|yet|instead|rather|nevertheless|which|who|so|doubts?|disput\w*|contradict\w*)\b"
+                           r"|,\s*(?:and|it|they|this|these)\b",
+                           re.IGNORECASE)
+
+
+def insufficiency(text: str) -> bool:
+    """The sentence only says that the evidence does not establish something (see _INSUFFICIENT)."""
+    text = _clean(text)
+    return bool(_INSUFFICIENT.match(text)) and not _EXTRA_CLAUSE.search(text)
 _UPGRADE = re.compile(r"\b(?:verified|confirmed|proven|proved|definitely|certainly|undisputed|corroborated|"
                       r"established fact)\b", re.IGNORECASE)
 _NEGATED_UPGRADE = re.compile(r"\b(?:not|never|un)\s*(?:yet\s+|been\s+|independently\s+)*(?:verified|confirmed|"
@@ -326,12 +354,13 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     cites = [n for n in s.get("sources") or [] if isinstance(n, int) and not isinstance(n, bool)]
     ids = [str(c).strip() for c in s.get("claims") or []]
     reasons = []
-    if not cites:
+    honest_gap = insufficiency(text)      # T2-03: "the evidence does not contain X" needs no supported claim
+    if not cites and not honest_gap:
         reasons.append("cites no source")
     unknown = sorted({n for n in cites if n not in source_ids})
     if unknown:
         reasons.append(f"cites unknown source(s) {unknown}")
-    if not ids:
+    if not ids and not honest_gap:
         reasons.append("cites no evidence claim")
     bad = sorted({c for c in ids if c not in claims})
     if bad:
@@ -341,7 +370,7 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
         if not set(c["sources"]) & set(cites):
             reasons.append(f"claim {c['id']} is cited without one of its sources {c['sources']}")
     weak = [c for c in used if c["state"] not in SUPPORTED_STATES]
-    is_hedged = hedged(text)
+    is_hedged = hedged(text) or honest_gap
     if weak and not is_hedged:
         reasons.append("states " + ", ".join(f"{c['id']} ({c['state']})" for c in weak) +
                        " as fact without hedging")
@@ -372,7 +401,8 @@ def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
             rejected.append({"text": text, "reasons": reasons})
         else:
             accepted.append({"text": text, "citations": sorted(set(cites)), "claims": list(dict.fromkeys(ids)),
-                             "states": {c["id"]: c["state"] for c in used}, "hedged": is_hedged})
+                             "states": {c["id"]: c["state"] for c in used}, "hedged": is_hedged}
+                            | ({"insufficiency": True} if insufficiency(text) else {}))
     return accepted, rejected
 
 
@@ -413,6 +443,15 @@ def _degraded(report, status, reason, **extra) -> dict:
     report["reasoning"] = reasoning
     report["generated_by"] = TEMPLATE
     return reasoning
+
+
+def unanswered(question: str) -> dict:
+    """What a reader is told when no model sentence survived the guard (T2-03): the question was not answered from
+    the sources, in NeuroSciFi's own words, instead of a quote that may not address it. report["reasoning"]
+    ["unanswered"]; the extractive answer stays the evidence of record."""
+    q = _clean(question, 200).rstrip("?.! ")
+    return {"text": f"The sources read do not establish an answer to: {q}." if q else
+            "The sources read do not establish an answer.", "by": "rules"}
 
 
 def _usage(results) -> dict:
@@ -531,7 +570,7 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
         removed = (critique or {}).get("removed") or 0
         why = ("the self-critique pass removed every sentence that passed the citation and claim checks" if removed
                else "every model sentence failed NeuroSciFi's citation and claim checks")
-        return _degraded(report, "rejected", why,
+        return _degraded(report, "rejected", why, unanswered=unanswered(question),
                          rejected=rejected, gaps=merged[:2 * MAX_GAPS], critique=critique, usage=usage)
     model = usage.get("model") or gw.cfg.model or "unknown"
     generated_by = f"model:{model}"
@@ -547,4 +586,5 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
 
 
 __all__ = ["ANSWER_SCHEMA", "LABEL_DEGRADED", "LABEL_MODEL", "MIN_MODEL_SECONDS", "SUPPORTED_STATES", "apply",
-           "bundle", "check_sentence", "claim_state", "gateway_for", "guard", "hedged", "messages", "rule_gaps"]
+           "bundle", "check_sentence", "claim_state", "gateway_for", "guard", "hedged", "insufficiency", "messages",
+           "rule_gaps", "unanswered"]

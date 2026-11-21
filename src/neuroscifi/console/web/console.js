@@ -1338,7 +1338,9 @@ function reasoningBlock(r) {
   const x = r.reasoning;
   if (!x) return [];
   if (x.generated_by === 'template' || !x.answer?.length) {
-    return [h('p', { class: 'msg warn', id: 'reasoningLabel', 'data-generated-by': 'template' }, badge('Extractive summary (template)', 'neutral'), ` ${x.label}`),
+    // T2-03: no model sentence survived the guard: say what was not established before any quoted evidence
+    return [x.unanswered?.text ? h('p', { class: 'msg', id: 'reasoningUnanswered', text: x.unanswered.text }) : null,
+      h('p', { class: 'msg warn', id: 'reasoningLabel', 'data-generated-by': 'template' }, badge('Extractive summary (template)', 'neutral'), ` ${x.label}`),
       x.reason ? technical(h('p', { text: `Why: ${x.reason}` })) : null];
   }
   const out = [h('h4', { text: 'Answer' }),
