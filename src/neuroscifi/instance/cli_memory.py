@@ -125,4 +125,5 @@ def register(sub, *, with_db, run):
     q.add_argument("dest", type=Path)
     sub_cmd("rebuild", lambda db, a, now: checkpoints.rebuild_stale(
         db, store.resolve_db(a), _dir(a), now, policy=a.policy, keep=a.keep), dir_option=True, policy=True, keep=True)
-    sub_cmd("prune", lambda db, a, now: checkpoints.prune(db, now, keep=a.keep), keep=True)
+    sub_cmd("prune", lambda db, a, now: checkpoints.prune(db, now, keep=a.keep,
+                                                                  db_path=store.resolve_db(a)), keep=True)

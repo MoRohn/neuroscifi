@@ -247,7 +247,7 @@ def _checkpoint_create(c, p, q, b):
 
 def _checkpoint_prune(c, p, q, b):
     _fields(b, ("keep",))
-    return checkpoints.prune(c.db, c.now, _int(b["keep"], "keep"))
+    return checkpoints.prune(c.db, c.now, _int(b["keep"], "keep"), db_path=c.path)
 
 
 def _checkpoint_rebuild(c, p, q, b):
@@ -802,7 +802,11 @@ class ConsoleServer(ThreadingHTTPServer):
         Task leases keep two workers from running one task. worker_options: extra scheduler.work arguments, e.g.
         {"fixture": FixtureWeb, "providers": [...]} for offline tests."""
         self.db_path = Path(db_path).resolve()
-        store.open_existing(self.db_path).close()  # refuse to start without an instance
+        db = store.open_existing(self.db_path)  # refuse to start without an instance
+        try:
+            checkpoints.sweep(db, self.db_path)   # working copies a killed checkpoint/restore left (T5-03)
+        finally:
+            db.close()
         self.token = token or secrets.token_urlsafe(32)
         self.clock = clock
         self.post_busy_ms = POST_BUSY_MS

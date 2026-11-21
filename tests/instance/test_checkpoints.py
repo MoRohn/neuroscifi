@@ -504,3 +504,70 @@ def test_checkpoint_excludes_retained_audio_past_its_ttl(instance, tmp_path):
     with sqlite3.connect(out) as copy:
         assert [r[0] for r in copy.execute("SELECT segment_id FROM voice_audio")] == [new["id"]]
     assert b"EXPIRED-PCM-" not in out.read_bytes() and b"LIVE-PCM-" in out.read_bytes()
+
+
+KILL_DURING_PACK = """
+import os, signal, sys
+from pathlib import Path
+from neuroscifi import archive
+def killed(*args, **kwargs):
+    os.kill(os.getpid(), signal.SIGKILL)       # kill -9 while the plaintext snapshot exists
+archive.pack = killed
+archive.convert("checkpoint", Path(sys.argv[1]), Path(sys.argv[2]))
+"""
+
+
+def _killed_checkpoint(path, out_dir):
+    import subprocess
+    import sys
+    out_dir.mkdir(mode=0o700, exist_ok=True)
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
+    proc = subprocess.run([sys.executable, "-c", KILL_DURING_PACK, str(path), str(out_dir / "x.nsfa")], env=env,
+                          capture_output=True, timeout=60)
+    assert proc.returncode == -9, proc.stderr.decode()[-400:]
+    left = [p for p in out_dir.iterdir() if p.is_dir()]
+    assert left and any((p / "snapshot.sqlite").exists() for p in left)   # what the kill leaves behind
+    return left
+
+
+def test_a_checkpoint_killed_mid_pack_leaves_no_copy_behind_after_the_next_checkpoint(instance, tmp_path):
+    """T5-03: tmp*/snapshot.sqlite (a full copy) stayed in <db>.checkpoints for good after kill -9, so data
+    forgotten afterwards survived there."""
+    db, path = instance
+    add(db, "secret-evidence")
+    out = tmp_path / "cps"
+    _killed_checkpoint(path, out)
+    cp = checkpoints.create(db, path, out, T0)
+    assert sorted(p.name for p in out.iterdir()) == [os.path.basename(cp["path"])]
+
+
+def test_prune_and_console_start_remove_what_a_killed_checkpoint_left(instance, tmp_path):
+    db, path = instance
+    add(db, "secret-evidence")
+    out = checkpoints.default_dir(path)
+    _killed_checkpoint(path, out)
+    assert checkpoints.prune(db, T0, keep=1, db_path=path)["deleted"] == []
+    assert list(out.iterdir()) == []
+    _killed_checkpoint(path, out)
+    from neuroscifi.console.server import ConsoleServer
+    server = ConsoleServer(path, 0)
+    server.server_close()
+    assert list(out.iterdir()) == []
+
+
+def test_an_abandoned_rc1_working_folder_is_removed_but_a_live_one_is_kept(instance, tmp_path):
+    from neuroscifi import archive
+    db, path = instance
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0)
+    legacy = tmp_path / "cps" / "tmpab12cd"
+    legacy.mkdir()
+    (legacy / "snapshot.sqlite").write_bytes(b"copy")
+    os.utime(legacy, (time.time() - 2 * archive.LEGACY_AGE,) * 2)
+    unrelated = tmp_path / "cps" / "tmpkeep"
+    unrelated.mkdir()
+    (unrelated / "notes.txt").write_text("not ours")
+    os.utime(unrelated, (time.time() - 2 * archive.LEGACY_AGE,) * 2)
+    with archive.partial_dir(tmp_path / "cps") as live:
+        assert checkpoints.prune(db, T0, keep=1)["kept"] == [cp["id"]]
+        assert live.is_dir() and not legacy.exists() and unrelated.is_dir()
+    assert not live.exists()

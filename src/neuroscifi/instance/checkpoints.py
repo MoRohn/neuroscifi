@@ -9,6 +9,9 @@ the same cascade as the live forget: governance.replay_web_forgets; forgotten vo
 transcripts and audio: governance.replay_voice_forgets), and drops epoch streams and retained voice audio the
 instance no longer holds, so nothing forgotten comes back.
 `prune` keeps the newest valid archives and deletes the rest.
+Every conversion works in a private `.nsf-partial-*` folder next to its output, removed when it ends; one left by a
+killed process (a full plaintext copy of the instance) is removed by the next conversion, prune or console start
+(`sweep`, archive.sweep_partials), so a forgotten record cannot survive in it (UAT T5-03).
 
 Archives live in `default_dir(db_path)` = `<db parent>/<db stem>.checkpoints`, one folder per instance.
 Older instances used `<db parent>/checkpoints`; those archives stay registered by absolute path, so
@@ -22,7 +25,6 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
-import tempfile
 
 from .. import archive
 from . import governance, store
@@ -129,8 +131,8 @@ def verify(db, checkpoint_id, now):
     if _sha256(path) != row["sha256"]:
         raise Conflict(f"Checkpoint {checkpoint_id} fails verification: archive hash differs from the registry")
     # Decode next to the archive (same protected folder), never into the shared system temp directory.
-    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
-        out = Path(directory) / "decoded.sqlite"
+    with archive.partial_dir(path.parent) as directory:
+        out = directory / "decoded.sqlite"
         try:
             with path.open("rb") as source, out.open("wb") as dest:
                 archive.unpack(source, dest)
@@ -174,8 +176,8 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
     invalidated = []
     old_umask = os.umask(0o077)
     try:
-        with tempfile.TemporaryDirectory(dir=dest.parent) as directory:
-            staged = Path(directory) / "restored.sqlite"
+        with archive.partial_dir(dest.parent) as directory:
+            staged = directory / "restored.sqlite"
             try:
                 archive.convert("unpack", path, staged)
             except ValueError as error:
@@ -289,9 +291,20 @@ def _check_keep(keep):
     return keep
 
 
-def prune(db, now, keep=7):
-    """Delete valid archives beyond the newest `keep`; mark them 'deleted' (or 'missing') and log each one."""
+def sweep(db, db_path=None) -> int:
+    """Remove working directories a killed checkpoint or restore left in the archive folders (each holds a full
+    copy of the instance; archive.sweep_partials). Run by every create and prune and at console start."""
+    folders = {Path(r["path"]).parent for r in listing(db)}
+    if db_path is not None:
+        folders.add(default_dir(db_path))
+    return sum(archive.sweep_partials(folder) for folder in sorted(folders) if folder.is_dir())
+
+
+def prune(db, now, keep=7, db_path=None):
+    """Delete valid archives beyond the newest `keep`; mark them 'deleted' (or 'missing') and log each one.
+    Abandoned working directories in the archive folders are removed too (sweep)."""
     _check_keep(keep)
+    sweep(db, db_path)
     valid = [r for r in listing(db) if r["status"] == "valid"]
     valid.sort(key=lambda r: (r["created_at"], r["id"]), reverse=True)
     deleted, missing, log, error = _unlink(valid[keep:], now, {"pruned": True, "keep": keep})

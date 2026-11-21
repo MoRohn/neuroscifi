@@ -1,12 +1,13 @@
 """NeuroSciFi lossless block archives and consistent SQLite checkpoints."""
 import argparse
 from collections import Counter
-from contextlib import closing
+from contextlib import closing, contextmanager
 import hashlib
 import io
 import lzma
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import struct
 import tempfile
@@ -190,12 +191,96 @@ def unpack(source, dest):
         dest.write(raw)
 
 
+PARTIAL_PREFIX = ".nsf-partial-"
+OWNER = "owner"
+LEGACY_NAMES = frozenset({"snapshot.sqlite", "snapshot.sqlite-journal", "output", "decoded.sqlite", "restored.sqlite",
+                          "restored.sqlite-journal", "restored.sqlite-wal", "restored.sqlite-shm"})
+LEGACY_AGE = 3600.0     # an RC1 tmp* working directory older than this is an abandoned one
+OWNERLESS_AGE = 60.0    # a partial directory without its owner record (killed while creating it)
+
+
+def _start_time(pid):
+    """The process start time (clock ticks since boot) from /proc, or None where /proc is unavailable."""
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as handle:
+            return handle.read().rsplit(b")", 1)[1].split()[19].decode()
+    except (OSError, IndexError):
+        return None
+
+
+def _owner_alive(text):
+    try:
+        pid, started = text.split()
+        pid = int(pid)
+    except ValueError:
+        return False
+    current = _start_time(pid)
+    if current is not None:
+        return current == started      # same pid, same start: the same process (a reused pid is not)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return started == "-"
+
+
+def sweep_partials(parent, now=None) -> int:
+    """Remove abandoned working directories in `parent`: ours (PARTIAL_PREFIX) whose owner process is gone, and
+    RC1-style tmp* directories that hold nothing but a snapshot/output and are over LEGACY_AGE old. They hold a
+    full plaintext copy of the instance (T5-03: a kill during a checkpoint left one behind for good, so forgotten
+    data survived). Returns how many were removed."""
+    import time
+    now = time.time() if now is None else now
+    removed = 0
+    try:
+        entries = list(Path(parent).iterdir())
+    except OSError:
+        return 0
+    for entry in entries:
+        try:
+            if entry.is_symlink() or not entry.is_dir():
+                continue
+            age = now - entry.lstat().st_mtime
+            if entry.name.startswith(PARTIAL_PREFIX):
+                try:
+                    owner = (entry / OWNER).read_text()
+                except OSError:
+                    owner = None
+                if (owner is None and age < OWNERLESS_AGE) or (owner is not None and _owner_alive(owner)):
+                    continue
+            elif entry.name.startswith("tmp"):
+                names = {child.name for child in entry.iterdir()}
+                if not names or not names <= LEGACY_NAMES or age < LEGACY_AGE:
+                    continue
+            else:
+                continue
+        except OSError:
+            continue
+        shutil.rmtree(entry, ignore_errors=True)
+        removed += not entry.exists()
+    return removed
+
+
+@contextmanager
+def partial_dir(parent):
+    """A private working directory in `parent` for one conversion, removed however the conversion ends; if the
+    process is killed, the next sweep_partials of `parent` (every conversion, prune, console start) removes it."""
+    sweep_partials(parent)
+    directory = Path(tempfile.mkdtemp(prefix=PARTIAL_PREFIX, dir=parent))
+    try:
+        (directory / OWNER).write_text(f"{os.getpid()} {_start_time(os.getpid()) or '-'}")
+        yield directory
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
 def convert(command, source, destination, methods=FAST):
     """Never replace an existing file. Publish only complete outputs."""
     if destination.exists():
         raise FileExistsError(destination)
-    with tempfile.TemporaryDirectory(dir=destination.parent) as directory:
-        temp = Path(directory)
+    with partial_dir(destination.parent) as temp:
         if command == "checkpoint":
             snapshot = temp / "snapshot.sqlite"
             uri = source.resolve().as_uri()+"?mode=ro"
