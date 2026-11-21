@@ -1,0 +1,8 @@
+{
+  "name": "neuroscifi-open-websearch",
+  "private": true,
+  "description": "Pinned open-webSearch daemon for the NeuroSciFi Web Cortex. Run: node node_modules/open-websearch/build/index.js serve --host 127.0.0.1 --port 3210",
+  "dependencies": {
+    "open-websearch": "2.2.0"
+  }
+}

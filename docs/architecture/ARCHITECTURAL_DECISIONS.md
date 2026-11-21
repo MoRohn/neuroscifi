@@ -66,3 +66,75 @@ When a root has no remaining evidence, every derived mention of it is rewritten 
 
 **ADR-020 The GPU is an optional extra. R**
 The CUDA probe needs CuPy, which is large and specific to the CUDA driver. Decision: `pip install 'neuroscifi[gpu]'` installs `cupy-cuda13x[ctk]==14.2.0`, verified on GB10 with numpy 2.3.5. The core package and CI stay CPU-only.
+
+## Web Cortex (0.6)
+
+**ADR-021 Web access is an owner-enabled capability of one individual, off by default. R**
+Until 0.6 nothing contacted a network service. The Web Cortex directive asks for internet perception; the project's
+privacy posture asks that no network path exist unless the owner wants it. Decision: `meta.webcortex.enabled`
+defaults to false and every network entry point calls `state.require_enabled`. Autonomous research, Pocket
+research and JavaScript rendering are three further switches, also off. Respecting robots.txt and the private-address
+block are constants, not settings. Consequence: a fresh individual behaves exactly as 0.5.
+
+**ADR-022 No model in the loop: extractive synthesis and lexical ranking. R**
+There is no language model, embedding encoder or reranker on the host or in the package (ADR-009 still holds).
+Inventing one would be a placeholder. Decision: query planning, claim extraction, contradiction detection and
+synthesis are deterministic and rule-based; ranking is BM25 plus recency and source independence. Every answer
+sentence is a quoted source sentence or a template over measured quantities, with citations. Consequence: answers
+are less fluent and contradiction detection is limited to numeric, version, date and polarity conflicts — measured
+and reported in TEST_RESULTS. The GPU is not used for retrieval. A model can later implement the same contracts.
+
+**ADR-023 Raw web content lives in a separate public cache; queries never do. H (privacy boundary)**
+The directive asks to separate public research caches from private memory. Decision: downloaded bodies, robots
+files and HTTP validators go to `<db stem>.webcache.sqlite` (0600), keyed by URL and content hash only. Task
+objectives, queries, claims and knowledge live in the individual and are governed by forget, checkpoints and
+erasure. The cache is excluded from checkpoints and pruned by size and age. Consequence: restoring a checkpoint
+restores knowledge and provenance but not page bodies; re-verification refetches.
+
+**ADR-024 Our own SSRF-safe fetcher; Scrapling as the parser only. R**
+Scrapling 0.5.1's fetchers impersonate browser TLS fingerprints by default and ship Cloudflare/Turnstile solving and
+fingerprint spoofing; its redirect check is a post-hoc IP test without DNS pinning, and its spiders ignore robots.txt
+by default. Decision: `net.SafeFetcher` (stdlib `http.client`) resolves, validates and pins every address, re-validates
+every redirect, honours robots.txt and Retry-After, and limits size, time and type. Bodies are parsed with
+`scrapling.Selector(huge_tree=False)` and converted with `markdownify`. `scrapling[fetchers]` is not installed.
+Consequence: no anti-bot circumvention exists in the code base; sites that require it are reported as unavailable.
+
+**ADR-025 open-webSearch through its loopback REST daemon, with our own fallback. R**
+open-webSearch 2.2.0 provides key-free multi-engine search. Its MCP HTTP mode binds 0.0.0.0 without auth, its
+browser fetch path does not pin DNS, and it has no cross-engine fallback or rate limiting (a live run on 2026-11-20:
+duckduckgo answered, brave 429, startpage 0 results, bing redirect failure). Decision: run `open-websearch serve
+--host 127.0.0.1` pinned by `deploy/open-websearch/package-lock.json`; call only `/search`, `/health`, `/status`;
+track health per engine with a circuit breaker; fall back across engines and to structured APIs (Wikipedia, arXiv,
+OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub). Consequence: search keeps working, degraded, when engines fail.
+
+**ADR-026 Web knowledge enters semantic memory as candidates through the executive's question path. R**
+Web content must never become verified knowledge automatically. Decision: claims → clusters → `web_knowledge` rows
+with status `provisional` only when ≥2 independent sources agree, nothing contradicts, and confidence ≥ 0.75
+(configurable); everything else, and every promotion to `accepted`, goes through a `pending` question
+(scope `web:knowledge:<id>`) answered with `nsf resolve ID TEXT --confirm|--reject`. Versions are never overwritten:
+a new value supersedes the old row, which keeps its validity interval. Consequence: raw evidence, extracted claims
+and accepted knowledge stay distinguishable, and an owner can audit every step.
+
+**ADR-027 A worker drains explicitly queued tasks; a timer drives monitors and refresh. R** (extends ADR-012)
+Pocket- and console-initiated research must run on the Spark without blocking a request. Decision: tasks are rows
+in `web_tasks`; `nsf web work` (systemd `neuroscifi-webcortex.service`) claims queued tasks one at a time;
+`nsf web tick` (timer) starts due monitors and, only when `autonomous` is on, refreshes and curiosity research
+within a daily cap. Nothing crawls without a task, a budget and an origin. Consequence: every background action is a
+visible, cancellable task with an episode log.
+
+**ADR-028 Pocket can request research, scoped to its pairing family. R** (amends ADR-013's remote surface note)
+Decision: when `pocket_research` is on and the bridge is started with `--instance-db`, paired devices may
+submit (≤ 300-character objective), list, read and cancel tasks of their own family, and read the report. They
+cannot accept knowledge, change configuration, forget memory or see other families' tasks. Consequence: the LAN
+surface grows by four actions under the existing bearer, origin, size and TLS controls.
+
+**ADR-029 Migration 6 adds the web tables to the individual; forget and erasure cover them. H (format)**
+Decision: eleven `web_*` tables (ARCHITECTURE §6), owned by `webcortex/state.py`. `nsf forget research|knowledge|source`
+cascades to derived claims, links, knowledge versions and pending questions, marks checkpoints stale, and records a
+`deletion_log` row. Forgetting a task rewrites its objective and queries to `#forgotten`.
+
+**ADR-030 JavaScript rendering is an escalation, sandboxed and routed through SafeFetcher. R**
+Decision: when extraction finds a JavaScript shell and the task has a browser-session budget, `browser.BrowserRenderer`
+loads the page in a fresh Chromium context whose every request is intercepted and fulfilled by `SafeFetcher` (or
+refused). No cookies persist, downloads and permissions are denied, service workers and WebSockets are blocked.
+Off by default (`browser_rendering`). Consequence: SSRF and robots controls apply to every sub-resource.

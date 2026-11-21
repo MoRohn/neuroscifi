@@ -153,6 +153,120 @@ MIGRATIONS = [
       provenance TEXT NOT NULL CHECK(provenance IN ('observed','simulated')),
       created_at REAL NOT NULL, expires_at REAL);
     """,
+    # ---- version 6 ---------------------------------------------------------
+    """
+    -- webcortex/state.py: Web Cortex memory (docs/web-cortex/ARCHITECTURE.md §6, ADR-029). Vocabularies are the
+    -- literals of webcortex/types.py at the time of this migration (tests/webcortex/test_state.py checks them).
+    -- Raw page bodies are not here: they live in the separate public cache (ADR-023).
+    -- Working memory: one research task per row; budget/usage/checkpoint/result/executed_on are JSON.
+    CREATE TABLE web_tasks(
+      id TEXT PRIMARY KEY CHECK(length(id) BETWEEN 1 AND 64),
+      objective TEXT NOT NULL CHECK(length(objective) BETWEEN 1 AND 2000),
+      mode TEXT NOT NULL CHECK(mode IN ('quick_lookup','deep_research','continuous','comparative','scientific',
+        'technical','change_detection','fact_verification','gap_resolution')),
+      status TEXT NOT NULL CHECK(status IN ('queued','discovering','reading','evaluating','synthesizing',
+        'completed','partial','failed','cancelled')),
+      stage TEXT, origin TEXT NOT NULL, family TEXT, parent_id TEXT,
+      budget TEXT NOT NULL DEFAULT '{}', usage TEXT NOT NULL DEFAULT '{}', checkpoint TEXT, result TEXT,
+      error TEXT, executed_on TEXT,
+      created_at REAL NOT NULL, updated_at REAL NOT NULL, started_at REAL, finished_at REAL,
+      cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK(cancel_requested IN (0,1)),
+      lease_holder TEXT, lease_expires_at REAL);
+    CREATE INDEX web_tasks_status ON web_tasks(status, updated_at);
+    CREATE INDEX web_tasks_family ON web_tasks(family, created_at);
+    -- Episodic memory: one row per stage event of a task (task_id NULL for monitor/prediction events).
+    CREATE TABLE web_events(
+      id INTEGER PRIMARY KEY, task_id TEXT,
+      kind TEXT NOT NULL CHECK(kind IN ('submitted','started','stage','query','search','fetch','extract','render',
+        'crawl','claim','error','decision','finding','synthesized','consolidated','prediction','prediction_error',
+        'feedback','completed','partial','failed','cancelled','resumed','cancel_requested')),
+      stage TEXT, detail TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL);
+    CREATE INDEX web_events_task ON web_events(task_id, id);
+    -- Provenance: each document a task read (content_sha256 keys the public cache).
+    CREATE TABLE web_sources(
+      id INTEGER PRIMARY KEY, task_id TEXT NOT NULL, url TEXT NOT NULL, final_url TEXT,
+      canonical_url TEXT NOT NULL, domain TEXT NOT NULL, title TEXT,
+      kind TEXT NOT NULL CHECK(kind IN ('page','pdf','api','feed','text','json')),
+      published_at REAL, modified_at REAL, retrieved_at REAL NOT NULL,
+      retrieval_mode TEXT NOT NULL CHECK(retrieval_mode IN ('live','cache','api','feed','rendered')),
+      content_sha256 TEXT, provider TEXT, flags TEXT NOT NULL DEFAULT '{}', metadata TEXT NOT NULL DEFAULT '{}',
+      created_at REAL NOT NULL, UNIQUE(task_id, canonical_url));
+    CREATE INDEX web_sources_canonical ON web_sources(canonical_url);
+    CREATE INDEX web_sources_domain ON web_sources(domain);
+    -- Extracted claims (raw, not accepted). The same claim id may be extracted by several tasks.
+    CREATE TABLE web_claims(
+      id TEXT NOT NULL, task_id TEXT NOT NULL, source_id INTEGER, text TEXT NOT NULL, key TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('finding','interpretation','statement','metadata')),
+      polarity INTEGER NOT NULL CHECK(polarity IN (-1,1)), claim_values TEXT NOT NULL DEFAULT '[]',
+      source_url TEXT NOT NULL, canonical_url TEXT, domain TEXT NOT NULL, title TEXT,
+      published_at REAL, event_at REAL, retrieved_at REAL NOT NULL, verified_at REAL, relevance REAL,
+      doc_sha256 TEXT, sentence_index INTEGER,
+      cluster_status TEXT CHECK(cluster_status IN ('single_source','corroborated','contested','insufficient')),
+      confidence REAL, flags TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL,
+      PRIMARY KEY(task_id, id));
+    CREATE INDEX web_claims_key ON web_claims(key, task_id);
+    CREATE INDEX web_claims_id ON web_claims(id);
+    CREATE INDEX web_claims_url ON web_claims(canonical_url);
+    -- Knowledge graph edges between claims.
+    CREATE TABLE web_claim_links(
+      id INTEGER PRIMARY KEY, task_id TEXT, src TEXT NOT NULL, dst TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('supports','contradicts','supersedes','duplicates')),
+      detail TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL);
+    CREATE INDEX web_claim_links_src ON web_claim_links(src);
+    CREATE INDEX web_claim_links_dst ON web_claim_links(dst);
+    CREATE INDEX web_claim_links_task ON web_claim_links(task_id);
+    -- Semantic + temporal memory: versioned statements; a new value supersedes, never overwrites (ADR-026).
+    CREATE TABLE web_knowledge(
+      id INTEGER PRIMARY KEY, key TEXT NOT NULL, version INTEGER NOT NULL CHECK(version >= 1),
+      statement TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('provisional','accepted','stale','archived','rejected','superseded')),
+      confidence REAL NOT NULL, uncertainty REAL NOT NULL,
+      freshness_class TEXT NOT NULL CHECK(freshness_class IN ('breaking','volatile','release','scientific','stable')),
+      first_verified_at REAL NOT NULL, last_verified_at REAL NOT NULL, valid_from REAL, valid_until REAL,
+      superseded_by INTEGER, supporting TEXT NOT NULL DEFAULT '[]', contradicting TEXT NOT NULL DEFAULT '[]',
+      sources TEXT NOT NULL DEFAULT '[]', claim_values TEXT NOT NULL DEFAULT '[]',
+      polarity INTEGER NOT NULL DEFAULT 1 CHECK(polarity IN (-1,1)), note TEXT,
+      pending_id INTEGER, task_id TEXT, created_at REAL NOT NULL, updated_at REAL NOT NULL,
+      UNIQUE(key, version));
+    CREATE INDEX web_knowledge_status ON web_knowledge(status, key);
+    -- Knowledge graph: entities resolved by casefolded normalised name, and where they are mentioned.
+    CREATE TABLE web_entities(
+      id INTEGER PRIMARY KEY, name TEXT NOT NULL, normalized TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL CHECK(kind IN ('name','package','acronym','identifier')),
+      first_seen REAL NOT NULL, last_seen REAL NOT NULL);
+    CREATE TABLE web_mentions(
+      id INTEGER PRIMARY KEY, entity_id INTEGER NOT NULL REFERENCES web_entities(id) ON DELETE CASCADE,
+      claim_id TEXT, knowledge_id INTEGER, task_id TEXT, created_at REAL NOT NULL);
+    CREATE INDEX web_mentions_entity ON web_mentions(entity_id);
+    CREATE INDEX web_mentions_task ON web_mentions(task_id);
+    CREATE INDEX web_mentions_knowledge ON web_mentions(knowledge_id);
+    -- Procedural memory: provider health, circuit-breaker state and mode outcome statistics.
+    CREATE TABLE web_strategies(name TEXT PRIMARY KEY, state TEXT NOT NULL, updated_at REAL NOT NULL);
+    -- Continuous investigation.
+    CREATE TABLE web_monitors(
+      id INTEGER PRIMARY KEY, topic TEXT NOT NULL CHECK(length(topic) BETWEEN 1 AND 2000), plan TEXT,
+      mode TEXT NOT NULL CHECK(mode IN ('quick_lookup','deep_research','continuous','comparative','scientific',
+        'technical','change_detection','fact_verification','gap_resolution')),
+      interval_seconds REAL NOT NULL CHECK(interval_seconds >= 3600), budget TEXT NOT NULL DEFAULT '{}',
+      baseline TEXT NOT NULL DEFAULT '{}', authorized_by TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('proposed','active','paused','stopped')),
+      pending_id INTEGER, created_at REAL NOT NULL, updated_at REAL NOT NULL, last_run_at REAL,
+      next_run_at REAL, last_task_id TEXT, runs INTEGER NOT NULL DEFAULT 0);
+    CREATE INDEX web_monitors_due ON web_monitors(status, next_run_at);
+    -- Prediction: an expectation about a knowledge item, checked by a later refresh.
+    CREATE TABLE web_predictions(
+      id INTEGER PRIMARY KEY, knowledge_id INTEGER NOT NULL, expectation TEXT NOT NULL,
+      check_after REAL NOT NULL, created_at REAL NOT NULL, task_id TEXT, checked_at REAL,
+      outcome TEXT CHECK(outcome IN ('confirmed','error','inconclusive')), detail TEXT NOT NULL DEFAULT '{}');
+    CREATE INDEX web_predictions_due ON web_predictions(outcome, check_after);
+    -- Metacognition: what each investigation did to a knowledge item.
+    CREATE TABLE web_feedback(
+      id INTEGER PRIMARY KEY, task_id TEXT, knowledge_id INTEGER, key TEXT NOT NULL,
+      effect TEXT NOT NULL CHECK(effect IN ('strengthened','weakened','unchanged','reversed','new')),
+      before_confidence REAL, after_confidence REAL, info_gain REAL NOT NULL DEFAULT 0,
+      detail TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL);
+    CREATE INDEX web_feedback_key ON web_feedback(key, created_at);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

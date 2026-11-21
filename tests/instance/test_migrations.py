@@ -1,9 +1,10 @@
-"""Forward-only schema migrations: version-1 to -4 files reach the current schema with their data intact.
+"""Forward-only schema migrations: version-1 to -5 files reach the current schema with their data intact.
 
 Old files are built from the old migration strings themselves (schema.MIGRATIONS[:n]) and filled with the rows of
 a real individual, so the data is what the software actually writes. Migration 3 folds beliefs.DDL (the
 changepoints table and the evidence_tally index) into the schema; migration 4 adds epoch_links ("continue there");
-migration 5 adds epoch_contexts and epoch_streams (panel dynamics, decision D-1).
+migration 5 adds epoch_contexts and epoch_streams (panel dynamics, decision D-1); migration 6 adds the twelve
+Web Cortex tables (ADR-029).
 """
 import re
 import sqlite3
@@ -84,7 +85,7 @@ def test_migration_4_adds_epoch_links():
 
 
 def test_migration_5_adds_epoch_contexts_and_streams():
-    assert schema.SCHEMA_VERSION == 5
+    assert schema.SCHEMA_VERSION == 6
     assert _statements(schema.MIGRATIONS[4]) == [
         "CREATE TABLE epoch_contexts( epoch TEXT PRIMARY KEY REFERENCES epochs(name), context TEXT NOT NULL, "
         "created_at REAL NOT NULL)",
@@ -94,7 +95,7 @@ def test_migration_5_adds_epoch_contexts_and_streams():
         "expires_at REAL)"]
 
 
-@pytest.mark.parametrize("version", [1, 2, 3, 4])
+@pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
 def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
     source = _source(tmp_path)
     path = _old_file(tmp_path, source, version)
@@ -103,7 +104,8 @@ def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
         before = _dump(raw, tables)
         assert raw.execute("PRAGMA user_version").fetchone()[0] == version
         assert ("changepoints" in tables) == (version >= 3) and ("epoch_links" in tables) == (version >= 4)
-        assert "epoch_contexts" not in tables and "epoch_streams" not in tables
+        assert ("epoch_contexts" in tables) == (version >= 5) and ("epoch_streams" in tables) == (version >= 5)
+        assert not any(t.startswith("web_") for t in tables)
     assert before["evidence"] and before["belief_revisions"] and before["decisions"] and before["pending"]
     if version == 2:
         assert len(before["forgotten_roots"]) == 1
@@ -118,6 +120,8 @@ def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
             "epoch", "source_epoch", "segments", "pending_id", "created_at"]
         for table in ("epoch_contexts", "epoch_streams"):   # migration 5 adds both, empty
             assert db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
+        web = [t for t in _tables(db) if t.startswith("web_")]   # migration 6 adds the Web Cortex tables, empty
+        assert len(web) == 12 and all(db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0 for t in web)
         assert db.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='evidence_tally'").fetchone()
         if version == 1:  # migration 2 adds forgotten_roots, empty
             assert db.execute("SELECT count(*) FROM forgotten_roots").fetchone()[0] == 0
@@ -190,7 +194,7 @@ def test_opening_a_current_file_is_a_no_op(tmp_path):
         before = _dump(raw, _tables(raw))
     db = store.connect(path)
     try:
-        assert schema.migrate(db) == schema.SCHEMA_VERSION == 5
+        assert schema.migrate(db) == schema.SCHEMA_VERSION == 6
         assert db.total_changes == 0
         assert db.execute("PRAGMA schema_version").fetchone()[0] == cookie
         assert _objects(db) == objects and _dump(db, list(before)) == before
@@ -198,7 +202,7 @@ def test_opening_a_current_file_is_a_no_op(tmp_path):
         db.close()
     store.open_existing(path).close()
     with sqlite3.connect(path) as raw:
-        assert raw.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == 6
         assert raw.execute("PRAGMA schema_version").fetchone()[0] == cookie
 
 

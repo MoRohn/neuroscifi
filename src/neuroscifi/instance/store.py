@@ -277,7 +277,7 @@ def regulation(db, path=None):
 def inventory(db):
     """Birth record plus the live memory inventory and development counters."""
     count = lambda sql: db.execute(sql).fetchone()[0]  # noqa: E731
-    return {
+    out = {
         "birth": birth(db),
         "state_version": state_version(db),
         "memory": {
@@ -295,3 +295,8 @@ def inventory(db):
         "development": {name: value for name, value in db.execute(
             "SELECT name,value FROM counters WHERE name!='state_version' ORDER BY name")},
     }
+    from ..webcortex import state as web_state  # lazy: the Web Cortex tables exist from migration 6
+    web = web_state.counts(db)
+    if web:
+        out["web"] = web
+    return out

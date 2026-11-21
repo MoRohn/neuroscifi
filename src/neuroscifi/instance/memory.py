@@ -2,17 +2,25 @@
 
 Every record has the same envelope: kind, id, scope, time, permissions, confidence, outcome_history, payload.
 Association or embedding search is out of scope; retrieval is by identity, scope and time.
+Web Cortex kinds (migration 6): research (web_tasks), claim, knowledge, source, monitor; they also filter by
+status and (claim, source) by task.
 """
 import json
 
 from . import store
 from .errors import ValidationError
 
-KINDS = ("evidence", "belief", "graph", "dataset", "checkpoint", "deletion", "decision", "pending")
+KINDS = ("evidence", "belief", "graph", "dataset", "checkpoint", "deletion", "decision", "pending",
+         "research", "claim", "knowledge", "source", "monitor")
 _FILTERS = {  # filters beyond id/since/until that each kind understands
     "evidence": {"epoch", "channel", "root"}, "belief": {"epoch"}, "graph": {"context"}, "dataset": {"context"},
     "checkpoint": set(), "deletion": set(), "decision": {"epoch"}, "pending": {"epoch", "context"},
+    "research": {"status"}, "claim": {"status", "task"}, "knowledge": {"status"}, "source": {"task"},
+    "monitor": {"status"},
 }
+_FILTER_COLUMNS = {"claim": {"status": "cluster_status", "task": "task_id"}, "source": {"task": "task_id"}}
+_TEXT_IDS = ("evidence", "research", "claim")
+_WEB = {"consent": "web", "expires_at": None}
 
 
 def _json(text):
@@ -113,6 +121,50 @@ def _pending(r):
                     "resolved_at": resolved, "resolution": resolution})
 
 
+def _research(r):
+    id, objective, mode, status, stage, origin, created, updated, finished, usage, error = r
+    return _record("research", id, {"context": "web", "root": None}, created,
+                   {"objective": objective, "mode": mode, "status": status, "stage": stage, "origin": origin,
+                    "updated_at": updated, "finished_at": finished, "usage": _json(usage), "error": error},
+                   permissions=_perm(**_WEB, retention="until_forgotten"))
+
+
+def _claim(r):
+    id, task, text, key, ckind, polarity, values, url, domain, published, retrieved, status, conf, created = r
+    return _record("claim", id, {"context": "web", "root": None, "task": task}, created,
+                   {"text": text, "key": key, "claim_kind": ckind, "polarity": polarity, "values": _json(values),
+                    "source_url": url, "domain": domain, "published_at": published, "retrieved_at": retrieved,
+                    "status": status, "untrusted": True},
+                   permissions=_perm(**_WEB, retention="until_forgotten"), confidence=conf)
+
+
+def _knowledge(r):
+    (id, key, version, statement, status, conf, unc, fresh, first, last, vfrom, vuntil, sup_by, contradicting,
+     sources, pending_id) = r
+    return _record("knowledge", id, {"context": "web", "root": None, "key": key}, last,
+                   {"version": version, "statement": statement, "status": status, "uncertainty": unc,
+                    "freshness_class": fresh, "first_verified_at": first, "last_verified_at": last,
+                    "valid_from": vfrom, "valid_until": vuntil, "superseded_by": sup_by,
+                    "contested": bool(_json(contradicting)), "sources": _json(sources), "pending_id": pending_id},
+                   permissions=_perm(**_WEB, retention="versioned"), confidence=conf)
+
+
+def _source(r):
+    id, task, url, canonical, domain, title, skind, published, retrieved, mode, sha = r
+    return _record("source", id, {"context": "web", "root": None, "task": task}, retrieved,
+                   {"url": url, "canonical_url": canonical, "domain": domain, "title": title, "source_kind": skind,
+                    "published_at": published, "retrieval_mode": mode, "content_sha256": sha},
+                   permissions=_perm(**_WEB, retention="until_forgotten"))
+
+
+def _monitor(r):
+    id, topic, mode, interval, status, by, created, last, next_run, runs = r
+    return _record("monitor", id, {"context": "web", "root": None}, created,
+                   {"topic": topic, "mode": mode, "interval_seconds": interval, "status": status,
+                    "authorized_by": by, "last_run_at": last, "next_run_at": next_run, "runs": runs},
+                   permissions=_perm(**_WEB, retention="until_stopped"))
+
+
 # kind -> (table, columns, time column, order column, filter column map, builder)
 _TABLES = {
     "evidence": ("evidence", "seq,id,epoch,channel,action,bit,root,sample_id,actor,consent,provenance,"
@@ -130,6 +182,17 @@ _TABLES = {
                  "id", _decision),
     "pending": ("pending", "id,epoch,context,kind,scope,question,created_at,resolved_at,resolution",
                 "created_at", "id", "id", _pending),
+    "research": ("web_tasks", "id,objective,mode,status,stage,origin,created_at,updated_at,finished_at,usage,error",
+                 "created_at", "rowid", "id", _research),
+    "claim": ("web_claims", "id,task_id,text,key,kind,polarity,claim_values,source_url,domain,published_at,"
+              "retrieved_at,cluster_status,confidence,created_at", "created_at", "rowid", "id", _claim),
+    "knowledge": ("web_knowledge", "id,key,version,statement,status,confidence,uncertainty,freshness_class,"
+                  "first_verified_at,last_verified_at,valid_from,valid_until,superseded_by,contradicting,sources,"
+                  "pending_id", "last_verified_at", "id", "id", _knowledge),
+    "source": ("web_sources", "id,task_id,url,canonical_url,domain,title,kind,published_at,retrieved_at,"
+               "retrieval_mode,content_sha256", "retrieved_at", "id", "id", _source),
+    "monitor": ("web_monitors", "id,topic,mode,interval_seconds,status,authorized_by,created_at,last_run_at,"
+                "next_run_at,runs", "created_at", "id", "id", _monitor),
 }
 
 
@@ -140,10 +203,11 @@ def _number(name, value):
 
 
 def retrieve(db, kind, *, id=None, epoch=None, context=None, channel=None, root=None,
-             since=None, until=None, limit=100):
+             since=None, until=None, limit=100, status=None, task=None):
     if kind not in KINDS:
         raise ValidationError(f"kind must be one of {', '.join(KINDS)}")
-    filters = {"epoch": epoch, "context": context, "channel": channel, "root": root}
+    filters = {"epoch": epoch, "context": context, "channel": channel, "root": root, "status": status,
+               "task": task}
     for name, value in filters.items():
         if value is not None:
             if name not in _FILTERS[kind]:
@@ -162,7 +226,7 @@ def retrieve(db, kind, *, id=None, epoch=None, context=None, channel=None, root=
     table, columns, time_col, order, id_col, build = _TABLES[kind]
     where, params = [], []
     if id is not None:
-        if kind == "evidence":
+        if kind in _TEXT_IDS:
             where.append("id=?")
             params.append(str(id))
         else:
@@ -173,7 +237,7 @@ def retrieve(db, kind, *, id=None, epoch=None, context=None, channel=None, root=
             where.append("id=?")
     for name, value in filters.items():
         if value is not None:
-            where.append(f"{name}=?")
+            where.append(f"{_FILTER_COLUMNS.get(kind, {}).get(name, name)}=?")
             params.append(value)
     if since is not None:
         where.append(f"{time_col}>=?")

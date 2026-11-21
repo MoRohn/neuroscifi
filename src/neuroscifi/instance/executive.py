@@ -25,7 +25,10 @@ An ask that needs a new pending row once config.ask_budget_per_epoch ask/calibra
 the epoch becomes defer. Re-deciding the same open question reuses its pending row.
 
 Working memory decays: decide(record=True) closes ask/test_reference/calibrate questions left open for
-more than 7 days ('expired: no answer within 7 days').
+more than 7 days ('expired: no answer within 7 days'). Web Cortex questions (scope 'web:...', epoch NULL) are not
+epoch working memory: they do not decay and `resolve(..., confirm=True|False)` hands them to
+webcortex.knowledge.apply_review inside the same transaction (accept/reject a knowledge candidate, authorise or
+decline a monitor or research proposal).
 """
 import json
 import re
@@ -206,7 +209,7 @@ def _decide(db, epoch, now, record, path):
         # Working-memory decay: questions nobody answered within 7 days (event time) are closed.
         for (pid,) in db.execute(
                 "SELECT id FROM pending WHERE resolved_at IS NULL AND kind IN ('ask','test_reference','calibrate') "
-                "AND created_at<? ORDER BY id", (now - QUESTION_TTL_SECONDS,)).fetchall():
+                "AND created_at<? AND scope NOT LIKE 'web:%' ORDER BY id", (now - QUESTION_TTL_SECONDS,)).fetchall():
             db.execute("UPDATE pending SET resolved_at=?, resolution=? WHERE id=?", (now, EXPIRED, pid))
             expired.append(pid)
         # Working memory hygiene (MEM-01): an open question whose premise the evidence has since removed is
@@ -356,16 +359,24 @@ def resolve(db, pending_id, resolution, now, *, confirm=None):
             raise NotFound(f"No pending question {pending_id}")
         current = dict(zip(_PENDING_COLUMNS, row))
         about_epoch = current["scope"].startswith("epoch:")
+        about_web = current["scope"].startswith("web:")
+        if about_web:
+            from ..webcortex import knowledge as web_knowledge  # lazy: the executive does not need the web
         if current["resolved_at"] is not None:
             recorded = _changepoint(db, pending_id)
             linked = _link(db, pending_id)
-            previous = (linked is not None) if about_epoch else (recorded["confirmed"] if recorded else None)
+            if about_web:
+                previous = web_knowledge.review_outcome(db, current)
+            else:
+                previous = (linked is not None) if about_epoch else (recorded["confirmed"] if recorded else None)
             if current["resolution"] == resolution and (confirm is None or confirm == previous):
                 return {**current, "changepoint": recorded, "link": linked}
             raise Conflict(f"Pending question {pending_id} was already resolved: {current['resolution']!r}")
-        changepoint = linked = None
+        changepoint = linked = web = None
         if confirm is not None:
-            if about_epoch:
+            if about_web:
+                web = web_knowledge.apply_review(db, current, confirm, now)
+            elif about_epoch:
                 linked = _record_link(db, current, confirm, now)
                 store.bump(db, beliefs.ANSWER_COUNTERS[confirm])   # the empirical prior of beliefs.match_epochs
             else:
@@ -375,5 +386,8 @@ def resolve(db, pending_id, resolution, now, *, confirm=None):
         store.bump_state_version(db)
         if changepoint is not None or linked is not None:
             beliefs.record_revision(db, current["epoch"], now, f"resolve:{pending_id}")
-        return {**dict(zip(_PENDING_COLUMNS, db.execute(select, (pending_id,)).fetchone())),
-                "changepoint": changepoint, "link": linked}
+        out = {**dict(zip(_PENDING_COLUMNS, db.execute(select, (pending_id,)).fetchone())),
+               "changepoint": changepoint, "link": linked}
+        if about_web:
+            out["web"] = web
+        return out

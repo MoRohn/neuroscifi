@@ -1,0 +1,422 @@
+"""Web Cortex persistence inside the individual (migration 6, ADR-029). Owner of every `web_*` table.
+
+Configuration lives in `meta` under config.META_KEY. Helpers documented "caller owns the transaction" must run
+inside `store.write(db)`; the others open their own. Everything returned is JSON-serialisable.
+"""
+from __future__ import annotations
+
+from dataclasses import fields
+import json
+import math
+from urllib.parse import urlsplit
+
+from ..instance import store
+from ..instance.errors import Conflict, NotFound, ValidationError
+from . import config as wconfig
+from .types import Budget, Claim, ClaimCluster, FRESHNESS_CLASSES, MODES
+
+EVENT_KINDS = ("submitted", "started", "stage", "query", "search", "fetch", "extract", "render", "crawl", "claim",
+               "error", "decision", "finding", "synthesized", "consolidated", "prediction", "prediction_error",
+               "feedback", "completed", "partial", "failed", "cancelled", "resumed", "cancel_requested")
+KNOWLEDGE_STATES = ("provisional", "accepted", "stale", "archived", "rejected", "superseded")
+LIVE_KNOWLEDGE = ("provisional", "accepted", "stale")   # rows that still describe the world as known
+MONITOR_STATES = ("proposed", "active", "paused", "stopped")
+PREDICTION_OUTCOMES = ("confirmed", "error", "inconclusive")
+FEEDBACK_EFFECTS = ("strengthened", "weakened", "unchanged", "reversed", "new")
+LINK_KINDS = ("supports", "contradicts", "supersedes", "duplicates")
+DISABLED_MESSAGE = "Web access is disabled for this individual; enable with `nsf web config --enable`"
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def dumps(value) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False, default=_default)
+
+
+def _default(value):
+    if hasattr(value, "to_json"):
+        return value.to_json()
+    if isinstance(value, (set, frozenset, tuple)):
+        return list(value)
+    raise TypeError(f"not JSON-serialisable: {type(value).__name__}")
+
+
+def loads(text, default=None):
+    if text is None:
+        return default
+    try:
+        return json.loads(text)
+    except (TypeError, ValueError):
+        return default
+
+
+def finite(value, default=None):
+    """A finite float or `default` (JSON returns never carry NaN/Infinity)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return default
+    return float(value)
+
+
+def has_tables(db) -> bool:
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='web_tasks'").fetchone() is not None
+
+
+# ---- configuration -----------------------------------------------------------------------------------------
+
+def get_config(db) -> wconfig.WebConfig:
+    row = db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()
+    return wconfig.WebConfig.from_json(row[0] if row else None)
+
+
+def _is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _str_list(name, value, *, max_items=200, max_len=256):
+    if not isinstance(value, list) or len(value) > max_items or \
+            not all(isinstance(v, str) and 0 < len(v) <= max_len for v in value):
+        raise ValidationError(f"{name} must be a list of at most {max_items} non-empty strings "
+                              f"(each at most {max_len} characters)")
+    return list(value)
+
+
+def _validate(name, value):
+    """Return the validated value for one WebConfig field, or raise ValidationError."""
+    if name in ("enabled", "autonomous", "pocket_research", "browser_rendering"):
+        if not isinstance(value, bool):
+            raise ValidationError(f"{name} must be true or false")
+        return value
+    if name == "openwebsearch_url":
+        parts = urlsplit(value) if isinstance(value, str) else None
+        if parts is None or parts.scheme != "http" or (parts.hostname or "") not in LOOPBACK_HOSTS:
+            raise ValidationError("openwebsearch_url must be a plain-HTTP loopback URL, e.g. http://127.0.0.1:3210")
+        try:
+            parts.port
+        except ValueError:
+            raise ValidationError("openwebsearch_url has an invalid port") from None
+        return value
+    if name in ("engines", "providers", "deny_domains"):
+        return [v.lower() for v in _str_list(name, value)] if name == "deny_domains" else _str_list(name, value)
+    if name == "private_terms":
+        return _str_list(name, value, max_items=500, max_len=512)
+    if name == "budget_ceiling":
+        if not isinstance(value, dict):
+            raise ValidationError("budget_ceiling must be an object")
+        known = {f.name for f in fields(Budget)}
+        unknown = sorted(set(value) - known)
+        if unknown:
+            raise ValidationError(f"unknown budget field(s): {', '.join(unknown)}")
+        for key, item in value.items():
+            if not _is_num(item) or item < 0 or (key != "max_seconds" and not _is_int(item)):
+                raise ValidationError(f"budget_ceiling.{key} must be a non-negative "
+                                      f"{'number' if key == 'max_seconds' else 'integer'}")
+        return dict(get_default("budget_ceiling"), **value)
+    if name == "daily_autonomous":
+        if not isinstance(value, dict) or set(value) - {"tasks", "requests", "bytes"}:
+            raise ValidationError("daily_autonomous accepts only tasks, requests and bytes")
+        if not all(_is_int(v) and v >= 0 for v in value.values()):
+            raise ValidationError("daily_autonomous values must be non-negative integers")
+        return dict(get_default("daily_autonomous"), **value)
+    if name == "min_domain_interval":
+        if not _is_num(value) or not 0 <= value <= 3600:
+            raise ValidationError("min_domain_interval must be between 0 and 3600 seconds")
+        return float(value)
+    if name in ("max_document_bytes", "cache_max_bytes"):
+        if not _is_int(value) or value < 1024:
+            raise ValidationError(f"{name} must be an integer of at least 1024")
+        return value
+    if name == "cache_max_age_days":
+        if not _is_num(value) or value <= 0:
+            raise ValidationError("cache_max_age_days must be a positive number")
+        return float(value)
+    if name == "auto_provisional_min_sources":
+        if not _is_int(value) or not 1 <= value <= 50:
+            raise ValidationError("auto_provisional_min_sources must be an integer between 1 and 50")
+        return value
+    if name == "auto_provisional_min_confidence":
+        if not _is_num(value) or not 0 <= value <= 1:
+            raise ValidationError("auto_provisional_min_confidence must be between 0 and 1")
+        return float(value)
+    if name == "freshness_ttl":
+        if not isinstance(value, dict) or set(value) - set(FRESHNESS_CLASSES):
+            raise ValidationError(f"freshness_ttl keys must be among {', '.join(FRESHNESS_CLASSES)}")
+        if not all(_is_num(v) and v > 0 for v in value.values()):
+            raise ValidationError("freshness_ttl values must be positive numbers of seconds")
+        return {k: float(v) for k, v in value.items()}
+    raise ValidationError(f"unknown configuration key '{name}'")
+
+
+def get_default(name):
+    return getattr(wconfig.WebConfig(), name)
+
+
+def set_config(db, changes: dict, now) -> wconfig.WebConfig:
+    """Validate and apply `changes` (field -> value). Unknown keys -> ValidationError. One state_version bump."""
+    if not isinstance(changes, dict) or not changes:
+        raise ValidationError("configuration changes must be a non-empty object")
+    known = {f.name for f in fields(wconfig.WebConfig)}
+    unknown = sorted(set(changes) - known)
+    if unknown:
+        raise ValidationError(f"unknown configuration key(s): {', '.join(unknown)}")
+    validated = {name: _validate(name, value) for name, value in changes.items()}
+    with store.write(db):
+        current = get_config(db).to_json()
+        current.update(validated)
+        db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                   (wconfig.META_KEY, dumps(current)))
+        store.bump_state_version(db)
+    return get_config(db)
+
+
+def require_enabled(db) -> wconfig.WebConfig:
+    cfg = get_config(db)
+    if not cfg.enabled:
+        raise Conflict(DISABLED_MESSAGE)
+    return cfg
+
+
+def family_digest(db, fingerprint: str) -> str:
+    """Instance-salted pseudonym of a Pocket pairing family fingerprint (like governance.root_digest)."""
+    from ..instance.governance import root_digest
+    if not isinstance(fingerprint, str) or not fingerprint:
+        raise ValidationError("family fingerprint must be a non-empty string")
+    return root_digest(store.birth(db)["instance_id"], "family:" + fingerprint)
+
+
+# ---- tasks and events ----------------------------------------------------------------------------------------
+
+TASK_COLUMNS = ("id", "objective", "mode", "status", "stage", "origin", "family", "parent_id", "budget", "usage",
+                "checkpoint", "result", "error", "executed_on", "created_at", "updated_at", "started_at",
+                "finished_at", "cancel_requested", "lease_holder", "lease_expires_at")
+_TASK_JSON = ("budget", "usage", "checkpoint", "result", "executed_on")
+
+
+def task(db, task_id, *, family=None) -> dict:
+    """The task row as a dict (JSON columns decoded). NotFound when absent or owned by another family."""
+    row = db.execute(f"SELECT {','.join(TASK_COLUMNS)} FROM web_tasks WHERE id=?", (str(task_id),)).fetchone()
+    if row is None or (family is not None and row[TASK_COLUMNS.index("family")] != family):
+        raise NotFound(f"No research task {task_id}")
+    out = dict(zip(TASK_COLUMNS, row))
+    for key in _TASK_JSON:
+        out[key] = loads(out[key], {} if key in ("budget", "usage") else None)
+    out["cancel_requested"] = bool(out["cancel_requested"])
+    return out
+
+
+def update_task(db, task_id, now, **changes):
+    """Caller owns the transaction. JSON columns are encoded; updated_at is set."""
+    sets, params = ["updated_at=?"], [now]
+    for key, value in changes.items():
+        if key not in TASK_COLUMNS or key in ("id", "created_at"):
+            raise ValidationError(f"task column {key} cannot be updated")
+        sets.append(f"{key}=?")
+        params.append(dumps(value) if key in _TASK_JSON and value is not None else value)
+    db.execute(f"UPDATE web_tasks SET {','.join(sets)} WHERE id=?", (*params, task_id))
+
+
+def log_event(db, task_id, kind, detail, now, *, stage=None) -> int:
+    """Append one episodic event. Caller owns the transaction."""
+    if kind not in EVENT_KINDS:
+        raise ValidationError(f"event kind must be one of {', '.join(EVENT_KINDS)}")
+    return db.execute("INSERT INTO web_events(task_id,kind,stage,detail,created_at) VALUES(?,?,?,?,?)",
+                      (task_id, kind, stage, dumps(detail or {}), now)).lastrowid
+
+
+def events(db, task_id) -> list[dict]:
+    return [{"id": i, "kind": k, "stage": s, "detail": loads(d, {}), "at": t} for i, k, s, d, t in db.execute(
+        "SELECT id,kind,stage,detail,created_at FROM web_events WHERE task_id=? ORDER BY id", (task_id,))]
+
+
+# ---- sources, claims, links ----------------------------------------------------------------------------------
+
+SOURCE_COLUMNS = ("id", "task_id", "url", "final_url", "canonical_url", "domain", "title", "kind", "published_at",
+                  "modified_at", "retrieved_at", "retrieval_mode", "content_sha256", "provider", "flags", "metadata",
+                  "created_at")
+
+
+def save_source(db, task_id, doc, now, *, provider=None) -> int:
+    """Record a document (types.Document or its JSON) the task read. Caller owns the transaction.
+
+    One row per (task, canonical url): a re-read (resume from cache) updates retrieval mode and time.
+    """
+    d = doc.to_json() if hasattr(doc, "to_json") else dict(doc)
+    metadata = {k: v for k, v in (d.get("metadata") or {}).items() if k != "abstract"}
+    values = (task_id, d["url"], d.get("final_url"), d["canonical_url"], d["domain"], d.get("title") or "",
+              d.get("kind") or "page", finite(d.get("published_at")), finite(d.get("modified_at")),
+              d["retrieved_at"], d.get("retrieval_mode") or "live", d.get("content_sha256") or None, provider,
+              dumps(d.get("flags") or {}), dumps(metadata), now)
+    db.execute(f"INSERT INTO web_sources({','.join(SOURCE_COLUMNS[1:])}) VALUES({','.join('?' * 16)}) "
+               "ON CONFLICT(task_id, canonical_url) DO UPDATE SET retrieval_mode=excluded.retrieval_mode, "
+               "retrieved_at=excluded.retrieved_at, content_sha256=excluded.content_sha256, flags=excluded.flags",
+               values)
+    return db.execute("SELECT id FROM web_sources WHERE task_id=? AND canonical_url=?",
+                      (task_id, d["canonical_url"])).fetchone()[0]
+
+
+def sources(db, task_id) -> list[dict]:
+    out = []
+    for row in db.execute(f"SELECT {','.join(SOURCE_COLUMNS)} FROM web_sources WHERE task_id=? ORDER BY id",
+                          (task_id,)):
+        item = dict(zip(SOURCE_COLUMNS, row))
+        item["flags"], item["metadata"] = loads(item["flags"], {}), loads(item["metadata"], {})
+        out.append(item)
+    return out
+
+
+CLAIM_COLUMNS = ("id", "task_id", "source_id", "text", "key", "kind", "polarity", "claim_values", "source_url",
+                 "canonical_url", "domain", "title", "published_at", "event_at", "retrieved_at", "verified_at",
+                 "relevance", "doc_sha256", "sentence_index", "cluster_status", "confidence", "flags", "created_at")
+
+
+def claim_from_row(row: dict) -> Claim:
+    return Claim(id=row["id"], text=row["text"], source_url=row["source_url"], domain=row["domain"],
+                 title=row["title"] or "", retrieved_at=row["retrieved_at"], key=row["key"], kind=row["kind"],
+                 polarity=row["polarity"], values=_listed(row["claim_values"]), published_at=row["published_at"],
+                 event_at=row["event_at"], relevance=row["relevance"] or 0.0, doc_sha256=row["doc_sha256"] or "",
+                 sentence_index=row["sentence_index"] or 0,
+                 flags=row["flags"] if isinstance(row["flags"], dict) else loads(row["flags"], {}))
+
+
+def _listed(value):
+    return list(value) if isinstance(value, list) else loads(value, [])
+
+
+def claims(db, task_id) -> list[dict]:
+    out = []
+    for row in db.execute(f"SELECT {','.join(CLAIM_COLUMNS)} FROM web_claims WHERE task_id=? ORDER BY rowid",
+                          (task_id,)):
+        item = dict(zip(CLAIM_COLUMNS, row))
+        item["claim_values"], item["flags"] = loads(item["claim_values"], []), loads(item["flags"], {})
+        out.append(item)
+    return out
+
+
+def links(db, task_id) -> list[dict]:
+    return [{"id": i, "src": s, "dst": d, "kind": k, "detail": loads(x, {}), "at": t} for i, s, d, k, x, t in
+            db.execute("SELECT id,src,dst,kind,detail,created_at FROM web_claim_links WHERE task_id=? ORDER BY id",
+                       (task_id,))]
+
+
+def add_link(db, task_id, src, dst, kind, detail, now) -> int:
+    """Caller owns the transaction."""
+    if kind not in LINK_KINDS:
+        raise ValidationError(f"link kind must be one of {', '.join(LINK_KINDS)}")
+    return db.execute("INSERT INTO web_claim_links(task_id,src,dst,kind,detail,created_at) VALUES(?,?,?,?,?,?)",
+                      (task_id, src, dst, kind, dumps(detail or {}), now)).lastrowid
+
+
+def cluster_json(cluster: ClaimCluster) -> dict:
+    """Checkpoint form of a scored cluster: claim objects replaced by their ids."""
+    out = cluster.to_json()
+    out["claims"] = [c.id if hasattr(c, "id") else c["id"] for c in cluster.claims]
+    for key in ("confidence", "uncertainty"):
+        out[key] = finite(out.get(key), 0.0)
+    return out
+
+
+def save_clusters(db, task_id, clusters, now, *, source_ids=None) -> list[dict]:
+    """Persist scored clusters of a task: their claims, 'supports' and 'contradicts' links, and the cluster list
+    in the task checkpoint (key "clusters"). Caller owns the transaction. Returns the cluster JSON list.
+
+    source_ids: {canonical or source url: web_sources.id}. A claim's canonical url is its source_url (claims are
+    extracted from documents keyed by canonical url).
+    """
+    source_ids = source_ids or {}
+    out = []
+    for cluster in clusters:
+        for c in cluster.claims:
+            db.execute(f"INSERT OR REPLACE INTO web_claims({','.join(CLAIM_COLUMNS)}) "
+                       f"VALUES({','.join('?' * len(CLAIM_COLUMNS))})",
+                       (c.id, task_id, source_ids.get(c.source_url), c.text, c.key or cluster.key, c.kind,
+                        -1 if c.polarity < 0 else 1, dumps(list(c.values or [])), c.source_url, c.source_url,
+                        c.domain, c.title, finite(c.published_at), finite(c.event_at), c.retrieved_at, now,
+                        finite(c.relevance, 0.0), c.doc_sha256 or None, c.sentence_index, cluster.status,
+                        finite(cluster.confidence, 0.0), dumps(c.flags or {}), now))
+        head = cluster.supporting[0] if cluster.supporting else None
+        for cid in cluster.supporting[1:]:
+            add_link(db, task_id, cid, head, "supports", {"key": cluster.key}, now)
+        for item in cluster.contradicting:
+            add_link(db, task_id, item["a"], item["b"], "contradicts", {"reason": item.get("reason", ""),
+                                                                        "key": cluster.key}, now)
+        out.append(cluster_json(cluster))
+    row = db.execute("SELECT checkpoint FROM web_tasks WHERE id=?", (task_id,)).fetchone()
+    if row is None:
+        raise NotFound(f"No research task {task_id}")
+    checkpoint = loads(row[0], None) or {}
+    checkpoint["clusters"] = out
+    db.execute("UPDATE web_tasks SET checkpoint=?, updated_at=? WHERE id=?", (dumps(checkpoint), now, task_id))
+    return out
+
+
+def load_clusters(db, task_id) -> list[ClaimCluster]:
+    """Rebuild the task's scored clusters (with Claim objects) from its checkpoint and web_claims."""
+    row = db.execute("SELECT checkpoint FROM web_tasks WHERE id=?", (task_id,)).fetchone()
+    if row is None:
+        raise NotFound(f"No research task {task_id}")
+    stored = {c["id"]: claim_from_row(c) for c in claims(db, task_id)}
+    out = []
+    for item in (loads(row[0], None) or {}).get("clusters", []):
+        members = [stored[cid] for cid in item.get("claims", []) if cid in stored]
+        if not members:
+            continue
+        out.append(ClaimCluster(key=item["key"], claims=members, independent_sources=item["independent_sources"],
+                                supporting=[c for c in item["supporting"] if c in stored],
+                                contradicting=list(item["contradicting"]), confidence=item["confidence"],
+                                uncertainty=item["uncertainty"], status=item.get("status", "single_source"),
+                                statement=item.get("statement") or members[0].text))
+    return out
+
+
+# ---- procedural memory ---------------------------------------------------------------------------------------
+
+def load_strategies(db, name="registry") -> dict:
+    row = db.execute("SELECT state FROM web_strategies WHERE name=?", (name,)).fetchone()
+    return loads(row[0], {}) if row else {}
+
+
+def save_strategies(db, state: dict, now, name="registry"):
+    """Persist ProviderRegistry.dump_state() (or another named strategy record). Opens its own transaction."""
+    with store.write(db):
+        db.execute("INSERT INTO web_strategies(name,state,updated_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE "
+                   "SET state=excluded.state, updated_at=excluded.updated_at", (name, dumps(state or {}), now))
+
+
+def record_mode_outcome(db, mode, status, usage: dict, now):
+    """Mode outcome statistics (procedural memory). Caller owns the transaction."""
+    if mode not in MODES:
+        return
+    name = f"mode:{mode}"
+    row = db.execute("SELECT state FROM web_strategies WHERE name=?", (name,)).fetchone()
+    stats = loads(row[0], {}) if row else {}
+    stats["runs"] = stats.get("runs", 0) + 1
+    stats[status] = stats.get(status, 0) + 1
+    for key in ("requests", "pages", "bytes"):
+        stats[f"total_{key}"] = stats.get(f"total_{key}", 0) + int((usage or {}).get(key, 0) or 0)
+    db.execute("INSERT INTO web_strategies(name,state,updated_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE "
+               "SET state=excluded.state, updated_at=excluded.updated_at", (name, dumps(stats), now))
+
+
+# ---- inventory ---------------------------------------------------------------------------------------------
+
+def counts(db) -> dict:
+    """Web memory counts for store.inventory (empty dict when migration 6 is absent)."""
+    if not has_tables(db):
+        return {}
+    count = lambda sql: db.execute(sql).fetchone()[0]  # noqa: E731
+    return {
+        "tasks": count("SELECT count(*) FROM web_tasks"),
+        "open_tasks": count("SELECT count(*) FROM web_tasks WHERE status NOT IN "
+                            "('completed','partial','failed','cancelled')"),
+        "sources": count("SELECT count(*) FROM web_sources"),
+        "claims": count("SELECT count(*) FROM web_claims"),
+        "knowledge": count("SELECT count(*) FROM web_knowledge"),
+        "accepted_knowledge": count("SELECT count(*) FROM web_knowledge WHERE status='accepted'"),
+        "provisional_knowledge": count("SELECT count(*) FROM web_knowledge WHERE status='provisional'"),
+        "entities": count("SELECT count(*) FROM web_entities"),
+        "monitors": count("SELECT count(*) FROM web_monitors WHERE status IN ('proposed','active','paused')"),
+        "predictions_open": count("SELECT count(*) FROM web_predictions WHERE outcome IS NULL"),
+        "feedback": count("SELECT count(*) FROM web_feedback"),
+    }

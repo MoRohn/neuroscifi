@@ -333,3 +333,205 @@ def sweep(db, now):
     if effects or streams:
         out["wal_checkpoint"] = store.truncate_wal(db)
     return out
+
+
+# ---- Web Cortex (migration 6, ADR-029) ------------------------------------------------------------------------
+# A forgotten research task leaves no copy of its objective, queries, events, sources or claims: the task row is
+# deleted and the deletion_log names only the task id. Knowledge that rested only on removed claims is deleted
+# with its questions, predictions and feedback; knowledge that keeps other support loses the removed references
+# and becomes 'stale' (it needs re-verification). A version whose successor is deleted becomes the latest again,
+# as 'stale'. Questions about removed knowledge are closed with a system resolution and their text rewritten.
+
+WEB_FORGOTTEN = "forgotten: the web memory it referred to was removed"
+_WEB_QUESTION = "#forgotten"
+
+
+def _ids(db, sql, params=()):
+    return [r[0] for r in db.execute(sql, params)]
+
+
+def _in(values):
+    return ",".join("?" * len(values))
+
+
+def _forget_pending(db, scopes, prefixes, now):
+    """Close and rewrite web questions whose scope is in `scopes` or starts with a prefix. Caller owns the txn."""
+    rows = []
+    for scope in scopes:
+        rows += db.execute("SELECT id,resolved_at FROM pending WHERE scope=?", (scope,)).fetchall()
+    for prefix in prefixes:
+        rows += db.execute("SELECT id,resolved_at FROM pending WHERE substr(scope,1,?)=?",
+                           (len(prefix), prefix)).fetchall()
+    for pid, resolved in rows:
+        if resolved is None:
+            db.execute("UPDATE pending SET question=?, resolved_at=?, resolution=? WHERE id=?",
+                       (_WEB_QUESTION, now, WEB_FORGOTTEN, pid))
+        else:
+            db.execute("UPDATE pending SET question=?, resolution=? WHERE id=?", (_WEB_QUESTION, WEB_FORGOTTEN, pid))
+    return sorted({pid for pid, _ in rows})
+
+
+def _drop_knowledge(db, ids, now):
+    """Delete knowledge rows and everything derived from them. Caller owns the txn. Returns effects."""
+    ids = sorted(set(ids))
+    if not ids:
+        return {"knowledge_deleted": [], "versions_restored": [], "pending_closed": []}
+    restored = []
+    for kid in ids:
+        for (older,) in db.execute("SELECT id FROM web_knowledge WHERE superseded_by=?", (kid,)).fetchall():
+            if older in ids:
+                continue
+            db.execute("UPDATE web_knowledge SET superseded_by=NULL, valid_until=NULL, status=CASE WHEN "
+                       "status='superseded' THEN 'stale' ELSE status END, note=?, updated_at=? WHERE id=?",
+                       ("its successor version was forgotten; needs re-verification", now, older))
+            restored.append(older)
+    marks = _in(ids)
+    db.execute(f"DELETE FROM web_knowledge WHERE id IN ({marks})", ids)
+    db.execute(f"DELETE FROM web_predictions WHERE knowledge_id IN ({marks})", ids)
+    db.execute(f"DELETE FROM web_feedback WHERE knowledge_id IN ({marks})", ids)
+    db.execute(f"DELETE FROM web_mentions WHERE knowledge_id IN ({marks})", ids)
+    db.execute(f"DELETE FROM web_events WHERE json_extract(detail,'$.knowledge_id') IN ({marks})", ids)
+    closed = _forget_pending(db, [f"web:knowledge:{k}" for k in ids], [], now)
+    return {"knowledge_deleted": ids, "versions_restored": sorted(restored), "pending_closed": closed}
+
+
+def _web_cascade(db, removed_claims, now):
+    """Re-check knowledge after claims were removed. Caller owns the txn. Returns effects."""
+    removed = set(removed_claims)
+    surviving = lambda cid: db.execute("SELECT 1 FROM web_claims WHERE id=? LIMIT 1",  # noqa: E731
+                                       (cid,)).fetchone() is not None
+    gone = {cid for cid in removed if not surviving(cid)}
+    doomed, weakened = [], []
+    if gone:
+        for kid, supporting, contradicting, status in db.execute(
+                "SELECT id,supporting,contradicting,status FROM web_knowledge").fetchall():
+            support = json.loads(supporting or "[]")
+            against = json.loads(contradicting or "[]")
+            kept = [c for c in support if c not in gone]
+            kept_against = [c for c in against if (c.get("claim") if isinstance(c, dict) else c) not in gone]
+            if support and not kept:
+                doomed.append(kid)
+            elif kept != support or kept_against != against:
+                new_status = "stale" if status in ("provisional", "accepted") and kept != support else status
+                db.execute("UPDATE web_knowledge SET supporting=?, contradicting=?, status=?, note=?, updated_at=? "
+                           "WHERE id=?", (_dump(kept), _dump(kept_against), new_status,
+                                          f"lost {len(support) - len(kept)} supporting claim(s) to a forget; "
+                                          "needs re-verification" if kept != support else None, now, kid))
+                weakened.append(kid)
+        marks = _in(sorted(gone))
+        db.execute(f"DELETE FROM web_claim_links WHERE src IN ({marks}) OR dst IN ({marks})",
+                   (*sorted(gone), *sorted(gone)))
+        db.execute(f"DELETE FROM web_mentions WHERE claim_id IN ({marks})", sorted(gone))
+    effects = _drop_knowledge(db, doomed, now)
+    effects["knowledge_stale"] = sorted(set(weakened) - set(doomed))
+    effects["claims_removed"] = len(gone)
+    db.execute("DELETE FROM web_entities WHERE id NOT IN (SELECT entity_id FROM web_mentions)")
+    return effects
+
+
+def _web_finish(db, kind, target, effects, now):
+    """Stale checkpoints, state version and deletion_log. Caller owns the txn."""
+    effects["checkpoints_stale"] = _stale_all(db)
+    effects["state_version"] = store.bump_state_version(db)
+    db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+               (kind, target, now, json.dumps(effects, sort_keys=True)))
+    return effects
+
+
+def forget_research(db, task_id, now):
+    """Forget a research task: its row, events, sources, claims, links, mentions, feedback and the knowledge that
+    rested only on it. The objective is kept nowhere (deletion_log names the task id only)."""
+    if not isinstance(task_id, str) or not task_id:
+        raise ValidationError("task id must be a non-empty string")
+    with store.write(db):
+        if db.execute("SELECT 1 FROM web_tasks WHERE id=?", (task_id,)).fetchone() is None:
+            return {"status": "absent", "effects": {}}
+        claim_ids = _ids(db, "SELECT DISTINCT id FROM web_claims WHERE task_id=?", (task_id,))
+        deleted = {table: db.execute(f"DELETE FROM {table} WHERE task_id=?", (task_id,)).rowcount
+                   for table in ("web_events", "web_sources", "web_claims", "web_claim_links", "web_mentions",
+                                 "web_feedback")}
+        db.execute("UPDATE web_predictions SET task_id=NULL WHERE task_id=?", (task_id,))
+        db.execute("UPDATE web_tasks SET parent_id=NULL WHERE parent_id=?", (task_id,))
+        db.execute("UPDATE web_monitors SET last_task_id=NULL WHERE last_task_id=?", (task_id,))
+        db.execute("UPDATE web_knowledge SET task_id=NULL WHERE task_id=?", (task_id,))
+        db.execute("DELETE FROM web_tasks WHERE id=?", (task_id,))
+        effects = _web_cascade(db, claim_ids, now)
+        effects["pending_closed"] = sorted(set(effects["pending_closed"]) | set(_forget_pending(
+            db, [f"web:research:{task_id}"], [f"web:contested:{task_id}:"], now)))
+        effects["deleted"] = deleted
+        _web_finish(db, "research", task_id, effects, now)
+    return _result(db, effects)
+
+
+def _knowledge_chain(db, knowledge_id):
+    chain, frontier = set(), [knowledge_id]
+    while frontier:
+        kid = frontier.pop()
+        if kid in chain:
+            continue
+        row = db.execute("SELECT superseded_by FROM web_knowledge WHERE id=?", (kid,)).fetchone()
+        if row is None:
+            continue
+        chain.add(kid)
+        if row[0] is not None:
+            frontier.append(row[0])
+        frontier += _ids(db, "SELECT id FROM web_knowledge WHERE superseded_by=?", (kid,))
+    return sorted(chain)
+
+
+def forget_knowledge(db, knowledge_id, now):
+    """Forget a knowledge item and every version in its supersession chain (claims stay with their tasks)."""
+    if isinstance(knowledge_id, bool) or not isinstance(knowledge_id, int):
+        raise ValidationError("knowledge id must be an integer")
+    with store.write(db):
+        chain = _knowledge_chain(db, knowledge_id)
+        if not chain:
+            return {"status": "absent", "effects": {}}
+        effects = _drop_knowledge(db, chain, now)
+        db.execute("DELETE FROM web_entities WHERE id NOT IN (SELECT entity_id FROM web_mentions)")
+        _web_finish(db, "knowledge", str(knowledge_id), effects, now)
+    return _result(db, effects)
+
+
+def forget_source(db, url_or_domain, now):
+    """Forget one source URL (by canonical URL) or every source of a registrable domain, with the claims taken
+    from it and the knowledge that rested only on them. effects["cache"] names the public-cache keys
+    ({"urls": [...], "domain": d|None, "sha256": [...]}) the caller drops from the public cache."""
+    if not isinstance(url_or_domain, str) or not url_or_domain.strip():
+        raise ValidationError("source must be a URL or a domain")
+    target = url_or_domain.strip()
+    if "://" in target:
+        try:
+            from ..webcortex.extract import canonical_url  # lazy: the canonical form the orchestrator stores
+            canonical = canonical_url(target)
+        except ImportError:
+            canonical = target
+        domain = None
+        where, params = "(canonical_url=? OR source_url=? OR source_url=?)", (canonical, canonical, target)
+        source_where, source_params = "(canonical_url=? OR url=? OR final_url=?)", (canonical, target, target)
+    else:
+        domain = target.lower().strip(".")
+        where, params = "(domain=? OR domain LIKE ?)", (domain, "%." + domain)
+        source_where, source_params = where, params
+    with store.write(db):
+        rows = db.execute(f"SELECT url,final_url,canonical_url,content_sha256 FROM web_sources WHERE {source_where}",
+                          source_params).fetchall()
+        claim_ids = _ids(db, f"SELECT DISTINCT id FROM web_claims WHERE {where}", params)
+        if not rows and not claim_ids:
+            return {"status": "absent", "effects": {}}
+        db.execute(f"DELETE FROM web_claims WHERE {where}", params)
+        db.execute(f"DELETE FROM web_sources WHERE {source_where}", source_params)
+        effects = _web_cascade(db, claim_ids, now)
+        urls = sorted({u for r in rows for u in r[:3] if u})
+        dropped = 0
+        for kid, sources in db.execute("SELECT id,sources FROM web_knowledge").fetchall():
+            listed = json.loads(sources or "[]")
+            kept = [s for s in listed if not (s.get("url") in urls or (domain and (
+                s.get("domain") == domain or str(s.get("domain", "")).endswith("." + domain))))]
+            if kept != listed:
+                db.execute("UPDATE web_knowledge SET sources=? WHERE id=?", (_dump(kept), kid))
+                dropped += 1
+        effects.update({"sources_deleted": len(rows), "knowledge_sources_dropped": dropped,
+                        "cache": {"urls": urls, "domain": domain, "sha256": sorted({r[3] for r in rows if r[3]})}})
+        _web_finish(db, "source", domain or canonical, effects, now)
+    return _result(db, effects)
