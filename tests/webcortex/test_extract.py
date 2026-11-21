@@ -197,9 +197,11 @@ def test_pathological_page_extraction_is_bounded():
     body = ("<html><head><title>Big</title></head><body><article>" + "<p>ab cd</p>" * 400_000
             + "</article></body></html>").encode()
     assert len(body) > 4_500_000
-    start = time.perf_counter()
+    # CPU time, not wall time: the bound is about the extractor's work, and a loaded host (parallel suites,
+    # browsers, model servers) stretched wall time to 1.63 s while the extraction itself was unchanged.
+    start = time.process_time()
     doc = html_doc(body)
-    assert time.perf_counter() - start < 1.5
+    assert time.process_time() - start < 1.5
     assert doc.flags["truncated_extraction"] is True and doc.title == "Big"
     assert 0 < len(doc.text) <= ex.MAX_TEXT and len(doc.markdown) <= ex.MAX_MARKDOWN
     assert doc.text.count("\n") < ex.MAX_ELEMENTS
