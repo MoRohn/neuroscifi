@@ -30,6 +30,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "neuroscifi.pocket" = ["web/*"]
 "neuroscifi.console" = ["web/*"]
+"neuroscifi.presence" = ["web/*"]
 "neuroscifi.webcortex" = ["bench/*.json"]
 "neuroscifi.vendor_tufazip" = ["LICENSE", "NOTICE"]
 

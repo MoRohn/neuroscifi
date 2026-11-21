@@ -1,0 +1,125 @@
+{
+  "measured_at": "2026-11-21T07:41:16-0500",
+  "chromium": "153.0.8010.36",
+  "machine": "aarch64 Linux 7.3.0-3.1-omarchy",
+  "runs": {
+    "desktop_1280": {
+      "x1": {
+        "cpu_throttle": 1,
+        "continuous_motion_5s": {
+          "frames": 304,
+          "raf_interval_ms_p50": 16.7,
+          "raf_interval_ms_p95": 16.7,
+          "renderer_script_ms_per_frame_p50": 0.2,
+          "renderer_script_ms_per_frame_p95": 0.3,
+          "devtools_script_ms_per_frame": 0.25,
+          "devtools_layout_ms_per_frame": 0.13,
+          "devtools_recalc_style_ms_per_frame": 0.105
+        },
+        "transitions_200": {
+          "wall_s": 6.54,
+          "scene_commits": 31,
+          "heap_before_kb": 2780.4,
+          "heap_after_kb": 2851.1,
+          "heap_delta_kb": 70.7,
+          "dom_nodes_before": 2041,
+          "dom_nodes_after": 2041,
+          "listeners_before": 69,
+          "listeners_after": 69,
+          "max_concurrent_loops": 1,
+          "svg_paths": 14,
+          "max_point_speed": 260
+        }
+      },
+      "x4": {
+        "cpu_throttle": 4,
+        "continuous_motion_5s": {
+          "frames": 304,
+          "raf_interval_ms_p50": 16.7,
+          "raf_interval_ms_p95": 16.7,
+          "renderer_script_ms_per_frame_p50": 0.2,
+          "renderer_script_ms_per_frame_p95": 0.7,
+          "devtools_script_ms_per_frame": 0.269,
+          "devtools_layout_ms_per_frame": 0.258,
+          "devtools_recalc_style_ms_per_frame": 0.142
+        },
+        "transitions_200": {
+          "wall_s": 7.05,
+          "scene_commits": 63,
+          "heap_before_kb": 2872.9,
+          "heap_after_kb": 3041.4,
+          "heap_delta_kb": 168.5,
+          "dom_nodes_before": 2041,
+          "dom_nodes_after": 2041,
+          "listeners_before": 69,
+          "listeners_after": 69,
+          "max_concurrent_loops": 1,
+          "svg_paths": 14,
+          "max_point_speed": 260
+        }
+      }
+    },
+    "phone_390": {
+      "x1": {
+        "cpu_throttle": 1,
+        "continuous_motion_5s": {
+          "frames": 304,
+          "raf_interval_ms_p50": 16.7,
+          "raf_interval_ms_p95": 16.7,
+          "renderer_script_ms_per_frame_p50": 0.2,
+          "renderer_script_ms_per_frame_p95": 0.3,
+          "devtools_script_ms_per_frame": 0.269,
+          "devtools_layout_ms_per_frame": 0.147,
+          "devtools_recalc_style_ms_per_frame": 0.121
+        },
+        "transitions_200": {
+          "wall_s": 6.65,
+          "scene_commits": 31,
+          "heap_before_kb": 2839.6,
+          "heap_after_kb": 2850.0,
+          "heap_delta_kb": 10.4,
+          "dom_nodes_before": 2041,
+          "dom_nodes_after": 2041,
+          "listeners_before": 69,
+          "listeners_after": 69,
+          "max_concurrent_loops": 1,
+          "svg_paths": 14,
+          "max_point_speed": 260
+        }
+      },
+      "x4": {
+        "cpu_throttle": 4,
+        "continuous_motion_5s": {
+          "frames": 305,
+          "raf_interval_ms_p50": 16.7,
+          "raf_interval_ms_p95": 16.8,
+          "renderer_script_ms_per_frame_p50": 0.2,
+          "renderer_script_ms_per_frame_p95": 0.8,
+          "devtools_script_ms_per_frame": 0.313,
+          "devtools_layout_ms_per_frame": 0.317,
+          "devtools_recalc_style_ms_per_frame": 0.204
+        },
+        "transitions_200": {
+          "wall_s": 6.67,
+          "scene_commits": 62,
+          "heap_before_kb": 2872.9,
+          "heap_after_kb": 2879.9,
+          "heap_delta_kb": 6.9,
+          "dom_nodes_before": 2041,
+          "dom_nodes_after": 2041,
+          "listeners_before": 69,
+          "listeners_after": 69,
+          "max_concurrent_loops": 1,
+          "svg_paths": 14,
+          "max_point_speed": 260
+        }
+      }
+    }
+  },
+  "console_idle_10s": {
+    "frames": 0,
+    "requests_completed": 1,
+    "concept": "resting",
+    "seconds_until_still_after_load": 55.6
+  }
+}

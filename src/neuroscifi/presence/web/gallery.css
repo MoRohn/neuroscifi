@@ -1,0 +1,22 @@
+/* Presence gallery (development page). */
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--pc-bg);color:var(--pc-panel-text);line-height:1.45}
+.gh{padding:16px 20px;border-bottom:1px solid var(--pc-panel-line)}
+.gh h1{margin:0 0 6px;font:400 1.8rem/1.1 Georgia,serif}
+.gh p{max-width:900px;margin:6px 0}
+.gh-controls,.gform{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.gh-controls select,.gform input,.gform button{min-height:44px;font:inherit;padding:6px 10px;border:1px solid var(--pc-panel-line);border-radius:7px;background:var(--pc-panel);color:var(--pc-panel-text)}
+main{padding:12px 20px 40px}
+h2{font-size:1.1rem;margin:22px 0 8px}
+.gpair{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:0}
+.gpanel{background:var(--pc-bg);color:var(--pc-panel-text);display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px;padding:14px;min-height:120px}
+.gcell{display:flex;flex-direction:column;align-items:center;gap:2px;margin:0}
+.gcell .pc-svg{width:96px;height:96px}
+.gcell figcaption{font-size:.78rem;text-align:center;color:var(--pc-panel-muted)}
+.gsizes{grid-template-columns:repeat(4,auto);align-items:end;justify-content:start;gap:18px}
+.gsizes .s-indicator .pc-svg{width:22px;height:22px}.gsizes .s-compact .pc-svg{width:40px;height:40px}
+.gsizes .s-normal .pc-svg{width:96px;height:96px}.gsizes .s-expanded .pc-svg{width:180px;height:180px}
+.gharness{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+#live .pc-svg{width:180px;height:180px}
+.gbtns{display:flex;flex-wrap:wrap;gap:6px;max-width:640px}
+.gbtns button{min-height:44px;font:inherit;padding:4px 10px;border:1px solid var(--pc-panel-line);border-radius:7px;background:var(--pc-panel);color:var(--pc-panel-text)}
+pre{white-space:pre-wrap;font-size:.8rem;border:1px solid var(--pc-panel-line);border-radius:8px;padding:8px;max-width:900px}

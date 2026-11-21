@@ -1,7 +1,8 @@
 // NeuroSciFi owner console. Vanilla ES module, no framework, CSP-compatible (no inline code or styles in markup).
 // The session token arrives in the URL fragment, is kept in this module only and removed from the address bar.
 
-const VIEWS = ['overview', 'teach', 'evidence', 'questions', 'research', 'knowledge', 'graphs', 'checkpoints', 'memory'];
+const VIEWS = ['overview', 'teach', 'evidence', 'questions', 'research', 'knowledge', 'graphs', 'checkpoints', 'memory',
+               'voice'];
 const CHANNEL_ROOT = { camera: 'Camera root', word: 'Partner (word root)', reference: 'Reference root' };
 const MAP_TEXT = { 0: 'as declared', 1: 'inverted', null: 'tied' };
 const CHECK_LABELS = {
@@ -2391,6 +2392,7 @@ function renderRecall(r) {
 
 function lock(text) {
   state.token = null;
+  dispatchEvent(new CustomEvent('nsf:session'));   // presence (presence/web/console-boot.mjs) stops polling
   $('lockedText').replaceChildren(...rich(text));
   for (const id of VIEWS) $(id).hidden = true;
   $('nav').hidden = true;
@@ -2402,13 +2404,22 @@ function takeToken() {
   if (!match) return false;
   state.token = match[1];
   history.replaceState(null, '', location.pathname + location.search);
+  dispatchEvent(new CustomEvent('nsf:session'));
   start();
   return true;
 }
+// The presence element reads the session token through this getter (it never stores it).
+window.nsfConsoleToken = () => state.token;
 
 const LOADERS = { overview: loadOverview, teach: loadTeach, evidence: loadEvidence, questions: loadQuestions,
                   research: loadResearch, knowledge: loadKnowledge, graphs: loadGraphs, checkpoints: loadCheckpoints,
-                  memory: loadMemory };
+                  memory: loadMemory, voice: loadVoice };
+
+// Voice Cortex panel (src/neuroscifi/voice/web): loaded on first visit; it keeps its own session and event stream.
+function loadVoice() {
+  import('/voice/voice-ui.mjs').then((m) => m.mountConsole($('voiceMount'), state.token))
+    .catch((error) => { $('voiceMount').textContent = `The voice panel could not load: ${errorText(error)}`; });
+}
 
 function refreshView() { if (state.token) LOADERS[state.view]?.(); }
 

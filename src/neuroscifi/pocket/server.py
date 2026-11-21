@@ -31,6 +31,10 @@ ASSETS = {"/": ("index.html", "text/html; charset=utf-8"), "/mobile.js": ("mobil
           "/icon.svg": ("icon.svg", "image/svg+xml")}
 for asset in ("field-model.mjs","field-ui.mjs","research-ui.mjs","sw.js"):
     ASSETS["/"+asset]=(asset,"text/javascript")
+from ..presence import POCKET as PRESENCE_FILES, assets as presence_assets  # noqa: E402  shared presence + theme
+ASSETS.update(presence_assets(PRESENCE_FILES))
+from ..voice import assets as voice_assets  # noqa: E402  Voice Cortex client modules
+ASSETS.update(voice_assets())
 FIELD = {
     "goal":(("work","read","unwind","move"),("owner",)), "sound":(VOCAB["sound"],("mic",)),
     "dynamics":(VOCAB["dynamics"],("mic",)), "visible":(("brief","several","extended"),("pocket",)), "layout":(("low","medium","high"),("image",)),
@@ -513,12 +517,24 @@ class Handler(BaseHTTPRequestHandler):
         if not self.host_allowed():
             return self.reply(421)
         route = self.path.removeprefix("/api/")
-        if self.path != "/api/" + route or route not in ROUTES | RESEARCH:
+        from ..voice.http import POCKET_ROUTES as VOICE
+        if self.path != "/api/" + route or route not in ROUTES | RESEARCH | VOICE | {"presence"}:
             return self.reply(404)
         origin = self.headers.get("Origin")
         scheme = "https://" if isinstance(self.connection, ssl.SSLSocket) else "http://"
         if origin and origin != scheme + self.headers.get("Host", ""):
             return self.reply(403)
+        if route in VOICE:   # Voice Cortex: own auth and size rules (voice/http.py: JSON <= 512 B, audio <= 64 KiB)
+            try:
+                from ..voice.http import pocket as voice_pocket
+                return self.reply(*voice_pocket(self, route))
+            except sqlite3.Error:
+                return self.reply(503, {})
+            except Exception:
+                if self.replied:
+                    raise
+                print("nsf-pocket: voice request failed", file=sys.stderr, flush=True)
+                return self.reply(500, {})
         try:
             if route in RESEARCH:
                 # Authenticate before consulting the feature state, so a caller without a live credential gets the
@@ -571,6 +587,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(201,{"code":code})
             if route in RESEARCH:
                 return self.reply(*research(self.server, auth[7:], route, data))
+            if route == "presence":  # family-scoped presence state (presence/routes.py)
+                from ..presence.routes import pocket_state
+                return self.reply(*pocket_state(self.server, auth[7:], data))
             status, payload = self.server.store.action(auth[7:], route, data)
             if route == "state" and status == 200 and research_on(self.server):
                 payload["research"] = True  # lets the page show its Research panel without probing a 404

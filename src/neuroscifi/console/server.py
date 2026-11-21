@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from ..instance import (beliefs, checkpoints, datasets, evidence, executive, governance, graphs, memory,
                         recall, store)
 from ..instance.errors import InstanceError, ValidationError
+from .. import presence
 from ..webcortex import state as wstate
 from ..webcortex.types import MODES, TASK_STATES, TERMINAL_STATES
 
@@ -43,9 +44,16 @@ ICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect widt
 ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
           "/console.css": ("console.css", "text/css; charset=utf-8"),
           "/console.js": ("console.js", "text/javascript; charset=utf-8")}
+# Presence Cortex browser modules, theme and the dev gallery (absolute paths; docs/presence/).
+ASSETS.update(presence.assets(presence.CONSOLE))
+ASSETS["/presence/gallery"] = ASSETS.pop("/presence/gallery.html")
+# Voice Cortex browser modules (absolute paths; docs/voice/COGNITIVE_VOICE_BRIDGE.md).
+from ..voice import assets as voice_assets  # noqa: E402
+ASSETS.update(voice_assets())
 HEADERS = {
     "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
-    "Cross-Origin-Resource-Policy": "same-origin", "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    # microphone=(self): the voice panel captures audio only after the owner's consent and an explicit mic-on.
+    "Cross-Origin-Resource-Policy": "same-origin", "Permissions-Policy": "camera=(), microphone=(self), geolocation=()",
     "Content-Security-Policy": ("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
                                 "img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"),
 }
@@ -455,6 +463,18 @@ def _llm_status(c, p, q, b):
             "usage_24h": Ledger(path).summary(since=c.now - 86400) if path.exists() else None}
 
 
+def _presence(c, p, q, b):
+    """Presence state long-poll (presence/routes.py): ?since=<version>&wait=<seconds, at most 20>."""
+    from ..presence import routes
+    return routes.console_state(c, q)
+
+
+def _presence_scene(c, p, q, b):
+    """A Tier C doodle proposal from the local model, validated; or the nearest canonical as fallback."""
+    from ..presence import routes
+    return routes.console_scene(c, b)
+
+
 SEGMENT = r"([^/]+)"
 ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern, handler in (
     ("GET", "inventory", _inventory),
@@ -488,6 +508,8 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("POST", r"checkpoints/(\d+)/verify", _checkpoint_verify),
     ("GET", "memory", _memory),
     ("GET", "llm/status", _llm_status),
+    ("GET", "presence", _presence),
+    ("POST", "presence/scene", _presence_scene),
     ("GET", "web/status", _web_status),
     ("POST", "web/config", _web_config_set),
     ("GET", "web/tasks", _web_tasks),
@@ -578,6 +600,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, (WEB / asset[0]).read_bytes(), asset[1])
         if not self._authorized():
             return self.fail(403, "missing or invalid session token; open the URL printed by `nsf console`")
+        if url.path.startswith("/api/voice/"):   # own body rules: JSON <= 4 KiB, or one audio chunk <= 64 KiB
+            from ..voice import http as voice_http
+            return voice_http.console(self, url)
         matches = [(method, m, handler) for method, pattern, handler in ROUTES if (m := pattern.match(url.path))]
         if not matches:
             return self.fail(404, "unknown route")

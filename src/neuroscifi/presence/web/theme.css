@@ -1,0 +1,87 @@
+/* NeuroSciFi app theme + Presence Cortex styles (docs/presence/THEME_INTEGRATION.md, VISUAL_DESIGN_SYSTEM.md).
+   One theme system for the console and Pocket: <html data-theme="light|dark"> set by theme-boot.js / theme.mjs.
+   Presence colours are custom properties, so a theme switch never touches the SVG geometry or its animation. */
+
+/* ---- presence tokens (any subtree may set data-theme, e.g. the gallery's light and dark panels) ---- */
+:root, [data-theme="light"] {
+  --pc-bg:#FFFFFF; --pc-ink:#101010; --pc-secondary:#666666;
+  --pc-purple:#B45CFF; --pc-blue:#4A9CFF; --pc-mint:#3DDDB2; --pc-yellow:#FFC928; --pc-pink:#F45CA7;
+  --pc-panel:#FFFFFF; --pc-panel-line:#d0d6d3; --pc-panel-text:#101010; --pc-panel-muted:#4f5552;
+}
+[data-theme="dark"] {
+  --pc-bg:#050505; --pc-ink:#F7F7F7; --pc-secondary:#A8A8A8;
+  --pc-purple:#C27DFF; --pc-blue:#6BAFFF; --pc-mint:#52E3BE; --pc-yellow:#FFD24A; --pc-pink:#F77DB9;
+  --pc-panel:#0d0f0e; --pc-panel-line:#2e3532; --pc-panel-text:#F7F7F7; --pc-panel-muted:#b9c0bd;
+}
+
+/* ---- the presence element ---- */
+.nsf-presence{position:relative;display:inline-flex;align-items:center;min-width:0;color:var(--pc-panel-text)}
+.pc-toggle{display:inline-flex;align-items:center;gap:8px;min-height:44px;min-width:44px;padding:2px 8px 2px 2px;border:1px solid transparent;border-radius:12px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer}
+.pc-toggle:hover{border-color:var(--pc-panel-line)}
+.pc-toggle:focus-visible{outline:3px solid #0876a5;outline-offset:2px}
+.pc-word{font-size:.86rem;white-space:nowrap;max-width:16ch;overflow:hidden;text-overflow:ellipsis}
+.pc-svg{display:block;width:40px;height:40px;overflow:visible;flex:none}
+.pc-svg path{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.pc-w-bold{stroke-width:4.4}
+.pc-w-fine{stroke-width:2.8}
+.pc-t-ink{stroke:var(--pc-ink)} .pc-t-secondary{stroke:var(--pc-secondary)} .pc-t-purple{stroke:var(--pc-purple)}
+.pc-t-blue{stroke:var(--pc-blue)} .pc-t-mint{stroke:var(--pc-mint)} .pc-t-yellow{stroke:var(--pc-yellow)} .pc-t-pink{stroke:var(--pc-pink)}
+.pc-svg path.pc-fill.pc-t-ink{fill:var(--pc-ink)} .pc-svg path.pc-fill.pc-t-secondary{fill:var(--pc-secondary)}
+.pc-svg path.pc-fill.pc-t-purple{fill:var(--pc-purple)} .pc-svg path.pc-fill.pc-t-blue{fill:var(--pc-blue)}
+.pc-svg path.pc-fill.pc-t-mint{fill:var(--pc-mint)} .pc-svg path.pc-fill.pc-t-yellow{fill:var(--pc-yellow)}
+.pc-svg path.pc-fill.pc-t-pink{fill:var(--pc-pink)}
+.pc-svg path.pc-off{display:none}
+.pc-svg path.pc-dash{stroke-dasharray:4 5}
+/* idle-like states breathe with a compositor animation (no script per frame); reduced motion and hidden pages stop it */
+.pc-figure{transform-box:fill-box;transform-origin:50% 70%}
+.pc-breathe .pc-figure{animation:pc-breathe 6.5s ease-in-out infinite}
+@keyframes pc-breathe{50%{transform:scale(1.012,.99)}}
+.pc-static .pc-figure,.pc-paused .pc-figure{animation:none}
+@media (prefers-reduced-motion: reduce){.pc-figure{animation:none!important}}
+
+.pc-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:min(calc(100vw - 24px),360px);padding:14px 16px 16px;border:1px solid var(--pc-panel-line);border-radius:14px;background:var(--pc-panel);color:var(--pc-panel-text);box-shadow:0 10px 30px rgba(0,0,0,.18);text-align:left}
+.pc-panel[hidden]{display:none}
+.pc-stage{display:flex;justify-content:center;padding:4px 0 6px}
+.pc-panel .pc-svg{width:168px;height:168px}
+.pc-panel h2{font-size:1rem;margin:0 0 6px}
+.pc-status{margin:0 0 8px;font-weight:600}
+.pc-facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 12px;margin:0 0 10px;font-size:.88rem}
+.pc-facts dt{color:var(--pc-panel-muted)} .pc-facts dd{margin:0;overflow-wrap:anywhere}
+.pc-settings{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 10px;align-items:center;margin:8px 0 0;padding-top:10px;border-top:1px solid var(--pc-panel-line);font-size:.9rem}
+.pc-settings label{margin:0}
+.pc-settings select{min-height:44px;width:100%;padding:6px 8px;font:inherit;border:1px solid var(--pc-panel-line);border-radius:7px;background:var(--pc-panel);color:var(--pc-panel-text)}
+.pc-settings .pc-check{grid-column:1 / -1;display:flex;gap:8px;align-items:center}
+.pc-settings .pc-check input{width:22px;height:22px;margin:0}
+.pc-close{min-height:44px;margin-top:12px;padding:6px 14px;font:inherit;font-weight:600;border:1px solid var(--pc-panel-line);border-radius:7px;background:var(--pc-panel);color:var(--pc-panel-text);cursor:pointer}
+.pc-vh{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+@media (max-width:480px){.pc-word{display:none}.pc-panel{position:fixed;left:12px;right:12px;top:64px;width:auto}}
+
+/* ---- console in dark (tokens of console.css plus its few literal colours) ---- */
+html[data-app="console"][data-theme="dark"]{
+  --ink:#e6ecea;--muted:#a9bab4;--paper:#070908;--card:#101413;--line:#2c3633;--soft:#16201d;--softline:#2f4a40;
+  --primary:#25735f;--link:#7fcdb7;--focus:#4fb3e0;--rust:#e88d6c;--rust-soft:#2b1710;--ok:#86d8b4;--ok-soft:#10271e;
+  --info:#93c8ec;--info-soft:#0f2230;--neutral:#c9d7d2;--neutral-soft:#1b2523;color-scheme:dark}
+html[data-app="console"][data-theme="dark"] :is(.top,.skip,button,input,select,textarea,.toast,button.danger,.stages li,dialog){background:var(--card);color:var(--ink)}
+html[data-app="console"][data-theme="dark"] button.primary{background:var(--primary);color:#fff}
+html[data-app="console"][data-theme="dark"] .stages li.current{background:var(--primary);color:#fff}
+html[data-app="console"][data-theme="dark"] .stages li.done{background:var(--ok-soft);color:var(--ok)}
+html[data-app="console"][data-theme="dark"] :is(.meta .why,.banner,.badge.warn,.stages li.end-partial,.stages li.end-failed,.stalled){color:#f0a184}
+html[data-app="console"][data-theme="dark"] :is(.lede,.uncertainty,.checklist .detail,figcaption,details.tech,.foot){color:var(--muted)}
+html[data-app="console"][data-theme="dark"] :is(.heatmap text,.legend text){fill:var(--muted)}
+html[data-app="console"][data-theme="dark"] :is(th,pre){background:#141a18}
+html[data-app="console"][data-theme="dark"] :is(th,td,.events li,.checklist li,.evsource,pre,table.stack tr){border-color:var(--line)}
+html[data-app="console"][data-theme="dark"] :is(input,select,textarea,button,.toast,dialog){border-color:#55655f}
+html[data-app="console"][data-theme="dark"] input:is([type=radio],[type=checkbox]){accent-color:#4fb393}
+
+/* ---- Pocket in dark (style.css uses literal colours) ---- */
+html[data-app="pocket"][data-theme="dark"]{color:#e6ecea;background:#070908;color-scheme:dark}
+html[data-app="pocket"][data-theme="dark"] body{background:#070908}
+html[data-app="pocket"][data-theme="dark"] :is(header,section,li){border-color:#2c3633}
+html[data-app="pocket"][data-theme="dark"] :is(#linkstate,.intro,small,.counter,footer,#featurelist){color:#a9bab4}
+html[data-app="pocket"][data-theme="dark"] #sensor{background:#101a16;border-color:#2f4a40}
+html[data-app="pocket"][data-theme="dark"] :is(button,input[type=password],select,textarea,#messagebar,#researchview,.skip){background:#101413;color:#e6ecea;border-color:#55655f}
+html[data-app="pocket"][data-theme="dark"] button.primary{background:#25735f;color:#fff}
+html[data-app="pocket"][data-theme="dark"] :is(nav a,.cites a,.rsources a,.rstage){color:#7fcdb7}
+html[data-app="pocket"][data-theme="dark"] .badge{background:#16201d;color:#86d8b4}
+html[data-app="pocket"][data-theme="dark"] input[type=checkbox]{accent-color:#4fb393}
+html[data-app="pocket"][data-theme="dark"] :is(button,summary,input,select,a,textarea):focus-visible{outline-color:#4fb3e0}

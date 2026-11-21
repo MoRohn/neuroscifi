@@ -7,7 +7,9 @@ const saved=async name=>{
  if(!stores.has(name))stores.set(name,new Map());
  const objects=stores.get(name);
  return {async addAll(paths){for(const path of paths){
-   const text=readFileSync(new URL("../../src/neuroscifi/pocket/web/"+(path==="/"?"index.html":path.slice(1)),import.meta.url),"utf8");
+   const file=path==="/"?"pocket/web/index.html":path.startsWith("/presence/")?"presence/web/"+path.slice(10):
+     path.startsWith("/voice/")?"voice/web/"+path.slice(7):"pocket/web/"+path.slice(1);
+   const text=readFileSync(new URL("../../src/neuroscifi/"+file,import.meta.url),"utf8");
    objects.set(path,text);
  }},async match(path){return objects.get(path);}};
 };
@@ -18,10 +20,11 @@ vm.runInContext(readFileSync(new URL("../../src/neuroscifi/pocket/web/sw.js",imp
 async function lifecycle(name){let work;callbacks[name]({waitUntil:p=>work=p});await work;}
 async function read(path,method="GET"){let answer;callbacks.fetch({request:{url:"https://example.test"+path,method},respondWith:p=>answer=p});return answer;}
 await lifecycle("install");await lifecycle("activate");
-const installed=[...stores.get("neuroscifi-pocket-shell-11").keys()];
+const installed=[...stores.get("neuroscifi-pocket-shell-13").keys()];
 // Plan p.20 names six shell assets; the manifest and its icon make eight (ADR-015) and the Research module nine
-// (ADR-028: saved findings must reopen offline). Documented deviations.
-assert.equal(installed.length,9);assert(installed.includes("/manifest.webmanifest")&&installed.includes("/icon.svg"));
+// (ADR-028: saved findings must reopen offline), plus the 16 Presence Cortex/theme files (docs/presence/) and the 5
+// Voice Cortex files (docs/voice/). Deviations.
+assert.equal(installed.length,30);assert(installed.includes("/voice/pocket-voice.mjs"));assert(installed.includes("/presence/pocket-boot.mjs")&&installed.includes("/presence/theme-boot.js"));assert(installed.includes("/manifest.webmanifest")&&installed.includes("/icon.svg"));
 assert(installed.includes("/research-ui.mjs"));assert.match(await read("/research-ui.mjs"),/keepFinding/);
 assert.equal(await read("/api/research_get","POST"),undefined);
 const manifest=JSON.parse(await read("/manifest.webmanifest"));
@@ -30,4 +33,4 @@ assert.equal(await read("/?share_url=https%3A%2F%2Fexample.org%2Fa"),undefined);
 assert(stores.has("unrelated"));assert(!stores.has("neuroscifi-pocket-shell-old"));
 assert.match(await read("/"),/Field session/);assert.match(await read("/field-ui.mjs"),/restore|restored/i);
 assert.equal(await read("/api/episodes","POST"),undefined);assert.equal(await read("/?code=example"),undefined);
-console.log("Passed deterministic offline asset replay, nine-asset shell with manifest (share target), icon and research module, cache upgrade, private API exclusion and URL query exclusion.");
+console.log("Passed deterministic offline asset replay, 30-asset shell (nine app assets with manifest (share target), icon and research module, plus 16 presence and 5 voice files), cache upgrade, private API exclusion and URL query exclusion.");

@@ -66,3 +66,28 @@ pairing; session persistence/logout/recovery = console restart (new token), Pock
 Not executable in this environment (BLOCKED): real handsets and mobile browsers, real microphones/cameras, push
 notifications while the app is closed (no push server), a trusted public TLS chain, systemd service start under
 namespace hardening, a real screen reader. See `PRODUCTION_READINESS.md`.
+
+## Presence Cortex (0.7.0, Lane P)
+
+Evidence: `tests/e2e/test_presence.py` (real Chromium, real CSP, console with its embedded worker on an offline
+FixtureWeb, Pocket bridge), `tests/e2e/test_presence_perf.py`, `tests/presence/`. Details in
+`docs/presence/FEATURE_ACCEPTANCE.md`. "Event-level" means the test dispatches Lane V's `nsf:voice` events in the
+page; no real microphone was used.
+
+| ID | Persona | Journey | Requirements | Status | Evidence |
+|---|---|---|---|---|---|
+| J-PR-A | P1 | Idle → listening when capture starts; bars follow the mic level; mic off stops listening motion | Presence A | PASS (event-level) | test_voice_events_listening_level_interrupt_and_mute |
+| J-PR-B | P1 | Listening → the real task after the utterance (no invented "reasoning") | Presence B | PASS (event-level voice + real task) | same |
+| J-PR-C | P6 | Waiting → web research (searching/reading) during a real investigation | Presence C | PASS | test_research_task_drives_presence_through_stages |
+| J-PR-D | P6 | Research → verification shown as inspection (Tier B *evaluating evidence*) | Presence D | PASS | same |
+| J-PR-E | P6 | Verification → writing → delivered (achievement), or the owner's review question when consolidation raised one | Presence E | PASS | same |
+| J-PR-F | P1 | Voice barge-in → listening without snapping or stale state | Presence F | PASS (event-level) | test_voice_events_… |
+| J-PR-G | P6 | Authorised background (curiosity) research shown subtly | Presence G | PASS | test_background_research_is_subtle |
+| J-PR-H | all | Theme toggle mid-animation: colours change, no reset or restart, geometry preserved, persisted | Presence H | PASS | test_theme_toggle_mid_animation_keeps_state_and_motion |
+| J-PR-I | P1 | Novel concept → valid procedural doodle; Tier C model spec validated, a hostile spec falls back | Presence I | PASS | test_gallery_…, test_tier_c_model_spec_validated_in_browser |
+| J-PR-J | all | 300 rapid transitions: no listener, node or loop accumulation | Presence J | PASS | test_rapid_transitions_do_not_accumulate, perf |
+| J-PR-K | P4 | 320/360/390 px console and Pocket: compact, no overflow, panel fits, Escape returns focus | Presence K | PASS | test_small_screens_console_and_pocket |
+| J-PR-L | all | Reduced motion (system and in-app): static and distinguishable states | Presence L | PASS | test_reduced_motion_is_static_and_distinguishable |
+| J-PR-P | P4/P7 | Pocket presence shows only the family's own task | ADR-028 | PASS | test_pocket_presence_shows_own_family_task, tests/presence/test_routes.py |
+| J-PR-X | all | axe on console (every view, dark) and Pocket, light and dark | — | PASS (0 serious/critical) | test_presence_axe |
+| J-PR-V | P1 | A, B and F with a real microphone and real speech output | Presence A/B/F | NOT TESTED | needs Lane V's live voice session and a speaker |

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en" data-app="gallery"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><link rel="icon" href="/icon.svg" type="image/svg+xml"><title>NeuroSciFi · Presence gallery</title><script src="/presence/theme-boot.js"></script><link rel="stylesheet" href="/presence/theme.css"><link rel="stylesheet" href="/presence/gallery.css"><script type="module" src="/presence/gallery.mjs"></script></head>
+<body>
+<header class="gh"><h1>Presence gallery</h1><p>Development page. Every figure below is drawn by the production planner, motion engine and renderer (not mockups). Tier A: curated canonical compositions; Tier B: procedural compositions from primitives and semantic templates; the live harness drives synthetic state through the production pipeline for transition and performance tests.</p>
+<div class="gh-controls"><label for="gTheme">Page theme</label><select id="gTheme"><option value="system">Follow system</option><option value="light">Light</option><option value="dark">Dark</option></select></div></header>
+<main id="gmain">
+<p id="glocked">Open this page from the console with its session token: <code>/presence/gallery#token=…</code> (the token printed by <code>nsf console</code>).</p>
+<section id="gcontent" hidden aria-labelledby="h-a">
+  <h2 id="h-a">Tier A — canonical compositions</h2>
+  <div class="gpair"><div class="gpanel" data-theme="light" id="aLight"></div><div class="gpanel" data-theme="dark" id="aDark"></div></div>
+  <h2 id="h-b">Tier B — procedural compositions</h2>
+  <div class="gpair"><div class="gpanel" data-theme="light" id="bLight"></div><div class="gpanel" data-theme="dark" id="bDark"></div></div>
+  <h2 id="h-s">Sizes (detail simplification)</h2>
+  <div class="gpair"><div class="gpanel gsizes" data-theme="light" id="sLight"></div><div class="gpanel gsizes" data-theme="dark" id="sDark"></div></div>
+  <h2 id="h-c">Tier C — model-proposed spec</h2>
+  <form id="cForm" class="gform"><label for="cConcept">Concept (lowercase words)</label><input id="cConcept" maxlength="48" autocomplete="off" value="untangling a timeline"><button id="cAsk" type="submit">Ask the local model</button></form>
+  <p id="cResult" role="status"></p><div class="gpair"><div class="gpanel" data-theme="light" id="cLight"></div><div class="gpanel" data-theme="dark" id="cDark"></div></div>
+  <h2 id="h-l">Live harness</h2>
+  <p>Synthetic states through the production interpreter, planner, engine and renderer. Not real activity.</p>
+  <div class="gharness"><div id="live"></div><div class="gbtns" id="liveBtns"></div></div>
+  <pre id="liveStats" aria-live="off"></pre>
+</section>
+</main></body></html>

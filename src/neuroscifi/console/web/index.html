@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="theme-color" content="#184e42"><meta name="referrer" content="no-referrer"><link rel="icon" href="/icon.svg" type="image/svg+xml"><title>NeuroSciFi · Owner console</title><link rel="stylesheet" href="/console.css"><script type="module" src="/console.js"></script></head>
+<html lang="en" data-app="console"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><script src="/presence/theme-boot.js"></script><meta name="theme-color" content="#184e42"><meta name="referrer" content="no-referrer"><link rel="icon" href="/icon.svg" type="image/svg+xml"><title>NeuroSciFi · Owner console</title><link rel="stylesheet" href="/console.css"><link rel="stylesheet" href="/presence/theme.css"><link rel="stylesheet" href="/voice/voice.css"><script type="module" src="/console.js"></script><script type="module" src="/presence/console-boot.mjs"></script></head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
   <div class="brandline"><span class="brand">NeuroSciFi</span><span class="product">Owner console</span></div>
+  <div id="presence" class="presence-host"></div>
   <dl class="meta" aria-label="Instance status">
     <div><dt>Instance</dt><dd><code id="instanceId">—</code></dd></div>
     <div><dt>State version</dt><dd id="stateVersion">—</dd></div>
@@ -21,6 +22,7 @@
   <li><a href="#graphs" data-view="graphs">Graphs</a></li>
   <li><a href="#checkpoints" data-view="checkpoints">Checkpoints</a></li>
   <li><a href="#memory" data-view="memory">Memory log</a></li>
+  <li><a href="#voice" data-view="voice">Voice</a></li>
 </ul></nav>
 <main id="main" tabindex="-1">
 <p id="offline" class="banner" role="alert" hidden>Server stopped. Restart <code>nsf console</code> and open the new URL it prints. Buttons that change anything are off until the server answers again; Refresh tries again.</p>
@@ -292,6 +294,12 @@
         <li>Read any memory kind as JSON: <code>nsf memory --db PATH KIND</code></li>
       </ul></article>
   </div>
+</section>
+
+<section id="voice" class="view" aria-labelledby="h-voice" hidden>
+  <div class="viewhead"><h1 id="h-voice" tabindex="-1">Voice</h1></div>
+  <p class="lede">Talk to NeuroSciFi. Questions go through the same research, evidence checks and memory as typed ones; spoken text is a short rendering of the checked answer, with details and citations here.</p>
+  <div id="voiceMount" class="card wide"></div>
 </section>
 
 </main>
