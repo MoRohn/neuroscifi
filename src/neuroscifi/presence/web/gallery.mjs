@@ -6,7 +6,7 @@ import { MotionEngine } from './motion.mjs';
 import { Renderer, createSvg } from './renderer.mjs';
 import { CANONICAL_NAMES, SYSTEM_NAMES } from './canonical.mjs';
 import { TEMPLATES } from './composer.mjs';
-import { ACTIVITIES } from './contracts.mjs';
+import { ACTIVITIES, SIZES } from './contracts.mjs';
 import { Presence, expose } from './presence.mjs';
 import { initTheme, setThemePref, themePref } from './theme.mjs';
 import { validateSpec } from './validator.mjs';
@@ -17,7 +17,8 @@ const INTENT = { condition: [], others: [], secondary: [], priority: 'foreground
 
 export function staticFigure(concept, { size = 'normal', spec = null, caption = concept } = {}) {
   const svg = createSvg();
-  const renderer = new Renderer(svg);
+  // the indicator is drawn the way the app draws it (Presence.addIndicator): body and eyes, framed on them
+  const renderer = new Renderer(svg, size === 'indicator' ? { keep: SIZES.indicator.slots, keepWithoutEyes: SIZES.indicator.objectSlots, crop: true } : {});
   const engine = new MotionEngine();
   engine.reduced = true;
   const scene = plan({ ...INTENT, concept }, { size, spec });
@@ -91,6 +92,7 @@ async function start() {
   $('gcontent').hidden = false;
   fillPanels('a', [...CANONICAL_NAMES, ...SYSTEM_NAMES]);
   fillPanels('b', PROCEDURAL);
+  fillPanels('t', PROCEDURAL, { size: 'compact' });   // Tier B at 32 px: the compact detail level
   for (const theme of ['Light', 'Dark']) {
     $('s' + theme).replaceChildren(...['indicator', 'compact', 'normal', 'expanded'].map((size) => {
       const f = staticFigure('researching', { size, caption: size });

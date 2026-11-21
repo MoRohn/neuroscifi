@@ -54,6 +54,13 @@
 .pc-settings .pc-check input{width:22px;height:22px;margin:0}
 .pc-close{min-height:44px;margin-top:12px;padding:6px 14px;font:inherit;font-weight:600;border:1px solid var(--pc-panel-line);border-radius:7px;background:var(--pc-panel);color:var(--pc-panel-text);cursor:pointer}
 .pc-vh{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+/* normal size beside the conversation (console research and voice views; console-boot.mjs moves the element here) */
+.presence-dock{display:flex;align-items:center;margin-left:auto;min-width:0}
+.presence-dock .pc-toggle{padding-right:12px}
+.presence-dock .pc-toggle .pc-svg{width:72px;height:72px}
+.presence-dock .pc-word{font-weight:600}
+/* small status indicator (Pocket navigation): body and eyes only, framed on them */
+.pc-svg.pc-ind{display:inline-block;width:22px;height:22px;margin-right:6px;vertical-align:middle}
 @media (max-width:480px){.pc-word{display:none}.pc-panel{position:fixed;left:12px;right:12px;top:64px;width:auto}}
 
 /* ---- console in dark (tokens of console.css plus its few literal colours) ---- */

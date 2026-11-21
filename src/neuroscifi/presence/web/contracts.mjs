@@ -29,8 +29,9 @@ export const ACCENT_TONES = Object.freeze(['purple', 'blue', 'mint', 'yellow', '
 
 // Rendered size classes and what each keeps (detail simplification; stroke proportion stays constant).
 export const SIZES = Object.freeze({
-  indicator: { max: 28, slots: ['body', 'eyeL', 'eyeR'] },
-  compact: { max: 64, slots: ['body', 'eyeL', 'eyeR', 'm0', 'm1', 'm2', 'a0', 'a1', 'ground', 'm5', 'a3'] },  // m5, a3: overlays
+  // indicator: the entity's body and eyes; an object doodle without eyes (headphones, gears, bulb) keeps its first marks
+  indicator: { max: 28, slots: ['body', 'eyeL', 'eyeR'], objectSlots: ['body', 'm0', 'm1'] },
+  compact: { max: 64, slots: ['body', 'eyeL', 'eyeR', 'm0', 'm1', 'm2', 'm3', 'a0', 'a1', 'ground', 'm5', 'a3'] },  // m5, a3: overlays
   normal: { max: 140, slots: null },
   expanded: { max: Infinity, slots: null },
 });

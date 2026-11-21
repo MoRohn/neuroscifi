@@ -12,9 +12,37 @@ const fan = (x, y, tone, anims = [{ k: 'twinkle', amp: 0.12, period: 2.6 }]) => 
   a2: S(g.line(x + 1, y + 15, x + 9, y + 14), tone, { anims: anims.map((a) => ({ ...a, phase: 0.66 })) }),
 });
 const ground = (y = 88, x0 = 10, x1 = 90) => S(g.line(x0, y, x1, y));
-const eyesOpen = (x, y, gap = 7, len = 7) => ({ eyeL: S(g.line(x, y, x, y + len)), eyeR: S(g.line(x + gap, y, x + gap, y + len)) });
-const eyesClosed = (x, y, gap = 13, r = 4) => ({ eyeL: S(g.arc(x, y, r, 15, 165, r * 0.8), 'ink', { width: 'fine' }),
-  eyeR: S(g.arc(x + gap, y, r, 15, 165, r * 0.8), 'ink', { width: 'fine' }) });
+// The entity's internal marks follow ONE rule (docs/presence/VISUAL_DESIGN_SYSTEM.md §Eye marks): two short vertical
+// strokes (attentive), two downward arcs (calm or closed: thinking, resting, dormant) or the working chevrons `> <`.
+// Which one is drawn depends on activity energy (eyeKindFor), never on the concept. (cx, cy) is the centre of the pair;
+// s scales it with the body, with floors that keep the two marks apart at small sizes.
+export const EYE_KINDS = Object.freeze(['open', 'closed', 'working']);
+export function eyeMarks(kind, cx, cy, s = 1, tone = 'ink') {
+  if (kind === 'open') {
+    const gap = Math.max(6.2, 7 * s), half = Math.max(2.4, 3.5 * s);
+    return { eyeL: S(g.line(cx - gap / 2, cy - half, cx - gap / 2, cy + half), tone), eyeR: S(g.line(cx + gap / 2, cy - half, cx + gap / 2, cy + half), tone) };
+  }
+  if (kind === 'closed') {
+    const r = Math.max(2.8, 4 * s), gap = Math.max(10, 13 * s);
+    return { eyeL: S(g.arc(cx - gap / 2, cy, r, 15, 165, r * 0.8), tone, { width: 'fine' }),
+      eyeR: S(g.arc(cx + gap / 2, cy, r, 15, 165, r * 0.8), tone, { width: 'fine' }) };
+  }
+  if (kind === 'working') {
+    const w = Math.max(3.6, 5 * s), h = Math.max(3.4, 4 * s), tip = Math.max(2.6, 3 * s);
+    return { eyeL: S(g.poly([[cx - tip - w, cy - h], [cx - tip, cy], [cx - tip - w, cy + h]]), tone),
+      eyeR: S(g.poly([[cx + tip + w, cy - h], [cx + tip, cy], [cx + tip + w, cy + h]]), tone) };
+  }
+  return {};
+}
+// Activity energy -> eye kind: working energy (the working body, converging work) shows chevrons; calm or inward
+// energy (thinking, resting, orbiting reorganisation, stillness) shows closed arcs; everything else is attentive.
+export function eyeKindFor(body, motion) {
+  if (body === 'working' || motion === 'converge') return 'working';
+  if (body === 'thinking' || body === 'resting' || motion === 'orbit' || motion === 'still') return 'closed';
+  return 'open';
+}
+const eyesOpen = (x, y, gap = 7, len = 7) => eyeMarks('open', x + gap / 2, y + len / 2, len / 7);
+const eyesClosed = (x, y, gap = 13, r = 4, tone = 'ink') => eyeMarks('closed', x + gap / 2, y, r / 4, tone);
 
 // The idle body: four soft, slightly asymmetric lobes (top, right, bottom, left) like the reference.
 export const presentBody = (o = {}) => g.transform(g.polar(49, 50, (u) => 28 * (1 + 0.2 * Math.cos(4 * u - 0.5)
@@ -36,6 +64,10 @@ function cube(cx, cy, r) {
   return [g.regular(cx, cy, r, 6, 0), g.poly([v(210), [cx, cy], v(-30), [cx, cy], v(90)])];
 }
 
+// Centre of the eye pair of each entity body (Tier B seats the same bodies and moves the pair with them).
+export const ENTITY_EYES = Object.freeze({ present: [58.5, 45.5], thinking: [50, 47], working: [69, 46], responding: [47, 47],
+  exploring: [42.5, 54.5], resting: [50.5, 62] });
+
 export const ENTITY = {
   present: () => ({ breathe: true, slots: { body: S(presentBody()), ...eyesOpen(55, 42), ...fan(76, 14, 'purple') } }),
   thinking: () => ({ slots: { body: S(g.circle(50, 50, 24)),
@@ -44,7 +76,7 @@ export const ENTITY = {
   working: () => ({ slots: {
     body: S(g.smoothClosed([[58, 30], [72, 30], [83, 37], [86, 48], [80, 58], [66, 63], [44, 64], [24, 65], [19, 62],
       [26, 58], [36, 54], [42, 44], [48, 35]], 8), 'ink', { anims: [{ k: 'bob', amp: 1.2, period: 1.6 }] }),
-    eyeL: S(g.poly([[61, 42], [66, 46], [61, 50]])), eyeR: S(g.poly([[77, 42], [72, 46], [77, 50]])),
+    ...eyeMarks('working', 69, 46),
     a0: S(g.line(8, 40, 30, 40), 'mint', { anims: [{ k: 'shift', dx: -5, period: 0.9 }] }),
     a1: S(g.line(4, 49, 22, 49), 'mint', { anims: [{ k: 'shift', dx: -6, period: 0.9, phase: 0.3 }] }),
     a2: S(g.line(12, 57, 20, 57), 'mint', { anims: [{ k: 'shift', dx: -4, period: 0.9, phase: 0.6 }] }) } }),
@@ -171,7 +203,7 @@ export const SYSTEM = {
   disconnected: () => ({ slots: {
     body: S(g.smoothClosed([[22, 71], [26, 62], [34, 53], [44, 48], [56, 48], [67, 53], [75, 62], [80, 71], [70, 73],
       [51, 73.5], [31, 73]], 8), 'secondary'),
-    eyeL: S(g.line(41, 62, 47, 62), 'secondary'), eyeR: S(g.line(54, 62, 60, 62), 'secondary'),
+    ...eyesClosed(44, 62, 13, 3.8, 'secondary'),   // dormant: calm marks, grey
     m0: S(g.arc(80, 22, 10, 200, 320), 'secondary', { width: 'fine' }), m1: S(g.arc(80, 22, 10, 20, 140), 'secondary', { width: 'fine' }) } }),
 };
 
@@ -182,7 +214,8 @@ export const SYSTEM_NAMES = Object.freeze(Object.keys(SYSTEM));
 // Overlays on any composition (slots m5 and a3 are kept free for them): a background activity orbits as a dot;
 // a condition that is not primary shows as a small shape (never colour alone).
 export const OVERLAY = {
-  orbit: (tone = 'mint') => ({ a3: S(g.dot(50, 8, 2.2), tone, { fill: true, anims: [{ k: 'orbit', r: 44, speed: 0.55, ox: 50, oy: 52 }] }) }),
+  // the orbiting dot rests at the upper left (start angle -135 deg), clear of the props on the right
+  orbit: (tone = 'mint') => ({ a3: S(g.dot(18.9, 20.9, 2.2), tone, { fill: true, anims: [{ k: 'orbit', r: 44, speed: 0.55, ox: 50, oy: 52, a0: -0.75 * Math.PI }] }) }),
   question: () => { const q = question(92, 82, 6, 'pink'); return { m5: q.hook, a3: q.dot }; },
   alert: () => ({ m5: S(g.line(93, 74, 93, 84)), a3: S(g.dot(93, 89, 1.8), 'ink', { fill: true }) }),
   degraded: () => ({ m5: S(g.arc(91, 84, 6, 200, 320), 'secondary', { width: 'fine' }), a3: S(g.arc(91, 84, 6, 20, 140), 'secondary', { width: 'fine' }) }),

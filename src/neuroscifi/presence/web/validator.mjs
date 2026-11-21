@@ -2,7 +2,7 @@
 // display; a failure means the planner shows the nearest canonical composition instead.
 // validateSpec mirrors presence/scene_spec.py (the server validates first; this is the second, independent check).
 import { SCENE_SCHEMA, SLOTS, TONES, ACCENT_TONES, BUDGET, pointsFor } from './contracts.mjs';
-import { PRIMITIVES, BODIES, EYES, MOTIONS } from './composer.mjs';
+import { PRIMITIVES, BODIES, EYES, MOTIONS, facePattern } from './composer.mjs';
 import { TOKENS, contrast } from './theme.mjs';
 import { bbox } from './geometry.mjs';
 
@@ -49,7 +49,68 @@ export function validateSpec(sp) {
   }
   const strokes = els.reduce((n, e) => n + (['rays', 'dot', 'node'].includes(e.primitive) ? (e.count ?? 1) : 1), 0);
   if (strokes > 10) errors.push('too many strokes for the complexity ceiling');
+  const face = facePattern(els);
+  if (face) errors.push(`elements[${face.eyes[0]}] and [${face.eyes[1]}] form a face with [${face.mouth ?? face.outline}] (no cartoon faces)`);
   return errors;
+}
+
+// ---- eye marks and the no-face rule on finished geometry ---------------------------------------------------------
+const box = (p) => { const [x0, y0, x1, y1] = bbox(p); return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 }; };
+
+// Classify one eye slot: 'open' (a short vertical stroke), 'closed' (a small downward arc, U-shaped), 'working' (a
+// chevron; `dir` +1 points right '>', -1 points left '<') or null (anything else: dashes, dots, squiggles).
+export function eyeMarkKind(slot) {
+  if (!slot || slot.closed) return null;
+  const p = slot.pts, b = box(p), n = p.length / 2, mid = Math.floor(n / 2);
+  const [sx, sy, ex, ey, mx, my] = [p[0], p[1], p[2 * n - 2], p[2 * n - 1], p[2 * mid], p[2 * mid + 1]];
+  if (b.w <= 1 && b.h >= 4 && b.h <= 10) return { kind: 'open', b };
+  if (b.w >= 4 && b.w <= 10 && b.h >= 0.6 && b.h <= 0.6 * b.w && my > Math.max(sy, ey) + 0.5 && Math.abs(sy - ey) < 1) return { kind: 'closed', b };
+  if (b.w >= 3 && b.w <= 8 && b.h >= 5 && b.h <= 10 && Math.abs(sx - ex) < 0.5 && Math.abs(mx - sx) >= 3) return { kind: 'working', dir: Math.sign(mx - sx), b };
+  return null;
+}
+
+// The entity's eyes: none, or one sanctioned pair (same kind, level, apart, inside the body; chevrons as '> <').
+export function eyeErrors(slots) {
+  const L = slots.eyeL, R = slots.eyeR;
+  if (!L && !R) return [];
+  if (!L || !R) return ['eyes must come in a pair'];
+  const a = eyeMarkKind(L), b = eyeMarkKind(R);
+  if (!a || !b) return ['eye marks must be vertical strokes, downward arcs or working chevrons'];
+  const errors = [];
+  if (a.kind !== b.kind) errors.push('both eyes must use the same mark');
+  if (a.kind === 'working' && !(a.dir > 0 && b.dir < 0)) errors.push('working chevrons must face each other (> <)');
+  if (Math.abs(a.b.cy - b.b.cy) > 1.5) errors.push('eyes must be level');
+  const clear = b.b.x0 - a.b.x1, stroke = L.width === 'fine' ? 2.8 : 4.4;
+  if (clear < stroke + 0.8) errors.push('eyes must be apart (two marks, not one dash)');
+  const body = slots.body && box(slots.body.pts);
+  if (body && !(a.b.cx > body.x0 && b.b.cx < body.x1 && a.b.cy > body.y0 && a.b.cy < body.y1)) errors.push('eyes must sit inside the body');
+  return errors;
+}
+
+// Scene-level no-face rule: outside the entity's own eye slots, no two small marks (dot-like closed shapes or short
+// vertical strokes) side by side above a curve/line, or inside a round outline.
+export function faceErrors(slots) {
+  const parts = Object.entries(slots).filter(([k, s]) => s.visible !== false && !['eyeL', 'eyeR', 'ground'].includes(k))
+    .map(([k, s]) => ({ k, s, b: box(s.pts) }));
+  const eyes = parts.filter(({ k, s, b }) => k !== 'body' && (s.closed ? Math.max(b.w, b.h) <= 10 : b.w <= 2.5 && b.h <= 9));
+  const mouths = parts.filter(({ s, b }) => !s.closed && b.w >= 8 && b.h <= 0.8 * b.w);
+  const outlines = parts.filter(({ k, s, b }) => k !== 'body' && s.closed && b.w >= 14 && b.h >= 14 && b.w / b.h > 0.6 && b.w / b.h < 1.6);
+  for (let i = 0; i < eyes.length; i++) for (let j = i + 1; j < eyes.length; j++) {
+    const a = eyes[i].b, c = eyes[j].b, dx = Math.abs(a.cx - c.cx);
+    if (Math.abs(a.cy - c.cy) > 4 || dx < 4 || dx > 34) continue;
+    const mid = (a.cx + c.cx) / 2, ey = Math.max(a.cy, c.cy);
+    for (const m of mouths) {
+      if (m === eyes[i] || m === eyes[j]) continue;
+      const d = m.b.cy - ey;
+      if (d >= 3 && d <= dx + 14 && Math.abs(m.b.cx - mid) <= dx / 2 + 4) return [`${eyes[i].k} and ${eyes[j].k} above ${m.k} read as a face`];
+    }
+    for (const o of outlines) {
+      if (Math.min(a.x0, c.x0) > o.b.x0 && Math.max(a.x1, c.x1) < o.b.x1 && Math.min(a.y0, c.y0) > o.b.y0 && ey <= o.b.cy + 2) {
+        return [`${eyes[i].k} and ${eyes[j].k} inside ${o.k} read as a face`];
+      }
+    }
+  }
+  return [];
 }
 
 const MIN_CONTRAST = { ink: 4.5, secondary: 3 };   // meaning-bearing tones; accents are decorative (never sole carriers)
@@ -94,5 +155,6 @@ export function validateScene(scene) {
   if (accentTones.size > 3) errors.push('more than three accent colours in one scene');
   if (animated > BUDGET.maxAnimatedSlots + 2) errors.push('animation budget exceeded');
   if (points > 72 + 13 * 28) errors.push('complexity over budget');
+  if (scene.slots?.body) errors.push(...eyeErrors(scene.slots), ...faceErrors(scene.slots));
   return errors;
 }

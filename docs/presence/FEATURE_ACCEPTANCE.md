@@ -27,12 +27,21 @@
 | F | interruption without snapping or stale state | **PASS (event-level)** | Same voice test. A barge-in (speaking off, mic on) gives *listening* plus `user_interruption`. The body moves ≤20 units per 16 ms sample and the peak point speed is ≤260 (the cap). Node test: four scene changes 4–9 frames apart give a per-frame displacement ≤ vmax·dt. |
 | G | authorised background research shown subtly | **PASS (offline web)** | `test_background_research_is_subtle`. A curiosity task (autonomous switched on) gives the *exploring* entity, an orbiting dot and half the energy. As a secondary activity beside a foreground task it shows as the orbiting dot only (node test). |
 | H | theme toggle mid-animation | **PASS** | `test_theme_toggle_mid_animation_keeps_state_and_motion`, during a real *reading* stage. Computed stroke goes `rgb(16,16,16)` → `rgb(247,247,247)`, the page background changes, transitions and loopStarts are unchanged, frames keep increasing, the body geometry moves ≤6 units across the switch, and the choice persists across a reload. |
-| I | novel concept → valid procedural doodle or safe fallback | **PASS** | Gallery test: 19 Tier B concepts including "quantum gardening" and "tidal folklore" (seeded), all paths in bounds. Tier C test with a fake local OpenAI-compatible server: a valid spec is displayed as tier C; markup or an invalid schema gives `unavailable: schema_invalid` and the procedural or canonical scene. Unit tests reject unknown keys, path strings, off-palette colours, out-of-bounds or stacked elements, and a wrong schema version. |
+| I | novel concept → valid procedural doodle or safe fallback | **PASS** | Gallery test: 19 Tier B concepts (also snapshotted at 32 px) including "quantum gardening" and "tidal folklore" (seeded), all paths in bounds. Tier C test with a fake local OpenAI-compatible server: a valid spec is displayed as tier C; markup or an invalid schema gives `unavailable: schema_invalid` and the procedural or canonical scene. Unit tests reject unknown keys, path strings, off-palette colours, out-of-bounds or stacked elements, and a wrong schema version. |
 | J | rapid changes: no accumulation, leaks or corruption | **PASS** | `test_rapid_transitions_do_not_accumulate`: 300 voice events 8 ms apart. Listeners and nodes do not grow, 14 paths, ≤1 loop, commits coalesced. Perf test: 200 transitions × 4 configurations, listeners and nodes unchanged. |
 | K | small screens | **PASS** | `test_small_screens_console_and_pocket[320/360/390]`, console and Pocket: compact size, figure ≤44 px, no horizontal scroll, panel inside the viewport, Escape returns focus. |
 | L | reduced motion | **PASS** | `test_reduced_motion_is_static_and_distinguishable`: emulated `prefers-reduced-motion`. 0 frames, CSS animation `none`, and three states give three distinct static geometries. The in-app Reduced/Full setting overrides the system. |
 
 **Additional checks**
+
+- Visual rules (`tests/presence/test_visual_rules.py`, 690+ node assertions plus the server mirror): face-like prop
+  layouts (including the old *resolving contradictions* layout) are rejected on the spec, on the finished geometry
+  and as a Tier C proposal, and re-laid out by the composer; every Tier A, system, Tier B and seeded composition,
+  with every overlay at normal and compact size, is face-free and uses one sanctioned eye pair chosen by energy.
+- Sizes in the app: `test_console_research_and_voice_views_dock_the_presence_at_normal_size` (the one element moves
+  into the research and voice views at normal size and back; 14 paths, one SVG, ≤1 loop) and
+  `test_pocket_navigation_shows_the_small_indicator` (22 px, body and eyes only, framed, `aria-hidden`, identical
+  geometry to the header figure from the same engine).
 
 - Pocket family scope: `tests/presence/test_routes.py`, plus e2e `test_pocket_presence_shows_own_family_task`.
   Another family's task text never appears.
@@ -42,17 +51,17 @@
 
 ## Test counts (this lane)
 
-- `tests/presence`: 27 pytest tests, including one that runs `client_check.mjs` (280 assertions under node).
-- `tests/e2e/test_presence.py`: 14 browser tests.
+- `tests/presence`: 34 pytest tests, including `client_check.mjs` and `visual_rules_check.mjs` under node.
+- `tests/e2e/test_presence.py`: 16 browser tests.
 - `tests/e2e/test_presence_perf.py`: 1 measurement test.
-- Full browser suite with these changes: 127 passed, 1 skipped.
+- Visual-fidelity pass (2026-11-21): `tests/presence` 34 passed; `test_presence.py` + `test_presence_perf.py` 17 passed;
+  `test_console.py`, `test_pocket.py`, `test_voice_e2e.py` (touched pages) 29 passed, 1 skipped. The full browser
+  suite was not rerun in this pass.
 
 ## Known gaps
 
 - A, B, E (speech) and F were not verified with a real microphone or speaker.
 - Live token counts for research-synthesis model calls need a gateway hook. Only presence's own model calls are
   tracked live (`PRESENCE_CORTEX_ARCHITECTURE.md`).
-- The presence appears in the app at compact size (header) and expanded size (panel). The normal and indicator
-  sizes are rendered only in the gallery, because one live instance per page keeps one frame loop.
 - Forced-colours mode, real phones and battery-saver mode are untested.
 - The canonical art follows the references' style and complexity but is hand-tuned geometry, not a pixel match.

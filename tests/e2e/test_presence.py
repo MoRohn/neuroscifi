@@ -398,7 +398,7 @@ def test_gallery_renders_every_tier_with_the_production_renderer(idle_spark, new
     expect(page.locator("#cLight figure")).to_have_attribute("data-tier", re.compile("B|fallback"))
     SNAPSHOTS.mkdir(parents=True, exist_ok=True)
     for panel, name in (("aLight", "tierA-light"), ("aDark", "tierA-dark"), ("bLight", "tierB-light"), ("bDark", "tierB-dark"),
-                        ("sLight", "sizes-light"), ("sDark", "sizes-dark")):
+                        ("tLight", "tierB-32px-light"), ("tDark", "tierB-32px-dark"), ("sLight", "sizes-light"), ("sDark", "sizes-dark")):
         page.locator(f"#{panel}").screenshot(path=str(SNAPSHOTS / f"gallery-{name}.png"))
     assert page.problems == []
 
@@ -459,6 +459,80 @@ def test_pocket_presence_shows_own_family_task(bridge, new_page, tmp_path):
     page.locator(".pc-toggle").click()
     expect(page.locator(".pc-status")).to_contain_text("Zephyr")
     expect(page.locator(".pc-status")).not_to_contain_text("another family")
+    assert page.problems == []
+
+
+# ---- sizes in the app: normal beside the conversation (console), small indicator (Pocket navigation) -----------------
+
+def test_console_research_and_voice_views_dock_the_presence_at_normal_size(idle_spark, new_page):
+    page = new_page(1280, 900)
+    open_console(page, idle_spark)
+    root = page.locator(".nsf-presence")
+    expect(page.locator("#presence .nsf-presence")).to_have_count(1)
+    expect(root).to_have_attribute("data-size", "compact")
+    loops = stats(page)["loopStarts"]
+    for view in ("research", "voice"):
+        page.locator(f"#nav a[data-view={view}]").click()
+        expect(page.locator(f"#{view} [data-presence-dock] .nsf-presence")).to_have_count(1)
+        expect(root).to_have_attribute("data-size", "normal")
+        expect(root).to_have_attribute("data-place", "dock")
+        box = page.locator(".nsf-presence .pc-svg").bounding_box()
+        assert 65 <= box["width"] <= 96, box                       # normal size, not dominating the view header
+        head = page.locator(f"#{view} .viewhead").bounding_box()
+        assert head["height"] <= 110, head
+        page.locator(".pc-toggle").click()                          # the panel works from the dock
+        expect(root).to_have_attribute("data-size", "expanded")
+        panel = page.locator(".pc-panel").bounding_box()
+        assert panel["x"] >= 0 and panel["x"] + panel["width"] <= 1280
+        page.keyboard.press("Escape")
+        expect(page.locator(".pc-toggle")).to_be_focused()
+        expect(root).to_have_attribute("data-size", "normal")
+        SHOTS.mkdir(exist_ok=True)
+        page.screenshot(path=str(SHOTS / f"presence-dock-{view}.png"))
+    page.locator("#nav a[data-view=overview]").click()
+    expect(page.locator("#presence .nsf-presence")).to_have_count(1)
+    expect(root).to_have_attribute("data-size", "compact")
+    s = stats(page)
+    assert s["paths"] == 14 and s["maxConcurrentLoops"] <= 1, s     # one SVG, one frame loop, moved not re-created
+    assert page.locator("svg.pc-svg").count() == 1
+    assert s["loopStarts"] - loops <= 12, s
+    assert page.problems == []
+
+
+def test_pocket_navigation_shows_the_small_indicator(bridge, new_page, tmp_path):
+    instance = tmp_path / "individual.sqlite"
+    with closing(store.create(instance, time.time())) as db:
+        state.set_config(db, {"enabled": True, "pocket_research": True}, time.time())
+    bridge.server.instance_db = str(instance)
+    page = new_page(390, 844)
+    page.goto(bridge.url)
+    pair(page)
+    expect(page.locator("#navresearch")).to_be_visible(timeout=15_000)
+    page.evaluate("scrollTo(0, 0)")   # pairing scrolled down; off screen the frame loop is paused (by design)
+    ind = page.locator("#navresearch svg.pc-ind")
+    expect(ind).to_have_count(1)
+    expect(ind).to_have_attribute("aria-hidden", "true")
+    expect(page.locator("#navresearch")).to_have_accessible_name("Research")
+    box = ind.bounding_box()
+    assert box["width"] <= 24 and box["height"] <= 24, box
+    expect(page.locator(".nsf-presence")).to_have_attribute("data-concept", "present", timeout=15_000)
+    page.wait_for_timeout(400)
+    shown = ind.locator("path:not(.pc-off)").evaluate_all("ps => ps.map(p => p.dataset.slot)")
+    assert set(shown) <= {"body", "eyeL", "eyeR"} and "body" in shown, shown     # detail simplification
+    vb = [float(v) for v in ind.get_attribute("viewBox").split()]
+    assert vb[2] < 100, vb                                          # framed on the body, not the whole canvas
+    # the indicator follows the same engine: a state change (event-level mic capture) changes both views together
+    voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.3)
+    expect(page.locator(".nsf-presence")).to_have_attribute("data-concept", "listening", timeout=2000)
+    page.wait_for_timeout(2000)
+    main = page.evaluate("document.querySelector('.nsf-presence path[data-slot=body]').getAttribute('d')")
+    mirror = page.evaluate("document.querySelector('#navresearch path[data-slot=body]').getAttribute('d')")
+    assert main == mirror
+    SHOTS.mkdir(exist_ok=True)
+    page.locator("header").screenshot(path=str(SHOTS / "presence-pocket-header.png"))
+    page.locator("nav").screenshot(path=str(SHOTS / "presence-pocket-nav.png"))
+    s = stats(page)
+    assert s["maxConcurrentLoops"] <= 1 and s["paths"] == 14, s
     assert page.problems == []
 
 

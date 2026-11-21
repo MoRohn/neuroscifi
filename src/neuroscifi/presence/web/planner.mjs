@@ -26,7 +26,8 @@ export function nearest(concept) {
 
 // Resample a composition into the fixed slot pool; hidden slots stay in the pool (collapsed, opacity 0).
 export function finalize(comp, sizeName = 'normal') {
-  const keep = SIZES[sizeName]?.slots;
+  const size = SIZES[sizeName];
+  const keep = size?.objectSlots && !comp.slots.eyeL ? size.objectSlots : size?.slots;
   const slots = {};
   for (const name of SLOTS) {
     const s = comp.slots[name];

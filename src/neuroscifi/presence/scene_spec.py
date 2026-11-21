@@ -71,6 +71,49 @@ def _box(el):
     return el["x"] - half, el["y"] - half, el["x"] + half, el["y"] + half
 
 
+_SMALL = ("dot", "node", "circle", "ring", "blob", "polygon", "container")
+_MOUTH = ("arc", "curve", "connector", "wave", "ribbon", "loop", "line", "spiral")
+_OUTLINE = ("ring", "circle", "blob", "container", "polygon", "orbit")
+
+
+def _flat(rotation) -> bool:
+    r = abs(rotation) % 180
+    return r <= 35 or r >= 145
+
+
+def _eye_like(el) -> bool:
+    if el["primitive"] in ("dot", "node"):
+        return el["size"] <= 14
+    if el["primitive"] in _SMALL:
+        return el["size"] <= 12
+    return el["primitive"] == "line" and el["size"] <= 10 and not _flat(el["rotation"])
+
+
+def face_pattern(els):
+    """No cartoon faces (mirrors web/composer.mjs facePattern): two small marks side by side above a curve or line,
+    or inside a round outline. Returns (i, j, k) or None."""
+    for i in range(len(els)):
+        for j in range(i + 1, len(els)):
+            a, b = els[i], els[j]
+            if not (_eye_like(a) and _eye_like(b)):
+                continue
+            dx = abs(a["x"] - b["x"])
+            if abs(a["y"] - b["y"]) > 5 or dx < 4 or dx > 34:
+                continue
+            mx, ey = (a["x"] + b["x"]) / 2, max(a["y"], b["y"])
+            for k, m in enumerate(els):
+                if k in (i, j):
+                    continue
+                if (m["primitive"] in _MOUTH and m["size"] >= 8 and _flat(m["rotation"]) and 3 <= m["y"] - ey <= dx + 14
+                        and abs(m["x"] - mx) <= dx / 2 + 4):
+                    return i, j, k
+                h = m["size"] / 2
+                if (m["primitive"] in _OUTLINE and m["size"] >= 14 and min(a["x"], b["x"]) > m["x"] - h
+                        and max(a["x"], b["x"]) < m["x"] + h and min(a["y"], b["y"]) > m["y"] - h and ey <= m["y"] + 2):
+                    return i, j, k
+    return None
+
+
 def validate_spec(value) -> list[str]:
     """Schema check plus the geometric rules of the doodle grammar; [] means displayable."""
     from ..inference.jsonschema import validate
@@ -97,13 +140,18 @@ def validate_spec(value) -> list[str]:
     strokes = sum(el.get("count", 1) if el["primitive"] in ("rays", "dot", "node") else 1 for el in els)
     if strokes > 10:
         errors.append("too many strokes for the complexity ceiling")
+    face = face_pattern(els)
+    if face:
+        errors.append(f"$.elements[{face[0]}] and [{face[1]}] form a face with [{face[2]}] (no cartoon faces)")
     return errors
 
 
 PROMPT = ("You design one minimal, abstract line doodle for a status indicator. Reply with ONLY a JSON object that "
           "matches the given JSON schema. The entity body is drawn on the left; place 1 to 4 simple elements in the "
           "prop area (x 40-96, y 8-92 of a 100x100 canvas) that suggest the concept. Use 'ink' for most strokes and "
-          "at most two sparse accent colours. No text, no faces, no letters.")
+          "at most two sparse accent colours. No text, no letters, no faces: never two small marks side by side "
+          "above a curve. The entity's eye marks follow its activity energy, so 'eyes' is open, closed, focused "
+          "(working chevrons) or none.")
 
 _lock = threading.Lock()
 _results: dict[str, dict] = {}

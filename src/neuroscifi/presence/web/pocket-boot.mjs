@@ -9,5 +9,8 @@ if (host) {
   const channel = new PocketChannel({ token });
   const presence = new Presence(host, { channel });
   expose(presence);
+  // the small status indicator in the navigation (beside "Research"): the same engine and frame loop, body and eyes only
+  const indicator = document.querySelector('[data-presence-indicator]');
+  if (indicator) presence.addIndicator(indicator);
   document.addEventListener('pocketpair', () => { channel.stop(); channel.version = null; channel.start(); });
 }

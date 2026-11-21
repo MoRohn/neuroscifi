@@ -2,19 +2,45 @@
 
 The reference art in `docs/assets/presence/reference-entity-states.png` and `reference-doodle-grid.png` sets the
 style and the complexity ceiling. Snapshots of what the production renderer actually draws are in `snapshots/`
-(`gallery-tierA-light.png`, `gallery-tierA-dark.png`, `gallery-tierB-*.png`, `gallery-sizes-*.png`), captured by
+(`gallery-tierA-light.png`, `gallery-tierA-dark.png`, `gallery-tierB-*.png`, `gallery-tierB-32px-*.png`,
+`gallery-sizes-*.png`), captured by
 `tests/e2e/test_presence.py::test_gallery_renders_every_tier_with_the_production_renderer`.
 
 ## Principles
 
 - An organic blob with bold rounded outlines, a few inner marks, sparse accent strokes and lots of empty space.
   The rule is maximum expressiveness through minimum geometry.
-- The "eyes" are at most two small strokes: open (vertical), closed (arcs), focused (short dashes) or `> <` for
-  working. No state relies on a facial expression. Each state differs in body shape, props and motion.
+- The "eyes" are at most two small marks and follow one rule (below). No state relies on a facial expression.
+  Each state differs in body shape, props and motion.
+- Props are objects beside or around the entity, never a second face (§No faces).
 - No faces, big eyes, 3D, gradients, photorealism, emoji, text glyph fonts or neon.
 - A canvas is a 100 × 100 viewBox (drawn with a 6-unit margin). Bold strokes are 4.4 units and fine strokes 2.8
   units at every size, so the stroke proportion stays constant. Line caps and joins are round. Paths are
   midpoint-quadratic curves, which round polyline corners slightly for the hand-drawn look.
+
+## Eye marks: one rule (`canonical.eyeMarks`, `canonical.eyeKindFor`)
+
+The entity's internal marks are always one of three pairs, chosen by activity energy and never by the concept:
+
+| Energy | When | Marks |
+|---|---|---|
+| attentive | idle/present, curious, reading, asking, error, and any Tier B scene that is not calm or working | two short vertical strokes |
+| calm / inward | thinking, resting, disconnected (grey), Tier B with the thinking or resting body or `orbit`/`still` motion | two downward arcs (U-shaped, fine stroke) |
+| working | working, Tier B with the working body or `converge` motion | chevrons `> <` facing each other |
+
+Tier A and Tier B draw the marks with the same function, scaled with the body and with floors that keep the two
+marks apart at small sizes (open: gap ≥ 6.2 units; closed: gap ≥ 10 units). A Tier B/C spec's `eyes` value can
+only switch the marks off (`none`); which marks are drawn follows the rule. `validator.eyeErrors` rejects anything
+else on the finished geometry: horizontal dashes, a single dash, touching arcs that read as a squiggle, mixed kinds,
+chevrons facing away, uneven heights, or marks outside the body.
+
+## No faces
+
+The spec forbids conventional cartoon faces. Apart from the entity's own eye marks, no scene may contain two small
+marks (dots, small circles, short vertical strokes) side by side above a curve or line, or two such marks inside a
+round outline. The composer re-lays such a layout out (one mark rises, the "mouth" moves aside), and the validator
+rejects it on the spec (`composer.facePattern`, mirrored by `scene_spec.face_pattern` on the server) and on the
+finished geometry (`validator.faceErrors`). The orbiting background dot rests at the upper left for the same reason.
 
 ## Palette (theme.mjs `TOKENS`, theme.css)
 
@@ -59,25 +85,33 @@ carrier of a meaning.
 
 The system compositions use the same grammar: *asking* (present body with a pink "?"), *error* (deflated body with
 "!"), *waiting* (present body with a small clock), *recovering* (a circular arrow) and *disconnected* (a dome in
-secondary tone, flat eyes, a broken ring). The disconnected and error states are distinct in shape as well as
+secondary tone, closed arcs, a broken ring). The disconnected and error states are distinct in shape as well as
 colour.
 
 ## Sizes and detail simplification (`contracts.SIZES`)
 
-| Size | Rendered width | Keeps |
-|---|---|---|
-| indicator | ≤ 28 px | body, eyes |
-| compact (headers, phones) | ≤ 64 px | body, eyes, three marks, two accents, ground, overlay slots |
-| normal | ≤ 140 px | everything |
-| expanded (panel, voice focus) | > 140 px | everything |
+| Size | Rendered width | Keeps | Where in the app |
+|---|---|---|---|
+| indicator | ≤ 28 px | body and eyes; an object doodle without eyes (headphones, gears, bulb) keeps body + its first two marks; the viewBox frames itself on them | Pocket navigation, beside "Research" (22 px) |
+| compact | ≤ 64 px | body, eyes, four marks, two accents, ground, overlay slots | console header, Pocket header (40 px) |
+| normal | ≤ 140 px | everything | console research and voice views, beside the view title (72 px) |
+| expanded | > 140 px | everything | the panel (168 px) |
 
 A `ResizeObserver` picks the size class. Changing it re-plans the scene, and the removed slots shrink into a point
-instead of disappearing abruptly.
+instead of disappearing abruptly. Tier B element order is priority, so the compact level keeps the object that
+carries the metaphor (`gallery-tierB-32px-*.png` shows every Tier B scene at 32 px). The indicator's framing follows
+the moving geometry with smoothing, so a state change never jumps.
 
 ## UI placement
 
-The presence button sits in the console header (`#presence`, between the brand and the instance status) and in
-Pocket's header. The button shows the compact figure and a short word, which is hidden below 480 px. Activating
-it moves the same SVG into an expanded panel (168 px). The panel shows the status sentence, facts (activity,
-source, progress, intensity, conditions, composition) and the settings: theme, motion and motion intensity, plus
-in the console an opt-in "model-proposed doodles" switch.
+- **Console.** The presence button sits in the header (`#presence`, compact). While the research or voice view is
+  open, `console-boot.mjs` moves the same element (button, panel and the one SVG) into that view's
+  `[data-presence-dock]` beside the title, where it renders at normal size; on every other view it returns to the
+  header. Nothing is re-created and the frame loop is the same; the size change re-plans the scene and morphs.
+- **Pocket.** The header holds the compact button. The navigation's "Research" link carries the small indicator
+  (`Presence.addIndicator`): a second, decorative (`aria-hidden`) SVG drawn from the same engine by the same frame
+  loop, so a page still has one engine, one loop and one live region. Off screen, both pause.
+- The button shows the figure and a short word (hidden below 480 px). Activating it moves the SVG into an expanded
+  panel (168 px) with the status sentence, facts (activity, source, progress, intensity, conditions, composition)
+  and the settings: theme, motion and motion intensity, plus in the console an opt-in "model-proposed doodles"
+  switch. The presence's controls are marked `data-keep`, so the console's offline mode leaves them usable.

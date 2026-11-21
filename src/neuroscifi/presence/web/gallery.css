@@ -12,6 +12,7 @@ h2{font-size:1.1rem;margin:22px 0 8px}
 .gcell{display:flex;flex-direction:column;align-items:center;gap:2px;margin:0}
 .gcell .pc-svg{width:96px;height:96px}
 .gcell figcaption{font-size:.78rem;text-align:center;color:var(--pc-panel-muted)}
+.gsmall{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}.gsmall .gcell .pc-svg{width:32px;height:32px}
 .gsizes{grid-template-columns:repeat(4,auto);align-items:end;justify-content:start;gap:18px}
 .gsizes .s-indicator .pc-svg{width:22px;height:22px}.gsizes .s-compact .pc-svg{width:40px;height:40px}
 .gsizes .s-normal .pc-svg{width:96px;height:96px}.gsizes .s-expanded .pc-svg{width:180px;height:180px}

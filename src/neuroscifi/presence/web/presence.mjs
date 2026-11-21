@@ -1,7 +1,7 @@
 // Presence Cortex controller: channel -> interpreter -> planner -> motion engine -> renderer, plus the accessible
 // status, the expand/collapse panel and the settings (theme, motion, motion intensity). Used by the console and
 // Pocket (console-boot.mjs, pocket-boot.mjs); the gallery uses the same planner, engine and renderer.
-import { DEFAULT_PREFS, PREFS_KEY, MOTION_PREFS, INTENSITY_PREFS, sizeClass } from './contracts.mjs';
+import { DEFAULT_PREFS, PREFS_KEY, MOTION_PREFS, INTENSITY_PREFS, SIZES, sizeClass } from './contracts.mjs';
 import { interpret, INTERRUPT_MS } from './interpreter.mjs';
 import { plan } from './planner.mjs';
 import { MotionEngine } from './motion.mjs';
@@ -54,19 +54,20 @@ export class Presence {
     this.svg = createSvg();
     this.renderer = new Renderer(this.svg);
     this.player = new Player(this.engine, this.renderer);
+    this.views = [this.svg];   // every SVG of this presence on the page (the main figure plus indicators)
 
     this.word = el('span', { class: 'pc-word', 'aria-hidden': 'true' }, 'Presence');
     this.name = el('span', { class: 'pc-vh' }, 'Presence');
     this.live = el('p', { id: `${id}-live`, class: 'pc-vh', 'aria-live': 'polite' });
     this.alert = el('p', { class: 'pc-vh', 'aria-live': 'assertive' });
     this.toggle = el('button', { type: 'button', class: 'pc-toggle', 'aria-expanded': 'false', 'aria-controls': `${id}-panel`,
-      'aria-describedby': `${id}-live`, 'data-presence-toggle': true }, this.svg, this.name, this.word);
+      'aria-describedby': `${id}-live`, 'data-presence-toggle': true, 'data-keep': true }, this.svg, this.name, this.word);
     this.stage = el('div', { class: 'pc-stage' });
     this.statusText = el('p', { class: 'pc-status' });
     this.facts = el('dl', { class: 'pc-facts' });
-    const theme = el('select', { id: `${id}-theme` }, option('system', 'Follow system'), option('light', 'Light'), option('dark', 'Dark'));
-    const motion = el('select', { id: `${id}-motion` }, option('system', 'Follow system'), option('reduced', 'Reduced (static)'), option('full', 'Full'));
-    const intensity = el('select', { id: `${id}-intensity` }, option('low', 'Low'), option('normal', 'Normal'), option('high', 'High'));
+    const theme = el('select', { id: `${id}-theme`, 'data-keep': true }, option('system', 'Follow system'), option('light', 'Light'), option('dark', 'Dark'));
+    const motion = el('select', { id: `${id}-motion`, 'data-keep': true }, option('system', 'Follow system'), option('reduced', 'Reduced (static)'), option('full', 'Full'));
+    const intensity = el('select', { id: `${id}-intensity`, 'data-keep': true }, option('low', 'Low'), option('normal', 'Normal'), option('high', 'High'));
     theme.value = themePref(); motion.value = this.prefs.motion; intensity.value = this.prefs.intensity;
     theme.addEventListener('change', () => { if (THEME_PREFS.includes(theme.value)) setThemePref(theme.value); });
     motion.addEventListener('change', () => this.setPrefs({ motion: motion.value }));
@@ -76,13 +77,13 @@ export class Presence {
       el('label', { for: motion.id }, 'Motion'), motion,
       el('label', { for: intensity.id }, 'Motion intensity'), intensity);
     if (modelDoodles) {
-      const box = el('input', { type: 'checkbox', id: `${id}-model` });
+      const box = el('input', { type: 'checkbox', id: `${id}-model`, 'data-keep': true });
       box.checked = this.prefs.modelDoodles;
       box.addEventListener('change', () => this.setPrefs({ modelDoodles: box.checked }));
       settings.append(el('label', { class: 'pc-check', for: box.id }, box, 'Let the local model propose doodles for new concepts (validated; off by default)'));
     }
     this.controls = { theme, motion, intensity };
-    const close = el('button', { type: 'button', class: 'pc-close' }, 'Close');
+    const close = el('button', { type: 'button', class: 'pc-close', 'data-keep': true }, 'Close');
     close.addEventListener('click', () => this.collapse(true));
     this.panel = el('div', { id: `${id}-panel`, class: 'pc-panel', role: 'region', 'aria-labelledby': `${id}-head`, hidden: true },
       el('h2', { id: `${id}-head` }, 'Presence'), this.stage, this.statusText, this.facts, settings, close);
@@ -106,10 +107,10 @@ export class Presence {
     document.addEventListener('visibilitychange', this.onVisibility);
     this.svg.classList.toggle('pc-paused', document.hidden);
     if ('IntersectionObserver' in window) {
+      this.seen = new Map();   // per view: on screen or not; the one frame loop runs while any view is visible
       this.io = new IntersectionObserver((entries) => {
-        const on = entries.some((x) => x.isIntersecting);
-        this.svg.classList.toggle('pc-paused', !on);
-        this.player.setVisible(!document.hidden, on);
+        for (const x of entries) { this.seen.set(x.target, x.isIntersecting); x.target.classList.toggle('pc-paused', !x.isIntersecting); }
+        this.player.setVisible(!document.hidden, [...this.seen.values()].some(Boolean));
       });
       this.io.observe(this.svg);
     }
@@ -129,6 +130,31 @@ export class Presence {
       channel.start();
     }
     this.commit();
+  }
+
+  // Move the whole element (button, panel, the one SVG) to another host, e.g. the normal-size dock of the console's
+  // research and voice views. Nothing restarts: the engine and frame loop are the same; the ResizeObserver re-plans
+  // the scene for the new size class, and the morph carries the geometry across.
+  mount(host) {
+    if (!host || this.root.parentNode === host) return;
+    if (this.expanded) this.collapse(false);
+    host.append(this.root);
+    this.root.dataset.place = host.dataset.presenceDock !== undefined ? 'dock' : 'header';
+  }
+
+  // A small status indicator elsewhere on the page (e.g. Pocket's navigation): a second, decorative view of the same
+  // engine, drawn by the same frame loop; it keeps the body and eyes only and frames itself on them.
+  addIndicator(host) {
+    const svg = createSvg();
+    svg.classList.add('pc-ind');
+    svg.classList.toggle('pc-static', this.engine.reduced);
+    const renderer = new Renderer(svg, { keep: SIZES.indicator.slots, keepWithoutEyes: SIZES.indicator.objectSlots, crop: true });
+    renderer.setBreathe(!!this.scene?.breathe && !this.engine.reduced);
+    host.replaceChildren(svg);
+    this.views.push(svg);
+    this.player.add(renderer);
+    this.io?.observe(svg);
+    return svg;
   }
 
   get expanded() { return this.toggle.getAttribute('aria-expanded') === 'true'; }
@@ -159,7 +185,7 @@ export class Presence {
     const reduced = reducedMotion(this.prefs);
     const was = this.engine.reduced;
     this.engine.reduced = reduced;
-    this.svg.classList.toggle('pc-static', reduced);
+    for (const svg of this.views) svg.classList.toggle('pc-static', reduced);
     this.applyEnergy();
     if (reduced && !was) { this.player.stop(); this.player.renderOnce(); }
     if (!reduced) this.player.start();
@@ -216,7 +242,7 @@ export class Presence {
       const t = performance.now() / 1000;
       this.engine.setScene(scene, { t, instant: this.engine.reduced || !this.scene0 });
       this.scene0 = true;
-      this.renderer.setBreathe(scene.breathe && !this.engine.reduced);
+      for (const r of this.player.renderers) r.setBreathe(scene.breathe && !this.engine.reduced);
       this.root.dataset.concept = scene.concept;
       this.root.dataset.tier = scene.tier;
       if (this.engine.reduced) this.player.renderOnce(); else this.player.start();

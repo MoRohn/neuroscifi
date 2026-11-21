@@ -102,7 +102,7 @@ export class MotionEngine {
         case 'orbit': {
           st.phase += a.speed * Math.max(0.4, E) * decay * dt;
           const [cx, cy] = [s.cx, s.cy];
-          const ang = -Math.PI / 2 + st.phase;
+          const ang = (a.a0 ?? -Math.PI / 2) + st.phase;
           translate(out, ox + Math.cos(ang) * a.r - cx, oy + Math.sin(ang) * a.r - cy);
           break;
         }

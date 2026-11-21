@@ -124,6 +124,8 @@ const c = plan({ ...base, concept: 'reading' }, { size: 'compact' });
 ok(!c.slots.m3 && c.slots.a2?.visible === false && c.slots.body.visible, 'compact size drops fine detail');
 const ind = plan({ ...base, concept: 'reading' }, { size: 'indicator' });
 ok(Object.entries(ind.slots).every(([k, s]) => s.visible === ['body', 'eyeL', 'eyeR'].includes(k)), 'indicator keeps body and eyes');
+const indObj = plan({ ...base, concept: 'listening' }, { size: 'indicator' });
+ok(Object.entries(indObj.slots).every(([k, s]) => s.visible === ['body', 'm0', 'm1'].includes(k)), 'indicator of an object doodle keeps its first marks');
 ok(SLOTS.length === 14, 'fixed slot pool');
 
 console.log(`presence client checks passed: ${checks}`);
