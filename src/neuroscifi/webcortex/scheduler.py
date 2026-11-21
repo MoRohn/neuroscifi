@@ -5,14 +5,21 @@ starts 'proposed' with a pending question (scope web:monitor:<id>) and runs only
 
 tick(db, now, services):
 1. due active monitors -> a task each (origin 'monitor:<id>'), run inline unless queue=True. The run is compared
-   with the monitor's baseline (canonical URL -> content hash, claim key -> values/polarity/status): a
-   *meaningful change* is a new corroborated cluster (or a single-source cluster from a primary structured source)
-   or a changed value or polarity of a known key, or a supersession found by consolidation - not merely new URLs.
+   with the monitor's baseline (canonical URL -> content hash, claim key -> values/polarity/status/relevance, and
+   a bounded list of every claim key the monitor has ever seen). A *meaningful change* is
+   (a) a changed value or polarity of a key already in the baseline (reported by a corroborated cluster or a
+       primary structured source), or a supersession found by consolidation; or
+   (b) a NEW key - not similar to any key the monitor has seen in any earlier run, nor a rewording of a known key
+       with the same values - that is corroborated
+       (>= 2 independent groups) or comes from a primary structured record with relevance >= PRIMARY_RELEVANCE.
+   New URLs alone, or a different mix of search results saying the same things, never count.
    A meaningful change is recorded as a 'finding' event ({monitor_id, changes}); the baseline is updated.
 2. only when config.autonomous: due predictions (refresh tasks) and the top curiosity candidates, restricted to
    items already in knowledge or owner monitors, within config.daily_autonomous (tasks, requests and bytes of
-   origin curiosity/refresh in the last 24 h).
-3. a report of what ran, what was skipped and why.
+   origin curiosity/refresh in the last 24 h). Each autonomous task's request/byte budget is clamped at submit to
+   the allowance left (orchestrator.submit), so the cap is passed by at most the request in flight.
+3. public-cache retention (services.prune_cache, at most hourly).
+4. a report of what ran, what was skipped and why.
 
 work(db_path): claim queued tasks with a lease (UPDATE ... WHERE status='queued' AND the lease is free) and run
 them; a running task whose lease expired belonged to a crashed worker and is resumed from its checkpoint.
@@ -20,6 +27,7 @@ them; a running task whose lease expired belonged to a crashed worker and is res
 from __future__ import annotations
 
 import re
+import sqlite3
 import time
 
 from ..instance import store
@@ -34,6 +42,10 @@ MONITOR_COLUMNS = ("id", "topic", "plan", "mode", "interval_seconds", "budget", 
                    "runs")
 _POCKET = re.compile(r"^pocket:[0-9a-f]{8,64}$")
 AUTONOMOUS_ORIGINS = ("curiosity", "refresh:")
+PRIMARY_RELEVANCE = 0.5      # a new single-source key counts only from a primary record at least this relevant
+RESTATED_KEY = 0.5           # token Jaccard at which a key with the same values restates a known key
+MAX_SEEN_KEYS = 5000         # claim keys a monitor remembers across runs (oldest dropped first)
+MAX_BASELINE = 2000          # URLs and claim details kept in a monitor's baseline
 
 
 def _monitor(db, monitor_id) -> dict:
@@ -116,7 +128,8 @@ def monitor_stop(db, monitor_id, now) -> dict:
 # ---- change detection --------------------------------------------------------------------------------------------
 
 def snapshot(db, task_id) -> dict:
-    """What a monitor run saw: canonical URL -> content hash, claim key -> values/polarity/status/primary."""
+    """What a monitor run saw: canonical URL -> content hash, claim key -> values/polarity/status/primary/groups/
+    relevance."""
     sources = {s["canonical_url"]: s["content_sha256"] or s["kind"] for s in state.sources(db, task_id)}
     api = {s["canonical_url"] for s in state.sources(db, task_id) if s["kind"] in ("api", "json")}
     claims = {c["id"]: c for c in state.claims(db, task_id)}
@@ -125,29 +138,60 @@ def snapshot(db, task_id) -> dict:
         head = claims.get((cluster.get("supporting") or cluster.get("claims") or [None])[0])
         if head is None:
             continue
+        members = [claims[c] for c in cluster["claims"] if c in claims]
         keys[cluster["key"]] = {"values": head["claim_values"], "polarity": head["polarity"],
                                 "status": cluster["status"],
-                                "primary": any(claims[c]["canonical_url"] in api for c in cluster["claims"]
-                                               if c in claims)}
+                                "primary": any(c["canonical_url"] in api for c in members),
+                                "groups": int(cluster.get("independent_sources") or 0),
+                                "relevance": max((state.finite(c["relevance"], 0.0) for c in members), default=0.0)}
     return {"urls": sources, "claims": keys}
 
 
+def _similar_seen(key, seen_tokens) -> bool:
+    from .consolidate import SIMILAR_KEY, _key_tokens
+    tokens = _key_tokens(key)
+    return bool(tokens) and any(len(tokens & t) / len(tokens | t) >= SIMILAR_KEY for t in seen_tokens if t)
+
+
+def _restated(key, info, old_claims) -> bool:
+    """A known statement under a reworded key (another page joined the cluster and its first claim names the key):
+    the same non-empty values and polarity as a baseline key sharing at least RESTATED_KEY of its tokens."""
+    from .consolidate import _key_tokens
+    if not info["values"]:
+        return False
+    tokens, values = _key_tokens(key), sorted(info["values"])
+    for old_key, before in old_claims.items():
+        if sorted(before.get("values") or []) != values or before.get("polarity") != info["polarity"]:
+            continue
+        other = _key_tokens(old_key)
+        if tokens and other and len(tokens & other) / len(tokens | other) >= RESTATED_KEY:
+            return True
+    return False
+
+
 def compare(baseline: dict, current: dict, consolidation=None) -> dict:
+    """Meaningful change between a monitor's baseline and a run's snapshot (module docstring, step 1)."""
+    from .consolidate import _key_tokens
     old_urls, old_claims = baseline.get("urls") or {}, baseline.get("claims") or {}
+    seen = set(baseline.get("seen_keys") or []) | set(old_claims)
+    seen_tokens = [_key_tokens(k) for k in seen]
     new_urls = sorted(u for u in current["urls"] if u not in old_urls)
     changed_content = sorted(u for u, h in current["urls"].items() if u in old_urls and old_urls[u] != h)
     new_claims, changed_values = [], []
     for key, info in current["claims"].items():
-        solid = info["status"] == "corroborated" or (info["status"] == "single_source" and info["primary"])
-        if key not in old_claims:
-            if solid:
-                new_claims.append(key)
-            continue
-        before = old_claims[key]
-        if before["polarity"] != info["polarity"] or sorted(before["values"]) != sorted(info["values"]):
-            if solid:
+        corroborated = info["status"] == "corroborated" and int(info.get("groups", 2)) >= 2
+        primary = info["status"] == "single_source" and bool(info["primary"])
+        if key in old_claims:
+            before = old_claims[key]
+            if (before["polarity"] != info["polarity"] or sorted(before["values"]) != sorted(info["values"])) and \
+                    (corroborated or primary):
                 changed_values.append({"key": key, "before": before["values"], "after": info["values"],
                                        "polarity": [before["polarity"], info["polarity"]]})
+            continue
+        if key in seen or _similar_seen(key, seen_tokens) or _restated(key, info, old_claims):
+            continue        # seen in an earlier run: the search mix changed, the knowledge did not
+        if corroborated or (primary and state.finite(info.get("relevance"), 0.0) >= PRIMARY_RELEVANCE):
+            new_claims.append(key)
     superseded = list((consolidation or {}).get("superseded") or [])
     meaningful = bool(old_claims or old_urls) and bool(new_claims or changed_values or superseded)
     return {"meaningful": meaningful, "first_run": not (old_claims or old_urls), "new_urls": new_urls,
@@ -155,11 +199,25 @@ def compare(baseline: dict, current: dict, consolidation=None) -> dict:
             "superseded": superseded}
 
 
+def _bounded(old: dict, new: dict, limit: int) -> dict:
+    """old updated with new, the most recently seen `limit` entries kept."""
+    merged = {k: v for k, v in old.items() if k not in new}
+    merged.update(new)
+    return dict(list(merged.items())[-limit:])
+
+
+def merge_baseline(baseline: dict, current: dict) -> dict:
+    seen = list(dict.fromkeys([*(baseline.get("seen_keys") or []), *(baseline.get("claims") or {}),
+                               *current["claims"]]))
+    return {"urls": _bounded(baseline.get("urls") or {}, current["urls"], MAX_BASELINE),
+            "claims": _bounded(baseline.get("claims") or {}, current["claims"], MAX_BASELINE),
+            "seen_keys": seen[-MAX_SEEN_KEYS:]}
+
+
 def _after_monitor_run(db, mon, task, now) -> dict:
     current = snapshot(db, task["id"])
     changes = compare(mon["baseline"], current, (task.get("result") or {}).get("consolidation"))
-    baseline = {"urls": {**(mon["baseline"].get("urls") or {}), **current["urls"]},
-                "claims": {**(mon["baseline"].get("claims") or {}), **current["claims"]}}
+    baseline = merge_baseline(mon["baseline"], current)
     with store.write(db):
         if task["status"] in ("completed", "partial"):
             db.execute("UPDATE web_monitors SET baseline=? WHERE id=?", (state.dumps(baseline), mon["id"]))
@@ -181,6 +239,24 @@ def autonomous_usage(db, now) -> dict:
             requests += int(used.get("requests", 0) or 0)
             volume += int(used.get("bytes", 0) or 0)
     return {"tasks": tasks, "requests": requests, "bytes": volume}
+
+
+def autonomous_remaining(db, now, cfg) -> dict:
+    """Requests and bytes of the daily autonomous allowance not yet committed: caps minus what finished autonomous
+    tasks of the last 24 h spent and what open ones may still spend (their whole budget). Proposals waiting for
+    the owner are not counted until the owner authorises them."""
+    committed = {"requests": 0, "bytes": 0}
+    for origin, status, stage, usage, budget in db.execute(
+            "SELECT origin, status, stage, usage, budget FROM web_tasks WHERE created_at>?", (now - DAY,)):
+        if not (origin == "curiosity" or origin.startswith("refresh:")) or stage == "proposed":
+            continue
+        used, limits = state.loads(usage, {}), state.loads(budget, {})
+        for key in committed:
+            spent = int(used.get(key, 0) or 0)
+            if status not in TERMINAL_STATES:
+                spent = max(spent, int(limits.get(f"max_{key}", 0) or 0))
+            committed[key] += spent
+    return {key: max(0, int(cfg.daily_autonomous.get(key, 0)) - committed[key]) for key in committed}
 
 
 def _over_cap(db, now, cfg, *, ignore_tasks=False):
@@ -235,7 +311,7 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     if not cfg.autonomous:
         report["skipped"].append({"what": "predictions and curiosity",
                                   "reason": "autonomous research is off (nsf web config --autonomous)"})
-        return report
+        return _retention(report, services, now)
     cap = _over_cap(db, now, cfg)
     room = max(0, cfg.daily_autonomous.get("tasks", 0) - autonomous_usage(db, now)["tasks"])
     limit = 0 if cap else max(0, min(room, budget_left, predictions.MAX_REFRESHES))
@@ -276,6 +352,17 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
             launch(objective, mode=candidate["mode"], origin="curiosity")
         except ValidationError as exc:
             report["skipped"].append({"target": candidate["target"], "reason": str(exc)})
+    return _retention(report, services, now)
+
+
+def _retention(report, services, now):
+    """Public-cache retention once per tick (PublicCache.maybe_prune runs at most hourly)."""
+    prune = getattr(services, "prune_cache", None)
+    if prune is not None:
+        try:
+            report["cache"] = prune(now)
+        except (sqlite3.Error, OSError) as exc:
+            report["skipped"].append({"what": "cache retention", "reason": f"{type(exc).__name__}: {exc}"[:300]})
     return report
 
 

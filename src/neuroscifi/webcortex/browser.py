@@ -10,10 +10,12 @@ Contract
   WebSockets never connected (`route_web_socket` keeps them server-less) and, like WebRTC and EventSource,
   their constructors throw (init script in every frame); popups closed, dialogs dismissed.
 - Network: `context.route("**/*")` intercepts every request. Only GET/HEAD over http(s) is served, and only through
-  `SafeFetcher.fetch(purpose="page")`, so the URL/address policy, DNS pinning, robots.txt, throttle, size/type
-  limits and the task budget apply to every sub-resource; images, media and fonts are aborted (budget), anything
-  refused is aborted. Defence in depth for traffic that bypasses routing: all DNS inside Chromium resolves to
-  NOTFOUND, a dead proxy is configured, and WebRTC may not use non-proxied UDP. Chromium therefore never opens a
+  `SafeFetcher.fetch(purpose="subresource")`, so the URL/address policy, DNS pinning, robots.txt, throttle (the
+  shorter `subresource_interval`, not Crawl-delay), size/type limits and the task budget apply to every
+  sub-resource. That purpose also admits scripts and stylesheets (net.SUBRESOURCE_TYPES); its responses are never
+  cached and never become documents. Images, media and fonts are aborted (budget), anything refused is aborted.
+  Defence in depth for traffic that bypasses routing: all DNS inside Chromium resolves to NOTFOUND, a dead proxy
+  is configured, and WebRTC may not use non-proxied UDP. Chromium therefore never opens a
   socket to the page's hosts itself.
 - Bounded: one wall-clock `timeout` per render; the rendered body is capped at the fetcher's max_bytes.
 - `last_events` keeps the sub-request outcomes of the latest render ({url (no query), outcome, code}) for audit.
@@ -140,7 +142,7 @@ class BrowserRenderer:
                 route.abort("blockedbyclient")
                 return
             try:
-                result = self.fetcher.fetch(target, method=request.method, purpose="page", budget=budget,
+                result = self.fetcher.fetch(target, method=request.method, purpose="subresource", budget=budget,
                                             usage=usage)
             except FetchError as error:
                 record.update(outcome="refused", code=error.code)

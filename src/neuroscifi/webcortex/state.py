@@ -171,6 +171,61 @@ def set_config(db, changes: dict, now) -> wconfig.WebConfig:
     return get_config(db)
 
 
+# ---- feeds ---------------------------------------------------------------------------------------------------
+# The owner's RSS/Atom feeds live under their own meta key (not in WebConfig): providers.build adds a FeedProvider
+# when any exist, and monitors read feed items before web results.
+
+FEEDS_KEY = "webcortex.feeds"
+MAX_FEEDS = 50
+MAX_FEED_URL = 2048
+
+
+def get_feeds(db) -> list[str]:
+    row = db.execute("SELECT value FROM meta WHERE key=?", (FEEDS_KEY,)).fetchone()
+    feeds = loads(row[0], []) if row else []
+    return [f for f in feeds if isinstance(f, str)] if isinstance(feeds, list) else []
+
+
+def _feed_url(url) -> str:
+    if not isinstance(url, str) or not 0 < len(url.strip()) <= MAX_FEED_URL:
+        raise ValidationError(f"a feed is an http(s) URL of at most {MAX_FEED_URL} characters")
+    url = url.strip()
+    parts = urlsplit(url)
+    try:
+        parts.port
+    except ValueError:
+        raise ValidationError(f"feed URL has an invalid port: {url}") from None
+    if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
+        raise ValidationError(f"a feed must be an http(s) URL with a host and no credentials: {url}")
+    return url
+
+
+def set_feeds(db, feeds, now) -> list[str]:
+    """Replace the feed list (validated http(s) URLs, duplicates dropped, at most MAX_FEEDS). One state bump."""
+    if not isinstance(feeds, list):
+        raise ValidationError("feeds must be a list of URLs")
+    clean = list(dict.fromkeys(_feed_url(f) for f in feeds))
+    if len(clean) > MAX_FEEDS:
+        raise ValidationError(f"at most {MAX_FEEDS} feeds")
+    with store.write(db):
+        db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                   (FEEDS_KEY, dumps(clean)))
+        store.bump_state_version(db)
+    return get_feeds(db)
+
+
+def add_feed(db, url, now) -> list[str]:
+    return set_feeds(db, [*get_feeds(db), _feed_url(url)], now)
+
+
+def remove_feed(db, url, now) -> list[str]:
+    feeds = get_feeds(db)
+    target = url.strip() if isinstance(url, str) else url
+    if target not in feeds:
+        raise NotFound(f"No feed {url}")
+    return set_feeds(db, [f for f in feeds if f != target], now)
+
+
 def require_enabled(db) -> wconfig.WebConfig:
     cfg = get_config(db)
     if not cfg.enabled:

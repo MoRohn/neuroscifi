@@ -53,7 +53,9 @@ class WebConfig:
     deny_domains: list = field(default_factory=list)     # never contacted
     private_terms: list = field(default_factory=list)    # extra strings that must never leave in a query
     auto_provisional_min_sources: int = 2    # independent sources before a claim may become provisional
-    auto_provisional_min_confidence: float = 0.75
+    # The decisive bar is >= 2 agreeing independent sources and no contradiction; this floor lets exactly two dated
+    # secondary sources through (posterior 2.6/3.6 = 0.722) but not one dated + one undated (2.4/3.4 = 0.706).
+    auto_provisional_min_confidence: float = 0.72
     freshness_ttl: dict = field(default_factory=dict)    # overrides of temporal.FRESHNESS ttl seconds
 
     @classmethod

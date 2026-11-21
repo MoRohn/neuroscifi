@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from ..instance import (beliefs, checkpoints, datasets, evidence, executive, governance, graphs, memory,
                         recall, store)
-from ..instance.errors import Conflict, InstanceError, ValidationError
+from ..instance.errors import InstanceError, ValidationError
 from ..webcortex import state as wstate
 from ..webcortex.types import MODES, TASK_STATES, TERMINAL_STATES
 
@@ -362,32 +362,11 @@ def _web_cancel(c, p, q, b):
 
 
 def _web_resume(c, p, q, b):
-    """Queue the task again; the worker continues it. A failed task keeps its id and checkpoint (orchestrator.resume
-    semantics). The orchestrator refuses to resume a partial or cancelled task, so those continue as a new task
-    linked by parent_id; documents read before are then served conditionally from the public cache."""
+    """Queue the task again for the worker (orchestrator.requeue): a failed task keeps its id and resumes from its
+    checkpoint; a partial or cancelled task continues as a new task linked by parent_id."""
     from ..webcortex import orchestrator
     _fields(b)
-    task_id = _task_id(p[0])
-    task = wstate.task(c.db, task_id)
-    if task["status"] == "failed":
-        with store.write(c.db):
-            wstate.update_task(c.db, task_id, c.now, status="queued", finished_at=None, error=None,
-                               lease_holder=None, lease_expires_at=None, cancel_requested=0)
-            wstate.log_event(c.db, task_id, "resumed", {"requeued_by": "owner"}, c.now)
-            store.bump_state_version(c.db)
-        return orchestrator.get(c.db, task_id) | {"resumed_from": task_id}
-    if task["status"] in ("partial", "cancelled"):
-        context = (task["checkpoint"] or {}).get("context")
-        new = orchestrator.submit(c.db, task["objective"], c.now, mode=task["mode"], origin="console", parent=task_id,
-                                  **({"context": context} if context else {}))
-        return new | {"resumed_from": task_id}
-    raise Conflict(f"Research task {task_id} is {task['status']}; only failed, partial or cancelled tasks resume")
-
-
-def _knowledge_feedback(db, key):
-    keys = ("effect", "before_confidence", "after_confidence", "info_gain", "task_id", "created_at")
-    return [dict(zip(keys, row)) for row in db.execute(
-        f"SELECT {','.join(keys)} FROM web_feedback WHERE key=? ORDER BY id DESC LIMIT 5", (key,))]
+    return orchestrator.requeue(c.db, _task_id(p[0]), c.now, origin="console")
 
 
 def _web_knowledge(c, p, q, b):
@@ -406,7 +385,7 @@ def _web_knowledge(c, p, q, b):
         items = [knowledge.describe(c.db, item, c.now, cfg) for item in reversed(recent)]
         out = {"topic": None, "as_of": c.now, "items": items, "matched": len(items)}
     for item in out["items"]:
-        item["feedback"] = _knowledge_feedback(c.db, item["key"])
+        item["feedback"] = knowledge.feedback(c.db, item["key"], limit=5)
     return out
 
 

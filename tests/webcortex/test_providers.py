@@ -571,3 +571,16 @@ def test_live_structured(cls, query, check):
         print("  ", r.url, "|", r.title[:80], "|", {k: r.metadata.get(k) for k in
                                                      ("latest", "released_at", "arxiv_id", "doi", "id")})
     assert check(results)
+
+
+def test_build_adds_the_feed_provider_only_when_feeds_exist():
+    """R3: FeedProvider was never built. build() adds it for the owner's feeds; one fetch per feed per run."""
+    f = FakeFetcher({"https://lab.example/rss": (200, RSS, "application/rss+xml")})
+    cfg = WebConfig(providers=["openwebsearch", "wikipedia"])
+    assert [p.name for p in providers.build(cfg, f)] == ["openwebsearch", "wikipedia"]
+    built = providers.build(cfg, f, feeds=["https://lab.example/rss"], clock=lambda: NOW)
+    assert [p.name for p in built] == ["openwebsearch", "wikipedia", "feeds"] and "feeds" in providers.KNOWN
+    feed = built[-1]
+    assert feed.search(Query("dendritic computation"), 5) and feed.search(Query("dendritic results"), 5)
+    assert len(f.requests) == 1                                   # memoised within the run, not one per query
+    assert providers.unknown(WebConfig(providers=["feeds", "nope"])) == ["nope"]

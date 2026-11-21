@@ -144,3 +144,21 @@ def test_events_clusters_and_strategies_round_trip(db):
     stats = state.load_strategies(db, "mode:quick_lookup")
     assert stats == {"runs": 2, "completed": 1, "partial": 1, "total_requests": 5, "total_pages": 0,
                      "total_bytes": 0}
+
+
+def test_feeds_are_validated_bounded_and_kept_outside_webconfig(db):
+    """R3: feeds live under meta key 'webcortex.feeds' (WebConfig is another lane's contract)."""
+    assert state.get_feeds(db) == []
+    assert state.add_feed(db, " https://lab.example/rss ", T0) == ["https://lab.example/rss"]
+    assert state.add_feed(db, "https://lab.example/rss", T0) == ["https://lab.example/rss"]      # no duplicates
+    for bad in ("ftp://x.example/f", "https://user:pw@x.example/f", "not a url", "https://x.example:99999/f",
+                "https://x.example/" + "a" * 3000):
+        with pytest.raises(ValidationError):
+            state.add_feed(db, bad, T0)
+    with pytest.raises(ValidationError, match="at most 50"):
+        state.set_feeds(db, [f"https://f{i}.example/rss" for i in range(51)], T0)
+    assert state.remove_feed(db, "https://lab.example/rss", T0) == []
+    from neuroscifi.instance.errors import NotFound
+    with pytest.raises(NotFound):
+        state.remove_feed(db, "https://lab.example/rss", T0)
+    assert "feeds" not in state.get_config(db).to_json()

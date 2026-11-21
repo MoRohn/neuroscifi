@@ -78,3 +78,51 @@ def test_refresh_submits_a_fact_verification_task_without_running_it(db):
     assert task["origin"] == f"refresh:{kid}" and task["parent_id"] == tid
     assert task["objective"] == knowledge.row(db, kid)["statement"]
     assert orchestrator.get(db, task["id"])["stages_done"] == []
+
+
+def test_a_newer_release_observed_later_makes_release_knowledge_stale(db):
+    """R6: release-class knowledge goes stale as soon as a higher version of the same key is observed in a later
+    task's claims (even a held single-source claim), not only when its TTL runs out."""
+    from test_consolidate import task_with
+    _, out = consolidated(db, [two_sources()])
+    kid = out["provisional"][0]
+    assert knowledge.row(db, kid)["freshness_class"] == "release"
+    assert knowledge.query(db, "latest NumPy release", T0 + DAY)["items"][0]["stale"] is False
+    same = "NumPy 2.3.5 is still the latest release of the NumPy library."
+    task_with(db, [cluster([claim("http://c.example/numpy", same)])], now=T0 + DAY)      # same version: no effect
+    assert knowledge.query(db, "latest NumPy release", T0 + 2 * DAY)["items"][0]["stale"] is False
+    newer = "NumPy 2.4.0 is the latest release of the NumPy library."
+    task_with(db, [cluster([claim("http://c.example/numpy-240", newer)])], now=T0 + 2 * DAY)
+    item = knowledge.query(db, "latest NumPy release", T0 + 3 * DAY)["items"][0]
+    assert item["id"] == kid and item["stale"] is True and "newer release" in item["stale_reason"]
+    assert knowledge.staleness(knowledge.row(db, kid), T0 + 3 * DAY)[0] is False     # without db: TTL only
+
+
+def test_a_new_arxiv_version_of_a_source_makes_knowledge_stale(db):
+    """R6: knowledge resting on an arXiv record is stale once a later read shows a higher arXiv version."""
+    from neuroscifi.webcortex import state
+    from neuroscifi.webcortex.types import Document
+    from test_consolidate import task_with
+    arxiv = "https://arxiv.org/abs/2611.00001"
+    text = "Dendritic spikes double the memory capacity of pyramidal neurons in the model."
+    sources = cluster([claim(u, text, key="dendritic spikes memory capacity") for u in
+                       (arxiv, "http://lab.example/dendrites")])
+    tid, out = consolidated(db, [sources], objective="What do studies of dendritic spikes in neurons show?")
+    kid = out["provisional"][0]
+    assert knowledge.row(db, kid)["freshness_class"] == "scientific"
+
+    def read(task_id, version, at):
+        doc = Document(url=arxiv, final_url=arxiv, canonical_url=arxiv, domain="arxiv.org", title="t", text=text,
+                       retrieved_at=at, retrieval_mode="api", kind="api",
+                       metadata={"arxiv_id": "2611.00001", "version": version, "provider": "arxiv"})
+        with store.write(db):
+            state.save_source(db, task_id, doc, at)
+
+    read(tid, "v1", T0)
+    assert knowledge.query(db, "dendritic spikes", T0 + DAY)["items"][0]["stale"] is False
+    read(task_with(db, [], now=T0 + DAY), "v1", T0 + DAY)            # re-read, same version
+    assert knowledge.query(db, "dendritic spikes", T0 + 2 * DAY)["items"][0]["stale"] is False
+    read(task_with(db, [], now=T0 + 2 * DAY), "v2", T0 + 2 * DAY)
+    item = knowledge.query(db, "dendritic spikes", T0 + 3 * DAY)["items"][0]
+    assert item["stale"] is True and "new version" in item["stale_reason"]
+    assert state.sources(db, tid)[0]["metadata"]["version"] == "v1"     # the version is kept in web_sources

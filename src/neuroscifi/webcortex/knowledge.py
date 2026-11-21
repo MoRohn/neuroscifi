@@ -6,7 +6,11 @@ through the owner: `review()` here, or `nsf resolve ID TEXT --confirm|--reject` 
 `web:knowledge:<id>` (executive.resolve calls `apply_review` inside its own transaction).
 
 Retrieval is lexical (BM25 over statement and key, ADR-009/022). Staleness is computed on read from the freshness
-class (temporal.is_stale); status 'stale' is set only when a forget removed part of an item's support.
+class (temporal.is_stale); status 'stale' is set only when a forget removed part of an item's support. With the
+database at hand staleness also reads later observations: a release-class item is stale once a claim about the
+same key (or a near-identical one) carrying a higher version was recorded after the item's last verification
+(newer_release_seen); an item resting on an arXiv record is stale once a later read of that record showed a
+higher arXiv version (revision_seen, from web_sources.metadata.version).
 """
 from __future__ import annotations
 
@@ -50,19 +54,80 @@ def versions(db, key) -> list[dict]:
              "confidence": r["confidence"]} for r in rows(db, "key=?", (key,))]
 
 
-def staleness(item: dict, now, cfg=None) -> tuple[bool, str]:
-    """(stale, reason) for a knowledge row."""
+def staleness(item: dict, now, cfg=None, db=None) -> tuple[bool, str]:
+    """(stale, reason) for a knowledge row. With `db`, later observations (a newer release, a new arXiv version of
+    a source) make it stale before its TTL (module docstring)."""
     if item["status"] == "stale":
         return True, item.get("note") or "marked stale: part of its support was removed"
     from . import temporal
+    newer = revised = False
+    if db is not None:
+        newer = item["freshness_class"] == "release" and newer_release_seen(db, item)
+        revised = revision_seen(db, item)
     stale, reason = temporal.is_stale(item["last_verified_at"], item["freshness_class"], now,
-                                      ttl_overrides=(cfg.freshness_ttl if cfg is not None else None) or None)
+                                      ttl_overrides=(cfg.freshness_ttl if cfg is not None else None) or None,
+                                      newer_release_seen=newer, revision_seen=revised)
     return bool(stale), reason
+
+
+def _version(text):
+    """Comparable tuple of a version string ('v2.3.5', '2.10', 'v3'), or None."""
+    import re
+    m = re.match(r"v?(\d+(?:\.\d+)*)", str(text or "").strip())
+    return tuple(int(x) for x in m.group(1).split(".")) if m else None
+
+
+def _versions(values):
+    from . import text
+    out = []
+    for v in values or []:
+        if isinstance(v, str) and text.value_kind(v)[0] == "version":
+            parsed = _version(v)
+            if parsed is not None:
+                out.append(parsed)
+    return out
+
+
+def newer_release_seen(db, item) -> bool:
+    """A claim about the same key (or a near-identical key) with a higher version than every version the item
+    states, recorded after the item was last verified."""
+    mine = _versions(item["claim_values"])
+    if not mine:
+        return False
+    from .consolidate import SIMILAR_KEY, _similar
+    top = max(mine)
+    for key, values in db.execute("SELECT key, claim_values FROM web_claims WHERE created_at>? AND claim_values "
+                                  "LIKE '%v%'", (item["last_verified_at"] or 0.0,)):
+        if key != item["key"] and _similar(key, item["key"]) < SIMILAR_KEY:
+            continue
+        if any(v > top for v in _versions(state.loads(values, []))):
+            return True
+    return False
+
+
+def revision_seen(db, item) -> bool:
+    """A source of the item is an arXiv record whose version, read after the item was last verified, is higher
+    than any version of it read up to then."""
+    urls = [s.get("url") for s in item["sources"] if isinstance(s, dict) and s.get("url")]
+    if not urls:
+        return False
+    verified = item["last_verified_at"] or 0.0
+    before, after = {}, {}
+    rows = db.execute(f"SELECT canonical_url, retrieved_at, json_extract(metadata, '$.version') FROM web_sources "
+                      f"WHERE canonical_url IN ({','.join('?' * len(urls))}) AND "
+                      f"json_extract(metadata, '$.arxiv_id') IS NOT NULL", urls).fetchall()
+    for url, retrieved, version in rows:
+        parsed = _version(version)
+        if parsed is None:
+            continue
+        side = before if (retrieved or 0.0) <= verified else after
+        side[url] = max(side.get(url, parsed), parsed)
+    return any(url in before and v > before[url] for url, v in after.items())
 
 
 def describe(db, item: dict, now, cfg=None) -> dict:
     """The public view of a knowledge row: status, confidence, freshness, staleness, provenance, versions."""
-    stale, reason = staleness(item, now, cfg)
+    stale, reason = staleness(item, now, cfg, db)
     return {
         "id": item["id"], "key": item["key"], "version": item["version"], "statement": item["statement"],
         "status": item["status"], "confidence": state.finite(item["confidence"], 0.0),
@@ -96,6 +161,26 @@ def query(db, topic, now, *, limit=10) -> dict:
             items.append(describe(db, item, now, cfg) | {"score": round(score, 6)})
     return {"topic": topic, "as_of": now, "items": items, "matched": len(items),
             "known": sum(1 for i in items if i["status"] == "accepted" and not i["stale"] and not i["contested"])}
+
+
+FEEDBACK_FIELDS = ("id", "knowledge_id", "key", "effect", "before_confidence", "after_confidence", "info_gain",
+                   "task_id", "created_at")
+
+
+def feedback(db, subject, *, limit=5) -> list[dict]:
+    """The newest `limit` (1..100) feedback rows about a subject, newest first: `subject` is a knowledge id (the
+    history of its key, across versions) or a claim key. Each row: id, knowledge_id, key, effect (strengthened,
+    weakened, unchanged, reversed, new), before/after confidence, info_gain (bits), task_id, created_at."""
+    if isinstance(subject, bool) or not isinstance(subject, (int, str)) or (isinstance(subject, str) and
+                                                                            not subject.strip()):
+        raise ValidationError("subject must be a knowledge id or a non-empty key")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise ValidationError("limit must be an integer between 1 and 100")
+    key = row(db, subject)["key"] if isinstance(subject, int) else subject
+    return [{k: (state.finite(v) if k in ("before_confidence", "after_confidence", "info_gain") else v)
+             for k, v in zip(FEEDBACK_FIELDS, found)}
+            for found in db.execute(f"SELECT {','.join(FEEDBACK_FIELDS)} FROM web_feedback WHERE key=? "
+                                    "ORDER BY id DESC LIMIT ?", (key, limit))]
 
 
 # ---- questions -----------------------------------------------------------------------------------------------

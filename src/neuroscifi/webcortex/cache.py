@@ -5,11 +5,16 @@ Contract
   of a checkpoint. Created with mode 0600 (umask 077 while creating), WAL journal, `secure_delete` on so forgotten
   bodies are overwritten rather than left in free pages.
 - Tables: `documents(sha256, body, content_type, bytes, first_seen)` (content-addressed: one row per distinct body),
-  `urls(url, final_url, status, sha256, etag, last_modified, fetched_at)`, `robots(host, text, fetched_at)`.
+  `urls(url, final_url, status, sha256, etag, last_modified, fetched_at)`, `robots(host, text, fetched_at)`,
+  `backoff(host, until)` (Retry-After backoffs shared by every SafeFetcher on this cache), `meta(key, value)`
+  (`last_prune`).
 - Privacy: rows are keyed by URL and content hash only. No task objective, search query or claim is ever written
   here; the fetcher does not cache purpose='api' responses because API URLs embed search queries.
-- `prune` removes rows older than `max_age_seconds`, then the least recently fetched documents until the stored
-  bodies total at most `max_bytes`. `forget_url` / `forget_domain` delete matching rows (and orphaned bodies).
+- `prune` removes rows older than `max_age_seconds` and expired backoffs, then the least recently fetched documents
+  until the stored bodies total at most `max_bytes`. `maybe_prune(now, ..., every=3600)` runs `prune` only when the
+  last prune recorded in `meta` is at least `every` seconds old (or in the future), so callers may invoke it on every
+  run; it returns the prune report or None. `forget_url` / `forget_domain` delete matching rows and every document
+  body no remaining `urls` row references; `forget_domain` also drops the domain's robots and backoff rows.
 - Thread-safe: one connection guarded by a lock. Times are passed in (`fetched_at`, `now`); nothing reads a clock.
 """
 from __future__ import annotations
@@ -31,6 +36,8 @@ CREATE TABLE IF NOT EXISTS urls (
 CREATE INDEX IF NOT EXISTS urls_sha ON urls(sha256);
 CREATE INDEX IF NOT EXISTS urls_fetched ON urls(fetched_at);
 CREATE TABLE IF NOT EXISTS robots (host TEXT PRIMARY KEY, text TEXT NOT NULL, fetched_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS backoff (host TEXT PRIMARY KEY, until REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
@@ -113,6 +120,19 @@ class PublicCache:
             self._db.execute("INSERT OR REPLACE INTO robots(host, text, fetched_at) VALUES (?,?,?)",
                              (host.lower(), text, fetched_at))
 
+    # ---- Retry-After backoff ----------------------------------------------------------------------------------
+    def backoff(self, host: str) -> float | None:
+        """Time until which requests to host must not be sent, or None."""
+        with self._lock:
+            row = self._db.execute("SELECT until FROM backoff WHERE host = ?", (host.lower(),)).fetchone()
+        return row[0] if row else None
+
+    def put_backoff(self, host: str, until: float):
+        """Record a backoff; an earlier `until` never shortens one already stored."""
+        with self._lock:
+            self._db.execute("INSERT INTO backoff(host, until) VALUES (?, ?) ON CONFLICT(host) DO UPDATE SET "
+                             "until = MAX(until, excluded.until)", (host.lower(), float(until)))
+
     # ---- retention ------------------------------------------------------------------------------------------
     def _orphans(self) -> int:
         return self._db.execute(
@@ -128,6 +148,7 @@ class PublicCache:
             cutoff = now - max_age_seconds
             urls = self._db.execute("DELETE FROM urls WHERE fetched_at < ?", (cutoff,)).rowcount
             robots = self._db.execute("DELETE FROM robots WHERE fetched_at < ?", (cutoff,)).rowcount
+            self._db.execute("DELETE FROM backoff WHERE until < ?", (now,))
             documents = self._orphans()
             total = self._total_bytes()
             if total > max_bytes:
@@ -147,6 +168,21 @@ class PublicCache:
         self._checkpoint()
         return {"removed_urls": urls, "removed_documents": documents, "removed_robots": robots,
                 "bytes_before": before, "bytes_after": after}
+
+    def maybe_prune(self, now: float, *, max_bytes: int, max_age_seconds: float, every: float = 3600.0):
+        """`prune` at most once per `every` seconds (last run kept in `meta`); returns its report, or None."""
+        with self._lock:
+            row = self._db.execute("SELECT value FROM meta WHERE key = 'last_prune'").fetchone()
+        try:
+            last = float(row[0]) if row else None
+        except ValueError:
+            last = None
+        if last is not None and 0 <= now - last < every:
+            return None
+        report = self.prune(now, max_bytes=max_bytes, max_age_seconds=max_age_seconds)
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('last_prune', ?)", (repr(float(now)),))
+        return report
 
     def forget_url(self, url: str) -> int:
         with self._lock, self._db:
@@ -171,6 +207,9 @@ class PublicCache:
             hosts = [h for (h,) in self._db.execute("SELECT host FROM robots").fetchall() if _in_domain(h, domain)]
             for host in hosts:
                 n += self._db.execute("DELETE FROM robots WHERE host = ?", (host,)).rowcount
+            for (host,) in self._db.execute("SELECT host FROM backoff").fetchall():
+                if _in_domain(host, domain):
+                    self._db.execute("DELETE FROM backoff WHERE host = ?", (host,))
             self._orphans()
         self._checkpoint()
         return n

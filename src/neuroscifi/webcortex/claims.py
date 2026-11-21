@@ -22,7 +22,8 @@ SHINGLE_K                       words per shingle for sentence comparisons (sent
 PRIOR_ALPHA, PRIOR_BETA         Beta(1, 1) prior
 RELIABILITY_SECONDARY           evidence weight of an ordinary page
 RELIABILITY_PRIMARY             evidence weight of a primary structured record (arXiv/PubMed/OSV/PyPI/... API)
-STALE_FACTOR, UNDATED_FACTOR    temporal multipliers on a group's weight
+STALE_FACTOR, UNDATED_FACTOR    temporal multipliers on a group's weight (adversarial sources: weight 0, see evaluate)
+HARD_LINE_KINDS                 document kinds whose line breaks end sentences (HTML pages, feeds, API records)
 MAX_CONTRADICTION_PAIRS         bound on listed contradiction pairs per cluster
 """
 from __future__ import annotations
@@ -63,6 +64,7 @@ UNDATED_FACTOR = 0.75
 # reports on the knowledge item, not a discount on the evidence.
 AGE_DISCOUNT_CLASSES = ("breaking", "volatile", "release")
 MAX_CONTRADICTION_PAIRS = 50
+HARD_LINE_KINDS = ("page", "feed", "api")     # document kinds whose line breaks are block boundaries
 
 # ---- lexical cues -------------------------------------------------------------------------------------------
 
@@ -149,6 +151,8 @@ _PROVIDER_LABELS = (("pypi.org", "PyPI"), ("npmjs.org", "npm"), ("npmjs.com", "n
                     ("pubmed", "PubMed"), ("crossref.org", "Crossref"), ("openalex.org", "OpenAlex"),
                     ("wikipedia.org", "Wikipedia"), ("biorxiv.org", "bioRxiv"), ("medrxiv.org", "medRxiv"))
 _ACADEMIC_PROVIDERS = ("arXiv", "PubMed", "Crossref", "OpenAlex", "bioRxiv", "medRxiv")
+REGISTRY_PROVIDERS = ("PyPI", "npm", "OSV", "GitHub")
+REGISTRY_KEYS = ("latest", "latest_version", "ecosystem", "tag", "tag_name", "advisory_id", "osv_id")
 
 
 # ---- helpers ------------------------------------------------------------------------------------------------
@@ -158,7 +162,14 @@ def _stems(s: str) -> list[str]:
 
 
 def _claim_id(source_url: str, text: str) -> str:
-    return hashlib.sha256((source_url + "\n" + T.normalise(text)).encode("utf-8")).hexdigest()[:24]
+    """sha256(canonical URL + "\n" + the sentence lower-cased with whitespace collapsed)[:24]. Numbers are kept, so
+    two sentences on one page that differ only in a value are two claims (the subject `key` masks values)."""
+    return hashlib.sha256((source_url + "\n" + T.collapse(text).lower()).encode("utf-8")).hexdigest()[:24]
+
+
+def is_adversarial(claim: Claim) -> bool:
+    """From a document with prompt-injection findings: shown, but evidence weight 0 (see evaluate)."""
+    return bool((claim.flags or {}).get("adversarial_source"))
 
 
 def is_primary(claim: Claim) -> bool:
@@ -253,13 +264,23 @@ def _clip(value, limit: int) -> str:
     return s if len(s) <= limit else s[:limit - 1].rstrip() + "…"
 
 
+def registry_record(doc: Document) -> bool:
+    """A structured record of registry *state* (package, advisory, release: PyPI, npm, OSV, GitHub). Its content
+    is current as of retrieval; encyclopedia and academic records are dated by their own published or
+    last-edited date instead."""
+    if doc.kind != "api" and doc.retrieval_mode != "api":
+        return False
+    md = doc.metadata or {}
+    return _provider(doc) in REGISTRY_PROVIDERS or any(md.get(k) for k in REGISTRY_KEYS)
+
+
 def _metadata_statements(doc: Document) -> list[tuple[str, dict, bool]]:
     """Templated statements over a structured record: [(text, extra flags, relevance floor applies)]."""
     md = doc.metadata or {}
     provider = _provider(doc)
     out: list[tuple[str, dict, bool]] = []
     name = md.get("package") or md.get("name")
-    version = md.get("version") or md.get("latest_version")
+    version = md.get("version") or md.get("latest_version") or md.get("latest")     # PyPI/npm providers: latest
     released = _day(md.get("released_at") or md.get("release_date") or md.get("upload_time"))
     advisory = md.get("advisory_id") or md.get("osv_id") or (md.get("id") if provider == "OSV" else None)
     if advisory:
@@ -312,10 +333,13 @@ def _metadata_statements(doc: Document) -> list[tuple[str, dict, bool]]:
 def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list[Claim]:
     """Up to `max_claims` claims from one document, most relevant first.
 
-    Sentences of MIN_WORDS..MAX_WORDS words that are not boilerplate/navigation and carry no injection finding are
-    scored by BM25 against the question (document title as a weak prior, small bonus for values and dates).
-    Structured API records also yield templated 'metadata' claims ("PyPI reports numpy latest version 2.3.5
-    released 2026-11-03.") and, for academic records, their abstract sentences."""
+    Sentences of MIN_WORDS..MAX_WORDS words that are not boilerplate/navigation, not a heading or the page title
+    (text.heading_like) and carry no injection finding are scored by BM25 against the question (document title as
+    a weak prior, small bonus for values and dates). In HTML pages, feeds and API records every line is a block,
+    so no sentence spans a line break. Structured API records also yield templated 'metadata' claims ("PyPI
+    reports numpy latest version 2.3.5 released 2026-11-03.") and, for academic records, their abstract
+    sentences. A document with injection findings (doc.flags["injection"]) is adversarial: its claims carry
+    flags["adversarial_source"] = True and no evidence weight (evaluate)."""
     primary = doc.kind == "api" or doc.retrieval_mode == "api"
     source_url = doc.canonical_url or doc.final_url or doc.url
     md = doc.metadata or {}
@@ -327,11 +351,11 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
     body = doc.text or ""
     if primary and not body.strip() and isinstance(md.get("abstract"), str):
         body = md["abstract"]
-    for sentence in T.sentences(body):
+    for sentence in T.sentences(body, hard_newlines=doc.kind in HARD_LINE_KINDS):
         n = len(sentence.split())
         if n < MIN_WORDS or n > MAX_WORDS:
             continue
-        if _BOILERPLATE.search(sentence) or _NAV.search(sentence):
+        if _BOILERPLATE.search(sentence) or _NAV.search(sentence) or T.heading_like(sentence, doc.title or ""):
             continue
         if safety.scan_injection(sentence):
             continue
@@ -345,7 +369,8 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
     s_q = bm.scores(q_stems) if q_stems else [0.0] * len(candidates)
     overlap = (len(set(title_stems) & set(q_stems)) / len(set(q_stems))) if q_stems else 0.0
     s_t = bm.scores(title_stems) if overlap > 0 else [0.0] * len(candidates)
-    observed_at = doc.retrieved_at if primary and doc.retrieval_mode != "cache" else None
+    observed_at = doc.retrieved_at if registry_record(doc) and doc.retrieval_mode != "cache" else None
+    adversarial = bool(doc.flags.get("injection"))
     scored = []
     for i, ((text, kind, extra, floor), sq, st) in enumerate(zip(candidates, s_q, s_t)):
         vals = T.values(text)
@@ -364,6 +389,8 @@ def extract_claims(doc: Document, question: str, *, max_claims: int = 8) -> list
             flags["observed_at"] = observed_at
         if doc.flags.get("truncated"):
             flags["truncated"] = True
+        if adversarial:
+            flags["adversarial_source"] = True
         flags.update({k: v for k, v in extra.items() if v is not None})
         key = claim_key(text, q_stems)
         flags["subject"] = sorted(set(key.split()) & set(q_stems))
@@ -485,7 +512,9 @@ def _effective(c: Claim) -> float:
 def evidence_weight(claim: Claim, *, now: float | None = None, freshness_class: str | None = None,
                     ttl_overrides: dict | None = None) -> float:
     """Base reliability by source type x temporal factor (stale 0.5 in AGE_DISCOUNT_CLASSES only, undated 0.75).
-    Rank and popularity are not inputs."""
+    Rank and popularity are not inputs. A claim from an adversarial source weighs 0."""
+    if is_adversarial(claim):
+        return 0.0
     base = RELIABILITY_PRIMARY if is_primary(claim) else RELIABILITY_SECONDARY
     flags = claim.flags or {}
     dated = flags.get("observed_at") or claim.published_at or claim.event_at
@@ -505,14 +534,20 @@ def evaluate(claims, *, now: float | None = None, freshness_class: str | None = 
     position has the most independent groups (tie: newest effective date, then highest relevance); with `target`
     (fact verification) agreement is measured against the target statement instead. Each independent group adds
     its weight to alpha (agreeing share) and beta (contradicting share). Returns alpha, beta, representative,
-    agreeing ids, contradiction pairs, groups, supporting/contradicting group counts."""
+    agreeing ids, contradiction pairs, groups, supporting/contradicting group counts.
+
+    Claims from adversarial sources (is_adversarial) stay in "order" (they are shown) but carry evidence weight 0:
+    they are not in any group, position, agreeing set or contradiction pair, so they never change the
+    representative, the posterior, the independent-source count or a verdict."""
     unique = list({c.id: c for c in claims}.values())
     order = sorted(unique, key=lambda c: (-c.relevance, -_effective(c), c.source_url, c.sentence_index, c.id))
+    shown = order
+    order = [c for c in order if not is_adversarial(c)]
     groups = independence_groups(order)
     by_id = {c.id: c for c in order}
     if not order:
         return {"alpha": PRIOR_ALPHA, "beta": PRIOR_BETA, "representative": None, "agree": [], "pairs": [],
-                "groups": [], "support_groups": 0, "contra_groups": 0, "order": []}
+                "groups": [], "support_groups": 0, "contra_groups": 0, "order": shown}
     if target is not None:
         agree = {c.id for c in order if conflict(target, c) is None}
         rep = next((c for c in order if c.id in agree), None)
@@ -558,11 +593,11 @@ def evaluate(claims, *, now: float | None = None, freshness_class: str | None = 
                 pairs.append({"a": x.id, "b": y.id, "reason": reason})
     return {"alpha": alpha, "beta": beta, "representative": rep, "agree": [c.id for c in order if c.id in agree],
             "pairs": pairs, "groups": groups, "support_groups": support_groups, "contra_groups": contra_groups,
-            "order": order}
+            "order": shown}
 
 
-def _build(claims, *, now=None, freshness_class=None, key: str = "") -> ClaimCluster:
-    ev = evaluate(claims, now=now, freshness_class=freshness_class)
+def _build(claims, *, now=None, freshness_class=None, key: str = "", ttl_overrides=None) -> ClaimCluster:
+    ev = evaluate(claims, now=now, freshness_class=freshness_class, ttl_overrides=ttl_overrides)
     a, b = ev["alpha"], ev["beta"]
     mean = a / (a + b)
     sd = math.sqrt(a * b / ((a + b) ** 2 * (a + b + 1)))
@@ -602,11 +637,14 @@ def cluster(claims) -> list[ClaimCluster]:
     return [_build(g) for g in groups]
 
 
-def score(cluster: ClaimCluster, *, now: float, freshness_class: str) -> ClaimCluster:
+def score(cluster: ClaimCluster, *, now: float, freshness_class: str,
+          ttl_overrides: dict | None = None) -> ClaimCluster:
     """Re-score a cluster with temporal factors: Beta(1,1) prior; each independent group adds weight
     w = reliability(source type) x temporal factor to alpha (agreeing) or beta (contradicting).
-    confidence = posterior mean, uncertainty = posterior sd. Rank/popularity are never inputs."""
-    return _build(cluster.claims, now=now, freshness_class=freshness_class, key=cluster.key)
+    confidence = posterior mean, uncertainty = posterior sd. Rank/popularity are never inputs. `ttl_overrides`
+    (WebConfig.freshness_ttl) replaces the class TTL used for the staleness factor."""
+    return _build(cluster.claims, now=now, freshness_class=freshness_class, key=cluster.key,
+                  ttl_overrides=ttl_overrides)
 
 
 def posterior(cluster: ClaimCluster, *, now: float | None = None, freshness_class: str | None = None) -> dict:
@@ -641,5 +679,6 @@ def info_gain(alpha: float, beta: float, reliability: float = RELIABILITY_SECOND
 __all__ = ["CLUSTER_KEY_JACCARD", "CLUSTER_TEXT_SHINGLE", "DUPLICATE_SHINGLE", "KEY_TOKENS", "MAX_WORDS",
            "MIN_WORDS", "PRIOR_ALPHA", "PRIOR_BETA", "RELIABILITY_PRIMARY", "RELIABILITY_SECONDARY", "STALE_FACTOR",
            "UNDATED_FACTOR", "claim_key", "claim_kind", "cluster", "conflict", "contradictions", "evaluate",
-           "different_subjects", "evidence_weight", "extract_claims", "independence_groups", "info_gain", "is_primary", "negation_cue",
+           "different_subjects", "evidence_weight", "extract_claims", "independence_groups", "info_gain",
+           "is_adversarial", "is_primary", "negation_cue", "registry_record",
            "polarity", "posterior", "score", "similarity"]

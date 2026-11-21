@@ -16,6 +16,11 @@ Contract (ARCHITECTURE §4.1)
   Last-Modified header; `metadata["date_source"]` names the source used for `published_at`.
 - A page's `<link rel=canonical>` is honoured only when absolute http(s) and on the same registrable domain
   (an off-site canonical could otherwise poison de-duplication); it is recorded in metadata either way.
+- Work is bounded: at most MAX_ELEMENTS elements of a page are kept (document order), Markdown is converted only
+  for a main node of at most MAX_MARKDOWN_ELEMENTS elements (else it is the plain text), and text is cut at
+  MAX_TEXT characters; any of these sets `flags["truncated_extraction"]`.
+- `doc.text` has one line per block element (h1-h6, p, li, td, blockquote, div, br, ...); whitespace inside a block,
+  including source line breaks, is collapsed, so a line break in an HTML document's text is always a block boundary.
 - PDFs via pypdf (page and character bounds; encrypted or unreadable files raise FetchError('decode_error')).
 - Feeds and sitemaps are parsed with xml.etree after refusing any DOCTYPE/ENTITY declaration (billion laughs, XXE)
   and any non-ASCII-compatible encoding (so the refusal check cannot be bypassed with UTF-16).
@@ -43,6 +48,8 @@ from .types import Document, FetchError, FetchResult
 
 MAX_TEXT = 500_000
 MAX_MARKDOWN = 500_000
+MAX_ELEMENTS = 50_000            # elements kept from a parsed page (document order); the rest are dropped
+MAX_MARKDOWN_ELEMENTS = 10_000   # above this the main content's Markdown is its plain text (markdownify is slow)
 MAX_LINKS = 200
 MAX_FEED_ITEMS = 500
 MAX_SITEMAP_URLS = 50_000
@@ -51,6 +58,7 @@ AUTO_TRAFILATURA_BELOW = 300
 HTML_TYPES = ("text/html", "application/xhtml+xml")
 XML_TYPES = ("application/xml", "text/xml", "application/atom+xml", "application/rss+xml", "application/rdf+xml")
 
+_SPACE = re.compile(r"\s+")
 _ZERO_WIDTH = re.compile("[​-‏‪-‮⁠-⁤⁦-⁩﻿­]")
 _BOILERPLATE = {"script", "style", "noscript", "svg", "nav", "header", "footer", "aside", "form", "iframe",
                 "object", "embed", "canvas", "button", "select", "textarea", "input", "dialog", "link", "meta"}
@@ -256,7 +264,8 @@ def _clean(root) -> tuple[int, int]:
 
 
 def _text_of(node) -> str:
-    """Visible text of a cleaned subtree; block elements become line breaks; whitespace collapsed per line."""
+    """Visible text of a cleaned subtree; block elements become line breaks; whitespace (source line breaks
+    included) collapsed inside each block."""
     parts = []
     for event, el in lxml.etree.iterwalk(node, events=("start", "end")):
         tag = el.tag.lower() if isinstance(el.tag, str) else ""
@@ -264,14 +273,27 @@ def _text_of(node) -> str:
             if tag in _BLOCKS:
                 parts.append("\n")
             if el.text and isinstance(el.tag, str):
-                parts.append(el.text)
+                parts.append(_SPACE.sub(" ", el.text))
         else:
             if tag in _BLOCKS:
                 parts.append("\n")
             if el is not node and el.tail:
-                parts.append(el.tail)
+                parts.append(_SPACE.sub(" ", el.tail))
     lines = (" ".join(line.split()) for line in "".join(parts).split("\n"))
     return "\n".join(line for line in lines if line)
+
+
+def _prune(root, limit: int) -> bool:
+    """Keep the first `limit` elements of the tree in document order and drop the rest. True when pruned."""
+    doomed = []
+    for n, el in enumerate(root.iter()):
+        if n >= limit:
+            doomed.append(el)
+    for el in doomed:
+        parent = el.getparent()
+        if parent is not None:
+            parent.remove(el)
+    return bool(doomed)
 
 
 def _length(node) -> int:
@@ -409,6 +431,7 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
     if not text_in.strip():
         text_in = "<html><body></body></html>"
     sel = Selector(text_in, url=final_url, huge_tree=False)
+    truncated_extraction = _prune(sel._root, MAX_ELEMENTS)
     metas = _meta_map(sel)
     ld = _json_ld_objects(sel)
     metadata: dict = {}
@@ -558,14 +581,22 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
                 el.set(attr, target)
             else:
                 del el.attrib[attr]
-    markdown = markdownify.markdownify(lxml.html.tostring(main, encoding="unicode"), heading_style="ATX")
-    markdown = re.sub(r"\n{3,}", "\n\n", markdown).strip()[:MAX_MARKDOWN]
+    if sum(1 for _ in main.iter()) <= MAX_MARKDOWN_ELEMENTS:
+        markdown = markdownify.markdownify(lxml.html.tostring(main, encoding="unicode"), heading_style="ATX")
+        markdown = re.sub(r"\n{3,}", "\n\n", markdown).strip()[:MAX_MARKDOWN]
+    else:
+        markdown = text[:MAX_MARKDOWN]
+        truncated_extraction = True
+    if len(text) > MAX_TEXT:
+        truncated_extraction = True
 
     js_suspected = len(visible) < JS_TEXT_THRESHOLD and (scripts > 0 or mount or asks_js)
     flags = {"hidden_removed": hidden + zero_width, "boilerplate_removed": boilerplate,
              "js_suspected": bool(js_suspected)}
     if zero_width:
         flags["zero_width_removed"] = zero_width
+    if truncated_extraction:
+        flags["truncated_extraction"] = True
 
     doc = Document(url=url, final_url=final_url, canonical_url=canonical, domain=domain, title=title,
                    text=text[:MAX_TEXT], retrieved_at=retrieved_at, retrieval_mode=retrieval_mode, kind="page",

@@ -198,7 +198,7 @@ scheduler.work(db_path, *, once=False, stop=None) -> None      # drains queued t
 ## 5. The research report (task result)
 
 ```json
-{"question": "...", "mode": "deep_research", "as_of": 1795200000.0, "live": true,
+{"question": "...", "mode": "deep_research", "as_of": 1795200000.0, "live": true,   // illustrative shape
  "answer": [{"text": "quoted or templated sentence", "citations": [1, 3], "confidence": 0.82, "status": "corroborated"}],
  "findings": [...], "contradictions": [{"a": {...}, "b": {...}, "reason": "different values: 2.3 vs 2.4", "assessment": "..."}],
  "uncertainties": ["..."], "limitations": ["no source dated within the 7-day window", "brave: rate_limited"],
@@ -257,3 +257,4 @@ Additive changes made during implementation (all backwards compatible with §4):
 | claims / synthesis | `evaluate`, `posterior`, `info_gain` (bits); age discounts evidence only for breaking, volatile and release classes; report answer items carry `type: quote|template`; scientific findings carry `section`, technical findings `package`. |
 | orchestration | `submit(..., proposed=False)` for curiosity proposals awaiting `web:research:<id>`; `services.build(..., providers, clock, sleep)`; `scheduler.tick(..., queue)`; `scheduler.work` returns `{"processed": [...]}`; contested clusters without knowledge become `web:contested:<task>:<n>` informational questions; one open question per knowledge item (updates appended). |
 | schema | 12 `web_*` tables; `web_claims` keyed `(task_id, id)`. |
+| interfaces | `orchestrator.submit(..., context={"packages": [...]})` for technical mode; `cli.SERVICES_OPTIONS` test hook; console `web_worker`, `worker_options`; Pocket `state.research` flag, precache 9 assets (ADR-015); HTTP routes in API_CONTRACTS §8. |

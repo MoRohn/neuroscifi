@@ -13,12 +13,24 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
 - Redirects are followed manually (at most policy.max_redirects); every hop is re-checked (URL policy, resolution,
   address policy, robots), https -> http downgrades are refused, 303 (and 301/302 after POST) become GET, and
   credentials headers are dropped when the origin changes.
-- Limits: total wall-clock timeout per fetch, streamed body cap (pages/crawls are truncated and flagged; api/feed
-  responses raise too_large), gzip/deflate decoded under the same cap (decompression bombs stop at the cap),
-  content-type allow-list checked before the body is read.
-- Politeness: robots.txt for purposes page/feed/crawl (4xx => allow, 5xx/unreachable => disallow this host for
-  this process, cached 24 h in memory and the PublicCache), Crawl-delay as the per-host minimum interval,
-  per-host throttle, Retry-After backoff on 429/503 (requests inside a backoff fail without touching the network).
+- Limits: total wall-clock timeout per fetch, streamed body cap (policy.max_bytes; policy.max_api_bytes for
+  purpose='api'; pages/crawls are truncated and flagged, api/feed/subresource responses raise too_large),
+  gzip/deflate decoded under the same cap (decompression bombs stop at the cap), content-type allow-list checked
+  before the body is read.
+- Politeness: robots.txt for purposes page/feed/crawl/subresource, evaluated by RobotsRules (RFC 9309: group
+  selection by product token, longest-match Allow/Disallow with Allow winning ties, `*` and `$`, percent-encoding
+  normalisation, 500 KiB parse cap). 4xx => allow, 5xx/unreachable => disallow this host for this process; parsed
+  files are cached 24 h in memory and the PublicCache; timeouts and 429 are not remembered. Per-host throttle: the
+  gap between two requests to a host is the largest of min_domain_interval, the host's host_intervals entry
+  (defaults: export.arxiv.org 3 s, eutils.ncbi.nlm.nih.gov 0.34 s) and Crawl-delay; purpose='subresource' uses
+  subresource_interval (0.1 s) and host_intervals only. Retry-After backoff on 429/503 (requests inside a backoff
+  fail without touching the network) is kept in memory and in the PublicCache, so a new fetcher sharing the cache
+  honours it.
+- Purposes: page, feed, crawl (robots, cached), api (no robots, never cached, own size cap, POST allowed), robots,
+  subresource (browser sub-requests only: robots and all limits apply, script/style types allowed in addition,
+  never cached, never truncated, never extracted as documents).
+- Conditional GET: a 304 to a cached validator returns the cached body with retrieval_mode='live' (the origin just
+  confirmed it is current) and the header REVALIDATED_HEADER ('x-nsf-revalidated': '304').
 - Budget: one request is charged before every network call (robots and redirect hops included); body bytes are
   charged after reading, and reading stops before the byte budget could be exceeded (BudgetExceeded propagates).
 - Privacy: bodies and full query strings are never logged; purpose='api' responses are never cached (API URLs
@@ -30,7 +42,7 @@ Everything that touches the outside world is injectable: `resolver(host, port) -
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import email.utils
 import fnmatch
 import http.client
@@ -40,8 +52,7 @@ import socket
 import ssl
 import threading
 import time
-from urllib.parse import quote, urljoin, urlsplit, urlunsplit
-import urllib.robotparser
+from urllib.parse import SplitResult, quote, urljoin, urlsplit, urlunsplit
 import weakref
 import zlib
 
@@ -50,12 +61,21 @@ from .types import BudgetExceeded, FetchError, FetchResult
 
 CONTENT_TYPES = ("text/html", "application/xhtml+xml", "text/plain", "application/json", "application/*+json",
                  "application/xml", "text/xml", "application/atom+xml", "application/rss+xml", "application/pdf")
-PURPOSES = ("page", "api", "feed", "crawl", "robots")
-ROBOTS_PURPOSES = ("page", "feed", "crawl")
+SUBRESOURCE_TYPES = ("application/javascript", "text/javascript", "application/ecmascript", "text/ecmascript",
+                     "application/x-javascript", "text/css")
+PURPOSES = ("page", "api", "feed", "crawl", "robots", "subresource")
+ROBOTS_PURPOSES = ("page", "feed", "crawl", "subresource")
+CACHED_PURPOSES = ("page", "feed", "crawl")
+REVALIDATED_HEADER = "x-nsf-revalidated"   # set to "304" on a result whose cached body the origin just confirmed
+HOST_INTERVALS = {"export.arxiv.org": 3.0,           # arXiv API terms: at most one request every 3 seconds
+                  "eutils.ncbi.nlm.nih.gov": 0.34}   # NCBI E-utilities: at most 3 requests per second without a key
 REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 MAX_URL_LENGTH = 2048
 ROBOTS_TTL = 24 * 3600.0
-ROBOTS_MAX_BYTES = 512 * 1024          # RFC 9309 asks parsers to accept at least 500 KiB
+ROBOTS_MAX_BYTES = 512 * 1024          # fetch cap for robots.txt bodies
+ROBOTS_PARSE_BYTES = 500 * 1024        # RFC 9309 §2.5: parsers must accept at least 500 KiB; the rest is ignored
+MAX_ROBOTS_PATTERN = 8 * MAX_URL_LENGTH  # longer allow/disallow values cannot be paths and are ignored
+MAX_SITEMAPS = 100
 MAX_CRAWL_DELAY = 60.0                 # a hostile robots.txt cannot stall a task for hours
 MAX_RETRY_AFTER = 6 * 3600.0
 DEFAULT_BACKOFF = 60.0                 # 429 without a usable Retry-After
@@ -82,6 +102,10 @@ class NetPolicy:
     deny_domains: tuple = ()
     min_domain_interval: float = 1.0
     max_concurrency: int = 4           # afetch semaphore (clamped further by budget.max_concurrency)
+    # host (or parent domain) -> minimum seconds between requests; see SafeFetcher._interval for how it combines
+    host_intervals: dict = field(default_factory=lambda: dict(HOST_INTERVALS), hash=False)
+    max_api_bytes: int = 16_000_000    # body cap for purpose='api' (large JSON metadata); over it -> too_large
+    subresource_interval: float = 0.1  # same-host gap for purpose='subresource' (browser sub-requests)
 
 
 # ---- address and URL policy -----------------------------------------------------------------------------------
@@ -187,7 +211,7 @@ def _redact(url: str) -> str:
         return url[:80]
 
 
-def check_url(url: str, policy: NetPolicy) -> "urllib.parse.SplitResult":
+def check_url(url: str, policy: NetPolicy) -> SplitResult:
     """Validate a URL against the policy; returns a normalised SplitResult or raises FetchError('blocked_policy')."""
     if not isinstance(url, str) or not url:
         raise FetchError("blocked_policy", str(url)[:80], "empty URL")
@@ -325,14 +349,14 @@ class _Response:
 
 @dataclass
 class _Robots:
-    parser: urllib.robotparser.RobotFileParser
+    rules: "RobotsRules"
     fetched_at: float
     delay: float = 0.0
     sitemaps: tuple = ()
     reason: str = ""
 
     def allowed(self, url: str) -> bool:
-        return self.parser.can_fetch(USER_AGENT, url)
+        return self.rules.allowed(url)
 
 
 class _Flight:
@@ -367,21 +391,152 @@ def _parse_retry_after(value: str | None, now: float) -> float | None:
     return min(max(0.0, when.timestamp() - now), MAX_RETRY_AFTER)
 
 
-def _robots_from_text(text: str, fetched_at: float, reason: str = "") -> _Robots:
-    parser = urllib.robotparser.RobotFileParser()
-    parser.parse(text.splitlines())
-    delay = parser.crawl_delay(USER_AGENT)
-    try:
-        delay = min(max(float(delay or 0.0), 0.0), MAX_CRAWL_DELAY)
-    except (TypeError, ValueError):
-        delay = 0.0
-    return _Robots(parser, fetched_at, delay, tuple(parser.site_maps() or ()), reason)
+# ---- robots.txt (RFC 9309) ------------------------------------------------------------------------------------
+
+_UNRESERVED = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+_ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})")
+_EOL = re.compile(r"\r\n|\r|\n")
+_AGENT_TOKEN = re.compile(r"[A-Za-z_-]+")
+_ROBOTS_KEYS = {"user-agent": "user-agent", "useragent": "user-agent", "user agent": "user-agent",
+                "allow": "allow", "disallow": "disallow", "crawl-delay": "crawl-delay", "sitemap": "sitemap"}
+
+
+def _robots_path(value: str, *, uri: bool = False) -> str:
+    """RFC 9309 §2.2.2 normalisation, applied alike to rule patterns and request paths: octets outside printable
+    ASCII are percent-encoded (UTF-8), escapes of unreserved characters are decoded, other escapes are upper-cased.
+    In a request path a literal `*` or `$` becomes %2A / %24, so only a pattern's own `*` and final `$` are special
+    (a `$` elsewhere in a pattern is literal)."""
+    text = "".join(chr(b) if 0x20 < b < 0x7F else f"%{b:02X}" for b in value.encode("utf-8", "replace"))
+    text = _ESCAPE.sub(lambda m: chr(int(m.group(1), 16)) if int(m.group(1), 16) in _UNRESERVED
+                       else "%" + m.group(1).upper(), text)
+    if uri:
+        return text.replace("*", "%2A").replace("$", "%24")
+    anchored = text.endswith("$")
+    return (text[:-1] if anchored else text).replace("$", "%24") + ("$" if anchored else "")
+
+
+def _robots_match(pattern: str, path: str) -> bool:
+    """`*` matches any run of characters and a final `$` anchors the end; otherwise a prefix match. Leftmost
+    matching of the `*`-separated segments is exact for this pattern language and never backtracks."""
+    anchored = pattern.endswith("$")
+    if anchored:
+        pattern = pattern[:-1]
+    segments = pattern.split("*")
+    if not path.startswith(segments[0]):
+        return False
+    pos = len(segments[0])
+    if len(segments) == 1:
+        return not anchored or pos == len(path)
+    for segment in segments[1:-1]:
+        found = path.find(segment, pos)
+        if found < 0:
+            return False
+        pos = found + len(segment)
+    last = segments[-1]
+    if anchored:
+        return path.endswith(last) and len(path) - len(last) >= pos
+    return path.find(last, pos) >= 0
+
+
+def _product_token(user_agent: str) -> str:
+    match = _AGENT_TOKEN.match(str(user_agent).strip())
+    return match.group(0).lower() if match else ""
+
+
+@dataclass(frozen=True)
+class RobotsRules:
+    """The robots.txt rules that apply to one product token (RFC 9309).
+
+    - Groups: one or more `user-agent` lines followed by rule lines; a `user-agent` line after a rule starts a new
+      group. The groups whose user-agent token is the product token (case-insensitive; a token that is a whole
+      `-`-separated prefix of it, such as `NeuroSciFi` for `NeuroSciFi-WebCortex`, also matches) are used, the
+      longest matching token winning and equal tokens being combined; otherwise the combined `*` groups; otherwise
+      no rule applies.
+    - Rules: the matching rule with the longest (normalised) pattern decides, `allow` winning ties; `*` is a
+      wildcard, a final `$` anchors the end; patterns and the URL's path?query are compared after percent-encoding
+      normalisation. `/robots.txt` itself is always allowed. Empty `allow`/`disallow` values are no rule.
+    - `crawl-delay` (non-standard) is taken from the chosen groups (largest value); `sitemap` lines are global.
+    - Only the first ROBOTS_PARSE_BYTES are parsed (cut at the last full line); malformed lines are ignored.
+    """
+    rules: tuple = ()           # ((allow: bool, normalised pattern), ...)
+    delay: float = 0.0
+    sitemaps: tuple = ()
+    disallow_all: bool = False
+
+    @classmethod
+    def parse(cls, text: str, user_agent: str = USER_AGENT) -> "RobotsRules":
+        data = str(text).encode("utf-8", "replace")
+        if len(data) > ROBOTS_PARSE_BYTES:
+            data = data[:ROBOTS_PARSE_BYTES]
+            data = data[:max(data.rfind(b"\n"), data.rfind(b"\r"), 0)]
+        product = _product_token(user_agent)
+        groups: list[dict] = []
+        current, in_agents, sitemaps = None, False, []
+        for line in _EOL.split(data.decode("utf-8", "ignore").lstrip("﻿")):
+            line = line.split("#", 1)[0].strip()
+            key, sep, value = line.partition(":")
+            key, value = _ROBOTS_KEYS.get(key.strip().lower()), value.strip()
+            if not sep or key is None:
+                continue
+            if key == "sitemap":
+                if value and value not in sitemaps and len(sitemaps) < MAX_SITEMAPS:
+                    sitemaps.append(value)
+                continue
+            if key == "user-agent":
+                if not in_agents:
+                    current = {"agents": [], "rules": [], "delay": 0.0}
+                    groups.append(current)
+                    in_agents = True
+                current["agents"].append("*" if value.startswith("*") else _product_token(value))
+                continue
+            in_agents = False
+            if current is None:
+                continue                     # a rule before any user-agent line belongs to no group
+            if key == "crawl-delay":
+                try:
+                    delay = float(value)
+                except ValueError:
+                    continue
+                if delay == delay and delay >= 0:          # not NaN
+                    current["delay"] = max(current["delay"], delay)
+            elif value and len(value) <= MAX_ROBOTS_PATTERN:
+                current["rules"].append((key == "allow", _robots_path(value if value[0] in "/*" else "/" + value)))
+
+        def score(agent):
+            if agent == "*":
+                return 0
+            if agent and (agent == product or product.startswith(agent + "-")):
+                return len(agent)
+            return -1
+
+        best = max((score(a) for g in groups for a in g["agents"]), default=-1)
+        chosen = [g for g in groups if best >= 0 and any(score(a) == best for a in g["agents"])]
+        return cls(tuple(rule for g in chosen for rule in g["rules"]),
+                   max((g["delay"] for g in chosen), default=0.0), tuple(sitemaps))
+
+    def allowed(self, url: str) -> bool:
+        if self.disallow_all:
+            return False
+        if not self.rules:
+            return True
+        parts = urlsplit(url)
+        if (parts.path or "/") == "/robots.txt":
+            return True
+        target = _robots_path((parts.path or "/") + ("?" + parts.query if parts.query else ""), uri=True)
+        best, verdict = -1, True
+        for allow, pattern in self.rules:
+            if (len(pattern) > best or (len(pattern) == best and allow)) and _robots_match(pattern, target):
+                best, verdict = len(pattern), allow
+        return verdict
+
+
+def _robots_from_text(text: str, fetched_at: float, reason: str = "", user_agent: str = USER_AGENT) -> _Robots:
+    rules = RobotsRules.parse(text, user_agent)
+    return _Robots(rules, fetched_at, min(max(rules.delay, 0.0), MAX_CRAWL_DELAY), rules.sitemaps, reason)
 
 
 def _robots_disallow_all(fetched_at: float, reason: str) -> _Robots:
-    parser = urllib.robotparser.RobotFileParser()
-    parser.disallow_all = True
-    return _Robots(parser, fetched_at, 0.0, (), reason)
+    return _Robots(RobotsRules(disallow_all=True), fetched_at, 0.0, (), reason)
 
 
 class SafeFetcher:
@@ -503,7 +658,7 @@ class SafeFetcher:
                 if str(name).lower() not in _FORBIDDEN_HEADERS:
                     request_headers[str(name)] = str(value)
             cached = None
-            if conditional and self.cache is not None and method == "GET" and purpose in ROBOTS_PURPOSES:
+            if conditional and self.cache is not None and method == "GET" and purpose in CACHED_PURPOSES:
                 cached = self.cache.lookup(url)
                 if cached and (cached["etag"] or cached["last_modified"]) and self.cache.body(cached["sha256"]):
                     if cached["etag"]:
@@ -525,9 +680,12 @@ class SafeFetcher:
                 for name, key in (("etag", "etag"), ("last-modified", "last_modified")):
                     if cached[key] and name not in result_headers:
                         result_headers[name] = cached[key]
+                # The origin was contacted just now and confirmed the stored body is current: that is a live
+                # observation (retrieval_mode 'live'); REVALIDATED_HEADER marks that the body came from the cache.
+                result_headers[REVALIDATED_HEADER] = "304"
                 result = FetchResult(url=url, final_url=final.geturl(), status=cached["status"],
                                      headers=result_headers, content_type=cached["content_type"], body=stored,
-                                     retrieved_at=now, retrieval_mode="cache", redirects=redirects, elapsed=elapsed,
+                                     retrieved_at=now, retrieval_mode="live", redirects=redirects, elapsed=elapsed,
                                      remote_ip=response.remote_ip)
                 self.cache.put(result)
                 self._count(final.hostname, "cache_hits")
@@ -539,7 +697,7 @@ class SafeFetcher:
                                  content_type=_media_type(response.headers.get("content-type")), body=response.body,
                                  retrieved_at=now, retrieval_mode="live", redirects=redirects,
                                  truncated=response.truncated, elapsed=elapsed, remote_ip=response.remote_ip)
-            if (self.cache is not None and method == "GET" and purpose in ROBOTS_PURPOSES
+            if (self.cache is not None and method == "GET" and purpose in CACHED_PURPOSES
                     and not response.truncated):
                 self.cache.put(result)
             return result
@@ -556,14 +714,14 @@ class SafeFetcher:
             host = current.hostname
             self._check_backoff(host, current.geturl())
             addresses = self._resolve(current, resolved)      # policy refusal precedes any robots request
-            interval = self.policy.min_domain_interval
+            crawl_delay = 0.0
             if purpose in ROBOTS_PURPOSES:
                 entry = self._robots_entry(current, budget, usage, resolved, deadline)
                 if not entry.allowed(current.geturl()):
                     self._count(host, "robots_blocked")
                     raise FetchError("blocked_robots", _redact(current.geturl()), entry.reason or "disallowed")
-                interval = max(interval, entry.delay)
-            self._throttle(host, interval)
+                crawl_delay = entry.delay
+            self._throttle(host, self._interval(host, purpose, crawl_delay))
             response = self._exchange(current, method, body, headers, addresses, purpose, budget, usage, deadline)
             if response.status not in REDIRECT_STATUSES:
                 return response, current, redirects
@@ -587,10 +745,30 @@ class SafeFetcher:
             redirects.append(following.geturl())
             current = following
 
+    def _interval(self, host, purpose, crawl_delay=0.0) -> float:
+        """Minimum seconds between two requests to `host`: the largest of the applicable values. Every purpose but
+        'subresource': min_domain_interval, the host's host_intervals entry and robots.txt Crawl-delay (for the
+        robots purposes). 'subresource': subresource_interval and the host_intervals entry; Crawl-delay is not
+        applied to a render's sub-requests (one page view), while robots allow/disallow still is."""
+        host_interval = 0.0
+        matched = -1
+        for domain, seconds in (self.policy.host_intervals or {}).items():
+            domain = str(domain).lower().strip(".")
+            if domain and len(domain) > matched and (host == domain or host.endswith("." + domain)):
+                matched, host_interval = len(domain), float(seconds)
+        if purpose == "subresource":
+            return max(self.policy.subresource_interval, host_interval)
+        return max(self.policy.min_domain_interval, host_interval, crawl_delay)
+
     def _check_backoff(self, host, url):
         now = self._clock()
         with self._lock:
             until = self._backoff.get(host)
+        if self.cache is not None and (until is None or now >= until):
+            until = self.cache.backoff(host)          # set by another fetcher/process sharing the cache
+            if until is not None and now < until:
+                with self._lock:
+                    self._backoff[host] = max(until, self._backoff.get(host, 0.0))
         if until is not None and now < until:
             raise FetchError("rate_limited", _redact(url), "host backoff in force", retry_after=until - now)
 
@@ -598,6 +776,8 @@ class SafeFetcher:
         until = self._clock() + seconds
         with self._lock:
             self._backoff[host] = max(until, self._backoff.get(host, 0.0))
+        if self.cache is not None:
+            self.cache.put_backoff(host, until)
         self._count(host, "backoffs")
 
     def _throttle(self, host, interval):
@@ -688,7 +868,8 @@ class SafeFetcher:
             if 200 <= status < 300 and method != "HEAD":
                 if purpose != "robots":
                     media = _media_type(response_headers.get("content-type"))
-                    if not any(fnmatch.fnmatchcase(media, pattern) for pattern in self.policy.content_types):
+                    allowed = self.policy.content_types + (SUBRESOURCE_TYPES if purpose == "subresource" else ())
+                    if not any(fnmatch.fnmatchcase(media, pattern) for pattern in allowed):
                         raise FetchError("unsupported_type", _redact(url), media or "no content type", status=status)
                 self._read_body(raw, conn, response, purpose, budget, usage, deadline, url)
             return response
@@ -709,7 +890,7 @@ class SafeFetcher:
             conn.release()
 
     def _read_body(self, raw, conn, response, purpose, budget, usage, deadline, url):
-        limit = ROBOTS_MAX_BYTES if purpose == "robots" else self.policy.max_bytes
+        limit = {"robots": ROBOTS_MAX_BYTES, "api": self.policy.max_api_bytes}.get(purpose, self.policy.max_bytes)
         may_truncate = purpose in ("page", "crawl", "robots")
         budget_left = None
         if budget is not None and usage is not None:
@@ -791,7 +972,7 @@ class SafeFetcher:
                 return entry
             stored = self.cache.robots(host) if self.cache is not None else None
             if stored is not None and now - stored[1] < ROBOTS_TTL:
-                entry = _robots_from_text(stored[0], stored[1])
+                entry = _robots_from_text(stored[0], stored[1], user_agent=self.policy.user_agent)
             else:
                 entry = self._fetch_robots(parts, budget, usage, resolved, deadline)
             with self._lock:
@@ -815,10 +996,10 @@ class SafeFetcher:
             text = response.body.decode("utf-8", "replace")
             if self.cache is not None:
                 self.cache.put_robots(host, text, now)
-            return _robots_from_text(text, now)
+            return _robots_from_text(text, now, user_agent=self.policy.user_agent)
         if 400 <= response.status < 500:
             if self.cache is not None:
                 self.cache.put_robots(host, "", now)
-            return _robots_from_text("", now)
+            return _robots_from_text("", now, user_agent=self.policy.user_agent)
         return _robots_disallow_all(now, f"robots.txt answered HTTP {response.status}")
 

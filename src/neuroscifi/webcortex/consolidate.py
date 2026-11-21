@@ -2,9 +2,12 @@
 
 Steps for each scored cluster of the task (state.load_clusters):
 1. candidates: clusters ranked by confidence;
-2. relevance and evidence quality: 'corroborated', or 'single_source' from a primary structured source (an API
-   document or a metadata claim), with at least one relevant claim; 'contested' clusters become owner questions
-   instead; everything else is *held* (stays a claim, listed with reasons);
+2. relevance and evidence quality: claims from adversarial sources (claim.flags['adversarial_source'], or a
+   source of this task whose quarantine found instruction-like content) are removed from the cluster first - they
+   never support, strengthen or contest knowledge, and a cluster made only of them is *held*; then
+   'corroborated', or 'single_source' from a primary structured source (an API document or a metadata claim),
+   with at least one relevant claim; 'contested' clusters become owner questions instead; everything else is
+   *held* (stays a claim, listed with reasons);
 3. duplication: live knowledge with the same (or a near-identical) key and the same values/polarity is refreshed
    (last_verified_at, supporting claims, sources), never duplicated -> feedback 'strengthened' (or 'unchanged');
 4. comparison with memory: same key, conflicting values or polarity -> temporal.supersedes decides (a later
@@ -150,13 +153,52 @@ def _primary_structured(db, task_id, cluster) -> bool:
     return False
 
 
-def _eligibility(db, task_id, cluster):
+def _adversarial_urls(db, task_id) -> set:
+    """Canonical URLs of this task's sources whose quarantine found instruction-like content."""
+    out = set()
+    for url, flags in db.execute("SELECT canonical_url, flags FROM web_sources WHERE task_id=?", (task_id,)):
+        if (state.loads(flags, {}) or {}).get("injection"):
+            out.add(url)
+    return out
+
+
+def _is_adversarial(claim, adversarial_urls) -> bool:
+    """claims.is_adversarial (flags['adversarial_source'], set at extraction for documents with injection findings),
+    or a claim of this task whose source's flags record injection findings (claims stored before that flag)."""
+    from .claims import is_adversarial
+    return is_adversarial(claim) or claim.source_url in adversarial_urls
+
+
+def _without_adversarial(cluster, adversarial_urls):
+    """(cluster without adversarial claims, number removed). Independent sources are recounted over the remaining
+    supporting claims' domains; contradictions involving a removed claim are dropped, and a 'contested' cluster
+    left without one is corroborated or single-source again."""
+    from dataclasses import replace
+    bad = {c.id for c in cluster.claims if _is_adversarial(c, adversarial_urls)}
+    if not bad:
+        return cluster, 0
+    claims = [c for c in cluster.claims if c.id not in bad]
+    supporting = [cid for cid in cluster.supporting if cid not in bad]
+    contradicting = [p for p in cluster.contradicting if p.get("a") not in bad and p.get("b") not in bad]
+    support = set(supporting) or {c.id for c in claims}
+    groups = len({(c.domain or c.source_url).lower() for c in claims if c.id in support})
+    status = cluster.status
+    if status in ("contested", "corroborated"):
+        status = "contested" if contradicting else ("corroborated" if groups >= 2 else "single_source")
+    statement = cluster.statement
+    if claims and statement in {c.text for c in cluster.claims if c.id in bad}:
+        statement = claims[0].text
+    return replace(cluster, claims=claims, supporting=supporting, contradicting=contradicting,
+                   independent_sources=min(cluster.independent_sources, groups), status=status,
+                   statement=statement), len(bad)
+
+
+def _eligibility(db, task_id, cluster, removed=0):
     """(eligible, reasons): evidence-quality and relevance gate before memory comparison."""
     reasons = []
     if not cluster.claims:
-        return False, ["no claims"]
-    if all((c.flags or {}).get("injection") for c in cluster.claims):
-        reasons.append("every claim was flagged as instruction-like content")
+        return False, ["every claim comes from a source with instruction-like content (held, never knowledge)"
+                       if removed else "no claims"]
     if max(state.finite(c.relevance, 0.0) for c in cluster.claims) <= MIN_RELEVANCE:
         reasons.append("no claim is relevant to the question")
     if cluster.status == "insufficient":
@@ -309,8 +351,16 @@ def run(db, task_id, now) -> dict:
         summary["candidates"] = len(clusters)
         freshness = _freshness(db, task)
         feedback_before = db.execute("SELECT count(*) FROM web_feedback").fetchone()[0]
-        ids_by_key = {}
+        adversarial = _adversarial_urls(db, task_id)
+        ids_by_key, cleaned = {}, []
         for n, cluster in enumerate(clusters):
+            cluster, removed = _without_adversarial(cluster, adversarial)
+            cleaned.append(cluster)
+            if not cluster.claims:
+                summary["held"].append({"key": cluster.key, "statement": cluster.statement, "status": cluster.status,
+                                        "reasons": ["every claim comes from a source with instruction-like content "
+                                                    "(held, never knowledge)"]})
+                continue
             item = _existing(db, cluster)
             if cluster.status == "contested":
                 reason = "; ".join(sorted({c.get("reason", "") for c in cluster.contradicting} - {""})) or \
@@ -330,7 +380,7 @@ def run(db, task_id, now) -> dict:
                                              "reason": reason})
                 summary["pending"].append(pid)
                 continue
-            eligible, reasons = _eligibility(db, task_id, cluster)
+            eligible, reasons = _eligibility(db, task_id, cluster, removed)
             if not eligible:
                 summary["held"].append({"key": cluster.key, "statement": cluster.statement, "reasons": reasons,
                                         "status": cluster.status})
@@ -404,7 +454,7 @@ def run(db, task_id, now) -> dict:
             summary["provisional"].append(kid)
             summary["pending"].append(pid)
             ids_by_key[cluster.key] = kid
-        summary["entities"] = _entities(db, task_id, clusters, ids_by_key, now)
+        summary["entities"] = _entities(db, task_id, cleaned, ids_by_key, now)
         summary["feedback"] = db.execute("SELECT count(*) FROM web_feedback").fetchone()[0] - feedback_before
         summary["pending"] = sorted(set(summary["pending"]))
         state.log_event(db, task_id, "consolidated", {k: (len(v) if isinstance(v, list) else v)

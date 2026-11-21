@@ -327,3 +327,42 @@ Connections set `journal_size_limit=0` and `recursive_triggers=ON`.
 - `POST /api/graphs/coactivation {"dataset_id","lags"?,"top"?}`
 - `POST /api/checkpoints/prune {"keep"}`
 - `POST /api/checkpoints/rebuild {"keep"?,"policy"?}`
+
+## 8. Web Cortex (0.6, binding)
+
+Module contracts: `docs/web-cortex/ARCHITECTURE.md` §4. Every route below returns 409 with a clear message while web
+access is disabled for the individual (ADR-021), except reads of stored memory.
+
+**Console `/api/web/*`** (same token, Host, Origin and 4 KiB rules as §6; task ids are lowercase UUIDs, otherwise 400):
+
+| Method | Route | Service call |
+|---|---|---|
+| GET | /api/web/status | config switches, provider health (stored, no probing), cache stats, task counts, curiosity top 5, worker state |
+| POST | /api/web/config | state.set_config — only `enabled`, `autonomous`, `pocket_research`, `browser_rendering` |
+| GET | /api/web/tasks?status=&limit= | orchestrator.listing |
+| POST | /api/web/tasks `{objective, mode?, authorization?}` | orchestrator.submit (queued; the embedded worker runs it) |
+| GET | /api/web/tasks/{id} ; /evidence | orchestrator.get ; orchestrator.evidence |
+| POST | /api/web/tasks/{id}/cancel ; /resume | orchestrator.cancel ; orchestrator.requeue |
+| GET | /api/web/knowledge?topic=&limit= | knowledge.query (no topic: recent items) with knowledge.feedback |
+| POST | /api/web/knowledge/{id}/review `{accept, note?}` ; /archive ; /reject ; /refresh ; /forget | knowledge.review / archive / reject / refresh / forget |
+| GET / POST | /api/web/monitors ; /api/web/monitors/{id}/pause, /resume, /stop | scheduler.monitor_* |
+
+`nsf console --no-web-worker` disables the embedded worker when `neuroscifi-webcortex.service` runs instead; leases
+prevent double execution.
+
+**Pocket bridge research actions** (ADR-028). Present only when the bridge runs with `--instance-db` and the
+individual has `enabled` and `pocket_research` on; otherwise 404 like any unknown route. Existing bearer, Origin,
+JSON content type and 512-byte body rules apply.
+
+| Action | Body | Result |
+|---|---|---|
+| research_submit | `{objective: 1–300 chars, mode?: quick_lookup\|deep_research\|fact_verification\|comparative\|scientific\|technical}` | 201 `{id}`; 400 `private_data` on the privacy screen; 429 after 10 per device per hour |
+| research_list | `{}` | the caller's pairing family's tasks, newest first, ≤ 50 |
+| research_get | `{id}` | status, stage and a phone-sized report; 404 for unknown ids and other families |
+| research_cancel | `{id}` | 200; 404 as above |
+
+`state` gains `"research": true` only when the feature is on.
+
+**MCP (`nsf web mcp`, stdio JSON-RPC 2.0, protocol 2025-06-18).** Tools: `web_search`, `web_research`, `web_task`,
+`web_evidence`, `web_knowledge`. Retrieved content is wrapped in `safety.untrusted` envelopes. There are no forget,
+review or configuration tools.

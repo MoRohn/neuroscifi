@@ -157,3 +157,20 @@ def test_discover_feeds():
     </head><body></body></html>"""
     assert discover_feeds(html, "http://blog.example/post") == ["http://blog.example/feed.xml",
                                                                 "https://blog.example/atom"]
+
+
+def test_crawl_honours_robots_wildcards(web, tmp_path):
+    """R5: `*` and `$` in robots.txt paths are honoured during a crawl (urllib.robotparser ignored them)."""
+    web.add("wild.example", "/robots.txt", "User-agent: *\nDisallow: /*.pdf$\nDisallow: /*?sort=\n",
+            content_type="text/plain")
+    web.add("wild.example", "/", page("/list", "/list?sort=asc", "/paper.pdf", "/paper.pdf?view=1"))
+    web.add("wild.example", "/list", page())
+    web.add("wild.example", "/paper.pdf", b"%PDF-1.4", content_type="application/pdf")
+    failures: list = []
+    results = crawl(make(web, tmp_path), ["http://wild.example/"], budget=Budget(max_pages=10, max_depth=2),
+                    usage=Usage(), max_pages=10, max_depth=1, sitemaps=False, failures=failures)
+    fetched = [r["path"] for r in web.requests_to("wild.example")]
+    assert "/paper.pdf" not in fetched and "/list?sort=asc" not in fetched
+    assert "/list" in fetched and "/paper.pdf?view=1" in fetched
+    assert sorted(f["code"] for f in failures) == ["blocked_robots", "blocked_robots"]
+    assert len(results) == 3

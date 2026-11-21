@@ -12,7 +12,10 @@ Constants
 MAX_ANSWER_ITEMS        quoted statements in the answer (besides the lead template)
 MAX_CONTRADICTIONS      contradiction entries listed in the report
 LIVE_MODES              retrieval modes that count as "retrieved live during this task"
-SUPPORTED_MIN_CONFIDENCE, SUPPORTED_MIN_GROUPS   fact-verification thresholds for "supported"
+SUPPORTED_MIN_CONFIDENCE, SUPPORTED_MIN_GROUPS   fact-verification thresholds for "supported": the decisive
+                        criteria are >= 2 agreeing independent groups and no contradiction; the confidence floor
+                        0.72 admits exactly-two dated secondary sources (posterior 2.6/3.6 = 0.722) and rejects one
+                        dated + one undated secondary source (2.4/3.4 = 0.706) and two undated ones (0.688)
 STALE_VALUE, UNDATED_VALUE                       freshness multipliers in the answer-ranking value
 TOKENS_PER_WORD         token estimate for context packs (1 token ~ 0.75 words)
 """
@@ -30,7 +33,7 @@ from .types import Claim, ClaimCluster, Document
 MAX_ANSWER_ITEMS = 5
 MAX_CONTRADICTIONS = 20
 LIVE_MODES = ("live", "api", "feed", "rendered")
-SUPPORTED_MIN_CONFIDENCE = 0.75
+SUPPORTED_MIN_CONFIDENCE = 0.72
 SUPPORTED_MIN_GROUPS = 2
 STALE_VALUE = 0.5
 UNDATED_VALUE = 0.75
@@ -83,13 +86,32 @@ def _span(seconds: float) -> str:
     return f"{int(seconds)} seconds"
 
 
+def _observed_live(doc: Document) -> bool:
+    """A registry-state record (package, advisory, release) fetched live: current as of its retrieval."""
+    return _claims.registry_record(doc) and doc.retrieval_mode != "cache"
+
+
 def _fresh_ts(doc: Document) -> float | None:
-    """When the source's content is known to be current: its publication date; a structured API record fetched
-    live also counts at its retrieval time (registry state as observed). HTTP Last-Modified is not used."""
+    """When the source's content is known to be current: its publication (or last-edited) date; a registry-state
+    record (PyPI, npm, OSV, GitHub) fetched live also counts at its retrieval time (registry state as observed).
+    Encyclopedia and academic records are dated by their own dates only, however recently they were fetched."""
     ts = doc.published_at
-    if doc.kind == "api" and doc.retrieval_mode != "cache":
+    if _observed_live(doc):
         ts = doc.retrieved_at if ts is None else max(ts, doc.retrieved_at)
     return ts
+
+
+def _report_flags(flags: dict) -> dict:
+    """Source flags as shown in a report: injection findings become {pattern, count} summaries, so no excerpt of
+    injected text reaches report consumers (the stored source keeps the full findings for the evidence view)."""
+    out = dict(flags)
+    if out.get("injection"):
+        counts: dict[str, int] = {}
+        for f in out["injection"]:
+            name = f.get("pattern", "?") if isinstance(f, dict) else "?"
+            counts[name] = counts.get(name, 0) + 1
+        out["injection"] = [{"pattern": k, "count": n} for k, n in sorted(counts.items())]
+    return out
 
 
 def _claim_fresh_ts(claim: Claim) -> float | None:
@@ -131,7 +153,7 @@ class _Sources:
         if d is not None:
             entry = {"n": n, "title": d.title, "url": key, "domain": d.domain, "published_at": d.published_at,
                      "retrieved_at": d.retrieved_at, "retrieval_mode": d.retrieval_mode, "kind": d.kind,
-                     "flags": dict(d.flags), "cited": True}
+                     "flags": _report_flags(d.flags), "cited": True}
         else:
             flags = (claim.flags or {}) if claim else {}
             entry = {"n": n, "title": claim.title if claim else "", "url": key,
@@ -165,8 +187,8 @@ class _Sources:
                 self.numbers[key] = len(self.entries) + 1
                 self.entries.append({"n": self.numbers[key], "title": d.title, "url": key, "domain": d.domain,
                                      "published_at": d.published_at, "retrieved_at": d.retrieved_at,
-                                     "retrieval_mode": d.retrieval_mode, "kind": d.kind, "flags": dict(d.flags),
-                                     "cited": False})
+                                     "retrieval_mode": d.retrieval_mode, "kind": d.kind,
+                                     "flags": _report_flags(d.flags), "cited": False})
         return self.entries
 
 
@@ -212,14 +234,15 @@ def _match(target: Claim, c: ClaimCluster) -> float:
     return lex if lex >= 0.25 else 0.0
 
 
-def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *, now: float, cls: str) -> dict:
+def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *, now: float, cls: str,
+             ttl_overrides: dict | None = None) -> dict:
     target = _target_claim(statement, now)
     ranked = sorted(((_match(target, c), i, c) for i, c in enumerate(clusters)), key=lambda t: (-t[0], t[1]))
     if not ranked or ranked[0][0] <= 0:
         return {"label": "insufficient", "confidence": 0.5, "statement": statement, "citations": [],
                 "reasons": ["No extracted claim addresses the statement."]}
     c = ranked[0][2]
-    ev = _claims.evaluate(c.claims, now=now, freshness_class=cls, target=target)
+    ev = _claims.evaluate(c.claims, now=now, freshness_class=cls, target=target, ttl_overrides=ttl_overrides)
     a, b = ev["alpha"], ev["beta"]
     mean = a / (a + b)
     sup, con = ev["support_groups"], ev["contra_groups"]
@@ -227,7 +250,7 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
     reasons = [f"{sup} independent source group(s) agree with the statement; {con} contradict it.",
                f"Posterior mean {mean:.2f} from a Beta(1,1) prior and weighted independent groups."]
     for x in c.claims:
-        if x.id not in agree:
+        if x.id not in agree and not _claims.is_adversarial(x):
             why = _claims.conflict(target, x)
             if why:
                 reasons.append(f"[{sources.cite(x.source_url, x)}] {why}.")
@@ -243,7 +266,7 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
         label = "insufficient"
         if sup < SUPPORTED_MIN_GROUPS:
             reasons.append(f"Fewer than {SUPPORTED_MIN_GROUPS} independent source groups support it.")
-    citations = sorted({sources.cite(x.source_url, x) for x in c.claims})
+    citations = sorted({sources.cite(x.source_url, x) for x in c.claims if not _claims.is_adversarial(x)})
     return {"label": label, "confidence": round(mean, 3), "statement": statement, "citations": citations,
             "reasons": reasons}
 
@@ -265,7 +288,8 @@ def _comparison(items, ranked: list[tuple[ClaimCluster, float]], sources: _Sourc
     for c, _ in ranked:
         aspect = " ".join(t for t in c.key.split() if t not in item_stems) or c.key
         support = set(c.supporting)
-        ordered = sorted(c.claims, key=lambda x: (x.id not in support, -x.relevance, x.id))
+        ordered = sorted((x for x in c.claims if not _claims.is_adversarial(x)),
+                         key=lambda x: (x.id not in support, -x.relevance, x.id))
         row = rows.setdefault(aspect, {"aspect": aspect, "A": None, "B": None, "status": {}})
         for label, item in (("A", items[0]), ("B", items[1])):
             if row[label] is not None:
@@ -332,20 +356,23 @@ def _package_of(c: ClaimCluster, packages) -> str | None:
 # ---- the report ---------------------------------------------------------------------------------------------
 
 def synthesize(question: str, assessment: dict | None, documents, clusters, *, now: float, usage=None,
-               failures=()) -> dict:
+               failures=(), ttl_overrides: dict | None = None) -> dict:
     """The research report (ARCHITECTURE §5). Clusters are re-scored with `now` and the question's freshness
-    class, ranked by value = confidence x relevance x freshness, and the top MAX_ANSWER_ITEMS are quoted."""
+    class, ranked by value = confidence x relevance x freshness, and the top MAX_ANSWER_ITEMS are quoted.
+    `ttl_overrides` (WebConfig.freshness_ttl) replaces class TTLs in scoring, the freshness requirement and the
+    verdict."""
     assessment = dict(assessment or {})
     documents = list(documents or [])
     failures = list(failures or [])
     mode = assessment.get("mode") or "deep_research"
     cls = temporal.classify(question, assessment)
     window = assessment.get("recency_window")
-    class_ttl = temporal.ttl(cls)
+    class_ttl = temporal.ttl(cls, ttl_overrides)
     required = float(window) if window else class_ttl
     sources = _Sources(documents)
 
-    scored = [_claims.score(c, now=now, freshness_class=cls) for c in clusters if c.claims]
+    scored = [_claims.score(c, now=now, freshness_class=cls, ttl_overrides=ttl_overrides)
+              for c in clusters if c.claims]
     usable = [c for c in scored if c.status != "insufficient"]
 
     def value(c: ClaimCluster) -> float:
@@ -437,7 +464,7 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
             uncertainties.append(f"Contested: \"{_short(c.statement)}\" has {len(c.contradicting)} conflicting "
                                  f"report(s); see contradictions.")
     for d in cited:
-        if d.published_at is None and not (d.kind == "api" and d.retrieval_mode != "cache"):
+        if d.published_at is None and not _observed_live(d):
             uncertainties.append(f"Undated source: [{sources.number(d)}] {d.domain} gives no publication date; "
                                  f"its age is unknown.")
     for d in documents:
@@ -449,6 +476,10 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
             q = d.flags.get("quarantined_sentences", 0)
             uncertainties.append(f"Instruction-like content in {ref}{d.domain} ({d.canonical_url or d.url}): "
                                  f"{patterns}; {q} sentence(s) quarantined and not used as evidence.")
+    adversarial = sum(1 for d in documents if d.flags.get("injection"))
+    if adversarial:
+        uncertainties.append(f"{adversarial} source(s) excluded as adversarial: they carry instruction-like content, "
+                             f"so their remaining statements are shown but carry no evidence weight.")
     for d in documents:
         if d.flags.get("truncated"):
             n = sources.number(d)
@@ -460,7 +491,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
 
     verdict = None
     if mode == "fact_verification":
-        verdict = _verdict(assessment.get("claim") or question, usable, sources, now=now, cls=cls)
+        verdict = _verdict(assessment.get("claim") or question, usable, sources, now=now, cls=cls,
+                           ttl_overrides=ttl_overrides)
     comparison = _comparison(assessment.get("comparison"), ranked, sources) if mode == "comparative" else None
     methodology = _methodology(documents, sources) if mode == "scientific" else None
 
@@ -524,8 +556,9 @@ def _contradiction(a: Claim, b: Claim, reason: str, c: ClaimCluster, sources: _S
         prim = na if sa["source_type"] == "primary" else nb
         sec = nb if prim == na else na
         parts.append(f"[{prim}] is a primary structured record; [{sec}] is a secondary page.")
-    groups = _claims.independence_groups(c.claims)
-    by_id = {x.id: x for x in c.claims}
+    counted = [x for x in c.claims if not _claims.is_adversarial(x)]
+    groups = _claims.independence_groups(counted)
+    by_id = {x.id: x for x in counted}
     side_a = sum(1 for g in groups if any(_claims.conflict(by_id[i], b) and not _claims.conflict(by_id[i], a)
                                           for i in g))
     side_b = sum(1 for g in groups if any(_claims.conflict(by_id[i], a) and not _claims.conflict(by_id[i], b)

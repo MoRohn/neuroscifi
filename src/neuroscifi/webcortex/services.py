@@ -3,7 +3,8 @@
 `build(db, db_path)` wires them from the individual's WebConfig:
 - the public cache `<db stem>.webcache.sqlite` next to the instance file (ADR-023);
 - a SafeFetcher with the owner's deny list, per-host interval and document size limit;
-- a ProviderRegistry over `providers.build(config, fetcher)` (or the given providers) whose health state is
+- a ProviderRegistry over `providers.build(config, fetcher, feeds=state.get_feeds(db))` (or the given providers;
+  a FeedProvider joins when the owner listed feeds) whose health state is
   loaded from procedural memory (web_strategies) and saved back by `persist()` after a run;
 - a BrowserRenderer only when `browser_rendering` is on;
 - `fixture` (a FixtureWeb) injects its resolver/connector so tests and the offline bench never reach the network.
@@ -43,6 +44,17 @@ class Services:
         if self.registry is not None and hasattr(self.registry, "dump_state"):
             state.save_strategies(db, self.registry.dump_state(), self.clock() if now is None else now)
 
+    def prune_cache(self, now=None):
+        """Public-cache retention (ADR-023): drop entries older than config.cache_max_age_days, then the oldest
+        bodies until config.cache_max_bytes holds. PublicCache.maybe_prune runs it at most hourly; returns its
+        result, or None when it did not run (or the cache has no retention API)."""
+        prune = getattr(self.cache, "maybe_prune", None)
+        if prune is None:
+            return None
+        cfg = self.config
+        return prune(self.clock() if now is None else now, max_bytes=int(cfg.cache_max_bytes),
+                     max_age_seconds=float(cfg.cache_max_age_days) * 86400.0)
+
     def close(self):
         if self.cache is not None and hasattr(self.cache, "close"):
             self.cache.close()
@@ -65,7 +77,7 @@ def build(db, db_path, *, fixture=None, providers=None, clock=time.time, sleep=t
     fetcher = net.SafeFetcher(policy, cache=cache, clock=clock, sleep=sleep, **inject)
     if providers is None:
         from . import providers as provider_modules
-        providers = provider_modules.build(cfg, fetcher)
+        providers = provider_modules.build(cfg, fetcher, feeds=state.get_feeds(db), clock=clock)
     registry = ProviderRegistry(list(providers), clock=clock)
     registry.load_state(state.load_strategies(db))
     renderer = None

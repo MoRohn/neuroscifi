@@ -198,7 +198,7 @@ def test_method_and_purpose_restrictions(web, tmp_path):
 def test_size_limit_truncates_pages_and_rejects_api(web, tmp_path):
     web.add("big.example", "/page", b"<p>" + b"a" * 5000 + b"</p>")
     web.add("big.example", "/api", b"[" + b"1," * 5000 + b"1]", content_type="application/json")
-    fetcher, *_ = make(web, tmp_path, max_bytes=1000)
+    fetcher, *_ = make(web, tmp_path, max_bytes=1000, max_api_bytes=1000)
     result = fetcher.fetch("http://big.example/page")
     assert result.truncated and len(result.body) == 1000
     assert code_of(lambda: fetcher.fetch("http://big.example/api", purpose="api")).code == "too_large"
@@ -335,6 +335,259 @@ def test_crawl_delay_and_domain_interval(web, tmp_path):
     assert clock.sleeps == [2.0, 2.0]          # robots -> /1 -> /2
 
 
+# ---- robots.txt matcher (RFC 9309) -------------------------------------------------------------------------------
+
+RFC_SIMPLE = """User-Agent: *
+Disallow: *.gif$
+Disallow: /example/
+Allow: /publications/
+
+User-Agent: foobot
+Disallow:/
+Allow:/example/page.html
+Allow:/example/allowed.gif
+
+User-Agent: barbot
+User-Agent: bazbot
+Disallow: /example/page.html
+
+User-Agent: quxbot
+
+EOF
+"""
+
+
+@pytest.mark.parametrize("agent,path,allowed", [
+    ("foobot", "/example/page.html", True), ("foobot", "/example/allowed.gif", True),
+    ("foobot", "/example/disallowed.gif", False), ("foobot", "/publications/", False), ("foobot", "/", False),
+    ("barbot", "/example/page.html", False), ("barbot", "/example/disallowed.gif", True),
+    ("bazbot", "/example/page.html", False), ("bazbot", "/publications/x", True),
+    ("quxbot", "/example/page.html", True), ("quxbot", "/x.gif", True),
+    ("otherbot", "/x.gif", False), ("otherbot", "/a/b/x.gif", False), ("otherbot", "/x.gif?size=2", True),
+    ("otherbot", "/example/x", False), ("otherbot", "/publications/x", True),
+    ("otherbot", "/publications/a.gif", True),      # Allow /publications/ is longer than *.gif$
+    ("otherbot", "/other", True)])
+def test_robots_rfc9309_simple_example(agent, path, allowed):
+    """RFC 9309 §5.1, evaluated for each product token."""
+    rules = net.RobotsRules.parse(RFC_SIMPLE, f"{agent}/1.0")
+    assert rules.allowed("http://www.example.com" + path) is allowed
+
+
+def test_robots_rfc9309_longest_match_and_ties():
+    rules = net.RobotsRules.parse("User-Agent: foobot\nAllow: /example/page/\n"
+                                  "Disallow: /example/page/disallowed.gif\n", "foobot")       # RFC 9309 §5.2
+    assert rules.allowed("http://e.example/example/page/disallowed.gif") is False
+    assert rules.allowed("http://e.example/example/page/other.gif") is True
+    for text in ("User-agent: *\nAllow: /frob\nDisallow: /frob\n", "User-agent: *\nDisallow: /frob\nAllow: /frob\n"):
+        assert net.RobotsRules.parse(text).allowed("http://e.example/frob/x") is True      # allow wins a tie
+
+
+def test_robots_rfc9309_groups_combine_and_select():
+    rules = net.RobotsRules.parse("user-agent: ExampleBot\ndisallow: /foo\ndisallow: /bar\n\n"
+                                  "user-agent: ExampleBot\ndisallow: /baz\n", "ExampleBot/2")  # RFC 9309 §2.2.1
+    assert [rules.allowed(f"http://e.example/{p}") for p in ("foo", "bar", "baz", "qux")] == [False] * 3 + [True]
+    # no matching group and no `*` group: no rule applies
+    assert net.RobotsRules.parse("User-agent: otherbot\nDisallow: /\n").allowed("http://e.example/x") is True
+    # our product token, case-insensitively; a whole `-` prefix of it also matches; the most specific token wins
+    ours = "User-agent: neuroscifi-webcortex/0.6\nDisallow: /\n"
+    assert net.RobotsRules.parse(ours).allowed("http://e.example/x") is False
+    assert net.RobotsRules.parse("User-agent: NeuroSciFi\nDisallow: /\n").allowed("http://e.example/x") is False
+    assert net.RobotsRules.parse("User-agent: Neuro\nDisallow: /\n").allowed("http://e.example/x") is True
+    specific = ("User-agent: *\nDisallow: /\n\nUser-agent: NeuroSciFi\nDisallow: /\n\n"
+                "User-agent: NeuroSciFi-WebCortex\nAllow: /\n")
+    assert net.RobotsRules.parse(specific).allowed("http://e.example/x") is True
+
+
+@pytest.mark.parametrize("rule,path,matches", [
+    # RFC 9309 §2.2.2 percent-encoding table
+    ("/foo/bar?baz=quz", "/foo/bar?baz=quz", True),
+    ("/foo/bar?baz=https://foo.bar", "/foo/bar?baz=https://foo.bar", True),
+    ("/foo/bar/ツ", "/foo/bar/%E3%83%84", True),
+    ("/foo/bar/ツ", "/foo/bar/ツ", True),
+    ("/foo/bar/%E3%83%84", "/foo/bar/ツ", True),
+    ("/foo/bar/%e3%83%84", "/foo/bar/%E3%83%84", True),
+    ("/foo/bar/%62%61%7A", "/foo/bar/baz", True),
+    ("/foo/bar/baz", "/foo/bar/%62%61%7a", True),
+    # RFC 9309 §2.2.3 special characters
+    ("/this/*/exactly", "/this/is/exactly", True),
+    ("/this/*/exactly", "/this/exactly", False),
+    ("/this/path/exactly$", "/this/path/exactly", True),
+    ("/this/path/exactly$", "/this/path/exactly/more", False),
+    ("/path/file-with-a-%2A.html", "/path/file-with-a-*.html", True),
+    ("/path/file-with-a-%2A.html", "/path/file-with-a-x.html", False),
+    ("/path/foo-%24", "/path/foo-$", True),
+    # wildcards and anchors
+    ("/*.pdf$", "/x.pdf", True), ("/*.pdf$", "/a/b/c.pdf", True), ("/*.pdf$", "/x.pdf?dl=1", False),
+    ("/*.pdf$", "/x.pdfx", False), ("/*.pdf", "/x.pdfx", True), ("/*?", "/search?q=1", True), ("/*?", "/search", False),
+    ("/private*/", "/private-stuff/x", True), ("/private*/", "/private", False), ("/a**b", "/a/x/b", True),
+    ("*.php", "/index.php", True), ("/x$y", "/x$y", True), ("/x$y", "/xy", False), ("fish", "/fish/x", True),
+    ("/$", "/", True), ("/$", "/x", False), ("/*/*/*/*/*/*/*/*/*/*/*/*/*/*/z$", "/" + "a/" * 400 + "y", False)])
+def test_robots_pattern_matching(rule, path, matches):
+    rules = net.RobotsRules.parse(f"User-agent: *\nDisallow: {rule}\n")
+    assert rules.allowed("http://e.example" + path) is (not matches)
+
+
+def test_robots_parsing_tolerates_malformed_input():
+    text = ("﻿Disallow: /before-any-group\r\nUser-agent: *\rDisallow /no-colon\nNonsense: /x\n"
+            "Disallow: /kept # trailing comment\n# Disallow: /commented\nDisallow:\nAllow:\nCrawl-delay: soon\n"
+            "Crawl-delay: 2.5\n\x00garbage\n")
+    rules = net.RobotsRules.parse(text)
+    for path, expected in (("/before-any-group", True), ("/no-colon", True), ("/x", True), ("/kept", False),
+                           ("/commented", True), ("/robots.txt", True)):
+        assert rules.allowed("http://e.example" + path) is expected, path
+    assert rules.delay == 2.5
+    assert net.RobotsRules.parse("").allowed("http://e.example/x") is True
+    assert net.RobotsRules.parse("User-agent: *\nDisallow: /\n").allowed("http://e.example/robots.txt") is True
+
+
+def test_robots_crawl_delay_sitemaps_and_parse_cap():
+    text = ("Sitemap: https://e.example/a.xml\nUser-agent: otherbot\nCrawl-delay: 30\n\n"
+            "User-agent: *\nCrawl-delay: 4\nDisallow: /early\nSitemap: https://e.example/b.xml\n")
+    rules = net.RobotsRules.parse(text)
+    assert rules.delay == 4.0 and rules.sitemaps == ("https://e.example/a.xml", "https://e.example/b.xml")
+    padding = "# " + "x" * 98 + "\n"
+    big = "User-agent: *\nDisallow: /early\n" + padding * (net.ROBOTS_PARSE_BYTES // len(padding)) + \
+        "Disallow: /late\n"
+    assert len(big.encode()) > net.ROBOTS_PARSE_BYTES
+    rules = net.RobotsRules.parse(big)
+    assert rules.allowed("http://e.example/early") is False and rules.allowed("http://e.example/late") is True
+    assert net._robots_from_text("User-agent: *\nCrawl-delay: 99999\n", 0.0).delay == net.MAX_CRAWL_DELAY
+
+
+def test_robots_wildcards_enforced_by_fetcher(web, tmp_path):
+    """R5: urllib.robotparser ignored `*` and `$`, so `Disallow: /*.pdf$` did not block /x.pdf."""
+    web.add("wild.example", "/robots.txt", "User-agent: *\nDisallow: /*.pdf$\nDisallow: /*?sort=\n",
+            content_type="text/plain")
+    web.add("wild.example", "/papers/x.pdf", b"%PDF-1.4", content_type="application/pdf")
+    web.add("wild.example", "/list", "list")
+    fetcher, *_ = make(web, tmp_path)
+    assert code_of(lambda: fetcher.fetch("http://wild.example/papers/x.pdf")).code == "blocked_robots"
+    assert code_of(lambda: fetcher.fetch("http://wild.example/list?sort=asc")).code == "blocked_robots"
+    assert web.requests_to("wild.example", "/papers/x.pdf") == []
+    assert fetcher.fetch("http://wild.example/list").body == b"list"
+    assert fetcher.robots_allowed("http://wild.example/papers/x.pdf?download=1") is True
+
+
+# ---- per-host intervals (R10) ----------------------------------------------------------------------------------
+
+def test_host_intervals_with_fake_clock(web, tmp_path):
+    assert NetPolicy().host_intervals == {"export.arxiv.org": 3.0, "eutils.ncbi.nlm.nih.gov": 0.34}
+    for host in ("export.arxiv.org", "eutils.ncbi.nlm.nih.gov", "plain.example", "api.slow.example"):
+        web.add(host, "/q", "{}", content_type="application/json")
+    fetcher, clock, *_ = make(web, tmp_path, min_domain_interval=0.0)
+    for _ in range(3):
+        fetcher.fetch("http://export.arxiv.org/q", purpose="api")
+    assert clock.sleeps == [3.0, 3.0]                      # at most one request every 3 s
+    clock.sleeps.clear()
+    for _ in range(3):
+        fetcher.fetch("http://eutils.ncbi.nlm.nih.gov/q", purpose="api")
+    assert clock.sleeps == pytest.approx([0.34, 0.34])
+    clock.sleeps.clear()
+    fetcher.fetch("http://plain.example/q", purpose="api")
+    fetcher.fetch("http://plain.example/q", purpose="api")
+    assert clock.sleeps == []
+    # the largest of min_domain_interval, host_intervals and Crawl-delay applies; entries cover subdomains
+    fetcher, clock, *_ = make(web, tmp_path, min_domain_interval=5.0, host_intervals={"slow.example": 2.0})
+    fetcher.fetch("http://api.slow.example/q", purpose="api")
+    fetcher.fetch("http://api.slow.example/q", purpose="api")
+    assert clock.sleeps == [5.0]
+    fetcher, clock, *_ = make(web, tmp_path, min_domain_interval=1.0, host_intervals={"slow.example": 2.0})
+    fetcher.fetch("http://api.slow.example/q", purpose="api")
+    fetcher.fetch("http://api.slow.example/q", purpose="api")
+    assert clock.sleeps == [2.0]
+
+
+# ---- API size cap (R15) ----------------------------------------------------------------------------------------
+
+def test_api_responses_have_their_own_size_cap(web, tmp_path):
+    """R15: a 6.2 MB PyPI JSON document must not fail the 5 MB page cap."""
+    big = b'{"releases": "' + b"r" * 6_200_000 + b'"}'
+    web.add("pypi.example", "/pypi/ruff/json", big, content_type="application/json")
+    web.add("pypi.example", "/page", b"<p>" + b"p" * 6_200_000 + b"</p>")
+    fetcher, *_ = make(web, tmp_path)
+    budget, usage = Budget(max_bytes=100_000_000), Usage()
+    assert fetcher.policy.max_bytes == 5_000_000 and fetcher.policy.max_api_bytes == 16_000_000
+    result = fetcher.fetch("http://pypi.example/pypi/ruff/json", purpose="api", budget=budget, usage=usage)
+    assert result.body == big and not result.truncated
+    assert usage.bytes == len(big)                          # budget bytes still charged
+    page = fetcher.fetch("http://pypi.example/page", conditional=False)
+    assert page.truncated and len(page.body) == 5_000_000   # page cap unchanged
+    fetcher, *_ = make(web, tmp_path, max_api_bytes=1_000_000)
+    assert code_of(lambda: fetcher.fetch("http://pypi.example/pypi/ruff/json", purpose="api")).code == "too_large"
+
+
+# ---- sub-resources for the renderer (F4, Lane A throttle) ------------------------------------------------------
+
+def test_subresource_purpose_admits_scripts_and_styles(web, tmp_path):
+    web.add("cdn.example", "/jquery.js", "window.x = 1;", content_type="application/javascript")
+    web.add("cdn.example", "/legacy.js", "var y;", content_type="text/javascript; charset=utf-8")
+    web.add("cdn.example", "/site.css", "p {}", content_type="text/css")
+    web.add("cdn.example", "/data.json", "{}", content_type="application/json", headers={"ETag": '"d"'})
+    web.add("cdn.example", "/logo.png", b"\x89PNG", content_type="image/png")
+    web.add("cdn.example", "/logo.svg", b"<svg/>", content_type="image/svg+xml")
+    web.add("cdn.example", "/huge.js", "z" * 5000, content_type="application/javascript")
+    fetcher, *_ = make(web, tmp_path)
+    assert code_of(lambda: fetcher.fetch("http://cdn.example/jquery.js")).code == "unsupported_type"
+    for path in ("/jquery.js", "/legacy.js", "/site.css", "/data.json"):
+        result = fetcher.fetch(f"http://cdn.example{path}", purpose="subresource")
+        assert result.status == 200 and result.retrieval_mode == "live"
+        assert fetcher.cache.lookup(f"http://cdn.example{path}") is None          # never cached
+    assert fetcher.cache.stats()["urls"] == 0
+    for path in ("/logo.png", "/logo.svg"):
+        assert code_of(lambda: fetcher.fetch(f"http://cdn.example{path}", purpose="subresource")).code == \
+            "unsupported_type"
+    assert code_of(lambda: fetcher.fetch("http://internal.test/evil.js", purpose="subresource")).code == \
+        "blocked_policy"
+    assert code_of(lambda: fetcher.fetch("http://cdn.example/x.js", method="POST", purpose="subresource")).code == \
+        "blocked_policy"
+    small, *_ = make(web, tmp_path, max_bytes=1000, cache=False)
+    assert code_of(lambda: small.fetch("http://cdn.example/huge.js", purpose="subresource")).code == "too_large"
+
+
+def test_subresource_obeys_robots_and_uses_short_interval(web, tmp_path):
+    web.add("render.example", "/robots.txt", "User-agent: *\nCrawl-delay: 9\nDisallow: /secret/\n",
+            content_type="text/plain")
+    web.add("render.example", "/", "<p>page</p>")
+    for path in ("/a.js", "/b.js", "/c.css", "/secret/x.js"):
+        web.add("render.example", path, "1", content_type="text/css")
+    web.add("export.arxiv.org", "/widget.js", "1", content_type="text/javascript")
+    fetcher, clock, *_ = make(web, tmp_path, min_domain_interval=1.0)
+    fetcher.fetch("http://render.example/")
+    clock.sleeps.clear()
+    for path in ("/a.js", "/b.js", "/c.css"):
+        fetcher.fetch(f"http://render.example{path}", purpose="subresource")
+    assert clock.sleeps == pytest.approx([0.1, 0.1, 0.1])  # not 1 s each, and not the 9 s Crawl-delay
+    assert code_of(lambda: fetcher.fetch("http://render.example/secret/x.js", purpose="subresource")).code == \
+        "blocked_robots"
+    clock.sleeps.clear()
+    fetcher.fetch("http://render.example/", conditional=False)
+    assert clock.sleeps == pytest.approx([9.0])           # pages still wait the full interval
+    clock.sleeps.clear()
+    fetcher.fetch("http://export.arxiv.org/widget.js", purpose="subresource")
+    fetcher.fetch("http://export.arxiv.org/widget.js", purpose="subresource")
+    assert clock.sleeps == [3.0, 3.0]                       # robots.txt, widget, widget: host_intervals bind
+
+
+# ---- backoff shared through the cache (8) ----------------------------------------------------------------------
+
+def test_retry_after_shared_by_fetchers_on_one_cache(web, tmp_path):
+    web.add("busy.example", "/", "slow down", status=429, headers={"Retry-After": "30"})
+    first, clock, *_ = make(web, tmp_path)
+    assert code_of(lambda: first.fetch("http://busy.example/", purpose="api")).code == "rate_limited"
+    hits = len(web.log)
+    clock.t += 5
+    second = SafeFetcher(NetPolicy(), resolver=web.resolver, connector=web.connector, cache=first.cache,
+                         clock=clock, sleep=clock.sleep)
+    error = code_of(lambda: second.fetch("http://busy.example/other", purpose="api"))
+    assert error.code == "rate_limited" and error.retry_after == pytest.approx(25)
+    assert len(web.log) == hits                             # the new fetcher did not touch the network
+    clock.t += 26
+    web.add("busy.example", "/", "ok", content_type="text/plain")
+    third = SafeFetcher(NetPolicy(), resolver=web.resolver, connector=web.connector, cache=first.cache,
+                        clock=clock, sleep=clock.sleep)
+    assert third.fetch("http://busy.example/", purpose="api").body == b"ok"
+
+
 # ---- Retry-After -----------------------------------------------------------------------------------------------
 
 def test_retry_after_seconds_sets_backoff(web, tmp_path):
@@ -374,10 +627,13 @@ def test_conditional_get_returns_cached_body(web, tmp_path):
     second = fetcher.fetch("http://etag.example/doc")
     request = web.requests_to("etag.example", "/doc")[-1]
     assert request["headers"]["if-none-match"] == '"v1"'
-    assert second.retrieval_mode == "cache" and second.body == first.body and second.content_type == "text/html"
+    # the origin confirmed the stored body just now: a live observation, marked as revalidated (R11-304)
+    assert second.retrieval_mode == "live" and second.headers[net.REVALIDATED_HEADER] == "304"
+    assert second.body == first.body and second.content_type == "text/html"
+    assert net.REVALIDATED_HEADER not in first.headers
     assert fetcher.stats()["hosts"]["etag.example"]["cache_hits"] == 1
     third = fetcher.fetch("http://etag.example/doc", conditional=False)
-    assert third.retrieval_mode == "live"
+    assert third.retrieval_mode == "live" and net.REVALIDATED_HEADER not in third.headers
     assert "if-none-match" not in web.requests_to("etag.example", "/doc")[-1]["headers"]
 
 

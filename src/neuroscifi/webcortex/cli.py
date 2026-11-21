@@ -327,6 +327,43 @@ def _resume(db, a, now):
     return _run_task(db, a, a.task, resume=True)
 
 
+def _requeue(db, a, now):
+    from . import orchestrator
+    return orchestrator.requeue(db, a.task, now, origin="cli")
+
+
+def _feeds(db, a, now):
+    from . import state
+    if a.feeds_action == "add":
+        feeds = state.add_feed(db, a.url, now)
+    elif a.feeds_action == "remove":
+        feeds = state.remove_feed(db, a.url, now)
+    else:
+        feeds = state.get_feeds(db)
+    return {"feeds": feeds, "count": len(feeds), "max": state.MAX_FEEDS,
+            "note": "feeds are searched by every research task and read first by monitors"}
+
+
+def _cache(db, a, now):
+    """`cache stats` | `cache prune`: retention by config.cache_max_age_days and config.cache_max_bytes (runs now,
+    not on the hourly schedule the worker and the timer use). The cache file is opened only if it exists."""
+    from . import state
+    from .services import cache_path
+    path = _db_path(a)
+    if a.cache_action == "stats" or not cache_path(path).exists():
+        return {"public_cache": _cache_stats(path)}
+    from .cache import PublicCache
+    cfg = state.get_config(db)
+    cache = PublicCache(cache_path(path))
+    try:
+        pruned = cache.prune(now, max_bytes=int(cfg.cache_max_bytes),
+                             max_age_seconds=float(cfg.cache_max_age_days) * 86400.0)
+        return {"pruned": pruned, "max_bytes": cfg.cache_max_bytes, "max_age_days": cfg.cache_max_age_days,
+                "public_cache": {"exists": True, **cache.stats()}}
+    finally:
+        cache.close()
+
+
 def _knowledge(db, a, now):
     from . import knowledge, state
     if a.topic:
@@ -526,7 +563,9 @@ def register(sub):
     for name, handler, help_text in (("show", _show, "a task and its report"),
                                      ("evidence", _evidence, "sources, claims, links and episode log of a task"),
                                      ("cancel", _cancel, "cancel a task"),
-                                     ("resume", _resume, "continue an interrupted task from its checkpoint")):
+                                     ("resume", _resume, "continue an interrupted task from its checkpoint"),
+                                     ("requeue", _requeue, "queue a failed task again (same id) or continue a "
+                                                           "partial/cancelled one as a linked new task")):
         cmd(name, handler, help_text).add_argument("task")
 
     p = cmd("knowledge", _knowledge, "what is known about TOPIC, or list knowledge items")
@@ -565,6 +604,17 @@ def register(sub):
     monitor_cmd("list").add_argument("--status", choices=("proposed", "active", "paused", "stopped"))
     for action in ("pause", "resume", "stop"):
         monitor_cmd(action).add_argument("id", type=int)
+
+    p = wsub.add_parser("feeds", help="RSS/Atom feeds searched by research tasks (read first by monitors)")
+    fsub = p.add_subparsers(dest="feeds_action", required=True)
+    for action in ("add", "remove", "list"):
+        q = fsub.add_parser(action)
+        store.add_db_argument(q)
+        q.set_defaults(handler=with_db(_feeds))
+        if action != "list":
+            q.add_argument("url")
+    p = cmd("cache", _cache, "public cache: stats, or prune by the configured age and size limits")
+    p.add_argument("cache_action", choices=("stats", "prune"))
 
     p = cmd("tick", _tick, "one timer pass: due monitors; refresh and curiosity when autonomous")
     p.add_argument("--queue", action="store_true", help="queue the tasks for the worker instead of running them")

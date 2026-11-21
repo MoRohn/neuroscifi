@@ -100,3 +100,16 @@ def test_propose_creates_a_proposal_the_owner_authorises(db):
     assert orchestrator.get(db, proposal["id"])["proposed"] is False
     assert scheduler.claim_next(db, "worker", T0 + 20 * DAY + 2) == (proposal["id"], False)
     assert state.task(db, proposal["id"])["lease_holder"] == "worker"
+
+
+def test_a_newer_release_makes_fresh_knowledge_a_curiosity_candidate(db):
+    """R6: knowledge within its TTL is excluded, until a newer release of its key is observed."""
+    from test_consolidate import task_with
+    kid = accepted(db, "zlib latest version", "zlib 1.3.1 is the latest zlib release.", ("a.example", "b.example"),
+                   T0)
+    assert [c["target"].get("knowledge_id") for c in curiosity.rank(db, T0 + DAY) if c["excluded"]] == [kid]
+    task_with(db, [pair("zlib latest version", "zlib 1.3.2 is the latest zlib release.", ("c.example",), T0)],
+              now=T0 + DAY)
+    chosen = [c for c in curiosity.rank(db, T0 + 2 * DAY) if not c["excluded"] and c["kind"] == "stale"]
+    assert [c["target"]["knowledge_id"] for c in chosen] == [kid] and "newer release" in chosen[0]["reason"]
+    assert chosen[0]["info_gain"] == pytest.approx(curiosity.info_gain(0.5))

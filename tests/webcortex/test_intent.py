@@ -1,5 +1,6 @@
 """intent.assess / plan / refine: deterministic, explainable classification and query planning."""
 import json
+import re
 
 import pytest
 
@@ -26,7 +27,7 @@ TABLE = [
     (S2, (), True, "scientific", "scientific", 90 * DAY),
     (S3, (), True, "technical", "release", None),
     (S4, (), True, "continuous", "scientific", None),
-    (S5, (), True, "fact_verification", "volatile", None),
+    (S5, (), True, "fact_verification", "stable", None),
     ("What is 2+2?", [{"statement": "2+2 equals 4", **FRESH}], False, "quick_lookup", "stable", None),
     ("What is 2+2?", (), False, "quick_lookup", "stable", None),
     ("Define entropy", [{"statement": "Entropy measures the number of microstates", **FRESH}], False,
@@ -39,8 +40,8 @@ TABLE = [
     ("What is the capital of France?", [{"statement": "Paris is the capital of France", "status": "accepted",
                                          "stale": False, "contested": True}], True, "quick_lookup", "stable", None),
     ("Who won the election today?", (), True, "quick_lookup", "breaking", DAY),
-    ("Is it true that coffee causes dehydration?", (), True, "fact_verification", "volatile", None),
-    ("Fact check: the Eiffel Tower grows in summer", (), True, "fact_verification", "volatile", None),
+    ("Is it true that coffee causes dehydration?", (), True, "fact_verification", "stable", None),
+    ("Fact check: the Eiffel Tower grows in summer", (), True, "fact_verification", "stable", None),
     ("Compare Rust and Go for web servers", (), True, "comparative", "stable", None),
     ("What is the difference between TCP and UDP?", (), True, "comparative", "stable", None),
     ("Which is better, Postgres or MySQL?", (), True, "comparative", "stable", None),
@@ -190,14 +191,38 @@ def test_plan_breaking_news():
 def test_plan_scientific_decomposes_and_routes_academic():
     a = intent.assess(S2, now=NOW)
     p = intent.plan(S2, a, now=NOW)
-    assert p.subquestions == ("Research recent evidence on dendritic computation",
-                              "determine whether it affects NeuroSciFi's learning architecture")
-    assert texts(p)[:4] == ["dendritic computation", "dendritic computation", "NeuroSciFi learning architecture",
-                            "NeuroSciFi learning architecture"]
+    assert p.subquestions == ("Research recent evidence on dendritic computation", "determine whether it affects")
+    # the self-referential clause is local context (F8): it is answered from local docs, never searched
+    assert texts(p)[:2] == ["dendritic computation", "dendritic computation"]
     assert "dendritic computation" in texts(p, "academic") and "dendritic computation review" in texts(p, "academic")
     assert all(q.since == NOW - 90 * DAY for q in p.queries)
-    assert len(p.queries) == 8 and any("dropped by the 8-query cap" in n for n in p.notes)
+    assert not any("neuroscifi" in q.text.lower() or "architecture" in q.text.lower() for q in p.queries)
+    assert any(n.startswith("local context: 1 reference") for n in p.notes)
     assert p.max_sources == 12
+
+
+@pytest.mark.parametrize("question", [
+    S2, S2.replace("NeuroSciFi's", "our"), "How does dendritic computation compare to our system's learning rule?",
+    "Compare predictive coding with NeuroSciFi", "Is it true that NeuroSciFi uses dendritic computation?",
+    "Which of the libraries we use depend on numpy?", "What does Quillbase say about dendritic spikes?"])
+def test_plan_and_refine_never_search_the_individuals_own_system(question):
+    a = intent.assess(question, now=NOW)
+    p = intent.plan(question, a, now=NOW, local_terms=["Quillbase"])
+    r = intent.refine(p, outcome(0), a, now=NOW, local_terms=["Quillbase"])
+    sent = [q.text for q in p.queries] + [q.text for q in (r.queries if r else ())]
+    assert sent, p.notes
+    for text in sent:
+        words = set(re.findall(r"[\w']+", text.lower()))
+        assert "neuroscifi" not in text.lower() and "quillbase" not in text.lower() and not words & {"our", "we"}
+    assert any(n.startswith("local context:") for n in p.notes)
+
+
+def test_strip_local_keeps_the_outside_topic():
+    assert intent.strip_local("Is NeuroSciFi affected by CVE-2026-1234?") == ("Is affected by CVE-2026-1234?", 1)
+    assert intent.strip_local("compare dendrites to our system's learning rule now") == \
+        ("compare dendrites to now", 1)
+    assert intent.strip_local("the libraries we use and numpy", ["x"]) == ("and numpy", 1)
+    assert intent.strip_local("hourly journals in Ourense") == ("hourly journals in Ourense", 0)
 
 
 def test_plan_technical_with_packages():
@@ -211,7 +236,7 @@ def test_plan_technical_with_packages():
                                      "osv:npm:open-websearch@2.2.0"]
     assert all(q.since is None for q in p.queries if q.kind == "technical")
     assert len(p.queries) == 8
-    assert "libraries stable releases security advisories" in texts(p, "web")
+    assert "stable releases security advisories" in texts(p, "web")      # "the libraries we use" is local
 
 
 def test_plan_technical_expansions_without_packages():
@@ -279,7 +304,8 @@ def test_refine_broadens_thin_results():
     r = intent.refine(p, outcome(1), a, now=NOW)
     assert r is not None and r.notes[0].startswith("refinement: only 1 result(s)")
     assert all(q.since is None and q.site is None for q in r.queries) and len(r.queries) <= 4
-    assert r.queries[0].text == "NeuroSciFi" and {q.kind for q in r.queries} <= {"web", "academic"}
+    assert r.queries[0].text == "dendritic computation" and {q.kind for q in r.queries} <= {"web", "academic"}
+    assert not any("NeuroSciFi" in q.text for q in r.queries)
     assert all(q.purpose.startswith("refinement") for q in r.queries)
     assert intent.refine(r, outcome(0), a, now=NOW) is None              # only one refinement round
 
@@ -297,3 +323,32 @@ def test_refine_when_all_failed_and_none_when_enough():
 def test_refine_returns_none_when_nothing_broader_exists():
     p = QueryPlan(queries=(Query("dendrites", "web"),))
     assert intent.refine(p, outcome(0), {"entities": []}, now=NOW) is None
+
+
+@pytest.mark.parametrize("question, cls", [
+    ("Is it true that the Varnel River is 520 km long?", "stable"),
+    ("Is the Varnel River 520 km long?", "stable"),
+    ("Is it true that the Brightwater dam is 186 metres tall?", "stable"),
+    ("Is it true that numpy 2.4 was released?", "release"),
+    ("Is it true that dendritic spikes double neuron capacity?", "scientific"),
+    ("Is it true that the bridge reopened this week?", "breaking"),
+    ("Monitor the Varnel River length", "volatile")])
+def test_stable_fact_checks_are_not_volatile(question, cls):
+    """A fact check without recency, technical or scientific cues is about a stable fact: a volatile 2-day TTL
+    age-discounted every dated source and kept two agreeing groups below 'supported' (benchmark F09)."""
+    a = intent.assess(question, now=NOW)
+    assert a["freshness_class"] == cls, a["why"]
+    assert a["needs_web"] is True
+
+
+def test_related_knowledge_that_does_not_cover_the_question_does_not_answer_it():
+    """Benchmark A10 (full run): fresh knowledge about Orbix's port answered "Does Orbix support encryption at
+    rest?" from memory, because one shared name counted as relevant. An item must state most of the question's
+    topical terms to answer it without the web."""
+    port = {"id": 1, "statement": "By default, the Orbix server listens on port 7420 for client connections.",
+            "status": "provisional", "stale": False, "contested": False}
+    a = intent.assess("Does Orbix support encryption at rest?", now=NOW, known=[port])
+    assert a["needs_web"] is True and a["memory_items"] == []
+    assert any("do not cover the question's terms" in r for r in a["reasons"])
+    b = intent.assess("Which port does the Orbix server listen on?", now=NOW, known=[port])
+    assert b["needs_web"] is False and b["memory_items"] == [1]

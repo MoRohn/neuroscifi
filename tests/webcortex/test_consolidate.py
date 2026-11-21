@@ -90,7 +90,7 @@ def test_two_independent_agreeing_sources_become_provisional_with_a_question(db)
 
 @pytest.mark.parametrize("make, reason", [
     (lambda: cluster([claim("http://a.example/x")]), "single source"),
-    (lambda: two_sources(confidence=0.6), "confidence 0.60 < 0.75"),
+    (lambda: two_sources(confidence=0.6), "confidence 0.60 < "),   # the bar is config (RA lowers it)
     (lambda: cluster([claim("http://a.example/x", relevance=0.0), claim("http://b.example/x", relevance=0.0)]),
      "no claim is relevant"),
     (lambda: two_sources(status="insufficient"), "insufficient evidence"),
@@ -200,3 +200,38 @@ def test_later_statement_of_a_series_updates_and_an_older_one_is_held(db):
     _, stale = consolidated(db, [pair(old_text, T0 - 3 * DAY, ("e.example", "f.example"))], T0 + 2)
     assert stale["superseded"] == [] and stale["contested"] == []
     assert "older statement of a series" in stale["held"][0]["reasons"][0]
+
+
+def _flagged(c):
+    c.flags = dict(c.flags, adversarial_source=True)
+    return c
+
+
+def test_claims_from_adversarial_sources_are_held_never_provisional(db):
+    """R11: a claim flagged adversarial_source (or from a source whose quarantine found injection) never supports
+    knowledge: two 'agreeing' sources where one is adversarial are one clean single source -> held."""
+    bad = cluster([claim("http://a.example/numpy"), _flagged(claim("http://evil.example/numpy"))])
+    _, out = consolidated(db, [bad])
+    assert out["provisional"] == [] and len(out["held"]) == 1
+    assert "single source" in " ".join(out["held"][0]["reasons"])
+    only_bad = cluster([_flagged(claim("http://evil.example/numpy")), _flagged(claim("http://evil2.example/numpy"))])
+    _, out = consolidated(db, [only_bad])
+    assert out["provisional"] == [] and "instruction-like" in out["held"][0]["reasons"][0]
+
+
+def test_claims_from_injection_flagged_sources_are_held(db):
+    from neuroscifi.webcortex.types import Document
+    tid = task_with(db, [two_sources(hosts=("a.example", "evil.example"))])
+    with store.write(db):
+        for host, flags in (("a.example", {}), ("evil.example", {"injection": [{"pattern": "ignore_previous"}]})):
+            url = f"http://{host}/numpy"
+            state.save_source(db, tid, Document(url=url, final_url=url, canonical_url=url, domain=host, title="t",
+                                                text=TEXT, retrieved_at=T0, retrieval_mode="live", flags=flags), T0)
+    out = consolidate.run(db, tid, T0)
+    assert out["provisional"] == [] and len(out["held"]) == 1
+    # an established item is not strengthened by the adversarial claim either
+    _, first = consolidated(db, [two_sources(hosts=("c.example", "d.example"))])
+    kid = first["provisional"][0]
+    tid = task_with(db, [cluster([_flagged(claim("http://evil.example/numpy2"))])])
+    consolidate.run(db, tid, T0 + 1)
+    assert len(knowledge.row(db, kid)["supporting"]) == 2

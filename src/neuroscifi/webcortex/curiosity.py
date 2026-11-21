@@ -170,9 +170,9 @@ def rank(db, now, *, limit=10) -> list[dict]:
                 f"gains {gain:.3f} bits{boost}{futile}", factor=factor,
                 extra={"hypotheses": hypotheses(item, now)}))
             continue
-        stale, why = knowledge.staleness(item, now, cfg)
-        if item["status"] == "stale":
-            p = 0.5
+        stale, why = knowledge.staleness(item, now, cfg, db)
+        if item["status"] == "stale" or (stale and why.startswith(("stale: a newer", "stale: a new version"))):
+            p = 0.5         # marked stale, or a newer release / source revision was observed: even odds
         else:
             elapsed = max(0.0, now - item["last_verified_at"])
             p = 1.0 - (1.0 - math.exp(-elapsed / max(1.0, _ttl(cfg, item["freshness_class"])))) / 2.0

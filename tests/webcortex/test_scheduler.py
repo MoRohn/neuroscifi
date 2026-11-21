@@ -1,11 +1,12 @@
 """Monitors, the timer tick (fake clock, offline fixture web) and the worker's lease handling."""
+import json
 import threading
 
 import pytest
 
 from neuroscifi.instance import store
 from neuroscifi.instance.errors import Conflict, ValidationError
-from neuroscifi.webcortex import orchestrator, predictions, scheduler, state
+from neuroscifi.webcortex import orchestrator, predictions, scheduler, services as svc_mod, state
 from test_orchestrator import PAGES, T0, build, corpus, html, open_individual, serve
 
 HOUR = 3600.0
@@ -190,3 +191,128 @@ def test_prediction_check_outcomes(individual):
     assert error["outcome"] == "error"
     question = db.execute("SELECT question FROM pending WHERE id=?", (error["detail"]["pending_id"],)).fetchone()[0]
     assert question.startswith("Accept as knowledge") and "\nUpdate: Prediction failed" in question
+
+
+# ---- remediation regressions (RB2) -----------------------------------------------------------------------------
+
+def snap(**claims):
+    return {"urls": {f"http://x.example/{k}": k for k in claims}, "claims": claims}
+
+
+def info(values, *, status="single_source", primary=False, groups=1, relevance=0.8, polarity=1):
+    return {"values": values, "polarity": polarity, "status": status, "primary": primary, "groups": groups,
+            "relevance": relevance}
+
+
+def test_compare_ignores_search_churn_and_reports_value_changes():
+    """F6: a new single-source API record that is barely relevant, a key seen in any earlier run, or new URLs are
+    not change; a new value for a known key, or a new corroborated key, is."""
+    gold = info(["v4.2.0"], status="corroborated", groups=3)
+    tick1 = snap(**{"zephyr compiler version": gold, "zephyr paper alpha": info([], primary=True, relevance=0.3)})
+    baseline = scheduler.merge_baseline({}, tick1)
+    tick2 = snap(**{"zephyr compiler version": gold, "zephyr paper beta": info([], primary=True, relevance=0.3)})
+    churn = scheduler.compare(baseline, tick2)
+    assert churn["meaningful"] is False and churn["new_urls"] and churn["new_claims"] == []
+    baseline = scheduler.merge_baseline(baseline, tick2)
+    tick3 = snap(**{"zephyr compiler version": gold, "zephyr paper alpha": info([], status="corroborated", groups=2)})
+    assert scheduler.compare(baseline, tick3)["meaningful"] is False     # alpha was seen two runs ago
+    tick4 = snap(**{"zephyr compiler version": gold, "compiler version zephyr": info(["x"], status="corroborated",
+                                                                                     groups=2)})
+    assert scheduler.compare(baseline, tick4)["meaningful"] is False     # same subject, reworded key
+    changed = scheduler.compare(baseline, snap(**{"zephyr compiler version": info(["v4.3.0"], status="corroborated",
+                                                                                  groups=3)}))
+    assert changed["meaningful"] and changed["changed_values"][0]["after"] == ["v4.3.0"]
+    new = scheduler.compare(baseline, snap(**{"zephyr security advisory": info(["CVE-2026-1"], primary=True,
+                                                                               relevance=0.9)}))
+    assert new["meaningful"] and new["new_claims"] == ["zephyr security advisory"]
+    bounded = baseline
+    for i in range(scheduler.MAX_SEEN_KEYS + 10):
+        bounded = {**bounded, "seen_keys": bounded["seen_keys"] + [f"k{i}"]}
+    assert len(scheduler.merge_baseline(bounded, tick1)["seen_keys"]) == scheduler.MAX_SEEN_KEYS
+
+
+def test_two_ticks_over_equivalent_result_mixes_report_no_change(individual, site):
+    """F6 end to end: the second tick sees a different mix (another page, another weakly relevant scholarly
+    record) saying the same thing -> no finding; a version change on the pages -> a finding."""
+    from neuroscifi.webcortex.providers.corpus import CorpusProvider
+    from test_orchestrator import ListProvider
+    db, path = individual
+    mon = scheduler.monitor_add(db, TOPIC, T0, interval=6 * HOUR, authorized_by="owner")
+    pages = [{"url": f"http://{h}{p}", "title": t, "snippet": " ".join(ps)[:160]}
+             for (h, p), (t, _, ps) in PAGES.items()]
+
+    def record(i, title):
+        return {"url": f"https://openalex.org/W{i}", "title": title, "snippet": "", "kind": "academic",
+                "metadata": {"doi": f"10.1000/{i}", "title": title,
+                             "abstract": f"{title}. We describe embedded toolchains for sensor boards."}}
+
+    def tick(now, web_pages, rec):
+        services = svc_mod.build(db, path, fixture=site, clock=lambda: now,
+                                 providers=[CorpusProvider(web_pages), ListProvider([rec], name="openalex")])
+        try:
+            return scheduler.tick(db, now, services)
+        finally:
+            services.close()
+
+    first = tick(T0, pages[:2], record(1, "Embedded toolchains for the Zephyr ecosystem"))
+    assert first["findings"] == [] and first["ran"][0]["status"] in ("completed", "partial")
+    second = tick(T0 + 6 * HOUR, pages[1:], record(2, "Sensor board firmware with the Zephyr toolchain"))
+    assert second["ran"] and second["findings"] == [], json.dumps(second["findings"][0]["changes"])[:3000]
+    republish(site, "4.3.0", 21)
+    third = tick(T0 + 12 * HOUR, pages, record(2, "Sensor board firmware with the Zephyr toolchain"))
+    assert len(third["findings"]) == 1 and third["findings"][0]["monitor_id"] == mon["id"]
+    assert len(scheduler.monitor_list(db)[0]["baseline"]["seen_keys"]) >= 2
+
+
+def test_autonomous_budgets_are_clamped_to_the_daily_allowance(individual, site):
+    """Autonomous tasks get at most the requests/bytes left of the daily cap (open tasks count with their whole
+    budget), so the cap is passed by at most one request; nothing left -> not submitted."""
+    db, path = individual
+    state.set_config(db, {"daily_autonomous": {"tasks": 10, "requests": 15, "bytes": 10_000_000}}, T0)
+    first = orchestrator.submit(db, "Zephyr compiler latest version", T0, mode="fact_verification",
+                                origin="curiosity")
+    assert first["budget"]["max_requests"] == 15 and first["budget"]["max_bytes"] == 10_000_000
+    assert scheduler.autonomous_remaining(db, T0, state.get_config(db))["requests"] == 0   # reserved while queued
+    with pytest.raises(ValidationError, match="daily autonomous cap reached: requests"):
+        orchestrator.submit(db, "Zephyr compiler targets", T0, mode="fact_verification", origin="refresh:1")
+    owner = orchestrator.submit(db, "Zephyr compiler targets", T0, mode="fact_verification")   # not autonomous
+    assert owner["budget"]["max_requests"] == 40
+    services = build(db, path, site)
+    try:
+        done = orchestrator.run(db, first["id"], services)
+    finally:
+        services.close()
+    used = scheduler.autonomous_usage(db, T0)
+    assert done["usage"]["requests"] <= 15 and used["requests"] <= 15
+    left = scheduler.autonomous_remaining(db, T0, state.get_config(db))["requests"]
+    assert left == 15 - used["requests"]
+    if left:
+        second = orchestrator.submit(db, "Zephyr compiler targets", T0, mode="fact_verification", origin="curiosity")
+        assert second["budget"]["max_requests"] == left
+    proposal = orchestrator.submit(db, "Zephyr compiler boards", T0, mode="fact_verification", origin="curiosity",
+                                   proposed=True)        # the owner authorises proposals; not clamped at proposal
+    assert proposal["budget"]["max_requests"] == 40
+
+
+def test_tick_and_runs_apply_cache_retention(individual, site, monkeypatch):
+    """R8: the timer tick and the end of every run call PublicCache.maybe_prune with the configured limits."""
+    from neuroscifi.webcortex.cache import PublicCache
+    db, path = individual
+    state.set_config(db, {"cache_max_bytes": 4096, "cache_max_age_days": 2.0}, T0)
+    calls = []
+    real = PublicCache.maybe_prune
+
+    def spy(self, now, **kw):
+        calls.append((now, kw))
+        return real(self, now, **kw)
+
+    monkeypatch.setattr(PublicCache, "maybe_prune", spy)
+    task = orchestrator.submit(db, "What is the latest version of the Zephyr compiler?", T0, mode="quick_lookup")
+    services = build(db, path, site)
+    try:
+        orchestrator.run(db, task["id"], services)
+        report = scheduler.tick(db, T0 + 10, services)
+    finally:
+        services.close()
+    assert len(calls) == 2 and all(kw == {"max_bytes": 4096, "max_age_seconds": 2.0 * DAY} for _, kw in calls)
+    assert "cache" in report

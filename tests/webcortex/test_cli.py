@@ -278,3 +278,22 @@ def test_bench_passes_arguments_through(capsys, monkeypatch):
     monkeypatch.setitem(sys.modules, "neuroscifi.webcortex.bench", module)
     assert main(["web", "bench", "--offline", "--out", "x.json"]) == 0
     assert seen["argv"] == ["--offline", "--out", "x.json"]
+
+
+def test_feeds_cache_and_requeue_commands(capsys, db, offline, tmp_path):
+    enable(capsys, db)
+    code, out = nsf(capsys, "web", "feeds", "add", "https://lab.example/rss", "--db", db)
+    assert code == 0 and out["feeds"] == ["https://lab.example/rss"]
+    assert nsf(capsys, "web", "feeds", "list", "--db", db)[1]["count"] == 1
+    assert nsf(capsys, "web", "feeds", "add", "ftp://x", "--db", db)[0] == 2
+    assert nsf(capsys, "web", "feeds", "remove", "https://lab.example/rss", "--db", db)[1]["feeds"] == []
+    assert nsf(capsys, "web", "cache", "stats", "--db", db)[1]["public_cache"]["exists"] is False
+    done = nsf(capsys, "web", "ask", QUESTION, "--mode", "quick_lookup", "--db", db)[1]
+    code, out = nsf(capsys, "web", "cache", "prune", "--db", db)
+    assert code == 0 and out["pruned"]["removed_urls"] >= 0 and out["public_cache"]["exists"] is True
+    code, out = nsf(capsys, "web", "requeue", done["id"], "--db", db)
+    assert code == 2 and "completed" in out
+    queued = nsf(capsys, "web", "ask", QUESTION, "--queue", "--db", db)[1]
+    nsf(capsys, "web", "cancel", queued["id"], "--db", db)
+    code, out = nsf(capsys, "web", "requeue", queued["id"], "--db", db)
+    assert code == 0 and out["parent_id"] == queued["id"] and out["requeued"] == "child" and out["origin"] == "cli"

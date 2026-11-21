@@ -86,3 +86,33 @@ def test_available_reports_missing_executable(web, monkeypatch):
     monkeypatch.setenv("NSF_CHROMIUM", "/nonexistent/chromium")
     ok, reason = BrowserRenderer(fetcher_for(web)).available()
     assert ok is False and reason
+
+
+EXTERNAL = """<!doctype html><html><head><title>Quotes</title><link rel="stylesheet" href="/style.css"></head>
+<body><div id="quotes">loading</div>
+<script src="http://internal.test/evil.js"></script>
+<script src="http://cdn.example/lib.js"></script>
+<script src="/app.js"></script>
+</body></html>"""
+
+
+def test_render_runs_external_scripts_and_styles(web):
+    """F4: external scripts and stylesheets are served (purpose='subresource'); one from internal.test is refused."""
+    web.add("quotes.example", "/", EXTERNAL)
+    web.add("quotes.example", "/style.css", "body { color: rgb(1, 2, 3); }", content_type="text/css")
+    web.add("quotes.example", "/app.js", "document.getElementById('quotes').textContent = "
+            "quote('Written by an external script') + ' color=' + getComputedStyle(document.body).color;",
+            content_type="application/javascript")
+    web.add("cdn.example", "/lib.js", "function quote(text) { return '\\u201c' + text + '\\u201d'; }",
+            content_type="text/javascript; charset=utf-8")
+    renderer = renderer_or_skip(fetcher_for(web))
+    usage = Usage()
+    result = renderer.render("http://quotes.example/", budget=Budget(max_browser_sessions=1), usage=usage)
+    text = result.body.decode()
+    assert "“Written by an external script” color=rgb(1, 2, 3)" in text
+    assert web.requests_to("internal.test") == []
+    outcomes = {e["url"]: e.get("code") or e["outcome"] for e in renderer.last_events if e["url"]}
+    assert outcomes["http://internal.test/evil.js"] == "blocked_policy"
+    for url in ("http://quotes.example/style.css", "http://quotes.example/app.js", "http://cdn.example/lib.js"):
+        assert outcomes[url] == "served"
+    assert usage.requests == 6        # robots.txt + page + style + app on quotes.example; robots.txt + lib on cdn

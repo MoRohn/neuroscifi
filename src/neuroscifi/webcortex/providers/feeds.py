@@ -3,12 +3,15 @@ share words with the query, rank by lexical overlap and recency, honour `query.s
 
 Parsing uses `extract.parse_feed` when the extraction module is installed; otherwise a minimal local parser that
 refuses DOCTYPE/ENTITY declarations (no entity expansion) and reads RSS 2.0, RSS 1.0 (RDF) and Atom items.
+A provider instance (one per research run or tick) fetches each feed at most once per MEMO_SECONDS, not once per
+planned query.
 """
 from __future__ import annotations
 
 from email.utils import parsedate_to_datetime
 import math
 import re
+import threading
 import time
 from xml.etree import ElementTree
 
@@ -18,6 +21,11 @@ from ..types import FetchError, Query, SearchResult
 _STOP = frozenset("a an and are as at be by for from has have how in is it its of on or that the this to was "
                   "were what when where which who why will with".split())
 HALF_LIFE_DAYS = 14.0
+MEMO_SECONDS = 300.0
+
+
+class _HTTPError(Exception):
+    pass
 
 
 def words(text: str) -> list[str]:
@@ -88,6 +96,23 @@ class FeedProvider:
     def __init__(self, feed_urls, *, fetcher=None, clock=time.time, name: str = "feeds"):
         self.feed_urls = [str(u) for u in feed_urls if str(u).startswith(("http://", "https://"))]
         self.fetcher, self._clock, self.name = fetcher, clock, name
+        self._memo: dict = {}     # feed url -> (parsed at, items): one fetch per feed per MEMO_SECONDS, not per query
+        self._lock = threading.Lock()
+
+    def _items(self, feed_url, parse, budget, usage):
+        """Parsed items of one feed (memoised MEMO_SECONDS). Raises FetchError / ValueError-like parser errors."""
+        now = self._clock()
+        with self._lock:
+            hit = self._memo.get(feed_url)
+        if hit is not None and now - hit[0] < MEMO_SECONDS:
+            return hit[1]
+        result = self.fetcher.fetch(feed_url, purpose="feed", budget=budget, usage=usage)
+        if result.status >= 400:
+            raise _HTTPError(f"HTTP {result.status}")
+        items = parse(result.body, result.final_url or feed_url)
+        with self._lock:
+            self._memo[feed_url] = (now, items)
+        return items
 
     def search(self, query: Query, limit: int, *, budget=None, usage=None) -> list[SearchResult]:
         if self.fetcher is None:
@@ -101,15 +126,13 @@ class FeedProvider:
         scored, errors = [], []
         for feed_url in self.feed_urls:
             try:
-                result = self.fetcher.fetch(feed_url, purpose="feed", budget=budget, usage=usage)
+                items = self._items(feed_url, parse, budget, usage)
             except FetchError as exc:
                 errors.append(f"{feed_url}: {exc.code}")
                 continue
-            if result.status >= 400:
-                errors.append(f"{feed_url}: HTTP {result.status}")
+            except _HTTPError as exc:
+                errors.append(f"{feed_url}: {exc}")
                 continue
-            try:
-                items = parse(result.body, result.final_url or feed_url)
             except Exception as exc:   # any parser failure on untrusted bytes is a per-feed error, recorded
                 errors.append(f"{feed_url}: unparseable feed: {exc}"[:200])
                 continue

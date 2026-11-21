@@ -29,7 +29,7 @@ def test_file_is_private_and_wal(tmp_path):
     mode = sqlite3.connect(cache.path).execute("PRAGMA journal_mode").fetchone()[0]
     assert mode == "wal"
     tables = {r[0] for r in sqlite3.connect(cache.path).execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert tables == {"documents", "urls", "robots"}
+    assert tables == {"documents", "urls", "robots", "backoff", "meta"}
 
 
 def test_put_lookup_body_content_addressed(tmp_path):
@@ -84,3 +84,47 @@ def test_forget_url_and_domain(tmp_path):
     assert cache.forget_domain("") == 0
     raw = (tmp_path / "c.sqlite").read_bytes()
     assert b"one" not in raw.replace(b"none", b"")  # secure_delete + checkpoint: forgotten body not left behind
+
+
+def test_maybe_prune_runs_at_most_once_per_interval(tmp_path):
+    cache = PublicCache(tmp_path / "c.sqlite")
+    limits = {"max_bytes": 10_000, "max_age_seconds": 600}
+    cache.put(result("http://a.example/old", b"o" * 100, at=0.0))
+    first = cache.maybe_prune(10_000.0, **limits)
+    assert first["removed_urls"] == 1 and cache.lookup("http://a.example/old") is None
+    cache.put(result("http://a.example/old2", b"p" * 100, at=0.0))
+    assert cache.maybe_prune(13_599.0, **limits) is None             # inside `every` (3600 s): nothing runs
+    assert cache.lookup("http://a.example/old2") is not None
+    again = PublicCache(tmp_path / "c.sqlite")                       # the last prune time lives in the file
+    assert again.maybe_prune(13_599.0, **limits) is None
+    assert again.maybe_prune(13_600.0, **limits)["removed_urls"] == 1
+    assert again.maybe_prune(5_000.0, **limits) is not None          # a clock that went backwards still prunes
+    assert again.maybe_prune(5_001.0, every=0, **limits) is not None
+
+
+def test_backoff_rows_keep_the_longest_and_expire(tmp_path):
+    cache = PublicCache(tmp_path / "c.sqlite")
+    assert cache.backoff("busy.example") is None
+    cache.put_backoff("Busy.example", 200.0)
+    cache.put_backoff("busy.example", 150.0)                         # never shortened
+    assert cache.backoff("busy.example") == 200.0
+    cache.put_backoff("sub.slow.example", 500.0)
+    cache.prune(300.0, max_bytes=10**9, max_age_seconds=10**9)
+    assert cache.backoff("busy.example") is None and cache.backoff("sub.slow.example") == 500.0
+    cache.forget_domain("slow.example")
+    assert cache.backoff("sub.slow.example") is None
+
+
+def test_forget_deletes_only_orphaned_bodies(tmp_path):
+    cache = PublicCache(tmp_path / "c.sqlite")
+    shared = cache.put(result("http://a.example/1", b"shared body"))
+    cache.put(result("http://b.example/2", b"shared body"))
+    moved = cache.put(result("http://c.example/old", b"moved body", final="http://c.example/new"))
+    assert cache.forget_url("http://a.example/1") == 1
+    assert cache.body(shared) == b"shared body"                      # b.example still references it
+    cache.forget_domain("b.example")
+    assert cache.body(shared) is None
+    cache.forget_url("http://c.example/old")
+    assert cache.body(moved) == b"moved body"                        # the final URL's row still references it
+    cache.forget_url("http://c.example/new")
+    assert cache.body(moved) is None and cache.stats()["documents"] == 0

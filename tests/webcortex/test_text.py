@@ -61,6 +61,31 @@ def test_sentences_hard_breaks_on_headings_lists_and_blank_lines():
                                  "This line is soft wrapped across lines.", "Last one."]
 
 
+def test_hard_newlines_never_glue_a_heading_to_the_next_block():
+    # A heading of more than 10 words without punctuation used to be joined with the next line (soft wrap).
+    text = ("Hands on with the brand new Zephyr compiler from the embedded project team\n"
+            "The Zephyr compiler version 4.2.0 was released on 17 November 2026.")
+    assert T.sentences(text, hard_newlines=True) == [
+        "Hands on with the brand new Zephyr compiler from the embedded project team",
+        "The Zephyr compiler version 4.2.0 was released on 17 November 2026."]
+    assert len(T.sentences(text)) == 1                       # soft mode (PDF/plain text) still joins wrapped lines
+    assert T.sentences("one line\n\nother line", hard_newlines=True) == ["one line", "other line"]
+
+
+@pytest.mark.parametrize("line, title, heading", [
+    ("Hands on with the Zephyr compiler", "", True),
+    ("Hands on with the Zephyr compiler", "Hands on with the Zephyr compiler", True),
+    ("Zephyr compiler 4.2 released", "Zephyr compiler 4.2 released", True),          # equal to the page title
+    ("Kayaking The Whole Varnel River From Source To Sea In Three Long Weeks", "", True),   # Title Case
+    ("The Zephyr compiler version 4.2.0 was released on 17 November 2026.", "", False),
+    ("Nimbus-OS 5 ships with Linux kernel 6.14 and the Wayland session by default", "", False),
+    ("Developers report that the compiler now supports more targets", "", False),
+    ("", "", False),
+])
+def test_heading_like(line, title, heading):
+    assert T.heading_like(line, title) is heading
+
+
 def test_sentence_spans_point_into_the_original_text():
     text = "  First one here.  Second one there!\nThird?  "
     spans = T.sentence_spans(text)
@@ -139,7 +164,11 @@ def test_value_kind_classification():
     assert T.value_kind("USD 30")[:2] == ("money", "money:USD")
     assert T.value_kind("42%") == ("percent", "percent", 42.0)
     assert T.value_kind("24 mice")[:2] == ("quantity", "quantity:mice")
-    assert T.value_kind("3.5") == ("number", "number", 3.5)
+    assert T.value_kind("3.5") == ("number", "number:dec", 3.5)
+    assert T.value_kind("412") == ("number", "number:int", 412.0)
+    assert T.value_kind("412 km") == ("quantity", "quantity:length", 412000.0)
+    assert T.value_kind("412 kilometres") == T.value_kind("412 km")          # any spelling of the unit
+    assert T.value_kind("9800 km²")[:2] == ("quantity", "quantity:area")
 
 
 @pytest.mark.parametrize("a, b, conflict", [
@@ -157,6 +186,63 @@ def test_value_kind_classification():
 ])
 def test_values_conflict(a, b, conflict):
     assert T.values_conflict(a, b) == conflict
+
+
+# Benchmark A02/F02 shape (F1): one page writes the unit out, another abbreviates it.
+VARNEL_412 = "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres."
+VARNEL_520 = "the Varnel River is 520 km long"
+
+
+def test_unit_spellings_normalise_so_the_same_quantity_compares():
+    assert T.values(VARNEL_412) == ["412 km", "9800 km²"]
+    assert T.values(VARNEL_520) == ["520 km"]
+    assert T.values("It is 412 kilometers or 412 kilometre long.") == ["412 km"]
+    assert T.values("A discharge of 96 cubic metres per second, 5 seconds, 16 gigabytes.") == \
+        ["96 m³/s", "5 s", "16 gb"]
+    assert T.values_conflict(T.values(VARNEL_412), T.values(VARNEL_520)) == "different values: 412 km vs 520 km"
+    assert T.values_conflict(T.values("With a length of 412 km, the Varnel is long."), T.values(VARNEL_412)) is None
+    assert T.values_conflict(["1.2 km"], ["1200 m"]) is None                  # converted within one dimension
+    assert T.values_conflict(["9800 km²"], ["520 km"]) is None                # area is not length
+
+
+@pytest.mark.parametrize("a, b, conflict", [
+    (["412", "9800"], ["520 km"], "different values: 412 vs 520 km"),    # the only plain number of that magnitude
+    (["412"], ["412 km"], None),                                         # same number, unit left implicit
+    (["24", "9800"], ["520 km"], None),                                  # no plain number of that magnitude
+    (["412", "450"], ["520 km"], None),                                  # two candidates: ambiguous
+    (["412"], ["520 km", "980 km²"], None),                              # two quantities of that magnitude
+    (["412 km"], ["520"], "different values: 412 km vs 520"),            # symmetric
+])
+def test_plain_number_compares_with_a_quantity_by_magnitude(a, b, conflict):
+    assert T.values_conflict(a, b) == conflict
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Estimates range between 400 and 520 km.", ["400 km", "520 km"]),
+    ("Estimates range 400–520 km.", ["400 km", "520 km"]),
+    ("A dose from 5 to 10 mg.", ["5 mg", "10 mg"]),
+    ("It took 3 or 4 days, up 5 to 10%.", ["3 days", "4 days", "5%", "10%"]),
+    ("Nimbus-OS 5 and 512 MB of memory.", ["5", "512 mb"]),             # "and" joins only after "between"
+])
+def test_a_coordinated_plain_number_takes_the_following_unit(text, expected):
+    assert T.values(text) == expected
+
+
+# Benchmark C4/F07 shape (F2): "Nimbus-OS 5" is shared, the kernel versions differ.
+NIMBUS_614 = "Nimbus-OS 5 ships with Linux kernel 6.14 and the Wayland session by default."
+NIMBUS_612 = "Nimbus-OS 5 ships with Linux kernel 6.12, according to the beta images we tested."
+
+
+def test_a_shared_incidental_number_does_not_mask_a_conflict():
+    assert T.values(NIMBUS_614) == ["5", "6.14"] and T.values(NIMBUS_612) == ["5", "6.12"]
+    assert T.values_conflict(T.values(NIMBUS_614), T.values(NIMBUS_612)) == "different values: 6.14 vs 6.12"
+    assert T.values_conflict(["5", "6.14"], ["5", "6.14"]) is None
+    assert T.values_conflict(["5", "v6.14"], ["5", "v6.12"]) == "different versions: v6.14 vs v6.12"
+    assert T.values_conflict(["4"], ["4.5"]) == "different values: 4 vs 4.5"     # no shared kind: compared
+    assert T.values_conflict(["42.1%"], ["42.3%"]) == "different values: 42.1% vs 42.3%"   # same precision
+    # the time-series rule still holds: different years and different values are a series
+    assert T.values_conflict(["5", "6.14", "2025"], ["5", "6.12", "2026"]) is None
+    assert T.values_conflict(["5", "6.14", "2026"], ["5", "6.12", "2026"]) == "different values: 6.14 vs 6.12"
 
 
 # ---- normal forms ------------------------------------------------------------------------------------------

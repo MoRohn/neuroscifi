@@ -145,6 +145,35 @@ def test_density_heuristic_without_article():
     assert doc.text.count("\n") == 2
 
 
+def test_text_has_one_line_per_block_and_no_source_line_breaks():
+    # R13: a line break in an HTML document's text is always a block boundary (claims split there).
+    doc = html_doc("<html><body><article><h2>Zephyr 4.2 is out</h2><p>The Zephyr compiler version\n   4.2.0 was "
+                   "released on\n17 November 2026.</p><ul><li>first item</li><li>second item</li></ul>"
+                   "<table><tr><td>cell one</td><td>cell two</td></tr></table><blockquote>a quote</blockquote>"
+                   "<div>line one<br>line two</div></article></body></html>")
+    assert doc.text.split("\n") == ["Zephyr 4.2 is out",
+                                    "The Zephyr compiler version 4.2.0 was released on 17 November 2026.",
+                                    "first item", "second item", "cell one", "cell two", "a quote", "line one",
+                                    "line two"]
+    assert "truncated_extraction" not in doc.flags
+
+
+def test_pathological_page_extraction_is_bounded():
+    # R11: a 4.8 MB page of 400,000 paragraphs took 6.7 s (markdownify over every element).
+    import time
+    body = ("<html><head><title>Big</title></head><body><article>" + "<p>ab cd</p>" * 400_000
+            + "</article></body></html>").encode()
+    assert len(body) > 4_500_000
+    start = time.perf_counter()
+    doc = html_doc(body)
+    assert time.perf_counter() - start < 1.5
+    assert doc.flags["truncated_extraction"] is True and doc.title == "Big"
+    assert 0 < len(doc.text) <= ex.MAX_TEXT and len(doc.markdown) <= ex.MAX_MARKDOWN
+    assert doc.text.count("\n") < ex.MAX_ELEMENTS
+    long_text = html_doc(f"<html><body><p>{'word ' * 120_000}</p></body></html>")
+    assert len(long_text.text) == ex.MAX_TEXT and long_text.flags["truncated_extraction"] is True
+
+
 def test_charset_from_meta():
     body = '<html><head><meta charset="iso-8859-1"><title>Caf\xe9</title></head><body></body></html>'
     assert html_doc(body.encode("latin-1")).title == "Café"

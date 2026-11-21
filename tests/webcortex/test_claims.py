@@ -75,7 +75,18 @@ def test_extract_claims_realistic_article_kinds_polarity_dates():
     for c in claims:
         assert c.source_url == d.canonical_url and c.domain == "news.example"
         assert c.published_at == d.published_at and c.flags["source_type"] == "secondary"
-        assert c.id == hashlib.sha256((d.canonical_url + "\n" + T.normalise(c.text)).encode()).hexdigest()[:24]
+        assert c.id == hashlib.sha256((d.canonical_url + "\n" + T.collapse(c.text).lower()).encode()).hexdigest()[:24]
+
+
+def test_claim_ids_keep_numbers_so_value_variants_on_one_page_both_survive():
+    # R9: ids hashed the normalised text, which masks numbers, so the second sentence was dropped as a duplicate.
+    text = ("The latest stable version of NumPy was 2.3.4 according to the docs.\n"
+            "The latest stable version of NumPy is 2.4.0 according to the docs.")
+    claims = C.extract_claims(doc("https://docs.example/numpy", text), "latest stable numpy version")
+    assert sorted(c.values[0] for c in claims) == ["v2.3.4", "v2.4.0"]
+    assert len({c.id for c in claims}) == 2 and len({c.key for c in claims}) == 1      # key still masks values
+    url = "https://docs.example/numpy"
+    assert C._claim_id(url, "NumPy  IS 2.4.0.") == C._claim_id(url, "numpy is 2.4.0.")   # case and whitespace
 
 
 def test_extract_claims_respects_max_and_length_bounds():
@@ -147,6 +158,63 @@ def test_metadata_claims_for_structured_records():
     assert any(t.startswith('arXiv record: "Replay in hippocampal circuits" (v2), dated 2026-11-01, a preprint')
                for t in texts)
     assert "We recorded 120 hippocampal neurons during sleep." in texts
+
+
+def test_pypi_and_npm_records_as_the_providers_store_them_produce_templates():
+    # R4: providers/structured.py stores the version as "latest" (and released_at as epoch seconds); the template
+    # read only "version"/"latest_version", so the claim came from the snippet and was reported as a quote.
+    released = ts(2026, 11, 3, 9, 30)
+    pypi = doc("https://pypi.org/project/numpy/", "numpy 2.3.5 (PyPI)\nLatest release 2.3.5 uploaded 2026-11-03; "
+               "requires Python >=3.11. Fundamental package for array computing in Python.", kind="api", mode="api",
+               published=released, title="numpy 2.3.5 (PyPI)",
+               metadata={"provider": "pypi", "package": "numpy", "ecosystem": "PyPI", "latest": "2.3.5",
+                         "released_at": released, "yanked": False, "requires_python": ">=3.11",
+                         "homepage": "https://numpy.org", "versions_recent": [{"version": "2.3.5"}],
+                         "summary": "Fundamental package for array computing in Python."})
+    npm = doc("https://www.npmjs.com/package/react", "react 19.2.0 (npm)\nLatest release 19.2.0 published "
+              "2026-10-01. React is a JavaScript library for building user interfaces.", kind="api", mode="api",
+              published=ts(2026, 10, 1), title="react 19.2.0 (npm)",
+              metadata={"provider": "npm", "package": "react", "ecosystem": "npm", "latest": "19.2.0",
+                        "released_at": ts(2026, 10, 1), "dist_tags": {"latest": "19.2.0"}})
+    [p] = [c for c in C.extract_claims(pypi, "latest numpy version") if c.kind == "metadata"]
+    assert p.text == "PyPI reports numpy latest version 2.3.5 released 2026-11-03."
+    assert p.flags["record"] == "package" and p.flags["observed_at"] == NOW
+    [n] = [c for c in C.extract_claims(npm, "latest react version") if c.kind == "metadata"]
+    assert n.text == "npm reports react latest version 19.2.0 released 2026-10-01."
+
+
+def test_only_registry_records_are_observed_at_retrieval():
+    # F7: a live encyclopedia record is dated by its last edit, not by when it was fetched.
+    wiki = doc("https://en.wikipedia.org/wiki/Varnel_River", "Varnel River\nThe Varnel River is a river in the "
+               "Ostra region with a length of 412 km.", kind="api", mode="api", published=ts(2025, 4, 1),
+               title="Varnel River", metadata={"provider": "wikipedia", "pageid": 1, "last_edited": "2025-04-01"})
+    [w] = C.extract_claims(wiki, "How long is the Varnel River?")
+    assert "observed_at" not in w.flags and not C.registry_record(wiki)
+    pypi = doc("https://pypi.org/project/numpy/", "", kind="api", mode="api",
+               metadata={"provider": "pypi", "package": "numpy", "latest": "2.3.5"})
+    assert C.registry_record(pypi) and C.extract_claims(pypi, "numpy")[0].flags["observed_at"] == NOW
+
+
+def test_headings_and_the_page_title_are_not_claims():
+    # R13, the console scenario: the h1 "Hands on with the Zephyr compiler" was an answer item, and a long
+    # heading was glued to the next paragraph.
+    from neuroscifi.webcortex.extract import extract_html
+    q = "What is the latest version of the Zephyr compiler?"
+    page = ("<html><head><title>Hands on with the Zephyr compiler</title></head><body><article>"
+            "<h1>Hands on with the Zephyr compiler</h1>"
+            "<p>We tested the Zephyr compiler version 4.2.0 released on 17 November 2026 on three boards.</p>"
+            "<p>Build times dropped by 30 percent in our tests.</p></article></body></html>")
+    d = extract_html(page.encode(), "http://blog-three.example/zephyr-review", retrieved_at=NOW, retrieval_mode="live")
+    texts = [c.text for c in C.extract_claims(d, q)]
+    assert "Hands on with the Zephyr compiler" not in texts
+    assert "We tested the Zephyr compiler version 4.2.0 released on 17 November 2026 on three boards." in texts
+    long_heading = "Hands On With The Brand New Zephyr Compiler From The Embedded Project Team"      # > 10 words
+    glued = page.replace("<h1>Hands on with the Zephyr compiler</h1>", f"<h2>{long_heading}</h2>")
+    d = extract_html(glued.encode(), "http://blog-three.example/zephyr-review", retrieved_at=NOW,
+                     retrieval_mode="live")
+    texts = [c.text for c in C.extract_claims(d, q)]
+    assert not any(t.startswith("Hands on") for t in texts)
+    assert "We tested the Zephyr compiler version 4.2.0 released on 17 November 2026 on three boards." in texts
 
 
 def test_metadata_with_injection_is_dropped():
@@ -291,6 +359,41 @@ def test_stale_and_undated_sources_lower_confidence():
     assert C.evidence_weight(mk(AGREE[0], published=None)) == pytest.approx(0.8 * 0.75)
     assert C.evidence_weight(mk(AGREE[0], published=NOW - 30 * D), now=NOW, freshness_class="release") == \
         pytest.approx(0.8 * 0.5)
+
+
+def test_adversarial_sources_are_shown_but_carry_no_weight():
+    # R12: claims from a document with injection findings counted as corroborating groups.
+    good = [doc(f"https://d{i}.example/n", AGREE[i]) for i in range(2)]
+    evil = [doc(f"https://evil-{i}.example/n", AGREE[i + 2],
+                flags={"injection": [{"pattern": "ignore_instructions", "excerpt": "x", "offset": 0}]})
+            for i in range(2)]
+    contra = doc("https://evil-9.example/n", "The latest stable version of NumPy is 2.3 according to the docs.",
+                 flags={"injection": [{"pattern": "act_as", "excerpt": "x", "offset": 0}]})
+    q = "latest stable numpy version"
+    claims = [c for d in good + evil + [contra] for c in C.extract_claims(d, q)]
+    bad = [c for c in claims if c.domain.startswith("evil")]
+    assert len(bad) == 3 and all(c.flags["adversarial_source"] is True and C.is_adversarial(c) for c in bad)
+    assert C.evidence_weight(bad[0]) == 0.0
+    [k] = C.cluster(claims)
+    k = C.score(k, now=NOW, freshness_class="stable")
+    [base] = C.cluster([c for c in claims if not C.is_adversarial(c)])
+    base = C.score(base, now=NOW, freshness_class="stable")
+    assert len(k.claims) == 5                                       # shown
+    assert k.independent_sources == 2 and k.confidence == base.confidence == pytest.approx(2.6 / 3.6)
+    assert k.status == "corroborated" and k.contradicting == []     # the adversarial 2.3 does not contest
+    assert not set(k.supporting) & {c.id for c in bad}
+    [alone] = C.cluster(bad[:1])
+    assert alone.status == "insufficient" and alone.independent_sources == 0
+
+
+def test_score_threads_ttl_overrides():
+    # R7: WebConfig.freshness_ttl must reach the staleness factor.
+    claims = [mk(t, domain=f"d{i}.example", published=NOW - 3 * D) for i, t in enumerate(AGREE[:2])]
+    [k] = C.cluster(claims)
+    default = C.score(k, now=NOW, freshness_class="release")                       # 7-day TTL: fresh
+    short = C.score(k, now=NOW, freshness_class="release", ttl_overrides={"release": D})   # 1 day: stale
+    assert default.confidence == pytest.approx(2.6 / 3.6)
+    assert short.confidence == pytest.approx(1.8 / 2.8) and short.confidence < default.confidence
 
 
 def test_primary_records_weigh_slightly_more():

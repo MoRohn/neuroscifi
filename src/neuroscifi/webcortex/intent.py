@@ -5,8 +5,14 @@ web decision, `why` for mode / freshness / kinds / window). Cue tables are Engli
 kept verbatim and tagged with its language — nothing is translated, because there is no model on the host.
 
     assess(question, now=, known=)  -> assessment dict (ARCHITECTURE §4.2)
-    plan(question, assessment, now=) -> QueryPlan   decomposition, expansion, temporal/site/kind routing, ≤ 8 queries
-    refine(plan, outcome, assessment, now=) -> QueryPlan | None   one broader round when results are thin
+    plan(question, assessment, now=, local_terms=) -> QueryPlan   decomposition, expansion, temporal/site/kind
+                                                                   routing, ≤ 8 queries
+    refine(plan, outcome, assessment, now=, local_terms=) -> QueryPlan | None   one broader round when results are thin
+
+Local context: references to the individual's own system — its name (SELF_NAMES), "our/my <thing>", "this
+individual", "the libraries we use", and the caller's `local_terms` (owner-listed private terms) — are answered
+from local documents and state, never sent to a search engine. strip_local removes them (with the noun phrase a
+possessive reference owns) before any query is built, and the plan's notes say so.
 """
 from __future__ import annotations
 
@@ -99,6 +105,11 @@ disagrees contradict contradicts conflicting sources source two compare comparin
 differences better best evidence knowledge related regarding affect affects affecting use uses used using we our
 things anything something stuff mine changed changes since diff whats define definition meaning
 """.split())
+SELF_NAMES = ("NeuroSciFi", "Neuro SciFi", "Neuro-SciFi")
+_SELF_PHRASES = (r"our", r"my", r"(?:this|the) individual", r"(?:this|the) instance", r"this system")
+_WE_USE = re.compile(r"(?<!\w)(?:the\s+)?(?:[A-Za-z][\w-]*\s+){1,2}(?:that\s+|which\s+)?(?:we|i)\s+(?:use|run|"
+                     r"depend on|rely on|maintain|built|build|ship|deploy)(?!\w)", re.I)
+MAX_OWNED_WORDS = 4
 _GENERIC_ACRONYMS = frozenset("I AI API APIS CVE URL HTML JSON HTTP HTTPS PDF SDK CLI GPU CPU OS ML LLM FAQ OK".split())
 _HYPHEN_WORDS = frozenset("""open-source peer-reviewed meta-analysis meta-analyses up-to-date state-of-the-art real-time
 long-term short-term well-known so-called large-scale small-scale high-level low-level end-to-end built-in third-party
@@ -110,6 +121,34 @@ tell give summarize summarise investigate determine please keep track notify wat
 _CLAUSE_VERBS = frozenset("""determine check compare find explain list research investigate monitor update verify
 summarize summarise show tell identify evaluate assess analyze analyse see look decide estimate describe confirm
 notify track is are does do did has have was were can will should which what how why when who where""".split())
+
+
+def strip_local(text: str, local_terms=()) -> tuple[str, int]:
+    """(text without references to the individual's own system, how many were removed). A possessive reference
+    ("NeuroSciFi's learning architecture", "our system's learning rule", "my notes") is removed with the noun
+    phrase it owns (up to MAX_OWNED_WORDS non-function words); a bare name is removed alone."""
+    text = str(text or "")
+    text, count = _WE_USE.subn(" ", text)
+    names = sorted({t.strip() for t in (*SELF_NAMES, *(local_terms or ())) if isinstance(t, str) and t.strip()},
+                   key=len, reverse=True)
+    alternatives = [re.escape(n) for n in names] + list(_SELF_PHRASES)
+    pattern = re.compile(r"(?<![\w-])(?:" + "|".join(alternatives) + r")(?:'s|’s|s')?(?![\w-])", re.I)
+    out, pos = [], 0
+    for m in pattern.finditer(text):
+        if m.start() < pos:
+            continue
+        out.append(text[pos:m.start()])
+        end, token = m.end(), m.group(0).lower()
+        if token in ("our", "my") or token.endswith(("'s", "’s", "s'")):
+            for _ in range(MAX_OWNED_WORDS):
+                word = re.match(r"\s+(?:own\s+)?([^\W_][\w'’-]*)", text[end:])
+                if not word or word.group(1).lower() in STOPWORDS or word.group(1).lower() in META:
+                    break
+                end += word.end()
+        pos = end
+        count += 1
+    out.append(text[pos:])
+    return " ".join("".join(out).split()), count
 
 
 def _cap(text: str, n: int = 200) -> str:
@@ -273,6 +312,22 @@ def _sites(question: str, urls: list[str]) -> list[str]:
     return out[:3]
 
 
+MEMORY_COVERAGE = 0.6   # share of the question's topical terms a knowledge item must state to answer it alone
+
+
+def _stems(text: str) -> set:
+    return {w[:5] for w in _words(text) if w not in STOPWORDS and w not in META}
+
+
+def covers(item: dict, question: str) -> bool:
+    """True when the item's statement states at least MEMORY_COVERAGE of the question's topical terms (5-letter
+    stems): sharing one name ("Orbix") is not an answer to another property of it (encryption vs port)."""
+    terms = _stems(keywords(question, limit=12))
+    if not terms:
+        return False
+    return len(terms & _stems(str(item.get("statement", "")))) / len(terms) >= MEMORY_COVERAGE
+
+
 def _relevant(item: dict, qwords: set) -> bool:
     words = {w for w in _words(item.get("statement", "")) if w not in STOPWORDS}
     return bool(words & qwords) if qwords else True
@@ -360,7 +415,7 @@ def assess(question: str, *, now: float, known=()) -> dict:
         else:
             freshness = "volatile"
         why["freshness_class"] = f"recency cue ({(window_label or recency[0][0])!r})"
-    elif mode in ("continuous", "change_detection", "fact_verification"):
+    elif mode in ("continuous", "change_detection"):
         freshness, why["freshness_class"] = "volatile", f"{mode} implies the answer may change"
     else:
         freshness, why["freshness_class"] = "stable", "no recency, release or scientific cue"
@@ -381,7 +436,7 @@ def assess(question: str, *, now: float, known=()) -> dict:
     qwords = {w for w in _words(question) if w not in STOPWORDS}
     relevant = [k for k in known or () if isinstance(k, dict) and _relevant(k, qwords)]
     usable = [k for k in relevant if k.get("status", "accepted") in ("accepted", "provisional")]
-    fresh = [k for k in usable if not k.get("stale") and not k.get("contested")]
+    fresh = [k for k in usable if not k.get("stale") and not k.get("contested") and covers(k, question)]
     stale = [k for k in usable if k.get("stale")]
     contested = [k for k in usable if k.get("contested")]
     statements = " ".join(str(k.get("statement", "")).lower() for k in usable)
@@ -418,13 +473,15 @@ def assess(question: str, *, now: float, known=()) -> dict:
     else:
         needs_web, reasons = True, hard + soft
         if not fresh:
-            reasons.append("no fresh, uncontested knowledge answers this")
+            reasons.append("no fresh, uncontested knowledge answers this" +
+                           (f" ({len(usable)} related item(s) do not cover the question's terms)" if usable else ""))
     if urls:
         notes.append(f"{len(urls)} URL(s) named: fetched directly, not searched")
     if technical and not packages:
         notes.append("no packages listed: set assessment['packages'] = [{ecosystem, name, version}] for registry "
                      "and advisory lookups")
     return {"needs_web": needs_web, "reasons": reasons, "mode": mode, "freshness_class": freshness,
+            "memory_items": [k["id"] for k in fresh if "id" in k] if not needs_web else [],
             "recency_window": window, "kinds": kinds, "entities": entities, "urls": urls,
             "comparison": comparison, "claim": claim, "packages": packages, "sites": sites, "language": language,
             "notes": notes, "why": why}
@@ -463,7 +520,7 @@ def decompose(question: str) -> list[str]:
     return [c.strip(" .!") for c in clauses if c.strip(" .!")]
 
 
-def plan(question: str, assessment: dict, *, now: float) -> QueryPlan:
+def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> QueryPlan:
     question = " ".join(str(question or "").split())
     mode = assessment.get("mode", "quick_lookup")
     kinds = list(assessment.get("kinds") or ["web"])
@@ -498,11 +555,24 @@ def plan(question: str, assessment: dict, *, now: float) -> QueryPlan:
         else:
             add(0, f"osv:{eco}:{name}{at}", "technical", f"advisories for {name}{at}", when=None)
 
+    local = 0
+
+    def strip(text, *, counted=False):
+        nonlocal local
+        out, n = strip_local(text, local_terms)
+        local += n if counted else 0
+        return out
+
     comparison = assessment.get("comparison")
+    if comparison:
+        sides = [strip(side) for side in comparison]
+        comparison = sides if all(keywords(side) for side in sides) else None
+        if comparison is None:
+            notes.append("comparison with the individual's own system: only the outside side is searched")
     searchable = _URL.sub(" ", question)
     for site in assessment.get("sites") or []:   # a named domain becomes a site: restriction, not a keyword
         searchable = re.sub(rf"(?i)\b(?:site:)?(?:www\.)?{re.escape(site)}\b", " ", searchable)
-    searchable = " ".join(searchable.split())
+    searchable = strip(" ".join(searchable.split()), counted=True)   # the claim and sides are parts of it
     clauses = [] if comparison else decompose(searchable)
     topics: list[str] = []
     if comparison:
@@ -513,7 +583,7 @@ def plan(question: str, assessment: dict, *, now: float) -> QueryPlan:
         add(1, f"{a} {context}", general, f"comparison side A: {a}")
         add(1, f"{b} {context}", general, f"comparison side B: {b}")
         topics.append(f"{a} {b}")
-    claim = assessment.get("claim")
+    claim = strip(assessment.get("claim") or "")
     if claim:
         kw = keywords(claim) or claim
         add(1, kw, "web", "claim under verification")
@@ -534,7 +604,7 @@ def plan(question: str, assessment: dict, *, now: float) -> QueryPlan:
         if "encyclopedia" in kinds:
             add(1, kw, "encyclopedia", f"{label}: encyclopedia")
     if not topics and not assessment.get("packages"):
-        entities = assessment.get("entities") or []
+        entities = _outside(assessment.get("entities") or [], local_terms)
         if entities:
             topics.append(" ".join(entities[:3]))
             add(1, topics[0], general, "entities only")
@@ -563,12 +633,20 @@ def plan(question: str, assessment: dict, *, now: float) -> QueryPlan:
     if len(queries) > cap:
         notes.append(f"{len(queries) - cap} planned queries dropped by the {cap}-query cap ({mode})")
         queries = queries[:cap]
+    if local:
+        notes.append(f"local context: {local} reference(s) to the individual's own system were not searched; "
+                     "they are answered from local documents and state")
     return QueryPlan(queries=tuple(queries), subquestions=subquestions,
                      max_sources=MODE_BUDGETS.get(mode, MODE_BUDGETS["quick_lookup"]).max_pages,
                      notes=tuple(notes))
 
 
-def refine(plan: QueryPlan, outcome, assessment: dict, *, now: float) -> QueryPlan | None:
+def _outside(entities, local_terms) -> list[str]:
+    """Entities that do not name the individual's own system."""
+    return [e for e in entities if strip_local(e, local_terms)[1] == 0]
+
+
+def refine(plan: QueryPlan, outcome, assessment: dict, *, now: float, local_terms=()) -> QueryPlan | None:
     """One broader round when discovery was thin (< 3 results) or every provider failed; else None.
     Broader = no `since`, no `site`, text shortened to the key entities (or the first three keywords)."""
     if any(str(n).startswith("refinement") for n in plan.notes):
@@ -579,7 +657,7 @@ def refine(plan: QueryPlan, outcome, assessment: dict, *, now: float) -> QueryPl
     if n >= 3 and not all_failed:
         return None
     reason = "every provider failed" if all_failed else f"only {n} result(s)"
-    entities = [e for e in assessment.get("entities") or [] if len(e) > 1][:3]
+    entities = [e for e in _outside(assessment.get("entities") or [], local_terms) if len(e) > 1][:3]
     kinds = []
     for q in plan.queries:
         if q.kind not in kinds and q.kind != "technical":
@@ -592,7 +670,7 @@ def refine(plan: QueryPlan, outcome, assessment: dict, *, now: float) -> QueryPl
     for q in plan.queries:
         if q.kind == "technical":
             continue
-        short = " ".join(keywords(q.text).split()[:3])
+        short = " ".join(keywords(strip_local(q.text, local_terms)[0]).split()[:3])
         if short and short.lower() not in (t.lower() for t in texts):
             texts.append(short)
     original = {(q.text.lower(), q.kind) for q in plan.queries if q.since is None and q.site is None}
@@ -611,4 +689,5 @@ def refine(plan: QueryPlan, outcome, assessment: dict, *, now: float) -> QueryPl
                      notes=(f"refinement: {reason}; dropped date and site limits, shortened to key terms",))
 
 
-__all__ = ["assess", "plan", "refine", "keywords", "decompose", "extract_entities", "detect_language"]
+__all__ = ["assess", "plan", "refine", "keywords", "decompose", "extract_entities", "detect_language", "strip_local",
+           "SELF_NAMES"]
