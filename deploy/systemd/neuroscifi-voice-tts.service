@@ -4,8 +4,9 @@
 # outside git (~/.config/neuroscifi/voice/api_key, 0600). Optional: voice is off unless the owner uses it, and text
 # keeps working without it. Not installed by deploy/install.sh. Install by hand:
 #   deploy/voice/run.sh build
-#   sudo install -m 0644 deploy/systemd/neuroscifi-voice-tts.service /etc/systemd/system/
-#   sudo systemctl edit neuroscifi-voice-tts.service   # set User= and NSF_REPO= for this host
+#   sed -e "s#@NSF_USER@#$USER#" -e "s#@NSF_REPO@#$PWD#" deploy/systemd/neuroscifi-voice-tts.service \
+#     | sudo install -m 0644 /dev/stdin /etc/systemd/system/neuroscifi-voice-tts.service
+#   (the template's @NSF_USER@ / @NSF_REPO@ placeholders fail safe: the unit does not start until they are set)
 #   sudo systemctl daemon-reload && sudo systemctl enable --now neuroscifi-voice-tts.service
 # Health: `deploy/voice/run.sh status`; a real round trip: `nsf voice health` (docs/voice/COGNITIVE_VOICE_BRIDGE.md).
 [Unit]
@@ -17,8 +18,8 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=rohn
-Environment=NSF_REPO=/home/rohn/neuroscifi
+User=@NSF_USER@
+Environment=NSF_REPO=@NSF_REPO@
 ExecStart=/usr/bin/env bash ${NSF_REPO}/deploy/voice/run.sh foreground tts
 ExecStop=/usr/bin/env bash ${NSF_REPO}/deploy/voice/run.sh stop tts
 TimeoutStartSec=5min

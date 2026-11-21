@@ -5,10 +5,12 @@ COPY constraints.txt /opt/nsf/constraints.txt
 # kokoro/misaki are installed without dependency resolution: resolving them re-resolves torch 2.14.0, whose wheel
 # metadata pins nvidia-nccl-cu13==2.30.7 and would downgrade the image's 2.31.2. Their non-torch dependencies are
 # installed explicitly (misaki[en] minus spacy-curated-transformers, which only transformer spaCy models need).
+# Every package is pinned; the spaCy model wheel (a GitHub release asset, not on PyPI) is pinned by sha256 so pip
+# refuses a replaced download. regex 2026.9.29 is the version the 0.7.0 image resolved.
 RUN pip install --no-cache-dir --no-deps "kokoro==0.9.4" "misaki==0.9.4" \
  && pip install --no-cache-dir -c /opt/nsf/constraints.txt "soundfile==0.13.1" "loguru==0.7.3" "addict==2.4.0" \
-      "num2words==0.5.14" "spacy==3.8.7" "phonemizer-fork==3.3.2" "espeakng-loader==0.2.4" regex \
-      "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" \
+      "num2words==0.5.14" "spacy==3.8.7" "phonemizer-fork==3.3.2" "espeakng-loader==0.2.4" "regex==2026.9.29" \
+      "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85" \
  && python3 -c "import kokoro, misaki.en, soundfile, spacy, torch; spacy.load('en_core_web_sm'); assert torch.__version__.startswith('2.14.0')" \
  && pip list 2>/dev/null | grep -E '^nvidia-nccl-cu13 +2\.31\.2$'
 COPY tts_server.py /opt/nsf/tts_server.py

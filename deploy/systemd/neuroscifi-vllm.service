@@ -1,8 +1,9 @@
 # NeuroSciFi local model server (ADR-036 draft; docs/architecture/COGNITIVE_INFERENCE.md). vLLM in Docker, bound to
 # 127.0.0.1:8811 only, pinned image digest, read-only model mount, generated API key outside git.
 # Installed (disabled) by `deploy/install.sh --llm --llm-user USER`, which sets User= and NSF_REPO=; or by hand:
-#   sudo install -m 0644 deploy/systemd/neuroscifi-vllm.service /etc/systemd/system/
-#   sudo systemctl edit neuroscifi-vllm.service   # set User= and NSF_REPO= for this host, see below
+#   sed -e "s#@NSF_USER@#$USER#" -e "s#@NSF_REPO@#$PWD#" deploy/systemd/neuroscifi-vllm.service \
+#     | sudo install -m 0644 /dev/stdin /etc/systemd/system/neuroscifi-vllm.service
+#   (the template's @NSF_USER@ / @NSF_REPO@ placeholders fail safe: the unit does not start until they are set)
 #   sudo systemctl daemon-reload && sudo systemctl enable --now neuroscifi-vllm.service
 # The user must be in the docker group; the key and weights live under that user's home (run.sh, vllm.env).
 # The research worker reads the key through `nsf llm config --key-file` (ProtectHome=yes there: copy the key to
@@ -14,8 +15,8 @@ Requires=docker.service
 
 [Service]
 Type=simple
-User=rohn
-Environment=NSF_REPO=/home/rohn/neuroscifi
+User=@NSF_USER@
+Environment=NSF_REPO=@NSF_REPO@
 ExecStart=/usr/bin/env bash ${NSF_REPO}/deploy/vllm/run.sh foreground
 ExecStop=/usr/bin/env bash ${NSF_REPO}/deploy/vllm/run.sh stop
 # Model load and CUDA graph capture take minutes on first start (measured: COGNITIVE_INFERENCE.md §4).
