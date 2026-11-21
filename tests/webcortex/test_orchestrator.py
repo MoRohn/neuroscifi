@@ -1064,6 +1064,53 @@ def test_wikipedia_hits_are_read_as_articles_never_as_snippets(individual, web):
     assert not any("She is an okapi" in c["text"] for c in state.claims(db, second["id"]))
 
 
+class WholeArticleProvider(WikiProvider):
+    """article() with the intro switch: the lead, or the whole article (lead + History)."""
+
+    def article(self, title, *, budget=None, usage=None, lang="en", intro=True):
+        self.articles.append((title, intro))
+        lead = "Python is a high-level, general-purpose programming language. Python 3.0, released in 2008, was a major " \
+               "revision of the language."
+        body = "\n\nHistory\nPython 0.9.0, the first release of Python, was published by Guido van Rossum in " \
+               "February 1991."
+        return {"title": title, "extract": lead + ("" if intro else body), "last_edited": "2026-11-01T00:00:00Z",
+                "url": f"https://{lang}.wikipedia.org/wiki/{title.replace(' ', '_')}"}
+
+
+def test_a_question_about_origins_reads_the_article_beyond_its_lead(individual, web):
+    """RC2 retest (T1-07): "When was Python first released?" read only the lead, which names Python 3.0 (2008);
+    the first release (February 1991) is in the History section. Other questions still read the lead."""
+    db, path = individual
+    hit = {"url": "https://en.wikipedia.org/wiki/Python_(programming_language)", "title": "Python (programming "
+           "language)", "kind": "encyclopedia", "snippet": "Python", "metadata": {"pageid": 1, "language": "en"}}
+    provider = WholeArticleProvider([hit])
+    task = orchestrator.submit(db, "When was Python first released?", T0, mode="quick_lookup")
+    run_with(db, path, web, task, [provider])
+    assert provider.articles == [("Python (programming language)", False)]
+    assert any("February 1991" in c["text"] for c in state.claims(db, task["id"]))
+    other = orchestrator.submit(db, "What is Python used for?", T0, mode="quick_lookup")
+    run_with(db, path, web, other, [provider])
+    assert provider.articles[-1] == ("Python (programming language)", True)
+
+
+def test_a_wikipedia_article_found_by_web_search_is_read_as_an_encyclopedia_hit(individual, web):
+    """RC2 retest (T1-07): SearXNG returned "Python (programming language) - Wikipedia" first, but the per-host cap
+    was spent on the encyclopedia's own hits ("Monty Python", "Zen of Python") ranked before web results, so the
+    article was never read. A web hit on a Wikipedia article is read like the encyclopedia's own hit."""
+    db, path = individual
+    found = ListProvider([{"url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+                           "title": "Python (programming language) - Wikipedia", "kind": "web",
+                           "snippet": "Python is a programming language"}], name="searxng")
+    wiki = WholeArticleProvider([{"url": f"https://en.wikipedia.org/wiki/{t.replace(' ', '_')}", "title": t,
+                                  "kind": "encyclopedia", "snippet": t, "metadata": {"pageid": n, "language": "en"}}
+                                 for n, t in enumerate(("Monty Python", "Zen of Python", "Reticulated python",
+                                                        "Python Software Foundation", "Colt Python"))])
+    task = orchestrator.submit(db, "When was Python first released?", T0, mode="quick_lookup")
+    run_with(db, path, web, task, [found, wiki])
+    assert ("Python (programming language)", False) in wiki.articles, wiki.articles
+    assert any("February 1991" in c["text"] for c in state.claims(db, task["id"]))
+
+
 def test_a_wikipedia_hit_marked_snippet_only_yields_cited_claims_from_its_article(individual, web):
     """RT-W-01: WikipediaProvider marks every search hit `snippet_only`; the article read for it is the document,
     not the snippet, so it must not inherit the flag: its sentences are claims and the report cites the article."""

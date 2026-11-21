@@ -194,8 +194,9 @@ class WikipediaProvider(_Api):
         return f"https://{lang}.wikipedia.org/wiki/{quote(title.replace(' ', '_'), safe='()_,:')}"
 
     def article(self, title: str, *, budget=None, usage=None, lang: str = "en",
-                max_chars: int = ARTICLE_MAX_CHARS) -> dict:
-        """The plain-text lead section of one article: {title, extract, last_edited, url} (one 'api' request,
+                max_chars: int = ARTICLE_MAX_CHARS, intro: bool = True) -> dict:
+        """The plain-text lead section of one article (with intro=False, the whole article from its lead on, for
+        facts the lead leaves to the History section): {title, extract, last_edited, url} (one 'api' request,
         redirects followed, text bounded to `max_chars`). ProviderError code 'not_found' when there is no such
         article, 'bad_response' for an unexpected answer; FetchError codes as for search."""
         title = " ".join(str(title or "").split())
@@ -203,7 +204,7 @@ class WikipediaProvider(_Api):
             raise ProviderError(self.name, f"invalid article title {title[:80]!r}", code="bad_request",
                                 retryable=False)
         lang = self._lang(lang)
-        params = {"action": "query", "prop": "extracts|revisions", "explaintext": 1, "exintro": 1,
+        params = {"action": "query", "prop": "extracts|revisions", "explaintext": 1, **({"exintro": 1} if intro else {}),
                   "rvprop": "timestamp", "redirects": 1, "titles": title, "format": "json", "formatversion": 2}
         data = self._json(f"{self.BASE.format(lang=lang)}/w/api.php?{urlencode(params)}", budget=budget,
                           usage=usage)

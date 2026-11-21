@@ -1423,7 +1423,8 @@ def _methodology(documents: list[Document], sources: _Sources) -> list[dict]:
 #           "Python 3.15 the latest stable release ...") and the sentence does not state a relation word about the
 #           entity outside that head.
 # Answer items and findings are ordered by tier, then by the share of relation words the claim contains, then
-# by value (confidence x relevance x freshness). Nothing is dropped: tier 2 claims follow every tier 0 one.
+# by value (confidence x relevance x freshness). Tier 2 claims follow every tier 0 one; a source ALL of whose claims
+# are tier 2 is set aside when another source has a tier 0 claim (off_subject_sources, T1-07).
 RELATION_WINDOW = 4        # words between a relation word and the entity it is stated about ("capital city of X")
 _HEAD_CUT = re.compile(r"[,;:(\[]|\s(?:in|of|for|on|at|from|with|by|to|about|near|under|over|after|before|during|"
                        r"since|until|into|than)\s", re.IGNORECASE)
@@ -1461,6 +1462,8 @@ def question_focus(question: str, assessment: dict | None) -> dict:
     names += [str(x) for x in assessment.get("comparison") or [] if x]
     entities = list(dict.fromkeys(t for t in (_claims.subject_tokens(n) for n in names) if t))
     named = frozenset().union(*entities) if entities else frozenset()
+    bare = [*intent.extract_entities(question), *[str(p.get("name")) for p in assessment.get("packages") or []
+                                                   if isinstance(p, dict) and p.get("name")]]
     words = intent.keywords(_FV_PREFIX.sub("", question), limit=12)
     how = {m.group(1).lower() for m in re.finditer(r"\bhow\s+([a-z]+)\b", question, re.IGNORECASE)}
     relation = []
@@ -1472,7 +1475,7 @@ def question_focus(question: str, assessment: dict | None) -> dict:
         slot = frozenset(T.stem(a) for a in alternatives) if alternatives else frozenset({stem})
         if slot not in relation:
             relation.append(slot)
-    return {"entities": entities, "relation": relation}
+    return {"entities": entities, "relation": relation, "names": list(dict.fromkeys(n for n in bare if n))}
 
 
 def _head(claim: Claim) -> tuple[frozenset, list[str]]:
@@ -1517,12 +1520,57 @@ def subject_tier(claim: Claim | None, focus: dict) -> int:
     head, rest = _head(claim)
     if not head:
         return 1
-    if any(e <= head or _claims.same_subject(e, head) for e in entities):
+    if any((e <= head and not _other_name(claim, head - e)) or _claims.same_subject(e, head) for e in entities):
         return 0
     words = frozenset().union(*focus["relation"]) if focus.get("relation") else frozenset()
     if any(_states_relation(rest, words, e) for e in entities):
         return 0                            # it states the question's relation about the entity
     return 2
+
+
+def _other_name(claim: Claim, extra: frozenset) -> bool:
+    """The head names the entity inside a longer proper name ("Monty Python" for Python, T1-07): one of its other
+    tokens is a capitalised word of the sentence's subject clause or of the page title. A possessive names the
+    owner, not another entity ("ESA's Hera probe")."""
+    if not extra:
+        return False
+    clause = _claims._subject_clause(_PARENS.sub(" ", claim.text or ""))
+    capitals = re.findall(r"(?<![\w'’-])[A-Z][\w-]*(?!['’]s\b)(?![\w'’-])", f"{clause} {claim.title or ''}")
+    return any(T.stem(w.lower()) in extra for w in capitals)
+
+
+def mentions_name(text: str, name: str) -> bool:
+    """`text` names `name` on its own: not inside a longer proper name ("Monty Python", "Python Software
+    Foundation", "Reticulated python": a capitalised word other than a function word right before or after it)."""
+    def proper(w):
+        return bool(w) and w.group(1)[:1].isupper() and w.group(1).lower() not in T.STOPWORDS
+
+    for m in re.finditer(rf"(?<![\w-]){re.escape(name)}(?:['’]s)?(?![\w-])", text or "", re.IGNORECASE):
+        before = re.search(r"([\w'’-]+) $", text[:m.start()])
+        after = re.match(r" ([\w'’-]+)", text[m.end():])
+        if not (proper(before) or proper(after)):
+            return True
+    return False
+
+
+def off_subject_sources(clusters, focus: dict) -> set:
+    """Source URLs that are about another entity (T1-07: Wikipedia "Monty Python" for "When was Python first
+    released?", a stable-diffusion image page for "Is numpy 2.5.5 stable?"): no claim of theirs is about the
+    question's entity (subject_tier 0) and neither their title nor any of their claims names it on its own
+    (mentions_name). Only when another source has a claim that is about it or names it, so an answer is never
+    emptied by a misread entity."""
+    names = focus.get("names") or []
+    if not names or not focus.get("entities"):
+        return set()
+    on: dict[str, bool] = {}
+    for c in clusters:
+        for x in c.claims:
+            hit = subject_tier(x, focus) == 0 or any(mentions_name(t, n) for n in names
+                                                     for t in (x.text or "", x.title or ""))
+            on[x.source_url] = on.get(x.source_url, False) or hit
+    if not any(on.values()):
+        return set()
+    return {url for url, hit in on.items() if not hit}
 
 
 def relation_coverage(claim: Claim | None, focus: dict) -> float:
@@ -1657,6 +1705,11 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
     if aside:                # RT-W-04: another ecosystem's package of the same name is never part of the answer
         clusters = [replace(c, claims=kept) for c in clusters
                     for kept in [[x for x in c.claims if x.source_url not in aside]] if kept]
+    focus = question_focus(question, assessment)
+    unrelated = off_subject_sources(clusters, focus)
+    if unrelated:            # T1-07: a page about another entity is a source read, never cited
+        clusters = [replace(c, claims=kept) for c in clusters
+                    for kept in [[x for x in c.claims if x.source_url not in unrelated]] if kept]
     origins = _claims.document_origins(documents)      # copies of one story are one source (ADR-035)
     scored = [_claims.score(c, now=now, freshness_class=cls, ttl_overrides=ttl_overrides, origins=origins)
               for c in clusters if c.claims]
@@ -1667,8 +1720,6 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         ok = temporal.window_ok(_claim_fresh_ts(rep), required, now) if rep else None
         factor = 1.0 if ok else (UNDATED_VALUE if ok is None else STALE_VALUE)
         return c.confidence * (rep.relevance if rep else 0.0) * factor
-
-    focus = question_focus(question, assessment)
 
     def order(t):            # UAT-W-24: on-subject first, then relation coverage, then value
         rep = _representative(t[0])

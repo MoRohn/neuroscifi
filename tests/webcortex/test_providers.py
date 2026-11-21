@@ -732,6 +732,17 @@ def test_wikipedia_hits_are_snippet_only_and_article_returns_the_lead():
     assert err.value.code == "bad_request"
 
 
+def test_an_article_can_be_read_beyond_its_lead():
+    """RC2 retest (T1-07): the Python article's lead names Python 3.0 (2008), not the first release (History)."""
+    art = ("https://en.wikipedia.org/w/api.php?action=query&prop=extracts%7Crevisions&explaintext=1"
+           "&rvprop=timestamp&redirects=1&titles=Python+%28programming+language%29&format=json&formatversion=2")
+    f = FakeFetcher({art: {"query": {"pages": [{"title": "Python (programming language)", "extract": "Python is a "
+                                                "language.\n\n== History ==\nPython 0.9.0 was released in 1991.",
+                                                "revisions": [{"timestamp": "2026-11-18T10:00:00Z"}]}]}}})
+    got = WikipediaProvider(f).article("Python (programming language)", intro=False)
+    assert "1991" in got["extract"] and "exintro" not in f.requests[-1]["url"]
+
+
 FEED_MIXED = """<?xml version="1.0"?><rss version="2.0"><channel><title>Mixed</title>
 <item><title>Injection molding plant opens</title><link>https://news.example/molding</link>
 <pubDate>Wed, 18 Nov 2026 10:00:00 GMT</pubDate><description>A new injection molding plant.</description></item>

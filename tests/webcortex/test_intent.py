@@ -583,7 +583,10 @@ def test_a_wh_question_without_a_checkable_statement_is_not_fact_verification():
 
 
 @pytest.mark.parametrize("question, topic, thing", [
-    ("When was Python first released?", "Python first released", "Python"),
+    # RC2 retest (T1-07): a bare "Python" / "Rust" found the snake, Monty Python, the film and iron oxide; a
+    # technical one-fact question asks the encyclopedia for the software sense
+    ("When was Python first released?", "Python first released", "Python software"),
+    ("When was Rust first released?", "Rust first released", "Rust software"),
     ("When was the Rust programming language first released?", "Rust programming language first released",
      "Rust programming language"),
     ("Who founded Wikipedia?", "founded Wikipedia", "Wikipedia"),

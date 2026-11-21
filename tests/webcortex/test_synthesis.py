@@ -938,9 +938,10 @@ def test_a_package_question_ranks_the_packages_own_record_and_statements_first()
     r = run(q, NUMPY_DOCS, assessment)
     assert r["answer"][1]["text"] == "PyPI reports numpy latest version 2.5.5 released 2026-11-15."
     for texts in ([a["text"] for a in r["answer"][1:]], [f["statement"] for f in r["findings"]]):
-        numpy_last = max(i for i, t in enumerate(texts) if "NumPy" in t or "numpy" in t)
-        other_first = min(i for i, t in enumerate(texts) if t.startswith(("Python", "CUDA")))
-        assert numpy_last < other_first, texts
+        assert any("NumPy" in t or "numpy" in t for t in texts), texts
+        # T1-07 (RC2 retest): the Python and CUDA pages say nothing about numpy; read, never cited (previously
+        # they were ranked after the numpy statements)
+        assert not any(t.startswith(("Python", "CUDA")) for t in texts), texts
     # without an entity in the question the order is the value order, as before
     assert S.subject_tier(C.extract_claims(NUMPY_DOCS[1], q)[0], S.question_focus("What changed?", {})) == 1
 
@@ -1046,3 +1047,30 @@ def test_the_neuron_count_retest_case_has_no_false_sides():
     report = run("How many neurons are in the human brain?", docs)
     pairs = [{c["a"]["text"][:40], c["b"]["text"][:40]} for c in report["contradictions"]]
     assert pairs == [], pairs
+
+
+def _cited_urls(report):
+    by_n = {s["n"]: s["url"] for s in report["sources"]}
+    return {by_n[n] for f in report["findings"] + report["answer"] for n in f.get("citations") or [] if n in by_n}
+
+
+def test_a_page_about_another_entity_that_contains_the_subjects_name_is_set_aside():
+    """T1-07 (RC2 retest r1 py_first): "When was Python first released?" cited Wikipedia "Monty Python" (a comedy
+    troupe) four times; "Is numpy 2.5.5 stable?" cited hub.docker.com ai/stable-diffusion."""
+    docs = [doc("https://en.wikipedia.org/wiki/Python_(programming_language)", "Python is a high-level, "
+                "general-purpose programming language. Python was first released in 1991 as Python 0.9.0.",
+                title="Python (programming language)", kind="api"),
+            doc("https://en.wikipedia.org/wiki/Monty_Python", "Monty Python, also known as the Pythons, were a British "
+                "comedy troupe formed in 1969. They followed their television work by making the films Monty Python "
+                "and the Holy Grail (1975) and Life of Brian (1979).", title="Monty Python", kind="api")]
+    report = run("When was Python first released?", docs)
+    assert not any("Monty" in u for u in _cited_urls(report)), report["findings"]
+    assert any("1991" in f["statement"] for f in report["findings"])
+    docs = [doc("https://numpy.org/doc/stable/release/2.5.5-notes.html", "NumPy 2.5.5 is a patch release that fixes "
+                "bugs discovered after the 2.5.4 release.", title="NumPy 2.5.5 Release Notes"),
+            doc("https://hub.docker.com/r/ai/stable-diffusion", "Stable Diffusion is a latent text-to-image diffusion "
+                "model capable of generating photo-realistic images given any text input.",
+                title="ai/stable-diffusion - Docker Image")]
+    report = run("Is numpy 2.5.5 stable?", docs, {"packages": [{"ecosystem": "PyPI", "name": "numpy", "inferred": True}]})
+    assert not any("stable-diffusion" in u for u in _cited_urls(report)), report["findings"]
+    assert report["findings"]

@@ -97,6 +97,24 @@ MAX_FOLLOW = 2
 MAX_CONTEXT_PACKAGES = 200
 MAX_PRESENTATION = 200
 CANDIDATE_FACTOR = 3          # reading ranks up to 3 x max_pages candidates; failed fetches do not use a page slot
+_WIKI_ARTICLE = re.compile(r"^https?://([a-z]{2,3})(?:\.m)?\.wikipedia\.org/wiki/([^?#]+)$")
+
+
+def _as_wikipedia(r: SearchResult) -> SearchResult:
+    """A Wikipedia article found by a web search engine, as the encyclopedia's own hit: read through the article
+    API (whole or lead, Run.wikipedia) and ranked with the encyclopedia hits, not behind them (RC2 retest T1-07:
+    SearXNG's "Python (programming language) - Wikipedia" was cut by the per-host cap behind "Monty Python")."""
+    from urllib.parse import unquote
+    m = _WIKI_ARTICLE.match(r.url or "")
+    if r.provider == "wikipedia" or not m or ":" in unquote(m.group(2)):
+        return r
+    return replace(r, provider="wikipedia", title=unquote(m.group(2)).replace("_", " "), kind="encyclopedia",
+                   metadata={"language": m.group(1), "snippet_only": True, "found_by": r.provider})
+
+
+# A question about how something began: its encyclopedia article is read beyond the lead (Run.wikipedia)
+_ORIGIN_QUESTION = re.compile(r"\b(?:first|originally|initially|earliest)\b|\b(?:founded|invented|created|originated|"
+                              r"conceived|history|origins?)\b", re.IGNORECASE)
 TIMELY_PER_HOST = 2           # news/time-sensitive questions: at most this many web candidates per host (T1-06);
                               # otherwise max(2, ceil(max_pages / 3)) (T1-07: 8 of 9 candidates on Hacker News)
 MAX_UNREAD_HEADLINES = 6      # dated search hits shown when nothing usable could be read (T1-06)
@@ -839,7 +857,7 @@ class _Run:
         max_pages documents succeed. A Wikipedia hit is not an API document: its search snippet is never read as
         the document; read() takes the article (wikipedia())."""
         from .extract import canonical_url
-        results = [SearchResult(**r) for r in self.checkpoint.get("results", [])]
+        results = [_as_wikipedia(SearchResult(**r)) for r in self.checkpoint.get("results", [])]
         named = [SearchResult(url=u, title=u, snippet="", provider="question", kind="web")
                  for u in assessment.get("urls") or []]
         monitor = self.origin.startswith("monitor:")
@@ -906,8 +924,16 @@ class _Run:
             return self.finish(r.url, self.fetch(r.url)), False
         from .search import ProviderError
         meta = dict(r.metadata or {})
+        # "When was Python first released?": the lead names the 3.0 release, the History section the first one
+        # (RC2 retest T1-07), so a question about origins reads the article beyond its lead
+        import inspect
         try:
-            found = article(r.title, budget=self.budget, usage=self.usage, lang=meta.get("language") or "en")
+            takes_intro = "intro" in inspect.signature(article).parameters
+        except (TypeError, ValueError):
+            takes_intro = False
+        whole = {"intro": False} if takes_intro and _ORIGIN_QUESTION.search(self.objective or "") else {}
+        try:
+            found = article(r.title, budget=self.budget, usage=self.usage, lang=meta.get("language") or "en", **whole)
         except ProviderError as exc:
             code = exc.code if exc.code in FETCH_ERROR_CODES else "http_error"
             raise FetchError(code, r.url, f"wikipedia {exc.code}: {str(exc.detail)[:200]}") from None

@@ -81,6 +81,11 @@ _SIMPLE_FACT = re.compile(r"^\s*(?:when|who|where|(?:in )?(?:what|which) year|ho
 _FACT_PREDICATE = frozenset("""first last released release founded invented created introduced born died launched discovered
 published built made started began begun named called many much old long tall far big large heavy deep high
 year""".split())
+# A technical one-fact question names software ("When was Rust first released?" is a technical question because of
+# "released"); asked bare, the encyclopedia returns the other senses first (Rust: iron oxide, the 2024 film; Python:
+# the snake, Monty Python; RC2 retest T1-07). Unless the thing already names its sense, "software" is added.
+_SOFTWARE_SENSE = frozenset("""software programming language library framework package app application tool toolkit
+database compiler editor browser os kernel engine runtime interpreter sdk api protocol""".split())
 BROAD_NEWS_MAX_WINDOW = 8 * DAY
 BROAD_NEWS_MAX_WORDS = 2
 _SPELLED_OUT = {"ai": "artificial intelligence", "ml": "machine learning", "llm": "large language models",
@@ -995,6 +1000,9 @@ def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> Quer
             # programming language"), whose lead states such facts; the web query keeps the predicate
             thing = " ".join(w for w in kw.split() if w.lower() not in _FACT_PREDICATE) \
                 if assessment.get("simple_fact") else ""
+            if thing and "technical" in kinds and not assessment.get("packages") and \
+                    not _SOFTWARE_SENSE & {w.lower() for w in thing.split()}:
+                thing = f"{thing} software"
             add(1, thing or kw, "encyclopedia", f"{label}: encyclopedia")
     if dependency_check and not assessment.get("packages"):
         notes.append("dependency check without a package inventory: nothing to look up (the orchestrator supplies "
