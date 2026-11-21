@@ -151,3 +151,10 @@ def test_consolidation_reports_the_configuration_the_run_used(result):
     assert result["metrics"]["consolidation"]["config"] == {
         "auto_provisional_min_sources": cfg.auto_provisional_min_sources,
         "auto_provisional_min_confidence": cfg.auto_provisional_min_confidence}
+
+
+def test_noise_page_never_leads_the_answer(result):
+    """RD-04: in the quick subset A02's top quote comes from the reference page (412 km), not the travel blog."""
+    a02 = next(i for i in result["metrics"]["authoritative"]["items"] if i["id"] == "A02")
+    assert a02["noise"]["acquired"] and not a02["noise"]["top_quote_from_noise_page"], a02
+    assert a02["answer_correct_top"], a02

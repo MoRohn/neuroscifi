@@ -842,6 +842,17 @@ def subjects_compatible(a: Claim, b: Claim) -> bool:
     return True
 
 
+_FIRST_PERSON = re.compile(r"\b(?:I|[Ww]e|[Oo]ur|[Uu]s|[Mm]y)\b")
+
+
+def first_person(claim: Claim) -> bool:
+    """The statement is a personal account ("..., and we paddled every one of them", "the one we recommend",
+    "according to the beta images we tested"): the writer reports their own experience, not the fact as a
+    reference would. A source-quality signal for choosing a contested cluster's representative (RD-04); never
+    evidence weight. Structured records are never first person."""
+    return claim.kind != "metadata" and bool(_FIRST_PERSON.search(_prose(claim.text or "")))
+
+
 def is_reportable(claim: Claim) -> bool:
     """False for text that must never appear in any report field: claims from adversarial sources, text with an
     injection finding (safety.scan_injection) and snippet-only discovery hints."""
@@ -1378,7 +1389,9 @@ def evaluate(claims, *, now: float | None = None, freshness_class: str | None = 
             n = len({group_of[x.id] for x in order if bearing(c, x) == "support"})
             if _latest_record(order):
                 return (_version_rank(c), _effective(c), n, c.relevance)
-            return (n, _effective(c), c.relevance)
+            # equal independent support: an impersonal statement leads a personal account (RD-04: a travel blog's
+            # "we paddled all 520 km" must not lead a reference page's 412 km because the blog is newer)
+            return (n, not first_person(c), _effective(c), c.relevance)
 
         ranks = {c.id: rank(c) for c in order}
         best = max(ranks.values())
@@ -1517,7 +1530,7 @@ def info_gain(alpha: float, beta: float, reliability: float = RELIABILITY_SECOND
 
 __all__ = ["CATEGORY_POLICY", "DISPUTE_WEIGHT_RATIO", "LEGACY_LABELS", "STATE_TO_LEGACY", "VERIFICATION_MIN_CONFIDENCE",
            "VERIFICATION_STATES", "VerificationState", "document_origins", "normalise_state", "official_source",
-           "origin_keys", "site_label", "stamp_origins", "timely", "verdict_state", "verification_state",
+           "first_person", "origin_keys", "site_label", "stamp_origins", "timely", "verdict_state", "verification_state",
            "CLUSTER_KEY_JACCARD", "CLUSTER_TEXT_SHINGLE", "DUPLICATE_SHINGLE", "KEY_TOKENS", "MAX_WORDS",
            "MIN_WORDS", "PRIOR_ALPHA", "PRIOR_BETA", "RELIABILITY_PRIMARY", "RELIABILITY_SECONDARY",
            "RENDER_ONLY_PATTERNS", "STALE_FACTOR", "UNDATED_FACTOR", "adversarial_document", "agrees", "bearing",

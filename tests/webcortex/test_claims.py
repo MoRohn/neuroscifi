@@ -840,3 +840,19 @@ def test_an_abstracts_section_heading_is_not_part_of_its_first_sentence():
     assert "A key challenge in biophysically detailed modeling is determining functionally effective synaptic " \
            "weights." in texts
     assert not any(t.startswith("Abstract ") for t in texts)
+
+
+def test_a_personal_account_does_not_lead_a_reference_statement_on_equal_support():
+    """RD-04 (bench A02): one reference page and one newer travel blog disagree on the length. Equal independent
+    support; the blog is newer, so the old date tie-break led with its figure. An impersonal statement now leads
+    a first-person account; the cluster stays contested and both values are listed."""
+    ref = mk("The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+             domain="geoatlas.example", published=NOW - 900 * D)
+    blog = mk("The Varnel River is 520 kilometres long, and we paddled every one of them over three weeks.",
+              domain="riverwanderer.example", published=NOW - 400 * D)
+    for order in ([ref, blog], [blog, ref]):
+        [cl] = [C.score(c, now=NOW, freshness_class="stable") for c in C.cluster(order)]
+        assert cl.statement == ref.text and cl.status == "contested"
+        assert {cl.contradicting[0]["a"], cl.contradicting[0]["b"]} == {ref.id, blog.id}
+    assert C.first_person(blog) and not C.first_person(ref)
+    assert not C.first_person(mk("Use the US mirror for faster downloads of the 4.2 build."))   # "US" is not "us"
