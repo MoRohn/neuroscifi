@@ -1,0 +1,490 @@
+{
+ "benchmark": "rd46-resources-live",
+ "host": "DGX Spark GB10 (unified memory); other non-NeuroSciFi containers were also running",
+ "git_commit": "d5d2e07",
+ "git_dirty": true,
+ "method": {
+  "snapshot": "nsf resources --cold-start (all NeuroSciFi services resident, idle)",
+  "latency": "scratch script: offline bench corpus retrieval + live local vLLM reasoning (answer + self-critique) for 6 authoritative questions, sequential; voice load = continuous Kokoro TTS -> Whisper ASR round trips (one at a time) against the live containers; one warm-up pass not reported",
+  "deferral": "scratch script: console-like process holds a voice session (mic capturing) and the AudioBeacon; scheduler.work runs in a separate spawned process (service shape), poll 0.5 s"
+ },
+ "snapshot": {
+  "audio_active": false,
+  "cold_starts": [
+   {
+    "name": "neuroscifi-searxng",
+    "ready_at": null,
+    "seconds": null,
+    "started_at": 1795272571.385
+   },
+   {
+    "name": "neuroscifi-vllm",
+    "ready_at": 1795272678.524,
+    "seconds": 32.5,
+    "started_at": 1795272646.033
+   },
+   {
+    "name": "neuroscifi-voice-asr",
+    "ready_at": 1795273039.926,
+    "seconds": 17.2,
+    "started_at": 1795273022.709
+   },
+   {
+    "name": "neuroscifi-voice-tts",
+    "ready_at": 1795273028.834,
+    "seconds": 5.2,
+    "started_at": 1795273023.595
+   }
+  ],
+  "containers": [
+   {
+    "cpu_percent": 0.89,
+    "memory_bytes": 157915545,
+    "memory_limit_bytes": 805306368,
+    "name": "neuroscifi-searxng"
+   },
+   {
+    "cpu_percent": 1.81,
+    "memory_bytes": 7992934137,
+    "memory_limit_bytes": 103079215104,
+    "name": "neuroscifi-vllm"
+   },
+   {
+    "cpu_percent": 1.64,
+    "memory_bytes": 3289944948,
+    "memory_limit_bytes": 21474836480,
+    "name": "neuroscifi-voice-asr"
+   },
+   {
+    "cpu_percent": 0.11,
+    "memory_bytes": 2732672942,
+    "memory_limit_bytes": 8589934592,
+    "name": "neuroscifi-voice-tts"
+   }
+  ],
+  "gpu": {
+   "available": true,
+   "compute_apps": [
+    {
+     "memory_bytes": 269484032,
+     "name": "/usr/lib/chromium/chromium",
+     "pid": 4290
+    },
+    {
+     "memory_bytes": 46286241792,
+     "name": "VLLM::EngineCore",
+     "pid": 3525381
+    },
+    {
+     "memory_bytes": 1583349760,
+     "name": "python3",
+     "pid": 3595437
+    },
+    {
+     "memory_bytes": 4357881856,
+     "name": "VLLM::EngineCore",
+     "pid": 3596837
+    }
+   ],
+   "memory_readable": false,
+   "memory_total_bytes": null,
+   "memory_used_bytes": null,
+   "utilization_percent": 0.0
+  },
+  "level": "ok",
+  "measured_at": 1795273897.6483254,
+  "memory": {
+   "available_bytes": 44957499392,
+   "psi": {
+    "full_avg10": 0.0,
+    "some_avg10": 0.0
+   },
+   "swap_free_bytes": 124865126400,
+   "swap_total_bytes": 130916806656,
+   "total_bytes": 130917052416
+  },
+  "policy": {
+   "background_model_slots": 2,
+   "background_research": {
+    "allowed": true,
+    "reason": null
+   },
+   "browser_rendering": {
+    "allowed": true,
+    "reason": null
+   },
+   "idle_unload": {
+    "automatic": false,
+    "vllm": "never unloaded by NeuroSciFi",
+    "voice": "owner-run: deploy/voice/run.sh stop all (and start all; see docs/architecture/RESOURCE_SCHEDULING.md)"
+   }
+  },
+  "reasons": [],
+  "thresholds": {
+   "critical_below_bytes": 7855023144,
+   "elevated_below_bytes": 19637557862,
+   "gpu_critical_share": 0.97,
+   "gpu_elevated_share": 0.9
+  }
+ },
+ "latency_run2": {
+  "measured_at": 1795273381.348391,
+  "questions": [
+   "A01",
+   "A04",
+   "A06",
+   "A07",
+   "A08",
+   "A09"
+  ],
+  "host_memory_before": {
+   "total_bytes": 130917052416,
+   "available_bytes": 45934026752,
+   "swap_total_bytes": 130916806656,
+   "swap_free_bytes": 124864860160,
+   "psi": {
+    "some_avg10": 0.0,
+    "full_avg10": 0.0
+   }
+  },
+  "research_alone": [
+   {
+    "id": "A01",
+    "status": "completed",
+    "wall_s": 7.734,
+    "reasoning_status": "model",
+    "model_latency_ms": 7453.0,
+    "first_token_ms": 180.5,
+    "calls": 2,
+    "completion_tokens": 333,
+    "answer_tokens_per_second": 46.21
+   },
+   {
+    "id": "A04",
+    "status": "completed",
+    "wall_s": 4.627,
+    "reasoning_status": "model",
+    "model_latency_ms": 4294.1,
+    "first_token_ms": 126.5,
+    "calls": 2,
+    "completion_tokens": 192,
+    "answer_tokens_per_second": 46.63
+   },
+   {
+    "id": "A06",
+    "status": "completed",
+    "wall_s": 4.797,
+    "reasoning_status": "model",
+    "model_latency_ms": 4576.5,
+    "first_token_ms": 241.4,
+    "calls": 2,
+    "completion_tokens": 197,
+    "answer_tokens_per_second": 45.21
+   },
+   {
+    "id": "A07",
+    "status": "completed",
+    "wall_s": 4.415,
+    "reasoning_status": "model",
+    "model_latency_ms": 4305.3,
+    "first_token_ms": 160.5,
+    "calls": 2,
+    "completion_tokens": 192,
+    "answer_tokens_per_second": 46.9
+   },
+   {
+    "id": "A08",
+    "status": "completed",
+    "wall_s": 3.75,
+    "reasoning_status": "model",
+    "model_latency_ms": 3660.8,
+    "first_token_ms": 235.6,
+    "calls": 2,
+    "completion_tokens": 159,
+    "answer_tokens_per_second": 47.31
+   },
+   {
+    "id": "A09",
+    "status": "completed",
+    "wall_s": 3.721,
+    "reasoning_status": "model",
+    "model_latency_ms": 3569.8,
+    "first_token_ms": 236.8,
+    "calls": 2,
+    "completion_tokens": 153,
+    "answer_tokens_per_second": 47.79
+   }
+  ],
+  "research_with_voice": [
+   {
+    "id": "A01",
+    "status": "completed",
+    "wall_s": 12.548,
+    "reasoning_status": "model",
+    "model_latency_ms": 12300.6,
+    "first_token_ms": 317.2,
+    "calls": 2,
+    "completion_tokens": 333,
+    "answer_tokens_per_second": 28.13
+   },
+   {
+    "id": "A04",
+    "status": "completed",
+    "wall_s": 7.362,
+    "reasoning_status": "model",
+    "model_latency_ms": 7041.5,
+    "first_token_ms": 187.7,
+    "calls": 2,
+    "completion_tokens": 198,
+    "answer_tokens_per_second": 29.81
+   },
+   {
+    "id": "A06",
+    "status": "completed",
+    "wall_s": 8.278,
+    "reasoning_status": "model",
+    "model_latency_ms": 8054.1,
+    "first_token_ms": 267.2,
+    "calls": 2,
+    "completion_tokens": 215,
+    "answer_tokens_per_second": 28.33
+   },
+   {
+    "id": "A07",
+    "status": "completed",
+    "wall_s": 10.186,
+    "reasoning_status": "model",
+    "model_latency_ms": 10086.9,
+    "first_token_ms": 277.8,
+    "calls": 2,
+    "completion_tokens": 283,
+    "answer_tokens_per_second": 29.27
+   },
+   {
+    "id": "A08",
+    "status": "completed",
+    "wall_s": 5.946,
+    "reasoning_status": "model",
+    "model_latency_ms": 5864.4,
+    "first_token_ms": 263.5,
+    "calls": 2,
+    "completion_tokens": 159,
+    "answer_tokens_per_second": 28.88
+   },
+   {
+    "id": "A09",
+    "status": "completed",
+    "wall_s": 6.382,
+    "reasoning_status": "model",
+    "model_latency_ms": 6176.2,
+    "first_token_ms": 327.2,
+    "calls": 2,
+    "completion_tokens": 164,
+    "answer_tokens_per_second": 29.33
+   }
+  ],
+  "research_alone_summary": {
+   "wall_s": {
+    "n": 6,
+    "median": 4.521,
+    "min": 3.721,
+    "max": 7.734
+   },
+   "model_latency_ms": {
+    "n": 6,
+    "median": 4299.7,
+    "min": 3569.8,
+    "max": 7453.0
+   },
+   "first_token_ms": {
+    "n": 6,
+    "median": 208.05,
+    "min": 126.5,
+    "max": 241.4
+   },
+   "answer_tokens_per_second": {
+    "n": 6,
+    "median": 46.765,
+    "min": 45.21,
+    "max": 47.79
+   },
+   "completion_tokens": {
+    "n": 6,
+    "median": 192.0,
+    "min": 153,
+    "max": 333
+   }
+  },
+  "research_with_voice_summary": {
+   "wall_s": {
+    "n": 6,
+    "median": 7.82,
+    "min": 5.946,
+    "max": 12.548
+   },
+   "model_latency_ms": {
+    "n": 6,
+    "median": 7547.8,
+    "min": 5864.4,
+    "max": 12300.6
+   },
+   "first_token_ms": {
+    "n": 6,
+    "median": 272.5,
+    "min": 187.7,
+    "max": 327.2
+   },
+   "answer_tokens_per_second": {
+    "n": 6,
+    "median": 29.075,
+    "min": 28.13,
+    "max": 29.81
+   },
+   "completion_tokens": {
+    "n": 6,
+    "median": 206.5,
+    "min": 159,
+    "max": 333
+   }
+  },
+  "voice_alone": {
+   "tts_s": {
+    "n": 101,
+    "median": 0.119,
+    "min": 0.107,
+    "max": 0.141
+   },
+   "asr_s": {
+    "n": 101,
+    "median": 0.267,
+    "min": 0.198,
+    "max": 0.431
+   },
+   "errors": []
+  },
+  "voice_with_research": {
+   "tts_s": {
+    "n": 68,
+    "median": 0.252,
+    "min": 0.113,
+    "max": 0.265
+   },
+   "asr_s": {
+    "n": 68,
+    "median": 0.517,
+    "min": 0.218,
+    "max": 0.615
+   },
+   "errors": []
+  },
+  "host_memory_after": {
+   "total_bytes": 130917052416,
+   "available_bytes": 45341089792,
+   "swap_total_bytes": 130916806656,
+   "swap_free_bytes": 124864950272,
+   "psi": {
+    "some_avg10": 0.0,
+    "full_avg10": 0.0
+   }
+  }
+ },
+ "latency_run1_summary": {
+  "research_alone_summary": {
+   "wall_s": {
+    "n": 6,
+    "median": 5.673,
+    "min": 2.241,
+    "max": 9.941
+   },
+   "model_latency_ms": {
+    "n": 6,
+    "median": 5443.05,
+    "min": 2153.8,
+    "max": 9781.8
+   },
+   "first_token_ms": {
+    "n": 6,
+    "median": 152.4,
+    "min": 131.8,
+    "max": 219.5
+   }
+  },
+  "research_with_voice_summary": {
+   "wall_s": {
+    "n": 6,
+    "median": 7.106,
+    "min": 3.643,
+    "max": 12.232
+   },
+   "model_latency_ms": {
+    "n": 6,
+    "median": 6832.85,
+    "min": 3570.3,
+    "max": 11975.0
+   },
+   "first_token_ms": {
+    "n": 6,
+    "median": 270.1,
+    "min": 161.0,
+    "max": 297.7
+   }
+  },
+  "voice_alone": {
+   "tts_s": {
+    "n": 108,
+    "median": 0.122,
+    "min": 0.107,
+    "max": 0.139
+   },
+   "asr_s": {
+    "n": 108,
+    "median": 0.235,
+    "min": 0.177,
+    "max": 0.464
+   },
+   "errors": []
+  },
+  "voice_with_research": {
+   "tts_s": {
+    "n": 58,
+    "median": 0.252,
+    "min": 0.118,
+    "max": 0.298
+   },
+   "asr_s": {
+    "n": 58,
+    "median": 0.533,
+    "min": 0.241,
+    "max": 0.642
+   },
+   "errors": []
+  }
+ },
+ "deferral": {
+  "poll_seconds": 0.5,
+  "beacon_poll_seconds": 1.0,
+  "user_task_finished_after_s": 0.7,
+  "user_task_status": "completed",
+  "autonomous_status_after_voice_held_s": {
+   "held_s": 10.0,
+   "status": "queued"
+  },
+  "autonomous_claimed_after_voice_end_s": 1.05,
+  "autonomous_final_status": "completed",
+  "autonomous_finished_after_claim_s": 0.1,
+  "worker_decisions": [
+   {
+    "autonomy": "enabled",
+    "by": "owner:measure"
+   },
+   {
+    "reason": "audio priority: a voice session is capturing or speaking; new autonomous research waits until it ends",
+    "worker": "deferring new autonomous research"
+   },
+   {
+    "worker": "autonomous research may start again"
+   }
+  ],
+  "worker_start_to_end_s": 10.7
+ }
+}

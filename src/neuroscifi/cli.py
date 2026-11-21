@@ -15,6 +15,7 @@ COMMAND_MODULES = [
     "neuroscifi.webcortex.evolution",
     "neuroscifi.inference.cli",
     "neuroscifi.voice.cli",
+    "neuroscifi.resources.cli",
 ]
 
 

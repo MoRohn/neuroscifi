@@ -41,6 +41,7 @@ primary is shown *subtly*: the calm exploring entity, an orbiting dot and half t
 | `presence.activity` entries (in-process model calls) | — | generating, priority tool, with streamed token count |
 | token ledger: calls that ended in the last 30 s | — | feeds intensity (`tokens_30s`) |
 | write regulation paused | `resource_constrained` | — |
+| measured memory/GPU pressure `elevated` or `critical` (`resources.monitor`, RD-46; `sources.resources`) | `resource_constrained` | — |
 | any provider circuit `open` (web enabled) | `network_degraded` | — |
 | ≥2 running tasks, or running plus queued | `busy` | — |
 | nothing running for 10 min (tasks, ledger, questions) | — | resting (else idle) |

@@ -940,7 +940,10 @@ class _Run:
         renderer = self.services.renderer
         why_render = "js_shell" if doc.flags.get("js_suspected") else self.thin_news(doc, result)
         if why_render and renderer is not None and self.usage.browser_sessions < self.budget.max_browser_sessions:
-            ok, why = renderer.available()
+            from ..resources import policy as rpolicy
+            ok, why = rpolicy.engine_gate("browser rendering")      # RD-46: no Chromium under critical memory
+            if ok:
+                ok, why = renderer.available()
             budget = self.render_budget() if ok else None
             if ok and budget is None:
                 ok, why = False, (f"not rendered: the request budget left would not cover the {self.open_slots()} "
@@ -1914,11 +1917,27 @@ def _reason(db, run, report):
     report['reasoning'] and report['generated_by'] ('model:<name>' or 'template'); the extractive answer is not
     changed and model text is never consolidated. A model failure only degrades the label. The model calls get
     what is left of the task's time budget (budget.max_seconds - elapsed) as their deadline, and their time is
-    counted in the task's usage. One 'decision' event records the outcome when a model endpoint is configured."""
+    counted in the task's usage. One 'decision' event records the outcome when a model endpoint is configured.
+    An autonomous task's model calls first take a background model slot (resources.policy; RD-46)."""
     from . import reasoning
+    from ..resources import policy as rpolicy
+    db_path = getattr(run.services, "db_path", None)
+
+    def apply():
+        return reasoning.apply(db, report, run.services, question=run.objective, now=run.clock(), task_id=run.id,
+                               time_left=run.budget.max_seconds - run.elapsed())
     try:
-        out = reasoning.apply(db, report, run.services, question=run.objective, now=run.clock(), task_id=run.id,
-                              time_left=run.budget.max_seconds - run.elapsed())
+        if not is_autonomous(run.origin):
+            out = apply()
+        else:      # RD-46: background model calls share capped slots across processes (one while audio runs)
+            deadline = time.monotonic() + max(0.0, run.budget.max_seconds - run.elapsed())
+            with rpolicy.background_model_slot(db_path, deadline=deadline) as slot:
+                if slot is not None:
+                    out = apply()
+                else:
+                    audio = f"; {rpolicy.AUDIO_REASON}" if rpolicy.audio_active(db_path) else ""
+                    out = reasoning._degraded(report, "degraded", "resources: no background model slot was free "
+                                              f"({rpolicy.model_slots(db_path)} at a time{audio})")
     except Exception as exc:   # the extractive report must survive any reasoning defect
         out = reasoning._degraded(report, "error", f"reasoning failed: {type(exc).__name__}")
     run.usage.seconds = round(run.elapsed(), 3)     # model time counts against the task's time budget

@@ -367,3 +367,12 @@ JSON content type and 512-byte body rules apply.
 **MCP (`nsf web mcp`, stdio JSON-RPC 2.0, protocol 2025-06-18).** Tools: `web_search`, `web_research`, `web_task`,
 `web_evidence`, `web_knowledge`. Retrieved content is wrapped in `safety.untrusted` envelopes. There are no forget,
 review or configuration tools.
+
+## 9. Resource scheduling (0.7, RD-46)
+
+`docs/architecture/RESOURCE_SCHEDULING.md`. Read-only; nothing here starts, stops or unloads anything.
+
+| Surface | Result |
+|---|---|
+| GET /api/resources[?cold_start=1] (console token rules as §6) | `resources.status`: `level` (`ok` \| `elevated` \| `critical` \| `unknown`), `reasons`, `thresholds`, `memory` (/proc/meminfo bytes, PSI), `gpu` (nvidia-smi; `memory_readable` false where it reports N/A), `containers` (docker stats of neuroscifi-*), `audio_active`, `policy` {`background_research`, `browser_rendering`: {allowed, reason}, `background_model_slots`, `idle_unload`}; with `cold_start=1` also `cold_starts` [{name, started_at, ready_at, seconds}] |
+| `nsf resources [--db] [--quick] [--cold-start]` | the same JSON on stdout (`--quick`: memory only, no subprocesses) |

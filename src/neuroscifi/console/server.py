@@ -531,6 +531,14 @@ def _llm_status(c, p, q, b):
             "usage_24h": Ledger(path).summary(since=c.now - 86400) if path.exists() else None}
 
 
+def _resources(c, p, q, b):
+    """Memory/GPU/container use, the pressure level and what the scheduling policies decide now (RD-46;
+    resources.status). ?cold_start=1 also reads each neuroscifi-* container's last start-to-ready time."""
+    from .. import resources
+    q = _query(q, ("cold_start",))
+    return resources.status(c.path, full=True, cold_start=q.get("cold_start") in ("1", "true"))
+
+
 def _presence(c, p, q, b):
     """Presence state long-poll (presence/routes.py): ?since=<version>&wait=<seconds, at most 20>."""
     from ..presence import routes
@@ -576,6 +584,7 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("POST", r"checkpoints/(\d+)/verify", _checkpoint_verify),
     ("GET", "memory", _memory),
     ("GET", "llm/status", _llm_status),
+    ("GET", "resources", _resources),
     ("GET", "presence", _presence),
     ("POST", "presence/scene", _presence_scene),
     ("GET", "web/status", _web_status),
@@ -801,6 +810,8 @@ class ConsoleServer(ThreadingHTTPServer):
         self.worker_stop, self.worker = threading.Event(), None
         super().__init__((BIND, port), Handler)
         self.worker_options = {"clock": clock, **(worker_options or {})}
+        from ..resources.policy import AudioBeacon     # the voice hub lives here: publish its audio state (RD-46)
+        self.audio_beacon = AudioBeacon(self.db_path).start()
         if web_worker:
             self.worker = threading.Thread(target=self._work, name="nsf-console-web-worker", daemon=True)
             self.worker.start()
@@ -825,6 +836,7 @@ class ConsoleServer(ThreadingHTTPServer):
                 delay = min(WORKER_RETRY_MAX, delay * 2)
 
     def server_close(self):
+        self.audio_beacon.close()
         self.worker_stop.set()
         if self.worker is not None and self.worker is not threading.current_thread():
             self.worker.join(timeout=30)

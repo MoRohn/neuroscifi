@@ -202,6 +202,15 @@ def _regulation(db, db_path, now):
     return _cached(("regulation", str(db_path)), now, compute)
 
 
+def _resource_level():
+    """The host's memory pressure level (resources.monitor.sample: one cached /proc/meminfo read), or "unknown"."""
+    try:
+        from ..resources import monitor
+        return monitor.sample()["level"]
+    except Exception:
+        return "unknown"
+
+
 def _providers(db, now):
     """Provider names whose circuit breaker is open (persisted by the last research run); no network call."""
     def compute():
@@ -381,6 +390,10 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
 
     reg = _regulation(db, db_path, now)
     if not reg["writes_allowed"]:
+        conditions.add("resource_constrained")
+    level = _resource_level()
+    sources["resources"] = level
+    if level in ("elevated", "critical"):      # measured memory/GPU pressure (resources.monitor; RD-46)
         conditions.add("resource_constrained")
     if cfg is not None and cfg.enabled and (owner or signals["running"]):
         if _providers(db, now):

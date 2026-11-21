@@ -270,7 +270,8 @@ def full(db, now, *, exclude=None) -> bool:
 def admit(db, task: dict, now) -> dict:
     """Charge a task that is about to start to its scope's daily budget (orchestrator._claim; caller owns the
     BEGIN IMMEDIATE transaction). Returns {} when the task already holds an open allowance (crash recovery),
-    {"wait": reason} for an autonomous task while `concurrent` are open, {"refused": reason} when the budget is
+    {"wait": reason} for an autonomous task while `concurrent` are open or while resources.policy.background_gate
+    refuses (a voice session capturing or speaking, critical memory pressure), {"refused": reason} when the budget is
     spent, else {"budget": clamped budget JSON or None, "allowed": {...}}."""
     from .types import Budget, Usage
     row = db.execute("SELECT state FROM autonomy_ledger WHERE task_id=?", (task["id"],)).fetchone()
@@ -281,6 +282,11 @@ def admit(db, task: dict, now) -> dict:
     limits, prices = _limits(pol, scope), pol["prices_usd"]
     if scope == "autonomous" and full(db, now, exclude=task["id"]):
         return {"wait": f"{int(limits.get('concurrent', 0))} autonomous investigations are already running"}
+    if scope == "autonomous":         # RD-46: audio priority and critical memory pressure defer a new start
+        from ..resources import policy as rpolicy
+        gate = rpolicy.background_gate(rpolicy.db_file(db))
+        if not gate["allowed"]:
+            return {"wait": gate["reason"]}
     left = remaining(db, scope, now, exclude=task["id"])
     reason = _exhausted(left, prices, limits)
     if reason:

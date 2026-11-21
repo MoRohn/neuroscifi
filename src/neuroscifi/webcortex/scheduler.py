@@ -350,6 +350,10 @@ def autonomous_remaining(db, now, cfg, *, mcp=False, exclude=None) -> dict:
 
 
 def _over_cap(db, now, cfg, *, ignore_tasks=False):
+    from ..resources import policy as rpolicy
+    gate = rpolicy.background_gate(rpolicy.db_file(db))      # RD-46: audio priority, critical memory pressure
+    if not gate["allowed"]:
+        return gate["reason"]
     used = autonomous_usage(db, now)
     caps = cfg.daily_autonomous
     for key in (("requests", "bytes") if ignore_tasks else ("tasks", "requests", "bytes")):
@@ -482,6 +486,12 @@ def _retention(report, services, now):
 
 # ---- worker ------------------------------------------------------------------------------------------------------
 
+def background(db) -> dict:
+    """resources.policy.background_gate for this individual: may new autonomous research start now?"""
+    from ..resources import policy as rpolicy
+    return rpolicy.background_gate(rpolicy.db_file(db))
+
+
 def claim_next(db, holder, now, *, lease=None):
     """Claim one runnable task: a queued task, else a running task whose lease expired or whose worker process is
     dead (same host: services.holder_alive, so a crash is recovered without waiting for the lease to expire).
@@ -490,8 +500,10 @@ def claim_next(db, holder, now, *, lease=None):
     from .services import holder_alive
     lease = orchestrator.LEASE_SECONDS if lease is None else lease
     with store.write(db):
-        # D4: while `concurrent` autonomous investigations are open, queued autonomous tasks wait their turn.
-        waiting = f" AND NOT {autonomy.AUTONOMOUS_SQL}" if autonomy.full(db, now) else ""
+        # D4: while `concurrent` autonomous investigations are open, queued autonomous tasks wait their turn; so do
+        # they while resources.policy.background_gate refuses (RD-46: audio priority, critical memory pressure).
+        waiting = f" AND NOT {autonomy.AUTONOMOUS_SQL}" if autonomy.full(db, now) or not background(db)["allowed"] \
+            else ""
         row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status='queued' AND "
                          "coalesce(stage,'')!='proposed' AND (lease_holder IS NULL OR lease_expires_at<?)"
                          f"{waiting} ORDER BY created_at, rowid LIMIT 1", (now,)).fetchone()
@@ -529,10 +541,12 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=ti
     The services (fetcher, public cache, provider registry) are built once and reused across tasks, so per-host
     request spacing and Retry-After backoffs carry over from one task to the next; they are rebuilt when the
     configuration or the feed list changes. While instance regulation pauses writes nothing is claimed (one
-    decision event per pause, result["paused"] says why)."""
+    decision event per pause, result["paused"] says why). While resources.policy.background_gate refuses (a voice
+    session capturing or speaking, critical memory pressure) no new autonomous task is claimed or planned; tasks the
+    owner asked for still run (one decision event when the deferral starts and one when it ends; RD-46)."""
     from . import orchestrator, services as service_builder
     db = store.open_existing(db_path)
-    done, svc, built_for, paused = [], None, None, None
+    done, svc, built_for, paused, deferred = [], None, None, None, None
     try:
         while not (stop is not None and stop.is_set()):
             if max_tasks is not None and len(done) >= max_tasks:
@@ -561,8 +575,15 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=ti
                     svc.close()
                 svc, built_for = service_builder.build(db, db_path, fixture=fixture, providers=providers,
                                                        clock=clock), wanted
+            gate = background(db)
+            if gate.get("why") != deferred:     # one event when a deferral starts, changes cause or ends (RD-46)
+                deferred = gate.get("why")
+                with store.write(db):
+                    state.log_event(db, None, "decision", {"worker": "deferring new autonomous research",
+                                                           "reason": str(gate["reason"])[:300]} if deferred else
+                                    {"worker": "autonomous research may start again"}, float(clock()))
             claimed = claim_next(db, svc.holder, float(clock()))
-            if claimed is None and idle:
+            if claimed is None and idle and gate["allowed"]:
                 # Nothing queued: an idle investigation when the owner enabled autonomy (autonomy.idle decides,
                 # within the D4 budgets and the minimum expected gain; at most once per idle_interval).
                 from . import autonomy
