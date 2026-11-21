@@ -6,8 +6,8 @@ A deletion that commits while the archive is being written makes the new checkpo
 `restore` never publishes a partial file and re-applies current tombstones, forgotten datasets (with their
 graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
 the same cascade as the live forget: governance.replay_web_forgets; forgotten voice sessions with their
-transcripts and audio: governance.replay_voice_forgets), and drops epoch streams and retained voice audio the
-instance no longer holds, so nothing forgotten comes back.
+transcripts and audio: governance.replay_voice_forgets) and research-node revocations, and drops epoch streams and
+retained voice audio the instance no longer holds, so nothing forgotten (or revoked) comes back.
 `prune` keeps the newest valid archives and deletes the rest.
 Every conversion works in a private `.nsf-partial-*` folder next to its output, removed when it ends; one left by a
 killed process (a full plaintext copy of the instance) is removed by the next conversion, prune or console start
@@ -171,7 +171,11 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
     # Retained raw audio likewise: a row the live instance no longer holds was forgotten, swept or expired.
     live_audio = set(db.execute("SELECT segment_id,created_at FROM voice_audio").fetchall()) \
         if apply_tombstones else None
-    removed = blobs = scrubbed = streams = voice = audio = 0
+    # Node revocations are authorisation withdrawn: like tombstones they are replayed, so a restore never brings a
+    # revoked research node back as active (UAT T5-C03).
+    revoked = db.execute("SELECT device,revoked_at FROM autonomy_nodes WHERE revoked_at IS NOT NULL").fetchall() \
+        if apply_tombstones else []
+    removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = 0
     web_removed = {"tasks": 0, "knowledge": 0, "sources": 0}
     invalidated = []
     old_umask = os.umask(0o077)
@@ -209,6 +213,13 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
                                      web)
                     web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now)
                     voice = governance.replay_voice_forgets(copy, {(k, d) for k, d, _ in web}, now)
+                for device, at in revoked:
+                    hit = copy.execute("UPDATE autonomy_nodes SET revoked_at=? WHERE device=? AND (revoked_at IS "
+                                       "NULL OR revoked_at<?)", (at, device, at)).rowcount
+                    nodes_revoked += hit
+                    copy.execute("DELETE FROM autonomy_sessions WHERE owner=?", (device,))
+                    copy.execute("UPDATE autonomy_sessions SET offered_to=NULL, offer_expires_at=NULL "
+                                 "WHERE offered_to=?", (device,))
                 if live_audio is not None:
                     for row in copy.execute("SELECT segment_id,created_at FROM voice_audio").fetchall():
                         if row not in live_audio:
@@ -226,7 +237,8 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
     return {"checkpoint": checkpoint_id, "path": str(dest), "tombstones_applied": len(tombstones),
             "evidence_removed": removed, "datasets_blanked": blobs, "graphs_invalidated": invalidated,
             "derived_rows_scrubbed": scrubbed, "streams_removed": streams, "web_forgotten_applied": len(web),
-            "web_removed": web_removed, "voice_sessions_removed": voice, "voice_audio_removed": audio}
+            "web_removed": web_removed, "voice_sessions_removed": voice, "voice_audio_removed": audio,
+            "node_revocations_applied": nodes_revoked}
 
 
 def _root_candidates(copy):

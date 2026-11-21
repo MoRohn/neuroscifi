@@ -571,3 +571,26 @@ def test_an_abandoned_rc1_working_folder_is_removed_but_a_live_one_is_kept(insta
         assert checkpoints.prune(db, T0, keep=1)["kept"] == [cp["id"]]
         assert live.is_dir() and not legacy.exists() and unrelated.is_dir()
     assert not live.exists()
+
+
+def test_restore_keeps_a_node_revoked_after_the_checkpoint_revoked(instance, tmp_path):
+    """T5-C03: a research node revoked after the checkpoint came back active (and owning its sessions)."""
+    from neuroscifi.webcortex import nodes
+    db, path = instance
+    nodes.enrol(db, "device-fp-1", "family-fp", "phone", T0)
+    nodes.enrol(db, "device-fp-2", "family-fp", "tablet", T0)
+    device = nodes.device_digest(db, "device-fp-1")
+    with store.write(db):
+        db.execute("INSERT INTO autonomy_sessions(session,family,owner,acquired_at,expires_at) VALUES('s1',?,?,?,?)",
+                   ("family", device, T0, T0 + 900))
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 1)
+    assert nodes.revoke(db, "phone", T0 + 2) == 1
+    out = checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 3)
+    assert out["node_revocations_applied"] == 1
+    copy = store.open_existing(tmp_path / "r.sqlite")
+    try:
+        assert nodes.node(copy, device) is None
+        assert [n["label"] for n in nodes.listing(copy) if n["revoked_at"] is None] == ["tablet"]
+        assert copy.execute("SELECT count(*) FROM autonomy_sessions WHERE owner=?", (device,)).fetchone()[0] == 0
+    finally:
+        copy.close()
