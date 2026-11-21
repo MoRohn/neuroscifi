@@ -31,6 +31,7 @@ CONFIRM_SECONDS = 60.0
 CONVERSATION_RESEARCH_LIMIT = 8
 CONVERSATION_RESEARCH_WINDOW = 600.0
 MAX_SPOKEN_SENTENCES = 2
+HISTORY_ITEMS = 5
 MAX_SPOKEN_WORDS = 70
 LABEL_TEMPLATE = "NeuroSciFi template reply (no model involved)"
 LABEL_EXTRACTIVE = "Extractive summary (quoted evidence); advanced reasoning unavailable"
@@ -42,7 +43,8 @@ STATE_MARKS = {"insufficient": "only one source or too little evidence; not inde
                "temporally_unresolved": "not established as current", "conflicting": "sources conflict",
                "disputed": "disputed by other sources", "not_evaluated": "not checked against other sources"}
 HELP = ("You can ask a question or say: research followed by a topic, show evidence, explain more simply, "
-        "remember conclusions, what have you learned since yesterday, continue previous investigation, stop, "
+        "remember conclusions, what have you learned since yesterday, what was I researching, continue previous "
+        "investigation, stop, "
         "stop speaking but keep researching, switch to text only, or speak your answers.")
 
 
@@ -355,6 +357,38 @@ class Bridge:
 
     def _help(self, db, principal, ctx, _):
         return _say("help", HELP)
+
+    def _history(self, db, principal, ctx, _):
+        """What this principal has been researching (R2-07): the conversation's last question and its own recent
+        tasks (the owner: tasks a person asked for; a Pocket device: its family's), read from history, never searched."""
+        from ..webcortex import orchestrator
+        if principal.owner:
+            rows = [r for r in db.execute("SELECT id, objective, status, origin FROM web_tasks ORDER BY created_at "
+                                          "DESC, rowid DESC LIMIT 50") if orchestrator.user_initiated(r[3])]
+        elif principal.family:
+            rows = db.execute("SELECT id, objective, status, origin FROM web_tasks WHERE family=? ORDER BY "
+                              "created_at DESC, rowid DESC LIMIT 5", (principal.family,)).fetchall()
+        else:
+            rows = []
+        rows = rows[:HISTORY_ITEMS]
+        last = str(ctx.get("last_objective") or "").strip()[:300]
+        if not rows and not last:
+            return _say("history", "You haven't asked me to research anything yet.")
+        words = {"completed": "finished", "partial": "finished with a partial result", "failed": "failed",
+                 "cancelled": "cancelled", "queued": "waiting to start"}
+        state = (lambda st: words.get(st, "still in progress"))
+        speech = []
+        if last:
+            speech.append(f"In this conversation you last asked about {last[:160]}.")
+        if rows:
+            head = rows[0]
+            if not last or head[1][:300] != last:
+                speech.append(f"Your most recent research is {head[1][:160]}: {state(head[2])}.")
+            if len(rows) > 1:
+                speech.append(f"{len(rows) - 1} earlier question{'s are' if len(rows) > 2 else ' is'} on screen.")
+        lines = ([f"This conversation: {last}"] if last else []) + \
+            (["Your recent research, newest first:"] + [f"- {o[:300]} ({state(st)})" for _, o, st, _ in rows] if rows else [])
+        return Reply("history", speech=speech, text="\n".join(lines), task_id=rows[0][0] if rows else None)
 
     def _stop_speaking(self, db, principal, ctx, _):
         task = self._last_task(db, ctx, principal)

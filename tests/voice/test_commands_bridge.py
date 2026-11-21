@@ -49,6 +49,14 @@ def test_parse(text, kind, arg):
     assert (intent.kind, intent.arg) == (kind, arg)
 
 
+@pytest.mark.parametrize("text", ["What was I researching?", "NeuroSciFi, what was I researching earlier?",
+                                  "What did I ask you about yesterday?", "Show me my recent research",
+                                  "What was my last question?", "what have we been looking into"])
+def test_parse_history_questions_are_not_research(text):
+    """R2-07: asking about one's own research history is answered from history, never a web search for it."""
+    assert commands.parse(text).kind == "history"
+
+
 def test_parse_keeps_owner_wording_for_research_objective():
     assert commands.parse("Research the CRISPR-Cas9 patent dispute").arg == "the CRISPR-Cas9 patent dispute"
 
@@ -391,3 +399,23 @@ def test_follow_up_uses_the_previous_question_of_the_conversation(db):
     lone = handle(db, "Is that version secure?")
     assert lone.intent == "clarify" and lone.task_id is None and "Which version do you mean?" in lone.speech[0]
     assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == before
+
+
+def test_what_was_i_researching_lists_history_without_starting_research(db):
+    """R2-07: "what was I researching" lists the conversation's last question and the principal's own recent tasks
+    (owner: tasks a person asked for; Pocket: its family's only) and creates no task."""
+    first = handle(db, "Research the history of the Zephyr compiler")
+    orchestrator.submit(db, "Okapi conservation status", time.time(), origin="curiosity")      # autonomous: not listed
+    phone = pocket_principal()
+    handle(db, "Research okapi diet in the wild", principal=phone)
+    before = db.execute("SELECT count(*) FROM web_tasks").fetchone()[0]
+    assert first.intent == "research"
+    r = handle(db, "What was I researching?", ctx={"last_objective": "the history of the Zephyr compiler"})
+    assert r.intent == "history" and r.follow is None
+    assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == before
+    assert "the history of the Zephyr compiler" in r.text and "Okapi conservation" not in r.text
+    assert r.speech and "Zephyr" in r.speech[0]
+    mine = handle(db, "What was I researching?", principal=phone)
+    assert "okapi diet" in mine.text and "Zephyr" not in mine.text
+    empty = handle(db, "What was I researching?", principal=pocket_principal(family="other"))
+    assert empty.intent == "history" and "haven't asked" in empty.text

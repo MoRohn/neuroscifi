@@ -18,6 +18,8 @@ parse(text) -> Intent(kind, arg). Kinds:
   disable_autonomy               "disable/turn off autonomous research"
   handoff                        "use this device for the microphone", "move the microphone here"
   help                           "help", "what can you do"
+  history                        "what was I researching", "what did I ask earlier", "show my recent research": the
+                                 conversation's and the principal's own research history, never a web search (R2-07)
   research                       "research X", "look up X", "investigate X", "find out X" (arg X), or another
                                  utterance of at least MIN_QUESTION_WORDS words that asks for something: it ends
                                  with "?" or starts with a question word or an information request (_ASKS)
@@ -89,6 +91,13 @@ _PATTERNS = [
                 r"move (?:the )?(?:microphone|mic) (?:here|to this device)|switch (?:the )?(?:microphone|mic) "
                 r"to this device)"),
     ("help", r"help|what can you do|what can i say|list (?:the )?commands"),
+    ("history", r"(?:please )?(?:what (?:was|were|am|are|have) (?:i|we) (?:been )?(?:researching|investigating|"
+                r"looking (?:up|into|at)|asking(?: you)?(?: about)?|working on|talking about)|what did (?:i|we) "
+                r"(?:research|investigate|ask(?: you)?(?: about)?|look up|look into|talk about)|what (?:was|is) (?:my|our) "
+                r"(?:last|previous|latest|most recent) (?:question|research|investigation)|(?:show|list|tell)(?: me)? "
+                r"(?:my|our) (?:recent |previous |last )?(?:research|questions|investigations)(?: history)?|"
+                r"(?:my |our )?research history)(?: (?:earlier|before|today|yesterday|recently|lately|last time|so far))?"
+                r"(?: please)?"),
 ]
 _COMPILED = [(kind, re.compile(f"^(?:{p})$")) for kind, p in _PATTERNS]
 _MODE = [

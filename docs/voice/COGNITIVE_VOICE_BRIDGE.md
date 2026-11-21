@@ -82,6 +82,7 @@ Parsing is deterministic (regular expressions over the normalised transcript); n
 | "explain that more simply" | simpler | the local model rewrites from the **same evidence bundle**; every sentence passes `reasoning.guard`; without a model: a shorter extract, labelled | — |
 | "remember (these) conclusions" | remember | accept the last task's provisional knowledge items (`knowledge.review`) | **yes** (owner only) |
 | "what have you learned since yesterday / this week" | learned_since | knowledge created/updated in the window, from memory (template-labelled) | — (owner only: it reads the whole knowledge base) |
+| "what was I researching", "what did I ask earlier", "show my recent research" | history | the conversation's last question and up to 5 of the principal's own recent tasks with their status (owner: tasks a person asked for; Pocket: its family's), from history; nothing is searched (R2-07) | — |
 | "continue the previous investigation" | continue_research | `orchestrator.requeue` (partial / cancelled / failed) or a new linked task | — |
 | "stop", "stop speaking but keep researching" | stop_speaking | playback stops; research continues | — |
 | "go on" | resume_speaking | speak the rest of an interrupted reply | — |
