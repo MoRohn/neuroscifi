@@ -198,9 +198,9 @@ def test_honest_caveats_pass_after_a_discourse_marker():
     "However, the evidence does not state whether NumPy 2.5.5 is recommended." were rejected as single-source facts.
     A caveat about what the evidence does not establish asserts no fact; a second clause that does still fails."""
     caveats = [("However, the evidence does not state whether Zephyr 4.2.0 is recommended.", [1], ["C1"]),
-               ("However, the implications for ARM boards specifically are not directly evaluated in the available "
-                "evidence.", [3], ["C2"]),
-               ("Note that build times on ARM boards are not reported in the sources.", [3], ["C2"])]
+               ("However, the version of the Zephyr compiler is not directly evaluated in the available evidence.",
+                [3], ["C2"]),
+               ("Note that the latest Zephyr compiler version is not reported in the sources.", [3], ["C2"])]
     ok, bad = check(*caveats)
     assert bad == [] and [x["text"] for x in ok] == [t for t, _, _ in caveats]
     assert all(x.get("insufficiency") for x in ok)
@@ -439,7 +439,20 @@ F4_GAPS = [       # "Gaps include ..." is no caveat
     "Gaps include the fact that numpy 2.5.5 is secure and recommended for all production users.",
     "Gaps remain small, numpy 2.5.5 is the most secure release ever shipped.",
 ]
-SEC_BYPASSES = F1_SPLIT + F4_GAPS
+F3_PREFIX = [     # an attribute, apposition or endorsement before the negation
+    "The security of numpy 2.5.5, a fully audited release, cannot be confirmed from the evidence.",
+    "The security of numpy 2.5.5 (fully patched) cannot be confirmed from the evidence.",
+    "The secure, audited numpy 2.5.5 release has not been independently verified by any of the cited sources.",
+    "The expert-endorsed fully audited numpy 2.5.5 release has not been independently verified by any of the cited "
+    "sources.",
+    "NumPy 2.5.5, the most secure release ever, lacks independent evidence.",
+    "The security of numpy 2.5.5, a release endorsed by every expert, is not addressed in the cited sources.",
+    "The fully audited numpy 2.5.5 release cannot be confirmed from the evidence.",
+    "The patched and hardened numpy 2.5.5 has not been verified by the sources.",
+    "The proven security of numpy 2.5.5 is not addressed in the sources.",
+    "Experts' endorsement of numpy 2.5.5 is not stated in the evidence.",
+]
+SEC_BYPASSES = F1_SPLIT + F4_GAPS + F3_PREFIX
 
 
 @pytest.mark.parametrize("cited", [True, False], ids=["cited", "uncited"])
@@ -458,6 +471,10 @@ REJECTED_CAVEATS = [
     ("No source states when the next Zephyr compiler release is planned.", [], [],
      "F1/F2: 'when' opens a new clause and only whether/if complements are caveats; the question asked for the "
      "latest version, not a release plan"),
+    ("However, the implications for ARM boards specifically are not directly evaluated in the available evidence.",
+     [3], ["C2"], "F3: 'implications for ARM boards' before the negation is not the question's (latest Zephyr version)"),
+    ("Note that build times on ARM boards are not reported in the sources.", [3], ["C2"],
+     "F3: 'build times on ARM boards' before the negation is not the question's"),
     ("Gaps include direct measurements of build times on ARM boards.", [3], ["C2"],
      "F4: a list of gaps is the schema's 'gaps' field, never an answer sentence"),
 ]

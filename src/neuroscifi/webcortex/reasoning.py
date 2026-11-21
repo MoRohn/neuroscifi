@@ -65,6 +65,7 @@ from datetime import datetime, timezone
 import json
 import re
 import time
+import unicodedata
 
 from . import safety
 
@@ -231,6 +232,45 @@ _JOIN_LEAD = re.compile(r"^(?:and|or|as|so|which|who|whom|whose|whereas|but|howe
 
 
 
+# F3 (security review): before the negation a caveat may hold only the question's own terms (_question_term), evidence
+# nouns and these function words: determiners, prepositions, expletives, nouns that name an aspect of the question
+# ("the security STATUS of", "this VERSION") and adjectives that describe the evidence ("the CITED sources"). An
+# attribute, apposition or endorsement ("the fully audited numpy 2.5.5 release") is content: no caveat.
+_PREFIX_WORDS = frozenset("""the a an this these those its their no some each every any all both of for on about
+regarding concerning in from among across within to by with there it here whether status question matter topic aspect
+aspects version versions release releases level details specifics available provided cited read retrieved collected
+consulted gathered existing current currently given supplied public published credible reliable independent official
+overall so far still also yet""".split())
+
+
+def _question_terms(question) -> frozenset:
+    """The question's own words, lower-cased (NFKC)."""
+    return frozenset(w.lower() for w in _WORD_RX.findall(_norm(question).replace("’", "'")))
+
+
+def _question_term(w: str, terms: frozenset) -> bool:
+    """`w` is one of the question's words or shares its stem ("security" for "secure", "recommendation" for
+    "recommended"): equal, or alphabetic with a common prefix of min(5, the shorter length), the shorter at least 4."""
+    if w in terms:
+        return True
+    if not w.isalpha():
+        return False
+    for t in terms:
+        if not t.isalpha():
+            continue
+        short = min(len(w), len(t))
+        n = min(5, short)
+        if short >= 4 and w[:n] == t[:n]:
+            return True
+    return False
+
+
+def _prefix_ok(prefix: list[str], terms: frozenset) -> bool:
+    """Every word before the negation is a question term, an evidence noun or a function word (F3). Auxiliaries are
+    left to _subject_ok and the nominal rule."""
+    return all(w in _AUX or w in _PREFIX_WORDS or w in _EVIDENCE_NOUNS or _question_term(w, terms) for w in prefix)
+
+
 _PUNCT = " ,.;:()[]{}\u2014\u2013\u2012\u2015\u2026!?\"'\u201c\u201d\u2018\u2019-"
 
 
@@ -277,8 +317,10 @@ def _subject_ok(prefix: list[str], raw: list[str], whether: bool) -> bool:
     return True
 
 
-def gap_clause(clause: str) -> bool:
-    """`clause` is an absent-evidence clause (see the rules above)."""
+def gap_clause(clause: str, question: str = "") -> bool:
+    """`clause` is an absent-evidence clause about `question` (see the rules above). Without a question only a
+    caveat with no content word before its negation can pass."""
+    terms = _question_terms(question)
     clause = _DISCOURSE_LEAD.sub("", _JOIN_LEAD.sub("", clause.strip(" ,.;:")))
     if not clause:
         return False
@@ -296,7 +338,7 @@ def gap_clause(clause: str) -> bool:
         knowledge = w in _KNOWLEDGE_ABSENT or (w == "not" and i + 1 < len(words) and words[i + 1] in ("known", "clear"))
         if knowledge:
             predicative = start < i and any(a in _COPULA for a in words[start:i]) or i == 0
-            if predicative and _subject_ok(prefix, prefix_raw, whether):
+            if predicative and _subject_ok(prefix, prefix_raw, whether) and _prefix_ok(prefix, terms):
                 return True
             continue
         negator = w in _NEG_WORDS or w.endswith("n't") or (w == "little" and i and words[i - 1] == "too")
@@ -308,12 +350,12 @@ def gap_clause(clause: str) -> bool:
         if words[j] in _EVIDENCE_NOUNS and w not in ("not", "cannot") and not w.endswith("n't") or \
                 w in ("lack", "lacks", "lacked", "lacking", "absence"):
             # nominal: "no evidence", "insufficient information", "lack of data", "the evidence is insufficient"
-            ok = whether or all(p in _EXPLETIVE or p in _COPULA or p in _PREPOSITIONS or p in _SCOPE_FILLER
-                                for p in words[:i])
+            ok = _subject_ok(prefix, prefix_raw, True) if whether else \
+                all(p in _EXPLETIVE or p in _COPULA or p in _PREPOSITIONS or p in _SCOPE_FILLER for p in words[:i])
             if not ok and (w in ("lack", "lacks", "lacked", "lacking", "absence") or
                            (start < i and any(p in _EVIDENCE_NOUNS for p in prefix))):
                 ok = _subject_ok(prefix, prefix_raw, whether)   # "X lacks evidence", "The evidence is insufficient"
-            if ok:
+            if ok and _prefix_ok(words[:i], terms):
                 return True
             continue
         # verbal: "does not state", "cannot be confirmed", "is not evaluated in the evidence", "unable to determine"
@@ -321,27 +363,28 @@ def gap_clause(clause: str) -> bool:
             (w in ("never", "fail", "fails", "failed") and i and words[i - 1] in _EVIDENCE_NOUNS)
         anchored = has_evidence_noun or w in _IMPOSSIBLE or (w.endswith("n't") and w.startswith("can")) or \
             (w == "not" and start < i and words[i - 1] in ("can", "could"))
-        if attached and anchored and _subject_ok(prefix, prefix_raw, whether):
+        if attached and anchored and _subject_ok(prefix, prefix_raw, whether) and _prefix_ok(prefix, terms):
             return True
     return False
 
 
-def _gap_spans(text: str) -> list[tuple[int, int]]:
+def _gap_spans(text: str, question: str = "") -> list[tuple[int, int]]:
     """Character spans of the absent-evidence clauses of `text` (gap_clause)."""
-    return [(a, z) for a, z in _clauses(text) if gap_clause(text[a:z])]
+    return [(a, z) for a, z in _clauses(text) if gap_clause(text[a:z], question)]
 
 
-def insufficiency(text: str) -> bool:
-    """Every clause of the sentence only says that the evidence does not establish something (gap_clause)."""
-    text = _DISCOURSE_LEAD.sub("", _clean(text))
+def insufficiency(text: str, question: str = "") -> bool:
+    """Every clause of the sentence only says that the evidence does not establish something about `question`
+    (gap_clause)."""
+    text = _DISCOURSE_LEAD.sub("", _clean(_norm(text)))
     spans = _clauses(text)
-    return bool(spans) and all(gap_clause(text[a:z]) for a, z in spans)
+    return bool(spans) and all(gap_clause(text[a:z], question) for a, z in spans)
 
 
-def _outside_gaps(text: str) -> str:
+def _outside_gaps(text: str, question: str = "") -> str:
     """`text` without its absent-evidence clauses: what the sentence asserts."""
     out = list(text)
-    for a, z in _gap_spans(text):
+    for a, z in _gap_spans(text, question):
         out[a:z] = " " * (z - a)
     return "".join(out)
 
@@ -350,11 +393,11 @@ _UPGRADE = re.compile(r"\b(?:verified|confirmed|proven|proved|definitely|certain
                       r"established fact)\b", re.IGNORECASE)
 
 
-def _upgrades(text: str) -> list[str]:
+def _upgrades(text: str, question: str = "") -> list[str]:
     """Words that call something verified or confirmed. One inside an absent-evidence clause, or under a negator
     that scopes over it ("cannot be confirmed", "not yet independently verified", "lack recent or verified
     evidence"), calls nothing verified."""
-    text = _outside_gaps(text)
+    text = _outside_gaps(text, question)
     return [m.group(0) for m in _UPGRADE.finditer(text) if not _negated_at(text, m.start())]
 
 
@@ -415,6 +458,13 @@ def _day(ts):
         return datetime.fromtimestamp(float(ts), tz=timezone.utc).strftime("%Y-%m-%d")
     except (OverflowError, OSError, ValueError):
         return None
+
+
+def _norm(text) -> str:
+    """NFKC (fullwidth and compatibility forms become their plain letters and digits) without format characters
+    (zero-width spaces and joiners, direction marks): what the guard reads is what the reader sees."""
+    text = unicodedata.normalize("NFKC", str(text or ""))
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
 
 
 def _clean(text, n=600) -> str:
@@ -636,13 +686,14 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     claims = {c["id"]: c for c in b["claims"]}
     source_ids = {x["id"] for x in b["sources"]}
     by_source = {x["id"]: x for x in b["sources"]}
-    text, inline_sources, inline_claims = _inline_refs(_clean(s.get("text")))
+    question = b.get("question") or ""
+    text, inline_sources, inline_claims = _inline_refs(_clean(_norm(s.get("text"))))
     cites = [n for n in s.get("sources") or [] if isinstance(n, int) and not isinstance(n, bool)]
     ids = [str(c).strip() for c in s.get("claims") or []]
     cites += [n for n in inline_sources if n not in cites]
     ids += [c for c in inline_claims if c not in ids]
     reasons = []
-    honest_gap = insufficiency(text)      # T2-03: "the evidence does not contain X" needs no supported claim
+    honest_gap = insufficiency(text, question)      # T2-03: "the evidence does not contain X" needs no supported claim
     if not cites and not honest_gap:
         reasons.append("cites no source")
     elif not cites:
@@ -670,7 +721,7 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     weak = [c for c in used if c["state"] not in SUPPORTED_STATES]
     # a hedge qualifies the clause it stands in: "..., but the evidence does not indicate whether ..." does not hedge
     # the factual clause before it
-    is_hedged = honest_gap or hedged(_outside_gaps(text))
+    is_hedged = honest_gap or hedged(_outside_gaps(text, question))
     if weak and not is_hedged:
         reasons.append("states " + ", ".join(f"{c['id']} ({c['state']})" for c in weak) +
                        " as fact without hedging")
@@ -688,7 +739,7 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
                                                               m.group(1)[1:].islower())]
         if absent:
             reasons.append(f"speculates about {', '.join(dict.fromkeys(absent))}, which no cited claim mentions")
-    if weak and _upgrades(text):
+    if weak and _upgrades(text, question):
         reasons.append("calls an unverified claim verified or confirmed")
     # R1-05: the checked statement's own ADR-035 state (the verdict) counts like a cited claim's state
     verdict_state = (b.get("verdict") or {}).get("state") if isinstance(b.get("verdict"), dict) else None
@@ -700,7 +751,7 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     cited_sources = [by_source[n] for n in cites if n in by_source]
     allowed = _allowed_numbers(used, cited_sources)
     asked = set(n.replace(",", "") for n in _NUMBER.findall(b.get("question") or ""))
-    gaps = [(0, len(text))] if honest_gap else _gap_spans(text)
+    gaps = [(0, len(text))] if honest_gap else _gap_spans(text, question)
     invented = [n for n, at in _number_positions(text) if not _number_ok(n, allowed) and
                 not (n in asked and any(a <= at < z for a, z in gaps))]
     if invented:
@@ -777,7 +828,7 @@ def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
             earlier.update(cites)
             accepted.append({"text": text, "citations": sorted(set(cites)), "claims": list(dict.fromkeys(ids)),
                              "states": {c["id"]: c["state"] for c in used}, "hedged": is_hedged}
-                            | ({"insufficiency": True} if insufficiency(text) else {})
+                            | ({"insufficiency": True} if insufficiency(text, b.get("question") or "") else {})
                             | ({"attributed": True} if attributed else {}))
     return accepted, rejected
 
