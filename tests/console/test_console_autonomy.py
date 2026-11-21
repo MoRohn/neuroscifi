@@ -23,6 +23,10 @@ def test_autonomy_status_switch_and_limits(tmp_path):
         assert code == 400
         code, data = c.post("/api/web/autonomy", {"enabled": "yes"})
         assert code == 400
+        for raw in (b'{"autonomous_daily": {"searches": Infinity}}', b'{"autonomous_daily": {"searches": 1e400}}',
+                    b'{"cooldown": Infinity}'):     # T5-04: OverflowError -> 500
+            code, _, data = c.call("POST", "/api/web/autonomy", raw=raw, headers={"Content-Type": "application/json"})
+            assert code == 400, (raw, code, data)
         assert c.ok("POST", "/api/web/config", {"autonomous": False})["config"]["autonomous"] is False
         assert c.ok("GET", "/api/web/autonomy")["enabled"] is False          # the switch-off is recorded too
         c.ok("POST", "/api/web/config", {"autonomous": True})
