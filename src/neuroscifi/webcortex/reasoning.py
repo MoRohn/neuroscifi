@@ -68,6 +68,7 @@ import time
 import unicodedata
 
 from . import safety
+from . import text as T
 
 # Labels say what the answer is, no more (T4-02): one model call over the collected evidence, which may include
 # single-source claims; the guard checks each sentence against its cited sources and claim states.
@@ -317,19 +318,113 @@ def _subject_ok(prefix: list[str], raw: list[str], whether: bool) -> bool:
     return True
 
 
-def gap_clause(clause: str, question: str = "") -> bool:
-    """`clause` is an absent-evidence clause about `question` (see the rules above). Without a question only a
-    caveat with no content word before its negation can pass."""
+# F2 (security review): what follows the evidence predicate. A caveat names WHAT the evidence does not establish as an
+# embedded question ("whether/if ...", free words: it asserts nothing) or as a topic built from the question's terms
+# ("about / on / regarding / of the security of numpy 2.5.5", "addresses its security"). A that-complement ("no
+# evidence THAT numpy 2.5.5 is not secure") asserts its content, and an existential complement ("reports ANY / A
+# SINGLE vulnerability", "no sign OF vulnerability") is an absence claim: reassurance, not a caveat.
+_TAIL_WORDS = _PREFIX_WORDS | _SCOPE_FILLER | _PREPOSITIONS | frozenset(
+    "and or to based according whether if other another second third multiple several more".split())
+_EXISTENTIAL = frozenset("any a an single some".split())
+_EXISTENTIAL_NOUNS = frozenset("""evidence sign signs indication indications proof mention mentions report reports
+record records trace traces hint hints""".split())
+_JUDGEMENT_NOUNS = frozenset("""recommendation recommendations verdict verdicts conclusion conclusions determination
+guidance advice""".split())
+_EXIST_SKIP = _SCOPE_FILLER | frozenset("other another second third multiple several more".split())
+_ADVERB = frozenset("yet so far even still currently".split())
+_WEAK_NEG = frozenset("insufficient inadequate lack lacks lacked lacking unable cannot fail fails failed little".split())
+_ESTABLISH = re.compile(r"^(?:confirm|establish|verif|determin|corroborat|prov|substantiat|settl|resolv|demonstrat|"
+                        r"conclu|attest)")
+
+
+def _next_content(words: list[str], k: int, skip) -> str | None:
+    return next((w for w in words[k:] if w not in skip), None)
+
+
+def _tail_ok(tail: list[str], terms: frozenset) -> bool:
+    """`tail` (the evidence predicate and what follows it) names what is missing as an embedded question or a topic
+    of the question's terms, never a that-complement or an existential one (F2)."""
+    inside, verbs, prev_aux = False, 0, False
+    for k in range(1, len(tail)):
+        w = tail[k]
+        if w == "that":
+            return False                       # "no evidence that X": the complement is asserted
+        if w in ("whether", "if"):
+            inside, verbs, prev_aux = True, 0, False
+            continue
+        if w in _NEG_WORDS or w.endswith("n't") or w in _KNOWLEDGE_ABSENT:
+            if inside and w == "not" and tail[k - 1] == "or":
+                continue                       # "whether ... or not"
+            return False
+        if w in _AUX:
+            if inside:
+                verbs += not prev_aux
+                prev_aux = True
+                if verbs > 1:
+                    return False               # "whether X is secure and Y is recommended": two statements
+                continue
+            nxt = _next_content(tail, k + 1, _AUX | _ADVERB | {w for w in _SCOPE_FILLER if w.endswith("ly")})
+            if nxt is None or not (_EVIDENCE_VERB.match(nxt) or nxt == "available"):
+                return False                   # only the passive of a nominal caveat: "no claims ... are supported"
+            prev_aux = True
+            continue
+        prev_aux = False
+        if inside:
+            continue
+        if w in _EXISTENTIAL or (w == "of" and tail[k - 1] in _EXISTENTIAL_NOUNS):
+            nxt = _next_content(tail, k + 1, _EXIST_SKIP)
+            if nxt not in _EVIDENCE_NOUNS and nxt not in _JUDGEMENT_NOUNS:
+                return False                   # "any vulnerability", "no sign of vulnerability": an absence claim
+        if not (w in _TAIL_WORDS or w in _EVIDENCE_NOUNS or w in _JUDGEMENT_NOUNS or _EVIDENCE_VERB.match(w) or
+                _question_term(w, terms)):
+            return False
+    return True
+
+
+def _complement(tail: list[str]) -> bool:
+    """A that-complement or an existential complement outside any embedded question (see _tail_ok)."""
+    for k in range(1, len(tail)):
+        w = tail[k]
+        if w in ("whether", "if"):
+            return False
+        if w == "that":
+            return True
+        if w in _EXISTENTIAL or (w == "of" and tail[k - 1] in _EXISTENTIAL_NOUNS):
+            nxt = _next_content(tail, k + 1, _EXIST_SKIP)
+            if nxt not in _EVIDENCE_NOUNS and nxt not in _JUDGEMENT_NOUNS:
+                return True
+    return False
+
+
+def _parse_gap(clause: str, question: str = "") -> tuple[str | None, bool, list[str], bool]:
+    """(kind, caveat, topic, complement) of one clause. kind: None when no negator or knowledge-absence word scopes over an
+    evidence predicate (no absence shape); "weak" when it says the evidence is too weak to establish something
+    (insufficient, lack of, cannot be confirmed, unclear); "absent" when it says the evidence does not hold something
+    at all (no source, does not state). caveat: the clause is an absent-evidence clause about `question` (all rules
+    above). topic: its content words (what it says is missing; aspect and evidence words count only when they are the
+    question's). complement: a that-complement or existential complement follows an evidence predicate (F2)."""
     terms = _question_terms(question)
-    clause = _DISCOURSE_LEAD.sub("", _JOIN_LEAD.sub("", clause.strip(" ,.;:")))
-    if not clause:
-        return False
-    if _COUNTER.search(clause):
-        return False
+    clause = _DISCOURSE_LEAD.sub("", _JOIN_LEAD.sub("", clause.strip(_PUNCT)))
     raw = _WORD_RX.findall(clause.replace("’", "'"))
     words = [w.lower() for w in raw]
-    whether = bool(words) and words[0] == "whether"
+    if not words:
+        return None, False, [], False
+    topic = [w for w in words if not (w in _AUX or w in _NEG_WORDS or w.endswith("n't") or w in _KNOWLEDGE_ABSENT or
+                                      w in T.STOPWORDS or any(c.isdigit() for c in w) or
+                                      (not _question_term(w, terms) and
+                                       (w in _TAIL_WORDS or w in _EVIDENCE_NOUNS or w in _JUDGEMENT_NOUNS or
+                                        _EVIDENCE_VERB.match(w))))]
+    countered = bool(_COUNTER.search(clause))
+    whether = words[0] == "whether"
     has_evidence_noun = any(w in _EVIDENCE_NOUNS for w in words)
+    shape, complement = None, False
+
+    def tail_ok(tail):
+        nonlocal complement
+        good = _tail_ok(tail, terms)
+        complement = complement or (not good and _complement(tail))
+        return good
+
     for i, w in enumerate(words):
         start = i
         while start and words[start - 1] in _AUX:
@@ -338,8 +433,12 @@ def gap_clause(clause: str, question: str = "") -> bool:
         knowledge = w in _KNOWLEDGE_ABSENT or (w == "not" and i + 1 < len(words) and words[i + 1] in ("known", "clear"))
         if knowledge:
             predicative = start < i and any(a in _COPULA for a in words[start:i]) or i == 0
-            if predicative and _subject_ok(prefix, prefix_raw, whether) and _prefix_ok(prefix, terms):
-                return True
+            if not predicative:
+                continue
+            shape = shape or "weak"
+            if not countered and _subject_ok(prefix, prefix_raw, whether) and _prefix_ok(prefix, terms) and \
+                    tail_ok(words[i + (w == "not"):]):
+                return "weak", True, topic, False
             continue
         negator = w in _NEG_WORDS or w.endswith("n't") or (w == "little" and i and words[i - 1] == "too")
         if not negator:
@@ -347,25 +446,70 @@ def gap_clause(clause: str, question: str = "") -> bool:
         j = _scoped(words, i)
         if j is None:
             continue
+        weak = w in _WEAK_NEG or (i + 1 < len(words) and words[i + 1] == "enough") or bool(_ESTABLISH.match(words[j]))
+        kind = "weak" if weak else "absent"
         if words[j] in _EVIDENCE_NOUNS and w not in ("not", "cannot") and not w.endswith("n't") or \
                 w in ("lack", "lacks", "lacked", "lacking", "absence"):
             # nominal: "no evidence", "insufficient information", "lack of data", "the evidence is insufficient"
+            shape = shape or kind
             ok = _subject_ok(prefix, prefix_raw, True) if whether else \
                 all(p in _EXPLETIVE or p in _COPULA or p in _PREPOSITIONS or p in _SCOPE_FILLER for p in words[:i])
             if not ok and (w in ("lack", "lacks", "lacked", "lacking", "absence") or
                            (start < i and any(p in _EVIDENCE_NOUNS for p in prefix))):
                 ok = _subject_ok(prefix, prefix_raw, whether)   # "X lacks evidence", "The evidence is insufficient"
-            if ok and _prefix_ok(words[:i], terms):
-                return True
+            if ok and not countered and _prefix_ok(words[:i], terms) and tail_ok(words[j:]):
+                return kind, True, topic, False
             continue
         # verbal: "does not state", "cannot be confirmed", "is not evaluated in the evidence", "unable to determine"
         attached = start < i or w in _IMPOSSIBLE or w.endswith("n't") or \
             (w in ("never", "fail", "fails", "failed") and i and words[i - 1] in _EVIDENCE_NOUNS)
         anchored = has_evidence_noun or w in _IMPOSSIBLE or (w.endswith("n't") and w.startswith("can")) or \
             (w == "not" and start < i and words[i - 1] in ("can", "could"))
-        if attached and anchored and _subject_ok(prefix, prefix_raw, whether) and _prefix_ok(prefix, terms):
-            return True
-    return False
+        if not (attached and anchored):
+            continue
+        shape = shape or kind
+        if not countered and _subject_ok(prefix, prefix_raw, whether) and _prefix_ok(prefix, terms) and \
+                tail_ok(words[j:]):
+            return kind, True, topic, False
+    return shape, False, topic, complement
+
+
+def gap_clause(clause: str, question: str = "") -> bool:
+    """`clause` is an absent-evidence clause about `question` (see the rules above). Without a question only a
+    caveat with no content word outside an embedded question can pass."""
+    return _parse_gap(clause, question)[1]
+
+
+def _absence_problems(text: str, b: dict) -> list[str]:
+    """F2: what a sentence says the evidence lacks must be true of the bundle. A clause shaped as an absence claim
+    (a negator over an evidence predicate) that is not a caveat about the question asserts something about the
+    evidence the guard cannot check ("No source reports any vulnerability in numpy 2.5.5"); a caveat must not deny
+    what a claim in the bundle states: any claim when it says the evidence holds nothing ("absent"), a supported
+    claim when it says the evidence is too weak ("weak")."""
+    question = b.get("question") or ""
+    terms = _question_terms(question)
+    out = []
+    text = _DISCOURSE_LEAD.sub("", text)
+    for a, z in _clauses(text):
+        kind, ok, topic, complement = _parse_gap(text[a:z], question)
+        if kind is None:
+            continue
+        if not ok:
+            # "No source reports X", "no evidence that X", "insufficient evidence of any X": an absence claim. A
+            # hedge ("X is not yet confirmed by a third source") is left to the hedge and state checks.
+            if kind == "absent" or complement:
+                out.append("says the evidence lacks something, but is no caveat about the question (an absence "
+                           "claim)")
+            continue
+        targets = [w for w in topic if not _question_term(w, terms)] or topic
+        for c in b.get("claims") or []:
+            if kind == "weak" and c.get("state") not in SUPPORTED_STATES:
+                continue
+            have = frozenset(w.lower() for w in _WORD_RX.findall(_norm(c.get("text")).replace("’", "'")))
+            if targets and all(_question_term(w, have) for w in targets):
+                out.append(f"says the evidence lacks what claim {c['id']} states")
+                break
+    return list(dict.fromkeys(out))
 
 
 def _gap_spans(text: str, question: str = "") -> list[tuple[int, int]]:
@@ -748,6 +892,7 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
         reasons.append("says the sources disagree, but no cited claim is contested")
     if _MANY_SOURCES.search(text) and len(set(cites)) < 2:
         reasons.append("attributes it to several sources, but cites fewer than 2 distinct sources")
+    reasons += _absence_problems(text, b)
     cited_sources = [by_source[n] for n in cites if n in by_source]
     allowed = _allowed_numbers(used, cited_sources)
     asked = set(n.replace(",", "") for n in _NUMBER.findall(b.get("question") or ""))

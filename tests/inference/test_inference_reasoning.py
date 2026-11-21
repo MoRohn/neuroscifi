@@ -174,9 +174,7 @@ def test_an_honest_insufficiency_statement_passes_but_only_on_its_own():
     single-source claims; the hedging rule rejected it and the fallback spoke an unrelated quote. A sentence that only
     says the evidence lacks something asserts no fact: it passes, with or without citations. A second clause that
     asserts a fact, a number not in the evidence or an unknown id still fails."""
-    honest = [("The provided evidence does not contain information about Zephyr build times on ARM boards.", [3],
-               ["C2"]),
-              ("No source states whether a Zephyr compiler release is planned.", [], []),
+    honest = [("No source states whether a Zephyr compiler release is planned.", [], []),
               ("This cannot be established from the sources read.", [1], ["C1"])]
     ok, bad = check(*honest)
     assert bad == [] and [x["text"] for x in ok] == [t for t, _, _ in honest]
@@ -197,8 +195,8 @@ def test_honest_caveats_pass_after_a_discourse_marker():
     directly evaluated in the available evidence.", "Gaps include direct application to NeuroSciFi systems" and
     "However, the evidence does not state whether NumPy 2.5.5 is recommended." were rejected as single-source facts.
     A caveat about what the evidence does not establish asserts no fact; a second clause that does still fails."""
-    caveats = [("However, the evidence does not state whether Zephyr 4.2.0 is recommended.", [1], ["C1"]),
-               ("However, the version of the Zephyr compiler is not directly evaluated in the available evidence.",
+    caveats = [("However, the evidence does not state whether Zephyr 4.2.0 is the latest version.", [1], ["C1"]),
+               ("However, the latest version of the Zephyr compiler is not directly evaluated in the available evidence.",
                 [3], ["C2"]),
                ("Note that the latest Zephyr compiler version is not reported in the sources.", [3], ["C2"])]
     ok, bad = check(*caveats)
@@ -325,7 +323,7 @@ def test_r5_uncited_caveat_may_use_only_the_questions_terms():
     the question does not hold, and a factual clause in it is still a factual clause."""
     b = r5_bundle("Is numpy 2.5.5 recommended?")
     ok, bad = reasoning.guard([{"text": "The recommendation status for numpy 2.5.5 is not evaluated in the evidence, "
-                                        "and no direct assessment of its suitability is provided.", "sources": [],
+                                        "and no direct assessment of its recommendation is provided.", "sources": [],
                                 "claims": []}], b)
     assert bad == [] and ok[0].get("insufficiency"), bad
     ok, bad = reasoning.guard([
@@ -370,7 +368,6 @@ HONEST_CAVEATS = [
     "There is a lack of data on the security of numpy 2.5.5.",
     "The security of numpy 2.5.5 has not been independently verified by any of the cited sources.",
     "The evidence doesn't say whether numpy 2.5.5 is secure.",
-    "There is no clear indication in the evidence that numpy 2.5.5 is secure.",
     "The cited evidence does not indicate whether numpy 2.5.5 is secure, and no source addresses its security.",
     "However, the security of numpy 2.5.5 is not yet confirmed in the sources.",
 ]
@@ -452,7 +449,24 @@ F3_PREFIX = [     # an attribute, apposition or endorsement before the negation
     "The proven security of numpy 2.5.5 is not addressed in the sources.",
     "Experts' endorsement of numpy 2.5.5 is not stated in the evidence.",
 ]
-SEC_BYPASSES = F1_SPLIT + F4_GAPS + F3_PREFIX
+F2_ABSENCE = [    # a that-complement or an existential complement: an absence claim used as reassurance
+    "There is no evidence that numpy 2.5.5 is not secure.",
+    "No evidence indicates that numpy 2.5.5 is insecure.",
+    "No source indicates that numpy 2.5.5 has any vulnerabilities.",
+    "No credible source reports a single vulnerability in numpy 2.5.5.",
+    "There is no sign of any vulnerability in numpy 2.5.5.",
+    "There is no data to suggest numpy 2.5.5 is anything other than fully secure.",
+    "No evidence indicates that numpy 2.5.5 is not recommended.",
+    "No source indicates that anyone should avoid numpy 2.5.5.",
+    "No source reports any vulnerability in numpy 2.5.5.",
+    "There is no evidence of vulnerability in numpy 2.5.5.",
+    "No source mentions a security flaw in numpy 2.5.5.",
+    "There is insufficient evidence that numpy 2.5.5 is insecure.",
+    "No source lists any known exploit for numpy 2.5.5.",
+    "None of the sources reports security problems in numpy 2.5.5.",
+    "The evidence does not show that numpy 2.5.5 is unsafe.",
+]
+SEC_BYPASSES = F1_SPLIT + F4_GAPS + F3_PREFIX + F2_ABSENCE
 
 
 @pytest.mark.parametrize("cited", [True, False], ids=["cited", "uncited"])
@@ -466,24 +480,71 @@ def test_security_review_bypasses_are_rejected(text, cited):
 # Honest caveats the stricter rule rejects (fail closed, never loosened to keep them). Each loss is covered: when the
 # verdict did not evaluate or establish the question, the deterministic rules note says so (verdict_note); when no
 # sentence survives, the reader is told the sources do not establish an answer (unanswered); gaps belong in the
-# schema's "gaps" field. (text, sources, claims, why)
+# schema's "gaps" field. (text, question (None: the Zephyr report's own), sources, claims, why)
 REJECTED_CAVEATS = [
-    ("No source states when the next Zephyr compiler release is planned.", [], [],
+    ("No source states when the next Zephyr compiler release is planned.", None, [], [],
      "F1/F2: 'when' opens a new clause and only whether/if complements are caveats; the question asked for the "
      "latest version, not a release plan"),
     ("However, the implications for ARM boards specifically are not directly evaluated in the available evidence.",
-     [3], ["C2"], "F3: 'implications for ARM boards' before the negation is not the question's (latest Zephyr version)"),
-    ("Note that build times on ARM boards are not reported in the sources.", [3], ["C2"],
+     None, [3], ["C2"], "F3: 'implications for ARM boards' before the negation is not the question's (latest Zephyr version)"),
+    ("Note that build times on ARM boards are not reported in the sources.", None, [3], ["C2"],
      "F3: 'build times on ARM boards' before the negation is not the question's"),
-    ("Gaps include direct measurements of build times on ARM boards.", [3], ["C2"],
+    ("Gaps include direct measurements of build times on ARM boards.", None, [3], ["C2"],
      "F4: a list of gaps is the schema's 'gaps' field, never an answer sentence"),
+    ("The provided evidence does not contain information about Zephyr build times on ARM boards.", None, [3], ["C2"],
+     "F2: the topic after the evidence predicate ('build times on ARM boards') is not the question's"),
+    ("However, the evidence does not state whether Zephyr 4.2.0 is recommended.", None, [1], ["C1"],
+     "F2 bundle check: claim C3 ('... recommend uninstalling it') speaks of recommending the Zephyr compiler, so "
+     "'the evidence does not state' it fails closed on the shared term"),
+    ("There is no clear indication in the evidence that numpy 2.5.5 is secure.", SEC_Q, [2], ["C7", "C8"],
+     "F2 (was HONEST_CAVEATS 13): a that-complement differs from the reassurance 'no indication that numpy 2.5.5 is "
+     "INsecure' only in polarity, which word classes cannot read safely; the rules note states the insufficient "
+     "verdict"),
+    ("The recommendation status for numpy 2.5.5 is not evaluated in the evidence, and no direct assessment of its "
+     "suitability is provided.", "Is numpy 2.5.5 recommended?", [], [],
+     "F2/F5 (D-R5-3 live wording): 'suitability' is not the question's term; the rules note says 'recommended' is a "
+     "judgement the evidence does not establish"),
 ]
 
 
-@pytest.mark.parametrize("text,sources,claims,why", REJECTED_CAVEATS)
-def test_caveats_the_strict_rule_rejects_are_documented(text, sources, claims, why):
-    ok, bad = check((text, sources, claims))
+@pytest.mark.parametrize("text,question,sources,claims,why", REJECTED_CAVEATS)
+def test_caveats_the_strict_rule_rejects_are_documented(text, question, sources, claims, why):
+    s = {"text": text, "sources": sources, "claims": claims}
+    ok, bad = reasoning.guard([s], r5_bundle(question)) if question else check((text, sources, claims))
     assert ok == [] and len(bad) == 1, why
+
+
+def false_absence_bundle():
+    """SECREVIEW F2: the evidence states a vulnerability (C1 supported, source 1)."""
+    b = r5_bundle(SEC_Q)
+    b["claims"][0] = dict(b["claims"][0], state="supported",
+                          text="NumPy 2.5.5 is affected by a critical remote code execution vulnerability.")
+    return b
+
+
+@pytest.mark.parametrize("cited", [True, False], ids=["cited", "uncited"])
+@pytest.mark.parametrize("text", ["No source reports any vulnerability in numpy 2.5.5.",
+                                  "No source addresses the vulnerability of numpy 2.5.5.",
+                                  "None of the sources mentions the security vulnerability in numpy 2.5.5.",
+                                  "The vulnerability of numpy 2.5.5 is not reported in the evidence."])
+def test_an_absence_claim_never_denies_what_the_bundle_states(text, cited):
+    """F2: "No source reports any vulnerability in numpy 2.5.5." passed, cited and uncited, while C1 (supported) says
+    NumPy 2.5.5 has a critical RCE vulnerability. An absence claim that is no caveat is rejected; a caveat that says the
+    evidence lacks what a claim states is false and rejected too."""
+    s = {"text": text, "sources": [1] if cited else [], "claims": ["C1"] if cited else []}
+    ok, bad = reasoning.guard([s], false_absence_bundle())
+    assert ok == [] and any("lacks" in r for r in bad[0]["reasons"]), bad
+
+
+def test_a_caveat_about_another_aspect_survives_the_false_absence_bundle():
+    """The bundle check compares what a caveat says is missing with each claim: a claim about something else (here a
+    vulnerability, for a caveat about "recommended") leaves the caveat standing. A caveat stating the evidence lacks
+    what a claim says ("... whether Zephyr 4.2.0 was released" beside C1) is rejected."""
+    ok, bad = reasoning.guard([{"text": "There is insufficient evidence to determine whether numpy 2.5.5 is "
+                                        "recommended.", "sources": [1], "claims": ["C1"]}], false_absence_bundle())
+    assert bad == [] and ok[0].get("insufficiency"), bad
+    ok, bad = check(("The evidence does not state whether Zephyr 4.2.0 was released.", [1], ["C1"]))
+    assert ok == [] and "says the evidence lacks what claim C1 states" in bad[0]["reasons"], bad
 
 
 def test_sources_disagree_passes_when_the_verdict_is_conflicting():
