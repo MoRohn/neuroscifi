@@ -719,6 +719,36 @@ def values_conflict(va: list[str], vb: list[str], *, nouns: tuple[dict, dict] | 
     return other or when
 
 
+_RANGE = re.compile(r"\bbetween\s+(\S+)\s+and\s+\S+(?:\s+(?:million|billion|trillion|thousand|bn|mn))?(?:\s+[^\W\d]+)?"
+                    r"|(?<![\w.])\d[\d,.]*\s*(?:–|—|-|to)\s*\d[\d,.]*(?:\s+(?:million|billion|trillion|thousand|bn|mn))?"
+                    r"(?:\s+[^\W\d]+)?", re.IGNORECASE)
+
+
+def ranges(s: str) -> list[tuple[str, str]]:
+    """Ranges stated in `s` as (low, high) canonical values: "between 73 and 99 bn neurons", "14–16 billion
+    neurons", "5 to 7 km" (the bare first number takes the second's unit, as in values())."""
+    out = []
+    for m in _RANGE.finditer(s or ""):
+        found = values(m.group(0))
+        if len(found) >= 2:
+            lo, hi = found[0], found[1]
+            ka, ga, pa = value_kind(lo)
+            kb, gb, pb = value_kind(hi)
+            if ga == gb and ka not in ("version", "date") and not ka.startswith("text") and pa <= pb:
+                out.append((lo, hi))
+    return out
+
+
+def within(v: str, lo: str, hi: str) -> bool | None:
+    """None when `v` is not comparable with the range's values, else whether lo <= v <= hi (within tolerance)."""
+    kv, gv, pv = value_kind(v)
+    kl, gl, pl = value_kind(lo)
+    _, gh, ph = value_kind(hi)
+    if gv != gl or gl != gh or kv.startswith("text") or kv in ("version", "date"):
+        return None
+    return pl <= pv <= ph or bool(values_equal(v, lo)) or bool(values_equal(v, hi))
+
+
 def values_equal(a: str, b: str, *, rel_tol: float | None = None) -> bool | None:
     """None when two canonical values are not comparable (different comparison groups), else whether they are
     equal within tolerance (as in values_conflict; `rel_tol` overrides the relative tolerance of numbers and

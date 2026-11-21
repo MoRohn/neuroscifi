@@ -553,9 +553,14 @@ def test_verdict_shapes_quantity_capital_and_date():
     # C-09: "86 billion neurons" was insufficient (0.595) with spurious polarity items.
     brain = [doc("https://a.example/n", "The human brain contains about 86 billion neurons, a 2009 count found."),
              doc("https://b.example/n", "The human brain has roughly 86 billion neurons and as many glial cells."),
-             doc("https://c.example/n", "An old textbook claimed the human brain has 100 billion neurons.")]
+             doc("https://c.example/n", "The human brain contains 100 billion neurons in total.")]
     v = _fv("Is it true that the human brain has 86 billion neurons?", brain)
     assert v["shape"] == "quantity" and v["label"] == "contested"
+    # T1-16 (RC2 retest): "textbooks say/claimed ..." reports a belief; it no longer contradicts the count (this
+    # sentence was the contradicting side here before)
+    textbook = brain[:2] + [doc("https://c.example/n", "An old textbook claimed the human brain has 100 billion "
+                                "neurons.")]
+    assert _fv("Is it true that the human brain has 86 billion neurons?", textbook)["label"] == "supported"
     assert v["reasons"][0].startswith("2 independent source group(s) agree with the statement; 1 contradict")
     assert _fv("the human brain has 86 billion neurons", brain[:2])["label"] == "supported"
     capital = [doc("https://a.example/c", "Canberra is the capital of Australia and its largest inland city."),
@@ -1025,3 +1030,19 @@ def test_a_definite_description_takes_the_subject_of_its_own_documents_title():
     off_subject = [i for i, t in enumerate(quotes) if t == theirs.text or "Fernsehturm" in t]
     assert on_subject and all(i < j for i in on_subject for j in off_subject), quotes   # ranked off-subject
     assert not any("368" in (c["a"]["text"] + c["b"]["text"]) for c in r["contradictions"]), r["contradictions"]
+
+
+def test_the_neuron_count_retest_case_has_no_false_sides():
+    """T1-01 / T1-16 (RC2 retest r1, s4c "How many neurons are in the human brain?"): the male range (73-99 bn)
+    against 86 bn, the female subgroup against the whole brain, and "For decades, scientists said ... 100 billion"
+    were each contested. Only 100 bn vs 86 bn is a real disagreement."""
+    docs = [doc("https://pubmed.ncbi.nlm.nih.gov/1", "An experimental study on the number of neurons suggests an "
+                "average between 73 and 99 bn neurons in the healthy male human brain (n = 4). An experimental study "
+                "on the number of neurons suggests an average between 61 and 73 bn neurons in the healthy female "
+                "human brain (n = 5).", title="Neuron numbers in the human brain"),
+            doc("https://www.ted.com/talks/x", "For decades, scientists said that the human brain contains 100 "
+                "billion neurons. Result: the human brain has about 86 billion neurons, 14 billion fewer than assumed "
+                "-- but intriguingly, far more than other animals, relative to brain size.", title="Brain neurons")]
+    report = run("How many neurons are in the human brain?", docs)
+    pairs = [{c["a"]["text"][:40], c["b"]["text"][:40]} for c in report["contradictions"]]
+    assert pairs == [], pairs

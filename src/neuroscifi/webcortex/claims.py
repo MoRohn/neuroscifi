@@ -279,7 +279,18 @@ _ATTRIBUTION_CUE = re.compile(
     r"(?:once\s+|long\s+|often\s+|commonly\s+|widely\s+|previously\s+)?(?:thought|believed|said|claimed|assumed|"
     r"estimated|stated)|(?:was|were|had\s+been|has\s+been|have\s+been)\s+(?:long\s+|once\s+|widely\s+|commonly\s+|"
     r"often\s+|generally\s+|previously\s+)?(?:believed|thought|assumed|presumed|supposed)\s+to|"
-    r"purportedly|supposedly|allegedly|reputedly|ostensibly)\b", re.IGNORECASE)
+    r"purportedly|supposedly|allegedly|reputedly|ostensibly|"
+    # T1-16 (RC2 retest): "textbooks say ...", "the commonly cited figure"
+    r"textbooks?\s+(?:say|said|state|stated|claim|claimed|teach|taught|give|gave|cite|cited|list|listed)|"
+    r"(?:commonly|often|widely|frequently)\s+(?:cited|quoted)\s+(?:figure|number|estimate|value|count))\b",
+    re.IGNORECASE)
+# A sentence framed in the past ("For decades, scientists said that ... 100 billion") reports what was said then:
+# within it, a clause with a reporting verb is attribution, not assertion (T1-16, RC2 retest).
+_PAST_FRAME = re.compile(r"^\s*(?:for\s+(?:decades|years|centuries|generations|a\s+(?:long\s+time|century)|half\s+a\s+"
+                         r"century|many\s+years)|historically|traditionally|until\s+recently|in\s+the\s+past|"
+                         r"long\s+ago)\b", re.IGNORECASE)
+_REPORTED_VERB = re.compile(r"\b(?:said|claimed|believed|thought|assumed|taught|estimated|cited|stated|held|"
+                            r"reported|quoted)\b", re.IGNORECASE)
 _CLAUSE_SPLIT = re.compile(r"([,;:()—]|\s(?:but|whereas|while|although|though)\s)", re.IGNORECASE)
 
 
@@ -287,7 +298,8 @@ _CLAUSE_SPLIT = re.compile(r"([,;:()—]|\s(?:but|whereas|while|although|though)
 def asserted_text(text: str) -> str:
     """`text` without the parts that report a figure or belief rather than assert it (see the comment above);
     `text` itself when it has no such part."""
-    if not (_CONTRAST_CUE.search(text) or _ATTRIBUTION_CUE.search(text)):
+    framed = bool(_PAST_FRAME.search(text) and _REPORTED_VERB.search(text))
+    if not (framed or _CONTRAST_CUE.search(text) or _ATTRIBUTION_CUE.search(text)):
         return text
     parts = _CLAUSE_SPLIT.split(text)
     out = []
@@ -296,7 +308,7 @@ def asserted_text(text: str) -> str:
         m = _CONTRAST_CUE.search(seg)
         if m:
             seg = seg[:m.start()]
-        elif _ATTRIBUTION_CUE.search(seg):
+        elif _ATTRIBUTION_CUE.search(seg) or (framed and _REPORTED_VERB.search(seg)):
             seg = ""
         out.append(seg)
         if i + 1 < len(parts):
@@ -1365,6 +1377,41 @@ def _different_things(a: Claim, b: Claim) -> bool:
     return pa[-1] not in _stem_set(b) or pb[-1] not in _stem_set(a)
 
 
+# T1-01 (RC2 retest): a figure for a subgroup ("the healthy female human brain") is not a figure for the whole
+# population ("the human brain"), nor for another subgroup: the scopes differ, so the values do not conflict.
+_SUBGROUP = re.compile(r"\b(?:male|female|males|females|men|women|man|woman|boys?|girls?|child|children|infants?|"
+                       r"newborns?|neonates?|adolescents?|teenagers?|elderly|aged\s+\d+)\b", re.IGNORECASE)
+_SUBGROUP_CANON = {"males": "male", "man": "men", "woman": "women", "females": "female", "boy": "boys",
+                   "girl": "girls", "child": "children", "infant": "infants", "newborn": "newborns",
+                   "neonate": "neonates", "adolescent": "adolescents", "teenager": "teenagers"}
+
+
+def _subgroups(text: str) -> frozenset:
+    return frozenset(_SUBGROUP_CANON.get(w.lower(), w.lower()) for w in _SUBGROUP.findall(asserted_text(text or "")))
+
+
+def different_scope(a: Claim, b: Claim) -> bool:
+    """The two statements are about different subgroups (or one about a subgroup, the other about the whole)."""
+    return _subgroups(a.text) != _subgroups(b.text)
+
+
+def _within_range(a: Claim, b: Claim) -> bool:
+    """`b`'s comparable values all lie inside a range `a` states ("between 73 and 99 bn", "14–16 billion"), and at
+    least one does (T1-01: 86 billion is not a contradiction of 73–99 billion)."""
+    spans = T.ranges(asserted_text(a.text or ""))
+    if not spans:
+        return False
+    hit = False
+    for v in asserted_values(b):
+        inside = [x for x in (T.within(v, lo, hi) for lo, hi in spans) if x is not None]
+        if not inside:
+            continue
+        if not any(inside):
+            return False
+        hit = True
+    return hit
+
+
 def _value_conflict(a: Claim, b: Claim) -> str | None:
     """Values of the same kind attached to the same thing: plain numbers only against plain numbers counting the
     same noun (unless the two sentences are the same template with different numbers), and a disagreement that
@@ -1379,6 +1426,8 @@ def _value_conflict(a: Claim, b: Claim) -> str | None:
     reason = T.values_conflict(va, vb, nouns=nouns)
     if reason and reason.startswith("different years") and not template and \
             T.jaccard(a.key.split(), b.key.split()) < YEAR_ONLY_KEY_JACCARD:
+        return None
+    if reason and (_within_range(a, b) or _within_range(b, a)):
         return None
     return reason
 
@@ -1434,12 +1483,15 @@ def conflict(a: Claim, b: Claim) -> str | None:
     (_denies_same), different values of the same kind (_value_conflict), or an explicit conflict cue pair. None when
     they are compatible. Record claims of different identities never conflict (two releases are not two answers
     to one question), nor do statements about two versions of one product (different_versions) or about two
-    different things (_different_things: "the cerebral cortex" vs "the human brain")."""
+    different things (_different_things: "the cerebral cortex" vs "the human brain"), or about different subgroups
+    (different_scope: "the female human brain" vs "the human brain")."""
     ra, rb = record_identity(a), record_identity(b)
     if (ra or rb) and not same_identity(ra, rb):
         return None
     if different_versions(a, b) or (_different_things(a, b) and
                                     T.jaccard(_shingles(a), _shingles(b)) < CLUSTER_TEXT_SHINGLE):
+        return None
+    if different_scope(a, b):
         return None
     if a.polarity != b.polarity:
         neg, pos = (b, a) if b.polarity < 0 else (a, b)
@@ -1535,6 +1587,11 @@ def restates(a: Claim, b: Claim) -> bool:
     return _same_statement(a, b)
 
 
+def _reports_only(c: Claim) -> bool:
+    """A sentence that reports some of its own values as a belief rather than asserting them (asserted_values)."""
+    return c.kind != "metadata" and bool(c.values) and len(asserted_values(c)) < len(c.values)
+
+
 def agrees(a: Claim, b: Claim) -> bool:
     """`b` supports `a` (evidence for it): `b` restates it (restates), or `b` is a statement about the same subject
     (similarity > 0) with at least one equal value and no conflict (corroboration in other words: it counts as
@@ -1543,6 +1600,8 @@ def agrees(a: Claim, b: Claim) -> bool:
         return True
     if is_adversarial(b) or similarity(a, b) <= 0 or conflict(a, b):
         return False
+    if _reports_only(b) and not _reports_only(a):
+        return False        # "It was long thought that X": the same words, but reported, not stated (T1-16)
     if _same_statement(a, b):
         return True
     return T.values_agree(asserted_values(a), asserted_values(b))

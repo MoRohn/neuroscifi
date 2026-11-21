@@ -983,3 +983,51 @@ def test_a_reported_belief_is_not_the_sentences_own_figure():
     purported = mk("The human brain is endowed with an overdeveloped cerebral cortex, and purportedly containing "
                    "100 billion neurons.", domain="d.example")
     assert "100000000000 neurons" not in C.asserted_values(purported)
+
+
+# ---- RC2 retest (r1, s4c): a point inside a stated range, subgroups, reported beliefs ------------------------------
+
+MALE = ("An experimental study on the number of neurons suggests an average between 73 and 99 bn neurons in the "
+        "healthy male human brain (n = 4).")
+FEMALE = ("An experimental study on the number of neurons suggests an average between 61 and 73 bn neurons in the "
+          "healthy female human brain (n = 5).")
+TED86 = ("Result: the human brain has about 86 billion neurons, 14 billion fewer than assumed -- but intriguingly, far "
+         "more than other animals, relative to brain size.")
+ARXIV100 = ("On average, the human brain contains about 100 billion neurons and many more neuroglia which serve to "
+            "support and protect the neurons.")
+DECADES = "For decades, scientists said that the human brain contains 100 billion neurons."
+
+
+def test_a_value_inside_a_stated_range_is_compatible():
+    """T1-01 (r1 s4c): "86 billion" against "between 73 and 99 bn" was contested; it lies inside the range."""
+    inside = mk("The human brain has between 73 and 99 billion neurons.", domain="nih.gov")
+    assert C.conflict(inside, mk(TED86, domain="ted.com")) is None
+    assert C.conflict(mk("The human brain has 73–99 billion neurons.", domain="nih.gov"),
+                      mk("The human brain has about 86 billion neurons.", domain="b.example")) is None
+    assert C.conflict(inside, mk("The human brain has about 120 billion neurons.", domain="b.example")) \
+        .startswith("different values")                                        # outside the range: still a conflict
+    assert C.conflict(mk(MALE, domain="nih.gov"), mk(TED86, domain="ted.com")) is None
+
+
+@pytest.mark.parametrize("whole", [TED86, ARXIV100, "The human brain contains about 100 billion neurons."])
+def test_a_subgroup_figure_is_a_different_scope_from_the_whole_population(whole):
+    """T1-01 (r1 s4c): the female subgroup's 61-73 bn against the whole brain's 86 / 100 bn was contested and raised
+    owner question #10."""
+    assert C.conflict(mk(FEMALE, domain="nih.gov"), mk(whole, domain="ted.com")) is None
+    assert C.conflict(mk(whole, domain="ted.com"), mk(FEMALE, domain="nih.gov")) is None
+    assert C.conflict(mk(FEMALE, domain="nih.gov"), mk(MALE, domain="b.example")) is None   # two subgroups
+
+
+@pytest.mark.parametrize("reported", [
+    DECADES,
+    "It was long thought that the human brain contains 100 billion neurons.",
+    "Textbooks say the human brain contains 100 billion neurons.",
+    "The commonly cited figure is that the human brain contains 100 billion neurons.",
+])
+def test_reported_belief_framing_is_not_the_sentences_own_figure(reported):
+    """T1-16 (r1 s4c): "For decades, scientists said that ... 100 billion" was counted as a side."""
+    claim = mk(reported, domain="ted.com")
+    assert "100000000000 neurons" not in C.asserted_values(claim)
+    assert C.conflict(claim, mk(TED86, domain="b.example")) is None
+    assert not C.agrees(mk("The human brain contains about 100 billion neurons.", domain="c.example"), claim)
+    assert C.asserted_values(mk("Scientists said on Tuesday that the probe holds 3 kg of samples.")) == ["3 kg"]
