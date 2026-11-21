@@ -45,12 +45,14 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
     speculative sentence may not name anything that no cited claim or source title names (T1-09).
 Citation markup in the text ("[1]", "(C3, sources 4)") is stripped and its ids are checked like the listed ones;
 a noun "reports" ("amid reports of ...") is not an attribution (T1-13).
-An honest insufficiency statement ("The provided evidence does not contain information about X.", insufficiency())
-asserts no fact, so it needs no supported claim and no citation (T2-03); it is recognised structurally, not by phrase
-(gap_clause: a negator or absence quantifier scoping over an evidence or confirmation predicate, with nothing asserted
-before it), and accepted only when every clause of the sentence is such a caveat. The number, unit, id and injection
-checks still apply, and an uncited one may name nothing the question does not name (D-R5-3). In a compound sentence
-the caveat clause neither hedges the factual clause nor counts as calling anything confirmed (D-R5-1, D-R5-2).
+An honest insufficiency statement ("No source states whether numpy 2.5.5 is secure.", insufficiency()) asserts no
+fact, so it needs no supported claim and no citation (T2-03). It is recognised only by a CLOSED grammar (_caveat:
+closed subjects, negated predicates, leads and adverbials; the embedded question holds exactly the question's own
+tokens; the topic form "the ATTRIBUTE of ENTITY" maps the question's predicate). Free-form caveats are rejected on
+purpose: the rules note carries the message. A caveat is also rejected when the verdict decided the question, beside a
+supported claim on its subject, and when a claim states what it says is missing; an absence claim outside the grammar
+is rejected (SECREVIEW F2). The number, unit, id and injection checks still apply. In a compound sentence the caveat
+clause neither hedges the factual clause nor counts as calling anything confirmed (D-R5-1, D-R5-2).
 A bounded self-critique (one call, cfg.self_critique) may FLAG accepted sentences and add gaps. A flag removes a
 sentence only when an objective check confirms it (unknown source or claim, an unsupported claim state without a
 hedge, a number or unit not in the cited evidence: the same checks as the guard); otherwise the sentence stays,
@@ -62,6 +64,7 @@ rejected) leaves generated_by "template" with LABEL_DEGRADED and the reason; the
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import functools
 import json
 import re
 import time
@@ -147,42 +150,19 @@ _DISAGREE = re.compile(r"\b(?:disagree(?:s|d|ment)?|disputed|contested|conflicti
 _NEGATED_DISAGREE = re.compile(r"\b(?:not|no|never|without)\s+(?:\w+\s+)?(?:disagree(?:s|d|ment)?|disputed?|"
                                r"contested|conflicting|contradict(?:s|ory)?)\b", re.IGNORECASE)
 CONFLICT_STATES = frozenset({"contested", "conflicting", "disputed"})
-# ---- absent-evidence predications (T2-03, T1-09, N1, D-R5-1..3) -------------------------------------------------
+# ---- absent-evidence statements (T2-03, T1-09, N1, D-R5-1..3, SECREVIEW, SECREVIEW2) -------------------------------
 #
-# An honest caveat ("There is insufficient evidence to determine whether NumPy 2.5.5 is secure", "The security
-# status of NumPy 2.5.5 cannot be confirmed based on the available evidence", "No evidence in the provided claims
-# indicates whether numpy 2.5.5 is recommended") asserts no fact about the world, only that the evidence does not
-# establish something. It is recognised STRUCTURALLY, not by phrase: a clause is an absent-evidence clause when
-#   1. a NEGATOR or absence quantifier (_NEG_WORDS: no, not, n't, cannot, never, none, nothing, lack/absence of,
-#      insufficient, unable/fail to, "too little") scopes over an EVIDENCE predicate: a noun of evidence
-#      (_EVIDENCE_NOUNS: evidence, information, data, source, claim, indication, assessment ...) or a verb of
-#      confirmation or establishment (_EVIDENCE_VERB: confirm, establish, indicate, state, show, determine, verify,
-#      address, evaluate ...). "Scopes over" means the predicate follows the negator with only function words and
-#      degree or epistemic modifiers between them (_SCOPE_FILLER: "cannot BE confirmed", "has not YET BEEN
-#      INDEPENDENTLY verified", "lack RECENT OR VERIFIED evidence"), so "is not secure according to the sources"
-#      is no such clause: "secure" is content;
-#      or a knowledge-absence adjective (unclear, unknown, uncertain, unverified ...; "not known", "not clear") is
-#      the clause's predicate (after a copula: "remains unclear", "it is unknown whether"), never an attribute
-#      ("fixes unknown bugs");
-#   2. a verb of confirmation is anchored to the evidence: its negator hangs on an auxiliary ("does not state",
-#      "is not evaluated", "has not been verified") and the clause names the evidence ("in the cited sources",
-#      "the evidence does not ...") or says it cannot be done ("cannot be confirmed", "unable to determine");
-#      a bare "not reported" (a reduced relative: "fixes bugs not reported in the sources") is not;
-#   3. what precedes the negation asserts nothing: an embedded question ("Whether 2.5.5 is secure remains unclear"),
-#      an expletive ("There is", "It is"), or a noun phrase without a finite verb, relative or coordinator
-#      ("The security status of NumPy 2.5.5 cannot be ..."); a nominal "no evidence/source ..." stands first or
-#      after an expletive or a prepositional phrase;
-#   4. nothing in it argues against something (_COUNTER: "No source disputes that X is safe" implies X is safe);
-#   5. (security review, fails closed) every word before the negation is the question's, an evidence noun or a
-#      function word (_prefix_ok, F3), and what follows the evidence predicate is an embedded whether/if question or
-#      a topic of the question's terms, never a that- or existential complement (_tail_ok, F2).
-# A sentence is an insufficiency statement (insufficiency()) when EVERY clause is such a clause (F1: clauses break at
-# every comma, semicolon, colon, dash, bracket, quote, ellipsis and sentence end, at causal and subordinating
-# conjunctions and at "and"/"or" before a new subject or verb; a discourse lead is stripped first). An absence-shaped
-# clause that is no caveat, or a caveat that denies what a bundle claim states, is rejected (_absence_problems).
-# A compound sentence with one factual clause is not one: its factual clause is checked like any statement, and a
-# hedge inside the caveat clause does not hedge it (hedged_outside_gaps). The number, unit, id and injection checks
-# always apply; the question's own numbers are exempt only inside an absent-evidence clause.
+# An honest caveat ("There is insufficient evidence to determine whether NumPy 2.5.5 is secure") asserts no fact about
+# the world, only that the evidence does not establish something: it needs no supported claim, no hedge and no
+# citation. Two security reviews showed that recognising such caveats by open-ended structure leaks (a statement after
+# a comma, inside "whether ...", in an attribute of the subject, behind a stem shared with the question). Caveats are
+# therefore recognised ONLY by the closed grammar below (_caveat); a free-form caveat is rejected on purpose, and the
+# deterministic rules note (verdict_note) says what the evidence does not establish. The word classes here
+# (_NEG_WORDS, _EVIDENCE_NOUNS, _EVIDENCE_VERB, _SCOPE_FILLER) serve only to detect the SHAPE of an absence claim
+# outside the grammar (_absence_shape: a negator scoping over an evidence predicate), which is rejected when it says the
+# evidence holds nothing or carries a that- or existential complement (_absence_problems). In a compound sentence a
+# clause of the grammar neither hedges the factual clause beside it nor counts as calling anything confirmed, and may
+# name the question's numbers; every number, unit, id and injection check still applies.
 _WORD_RX = re.compile(r"[^\W_][\w.'’-]*[^\W_]|[^\W_]")    # any script (F5): no word is invisible to the guard
 _NEG_WORDS = frozenset("""no not never none nothing cannot insufficient inadequate lack lacks lacked lacking absence
 unable fail fails failed""".split())
@@ -207,15 +187,6 @@ _AUX = frozenset("""is are was were be been being am has have had do does did wi
 might must remains remain remained seems seem appears appear still""".split())
 _COPULA = frozenset("is are was were be been being am remains remain remained seems seem appears appear".split())
 _IMPOSSIBLE = frozenset({"cannot", "unable"})
-_SUBORDINATE = frozenset("""that which who whom whose where when because since although though while if unless as and
-or but nor""".split())
-_DETERMINERS = frozenset("the a an this these that those its their no some each every any all both".split())
-_EXPLETIVE = frozenset({"there", "it", "here", "overall", "currently", "still", "also", "so", "far", "thus"})
-_PREPOSITIONS = frozenset("""in among from across of for regarding about on beyond within based according apart besides
-throughout""".split())
-_COUNTER = re.compile(r"\b(?:disput\w*|contradict\w*|refut\w*|challeng\w*|doubt\w*|den(?:y|ies|ied)|oppos\w*|"
-                      r"reject\w*|otherwise|against|contrary)\b", re.IGNORECASE)
-_LEAD_VERB = re.compile(r"^[a-z]{2,}(?:[^su\W]s|ed)$")     # "fixes", "supports", "fixed": a finite verb after a name
 _CLAUSE_SPLIT = re.compile(
     # F1 (security review): EVERY punctuation boundary (comma, dash, bracket, quote, ellipsis, sentence end) and every
     # subordinating or causal conjunction starts a new clause; a caveat clause cannot carry a statement after it
@@ -238,46 +209,7 @@ _JOIN_LEAD = re.compile(r"^(?:and|or|as|so|which|who|whom|whose|whereas|but|howe
 
 
 
-# F3 (security review): before the negation a caveat may hold only the question's own terms (_question_term), evidence
-# nouns and these function words: determiners, prepositions, expletives, nouns that name an aspect of the question
-# ("the security STATUS of", "this VERSION") and adjectives that describe the evidence ("the CITED sources"). An
-# attribute, apposition or endorsement ("the fully audited numpy 2.5.5 release") is content: no caveat.
-_PREFIX_WORDS = frozenset("""the a an this these those its their no some each every any all both of for on about
-regarding concerning in from among across within to by with there it here whether status question matter topic aspect
-aspects version versions release releases level details specifics available provided cited read retrieved collected
-consulted gathered existing current currently given supplied public published credible reliable independent official
-overall so far still also yet""".split())
-
-
-def _question_terms(question) -> frozenset:
-    """The question's own words, lower-cased (NFKC)."""
-    return frozenset(w.lower() for w in _WORD_RX.findall(_norm(question).replace("’", "'")))
-
-
-def _question_term(w: str, terms: frozenset) -> bool:
-    """`w` is one of the question's words or shares its stem ("security" for "secure", "recommendation" for
-    "recommended"): equal, or alphabetic with a common prefix of min(5, the shorter length), the shorter at least 4."""
-    if w in terms:
-        return True
-    if not w.isalpha():
-        return False
-    for t in terms:
-        if not t.isalpha():
-            continue
-        short = min(len(w), len(t))
-        n = min(5, short)
-        if short >= 4 and w[:n] == t[:n]:
-            return True
-    return False
-
-
-def _prefix_ok(prefix: list[str], terms: frozenset) -> bool:
-    """Every word before the negation is a question term, an evidence noun or a function word (F3). Auxiliaries are
-    left to _subject_ok and the nominal rule."""
-    return all(w in _AUX or w in _PREFIX_WORDS or w in _EVIDENCE_NOUNS or _question_term(w, terms) for w in prefix)
-
-
-_PUNCT = " ,.;:()[]{}\u2014\u2013\u2012\u2015\u2026!?\"'\u201c\u201d\u2018\u2019-"
+_PUNCT = " ,.;:()[]{}—–‒―…!?\"'“”‘’-"
 
 
 def _clauses(text: str) -> list[tuple[int, int]]:
@@ -301,93 +233,163 @@ def _scoped(words: list[str], i: int, limit: int = 4) -> int | None:
     return candidate
 
 
-def _subject_ok(prefix: list[str], raw: list[str], whether: bool) -> bool:
-    """The words before the negation assert nothing (rule 3). An embedded question ("Whether X is Y cannot be
-    determined") may hold one verb group, nothing else that is finite (F1: the lead is no longer a free pass)."""
-    verbs, prev = 0, False
-    for k, w in enumerate(prefix):
-        if whether and k == 0:
-            continue                                  # the "whether" itself
-        if whether and w in _AUX and not _SPECULATIVE.fullmatch(w):
-            verbs += not prev
-            prev = True
-            if verbs > 1:
-                return False
-            continue
-        prev = False
-        if w in _AUX or w in _SUBORDINATE or w == "whether" or _SPECULATIVE.fullmatch(w):
-            return False
-        if k and _LEAD_VERB.match(raw[k]) and (any(ch.isdigit() for ch in raw[k - 1]) or
-                                               (k == 1 and raw[0][:1].isupper() and prefix[0] not in _DETERMINERS)):
-            return False        # "NumPy 2.5.5 fixes ...", "NumPy fixes ...": a finite verb after a version or name
-    return True
+# ---- the closed caveat grammar (security re-review SECREVIEW2: open-ended recognition leaked) ------------------------
+#
+# A caveat is recognised ONLY when the whole sentence (or, in a compound sentence, the whole clause) is one of these
+# forms, after NFKC, unicode punctuation as ASCII and lower case; anything else is no caveat, and free-form caveats are
+# rejected on purpose: the deterministic rules note (verdict_note) says what the evidence does not establish.
+#   [LEAD] SUBJECT NEGATED-PREDICATE (whether|if) Q-CLAUSE [ADVERBIAL]       "No source states whether numpy 2.5.5 is
+#                                                                            secure."
+#   [LEAD] whether Q-CLAUSE PASSIVE-NEGATION [ADVERBIAL]                     "Whether numpy 2.5.5 is secure cannot be
+#                                                                            determined from the evidence."
+#   [LEAD] it is|remains unclear|unknown|uncertain|not established|not known|not clear whether Q-CLAUSE [ADVERBIAL]
+#   [LEAD] there is insufficient|no|not enough evidence|information|data to determine|establish|confirm|verify
+#          whether Q-CLAUSE [ADVERBIAL];  [LEAD] the evidence is insufficient to determine whether Q-CLAUSE
+#   [LEAD] [the] TOPIC PASSIVE-NEGATION [ADVERBIAL]                          "The security of numpy 2.5.5 cannot be
+#                                                                            confirmed based on the available evidence."
+#   [LEAD] SUBJECT NEGATED-PREDICATE the TOPIC [ADVERBIAL]                   "None of the sources addresses the security
+#                                                                            of numpy 2.5.5."
+#   [LEAD] there is insufficient|no|not enough|a lack of evidence|information|data on|about|regarding the TOPIC [ADV]
+# Q-CLAUSE: the question's own tokens, EXACTLY (no stem, no prefix), in the question's order, plus at most one
+# "the"/"a" and one copula (is/are/was): no new word of any kind. TOPIC: ATTRIBUTE-NOUN "of" ENTITY, where the
+# attribute noun is the closed mapping of the question's predicate (_ATTRIBUTE: secure -> security, ...) and ENTITY is
+# exactly the question's words between its leading copula and that predicate ("Is numpy 2.5.5 secure?" -> "numpy
+# 2.5.5"); nothing but "the" stands before it, so an attributive adjective ("the secure numpy 2.5.5 release") never
+# matches. SUBJECT, the predicates, LEAD and ADVERBIAL are closed lists (below). Any other token, punctuation mark,
+# second sentence, arrow, bullet or pipe makes the sentence fail the grammar.
+_PUNCT_ASCII = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"', "—": "-", "–": "-",
+                              "‒": "-", "―": "-", "…": "...", "‹": '"', "›": '"', "«": '"',
+                              "»": '"', "。": ".", "．": ".", "｡": "."})
+_G_LEAD = (r"(?:(?:however|but|still|also|currently|overall|unfortunately|importantly|notably|that said|in short|"
+           r"in summary),? |note that |(?:and|while|although|though|yet|as) )?")
+_G_POS_SUBJECT = r"(?:the (?:available |cited |provided )?evidence|the (?:cited )?sources|the provided claims)"
+_G_NEG_SUBJECT = r"(?:no (?:cited )?source|none of the (?:cited )?sources|no claim)"
+_G_ADVB = r"(?: (?:yet|independently|directly))?"
+_G_VERB = r"(?:state|establish|confirm|show|indicate|address|evaluate|determine|verify|say|specify)"
+_G_VERB3 = r"(?:states|establishes|confirms|shows|indicates|addresses|evaluates|determines|verifies|says|specifies)"
+_G_ACTIVE = (rf"(?:{_G_POS_SUBJECT} (?:does not|do not|did not|cannot|doesn't|don't|didn't|can't){_G_ADVB} {_G_VERB}"
+             rf"|{_G_NEG_SUBJECT}{_G_ADVB} {_G_VERB3}|none of the (?:cited )?sources{_G_ADVB} {_G_VERB})")
+_G_PARTICIPLE = r"(?:addressed|established|confirmed|evaluated|verified|determined|stated|shown|indicated|specified)"
+_G_PASSIVE = (rf"(?:(?:is|are|was) not{_G_ADVB} {_G_PARTICIPLE}|(?:has|have) not{_G_ADVB} been{_G_ADVB} {_G_PARTICIPLE}"
+              rf"|cannot be{_G_ADVB} {_G_PARTICIPLE}|remains (?:unknown|unclear|unconfirmed|unverified|undetermined)"
+              r"|lacks (?:independent )?evidence)")
+_G_ADVERBIAL = (r"(?: (?:in the (?:available |cited |provided )?(?:evidence|sources)|in the provided claims"
+                r"|based on the available evidence|from the (?:available |cited )?(?:evidence|sources)"
+                r"|by any of the cited sources|by the (?:cited )?sources|independently|directly|yet))?")
+_G_Q = r"(?P<q>[a-z0-9][^,;:]*?)"
+_G_WHETHER = (rf"{_G_ACTIVE} (?:whether|if) {_G_Q}",
+              rf"whether {_G_Q} {_G_PASSIVE}",
+              rf"it (?:is|remains) (?:unclear|unknown|uncertain|not established|not known|not clear) whether {_G_Q}",
+              rf"there is (?:insufficient|no|not enough) (?:evidence|information|data) to "
+              rf"(?:determine|establish|confirm|verify) whether {_G_Q}",
+              rf"{_G_POS_SUBJECT} is insufficient to (?:determine|establish|confirm|verify) whether {_G_Q}")
+_G_WHETHER_RX = tuple(re.compile(_G_LEAD + f + _G_ADVERBIAL) for f in _G_WHETHER)
+_ATTRIBUTE = {"secure": ("security", "security status"), "safe": ("safety", "safety status"),
+              "recommended": ("recommendation", "recommendation status"), "compatible": ("compatibility",),
+              "stable": ("stability",), "vulnerable": ("vulnerability status",), "supported": ("support status",),
+              "maintained": ("maintenance status",)}
+_Q_COPULA = frozenset({"is", "are", "was", "were"})
+_EXTRA_ARTICLE = frozenset({"the", "a"})
+_EXTRA_COPULA = frozenset({"is", "are", "was"})
+_WEAK_CAVEAT = re.compile(r"\b(?:establish|confirm|verif|determin|insufficient|not enough|lack|unclear|unknown|"
+                          r"uncertain|unconfirmed|unverified|undetermined|not known|not clear)")
 
 
-# F2 (security review): what follows the evidence predicate. A caveat names WHAT the evidence does not establish as an
-# embedded question ("whether/if ...", free words: it asserts nothing) or as a topic built from the question's terms
-# ("about / on / regarding / of the security of numpy 2.5.5", "addresses its security"). A that-complement ("no
-# evidence THAT numpy 2.5.5 is not secure") asserts its content, and an existential complement ("reports ANY / A
-# SINGLE vulnerability", "no sign OF vulnerability") is an absence claim: reassurance, not a caveat.
-_TAIL_WORDS = _PREFIX_WORDS | _SCOPE_FILLER | _PREPOSITIONS | frozenset(
-    "and or to based according whether if other another second third multiple several more".split())
+def _canon(text) -> str:
+    """What the grammar reads: NFKC without format characters, unicode punctuation as ASCII, lower case, single
+    spaces."""
+    return _SPACE.sub(" ", _norm(text).translate(_PUNCT_ASCII)).strip().lower()
+
+
+@functools.lru_cache(maxsize=256)
+def _question_tokens(question: str) -> tuple[str, ...]:
+    return tuple(t.strip(",;:!?.\"'()") for t in _canon(question).rstrip("?.! ").split(" ") if t.strip(",;:!?.\"'()"))
+
+
+@functools.lru_cache(maxsize=256)
+def _topic_forms(question: str) -> tuple:
+    """(compiled topic patterns, the predicate word, the entity tokens) for the question, or () when it has no
+    'Is ENTITY PREDICATE ...' shape with a mapped predicate."""
+    q = _question_tokens(question)
+    if len(q) < 3 or q[0] not in _Q_COPULA:
+        return ()
+    for k in range(2, len(q)):
+        if q[k] in _ATTRIBUTE:
+            entity = q[1:k]
+            topic = "(?:" + "|".join(re.escape(f"{a} of {' '.join(entity)}") for a in _ATTRIBUTE[q[k]]) + ")"
+            forms = (rf"(?:the )?{topic} {_G_PASSIVE}", rf"{_G_ACTIVE} the {topic}",
+                     rf"there is (?:insufficient|no|not enough|a lack of) (?:evidence|information|data) "
+                     rf"(?:on|about|regarding) the {topic}")
+            return tuple(re.compile(_G_LEAD + f + _G_ADVERBIAL) for f in forms), q[k], entity
+    return ()
+
+
+def _q_clause_ok(clause: str, question: tuple[str, ...]) -> list[str] | None:
+    """The tokens of the embedded question when they are the question's own, exactly and in its order, plus at most
+    one "the"/"a" and one copula; else None."""
+    at, articles, copulas, used = 0, 0, 0, []
+    for t in clause.split(" "):
+        try:
+            k = question.index(t, at)
+        except ValueError:
+            k = -1
+        if k >= 0:
+            at = k + 1
+            used.append(t)
+        elif t in _EXTRA_ARTICLE and not articles:
+            articles = 1
+        elif t in _EXTRA_COPULA and not copulas:
+            copulas = 1
+        else:
+            return None
+    return used if any(t not in _EXTRA_ARTICLE and t not in _EXTRA_COPULA for t in used) else None
+
+
+def _caveat(text: str, question: str) -> tuple[str, list[str]] | None:
+    """(kind, topic words) when `text` is a sentence or clause of the closed caveat grammar about `question`, else
+    None. kind: "weak" (the evidence is too weak: cannot be confirmed, insufficient, unclear) or "absent" (the
+    evidence does not hold it: no source states, does not address)."""
+    s = _canon(text)
+    if s.endswith("."):
+        s = s[:-1]
+    if not s:
+        return None
+    kind = "weak" if _WEAK_CAVEAT.search(s) else "absent"
+    qtokens = _question_tokens(question or "")
+    for rx in _G_WHETHER_RX:
+        m = rx.fullmatch(s)
+        if m:
+            used = _q_clause_ok(m.group("q"), qtokens)
+            if used is not None:
+                return kind, [t for t in used if t not in T.STOPWORDS and not any(c.isdigit() for c in t)]
+    topic = _topic_forms(question or "")
+    if topic:
+        forms, predicate, entity = topic
+        if any(rx.fullmatch(s) for rx in forms):
+            return kind, [predicate] + [t for t in entity if t not in T.STOPWORDS and not any(c.isdigit() for c in t)]
+    return None
+
+
+def gap_clause(clause: str, question: str = "") -> bool:
+    """`clause` is a caveat of the closed grammar about `question` (_caveat)."""
+    return _caveat(clause, question) is not None
+
+
+# ---- absence claims (F2): a negator over an evidence predicate outside the grammar --------------------------------
 _EXISTENTIAL = frozenset("any a an single some".split())
 _EXISTENTIAL_NOUNS = frozenset("""evidence sign signs indication indications proof mention mentions report reports
 record records trace traces hint hints""".split())
 _JUDGEMENT_NOUNS = frozenset("""recommendation recommendations verdict verdicts conclusion conclusions determination
 guidance advice""".split())
 _EXIST_SKIP = _SCOPE_FILLER | frozenset("other another second third multiple several more".split())
-_ADVERB = frozenset("yet so far even still currently".split())
 _WEAK_NEG = frozenset("insufficient inadequate lack lacks lacked lacking unable cannot fail fails failed little".split())
 _ESTABLISH = re.compile(r"^(?:confirm|establish|verif|determin|corroborat|prov|substantiat|settl|resolv|demonstrat|"
                         r"conclu|attest)")
 
 
-def _next_content(words: list[str], k: int, skip) -> str | None:
-    return next((w for w in words[k:] if w not in skip), None)
-
-
-def _tail_ok(tail: list[str], terms: frozenset) -> bool:
-    """`tail` (the evidence predicate and what follows it) names what is missing as an embedded question or a topic
-    of the question's terms, never a that-complement or an existential one (F2)."""
-    inside, verbs, prev_aux = False, 0, False
-    for k in range(1, len(tail)):
-        w = tail[k]
-        if w == "that":
-            return False                       # "no evidence that X": the complement is asserted
-        if w in ("whether", "if"):
-            inside, verbs, prev_aux = True, 0, False
-            continue
-        if w in _NEG_WORDS or w.endswith("n't") or w in _KNOWLEDGE_ABSENT:
-            if inside and w == "not" and tail[k - 1] == "or":
-                continue                       # "whether ... or not"
-            return False
-        if w in _AUX:
-            if inside:
-                verbs += not prev_aux
-                prev_aux = True
-                if verbs > 1:
-                    return False               # "whether X is secure and Y is recommended": two statements
-                continue
-            nxt = _next_content(tail, k + 1, _AUX | _ADVERB | {w for w in _SCOPE_FILLER if w.endswith("ly")})
-            if nxt is None or not (_EVIDENCE_VERB.match(nxt) or nxt == "available"):
-                return False                   # only the passive of a nominal caveat: "no claims ... are supported"
-            prev_aux = True
-            continue
-        prev_aux = False
-        if inside:
-            continue
-        if w in _EXISTENTIAL or (w == "of" and tail[k - 1] in _EXISTENTIAL_NOUNS):
-            nxt = _next_content(tail, k + 1, _EXIST_SKIP)
-            if nxt not in _EVIDENCE_NOUNS and nxt not in _JUDGEMENT_NOUNS:
-                return False                   # "any vulnerability", "no sign of vulnerability": an absence claim
-        if not (w in _TAIL_WORDS or w in _EVIDENCE_NOUNS or w in _JUDGEMENT_NOUNS or _EVIDENCE_VERB.match(w) or
-                _question_term(w, terms)):
-            return False
-    return True
-
-
 def _complement(tail: list[str]) -> bool:
-    """A that-complement or an existential complement outside any embedded question (see _tail_ok)."""
+    """A that-complement or an existential complement ("any / a single X", "no sign OF X") after the evidence
+    predicate tail[0], outside any embedded question."""
     for k in range(1, len(tail)):
         w = tail[k]
         if w in ("whether", "if"):
@@ -395,170 +397,120 @@ def _complement(tail: list[str]) -> bool:
         if w == "that":
             return True
         if w in _EXISTENTIAL or (w == "of" and tail[k - 1] in _EXISTENTIAL_NOUNS):
-            nxt = _next_content(tail, k + 1, _EXIST_SKIP)
+            nxt = next((x for x in tail[k + 1:] if x not in _EXIST_SKIP), None)
             if nxt not in _EVIDENCE_NOUNS and nxt not in _JUDGEMENT_NOUNS:
                 return True
     return False
 
 
-def _parse_gap(clause: str, question: str = "") -> tuple[str | None, bool, list[str], bool]:
-    """(kind, caveat, topic, complement) of one clause. kind: None when no negator or knowledge-absence word scopes over an
-    evidence predicate (no absence shape); "weak" when it says the evidence is too weak to establish something
-    (insufficient, lack of, cannot be confirmed, unclear); "absent" when it says the evidence does not hold something
-    at all (no source, does not state). caveat: the clause is an absent-evidence clause about `question` (all rules
-    above). topic: its content words (what it says is missing; aspect and evidence words count only when they are the
-    question's). complement: a that-complement or existential complement follows an evidence predicate (F2)."""
-    terms = _question_terms(question)
+def _absence_shape(clause: str) -> tuple[str | None, bool]:
+    """(kind, complement): kind None when no negator or knowledge-absence word scopes over an evidence predicate,
+    "weak" when it says the evidence is too weak (insufficient, lack of, cannot be confirmed, unclear), "absent" when it
+    says the evidence holds nothing (no source, does not state); complement: a that- or existential complement
+    follows the predicate."""
     clause = _DISCOURSE_LEAD.sub("", _JOIN_LEAD.sub("", clause.strip(_PUNCT)))
-    raw = _WORD_RX.findall(clause.replace("’", "'"))
-    words = [w.lower() for w in raw]
-    if not words:
-        return None, False, [], False
-    topic = [w for w in words if not (w in _AUX or w in _NEG_WORDS or w.endswith("n't") or w in _KNOWLEDGE_ABSENT or
-                                      w in T.STOPWORDS or any(c.isdigit() for c in w) or
-                                      (not _question_term(w, terms) and
-                                       (w in _TAIL_WORDS or w in _EVIDENCE_NOUNS or w in _JUDGEMENT_NOUNS or
-                                        _EVIDENCE_VERB.match(w))))]
-    countered = bool(_COUNTER.search(clause))
-    whether = words[0] == "whether"
+    words = [w.lower() for w in _WORD_RX.findall(clause.replace("’", "'"))]
     has_evidence_noun = any(w in _EVIDENCE_NOUNS for w in words)
     shape, complement = None, False
-
-    def tail_ok(tail):
-        nonlocal complement
-        good = _tail_ok(tail, terms)
-        complement = complement or (not good and _complement(tail))
-        return good
-
     for i, w in enumerate(words):
         start = i
         while start and words[start - 1] in _AUX:
-            start -= 1                       # "does not", "cannot be", "has not been": the auxiliary is the core's
-        prefix, prefix_raw = words[:start], raw[:start]
-        knowledge = w in _KNOWLEDGE_ABSENT or (w == "not" and i + 1 < len(words) and words[i + 1] in ("known", "clear"))
-        if knowledge:
-            predicative = start < i and any(a in _COPULA for a in words[start:i]) or i == 0
-            if not predicative:
-                continue
-            shape = shape or "weak"
-            if not countered and _subject_ok(prefix, prefix_raw, whether) and _prefix_ok(prefix, terms) and \
-                    tail_ok(words[i + (w == "not"):]):
-                return "weak", True, topic, False
+            start -= 1
+        if w in _KNOWLEDGE_ABSENT or (w == "not" and i + 1 < len(words) and words[i + 1] in ("known", "clear")):
+            if start < i and any(a in _COPULA for a in words[start:i]) or i == 0:
+                shape = shape or "weak"
+                complement = complement or _complement(words[i + (w == "not"):])
             continue
-        negator = w in _NEG_WORDS or w.endswith("n't") or (w == "little" and i and words[i - 1] == "too")
-        if not negator:
+        if not (w in _NEG_WORDS or w.endswith("n't") or (w == "little" and i and words[i - 1] == "too")):
             continue
         j = _scoped(words, i)
         if j is None:
             continue
         weak = w in _WEAK_NEG or (i + 1 < len(words) and words[i + 1] == "enough") or bool(_ESTABLISH.match(words[j]))
-        kind = "weak" if weak else "absent"
-        if words[j] in _EVIDENCE_NOUNS and w not in ("not", "cannot") and not w.endswith("n't") or \
-                w in ("lack", "lacks", "lacked", "lacking", "absence"):
-            # nominal: "no evidence", "insufficient information", "lack of data", "the evidence is insufficient"
-            shape = shape or kind
-            ok = _subject_ok(prefix, prefix_raw, True) if whether else \
-                all(p in _EXPLETIVE or p in _COPULA or p in _PREPOSITIONS or p in _SCOPE_FILLER for p in words[:i])
-            if not ok and (w in ("lack", "lacks", "lacked", "lacking", "absence") or
-                           (start < i and any(p in _EVIDENCE_NOUNS for p in prefix))):
-                ok = _subject_ok(prefix, prefix_raw, whether)   # "X lacks evidence", "The evidence is insufficient"
-            if ok and not countered and _prefix_ok(words[:i], terms) and tail_ok(words[j:]):
-                return kind, True, topic, False
-            continue
-        # verbal: "does not state", "cannot be confirmed", "is not evaluated in the evidence", "unable to determine"
+        nominal = words[j] in _EVIDENCE_NOUNS and w not in ("not", "cannot") and not w.endswith("n't") or \
+            w in ("lack", "lacks", "lacked", "lacking", "absence")
         attached = start < i or w in _IMPOSSIBLE or w.endswith("n't") or \
             (w in ("never", "fail", "fails", "failed") and i and words[i - 1] in _EVIDENCE_NOUNS)
         anchored = has_evidence_noun or w in _IMPOSSIBLE or (w.endswith("n't") and w.startswith("can")) or \
             (w == "not" and start < i and words[i - 1] in ("can", "could"))
-        if not (attached and anchored):
-            continue
-        shape = shape or kind
-        if not countered and _subject_ok(prefix, prefix_raw, whether) and _prefix_ok(prefix, terms) and \
-                tail_ok(words[j:]):
-            return kind, True, topic, False
-    return shape, False, topic, complement
-
-
-def gap_clause(clause: str, question: str = "") -> bool:
-    """`clause` is an absent-evidence clause about `question` (see the rules above). Without a question only a
-    caveat with no content word outside an embedded question can pass."""
-    return _parse_gap(clause, question)[1]
+        if nominal or (attached and anchored):
+            shape = shape or ("weak" if weak else "absent")
+            complement = complement or _complement(words[j:])
+    return shape, complement
 
 
 _NUMBER_WORDS = frozenset("""zero two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen
 sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred hundreds thousand
 thousands million millions billion billions trillion dozen dozens twice thrice double triple half point first third
 fourth fifth sixth seventh eighth ninth tenth""".split())
+UNDECIDED_STATES = frozenset({"not_evaluated", "insufficient", "temporally_unresolved", None})
 
 
 def _uncited_problems(text: str, question: str) -> list[str]:
-    """F5: why an uncited caveat says more than its question: a word that is neither the question's nor caveat
-    vocabulary, a non-ASCII letter (homoglyphs: Cyrillic "О" in "Оpenssl"), a number written in words."""
-    terms = _question_terms(question)
-    words = _WORD_RX.findall(text.replace("’", "'"))
+    """F5: an uncited caveat (already a sentence of the closed grammar) holds no non-ASCII letter (homoglyphs:
+    Cyrillic "О" in "Оpenssl") and no number written in words."""
     out = []
-    foreign = [w for w in words if not any(c.isdigit() for c in w) and not (
-        (lw := w.lower()) in T.STOPWORDS or lw in _TAIL_WORDS or lw in _EVIDENCE_NOUNS or lw in _JUDGEMENT_NOUNS or
-        lw in _NEG_WORDS or lw.endswith("n't") or lw in _KNOWLEDGE_ABSENT or lw in _AUX or
-        _EVIDENCE_VERB.match(lw) or _question_term(lw, terms)) or w.lower() in _NUMBER_WORDS]
-    named = [w for w in foreign if w.lower() not in _NUMBER_WORDS]
-    if named:
-        out.append(f"an uncited caveat names {', '.join(dict.fromkeys(named))}, which the question does not name")
     if any(ch.isalpha() and not ch.isascii() for ch in text):
         out.append("an uncited caveat holds non-ASCII letters")
-    spelled = [w for w in words if w.lower() in _NUMBER_WORDS]
+    spelled = [w for w in _WORD_RX.findall(text) if w.lower() in _NUMBER_WORDS]
     if spelled:
         out.append(f"an uncited caveat writes a number in words ({', '.join(dict.fromkeys(spelled))})")
     return out
 
 
 def _absence_problems(text: str, b: dict) -> list[str]:
-    """F2: what a sentence says the evidence lacks must be true of the bundle. A clause shaped as an absence claim
-    (a negator over an evidence predicate) that is not a caveat about the question asserts something about the
-    evidence the guard cannot check ("No source reports any vulnerability in numpy 2.5.5"); a caveat must not deny
-    what a claim in the bundle states: any claim when it says the evidence holds nothing ("absent"), a supported
-    claim when it says the evidence is too weak ("weak")."""
+    """F2 and the decided-verdict rule. A clause shaped as an absence claim (a negator over an evidence predicate)
+    that is not a caveat of the closed grammar asserts something about the evidence the guard cannot check ("No
+    source reports any vulnerability in numpy 2.5.5"): rejected when it says the evidence holds nothing or has a
+    that- or existential complement. A grammar caveat is rejected when the verdict DECIDED the question (a caveat
+    about it is then false), when a SUPPORTED claim shares any of its topic words (words cannot tell whether that claim
+    answers the question), and when it says the evidence holds nothing ("absent") while a claim holds all its topic
+    words. Claim words are compared exactly or by the shared stemmer (this only widens rejection)."""
     question = b.get("question") or ""
-    terms = _question_terms(question)
+    verdict = b.get("verdict") if isinstance(b.get("verdict"), dict) else {}
     out = []
     text = _DISCOURSE_LEAD.sub("", text)
-    for a, z in _clauses(text):
-        kind, ok, topic, complement = _parse_gap(text[a:z], question)
-        if kind is None:
-            continue
-        if not ok:
-            # "No source reports X", "no evidence that X", "insufficient evidence of any X": an absence claim. A
-            # hedge ("X is not yet confirmed by a third source") is left to the hedge and state checks.
+    pieces = [(0, len(text))] if _caveat(text, question) else _clauses(text)
+    for a, z in pieces:
+        found = _caveat(_JOIN_LEAD.sub("", text[a:z].strip(_PUNCT)), question)
+        if found is None:
+            kind, complement = _absence_shape(text[a:z])
             if kind == "absent" or complement:
-                out.append("says the evidence lacks something, but is no caveat about the question (an absence "
-                           "claim)")
+                out.append("says the evidence lacks something, but is no caveat of the closed caveat grammar (an "
+                           "absence claim)")
             continue
-        targets = [w for w in topic if not _question_term(w, terms)] or topic
+        kind, topic = found
+        if verdict.get("state") not in UNDECIDED_STATES:
+            out.append(f"a caveat about the question, but the verdict decided it ({verdict.get('state')})")
         for c in b.get("claims") or []:
-            if kind == "weak" and c.get("state") not in SUPPORTED_STATES:
-                continue
-            have = frozenset(w.lower() for w in _WORD_RX.findall(_norm(c.get("text")).replace("’", "'")))
-            if targets and all(_question_term(w, have) for w in targets):
+            words = [w.lower() for w in _WORD_RX.findall(_canon(c.get("text")))]
+            have = set(words) | {T.stem(w) for w in words}
+            found = [w in have or T.stem(w) in have for w in topic]
+            if c.get("state") in SUPPORTED_STATES and any(found):
+                # limit 2 (lexical): a supported claim speaks to the question's subject ("NumPy 2.5.5 is affected by a
+                # critical RCE vulnerability" beside "the evidence does not establish whether numpy 2.5.5 is secure");
+                # words cannot tell whether it answers the question, so the caveat yields to the verdict and note
+                out.append(f"a caveat about the question beside supported claim {c['id']} on its subject")
+                break
+            if kind == "absent" and topic and all(found):
                 out.append(f"says the evidence lacks what claim {c['id']} states")
                 break
     return list(dict.fromkeys(out))
 
 
 def _gap_spans(text: str, question: str = "") -> list[tuple[int, int]]:
-    """Character spans of the absent-evidence clauses of `text` (gap_clause)."""
-    return [(a, z) for a, z in _clauses(text) if gap_clause(text[a:z], question)]
+    """Character spans of the clauses of `text` that are caveats of the closed grammar (a clause may open with a
+    joining "but"/"and")."""
+    return [(a, z) for a, z in _clauses(text) if _caveat(_JOIN_LEAD.sub("", text[a:z].strip(_PUNCT)), question)]
 
 
 def insufficiency(text: str, question: str = "") -> bool:
-    """Every clause of the sentence only says that the evidence does not establish something about `question`
-    (gap_clause)."""
-    text = _DISCOURSE_LEAD.sub("", _clean(_norm(text)))
-    spans = _clauses(text)
-    return bool(spans) and all(gap_clause(text[a:z], question) for a, z in spans)
+    """The whole sentence is one caveat of the closed grammar about `question` (_caveat)."""
+    return _caveat(_clean(text), question) is not None
 
 
 def _outside_gaps(text: str, question: str = "") -> str:
-    """`text` without its absent-evidence clauses: what the sentence asserts."""
+    """`text` without its caveat clauses: what the sentence asserts."""
     out = list(text)
     for a, z in _gap_spans(text, question):
         out[a:z] = " " * (z - a)
@@ -869,6 +821,8 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     cites += [n for n in inline_sources if n not in cites]
     ids += [c for c in inline_claims if c not in ids]
     reasons = []
+    if _MORE_SENTENCES.search(text.translate(_PUNCT_ASCII)):
+        reasons.append("holds more than one sentence")
     honest_gap = insufficiency(text, question)      # T2-03: "the evidence does not contain X" needs no supported claim
     if not cites and not honest_gap:
         reasons.append("cites no source")
@@ -937,6 +891,8 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
 
 
 _UNHEDGED = "as fact without hedging"
+# One sentence per item: a sentence end followed by more text ("secure. Upgrade now", "secure.Everyone ...").
+_MORE_SENTENCES = re.compile(r"[.!?]+[\"')\]]*(?:\s+\S|(?=[A-Z]))")
 _LOWER_LEAD = re.compile(r"^(?:The|A|An|In|On|At|By|Its|Their|This|These|Those|Some|Most|Many|Each|Every|One|Two|"
                          r"Both|All|After|Before|During|Since|Until|Over|Under|From)\b")
 

@@ -174,9 +174,9 @@ def test_an_honest_insufficiency_statement_passes_but_only_on_its_own():
     single-source claims; the hedging rule rejected it and the fallback spoke an unrelated quote. A sentence that only
     says the evidence lacks something asserts no fact: it passes, with or without citations. A second clause that
     asserts a fact, a number not in the evidence or an unknown id still fails."""
-    honest = [("No source states whether the Zephyr compiler version is the latest.", [], []),
-              ("This cannot be established from the sources read.", [1], ["C1"])]
-    ok, bad = check(*honest)
+    honest = [("No source states whether numpy 2.5.5 is secure.", [], []),
+              ("The evidence does not establish whether numpy 2.5.5 is secure.", [2], ["C7", "C8"])]
+    ok, bad = reasoning.guard([dict(zip(("text", "sources", "claims"), h)) for h in honest], r5_bundle(SEC_Q))
     assert bad == [] and [x["text"] for x in ok] == [t for t, _, _ in honest]
     assert all(x.get("insufficiency") and x["hedged"] for x in ok)
     ok, bad = check(("The evidence does not specify the build time, but builds are 3 times faster on ARM.", [3],
@@ -195,11 +195,11 @@ def test_honest_caveats_pass_after_a_discourse_marker():
     directly evaluated in the available evidence.", "Gaps include direct application to NeuroSciFi systems" and
     "However, the evidence does not state whether NumPy 2.5.5 is recommended." were rejected as single-source facts.
     A caveat about what the evidence does not establish asserts no fact; a second clause that does still fails."""
-    caveats = [("However, the evidence does not state whether Zephyr 4.2.0 is the latest version.", [1], ["C1"]),
-               ("However, the latest version of the Zephyr compiler is not directly evaluated in the available evidence.",
-                [3], ["C2"]),
-               ("Note that the latest Zephyr compiler version is not reported in the sources.", [3], ["C2"])]
-    ok, bad = check(*caveats)
+    caveats = [("However, the evidence does not state whether numpy 2.5.5 is secure.", [1], ["C1"]),
+               ("However, the security of numpy 2.5.5 is not directly evaluated in the available evidence.", [2],
+                ["C7", "C8"]),
+               ("Note that the security of numpy 2.5.5 is not stated in the sources.", [2], ["C7"])]
+    ok, bad = reasoning.guard([dict(zip(("text", "sources", "claims"), c)) for c in caveats], r5_bundle(SEC_Q))
     assert bad == [] and [x["text"] for x in ok] == [t for t, _, _ in caveats]
     assert all(x.get("insufficiency") for x in ok)
     ok, bad = check(("However, the evidence does not state the cause, but builds are faster on ARM.", [3], ["C2"]),
@@ -227,8 +227,7 @@ def test_honest_uncertainty_and_meta_statements_about_the_evidence_pass():
     claim verified. Neither asserts a fact. A plain statement still may not take a number from the question."""
     b = numpy_bundle()
     ok, bad = reasoning.guard([
-        {"text": "It is unclear whether numpy 2.5.5 is recommended, as the evidence does not provide a clear "
-                 "recommendation.", "sources": [1], "claims": ["C1"]},
+        {"text": "It is unclear whether numpy 2.5.5 is recommended.", "sources": [1], "claims": ["C1"]},
         {"text": "The relevance of recent NumPy developments may be uncertain, as some claims lack recent or verified "
                  "evidence.", "sources": [1], "claims": ["C1"]}], b)
     assert bad == [] and len(ok) == 2, bad
@@ -248,11 +247,11 @@ def test_a_missing_evidence_clause_may_name_the_questions_numbers():
     b = numpy_bundle()
     b["question"] = "Is numpy 2.5.5 secure?"
     ok, bad = reasoning.guard([
-        {"text": "There is insufficient evidence to determine whether NumPy 2.5.5 is secure, as no claims about its "
-                 "security status are supported.", "sources": [1], "claims": ["C1"]},
+        {"text": "There is insufficient evidence to determine whether NumPy 2.5.5 is secure.", "sources": [1],
+         "claims": ["C1"]},
         {"text": "According to one source, NumPy is the fundamental package for scientific computing, but the "
                  "evidence does not state "
-                 "whether version 2.5.5 is secure.", "sources": [1], "claims": ["C1"]},
+                 "whether numpy 2.5.5 is secure.", "sources": [1], "claims": ["C1"]},
         {"text": "Whether numpy 2.5.5 is secure remains unclear.", "sources": [1], "claims": ["C1"]},
         {"text": "The security of numpy 2.5.5 is not addressed in the cited sources.", "sources": [1],
          "claims": ["C1"]}], b)
@@ -306,8 +305,8 @@ def test_r5_negated_evidence_predications_are_honest_caveats():
     on the available evidence." was rejected as "calls an unverified claim verified or confirmed" (a NEGATED
     "confirmed") and as stating C7, C8 as fact. Both are negators scoping over an evidence predicate: they assert no
     fact, so they need no hedge, may name the question's version, and call nothing confirmed."""
-    ok, bad = reasoning.guard([{"text": "No evidence in the provided claims indicates whether numpy 2.5.5 is "
-                                        "recommended.", "sources": [1], "claims": ["C1"]}],
+    ok, bad = reasoning.guard([{"text": "No claim indicates whether numpy 2.5.5 is recommended.", "sources": [1],
+                                "claims": ["C1"]}],
                               r5_bundle("Is numpy 2.5.5 recommended?"))
     assert bad == [] and ok[0].get("insufficiency"), bad
     ok, bad = reasoning.guard([{"text": "The security status of NumPy 2.5.5 cannot be confirmed based on the available "
@@ -322,9 +321,8 @@ def test_r5_uncited_caveat_may_use_only_the_questions_terms():
     evidence does not establish, so (T2-03) it needs no citation, but an uncited caveat may hold no number and no name
     the question does not hold, and a factual clause in it is still a factual clause."""
     b = r5_bundle("Is numpy 2.5.5 recommended?")
-    ok, bad = reasoning.guard([{"text": "The recommendation status for numpy 2.5.5 is not evaluated in the evidence, "
-                                        "and no direct assessment of its recommendation is provided.", "sources": [],
-                                "claims": []}], b)
+    ok, bad = reasoning.guard([{"text": "The recommendation status of numpy 2.5.5 is not evaluated in the evidence.",
+                                "sources": [], "claims": []}], b)
     assert bad == [] and ok[0].get("insufficiency"), bad
     ok, bad = reasoning.guard([
         {"text": "No source states whether OpenSSL bundled with numpy 2.5.5 is recommended.", "sources": [],
@@ -335,7 +333,7 @@ def test_r5_uncited_caveat_may_use_only_the_questions_terms():
         {"text": "The evidence does not state whether numpy 2.5.5 is recommended, but NumPy 2.5.5 fixes 12 bugs.",
          "sources": [], "claims": []}], b)
     assert ok == [] and len(bad) == 4, ok
-    assert "OpenSSL" in bad[0]["reasons"][0] and "2.5.6" in bad[1]["reasons"][-1]
+    assert all("cites no source" in x["reasons"] for x in bad) and "2.5.6" in bad[1]["reasons"][-1]
     assert all("cites no source" in x["reasons"] for x in bad[2:])
 
 
@@ -350,25 +348,28 @@ def test_r5_a_hedge_inside_the_caveat_does_not_hedge_the_factual_clause():
     assert ok == [] and all("states C1 (insufficient) as fact without hedging" in x["reasons"] for x in bad), bad
     ok, bad = reasoning.guard([
         {"text": "According to one source, NumPy is the fundamental package for scientific computing, but the evidence "
-                 "does not indicate whether version 2.5.5 is recommended.", "sources": [1], "claims": ["C1"]}],
+                 "does not indicate whether numpy 2.5.5 is recommended.", "sources": [1], "claims": ["C1"]}],
         r5_bundle("Is numpy 2.5.5 recommended?"))
     assert bad == [] and not ok[0].get("insufficiency"), bad
 
 
+# The 15 paraphrases of the R5 retest, rewritten into the closed caveat grammar where they fell outside it; their
+# original wordings are in REJECTED_CAVEATS ("outside the closed caveat grammar").
 HONEST_CAVEATS = [
-    "No evidence in the provided claims indicates whether numpy 2.5.5 is secure.",
+    "No claim indicates whether numpy 2.5.5 is secure.",
     "The security status of NumPy 2.5.5 cannot be confirmed based on the available evidence.",
-    "The available sources do not establish whether numpy 2.5.5 is secure.",
-    "Nothing in the cited sources shows whether numpy 2.5.5 is secure.",
+    "The sources do not establish whether numpy 2.5.5 is secure.",
+    "None of the cited sources shows whether numpy 2.5.5 is secure.",
     "None of the sources addresses the security of numpy 2.5.5.",
     "The evidence is insufficient to determine whether numpy 2.5.5 is secure.",
     "It remains unknown whether numpy 2.5.5 is secure.",
-    "The sources read are unable to verify the security of numpy 2.5.5.",
+    "The sources cannot verify the security of numpy 2.5.5.",
     "Whether numpy 2.5.5 is secure cannot be determined from the evidence.",
     "There is a lack of data on the security of numpy 2.5.5.",
     "The security of numpy 2.5.5 has not been independently verified by any of the cited sources.",
     "The evidence doesn't say whether numpy 2.5.5 is secure.",
-    "The cited evidence does not indicate whether numpy 2.5.5 is secure, and no source addresses its security.",
+    "There is no evidence to determine whether numpy 2.5.5 is secure.",
+    "The cited evidence does not indicate whether numpy 2.5.5 is secure.",
     "However, the security of numpy 2.5.5 is not yet confirmed in the sources.",
 ]
 
@@ -479,7 +480,118 @@ F5_UNCITED = [    # uncited: a word the question does not hold, a homoglyph, ful
     "No source states whether numpy 2.5.5 is secure \u0431\u0435\u0437\u043e\u043f\u0430\u0441\u0435\u043d.",
     "No source states whether nu\u200bmpy 2.5.5 is secure for tensorflow users.",
 ]
-SEC_BYPASSES = F1_SPLIT + F4_GAPS + F3_PREFIX + F2_ABSENCE + F5_UNCITED[:5]
+SEC_BYPASSES = F1_SPLIT + F4_GAPS + F3_PREFIX + F2_ABSENCE + F5_UNCITED
+
+# SECREVIEW2 (re-review of the open-ended rule, scratchpad new.txt and its N1-N4 sentences)
+SEC2_BYPASSES = [     # (question, sentence, the bundle holds a supported RCE claim)
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure experts recommend upgrading immediately.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure.Everyone recommends upgrading immediately.', False),
+    ('Is numpy 2.5.5 secure?', 'The evidence does not state whether the critical remote code execution flaw in numpy 2.5.5 is secure.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether the patch for the numpy 2.5.5 remote code execution flaw is secure.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 fixes twelve critical flaws in its parser.', False),
+    ('Is numpy 2.5.5 secure?', 'The evidence does not establish whether numpy 2.5.5 is secure enough for the banking clusters Google runs.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states if numpy 2.5.5 is secure in spite of the backdoor Microsoft found.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure or merely the safest release ever shipped.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure enough to skip patching.', False),
+    ('Is numpy 2.5.5 secure?', 'The secure numpy 2.5.5 release has not been independently verified by any of the cited sources.', False),
+    ('Is numpy 2.5.5 recommended?', 'The recommended numpy 2.5.5 release is not evaluated in the evidence.', False),
+    ('Is numpy 2.5.5 secure and recommended for production?', 'The secure recommended numpy 2.5.5 production release is not addressed in the evidence.', False),
+    ('Is numpy 2.5.5 safe to install?', 'The safest numpy 2.5.5 installation is not addressed in the cited sources.', False),
+    ('Is numpy 2.5.5 compatible with python 3.13?', 'The withdrawn numpy 2.5.5 release is not addressed in the evidence.', False),
+    ('Is numpy 2.5.5 compatible with python 3.13?', 'No source addresses the withdrawn status of numpy 2.5.5.', False),
+    ('Is numpy 2.5.5 compatible with python 3.13?', 'The compromised numpy 2.5.5 release is not addressed in the evidence.', False),
+    ('Is numpy 2.5.5 compatible with python 3.13?', 'The company-withheld numpy 2.5.5 release is not addressed in the evidence.', False),
+    ('Is numpy 2.5.5 safe for production use?', 'The safety recall of numpy 2.5.5 is not addressed in the evidence.', False),
+    ('Is numpy 2.5.5 safe for production use?', 'The safeguarded numpy 2.5.5 product is not addressed in the evidence.', False),
+    ('Should I upgrade to numpy 2.5.5 from numpy 2.5.4?', 'The mandatory numpy 2.5.5 upgrade is not addressed in the evidence.', False),
+    ('Should I upgrade to numpy 2.5.5 from numpy 2.5.4?', 'The upgraded fromage numpy 2.5.5 is not addressed in the evidence.', False),
+    ('Is there any security advisory about numpy 2.5.5?', 'The aboutface security advisory about numpy 2.5.5 is not addressed in the evidence.', False),
+    ('Is numpy 2.5.5 secure?', 'The securities-grade numpy 2.5.5 release is not addressed in the evidence.', False),
+    ('Is numpy 2.5.5 secure?', 'None of the sources addresses the security of numpy 2.5.5.', True),
+    ('Is numpy 2.5.5 secure?', 'The evidence does not establish whether numpy 2.5.5 is secure.', True),
+    ('Is numpy 2.5.5 secure?', 'The security of numpy 2.5.5 cannot be confirmed based on the available evidence.', True),
+    ('Is numpy 2.5.5 secure?', 'It remains unknown whether numpy 2.5.5 is secure.', True),
+    ('Is numpy 2.5.5 secure?', 'No source evaluates the safety of numpy 2.5.5.', True),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure / numpy 2.5.5 is recommended.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure • experts recommend it.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure → upgrade now.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure e.g. experts recommend it.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 vs. 2.5.4 is secure.', False),
+    ('Is numpy 2.5.5 secure?', "No source states whether numpy 2.5.5 is secure 'experts recommend it'.", False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure ‹experts recommend it›.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure « experts recommend it ».', False),
+    ('Is numpy 2.5.5 secure?', 'There is no evidence about the security of numpy 2.5.5 · upgrade now.', False),
+    ('Is numpy 2.5.5 secure?', 'There is no evidence about the security of numpy 2.5.5 & numpy 2.5.5 is secure.', False),
+    ('Is numpy 2.5.5 secure?', 'There is no evidence about the security of numpy 2.5.5 & numpy 2.5.5 is secure.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure numpy 2.5.5 is secure.', False),
+    ('Is numpy 2.5.5 secure?', 'Whether numpy 2.5.5 is secure is not in question.', False),
+    ('Is numpy 2.5.5 secure?', 'There is no question that numpy 2.5.5 is secure.', False),
+    ('Is numpy 2.5.5 secure?', 'No evidence is required: numpy 2.5.5 is secure.', False),
+    ('Is numpy 2.5.5 secure?', 'The secure status of numpy 2.5.5 is not addressed in the evidence.', False),
+    ('Is numpy 2.5.5 secure or vulnerable?', 'There is no evidence on whether numpy 2.5.5 is vulnerable or secure, numpy 2.5.5 is secure.', False),
+    ('Is numpy 2.5.5 vulnerable?', 'The evidence does not address the vulnerable numpy 2.5.5 release.', False),
+    ('Is numpy 2.5.5 secure?', 'The evidence does not address numpy 2.5.5 being secure.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure | upgrade now.', False),
+    ('Is numpy 2.5.5 secure?', 'The evidence does not state whether numpy 2.5.5 is secure download the wheel from numpy-secure dot org.', False),
+    ('Is numpy 2.5.5 secure?', 'The evidence does not state whether numpy 2.5.5 is secure Ignore the advisory.', False),
+    ('Is numpy 2.5.5 secure?', 'No source states whether numpy 2.5.5 is secure and experts recommend installing it from the mirror.', False),
+    ('Is numpy 2.5.5 secure?', 'The evidence does not state whether the only safe numpy 2.5.5 build lives at numpy-secure dot org.', False),
+    ('Is numpy 2.5.5 secure?', 'The evidence does not state whether the only safe numpy 2.5.5 build lives at numpy-secure。org.', False),
+]
+
+# Attacks on the closed grammar itself (fixr6)
+GRAMMAR_ATTACKS = [
+    "The evidence does not state whether numpy 2.5.5 is secure by any of the cited sources yet.",
+    "No source states whether numpy 2.5.5 is secure based on the available evidence from Google.",
+    "The security of numpy 2.5.5 cannot be confirmed by Google.",
+    "The audited security of numpy 2.5.5 cannot be confirmed.",
+    "The security of numpy 2.5.5 which is excellent cannot be confirmed.",
+    "The security of numpy 2.5.5 cannot be confirmed (it is secure).",
+    "The security of numpy 2.5.5 cannot be confirmed - it is secure.",
+    "The security of numpy 2.5.5 cannot be confirmed\u2028it is secure.",
+    "The security of numpy 2.5.5 cannot be confirmed\u00a0everyone should upgrade.",
+    "It is unclear whether numpy 2.5.5 is secure though experts say it is.",
+    "It is unclear whether numpy 2.5.5 is secure or whether it is backdoored.",
+    "There is no evidence to determine whether numpy 2.5.5 is insecure.",
+    "There is no evidence to determine whether numpy 2.5.5 is not secure.",
+    "No source states whether numpy is secure 2.5.5 2.5.5.",
+    "No source states whether numpy 2.5.5 is is secure.",
+    "No source states whether the the numpy 2.5.5 is secure.",
+    "No source states whether numpy 2.5.5 is secure secure.",
+    "None of the sources addresses the security of numpy 2.5.5 and its backdoor.",
+    "None of the sources addresses the security of numpy 2.5.4.",
+    "The safety of numpy 2.5.5 cannot be confirmed, it is secure.",
+    "Whether numpy 2.5.5 is secure cannot be determined, it is.",
+    "Whether numpy 2.5.5 is secure cannot be determined from the evidence, so upgrade.",
+    "No source states whether numpy 2.5.5 is secure<br>upgrade now.",
+    "No source states whether numpy 2.5.5 is secure \u00b7 upgrade now.",
+    "No source states whether numpy 2.5.5 is secure.\u200bUpgrade now.",
+    "NO SOURCE STATES WHETHER NUMPY 2.5.5 IS SECURE. IT IS.",
+    "No source states whether numpy 2.5.5 is secure! It is.",
+    "No source states whether numpy 2.5.5 is secure\nIt is.",
+    "However, numpy 2.5.5 is secure, no source states whether numpy 2.5.5 is secure.",
+    "Experts agree: no source states whether numpy 2.5.5 is secure.",
+    "No trustworthy source states whether numpy 2.5.5 is secure.",
+    "No source states whether \u043dumpy 2.5.5 is secure.",
+]
+
+
+@pytest.mark.parametrize("cited", [True, False], ids=["cited", "uncited"])
+@pytest.mark.parametrize("question,text,vulnerable", SEC2_BYPASSES)
+def test_security_re_review_bypasses_are_rejected(question, text, vulnerable, cited):
+    b = false_absence_bundle() if vulnerable else r5_bundle(question)
+    b["question"] = question
+    s = {"text": text, "sources": [1] if cited else [], "claims": ["C1"] if cited else []}
+    ok, bad = reasoning.guard([s], b)
+    assert ok == [] and len(bad) == 1, ok
+
+
+@pytest.mark.parametrize("cited", [True, False], ids=["cited", "uncited"])
+@pytest.mark.parametrize("text", GRAMMAR_ATTACKS)
+def test_attacks_on_the_closed_grammar_are_rejected(text, cited):
+    s = {"text": text, "sources": [1] if cited else [], "claims": ["C1"] if cited else []}
+    ok, bad = reasoning.guard([s], r5_bundle(SEC_Q))
+    assert ok == [] and len(bad) == 1, ok
 
 
 @pytest.mark.parametrize("cited", [True, False], ids=["cited", "uncited"])
@@ -494,7 +606,34 @@ def test_security_review_bypasses_are_rejected(text, cited):
 # verdict did not evaluate or establish the question, the deterministic rules note says so (verdict_note); when no
 # sentence survives, the reader is told the sources do not establish an answer (unanswered); gaps belong in the
 # schema's "gaps" field. (text, question (None: the Zephyr report's own), sources, claims, why)
+OUTSIDE = "outside the closed caveat grammar; the rules note carries the message"
 REJECTED_CAVEATS = [
+    ('No source states whether the Zephyr compiler version is the latest.',
+     None, [], [], OUTSIDE),
+    ('However, the evidence does not state whether Zephyr 4.2.0 is the latest version.',
+     None, [1], ['C1'], OUTSIDE),
+    ('However, the evidence does not confirm whether the Zephyr compiler has been officially recognized or if other builds exist.',
+     None, [3], ['C2'], OUTSIDE),
+    ('It is unclear whether numpy 2.5.5 is recommended, as the evidence does not provide a clear recommendation.',
+     'Is numpy 2.5.5 recommended?', [1], ['C1'], OUTSIDE),
+    ('There is insufficient evidence to determine whether NumPy 2.5.5 is secure, as no claims about its security status are supported.',
+     SEC_Q, [1], ['C1'], OUTSIDE),
+    ('No evidence in the provided claims indicates whether numpy 2.5.5 is recommended.',
+     'Is numpy 2.5.5 recommended?', [1], ['C1'], OUTSIDE),
+    ('No evidence in the provided claims indicates whether numpy 2.5.5 is secure.',
+     SEC_Q, [2], ['C7', 'C8'], OUTSIDE),
+    ('The available sources do not establish whether numpy 2.5.5 is secure.',
+     SEC_Q, [2], ['C7', 'C8'], OUTSIDE),
+    ('Nothing in the cited sources shows whether numpy 2.5.5 is secure.',
+     SEC_Q, [2], ['C7', 'C8'], OUTSIDE),
+    ('The sources read are unable to verify the security of numpy 2.5.5.',
+     SEC_Q, [2], ['C7', 'C8'], OUTSIDE),
+    ('The cited evidence does not indicate whether numpy 2.5.5 is secure, and no source addresses its security.',
+     SEC_Q, [2], ['C7', 'C8'], OUTSIDE),
+    ('The recommendation status for numpy 2.5.5 is not evaluated in the evidence, and no direct assessment of its recommendation is provided.',
+     'Is numpy 2.5.5 recommended?', [], [], OUTSIDE),
+    ('According to one source, NumPy is the fundamental package for scientific computing, but the evidence does not state whether version 2.5.5 is secure.',
+     SEC_Q, [1], ['C1'], OUTSIDE),
     ("No source states when the next Zephyr compiler release is planned.", None, [], [],
      "F1/F2: 'when' opens a new clause and only whether/if complements are caveats; the question asked for the "
      "latest version, not a release plan"),
@@ -520,24 +659,13 @@ REJECTED_CAVEATS = [
 ]
 
 
-@pytest.mark.parametrize("text", F5_UNCITED[5:])
-def test_an_uncited_embedded_question_holds_only_the_questions_words(text):
-    """F5: inside "whether ..." a CITED caveat's words are free (an embedded question asserts nothing); an UNCITED one
-    may hold only the question's terms and caveat vocabulary."""
-    ok, bad = reasoning.guard([{"text": text, "sources": [], "claims": []}], r5_bundle(SEC_Q))
-    assert ok == [] and len(bad) == 1, ok
-
-
 def test_an_uncited_caveat_says_nothing_beyond_its_question():
-    """F5: the reasons for the uncited forms of the F5 bypasses (NFKC-normalised first)."""
+    """F5: an uncited sentence is accepted only as a caveat of the closed grammar, whose words are closed lists and
+    the question's own tokens; the F5 forms are no caveat and cite nothing."""
     b = r5_bundle(SEC_Q)
-
-    def reasons(text):
-        return reasoning.guard([{"text": text, "sources": [], "claims": []}], b)[1][0]["reasons"]
-    assert any("names openssl" in r for r in reasons(F5_UNCITED[5]))
-    assert any("non-ASCII" in r for r in reasons(F5_UNCITED[6]))
-    assert any("names OpenSSL" in r for r in reasons(F5_UNCITED[7]))      # fullwidth -> ASCII by NFKC
-    assert any("twelve" in r for r in reasons(F5_UNCITED[8]))
+    for text in F5_UNCITED:
+        ok, bad = reasoning.guard([{"text": text, "sources": [], "claims": []}], b)
+        assert ok == [] and "cites no source" in bad[0]["reasons"], text
     ok, bad = reasoning.guard([{"text": "No source states whether numpy 2.5.5 is secure.", "sources": [],
                                 "claims": []}], b)
     assert bad == [] and ok[0].get("insufficiency"), bad
@@ -572,15 +700,34 @@ def test_an_absence_claim_never_denies_what_the_bundle_states(text, cited):
     assert ok == [] and any("lacks" in r for r in bad[0]["reasons"]), bad
 
 
-def test_a_caveat_about_another_aspect_survives_the_false_absence_bundle():
-    """The bundle check compares what a caveat says is missing with each claim: a claim about something else (here a
-    vulnerability, for a caveat about "recommended") leaves the caveat standing. A caveat stating the evidence lacks
-    what a claim says ("... whether Zephyr 4.2.0 was released" beside C1) is rejected."""
-    ok, bad = reasoning.guard([{"text": "There is insufficient evidence to determine whether numpy 2.5.5 is "
-                                        "recommended.", "sources": [1], "claims": ["C1"]}], false_absence_bundle())
-    assert bad == [] and ok[0].get("insufficiency"), bad
-    ok, bad = check(("The evidence does not state whether Zephyr 4.2.0 was released.", [1], ["C1"]))
-    assert ok == [] and "says the evidence lacks what claim C1 states" in bad[0]["reasons"], bad
+def test_a_caveat_yields_to_a_supported_claim_on_its_subject():
+    """SECREVIEW2 limit 2: words cannot tell whether a supported claim on the question's subject ("NumPy 2.5.5 is
+    affected by a critical remote code execution vulnerability") answers it, so beside one a caveat is rejected and
+    the verdict and the rules note speak for the evidence. A caveat whose words a claim holds is rejected too."""
+    for text in ("There is insufficient evidence to determine whether numpy 2.5.5 is secure.",
+                 "The evidence does not establish whether numpy 2.5.5 is secure.",
+                 "It remains unknown whether numpy 2.5.5 is secure."):
+        ok, bad = reasoning.guard([{"text": text, "sources": [1], "claims": ["C1"]}], false_absence_bundle())
+        assert ok == [] and any("beside supported claim C1" in r for r in bad[0]["reasons"]), bad
+    b = r5_bundle("Is numpy 2.5.5 released?")
+    b["claims"][1] = dict(b["claims"][1], text="NumPy 2.5.5 was released on 2026-11-15.")
+    ok, bad = reasoning.guard([{"text": "No source states whether numpy 2.5.5 released.", "sources": [2],
+                                "claims": ["C7"]}], b)
+    assert ok == [] and any("lacks what claim C7 states" in r for r in bad[0]["reasons"]), bad
+
+
+def test_a_caveat_about_a_decided_question_is_rejected():
+    """SECREVIEW2 limit 2 mitigation: when the verdict decided the question, a caveat about it is false."""
+    for state_ in ("supported", "disputed", "conflicting"):
+        b = r5_bundle(SEC_Q)
+        b["verdict"] = {"label": state_, "state": state_, "statement": "numpy 2.5.5 is secure"}
+        ok, bad = reasoning.guard([{"text": "No source states whether numpy 2.5.5 is secure.", "sources": [2],
+                                    "claims": ["C7"]}], b)
+        assert ok == [] and any("verdict decided it" in r for r in bad[0]["reasons"]), bad
+    b["verdict"]["state"] = "insufficient"
+    ok, bad = reasoning.guard([{"text": "No source states whether numpy 2.5.5 is secure.", "sources": [2],
+                                "claims": ["C7"]}], b)
+    assert bad == [], bad
 
 
 def test_sources_disagree_passes_when_the_verdict_is_conflicting():
@@ -618,8 +765,8 @@ def test_another_source_must_be_another_source():
 def test_the_evidence_does_not_confirm_is_an_honest_caveat():
     """R2-03: "However, the evidence does not confirm whether this moon has been officially recognized or if
     Makemake has any other moons." was rejected as stating its insufficient claims as fact."""
-    ok, bad = check(("However, the evidence does not confirm whether the Zephyr compiler has been officially "
-                     "recognized or if other builds exist.", [3], ["C2"]))
+    ok, bad = reasoning.guard([{"text": "However, the evidence does not confirm whether numpy 2.5.5 is secure.",
+                                "sources": [2], "claims": ["C7"]}], r5_bundle(SEC_Q))
     assert bad == [] and ok[0].get("insufficiency")
 
 
