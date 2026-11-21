@@ -1,8 +1,9 @@
 """`nsf web …`: the Web Cortex command line (ARCHITECTURE §4.5).
 
 Every command prints JSON and exits 2 with a one-line message on an instance error (instance.cli.run). Every
-command that can reach the public web (search, fetch, ask, crawl, resume, refresh --run, health --probe, daemon
-start, deps, feeds discover, curiosity --propose, work --once) calls state.require_enabled first; `tick` and the long-running `work`
+command that can reach the public web (search, fetch, ask, crawl, resume, refresh --run, health --probe, searxng
+start, searxng health --probe, daemon start, deps, feeds discover, curiosity --propose, work --once) calls
+state.require_enabled first; `tick` and the long-running `work`
 report or wait instead, so the timer and the worker service stay quiet while web access is off.
 Web Cortex modules are imported inside the handlers so `nsf --help` stays fast.
 
@@ -102,6 +103,37 @@ def _daemon(db, db_path):
     path = Path(db_path).resolve()
     return Daemon(host=parts.hostname or "127.0.0.1", port=parts.port or 80,
                   state_dir=path.parent / f"{path.stem}.websearch")
+
+
+def _searxng_container(cfg):
+    from urllib.parse import urlsplit
+    from .providers.searxng import DEFAULT_URL, Container
+    parts = urlsplit(cfg.searxng_url or DEFAULT_URL)
+    return Container(host=parts.hostname or "127.0.0.1", port=parts.port or 80)
+
+
+def _searxng_view(db, cfg, now, *, container=True) -> dict:
+    """SearXNG as `nsf web status`/`health` show it. 'healthy' needs SearXNG to answer AND a real non-empty search
+    result within HEALTHY_WINDOW (the stored provider breaker's last success: the registry counts a call as a
+    success only when it returned results); HTTP 200 alone is 'degraded'."""
+    if not cfg.searxng_url:
+        return {"configured": False, "note": "not configured: discovery uses open-webSearch and the structured "
+                                             "providers (`nsf web searxng start` configures it)"}
+    from .providers.searxng import SearXNGProvider, verdict
+    provider = SearXNGProvider(cfg.searxng_url, engines=cfg.searxng_engines, timeout=5.0)
+    health = provider.health()
+    stored = _health_view(db, now)
+    own = stored.get("searxng") or {}
+    engines = {name.split(":", 1)[1]: snap for name, snap in stored.items() if name.startswith("searxng:")}
+    engines_open = bool(engines) and all(s.get("state") == "open" for s in engines.values())
+    out = {"configured": True, "url": cfg.searxng_url, "reachable": health["reachable"],
+           "version": health["version"], "error": health["error"], "engines_enabled": health["engines_enabled"],
+           "last_nonempty_at": own.get("last_ok_at"), "provider_state": own.get("state"),
+           "engines": engines,
+           "verdict": verdict(health["reachable"], own.get("last_ok_at"), now, engines_open=engines_open)}
+    if container:
+        out["container"] = _searxng_container(cfg).status()
+    return out
 
 
 def _cache_stats(db_path, db=None, now=None):
@@ -224,10 +256,12 @@ def _status(db, a, now):
                          "browser_rendering": cfg.browser_rendering,
                          "search_browser_user_agent": cfg.search_browser_user_agent},
             "config": {"providers": cfg.providers, "unknown_providers": unknown(cfg), "engines": cfg.engines,
-                       "openwebsearch_url": cfg.openwebsearch_url, "budget_ceiling": cfg.budget_ceiling,
+                       "openwebsearch_url": cfg.openwebsearch_url, "searxng_url": cfg.searxng_url,
+                       "searxng_engines": cfg.searxng_engines, "budget_ceiling": cfg.budget_ceiling,
                        "daily_autonomous": cfg.daily_autonomous, "deny_domains": len(cfg.deny_domains),
                        "private_terms": len(cfg.private_terms)},
-            "provider_health": _health_view(db, now), "daemon": daemon, "public_cache": _cache_stats(path, db, now),
+            "provider_health": _health_view(db, now), "daemon": daemon, "searxng": _searxng_view(db, cfg, now),
+            "public_cache": _cache_stats(path, db, now),
             "tasks": tasks, "memory": state.counts(db), "node": node_info()}
 
 
@@ -240,6 +274,7 @@ def _health(db, a, now):
            "search_browser_user_agent": cfg.search_browser_user_agent}
     if isinstance(out["daemon"], dict):
         out["honest_user_agent"] = out["daemon"].get("honest_user_agent")
+    out["searxng"] = _searxng_view(db, cfg, now, container=False)
     if not a.probe:
         out["note"] = "pass --probe to send one cheap request per structured provider"
         return out
@@ -295,6 +330,66 @@ def _daemon_cmd(db, a, now):
     if a.action == "stop":
         return daemon.stop()
     return daemon.status()
+
+
+SEARXNG_PROBES = {"general": "open source software", "news": "technology news", "it": "python package",
+                  "science": "predictive coding"}
+
+
+def _searxng_cmd(db, a, now):
+    """start | stop | status | health [--probe]. `start` also sets searxng_url when it is empty, making SearXNG the
+    primary general provider; `health --probe` sends one real query per category and records the outcome, which
+    is what 'healthy' rests on."""
+    from . import state
+    cfg = state.get_config(db)
+    container = _searxng_container(cfg)
+    if a.action == "start":
+        cfg = state.require_enabled(db)
+        out = container.start()
+        if not cfg.searxng_url:
+            state.set_config(db, {"searxng_url": container.base_url}, now)
+            out["configured"] = container.base_url
+        return out
+    if a.action == "stop":
+        return container.stop()
+    if a.action == "status":
+        return {"searxng": _searxng_view(db, cfg, now)}
+    out = {"searxng": _searxng_view(db, cfg, now, container=False), "probed": False}
+    if not a.probe:
+        out["note"] = "pass --probe to send one real query per category (general, news, it, science)"
+        return out
+    state.require_enabled(db)
+    if not cfg.searxng_url:
+        raise ValidationError("SearXNG is not configured (searxng_url is empty): run `nsf web searxng start`")
+    from .types import Query, Usage
+    kinds = {"general": "web", "news": "news", "it": "technical", "science": "academic"}
+    services = build_services(db, _db_path(a))
+    try:
+        provider = next((p for p in services.registry.providers if p.name == "searxng"), None)
+        probes = {}
+        for category, text in SEARXNG_PROBES.items():
+            budget = _budget(cfg, {"max_queries": 0, "max_requests": 10, "max_pages": 0, "max_seconds": 30})
+            usage = Usage()
+            started = time.perf_counter()
+            try:
+                results = provider.search(Query(text, kinds[category], purpose="nsf web searxng health --probe"),
+                                          10, budget=budget, usage=usage)
+                entry = {"ok": bool(results), "results": len(results), "dated": sum(
+                    1 for r in results if r.published_at is not None), "error": None if results else "empty"}
+            except Exception as exc:   # reported per category, never raised
+                entry = {"ok": False, "results": 0, "dated": 0,
+                         "error": f"{getattr(exc, 'code', None) or type(exc).__name__}: "
+                                  f"{getattr(exc, 'detail', None) or exc}"[:300]}
+            entry["latency"] = round(time.perf_counter() - started, 3)
+            entry["engines"] = provider.last_attempts
+            services.registry.record("searxng", entry["ok"], entry["latency"], entry["error"])
+            probes[category] = entry
+        services.persist(db, now)
+    finally:
+        services.close()
+    out.update({"probed": True, "probes": probes, "searxng": _searxng_view(db, state.get_config(db), now,
+                                                                            container=False)})
+    return out
 
 
 def _search(db, a, now):
@@ -659,6 +754,10 @@ def register(sub):
     p.add_argument("--probe", action="store_true")
     p = cmd("daemon", _daemon_cmd, "start, stop or inspect the loopback open-webSearch daemon")
     p.add_argument("action", choices=("start", "stop", "status"))
+
+    p = cmd("searxng", _searxng_cmd, "start, stop, inspect or probe the loopback SearXNG container (ADR-034)")
+    p.add_argument("action", choices=("start", "stop", "status", "health"))
+    p.add_argument("--probe", action="store_true", help="health: one real query per category")
 
     p = cmd("search", _search, "discovery only: one privacy-screened query through the providers")
     p.add_argument("query")

@@ -89,19 +89,19 @@ class NotLoopback(ValidationError, ValueError):
     """The open-webSearch integration only talks to a daemon on this machine."""
 
 
-def loopback_base(base_url: str) -> str:
-    """Validate and normalise the daemon URL: http, loopback host, no path, user info, query or fragment."""
+def loopback_base(base_url: str, what: str = "open-webSearch") -> str:
+    """Validate and normalise a local service URL: http, loopback host, no path, user info, query or fragment."""
     try:
         parts = urlsplit(str(base_url).strip())
         port = parts.port
     except ValueError as exc:
-        raise NotLoopback(f"invalid open-webSearch URL {base_url!r}: {exc}") from None
+        raise NotLoopback(f"invalid {what} URL {base_url!r}: {exc}") from None
     host = (parts.hostname or "").lower()
     if parts.scheme != "http" or host not in LOOPBACK_HOSTS:
-        raise NotLoopback(f"open-webSearch URL must be http://127.0.0.1, http://localhost or http://[::1]; "
+        raise NotLoopback(f"{what} URL must be http://127.0.0.1, http://localhost or http://[::1]; "
                           f"got {base_url!r}")
     if parts.username or parts.password or parts.query or parts.fragment or parts.path not in ("", "/"):
-        raise NotLoopback(f"open-webSearch URL must be a bare origin; got {base_url!r}")
+        raise NotLoopback(f"{what} URL must be a bare origin; got {base_url!r}")
     shown = f"[{host}]" if ":" in host else host
     return f"http://{shown}:{port}" if port else f"http://{shown}"
 

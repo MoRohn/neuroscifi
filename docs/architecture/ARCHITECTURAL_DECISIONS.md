@@ -165,7 +165,7 @@ watch, cancel and read; each task records `executed_on` (host digest, CPUs, load
 the family scope (ADR-028). Consequence: no crawler stack on phones, no credentials or browser sessions on devices,
 and no cross-device routing decisions to make. Deferred: worker federation (WEB-36).
 
-**ADR-032 The search daemon sends an honest User-Agent unless the owner opts in. R** (amends ADR-025)
+**ADR-032 The search daemon sends an honest User-Agent unless the owner opts in. R** (amends ADR-025; superseded by ADR-034, honest-UA rule retained)
 The security review found that open-webSearch 2.2.0's engine scrapers send forged Chrome User-Agent strings, which
 contradicts "no anti-bot circumvention". Decision: `deploy/open-websearch/apply-honest-ua.mjs` (`npm run patch-ua`,
 run by `install.sh`) replaces them with `config.USER_AGENT`; `Daemon.start` refuses an unpatched build unless the owner
@@ -182,3 +182,58 @@ authority, not a second-hand report. Decision: such a statement is "supported" (
 record when nothing contradicts it; the verdict says that a single registry record decided it. Every other statement
 still needs two independent agreeing groups. Consequence: release checks answer from the authoritative record; a
 compromised or wrong registry entry would be believed (mitigated by OSV advisories and the owner's review of knowledge).
+
+**ADR-034 Self-hosted SearXNG is the primary general discovery provider, honest and robots-compliant. R** (
+supersedes ADR-032, amends ADR-025)
+
+Context. ADR-032 kept the honest User-Agent for the open-webSearch scrapers; measured on 2026-11-20 all four
+key-free engines then returned nothing, so general web discovery rested on structured APIs and feeds. The v0.7.0
+directive makes a self-hosted SearXNG the primary general provider. Inspection of the pinned image
+(`searxng/searxng@sha256:fc1d81d7…`, 2026.11.21-c6ee3e9fd) found that unmodified SearXNG impersonates a browser by
+default: every engine request goes through curl_cffi with `impersonate="chrome"` (Chrome TLS fingerprint, Chrome
+User-Agent and Client-Hint headers) unless the engine opts out, some engines ask for Firefox, and `gen_useragent()`
+returns a random Firefox User-Agent. Several engines also solve CAPTCHAs or proof-of-work challenges (mojeek
+ALTCHA, startpage Anubis) or replay anti-bot cookies with browser header order (qwant DataDome). Most search-result
+pages are disallowed by their site's robots.txt (brave /search, bing /search, google news, yahoo, mojeek,
+startpage, duckduckgo.com/news.js).
+
+Decision.
+1. Run the pinned image by digest under docker, published on 127.0.0.1 only (`nsf web searxng start`,
+   `providers/searxng.Container`): read-only root, `--cap-drop ALL`, no-new-privileges, user 977, memory/CPU/pid
+   limits, healthcheck, bounded json-file logs, `--restart unless-stopped`. The secret is generated once into
+   `~/.config/neuroscifi/searxng/secret.env` (0600, outside git) and passed as SEARXNG_SECRET. JSON output on,
+   limiter off (one loopback client; public_instance false; no valkey), no image proxy.
+2. Honest requests, as ADR-032 required of open-webSearch: NeuroSciFi mounts a patched `searx/network/client.py`
+   (two edits: impersonation off, SearXNG's own User-Agent as the client default; the pristine file is verified by
+   sha256 before patching) and an honest `useragents.json`, plus an empty tmpfs over `network/__pycache__` (the
+   image's unchecked hash-based .pyc would otherwise ignore the patch). `start` runs a header probe inside the
+   container and stops it if any request still looks like a browser. Engines see
+   `SearXNG/2026.11.21+c6ee3e9fd NeuroSciFi-WebCortex (self-hosted research agent; loopback-only instance)`.
+3. Engines: only those whose requested URL robots.txt allows, or that call a documented public API, and whose
+   module neither solves challenges nor replays anti-bot state. Enabled: general duckduckgo (html.duckduckgo.com
+   allows /html/), mwmbl; news bing news (/news/infinitescrollajax allowed), hackernews (Algolia API);
+   it stackoverflow, askubuntu, superuser, docker hub, hackernews; science openairepublications, europepmc.
+   The structured APIs NeuroSciFi calls directly (arXiv, OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub,
+   Wikipedia) are not enabled in SearXNG; they stay primary.
+4. Routing (`intent.searxng_route`): one category per query, never all engines — news → news (+time_range for a
+   recency window), software cue → general,it, academic → science (supplement), else general.
+5. Registry: SearXNG is built only when `searxng_url` is set (`start` sets it) and is then first; open-webSearch
+   gets `fallback_for="searxng"` and runs only when SearXNG's circuit is open or SearXNG failed or found nothing.
+   Per-engine breakers from `unresponsive_engines` (captcha/403/429/timeout/error); an empty engine is neutral.
+   "Healthy" requires a non-empty real result within 6 h, not an HTTP 200.
+6. AGPL-3.0: the image is AGPL-3.0-or-later. NeuroSciFi does not link or import SearXNG code; it talks HTTP to a
+   separate process. Because of decision 2 the deployed SearXNG is a *modified* version. AGPL §13 obliges offering
+   the corresponding source to users who interact with the modified program over a network; the only user is the
+   owner on loopback, and the complete modification (two-line patch, generated from the pinned upstream file,
+   `providers/searxng.honest_client`) plus the upstream revision (c6ee3e9fd) are in this repository. If the
+   instance were ever exposed to other users, a source offer must be added first.
+
+Consequences. Measured 2026-11-21 (docs/quality/evidence/searxng_live.json): duckduckgo answered the honest
+User-Agent with a CAPTCHA on 4 of 9 calls, so general web discovery rests largely on mwmbl (small open index, no
+dates); wikinews returned nothing and was dropped;
+news (bing news, hackernews), it and science categories return relevant results. A full general web index through
+an honest, robots-compliant engine is not available key-free: release blocker for "SearXNG as primary general
+provider" in its full sense; owner options are a keyed API engine (e.g. Brave Search API) or accepting the
+limitation. Disabling the patch (browser impersonation) is not offered.
+Supersedes ADR-032 (the honest-User-Agent rule now covers both search backends; the open-webSearch opt-in
+`search_browser_user_agent` stays for that daemon only).

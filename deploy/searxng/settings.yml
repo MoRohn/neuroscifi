@@ -1,0 +1,97 @@
+# NeuroSciFi SearXNG settings (ADR-034; docs/web-cortex/SEARXNG_INTEGRATION.md).
+#
+# `nsf web searxng start` copies this file to ~/.config/neuroscifi/searxng/settings.yml (mode 0644) and mounts it
+# read-only into the container. It holds no secret: server.secret_key comes from SEARXNG_SECRET, generated once
+# into ~/.config/neuroscifi/searxng/secret.env (mode 0600, outside git).
+#
+# Engine policy: only engines that (1) are allowed by the target site's robots.txt for the URL the engine requests,
+# or call a documented public API, (2) do not solve CAPTCHAs or proof-of-work challenges, and (3) do not mimic a
+# browser (cookie replay, browser header order). Every engine below was checked against those rules on 2026-11-21
+# and measured live (docs/quality/evidence/searxng_live.json); wikinews was dropped after that measurement (0 results
+# in 9 calls, one 429). Structured sources NeuroSciFi calls directly
+# (Wikipedia, arXiv, OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub) are deliberately absent.
+use_default_settings:
+  engines:
+    keep_only:
+      - duckduckgo            # general: html.duckduckgo.com/html/ (robots.txt: Allow /)
+      - mwmbl                 # general: api.mwmbl.org open index API (no robots.txt)
+      - hackernews            # news + it: hn.algolia.com API (no robots.txt)
+      - bing news             # news: www.bing.com/news/infinitescrollajax (robots.txt allows it)
+      - stackoverflow         # it: Stack Exchange API
+      - askubuntu             # it: Stack Exchange API
+      - superuser             # it: Stack Exchange API
+      - docker hub            # it: hub.docker.com/api/search/v3 (robots.txt allows it)
+      - openairepublications  # science: OpenAIRE public API
+      - europepmc             # science: Europe PMC REST API (robots.txt allows it)
+
+general:
+  debug: false
+  instance_name: "NeuroSciFi SearXNG (private, loopback only)"
+  enable_metrics: true
+  contact_url: false
+  donation_url: false
+  privacypolicy_url: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "all"
+  formats:
+    - html
+    - json
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+
+server:
+  # Inside the container only; the host publishes the port on 127.0.0.1 alone (docker -p 127.0.0.1:PORT:8080).
+  bind_address: "0.0.0.0"
+  port: 8080
+  # The bot-detection limiter needs valkey and exists to protect a public instance from anonymous clients. This
+  # instance has one client (NeuroSciFi on the same host), is published on loopback only and public_instance is
+  # false, so the limiter stays off and no valkey container is run.
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: "GET"
+  http_protocol_version: "1.1"
+
+valkey:
+  url: false
+
+ui:
+  query_in_title: false
+
+outgoing:
+  # SearXNG's per-engine timeout; NeuroSciFi's own client waits a few seconds longer.
+  request_timeout: 4.0
+  max_request_timeout: 8.0
+  pool_connections: 20
+  enable_http2: true
+  retries: 0
+  # Appended to SearXNG's honest User-Agent "SearXNG/<version>": every engine request says who sends it. The
+  # NeuroSciFi patch (providers/searxng.py honest_client) removes curl_cffi browser impersonation so this is
+  # the User-Agent actually sent (ADR-032 rule, ADR-034).
+  useragent_suffix: "NeuroSciFi-WebCortex (self-hosted research agent; loopback-only instance)"
+
+engines:
+  - name: duckduckgo
+    disabled: false
+  - name: mwmbl
+    disabled: false
+  - name: hackernews
+    disabled: false
+    categories: [news, it]
+  - name: bing news
+    disabled: false
+  - name: stackoverflow
+    disabled: false
+  - name: askubuntu
+    disabled: false
+  - name: superuser
+    disabled: false
+  - name: docker hub
+    disabled: false
+  - name: openairepublications
+    disabled: false
+  - name: europepmc
+    disabled: false

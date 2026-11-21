@@ -42,6 +42,11 @@ class WebConfig:
     # patch-ua`. With it off, `nsf web daemon start` refuses an unpatched build.
     search_browser_user_agent: bool = False
     openwebsearch_url: str = "http://127.0.0.1:3210"   # loopback daemon (trusted local integration)
+    # SearXNG (ADR-034): the primary general discovery provider when set (a loopback http URL, `nsf web searxng
+    # start` sets it); empty = not configured, and discovery behaves exactly as before. open-webSearch then runs
+    # only as its fallback. searxng_engines optionally pins the engines per category ({"news": ["bing news"]}).
+    searxng_url: str = ""
+    searxng_engines: dict = field(default_factory=dict)
     engines: list = field(default_factory=lambda: list(DEFAULT_ENGINES))
     providers: list = field(default_factory=lambda: [
         "openwebsearch", "wikipedia", "arxiv", "openalex", "crossref", "pubmed", "pypi", "npm", "osv",

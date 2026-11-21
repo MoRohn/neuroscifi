@@ -29,6 +29,9 @@ Providers may also expose:
   `general_web: bool`        see the empty-answer rule
   `last_attempts`            per-engine attempt dicts of the calling thread's most recent search (open-webSearch)
   `engine_snapshot() / load_engine_state(engine, data) / record_engine(engine, ok, latency, error)`
+  `fallback_for: str`        name of a primary provider (open-webSearch -> "searxng", ADR-034): when the primary
+                             is a candidate for the same query and its circuit is not open, this provider waits and
+                             runs only if the primary failed or found nothing
 """
 from __future__ import annotations
 
@@ -393,6 +396,18 @@ class ProviderRegistry:
             chosen = [p for p in self.providers if serves(p, "web")]
         return chosen
 
+    def _deferred(self, providers) -> list:
+        """Fallback providers (`fallback_for`) whose primary is among `providers` with a circuit that is not open."""
+        names = {p.name for p in providers}
+        now = self._clock()
+        out = []
+        with self._lock:
+            for p in providers:
+                primary = getattr(p, "fallback_for", None)
+                if primary in names and primary in self._health and self._health[primary].view_state(now) != "open":
+                    out.append(p)
+        return out
+
     def _call(self, provider, query: Query, limit: int, budget, usage) -> dict:
         started = time.perf_counter()
         out = {"provider": provider.name, "results": [], "error": None, "code": None, "engine_attempts": [],
@@ -484,7 +499,14 @@ class ProviderRegistry:
                     failures.append({"provider": None, "engine": None, "query": query.text, "ok": False, "n": 0,
                                      "error": f"no provider serves kind {query.kind!r}", "latency": 0.0})
                     continue
-                done = self._round(pool, providers, query, per_query, budget, usage, attempts, failures, lists, qi)
+                deferred = self._deferred(providers)
+                done = self._round(pool, [p for p in providers if p not in deferred], query, per_query, budget,
+                                   usage, attempts, failures, lists, qi)
+                if deferred:
+                    primaries = {p.fallback_for for p in deferred}
+                    if not any(d["results"] for d in done if d["provider"] in primaries):
+                        done += self._round(pool, deferred, query, per_query, budget, usage, attempts, failures,
+                                            lists, qi)
                 if query.kind != "web" and not any(d["results"] for d in done) and not REGISTRY_QUERY.match(query.text):
                     # fallback: specialist providers produced nothing usable -> general web providers
                     fallback = [p for p in self._candidates(Query(query.text, "web", query.since, query.site,

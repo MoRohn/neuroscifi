@@ -98,6 +98,20 @@ def _validate(name, value):
         except ValueError:
             raise ValidationError("openwebsearch_url has an invalid port") from None
         return value
+    if name == "searxng_url":
+        if value == "":
+            return value
+        from .providers.openwebsearch import NotLoopback, loopback_base
+        try:
+            return loopback_base(value, "SearXNG") if isinstance(value, str) else loopback_base("", "SearXNG")
+        except NotLoopback as exc:
+            raise ValidationError(f"searxng_url must be empty or a plain-HTTP loopback origin, e.g. "
+                                  f"http://127.0.0.1:8888 ({exc})") from None
+    if name == "searxng_engines":
+        categories = ("general", "news", "it", "science")
+        if not isinstance(value, dict) or set(value) - set(categories):
+            raise ValidationError(f"searxng_engines keys must be among {', '.join(categories)}")
+        return {k: _str_list(f"searxng_engines.{k}", v, max_items=20, max_len=64) for k, v in value.items()}
     if name in ("engines", "providers", "deny_domains"):
         return [v.lower() for v in _str_list(name, value)] if name == "deny_domains" else _str_list(name, value)
     if name == "private_terms":

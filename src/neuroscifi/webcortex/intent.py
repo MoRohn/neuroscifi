@@ -871,5 +871,34 @@ def refine(plan: QueryPlan, outcome, assessment: dict, *, now: float, local_term
                      notes=(f"refinement: {reason}; dropped date and site limits, shortened to key terms",))
 
 
+# ---- SearXNG routing (ADR-034) -------------------------------------------------------------------------------------
+# One SearXNG category per query kind, never every engine: news/recent -> news, software/package -> it (general web
+# as well, because release notes and changelogs live on project sites), scientific -> science (a supplement: the
+# structured literature APIs stay direct and primary), everything else -> general. A recency window becomes
+# SearXNG's coarse time_range only for general and news: SearXNG silently skips engines without time-range support,
+# which would empty the it and science categories.
+SEARXNG_CATEGORIES = {"web": "general", "encyclopedia": "general", "news": "news", "technical": "it",
+                      "academic": "science"}
+_SEARXNG_TIME_RANGES = ((1.5 * DAY, "day"), (8 * DAY, "week"), (32 * DAY, "month"), (366 * DAY, "year"))
+
+
+def searxng_route(query: Query, *, now: float) -> dict:
+    """SearXNG request fields for one planned query: {"categories": str, "time_range": str | None, "why": str}."""
+    kind = query.kind if query.kind in SEARXNG_CATEGORIES else "web"
+    category = SEARXNG_CATEGORIES[kind]
+    why = f"query kind {kind!r} -> {category}"
+    if category == "general" and (_TECH.search(str(query.text).lower()) or
+                                  re.search(r"release notes|changelog", str(query.purpose).lower())):
+        category, why = "general,it", f"{why} + it (software cue)"
+    time_range = None
+    if query.since is not None and category.split(",")[0] in ("general", "news"):
+        window = max(0.0, float(now) - float(query.since))
+        time_range = next((label for limit, label in _SEARXNG_TIME_RANGES if window <= limit), None)
+        if time_range:
+            why += f"; window {round(window / DAY, 1)} days -> time_range={time_range}"
+    return {"categories": category, "time_range": time_range, "why": why}
+
+
 __all__ = ["assess", "plan", "refine", "keywords", "query_text", "searchable_text", "decompose", "extract_entities",
-           "detect_language", "strip_local", "SELF_NAMES"]
+           "detect_language", "strip_local", "SELF_NAMES",
+           "searxng_route", "SEARXNG_CATEGORIES"]

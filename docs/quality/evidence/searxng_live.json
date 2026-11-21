@@ -1,0 +1,2188 @@
+{
+ "generated_at": "2026-11-21T11:19:11Z",
+ "lane": "A (SearXNG)",
+ "release": "0.7.0",
+ "instance": {
+  "image": "searxng/searxng@sha256:fc1d81d7e9d04d3c8b3e23c7162feddf5c3d6aecd32e67a56eaabcb8d8747f79",
+  "version_reported": "2026.11.21+c6ee3e9fd",
+  "published": [
+   "127.0.0.1:8888"
+  ],
+  "running": true,
+  "health": "healthy",
+  "honest_user_agent_patch_verified": true,
+  "header_probe": {
+   "honest": true,
+   "user_agent": "SearXNG/2026.11.21+c6ee3e9fd NeuroSciFi-WebCortex (self-hosted research agent; loopback-only instance)",
+   "browser_like_requests": [],
+   "requests": {
+    "default": {
+     "Host": "127.0.0.1:44177",
+     "Accept-Encoding": "gzip, deflate, br",
+     "Upgrade": "h2c",
+     "HTTP2-Settings": "AAEAAQAAAAIAAAAAAAQAYAAAAAYABAAA",
+     "User-Agent": "SearXNG/2026.11.21+c6ee3e9fd NeuroSciFi-WebCortex (self-hosted research agent; loopback-only instance)",
+     "Connection": "Upgrade, HTTP2-Settings"
+    },
+    "chrome": {
+     "Host": "127.0.0.1:44177",
+     "Accept-Encoding": "gzip, deflate, br",
+     "Upgrade": "h2c",
+     "HTTP2-Settings": "AAEAAQAAAAIAAAAAAAQAYAAAAAYABAAA",
+     "User-Agent": "SearXNG/2026.11.21+c6ee3e9fd NeuroSciFi-WebCortex (self-hosted research agent; loopback-only instance)",
+     "Connection": "Upgrade, HTTP2-Settings"
+    },
+    "firefox": {
+     "Host": "127.0.0.1:44177",
+     "Accept-Encoding": "gzip, deflate, br",
+     "Upgrade": "h2c",
+     "HTTP2-Settings": "AAEAAQAAAAIAAAAAAAQAYAAAAAYABAAA",
+     "User-Agent": "SearXNG/2026.11.21+c6ee3e9fd NeuroSciFi-WebCortex (self-hosted research agent; loopback-only instance)",
+     "Connection": "Upgrade, HTTP2-Settings"
+    },
+    "gen_useragent": {
+     "Host": "127.0.0.1:44177",
+     "Accept-Encoding": "gzip, deflate, br",
+     "Upgrade": "h2c",
+     "HTTP2-Settings": "AAEAAQAAAAIAAAAAAAQAYAAAAAYABAAA",
+     "User-Agent": "SearXNG/2026.11.21+c6ee3e9fd NeuroSciFi-WebCortex (self-hosted research agent; loopback-only instance)",
+     "Connection": "Upgrade, HTTP2-Settings"
+    }
+   }
+  }
+ },
+ "engines_enabled": {
+  "general": [
+   "duckduckgo",
+   "mwmbl"
+  ],
+  "news": [
+   "bing news",
+   "hackernews",
+   "wikinews"
+  ],
+  "it": [
+   "docker hub",
+   "hackernews",
+   "stackoverflow",
+   "askubuntu",
+   "superuser"
+  ],
+  "science": [
+   "europepmc",
+   "openairepublications"
+  ]
+ },
+ "engine_compliance": {
+  "duckduckgo": {
+   "host": "html.duckduckgo.com",
+   "request_path": "/html/",
+   "access": "html",
+   "robots_status": 200,
+   "robots_allows_request": true,
+   "decision": "enabled: robots allows; module adds browser Sec-Fetch headers (honest UA, no impersonation)"
+  },
+  "mwmbl": {
+   "host": "api.mwmbl.org",
+   "request_path": "/api/v1/search/",
+   "access": "api",
+   "robots_status": 404,
+   "robots_allows_request": true,
+   "decision": "enabled"
+  },
+  "hackernews": {
+   "host": "hn.algolia.com",
+   "request_path": "/api/v1/search",
+   "access": "api",
+   "robots_status": 404,
+   "robots_allows_request": true,
+   "decision": "enabled"
+  },
+  "bing news": {
+   "host": "www.bing.com",
+   "request_path": "/news/infinitescrollajax",
+   "access": "html",
+   "robots_status": 200,
+   "robots_allows_request": true,
+   "decision": "enabled"
+  },
+  "wikinews": {
+   "host": "en.wikinews.org",
+   "request_path": "/w/api.php",
+   "access": "api (MediaWiki)",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "enabled: documented API (robots applies to crawlers, ADR-024 api purpose)"
+  },
+  "stackoverflow": {
+   "host": "api.stackexchange.com",
+   "request_path": "/2.3/search/advanced",
+   "access": "api",
+   "robots_status": 400,
+   "robots_allows_request": true,
+   "decision": "enabled"
+  },
+  "askubuntu": {
+   "host": "api.stackexchange.com",
+   "request_path": "/2.3/search/advanced",
+   "access": "api",
+   "robots_status": 400,
+   "robots_allows_request": true,
+   "decision": "enabled"
+  },
+  "superuser": {
+   "host": "api.stackexchange.com",
+   "request_path": "/2.3/search/advanced",
+   "access": "api",
+   "robots_status": 400,
+   "robots_allows_request": true,
+   "decision": "enabled"
+  },
+  "docker hub": {
+   "host": "hub.docker.com",
+   "request_path": "/api/search/v3/catalog/search",
+   "access": "api",
+   "robots_status": 200,
+   "robots_allows_request": true,
+   "decision": "enabled"
+  },
+  "openairepublications": {
+   "host": "api.openaire.eu",
+   "request_path": "/search/publications",
+   "access": "api",
+   "robots_status": 404,
+   "robots_allows_request": true,
+   "decision": "enabled"
+  },
+  "europepmc": {
+   "host": "www.ebi.ac.uk",
+   "request_path": "/europepmc/webservices/rest/search",
+   "access": "api",
+   "robots_status": 200,
+   "robots_allows_request": true,
+   "decision": "enabled"
+  },
+  "brave": {
+   "host": "search.brave.com",
+   "request_path": "/search",
+   "access": "html",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows"
+  },
+  "bing": {
+   "host": "www.bing.com",
+   "request_path": "/search",
+   "access": "html",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows"
+  },
+  "google news": {
+   "host": "news.google.com",
+   "request_path": "/search",
+   "access": "html",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows; module sends a Samsung browser User-Agent"
+  },
+  "duckduckgo news": {
+   "host": "duckduckgo.com",
+   "request_path": "/news.js",
+   "access": "html",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows; module asks for Firefox impersonation"
+  },
+  "mojeek": {
+   "host": "www.mojeek.com",
+   "request_path": "/search",
+   "access": "html",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows; module solves Mojeek's ALTCHA CAPTCHA"
+  },
+  "startpage": {
+   "host": "www.startpage.com",
+   "request_path": "/sp/search",
+   "access": "html",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows; module solves an Anubis proof-of-work challenge"
+  },
+  "qwant": {
+   "host": "www.qwant.com",
+   "request_path": "/v3/search/web",
+   "access": "html/api",
+   "robots_status": 200,
+   "robots_allows_request": true,
+   "decision": "disabled: replays DataDome cookies and Chrome header order (bot-detection evasion)"
+  },
+  "reuters": {
+   "host": "www.reuters.com",
+   "request_path": "/pf/api/v3/content/fetch/articles-by-search-v2",
+   "access": "internal api",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows"
+  },
+  "semantic scholar": {
+   "host": "www.semanticscholar.org",
+   "request_path": "/api/1/search",
+   "access": "internal api",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows the website API"
+  },
+  "mdn": {
+   "host": "developer.mozilla.org",
+   "request_path": "/api/v1/search",
+   "access": "internal api",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows /api/"
+  },
+  "arch linux wiki": {
+   "host": "wiki.archlinux.org",
+   "request_path": "/index.php",
+   "access": "html",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows"
+  },
+  "yahoo news": {
+   "host": "news.search.yahoo.com",
+   "request_path": "/search",
+   "access": "html",
+   "robots_status": 200,
+   "robots_allows_request": false,
+   "decision": "disabled: robots.txt disallows"
+  },
+  "arxiv / pubmed / crossref / openalex / pypi / npm / github": {
+   "access": "api",
+   "decision": "disabled on purpose: NeuroSciFi calls these structured APIs directly (primary)"
+  }
+ },
+ "direct_queries": {
+  "method": "GET /search?format=json per category, 1 s apart; latency is the whole SearXNG call (SearXNG does not report per-engine latency in JSON)",
+  "runs": [
+   {
+    "category": "general",
+    "query": "open-source LLM inference",
+    "time_range": null,
+    "http": 200,
+    "latency_s": 0.935,
+    "results": 65,
+    "dated": 0,
+    "unresponsive_engines": [
+     [
+      "duckduckgo",
+      "CAPTCHA"
+     ]
+    ],
+    "top": [
+     {
+      "engine": "mwmbl",
+      "url": "https://github.com/avemio-digital/dify",
+      "publishedDate": null
+     },
+     {
+      "engine": "mwmbl",
+      "url": "https://en.wikipedia.org/wiki/Lists_of_open-source_artificial_intelligence_software",
+      "publishedDate": null
+     },
+     {
+      "engine": "mwmbl",
+      "url": "http://antirez.com/news/167",
+      "publishedDate": null
+     }
+    ]
+   },
+   {
+    "category": "general",
+    "query": "predictive coding",
+    "time_range": null,
+    "http": 200,
+    "latency_s": 0.182,
+    "results": 48,
+    "dated": 0,
+    "unresponsive_engines": [
+     [
+      "duckduckgo",
+      "CAPTCHA"
+     ]
+    ],
+    "top": [
+     {
+      "engine": "mwmbl",
+      "url": "https://en.wikipedia.org/wiki/Predictive_coding",
+      "publishedDate": null
+     },
+     {
+      "engine": "mwmbl",
+      "url": "https://news.ycombinator.com/item?id=26697892",
+      "publishedDate": null
+     },
+     {
+      "engine": "mwmbl",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/32733298/",
+      "publishedDate": null
+     }
+    ]
+   },
+   {
+    "category": "general",
+    "query": "DGX Spark software",
+    "time_range": null,
+    "http": 200,
+    "latency_s": 0.565,
+    "results": 34,
+    "dated": 0,
+    "unresponsive_engines": [
+     [
+      "duckduckgo",
+      "CAPTCHA"
+     ]
+    ],
+    "top": [
+     {
+      "engine": "mwmbl",
+      "url": "https://www.pny.com/dgx-spark",
+      "publishedDate": null
+     },
+     {
+      "engine": "mwmbl",
+      "url": "https://www.nvidia.com/en-us/drivers/dgx-spark-recovery-software/",
+      "publishedDate": null
+     },
+     {
+      "engine": "mwmbl",
+      "url": "https://www.scrolllaunch.com/alternatives/adobe-spark",
+      "publishedDate": null
+     }
+    ]
+   },
+   {
+    "category": "news",
+    "query": "AI",
+    "time_range": "week",
+    "http": 200,
+    "latency_s": 0.282,
+    "results": 39,
+    "dated": 30,
+    "unresponsive_engines": [],
+    "top": [
+     {
+      "engine": "bing news",
+      "url": "https://www.msn.com/en-us/news/other/what-top-minds-in-markets-are-saying-about-the-sell-off-ripping-through-tech-and-ai/ar-AA2hSFC9",
+      "publishedDate": null
+     },
+     {
+      "engine": "bing news",
+      "url": "https://www.msn.com/en-us/news/other/wall-street-forecasters-are-starting-to-worry-that-the-ai-trade-is-on-its-last-legs/ar-AA2hSfL8",
+      "publishedDate": null
+     },
+     {
+      "engine": "bing news",
+      "url": "https://www.msn.com/en-us/money/top-stocks/bnp-paribas-sees-panic-selling-as-the-ai-selloff-drags-the-s-p-500-into-a-correction-and-wipes-out-the-nasdaq-s-2026-gains/ar-AA2hSC6F",
+      "publishedDate": null
+     }
+    ]
+   },
+   {
+    "category": "news",
+    "query": "open-source LLM inference",
+    "time_range": "week",
+    "http": 200,
+    "latency_s": 0.322,
+    "results": 13,
+    "dated": 3,
+    "unresponsive_engines": [],
+    "top": [
+     {
+      "engine": "bing news",
+      "url": "https://note.com/062400/n/n05c79b6268dd?hl=en",
+      "publishedDate": null
+     },
+     {
+      "engine": "bing news",
+      "url": "https://finance.biggo.com/news/901428bf-0709-45af-bbc6-c990417c4162",
+      "publishedDate": null
+     },
+     {
+      "engine": "bing news",
+      "url": "https://startupfortune.com/build-an-llm-model-deprecation-migration-plan-before-the-cutoff-week/",
+      "publishedDate": null
+     }
+    ]
+   },
+   {
+    "category": "news",
+    "query": "NVIDIA DGX Spark",
+    "time_range": "week",
+    "http": 200,
+    "latency_s": 0.211,
+    "results": 7,
+    "dated": 0,
+    "unresponsive_engines": [],
+    "top": [
+     {
+      "engine": "bing news",
+      "url": "https://www.heise.de/en/news/AI-mini-workstations-with-Nvidia-RTX-Spark-now-available-starting-at-EUR4-600-11532769.html",
+      "publishedDate": null
+     },
+     {
+      "engine": "bing news",
+      "url": "https://www.msn.com/en-us/money/general/lawyer-s-private-ai-server-of-12-nvidia-v100s-runs-every-deepseek-v4-1-flash-expert-at-4-bit-nvfp4/ar-AA2hRegh",
+      "publishedDate": null
+     },
+     {
+      "engine": "bing news",
+      "url": "https://tech.yahoo.com/ai/chatgpt/articles/lawyer-9-450-private-ai-130614157.html",
+      "publishedDate": null
+     }
+    ]
+   },
+   {
+    "category": "it",
+    "query": "vLLM inference server",
+    "time_range": null,
+    "http": 200,
+    "latency_s": 0.453,
+    "results": 41,
+    "dated": 40,
+    "unresponsive_engines": [],
+    "top": [
+     {
+      "engine": "stackoverflow",
+      "url": "https://stackoverflow.com/q/78691343",
+      "publishedDate": null
+     },
+     {
+      "engine": "hackernews",
+      "url": "https://news.ycombinator.com/item?id=46682206",
+      "publishedDate": "2026-01-19T17:54:13"
+     },
+     {
+      "engine": "hackernews",
+      "url": "https://news.ycombinator.com/item?id=47421736",
+      "publishedDate": "2026-03-18T04:58:49"
+     }
+    ]
+   },
+   {
+    "category": "it",
+    "query": "llama.cpp",
+    "time_range": null,
+    "http": 200,
+    "latency_s": 0.389,
+    "results": 57,
+    "dated": 40,
+    "unresponsive_engines": [],
+    "top": [
+     {
+      "engine": "docker hub",
+      "url": "https://hub.docker.com/r/rocm/llama.cpp",
+      "publishedDate": "2025-11-04T18:47:31.511903+00:00"
+     },
+     {
+      "engine": "docker hub",
+      "url": "https://hub.docker.com/r/openeuler/llama.cpp",
+      "publishedDate": "2026-11-07T10:11:00.686544+00:00"
+     },
+     {
+      "engine": "superuser",
+      "url": "https://superuser.com/q/1941152",
+      "publishedDate": null
+     }
+    ]
+   },
+   {
+    "category": "it",
+    "query": "CUDA aarch64",
+    "time_range": null,
+    "http": 200,
+    "latency_s": 0.221,
+    "results": 32,
+    "dated": 12,
+    "unresponsive_engines": [],
+    "top": [
+     {
+      "engine": "askubuntu",
+      "url": "https://askubuntu.com/q/1541367",
+      "publishedDate": null
+     },
+     {
+      "engine": "stackoverflow",
+      "url": "https://stackoverflow.com/q/80014045",
+      "publishedDate": null
+     },
+     {
+      "engine": "askubuntu",
+      "url": "https://askubuntu.com/q/1526012",
+      "publishedDate": null
+     }
+    ]
+   },
+   {
+    "category": "science",
+    "query": "predictive coding",
+    "time_range": null,
+    "http": 200,
+    "latency_s": 4.271,
+    "results": 30,
+    "dated": 20,
+    "unresponsive_engines": [],
+    "top": [
+     {
+      "engine": "openairepublications",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/26302308",
+      "publishedDate": null
+     },
+     {
+      "engine": "openairepublications",
+      "url": "https://oadoi.org/10.1109/TIT.1955.1055116",
+      "publishedDate": null
+     },
+     {
+      "engine": "openairepublications",
+      "url": "https://www.jneurosci.org/content/jneuro/35/24/8997.full.pdf",
+      "publishedDate": null
+     }
+    ]
+   },
+   {
+    "category": "science",
+    "query": "active inference cortex",
+    "time_range": null,
+    "http": 200,
+    "latency_s": 5.006,
+    "results": 10,
+    "dated": 0,
+    "unresponsive_engines": [
+     [
+      "europepmc",
+      "timeout"
+     ]
+    ],
+    "top": [
+     {
+      "engine": "openairepublications",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/41238593/",
+      "publishedDate": null
+     },
+     {
+      "engine": "openairepublications",
+      "url": "https://proceedings.neurips.cc/paper/2001/hash/06964dce9addb1c5cb5d6e3d9838f733-Abstract.html",
+      "publishedDate": null
+     },
+     {
+      "engine": "openairepublications",
+      "url": "https://pubmed.ncbi.nlm.nih.gov/41702900",
+      "publishedDate": null
+     }
+    ]
+   },
+   {
+    "category": "science",
+    "query": "free energy principle",
+    "time_range": null,
+    "http": 200,
+    "latency_s": 1.086,
+    "results": 10,
+    "dated": 0,
+    "unresponsive_engines": [
+     [
+      "europepmc",
+      "Suspended: timeout"
+     ]
+    ],
+    "top": [
+     {
+      "engine": "openairepublications",
+      "url": "http://www.fil.ion.ucl.ac.uk/~karl/A%20free%20energy%20principle%20for%20the%20brain.pdf",
+      "publishedDate": null
+     },
+     {
+      "engine": "openairepublications",
+      "url": "https://arxiv.org/abs/2002.12406",
+      "publishedDate": null
+     },
+     {
+      "engine": "openairepublications",
+      "url": "https://hdl.handle.net/11572/99679",
+      "publishedDate": null
+     }
+    ]
+   }
+  ],
+  "per_engine": {
+   "askubuntu": {
+    "calls": 3,
+    "success": 2,
+    "empty": 1,
+    "error": 0,
+    "captcha": 0,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 0,
+    "results": 12,
+    "dated": 0,
+    "yield_per_call": 4.0,
+    "dated_share": 0.0,
+    "age_days_median": null,
+    "age_days_max": null,
+    "call_latency_median_s": 0.389,
+    "call_latency_max_s": 0.453
+   },
+   "bing news": {
+    "calls": 3,
+    "success": 3,
+    "empty": 0,
+    "error": 0,
+    "captcha": 0,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 0,
+    "results": 26,
+    "dated": 0,
+    "yield_per_call": 8.67,
+    "dated_share": 0.0,
+    "age_days_median": null,
+    "age_days_max": null,
+    "call_latency_median_s": 0.282,
+    "call_latency_max_s": 0.322
+   },
+   "docker hub": {
+    "calls": 3,
+    "success": 3,
+    "empty": 0,
+    "error": 0,
+    "captcha": 0,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 0,
+    "results": 30,
+    "dated": 30,
+    "yield_per_call": 10.0,
+    "dated_share": 1.0,
+    "age_days_median": 29.94,
+    "age_days_max": 3259.6,
+    "call_latency_median_s": 0.389,
+    "call_latency_max_s": 0.453
+   },
+   "duckduckgo": {
+    "calls": 3,
+    "success": 0,
+    "empty": 0,
+    "error": 0,
+    "captcha": 3,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 0,
+    "results": 0,
+    "dated": 0,
+    "reasons": {
+     "CAPTCHA": 3
+    },
+    "yield_per_call": 0.0,
+    "dated_share": null,
+    "age_days_median": null,
+    "age_days_max": null,
+    "call_latency_median_s": 0.565,
+    "call_latency_max_s": 0.935
+   },
+   "europepmc": {
+    "calls": 3,
+    "success": 1,
+    "empty": 0,
+    "error": 0,
+    "captcha": 0,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 2,
+    "results": 20,
+    "dated": 20,
+    "reasons": {
+     "timeout": 1,
+     "Suspended: timeout": 1
+    },
+    "yield_per_call": 6.67,
+    "dated_share": 1.0,
+    "age_days_median": 51.47,
+    "age_days_max": 152.47,
+    "call_latency_median_s": 4.271,
+    "call_latency_max_s": 5.006
+   },
+   "hackernews": {
+    "calls": 6,
+    "success": 5,
+    "empty": 1,
+    "error": 0,
+    "captcha": 0,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 0,
+    "results": 95,
+    "dated": 95,
+    "yield_per_call": 15.83,
+    "dated_share": 1.0,
+    "age_days_median": 248.26,
+    "age_days_max": 1351.64,
+    "call_latency_median_s": 0.302,
+    "call_latency_max_s": 0.453
+   },
+   "mwmbl": {
+    "calls": 3,
+    "success": 3,
+    "empty": 0,
+    "error": 0,
+    "captcha": 0,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 0,
+    "results": 147,
+    "dated": 0,
+    "yield_per_call": 49.0,
+    "dated_share": 0.0,
+    "age_days_median": null,
+    "age_days_max": null,
+    "call_latency_median_s": 0.565,
+    "call_latency_max_s": 0.935
+   },
+   "openairepublications": {
+    "calls": 3,
+    "success": 3,
+    "empty": 0,
+    "error": 0,
+    "captcha": 0,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 0,
+    "results": 30,
+    "dated": 0,
+    "yield_per_call": 10.0,
+    "dated_share": 0.0,
+    "age_days_median": null,
+    "age_days_max": null,
+    "call_latency_median_s": 4.271,
+    "call_latency_max_s": 5.006
+   },
+   "stackoverflow": {
+    "calls": 3,
+    "success": 3,
+    "empty": 0,
+    "error": 0,
+    "captcha": 0,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 0,
+    "results": 21,
+    "dated": 0,
+    "yield_per_call": 7.0,
+    "dated_share": 0.0,
+    "age_days_median": null,
+    "age_days_max": null,
+    "call_latency_median_s": 0.389,
+    "call_latency_max_s": 0.453
+   },
+   "superuser": {
+    "calls": 3,
+    "success": 1,
+    "empty": 2,
+    "error": 0,
+    "captcha": 0,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 0,
+    "results": 5,
+    "dated": 0,
+    "yield_per_call": 1.67,
+    "dated_share": 0.0,
+    "age_days_median": null,
+    "age_days_max": null,
+    "call_latency_median_s": 0.389,
+    "call_latency_max_s": 0.453
+   },
+   "wikinews": {
+    "calls": 3,
+    "success": 0,
+    "empty": 3,
+    "error": 0,
+    "captcha": 0,
+    "forbidden_403": 0,
+    "rate_limited_429": 0,
+    "timeout": 0,
+    "results": 0,
+    "dated": 0,
+    "yield_per_call": 0.0,
+    "dated_share": null,
+    "age_days_median": null,
+    "age_days_max": null,
+    "call_latency_median_s": 0.282,
+    "call_latency_max_s": 0.322
+   }
+  }
+ },
+ "acceptance_queries": {
+  "method": "`nsf web ask QUESTION` on a fresh individual with searxng_url set; open-webSearch daemon not running (fallback attempts are recorded)",
+  "runs": [
+   {
+    "question": "What happened in AI this week?",
+    "status": "completed",
+    "mode": "quick_lookup",
+    "seconds": 6.0,
+    "usage": {
+     "browser_sessions": 0,
+     "bytes": 45699,
+     "pages": 3,
+     "queries": 2,
+     "requests": 12,
+     "seconds": 5.752,
+     "tokens": 18
+    },
+    "plan": [
+     {
+      "kind": "news",
+      "text": "AI",
+      "since": true
+     },
+     {
+      "kind": "news",
+      "text": "AI 2026",
+      "since": true
+     }
+    ],
+    "notes": [],
+    "attempts": [
+     {
+      "provider": "searxng",
+      "engine": "bing news",
+      "query": "AI",
+      "ok": true,
+      "n": 9,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "hackernews",
+      "query": "AI",
+      "ok": true,
+      "n": 30,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "wikinews",
+      "query": "AI",
+      "ok": true,
+      "n": 0,
+      "error": "empty"
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "AI",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "bing news",
+      "query": "AI 2026",
+      "ok": true,
+      "n": 9,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "hackernews",
+      "query": "AI 2026",
+      "ok": true,
+      "n": 30,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "wikinews",
+      "query": "AI 2026",
+      "ok": true,
+      "n": 0,
+      "error": "empty"
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "AI 2026",
+      "ok": true,
+      "n": 8,
+      "error": null
+     }
+    ],
+    "candidates_by_provider": {
+     "searxng": 12
+    },
+    "candidates_dated": 0,
+    "sources_read": [
+     {
+      "url": "https://msn.com/en-us/news/other/wall-street-forecasters-are-starting-to-worry-that-the-ai-trade-is-on-its-last-legs/ar-AA2hSfL8",
+      "provider": null,
+      "kind": "page",
+      "published_at": null,
+      "retrieval_mode": "live"
+     },
+     {
+      "url": "https://msn.com/en-us/news/other/nasdaq-wipes-out-gains-for-the-year-as-anthropic-fails-to-quell-ai-nerves/ar-AA2hROfF",
+      "provider": null,
+      "kind": "page",
+      "published_at": null,
+      "retrieval_mode": "live"
+     },
+     {
+      "url": "https://msn.com/en-us/news/other/why-anthropic-s-blockbuster-debut-didn-t-ease-wall-street-s-ai-fears/ar-AA2hR3C9",
+      "provider": null,
+      "kind": "page",
+      "published_at": null,
+      "retrieval_mode": "live"
+     }
+    ],
+    "answer": [
+     {
+      "type": "template",
+      "status": "summary",
+      "text": "No usable claims were extracted from 3 sources read."
+     }
+    ],
+    "verdict": null,
+    "freshness": {
+     "class": "breaking",
+     "newest_source_at": null,
+     "required_seconds": 604800.0,
+     "satisfied": false,
+     "ttl_seconds": 10800.0,
+     "window_seconds": 604800.0
+    },
+    "limitations": [
+     "searxng: http_error",
+     "Freshness requirement not met: no cited source is dated (required: within 7 days, breaking class)",
+     "No claim relevant to the question could be extracted from the sources read",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ],
+    "generated_by": "template"
+   },
+   {
+    "question": "Latest developments in open-source LLM inference",
+    "status": "completed",
+    "mode": "quick_lookup",
+    "seconds": 6.1,
+    "usage": {
+     "browser_sessions": 0,
+     "bytes": 91905,
+     "pages": 2,
+     "queries": 1,
+     "requests": 10,
+     "seconds": 5.94,
+     "tokens": 417
+    },
+    "plan": [
+     {
+      "kind": "news",
+      "text": "open-source LLM inference",
+      "since": false
+     }
+    ],
+    "notes": [],
+    "attempts": [
+     {
+      "provider": "searxng",
+      "engine": "bing news",
+      "query": "open-source LLM inference",
+      "ok": true,
+      "n": 9,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "hackernews",
+      "query": "open-source LLM inference",
+      "ok": true,
+      "n": 30,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "wikinews",
+      "query": "open-source LLM inference",
+      "ok": true,
+      "n": 0,
+      "error": "empty"
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "open-source LLM inference",
+      "ok": true,
+      "n": 8,
+      "error": null
+     }
+    ],
+    "candidates_by_provider": {
+     "searxng": 8
+    },
+    "candidates_dated": 5,
+    "sources_read": [
+     {
+      "url": "https://techtimes.com/articles/329305/20261021/open-source-llm-d-10-hits-production-ibm-research-confirms-115x-ai-inference-cost-drop.htm",
+      "provider": null,
+      "kind": "page",
+      "published_at": 1792583532.0,
+      "retrieval_mode": "live"
+     },
+     {
+      "url": "https://markets.ft.com/data/announce/full?dockey=600-202610200800PR_NEWS_EURO_ND__EN76038-1",
+      "provider": null,
+      "kind": "page",
+      "published_at": 1792497600.0,
+      "retrieval_mode": "live"
+     }
+    ],
+    "answer": [
+     {
+      "type": "template",
+      "status": "summary",
+      "text": "2 sources read; 8 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 2 days; these statements may be out of date."
+     },
+     {
+      "type": "quote",
+      "status": "single_source",
+      "text": "Chris Aniszczyk, CTO of the CNCF, placed the release in the broader cloud-native context: \"AI inference is quickly becoming a core cloud native workload. llm-d 1.0 is an important step toward making high-performance open source inference more operationally mature and accessible across the cloud native ecosystem.\""
+     },
+     {
+      "type": "quote",
+      "status": "single_source",
+      "text": "SAN JOSE, Calif., Oct. 20, 2026 /PRNewswire/ -- Today, llm-d project contributors announced the release of llm-d 1.0, a major milestone for the open source project designed to help organizations deploy and scale large language model inference more efficiently across modern infrastructure."
+     },
+     {
+      "type": "quote",
+      "status": "contested",
+      "text": "The coalition behind llm-d announced version 1.0 of their open-source distributed large language model inference framework at PyTorch Conference North America, releasing independently verified production data showing IBM Research achieved a blended serving cost of approximately $0.11 per million tokens \u2014 roughly 11.5 times lower than an equivalent proprietary API stack."
+     }
+    ],
+    "verdict": null,
+    "freshness": {
+     "class": "volatile",
+     "newest_source_at": 1792583532.0,
+     "required_seconds": 172800.0,
+     "satisfied": false,
+     "ttl_seconds": 172800.0,
+     "window_seconds": null
+    },
+    "limitations": [
+     "searxng: rate_limited",
+     "searxng: http_error",
+     "Freshness requirement not met: newest source is from 2026-10-21 (required: within 2 days, volatile class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ],
+    "generated_by": "template"
+   },
+   {
+    "question": "Recent research on predictive coding",
+    "status": "completed",
+    "mode": "scientific",
+    "seconds": 7.0,
+    "usage": {
+     "browser_sessions": 0,
+     "bytes": 100669,
+     "pages": 12,
+     "queries": 5,
+     "requests": 22,
+     "seconds": 6.792,
+     "tokens": 1276
+    },
+    "plan": [
+     {
+      "kind": "web",
+      "text": "predictive coding",
+      "since": true
+     },
+     {
+      "kind": "academic",
+      "text": "predictive coding",
+      "since": true
+     },
+     {
+      "kind": "web",
+      "text": "predictive coding 2026",
+      "since": true
+     },
+     {
+      "kind": "academic",
+      "text": "predictive coding review",
+      "since": true
+     },
+     {
+      "kind": "web",
+      "text": "predictive coding study",
+      "since": true
+     }
+    ],
+    "notes": [],
+    "attempts": [
+     {
+      "provider": "searxng",
+      "engine": "duckduckgo",
+      "query": "predictive coding",
+      "ok": false,
+      "n": 0,
+      "error": "captcha: CAPTCHA"
+     },
+     {
+      "provider": "searxng",
+      "engine": "mwmbl",
+      "query": "predictive coding",
+      "ok": true,
+      "n": 0,
+      "error": "empty"
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "predictive coding",
+      "ok": true,
+      "n": 0,
+      "error": "empty"
+     },
+     {
+      "provider": "wikipedia",
+      "engine": null,
+      "query": "predictive coding",
+      "ok": false,
+      "n": 0,
+      "error": "rate_limited: HTTP 429"
+     },
+     {
+      "provider": "openwebsearch",
+      "engine": "duckduckgo",
+      "query": "predictive coding",
+      "ok": false,
+      "n": 0,
+      "error": "daemon_unreachable"
+     },
+     {
+      "provider": "openwebsearch",
+      "engine": null,
+      "query": "predictive coding",
+      "ok": false,
+      "n": 0,
+      "error": "daemon_unreachable: daemon unreachable at http://127.0.0.1:3210: <urlopen error [Errno 111] Connection refused>"
+     },
+     {
+      "provider": "searxng",
+      "engine": "europepmc",
+      "query": "predictive coding",
+      "ok": true,
+      "n": 17,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "openairepublications",
+      "query": "predictive coding",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "predictive coding",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "arxiv",
+      "engine": null,
+      "query": "predictive coding",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "openalex",
+      "engine": null,
+      "query": "predictive coding",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "crossref",
+      "engine": null,
+      "query": "predictive coding",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "pubmed",
+      "engine": null,
+      "query": "predictive coding",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "duckduckgo",
+      "query": "predictive coding 2026",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "mwmbl",
+      "query": "predictive coding 2026",
+      "ok": true,
+      "n": 0,
+      "error": "empty"
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "predictive coding 2026",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "wikipedia",
+      "engine": null,
+      "query": "predictive coding 2026",
+      "ok": false,
+      "n": 0,
+      "error": "rate_limited: host backoff in force"
+     },
+     {
+      "provider": "searxng",
+      "engine": "europepmc",
+      "query": "predictive coding review",
+      "ok": true,
+      "n": 18,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "openairepublications",
+      "query": "predictive coding review",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "predictive coding review",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "arxiv",
+      "engine": null,
+      "query": "predictive coding review",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "openalex",
+      "engine": null,
+      "query": "predictive coding review",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "crossref",
+      "engine": null,
+      "query": "predictive coding review",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "pubmed",
+      "engine": null,
+      "query": "predictive coding review",
+      "ok": true,
+      "n": 6,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "duckduckgo",
+      "query": "predictive coding study",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "mwmbl",
+      "query": "predictive coding study",
+      "ok": true,
+      "n": 0,
+      "error": "empty"
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "predictive coding study",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "wikipedia",
+      "engine": null,
+      "query": "predictive coding study",
+      "ok": false,
+      "n": 0,
+      "error": "rate_limited: host backoff in force"
+     }
+    ],
+    "candidates_by_provider": {
+     "openalex": 16,
+     "crossref": 5,
+     "searxng": 29,
+     "arxiv": 16,
+     "pubmed": 14
+    },
+    "candidates_dated": 59,
+    "sources_read": [
+     {
+      "url": "https://doi.org/10.21203/rs.3.rs-11449501/v1",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1794441600.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://doi.org/10.21203/rs.3.rs-11059245/v2",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1794441600.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://doi.org/10.21203/rs.3.rs-11059245/v1",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1790121600.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://arxiv.org/abs/2611.26319",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1795104290.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://doi.org/10.4103/atn.atn-d-26-00057",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1792454400.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://doi.org/10.7554/elife.108142.2.sa3",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1794355200.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://doi.org/10.7554/elife.108142.2.sa2",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1794355200.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://doi.org/10.7554/elife.108142.2.sa1",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1794355200.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://doi.org/10.7554/elife.108142.2.sa4",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1794355200.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://doi.org/10.31234/osf.io/83j4m_v2",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1794873600.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://arxiv.org/abs/2611.26603",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1795114541.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://pubmed.ncbi.nlm.nih.gov/43055520",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1796083200.0,
+      "retrieval_mode": "api"
+     }
+    ],
+    "answer": [
+     {
+      "type": "template",
+      "status": "summary",
+      "text": "12 sources read; 29 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 1 day ago."
+     },
+     {
+      "type": "template",
+      "status": "single_source",
+      "text": "Crossref record: \"Precision Dissociation in Hierarchical Predictive Coding: A Computational Principle Illustrated in Narcissistic Personality Disorder\", dated 2026-11-12."
+     },
+     {
+      "type": "quote",
+      "status": "single_source",
+      "text": "We introduce precision dissociation as a general computational principle in hierarchical predictive coding, and illustrate its consequences in the context of Narcissistic Personality Disorder (NPD)."
+     },
+     {
+      "type": "quote",
+      "status": "single_source",
+      "text": "Initialising multipliers from local readout gradients degrades learning; penalty-only predictive coding retains much of the quality benefit."
+     }
+    ],
+    "verdict": null,
+    "freshness": {
+     "class": "scientific",
+     "newest_source_at": 1795104290.0,
+     "required_seconds": 7776000.0,
+     "satisfied": true,
+     "ttl_seconds": 2592000.0,
+     "window_seconds": 7776000.0
+    },
+    "limitations": [
+     "searxng/duckduckgo: captcha: CAPTCHA",
+     "wikipedia: rate_limited: HTTP 429",
+     "openwebsearch/duckduckgo: daemon_unreachable",
+     "openwebsearch: daemon_unreachable: daemon unreachable at http://127.0.0.1:3210: <urlopen error ",
+     "wikipedia: rate_limited: host backoff in force",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ],
+    "generated_by": "template"
+   },
+   {
+    "question": "Current DGX Spark software updates",
+    "status": "completed",
+    "mode": "quick_lookup",
+    "seconds": 3.2,
+    "usage": {
+     "browser_sessions": 0,
+     "bytes": 203717,
+     "pages": 3,
+     "queries": 1,
+     "requests": 7,
+     "seconds": 2.981,
+     "tokens": 358
+    },
+    "plan": [
+     {
+      "kind": "news",
+      "text": "DGX Spark software",
+      "since": false
+     }
+    ],
+    "notes": [],
+    "attempts": [
+     {
+      "provider": "searxng",
+      "engine": "bing news",
+      "query": "DGX Spark software",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "hackernews",
+      "query": "DGX Spark software",
+      "ok": true,
+      "n": 3,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "wikinews",
+      "query": "DGX Spark software",
+      "ok": false,
+      "n": 0,
+      "error": "rate_limited: too many requests"
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "DGX Spark software",
+      "ok": true,
+      "n": 8,
+      "error": null
+     }
+    ],
+    "candidates_by_provider": {
+     "searxng": 8
+    },
+    "candidates_dated": 3,
+    "sources_read": [
+     {
+      "url": "https://news.ycombinator.com/item?id=48383578",
+      "provider": null,
+      "kind": "page",
+      "published_at": null,
+      "retrieval_mode": "live"
+     },
+     {
+      "url": "https://finance.yahoo.com/technology/ai/articles/progress-software-launches-progress-chef-130000724.html",
+      "provider": null,
+      "kind": "page",
+      "published_at": 1782824400.0,
+      "retrieval_mode": "live"
+     },
+     {
+      "url": "https://msn.com/en-us/technology/software/nvidia-plans-dgx-spark-software-update-to-turn-it-into-a-local-ai-system/ar-AA1TMKFJ",
+      "provider": null,
+      "kind": "page",
+      "published_at": null,
+      "retrieval_mode": "live"
+     }
+    ],
+    "answer": [
+     {
+      "type": "template",
+      "status": "summary",
+      "text": "3 sources read; 8 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). No cited source is dated within the required 2 days; these statements may be out of date."
+     },
+     {
+      "type": "quote",
+      "status": "single_source",
+      "text": "Old facts and new facts coexisted with no signal about which was current."
+     },
+     {
+      "type": "quote",
+      "status": "single_source",
+      "text": "FalkorDB runs in Docker, uses the Redis wire protocol, has native HNSW vector search, and the entire thing sits at 85MB at my current scale."
+     },
+     {
+      "type": "quote",
+      "status": "single_source",
+      "text": "BURLINGTON, Mass., June 30, 2026 (GLOBE NEWSWIRE) -- Progress Software (Nasdaq: PRGS), the trusted provider of AI-powered digital experience and infrastructure software, today announced that its Progress\u00ae Chef\u00ae platform now delivers enterprise lifecycle management and configuration capabilities for NVIDIA DGX Spark, enabling IT teams to securely provision, monitor and manage the desktop AI superco"
+     }
+    ],
+    "verdict": null,
+    "freshness": {
+     "class": "volatile",
+     "newest_source_at": 1782824400.0,
+     "required_seconds": 172800.0,
+     "satisfied": false,
+     "ttl_seconds": 172800.0,
+     "window_seconds": null
+    },
+    "limitations": [
+     "searxng/wikinews: rate_limited: too many requests",
+     "Freshness requirement not met: newest source is from 2026-06-30 (required: within 2 days, volatile class)",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ],
+    "generated_by": "template"
+   },
+   {
+    "question": "Latest releases affecting NeuroSciFi",
+    "status": "completed",
+    "mode": "technical",
+    "seconds": 25.5,
+    "usage": {
+     "browser_sessions": 0,
+     "bytes": 642534,
+     "pages": 9,
+     "queries": 3,
+     "requests": 54,
+     "seconds": 25.323,
+     "tokens": 1301
+    },
+    "plan": [
+     {
+      "kind": "web",
+      "text": "releases",
+      "since": false
+     },
+     {
+      "kind": "web",
+      "text": "releases release notes",
+      "since": false
+     },
+     {
+      "kind": "web",
+      "text": "releases changelog",
+      "since": false
+     }
+    ],
+    "notes": [
+     "no packages listed: set assessment['packages'] = [{ecosystem, name, version}] for registry and advisory lookups",
+     "local context: 1 reference(s) to the individual's own system were not searched; they are answered from local documents and state"
+    ],
+    "attempts": [
+     {
+      "provider": "searxng",
+      "engine": "duckduckgo",
+      "query": "releases",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "mwmbl",
+      "query": "releases",
+      "ok": true,
+      "n": 127,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "docker hub",
+      "query": "releases",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "hackernews",
+      "query": "releases",
+      "ok": true,
+      "n": 30,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "stackoverflow",
+      "query": "releases",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "askubuntu",
+      "query": "releases",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "superuser",
+      "query": "releases",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "releases",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "wikipedia",
+      "engine": null,
+      "query": "releases",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "duckduckgo",
+      "query": "releases release notes",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "mwmbl",
+      "query": "releases release notes",
+      "ok": true,
+      "n": 94,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "docker hub",
+      "query": "releases release notes",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "hackernews",
+      "query": "releases release notes",
+      "ok": true,
+      "n": 30,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "stackoverflow",
+      "query": "releases release notes",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "askubuntu",
+      "query": "releases release notes",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "superuser",
+      "query": "releases release notes",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "releases release notes",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "wikipedia",
+      "engine": null,
+      "query": "releases release notes",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "duckduckgo",
+      "query": "releases changelog",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "mwmbl",
+      "query": "releases changelog",
+      "ok": true,
+      "n": 20,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "docker hub",
+      "query": "releases changelog",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "hackernews",
+      "query": "releases changelog",
+      "ok": true,
+      "n": 30,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "stackoverflow",
+      "query": "releases changelog",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "askubuntu",
+      "query": "releases changelog",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": "superuser",
+      "query": "releases changelog",
+      "ok": true,
+      "n": 10,
+      "error": null
+     },
+     {
+      "provider": "searxng",
+      "engine": null,
+      "query": "releases changelog",
+      "ok": true,
+      "n": 8,
+      "error": null
+     },
+     {
+      "provider": "wikipedia",
+      "engine": null,
+      "query": "releases changelog",
+      "ok": true,
+      "n": 8,
+      "error": null
+     }
+    ],
+    "candidates_by_provider": {
+     "searxng": 23,
+     "wikipedia": 20
+    },
+    "candidates_dated": 27,
+    "sources_read": [
+     {
+      "url": "https://en.wikipedia.org/wiki/The_Beatles%27_North_American_releases",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1792018308.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://en.wikipedia.org/wiki/Release_notes",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1782198267.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://en.wikipedia.org/wiki/Monoamine_releasing_agent",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1794860305.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://hub.docker.com/r/jenkins/core-changelog-generator",
+      "provider": null,
+      "kind": "page",
+      "published_at": null,
+      "retrieval_mode": "live"
+     },
+     {
+      "url": "https://en.wikipedia.org/wiki/Debian_release_version_history",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1794892979.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://en.wikipedia.org/wiki/Changelog",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1786688365.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://en.wikipedia.org/wiki/Released",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1624864948.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://en.wikipedia.org/wiki/Release",
+      "provider": null,
+      "kind": "api",
+      "published_at": 1783304328.0,
+      "retrieval_mode": "api"
+     },
+     {
+      "url": "https://hub.docker.com/r/jess/releases",
+      "provider": null,
+      "kind": "page",
+      "published_at": null,
+      "retrieval_mode": "live"
+     }
+    ],
+    "answer": [
+     {
+      "type": "template",
+      "status": "summary",
+      "text": "9 sources read; 41 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 4 days ago."
+     },
+     {
+      "type": "quote",
+      "status": "single_source",
+      "text": "Also, in the American market it was expected for albums to include the current hit single, whereas British albums typically did not duplicate songs released as singles."
+     },
+     {
+      "type": "quote",
+      "status": "single_source",
+      "text": "But they may also be available for a product still in the development or being tested (e.g., a beta release)."
+     },
+     {
+      "type": "quote",
+      "status": "single_source",
+      "text": "Many, but not all MRAs, also reverse the direction of the vesicular monoamine transporter 2 (VMAT2), thereby additionally resulting in efflux of vesicular monoamine neurotransmitter into the cytoplasm."
+     }
+    ],
+    "verdict": null,
+    "freshness": {
+     "class": "release",
+     "newest_source_at": 1794892979.0,
+     "required_seconds": 604800.0,
+     "satisfied": true,
+     "ttl_seconds": 604800.0,
+     "window_seconds": null
+    },
+    "limitations": [
+     "wikipedia: rate_limited",
+     "searxng: http_error",
+     "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+    ],
+    "generated_by": "template"
+   }
+  ],
+  "per_engine": {
+   "bing news": {
+    "attempts": 4,
+    "with_results": 4,
+    "empty": 0,
+    "failed": 0,
+    "circuit_open": 0,
+    "results": 35,
+    "errors": {}
+   },
+   "hackernews": {
+    "attempts": 7,
+    "with_results": 7,
+    "empty": 0,
+    "failed": 0,
+    "circuit_open": 0,
+    "results": 183,
+    "errors": {}
+   },
+   "wikinews": {
+    "attempts": 4,
+    "with_results": 0,
+    "empty": 3,
+    "failed": 1,
+    "circuit_open": 0,
+    "results": 0,
+    "errors": {
+     "rate_limited: too many requests": 1
+    }
+   },
+   "duckduckgo": {
+    "attempts": 6,
+    "with_results": 5,
+    "empty": 0,
+    "failed": 1,
+    "circuit_open": 0,
+    "results": 50,
+    "errors": {
+     "captcha: CAPTCHA": 1
+    }
+   },
+   "mwmbl": {
+    "attempts": 6,
+    "with_results": 3,
+    "empty": 3,
+    "failed": 0,
+    "circuit_open": 0,
+    "results": 241,
+    "errors": {}
+   },
+   "europepmc": {
+    "attempts": 2,
+    "with_results": 2,
+    "empty": 0,
+    "failed": 0,
+    "circuit_open": 0,
+    "results": 35,
+    "errors": {}
+   },
+   "openairepublications": {
+    "attempts": 2,
+    "with_results": 2,
+    "empty": 0,
+    "failed": 0,
+    "circuit_open": 0,
+    "results": 20,
+    "errors": {}
+   },
+   "docker hub": {
+    "attempts": 3,
+    "with_results": 3,
+    "empty": 0,
+    "failed": 0,
+    "circuit_open": 0,
+    "results": 30,
+    "errors": {}
+   },
+   "stackoverflow": {
+    "attempts": 3,
+    "with_results": 3,
+    "empty": 0,
+    "failed": 0,
+    "circuit_open": 0,
+    "results": 30,
+    "errors": {}
+   },
+   "askubuntu": {
+    "attempts": 3,
+    "with_results": 3,
+    "empty": 0,
+    "failed": 0,
+    "circuit_open": 0,
+    "results": 30,
+    "errors": {}
+   },
+   "superuser": {
+    "attempts": 3,
+    "with_results": 3,
+    "empty": 0,
+    "failed": 0,
+    "circuit_open": 0,
+    "results": 30,
+    "errors": {}
+   }
+  }
+ },
+ "dependency_releases": {
+  "command": "nsf web deps",
+  "exit": 0,
+  "seconds": 53.2,
+  "task": {
+   "status": "completed",
+   "mode": "technical",
+   "usage": {
+    "browser_sessions": 0,
+    "bytes": 1299028,
+    "pages": 4,
+    "queries": 8,
+    "requests": 8,
+    "seconds": 4.109,
+    "tokens": 96
+   },
+   "answer": [
+    "4 sources read; 4 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: just now.",
+    "PyPI reports cupy-cuda13x latest version 14.2.0 released 2026-08-20.",
+    "PyPI reports numpy latest version 2.5.5 released 2026-11-15.",
+    "PyPI reports scipy latest version 1.18.1 released 2026-08-21.",
+    "PyPI reports zstandard latest version 0.25.0 released 2025-09-14."
+   ],
+   "sources": [
+    "https://pypi.org/project/cupy-cuda13x",
+    "https://pypi.org/project/numpy",
+    "https://pypi.org/project/scipy",
+    "https://pypi.org/project/zstandard"
+   ],
+   "limitations": [
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)"
+   ]
+  },
+  "interpretation": "'Latest releases affecting NeuroSciFi' read as releases/advisories of this project's own dependencies: answered by `nsf web deps` through the structured registries (PyPI, npm, OSV), not by SearXNG"
+ },
+ "searxng_stats_errors": {
+  "duckduckgo": [
+   {
+    "code": "raise SearxEngineCaptchaException(suspended_time=0, message=f\"CAPTCHA ({params['data'].get('kl')})\")",
+    "exception_classname": "searx.exceptions.SearxEngineCaptchaException",
+    "filename": "searx/engines/duckduckgo.py",
+    "function": "response",
+    "line_no": 471,
+    "log_message": null,
+    "log_parameters": [
+     "CAPTCHA (wt-wt) (suspended_time=0)"
+    ],
+    "percentage": 45,
+    "secondary": false
+   },
+   {
+    "code": "raise SearxEngineCaptchaException(suspended_time=0, message=f\"CAPTCHA ({params['data'].get('kl')})\")",
+    "exception_classname": "searx.exceptions.SearxEngineCaptchaException",
+    "filename": "searx/engines/duckduckgo.py",
+    "function": "response",
+    "line_no": 471,
+    "log_message": null,
+    "log_parameters": [
+     "CAPTCHA (us-en) (suspended_time=0)"
+    ],
+    "percentage": 10,
+    "secondary": false
+   }
+  ],
+  "europepmc": [
+   {
+    "code": "response = req(params[\"url\"], **request_args)  # pyright: ignore[reportArgumentType]",
+    "exception_classname": "curl_cffi.requests.exceptions.Timeout",
+    "filename": "searx/search/processors/online.py",
+    "function": "_send_http_request",
+    "line_no": 211,
+    "log_message": null,
+    "log_parameters": [
+     null,
+     null,
+     "www.ebi.ac.uk"
+    ],
+    "percentage": 15,
+    "secondary": false
+   }
+  ],
+  "wikinews": [
+   {
+    "code": "response = req(params[\"url\"], **request_args)  # pyright: ignore[reportArgumentType]",
+    "exception_classname": "searx.exceptions.SearxEngineTooManyRequestsException",
+    "filename": "searx/search/processors/online.py",
+    "function": "_send_http_request",
+    "line_no": 211,
+    "log_message": null,
+    "log_parameters": [
+     "Too many request (suspended_time=180)"
+    ],
+    "percentage": 25,
+    "secondary": false
+   }
+  ]
+ },
+ "post_measurement_changes": [
+  "wikinews disabled after this measurement: 0 results in 3 direct and 3 acceptance calls, one 'too many requests' (429). Engines enabled now: general duckduckgo, mwmbl; news bing news, hackernews; it docker hub, hackernews, stackoverflow, askubuntu, superuser; science europepmc, openairepublications. The container was restarted with that set and passed the header probe again."
+ ],
+ "method_notes": [
+  "Container started with `nsf web searxng start`; honest-UA patch verified by sha256 and by the in-container header probe (instance.header_probe).",
+  "Non-compliant engines (engine_compliance, decision 'disabled') were never queried; their robots.txt was fetched once per host with NeuroSciFi's User-Agent and evaluated with net.RobotsRules.",
+  "Freshness: dated = SearXNG returned a parseable publishedDate; nothing is inferred. Ages are relative to generated_at.",
+  "open-webSearch daemon was not running during the acceptance runs: its attempts appear as daemon_unreachable (the fallback path was exercised, it had nothing to fall back to).",
+  "Collection script: kept outside the repository (scratch); its steps are the sections of this file."
+ ]
+}

@@ -1,0 +1,34 @@
+# SearXNG for NeuroSciFi Web Cortex (ADR-034): the pinned image under docker, published on 127.0.0.1 only.
+# Installed disabled, like every unit here. It does not run SearXNG itself: `nsf web searxng start` prepares the
+# config directory (secret, settings, honest-User-Agent patch verified by sha256), runs the container with its own
+# hardening (read-only root, no capabilities, no-new-privileges, unprivileged user, memory/CPU/pid limits,
+# healthcheck, bounded JSON logs) and `--restart unless-stopped`, then checks /healthz and the header probe.
+# Docker keeps it running across reboots after that; this unit only gives an operator start/stop through systemctl.
+#
+# The user running it must be allowed to use docker (docker group = root-equivalent: keep that group small).
+# Set NSF_DB to the individual's database and NSF_USER to that account in a drop-in, e.g.
+#   systemctl edit neuroscifi-searxng.service
+#   [Service]
+#   User=neuroscifi
+#   Environment=NSF_DB=/var/lib/neuroscifi/individual.sqlite
+[Unit]
+Description=SearXNG container for NeuroSciFi Web Cortex (loopback only)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/neuroscifi/neuroscifi.env
+# The settings template ships in the source tree (deploy/searxng), not in the wheel: copy it there.
+Environment=NSF_SEARXNG_SETTINGS=/opt/neuroscifi/searxng/settings.yml
+ExecStart=/opt/neuroscifi/venv/bin/nsf web searxng start --db ${NSF_DB}
+ExecStop=/opt/neuroscifi/venv/bin/nsf web searxng stop --db ${NSF_DB}
+TimeoutStartSec=180
+TimeoutStopSec=60
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
