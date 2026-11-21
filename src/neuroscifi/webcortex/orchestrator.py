@@ -773,8 +773,9 @@ class _Run:
         from .extract import canonical_url, registrable_domain
         from urllib.parse import urlsplit
         meta = dict(r.metadata or {})
+        body = meta.pop("body", None)      # a release's whole body: the document text (the snippet is display only)
         abstract = str(meta.get("abstract") or meta.get("summary") or "")
-        text = "\n".join(x for x in (r.title, r.snippet, abstract) if x)
+        text = "\n".join(x for x in (r.title, body if isinstance(body, str) and body else r.snippet, abstract) if x)
         return Document(url=r.url, final_url=r.url, canonical_url=canonical_url(r.url),
                         domain=registrable_domain(urlsplit(r.url).hostname or ""), title=r.title, text=text,
                         retrieved_at=now, retrieval_mode="api", kind="api", content_type="application/json",

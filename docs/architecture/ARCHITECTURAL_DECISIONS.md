@@ -174,3 +174,11 @@ User-Agent all four key-free engines returned 0 results (duckduckgo 0, brave 429
 general web discovery currently relies on the structured providers (Wikipedia, arXiv, OpenAlex, Crossref, PubMed,
 PyPI, npm, OSV, GitHub) and on feeds. Whether to accept browser impersonation for search engines is an owner decision
 (`.omc/autopilot/decisions-pending.md` item 4).
+
+**ADR-033 A package's own registry record may settle a release statement. R** (narrows ADR-026)
+UAT RT4-03: "Was numpy 2.5.5 released?" stayed "insufficient" because the only source was PyPI. For statements about a
+package's own releases (which version is latest, whether a version was released) the registry record is the primary
+authority, not a second-hand report. Decision: such a statement is "supported" (or contradicted) by the package's own
+record when nothing contradicts it; the verdict says that a single registry record decided it. Every other statement
+still needs two independent agreeing groups. Consequence: release checks answer from the authoritative record; a
+compromised or wrong registry entry would be believed (mitigated by OSV advisories and the owner's review of knowledge).

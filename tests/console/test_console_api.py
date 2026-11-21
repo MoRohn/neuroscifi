@@ -676,6 +676,17 @@ def test_console_restarts_after_sigterm_and_after_a_crash(tmp_path):
     assert not url_file.exists()
 
 
+@pytest.mark.parametrize("sig", [signal.SIGHUP, signal.SIGQUIT])
+def test_url_file_is_removed_on_hangup_and_quit(tmp_path, sig):
+    """A closed terminal (SIGHUP) or a quit key (SIGQUIT) must not leave the token file behind."""
+    url_file = tmp_path / "console.url"
+    proc = _run_console(tmp_path, "--url-file", str(url_file))
+    _wait_for_url(proc, url_file)
+    out, err = _stop(proc, sig)
+    assert proc.returncode == 0, err
+    assert not url_file.exists(), f"the URL file survived {sig!r}"
+
+
 def test_url_file_that_is_not_a_stale_console_url_is_refused(tmp_path):
     other = tmp_path / "precious"
     other.write_text("keep me")

@@ -20,6 +20,9 @@ empty answer is health-neutral. For specialist providers (Wikipedia, arXiv, PyPI
 failure. A specialist query nobody answered falls back to the general web providers, except a registry lookup
 (REGISTRY_QUERY): "npm:numpy" is not a web search. Provider errors whose code is not about the provider's health
 (budget exhausted, network disabled, blocked by policy) are recorded as failed attempts but never move a breaker.
+Neither do failures caused by our own politeness: a `rate_limited` error that carries a `retry_after` (a host
+backoff still in force after a 429/503, a Crawl-delay slot beyond the timeout, a 429 with Retry-After) is us
+waiting as asked, not the provider failing; counting it would hold the circuit open long after the backoff ends.
 
 Providers may also expose:
   `accepts(query) -> bool`   the provider does not handle this query form (e.g. PyPI and a sentence); not called
@@ -56,9 +59,11 @@ _USAGE_LOCK = threading.Lock()   # Usage.charge is not atomic; discovery charges
 class ProviderError(Exception):
     """A provider could not answer. `retryable` False means retrying the same request is pointless."""
 
-    def __init__(self, provider: str, detail: str, *, retryable: bool = True, code: str = "provider_error"):
+    def __init__(self, provider: str, detail: str, *, retryable: bool = True, code: str = "provider_error",
+                 retry_after: float | None = None):
         super().__init__(f"{provider}: {code}: {detail}")
         self.provider, self.detail, self.retryable, self.code = provider, detail, retryable, code
+        self.retry_after = retry_after
 
     def to_json(self) -> dict:
         return {"provider": self.provider, "code": self.code, "detail": self.detail, "retryable": self.retryable}
@@ -273,6 +278,12 @@ def _error_code(exc: BaseException) -> tuple[str, str]:
     return "provider_error", f"{type(exc).__name__}: {exc}"
 
 
+def politeness_failure(exc: BaseException) -> bool:
+    """Did the call fail only because we are honouring a rate limit (backoff in force, Retry-After, Crawl-delay)?"""
+    return (isinstance(exc, (ProviderError, FetchError)) and exc.code == "rate_limited"
+            and getattr(exc, "retry_after", None) is not None)
+
+
 class ProviderRegistry:
     """Fan-out over search providers with health tracking. Thread-safe."""
 
@@ -384,12 +395,14 @@ class ProviderRegistry:
 
     def _call(self, provider, query: Query, limit: int, budget, usage) -> dict:
         started = time.perf_counter()
-        out = {"provider": provider.name, "results": [], "error": None, "code": None, "engine_attempts": []}
+        out = {"provider": provider.name, "results": [], "error": None, "code": None, "engine_attempts": [],
+               "polite": False}
         try:
             results = provider.search(query, limit, budget=budget, usage=usage)
             out["results"] = [r for r in (results or []) if isinstance(r, SearchResult)][:limit]
         except Exception as exc:   # every failure is recorded on the outcome, never raised past the registry
             out["code"], out["error"] = _error_code(exc)
+            out["polite"] = politeness_failure(exc)
         out["latency"] = round(time.perf_counter() - started, 4)
         out["engine_attempts"] = list(getattr(provider, "last_attempts", None) or [])
         return out
@@ -423,7 +436,7 @@ class ProviderRegistry:
             attempts.append(entry)
             if d["code"] is not None:
                 failures.append(entry)
-                verdict = "neutral" if d["code"] in NON_HEALTH_CODES else "fail"
+                verdict = "neutral" if d["code"] in NON_HEALTH_CODES or d["polite"] else "fail"
             elif n:
                 verdict = "ok"
             else:

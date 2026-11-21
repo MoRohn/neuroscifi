@@ -425,10 +425,10 @@ class _Pass:
     def call(self, provider_name, text, limit, item, lookup):
         """(results, error_code) of one provider call; every failure is logged with the package."""
         from .safety import privacy_screen
-        from .search import NON_HEALTH_CODES
+        from .search import NON_HEALTH_CODES, politeness_failure
         from .types import Query
         provider = self.providers.get(provider_name)
-        code, detail, results = None, "", None
+        code, detail, results, polite = None, "", None, False
         if provider is None:
             code, detail = "provider_disabled", f"provider {provider_name} is not enabled in the configuration"
         elif privacy_screen(text, private_terms=self.private):
@@ -442,8 +442,9 @@ class _Pass:
             except Exception as exc:   # recorded per package below, never raised past the pass
                 code = getattr(exc, "code", None) or type(exc).__name__
                 detail = str(getattr(exc, "detail", "") or exc)[:300]
+                polite = politeness_failure(exc)   # our own rate-limit wait is not a provider fault
             latency = round(time.perf_counter() - started, 4)
-            if code not in NON_HEALTH_CODES:
+            if code not in NON_HEALTH_CODES and not polite:
                 self.services.registry.record(provider_name, code is None, latency, None if code is None else
                                               f"{code}: {detail}"[:300])
         if code is not None:

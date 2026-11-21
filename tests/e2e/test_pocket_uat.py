@@ -606,3 +606,44 @@ def test_pocket_shows_copies_and_independent_sources(research_spark, new_page):
     research_spark.work()
     expect(page.locator("#researchstage")).to_have_text("Completed", timeout=15_000)
     expect(page.locator("#researchbody .rcopies").first).to_have_text("3 copies, 1 independent source")
+
+
+def test_revocation_during_the_post_submit_refresh_leaves_no_stale_refusal(research_spark, new_page):
+    """Integrator, final regression run: the post-submit refresh() was in flight when the pairing was revoked, then
+    openTask() started under the new generation, call() raised a local "Not paired" error disguised as HTTP 403, and
+    fail() showed "Your Spark no longer accepts this pairing" in the research panel after it had been cleared.
+    Deterministic here: the research_list reply is held until the pairing has been erased and dropped."""
+    import threading
+    page = new_page()
+    page.goto(research_spark.url)
+    pair(page)
+    release = threading.Event()
+
+    def hold_list(route):
+        release.wait(10)
+        route.continue_()
+
+    page.route("**/api/research_list", hold_list)
+    page.locator("#objective").fill("Zephyr compiler release notes")
+    page.locator("#researchsubmit").click()
+    expect(page.locator("#researchmsg")).to_contain_text("Queued on your Spark")
+    erase_on_spark(research_spark.bridge)
+    page.locator("#unpair").evaluate("b => b.ownerDocument.defaultView.pocketBridge('state', {}).catch(() => {})")
+    expect(page.locator("#linkstate")).to_contain_text("Not paired")
+    release.set()
+    page.wait_for_timeout(1500)  # let the held refresh and any follow-up settle
+    expect(page.locator("#researchmsg")).to_have_text("")
+
+
+def test_back_online_rechecks_the_spark_instead_of_keeping_a_stale_unreachable(bridge, new_page):
+    """Integrator, final regression run: a request that failed while the device was offline left reach="down"; going
+    back online only cleared the offline flag, so the header kept "Spark unreachable" although the Spark answered.
+    Deterministic here: a state request is forced to fail while offline."""
+    page = new_page()
+    page.goto(bridge.url)
+    pair(page)
+    page.context.set_offline(True)
+    page.evaluate("() => window.pocketBridge('state', {}).catch(() => {})")   # fails: no network
+    expect(page.locator("#linkstate")).to_have_text("Paired · this device is offline")
+    page.context.set_offline(False)
+    expect(page.locator("#linkstate")).to_have_text("Paired with Spark")

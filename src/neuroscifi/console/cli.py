@@ -71,7 +71,9 @@ def _serve(args):
     try:
         if args.url_file is not None:
             try:
-                signal.signal(signal.SIGTERM, signal.default_int_handler)  # service stop runs the cleanup below
+                # service stop, a closed terminal and a quit key all run the cleanup below (no token file left)
+                for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT):
+                    signal.signal(sig, signal.default_int_handler)
             except ValueError:
                 pass  # not the main thread
             try:

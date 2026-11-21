@@ -410,6 +410,39 @@ def _third_person(verb: str) -> str:
     return verb + "s"
 
 
+# Package release statements (RT4-03). A version question is about one package's record, not a sentence shape:
+# "Is numpy 2.5.5 the latest (stable) release?" -> "The latest release of numpy is 2.5.5" and "Was numpy 2.5.5
+# released?" / "Was numpy==2.5.5 released?" -> "numpy 2.5.5 was released". release_statement() reads either form
+# (and the declarative "numpy 2.5.5 is the latest release") back as {name, version, kind, polarity}; the verdict
+# checks it against the registry record of that package (_record_check), not only against quoted sentences.
+_PKG = r"(?P<x>@?[A-Za-z0-9][\w.-]*?(?:/[\w.-]+)?)"
+_VER = r"v?(?P<v>\d+(?:\.\d+)+[\w.+-]*)"
+_LATEST_WORDS = r"(?:the\s+)?(?:latest|newest|current|most\s+recent)\s+(?:stable\s+)?(?:release|version)"
+_YES_NO_LATEST = re.compile(rf"^(?P<aux>is|was)\s+{_PKG}(?:\s+|==|\s+version\s+){_VER}\s+(?P<neg>not\s+)?"
+                            rf"{_LATEST_WORDS}$", re.IGNORECASE)
+_YES_NO_RELEASED = re.compile(rf"^(?P<aux>was|has|is)\s+{_PKG}(?:\s+|==|\s+version\s+){_VER}\s+(?P<neg>not\s+)?"
+                              rf"(?:been\s+)?(?:released|published)$", re.IGNORECASE)
+_RELEASE_STATEMENTS = (
+    ("latest", re.compile(rf"^{_LATEST_WORDS}\s+of\s+{_PKG}\s+(?:is|was)\s+(?P<neg>not\s+)?(?:version\s+)?{_VER}$",
+                          re.IGNORECASE)),
+    ("latest", re.compile(rf"^{_PKG}(?:\s+|==|\s+version\s+){_VER}\s+(?:is|was)\s+(?P<neg>not\s+)?{_LATEST_WORDS}"
+                          rf"$", re.IGNORECASE)),
+    ("released", re.compile(rf"^{_PKG}(?:\s+|==|\s+version\s+){_VER}\s+(?:was|has\s+been|is)\s+"
+                            rf"(?P<neg>not\s+|never\s+)?(?:released|published)$", re.IGNORECASE)),
+)
+
+
+def release_statement(statement: str) -> dict | None:
+    """{name, version, kind: "latest" | "released", polarity} of a package release statement, or None."""
+    s = _FV_PREFIX.sub("", T.collapse(statement or "")).strip().rstrip(" ?.!")
+    for kind, rx in _RELEASE_STATEMENTS:
+        m = rx.match(s)
+        if m:
+            return {"name": m.group("x"), "version": m.group("v").rstrip("."), "kind": kind,
+                    "polarity": -1 if m.group("neg") else 1}
+    return None
+
+
 def checkable_statement(text: str) -> str | None:
     """The statement a fact check can verify, or None (RT-B-06): a declarative statement as given (an optional "is
     it true that" prefix removed), or a yes/no question turned into one ("Was X released?" -> "X was released";
@@ -423,6 +456,14 @@ def checkable_statement(text: str) -> str | None:
     s = s.rstrip(" ?.!")
     if not s or _WH_QUESTION.match(s):
         return None
+    m = _YES_NO_LATEST.match(s) if question else None
+    if m:
+        neg = "not " if m.group("neg") else ""
+        return f"The latest release of {m.group('x')} {m.group('aux').lower()} {neg}{m.group('v')}"
+    m = _YES_NO_RELEASED.match(s) if question else None
+    if m:
+        verb = "has been" if m.group("aux").lower() == "has" else "was"
+        return f"{m.group('x')} {m.group('v')} {verb} {'not ' if m.group('neg') else ''}released"
     m = _YES_NO.match(s)
     if m and (question or not parse_statement(s)):
         aux, rest = m.group("aux").lower(), m.group("rest")
@@ -556,7 +597,7 @@ def _mention(slot: dict, claim: Claim) -> int | None:
     if slot["head"] <= have:
         return next(pos for w, pos in words if w in slot["head"])
     alias = _claims.subject_tokens(title)
-    if _claims._PRONOUN_START.match(claim.text or "") and alias and _claims.same_subject(alias, slot["head"]):
+    if _claims.title_reference(claim.text or "") is not None and alias and _claims.same_subject(alias, slot["head"]):
         return 0
     return None
 
@@ -645,9 +686,9 @@ def _within(inner: frozenset, outer: frozenset, nests: set) -> bool:
 def _subject_span(slot: dict, text: str, at: int) -> tuple[int, int]:
     """(start, end) of the subject's mention: the first run of consecutive words covering the subject's head
     tokens; a pronoun-led sentence about the document's subject: the pronoun."""
-    if at == 0 and _claims._PRONOUN_START.match(text):
-        m = re.match(r"\W*\w+", text)
-        return 0, m.end() if m else 0
+    end = _claims.title_reference(text) if at == 0 else None
+    if end is not None:
+        return 0, end
     words = list(T._TOKEN_RE.finditer(text))
     stems = [T.stem(w.group(0).lower().replace(",", "")) for w in words]
     for i in range(len(words)):
@@ -873,6 +914,41 @@ def _past_event(slot: dict, now: float) -> bool:
     return True
 
 
+def _record_check(rs: dict, claim: Claim, doc: Document | None) -> tuple[str | None, str]:
+    """("support" | "contradict" | None, why) for a package release statement (release_statement) against a
+    registry record template: the claim must be a 'metadata' template whose record identity is that package
+    (package:<ecosystem>:<name>), and the record's own metadata decides. "latest is V": the registry's latest
+    version equals V (else it contradicts, naming the latest). "V was released": the record of the requested
+    version (requested_exists, the registry's full release history), else V among the latest / recent
+    releases; a version the history does not list contradicts, one the record does not cover is unknown."""
+    if claim.kind != "metadata" or doc is None:
+        return None, ""
+    name = _claims._norm_id(rs["name"])
+    if not any(r.startswith("package:") and r.rsplit(":", 1)[-1] == name for r in _claims.record_identity(claim)):
+        return None, ""
+    md = doc.metadata or {}
+    latest = str(md.get("latest") or "")
+    if not latest:
+        return None, ""
+    want = T.version_key(rs["version"])
+    registry = _claims._provider(doc)
+    if rs["kind"] == "latest":
+        rel = "support" if T.version_key(latest) == want else "contradict"
+        why = "" if rel == "support" else f"{registry} lists {latest} as the latest version of {rs['name']}"
+    elif md.get("requested") is not None and T.version_key(md["requested"]) == want:
+        rel = "support" if md.get("requested_exists") else "contradict"
+        why = "" if rel == "support" else f"{registry} lists no release {rs['version']} of {rs['name']}"
+    elif want in {T.version_key(latest)} | {T.version_key(v.get("version")) for v in md.get("versions_recent") or ()
+                                            if isinstance(v, dict)}:
+        rel, why = "support", ""
+    else:
+        return None, ""
+    if rs["polarity"] < 0:
+        rel = {"support": "contradict", "contradict": "support"}[rel]
+        why = why or f"{registry} lists the release"
+    return rel, why
+
+
 def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *, now: float, cls: str,
              ttl_overrides: dict | None = None) -> dict:
     """Fact verification by claim-slot checking (section comment above). Every reportable, non-adversarial claim
@@ -899,8 +975,14 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
                 doc = sources.doc(x.source_url)
                 nests[x.source_url] = _nests(doc.text if doc is not None else "")
             nests[x.source_url] |= _nests(x.text)
+    rs = release_statement(statement)
+    registry_ids = set()
     for x in pool.values():
-        rel, reason = _check(slot, x, nests.get(x.source_url))
+        rel, reason = _record_check(rs, x, sources.doc(x.source_url)) if rs else (None, "")
+        if rel:                             # the package's own registry record decides a release statement
+            registry_ids.add(x.id)
+        else:
+            rel, reason = _check(slot, x, nests.get(x.source_url))
         if rel:
             relation[x.id], why[x.id] = rel, reason
     for c in clusters:
@@ -944,6 +1026,10 @@ def _verdict(statement: str, clusters: list[ClaimCluster], sources: _Sources, *,
         conflicts.append((x, why[x.id] or "contradicts the checked statement"))
     if mean >= SUPPORTED_MIN_CONFIDENCE and sup >= SUPPORTED_MIN_GROUPS and con == 0:
         label = "supported"
+    elif con == 0 and any(x.id in registry_ids for x in supporting):
+        label = "supported"         # the package registry is the authority on its own releases (RT4-03)
+        reasons.append(f"The {rs['name']} registry record itself confirms it; a package registry is the "
+                       f"authoritative source for its own releases.")
     elif (beta - _claims.PRIOR_BETA) > (alpha - _claims.PRIOR_ALPHA):
         label = "disputed"
     elif sup >= 1 and con >= 1:
@@ -1102,7 +1188,7 @@ def _head(claim: Claim) -> tuple[frozenset, list[str]]:
     """(head tokens, stemmed tokens of the rest of the sentence, in order) of a quoted claim (section comment)."""
     text = _PARENS.sub(" ", claim.text or "")
     clause = _claims._subject_clause(text)
-    if _claims._PRONOUN_START.match(clause):
+    if _claims.title_reference(clause) is not None:        # "It ...", "The tower ...": the title's subject
         subject = _claims.title_subject(claim.title or "") or ""
         return _claims.subject_tokens(subject), [T.stem(t) for t in T.tokens(clause)]
     words = list(re.finditer(r"[^\W_][\w'’.-]*", clause))
@@ -1411,7 +1497,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         uncertainties.append(f"{len(failures)} retrieval failure(s) may have hidden evidence ({labels}).")
 
     verdict = None
-    if mode == "fact_verification" and any(c.claims for c in scored):     # no claims (cancelled): no verdict
+    release_question = mode == "technical" and release_statement(checkable_statement(question) or "") is not None
+    if (mode == "fact_verification" or release_question) and any(c.claims for c in scored):   # cancelled: none
         statement = checkable_statement(assessment.get("claim") or question)
         if statement is None:        # RT-B-06: nothing checkable (a wh-question): the answer carries the result
             limitations.append("No verdict: the question is not a checkable statement (X is in Y; X is the capital "

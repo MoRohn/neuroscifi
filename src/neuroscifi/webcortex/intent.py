@@ -134,6 +134,11 @@ _RELEASE_CUE = re.compile(
     r"\b(?:latest|newest|current|most recent)\s+(?:stable\s+)?(?:release|version)s?\b|\blatest stable\b|"
     r"\brelease (?:dates?|notes|history)\b|\bsecurity advisor(?:y|ies)\b|\badvisor(?:y|ies)\b|"
     r"\bvulnerabilit(?:y|ies)\b|\bnew(?:er|est)? (?:stable )?(?:releases?|versions?)\b")
+# A plain release word ("Was numpy 2.5.5 released?", "numpy 2.5.5 version") is a strong cue only next to a name
+# carrying a dotted version: "released" alone is too common ("the film was released") to make words registry names.
+_VERSIONED_RELEASE_CUE = re.compile(r"\b(?:released?|releases|versions?|published)\b")
+_NAME_WITH_VERSION = re.compile(r"(?<![\w.:/@`'’-])@?[a-z][\w.-]*(?:/[\w.-]+)?(?:\s+(?:version\s+)?v?|==)\d+(?:\.\d+)+")
+_REGISTRY_VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+_~!-]{0,63}")   # providers.structured.VERSION
 # weak cues admit only names that look like package names (code style, "X library", digits/hyphens/dots)
 _WEAK_RELEASE_CUE = re.compile(r"\bupdates?\b|\bupgrades?\b|\bchangelogs?\b")
 MAX_PLAIN_QUESTION_WORDS = 14   # plain lower-case words are candidates only in short questions
@@ -307,7 +312,7 @@ def _plain_packages(question: str, known=(), *, plain_words: bool = True) -> lis
     ecosystems = (hint,) if hint else ("PyPI", "npm")
     out = []
     for name in names[:MAX_INFERRED_PACKAGES]:
-        m = re.search(rf"(?<![\w.-]){re.escape(name)}\s+v?(\d+(?:\.\d+)+[\w.+-]*)", text, re.I)
+        m = re.search(rf"(?<![\w.-]){re.escape(name)}\s+(?:version\s+)?v?(\d+(?:\.\d+)+[\w.+-]*)", text, re.I)
         version = m.group(1).rstrip(".") if m else None
         for eco in ecosystems:
             if eco == "npm" and name.startswith("@") and "/" not in name:
@@ -507,7 +512,8 @@ def assess(question: str, *, now: float, known=()) -> dict:
         mode, why["mode"] = "quick_lookup", "no mode cue: a quick lookup"
 
     # plain package names with a release cue -> registry lookups (W-11)
-    strong_cue = bool(_RELEASE_CUE.search(low))
+    strong_cue = bool(_RELEASE_CUE.search(low) or (_VERSIONED_RELEASE_CUE.search(low) and
+                                                   _NAME_WITH_VERSION.search(low)))
     if mode in ("technical", "comparative", "quick_lookup") and (strong_cue or _WEAK_RELEASE_CUE.search(low)):
         inferred = _plain_packages(question, known=[p["name"] for p in packages], plain_words=strong_cue)
         if inferred:
@@ -705,7 +711,9 @@ def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> Quer
         osv = not inferred or bool(ver) or advisory_cue
         how = " (plain name; a registry that does not know it is a soft miss)" if inferred else ""
         if eco.lower() == "pypi":
-            add(0, f"pypi:{name}", "technical", f"registry: latest release of {name}{how}", when=None)
+            # with the version: the record then says whether that release exists ("Was numpy 2.5.5 released?")
+            pinned = f"=={ver}" if ver and _REGISTRY_VERSION.fullmatch(str(ver)) else ""
+            add(0, f"pypi:{name}{pinned}", "technical", f"registry: latest release of {name}{how}", when=None)
             if osv:
                 add(0, f"osv:PyPI:{name}{at}", "technical", f"advisories for {name}{at}", when=None)
         elif eco.lower() == "npm":

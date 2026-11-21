@@ -402,3 +402,43 @@ def test_contested_questions_use_the_plain_conflict_description(db):
     _, out = consolidated(db, [contested])
     question = db.execute("SELECT question FROM pending WHERE id=?", (out["contested"][0]["pending_id"],)).fetchone()[0]
     assert "one says 412 km, another says 520 km" in question and "different values" not in question
+
+
+def _varnel_dispute(hosts=("n1.example", "n2.example")):
+    a = claim(f"http://{hosts[0]}/x", "The Varnel River is 412 km long.", key="varnel river long")
+    b = claim(f"http://{hosts[1]}/x", "The Varnel River is 389 km long.", key="varnel river long")
+    return cluster([a, b], status="contested", contradicting=[
+        {"a": a.id, "b": b.id, "reason": "different values: 412 km vs 389 km",
+         "description": "Sources disagree about the Varnel River: one says 412 km, another says 389 km."}])
+
+
+def test_the_owners_answer_to_a_disagreement_is_not_asked_again_by_later_tasks(db):
+    """RT4-05: every task re-asked the same disagreement, because only knowledge stopped the question and an answer
+    to a contested question created none. The owner's chosen value is a decision: later tasks with the same
+    disagreement note it instead of asking, and an identical open question of another task closes with it."""
+    from neuroscifi.instance import executive
+    from neuroscifi.webcortex import curiosity
+    first, out1 = consolidated(db, [_varnel_dispute()])
+    second, out2 = consolidated(db, [_varnel_dispute(("n3.example", "n4.example"))], T0 + 10)
+    q1, q2 = out1["contested"][0]["pending_id"], out2["contested"][0]["pending_id"]
+    assert q1 and q2 and q1 != q2                       # two tasks, two open questions about one disagreement
+    assert any(c["kind"] == "hypothesis" for c in curiosity.rank(db, T0 + 20))
+    done = executive.resolve(db, q1, "412 km", T0 + 100)  # the console's "412 km holds" shortcut
+    assert done["web"] == {"kind": "contested", "key": "varnel river long", "chosen": "412 km",
+                           "pending_closed": [q2]}
+    assert db.execute("SELECT resolution FROM pending WHERE id=?", (q2,)).fetchone()[0] == \
+        f"412 km (the owner's answer to question #{q1})"
+    third, out3 = consolidated(db, [_varnel_dispute(("n5.example", "n6.example"))], T0 + 86_400)
+    entry = out3["contested"][0]
+    assert entry["pending_id"] is None and entry["decided"] == "owner chose 412 km on 2026-11-20", entry
+    assert db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:contested:%'"
+                      ).fetchone()[0] == 0
+    assert not any(c["kind"] == "hypothesis" for c in curiosity.rank(db, T0 + 86_500))
+    # a free-text answer that names no disagreeing value decides nothing; a different dispute is still asked
+    other = _varnel_dispute()
+    other = cluster(other.claims[:1] + [claim("http://n7.example/x", "The Varnel River is 2850 km long.",
+                                              key="varnel river long")], status="contested", contradicting=[
+        {"a": other.claims[0].id, "b": "z", "reason": "different values: 520 km vs 2850 km"}])
+    _, out4 = consolidated(db, [other], T0 + 90_000)
+    assert out4["contested"][0]["pending_id"] is not None
+    assert executive.resolve(db, out4["contested"][0]["pending_id"], "not sure yet", T0 + 90_001)["web"] is None

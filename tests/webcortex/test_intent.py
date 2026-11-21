@@ -231,7 +231,7 @@ def test_plan_technical_with_packages():
                      {"ecosystem": "PyPI", "name": "zstandard", "version": "0.25.0"},
                      {"ecosystem": "npm", "name": "open-websearch", "version": "2.2.0"}]
     p = intent.plan(S3, a, now=NOW)
-    assert texts(p, "technical") == ["pypi:numpy", "osv:PyPI:numpy@2.3.5", "pypi:zstandard",
+    assert texts(p, "technical") == ["pypi:numpy==2.3.5", "osv:PyPI:numpy@2.3.5", "pypi:zstandard==0.25.0",
                                      "osv:PyPI:zstandard@0.25.0", "npm:open-websearch",
                                      "osv:npm:open-websearch@2.2.0"]
     assert all(q.since is None for q in p.queries if q.kind == "technical")
@@ -436,3 +436,20 @@ def test_query_text_uses_the_statement_words_not_stems():
 def test_ecosystem_hint(text, eco):
     # RT-W-04: the question's own wording decides the registry before the records do.
     assert intent.ecosystem_hint(text) == eco
+
+
+@pytest.mark.parametrize("question", ["Was numpy 2.5.5 released?", "Is numpy 2.5.5 the latest release?",
+                                      "Has numpy version 2.5.5 been published?", "Was numpy==2.5.5 released?"])
+def test_a_versioned_name_with_a_plain_release_word_is_a_registry_lookup(question):
+    """RT4-03: "released" was not a release cue, so "Was numpy 2.5.5 released?" never reached PyPI. Next to a name
+    with a dotted version, released / release / version / published are; the lookup carries the version."""
+    a = intent.assess(question, now=NOW)
+    assert a["mode"] == "technical"
+    assert ("PyPI", "numpy", "2.5.5") in {(p["ecosystem"], p["name"], p["version"]) for p in a["packages"]}
+    assert "pypi:numpy==2.5.5" in texts(intent.plan(question, a, now=NOW), "technical")
+
+
+@pytest.mark.parametrize("question", ["When was the film Dune released?", "Was Windows 11 released in 2021?",
+                                      "Which version of the report was published?"])
+def test_a_plain_release_word_without_a_versioned_name_names_no_package(question):
+    assert intent.assess(question, now=NOW)["packages"] == []

@@ -546,11 +546,32 @@ def _subject_clause(sentence: str) -> str:
     return s.lstrip(" \"'“‘([")
 
 
+_DEFINITE = re.compile(r"^\W*(?:[Tt]he|[Tt]his|[Tt]hat|[Tt]hese|[Tt]hose)\s+(?P<n>(?:[a-z][a-z-]*\s+){0,2}?[a-z][a-z-]*)"
+                       r"(?=\s+(?P<v>[A-Za-z']+))")
+
+
+def title_reference(clause: str) -> int | None:
+    """End offset of a subject that only refers back to the document's subject — a pronoun ("It is ...") or a
+    definite description of common nouns directly before the verb ("The tower is 330 metres tall", "This river
+    flows ...") — or None. Such a sentence is about the subject of its own document's title (OBS-02: "The tower"
+    of the Fernsehturm Berlin article is not the Eiffel Tower)."""
+    clause = clause or ""
+    m = _PRONOUN_START.match(clause)
+    if m:
+        return m.end()
+    m = _DEFINITE.match(clause)
+    if m and not any(w in T.STOPWORDS or w in _AUX for w in m.group("n").split()):
+        verb = m.group("v")
+        if verb.lower() in _AUX or _VERB_CUE.match(verb):
+            return m.end("n")
+    return None
+
+
 def primary_subject(sentence: str, title: str = "") -> str | None:
     """The claim's primary subject (see the section comment), or None when the sentence names none before its
     verb ("Most neurons are covered by spines")."""
     clause = _subject_clause(sentence)
-    if _PRONOUN_START.match(clause):
+    if title_reference(clause) is not None:
         return title_subject(title)
     spans, verb = _spans(clause)
     for text, start, possessor in spans:

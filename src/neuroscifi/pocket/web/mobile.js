@@ -353,7 +353,14 @@ async function forgetPairing(family) {
 el("unpair").onclick=()=>once("unpair", ()=>forgetPairing(false));
 el("unpairall").onclick=()=>once("unpair", ()=>forgetPairing(true));
 el("dismiss").onclick=()=>{statusText(""); el("main").focus?.();};
-window.addEventListener("online",linkText); window.addEventListener("offline",linkText);
+// Back online: whatever failed while offline said nothing about the Spark, so check it again instead of keeping a
+// stale "Spark unreachable" until some unrelated request happens to succeed.
+function backOnline() {
+  if (!key) { linkText(); return; }
+  reach = "checking"; linkText();
+  api("state", {}).catch(() => {});  // api() records the outcome through reached() / revoked()
+}
+window.addEventListener("online", backOnline); window.addEventListener("offline", linkText);
 function privatePause() { stop(); review(null); el("handoff").textContent=""; }
 document.addEventListener("visibilitychange",()=>{if (document.hidden) privatePause();});
 window.addEventListener("pagehide",privatePause);

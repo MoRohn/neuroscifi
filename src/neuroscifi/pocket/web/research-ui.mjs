@@ -18,7 +18,7 @@ const active=t=>!TERMINAL.includes(t.status);
 
 async function call(route,data){
   const token=window.pocketToken?.();
-  if(!token)throw Object.assign(Error("Not paired"),{status:403});
+  if(!token)throw Object.assign(Error("Not paired"),{status:0,code:"not_paired"});  // local state, not a Spark refusal
   let response;
   try{
     response=await fetch("/api/"+route,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
@@ -30,6 +30,7 @@ async function call(route,data){
   return body;
 }
 function fail(e){
+  if(e.code==="not_paired")return;  // the pairing was dropped here; mobile.js already says why (RT-B-08 race)
   if(e.status===404){research=false;tasks=[];if(current&&!current.saved)close();layout();say("Research is not available from this Spark.");return;}
   say(e.status===429?"Limit reached: up to 10 questions per hour from your linked devices together. Try again later."
     :e.code==="private_data"?"Remove personal details such as e-mail addresses, phone numbers or names you marked private. Nothing was sent."
@@ -233,6 +234,7 @@ async function saveOffline(t){
   try{await keepFinding(entry);say("Saved in your encrypted vault for 24 hours.");}catch(e){say(e.message||"Could not save the finding.");}
 }
 async function openTask(id){
+  if(!paired||!research)return;
   const g=generation;
   try{const t=await call("research_get",{id});if(g!==generation)return;current={id,saved:false};show(t);$("researchview").focus();}
   catch(e){if(g===generation)fail(e);}
@@ -316,7 +318,7 @@ $("researchform").onsubmit=async e=>{
   try{
     const {id}=await call("research_submit",data);if(g!==generation)return;
     $("objective").value="";sharing=false;layout();say("Queued on your Spark. Its research worker runs it; this page follows each stage.");
-    await refresh();await openTask(id);
+    await refresh();if(g!==generation)return;await openTask(id);
   }catch(err){if(g===generation)fail(err);}
   finally{busy=false;buttons();}
 };

@@ -20,7 +20,8 @@ from ..search import ProviderError, date_string, parse_iso_date, strip_html
 from ..types import FetchError, Query, SearchResult
 
 MAX_LIMIT = 20
-_SNIPPET = 400
+_SNIPPET = 400                  # search-result display only; never the text of a document
+RELEASE_BODY_MAX = 20_000       # a GitHub release body kept as its document text (plain sentences, bounded)
 _RETRYABLE = {"timeout", "connect_failed", "dns_failure", "rate_limited", "http_error", "tls_error"}
 
 
@@ -30,6 +31,90 @@ def _clamp(limit) -> int:
 
 def _terms(text: str, n: int = 8) -> list[str]:
     return re.findall(r"[^\W_][\w.\-]*", text or "")[:n]
+
+
+def _clip(text: str, n: int) -> str:
+    """`text` cut to at most `n` characters at a word boundary (never mid-word), with "…" when cut."""
+    text = " ".join(str(text or "").split())
+    if len(text) <= n:
+        return text
+    cut = text[:n - 1]
+    space = cut.rfind(" ")
+    return (cut[:space] if space > 0 else cut).rstrip(" ,;:") + "…"
+
+
+_MD_FENCE = re.compile(r"^(?:```|~~~)")
+_MD_RULE = re.compile(r"^(?:[-*_=]\s*){3,}$|^\|?(?:\s*:?-+:?\s*\|)+\s*:?-*:?\s*\|?$")
+_MD_LEAD = re.compile(r"^(?:(?P<h>#{1,6})\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,3}[.)]\s+|>\s?)+")
+_MD_INLINE = (
+    (re.compile(r"!\[([^\]]*)\]\([^)]*\)"), r"\1"),                 # image -> alt text
+    (re.compile(r"\[([^\]]+)\]\((?:[^()]|\([^()]*\))*\)"), r"\1"),     # [text](url) -> text
+    (re.compile(r"\[([^\]]+)\]\[[^\]]*\]"), r"\1"),                   # [text][ref] -> text
+    (re.compile(r"<(https?://[^>\s]+)>"), r"\1"),                     # <autolink>
+    (re.compile(r"(`+)(.+?)\1"), r"\2"),                                 # `code`
+    (re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1"), r"\2"),              # **bold**
+    (re.compile(r"(?<![\w*])\*(?=\S)(.+?)(?<=\S)\*(?![\w*])"), r"\1"),  # *italic*
+    (re.compile(r"(?<![\w_])_(?=\S)(.+?)(?<=\S)_(?![\w_])"), r"\1"),     # _italic_ (never snake_case)
+    (re.compile(r"~~(.+?)~~"), r"\1"),
+    (re.compile(r"\\([\\`*_{}\[\]()#+\-.!|\"])"), r"\1"),                # escapes
+)
+
+
+def markdown_text(body: str, limit: int = RELEASE_BODY_MAX) -> str:
+    """Markdown (a release body) as plain text, one block per line: a heading, list item, quote or paragraph
+    (its wrapped lines joined), each without its markers; links and emphasis keep their text, fences and rules
+    go, code lines stay. Cut to `limit` characters at a block, sentence or word boundary, never mid-word."""
+    text = re.sub(r"<!--.*?-->", " ", str(body or "").replace("\r\n", "\n").replace("\r", "\n"), flags=re.S)
+    blocks: list[str] = []
+    current: list[str] = []
+
+    def flush():
+        if current:
+            blocks.append(" ".join(current))
+            current.clear()
+
+    fenced = False
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if _MD_FENCE.match(line):
+            flush()
+            fenced = not fenced
+            continue
+        if fenced:
+            if line:
+                blocks.append(line)
+            continue
+        if not line or _MD_RULE.match(line):
+            flush()
+            continue
+        if line.startswith("|") and line.endswith("|"):
+            flush()
+            blocks.append(" ".join(c.strip() for c in line.strip("|").split("|") if c.strip()))
+            continue
+        lead = _MD_LEAD.match(line)
+        if lead:
+            flush()
+            line = line[lead.end():]
+        current.append(line)
+        if lead and lead.group("h"):
+            flush()                          # a heading is its own block
+    flush()
+    out = []
+    for block in blocks:
+        for rx, repl in _MD_INLINE:
+            block = rx.sub(repl, block)
+        block = " ".join(strip_html(block).split())
+        if block:
+            out.append(block)
+    text = "\n".join(out)
+    if len(text) <= limit:
+        return text
+    cut = text[:limit + 1]
+    at = cut.rfind("\n")                                     # a block boundary, else a sentence end, else a space
+    if at < limit // 2:
+        ends = [m.end() for m in re.finditer(r"[.!?…][\"')\]]*(?=\s)", cut)]
+        at = ends[-1] if ends and ends[-1] >= limit // 2 else cut.rfind(" ")
+    return cut[:at if at > 0 else limit].rstrip()
 
 
 def _first(value):
@@ -55,7 +140,7 @@ class _Api:
             if missing_ok and exc.status == 404:
                 return None
             raise ProviderError(self.name, f"{exc.detail or exc}"[:300], code=exc.code,
-                                retryable=exc.code in _RETRYABLE) from None
+                                retryable=exc.code in _RETRYABLE, retry_after=exc.retry_after) from None
         if missing_ok and result.status == 404:
             return None
         if result.status >= 400:
@@ -158,7 +243,7 @@ class WikipediaProvider(_Api):
             edited = parse_iso_date(hit.get("timestamp"))
             out.append(SearchResult(
                 url=self.page_url(title, lang), title=title,
-                snippet=strip_html(hit.get("snippet"))[:_SNIPPET], provider=self.name, rank=len(out) + 1,
+                snippet=_clip(strip_html(hit.get("snippet")), _SNIPPET), provider=self.name, rank=len(out) + 1,
                 kind="encyclopedia", published_at=edited,
                 metadata={"pageid": hit.get("pageid"), "last_edited": hit.get("timestamp"), "language": lang,
                           "snippet_only": True}))
@@ -204,7 +289,7 @@ class ArxivProvider(_Api):
             abstract = " ".join((entry.findtext(f"{_ATOM}summary") or "").split())
             title = " ".join((entry.findtext(f"{_ATOM}title") or "").split())
             out.append(SearchResult(
-                url=f"https://arxiv.org/abs/{arxiv_id}", title=title or arxiv_id, snippet=abstract[:_SNIPPET],
+                url=f"https://arxiv.org/abs/{arxiv_id}", title=title or arxiv_id, snippet=_clip(abstract, _SNIPPET),
                 provider=self.name, rank=len(out) + 1, kind="academic", published_at=published,
                 metadata={"arxiv_id": arxiv_id, "version": f"v{vm.group(1)}" if vm else None,
                           "authors": [" ".join((a.findtext(f"{_ATOM}name") or "").split())
@@ -267,7 +352,7 @@ class OpenAlexProvider(_Api):
             title = strip_html(w.get("display_name") or w.get("title") or "")
             published = parse_iso_date(w.get("publication_date"))
             out.append(SearchResult(
-                url=url, title=title or url, snippet=abstract[:_SNIPPET], provider=self.name, rank=len(out) + 1,
+                url=url, title=title or url, snippet=_clip(abstract, _SNIPPET), provider=self.name, rank=len(out) + 1,
                 kind="academic", published_at=published,
                 metadata={"openalex_id": w.get("id"), "doi": doi, "publication_date": w.get("publication_date"),
                           "type": w.get("type"), "cited_by_count": w.get("cited_by_count"),
@@ -316,7 +401,7 @@ class CrossrefProvider(_Api):
             authors = [" ".join(filter(None, (a.get("given"), a.get("family"))))
                        for a in (item.get("author") or [])[:50] if isinstance(a, dict)]
             out.append(SearchResult(
-                url=url, title=title or url, snippet=abstract[:_SNIPPET], provider=self.name, rank=len(out) + 1,
+                url=url, title=title or url, snippet=_clip(abstract, _SNIPPET), provider=self.name, rank=len(out) + 1,
                 kind="academic", published_at=issued,
                 metadata={"doi": url, "issued": date_string(issued) if issued is not None else None,
                           "venue": strip_html(_first(item.get("container-title")) or "") or None,
@@ -473,7 +558,7 @@ class PyPIProvider(_Api):
         return [SearchResult(
             url=f"https://pypi.org/project/{quote(metadata['package'])}/",
             title=f"{metadata['package']} {latest} (PyPI)",
-            snippet=f"{metadata['provider_text']} {metadata['summary']}"[:_SNIPPET],
+            snippet=_clip(f"{metadata['provider_text']} {metadata['summary']}", _SNIPPET),
             provider=self.name, rank=1, kind="package", published_at=released_at, metadata=metadata)]
 
 
@@ -534,7 +619,7 @@ class NpmProvider(_Api):
         metadata["provider_text"] = f"Latest release {latest} published {when}."     # a template (RT-W-03)
         return [SearchResult(
             url=f"https://www.npmjs.com/package/{quote(name, safe='@/')}", title=f"{name} {latest} (npm)",
-            snippet=f"{metadata['provider_text']} {metadata['summary']}"[:_SNIPPET],
+            snippet=_clip(f"{metadata['provider_text']} {metadata['summary']}", _SNIPPET),
             provider=self.name, rank=1, kind="package", published_at=released_at, metadata=metadata)]
 
 
@@ -603,7 +688,7 @@ class OSVProvider(_Api):
             vid = str(v["id"])
             out.append(SearchResult(
                 url=f"https://osv.dev/vulnerability/{vid}", title=strip_html(v.get("summary") or vid)[:300],
-                snippet=strip_html(v.get("details") or v.get("summary") or "")[:_SNIPPET], provider=self.name,
+                snippet=_clip(strip_html(v.get("details") or v.get("summary") or ""), _SNIPPET), provider=self.name,
                 rank=len(out) + 1, kind="advisory", published_at=parse_iso_date(v.get("published")),
                 metadata={"id": vid, "aliases": [str(a) for a in v.get("aliases") or []][:20],
                           "severity": severity, "severity_label": db_sev, "affected_ranges": ranges[:20],
@@ -651,11 +736,13 @@ class GitHubReleasesProvider(_Api):
                 continue
             tag = str(rel.get("tag_name") or "")[:100]
             name = strip_html(rel.get("name") or "")[:200]
+            # the whole release body (plain text, bounded) is the document; the snippet is for result lists only
+            body = markdown_text(rel.get("body") or "")
             out.append(SearchResult(
                 url=url, title=f"{owner}/{repo} {tag}" + (f": {name}" if name and name != tag else ""),
-                snippet=" ".join(str(rel.get("body") or "").split())[:_SNIPPET], provider=self.name,
+                snippet=_clip(body, _SNIPPET), provider=self.name,
                 rank=len(out) + 1, kind="release", published_at=parse_iso_date(rel.get("published_at")),
-                metadata={"repo": f"{owner}/{repo}", "tag": tag, "name": name,
+                metadata={"repo": f"{owner}/{repo}", "tag": tag, "name": name, "body": body,
                           "prerelease": bool(rel.get("prerelease")), "published_at": rel.get("published_at")}))
         return out[:_clamp(limit)]
 

@@ -794,3 +794,79 @@ def test_question_text_is_plain_with_numbers_and_keys_under_technical_detail(uat
     expect(second.locator("p.question code")).to_have_text("nsf web evidence")
     assert "compiler releas version zephyr" in second.locator("details.tech").text_content()
     assert not page.problems, page.problems
+
+
+def test_answering_a_question_keeps_keyboard_focus(uat, new_page):
+    """RT4-01: a quick answer or a typed answer re-rendered the list and focus fell to the page body. It moves to the
+    next question's heading, else the previous one's, else the view heading (as Knowledge does, RT-B-04)."""
+    text = "«The Varnel River is 389 kilometres long»: one says 389 km, another says 412 km. Which holds?"
+    q1, q2, q3 = (ask_web(uat, f"web:contested:00000000-0000-4000-8000-00000000001{i}:0", text) for i in range(3))
+    page = new_page(1280, 900)
+    page.goto(uat.url)
+    go(page, "questions")
+    page.locator(f"article[data-pending='{q2}']").get_by_role("button", name=re.compile("^412 km holds")).focus()
+    page.keyboard.press("Enter")
+    expect(page.locator("#questionStatus")).to_contain_text(f"Question {q2} resolved")
+    expect(page.locator(f"#q-title-{q3}")).to_be_focused()          # the next question
+    page.locator(f"#answer-{q3}").fill("Neither: the 2025 survey says 401 km")
+    page.keyboard.press("Enter")
+    expect(page.locator("#questionStatus")).to_contain_text(f"Question {q3} resolved")
+    expect(page.locator(f"#q-title-{q1}")).to_be_focused()          # no next one: the previous
+    page.locator("#showResolved").check()
+    settle(page, "questions")
+    page.locator(f"article[data-pending='{q1}']").get_by_role("button", name=re.compile("^389 km holds")).focus()
+    page.keyboard.press("Enter")
+    expect(page.locator("#questionStatus")).to_contain_text(f"Question {q1} resolved")
+    expect(page.locator(f"#q-title-{q1}")).to_be_focused()          # still shown (resolved): its own heading
+    page.locator("#showResolved").uncheck()
+    settle(page, "questions")
+    q4 = ask_web(uat, "web:contested:00000000-0000-4000-8000-000000000020:0", text)
+    page.locator("#refreshQuestions").click()
+    settle(page, "questions")
+    page.locator(f"article[data-pending='{q4}']").get_by_role("button", name=re.compile("^389 km holds")).focus()
+    page.keyboard.press("Enter")
+    expect(page.locator("#questionStatus")).to_contain_text(f"Question {q4} resolved")
+    expect(page.locator("#h-questions")).to_be_focused()            # the list is empty: the view heading
+    assert page.evaluate("document.activeElement.tagName") != "BODY"
+    assert not page.problems, page.problems
+
+
+def test_curiosity_titles_are_plain_sentences_with_numbers_under_technical_detail(uat, new_page):
+    """RT4-02: a contested subject that never became knowledge was titled by its stemmed key ("kilometr long river
+    varnel") and its reason showed "gains 0.898 bits" outside Technical detail."""
+    from neuroscifi.webcortex import consolidate
+    from neuroscifi.webcortex.types import Claim, ClaimCluster
+    now = time.time()
+    key = "kilometr long river varnel"
+    said = ("The Varnel River is 412 kilometres long according to the 2025 survey.",
+            "The Varnel River is 389 kilometres long.")
+    claims = [Claim(id=f"c{i}", text=t, source_url=f"http://n{i}.example/varnel", domain=f"n{i}.example", title="Varnel",
+                    retrieved_at=now, key=key, kind="statement", polarity=1, values=[v], published_at=now - DAY,
+                    relevance=0.8) for i, (t, v) in enumerate(zip(said, ("412 km", "389 km")))]
+    contested = ClaimCluster(key=key, claims=claims, independent_sources=2, supporting=["c0"], confidence=0.5,
+                             contradicting=[{"a": "c0", "b": "c1", "reason": "different values: 412 km vs 389 km"}],
+                             uncertainty=0.3, status="contested", statement=said[0])
+    db = uat.db()
+    try:
+        prepared = orchestrator.prepare(db, "How long is the Varnel River?", now, mode="fact_verification",
+                                        origin="test")
+        with store.write(db):
+            tid = orchestrator.insert(db, prepared, now)
+            wstate.save_clusters(db, tid, [contested], now)
+        consolidate.run(db, tid, now)
+    finally:
+        db.close()
+    page = new_page(1280, 900)
+    page.goto(uat.url)
+    go(page, "research")
+    item = page.locator("#curiosityList li")
+    expect(item).to_have_count(1)
+    title = item.locator("strong").inner_text()
+    assert title in said, title                                   # a sentence, never the stemmed key
+    sub = item.locator(".sub").inner_text()
+    assert sub == "Fill a knowledge gap: Sources disagree and nothing is known yet.", sub
+    assert not re.search(r"\d", sub) and "bits" not in sub, sub
+    tech = item.locator("details.tech").text_content()
+    assert "bits" in tech and key in tech, tech
+    assert key not in item.inner_text().replace(item.locator("details.tech").inner_text(), "")
+    assert not page.problems, page.problems

@@ -716,8 +716,9 @@ async function loadQuestions() {
       const values = contestedValues(q);
       if (values.length) shortcuts = group(...values.map((v, i) => quick(`value${i}`, `${v} holds`, { resolution: v })));
     }
-    return h('article', { class: 'card', 'data-pending': q.id, 'aria-label': `Question ${q.id}` },
-      h('p', {}, badge(q.resolved_at ? 'Resolved' : 'Open', q.resolved_at ? 'neutral' : 'info'), ` #${q.id} · ${q.kind.replace('_', ' ')} · ${web.label ?? q.scope}`),
+    return h('article', { class: 'card', 'data-pending': q.id, 'aria-labelledby': `q-title-${q.id}` },
+      h('h2', { id: `q-title-${q.id}`, class: 'qhead', tabindex: '-1' },
+        badge(q.resolved_at ? 'Resolved' : 'Open', q.resolved_at ? 'neutral' : 'info'), ` #${q.id} · ${q.kind.replace('_', ' ')} · ${web.label ?? q.scope}`),
       parts.body,
       kv([['Epoch', q.epoch ?? '—'], q.context ? ['Context', q.context] : null, ['Asked', fmtTime(q.created_at)],
         q.resolved_at ? ['Answered', `${fmtTime(q.resolved_at)}: ${q.resolution}`] : null]),
@@ -780,10 +781,22 @@ async function answerQuestion(q, button, status, body) {
   await act(button, status, async () => {
     await api('POST', `/api/pending/${q.id}/resolve`, body);
     if (continued) { state.epoch = q.epoch; $('epochSelect').value = q.epoch; $('evEpoch').value = q.epoch; }
-    await Promise.all([loadQuestions(), loadHeader()]);
+    await reloadQuestionsKeepingFocus(q);
     return text;
   });
   if (!status.isConnected) say($('questionStatus'), text);
+}
+
+// RT4-01: answering re-renders the list and removes the control that had focus. Keep it where the person was, as
+// Knowledge does: this question's heading (shown with resolved questions), else the next, then the previous
+// question's, else the view heading.
+async function reloadQuestionsKeepingFocus(q) {
+  const order = [...$('pendingList').querySelectorAll('article[data-pending]')].map((a) => a.dataset.pending);
+  await Promise.all([loadQuestions(), loadHeader()]);
+  if (document.activeElement && document.activeElement !== document.body) return;   // focus was not lost
+  const at = order.indexOf(String(q.id));
+  const next = [q.id, ...order.slice(at + 1), ...order.slice(0, Math.max(0, at)).reverse()].map((id) => $(`q-title-${id}`)).find(Boolean);
+  (next ?? $('h-questions')).focus();
 }
 
 async function resolveQuestion(q, input, button, status) {
@@ -791,7 +804,7 @@ async function resolveQuestion(q, input, button, status) {
   if (!answer) { say(status, 'Write an answer before resolving.', 'error'); input.focus(); return; }
   await act(button, status, async () => {
     await api('POST', `/api/pending/${q.id}/resolve`, { resolution: answer });
-    await Promise.all([loadQuestions(), loadHeader()]);
+    await reloadQuestionsKeepingFocus(q);
     return `Question ${q.id} resolved and recorded as a teacher intervention.`;
   });
   if (!status.isConnected) say($('questionStatus'), `Question ${q.id} resolved and recorded as a teacher intervention.`);
@@ -1308,13 +1321,32 @@ function renderWebStatus(s) {
   fill($('curiosityList'), cur === null
     ? empty('Curiosity is shown while web access is on.')
     : cur.length
-      ? h('ol', { class: 'reasons' }, cur.map((x) => h('li', {}, h('strong', { text: x.target.statement ?? x.target.key ?? '—' }),
-          h('br'), h('span', { class: 'sub', text: `${modeLabel(x.mode)}: ${x.reason}` }),
-          technical(h('p', { text: `${x.kind} · utility ${fmtNum(x.utility, 3)} · expected information gain ${fmtNum(x.info_gain, 3)} bits` })))))
+      ? h('ol', { class: 'reasons' }, cur.map((x) => h('li', {}, h('strong', { text: curiosityTitle(x) }),
+          h('br'), h('span', { class: 'sub', text: `${modeLabel(x.mode)}: ${plainReason(x.reason)}` }),
+          technical(kv([['Why', x.reason], ['Kind', x.kind], ['Utility', fmtNum(x.utility, 3)],
+            ['Expected information gain', `${fmtNum(x.info_gain, 3)} bits`], x.target.key ? ['Index key', h('code', { text: x.target.key })] : null])))))
       : empty('Nothing is worth investigating now: what is known is fresh or well supported.'));
   $('activeCount').textContent = s.active ? `${s.active} active` : '';
   syncControls();
   if (web.task && web.taskId) rerenderReportIfStalled();
+}
+
+// A curiosity candidate's title (RT4-02): its statement or objective, never the stemmed index key ("kilometr long
+// river varnel"), which goes under Technical detail.
+function curiosityTitle(x) {
+  const t = x.target ?? {};
+  const said = t.statement ?? t.objective;
+  if (said) return said;
+  return { hypothesis: 'An open question the sources disagree about', gap: 'A claim only one source supports' }[x.kind] ?? 'An open question';
+}
+
+// The reason in plain words: clauses that carry the numbers ("gains 0.898 bits", "P(current)=0.50", "x1.5") move
+// to Technical detail, which shows the full reason.
+function plainReason(reason) {
+  const clauses = String(reason ?? '').split(/;\s*/).filter((c) => c && !/\bgains?\b|\bbits\b|P\(current\)|utility|down-weighted/i.test(c))
+    .map((c) => c.replace(/\s*\((?:confidence|x)\s*[\d.]+\)/gi, '').trim()).filter(Boolean);
+  const text = clauses.join('; ');
+  return text ? text[0].toUpperCase() + text.slice(1) + (/[.!?]$/.test(text) ? '' : '.') : 'Worth checking again.';
 }
 
 // The queued-without-worker hint depends on the worker state and on time, not only on the task row.

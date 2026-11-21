@@ -14,6 +14,8 @@ higher arXiv version (revision_seen, from web_sources.metadata.version).
 """
 from __future__ import annotations
 
+import re
+
 from ..instance import store
 from ..instance.errors import Conflict, NotFound, ValidationError
 from . import state
@@ -313,6 +315,71 @@ def decide(db, item, accept: bool, now, *, note="", via="review", question_id=No
             history.append(pid)
     return {"id": item["id"], "previous_status": before, "status": verdict, "pending_closed": closed,
             "decisions_revised": history}
+
+
+# ---- the owner's decision on a disagreement (RT4-05) -------------------------------------------------------------
+#
+# A contested subject never becomes knowledge, so the owner's answer to "web:contested:..." ("412 km holds") used to
+# be recorded only on that question and the next task with the same disagreement asked again. The answer that names
+# one of the disagreeing values is now a decision: a web_feedback row keyed by the conflict's key with detail
+# {owner_choice, values, pending_id}. consolidate asks no new question for a disagreement the owner decided (same
+# key, the chosen value among the disagreeing ones) and notes the decision instead; open contested questions about
+# the same disagreement from other tasks are closed as answered by it.
+
+def _value(text) -> str:
+    return " ".join(str(text or "").split()).casefold()
+
+
+def contested_decision(db, key, values) -> dict | None:
+    """The owner's latest decision on the disagreement about `key` whose sides include the chosen value, as
+    {chosen, decided_at, pending_id}; None when the owner never decided it."""
+    sides = {_value(v) for v in values or ()}
+    for detail, at in db.execute("SELECT detail, created_at FROM web_feedback WHERE key=? AND "
+                                 "json_extract(detail,'$.owner_choice') IS NOT NULL ORDER BY id DESC", (key,)):
+        found = state.loads(detail, {})
+        if _value(found.get("owner_choice")) in sides:
+            return {"chosen": found["owner_choice"], "decided_at": at, "pending_id": found.get("pending_id")}
+    return None
+
+
+def _asked(db, pending_id):
+    """(key, values, task_id) the contested question `pending_id` was asked about, from its consolidation row."""
+    row = db.execute("SELECT key, detail, task_id FROM web_feedback WHERE json_extract(detail,'$.contested')=1 AND "
+                     "json_extract(detail,'$.pending_id')=? ORDER BY id DESC LIMIT 1", (pending_id,)).fetchone()
+    if row is None:
+        return None
+    return row[0], [str(v) for v in state.loads(row[1], {}).get("values") or []], row[2]
+
+
+def answer_contested(db, current: dict, resolution: str, now) -> dict | None:
+    """The owner answered a web:contested question without confirm. When the answer names one of the disagreeing
+    values ("412 km" or "412 km holds"), record the decision and close the other open contested questions about the
+    same key whose sides include it. None for any other question or answer. Caller owns the transaction."""
+    try:
+        kind, _ = _parse_scope(current["scope"])
+    except ValidationError:
+        return None
+    asked = _asked(db, current["id"]) if kind == "contested" else None
+    if asked is None:
+        return None
+    key, values, task_id = asked
+    said = _value(re.sub(r"\s+holds\W*$", "", str(resolution or "").strip(), flags=re.IGNORECASE))
+    chosen = next((v for v in values if _value(v) == said), None)
+    if chosen is None:
+        return None
+    db.execute("INSERT INTO web_feedback(task_id,knowledge_id,key,effect,before_confidence,after_confidence,info_gain,"
+               "detail,created_at) VALUES(?,NULL,?,'unchanged',NULL,NULL,0,?,?)",
+               (task_id, key, state.dumps({"owner_choice": chosen, "values": values, "pending_id": current["id"]}),
+                now))
+    closed = []
+    for (pid,) in db.execute("SELECT id FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:contested:%' AND "
+                             "id<>? ORDER BY id", (current["id"],)).fetchall():
+        other = _asked(db, pid)
+        if other is not None and other[0] == key and _value(chosen) in {_value(v) for v in other[1]}:
+            db.execute("UPDATE pending SET resolved_at=?, resolution=? WHERE id=?",
+                       (now, f"{chosen} (the owner's answer to question #{current['id']})", pid))
+            closed.append(pid)
+    return {"kind": "contested", "key": key, "chosen": chosen, "pending_closed": closed}
 
 
 def _parse_scope(scope):

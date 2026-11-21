@@ -220,6 +220,27 @@ def test_non_health_errors_do_not_move_breaker():
     assert s["state"] == "closed" and s["failures"] == 0 and len(a.calls) == 3
 
 
+def test_politeness_waits_do_not_move_breaker():
+    """OBS-01: one 429 put the host in backoff; the 'host backoff in force' refusals that followed were counted as
+    provider failures and held the circuit open for minutes. Our own waiting is not a provider fault."""
+    clock = Clock()
+    outcomes = [ProviderError("a", "host backoff in force", code="rate_limited", retry_after=30.0),
+                FetchError("rate_limited", "https://a.org", "next request slot in 40s", retry_after=40.0)] * 3
+    a = Fake("a", behaviour=lambda q: outcomes.pop(0))
+    reg = ProviderRegistry([a], clock=clock, failure_threshold=2)
+    for _ in range(6):
+        out, _ = run(reg, plan("q"))
+        assert out.failures and "rate_limited" in out.failures[0]["error"]   # still reported, never swallowed
+    s = state_of(reg, "a")
+    assert s["state"] == "closed" and s["failures"] == 0 and len(a.calls) == 6
+    # a genuine fault (a 429 without Retry-After, a 5xx) still counts
+    a.behaviour = ProviderError("a", "HTTP 429", code="rate_limited")
+    run(reg, plan("q"))
+    a.behaviour = ProviderError("a", "HTTP 503", code="http_error")
+    run(reg, plan("q"))
+    assert state_of(reg, "a")["state"] == "open"
+
+
 # ---- circuit breaker -----------------------------------------------------------------------------------------
 
 def test_breaker_transitions_with_fake_clock():

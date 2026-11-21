@@ -379,6 +379,55 @@ GH = [{"tag_name": "v2.2.0", "name": "2.2.0", "html_url": "https://github.com/ac
       {"tag_name": "draft", "draft": True, "html_url": "https://github.com/acme/tool/releases/tag/draft"}]
 
 
+RELEASE_MD = """# Tool 2.5.5 Release Notes
+
+*Released on 2026-11-15.*
+
+Tool 2.5.5 is a patch release that fixes bugs discovered after the 2.5.4
+release. It is unusually large for a patch release due to bugs discovered
+during continuing work on strings for the upcoming 2.6.0 release, ongoing
+threading work, the certificate compromise fixes, and updates in the CI
+infrastructure.
+
+This release supports Python versions 3.12-3.15.
+
+## Improvements
+
+- `tool.linalg.svd` and `tool.linalg.lstsq` now raise for inputs containing
+  infinities instead of returning **garbage**.
+  ([gh-33298](https://github.com/acme/tool/pull/33298))
+- The minimum supported version of the build_helper package is now 3.1.
+
+```python
+tool.svd(x)
+```
+"""
+
+
+def test_github_release_body_is_the_whole_plain_text_document_and_the_snippet_never_cuts_a_word():
+    """RT4-04: the release body was cut to the 400-character snippet (mid-word: "inste") with markdown kept
+    ("# NumPy 2.5.5 Release Notes *Released ...*", "## Improvements - `numpy...`") and used as document text."""
+    url = "https://api.github.com/repos/acme/tool/releases?per_page=5"
+    rel = dict(GH[0], tag_name="v2.5.5", name="v2.5.5", body=RELEASE_MD + "\n" + "Further notes follow. " * 2000)
+    out = GitHubReleasesProvider(FakeFetcher({url: [rel]})).search(Query("github:acme/tool", "technical"), 5)
+    body = out[0].metadata["body"]
+    lines = body.split("\n")
+    assert lines[:4] == [
+        "Tool 2.5.5 Release Notes", "Released on 2026-11-15.",
+        "Tool 2.5.5 is a patch release that fixes bugs discovered after the 2.5.4 release. It is unusually large for a "
+        "patch release due to bugs discovered during continuing work on strings for the upcoming 2.6.0 release, "
+        "ongoing threading work, the certificate compromise fixes, and updates in the CI infrastructure.",
+        "This release supports Python versions 3.12-3.15."]
+    assert "tool.linalg.svd and tool.linalg.lstsq now raise for inputs containing infinities instead of returning " \
+           "garbage. (gh-33298)" in lines
+    assert "The minimum supported version of the build_helper package is now 3.1." in lines   # snake_case kept
+    assert "tool.svd(x)" in lines and not any(m in body for m in ("#", "**", "`", "](", "```"))
+    assert len(body) <= 20_000 and body.endswith("Further notes follow.")        # bounded at a word boundary
+    snippet = out[0].snippet
+    assert len(snippet) <= 400 and snippet.endswith("…") and snippet[:-1] in " ".join(lines)
+    assert snippet[:-1].rstrip().split()[-1] in " ".join(lines).split()          # a whole word, never "inste"
+
+
 def test_github_releases():
     url = "https://api.github.com/repos/acme/tool/releases?per_page=5"
     f = FakeFetcher({url: GH})
@@ -550,6 +599,29 @@ def test_pypi_and_osv_through_safefetcher(web):
     osv_req = web.requests_to("api.osv.dev")[0]
     assert osv_req["method"] == "POST" and json.loads(osv_req["body"])["version"] == "0.25.0"
     assert not web.requests_to("pypi.org", "/robots.txt")
+
+
+def test_wikipedia_backoff_after_one_429_does_not_open_the_circuit(web):
+    """OBS-01: one Wikipedia 429 (Retry-After) puts the host in backoff; the searches refused meanwhile with 'host
+    backoff in force' are reported but must not open the provider's circuit; it answers once the backoff ends."""
+    from neuroscifi.webcortex.net import NetPolicy, SafeFetcher
+    now = [NOW]
+    web.add("en.wikipedia.org", "/w/api.php", b"slow down", status=429, content_type="text/plain",
+            headers={"Retry-After": "120"})
+    fetcher = SafeFetcher(NetPolicy(min_domain_interval=0.0), resolver=web.resolver, connector=web.connector,
+                          clock=lambda: now[0])
+
+    class FixtureWikipedia(WikipediaProvider):
+        BASE = "http://{lang}.wikipedia.org"
+
+    reg = ProviderRegistry([FixtureWikipedia(fetcher)], clock=lambda: now[0], failure_threshold=2)
+    errors = []
+    for _ in range(4):
+        out = reg.search(QueryPlan(queries=(Query("eiffel tower", "encyclopedia"),)), budget=Budget(), usage=Usage())
+        errors.append(out.failures[0]["error"])
+    assert "host backoff in force" in errors[-1] and len(web.requests_to("en.wikipedia.org")) == 1
+    state = next(s for s in reg.status() if s["name"] == "wikipedia")
+    assert state["state"] == "closed" and state["failures"] == 0, state
 
 
 # ---- live --------------------------------------------------------------------------------------------------------

@@ -38,10 +38,11 @@ The binary-belief tables are never touched.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import re
 
 from ..instance import store
-from . import knowledge, state
+from . import claims as _claims, knowledge, state
 from .curiosity import entropy
 
 MIN_RELEVANCE = 0.0          # a cluster needs at least one claim with relevance above this
@@ -488,6 +489,16 @@ def _strengthen(db, task_id, cluster, item, now, summary, ids_by_key, *, support
     item["confidence"] = after
 
 
+def _sides(cluster) -> list[str]:
+    """The values the sources of a contested cluster disagree about ("412 km", "389 km"), in first-seen order."""
+    out = []
+    for pair in cluster.contradicting:
+        for side in pair.get("values") or _claims.conflict_sides(pair.get("reason")) or ():
+            if isinstance(side, str) and side.strip() and side not in out:
+                out.append(side)
+    return out
+
+
 def _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key):
     """A contested cluster about live knowledge: compare values first. When the cluster's supporting side states
     the same values and polarity as the item, the item is strengthened by them (confidence never lowered) and
@@ -549,16 +560,23 @@ def run(db, task_id, now, *, holder=None) -> dict:
                     continue
                 described = "; ".join(sorted({c.get("description") or c.get("reason") or ""
                                               for c in cluster.contradicting} - {""})) or "the sources disagree"
-                pid = questions.ask(
-                    f"web:contested:{task_id}:{n}",
-                    f"«{knowledge.quote(_statement(cluster))}»: {described} Nothing was stored as knowledge. "
-                    "Which holds?", now)
+                sides = _sides(cluster)
+                decided = knowledge.contested_decision(db, cluster.key, sides)
+                if decided is None:
+                    pid, note = questions.ask(
+                        f"web:contested:{task_id}:{n}",
+                        f"«{knowledge.quote(_statement(cluster))}»: {described} Nothing was stored as knowledge. "
+                        "Which holds?", now), None
+                else:           # the owner already decided this disagreement: noted, never asked again (RT4-05)
+                    day = datetime.fromtimestamp(decided["decided_at"], timezone.utc).strftime("%Y-%m-%d")
+                    pid, note = None, f"owner chose {decided['chosen']} on {day}"
                 prior = db.execute("SELECT count(*) FROM web_feedback WHERE key=?", (cluster.key,)).fetchone()[0]
                 conf = state.finite(cluster.confidence, 0.5)
                 _feedback(db, task_id, None, cluster.key, "unchanged" if prior else "new", conf, conf,
-                          {"contested": True, "reason": reason}, now)
+                          {"contested": True, "reason": reason, "pending_id": pid, "values": sides} |
+                          ({"owner_decision": note} if note else {}), now)
                 summary["contested"].append({"key": cluster.key, "knowledge_id": None, "pending_id": pid,
-                                             "reason": reason})
+                                             "reason": reason} | ({"decided": note} if note else {}))
                 if pid is not None:
                     summary["pending"].append(pid)
                 continue

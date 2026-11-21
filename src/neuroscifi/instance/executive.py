@@ -373,6 +373,8 @@ def resolve(db, pending_id, resolution, now, *, confirm=None):
                 return {**current, "changepoint": recorded, "link": linked}
             raise Conflict(f"Pending question {pending_id} was already resolved: {current['resolution']!r}")
         changepoint = linked = web = None
+        if confirm is None and about_web:     # an informational web question: "412 km holds" decides a dispute
+            web = web_knowledge.answer_contested(db, current, resolution, now)
         if confirm is not None:
             if about_web:
                 web = web_knowledge.apply_review(db, current, confirm, now)

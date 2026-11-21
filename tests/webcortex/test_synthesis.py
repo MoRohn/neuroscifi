@@ -1,4 +1,5 @@
 """synthesis.py: the §5 report and the working-memory context pack."""
+from dataclasses import replace
 from datetime import datetime, timezone
 import json
 
@@ -745,6 +746,12 @@ def test_a_sentence_reporting_a_myth_does_not_assert_it():
     ("Did the Hera probe reach the asteroid Didymos?", "the Hera probe did reach the asteroid Didymos"),
     ("Is it true that the Eiffel Tower is in Berlin?", "the Eiffel Tower is in Berlin"),
     ("the Eiffel Tower is in Paris.", "the Eiffel Tower is in Paris."),
+    # RT4-03: package release questions ("numpy is 2.5.5 the latest release" was the garbled statement)
+    ("Is numpy 2.5.5 the latest release?", "The latest release of numpy is 2.5.5"),
+    ("Is numpy 2.5.5 the latest stable version?", "The latest release of numpy is 2.5.5"),
+    ("Was numpy 2.5.5 released?", "numpy 2.5.5 was released"),
+    ("Was numpy==2.5.5 released?", "numpy 2.5.5 was released"),
+    ("Has left-pad 1.3.0 been released?", "left-pad 1.3.0 has been released"),
 ])
 def test_yes_no_questions_become_checkable_statements(question, statement):
     assert S.checkable_statement(question) == statement
@@ -898,3 +905,71 @@ def test_question_focus_and_tiers_read_the_head_noun_and_attribute_questions():
     length = C.extract_claims(doc("https://c.example/v", "With a length of 412 km, the Varnel is the longest river "
                                   "of the region.", title="Varnel"), "Varnel length")[0]
     assert S.relation_coverage(length, focus) == 1.0
+
+
+@pytest.mark.parametrize("statement, parsed", [
+    ("The latest release of numpy is 2.5.5", ("numpy", "2.5.5", "latest", 1)),
+    ("numpy 2.5.5 is the latest release", ("numpy", "2.5.5", "latest", 1)),
+    ("numpy==2.5.5 was released", ("numpy", "2.5.5", "released", 1)),
+    ("numpy 2.5.5 was not released", ("numpy", "2.5.5", "released", -1)),
+    ("the Zephyr compiler 4.2.0 was released on 17 November 2026", None),
+    ("the Eiffel Tower is in Paris", None),
+])
+def test_release_statements_are_read_back(statement, parsed):
+    got = S.release_statement(statement)
+    assert (got and (got["name"], got["version"], got["kind"], got["polarity"])) == parsed
+
+
+def test_a_registry_record_decides_a_release_verdict():
+    """RT4-03: "Was numpy==2.5.5 released?" was 'insufficient' ("No source sentence names the subject together with
+    the checked relation") although the PyPI record states 2.5.5; the record template now supports or contradicts a
+    version / release statement by the record's identity and metadata."""
+    fv = {"mode": "fact_verification", "freshness_class": "release"}
+    record = replace(NUMPY_PYPI, metadata=dict(NUMPY_PYPI.metadata, versions_recent=[{"version": "2.5.5"},
+                                                                                     {"version": "2.5.4"}]))
+    for question, label in (("Was numpy==2.5.5 released?", "supported"), ("Was numpy 2.5.4 released?", "supported"),
+                            ("Was numpy 2.9.0 released?", "insufficient"),     # not in the record: unknown
+                            ("Is numpy 2.5.5 the latest release?", "supported"),
+                            ("Is numpy 2.4.0 the latest release?", "disputed")):
+        v = run(question, [record], fv)["verdict"]
+        assert v["label"] == label, (question, v)
+    v = run("Is numpy 2.4.0 the latest release?", [NUMPY_PYPI], fv)["verdict"]
+    assert any("PyPI lists 2.5.5 as the latest version of numpy" in r for r in v["reasons"]), v["reasons"]
+    # the record of the requested version (the full release history) decides "V was released"
+    pinned = _registry("PyPI", "numpy", "2.5.5", ts(2026, 11, 15), "Arrays")
+    pinned = replace(pinned, metadata=dict(pinned.metadata, requested="2.9.0", requested_exists=False))
+    v = run("Was numpy 2.9.0 released?", [pinned], fv)["verdict"]
+    assert v["label"] == "disputed" and any("lists no release 2.9.0" in r for r in v["reasons"]), v
+    # a yes/no release question gets a verdict in technical mode too; a wh-question does not
+    tech = {"mode": "technical", "freshness_class": "release"}
+    assert run("Was numpy 2.5.5 released?", [NUMPY_PYPI], tech)["verdict"]["label"] == "supported"
+    assert run("What is the latest release of numpy?", [NUMPY_PYPI], tech)["verdict"] is None
+    # another package's record is never evidence
+    other = _registry("PyPI", "numpyx", "2.5.5", ts(2026, 11, 15), "Not numpy")
+    assert run("Is numpy 2.5.5 the latest release?", [other], fv)["verdict"]["supporting"] == []
+
+
+def test_a_definite_description_takes_the_subject_of_its_own_documents_title():
+    """OBS-02: "The tower ..." of the Fernsehturm Berlin article was quoted beside Eiffel Tower quotes: a sentence whose
+    subject only refers back ("The tower", "It") is about its own document's title, for clustering and ranking."""
+    eiffel = doc("https://en.wikipedia.org/wiki/Eiffel_Tower", "The Eiffel Tower is a wrought-iron lattice tower on "
+                 "the Champ de Mars in Paris, France. The tower is 330 metres tall and was completed in 1889.",
+                 title="Eiffel Tower")
+    berlin = doc("https://en.wikipedia.org/wiki/Fernsehturm_Berlin", "The Fernsehturm is a television tower in "
+                 "central Berlin, Germany. The tower is 368 metres tall and was completed in 1969.",
+                 title="Fernsehturm Berlin")
+    question = "How tall is the Eiffel Tower?"
+    claims = {c.text: c for d in (eiffel, berlin) for c in C.extract_claims(d, question)}
+    ours = claims["The tower is 330 metres tall and was completed in 1889."]
+    theirs = claims["The tower is 368 metres tall and was completed in 1969."]
+    assert C.primary_subject(theirs.text, theirs.title) == "Fernsehturm Berlin"
+    assert C.primary_subject(ours.text, ours.title) == "Eiffel Tower"
+    assert not C.subjects_compatible(ours, theirs)                         # never one cluster, never a contradiction
+    focus = S.question_focus(question, {})
+    assert S.subject_tier(ours, focus) == 0 and S.subject_tier(theirs, focus) == 2
+    r = run(question, [eiffel, berlin], {"mode": "quick_lookup"})
+    quotes = [a["text"] for a in r["answer"][1:]]
+    on_subject = [i for i, t in enumerate(quotes) if "Fernsehturm" not in t and t != theirs.text]
+    off_subject = [i for i, t in enumerate(quotes) if t == theirs.text or "Fernsehturm" in t]
+    assert on_subject and all(i < j for i in on_subject for j in off_subject), quotes   # ranked off-subject
+    assert not any("368" in (c["a"]["text"] + c["b"]["text"]) for c in r["contradictions"]), r["contradictions"]

@@ -216,13 +216,16 @@ def rank(db, now, *, limit=10) -> list[dict]:
     # Contested subjects that never became knowledge (open questions from consolidation).
     seen_keys = {i["key"] for i in live}
     for (key,) in db.execute("SELECT DISTINCT key FROM web_feedback WHERE knowledge_id IS NULL "
-                             "AND json_extract(detail,'$.contested')=1 ORDER BY key").fetchall():
+                             "AND json_extract(detail,'$.contested')=1 AND key NOT IN (SELECT key FROM web_feedback "
+                             "WHERE json_extract(detail,'$.owner_choice') IS NOT NULL) ORDER BY key").fetchall():
         if key in seen_keys:
             continue
         factor, futile = _futility(db, key)
         gain = categorical_gain([0.35, 0.35, 0.15, 0.15])
         terms = search_terms(None, key, db)
-        entry = _entry("hypothesis", {"key": key}, gain, "gap_resolution", IMPORTANCE["held"],
+        said = db.execute("SELECT text FROM web_claims WHERE key=? ORDER BY created_at DESC LIMIT 1", (key,)).fetchone()
+        target = {"key": key} | ({"statement": knowledge.quote(said[0])} if said else {})   # shown, never the key
+        entry = _entry("hypothesis", target, gain, "gap_resolution", IMPORTANCE["held"],
                        f"sources disagree and nothing is known yet; distinguishing hypotheses gains {gain:.3f} bits"
                        f"{futile}", factor=factor,
                        extra={"hypotheses": [{"label": "A holds", "query": f"{terms} official source"},
@@ -262,6 +265,8 @@ def propose(db, candidate: dict, now) -> dict:
     from .knowledge import open_question, question_room, quote
     target = candidate.get("target") or {}
     objective = target.get("statement") or search_terms(None, target.get("key", ""), db)
+    if candidate.get("kind") == "hypothesis":     # a disagreement: its search words, not one side's sentence
+        objective = search_terms(None, target.get("key", ""), db)
     if candidate.get("hypotheses"):
         objective = f"{objective} ({candidate['hypotheses'][0]['query']})"
     prepared = orchestrator.prepare(db, objective, now, mode=candidate.get("mode", "fact_verification"),

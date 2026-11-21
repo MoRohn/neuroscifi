@@ -1278,3 +1278,88 @@ def test_a_page_reached_from_a_feed_item_takes_the_items_date(individual, web):
     source = state.sources(db, task["id"])[0]
     assert source["published_at"] == T0 - 2 * 86400
     assert state.task(db, task["id"])["checkpoint"]["documents"][0]["published_hint"] == T0 - 2 * 86400
+
+
+def _numpy_registry(web, latest, versions):
+    """A fixture PyPI (the real PyPIProvider, BASE on FixtureWeb) whose numpy record has these releases."""
+    from neuroscifi.webcortex.providers.structured import PyPIProvider
+
+    def upload(i):
+        return [{"upload_time_iso_8601": f"2026-11-{10 + i:02d}T09:00:00Z", "yanked": False}]
+    releases = {v: upload(i) for i, v in enumerate(versions)}
+    web.add("pypi.org", "/pypi/numpy/json", json.dumps({
+        "info": {"name": "numpy", "version": latest, "summary": "Fundamental package for array computing in Python",
+                 "requires_python": ">=3.12", "yanked": False},
+        "releases": releases, "urls": releases[latest]}), content_type="application/json")
+
+    class FixturePyPI(PyPIProvider):
+        BASE = "http://pypi.org"
+    return FixturePyPI(None)
+
+
+@pytest.mark.parametrize("question,mode,latest,versions,statement,label", [
+    ("Was numpy 2.5.5 released?", "technical", "2.5.5", ["2.5.4", "2.5.5"], "numpy 2.5.5 was released",
+     "supported"),
+    ("Was numpy==2.5.5 released?", "fact_verification", "2.6.0", ["2.5.5", "2.6.0"], "numpy 2.5.5 was released",
+     "supported"),
+    ("Was numpy 2.5.5 released?", "fact_verification", "2.5.4", ["2.5.3", "2.5.4"], "numpy 2.5.5 was released",
+     "disputed"),
+    ("Is numpy 2.5.5 the latest release?", "technical", "2.5.5", ["2.5.4", "2.5.5"],
+     "The latest release of numpy is 2.5.5", "supported"),
+    ("Is numpy 2.5.5 the latest release?", "technical", "2.6.0", ["2.5.5", "2.6.0"],
+     "The latest release of numpy is 2.5.5", "disputed"),
+])
+def test_plain_release_questions_reach_the_registry_and_its_record_decides(individual, web, question, mode, latest,
+                                                                            versions, statement, label):
+    """RT4-03: "released" was no release cue (no registry lookup), "Is numpy 2.5.5 the latest release?" became "numpy
+    is 2.5.5 the latest release" with no verdict, and the PyPI record never satisfied the verdict's subject check."""
+    db, path = individual
+    pypi = _numpy_registry(web, latest, versions)
+    task = orchestrator.submit(db, question, T0, mode=mode)
+    services = svc_mod.build(db, path, fixture=web, providers=[pypi], clock=lambda: T0)
+    pypi.fetcher = services.fetcher
+    try:
+        done = orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    assert "pypi:numpy==2.5.5" in query_texts(db, task["id"])
+    verdict = done["result"]["verdict"]
+    assert verdict is not None and verdict["statement"] == statement
+    assert verdict["label"] == label, verdict
+    if label == "disputed":
+        assert verdict["contradicting"] and any("PyPI lists" in r for r in verdict["reasons"]), verdict["reasons"]
+    else:
+        assert verdict["supporting"] and verdict["citations"] == [1]
+
+
+def test_github_release_quotes_are_whole_plain_sentences_from_the_whole_body(individual, web):
+    """RT4-04: release quotes were cut mid-word ("... containing infinities inste") and carried markdown ("## Changes
+    - The minimum sup"): the 400-character search snippet was the document text."""
+    from neuroscifi.webcortex.providers.structured import GitHubReleasesProvider
+    db, path = individual
+    body = ("# Tool 2.5.5 Release Notes\n\n*Released on 2026-11-15.*\n\nTool 2.5.5 is a patch release that fixes bugs "
+            "discovered\nafter the 2.5.4 release.\n\n## Improvements\n\n- `tool.linalg.svd` now raises for inputs "
+            "containing\n  infinities instead of returning garbage values.\n\n" +
+            "".join(f"- Fixed a rare crash number {i} in the parser module when reading files.\n" for i in range(12)) +
+            "\n## Changes\n\n- The minimum supported version of the build toolchain for Tool is now 3.1.\n")
+    web.add("api.github.com", "/repos/acme/tool/releases", json.dumps([{
+        "tag_name": "v2.5.5", "name": "v2.5.5", "html_url": "https://github.com/acme/tool/releases/tag/v2.5.5",
+        "published_at": "2026-11-15T20:00:00Z", "prerelease": False, "draft": False, "body": body}]),
+        content_type="application/json")
+
+    class FixtureGitHub(GitHubReleasesProvider):
+        BASE = "http://api.github.com"
+    github = FixtureGitHub(None)
+    task = orchestrator.submit(db, "What changed in the latest release of github:acme/tool?", T0, mode="technical")
+    services = svc_mod.build(db, path, fixture=web, providers=[github], clock=lambda: T0)
+    github.fetcher = services.fetcher
+    try:
+        done = orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    texts = [c["text"] for c in state.claims(db, task["id"])]
+    assert "The minimum supported version of the build toolchain for Tool is now 3.1." in texts   # past 400 chars
+    assert "tool.linalg.svd now raises for inputs containing infinities instead of returning garbage values." in texts
+    quotes = [a["text"] for a in done["result"]["answer"][1:]]
+    assert quotes and not any(m in t for t in texts + quotes for m in ("#", "**", "`", "- "))
+    assert all(t.rstrip().endswith((".", "!", "?", ")", ":")) for t in quotes), quotes
