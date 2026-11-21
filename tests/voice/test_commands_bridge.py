@@ -37,6 +37,12 @@ from .conftest import OWNER, pocket_principal
     ("Research quantum error correction", "research", "quantum error correction"),
     ("When was Python first released?", "research", "When was Python first released?"),
     ("hello", "unclear", None),
+    ("I had a lovely walk in the park today", "chatter", None),        # T5: chatter is not a web search
+    ("thanks that was really helpful", "chatter", None),
+    ("the weather is nice here", "chatter", None),
+    ("the latest numpy version?", "research", "the latest numpy version?"),
+    ("how tall is Mount Everest", "research", "how tall is Mount Everest"),
+    ("tell me the population of Lisbon", "research", "tell me the population of Lisbon"),
 ])
 def test_parse(text, kind, arg):
     intent = commands.parse(text)
@@ -305,3 +311,24 @@ def test_evidence_numbers_match_the_answer_citations(db, monkeypatch):
     for line in r.text.splitlines()[1:]:
         n = int(line[1:line.index("]")])
         assert by_n[n].split("//")[1].split("/")[0] in line, line
+
+
+def test_chatter_starts_no_research(db):
+    r = handle(db, "I had a lovely walk in the park today")
+    assert r.intent == "chatter" and r.task_id is None and "didn't start a web search" in r.text
+    assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == 0
+
+
+def test_research_from_conversation_is_rate_limited_per_principal(db):
+    """T5: 385 research tasks were queued from conversation in about 5 s."""
+    clock = [time.time()]
+    bridge = vbridge.Bridge(lambda: clock[0])
+    for n in range(vbridge.CONVERSATION_RESEARCH_LIMIT):
+        assert bridge.handle(db, OWNER, {}, f"What is the lifespan of armadillo species {n}?").intent == "research"
+    over = bridge.handle(db, OWNER, {}, "What is the lifespan of a tortoise?")
+    assert over.intent == "rate_limited" and over.task_id is None and "Ask again in about 10 minutes" in over.text
+    assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == vbridge.CONVERSATION_RESEARCH_LIMIT
+    phone = bridge.handle(db, pocket_principal(), {}, "What is the lifespan of a tortoise?")
+    assert phone.intent == "research"                              # another principal has its own allowance
+    clock[0] += vbridge.CONVERSATION_RESEARCH_WINDOW + 1
+    assert bridge.handle(db, OWNER, {}, "What is the lifespan of a tortoise?").intent == "research"

@@ -76,7 +76,8 @@ Parsing is deterministic (regular expressions over the normalised transcript); n
 
 | Say | Intent | Effect | Confirmation |
 |---|---|---|---|
-| any question (≥ 3 words), "research X", "look up X", "tell me about X" | research | `orchestrator.submit(origin="voice")`; spoken acknowledgement; the hub follows the task and speaks the answer | only if the privacy screen finds private data (owner: "send it anyway?"; Pocket: refused) |
+| any question (≥ 3 words ending with "?" or starting with a question word or an information request: what, how, is, does, tell me, explain, ...), "research X", "look up X", "tell me about X" | research | `orchestrator.submit(origin="voice")`; spoken acknowledgement; the hub follows the task and speaks the answer. At most 8 new tasks per principal from conversation in 10 minutes (then `rate_limited`, with when to ask again) | only if the privacy screen finds private data (owner: "send it anyway?"; Pocket: refused) |
+| any other sentence of ≥ 3 words (remarks, thanks, statements) | chatter | nothing is searched; the reply says how to ask | — |
 | "show (me) the evidence" | show_evidence | sources of the last task (text), one spoken sentence | — |
 | "explain that more simply" | simpler | the local model rewrites from the **same evidence bundle**; every sentence passes `reasoning.guard`; without a model: a shorter extract, labelled | — |
 | "remember (these) conclusions" | remember | accept the last task's provisional knowledge items (`knowledge.review`) | **yes** (owner only) |

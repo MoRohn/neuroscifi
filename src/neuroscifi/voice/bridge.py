@@ -20,11 +20,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 import secrets
+import threading
 
 from ..instance.errors import Conflict, InstanceError, NotFound, ValidationError
 from . import commands
 
 CONFIRM_SECONDS = 60.0
+# Research started from conversation (voice or typed), per principal: at most this many new tasks in the window
+# (UAT T5: 385 tasks were queued in about 5 s). Only tasks created count (a deduplicated repeat creates none).
+CONVERSATION_RESEARCH_LIMIT = 8
+CONVERSATION_RESEARCH_WINDOW = 600.0
 USER_ORIGINS = ("console", "cli", "voice", "pocket", "pocket-voice", "owner", "mcp")   # not autonomous research
 MAX_SPOKEN_SENTENCES = 2
 MAX_SPOKEN_WORDS = 70
@@ -159,6 +164,22 @@ def compose_answer(task) -> Reply:
 class Bridge:
     def __init__(self, clock):
         self.clock = clock
+        self._research_lock = threading.Lock()   # the limit check and the task it admits are one step
+
+    def _research_limited(self, db, principal):
+        """A refusal when this principal started CONVERSATION_RESEARCH_LIMIT research tasks from conversation in
+        the last CONVERSATION_RESEARCH_WINDOW seconds, else None. Caller holds _research_lock."""
+        now = self.clock()
+        rows = db.execute("SELECT created_at FROM web_tasks WHERE origin=? AND family IS ? AND created_at>? "
+                          "ORDER BY created_at", (principal.origin, principal.family,
+                                                  now - CONVERSATION_RESEARCH_WINDOW)).fetchall()
+        if len(rows) < CONVERSATION_RESEARCH_LIMIT:
+            return None
+        wait = max(1, round((rows[-CONVERSATION_RESEARCH_LIMIT][0] + CONVERSATION_RESEARCH_WINDOW - now) / 60))
+        minutes = int(CONVERSATION_RESEARCH_WINDOW // 60)
+        return _say("rate_limited", f"I've started {len(rows)} web searches from our conversation in the last "
+                                    f"{minutes} minutes, so I'm not starting another one now. Ask again in about "
+                                    f"{wait} minute{'s' if wait != 1 else ''}, or use the research box.")
 
     # -- helpers -----------------------------------------------------------------------------------------------
     def _last_task(self, db, ctx, principal):
@@ -249,10 +270,17 @@ class Bridge:
 
     # -- intents ------------------------------------------------------------------------------------------------
     def _submit(self, db, principal, ctx, objective, authorization=None, instruction=None):
+        with self._research_lock:
+            return self._submit_locked(db, principal, ctx, objective, authorization, instruction)
+
+    def _submit_locked(self, db, principal, ctx, objective, authorization=None, instruction=None):
         from ..webcortex import orchestrator
         if not principal.research:
             return _say("refused", "Research from this device is switched off. Turn on Pocket research in the "
                                    "console to allow it.")
+        limited = self._research_limited(db, principal)
+        if limited is not None:
+            return limited
 
         def submit():
             return orchestrator.submit(db, objective, self.clock(), origin=principal.origin, family=principal.family,
@@ -285,6 +313,10 @@ class Bridge:
 
     def _unclear(self, db, principal, ctx, _):
         return _say("unclear", "Ask me a question, or say help to hear what I can do.")
+
+    def _chatter(self, db, principal, ctx, _):
+        return _say("chatter", "That doesn't sound like a question, so I didn't start a web search. Ask me a "
+                               "question, or say research followed by a topic.")
 
     def _help(self, db, principal, ctx, _):
         return _say("help", HELP)
@@ -428,6 +460,10 @@ class Bridge:
         if task["status"] in ("partial", "cancelled", "failed"):
             if not principal.research:
                 return _say("refused", "Research from this device is switched off.")
+            with self._research_lock:
+                limited = self._research_limited(db, principal)
+            if limited is not None:
+                return limited
             try:
                 queued = orchestrator.requeue(db, task["id"], self.clock(), origin=principal.origin,
                                               family=principal.family)

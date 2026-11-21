@@ -18,8 +18,11 @@ parse(text) -> Intent(kind, arg). Kinds:
   disable_autonomy               "disable/turn off autonomous research"
   handoff                        "use this device for the microphone", "move the microphone here"
   help                           "help", "what can you do"
-  research                       "research X", "look up X", "investigate X", "find out X" (arg X), or any other
-                                 utterance of at least MIN_QUESTION_WORDS words (the question path text uses)
+  research                       "research X", "look up X", "investigate X", "find out X" (arg X), or another
+                                 utterance of at least MIN_QUESTION_WORDS words that asks for something: it ends
+                                 with "?" or starts with a question word or an information request (_ASKS)
+  chatter                        other sentences (remarks, thanks, statements): no web search is started (UAT T5:
+                                 every sentence of conversation became a web research query)
   unclear                        anything shorter (greetings, fragments)
 """
 from __future__ import annotations
@@ -98,6 +101,9 @@ _MODE = [
 ]
 _LEARNED = re.compile(r"^what (?:have you|did you) learn(?:ed|t)? (?:since |over |in )?(yesterday|today|this week|"
                       r"the last day|the last week|recently)$")
+_ASKS = re.compile(r"^(?:what|what's|whats|who|who's|whom|whose|when|where|which|why|how|is|are|was|were|do|does|"
+                   r"did|can|could|should|would|will|has|have|had|may|might|explain|compare|summari[sz]e|describe|"
+                   r"define|list|give me|show me|tell me|find|check|verify|whether)\b")
 _RESEARCH = re.compile(r"^(?:please )?(?:research|look up|investigate|find out(?: about)?|search for|"
                        r"tell me about|what do you know about|check)\s+(.+)$")
 
@@ -128,6 +134,8 @@ def parse(text: str) -> Intent:
         objective, instruction = _split_instruction(" ".join(original.split()[words:]) or m.group(1))
         return Intent("research", objective, instruction)
     if len(norm.split()) >= MIN_QUESTION_WORDS:
+        if not (original.rstrip().endswith("?") or _ASKS.match(norm)):
+            return Intent("chatter")
         objective, instruction = _split_instruction(original)
         return Intent("research", objective, instruction)
     return Intent("unclear")
