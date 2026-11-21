@@ -163,6 +163,20 @@ def test_pocket_voice_needs_paired_credential_and_keeps_limits(pocket):
     assert st == 200 and any(e["type"] == "transcript" for e in ev["events"])
 
 
+def test_pocket_voice_is_off_unless_pocket_research_is_on(pocket, instance):
+    """Pocket voice follows the pocket_research switch (default off), like Pocket research itself (H1)."""
+    key = ppost(pocket, "pair", {"code": "invite"})[2]["key"]
+    sid = ppost(pocket, "voice_session", {"action": "start", "device": "phone123"}, key=key)[2]["session"]
+    with closing(store.connect(instance)) as db:
+        wstate.set_config(db, {"pocket_research": False}, time.time())
+    assert ppost(pocket, "voice_status", {"probe": False}, key=key)[2] == {"voice": False}
+    for route, body in (("voice_session", {"action": "start", "device": "phone123"}),
+                        ("voice_text", {"session": sid, "text": "what have you learned since yesterday"}),
+                        ("voice_transcripts", {}), ("voice_events", {"session": sid, "since": 0, "wait": 0})):
+        assert ppost(pocket, route, body, key=key)[0] == 404, route
+    assert ppost(pocket, "voice_status", {"probe": False}, key="unpaired")[0] == 403
+
+
 def test_pocket_voice_invisible_without_instance(tmp_path):
     srv = pocket_server.PocketServer(("127.0.0.1", 0), pocket_server.Handler)
     srv.store = pocket_server.Store(tmp_path / "m.sqlite")

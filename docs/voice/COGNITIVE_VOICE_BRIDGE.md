@@ -80,7 +80,7 @@ Parsing is deterministic (regular expressions over the normalised transcript); n
 | "show (me) the evidence" | show_evidence | sources of the last task (text), one spoken sentence | — |
 | "explain that more simply" | simpler | the local model rewrites from the **same evidence bundle**; every sentence passes `reasoning.guard`; without a model: a shorter extract, labelled | — |
 | "remember (these) conclusions" | remember | accept the last task's provisional knowledge items (`knowledge.review`) | **yes** (owner only) |
-| "what have you learned since yesterday / this week" | learned_since | knowledge created/updated in the window, from memory (template-labelled) | — |
+| "what have you learned since yesterday / this week" | learned_since | knowledge created/updated in the window, from memory (template-labelled) | — (owner only: it reads the whole knowledge base) |
 | "continue the previous investigation" | continue_research | `orchestrator.requeue` (partial / cancelled / failed) or a new linked task | — |
 | "stop", "stop speaking but keep researching" | stop_speaking | playback stops; research continues | — |
 | "go on" | resume_speaking | speak the rest of an interrupted reply | — |
@@ -88,17 +88,19 @@ Parsing is deterministic (regular expressions over the normalised transcript); n
 | "switch to text only" / "text replies only" / "speak your answers" | mode | C / B / A | — |
 | "forget this conversation" | forget | delete this session's transcript (and retained audio) | **yes** |
 | "forget the last research" | forget | `governance.forget_research` | **yes** (owner only) |
-| "turn on autonomous research" | enable_autonomy | `webcortex.state.set_config(autonomous=True)` | **yes** (owner only) |
-| "turn off autonomous research" | disable_autonomy | reduces autonomy | — (owner only) |
+| "turn on autonomous research" | enable_autonomy | `webcortex.autonomy.enable(by="owner:voice")` (the switch and its enable record; the reply says the resulting state) | **yes** (owner only) |
+| "turn off autonomous research" | disable_autonomy | `webcortex.autonomy.disable(by="owner:voice")`, recorded | — (owner only) |
 | "use this device for the microphone" | handoff | moves the capture lease | **yes** |
 | "confirm" / "no" | confirm / deny | answers the pending confirmation of this session | — |
 
 A confirmation is held server-side per session for 60 s; it is executed only by the same session ("confirm" spoken,
 or the Confirm button). "Yes" alone is not accepted.
 
-**Authorisation.** The console principal is the owner. A Pocket principal is its pairing family: research only while
-`pocket_research` is on (with Pocket's per-family hourly limit), only its family's tasks and transcripts, no owner
-settings (retention, endpoints), no sensitive owner commands ("needs the owner console").
+**Authorisation.** The console principal is the owner. Pocket voice exists only while `pocket_research` is on
+(default off, the same switch as Pocket research; otherwise `voice_status` answers `{"voice": false}` and every other
+voice route 404). A Pocket principal is its pairing family: research with Pocket's per-family hourly limit, only its
+family's tasks and transcripts, no owner settings (retention, endpoints), no knowledge-base reads ("what have you
+learned"), no sensitive owner commands ("needs the owner console").
 
 **Replies.** `compose_answer(task)` uses the model answer when `report.reasoning.status == "model"` (sentences that
 passed the guard; label "Advanced reasoning by …"), otherwise the extractive answer, spoken as "According to
@@ -140,8 +142,8 @@ and `POST /api/voice/audio` (`audio/L16; rate=16000`, ≤ 64 KiB per chunk, head
 allows `microphone=(self)` (camera and geolocation stay off).
 
 Pocket (paired credential, HTTPS on the LAN): `POST /api/voice_<op>` with JSON ≤ 512 B (`voice_text`,
-`voice_correct` ≤ 1 KiB), `voice_audio` ≤ 64 KiB. A bridge without `--instance-db` answers `voice_status` with
-`{"voice": false}` to paired devices; unpaired callers get 403. The Pocket device id is an instance-salted pseudonym
+`voice_correct` ≤ 1 KiB), `voice_audio` ≤ 64 KiB. A bridge without `--instance-db`, or with `pocket_research` off,
+answers `voice_status` with `{"voice": false}` to paired devices; unpaired callers get 403. The Pocket device id is an instance-salted pseudonym
 of its pairing; Pocket stores nothing in browser storage for voice.
 
 ## 7. Operations

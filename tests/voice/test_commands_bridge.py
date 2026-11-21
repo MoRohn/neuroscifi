@@ -1,5 +1,6 @@
 """Cognitive Voice Bridge: intent parsing, routing through the research path, authorisation and confirmation."""
 from contextlib import closing
+import json
 import time
 
 import pytest
@@ -198,3 +199,41 @@ def test_learned_since_reads_memory(db):
                "'provisional',0.7,0.3,'release',?,?,?,?)", (now, now, now, now))
     r = handle(db, "What have you learned since yesterday?")
     assert "added 1 item" in r.text and "provisionally" in " ".join(r.speech)
+
+
+def test_learned_since_is_owner_only(db):
+    """A paired device must not read the owner's whole knowledge base by voice (H1)."""
+    now = time.time()
+    db.execute("INSERT INTO web_knowledge(key,version,statement,status,confidence,uncertainty,freshness_class,"
+               "first_verified_at,last_verified_at,created_at,updated_at) VALUES('k',1,'The owner secret fact.',"
+               "'provisional',0.7,0.3,'release',?,?,?,?)", (now, now, now, now))
+    r = handle(db, "What have you learned since yesterday?", pocket_principal())
+    assert r.intent == "refused" and "secret" not in r.text and "secret" not in " ".join(r.speech)
+
+
+def test_voice_autonomy_switch_is_recorded(db):
+    """The voice toggle goes through autonomy.enable/disable, so the owner's switch is audited (L6)."""
+    from neuroscifi.webcortex import autonomy
+    r = handle(db, "Turn on autonomous research")
+    ok = handle(db, "confirm", pending=r.confirm)
+    assert ok.intent == "enable_autonomy" and autonomy.enabled(db)
+    record = autonomy.policy(db)["record"]
+    assert record["enabled_by"] == "owner:voice" and record["enabled_at"]
+    assert "on" in ok.text.lower()
+    off = handle(db, "Turn off autonomous research")
+    assert off.intent == "disable_autonomy" and not autonomy.enabled(db)
+    assert autonomy.policy(db)["record"]["disabled_by"] == "owner:voice"
+    decisions = [json.loads(d) for (d,) in db.execute("SELECT detail FROM web_events WHERE kind='decision'")]
+    assert [d.get("by") for d in decisions if d.get("autonomy") in ("enabled", "disabled")] == ["owner:voice"] * 2
+
+
+def test_voice_autonomy_reply_reflects_a_failed_switch(db, monkeypatch):
+    from neuroscifi.instance.errors import Conflict
+    from neuroscifi.webcortex import autonomy
+    r = handle(db, "Turn on autonomous research")
+
+    def refuse(*a, **k):
+        raise Conflict("writes are paused")
+    monkeypatch.setattr(autonomy, "enable", refuse)
+    out = handle(db, "confirm", pending=r.confirm)
+    assert "is now on" not in out.text and "couldn't" in out.text.lower() and not autonomy.enabled(db)

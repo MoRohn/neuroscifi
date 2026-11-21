@@ -8,8 +8,9 @@ that already passed the evidence guard (model answer) or is labelled extractive/
 citations goes to the transcript and screen.
 
 Authorisation: the principal decides what may run. The owner console may do everything below; a Pocket device only
-what Pocket already may (research when its pocket_research switch is on, its own family's tasks, its own
-transcript, mode and microphone hand-off). Sensitive commands - forget/delete, enabling autonomy, disclosing
+what Pocket already may (Pocket voice exists only while the pocket_research switch is on: research, its own
+family's tasks, its own transcript, mode, and asking the microphone's holder for a hand-off); reading the knowledge
+base ("what have you learned") is owner-only. Sensitive commands - forget/delete, enabling autonomy, disclosing
 private terms to the web, moving the microphone to another device, accepting conclusions into memory - return a
 confirmation request; nothing happens until the same session confirms it (voice "confirm" or the Confirm button)
 within CONFIRM_SECONDS.
@@ -205,9 +206,7 @@ class Bridge:
                         text="Transcript of this voice session deleted.",
                         actions=[{"kind": "forget_conversation"}])
         elif action == "enable_autonomy":
-            from ..webcortex import state as wstate
-            wstate.set_config(db, {"autonomous": True}, now)
-            out = _say("enable_autonomy", "Autonomous research is now on, within its daily budget.")
+            out = self._switch_autonomy(db, True)
         elif action == "remember":
             from ..webcortex import knowledge
             done = 0
@@ -316,6 +315,9 @@ class Bridge:
                              f"{task['objective'][:100]} into memory?")
 
     def _learned_since(self, db, principal, ctx, arg):
+        refused = self._owner_only(principal, "Reading what I have learned")   # the whole knowledge base
+        if refused:
+            return refused
         from ..webcortex import knowledge
         since = self.clock() - commands.SINCE.get(arg or "yesterday", 86400.0)
         new = knowledge.rows(db, "created_at>=? AND status IN ('provisional','accepted')", (since,))
@@ -438,9 +440,21 @@ class Bridge:
         refused = self._owner_only(principal, "Changing autonomous research")
         if refused:
             return refused
-        from ..webcortex import state as wstate
-        wstate.set_config(db, {"autonomous": False}, self.clock())
-        return _say("disable_autonomy", "Autonomous research is off.")
+        return self._switch_autonomy(db, False)
+
+    def _switch_autonomy(self, db, on):
+        """The owner's switch through autonomy.enable/disable, so it is recorded (by owner:voice) like the console's;
+        the reply says what the switch actually is afterwards."""
+        from ..webcortex import autonomy
+        intent = "enable_autonomy" if on else "disable_autonomy"
+        try:
+            (autonomy.enable if on else autonomy.disable)(db, self.clock(), by="owner:voice")
+        except InstanceError as err:
+            return _say(intent, f"I couldn't change autonomous research: {str(err)[:160]}")
+        if autonomy.enabled(db) != on:
+            return _say(intent, "I couldn't change autonomous research; it is still " + ("off." if on else "on."))
+        return _say(intent, "Autonomous research is now on, within its daily budget." if on
+                    else "Autonomous research is off.")
 
     def _handoff(self, db, principal, ctx, _):
         return self._confirm("handoff", "handoff", {}, "Move the microphone to this device? The other device "

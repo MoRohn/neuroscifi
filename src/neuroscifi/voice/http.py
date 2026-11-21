@@ -6,8 +6,9 @@ speech and transcripts (query string), POST JSON bodies of at most 4 KiB, and PO
 limit is unchanged).
 Pocket (paired credential over HTTPS on the LAN): POST `/api/voice_<op>`; JSON bodies of at most 512 bytes (1 KiB for
 voice_text / voice_correct, like research_submit), voice_audio raw as above. A paired device acts as a Pocket
-principal: research only while its pocket_research switch is on, its own family's tasks and transcripts, no owner
-settings and no sensitive owner commands.
+principal only while the individual's pocket_research switch is on (default off; otherwise Pocket voice is invisible:
+voice_status answers {"voice": false} and every other route 404): its own family's tasks and transcripts, no owner
+settings, no knowledge-base reads and no sensitive owner commands.
 Audio parameters travel in headers (X-NSF-Session, X-NSF-Utterance, X-NSF-Seq, X-NSF-Final) because Pocket routes
 match the path exactly.
 """
@@ -248,16 +249,17 @@ def pocket(handler, route):
     auth = handler.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         return 403, {}
-    if not path or not Path(path).is_file():
-        try:                       # a paired device learns that this bridge offers no voice (no 404 to log)
-            server.store.family(auth[7:])
-        except PermissionError:
-            return 403, {}
-        return (200, {"voice": False}) if route == "voice_status" else (404, {})
     try:
-        principal = pocket_principal(server, auth[7:])
+        principal = pocket_principal(server, auth[7:]) if path and Path(path).is_file() else None
+        if principal is None or not principal.research:
+            server.store.family(auth[7:])
     except PermissionError:
         return 403, {}
+    if principal is None or not principal.research:
+        # Without an individual, or while pocket_research is off (the default), Pocket has no voice: voice reaches
+        # research, transcripts and the owner's microphone, so it is gated by the same switch as Pocket research.
+        # A paired device learns that this bridge offers no voice (no 404 to log).
+        return (200, {"voice": False}) if route == "voice_status" else (404, {})
     op = route[len("voice_"):]
     try:
         size = int(handler.headers.get("Content-Length", "0"))
