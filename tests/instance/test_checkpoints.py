@@ -348,6 +348,56 @@ def test_restore_drops_voice_sessions_and_audio_forgotten_after_the_checkpoint(i
         assert copy.execute("SELECT count(*) FROM voice_sessions").fetchone()[0] == 2
 
 
+def _as_schema_10(db):
+    """Put a live individual back at schema 10: web_forgotten with the v10 kind CHECK (no voice kind)."""
+    db.executescript("BEGIN IMMEDIATE; CREATE TABLE wf10(kind TEXT NOT NULL CHECK(kind IN ('task','knowledge',"
+                     "'source_url','source_domain')), digest TEXT NOT NULL, forgotten_at REAL NOT NULL, "
+                     "PRIMARY KEY(kind, digest)); INSERT INTO wf10 SELECT * FROM web_forgotten; "
+                     "DROP TABLE web_forgotten; ALTER TABLE wf10 RENAME TO web_forgotten; "
+                     "PRAGMA user_version=10; COMMIT;")
+
+
+def _forget_voice_v10(db, session_id, now):
+    """A voice forget as software before migration 11 recorded it: kind 'task', subject "voice:<id>"."""
+    with store.write(db):
+        governance._delete_voice_session(db, session_id)
+        digest = governance.web_digest(store.birth(db)["instance_id"], "task", f"voice:{session_id}")
+        db.execute("INSERT INTO web_forgotten(kind,digest,forgotten_at) VALUES('task',?,?)", (digest, now))
+        governance._web_finish(db, "voice_session", "voice_session:#" + digest, {}, now)
+
+
+def test_a_schema_10_checkpoint_restored_onto_11_replays_old_and_new_voice_tombstones(instance, tmp_path):
+    """Voice tombstones written before migration 11 (kind 'task') and after it (kind 'voice_session') both drop
+    their sessions from a schema-10 archive restored by schema-11 software; the archive's own tombstone is
+    relabelled by the restore's migration."""
+    db, path = instance
+    from neuroscifi.instance import schema
+    from neuroscifi.voice import transcripts as tx
+    _as_schema_10(db)
+    ids = [tx.start_session(db, "owner", "console:x", "voice_text", T0 + i) for i in range(4)]
+    for i, sid in enumerate(ids):
+        tx.upsert(db, sid, "u1", speaker="user", source="asr", status="final", text=f"said {i}", now=T0 + 10 + i)
+    _forget_voice_v10(db, ids[0], T0 + 20)                       # before the checkpoint
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 21)
+    _forget_voice_v10(db, ids[1], T0 + 22)                       # after it, still on schema 10
+    assert schema.migrate(db) == schema.SCHEMA_VERSION >= 11     # the live instance upgrades
+    assert sorted(k for (k,) in db.execute("SELECT kind FROM web_forgotten")) == ["voice_session"] * 2
+    tx.forget_session(db, ids[2], now=T0 + 23)                   # after the upgrade
+    out = checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 30)
+    assert out["voice_sessions_removed"] == 2
+    with sqlite3.connect(tmp_path / "r.sqlite") as copy:
+        assert copy.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
+        assert [r[0] for r in copy.execute("SELECT id FROM voice_sessions")] == [ids[3]]
+        assert [r[0] for r in copy.execute("SELECT text FROM voice_segments")] == ["said 3"]
+        assert sorted(k for (k,) in copy.execute("SELECT kind FROM web_forgotten")) == ["voice_session"] * 3
+    # A live tombstone that kept the legacy kind (no deletion_log row to relabel it by) is replayed as well.
+    with store.write(db):
+        db.execute("DELETE FROM deletion_log WHERE target_kind='voice_session'")
+        db.execute("UPDATE web_forgotten SET kind='task' WHERE kind='voice_session'")
+    out = checkpoints.restore(db, cp["id"], tmp_path / "r2.sqlite", T0 + 31)
+    assert out["voice_sessions_removed"] == 2
+
+
 def test_verify_decodes_next_to_the_archive(instance, tmp_path, monkeypatch):
     db, path = instance
     add(db, "a")

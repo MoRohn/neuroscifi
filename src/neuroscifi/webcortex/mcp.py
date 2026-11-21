@@ -31,7 +31,7 @@ import time
 
 PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_VERSIONS = (PROTOCOL_VERSION, "2025-03-26", "2024-11-05")
-SERVER_INFO = {"name": "neuroscifi-webcortex", "title": "NeuroSciFi Web Cortex", "version": "0.6.0"}
+SERVER_INFO = {"name": "neuroscifi-webcortex", "title": "NeuroSciFi Web Cortex", "version": "0.7.0"}
 MAX_LINE = 1_000_000
 MAX_OBJECTIVE = 2000
 MAX_QUERY = 512

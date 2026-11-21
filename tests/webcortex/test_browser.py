@@ -199,3 +199,31 @@ def test_render_reuses_the_callers_main_fetch(web):
     result = renderer.render("http://reuse.example/", budget=budget, usage=usage, main=main)
     assert b"rendered" in result.body and result.retrieval_mode == "rendered"
     assert len(web.requests_to("reuse.example", "/")) == 1 and usage.requests == 2   # robots.txt + page, once
+
+
+def test_render_reads_text_inside_open_shadow_roots(web):
+    """Live: MSN renders its article inside web components; page.content() (light DOM only) returned 35 characters
+    ("Continue reading"). Open shadow roots are inlined into the rendered body; closed ones stay unreadable."""
+    web.add("wc.example", "/", """<!doctype html><html><body><news-article></news-article><sealed-box></sealed-box>
+<script>
+customElements.define('news-article', class extends HTMLElement {
+  constructor() { super(); this.attachShadow({mode: 'open'}).innerHTML =
+    '<article><h1>Markets fall</h1><inner-quote></inner-quote><p>Stocks fell 3.7% on Friday.</p></article>'; }
+});
+customElements.define('inner-quote', class extends HTMLElement {
+  constructor() { super(); this.attachShadow({mode: 'open'}).innerHTML = '<p>Nested root text.</p>'; }
+});
+customElements.define('sealed-box', class extends HTMLElement {
+  constructor() { super(); this.attachShadow({mode: 'closed'}).innerHTML = '<p>closed root text</p>'; }
+});
+</script></body></html>""")
+    from neuroscifi.webcortex import extract
+    renderer = renderer_or_skip(fetcher_for(web))
+    result = renderer.render("http://wc.example/", budget=Budget(max_browser_sessions=1), usage=Usage())
+    text = extract.extract(result).text
+    assert "Stocks fell 3.7% on Friday." in text and "Markets fall" in text and "Nested root text." in text
+    assert "closed root text" not in text
+    plain = "<html><body><p id='p'>light only</p><script>document.getElementById('p').textContent += '!';</script>"
+    web.add("light.example", "/", plain + "</body></html>")
+    result = renderer.render("http://light.example/", budget=Budget(max_browser_sessions=1), usage=Usage())
+    assert b"light only!" in result.body and b"data-shadow-root" not in result.body

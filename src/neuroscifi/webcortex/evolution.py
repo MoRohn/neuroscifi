@@ -44,6 +44,8 @@ MIN_FORECAST, MAX_FORECAST = 0.01, 0.99
 CALIBRATION_BINS = 10
 MAX_ENTITY_EDGES_PER_CLAIM = 10
 MAX_GRAPH_EDGES = 500
+MIN_LINKED_COVERAGE = 0.5             # a cluster of the hypothesis' own task must name MORE than this share of its key
+_DECISIVE = ("supported", "disputed")
 H_COLUMNS = ("id", "key", "statement", "origin", "status", "verification", "claims", "claim_values", "polarity",
              "alternatives", "knowledge_id", "parent_id", "task_id", "note", "created_at", "updated_at",
              "resolved_at")
@@ -400,28 +402,61 @@ def _revise(db, pred, hyp, *, task_id, statement, values, polarity, verification
     return new_id
 
 
+def _linked_hypothesis(db, task_id):
+    """The hypothesis id a task was created to investigate (task context 'hypothesis', autonomy.idle), or None."""
+    row = db.execute("SELECT checkpoint FROM web_tasks WHERE id=?", (task_id,)).fetchone()
+    linked = ((state.loads(row[0], None) or {}).get("context") or {}).get("hypothesis") if row else None
+    return linked if isinstance(linked, int) and not isinstance(linked, bool) else None
+
+
+def _linked_match(hyp, observed):
+    """For the hypothesis a task was created for: its decisive (supported / disputed) cluster that names most of
+    the hypothesis' key tokens (more than MIN_LINKED_COVERAGE of them; ties by key similarity), else None. The
+    research question shifts a cluster's key tokens (claims.claim_key question stems), so the keys of the task's
+    clusters and the hypothesis may differ beyond SIMILAR_KEY while naming the same subject."""
+    from .consolidate import _key_tokens, _similar
+    wanted = _key_tokens(hyp["key"])
+    best, rank = None, None
+    for cluster, verdict, statement in observed:
+        if verdict["state"] not in _DECISIVE or not wanted:
+            continue
+        coverage = len(wanted & _key_tokens(cluster.key)) / len(wanted)
+        if coverage <= MIN_LINKED_COVERAGE:
+            continue
+        if rank is None or (coverage, _similar(cluster.key, hyp["key"])) > rank:
+            best, rank = (cluster, verdict, statement), (coverage, _similar(cluster.key, hyp["key"]))
+    return best
+
+
 def observe(db, task_id, observed, now, *, freshness_class="stable", ttl_overrides=None, knowledge_by_key=None) \
         -> list[dict]:
     """Compare the open hypothesis predictions with a task's verified evidence. `observed`: [(cluster, verdict,
-    statement)] of the task. A prediction formed by an earlier task whose hypothesis key matches (equal or
-    near-identical) a cluster verified 'supported' here is settled: same values and polarity -> confirmed, else
-    error (error analysis, alternatives, revised hypothesis); a 'disputed' cluster stating the hypothesis' own
-    values -> error. Other observations are tracked on the prediction and it stays open. Predictions past their
-    deadline become 'inconclusive'. Caller owns the transaction. Returns the settlements."""
+    statement)] of the task. A prediction of the hypothesis this task was created for (task context 'hypothesis':
+    explicit linkage, _linked_match) or, failing that, formed by an earlier task whose hypothesis key matches
+    (equal or near-identical: the lexical fallback) a cluster verified 'supported' here is settled: same values
+    and polarity -> confirmed, else error (error analysis, alternatives, revised hypothesis); a 'disputed' cluster
+    stating the hypothesis' own values -> error. Other observations are tracked on the prediction and it stays
+    open. Predictions past their deadline become 'inconclusive'. Caller owns the transaction. Returns the
+    settlements."""
     from .consolidate import SIMILAR_KEY, _similar, _values
     out = []
     knowledge_by_key = knowledge_by_key or {}
+    linked = _linked_hypothesis(db, task_id)
     rows = db.execute(f"SELECT {','.join('p.' + c for c in P_COLUMNS)} FROM web_predictions p JOIN web_hypotheses h "
                       "ON h.id=p.hypothesis_id WHERE p.outcome IS NULL AND h.status='open' AND "
                       "(h.task_id IS NULL OR h.task_id<>?) ORDER BY p.id", (task_id,)).fetchall()
     for pred in map(_p_row, rows):
         hyp = hypothesis(db, pred["hypothesis_id"])
         match = None
-        for cluster, verdict, statement in observed:
-            if cluster.key == hyp["key"] or _similar(cluster.key, hyp["key"]) >= SIMILAR_KEY:
-                match = (cluster, verdict, statement)
-                if verdict["state"] in ("supported", "disputed"):
-                    break
+        if hyp["id"] == linked:
+            match, how = _linked_match(hyp, observed), "linked"
+        if match is None:
+            how = "lexical"
+            for cluster, verdict, statement in observed:
+                if cluster.key == hyp["key"] or _similar(cluster.key, hyp["key"]) >= SIMILAR_KEY:
+                    match = (cluster, verdict, statement)
+                    if verdict["state"] in _DECISIVE:
+                        break
         if match is None:
             continue
         cluster, verdict, statement = match
@@ -429,7 +464,7 @@ def observe(db, task_id, observed, now, *, freshness_class="stable", ttl_overrid
         relation = _relation(values, polarity, hyp["claim_values"], hyp["polarity"])
         observation = {"task_id": task_id, "state": verdict["state"], "basis": verdict.get("basis"),
                        "statement": statement, "values": values, "polarity": polarity, "relation": relation,
-                       "confidence": verdict.get("confidence"), "at": now}
+                       "confidence": verdict.get("confidence"), "at": now, "match": how, "key": cluster.key}
         if verdict["state"] == "supported" and relation == "same":
             outcome = "confirmed"
         elif (verdict["state"] == "supported" and relation in ("conflict", "series")) or \

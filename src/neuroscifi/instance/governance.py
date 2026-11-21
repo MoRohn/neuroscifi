@@ -366,7 +366,7 @@ def sweep(db, now):
 # the caller must drop are returned in effects["cache"] and are never persisted.
 
 WEB_FORGOTTEN = "forgotten: the web memory it referred to was removed"
-WEB_FORGOTTEN_KINDS = ("task", "knowledge", "source_url", "source_domain")
+WEB_FORGOTTEN_KINDS = ("task", "knowledge", "source_url", "source_domain")   # + VOICE_KIND (migration 11)
 _WEB_QUESTION = "#forgotten"
 _WEB_SCRUBBED = "#forgotten"
 
@@ -913,20 +913,24 @@ def replay_web_forgets(db, forgotten, now):
     return out
 
 
-# ---- Voice (migration 9, ADR-037) --------------------------------------------------------------------------------
+# ---- Voice (migration 9, ADR-037; tombstone kind: migration 11) -------------------------------------------------
 # Forgetting a voice session deletes its row, its transcript segments (corrections included) and any retained raw
-# audio. Like a web forget it records a payload-free tombstone in web_forgotten, so checkpoints.restore drops the
-# session again from an older archive (replay_voice_forgets). The tombstone reuses the 'task' kind with the subject
-# "voice:<session id>" (research task ids are UUIDs, so the namespaces cannot collide; the table's kind CHECK has no
-# voice kind and adding one would be a schema change). deletion_log keeps only the digest label, never the session
-# id or any transcript text. Raw audio swept on expiry leaves no tombstone: restore drops every voice_audio row the
-# live instance no longer holds (checkpoints.restore), as it does for epoch streams.
+# audio. Like a web forget it records a payload-free tombstone in web_forgotten (kind 'voice_session'), so
+# checkpoints.restore drops the session again from an older archive (replay_voice_forgets). The digest is the one
+# software before migration 11 wrote under kind 'task' for the subject "voice:<session id>" (voice_digest): a salted
+# hash cannot be recomputed in SQL, so migration 11 relabels those rows without rehashing, and replay also accepts a
+# 'task' row with that digest (research task ids are UUIDs, so the namespaces cannot collide). deletion_log keeps
+# only the digest label, never the session id or any transcript text. Raw audio swept on expiry leaves no tombstone:
+# restore drops every voice_audio row the live instance no longer holds (checkpoints.restore), as it does for epoch
+# streams.
 
-VOICE_KIND = "task"
+VOICE_KIND = "voice_session"
+_VOICE_LEGACY_KIND = "task"
 
 
-def _voice_subject(session_id):
-    return f"voice:{session_id}"
+def voice_digest(instance_id, session_id):
+    """Digest of a forgotten voice session (frozen to the pre-migration-11 form, see above)."""
+    return web_digest(instance_id, _VOICE_LEGACY_KIND, f"voice:{session_id}")
 
 
 def _delete_voice_session(db, session_id):
@@ -943,19 +947,22 @@ def forget_voice_session(db, session_id, now):
     """Delete one voice session with its transcript and retained audio, record its tombstone, stale the checkpoints
     and log the digest label. Caller owns the txn (voice/transcripts.forget_session). Returns the effects."""
     segments, audio = _delete_voice_session(db, session_id)
-    digest = _web_tombstones(db, VOICE_KIND, [_voice_subject(session_id)], now)[0]
+    digest = voice_digest(store.birth(db)["instance_id"], session_id)
+    db.execute("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", (VOICE_KIND, digest, now))
     return _web_finish(db, "voice_session", "voice_session:#" + digest, {"segments": segments, "audio": audio}, now)
 
 
 def replay_voice_forgets(db, forgotten, now):
-    """Re-apply voice tombstones ({(kind, digest)}, as replay_web_forgets) to a restored copy. Caller owns the txn.
-    Returns the number of sessions removed again."""
+    """Re-apply voice tombstones ({(kind, digest)}, as replay_web_forgets) to a restored copy: kind 'voice_session',
+    or a pre-migration-11 'task' row with a voice digest. Caller owns the txn. Returns the number of sessions
+    removed again."""
     if not forgotten:
         return 0
     instance_id = store.birth(db)["instance_id"]
     removed = 0
     for (session_id,) in db.execute("SELECT id FROM voice_sessions").fetchall():
-        if (VOICE_KIND, web_digest(instance_id, VOICE_KIND, _voice_subject(session_id))) in forgotten:
+        digest = voice_digest(instance_id, session_id)
+        if (VOICE_KIND, digest) in forgotten or (_VOICE_LEGACY_KIND, digest) in forgotten:
             _delete_voice_session(db, session_id)
             removed += 1
     return removed

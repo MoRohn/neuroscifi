@@ -15,8 +15,11 @@ I/O):
                 items), then web results, deduplicated by canonical URL; read in order until max_pages documents
                 SUCCEED (a failed fetch costs requests, not a page; the request/byte/time budgets bound the
                 attempts); scientific/deep_research keep ceil(max_pages/3) slots for web pages. Pages are fetched
-                through SafeFetcher (purpose 'page'), extracted, quarantined; JavaScript shells escalate to the
-                renderer when the budget has browser sessions; deep_research follows <= 2 same-site links of the
+                through SafeFetcher (purpose 'page'), extracted, quarantined; JavaScript shells (and, for news /
+                time-sensitive questions, scripted pages whose static text is under NEWS_RENDER_MIN_TEXT) escalate
+                to the renderer when the budget has browser sessions, with a request allowance that leaves
+                RENDER_RESERVE_PER_PAGE requests to each page slot still open (render_budget: a render never
+                starves the other pages); deep_research follows <= 2 same-site links of the
                 first page when depth and pages remain. Each document is recorded (web_sources, event, checkpoint)
                 as soon as it is read; the lease is renewed after every fetch. API records are quarantined like
                 pages. An unexpected exception while extracting one document (or reading it back from the cache)
@@ -90,6 +93,9 @@ MAX_CONTEXT_PACKAGES = 200
 CANDIDATE_FACTOR = 3          # reading ranks up to 3 x max_pages candidates; failed fetches do not use a page slot
 WEB_RESERVE_MODES = ("scientific", "deep_research")
 API_PROVIDERS = ("wikipedia", "arxiv", "openalex", "crossref", "pubmed", "pypi", "npm", "osv", "github")
+NEWS_RENDER_MIN_TEXT = 500    # news/time-sensitive: a scripted page with less static text than this is rendered
+RENDER_RESERVE_PER_PAGE = 2   # requests a render leaves to every other open page slot (robots.txt + the page)
+MIN_RENDER_REQUESTS = 4       # a render with fewer sub-requests than this cannot load a page's data: not started
 SNIPPET_ONLY = ("wikipedia",)  # search hits whose metadata is a snippet: read the article, never the snippet
 CONFIG_RECHECK = 2.0          # seconds between re-reads of the web configuration (enabled, deny_domains) in a run
 WEB_OFF = "Web access was turned off during the run"
@@ -187,12 +193,18 @@ def _crawl_spec(spec):
 
 def _context(context):
     """Validate the structured task context: {"packages": [{ecosystem, name, version|None}, ...]} (<= 200) and/or
-    {"crawl": {seeds, max_pages, max_depth}} (a bounded same-site crawl instead of searching)."""
+    {"crawl": {seeds, max_pages, max_depth}} (a bounded same-site crawl instead of searching) and/or
+    {"hypothesis": id} (the hypothesis the task investigates: evolution.observe settles its prediction on this
+    explicit link, lexical key matching being only the fallback)."""
     if context is None:
         return None
-    if not isinstance(context, dict) or set(context) - {"packages", "crawl"}:
-        raise ValidationError("context accepts only 'packages' and 'crawl'")
+    if not isinstance(context, dict) or set(context) - {"packages", "crawl", "hypothesis"}:
+        raise ValidationError("context accepts only 'packages', 'crawl' and 'hypothesis'")
     crawl = _crawl_spec(context["crawl"]) if "crawl" in context else None
+    hypothesis = context.get("hypothesis")
+    if hypothesis is not None and (isinstance(hypothesis, bool) or not isinstance(hypothesis, int)
+                                   or hypothesis < 1):
+        raise ValidationError("context.hypothesis must be a positive hypothesis id")
     packages = context.get("packages") or []
     if not isinstance(packages, list) or len(packages) > MAX_CONTEXT_PACKAGES:
         raise ValidationError(f"context.packages must be a list of at most {MAX_CONTEXT_PACKAGES} items")
@@ -205,9 +217,11 @@ def _context(context):
                 and (version is None or isinstance(version, str) and 0 < len(version) <= 64)):
             raise ValidationError("package ecosystem (<= 32), name (<= 214) and version (<= 64 or null) are strings")
         out.append({"ecosystem": eco, "name": name, "version": version})
-    validated = {"packages": out} if out or crawl is None else {}
+    validated = {"packages": out} if out or (crawl is None and hypothesis is None) else {}
     if crawl is not None:
         validated["crawl"] = crawl
+    if hypothesis is not None:
+        validated["hypothesis"] = hypothesis
     return validated
 
 
@@ -911,15 +925,19 @@ class _Run:
         from . import safety
         doc = safety.quarantine(_extract(result, published_hint))
         renderer = self.services.renderer
-        if doc.flags.get("js_suspected") and renderer is not None and \
-                self.usage.browser_sessions < self.budget.max_browser_sessions:
+        why_render = "js_shell" if doc.flags.get("js_suspected") else self.thin_news(doc, result)
+        if why_render and renderer is not None and self.usage.browser_sessions < self.budget.max_browser_sessions:
             ok, why = renderer.available()
+            budget = self.render_budget() if ok else None
+            if ok and budget is None:
+                ok, why = False, (f"not rendered: the request budget left would not cover the {self.open_slots()} "
+                                  "other page slot(s)")
             if ok:
                 self.check()
                 try:
-                    rendered = self.render(renderer, url, result)
+                    rendered = self.render(renderer, url, result, budget)
                     doc = safety.quarantine(_extract(rendered, published_hint))
-                    self.event("render", self.render_outcome(renderer, url), "reading")
+                    self.event("render", self.render_outcome(renderer, url) | {"reason": why_render}, "reading")
                     self.keep_rendered(rendered)
                 except BudgetExceeded as exc:
                     self.limit(f"Rendering {_host(url)} ran out of budget ({exc}); the page was read without it")
@@ -932,15 +950,41 @@ class _Run:
                 self.event("decision", {"render": False, "url": url, "reason": why}, "reading")
         return doc
 
-    def render(self, renderer, url, result):
+    def thin_news(self, doc, result):
+        """'thin_news_text' when the question is news / time-sensitive (a news query kind, or the breaking /
+        volatile freshness class) and a scripted HTML page gave less than NEWS_RENDER_MIN_TEXT characters of
+        static text (news sites often fill the article in with JavaScript), else None."""
+        assessment = self.checkpoint.get("assessment") or {}
+        timely = "news" in (assessment.get("kinds") or []) or \
+            assessment.get("freshness_class") in ("breaking", "volatile")
+        if not timely or len(doc.text or "") >= NEWS_RENDER_MIN_TEXT or \
+                getattr(result, "content_type", None) not in ("text/html", "application/xhtml+xml"):
+            return None
+        return "thin_news_text" if re.search(rb"<script\b", result.body or b"", re.I) else None
+
+    def open_slots(self) -> int:
+        """Page slots still open besides the page being read."""
+        return max(0, self.budget.max_pages - self.usage.pages - 1)
+
+    def render_budget(self):
+        """The task budget with max_requests lowered so a render leaves RENDER_RESERVE_PER_PAGE requests to every
+        other open page slot, or None when that leaves fewer than MIN_RENDER_REQUESTS. Charges still go to the
+        task's usage; nothing is added to the budget."""
+        allowance = self.budget.max_requests - self.usage.requests - RENDER_RESERVE_PER_PAGE * self.open_slots()
+        if allowance < MIN_RENDER_REQUESTS:
+            return None
+        return replace(self.budget, max_requests=self.usage.requests + allowance)
+
+    def render(self, renderer, url, result, budget=None):
         import inspect
+        budget = budget or self.budget
         try:
             takes_main = "main" in inspect.signature(renderer.render).parameters
         except (TypeError, ValueError):
             takes_main = False
         if takes_main:
-            return renderer.render(url, budget=self.budget, usage=self.usage, main=result)
-        return renderer.render(url, budget=self.budget, usage=self.usage)
+            return renderer.render(url, budget=budget, usage=self.usage, main=result)
+        return renderer.render(url, budget=budget, usage=self.usage)
 
     def render_outcome(self, renderer, url) -> dict:
         """The render event, from the renderer's sub-request log; records the limitations (W-08)."""

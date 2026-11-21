@@ -152,6 +152,12 @@ _CODE_NAME = re.compile(r"`([A-Za-z0-9@][\w.@/-]{0,99})`")
 _NAMED_PACKAGE = re.compile(r"\b([A-Za-z0-9][\w.-]{0,99})\s+(?:(?:python|javascript|js|node(?:\.js)?|npm|pypi|"
                             r"typescript)\s+)?(?:package|library|lib|module)s?\b", re.I)
 _LOWER_NAME = re.compile(r"(?<![\w.:/@`'’-])([a-z][a-z0-9]*(?:[._-][a-z0-9]+)*)(?![\w:/@`'’-])")
+# Package names are case-insensitive in the registries, but capitalised words are mostly proper nouns ("What is the
+# latest version of Quillstream?"). Two capitalised shapes are folded to lower case and treated like a plain word:
+# an internal capital (NumPy, PyTorch, SciPy, FastAPI) and a capitalised name carrying a dotted version
+# (Django 5.2.3, NumPy 2.5.5).
+_CASED_NAME = re.compile(r"(?<![\w.:/@`'’-])([A-Z][a-z0-9]+[A-Z][A-Za-z0-9]*|[A-Z][a-z0-9]*(?=\s+(?:version\s+)?"
+                         r"v?\d+(?:\.\d+)+))(?:[._-][A-Za-z0-9]+)*(?![\w:/@`'’-])")
 _PKG_NAME = re.compile(r"@?[a-z0-9](?:[a-z0-9._/-]{0,98}[a-z0-9])?")
 _NOT_PACKAGES = frozenset("""python python3 javascript typescript node nodejs java rust golang go ruby php perl kotlin
 swift scala linux windows macos android ios chrome firefox safari pypi npm pip github gitlab conda homebrew brew
@@ -189,6 +195,8 @@ _PYPI_HINT = re.compile(r"\b(?:python3?|pypi|pip|conda|anaconda|jupyter|ipython|
 _NPM_HINT = re.compile(r"\b(?:npm|node(?:\.js)?|nodejs|javascript|typescript|js|ts|yarn|pnpm|deno|react|vue|"
                        r"angular|webpack|frontend|front-end)\b", re.I)
 MAX_INFERRED_PACKAGES = 3
+# Project names whose PyPI distribution is named differently; the PyPI name is a placeholder that refuses to install.
+_PYPI_NAMES = {"pytorch": "torch", "sklearn": "scikit-learn"}
 _SIDE_PREDICATE = frozenset("""latest newest newer recent current stable lts release releases released version
 versions date dates update updates updated changelog changelogs advisory advisories security vulnerability
 vulnerabilities news""".split())
@@ -330,6 +338,8 @@ def _plain_packages(question: str, known=(), *, plain_words: bool = True) -> lis
     for m in _LOWER_NAME.finditer(text):
         if plain_words or re.search(r"[\d._-]", m.group(1)):
             found.append((m.start(1), m.group(1)))
+    if plain_words:
+        found += [(m.start(1), m.group(0).lower()) for m in _CASED_NAME.finditer(text)]
     skip = STOPWORDS | META | _TEMPORAL | _START_WORDS | _CLAUSE_VERBS | _COMMON | _NOT_PACKAGES | _HYPHEN_WORDS | {
         m.lower() for m in MONTHS} | {str(k).lower() for k in known}
     names: list[str] = []
@@ -348,7 +358,8 @@ def _plain_packages(question: str, known=(), *, plain_words: bool = True) -> lis
         for eco in ecosystems:
             if eco == "npm" and name.startswith("@") and "/" not in name:
                 continue
-            out.append({"ecosystem": eco, "name": name, "version": version, "inferred": True})
+            out.append({"ecosystem": eco, "name": _PYPI_NAMES.get(name, name) if eco == "PyPI" else name,
+                        "version": version, "inferred": True})
     return out
 
 

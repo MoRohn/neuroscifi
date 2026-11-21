@@ -923,6 +923,91 @@ def test_render_budget_shortfall_is_a_limitation_and_rendered_pages_are_cached(i
     assert any("4.2.0" in c["text"] for c in state.claims(db, task["id"]))
 
 
+NAV = " ".join(f"<a href='/s{i}'>Section {i} headlines</a>" for i in range(14))   # > 200 visible characters
+THIN_NEWS = (f"<html><head><title>AI news</title></head><body><div>{NAV}</div><p>Loading the article...</p>"
+             "<script src='/bundle.js'></script></body></html>")
+
+
+def run_rendering(db, path, web, task, results, renderer):
+    services = svc_mod.build(db, path, fixture=web, providers=[ListProvider(results)], clock=lambda: T0)
+    services.renderer = renderer
+    try:
+        return orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+
+
+def test_a_thin_scripted_news_page_is_rendered_only_for_time_sensitive_questions(individual, web):
+    """Live: news pages (msn.com from Bing News) carry navigation text but fill the article in with JavaScript, so
+    they were not 'JavaScript shells' (< 200 visible characters) and were never rendered. For a news /
+    time-sensitive question a scripted page under NEWS_RENDER_MIN_TEXT characters is rendered."""
+    from neuroscifi.webcortex import extract
+    from neuroscifi.webcortex.types import FetchResult
+    db, path = individual
+    state.set_config(db, {"browser_rendering": True}, T0)
+    web.add("news.example", "/ai", THIN_NEWS)
+    static = extract.extract(FetchResult(url="http://news.example/ai", final_url="http://news.example/ai", status=200,
+                                         headers={}, content_type="text/html", body=THIN_NEWS.encode(),
+                                         retrieved_at=T0))
+    assert not static.flags["js_suspected"] and len(static.text) < orchestrator.NEWS_RENDER_MIN_TEXT
+    hit = [{"url": "http://news.example/ai", "title": "AI news", "snippet": "AI"}]
+    news = orchestrator.submit(db, "What happened in AI this week?", T0, mode="quick_lookup")
+    renderer = FakeRenderer()
+    done = run_rendering(db, path, web, news, hit, renderer)
+    assert renderer.calls == 1
+    render = next(e["detail"] for e in state.events(db, news["id"]) if e["kind"] == "render")
+    assert render["reason"] == "thin_news_text" and render["ok"] is True
+    assert done["result"]["sources"][0]["retrieval_mode"] == "rendered"
+    stable = orchestrator.submit(db, "Zephyr compiler 4.2 release notes", T0, mode="quick_lookup")
+    assert "news" not in intent_kinds("Zephyr compiler 4.2 release notes")
+    again = FakeRenderer()
+    run_rendering(db, path, web, stable, hit, again)
+    assert again.calls == 0                      # not time-sensitive: the static page stands
+
+
+def intent_kinds(question):
+    from neuroscifi.webcortex import intent
+    return intent.assess(question, now=T0)["kinds"]
+
+
+class GreedyRenderer(FakeRenderer):
+    """A heavy page: charges sub-requests to the budget it is given until that budget refuses one."""
+
+    def render(self, url, *, budget, usage, main=None):
+        from neuroscifi.webcortex.types import BudgetExceeded, FetchResult
+        usage.charge(budget, browser_sessions=1)
+        self.calls, self.given = self.calls + 1, budget.max_requests
+        self.last_events = []
+        try:
+            while True:
+                usage.charge(budget, requests=1)
+                self.last_events.append({"url": "http://spa.example/chunk.js", "outcome": "served"})
+        except BudgetExceeded:
+            self.last_events.append({"url": None, "outcome": "budget_exhausted"})
+        return FetchResult(url=main.url, final_url=main.final_url, status=200, headers={}, content_type="text/html",
+                           body=RENDERED.encode(), retrieved_at=T0, retrieval_mode="rendered")
+
+
+def test_a_render_leaves_requests_for_the_other_pages(individual, web, site):
+    """Live: rendering msn.com spent the quick lookup's whole request budget ("requests 21 of 20"), so none of the
+    other news results was read. A render gets the requests left minus RENDER_RESERVE_PER_PAGE per open page slot."""
+    db, path = individual
+    state.set_config(db, {"browser_rendering": True}, T0)
+    web.add("spa.example", "/zephyr", JS_SHELL)
+    results = [{"url": "http://spa.example/zephyr", "title": "Zephyr", "snippet": "Zephyr"}] + [
+        {"url": f"http://{host}{p}", "title": title, "snippet": title} for (host, p), (title, _, _) in PAGES.items()]
+    task = orchestrator.submit(db, "Zephyr compiler 4.2 release", T0, mode="fact_verification",
+                               budget={"max_browser_sessions": 1, "max_pages": 3, "max_requests": 20})
+    renderer = GreedyRenderer()
+    done = run_rendering(db, path, web, task, results, renderer)
+    assert renderer.calls == 1
+    assert done["usage"]["pages"] == 3 and done["usage"]["requests"] <= 20
+    hosts = {s["url"].split("/")[2] for s in done["result"]["sources"]}
+    assert hosts == {"spa.example", "news-one.example", "tech-two.example"}
+    assert renderer.given == 20 - orchestrator.RENDER_RESERVE_PER_PAGE * 2
+    assert any("ran out of request budget" in x for x in done["result"]["limitations"])
+
+
 class WikiProvider(ListProvider):
     """Search hits with snippets only; article() returns the lead section (L1b's WikipediaProvider.article)."""
 

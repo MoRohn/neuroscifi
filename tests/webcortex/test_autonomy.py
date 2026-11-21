@@ -271,6 +271,55 @@ def test_worker_picks_up_an_idle_investigation_and_notifies_only_meaningful_find
     assert refused, "the worker stopped for a stated reason (budget or minimum gain), not silently"
 
 
+def test_a_hypothesis_settles_on_its_autonomous_tasks_link_when_the_keys_differ(individual, site):
+    """Live Scenario 6: the research question shifts the cluster key ("compiler releas version zephyr") away from
+    the hypothesis key ("releas zephyr"; Jaccard 0.5 < SIMILAR_KEY), so lexical matching alone never settled the
+    prediction. The autonomous task carries the hypothesis id and settlement follows that link:
+    hypothesis -> autonomous task -> supported cluster -> prediction confirmed -> calibration -> notification."""
+    from neuroscifi.webcortex.consolidate import SIMILAR_KEY, _similar
+    db, path = individual
+    statement = "Zephyr 4.2.0 was released on 17 November 2026"
+    hid, pid = hypothesize(db, statement, 0.6)
+    assert evolution.hypothesis(db, hid)["key"] == "releas zephyr"
+    autonomy.enable(db, T0)
+    autonomy.set_policy(db, {"idle_interval": 0.0}, T0)
+    assert evolution.calibration_history(db) == []
+    out = scheduler.work(path, once=True, fixture=site, providers=[corpus()], clock=lambda: T0 + 60, max_tasks=1)
+    task = state.task(db, out["processed"][0]["task_id"])
+    assert task["origin"] == "curiosity" and task["status"] in ("completed", "partial")
+    assert task["checkpoint"]["context"] == {"hypothesis": hid}                # the explicit link
+    pred = evolution.prediction(db, pid)
+    assert pred["outcome"] == "confirmed" and pred["task_id"] == task["id"]
+    seen = pred["detail"]["observation"]
+    assert seen["match"] == "linked" and seen["state"] == "supported" and seen["relation"] == "same"
+    assert _similar(seen["key"], "releas zephyr") < SIMILAR_KEY, "the lexical match alone would not settle it"
+    h = evolution.hypothesis(db, hid)
+    assert h["status"] == "supported" and h["resolved_at"] == T0 + 60
+    history = evolution.calibration_history(db)
+    assert history and history[0]["n"] == 1 and history[0]["brier"] == pytest.approx((0.6 - 1.0) ** 2)
+    assert task["checkpoint"]["predictions_settled"] == [{"prediction_id": pid, "hypothesis_id": hid,
+                                                         "outcome": "confirmed"}]
+    question = db.execute("SELECT question FROM pending WHERE scope=?", (f"web:autonomy:{task['id']}",)).fetchone()
+    assert question and f"#{pid} confirmed" in question[0]
+
+
+def test_the_lexical_fallback_never_settles_an_unrelated_hypothesis_on_a_link(individual):
+    """The link names one hypothesis: another open hypothesis whose key the task's clusters do not match stays
+    open, and the linked one is not settled by a cluster naming only half of its key tokens."""
+    from types import SimpleNamespace as NS
+    db, _ = individual
+    hid, pid = hypothesize(db, "Zephyr 4.2.0 was released on 17 November 2026", 0.6)
+    other, opid = hypothesize(db, "The Orchid database supports 12 replicas in its 3.1 version", 0.5)
+    task = orchestrator.submit(db, "Zephyr release", T0, mode="fact_verification", origin="curiosity",
+                               context={"hypothesis": hid})
+    unrelated = NS(key="orchid zephyr replica databas", claims=[], supporting=[])
+    with store.write(db):
+        assert evolution.observe(db, task["id"], [(unrelated, {"state": "supported"}, "x")], T0 + 1) == []
+    assert evolution.prediction(db, pid)["outcome"] is None and evolution.prediction(db, opid)["outcome"] is None
+    with pytest.raises(Exception, match="hypothesis"):
+        orchestrator.submit(db, "Zephyr release", T0, origin="curiosity", context={"hypothesis": "1"})
+
+
 def test_no_notification_without_a_meaningful_finding(individual):
     db, _ = individual
     task = curious(db, "Zephyr compiler release blog")

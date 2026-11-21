@@ -24,6 +24,11 @@ Contract
   and every process below it (Chromium and its helpers), so a hung render leaks neither a browser nor a thread
   that keeps driving one.
 - `last_events` keeps the sub-request outcomes of the latest render ({url (no query), outcome, code}) for audit.
+- Shadow DOM: `page.content()` serialises the light DOM only, so text a page renders inside web components (MSN
+  articles live in open shadow roots) would be lost. When the page has open shadow roots, the DOM is serialised
+  with each open root inlined as a `<div data-shadow-root>` first child of its host (FLATTEN_SCRIPT, at most
+  MAX_SHADOW_ROOTS roots); closed roots stay unreadable. Extraction then applies the same hidden-content and
+  boilerplate rules to that markup as to any other.
 """
 from __future__ import annotations
 
@@ -57,6 +62,32 @@ BLOCK_SCRIPT = """(() => {
   }
 })();"""
 SERVED_HEADERS = ("content-type", "content-security-policy", "content-language")
+MAX_SHADOW_ROOTS = 2000
+# Light-DOM copy of the document with every open shadow root inlined (null when the page has none). Runs once,
+# after load, in the page; its output is untrusted page content like the rest of the DOM.
+FLATTEN_SCRIPT = """(limit) => {
+  if (!Array.from(document.querySelectorAll('*')).some((el) => el.shadowRoot)) return null;
+  // copies go into an inert document: no custom-element upgrades, no page code runs while copying
+  const inert = document.implementation.createHTMLDocument('');
+  let roots = 0;
+  const flat = (src) => {
+    const dst = inert.importNode(src, false);
+    if (src.shadowRoot && roots < limit) {
+      roots += 1;
+      const box = inert.createElement('div');
+      box.setAttribute('data-shadow-root', '');
+      for (const child of src.shadowRoot.childNodes) {
+        box.appendChild(child.nodeType === 1 ? flat(child) : inert.importNode(child, false));
+      }
+      dst.appendChild(box);
+    }
+    for (const child of src.childNodes) {
+      dst.appendChild(child.nodeType === 1 ? flat(child) : inert.importNode(child, false));
+    }
+    return dst;
+  };
+  return '<!DOCTYPE html>' + flat(document.documentElement).outerHTML;
+}"""
 RENDER_GRACE = 5.0      # seconds past the render timeout before the watchdog kills the driver and Chromium
 
 
@@ -200,7 +231,14 @@ class BrowserRenderer:
                             page.wait_for_load_state("networkidle", timeout=min(remaining_ms(), 5000))
                         except PlaywrightTimeout:
                             pass                     # long-polling pages: take the DOM as it is now
-                        html = page.content()
+                        try:
+                            html = page.evaluate(FLATTEN_SCRIPT, MAX_SHADOW_ROOTS)
+                        except PlaywrightTimeout:
+                            raise
+                        except PlaywrightError:
+                            html = None              # the page broke the serialiser: its light DOM is used
+                        if not isinstance(html, str) or not html:
+                            html = page.content()
                         final = page.url
                     except PlaywrightTimeout:
                         raise FetchError("timeout", _redact(main.final_url),

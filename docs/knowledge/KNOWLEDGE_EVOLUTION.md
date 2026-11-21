@@ -95,7 +95,7 @@ Strengthening moves `published_at` and `retrieved_at` forward and replaces `veri
 
 `predict` validates the probability (0..1) and the deadline (future). The default deadline is the class TTL, at most 30 days (`MAX_HORIZON`). The default criteria name the key, values and polarity, and the confirmed, error and inconclusive conditions.
 
-**Comparison when new evidence arrives** (`evolution.observe`). For each open prediction of an open hypothesis formed by another task, the first cluster of this task with an equal or near-identical key (token Jaccard ≥ 0.8) is compared:
+**Comparison when new evidence arrives** (`evolution.observe`). For each open prediction of an open hypothesis formed by another task, one cluster of this task is compared. A task created for a hypothesis (autonomous research records the hypothesis id in the task context, `{"hypothesis": id}`) matches that hypothesis by this explicit link: its `supported` or `disputed` cluster whose key names more than half of the hypothesis key's tokens (most first, then key similarity). Otherwise, as the fallback, the first cluster with an equal or near-identical key (token Jaccard ≥ 0.8) is used. The research question shifts which tokens a cluster key keeps, so the two keys can differ while naming the same subject. The observation records which rule matched (`match`: `linked` or `lexical`) and the cluster key:
 
 | Observation | Relation to the hypothesis | Outcome |
 |---|---|---|

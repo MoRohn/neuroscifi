@@ -5,7 +5,7 @@
 <br>
 
 [![CI](https://github.com/MoRohn/neuroscifi/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MoRohn/neuroscifi/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-0.6.0-818CF8)
+![Version](https://img.shields.io/badge/version-0.7.0-818CF8)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-E879F9)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-22D3EE?logo=python&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-1557%20passed-22C55E)

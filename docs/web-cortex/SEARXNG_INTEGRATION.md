@@ -243,7 +243,11 @@ stackoverflow, askubuntu, superuser 3/3 each; europepmc 2/2; openairepublication
    browser impersonation is not an option under the project rules.
 2. **Freshness of news.** Bing News results carry no `publishedDate`; dated news comes from Hacker News. Pages read
    from msn.com are JavaScript shells (0 claims). Current-event questions therefore often end with "freshness
-   requirement not met" — honestly, but not usefully.
+   requirement not met" — honestly, but not usefully. Since 0.7.0 the renderer inlines open shadow roots (where
+   MSN puts the article) and a render leaves requests for the other pages, but a complete MSN render needs about
+   70-100 sub-requests against the quick lookup's 20-request budget: with the default budget the answer is still
+   empty; with an owner-raised budget two articles were read, dated and answered
+   (`docs/quality/evidence/news_render_live.json`). Rendering stays off by default (ADR-030).
 3. ~~**"Latest releases affecting NeuroSciFi"** is planned as a web search for "releases"~~ — fixed (Lane G):
    `intent.dependency_question` recognises "releases / advisories affecting <this system>" and the task runs the
    `nsf web deps` logic (project inventory + direct PyPI/npm/OSV pass, `report.dependencies`); no general search is

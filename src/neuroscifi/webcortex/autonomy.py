@@ -552,7 +552,10 @@ def idle(db, now) -> dict:
         return {"action": "nothing", "reason": why, "refused": ranked["refused"]}
     for pick in ranked["chosen"]:
         try:
-            task = orchestrator.submit(db, pick["objective"], now, mode=pick["mode"], origin="curiosity")
+            # a hypothesis' task carries its id, so the prediction settles on that link (evolution.observe)
+            context = {"hypothesis": pick["hypothesis_id"]} if pick.get("hypothesis_id") else None
+            task = orchestrator.submit(db, pick["objective"], now, mode=pick["mode"], origin="curiosity",
+                                       context=context)
         except (ValidationError, Conflict, WritesPaused) as exc:
             if isinstance(exc, BudgetRefused):
                 _decide(db, now, {"autonomy": "refused", "reason": str(exc)})

@@ -404,6 +404,24 @@ MIGRATIONS = [
       session TEXT PRIMARY KEY, family TEXT NOT NULL, owner TEXT NOT NULL, acquired_at REAL NOT NULL,
       expires_at REAL NOT NULL, offered_to TEXT, offer_expires_at REAL);
     """,
+    # ---- version 11 (voice tombstones get their own kind; governance.VOICE_KIND) ----------------------------------
+    """
+    -- Forgotten voice sessions were recorded as kind 'task' with the subject "voice:<session id>" because the kind
+    -- CHECK had no voice kind. Rebuilt to allow 'voice_session'; every row is copied. The digest is a salted hash
+    -- and cannot be recomputed here, so it is kept as is (governance.voice_digest still hashes the 'task' form):
+    -- only the kind is relabelled, for the 'task' rows that governance.forget_voice_session logged in deletion_log
+    -- as target_kind 'voice_session', target_id 'voice_session:#<digest>'. Research-task tombstones stay 'task'.
+    CREATE TABLE web_forgotten_v11(
+      kind TEXT NOT NULL CHECK(kind IN ('task','knowledge','source_url','source_domain','voice_session')),
+      digest TEXT NOT NULL, forgotten_at REAL NOT NULL, PRIMARY KEY(kind, digest));
+    INSERT OR IGNORE INTO web_forgotten_v11(kind,digest,forgotten_at)
+      SELECT CASE WHEN f.kind='task' AND EXISTS(SELECT 1 FROM deletion_log d WHERE d.target_kind='voice_session'
+                    AND d.target_id='voice_session:#' || f.digest) THEN 'voice_session' ELSE f.kind END,
+             f.digest, f.forgotten_at
+      FROM web_forgotten f ORDER BY f.rowid;
+    DROP TABLE web_forgotten;
+    ALTER TABLE web_forgotten_v11 RENAME TO web_forgotten;
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

@@ -504,3 +504,29 @@ def test_releases_affecting_this_system_are_a_dependency_check(question):
 def test_other_questions_are_not_a_dependency_check(question):
     assert intent.dependency_question(question) is False
     assert intent.assess(question, now=NOW)["dependency_check"] is False
+
+
+@pytest.mark.parametrize("question, expected", [
+    ("What is the latest version of NumPy?", {("PyPI", "numpy", None), ("npm", "numpy", None)}),
+    ("NumPy 2.5.5 was released", {("PyPI", "numpy", "2.5.5"), ("npm", "numpy", "2.5.5")}),
+    ("Was PyTorch 2.9.1 released?", {("PyPI", "torch", "2.9.1"), ("npm", "pytorch", "2.9.1")}),
+    ("Is SciPy 1.17.0 the latest release?", {("PyPI", "scipy", "1.17.0"), ("npm", "scipy", "1.17.0")}),
+    ("Was Django 5.2.3 released?", {("PyPI", "django", "5.2.3"), ("npm", "django", "5.2.3")}),
+    ("What is the latest stable release of FastAPI for Python?", {("PyPI", "fastapi", None)}),
+])
+def test_package_names_are_detected_whatever_their_case(question, expected):
+    """Live Scenario 6: "NumPy 2.5.5 was released" never reached PyPI because only lower-case names were candidates.
+    Names with an internal capital, and capitalised names carrying a dotted version, are folded to lower case;
+    PyPI's placeholder name for PyTorch is mapped to its distribution (torch)."""
+    a = intent.assess(question, now=NOW)
+    assert a["mode"] == "technical"
+    assert {(p["ecosystem"], p["name"], p["version"]) for p in a["packages"]} == expected
+    assert {f"pypi:{n}" + (f"=={v}" if v else "") for e, n, v in expected if e == "PyPI"} <= \
+        set(texts(intent.plan(question, a, now=NOW), "technical"))
+
+
+@pytest.mark.parametrize("question", ["What is the latest version of Quillstream?", "Was Windows 11 released in 2021?",
+                                      "What is the latest JavaScript version?", "When was the latest iPhone released?",
+                                      "What is the latest version of Microsoft Word?"])
+def test_capitalised_proper_nouns_without_a_version_stay_out_of_the_registries(question):
+    assert intent.assess(question, now=NOW)["packages"] == []

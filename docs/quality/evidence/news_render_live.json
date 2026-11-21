@@ -1,0 +1,294 @@
+{
+ "evidence": "news_render_live",
+ "lane": "v0.7.0 release fixes (item 4: news pages that need JavaScript)",
+ "generated_at": "2026-11-21",
+ "code": {
+  "before": "15eacd7 + staged hardening changes (render escalation only for JavaScript shells; light-DOM serialisation; a render may spend the whole task request budget)",
+  "after": "same tree + this change: shadow-DOM inlining in browser.BrowserRenderer, thin-text escalation for news/time-sensitive questions (orchestrator.NEWS_RENDER_MIN_TEXT), render request allowance that leaves RENDER_RESERVE_PER_PAGE requests to each open page slot (orchestrator.render_budget)"
+ },
+ "environment": {
+  "searxng": "SearXNG on 127.0.0.1:8888 (loopback, JSON API, honest User-Agent)",
+  "model": "vLLM OpenAI-compatible server on 127.0.0.1:8811 (nsf llm config --url http://127.0.0.1:8811/v1 --reasoning)",
+  "browser": "Playwright 1.64.1 with system Chromium /usr/bin/chromium (NSF_CHROMIUM); every sub-request through SafeFetcher (robots.txt, address policy, budget)",
+  "individuals": "fresh scratch databases <scratch>/live/before.sqlite and <scratch>/live/after.sqlite (not the owner's instance); web enabled, searxng_url set, browser_rendering on (`nsf web config --browser`, off by default per ADR-030); every other setting default"
+ },
+ "method": [
+  "question through the user-facing CLI: `nsf web ask \"What happened in AI this week?\"` (auto mode -> quick_lookup: 3 pages, 3 queries, 20 requests, 1 browser session, 45 s)",
+  "before: run once on the code before the change; after: run once on the changed code with the same default budget; after_owner_budget: the same question with `--budget-json '{\"max_requests\": 150, \"max_browser_sessions\": 2, \"max_seconds\": 120}'` to show what rendering yields when the budget allows it",
+  "sources_with_text: sources whose stored body (public cache) re-extracts to >= 500 characters; sources_dated: web_sources.published_at set; verification states from the task checkpoint; model answer present: generated_by model:* with >= 1 sentence accepted by the citation guard",
+  "the runs are minutes apart against live search results, which change between runs (the before run's ranking had msn.com first; the after runs also listed npr.org and news.ycombinator.com, which timed out on robots.txt and were rate limited)",
+  "the before run's wall time was not measured (usage.seconds is the task's own clock); host paths redacted to <repo>/<scratch>"
+ ],
+ "runs": {
+  "before": {
+   "task_status": "partial",
+   "mode": "quick_lookup",
+   "budget": {
+    "max_browser_sessions": 1,
+    "max_bytes": 20000000,
+    "max_concurrency": 4,
+    "max_context_tokens": 2000,
+    "max_depth": 0,
+    "max_pages": 3,
+    "max_queries": 3,
+    "max_requests": 20,
+    "max_seconds": 45
+   },
+   "usage": {
+    "browser_sessions": 1,
+    "bytes": 934682,
+    "pages": 1,
+    "queries": 2,
+    "requests": 20,
+    "seconds": 7.961,
+    "tokens": 18
+   },
+   "wall_ms": null,
+   "sources_read": 1,
+   "sources_with_text": 0,
+   "sources_dated": 0,
+   "claims": 0,
+   "verification_states": {},
+   "freshness_satisfied": false,
+   "generated_by": "template",
+   "reasoning_status": "no_evidence",
+   "model_sentences_accepted": 0,
+   "model_sentences_rejected": 0,
+   "model_answer_present": false,
+   "answer_lead": "No usable claims were extracted from 1 source read.",
+   "sources": [
+    {
+     "domain": "msn.com",
+     "url": "https://www.msn.com/en-us/news/other/nasdaq-wipes-out-gains-for-the-year-as-anthropic-fails-to-quell-ai-nerves/ar-AA2hROfF",
+     "retrieval_mode": "rendered",
+     "published_at": null,
+     "text_chars": 0,
+     "claims": 0
+    }
+   ],
+   "renders": [
+    {
+     "budget_exhausted": true,
+     "ok": false,
+     "refused": 1,
+     "url": "https://www.msn.com/en-us/news/other/nasdaq-wipes-out-gains-for-the-year-as-anthropic-fails-to-quell-ai-nerves/ar-AA2hROfF"
+    }
+   ],
+   "reading_errors": [],
+   "limitations": [
+    "Freshness requirement not met: no cited source is dated (required: within 7 days, breaking class)",
+    "No claim relevant to the question could be extracted from the sources read",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Rendering www.msn.com ran out of request budget: 1 sub-request(s) were refused, so the rendered page may be incomplete",
+    "budget exhausted while reading: budget exhausted: requests 21 of 20"
+   ]
+  },
+  "after": {
+   "task_status": "partial",
+   "mode": "quick_lookup",
+   "budget": {
+    "max_browser_sessions": 1,
+    "max_bytes": 20000000,
+    "max_concurrency": 4,
+    "max_context_tokens": 2000,
+    "max_depth": 0,
+    "max_pages": 3,
+    "max_queries": 3,
+    "max_requests": 20,
+    "max_seconds": 45
+   },
+   "usage": {
+    "browser_sessions": 1,
+    "bytes": 577018,
+    "pages": 3,
+    "queries": 2,
+    "requests": 18,
+    "seconds": 22.649,
+    "tokens": 18
+   },
+   "wall_ms": 22895,
+   "sources_read": 3,
+   "sources_with_text": 0,
+   "sources_dated": 0,
+   "claims": 0,
+   "verification_states": {},
+   "freshness_satisfied": false,
+   "generated_by": "template",
+   "reasoning_status": "no_evidence",
+   "model_sentences_accepted": 0,
+   "model_sentences_rejected": 0,
+   "model_answer_present": false,
+   "answer_lead": "No usable claims were extracted from 3 sources read.",
+   "sources": [
+    {
+     "domain": "msn.com",
+     "url": "https://www.msn.com/en-us/news/other/nasdaq-wipes-out-gains-for-the-year-as-anthropic-fails-to-quell-ai-nerves/ar-AA2hROfF",
+     "retrieval_mode": "rendered",
+     "published_at": null,
+     "text_chars": 0,
+     "claims": 0
+    },
+    {
+     "domain": "msn.com",
+     "url": "https://www.msn.com/en-us/money/top-stocks/wall-st-ends-sharply-lower-on-ai-selloff-s-p-500-dow-in-correction/ar-AA2hT0mt",
+     "retrieval_mode": "live",
+     "published_at": null,
+     "text_chars": 0,
+     "claims": 0
+    },
+    {
+     "domain": "msn.com",
+     "url": "https://www.msn.com/en-ca/money/general/anthropic-s-post-debut-stumble-delivers-reality-check-for-ai-trade/ar-AA2hRnXw",
+     "retrieval_mode": "live",
+     "published_at": null,
+     "text_chars": 0,
+     "claims": 0
+    }
+   ],
+   "renders": [
+    {
+     "budget_exhausted": true,
+     "ok": false,
+     "reason": "js_shell",
+     "refused": 1,
+     "url": "https://www.msn.com/en-us/news/other/nasdaq-wipes-out-gains-for-the-year-as-anthropic-fails-to-quell-ai-nerves/ar-AA2hROfF"
+    }
+   ],
+   "reading_errors": [
+    {
+     "code": "timeout",
+     "host": "www.npr.org"
+    },
+    {
+     "code": "rate_limited",
+     "host": "news.ycombinator.com"
+    },
+    {
+     "code": "rate_limited",
+     "host": "news.ycombinator.com"
+    },
+    {
+     "code": "rate_limited",
+     "host": "news.ycombinator.com"
+    }
+   ],
+   "limitations": [
+    "searxng: timeout",
+    "searxng: rate_limited",
+    "Freshness requirement not met: no cited source is dated (required: within 7 days, breaking class)",
+    "No claim relevant to the question could be extracted from the sources read",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Rendering www.msn.com ran out of request budget: 1 sub-request(s) were refused, so the rendered page may be incomplete"
+   ]
+  },
+  "after_owner_budget": {
+   "task_status": "partial",
+   "mode": "quick_lookup",
+   "budget": {
+    "max_browser_sessions": 2,
+    "max_bytes": 20000000,
+    "max_concurrency": 4,
+    "max_context_tokens": 2000,
+    "max_depth": 0,
+    "max_pages": 3,
+    "max_queries": 3,
+    "max_requests": 150,
+    "max_seconds": 120
+   },
+   "usage": {
+    "browser_sessions": 2,
+    "bytes": 4977733,
+    "pages": 3,
+    "queries": 2,
+    "requests": 149,
+    "seconds": 42.828,
+    "tokens": 484
+   },
+   "wall_ms": 43068,
+   "sources_read": 3,
+   "sources_with_text": 2,
+   "sources_dated": 2,
+   "claims": 16,
+   "verification_states": {
+    "insufficient": 12,
+    "not_evaluated": 2
+   },
+   "freshness_satisfied": true,
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "reasoning_status": "model",
+   "model_sentences_accepted": 2,
+   "model_sentences_rejected": 4,
+   "model_answer_present": true,
+   "answer_lead": "3 sources read; 14 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 15 hours ago.",
+   "sources": [
+    {
+     "domain": "msn.com",
+     "url": "https://www.msn.com/en-us/news/other/nasdaq-wipes-out-gains-for-the-year-as-anthropic-fails-to-quell-ai-nerves/ar-AA2hROfF",
+     "retrieval_mode": "rendered",
+     "published_at": 1795213752.0,
+     "text_chars": 5926,
+     "claims": 8
+    },
+    {
+     "domain": "msn.com",
+     "url": "https://www.msn.com/en-us/news/other/wall-street-forecasters-are-starting-to-worry-that-the-ai-trade-is-on-its-last-legs/ar-AA2hSfL8",
+     "retrieval_mode": "rendered",
+     "published_at": 1795208526.0,
+     "text_chars": 6285,
+     "claims": 8
+    },
+    {
+     "domain": "msn.com",
+     "url": "https://www.msn.com/en-us/news/other/why-anthropic-s-blockbuster-debut-didn-t-ease-wall-street-s-ai-fears/ar-AA2hR3C9",
+     "retrieval_mode": "live",
+     "published_at": null,
+     "text_chars": 0,
+     "claims": 0
+    }
+   ],
+   "renders": [
+    {
+     "budget_exhausted": false,
+     "ok": true,
+     "reason": "js_shell",
+     "refused": 3,
+     "url": "https://www.msn.com/en-us/news/other/nasdaq-wipes-out-gains-for-the-year-as-anthropic-fails-to-quell-ai-nerves/ar-AA2hROfF"
+    },
+    {
+     "budget_exhausted": true,
+     "ok": false,
+     "reason": "js_shell",
+     "refused": 3,
+     "url": "https://www.msn.com/en-us/news/other/wall-street-forecasters-are-starting-to-worry-that-the-ai-trade-is-on-its-last-legs/ar-AA2hSfL8"
+    }
+   ],
+   "reading_errors": [
+    {
+     "code": "http_error",
+     "host": "www.cnbc.com"
+    }
+   ],
+   "limitations": [
+    "searxng: http_error",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Rendering www.msn.com: 3 sub-request(s) were refused by the network policy; the rendered page may be incomplete",
+    "Rendering www.msn.com ran out of request budget: 1 sub-request(s) were refused, so the rendered page may be incomplete",
+    "Rendering www.msn.com: 2 sub-request(s) were refused by the network policy; the rendered page may be incomplete",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 2 sentence(s) passed the citation and claim-state guard, 4 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ]
+  }
+ },
+ "findings": [
+  "Bing News (through SearXNG) returns mostly msn.com articles. Their static HTML has no article text (0 characters) and MSN renders the article inside open shadow roots of web components. page.content() serialises only the light DOM, so even a complete render yielded 35 characters ('Continue reading'). The renderer now inlines open shadow roots: a complete render of the same article re-extracts to ~5,900 characters.",
+  "A complete MSN render needs about 70-100 sub-requests (scripts, styles, JSON APIs; 3-4 refused by robots.txt and left refused). The quick-lookup budget allows 20 requests in total, so with the default budget the render is cut short and the article does not load. Before the change that render also spent the whole budget ('requests 21 of 20') and no other page was read; after it, the render leaves 2 requests per open page slot and all 3 page slots were used.",
+  "With the default budget the answer is still thin after the change: 0 sources with text, 0 claims, template answer 'No usable claims were extracted from 3 sources read.' (the other candidates were msn.com shells, an npr.org robots.txt timeout and news.ycombinator.com rate limits).",
+  "With an owner-raised budget (150 requests, 2 browser sessions) the same question read 2 rendered MSN articles with text and in-page dates, extracted 16 claims, met the 7-day freshness requirement and produced a model-written answer (2 sentences accepted, 4 rejected by the guard). Every cluster stayed 'insufficient' or 'not_evaluated': each statement had one source, which is the correct verdict for single-source current events.",
+  "No paywall or anti-bot measure is bypassed: the renderer sends the configured honest User-Agent, robots.txt refusals stay refusals (api.msn.com LiveRamp, btloader.com), CNBC's HTTP 403 was not retried."
+ ],
+ "limitations": [
+  "Rendering stays off by default (ADR-030); an individual with the default configuration does not render at all.",
+  "The default quick-lookup budget cannot load an MSN article; raising it is an owner decision (`--budget-json` per task or the mode budgets), not changed here.",
+  "Closed shadow roots stay unreadable; a page whose content needs more sub-requests than the allowance renders incomplete and the report says so.",
+  "One run per configuration; live search rankings change from minute to minute."
+ ]
+}

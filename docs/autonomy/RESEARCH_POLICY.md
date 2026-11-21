@@ -231,11 +231,14 @@ Earlier live trials, kept to explain two choices:
 
 ## 8. Limits stated plainly
 
-- The live hypothesis's prediction did not settle. The registry cluster's key (`numpy pypi releas version`) is not
-  similar enough to the hypothesis key (`numpy releas`) under Lane D's key matching. The verified statement reached
-  the owner as a knowledge candidate instead. Settlement depends on that matching (evolution.observe).
-- Intent detects packages only in lower case (`numpy`, not `NumPy`), so "NumPy 2.5.5 was released" did not reach
-  PyPI.
+- In the live run the hypothesis's prediction did not settle. The registry cluster's key (`numpy pypi releas
+  version`) was not similar enough to the hypothesis key (`numpy releas`) under key matching alone. Fixed in 0.7.0:
+  the autonomous task now carries the hypothesis id (task context `hypothesis`), and `evolution.observe` settles on
+  that link, with lexical key matching as the fallback
+  (`test_a_hypothesis_settles_on_its_autonomous_tasks_link_when_the_keys_differ`). The live run has not been
+  repeated since the fix.
+- Intent detected packages only in lower case (`numpy`, not `NumPy`), so "NumPy 2.5.5 was released" did not reach
+  PyPI. Fixed in 0.7.0: package detection is case-insensitive (`tests/webcortex/test_intent.py`).
 - Active time can overshoot the day's limit by one network step. Spend is a price model, because no paid provider
   is configured, so $1 has never been reached live; it is reached only in tests with a set price.
 - Concurrency is enforced across processes that share the individual's SQLite file. One executing host is assumed

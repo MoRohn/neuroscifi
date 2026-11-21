@@ -220,3 +220,76 @@ def test_newer_file_is_refused(tmp_path):
         raw.execute(f"PRAGMA user_version={schema.SCHEMA_VERSION + 1}")
     with pytest.raises(Exception, match="newer than this software"):
         store.open_existing(path)
+
+
+# ---- migration 11: voice tombstones get their own kind -------------------------------------------------------------
+
+def _v10_file(tmp_path):
+    """A schema-10 individual whose web_forgotten holds a research-task, a knowledge and a voice-session tombstone,
+    written as software before migration 11 wrote them (the voice one as kind 'task', subject "voice:<id>")."""
+    source = tmp_path / "source.sqlite"
+    store.create(source, T0).close()
+    path = tmp_path / "v10.sqlite"
+    raw = sqlite3.connect(path, isolation_level=None)
+    for number, script in enumerate(schema.MIGRATIONS[:10], start=1):
+        raw.executescript("BEGIN;" + script + f";PRAGMA user_version={number};COMMIT;")
+    raw.execute("ATTACH DATABASE ? AS src", (str(source),))
+    for table in ("meta", "counters", "scoring_rules"):
+        raw.execute(f"INSERT INTO main.{table} SELECT * FROM src.{table}")
+    raw.execute("DETACH DATABASE src")
+    instance_id = store.birth(raw)["instance_id"]
+    voice = governance.voice_digest(instance_id, "s-1")
+    task = governance.web_digest(instance_id, "task", "3f0c1a52-0000-4000-8000-000000000001")
+    know = governance.web_digest(instance_id, "knowledge", "4:numpy latest version")
+    raw.executemany("INSERT INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)",
+                    [("task", task, T0 + 1), ("knowledge", know, T0 + 2), ("task", voice, T0 + 3)])
+    raw.executemany("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,'{}')",
+                    [("web_task", "3f0c1a52-0000-4000-8000-000000000001", T0 + 1),
+                     ("web_knowledge", "4", T0 + 2), ("voice_session", "voice_session:#" + voice, T0 + 3)])
+    raw.close()
+    return path, {"task": task, "knowledge": know, "voice": voice}
+
+
+def test_migration_11_relabels_voice_tombstones_and_keeps_every_other_row(tmp_path):
+    assert schema.SCHEMA_VERSION >= 11 and governance.VOICE_KIND == "voice_session"
+    path, d = _v10_file(tmp_path)
+    with sqlite3.connect(path) as raw:
+        with pytest.raises(sqlite3.IntegrityError):          # the v10 CHECK has no voice kind
+            raw.execute("INSERT INTO web_forgotten VALUES('voice_session','x',1)")
+    db = store.open_existing(path)
+    try:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
+        assert sorted(db.execute("SELECT kind,digest,forgotten_at FROM web_forgotten").fetchall()) == sorted([
+            ("task", d["task"], T0 + 1), ("knowledge", d["knowledge"], T0 + 2),
+            ("voice_session", d["voice"], T0 + 3)])
+        assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        with store.write(db):                               # the new kind is accepted, unknown kinds still refused
+            db.execute("INSERT INTO web_forgotten VALUES('voice_session','y',1)")
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO web_forgotten VALUES('epoch','z',1)")
+        changes = db.total_changes
+        assert schema.migrate(db) == schema.SCHEMA_VERSION and db.total_changes == changes   # a second run: no-op
+    finally:
+        db.close()
+
+
+def test_migration_11_is_atomic_and_replays_after_an_interruption(tmp_path, monkeypatch):
+    path, d = _v10_file(tmp_path)
+    broken = list(schema.MIGRATIONS)
+    broken[10] = schema.MIGRATIONS[10] + "\nCREATE TABLE web_forgotten(x);"   # fails after every other statement
+    monkeypatch.setattr(schema, "MIGRATIONS", broken)
+    raw = sqlite3.connect(path, isolation_level=None)
+    with pytest.raises(sqlite3.OperationalError):
+        schema.migrate(raw)
+    raw.close()
+    with sqlite3.connect(path) as raw:
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == 10
+        assert sorted(raw.execute("SELECT kind FROM web_forgotten")) == [("knowledge",), ("task",), ("task",)]
+        assert "web_forgotten_v11" not in {n for (n,) in raw.execute("SELECT name FROM sqlite_master")}
+    monkeypatch.undo()
+    db = store.open_existing(path)
+    try:
+        assert db.execute("SELECT kind FROM web_forgotten WHERE digest=?", (d["voice"],)).fetchone() == \
+            ("voice_session",)
+    finally:
+        db.close()
