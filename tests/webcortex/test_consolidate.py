@@ -467,3 +467,73 @@ def test_the_owners_answer_to_a_disagreement_is_not_asked_again_by_later_tasks(d
     _, out4 = consolidated(db, [other], T0 + 90_000)
     assert out4["contested"][0]["pending_id"] is not None
     assert executive.resolve(db, out4["contested"][0]["pending_id"], "not sure yet", T0 + 90_001)["web"] is None
+
+
+# ---- R1-02: only specific, well-formed claims reach the owner as "Accept as knowledge" ---------------------------
+
+def numpy_official(path, sentence, key):
+    """One sentence of numpy.org, the subject's own site (ADR-035 official_source), as the RC2 retest read it."""
+    return cluster([claim(f"http://numpy.org/{path}", sentence, key=key, published=None)], confidence=0.62)
+
+
+@pytest.mark.parametrize("sentence, key", [
+    ("Advice for using NumPy on untrusted data#", "advic numpy untrust using"),          # a heading with its anchor
+    ("NumPy enables many of these analyses.", "analys enabl numpy"),                     # "these": out of context
+    ("NumPy structured dtypes allow for a large amount of complexity.", "complex dtype numpy structur"),   # vague
+    ("How NumPy, together with libraries like SciPy and Matplotlib that depend on NumPy, enabled the Event Horizon "
+     "Telescope to produce the first ever image of a black hole", "black event horizon numpy telescop"),  # a title
+])
+def test_trivial_or_malformed_statements_never_become_owner_questions(db, sentence, key):
+    """R1-02: these numpy.org sentences were 'supported' by official_source and each opened "Accept as knowledge",
+    filling the owner's question budget. They are held (kept as claims) with the reason, and nothing is asked."""
+    _, out = consolidated(db, [numpy_official("doc/stable/reference/security.html", sentence, key)],
+                          objective="Is numpy 2.5.5 secure?")
+    assert out["provisional"] == [] and out["pending"] == []
+    assert any("not a specific, well-formed claim" in r for r in out["held"][0]["reasons"])
+    assert db.execute("SELECT count(*) FROM pending").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("sentence", [
+    "We’ll go through a couple of our core operators, why Python is such a crucial part of our software solution, "
+    "and how we augmented our offerings with a user operator interface.",                  # the exact RC2 sentence
+    "Python is a crucial part of the Acme software solution for user operator interfaces.",   # same, impersonal
+])
+def test_an_off_topic_sentence_is_never_proposed_as_knowledge(db, sentence):
+    """R2-04 (RC2 voice retest): "When was the Python programming language first released?" proposed a python.org
+    marketing sentence (claim relevance 0.23) as knowledge, and "what have you learned" read it aloud."""
+    official = cluster([claim("http://python.org/", sentence, key="operator python solution user", published=None,
+                              relevance=0.234879)], confidence=0.62)
+    _, out = consolidated(db, [official], objective="When was the Python programming language first released?")
+    assert out["provisional"] == [] and out["pending"] == []
+    assert any("not a specific, well-formed claim" in r for r in out["held"][0]["reasons"])
+
+
+def test_a_specific_claim_from_the_same_site_is_still_asked(db):
+    _, out = consolidated(db, [numpy_official("doc/stable/reference/security.html",
+                                              "NumPy is not designed to be exposed directly to untrusted users.",
+                                              "design expos numpy untrust")], objective="Is numpy 2.5.5 secure?")
+    assert len(out["provisional"]) == 1 and len(out["pending"]) == 1
+
+
+def test_the_same_statement_is_asked_once(db):
+    """R1-02 dedupe: the same sentence read on another page (another claim id and key) is not asked again."""
+    sentence = "NumPy is not designed to be exposed directly to untrusted users."
+    _, first = consolidated(db, [numpy_official("security.html", sentence, "design expos numpy untrust")])
+    _, second = consolidated(db, [numpy_official("doc/2.5/security.html", sentence, "expos numpy untrust user")],
+                             now=T0 + 1)
+    assert len(first["pending"]) == 1 and second["pending"] == []
+    assert db.execute("SELECT count(*) FROM pending WHERE question LIKE 'Accept as knowledge%'").fetchone()[0] == 1
+
+
+def test_questions_go_to_the_most_valuable_candidates_first(db):
+    """R1-02 ranking: with room for 3 questions, the corroborated specific statements are asked before a
+    single-source one, whatever order the clusters arrive in."""
+    weak = [cluster([claim(f"http://numpy.org/p{i}", f"NumPy supports the Widget{i} file format on every platform.",
+                           key=f"format numpy widget{i}", published=None)], confidence=0.95) for i in range(4)]
+    strong = [two_sources(text=f"Gadget{i} 2.{i}.0 was released on 3 November 2026 by the gadget{i} maintainers.",
+                          key=f"gadget{i} releas", confidence=0.9) for i in range(3)]
+    _, out = consolidated(db, weak + strong, objective="Which widget and gadget releases exist?")
+    assert len(out["provisional"]) == 7
+    asked = [q for (q,) in db.execute("SELECT question FROM pending WHERE scope LIKE 'web:knowledge:%'")]
+    assert len(asked) == state.get_config(db).max_web_questions_per_task == 3
+    assert all("Gadget" in q for q in asked), asked

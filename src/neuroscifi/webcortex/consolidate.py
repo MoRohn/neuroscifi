@@ -36,7 +36,9 @@ Steps for each scored cluster of the task (state.load_clusters):
    gets a pending question (scope web:knowledge:<id>) so acceptance stays the owner's decision - within the web
    question budget: at most config.max_web_questions_per_task new questions per task and none while
    config.max_open_web_questions are open; the rest stay provisional (or recorded) without a question of their
-   own and ONE aggregate question (scope web:review:<task>) says how many await review.
+   own and ONE aggregate question (scope web:review:<task>) says how many await review. Only a specific,
+   well-formed claim on the question's subject is proposed at all (unaskable: R1-02, R2-04; others are held), the
+   questions go to the most valuable candidates first, and a statement already asked is not asked again.
 A contested cluster about live knowledge compares values first: when its supporting side agrees with the item,
 the item is strengthened by it and never lowered; only claims that really conflict with the item are recorded as
 contradictions, each citing that claim (see _contested_against).
@@ -57,6 +59,7 @@ from . import claims as _claims, evolution, knowledge, state
 from .curiosity import entropy
 
 MIN_RELEVANCE = 0.0          # a cluster needs at least one claim with relevance above this
+MIN_QUESTION_RELEVANCE = 0.3  # ... and one at least this relevant to the task's question to be asked (R2-04)
 SIMILAR_KEY = 0.8            # token-set Jaccard above which two keys name the same subject
 MAX_ENTITIES_PER_CLAIM = 12
 MAX_NEW_HYPOTHESES_PER_TASK = 5   # new research opportunities one task may open (T1-17; refreshes do not count)
@@ -368,6 +371,48 @@ def _feedback(db, task_id, knowledge_id, key, effect, before, after, detail, now
                 state.dumps(detail or {}), now))
 
 
+# R1-02: an "Accept as knowledge" question costs the owner's attention, so it is raised only for a specific,
+# well-formed claim. Headings ("Advice for using NumPy on untrusted data#"), titles ("How NumPy ... enabled ..."),
+# context-bound sentences ("NumPy enables many of these analyses.") and unquantified generalities ("allow for a
+# large amount of complexity") were each asked on the RC2 retest and filled the owner's question budget.
+_TITLE_START = re.compile(r"^(?:how|why|what|when|where|which|who|whose)\b", re.I)
+_SENTENCE_END = re.compile(r"[.!][\"'”’)\]]*$")
+_VAGUE = re.compile(r"\b(?:many|much|several|various|numerous|some|a\s+(?:large|small|great|huge|vast)\s+"
+                    r"(?:amount|number|deal)\s+of|a\s+lot\s+of|lots\s+of|a\s+number\s+of|a\s+variety\s+of)\b", re.I)
+
+
+def unaskable(statement, relevance=1.0) -> str | None:
+    """None when `statement` deserves an owner question: a structured record's statement, or a self-contained
+    (curiosity.claim_shaped), complete sentence that is not a title and states something specific (an
+    unquantified "many", "some", "a large amount of" ... without any number is too vague to check), whose best
+    claim `relevance` to the task's question is at least MIN_QUESTION_RELEVANCE (R2-04: a python.org marketing
+    sentence, relevance 0.23, was proposed for "When was Python first released?"). Else why not."""
+    from .curiosity import claim_shaped
+    if state.finite(relevance, 0.0) < MIN_QUESTION_RELEVANCE:
+        return f"off the question's subject (relevance {state.finite(relevance, 0.0):.2f} < {MIN_QUESTION_RELEVANCE})"
+    s = " ".join(str(statement or "").split())
+    if s and _claims.record_template(s) is not None:
+        return None
+    why = claim_shaped(s)
+    if why is not None:
+        return why
+    if not _SENTENCE_END.search(s):
+        return "not a complete sentence (a heading, a title or cut-off text)"
+    if _TITLE_START.match(s):
+        return "a title or a question, not a statement"
+    if _VAGUE.search(s) and not re.search(r"\d", s):
+        return "too vague to check (an unquantified 'many', 'some' or 'a large amount of')"
+    return None
+
+
+def _question_value(cluster, verdict) -> float:
+    """How much an owner question about this candidate is worth (R1-02 ranking): the ADR-035 posterior, plus 0.1
+    per independent supporting group (up to 5), plus 0.1 when it states a value (a number, date or version)."""
+    groups = (verdict.get("independent_groups") or {}).get("supporting", 0) or 0
+    return (state.finite(verdict.get("confidence"), 0.0) + 0.1 * min(int(groups), 5)
+            + (0.1 if _values(cluster)[0] else 0.0))
+
+
 def _question(statement, n_sources, confidence, freshness, basis=None):
     return (f"Accept as knowledge: «{knowledge.quote(statement)}» ({n_sources} independent sources, confidence "
             f"{confidence:.2f}, freshness class {freshness}" + (f", verified by {basis}" if basis else "") + ")?")
@@ -391,11 +436,33 @@ def _freshness(db, task):
 class _Questions:
     """The web question budget of one consolidation: at most config.max_web_questions_per_task new questions, and
     none once config.max_open_web_questions are open (knowledge.ask); what is not asked is counted and summarised
-    in ONE aggregate question for the task (knowledge.review_question)."""
+    in ONE aggregate question for the task (knowledge.review_question). New knowledge candidates are offered and
+    asked at flush() in order of _question_value, so the budget goes to the most valuable ones; a statement already
+    asked in an open question is not asked again (R1-02)."""
 
     def __init__(self, db, cfg, task_id):
         self.db, self.cfg, self.task_id = db, cfg, task_id
-        self.asked, self.deferred = 0, 0
+        self.asked, self.deferred, self.duplicates = 0, 0, 0
+        self.offered = []
+
+    def offer(self, knowledge_id, statement, question, value):
+        self.offered.append((value, knowledge_id, statement, question))
+
+    def flush(self, now) -> list[int]:
+        """Ask the offered candidates' questions, most valuable first; set each asked item's pending_id."""
+        asked = []
+        for _, kid, statement, question in sorted(self.offered, key=lambda o: (-o[0], o[1])):
+            head = f"Accept as knowledge: «{knowledge.quote(statement)}»"
+            if self.db.execute("SELECT 1 FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:knowledge:%' "
+                               "AND substr(question, 1, ?) = ? LIMIT 1", (len(head), head)).fetchone():
+                self.duplicates += 1
+                continue
+            pid = self.ask(f"web:knowledge:{kid}", question, now)
+            if pid is not None:
+                self.db.execute("UPDATE web_knowledge SET pending_id=? WHERE id=?", (pid, kid))
+                asked.append(pid)
+        self.offered = []
+        return asked
 
     def ask(self, scope, question, now):
         if self.db.execute("SELECT 1 FROM pending WHERE scope=? AND resolved_at IS NULL",
@@ -428,16 +495,15 @@ def _insert_knowledge(db, task_id, cluster, freshness, now, *, key, version, que
          state.finite(cluster.uncertainty, 0.0), freshness, now, now, valid_from, valid_until,
          state.dumps(supporting), state.dumps(_sources(cluster)), state.dumps(values), polarity, task_id, now, now,
          state.dumps(verdict), published, event, retrieved)).lastrowid
-    pid = questions.ask(f"web:knowledge:{kid}", _question(_statement(cluster), cluster.independent_sources,
-                                                          confidence, freshness, verdict.get("basis")), now)
-    if pid is not None:
-        db.execute("UPDATE web_knowledge SET pending_id=? WHERE id=?", (pid, kid))
+    statement = _statement(cluster)
+    questions.offer(kid, statement, _question(statement, cluster.independent_sources, confidence, freshness,
+                                              verdict.get("basis")), _question_value(cluster, verdict))
     wanted = set(supporting)
     evolution.record_knowledge_edges(
         db, task_id, [c for c in cluster.claims if c.id in wanted], kid,
         {"published_at": published, "event_at": event, "retrieved_at": retrieved, "verified_at": now,
          "effective_at": valid_from, "valid_from": valid_from, "valid_until": valid_until}, now, head=_head(cluster))
-    return kid, pid, valid_from
+    return kid, valid_from
 
 
 def _research_opportunity(db, task_id, cluster, verdict, now, summary, *, freshness, cfg, knowledge_id=None,
@@ -718,8 +784,13 @@ def run(db, task_id, now, *, holder=None) -> dict:
                                                            f"#{rejected['id']})"]))
                     continue
                 ok, bar = _meets_bar(cluster, cfg, verdict)
+                shape = unaskable(_statement(cluster), max(state.finite(c.relevance, 0.0) for c in cluster.claims))
+                if newer and ok and shape is not None:
+                    summary["held"].append(_held(cluster, [f"not a specific, well-formed claim ({shape}): kept as a "
+                                                           "claim, no owner question"]))
+                    continue
                 if newer and ok:
-                    kid, pid, valid_from = _insert_knowledge(db, task_id, cluster, freshness, now,
+                    kid, valid_from = _insert_knowledge(db, task_id, cluster, freshness, now,
                                                              key=item["key"], version=next_version(db, item["key"]),
                                                              questions=questions, verdict=verdict)
                     db.execute("UPDATE web_knowledge SET status='superseded', valid_until=?, superseded_by=?, "
@@ -736,8 +807,6 @@ def run(db, task_id, now, *, holder=None) -> dict:
                               now)
                     summary["superseded"].append({"old": item["id"], "new": kid, "reason": differ})
                     summary["provisional"].append(kid)
-                    if pid is not None:
-                        summary["pending"].append(pid)
                     ids_by_key[cluster.key] = kid
                     continue
                 why = differ if newer is False else f"{differ}; newer but below the provisional bar ({'; '.join(bar)})"
@@ -751,15 +820,19 @@ def run(db, task_id, now, *, holder=None) -> dict:
             if not ok:
                 summary["held"].append(_held(cluster, bar))
                 continue
-            kid, pid, _ = _insert_knowledge(db, task_id, cluster, freshness, now, key=cluster.key,
+            shape = unaskable(_statement(cluster), max(state.finite(c.relevance, 0.0) for c in cluster.claims))
+            if shape is not None:
+                summary["held"].append(_held(cluster, [f"not a specific, well-formed claim ({shape}): kept as a "
+                                                       "claim, no owner question"]))
+                continue
+            kid, _ = _insert_knowledge(db, task_id, cluster, freshness, now, key=cluster.key,
                                             version=next_version(db, cluster.key), questions=questions,
                                             verdict=verdict)
             _feedback(db, task_id, kid, cluster.key, "new", None, state.finite(cluster.confidence, 0.0),
                       {"independent_sources": cluster.independent_sources, "basis": verdict.get("basis")}, now)
             summary["provisional"].append(kid)
-            if pid is not None:
-                summary["pending"].append(pid)
             ids_by_key[cluster.key] = kid
+        summary["pending"] += questions.flush(now)
         summary["questions_deferred"] = questions.deferred
         summary["review_question"] = questions.close(now)
         if summary["review_question"] is not None:
