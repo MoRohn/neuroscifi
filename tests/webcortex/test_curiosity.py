@@ -154,8 +154,10 @@ def test_curiosity_proposals_count_against_the_daily_autonomous_cap(db):
     proposal = curiosity.propose(db, candidate, now)
     assert proposal["budget"]["max_requests"] == 25                     # sized to what is left, not 40
     spender = orchestrator.submit(db, "zlib compression level defaults", now, mode="fact_verification",
-                                  origin="curiosity")                    # commits the whole allowance meanwhile
+                                  origin="curiosity")
     assert spender["budget"]["max_requests"] == 25
+    with store.write(db):    # once started it holds the whole allowance meanwhile (a queued task holds nothing)
+        state.update_task(db, spender["id"], now, status="discovering", started_at=now)
     with pytest.raises(Conflict, match="allowance is spent"):
         executive.resolve(db, proposal["pending_id"], "go", now + 1, confirm=True)
     assert orchestrator.get(db, proposal["id"])["proposed"] is True    # still open
