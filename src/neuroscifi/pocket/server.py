@@ -46,6 +46,7 @@ DAY = 86400
 MAX_CONNECTIONS = 32
 PER_IP_CONNECTIONS = 8   # one address cannot hold more than a quarter of the slots
 HEAD_DEADLINE = 10       # seconds from accept to a complete request (TLS handshake, head and body included)
+BODY_IDLE = 2.0          # a body that stops arriving before its Content-Length is incomplete (400)
 FAMILY_DEVICES = 6       # devices in one pairing family (the invited device and those linked from it)
 BODY_LIMIT = 512
 # A 300-character question in a non-Latin script needs up to 3 bytes a character; research_submit alone may send
@@ -488,6 +489,23 @@ class Handler(BaseHTTPRequestHandler):
         if not self.replied:
             self.reply(code)
 
+    def read_body(self, size):
+        """Exactly `size` body bytes, or ValueError (-> 400) when the client sends fewer than its Content-Length:
+        a gap of BODY_IDLE seconds ends the wait (UAT T5-08: it waited out the socket timeout and answered 500)."""
+        try:
+            self.connection.settimeout(BODY_IDLE)
+            data = self.rfile.read(size)
+        except OSError:
+            raise ValueError("incomplete request body") from None
+        finally:
+            try:
+                self.connection.settimeout(self.timeout)
+            except OSError:
+                pass
+        if len(data) != size:
+            raise ValueError("incomplete request body")
+        return data
+
     def reply(self, code, body=b"", mime="application/json"):
         if not isinstance(body, bytes):
             body = json.dumps(body, allow_nan=False).encode()
@@ -563,7 +581,7 @@ class Handler(BaseHTTPRequestHandler):
             limit = RESEARCH_BODY_LIMIT if route == "research_submit" else BODY_LIMIT
             if self.headers.get_content_type() != "application/json" or not 2 <= size <= limit:
                 return self.reply(400)
-            data = json.loads(self.rfile.read(size))
+            data = json.loads(self.read_body(size))
             if not isinstance(data, dict):
                 return self.reply(400)
             if route == "pair":
@@ -830,7 +848,12 @@ def main(argv=None):
         from ..instance import store as individual
         from ..instance.errors import InstanceError
         try:
-            individual.open_existing(a.instance_db).close()  # migrates; research tasks live in the individual
+            db = individual.open_existing(a.instance_db)  # migrates; research tasks live in the individual
+            try:
+                from ..voice import transcripts
+                transcripts.end_orphans(db, "pocket:", time.time())   # voice sessions of a bridge that died (T5-08)
+            finally:
+                db.close()
         except (InstanceError, sqlite3.Error) as error:
             p.error(f"cannot open instance {a.instance_db}: {error}")
     ctx = None

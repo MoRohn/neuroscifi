@@ -571,3 +571,18 @@ def test_unrelated_pocket_families_are_isolated(hub):
     same = start(hub, fam1, device="tabletA", mic=False)              # the same family confirms on its own
     confirm = hub.capture(same, fam1, "request_handoff")["confirm"]
     assert hub.capture(same, fam1, "handoff", handoff_confirm=confirm["id"])["granted"]
+
+
+def test_a_restarted_server_ends_the_voice_sessions_of_the_one_that_died(instance):
+    """T5-08: after the console was killed its voice sessions stayed 'active' for good."""
+    from neuroscifi.console.server import ConsoleServer
+    with closing(store.connect(instance)) as db:
+        mine = tx.start_session(db, "owner", "console:dev1234", "voice_text", 100.0)
+        phone = tx.start_session(db, "pocket:fam", "pocket:ab12:dev1", "text_only", 100.0)
+    srv = ConsoleServer(instance, 0, clock=lambda: 200.0)
+    srv.server_close()
+    with closing(store.connect(instance)) as db:
+        assert tx.session(db, mine)["status"] == "ended" and tx.session(db, mine)["ended_at"] == 200.0
+        assert tx.session(db, phone)["status"] == "active"       # the Pocket bridge's own, ended by its restart
+        assert tx.end_orphans(db, "pocket:", 300.0) == 1 and tx.session(db, phone)["status"] == "ended"
+        assert tx.end_orphans(db, "pocket:", 301.0) == 0

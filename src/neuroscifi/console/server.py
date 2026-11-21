@@ -805,6 +805,8 @@ class ConsoleServer(ThreadingHTTPServer):
         db = store.open_existing(self.db_path)  # refuse to start without an instance
         try:
             checkpoints.sweep(db, self.db_path)   # working copies a killed checkpoint/restore left (T5-03)
+            from ..voice import transcripts
+            transcripts.end_orphans(db, "console:", clock())   # voice sessions of a console that died (T5-08)
         finally:
             db.close()
         self.token = token or secrets.token_urlsafe(32)

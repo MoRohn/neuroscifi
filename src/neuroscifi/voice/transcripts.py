@@ -66,6 +66,18 @@ def update_session(db, sid, now, *, mode=None, status=None, context=None):
                    (mode, status, json.dumps(ctx, sort_keys=True), status, now, now, sid))
 
 
+def end_orphans(db, device_prefix, now) -> int:
+    """Mark ended every session still 'active' on a device of this server (`console:` or `pocket:`): a server
+    starting holds no session, so those belonged to a process that died (UAT T5-08). Returns how many."""
+    if not db.execute("SELECT 1 FROM voice_sessions WHERE status='active' AND substr(device,1,?)=? LIMIT 1",
+                      (len(device_prefix), device_prefix)).fetchone():
+        return 0     # no write at all on the usual start
+    with store.write(db):
+        return db.execute("UPDATE voice_sessions SET status='ended', ended_at=?, updated_at=? WHERE "
+                          "status='active' AND substr(device,1,?)=?",
+                          (now, now, len(device_prefix), device_prefix)).rowcount
+
+
 def last_context(db, principal) -> dict:
     """Context of the principal's most recent session (survives session end and process restarts)."""
     row = db.execute("SELECT context FROM voice_sessions WHERE principal=? ORDER BY updated_at DESC, rowid DESC "

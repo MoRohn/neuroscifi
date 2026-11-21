@@ -198,7 +198,7 @@ def console(handler, url):
         if handler.headers.get_content_type() != AUDIO_TYPE or "rate=16000" not in \
                 handler.headers.get("Content-Type", "").replace(" ", "").lower():
             return handler.fail(400, "Content-Type must be audio/L16; rate=16000")
-        audio = handler.rfile.read(size) if size else b""
+        audio = handler.rfile.read(size)
         headers = {k: handler.headers.get(k) for k in ("X-NSF-Session", "X-NSF-Utterance", "X-NSF-Seq",
                                                          "X-NSF-Final")}
     else:
@@ -277,7 +277,10 @@ def pocket(handler, route):
     if op == "audio":
         if not 0 <= size <= MAX_CHUNK or handler.headers.get_content_type() != AUDIO_TYPE:
             return 400, {}
-        audio = handler.rfile.read(size)
+        try:
+            audio = handler.read_body(size)
+        except ValueError:
+            return 400, {}
         headers = {k: handler.headers.get(k) for k in ("X-NSF-Session", "X-NSF-Utterance", "X-NSF-Seq",
                                                          "X-NSF-Final")}
     else:
@@ -285,7 +288,7 @@ def pocket(handler, route):
         if handler.headers.get_content_type() != "application/json" or not 2 <= size <= limit:
             return 400, {}
         try:
-            body = json.loads(handler.rfile.read(size))
+            body = json.loads(handler.read_body(size))
         except (ValueError, UnicodeDecodeError):
             return 400, {}
         if not isinstance(body, dict):

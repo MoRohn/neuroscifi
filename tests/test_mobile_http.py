@@ -263,6 +263,18 @@ class PocketPlainHTTP(unittest.TestCase):
         self.assertNotIn("127.0.0.1", text)
         self.assertNotIn("Traceback", text)
 
+    def test_a_body_shorter_than_its_content_length_is_400_at_once(self):
+        """T5-08: the server waited out its socket timeout for the missing bytes, then answered 500 (after 8 s)."""
+        s = socket.create_connection(("127.0.0.1", self.server.server_port))
+        self.addCleanup(s.close)
+        started = time.monotonic()
+        s.sendall(b"POST /api/state HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+                  b"Authorization: Bearer x\r\nContent-Length: 400\r\n\r\n{}")
+        s.settimeout(6)
+        head = s.recv(200)
+        self.assertTrue(head.startswith(b"HTTP/1.0 400") or head.startswith(b"HTTP/1.1 400"), head)
+        self.assertLess(time.monotonic() - started, bridge.BODY_IDLE + 1.5)
+
     def test_full_server_evicts_a_waiting_connection_not_a_reply(self):
         self.server.limit = 1
         idle = socket.create_connection(("127.0.0.1", self.server.server_port))
