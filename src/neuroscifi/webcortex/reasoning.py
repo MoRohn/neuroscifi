@@ -777,13 +777,14 @@ def compose(value, b: dict) -> list[dict]:
     """The model's answer ({"sentences": [{"claims", "text"}]}) as guard input ({"text", "sources", "claims"}): the
     sources are the cited claims' own (a claim is never cited through a source that does not carry it), and a sentence
     citing a claim that is not supported gets the attribution its weakest state requires (attribution, HEDGES), so the
-    hedge cannot be forgotten or misworded. A leading "Yes," or "No," (an answer no claim gives) is removed. A caveat
+    hedge cannot be forgotten or misworded. A leading "Yes," or "No," (an answer no claim gives) and a sentence the
+    model already wrote are removed. A caveat
     of the closed grammar, a question (an attribution would make it a statement) and a relayed instruction
     (_relays_instruction) get no attribution. Unknown claim ids are kept for the guard to reject; the guard judges
     every composed sentence."""
     claims = {c["id"]: c for c in b["claims"]}
     question = b.get("question") or ""
-    out = []
+    out, seen = [], set()
     for s in (value.get("sentences") if isinstance(value, dict) else None) or []:
         if not isinstance(s, dict):
             continue
@@ -794,6 +795,10 @@ def compose(value, b: dict) -> list[dict]:
         bare = _ANSWER_WORD.sub("", text)
         if bare != text and bare:
             text = bare[0].upper() + bare[1:]
+        key = _canon(text).rstrip(".!? ")
+        if key and key in seen:
+            continue                        # the same sentence again (live: a model repeating its last items)
+        seen.add(key)
         if used and text and not text.rstrip().endswith("?") and not insufficiency(text, question) and \
                 not _relays_instruction(text):
             text = attribution(text, [c["state"] for c in used], len(sources))

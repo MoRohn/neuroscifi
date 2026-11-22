@@ -924,6 +924,13 @@ def test_compose_replaces_the_models_own_attribution_and_answer_word(text, shown
     assert items[0]["text"] == shown and reasoning.guard(items, b)[1] == []
 
 
+def test_compose_drops_a_repeated_sentence():
+    b = one_claim("supported", (3,))
+    items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": "Build times dropped by 30 percent."},
+                                             {"claims": ["C1"], "text": "build times dropped by 30 percent"}]}, b)
+    assert [s["text"] for s in items] == ["Build times dropped by 30 percent."]
+
+
 def test_compose_attributes_no_question_and_no_relayed_instruction():
     """An attribution would turn a question into a statement, and must not be what lets a relayed instruction pass:
     the obeyed injection of the evidence stays rejected as an unhedged statement (test_injection_obeyed...)."""
