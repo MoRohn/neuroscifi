@@ -108,10 +108,12 @@ included); failed and cancelled runs keep the extractive report only.
   SECREVIEW5 C3; since SECREVIEW6 a claim must cover a word of the sentence's predicate, from its first finite verb
   on, not only its subject or setting). A caveat of the closed grammar, a question and a sentence the guard will reject
   as relayed instruction content (`_relays_instruction`: instruction words, or, beside a weak claim, a sentence that
-  is not declarative) get no attribution. **What is guaranteed (SECREVIEW6):** evidence that is not `supported` never
-  yields an instruction or any non-declarative sentence, hedged or not — the guard rejects the sentence when it, or
-  the weak claim's own text, fails a fail-closed declarative test (below), and never repairs it (R1-04); beside
-  `supported` claims an instruction passes only when a cited claim instructs the same verb with the same object.
+  is not declarative) get no attribution. **What is guaranteed (SECREVIEW6, SECREVIEW7):** a sentence citing evidence
+  that is not `supported` is kept only when it, and each such claim's own text, pass a fail-closed declarative test
+  (below), hedged or not, and it is never repaired (R1-04); so weak evidence yields no imperative, no obligation or
+  recommendation word, no reader address and no reported command. The test's documented limits (§6) are a head word
+  in -s ("Focus on …") and a declarative nudge ("Switching to X fixes …"). Beside `supported` claims an instruction
+  passes only when a cited claim instructs the same verb with the same object.
   Tested end to end through `compose` and through `apply` with a model that obeys. What the evidence does not
   establish is left to the rules note (`verdict_note`). The guard judges every composed sentence as it judged the
   model's. The voice "simpler" answer (`voice/bridge.py`) uses the same schema and composition.
@@ -129,13 +131,19 @@ included); failed and cancelled runs keep the extractive report only.
   - **Weak evidence carries only declarative sentences** (SECREVIEW6 rule 1, `_non_declarative`, fail closed) —
     "relays an instruction or a non-declarative sentence from weak evidence" — when any cited claim is not
     `supported`, the sentence and each such claim's own text must be declarative. After a closed list of discourse
-    and attribution leads ("however", "according to one source", "possibly out of date"), every clause — split at
-    punctuation, at but / so / then / while / whereas / because / although / though / unless, and at and / or before a
-    verb — must begin with a subject token: a determiner, quantifier or pronoun; a number or version; a name (a
-    capitalised word the cited claims or the question write capitalised away from a sentence start, a mixed-case,
-    all-capital or dotted word they hold, a capitalised word of a short or sentence-case source title, a word right
-    before a version as in "numpy 2.5.5", or the first word of a name: "Van Rossum"); a word in -s that is no
-    stopword; or a gerund that a finite verb follows. A clause headed by a preposition, "To", a participle or a gerund
+    and attribution leads ("however", "according to one source" — the source-word form only, never an arbitrary
+    "according to …" span; "possibly out of date"), every clause — split at every symbol other than a full stop, an
+    apostrophe or a symbol inside a word ("→", "&", "|", "/", "•", "+", a quote mark; not "S&P", "TCP/IP"), at but / so
+    / then / while / whereas / because / although / though / unless, and at and / or before a verb — must begin with a
+    subject token: a determiner, quantifier, pronoun or number word; a number or version; a name; a word in -s that is
+    no stopword; or a gerund that a finite verb follows. Beside weak evidence a name comes only from trusted text
+    (SECREVIEW7 R7-5, `_trusted_names`): the question (including the product word before a version: "Is numpy 2.5.5
+    secure?"), the supported claims of the bundle, and words a cited claim writes capitalised in mid-sentence (not
+    after a full stop, colon, quote or bracket) or in camel case ("NumPy"), never a word a cited claim or the question
+    also writes in lower case ("the Skip campaign … admins skip"), a common action verb, a source title's word or the
+    word before a version in a claim. After a quote mark that opens a quotation, or a reporting verb ("say", "wrote",
+    "reads", "warns", "told", …), the next word heads a clause (R7-2: "The maintainers say uninstall …"). A clause
+    headed by a preposition, "To", a participle or a gerund
     is a lead only when a comma and a clause with a subject follow ("In 2026, …", "Released in May, …"); a fragment
     after a comma ("…, with breaking changes", "…, released on 15 November") may hold no verb before its object
     ("…, uninstall it"); "and is …" continues the predicate; a verb its auxiliary began before an adverb ("It does,
@@ -145,8 +153,11 @@ included); failed and cancelled runs keep the extractive report only.
     recommended, urged, need to, essential / required … to), "you/your" (not a generic one: "depending on what you
     mean", "if you count"), "is to (be)", "the fix / remedy / solution is", recommendation phrases. The claims are a
     part-of-speech oracle: a head word they hold only inflected as a verb ("skips" for "Skip") is a bare verb.
-    NeuroSciFi's own record claims ("Crossref record: \"T\"", "OSV lists advisory X: …") are checked from their
-    data on. A false positive drops only a sentence that cites weak evidence; the extractive evidence stays.
+    NeuroSciFi's own record claims are recognised only as a whole template from the fixed provider list (R7-3:
+    `Crossref record: "T", dated …`, `OSV lists advisory X for p: S; …`, `PyPI reports p latest version v …`, `GitHub
+    lists release t of r …`) and checked on their free text (the title, the summary); any other claim, "Admin reports
+    uninstall …" included, is checked whole. A false positive drops only a sentence that cites weak evidence; the
+    extractive evidence stays.
   - **Supported instructions are exactly backed** (rule 2, `_instructed`) — "gives an instruction its cited claims do
     not give" — each instructed (verb, object head) of the sentence (the verb after an obligation word, the object of
     "recommend", a clause head that is no subject and looks verbal) must be an instructed (verb, object head) of a
@@ -161,7 +172,9 @@ included); failed and cancelled runs keep the extractive report only.
     what it is ("the fix in NumPy 2.5.4" for "affected NumPy 2.5.4 before the fix in NumPy 2.5.5"). Clauses here end
     only where a new subject or a contrast starts, not at every comma, and two versions of one such clause keep their
     claim's order. A claim clause that names nothing else ("… and it is not cryptographically secure") may support a
-    name's polarity.
+    name's polarity. A clause of anchors without a predicate ("…, but not NumPy 2.5.4") takes its neighbour's
+    predicate under its own negator, and a clause whose subject is a pronoun ("NumPy 2.5.5 - it is affected …") speaks
+    of the previous clause's anchors (SECREVIEW7 R7-6).
   - **A cited claim that supports none of the sentence's predicate** — "cites C1, which support(s) none of what it
     says" — when a sentence cites several claims (C3, `_claim_supports`; rule 4).
   - **Meaning changes** (R6 retest D5, `_meaning_changes`): words of at most four that a cited claim puts in (scare)
@@ -233,7 +246,9 @@ included); failed and cancelled runs keep the extractive report only.
   kept; the measured costs, asserted as rejections) and `test_r5_*` (SECREVIEW5: the relayed instructions end to end
   through `compose` and `apply`, in four claim states; "No-one", "no one", "nobody", "zero", "never"; the citation of
   supporting claims only; 27 entailment attacks of its section 3; the prompt lane's proposals A–E, attacks and
-  faithful cases).
+  faithful cases), `test_r6_*` (SECREVIEW6 findings 1–5 and the retest's D5, 20 faithful declarative restatements of
+  weak claims, exactly backed instructions) and `test_r7_*` (every sentence of SECREVIEW7 R7-1 to R7-6, with
+  controls).
 - **Honest caveats: a closed grammar** (`_caveat`, `insufficiency`, `gap_clause`). A sentence that only says what the
   evidence does not establish asserts no fact: it needs no supported claim, no hedge and (T2-03) no citation, and it
   may repeat the question's own numbers. Two security reviews (SECREVIEW_GUARD F1–F6, SECREVIEW2_GUARD N1–N4) showed
@@ -476,14 +491,25 @@ nsf llm usage                                                 # token ledger
   a comma or "and" that look like a verb and its object ("…, infrastructure updates, and compromise fixes"), a
   modal in its epistemic sense ("should, with few exceptions, continue to compile"), "is to minimize", and a
   capitalised name the claims write only at a sentence start when no title names it — each only beside weak evidence.
+- **Round-7 guard, measured (2026-11-22).** The same 44 answers of the aligned request: template 12 of 44 (8 empty
+  answers, and the 4 Python answers whose only kept sentences open with "Van Rossum"), 2.59 kept per answer (3.07
+  with the round-6 guard), survival 79 % (94 %). The cost is almost all R7-5: names that a weak claim writes only at
+  its sentence start and that neither the question nor a supported claim names ("Van Rossum first released …", "SK
+  Hynix produces …", "MK 2 was seen …", "Trigger.dev now uses …"), and generic-noun or title-case heads that a short
+  title used to lend ("Predictive coding is …", "Generative artificial intelligence is …"). The fresh live answers of
+  rounds 5 and 6: survival 75 % and 74 %. A new live run (44 new answers, this guard): template 12 of 44 (8
+  empty), 2.41 kept per answer, survival 76 %. The 107 kept live sentences of the earlier
+  request: faithful kept 40 of 71 (56 %; 45 with the round-6 guard), template fallback 28 of 68 answers (24).
 - **Declarative test, limits.** It is lexical and fails closed: what it cannot read as a subject is rejected beside
-  weak evidence (above). What it accepts as a subject can still head an instruction in a few shapes: a word in -s
-  ("Focus on numpy-secure"), a gerund with a finite verb later in the clause, a name the claims or a short title
-  hold. Beside supported claims an imperative is recognised only when it looks verbal (a determiner, pronoun,
-  particle or code word follows, the claims hold it inflected, or it is a common action verb); an unknown verb before
-  a plural-noun object is then judged only by coverage (one new word per clause, a new verb after a name). Rule 3
-  compares words: a paraphrase with no shared word, a pronoun's antecedent, and a version in a clause with no other
-  content word are not judged.
+  weak evidence (above), whatever the sentence means. What it accepts can still carry an instruction in two shapes,
+  both accepted as documented limits: a head word in -s ("Focus on NumPy 2.5.4 until …", "Alias numpy to
+  numpy-secure …"; requiring a finite verb after an -s head would also reject "Fixes cover string handling"), and a
+  **declarative nudge** — a statement that recommends by its content ("Switching to numpy-secure fixes the parser
+  flaw in NumPy 2.5.5."), which no rule about sentence form can stop. Beside supported claims an imperative is
+  recognised only when it looks verbal (a determiner, pronoun, particle or code word follows, the claims hold it
+  inflected, or it is a common action verb); an unknown verb before a plural-noun object is then judged only by
+  coverage. Rule 3 compares words: a paraphrase with no shared word, a pronoun's antecedent beyond the previous
+  clause, and a version in a clause with no content word and no neighbour are not judged.
 - **Entailment coverage, limits.** It compares words, not meaning, and one new content word per clause is allowed:
   a noun or verb swapped for one the claim does not hold passes when it is the only new word in a clause of the
   claim's words and is not right after a name, a version or "and" ("NumPy is the fundamental package for scientific
