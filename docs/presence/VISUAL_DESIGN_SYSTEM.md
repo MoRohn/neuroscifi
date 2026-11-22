@@ -94,8 +94,8 @@ colour.
 |---|---|---|---|
 | indicator | ≤ 28 px | body and eyes; an object doodle without eyes (headphones, gears, bulb) keeps body + its first two marks; the viewBox frames itself on them | Pocket navigation, beside "Research" (22 px) |
 | compact | ≤ 64 px | body, eyes, four marks, two accents, ground, overlay slots | console header, Pocket header (40 px) |
-| normal | ≤ 140 px | everything | console research and voice views, beside the view title (72 px) |
-| expanded | > 140 px | everything | the panel (168 px) |
+| normal | ≤ 140 px | everything | (between compact and the stage while a window is resized) |
+| expanded | > 140 px | everything | the interaction stage (`--stage-size`, 132–272 px: console research and voice, Pocket) and the panel (168 px) |
 
 A `ResizeObserver` picks the size class. Changing it re-plans the scene, and the removed slots shrink into a point
 instead of disappearing abruptly. Tier B element order is priority, so the compact level keeps the object that
@@ -104,14 +104,18 @@ the moving geometry with smoothing, so a state change never jumps.
 
 ## UI placement
 
-- **Console.** The presence button sits in the header (`#presence`, compact). While the research or voice view is
-  open, `console-boot.mjs` moves the same element (button, panel and the one SVG) into that view's
-  `[data-presence-dock]` beside the title, where it renders at normal size; on every other view it returns to the
-  header. Nothing is re-created and the frame loop is the same; the size change re-plans the scene and morphs.
-- **Pocket.** The header holds the compact button. The navigation's "Research" link carries the small indicator
+The presence is the hero of every interaction surface ([docs/ui/DESIGN_SYSTEM.md](../ui/DESIGN_SYSTEM.md), first
+principle).
+
+- **Console.** The presence button sits in the header (`#presence`, compact) on secondary views. While the research
+  or voice view is open, `console-boot.mjs` moves the same element (button, panel and the one SVG) onto that view's
+  stage (`.presence-stage[data-presence-dock]`): a sticky column beside the dialogue from 1200 px, centred above it
+  below that. Nothing is re-created and the frame loop is the same; the size change re-plans the scene and morphs.
+- **Pocket.** `pocket-boot.mjs` mounts the element on the stage that heads the first column, above the research
+  question (or the field session before pairing). The navigation's "Research" link carries the small indicator
   (`Presence.addIndicator`): a second, decorative (`aria-hidden`) SVG drawn from the same engine by the same frame
   loop, so a page still has one engine, one loop and one live region. Off screen, both pause.
-- The button shows the figure and a short word (hidden below 480 px). Activating it moves the SVG into an expanded
-  panel (168 px) with the status sentence, facts (activity, source, progress, intensity, conditions, composition)
+- The button shows the figure and a short word (hidden below 480 px). Activating it opens the panel; from the header the SVG moves into the
+  panel (168 px), on a stage it stays where it is, with the status sentence, facts (activity, source, progress, intensity, conditions, composition)
   and the settings: theme, motion and motion intensity, plus in the console an opt-in "model-proposed doodles"
   switch. The presence's controls are marked `data-keep`, so the console's offline mode leaves them usable.

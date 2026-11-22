@@ -3,6 +3,7 @@
    views are interaction surfaces: the presence entity stands on a stage beside (wide) or above (narrow) the dialogue. */
 :root { --shell-max: 1360px; --nav-w: 216px; }
 @media (min-width: 1700px) { :root { --shell-max: 1600px; --nav-w: 232px; } }
+@media (min-width: 2200px) { :root { --shell-max: 1840px; --stage-size: 304px; } }
 body { overflow-wrap: anywhere; }
 h1 { margin: 0; }
 h2 { margin: 0 0 var(--sp-3); }
