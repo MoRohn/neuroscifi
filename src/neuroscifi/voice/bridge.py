@@ -10,7 +10,11 @@ citations goes to the transcript and screen.
 Authorisation: the principal decides what may run. The owner console may do everything below; a Pocket device only
 what Pocket already may (Pocket voice exists only while the pocket_research switch is on: research, its own
 family's tasks, its own transcript, mode, and asking the microphone's holder for a hand-off); reading the knowledge
-base ("what have you learned") is owner-only. Sensitive commands - forget/delete, enabling autonomy, disclosing
+base ("what have you learned") is owner-only. A Pocket device changes research (asks, cancels, continues) under the
+rules of the HTTP research routes (pocket/research_routes.py, ADR-042): a device enrolled as a signed research node
+must sign its changes, and a spoken or typed command carries no node signature, so voice refuses them there and
+points to the Research panel's signed controls (reading, explaining and showing research stay open); and no device
+cancels or continues a research session another device owns (nodes.may_drive). Sensitive commands - forget/delete, enabling autonomy, disclosing
 private terms to the web, moving the microphone to another device, accepting conclusions into memory - return a
 confirmation request; nothing happens until the same session confirms it (voice "confirm" or the Confirm button)
 within CONFIRM_SECONDS.
@@ -47,6 +51,11 @@ STATE_MARKS = {"insufficient": "only one source or too little evidence; not inde
 CONFIRM_IF_FUZZY = {"cancel_research": "cancel the research that is running",
                     "continue_research": "continue the previous investigation",
                     "mode": "change the voice mode", "disable_autonomy": "turn off autonomous research"}
+# A Pocket device enrolled as a signed research node (security review A-1): voice cannot sign, so it reads only.
+NODE_SIGNED = ("This device is a research node, so your Spark accepts research changes from it only when they are "
+               "signed with its key, and a spoken or typed command carries no signature. Use the Research panel to "
+               "ask, cancel or continue; here I can read, show and explain research.")
+SESSION_OWNED = "Another of your devices is driving this research right now. Ask it to hand it over."
 HELP = ("You can ask a question or say: research followed by a topic, show evidence, explain more simply, "
         "remember conclusions, what have you learned since yesterday, what was I researching, continue previous "
         "investigation, stop, "
@@ -65,6 +74,7 @@ class Principal:
     label: str = "Owner console"
     device_prefix: str = "console:"   # capture-device ids are namespaced by the server, never chosen by a client
     device_fixed: str | None = None   # Pocket: the device is the paired credential itself (client id ignored)
+    node_device: str | None = None    # Pocket: the salted device digest the research routes use (nodes.device_digest)
 
 
 @dataclass
@@ -248,6 +258,26 @@ class Bridge:
         return Reply(intent, speech=[summary, "Say confirm, or press Confirm, to go ahead."],
                      text=summary + " (Say 'confirm' or press Confirm within 60 seconds.)", confirm=pending)
 
+    def _refused_change(self, db, principal, route, task_id=None):
+        """None when this principal may make this research change by voice, else the refusal. A Pocket device obeys
+        the HTTP research route's rules: research_routes.gate for an unsigned request (a signed node's change needs
+        its signature, which voice cannot carry) and, for a task's session, nodes.may_drive. A Pocket principal
+        without its device digest is refused (fail closed); the owner console is not a Pocket device."""
+        if principal.owner:
+            return None
+        device = principal.node_device
+        if not device:
+            return _say("refused", "I couldn't tell which device this is, so I didn't change any research.")
+        from ..pocket import research_routes
+        from ..webcortex import nodes
+        now = self.clock()
+        data = {"id": task_id} if task_id else {"objective": "-"}
+        if research_routes.gate(db, principal.family, device, route, data, b"", {}, now) is not None:
+            return _say("refused", NODE_SIGNED)
+        if task_id and not nodes.may_drive(db, task_id, device, now):
+            return _say("refused", SESSION_OWNED, task_id=task_id)
+        return None
+
     def _owner_only(self, principal, what):
         if principal.owner:
             return None
@@ -328,6 +358,9 @@ class Bridge:
         if not principal.research:
             return _say("refused", "Research from this device is switched off. Turn on Pocket research in the "
                                    "console to allow it.")
+        refused = self._refused_change(db, principal, "research_submit")
+        if refused is not None:
+            return refused
         limited = self._research_limited(db, principal)
         if limited is not None:
             return limited
@@ -423,6 +456,9 @@ class Bridge:
         task = self._last_task(db, ctx, principal)
         if not task or task["status"] in ("completed", "partial", "failed", "cancelled"):
             return _say("cancel_research", "There is no research running to cancel.")
+        refused = self._refused_change(db, principal, "research_cancel", task["id"])
+        if refused is not None:
+            return refused
         orchestrator.cancel(db, task["id"], self.clock(), family=principal.family)
         return _say("cancel_research", f"Cancelled the research on {task['objective'][:120]}.", task_id=task["id"])
 
@@ -546,15 +582,23 @@ class Bridge:
         if task["status"] in ("partial", "cancelled", "failed"):
             if not principal.research:
                 return _say("refused", "Research from this device is switched off.")
+            refused = self._refused_change(db, principal, "research_continue", task["id"])
+            if refused is not None:
+                return refused
             with self._research_lock:
                 limited = self._research_limited(db, principal)
             if limited is not None:
                 return limited
-            try:
-                queued = orchestrator.requeue(db, task["id"], self.clock(), origin=principal.origin,
-                                              family=principal.family)
+
+            def requeue():
+                return orchestrator.requeue(db, task["id"], self.clock(), origin=principal.origin,
+                                            family=principal.family)
+            try:   # counted in the family's submissions per hour, as Pocket's research_continue is
+                queued = principal.admit(requeue) if principal.admit else requeue()
             except InstanceError as err:
                 return _say("refused", f"I couldn't continue it: {str(err)[:160]}")
+            if queued is None:
+                return _say("refused", "This device has reached its hourly research limit.")
             return Reply("continue_research", speech=["Continuing the previous investigation."],
                          text=f"Continuing: {task['objective'][:300]}", task_id=queued["id"], follow=queued["id"],
                          actions=[{"kind": "context", "last_task_id": queued["id"]}])

@@ -195,7 +195,10 @@ class VoiceHub:
     def session(self, sid, principal) -> Session:
         sid = self.aliases.get(sid, sid) if isinstance(sid, str) else None
         s = self.sessions.get(sid) if sid else None
-        if s is None or s.principal.name != principal.name or not s.active:
+        # A Pocket voice session belongs to the device that started it, not to its whole family: its replies run as
+        # that device (the bridge's research rules depend on which device it is, voice/bridge.py).
+        if s is None or s.principal.name != principal.name or s.principal.node_device != principal.node_device \
+                or not s.active:
             raise NotFound("voice session not found (start a new one)")
         s.seen = time.monotonic()
         return s

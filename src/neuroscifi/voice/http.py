@@ -248,7 +248,7 @@ def console(handler, url):
 def pocket_principal(server, token):
     """The paired device's principal (PermissionError when the credential is unknown or revoked)."""
     from ..pocket import server as pocket
-    from ..webcortex import state as wstate
+    from ..webcortex import nodes, state as wstate
     from ..instance import store as individual
     family = server.store.family(token)
     db = individual.connect(server.instance_db)
@@ -256,13 +256,15 @@ def pocket_principal(server, token):
         digest = wstate.family_digest(db, family)
         # instance-salted pseudonym of this one device (never the credential or its fingerprint)
         device = wstate.family_digest(db, "voice-device:" + pocket.fingerprint(token))[:16]
+        # the device as the research routes know it: voice changes research under their rules (voice/bridge.py)
+        node_device = nodes.device_digest(db, pocket.fingerprint(token))
     finally:
         db.close()
     tag = digest[:12]        # what the instance stores: the salted family pseudonym, never the Pocket fingerprint
     p = Principal(name=f"pocket:{tag}", owner=False, research=pocket.research_on(server), origin="pocket-voice",
                   family=digest, admit=lambda submit: server.store.admit(family, submit),
                   label=f"Pocket device ({tag})", device_prefix=f"pocket:{tag}:",
-                  device_fixed=f"pocket:{tag}:{device}")
+                  device_fixed=f"pocket:{tag}:{device}", node_device=node_device)
     return p
 
 

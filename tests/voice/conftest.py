@@ -61,9 +61,9 @@ OWNER = Principal(name="owner", owner=True, research=True, origin="voice", label
                   device_prefix="console:")
 
 
-def pocket_principal(research=True, family="fam-digest"):
+def pocket_principal(research=True, family="fam-digest", node_device="d" * 64):
     return Principal(name="pocket:abcd1234", owner=False, research=research, origin="pocket-voice", family=family,
-                     label="Pocket device (abcd1234)", device_prefix="pocket:abcd1234:")
+                     label="Pocket device (abcd1234)", device_prefix="pocket:abcd1234:", node_device=node_device)
 
 
 @pytest.fixture
