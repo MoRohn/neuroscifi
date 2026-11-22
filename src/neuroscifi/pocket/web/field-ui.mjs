@@ -115,7 +115,7 @@ $("unlock").onclick=async()=>{
    const pending=next.find(r=>r.pending);
    if(pending){pendingId=pending.id;context=pending.features;prediction=pending.pending;$("goal").value=context.goal?.[0]||"";}
    paint();msg(pending?"Prediction restored. Record what happened next.":"Vault open. Default retention is 24 hours.");
-   if(auth){managedPair=true;window.pocketSetPair(auth.credential);}
+   if(auth){managedPair=true;window.pocketSetPair(auth.credential,auth.spark);}
  });}catch(e){
    // AES-GCM refuses a wrong key with OperationError; anything else is storage (UX 7).
    msg(e?.name==="OperationError"?"That passphrase does not open the vault on this device. Check it and try again. Forgot it? “Erase local vault” starts a new one."
@@ -128,7 +128,7 @@ $("rememberpair").onclick=async()=>{
  try{await navigator.locks.request(storageKey,async()=>{
    const box=JSON.parse(localStorage.getItem(storageKey));
    if(!box || box.salt!==session.salt)throw Error("Vault changed.");
-   const auth=await seal([{created:Date.now(),credential}],session.key);
+   const auth=await seal([{created:Date.now(),credential,spark:window.pocketSpark?.()||null}],session.key);  // the Spark pin goes with it
    if(ticket!==epoch)return;
    localStorage.setItem(storageKey,JSON.stringify({...box,auth}));managedPair=true;msg("Pairing protected by this vault for 24 hours.");
  });}catch(e){report(e);}

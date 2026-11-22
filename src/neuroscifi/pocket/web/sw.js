@@ -1,5 +1,5 @@
 const CACHE="neuroscifi-pocket-shell-19";
-const shell=["/","/style.css","/mobile.js","/field-ui.mjs","/field-model.mjs","/research-ui.mjs","/sw.js","/manifest.webmanifest","/icon.svg",
+const shell=["/","/style.css","/mobile.js","/field-ui.mjs","/field-model.mjs","/research-ui.mjs","/node-key.mjs","/sw.js","/manifest.webmanifest","/icon.svg",
  "/presence/theme-boot.js","/presence/theme.css","/presence/theme.mjs","/presence/contracts.mjs","/presence/geometry.mjs","/presence/canonical.mjs","/presence/composer.mjs","/presence/validator.mjs","/presence/interpreter.mjs","/presence/planner.mjs","/presence/motion.mjs","/presence/renderer.mjs","/presence/a11y.mjs","/presence/channel.mjs","/presence/presence.mjs","/presence/pocket-boot.mjs",
  "/voice/voice.css","/voice/voice-ui.mjs","/voice/voice-client.mjs","/voice/capture-worklet.mjs","/voice/pocket-voice.mjs"];
 self.addEventListener("install",e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(shell)).then(()=>self.skipWaiting())));

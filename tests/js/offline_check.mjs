@@ -25,9 +25,9 @@ async function read(path,method="GET"){let answer;callbacks.fetch({request:{url:
 await lifecycle("install");await lifecycle("activate");
 const installed=[...stores.get("neuroscifi-pocket-shell-19").keys()];
 // Plan p.20 names six shell assets; the manifest and its icon make eight (ADR-015) and the Research module nine
-// (ADR-028: saved findings must reopen offline), plus the 16 Presence Cortex/theme files (docs/presence/) and the 5
-// Voice Cortex files (docs/voice/). Deviations.
-assert.equal(installed.length,30);assert(installed.includes("/voice/pocket-voice.mjs"));assert(installed.includes("/presence/pocket-boot.mjs")&&installed.includes("/presence/theme-boot.js"));assert(installed.includes("/manifest.webmanifest")&&installed.includes("/icon.svg"));
+// (ADR-028: saved findings must reopen offline), its node-key module ten (ADR-040 draft: the research module imports
+// it), plus the 16 Presence Cortex/theme files (docs/presence/) and the 5 Voice Cortex files (docs/voice/). Deviations.
+assert.equal(installed.length,31);assert(installed.includes("/node-key.mjs"));assert(installed.includes("/voice/pocket-voice.mjs"));assert(installed.includes("/presence/pocket-boot.mjs")&&installed.includes("/presence/theme-boot.js"));assert(installed.includes("/manifest.webmanifest")&&installed.includes("/icon.svg"));
 assert(installed.includes("/research-ui.mjs"));assert.match(await read("/research-ui.mjs"),/keepFinding/);assert.match(await read("/research-ui.mjs"),/research_session/);
 assert.equal(await read("/api/research_get","POST"),undefined);
 const manifest=JSON.parse(await read("/manifest.webmanifest"));
@@ -44,4 +44,4 @@ assert.equal(shown.length,2);
 for(const n of shown)assert.deepEqual(JSON.parse(JSON.stringify(n)),{title:"NeuroSciFi Pocket",body:"Your Spark finished a research task.",tag:"pocket-push",icon:"/icon.svg"});
 assert.equal(JSON.stringify(told),JSON.stringify([{type:"pocket-push"},{type:"pocket-push"}]));  // objects from the vm realm
 console.log("Passed generic empty-push notification and page refresh message.");
-console.log("Passed deterministic offline asset replay, 30-asset shell (nine app assets with manifest (share target), icon and research module, plus 16 presence and 5 voice files), cache upgrade, private API exclusion and URL query exclusion.");
+console.log("Passed deterministic offline asset replay, 31-asset shell (ten app assets with manifest (share target), icon, research and node-key modules, plus 16 presence and 5 voice files), cache upgrade, private API exclusion and URL query exclusion.");

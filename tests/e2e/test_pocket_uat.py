@@ -595,7 +595,7 @@ def test_pocket_shows_copies_and_independent_sources(research_spark, new_page):
         for item in (body.get("report") or {}).get("answer", []):
             if item.get("status") not in (None, "summary"):
                 item["copies"], item["independent_sources"] = 3, 1
-        route.fulfill(json=body)
+        research_spark.fulfill_signed(route, body)     # as a Spark reporting copies would sign it (ADR-040 draft)
 
     page.route("**/api/research_get", patched)
     page.goto(research_spark.url)

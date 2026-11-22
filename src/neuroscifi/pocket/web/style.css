@@ -5,7 +5,7 @@ textarea{display:block;width:100%;font:inherit;border:1px solid #66847d;border-r
 /* Evidence review (ADR-035 state and basis) and session hand-off. Tokens on #research; theme.css sets the dark ones. A
    state is always a word with a glyph and its own border pattern, never colour alone. */
 #research{--st-ok:#14513f;--st-ok-bg:#dcefe3;--st-bad:#8a3417;--st-bad-bg:#fbe6dc;--st-info:#0b4f74;--st-info-bg:#e1eef8;--st-mute:#24423f;--st-mute-bg:#e6ecea;--st-line:#c6d2cb;--st-card:#f7faf8;--st-sub:#42645b;--st-field:#fff;--st-fieldline:#66847d}
-.revidence,.rsession{margin:4px 0 14px;padding:12px 14px;border:1px solid var(--st-line);border-radius:12px;background:var(--st-card)}.rsession{margin-top:16px}.revidence h4,.rsession h4{margin-top:0}
+#researchnode,.revidence,.rsession{margin:4px 0 14px;padding:12px 14px;border:1px solid var(--st-line);border-radius:12px;background:var(--st-card)}.rsession{margin-top:16px}.revidence h4,.rsession h4{margin-top:0}
 .revsummary{margin:0 0 6px;font-size:.9rem;color:var(--st-sub)}.revlist{margin:0;padding:0;list-style:none}
 #research .revlist li{display:block;margin:8px 0;padding:8px 0 8px 12px;border-bottom:0;border-left:4px dashed var(--st-mute);--fg:var(--st-mute);--bg:var(--st-mute-bg)}
 #research .revlist li[data-state=supported]{border-left:4px solid var(--st-ok);--fg:var(--st-ok);--bg:var(--st-ok-bg)}#research .revlist li[data-state=disputed]{border-left:4px solid var(--st-bad);--fg:var(--st-bad);--bg:var(--st-bad-bg)}#research .revlist li[data-state=conflicting]{border-left:6px double var(--st-bad);--fg:var(--st-bad);--bg:var(--st-bad-bg)}#research .revlist li[data-state=temporally_unresolved]{border-left:4px dotted var(--st-info);--fg:var(--st-info);--bg:var(--st-info-bg)}
@@ -17,3 +17,4 @@ textarea{display:block;width:100%;font:inherit;border:1px solid #66847d;border-r
 .rhandoff label{margin:12px 0 4px;font-weight:650}.rhandoff input{display:block;width:100%;font:inherit;min-height:44px;padding:8px 11px;border:1px solid var(--st-fieldline);border-radius:7px;background:var(--st-field);color:inherit}.rhandoff small{margin:4px 0 0;color:var(--st-sub)}.rhandoff .buttons{margin-top:8px}
 
 #researchmode{width:100%}@media(pointer:coarse){input[type=range]{min-height:28px}}
+#researchnode h3{margin-top:0}.nodeprint code{font-family:ui-monospace,monospace;font-weight:700;letter-spacing:.02em;overflow-wrap:anywhere}.nodeprint small{display:block}.rwarn{color:var(--st-bad)}

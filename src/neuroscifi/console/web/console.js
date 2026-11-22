@@ -2052,12 +2052,75 @@ function ownerText(by) {
 }
 
 async function loadAutonomy() {
+  loadNodes();
   const s = await load('autonomy', ['autoState', 'autoBudgets', 'autoCandidates', 'autoDecisions'].map($),
     () => api('GET', '/api/web/autonomy'));
   if (!s) return;
   auto.sig = '';
   renderAutonomy(s);
   scheduleAutoPoll();
+}
+
+// ---- research nodes (ADR-040 draft; RESEARCH_POLICY.md section 6) ----
+// GET /api/web/nodes: nodes with their key algorithm and fingerprint, attested enrolments waiting for the owner and
+// this Spark's own fingerprint. POST /api/web/nodes enrols a pending device by fingerprint, rejects it, or revokes.
+const ALG_TEXT = { Ed25519: 'Ed25519', 'ECDSA-P256': 'ECDSA P-256' };
+const NODE_STATE = { enrolled: ['Enrolled, signs its requests', 'ok'], reenrol: ['Must enrol again', 'warn'], revoked: ['Revoked, key deleted', 'neutral'] };
+let nodesSig = '';
+async function loadNodes(quiet = false) {
+  const s = quiet ? await api('GET', '/api/web/nodes').catch(() => null) : await load('nodes', [$('autoNodes')], () => api('GET', '/api/web/nodes'));
+  if (s) renderNodes(s);
+}
+const fp = (text) => h('code', { class: 'fp', text });
+function renderNodes(s) {
+  const sig = JSON.stringify(s);
+  if (sig === nodesSig && $('autoNodes').querySelector(':scope > p.sub')) { $('autoNodes').removeAttribute('aria-busy'); return; }   // already shown
+  nodesSig = sig;
+  const out = [h('p', { class: 'sub' }, s.spark ? ['This Spark’s own fingerprint, which each device pins when it pairs: ', fp(s.spark.fingerprint)]
+    : 'This Spark’s signing key is created when Pocket first starts with this individual.')];
+  if (s.pending.length) {
+    out.push(h('h3', { text: 'Waiting for you' }), h('ul', { class: 'nodes', id: 'nodePending' }, s.pending.map((p, i) => {
+      const id = `nodeName${i}`;
+      return h('li', { 'data-state': 'pending' },
+        h('p', {}, `Pocket pairing ${p.pocket_label} (family ${p.family}) proved an ${ALG_TEXT[p.alg] ?? p.alg} key, ${ago(p.attested_at)}. Its fingerprint:`),
+        h('p', {}, fp(p.fingerprint)),
+        h('p', { class: 'sub', text: 'Enrol it only if the device shows exactly this fingerprint under “This device as a research node”.' }),
+        h('label', { for: id, text: 'Name of the node (what your devices hand research to)' }),
+        h('input', { id, value: p.pocket_label, maxlength: 64, autocomplete: 'off', spellcheck: 'false' }),
+        h('div', { class: 'buttons' },
+          h('button', { type: 'button', class: 'primary', text: 'Fingerprints match: enrol', 'aria-label': `Fingerprints match: enrol ${p.fingerprint}`,
+            onclick: (ev) => act(ev.currentTarget, $('autoNodesStatus'), async () => {
+              const label = $(id).value.trim();
+              if (!label) { $(id).focus(); return 'Enter a name for the node first.'; }
+              renderNodes(await api('POST', '/api/web/nodes', { action: 'enrol', fingerprint: p.fingerprint, label }));
+              return `Enrolled “${label}” with fingerprint ${p.fingerprint}. Its requests are now signed.`;
+            }) }),
+          h('button', { type: 'button', text: 'Reject', 'aria-label': `Reject ${p.fingerprint}`,
+            onclick: (ev) => act(ev.currentTarget, $('autoNodesStatus'), async () => {
+              renderNodes(await api('POST', '/api/web/nodes', { action: 'reject', fingerprint: p.fingerprint }));
+              return 'Enrolment request rejected. Nothing was enrolled.';
+            }) })));
+    })));
+  }
+  out.push(h('h3', { text: 'Nodes' }));
+  if (!s.nodes.length) out.push(empty('No research node yet.'));
+  else out.push(h('ul', { class: 'nodes', id: 'nodeList' }, s.nodes.map((n) => {
+    const [word, tone] = NODE_STATE[n.state] ?? [n.state, 'neutral'];
+    return h('li', { 'data-state': n.state },
+      h('p', {}, h('strong', { text: n.label }), ' ', badge(word, tone), ` · family ${n.family} · enrolled ${fmtTime(n.enrolled_at)}`),
+      n.fingerprint ? h('p', {}, fp(n.fingerprint), ` · ${ALG_TEXT[n.alg] ?? n.alg}`) : null,
+      n.state === 'reenrol' ? h('p', { class: 'sub', text: 'Enrolled before nodes signed their requests: it must enrol again from its Research panel before it can take or hand off research.' }) : null,
+      n.state === 'revoked' ? null : h('div', { class: 'buttons' }, h('button', { type: 'button', text: 'Revoke', 'aria-label': `Revoke ${n.label}`,
+        onclick: async (ev) => {
+          const button = ev.currentTarget;
+          if (!await confirmAction(`Revoke “${n.label}”?`, 'It loses its research sessions and its key is deleted, so nothing it signs is accepted any more. It stays paired and can still ask and read research. To make it a node again, it must enrol again.', 'Revoke')) return;
+          act(button, $('autoNodesStatus'), async () => {
+            renderNodes(await api('POST', '/api/web/nodes', { action: 'revoke', label: n.label }));
+            return `Revoked “${n.label}”: its key was deleted.`;
+          });
+        } })));
+  })));
+  fill($('autoNodes'), out);
 }
 
 // Budgets move while research runs anywhere (worker, Pocket, CLI): poll the open view, re-render only on a change.
@@ -2070,6 +2133,7 @@ function scheduleAutoPoll() {
     if (state.view !== 'autonomy') return;
     if (!document.hidden && !state.offline) {
       try { renderAutonomy(await api('GET', '/api/web/autonomy')); } catch { /* retried on the next tick */ }
+      if (!$('autoNodes').contains(document.activeElement)) await loadNodes(true);   // never under the owner's typing
     }
     scheduleAutoPoll();
   }, AUTO_POLL_MS);

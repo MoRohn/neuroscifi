@@ -50,6 +50,17 @@ class Spark:
                                       for (h, p), (t, _, x) in PAGES.items()])
         self.worker = None
 
+    def fulfill_signed(self, route, body: dict, status=200):
+        """Answer `route` with `body` as this Spark would: signed with its key for that request's nonce (ADR-040
+        draft). Lets a test shape a reply without being the tampering that Pocket refuses."""
+        from neuroscifi.webcortex import signing
+        raw = json.dumps(body).encode()
+        path = "/" + route.request.url.split("/", 3)[3]
+        message = signing.canonical_response(status, path, route.request.headers.get("x-nsf-nonce", ""), raw)
+        key = signing.SparkKey.load_or_create(signing.key_path(self.instance))
+        route.fulfill(status=status, content_type="application/json", body=raw,
+                      headers={"X-NSF-Spark-Signature": signing.b64(key.sign(message))})
+
     def work(self, background=False):
         run = lambda: scheduler.work(self.instance, once=True, fixture=self.web, providers=[self.corpus])  # noqa: E731
         if not background:

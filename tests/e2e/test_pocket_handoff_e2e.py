@@ -3,6 +3,7 @@ it to the linked tablet of its own family, the tablet accepts and then releases 
 node is refused and that family cannot even read the session. The evidence review and the session controls pass axe
 in light and dark at 390 and 1280 px."""
 from contextlib import closing
+import re
 import time
 
 import pytest
@@ -10,7 +11,6 @@ from playwright.sync_api import expect
 
 from conftest import AXE, SHOTS, pair
 from neuroscifi.instance import store
-from neuroscifi.pocket import server as bridge
 from neuroscifi.webcortex import nodes
 from test_pocket_research_e2e import QUESTION, Spark, ask
 
@@ -23,10 +23,30 @@ def spark(tmp_path):
 
 
 def enrol(spark, page, label):
-    """The owner enrols a paired device as a research node (`nsf web node enrol LABEL`)."""
-    token = page.evaluate("window.pocketToken()")
+    """Attested enrolment (ADR-040 draft): the device asks, signing the Spark's challenge with its own key; the owner
+    compares the fingerprint the device shows and enrols it under `label` (console, or `nsf web node enrol`)."""
+    box = page.locator("#researchnode")
+    box.get_by_role("button", name=re.compile("enrol this device", re.I)).click()
+    expect(box).to_contain_text("Waiting for the owner")
+    fingerprint = box.locator(".nodeprint code").inner_text()
     with closing(store.connect(spark.instance)) as db:
-        nodes.enrol(db, bridge.fingerprint(token), spark.bridge.server.store.family(token), label, time.time())
+        assert [p["fingerprint"] for p in nodes.pending(db, time.time())].count(fingerprint) == 1
+        nodes.approve(db, fingerprint, label, time.time(), by="owner:console")
+    box.get_by_role("button", name="Check again").click()
+    expect(box).to_contain_text(f"This device is the research node “{label}”")
+    expect(box.locator(".nodeprint code")).to_have_text(fingerprint)
+    return fingerprint
+
+
+# research_session status, accept and take from a page, signed with that browser's node key when `sign` is true
+SESSION_CALLS = """async ([id, sign]) => { const k = await import('/node-key.mjs');
+    return Promise.all(['status', 'accept', 'take'].map(async action => {
+        const body = JSON.stringify({id, action}), nonce = k.nonce();
+        const headers = {'Content-Type': 'application/json', Authorization: 'Bearer ' + window.pocketToken(),
+                         'X-NSF-Nonce': nonce};
+        if (sign && action !== 'status')
+            Object.assign(headers, await k.signedHeaders('/api/research_session', new TextEncoder().encode(body), nonce));
+        return (await fetch('/api/research_session', {method: 'POST', headers, body})).status; })); }"""
 
 
 def session(page):
@@ -75,11 +95,11 @@ def test_handoff_between_two_devices_of_one_family_and_refused_across_families(s
     task_id = phone.evaluate("""() => fetch('/api/research_list', {method: 'POST', headers: {'Content-Type':
         'application/json', Authorization: 'Bearer ' + window.pocketToken()}, body: '{}'}).then(r => r.json())
         .then(b => b.tasks[0].id)""")
-    refused = stranger.evaluate("""(id) => Promise.all(['status', 'accept', 'take'].map(action =>
-        fetch('/api/research_session', {method: 'POST', headers: {'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + window.pocketToken()}, body: JSON.stringify({id, action})}).then(r => r.status)))""",
-                                task_id)
+    # signed with the stranger's own node key, as Pocket signs: still nothing of another family (404)
+    refused = stranger.evaluate(SESSION_CALLS, [task_id, True])
     assert refused == [404, 404, 404]
+    # unsigned, the stranger's node is refused before anything else (ADR-040 draft)
+    assert stranger.evaluate(SESSION_CALLS, [task_id, False]) == [404, 401, 401]
 
     # Offer to the tablet of the same family; the tablet accepts.
     box.get_by_label("Hand off to (the name of another of your devices)").fill("tablet")
@@ -115,7 +135,7 @@ def test_handoff_between_two_devices_of_one_family_and_refused_across_families(s
     with closing(store.connect(spark.instance)) as db:
         assert db.execute("SELECT count(*) FROM autonomy_sessions").fetchone()[0] == 0
     unexpected = [p for page in (phone, tablet, stranger) for p in page.problems
-                  if "status of 409" not in p and "status of 404" not in p]   # the refusals themselves
+                  if not any(f"status of {code}" in p for code in (401, 404, 409))]   # the refusals themselves
     assert unexpected == [], unexpected
 
 

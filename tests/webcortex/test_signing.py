@@ -213,3 +213,55 @@ def test_attestation_is_bound_to_the_challenge_family_and_expiry(db):
     with pytest.raises(nodes.NotFound):                                # approval expires with the pending request
         nodes.approve(db, key.fingerprint, "phone", T0 + 2 + nodes.PENDING_SECONDS + 1)
     assert nodes.reject(db, key.fingerprint, T0 + 4) == 1 and nodes.pending(db, T0 + 4) == []
+
+
+VECTORS = Path(__file__).resolve().parents[1] / "js" / "spark_vectors.json"
+
+
+def js_vectors():
+    """Deterministic vectors for tests/js/signing_check.mjs: the same canonical bytes, fingerprints and a Spark
+    signature that Pocket's node-key.mjs must accept (and reject once tampered or under another pin)."""
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+    spark = signing.SparkKey(Ed25519PrivateKey.from_private_bytes(bytes(range(32))))
+    impostor = signing.SparkKey(Ed25519PrivateKey.from_private_bytes(bytes(range(1, 33))))
+    body = '{"id":"6a3c0e8e-2d6c-4f7e-9d47-1f0d2c9b8e11","objective":"Zephyr 4.2 — “released”?","status":"completed"}'
+    nonce = "AbCdEfGhIjKlMnOpQr_-01"
+    p256 = ec.derive_private_key(0x1234567890ABCDEF, ec.SECP256R1())
+    p256_raw = p256.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+    request = signing.canonical_request("POST", "/api/research_session", b'{"id":"x","action":"take"}', 1790000000,
+                                        nonce)
+    r, s = decode_dss_signature(p256.sign(request, ec.ECDSA(hashes.SHA256())))
+    challenge = {"challenge": "c" * 43, "family": "f-0123456789abcdef", "node": "n-fedcba9876543210",
+                 "expires": 1790000300}
+    return {
+        "spark": spark.pin(), "impostor": impostor.pin(),
+        "reply": {"status": 200, "path": "/api/research_get", "nonce": nonce, "body": body,
+                  "signature": signing.b64(spark.sign(signing.canonical_response(200, "/api/research_get", nonce,
+                                                                                  body.encode())))},
+        "request": {"body": '{"id":"x","action":"take"}', "path": "/api/research_session", "ts": 1790000000,
+                    "nonce": nonce, "canonical": request.decode(),
+                    "p256": {"key": signing.b64(p256_raw), "signature": signing.b64(r.to_bytes(32, "big") +
+                                                                                    s.to_bytes(32, "big")),
+                             "fingerprint": signing.fingerprint(signing.P256, p256_raw)}},
+        "challenge": dict(challenge, canonical=signing.canonical_challenge(**challenge).decode()),
+        "ed25519_fingerprint": {"key": spark.pin()["key"], "fingerprint": spark.fingerprint},
+    }
+
+
+def test_js_vectors_are_what_the_spark_produces():
+    """tests/js/spark_vectors.json was written by js_vectors(); ECDSA signatures are randomised, so that one is
+    checked by verification rather than by equality. Regenerate with NSF_WRITE_VECTORS=1."""
+    import json
+    fresh = js_vectors()
+    if os.environ.get("NSF_WRITE_VECTORS") == "1":
+        VECTORS.write_text(json.dumps(fresh, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    stored = json.loads(VECTORS.read_text(encoding="utf-8"))
+    p256 = stored["request"].pop("p256")
+    fresh["request"].pop("p256")
+    assert stored == fresh
+    assert signing.verify(signing.P256, signing.unb64(p256["key"]), signing.unb64(p256["signature"]),
+                          stored["request"]["canonical"].encode())
+    assert p256["fingerprint"] == signing.fingerprint(signing.P256, signing.unb64(p256["key"]))

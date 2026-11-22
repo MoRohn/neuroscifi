@@ -1,0 +1,42 @@
+{
+ "spark": {
+  "alg": "Ed25519",
+  "key": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+  "fingerprint": "89BE-C3DF-776C-70EA-3E55-2152-D8E9-134E"
+ },
+ "impostor": {
+  "alg": "Ed25519",
+  "key": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+  "fingerprint": "65F5-05B2-E223-C910-E15D-BCF2-A745-9F15"
+ },
+ "reply": {
+  "status": 200,
+  "path": "/api/research_get",
+  "nonce": "AbCdEfGhIjKlMnOpQr_-01",
+  "body": "{\"id\":\"6a3c0e8e-2d6c-4f7e-9d47-1f0d2c9b8e11\",\"objective\":\"Zephyr 4.2 — “released”?\",\"status\":\"completed\"}",
+  "signature": "WNilOjtrftjkzat1vy-EAYSivkeXcWgWWzDuKiVu-Aepwu4Prds7_QzsGLRTKR5MVrchOhXgb5vsmokD0sSwAg"
+ },
+ "request": {
+  "body": "{\"id\":\"x\",\"action\":\"take\"}",
+  "path": "/api/research_session",
+  "ts": 1790000000,
+  "nonce": "AbCdEfGhIjKlMnOpQr_-01",
+  "canonical": "NSF-REQ-1\nPOST\n/api/research_session\nbe10427725e37cc92c73f05bf3a96aa9af7212a7f7af4ddcc8c5b472807f2050\n1790000000\nAbCdEfGhIjKlMnOpQr_-01",
+  "p256": {
+   "key": "BJ-thK6uCLvvfwEAFNgs72oJ3isM-HG1zgxPHROlmlk0B8tFdp8QcOLCRw_lsb_mMTPAsM3GTqS_N5Go7CoH_U8",
+   "signature": "cAEZHFixW5mzWcSV1igN-tP3ja1Vej7PfkzBBRau-WRIwlSpAr42qgagBBRq8lFKCsHnErtysD6r54MBa2eGhg",
+   "fingerprint": "7996-84D2-8EC1-33BF-71E2-F6C0-46FB-0EDE"
+  }
+ },
+ "challenge": {
+  "challenge": "ccccccccccccccccccccccccccccccccccccccccccc",
+  "family": "f-0123456789abcdef",
+  "node": "n-fedcba9876543210",
+  "expires": 1790000300,
+  "canonical": "NSF-ENROL-1\nccccccccccccccccccccccccccccccccccccccccccc\nf-0123456789abcdef\nn-fedcba9876543210\n1790000300"
+ },
+ "ed25519_fingerprint": {
+  "key": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+  "fingerprint": "89BE-C3DF-776C-70EA-3E55-2152-D8E9-134E"
+ }
+}

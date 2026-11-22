@@ -4,6 +4,7 @@
 // notifications are opt-in: from this open page (no push service), or per device through an empty Web Push (ADR-040);
 // see mobile/README.md.
 import {vaultOpen,findings,keepFinding,forgetFinding} from "./field-ui.mjs";
+import * as nodeKey from "./node-key.mjs";
 const $=id=>document.getElementById(id);
 const TERMINAL=["completed","partial","failed","cancelled"], STAGES=["discovering","reading","evaluating","synthesizing"];
 // Labels shared with the console (U-21): stages and statuses as the console's TASK_LABELS, kinds as #researchmode.
@@ -15,6 +16,8 @@ const MAX=300, MAX_BYTES=1024, MAX_SAVED_BYTES=64000, SUMMARIZE="Summarize: ";
 let research=false, paired=false, tasks=[], current=null, timer=0, generation=0, busy=false, dictation=null, savedSignature="";
 let sharing=false, notify=false, away=null, reading=null, session=null, shown=null;
 let offered=false, push=null, pushOn=false, pushBusy=false, pushOld=false, pushTesting=false;  // push: the Spark's status
+// This device as a research node (ADR-042 draft): the Spark's view (node_enrol status) and this browser's own key.
+let nodeInfo=null, localKey=null, nodeBusy=false;
 const say=t=>{$("researchmsg").textContent=t;};
 const active=t=>!TERMINAL.includes(t.status);
 
@@ -32,17 +35,35 @@ const PRIVATE_RULES=[
 ].map(([kind,source,flags])=>[kind,new RegExp(source,flags)]);
 const PRIVATE_WORDS={api_key:"an API key",jwt:"a login token",email:"an e-mail address",mac_address:"a device (MAC) address",file_path:"a file path"};
 export function privateKinds(text){return [...new Set(PRIVATE_RULES.filter(([,rx])=>rx.test(text)).map(([kind])=>kind))];}
-async function call(route,data){
-  const token=window.pocketToken?.();
+// Every research reply must carry the Spark's signature over its status, route, this request's nonce and body, under
+// the key pinned at pairing; an unverified success is refused and an unverified error says nothing beyond its status.
+// A node's state-changing requests are signed with its own key (ADR-040 draft; RESEARCH_POLICY.md section 6).
+const SIGNED=new Set(["research_submit","research_continue","research_cancel","research_session"]);
+const NODE_REFUSALS=new Set(["signature_required","signature_invalid","stale_request","replayed_request","malformed","node_revoked","unknown_node","reenrol","wrong_family"]);
+const signs=(route,data)=>SIGNED.has(route)&&!(route==="research_session"&&(data.action||"status")==="status")&&nodeInfo?.state==="enrolled"&&nodeInfo.mine;
+async function call(route,data,retry=true){
+  const token=window.pocketToken?.(), pin=window.pocketSpark?.();
   if(!token)throw Object.assign(Error("Not paired"),{status:0,code:"not_paired"});  // local state, not a Spark refusal
+  if(!pin)throw Object.assign(Error("No Spark key pinned"),{status:0,code:"no_pin"});
+  const text=JSON.stringify(data), bytes=new TextEncoder().encode(text), nonce=nodeKey.nonce(), path="/api/"+route;
+  const headers={"Content-Type":"application/json",Authorization:"Bearer "+token,"X-NSF-Nonce":nonce};
+  if(signs(route,data))Object.assign(headers,await nodeKey.signedHeaders(path,bytes,nonce));
   let response;
-  try{
-    response=await fetch("/api/"+route,{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},
-      body:JSON.stringify(data),cache:"no-store",credentials:"omit"});
-  }catch{if(window.pocketToken?.()===token)window.pocketReach?.(false);throw Object.assign(Error("Spark unreachable"),{status:0});}
+  try{response=await fetch(path,{method:"POST",headers,body:text,cache:"no-store",credentials:"omit"});}
+  catch{if(window.pocketToken?.()===token)window.pocketReach?.(false);throw Object.assign(Error("Spark unreachable"),{status:0});}
   if(window.pocketToken?.()===token){if(response.status===403)window.pocketRefused?.();else window.pocketReach?.(true);}
-  const body=await response.json().catch(()=>({}));
-  if(!response.ok)throw Object.assign(Error("Spark returned "+response.status),{status:response.status,code:body.error,body});
+  const raw=new Uint8Array(await response.arrayBuffer().catch(()=>new ArrayBuffer(0)));
+  const genuine=await nodeKey.verifySpark(pin,response.status,path,nonce,raw,response.headers.get("X-NSF-Spark-Signature")).catch(()=>false);
+  let body={};
+  if(genuine)try{body=JSON.parse(new TextDecoder().decode(raw)||"{}");}catch{body={};}
+  if(response.ok&&!genuine)throw Object.assign(Error("Unverified reply"),{status:response.status,code:"unverified"});
+  if(!response.ok){
+    if(NODE_REFUSALS.has(body.error)&&route!=="node_enrol"){
+      await loadNode();   // the Spark's view of this node changed (enrolled, revoked): follow it
+      if(retry&&body.error==="signature_required"&&signs(route,data))return call(route,data,false);
+    }
+    throw Object.assign(Error("Spark returned "+response.status),{status:response.status,code:body.error,body});
+  }
   return body;
 }
 function fail(e){
@@ -53,7 +74,10 @@ function fail(e){
     const f=$("objective");f.setAttribute("aria-invalid","true");f.setAttribute("aria-describedby","objectivecount researchmsg");
     queueMicrotask(()=>f.focus());
   }
-  say(e.code==="daily_budget"?"Your Spark's daily research budget is used up. Nothing was queued. It renews tomorrow, or the owner can raise it."
+  say(e.code==="unverified"?"Pocket could not confirm that this reply came from your Spark, so nothing from it is shown. Check that this device is on your own network, or pair again."
+    :e.code==="no_pin"?"This pairing does not know your Spark's signing key, so Pocket cannot check its answers. Forget this pairing and pair again with a new code."
+    :NODE_TEXT[e.code]?NODE_TEXT[e.code]
+    :e.code==="daily_budget"?"Your Spark's daily research budget is used up. Nothing was queued. It renews tomorrow, or the owner can raise it."
     :e.code==="owned"?"Another of your devices is driving this research right now. Ask it to hand it over."
     :e.code==="not_continuable"?"Only a cancelled, partial or failed question can be continued."
     :e.status===429?"Limit reached: up to 10 questions per hour from your linked devices together. Try again later."
@@ -64,6 +88,16 @@ function fail(e){
     :e.status===0?"Spark unreachable. Saved findings stay readable on this device."
     :"Your Spark could not do that right now (error "+e.status+"). Try again in a moment.");
 }
+const NODE_TEXT={
+  signature_required:"Your Spark accepts this research node's changes only when signed, and this device could not sign. Check the research node section below.",
+  signature_invalid:"Your Spark refused this device's signature. Ask the owner to enrol this device again.",
+  replayed_request:"Your Spark refused a repeated request. Try again.",
+  malformed:"Your Spark refused this device's signature. Ask the owner to enrol this device again.",
+  stale_request:"Your Spark refused the request because this device's clock differs from the Spark's by more than 2 minutes. Correct the clock and try again.",
+  node_revoked:"The owner revoked this device as a research node, and your Spark deleted its key. It can still ask and read research; ask the owner to enrol it again to drive research.",
+  unknown_node:"Your Spark does not know this device's key. Ask the owner to enrol this device again.",
+  wrong_family:"Your Spark refused the request: this device's key belongs to another pairing.",
+  reenrol:"This device was enrolled as a research node before your Spark required signed requests. Enrol it again under “This device as a research node”; the owner confirms the fingerprint on the Spark console."};
 function node(tag,text,cls){const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;}
 function safeUrl(u){try{const x=new URL(u);return x.protocol==="http:"||x.protocol==="https:"?x.href:null;}catch{return null;}}
 const pct=c=>typeof c==="number"&&isFinite(c)&&c>=0&&c<=1?Math.round(c*100)+"% confidence":null;
@@ -80,7 +114,7 @@ function layout(){
   const saved=vaultOpen()&&findings().length>0;
   $("research").hidden=!(research||saved||sharing); $("navresearch").hidden=$("research").hidden;
   $("researchform").hidden=!(research&&paired); $("researchtasks").hidden=!research;
-  $("researchsavedbox").hidden=!saved;
+  $("researchsavedbox").hidden=!saved;$("researchnode").hidden=!(research&&paired);
   $("researchhelp").textContent=research?"Your Spark researches the public web and reports with sources. Pocket only sends the question.":
     sharing?"Pair with a research-enabled Spark to summarize the shared link. Nothing is sent before you submit.":
     "Saved findings on this device. Pair with a research-enabled Spark to ask new questions.";
@@ -410,6 +444,68 @@ async function reviewEvidence(id){
     $("researchbody").prepend(box);say("Evidence review loaded.");
   }catch(err){if(g===generation)fail(err);}
 }
+// Research node (ADR-042 draft): ask to be enrolled, show this device's key fingerprint for the owner to compare on
+// the Spark console, and follow the Spark's view (enrolled, waiting, revoked, or enrolled before signing existed).
+async function loadNode(){
+  if(!research||!paired)return;
+  const g=generation;
+  try{
+    const [v,mine]=await Promise.all([call("node_enrol",{action:"status"}),nodeKey.available()?nodeKey.identity().catch(()=>null):null]);
+    if(g!==generation)return;
+    localKey=mine;nodeInfo={...v,mine:!!mine&&v.fingerprint===mine.fingerprint};
+  }catch(e){if(g===generation){nodeInfo={error:true};if(e.code==="unverified"||e.code==="no_pin")fail(e);}}
+  drawNode();
+}
+function printLine(text,fp,alg){
+  const p=node("p",text,"nodeprint");p.append(node("code",fp));
+  if(alg)p.append(node("small"," · "+(alg==="Ed25519"?"Ed25519":"ECDSA P-256")+" key, kept in this browser and never exported"));
+  return p;
+}
+function drawNode(){
+  const box=$("researchnode"), body=$("nodebody");
+  box.hidden=!(research&&paired);
+  if(box.hidden)return;
+  const v=nodeInfo, out=[], act=[];
+  const ask=(text)=>{const b=node("button",text);b.type="button";b.onclick=enrolNode;act.push(b);};
+  const again=()=>{const b=node("button","Check again");b.type="button";b.onclick=()=>loadNode().then(()=>say(nodeInfo?.state==="enrolled"?"This device is now a research node.":"Still waiting for the owner."));act.push(b);};
+  if(!v)out.push(node("p","Checking with your Spark…"));
+  else if(v.error)out.push(node("p","Pocket could not check this device's node status with your Spark."));
+  else if(v.state==="enrolled"&&v.mine){
+    out.push(node("p","This device is the research node “"+v.label+"”. Its requests to take, hand off, continue or cancel research are signed with its own key."));
+    out.push(printLine("Fingerprint: ",v.fingerprint,v.alg));
+  }else if(v.pending==="attested"&&localKey&&v.pending_fingerprint===localKey.fingerprint){
+    out.push(node("p","Waiting for the owner. On the Spark console (Autonomy, Research nodes), the owner compares this fingerprint with the one listed there and enrols this device."));
+    out.push(printLine("This device's fingerprint: ",localKey.fingerprint,localKey.alg));again();
+  }else{
+    if(v.pending==="attested")out.push(node("p","Your Spark holds an enrolment request whose key is not this browser's. Ask again so the owner sees this device's key.","rwarn"));
+    out.push(node("p",v.state==="reenrol"?"Your Spark now requires research nodes to prove who they are. This device was enrolled before that, so it must enrol again before it can drive research."
+      :v.state==="revoked"?"The owner revoked this device as a research node, and your Spark deleted its key. It can still ask and read research."
+      :v.state==="enrolled"?"Your Spark lists this device as a research node, but this browser no longer holds its key (site data cleared?). Enrol it again."
+      :"This device is not a research node. A research node can take a research session, hand it to another of your devices and accept one. It signs those requests with a key that never leaves this browser."));
+    if(!nodeKey.available())out.push(node("p","This browser cannot keep a signing key, so it cannot become a research node."));
+    else ask(v.state==="none"?"Ask to enrol this device":"Enrol this device again");
+  }
+  const pin=window.pocketSpark?.();
+  if(pin)out.push(node("small","Your Spark's fingerprint, pinned at pairing: "+pin.fingerprint,"rconf"));
+  if(act.length){const row=node("div",null,"buttons");row.append(...act);out.push(row);}
+  for(const b of act)b.disabled=nodeBusy;
+  body.replaceChildren(...out);
+}
+async function enrolNode(){
+  if(nodeBusy)return;
+  nodeBusy=true;drawNode();const g=generation;
+  try{
+    const id=await nodeKey.identity(true);
+    const challenge=await call("node_enrol",{action:"challenge"});
+    const signature=nodeKey.b64(await nodeKey.sign(nodeKey.canonicalChallenge(challenge)));
+    const v=await call("node_enrol",{action:"attest",challenge:challenge.challenge,alg:id.alg,public_key:id.publicKey,signature});
+    if(g!==generation)return;
+    localKey=id;nodeInfo={...v,mine:v.fingerprint===id.fingerprint};
+    say(v.pending_fingerprint===id.fingerprint?"Enrolment requested. Ask the owner to compare the fingerprint "+id.fingerprint+" on the Spark console and enrol this device."
+      :"Your Spark recorded a different fingerprint than this device's key. Do not let the owner approve it; ask again.");
+  }catch(e){if(g===generation){if(e.code==="no_challenge"||e.code==="challenge_expired")say("The enrolment request expired. Ask again.");else fail(e);}}
+  finally{nodeBusy=false;if(g===generation){drawNode();$("nodebody").querySelector(".nodeprint code, button")?.focus?.();}}
+}
 // Session ownership (RESEARCH_POLICY.md section 6): one device of the family drives a research session at a time.
 // Any linked device reads the status; enrolled research nodes take, hand off (to another node by its name), accept
 // and release. While another device drives it, Cancel and Continue are refused here (409 owned).
@@ -479,7 +575,8 @@ async function sessionAction(id,action,to){
     if(e.body&&"you" in e.body)setSession(id,e.body);
     redrawSession(true);
     const owner=e.body?.owner;
-    const text=e.code==="not_a_node"?"This device is not enrolled as a research node, so it cannot own research. The owner can enrol it on the Spark (nsf web node enrol)."
+    const text=e.code==="not_a_node"?"This device is not enrolled as a research node, so it cannot own research. Ask to enrol it under “This device as a research node”; the owner confirms it on the Spark console."
+      :e.code==="reenrol"?NODE_TEXT.reenrol
       :e.code==="no_such_node"?"No other enrolled device of your family is called “"+to+"”. Use the name your owner gave it."
       :e.code==="owned"?(action==="take"?"“"+(owner||"Another device")+"” drives this research. Ask it to hand it over."
         :action==="accept"?"This research was not offered to this device, or the offer expired. Ask the device that drives it to offer it again."
@@ -510,6 +607,7 @@ async function refresh(){
   const g=generation;
   try{
     const reply=await call("research_list",{});if(g!==generation)return;tasks=reply.tasks;drawList();schedule();
+    if(!nodeInfo||nodeInfo.error||nodeInfo.pending==="attested")loadNode();
     const left=away;away=null;
     const done=left?tasks.filter(t=>left.has(t.id)&&!active(t)):[];
     if(done.length)say("Finished while you were away: "+done.map(t=>"“"+t.objective+"” ("+(LABEL[t.status]||t.status)+")").join("; ")+".");
@@ -588,9 +686,9 @@ document.addEventListener("pocketpair",e=>{
   const next=!!e.detail?.paired, allowed=next&&e.detail?.research===true, pushes=allowed&&e.detail?.push===true;
   if(next===paired&&allowed===research&&pushes===offered){refresh();return;}
   if(paired&&!next)say("");  // a revoked or erased pairing: no stale outcome of the old one (RT-B-08)
-  generation++;clearTimeout(timer);paired=next;research=allowed;offered=pushes;tasks=[];away=null;pushTesting=false;
+  generation++;clearTimeout(timer);paired=next;research=allowed;offered=pushes;tasks=[];away=null;pushTesting=false;nodeInfo=null;localKey=null;
   if(current&&!current.saved)close();
-  drawList();layout();refresh();loadPush();
+  drawList();layout();drawNode();refresh();loadPush();
   if(sharing&&research&&paired&&$("objective").value)$("objective").focus();
 });
 document.addEventListener("pocketvault",drawSaved);

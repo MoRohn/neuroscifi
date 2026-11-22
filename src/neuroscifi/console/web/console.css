@@ -315,3 +315,7 @@ dialog .buttons{justify-content:flex-end}
 
 /* Forced colours replace backgrounds, so a budget bar's fill must be a real border/system colour to survive. */
 @media (forced-colors:active){.mtrack{forced-color-adjust:none;background:Canvas;outline:1px solid CanvasText}.mtrack .used{background:Highlight!important;forced-color-adjust:none}.mtrack .held{background:repeating-linear-gradient(135deg,Highlight 0 2px,Canvas 2px 6px);opacity:1}.meter[data-state="out"] .mtrack .used{background:LinkText!important}}
+.nodes{list-style:none;margin:8px 0 0;padding:0}
+.nodes>li{padding:10px 0;border-top:1px solid var(--line)}
+.nodes>li p{margin:4px 0}
+code.fp{font-weight:700;letter-spacing:.02em;overflow-wrap:anywhere}

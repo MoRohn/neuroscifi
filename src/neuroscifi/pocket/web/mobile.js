@@ -3,6 +3,13 @@ const el = id => document.getElementById(id);
 let key = "", draft = null, selected = null, generation = 0, sharing = false, lastActive = 0;
 let reach = "", refused = false, muting = false, pairingNow = false, messageTimer = 0;
 let probeTimer = 0, probeDelay = 0, restoring = false;
+// The Spark's signing key as pinned at pairing (ADR-040 draft): kept with the credential, in tab memory or the vault.
+// research-ui.mjs checks every research reply against it before showing anything as from your Spark.
+let spark = null;
+function showPin() {   // a bridge without research pins nothing; research-ui.mjs explains a missing pin where it matters
+  el("sparkprint").textContent = key && spark ? "Your Spark's key fingerprint, pinned when this device paired: " + spark.fingerprint : "";
+  el("sparkprint").hidden = !el("sparkprint").textContent;
+}
 const shared = new Map();  // ids this tab shared since pairing: memory only, never sent anywhere
 const guards = new Set();  // one-shot actions in flight (double-tap guard), released shortly after they finish
 const paused = channel => "Learning is paused for " + channel + ". Resume it under Evening review, or share without learning.";
@@ -57,7 +64,7 @@ function stopProbing() { clearTimeout(probeTimer); probeTimer = 0; probeDelay = 
 // A 403 to a credential this tab holds: the Spark erased the pairing. Say so, forget it here and in the vault.
 function revoked() {
   if (!key) return;
-  key = ""; refused = true; shared.clear(); stopProbing();
+  key = ""; spark = null; refused = true; shared.clear(); stopProbing(); showPin();
   el("pairform").hidden = false; el("paired").hidden = true;
   el("pairhelp").textContent = "Your Spark no longer accepts this pairing. Enter a new code from your Spark or a linked device.";
   el("history").replaceChildren(); el("forecast").textContent = ""; el("handoff").textContent = "";
@@ -346,7 +353,7 @@ el("pairform").onsubmit=async e=>{
     let reply;
     try { reply=await api("pair",{code:el("code").value.trim()}); }
     catch (err) { statusText(pairFailure(err)); el("code").focus?.(); return; }
-    key=reply.key; refused=false; reach="ok"; stopProbing(); shared.clear(); el("code").value=""; el("pairform").hidden=true; el("paired").hidden=false;
+    key=reply.key; spark=reply.spark||null; refused=false; reach="ok"; stopProbing(); shared.clear(); el("code").value=""; el("pairform").hidden=true; el("paired").hidden=false; showPin();
     el("pairhelp").textContent="This tab is paired. Shared observations expire after 24 hours.";
     linkText(); buttons(); el("refresh").focus();
     try { await historyView(); statusText("Paired.", true); }
@@ -403,10 +410,11 @@ el("linkdevice").onclick=()=>once("link", async()=>{
 
 
 window.pocketToken=()=>key;
+window.pocketSpark=()=>key?spark:null;
 window.pocketReach=reached; window.pocketRefused=revoked;
 // A credential restored from the vault is checked with the Spark before the header says "Paired" (P-02).
-window.pocketSetPair=token=>{
- key=token; shared.clear(); refused=false; reach=key?"checking":""; stopProbing();
+window.pocketSetPair=(token,pin=null)=>{
+ key=token; spark=key&&pin?.alg?pin:null; shared.clear(); refused=false; reach=key?"checking":""; stopProbing(); showPin();
  el("pairform").hidden=!!key;el("paired").hidden=!key;
  linkText();
  el("pairhelp").textContent=key?"Checking the pairing kept in your vault with your Spark…":"Enter your Spark or linked-device code.";
