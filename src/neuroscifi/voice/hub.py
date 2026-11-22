@@ -36,8 +36,8 @@ import time
 from ..instance import store
 from ..instance.errors import Conflict, InstanceError, NotFound, ValidationError
 from ..resources import idle
-from . import bridge as vbridge, commands as vcommands, config as vconfig, engines as vengines, state as vstate, \
-    transcripts as tx
+from . import bridge as vbridge, commands as vcommands, config as vconfig, engines as vengines, selftest as vselftest, \
+    state as vstate, transcripts as tx
 
 RATE = 16000
 MAX_CHUNK = 64 * 1024
@@ -119,6 +119,8 @@ class VoiceHub:
         self._followers = threading.BoundedSemaphore(MAX_FOLLOWERS)
         self._writes: queue.Queue = queue.Queue(WRITE_QUEUE)
         self._writer = None
+        from pathlib import Path
+        self.selftests = vselftest.SelfTests(Path(db_path).resolve().parent / "voice-selftest", clock)
         self.metrics = {"utterances": 0, "asr_ms": deque(maxlen=200), "reply_ms": deque(maxlen=200),
                         "first_sentence_ms": deque(maxlen=200), "barge_ins": 0, "overlaps": 0, "refused_audio": 0,
                         "stop_latency_ms": deque(maxlen=200)}
@@ -627,6 +629,33 @@ class VoiceHub:
             self._replies.release()
             raise
         return {"status": "final", "segment": seg["id"]}
+
+    # ---- the owner's device self-test (voice/selftest.py) ---------------------------------------------------------
+    def selftest(self, principal, action, body) -> dict:
+        if action == "start":
+            return self.selftests.start(principal, body.get("surface") or ("console" if principal.owner else "pocket"))
+        if action == "result":
+            return self.selftests.result(principal, body.get("run"), body.get("step"), body.get("data"))
+        if action == "finish":
+            return self.selftests.finish(principal, body.get("run"), body.get("data"))
+        raise ValidationError("action must be start, result or finish")
+
+    def selftest_audio(self, principal, run, index, seq, final, pcm) -> dict:
+        try:
+            return self.selftests.audio(principal, run, index, seq, final, pcm, self.engines().asr)
+        except vengines.EngineError as err:
+            return {"status": "asr_failed", "error": err.code}
+
+    def selftest_speech(self, principal, run, n) -> bytes:
+        self.selftests.run(principal, run)
+        if not isinstance(n, int) or not 0 <= n < len(vselftest.PHRASES):
+            raise NotFound("no such test phrase")
+        with self.db() as db:
+            cfg = vconfig.effective(db, principal.name, principal.owner)
+        try:
+            return self.engines().tts.synthesize(vselftest.PHRASES[n], cfg["voice"], cfg["speed"])["wav"]
+        except vengines.EngineError as err:
+            raise Conflict(f"speech output is unavailable ({err.code})") from None
 
     # ---- replies ----------------------------------------------------------------------------------------------------
     def _respond(self, s: Session, utterance, text, received, slot=False):

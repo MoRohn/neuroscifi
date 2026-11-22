@@ -5,23 +5,24 @@
 // before an utterance is confirmed (MIN_SPEECH_MS of voiced audio), and nothing at all while the mic is off: mic off
 // stops every MediaStreamTrack (the browser's capture indicator goes out) and releases the server-side lease.
 // Playback: each reply arrives as sentences; sentence n+1 is fetched while n plays (WebAudio, gain = volume).
-// Barge-in: while speaking, user speech above the barge threshold for BARGE_MS stops playback at once on the
+// Barge-in (vad.mjs): while speaking, user speech above the barge threshold for BARGE_MS stops playback at once on the
 // client (no round trip), then the server is told; shorter or quieter speech is an overlap/backchannel and does
 // not interrupt. Presence contract: window "nsf:voice" CustomEvent {mic_capturing, speaking, output_muted, mode,
 // level, interrupted?} on every change and at LEVEL_HZ while capturing or speaking; level = RMS 0..1 from an
 // AnalyserNode (mic while listening, output while speaking); interrupted: true once, when a barge-in or stop cut a
 // playing reply (the same moment the server is told).
 
+import { VAD, vadStep } from "./vad.mjs";
+
 export const MODES = ["voice_text", "voice_in_text_out", "text_only"];
+// What every capture asks the browser for (the voice session and the Voice check use the same processing).
+export const CAPTURE = Object.freeze({ echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+                                       channelCount: 1 });
 const CHUNK_MS = 500;
-const MIN_SPEECH_MS = 250;
-const END_SILENCE_MS = 700;
-const PREROLL_MS = 300;
-const BARGE_MS = 300;
+const { END_SILENCE_MS, PREROLL_MS, FRAME_MS } = VAD;   // VAD thresholds and timings: vad.mjs
 const LEVEL_HZ = 15;
 const RENEW_MS = 5000;
 const ASR_DOWN = "Speech recognition is unavailable, so the microphone is off. Type instead; text works without voice services.";
-const FRAME_MS = 20;
 
 // ---- transports -----------------------------------------------------------------------------------------------
 
@@ -46,13 +47,15 @@ export function consoleTransport(token) {
     },
     get(op, query) { return this.json(op, query, "GET"); },
     post(op, body) { return this.json(op, body, "POST"); },
-    async speech(q) {
-      const res = await call("speech", q, "GET");
-      if (!res.ok) throw Object.assign(new Error(`speech HTTP ${res.status}`), { status: res.status });
+    async speech(q) { return this.bin("speech", q); },
+    async bin(op, q) {
+      const res = await call(op, q, "GET");
+      if (!res.ok) throw Object.assign(new Error(`${op} HTTP ${res.status}`), { status: res.status });
       return res.arrayBuffer();
     },
-    async audio(headers, pcm) {
-      const res = await fetch("/api/voice/audio", {
+    async audio(headers, pcm) { return this.upload("audio", headers, pcm); },
+    async upload(op, headers, pcm) {
+      const res = await fetch(`/api/voice/${op}`, {
         method: "POST", body: pcm, cache: "no-store",
         headers: { ...auth, "Content-Type": "audio/L16; rate=16000", ...headers },
       });
@@ -78,15 +81,17 @@ export function pocketTransport(getKey) {
       return data;
     },
     get(op, query) { return this.post(op, query || {}); },
-    async speech(q) {
-      const res = await call("speech", { headers: { ...headers(), "Content-Type": "application/json" },
-                                         body: JSON.stringify(q) });
-      if (!res.ok) throw Object.assign(new Error(`speech HTTP ${res.status}`), { status: res.status });
+    async speech(q) { return this.bin("speech", q); },
+    async bin(op, q) {
+      const res = await call(op, { headers: { ...headers(), "Content-Type": "application/json" },
+                                   body: JSON.stringify(q) });
+      if (!res.ok) throw Object.assign(new Error(`${op} HTTP ${res.status}`), { status: res.status });
       return res.arrayBuffer();
     },
-    async audio(h, pcm) {
-      const res = await call("audio", { headers: { ...headers(), "Content-Type": "audio/L16; rate=16000", ...h },
-                                        body: pcm });
+    async audio(h, pcm) { return this.upload("audio", h, pcm); },
+    async upload(op, h, pcm) {
+      const res = await call(op, { headers: { ...headers(), "Content-Type": "audio/L16; rate=16000", ...h },
+                                   body: pcm });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { status: res.status });
       return data;
@@ -129,7 +134,7 @@ export class VoiceClient extends EventTarget {
     this.pending = null;
     this.stats = { audioRequests: 0, audioBytes: 0, utterances: 0, bargeIns: 0, overlaps: 0 };
     this.metrics = { turns: [], bargeIns: [], replies: [] };   // measured timings (performance.now() ms), read by tests and the UI
-    this.vad = { floor: 0.004, voiced: 0, silent: 0, active: false, confirmed: false, frames: [], pre: [],
+    this.vad = { floor: VAD.FLOOR_INIT, voiced: 0, silent: 0, active: false, confirmed: false, frames: [], pre: [],
                  utt: null, seq: 0, sent: 0, startedAt: 0, lastSend: 0, barge: false, onset: 0 };
     this.queue = Promise.resolve();
     this.playback = { turn: null, n: 0, sources: [], nextStart: 0, playing: 0, fetching: false };
@@ -283,8 +288,7 @@ export class VoiceClient extends EventTarget {
     await ctx.resume();
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: {
-        echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1,
-        ...(this.inputDevice ? { deviceId: { exact: this.inputDevice } } : {}) } });
+        ...CAPTURE, ...(this.inputDevice ? { deviceId: { exact: this.inputDevice } } : {}) } });
     } catch (err) {
       await this.t.post("capture", { session: this.session, action: "release" }).catch(() => {});
       throw err;
@@ -374,47 +378,38 @@ export class VoiceClient extends EventTarget {
     const v = this.vad;
     const now = performance.now();
     const playing = this.speaking && !this.outputMuted;
-    const threshold = Math.max(v.floor * 3, 0.012);
-    const bargeThreshold = Math.max(v.floor * 5, 0.03);
-    const voiced = rms > (playing ? bargeThreshold : threshold);
-    if (!v.active && !voiced) v.floor = Math.min(0.05, v.floor * 0.95 + rms * 0.05);   // adaptive noise floor
+    const wasActive = v.active;
+    const ev = vadStep(v, rms, playing, now, VAD);
     const chunk = new Int16Array(pcm);
-    if (!v.active) {
+    if (!wasActive) {
       v.pre.push(chunk);
       if (v.pre.length > PREROLL_MS / FRAME_MS) v.pre.shift();
-      if (voiced) {
-        v.active = true; v.confirmed = false; v.voiced = FRAME_MS; v.silent = 0; v.onset = now;
-        v.frames = v.pre.slice(); v.pre = []; v.barge = false;
+      if (ev.start) {
+        v.frames = v.pre.slice(); v.pre = [];
         this.userSpeaking = true;
         this._report();
       }
       return;
     }
     v.frames.push(chunk);
-    if (voiced) { v.voiced += FRAME_MS; v.silent = 0; } else { v.silent += FRAME_MS; }
-    if (playing && !v.barge && v.voiced >= BARGE_MS) {   // interruption: stop at once, tell the server afterwards
-      v.barge = true;
+    if (ev.barge) {   // interruption: stop at once, tell the server afterwards
       const detected = performance.now();
       const stopped = this.stopSpeaking("barge_in");
       this.stats.bargeIns++;
       this.metrics.bargeIns.push({ onset: v.onset, detected, stopped, stop_ms: stopped - v.onset,
                                    after_detect_ms: stopped - detected });
     }
-    if (!v.confirmed && v.voiced >= (playing ? BARGE_MS : MIN_SPEECH_MS)) {
-      v.confirmed = true;
+    if (ev.confirm) {
       v.utt = "u" + rid(10); v.seq = 0; v.sent = 0; v.startedAt = Date.now() / 1000; v.lastSend = now;
       this.stats.utterances++;
     }
-    if (v.silent >= END_SILENCE_MS) {
-      const confirmed = v.confirmed;
-      if (!confirmed && v.voiced > 0) {   // a short sound while speaking: backchannel/overlap, not an interruption
-        if (this.speaking) {
-          this.stats.overlaps++;
-          if (this.playback.turn) this.t.post("interrupt", { session: this.session, kind: "overlap" }).catch(() => {});
-        }
+    if (ev.end) {
+      if (ev.overlap && this.speaking) {   // a short sound while speaking: backchannel/overlap, not an interruption
+        this.stats.overlaps++;
+        if (this.playback.turn) this.t.post("interrupt", { session: this.session, kind: "overlap" }).catch(() => {});
       }
-      if (confirmed) this._send(true, now - END_SILENCE_MS);
-      v.active = false; v.confirmed = false; v.frames = []; v.voiced = 0; v.silent = 0;
+      if (ev.confirmed) this._send(true, now - END_SILENCE_MS);
+      v.frames = [];
       this.userSpeaking = false;
       this._report();
       return;

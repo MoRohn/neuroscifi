@@ -31,11 +31,14 @@ AUDIO_TYPE = "audio/l16"
 _HUBS: dict[int, VoiceHub] = {}
 _HUBS_LOCK = threading.Lock()
 
-CONSOLE_GET = {"status", "events", "speech", "transcripts"}
+CONSOLE_GET = {"status", "events", "speech", "transcripts", "selftest_speech"}
 CONSOLE_POST = {"session", "consent", "mode", "settings", "capture", "audio", "text", "confirm", "interrupt",
-                "client", "correct", "forget"}
+                "client", "correct", "forget", "selftest", "selftest_audio"}
 POCKET_OPS = {"status", "session", "consent", "mode", "settings", "capture", "audio", "text", "confirm",
-              "interrupt", "client", "events", "speech", "transcripts", "correct", "forget"}
+              "interrupt", "client", "events", "speech", "transcripts", "correct", "forget", "selftest",
+              "selftest_speech", "selftest_audio"}
+AUDIO_OPS = ("audio", "selftest_audio")
+AUDIO_HEADERS = ("X-NSF-Session", "X-NSF-Utterance", "X-NSF-Seq", "X-NSF-Final", "X-NSF-Selftest", "X-NSF-Index")
 POCKET_ROUTES = {"voice_" + op for op in POCKET_OPS}
 
 
@@ -59,7 +62,8 @@ def _fields(body, required=(), optional=()):
 
 
 MAX_INT = 2 ** 53 - 1        # SQLite and JavaScript both hold it exactly; 2**63 overflowed SQLite (T5-05)
-STRING_FIELDS = ("session", "session_id", "id", "turn", "kind", "action", "mode", "device", "label", "text", "q")
+STRING_FIELDS = ("session", "session_id", "id", "turn", "kind", "action", "mode", "device", "label", "text", "q",
+                 "run", "step", "surface")
 
 
 def _int(value, name):
@@ -110,6 +114,20 @@ def run(hub: VoiceHub, principal: Principal, op: str, b: dict, *, audio=None, he
             raise ValidationError("X-NSF-Seq must be an integer") from None
         final = h.get("X-NSF-Final") == "1"
         return 200, hub.audio(h.get("X-NSF-Session"), principal, h.get("X-NSF-Utterance"), seq, final, audio), None
+    if op == "selftest":
+        _fields(b, ("action",), ("run", "step", "data", "surface"))
+        return 200, hub.selftest(principal, b["action"], b), None
+    if op == "selftest_audio":
+        h = headers or {}
+        try:
+            seq, index = int(h.get("X-NSF-Seq", "")), int(h.get("X-NSF-Index", ""))
+        except ValueError:
+            raise ValidationError("X-NSF-Seq and X-NSF-Index must be integers") from None
+        return 200, hub.selftest_audio(principal, h.get("X-NSF-Selftest"), index, seq, h.get("X-NSF-Final") == "1",
+                                       audio), None
+    if op == "selftest_speech":
+        _fields(b, ("run", "n"))
+        return 200, hub.selftest_speech(principal, b["run"], _int(b["n"], "n")), "audio/wav"
     if op == "text":
         _fields(b, ("session", "text"))
         return 200, hub.text(b["session"], principal, b["text"]), None
@@ -191,7 +209,7 @@ def console(handler, url):
                 return handler.fail(400, "wait must be a number")
         if "probe" in body:
             body["probe"] = body["probe"] in ("1", "true")
-    elif op == "audio":
+    elif op in AUDIO_OPS:
         if size > MAX_CHUNK:
             handler.close_connection = True
             return handler.fail(413, f"audio chunk exceeds {MAX_CHUNK} bytes")
@@ -199,8 +217,7 @@ def console(handler, url):
                 handler.headers.get("Content-Type", "").replace(" ", "").lower():
             return handler.fail(400, "Content-Type must be audio/L16; rate=16000")
         audio = handler.rfile.read(size)
-        headers = {k: handler.headers.get(k) for k in ("X-NSF-Session", "X-NSF-Utterance", "X-NSF-Seq",
-                                                         "X-NSF-Final")}
+        headers = {k: handler.headers.get(k) for k in AUDIO_HEADERS}
     else:
         if size > MAX_JSON:
             handler.close_connection = True
@@ -274,17 +291,16 @@ def pocket(handler, route):
     except ValueError:
         return 400, {}
     headers, audio, body = {}, None, {}
-    if op == "audio":
+    if op in AUDIO_OPS:
         if not 0 <= size <= MAX_CHUNK or handler.headers.get_content_type() != AUDIO_TYPE:
             return 400, {}
         try:
             audio = handler.read_body(size)
         except ValueError:
             return 400, {}
-        headers = {k: handler.headers.get(k) for k in ("X-NSF-Session", "X-NSF-Utterance", "X-NSF-Seq",
-                                                         "X-NSF-Final")}
+        headers = {k: handler.headers.get(k) for k in AUDIO_HEADERS}
     else:
-        limit = POCKET_TEXT if op in ("text", "correct") else POCKET_JSON
+        limit = POCKET_TEXT if op in ("text", "correct", "selftest") else POCKET_JSON
         if handler.headers.get_content_type() != "application/json" or not 2 <= size <= limit:
             return 400, {}
         try:
@@ -294,7 +310,7 @@ def pocket(handler, route):
         if not isinstance(body, dict):
             return 400, {}
     replying = getattr(server, "replying", None)
-    if op in ("events", "speech", "audio", "text") and replying:
+    if op in ("events", "speech", "audio", "text", "selftest_audio", "selftest_speech") and replying:
         replying()      # the request is complete; waiting for events or synthesis is not a slow client
     hub = hub_for(server, path)
     try:

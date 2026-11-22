@@ -109,6 +109,49 @@ def _sweep(args):
         db.close()
 
 
+def _selftest(args):
+    """Guided self-test on this computer's microphone and speaker; the report goes to --report (and next to the
+    instance as voice-selftest/selftest-*.json). --fake-input WAV replaces the microphone with a scripted fake device
+    (every step hears that file) and --yes answers every question yes: for dry runs and tests only."""
+    import sys
+    from pathlib import Path
+    from . import config, engines, selftest
+    from ..instance import store
+    db_path = store.resolve_db(args)
+    db = _db(args)
+    try:
+        cfg = config.get(db)
+    finally:
+        db.close()
+    eng = engines.Engines(cfg)
+    if args.fake_input:
+        import wave
+        with wave.open(args.fake_input) as w:
+            if w.getframerate() != 16000 or w.getnchannels() != 1 or w.getsampwidth() != 2:
+                from ..instance.errors import ValidationError
+                raise ValidationError("--fake-input must be a 16 kHz mono 16-bit WAV")
+            pcm = w.readframes(w.getnframes())
+        audio = selftest.ScriptedAudio({k: pcm for k in ["mic", "silence", "playback", "barge", "echo", "micoff",
+                                                         *[f"read{i}" for i in range(len(selftest.SENTENCES))]]})
+    else:
+        audio = selftest.HostAudio()
+
+    def say(text):
+        print(text, file=sys.stderr, flush=True)
+
+    def ask(question):
+        if args.yes:
+            say(question + " [yes: --yes]")
+            return True
+        print(question + " [y/n] ", end="", file=sys.stderr, flush=True)
+        return sys.stdin.readline().strip().lower().startswith("y")
+    evidence = selftest.run_terminal(eng, audio, ask, say, voice=cfg["voice"], speed=cfg["speed"])
+    Path(args.report).write_text(json.dumps(evidence, indent=1) + "\n")
+    local = selftest.write_evidence(Path(db_path).resolve().parent / "voice-selftest", evidence)
+    return {"report": str(args.report), "saved": local.name, "verdict": evidence["verdict"],
+            "audio_retained": False, "fake_device": audio.fake}
+
+
 def register(sub):
     from ..instance import store
     from ..instance.cli import LIMIT, run
@@ -130,6 +173,10 @@ def register(sub):
     q = cmd("forget", _forget, "delete one voice session, its transcript and retained audio")
     q.add_argument("session")
     cmd("sweep", _sweep, "delete retained audio past its TTL (all of it when retention is off)")
+    q = cmd("selftest", _selftest, "guided microphone/speaker/barge-in/echo self-test; writes an evidence report")
+    q.add_argument("--report", required=True, help="where to write the evidence JSON")
+    q.add_argument("--fake-input", help="16 kHz mono WAV used instead of the microphone (fake device, dry runs)")
+    q.add_argument("--yes", action="store_true", help="answer every question yes (dry runs)")
 
 
 def _jsonable(value):

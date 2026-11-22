@@ -5,7 +5,8 @@ and render. See docs/voice/COGNITIVE_VOICE_BRIDGE.md and docs/voice/STREAMING_AN
 from pathlib import Path as _Path
 
 WEB = _Path(__file__).resolve().parent / "web"
-WEB_MODULES = ("voice-client.mjs", "capture-worklet.mjs", "voice-ui.mjs", "voice.css", "pocket-voice.mjs")
+WEB_MODULES = ("voice-client.mjs", "capture-worklet.mjs", "voice-ui.mjs", "voice.css", "pocket-voice.mjs", "vad.mjs",
+               "voice-check.mjs")
 
 
 def assets() -> dict:

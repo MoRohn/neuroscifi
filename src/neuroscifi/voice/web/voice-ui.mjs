@@ -1,6 +1,7 @@
 // NeuroSciFi Voice Cortex panel (console and Pocket). DOM only through createElement/textContent (strict CSP, no
 // inline script or style); colours come from the shared theme's CSS variables (voice.css).
 import { VoiceClient, consoleTransport, pocketTransport, MODES } from "./voice-client.mjs";
+import { mountVoiceCheck } from "./voice-check.mjs";
 
 const MODE_TEXT = {
   voice_text: ["Voice and text", "You speak or type; NeuroSciFi answers in text and speech."],
@@ -113,9 +114,10 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
     owner ? h("label", { class: "nsfv-check" }, ui.retain, h("span", { text: "Keep raw audio (off by default)" })) : null,
     owner ? h("label", { for: "nsfvTtl", text: "Keep audio for (hours)" }) : null, owner ? ui.ttl : null);
 
+  ui.check = h("div", { class: "nsfv-vcheck-root" });
   root.replaceChildren(h("div", { class: "nsfv" },
     h("div", { class: "nsfv-bar" }, ui.indicator, ui.session, ui.mic, ui.mute),
-    ui.health, ui.consent, ui.confirm, ui.handoff, ui.notice, ui.modes, settings, ui.form, ui.list,
+    ui.health, ui.consent, ui.confirm, ui.handoff, ui.notice, ui.modes, settings, ui.check, ui.form, ui.list,
     h("details", { class: "nsfv-find" }, h("summary", { text: "Search transcripts" }),
       h("form", { class: "nsfv-type", onsubmit: (e) => { e.preventDefault(); act(search); } },
         h("label", { for: "nsfvSearch", class: "nsfv-vh", text: "Search text" }), ui.search,
@@ -294,10 +296,11 @@ export function mountVoice(root, transport, { owner, storage, pauseInBackground 
   }
   window.addEventListener("pagehide", () => { if (client.micOn) client.micOff(); });
 
+  const check = mountVoiceCheck(ui.check, transport, client, { surface: owner ? "console" : "pocket" });
   const timer = setInterval(() => { if (!document.hidden) refreshStatus(); }, 15000);
   refreshStatus();
   render();
-  const api = { client, refreshStatus, ui, stop: () => clearInterval(timer) };
+  const api = { client, check, refreshStatus, ui, stop: () => clearInterval(timer) };
   root.__nsfVoice = api;
   window.__nsfVoice = api;   // read-only handle for diagnostics and the end-to-end tests
   return api;
