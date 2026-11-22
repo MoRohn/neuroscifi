@@ -329,7 +329,13 @@ class HostAudio:
         import subprocess
         p = subprocess.Popen(self.play_cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
-        threading.Thread(target=lambda: (p.stdin.write(wav), p.stdin.close()), daemon=True).start()
+        def feed():
+            try:
+                p.stdin.write(wav)
+                p.stdin.close()
+            except OSError:          # the player was stopped by a barge-in before it read everything
+                pass
+        threading.Thread(target=feed, daemon=True).start()
         return p
 
     def close(self) -> dict:
