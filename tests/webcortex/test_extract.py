@@ -461,3 +461,20 @@ def test_a_publication_date_wins_and_last_modified_is_never_the_fallback():
     doc = html_doc(f"<html><head>{header_only}</head><body><p>{PARA * 3}</p></body></html>",
                    headers={"content-type": "text/html", "last-modified": "Fri, 20 Nov 2026 10:00:00 GMT"})
     assert doc.published_at is None and "date_source" not in doc.metadata
+
+
+def test_importing_trafilatura_prints_no_socks_dependency_warning():
+    """R6 D7: every news `nsf web ask` and every `nsf web work` start printed urllib3's SOCKS DependencyWarning (from
+    trafilatura.downloads importing urllib3.contrib.socks without PySocks). Only that warning is silenced."""
+    import subprocess
+    import sys
+    pytest.importorskip("trafilatura")
+    code = ("import warnings, lxml.html\n"
+            "from neuroscifi.webcortex import extract\n"
+            "extract._trafilatura(lxml.html.fromstring('<html><body><p>Hello there.</p></body></html>'), 'http://a.test/')\n"
+            "warnings.warn('an unrelated warning stays visible', UserWarning)\n")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120,
+                         env={**__import__("os").environ, "PYTHONWARNINGS": ""})
+    assert out.returncode == 0, out.stderr
+    assert "SOCKS" not in out.stderr and "DependencyWarning" not in out.stderr, out.stderr
+    assert "an unrelated warning stays visible" in out.stderr

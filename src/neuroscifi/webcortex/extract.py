@@ -57,6 +57,7 @@ import ipaddress
 import json
 import re
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+import warnings
 
 import lxml.etree
 import lxml.html
@@ -66,6 +67,10 @@ from scrapling.parser import Selector
 from . import temporal
 from .safety import safe_xml_parse
 from .types import Document, FetchError, FetchResult
+
+# R6 D7: trafilatura.downloads imports urllib3.contrib.socks, which warns on stderr (DependencyWarning) when PySocks
+# is absent. NeuroSciFi never fetches through trafilatura or a SOCKS proxy, so exactly that warning is silenced.
+warnings.filterwarnings("ignore", message=r"SOCKS support in urllib3 requires", module=r"urllib3\.contrib\.socks")
 
 MAX_TEXT = 500_000
 MAX_MARKDOWN = 500_000
