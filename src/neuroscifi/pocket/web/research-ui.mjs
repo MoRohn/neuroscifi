@@ -368,6 +368,23 @@ async function pushOff(){
 // Called by mobile.js when the Spark erased the pairing (revoked) or the person forgot it, never when the vault merely
 // locks on hide: the browser's subscription must outlive a closed Pocket, which is the point of push.
 window.pocketPushDrop=()=>browserSub().then(sub=>sub?.unsubscribe()).catch(()=>{});
+// R6 setup (g): opting out needs neither the vault nor a pairing. Reopened without the vault (POC-07: the pairing
+// lived in tab memory), Pocket is "Phone only", yet this browser still holds its push subscription. The Your Spark
+// card then offers to drop it here; with the subscription gone the push service answers the Spark 404/410 at its next
+// push, and the Spark deletes its copy (ADR-040), so nothing more is sent or shown.
+async function drawOptOut(){
+  const box=$("pushoptout");
+  if(paired||!pushable()){box.hidden=true;return;}
+  const sub=await browserSub().catch(()=>null);
+  box.hidden=paired||!sub;
+}
+$("pushoptoutbtn").onclick=async()=>{
+  const sub=await browserSub().catch(()=>null);
+  await sub?.unsubscribe().catch(()=>{});
+  $("pushoptout").hidden=true;
+  $("pushoptoutmsg").textContent="Push is off on this device. Nothing more is shown here; your Spark deletes its copy "+
+    "of the subscription the next time it tries to send.";
+};
 // 429 push_limit: a device turns push on (or moves it to a new push address) and asks for a test push at most 5 times
 // an hour each, so it cannot make the Spark ignore a push service's Retry-After.
 const pushLimit=e=>{const m=Math.max(1,Math.ceil((Number(e.body?.retry_after)||3600)/60));
@@ -723,9 +740,10 @@ document.addEventListener("pocketpair",e=>{
   if(paired&&!next)say("");  // a revoked or erased pairing: no stale outcome of the old one (RT-B-08)
   generation++;clearTimeout(timer);clearTimeout(listTimer);paired=next;research=allowed;offered=pushes;tasks=[];away=null;pushTesting=false;nodeInfo=null;localKey=null;
   if(current&&!current.saved)close();
-  drawList();layout();drawNode();refresh();loadPush();
+  drawList();layout();drawNode();refresh();loadPush();drawOptOut();
   if(sharing&&research&&paired&&$("objective").value)$("objective").focus();
 });
+drawOptOut();
 document.addEventListener("pocketvault",drawSaved);
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){

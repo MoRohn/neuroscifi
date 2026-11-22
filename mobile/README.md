@@ -114,6 +114,7 @@ It never receives the question, the answer, a task id, a family or any other con
 **Turn it off.**
 
 - **One device:** turn the switch off. Your Spark deletes the subscription, and the browser drops its own.
+- **One device that is no longer paired** (reopened without the vault, so it shows **Phone only**: POC-07 keeps the pairing in tab memory only): the Your Spark card shows **Turn off push on this device** whenever this browser still holds a push subscription. It needs neither the vault nor a new pairing. The browser drops its subscription at once, so nothing more is shown; at its next push your Spark gets 404 or 410 from the push service and deletes its copy. A device that keeps its pairing in the vault can instead unlock it and turn the switch off.
 - **A device or family on the Spark:** **Forget this pairing**, **Forget all linked devices**, or `nsf pocket erase-pairing LABEL [--family]` deletes the subscription with the pairing.
 - **Everything:** restart the bridge without `--push-key`. The switch disappears and nothing is sent. Deleting the key file makes every existing subscription unusable.
 - **In the browser:** revoke this site's notification permission in the browser settings.
@@ -133,7 +134,7 @@ The automated tests cover push against a local fake push service, plus one live 
 5. **Test push.** Press **Send a test push**. Expect the notification "NeuroSciFi Pocket: Your Spark finished a research task." within a few seconds. With Pocket in front, the page also says "A push from your Spark arrived on this device." If the bridge prints `nsf-pocket: push to HOST: answered 410` right after you opted in, the push service had not finished registering this browser (seen live with FCM for up to about 20 s). Your Spark tries again a minute later, for up to two minutes.
 6. **Closed Pocket.** Ask a question, for example "When was Python first released?". Close Pocket completely (swipe it away from the recent apps) and lock the phone. On the Spark, run `nsf web work --once`. Expect the same generic notification on the lock screen within about a minute of the worker finishing, with no question text in it.
 7. **Open from the notification.** Tap it. Pocket opens at Research. Unlock the vault, and the question is listed as Completed with its report.
-8. **Opt out.** Turn the switch off and expect "Push off." Ask another question, close Pocket and run the worker again. No notification may arrive.
+8. **Opt out.** Turn the switch off and expect "Push off." Ask another question, close Pocket and run the worker again. No notification may arrive. Without the vault: close and reopen Pocket (it shows **Phone only**), press **Turn off push on this device** under Your Spark, and check the same.
 9. **Unpair.** Turn push on again, then press **Forget this pairing**. On the Spark, `nsf pocket list-pairings --db …` no longer lists the device. Ask from another paired device, close both and run the worker. The forgotten phone gets nothing.
 
 Report any step that differs, together with the bridge's `nsf-pocket: push to HOST: …` lines. They name the push service host and status, never the device's address.

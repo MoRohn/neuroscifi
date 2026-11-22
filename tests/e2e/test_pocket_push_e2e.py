@@ -270,3 +270,35 @@ def test_push_controls_pass_axe(pushing, new_page, size):
     found = page.evaluate("""axe.run(document,{resultTypes:['violations']}).then(r =>
         r.violations.map(v => ({id:v.id, impact:v.impact, nodes:v.nodes.map(n => n.target.join(' '))})))""")
     assert [v for v in found if v["impact"] in ("serious", "critical")] == []
+
+
+KEPT = """(() => {   // a subscription this browser kept from an earlier pairing (it survives a reload, like a real one)
+    window.pushCalls = [];
+    const sub = () => sessionStorage.getItem('kept') === '1' ? {endpoint: 'https://push.example/kept',
+        unsubscribe() { window.pushCalls.push({unsubscribe: true}); sessionStorage.removeItem('kept');
+                        return Promise.resolve(true); }} : null;
+    PushManager.prototype.getSubscription = function () { return Promise.resolve(sub()); };
+})()"""
+
+
+def test_a_device_turns_push_off_without_the_vault_or_a_pairing(pushing, new_page):
+    """R6 setup (g): reopened without the vault, Pocket is "Phone only" and showed no push switch, so the device had
+    to pair again to opt out. The Your Spark card now offers "Turn off push on this device" whenever this browser
+    holds a push subscription and is not paired; the Spark drops its copy at its next push (404/410)."""
+    page = new_page()
+    page.add_init_script(KEPT)
+    page.goto(pushing.url)
+    expect(page.locator("#pushoptout")).to_be_hidden()                  # no subscription: nothing to offer
+    page.evaluate("sessionStorage.setItem('kept', '1')")
+    page.reload()                                                         # reopened: not paired, no vault
+    expect(page.locator("#pushoptout")).to_be_visible()
+    page.get_by_role("button", name="Turn off push on this device").click()
+    expect(page.locator("#pushoptoutmsg")).to_contain_text("Push is off on this device.")
+    expect(page.locator("#pushoptout")).to_be_hidden()
+    assert page.evaluate("window.pushCalls") == [{"unsubscribe": True}]
+    page.evaluate("sessionStorage.setItem('kept', '1')")
+    page.reload()
+    pair(page)                                                            # paired: the push switch is the control
+    expect(page.locator("#pushoptout")).to_be_hidden()
+    assert not page.problems
+
