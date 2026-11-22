@@ -1033,6 +1033,34 @@ def test_reported_belief_framing_is_not_the_sentences_own_figure(reported):
     assert C.asserted_values(mk("Scientists said on Tuesday that the probe holds 3 kg of samples.")) == ["3 kg"]
 
 
+@pytest.mark.parametrize("ironic", [
+    'Neuroscientists have become used to a number of "facts" about the human brain: It has 100 billion neurons and '
+    '10- to 50-fold more glial cells; it is the most cognitively able.',
+    "The “fact” that the human brain contains 100 billion neurons rests on no count at all.",
+    "One so-called fact is that the human brain contains 100 billion neurons.",
+    "Textbook 'knowledge': the human brain contains 100 billion neurons.",
+])
+def test_a_scare_quoted_statement_is_not_the_sentences_own_figure(ironic):
+    """R6 D6: scare quotes around an epistemic word ("facts", "knowledge", so-called facts) distance the writer from
+    what they introduce; the figure is reported, not asserted, so it neither supports nor contradicts."""
+    claim = mk(ironic, domain="doi.org")
+    assert "100000000000 neurons" not in C.asserted_values(claim)
+    assert not C.agrees(mk("The human brain contains about 100 billion neurons.", domain="c.example"), claim)
+    assert C.conflict(claim, mk(TED86, domain="b.example")) is None
+
+
+@pytest.mark.parametrize("sincere, value", [
+    ('Contrary to the "facts" repeated online, the human brain contains about 86 billion neurons.',
+     "86000000000 neurons"),
+    ('The study, titled "Brain facts", found that the human brain contains 86 billion neurons.', "86000000000 neurons"),
+    ("It's a fact that the human brain contains 86 billion neurons.", "86000000000 neurons"),
+])
+def test_quotation_marks_alone_do_not_drop_a_sentences_own_figure(sincere, value):
+    """R6 D6: only the scare-quoted clause (and the list its colon introduces) is dropped; a figure the sentence
+    asserts elsewhere, a quoted title or an apostrophe keeps its value."""
+    assert value in C.asserted_values(mk(sincere, domain="b.example"))
+
+
 def test_a_newer_merely_related_sentence_never_leads_the_most_relevant_one():
     """R1-04 (RC2 live, "When was Rust first released?"): the Wikipedia sentences "The first stable release, Rust 1.0,
     was published in May 2015." and "On May 15, 2015, Rust 1.0 became the first stable release." were clustered with

@@ -292,6 +292,14 @@ _PAST_FRAME = re.compile(r"^\s*(?:for\s+(?:decades|years|centuries|generations|a
 _REPORTED_VERB = re.compile(r"\b(?:said|claimed|believed|thought|assumed|taught|estimated|cited|stated|held|"
                             r"reported|quoted)\b", re.IGNORECASE)
 _CLAUSE_SPLIT = re.compile(r"([,;:()—]|\s(?:but|whereas|while|although|though)\s)", re.IGNORECASE)
+# Scare quotes (R6 D6): an epistemic word in quotation marks, or after "so-called", distances the writer from it
+# ('Neuroscientists have become used to a number of "facts" about the human brain: It has 100 billion neurons').
+# Its clause is attribution, and when that clause ends in a colon, the list it introduces (the rest of the
+# sentence) reports those "facts" rather than asserting them.
+_EPISTEMIC = (r"(?:facts?|truths?|knowledge|wisdom|consensus|evidence|science|proof|certaint(?:y|ies)|established|"
+              r"settled|known|common\s+knowledge|received\s+wisdom)")
+_SCARE_QUOTE = re.compile(r"(?:[\"“”]|(?<![\w])['‘’])\s*" + _EPISTEMIC + r"\s*(?:[\"“”]|['‘’](?![\w]))|"
+                          r"\bso[- ]called\s+" + _EPISTEMIC + r"\b", re.IGNORECASE)
 
 
 @functools.lru_cache(maxsize=65536)
@@ -299,15 +307,21 @@ def asserted_text(text: str) -> str:
     """`text` without the parts that report a figure or belief rather than assert it (see the comment above);
     `text` itself when it has no such part."""
     framed = bool(_PAST_FRAME.search(text) and _REPORTED_VERB.search(text))
-    if not (framed or _CONTRAST_CUE.search(text) or _ATTRIBUTION_CUE.search(text)):
+    if not (framed or _CONTRAST_CUE.search(text) or _ATTRIBUTION_CUE.search(text) or _SCARE_QUOTE.search(text)):
         return text
     parts = _CLAUSE_SPLIT.split(text)
     out = []
+    listed = False                  # inside the list a scare-quoted clause introduces with a colon
     for i in range(0, len(parts), 2):
         seg = parts[i]
         m = _CONTRAST_CUE.search(seg)
-        if m:
+        if listed:
+            seg = ""
+        elif m:
             seg = seg[:m.start()]
+        elif _SCARE_QUOTE.search(seg):
+            listed = i + 1 < len(parts) and parts[i + 1] == ":"
+            seg = ""
         elif _ATTRIBUTION_CUE.search(seg) or (framed and _REPORTED_VERB.search(seg)):
             seg = ""
         out.append(seg)

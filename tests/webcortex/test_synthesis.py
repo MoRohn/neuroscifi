@@ -642,6 +642,36 @@ def test_verdict_shapes_quantity_capital_and_date():
     assert _fv("Rust 1.0 was released in 2012", rust)["label"] == "disputed"
 
 
+SCARE_FACTS = ('Neuroscientists have become used to a number of "facts" about the human brain: It has 100 billion '
+               'neurons and 10- to 50-fold more glial cells; it is the largest-than-expected for its body among '
+               'primates and mammals in general, and therefore the most cognitively able.')
+
+
+def test_scare_quoted_facts_are_not_support_and_the_neuron_check_is_disputed():
+    """R6 D6 (live q6c_neurons.json, "The human brain contains 100 billion neurons."): the PNAS sentence that puts
+    "facts" in scare quotes was counted as support, so the Crossref reply "Yes, the human brain has around 86 billion
+    neurons" became a contradiction "from a source group that otherwise supports it" and the verdict was
+    insufficient. A scare-quoted claim reports what it doubts: no support, and the reply disputes the figure."""
+    review = doc("https://doi.org/10.1002/cne.24040", "For half a century, the human brain was believed to contain "
+                 "about 100 billion neurons and one trillion glial cells, with a glia:neuron ratio of 10:1.",
+                 title="The search for true numbers of neurons and glial cells in the human brain", kind="api",
+                 mode="api", published=ts(2016, 6, 16), metadata={"provider": "OpenAlex", "doi": "10.1002/cne.24040"})
+    pnas = doc("https://doi.org/10.1073/pnas.1201895109", SCARE_FACTS, kind="api", mode="api",
+               published=ts(2012, 6, 22), title="The remarkable, yet not extraordinary, human brain",
+               metadata={"provider": "OpenAlex", "doi": "10.1073/pnas.1201895109"})
+    reply = doc("https://doi.org/10.1093/brain/awaf049", "", kind="api", mode="api", published=ts(2025, 2, 6),
+                title="Reply: Yes, the human brain has around 86 billion neurons",
+                metadata={"provider": "Crossref", "doi": "10.1093/brain/awaf049",
+                          "title": "Reply: Yes, the human brain has around 86 billion neurons"})
+    v = _fv("The human brain contains 100 billion neurons.", [review, pnas, reply])
+    assert v["state"] == "disputed" and v["label"] == "disputed", v["reasons"]
+    assert v["supporting"] == [] and len(v["contradicting"]) == 1
+    assert v["independent_groups"] == {"supporting": 0, "contradicting": 1}
+    assert not any("otherwise supports it" in x for x in v["reasons"]), v["reasons"]
+    plain = doc("https://other.example/b", "The human brain has 100 billion neurons and many more glial cells.")
+    assert _fv("The human brain contains 100 billion neurons.", [plain])["supporting"]   # not a scare quote: support
+
+
 def test_unsupported_shapes_and_no_claims():
     # honest limit (RT-B-06): nothing checkable -> no verdict, and a limitation says why; U-16: no claims -> none
     r = run("Eiffel Tower in Paris", EIFFEL_DOCS, {"mode": "fact_verification", "claim": "Why would anyone climb it",
