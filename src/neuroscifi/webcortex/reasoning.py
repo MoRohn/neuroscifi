@@ -51,10 +51,12 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
     claims (names also by the cited titles), at most one new word per clause and two per sentence; an uncovered
     evaluative, instruction or recommendation, name, scope, comparative, time word or quantity, a negation no cited
     claim makes, a claim's negation it drops (_polarity) or a swapped subject is rejected;
-  - holds instruction content (_instruction: obligation, reader address, urging, a recommendation phrase, an
-    imperative at any clause head) beside a cited claim that is not supported, hedged or not (SECREVIEW5 C1; never
-    repaired by attribution); cites, beside others, a claim that supports none of it (C3); puts two numbers of one
-    clause in the opposite order to its cited claims;
+  - cites a claim that is not supported and is, or cites a claim whose own text is, not declarative (SECREVIEW6:
+    _non_declarative, fail closed: every clause opens with a subject; no obligation word, reader address, "is to",
+    "the fix is" or recommendation phrase), hedged or not, never repaired by attribution; instructs, beside supported
+    claims, a verb and object no cited claim instructs (_instructed); ties a version or name to words or a polarity
+    its claim clause does not give it (_anchor_problems); cites, beside others, a claim that supports none of its
+    predicate (_claim_supports); drops a claim's scare quotes or half of a "not merely ... but" (_meaning_changes);
   - contains instruction-like text (safety.scan_injection);
   - speculates: a prediction ("will", "likely", "may soon") is not a hedge for an unsupported claim, and a
     speculative sentence may not name anything that no cited claim or source title names (T1-09).
@@ -781,42 +783,287 @@ disable enable switch migrate pin remove delete replace visit click contact chec
 ignore go read consider buy sell keep do don't never always try verify rebuild recompile restart rotate change revert
 purge wipe erase submit send paste enter type copy sign log register follow donate pay transfer audit beware block
 allow add move set turn reset quarantine isolate""".split())
-_HEAD_SKIP = frozenset("now then first also just please still instead so finally thus therefore today soon again "
-                       "and or but simply".split())
-_NOT_AN_OBJECT = frozenset("of is are was were has have had can will may might must should would could we they i he "
-                           "she".split())         # "do we know ...?" is a question
-_INSTRUCTION_CLAUSE = re.compile(r"[;:,()\[\]\u2014\u2013!?]|\s-+\s")
 
 
-def _instruction(text: str) -> list[str]:
-    """Instruction content in `text` (SECREVIEW5 C1): a modal of obligation or recommendation (should, must,
-    recommended, advisable, ...), an address to the reader (you, your), urging ("urged to", "it is essential to",
-    "need to"), a recommendation phrase ("makes sense", "the way to go") or an imperative at the head of any clause,
-    after leading adverbs or a "To ...," lead ("Promptly remove ...", "To stay safe, uninstall ..."). A word that
-    could be an imperative heads no instruction when a plural noun, "of" or a verb follows it ("Patch releases fix
-    bugs", "Use of the parser is deprecated"). The one detector of compose() and the guard."""
-    text = text or ""
+# ---- declarative sentences only from weak evidence; exactly backed instructions (SECREVIEW6 1, 3, 4) ---------------
+#
+# A word list of instructions is whack-a-mole: round 6 relayed 14 forms past it. The rule is structural instead. When
+# any cited claim is not supported, the sentence and each such claim's own text must be DECLARATIVE (_non_declarative,
+# fail closed): after a closed list of discourse and attribution leads, every clause (split at punctuation and at
+# but / so / then / while / whereas / because / although / though / yet / unless, and at and / or before a verb)
+# begins with a subject token — a determiner, quantifier or pronoun, a number or version, a name (a capitalised word
+# the cited claims or the question write capitalised away from a sentence start, a mixed-case or all-capital word
+# they hold, a capitalised word of a short or sentence-case source title), a word in -s (not -ss), or a gerund that a
+# finite verb follows. A clause headed by a preposition, "To", a participle or a gerund is a lead only when a comma
+# and a clause with a subject follow ("In 2026, NumPy 2.5.5 ...", "To stay safe, ..." then needs a subject), and a
+# fragment after a comma ("..., released on 15 November", "..., with breaking changes") may hold no bare verb before
+# an object. Anything else at a clause head — a bare verb, a lowercase or sentence-initial-only capitalised word,
+# "Let's", a preposition without a comma — is non-declarative, and so is, anywhere, "is to (be)", "the fix / remedy /
+# solution is", an obligation word, urging, a recommendation phrase or "you/your". A false positive drops only a
+# sentence that cites weak evidence; the extractive evidence stays. With supported claims only, an instructed verb
+# (an imperative clause head that looks verbal, or the verb under an obligation word) must be held as an instructed
+# verb by a cited claim with the same object head (_instructed).
+_SUBJECT_HEADS = frozenset("""the a an this these those that its their his her our my some many most all each every
+both either neither no none one two three four five six seven eight nine ten several few such another other any only
+there it they he she we someone somebody something nobody nothing everyone everybody everything anyone anything which
+who whom whose where no-one""".split())
+_DISCOURSE = frozenset("""however also still moreover furthermore meanwhile notably overall additionally importantly
+indeed instead nevertheless nonetheless thus hence therefore consequently accordingly similarly likewise
+yes""".split())
+_DISCOURSE_PHRASE = re.compile(r"^\s*(?:in addition|in contrast|by contrast|in short|in summary|for example|"
+                               r"for instance|that said|as a result|on the other hand|at the same time)\b\s*,?",
+                               re.IGNORECASE)
+_PREPOSITIONS = frozenset("""in on at for as by with from after before since until during among between despite of
+over under via per through across into onto toward towards against within beyond about around near like unlike than
+without except regarding concerning following amid to including especially particularly mainly mostly""".split())
+_FINITE = frozenset("""is are was were has have had does do did can could will would may might must should shall remains
+remain remained seems seem seemed appears appear appeared becomes become became""".split())
+_PARTICLES = frozenset("on to off up down back out away over".split())
+_OBJECT_START = frozenset("the a an this that these those it them its their his her our my your all any every each "
+                          "some no now immediately today first promptly".split()) | _PARTICLES
+_CLAUSE_WORDS = frozenset("but so then while whereas because although though unless".split())
+_NON_DECLARATIVE = re.compile(
+    r"\blet's\b|\blet us\b|\b(?:is|are|was|were)\s+to\s+(?:be\b|\w+)|"
+    r"\bthe\s+(?:only\s+|best\s+|recommended\s+|real\s+|simplest\s+)?(?:fix|remedy|solution|answer|workaround|"
+    r"mitigation|cure)\s+(?:is|was|would be|will be)\b", re.IGNORECASE)
+_RECOMMEND_WORDS = frozenset("recommend recommends recommended advise advises advisable mandatory".split())
+_RECORD_LEAD = re.compile(r"^\s*\S+ (?:record:|reports|lists)\s+")       # NeuroSciFi's own record claims
+_SEGMENT = re.compile(r"[,;:()\[\]!?\"]|\s[-–—]+\s|[–—]")
+
+
+def _names(texts, titles=()) -> set[str]:
+    """Words that are names (lower case) for _non_declarative: capitalised away from a sentence start in `texts`
+    (the cited claims, the question), mixed-case or all-capital anywhere in them or in `titles`, a word right before a
+    version away from a segment start ("for zod 3.25.76"), and the capitalised words of a title of at most three words
+    or in sentence case (title-case titles lend no names: "How to Uninstall NumPy" would lend "Uninstall")."""
+    out = set()
+    for t in list(texts) + list(titles):
+        for segment in _SEGMENT.split(t or ""):
+            toks = _E_WORD.findall(segment)
+            for k, w in enumerate(toks[1:-1], 1):         # "for zod 3.25.76": a product name before its version
+                if w.isalpha() and any(c.isdigit() for c in toks[k + 1]):
+                    out.add(_e_plain(w))
+    for t in texts:
+        toks = _E_WORD.findall(_SEGMENT.sub(" ", t or ""))
+        for k, w in enumerate(toks):
+            if any(c.isupper() for c in w[1:]) or (w[:1].isupper() and k > 0) or \
+                    (w[:1].isupper() and any(c in "._-" or c.isdigit() for c in w)):      # "Trigger.dev"
+                out.add(_e_plain(w))
+        if _RECORD_LEAD.match(t or "") and toks:
+            out.add(_e_plain(toks[0]))        # the provider of a record claim ("Crossref record: ...")
+    for t in titles:
+        toks = [w for w in _E_WORD.findall(t or "") if w[:1].isalpha()]
+        capital = [w for w in toks if w[:1].isupper()]
+        short_or_sentence_case = len(toks) <= 3 or len(capital) * 2 < len(toks)
+        out.update(_e_plain(w) for w in toks if any(c.isupper() for c in w[1:]) or
+                   (w[:1].isupper() and short_or_sentence_case))
+    return out - _IMPERATIVE_HEAD
+
+
+def _verb_by_claims(w: str, oracle: set) -> bool:
+    """The cited claims hold `w` only inflected as a verb ("skips", "skipped" -> "skip")."""
+    return w not in oracle and any(w + end in oracle or (w.endswith("e") and w[:-1] + end in oracle)
+                                   for end in ("s", "es", "ed", "ing"))
+
+
+_ADJECTIVE_SHAPE = re.compile(r"(?:ic|al|ous|ive|ful|less|ible|able|ary)$")
+
+
+def _bare_verb(toks: list[str], k: int, oracle: set, head: bool = True, plural: bool = True) -> bool:
+    """toks[k] (lower case) looks like a verb before its object: not a stopword, number or -s/-ed/-ing/-ly word, and
+    followed by a determiner, pronoun, particle or code word ("uninstall it", "stay on", "use numpy-secure.example"),
+    or the claims hold it only inflected. At a clause `head` (after "and"/"or") also before a hyphenated word or before
+    a plural noun that no finite verb follows ("and install numpy-secure", "and remove plugins built for ..."); inside
+    a fragment that is a noun as often ("premium AI memory products outpaced", "translation, text-to-video"); the
+    claims' inflections are read at a head only ("a default encoding" beside a claim's "defaults to"). An
+    adjective-shaped word ("psychiatric", "neural") is no verb, nor is the word right after "to" (an infinitive)."""
+    w = toks[k]
+    if k and toks[k - 1] == "to":
+        return False
+    if head and w.isalpha() and w not in T.STOPWORDS and _verb_by_claims(w, oracle):
+        return True
+    if not w.isalpha() or w in T.STOPWORDS or w in _OBJECT_START or w in _PREPOSITIONS or len(w) < 3 or \
+            w.endswith(("s", "ed", "ing", "ly")) or _ADJECTIVE_SHAPE.search(w):
+        return False
+    nxt = toks[k + 1] if k + 1 < len(toks) else ""
+    after = toks[k + 2] if k + 2 < len(toks) else ""
+    if nxt in _OBJECT_START or any(c in "._/" for c in nxt) and not nxt[:1].isdigit():
+        return True
+    return head and plural and ("-" in nxt and not nxt[:1].isdigit() or
+                                nxt.endswith("s") and not nxt.endswith("ss") and after not in _FINITE)
+
+
+def _subject_head(orig: list[str], k: int, names: set, oracle: set) -> bool:
+    """orig[k] (as written) can open a declarative clause (see the section comment)."""
+    w0 = orig[k]
+    w = _e_plain(w0)
+    if _verb_by_claims(w, oracle):
+        return False
+    if w in _SUBJECT_HEADS or any(c.isdigit() for c in w):
+        return True
+    if any(c.isupper() for c in w0) and (w in names or k + 1 < len(orig) and orig[k + 1][:1].isupper() and
+                                        _e_plain(orig[k + 1]) in names):
+        return True                       # a name, or the first word of one ("Van Rossum")
+    if w in names and k + 1 < len(orig) and orig[k + 1][:1].isdigit():
+        return True                       # a product name before its version, as the claims write it ("numpy 2.5.5")
+    if w.endswith("ing"):                 # a gerund subject needs a finite verb after its object
+        rest = [_e_plain(x) for x in orig[k + 2:]]
+        return any(x in _FINITE or (x.isalpha() and x.endswith("s") and not x.endswith("ss") and len(x) > 3 and
+                                    i and rest[i - 1] not in _PRE_VERB and rest[i - 1] not in T.STOPWORDS)
+                   for i, x in enumerate(rest))
+    if w == "lets":
+        return False                      # "Lets uninstall ..."
+    return w.isalpha() and len(w) > 3 and w.endswith("s") and not w.endswith("ss") and w not in T.STOPWORDS
+
+
+# a generic "you" in a closed set of idioms addresses nobody ("both are correct depending on what you mean"); the
+# clause heads around it are still checked (_non_declarative)
+_GENERIC_YOU = re.compile(r"\bdepending on (?:what|how) you (?:mean|count|define|measure|ask)\b|"
+                          r"\bif you (?:count|include|consider|mean|ask)\b", re.IGNORECASE)
+
+
+def _instruction_markers(text: str) -> list[str]:
+    """Instruction words wherever they stand: obligation and recommendation modals, "you/your" (not a generic one,
+    _GENERIC_YOU), urging, recommendation phrases, "let's", "is to (be)", "the fix / remedy / solution is"."""
+    text = _GENERIC_YOU.sub(" ", text)
     words = [_e_plain(w) for w in _E_WORD.findall(text)]
     found = [w for w in words if w in _OBLIGATION or w in _YOU]
     found += [m.group(0).lower() for m in _URGING.finditer(text)]
     found += [m.group(0).lower() for m in _RECOMMENDING.finditer(text)]
-    for part in _INSTRUCTION_CLAUSE.split(text):
-        toks = [_e_plain(w) for w in _E_WORD.findall(part)]
-        k = 0
-        while k < len(toks) and (toks[k] in _HEAD_SKIP or (toks[k].endswith("ly") and len(toks[k]) > 4)):
-            k += 1
-        if k < len(toks) and toks[k] in _IMPERATIVE_HEAD:
-            nxt = toks[k + 1] if k + 1 < len(toks) else ""
-            plural = nxt.endswith("s") and not nxt.endswith("ss") and nxt not in ("this", "its", "his", "us", "as")
-            if not (plural or nxt in _NOT_AN_OBJECT):
-                found.append(toks[k])
+    found += [m.group(0).lower() for m in _NON_DECLARATIVE.finditer(text)]
     return list(dict.fromkeys(found))
 
 
-def _relays_instruction(text: str) -> bool:
-    """compose() attributes no sentence with instruction content (_instruction): the guard rejects it whenever a cited
-    claim is not supported, hedged or not, so an instruction relayed from the evidence never reaches the reader."""
-    return bool(_instruction(text))
+def _strip_attribution(text: str) -> str:
+    """`text` without the attribution compose() writes or a model wrote ("according to one source", "possibly out of
+    date", "though the claim is disputed")."""
+    text = re.sub(rf"{_SOURCE_PHRASE}|\baccording to [^,.;:!?]{{1,60}}", " ", text or "", flags=re.IGNORECASE)
+    return re.sub(r",?\s*\b(?:possibly out of date|though the claim is disputed|though the sources disagree)\b", " ",
+                  text, flags=re.IGNORECASE)
+
+
+def _non_declarative(text: str, names: set, oracle: set, record: bool = False) -> list[str]:
+    """Why `text` is not a plain declarative sentence (SECREVIEW6 rule 1, fail closed), or []. `record`: a claim of
+    NeuroSciFi's own record template ("Crossref record: \"T\"", "OSV lists advisory X for zod 3.25.76: <summary>"),
+    of which only the data after the first ":" is prose."""
+    text = _norm(text).translate(_PUNCT_ASCII)
+    if record:                            # NeuroSciFi's template around the data: only the data after ":" is prose
+        text = text.split(":", 1)[1] if ":" in text else ""
+    text = _strip_attribution(text)
+    faults = _instruction_markers(text)
+    segments = [x for x in _SEGMENT.split(text) if _E_WORD.search(x)]
+    need_subject = False                  # the previous segment was a lead: this one must open with a subject
+    words_of = [[_e_plain(w) for w in _E_WORD.findall(x)] for x in segments]
+    for n, segment in enumerate(segments):
+        segment = _DISCOURSE_PHRASE.sub("", segment)
+        orig = _E_WORD.findall(segment)
+        toks = [_e_plain(w) for w in orig]
+        k, opened = 0, False             # opened: a clause word or conjunction starts this segment
+        while k < len(toks) and (toks[k] in _DISCOURSE or toks[k] in ("and", "or") or toks[k] in _CLAUSE_WORDS):
+            opened = opened or toks[k] in _CLAUSE_WORDS or toks[k] in ("and", "or")
+            k += 1
+        if k >= len(toks):
+            continue
+        head = toks[k]
+        if n >= 2 and words_of[n - 1] and all(t in _DISCOURSE for t in words_of[n - 1]) and \
+                words_of[n - 2][-1:] and words_of[n - 2][-1] in _FINITE:
+            pass                          # "It does, however, use ...": the verb its auxiliary began
+        elif _subject_head(orig, k, names, oracle):
+            need_subject = False
+        elif opened and n > 0 and head in _FINITE and toks[k - 1] in ("and", "or"):
+            pass                          # "..., and is reported as ...": the same subject's second predicate
+        elif need_subject or (opened and n > 0 and _bare_verb(toks, k, oracle)) or \
+                (opened and n > 0 and toks[k - 1] in _CLAUSE_WORDS):
+            faults.append(orig[k])
+        elif n > 0 and not opened and not need_subject and (head in _FINITE or (
+                k + 1 < len(toks) and any(c.isdigit() for c in toks[k + 1]) and not _verb_by_claims(head, oracle))):
+            pass                          # "..., was published in May 2015", the label of "..., version 1.0, ..."
+        elif n > 0 and not opened and not need_subject and head not in _PREPOSITIONS and \
+                not head.endswith(("ed", "ing")):
+            # a fragment after a comma ("..., less than a mile from port"): non-declarative when a bare verb opens it
+            # or follows inside it ("..., uninstall it", "..., remove plugins built for ...")
+            if _bare_verb(toks, k, oracle) or any(_bare_verb(toks, j, oracle, head=False, plural=False)
+                                                  for j in range(k + 1, len(toks))):
+                faults.append(orig[k])
+        elif head in _PREPOSITIONS or head.endswith(("ed", "ing")) or (head.endswith("ly") and len(head) > 4):
+            if n == 0 or need_subject:
+                if n + 1 < len(segments):
+                    need_subject = True   # a lead: "In 2026, ...", "To stay safe, ...", "Released in May, ..."
+                else:
+                    faults.append(orig[k])            # "For safety uninstall ...": no comma, no subject
+            elif any(_bare_verb(toks, j, oracle, head=False, plural=False) for j in range(k + 1, len(toks))):
+                faults.append(orig[k])                # a fragment with a verb and its object in it
+        else:
+            faults.append(orig[k])                    # a bare verb, a lowercase or sentence-initial-only word
+        # inside the segment: a clause word, or "and"/"or" before a verb, opens a clause that needs a subject
+        for j in range(k + 1, len(toks) - 1):
+            if toks[j] in _CLAUSE_WORDS and toks[j + 1] not in ("far", "that", "of", "as") and \
+                    not _subject_head(orig, j + 1, names, oracle) and toks[j + 1] not in _DISCOURSE and \
+                    not (toks[j + 1].endswith(("ing", "ed")) and not any(
+                        _bare_verb(toks, i, oracle, head=False, plural=False) for i in range(j + 2, len(toks)))):
+                faults.append(orig[j + 1])      # ("while validating oversized collections": a reduced clause)
+            elif toks[j] in ("and", "or") and toks[j + 1] in _CLAUSE_WORDS | {"then"} and j + 2 < len(toks) and \
+                    not _subject_head(orig, j + 2, names, oracle):
+                faults.append(orig[j + 2])
+            elif toks[j] in ("and", "or") and not any(x == "to" or x in _FINITE for x in toks[max(0, j - 3):j]):
+                # (not "to support and protect the neurons", "can break or misbehave": verbs of one chain)
+                v = next((i for i in range(j + 1, len(toks)) if toks[i] not in _DISCOURSE), None)
+                if v is not None and _bare_verb(toks, v, oracle):
+                    faults.append(orig[v])
+    return list(dict.fromkeys(faults))
+
+
+def _instructed(text: str, names: set, oracle: set) -> set:
+    """(verb, object head) stems of what `text` instructs: the verb after an obligation word ("users should upgrade to
+    NumPy 2.5.5" -> upgrade, numpy) and every clause head that is no subject and looks verbal (_bare_verb, or a word
+    of the action list), with its object (SECREVIEW6 rule 2)."""
+    text = _strip_attribution(_norm(text).translate(_PUNCT_ASCII))
+    out = set()
+
+    def pair(toks, j):
+        obj = next((t for t in toks[j + 1:] if t not in T.STOPWORDS and t not in _PARTICLES and t not in _MODIFIER
+                    and not any(c.isdigit() for c in t)), "")
+        return _e_stem(toks[j]), _e_stem(obj)
+    for segment in _SEGMENT.split(text):
+        orig = _E_WORD.findall(segment)
+        toks = [_e_plain(w) for w in orig]
+        for j, w in enumerate(toks):
+            if w in _RECOMMEND_WORDS:
+                out.add(("recommend", pair(toks, j)[1]))       # "recommends manual verification": its object
+                continue
+            if w in _OBLIGATION or w in ("need", "needs", "have", "has", "ought") and toks[j + 1:j + 2] == ["to"] or \
+                    w in ("urged", "advised", "required", "encouraged", "asked", "told"):
+                v = next((i for i in range(j + 1, len(toks)) if toks[i] not in ("to", "not", "be", "also", "always",
+                                                                                "never", "first") and
+                          not (toks[i].endswith("ly") and len(toks[i]) > 4)), None)
+                if v is not None:
+                    out.add(pair(toks, v))
+        heads = [0] + [j + 1 for j, w in enumerate(toks[:-1]) if w in {"and", "or", "then"} | _CLAUSE_WORDS]
+        for h in heads:
+            while h < len(toks) and (toks[h] in _DISCOURSE or toks[h] in _CLAUSE_WORDS or
+                                     (toks[h].endswith("ly") and len(toks[h]) > 4)):
+                h += 1
+            label = h + 1 < len(toks) and any(c.isdigit() for c in toks[h + 1]) and not _verb_by_claims(toks[h], oracle)
+            if h < len(toks) and not _subject_head(orig, h, names, oracle) and not label and \
+                    (toks[h] in _IMPERATIVE_HEAD or _bare_verb(toks, h, oracle, plural=False)) and \
+                    toks[h] not in _PREPOSITIONS:
+                out.add(pair(toks, h))
+    return out
+
+
+def _relays_instruction(text: str, b: dict | None = None, used=()) -> bool:
+    """compose() attributes no sentence the guard will reject as relayed instruction content: one with instruction
+    words (_instruction_markers), or, beside a weak claim, one that is not declarative (_non_declarative, with the
+    names of the bundle `b`). The guard rejects either whenever a cited claim is not supported, hedged or not."""
+    if _instruction_markers(text):
+        return True
+    weak = [c for c in used if c.get("state") not in SUPPORTED_STATES]
+    if not weak or b is None:
+        return False
+    names = _names([c["text"] for c in used] + [b.get("question") or ""],
+                   [x.get("title") or "" for x in b.get("sources") or []])
+    oracle = {_e_plain(w) for c in used for w in _E_WORD.findall(c["text"])}
+    return bool(_non_declarative(text, names, oracle))
 
 
 def compose(value, b: dict) -> list[dict]:
@@ -827,7 +1074,8 @@ def compose(value, b: dict) -> list[dict]:
     "No-one") and a sentence the model already wrote citing the same claims are removed. Of several cited claims, one
     that supports none of the sentence (_claim_supports) is dropped, so the attribution counts only the claims that
     support it (SECREVIEW5 C3). A caveat of the closed grammar, a question (an attribution would make it a statement)
-    and instruction content (_relays_instruction, the guard's _instruction) get no attribution. Unknown claim ids are
+    and what the guard rejects as relayed instruction content (_relays_instruction) get no
+    attribution. Unknown claim ids are
     kept for the guard to reject; the guard judges every composed sentence."""
     claims = {c["id"]: c for c in b["claims"]}
     question = b.get("question") or ""
@@ -855,7 +1103,7 @@ def compose(value, b: dict) -> list[dict]:
             continue                        # the same sentence again (live: a model repeating its last items)
         seen.add(key)
         if used and text and not text.rstrip().endswith("?") and not insufficiency(text, question) and \
-                not _relays_instruction(text):
+                not _relays_instruction(text, b, used):
             text = attribution(text, [c["state"] for c in used], len(sources))
         out.append({"text": text, "sources": sources, "claims": ids})
     return out
@@ -1375,8 +1623,14 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
         if not covered:
             uncovered.append((w, cls))
     out = []
-    told = _instruction(raw)          # an imperative at any clause head, urging, a recommendation phrase (C1)
-    if told and not any(_instruction(t) for t in claim_texts):
+    # SECREVIEW6 rule 2: an instruction is exactly backed. Each instructed (verb, object) of the sentence must be an
+    # instructed (verb, object) of a cited claim; other instruction words need a cited claim that holds some
+    names = _names(claim_texts + [question], titles)
+    oracle = {_e_plain(w) for t in claim_texts for w in _E_WORD.findall(t)}
+    backed = set().union(*(_instructed(t, names, oracle) for t in claim_texts)) if claim_texts else set()
+    uncovered += [(v, "instruction") for v, _ in sorted(_instructed(raw, names, oracle) - backed)]
+    told = _instruction_markers(raw)  # urging, a recommendation phrase, "is to", "the fix is"
+    if told and not any(_instruction_markers(t) for t in claim_texts):
         uncovered += [(w, "instruction") for w in told]
     instructions = [w for w, cls in uncovered if cls == "instruction"]
     if instructions:
@@ -1425,20 +1679,140 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
     return out
 
 
+_V_PREFIX = re.compile(r"\b[vV](?=\d+(?:\.\d+)+\b)")      # "v2.5.5" is 2.5.5
+_COARSE = re.compile(r"[;:]|\s[-–—]+\s|[–—]|,\s*(?:and|or)\b|"
+                     r"\b(?:but|while|whereas|although|though|however|because|yet|unless)\b|"
+                     r"\b(?:and|or)\s+(?-i:(?=[A-Z0-9]))", re.IGNORECASE)
+
+
+def _coarse_clauses(text: str) -> list[str]:
+    """`text` split where a new subject or a contrast starts (not at every comma): "NumPy 2.5.4 is affected and NumPy
+    2.5.5 is not affected" -> two clauses; "affected NumPy 2.5.5, before the fix in NumPy 2.5.4" -> one."""
+    cuts = sorted({0, len(text)} | {m.start() for m in _COARSE.finditer(text)})
+    return [text[a:z] for a, z in zip(cuts, cuts[1:]) if _E_WORD.search(text[a:z])]
+
+
+def _anchors(clause: str) -> set[str]:
+    """The versions, numbers and names a clause speaks of (lower case): a number or version outside dates and
+    identifiers, a capitalised word away from the clause start, a mixed-case or all-capital word."""
+    out = set(_ordered_numbers(clause))
+    toks = _E_WORD.findall(_V_PREFIX.sub("", clause))
+    for k, w in enumerate(toks):
+        if not any(c.isdigit() for c in w) and (any(c.isupper() for c in w[1:]) or (w[:1].isupper() and k > 0)):
+            out.add(_e_plain(w))
+    return out
+
+
+def _predicate(clause: str, anchors: set, wide: bool) -> dict:
+    """The clause's content words other than its anchors, as stem -> negated (_polarity)."""
+    skip = {_e_stem(a) for a in anchors}
+    words, _, _ = _polarity(clause, wide=True)
+    return {s: neg for s, neg in words if s not in skip and not any(c.isdigit() for c in s)}
+
+
+def _anchor_problems(text: str, used) -> list[str]:
+    """SECREVIEW6 rule 3: a version, number or name the sentence shares with a cited claim stays tied to what the claim
+    says of it. In the sentence's clause holding it, the content words that clause shares with a claim clause holding
+    it must have the same polarity in both ("2.5.5 is affected" for "... 2.5.5 is not affected"); and when it shares
+    none with any of them, it may not take the words a claim says of something else ("2.5.5 has the parser flaw" for
+    "2.5.4 has the parser flaw and 2.5.5 has the fix")."""
+    mine = [(c, _anchors(c)) for c in _coarse_clauses(_V_PREFIX.sub("", text))]
+    theirs = [(c, _anchors(c)) for x in used for c in _coarse_clauses(_V_PREFIX.sub("", x["text"]))]
+    problems = []
+    for clause, anchors in mine:
+        for a in sorted(anchors):
+            holding = [(c, an) for c, an in theirs if a in an]
+            if not holding:
+                continue
+            said = _predicate(clause, anchors, True)
+            if not said:
+                continue
+            fits, shares = False, False
+            for c, an in holding:
+                stated = _predicate(c, an, False)
+                shared = set(said) & set(stated)
+                if shared:
+                    shares = True
+                    if all(said[w] == stated[w] for w in shared):
+                        fits = True
+                        break
+            if not fits:                  # a claim clause naming nothing else ("... and it is not secure") may say it
+                for c, an in theirs:
+                    stated = _predicate(c, an, False)
+                    shared = set(said) & set(stated)
+                    if a not in an and not an - anchors and shared and all(said[w] == stated[w] for w in shared):
+                        fits = True
+                        break
+            if fits:
+                continue
+            if shares:
+                problems.append(f"{a}: negated where its cited claim does not, or not where it does")
+            elif any(set(said) & set(_predicate(c, an, False)) for c, an in theirs if a not in an and an - anchors):
+                problems.append(f"{a}: says what its cited claims say of something else")
+    # within one clause: the content word right before a version or number names what it is ("the fix in NumPy
+    # 2.5.4" for "affected NumPy 2.5.4 before the fix in NumPy 2.5.5")
+    mine_before, their_before = _number_context(text), {}
+    for x in used:
+        for n, w in _number_context(x["text"]).items():
+            their_before.setdefault(n, set()).add(w)
+    for n, w in mine_before.items():
+        if n in their_before and w not in their_before[n] and any(w in ws for m, ws in their_before.items() if m != n):
+            problems.append(f"{n}: comes after '{w}', which its cited claims say of another number")
+    return list(dict.fromkeys(problems))
+
+
+def _number_context(text: str) -> dict:
+    """version -> the stem of the nearest content word before it, within four words (names skipped)."""
+    toks = _E_WORD.findall(_DATE_PART.sub(" ", _V_PREFIX.sub("", text or "")))
+    out = {}
+    for k, w in enumerate(toks):
+        if not re.fullmatch(r"\d+(?:\.\d+)+", w) or w in out:
+            continue
+        for x in reversed(toks[max(0, k - 4):k]):
+            p = _e_plain(x)
+            if any(c.isupper() for c in x) or any(c.isdigit() for c in x) or p in T.STOPWORDS or p in _ENTAIL_META:
+                continue
+            out[w] = _e_stem(p)
+            break
+    return out
+
+
+_PRE_VERB = frozenset("the a an this these those its their his her our my some many most all each every no".split())
+
+
+def _predicate_words(raw: str) -> list[tuple[str, str]]:
+    """(lower case, as written) of the words from the sentence's first finite verb on: an auxiliary or copula, or a
+    word in -s/-ed that follows a noun (not a determiner, not the first word). [] when none is found."""
+    toks = _E_WORD.findall(raw)
+    low = [_e_plain(w) for w in toks]
+    for k, w in enumerate(low):
+        if w in _FINITE or (k >= 1 and w.isalpha() and w.endswith(("s", "ed")) and not w.endswith("ss") and
+                            low[k - 1] not in _PRE_VERB and low[k - 1] not in T.STOPWORDS and
+                            not any(c.isupper() for c in toks[k])):
+            return list(zip(low[k:], toks[k:]))
+    return []
+
+
 def _claim_supports(text: str, claim: dict, question: str = "") -> bool:
-    """SECREVIEW5 C3: `claim` covers part of what `text` says: one of the sentence's content words other than a name
-    (or, in a sentence of names only, a name). A claim cited beside others for its subject's name alone ("NumPy 2.5.5
-    was released on 17 November" beside "NumPy 2.5.5 ships a backdoor") supports none of it."""
+    """SECREVIEW5 C3, SECREVIEW6 finding 5: `claim` covers part of what `text` asserts: one of the content words of the
+    sentence's predicate (from its first finite verb on: _predicate_words) other than a name, or, without a predicate
+    found, of the whole sentence (in a sentence of names only, a name). A claim cited beside others for the subject or
+    the setting alone ("NumPy 2.5.5 was released in November with a new wheel" beside "The released NumPy 2.5.5 wheel
+    ships a backdoor") supports none of it."""
     raw = _ENTAIL_META_PHRASE.sub(" ", _outside_gaps(_inline_refs(_clean(_norm(text)))[0], question))
     vocabulary = _Vocabulary([claim.get("text") or ""])
     names, others = [], []
-    spans = _E_WORD.findall(raw)
+    predicate = _predicate_words(raw)
+    if not any(w not in T.STOPWORDS and w not in _ENTAIL_META and w not in _ENTAIL_NEG and w.isalpha() and len(w) > 1
+               for w, _ in predicate):
+        predicate = []                    # "... is not established by the provided evidence": no predicate word
+    spans = [w0 for _, w0 in predicate] if predicate else _E_WORD.findall(raw)
     for k, w0 in enumerate(spans):
         w = _e_plain(w0)
         if not w or len(w) == 1 or any(c.isdigit() for c in w) or w in T.STOPWORDS or w in _ENTAIL_META or \
                 w in _ENTAIL_NEG or w in _UNIT_WORDS:
             continue
-        name = any(c.isupper() for c in w0[1:]) or (w0[0].isupper() and k > 0)
+        name = any(c.isupper() for c in w0[1:]) or (w0[0].isupper() and (k > 0 or bool(predicate)))
         (names if name else others).append(w)
     return any(vocabulary.covers(w) for w in (others or names))
 
@@ -1450,27 +1824,59 @@ _DATE_PART = re.compile(rf"\b\d{{4}}-\d{{2}}-\d{{2}}\b|\b\d{{1,2}}(?:st|nd|rd|th
 def _ordered_numbers(text: str) -> list[str]:
     """The numbers and versions of `text` in order, without the parts of dates (a date may be written either way) and
     of identifiers ("CVE-2026-1234")."""
-    text = _DATE_PART.sub(" ", text or "")
+    text = _DATE_PART.sub(" ", _V_PREFIX.sub("", text or ""))
     return list(dict.fromkeys(n for n, at in _number_positions(text)
                               if not (at and (text[at - 1].isalpha() or text[at - 1] in "-_/")) and
-                              not text[at + len(n):at + len(n) + 1] in ("-", "_")))
+                              not (text[at + len(n):at + len(n) + 1] in ("-", "_") or
+                                   text[at + len(n):at + len(n) + 1].isalpha())))      # "2.5kB": an amount
 
 
 def _order_swaps(text: str, used) -> list[str]:
-    """Pairs of numbers or versions one clause of the sentence puts in the opposite order to every cited claim that
-    holds both ("The flaw affected NumPy 2.5.5 before the fix in NumPy 2.5.4" for "... 2.5.4 before the fix in NumPy
-    2.5.5"). Pairs in different clauses are not compared ("2.5.4 is affected, but 2.5.5 fixes the bugs found after
-    2.5.4")."""
+    """Pairs of numbers or versions one clause of the sentence (_coarse_clauses: a comma does not end it) puts in the
+    opposite order to every cited claim that holds both ("The flaw affected NumPy 2.5.5, before the fix in NumPy
+    2.5.4" for "... 2.5.4 before the fix in NumPy 2.5.5"). Clauses with their own subjects are judged by
+    _anchor_problems instead ("2.5.4 is affected, but 2.5.5 fixes the bugs found after 2.5.4")."""
     theirs = [_ordered_numbers(c["text"]) for c in used]
     swapped = []
-    for a0, z0 in _clauses(text):
-        mine = _ordered_numbers(text[a0:z0])
+    theirs = [[n for n in t if "." in n] for t in theirs]
+    for clause in _coarse_clauses(text):
+        mine = [n for n in _ordered_numbers(clause) if "." in n]          # versions (an amount has no order)
         for i, a in enumerate(mine):
             for z in mine[i + 1:]:
                 holding = [t for t in theirs if a in t and z in t]
                 if holding and not any(t.index(a) < t.index(z) for t in holding):
                     swapped.append(f"{a} before {z}")
     return swapped
+
+
+_QUOTED = re.compile(r"(?<![A-Za-z])[\"\u201c\u2018']([^\"\u201c\u201d\u2018\u2019']{1,40})[\"\u201d\u2019']")
+_HALF = re.compile(r"\bnot (?:merely|only|just|simply)\b", re.IGNORECASE)
+_HALF_REST = re.compile(r"\b(?:but|also|rather|instead)\b|;", re.IGNORECASE)
+
+
+def _meaning_changes(text: str, used) -> list[str]:
+    """R6 retest D5: words a cited claim puts in (scare) quotes, of at most four words, that the sentence repeats
+    without them ("a number of 'facts' about the human brain" -> "facts"); and a "not merely / not only / not just X"
+    that the sentence ends without its complement ("..., but Y", "; it would Y")."""
+    out = []
+    plain = _norm(text).translate(_PUNCT_ASCII)
+    for c in used:
+        claim = _norm(c["text"]).translate(_PUNCT_ASCII)
+        if _RECORD_LEAD.match(claim):
+            continue                      # the quoted title of NeuroSciFi's own record claim is no scare quote
+        for m in _QUOTED.finditer(claim):
+            quoted = m.group(1).strip()
+            if not quoted or len(quoted.split()) > 4:
+                continue
+            for hit in re.finditer(rf"(?<![\w'\"]){re.escape(quoted)}(?![\w'\"])", plain, re.IGNORECASE):
+                before, after = plain[hit.start() - 1:hit.start()], plain[hit.end():hit.end() + 1]
+                if before not in "'\"" or after not in "'\"" or not before or not after:
+                    out.append(f"drops the quotes its cited claim puts around \"{quoted}\"")
+                    break
+    for m in _HALF.finditer(plain):
+        if not _HALF_REST.search(plain[m.end():]):
+            out.append(f"keeps only half of a \"{m.group(0)} ... but ...\" construction")
+    return list(dict.fromkeys(out))
 
 
 def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[dict], bool, list[str]]:
@@ -1570,11 +1976,23 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     if used and not honest_gap:          # SEC-G-E1: no more than the cited claims say
         reasons += _unentailed(text, used, [x.get("title") or "" for x in cited_sources], question)
         asserted = _outside_gaps(text, question)
-        told = _instruction(asserted)
-        if told and weak:
-            # SECREVIEW5 C1: an instruction is never relayed from a claim that is not supported, hedged or not (an
-            # obeyed injection: "Users should uninstall NumPy 2.5.5, according to one source.")
-            reasons.append("relays an instruction from a claim that is not supported: " + ", ".join(told))
+        if weak:
+            # SECREVIEW6 rule 1 (fail closed): weak evidence carries only declarative sentences. The sentence and each
+            # weak claim's own text must be declarative, hedged or not (an obeyed injection: "Users should uninstall
+            # NumPy 2.5.5, according to one source.", "Skip NumPy 2.5.5 and stay on NumPy 2.5.4.")
+            names = _names([c["text"] for c in used] + [question], [x.get("title") or "" for x in cited_sources])
+            oracle = {_e_plain(w) for c in used for w in _E_WORD.findall(c["text"])}
+            faults = _non_declarative(asserted, names, oracle)
+            for c in weak:
+                faults += [f"{c['id']}: {f}" for f in _non_declarative(c["text"], names, oracle,
+                                                                       record=bool(_RECORD_LEAD.match(c["text"])))]
+            if faults:
+                reasons.append("relays an instruction or a non-declarative sentence from weak evidence: " +
+                               ", ".join(dict.fromkeys(faults)))
+        reasons += _meaning_changes(asserted, used)
+        tied = _anchor_problems(asserted, used)
+        if tied:
+            reasons.append(f"ties a version or name to what its cited claims do not say of it: {'; '.join(tied)}")
         idle = [c["id"] for c in used if len(used) > 1 and not _claim_supports(text, c, question)]
         if idle:
             reasons.append(f"cites {', '.join(idle)}, which support(s) none of what it says")   # C3
@@ -1608,9 +2026,10 @@ RESTATE_CLAIM = 0.6        # share of one cited claim's content words the senten
 
 def _restates(text: str, used) -> bool:
     """The sentence repeats a cited claim in other words (and adds almost nothing): attributing it to its source
-    is then faithful. A relayed instruction (_instruction) or an added clause does not qualify."""
+    is then faithful. A relayed instruction (_instruction_markers; a non-declarative sentence fails the check of the
+    attributed text) or an added clause does not qualify."""
     from .claims import _stems
-    if ";" in text or not used or _instruction(text):
+    if ";" in text or not used or _instruction_markers(text):
         return False
     own = set(_stems(text))
     if not own:
