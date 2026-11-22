@@ -268,3 +268,30 @@ def test_nsf_checkpoint_rewrite_retries_and_an_unfinished_journal_is_swept(insta
     assert [r["status"] for r in checkpoints.listing(db)] == ["stale", "valid"]
     assert main(["checkpoint", "rewrite", "--db", str(path)]) == 0
     assert [r["id"] for r in json.loads(capsys.readouterr().out)["rewritten"]] == [first["id"]]
+
+
+def test_forgetting_research_unlinks_its_budget_row_in_the_live_db_and_the_rewritten_checkpoint(instance, tmp_path,
+                                                                                               capsys):
+    """R6 D11: after `nsf forget research`, the task id survived in autonomy_ledger, in the live database and in the
+    rewritten checkpoints. The row keeps the day's numbers (forgetting never refunds a budget) under a random id."""
+    from neuroscifi.webcortex import autonomy, orchestrator, state
+    db, path = instance
+    state.set_config(db, {"enabled": True}, T0)
+    task = orchestrator.submit(db, "Is the Hera probe at Didymos?", T0, mode="fact_verification", origin="cli")
+    with store.write(db):
+        allowed = autonomy.admit(db, state.task(db, task["id"]), T0)["allowed"]
+    checkpoint = checkpoints.create(db, path, tmp_path / "cps", T0 + 1)
+    assert task["id"].encode() in decoded(checkpoint["path"])
+    assert main(["forget", "research", task["id"], "--db", str(path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [r["id"] for r in out["checkpoints_rewritten"]] == [checkpoint["id"]]
+    raw = decoded(checkpoints._row(db, checkpoint["id"])["path"])
+    assert task["id"].encode() not in raw and b"Hera probe" not in raw
+    dest = tmp_path / "raw.sqlite"
+    checkpoints.restore(db, checkpoint["id"], dest, T0 + 3, apply_tombstones=False)
+    with sqlite3.connect(dest) as copy, sqlite3.connect(path) as live:
+        for source in (copy, live):
+            (key, scope, row_state, kept), = source.execute(
+                "SELECT task_id, scope, state, allowed FROM autonomy_ledger").fetchall()
+            assert key.startswith("forgotten:") and (scope, row_state) == ("user", "open")
+            assert json.loads(kept) == allowed

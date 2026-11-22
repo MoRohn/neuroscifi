@@ -18,6 +18,7 @@ old frame keeps the payload; a reader that blocks this is reported as effects["w
 import hashlib
 import json
 import re
+import secrets
 
 from . import store
 from .errors import Gone, NotFound, ValidationError
@@ -607,6 +608,7 @@ def _forget_research_core(db, task_id, now):
     db.execute("UPDATE web_tasks SET parent_id=NULL WHERE parent_id=?", (task_id,))
     db.execute("UPDATE web_monitors SET last_task_id=NULL WHERE last_task_id=?", (task_id,))
     db.execute("UPDATE web_knowledge SET task_id=NULL WHERE task_id=?", (task_id,))
+    _unlink_ledger(db, task_id)
     db.execute("DELETE FROM web_tasks WHERE id=?", (task_id,))
     _web_tombstones(db, "task", [task_id], now)
     effects = _web_cascade(db, claim_ids, now)
@@ -616,17 +618,34 @@ def _forget_research_core(db, task_id, now):
     return effects, {"urls": urls, "sha256": shas}
 
 
+def _unlink_ledger(db, task_id):
+    """R6 D11: the task's daily-budget row (autonomy_ledger) keeps its numbers, so forgetting never refunds a budget,
+    but no longer names the task: its key becomes a random 'forgotten:' id and its open and settle times the start of
+    its UTC day (the day is all a budget reads). Runs in the live forget and in every checkpoint replay."""
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='autonomy_ledger'").fetchone() is None:
+        return
+    db.execute("UPDATE autonomy_ledger SET task_id=?, opened_at=CAST(strftime('%s', day) AS REAL), "
+               "settled_at=CASE WHEN settled_at IS NULL THEN NULL ELSE CAST(strftime('%s', day) AS REAL) END "
+               "WHERE task_id=?", ("forgotten:" + secrets.token_hex(12), task_id))
+
+
 def _forget_task_questions(db, task_id, now):
-    """The task's own questions: its proposal, contested subjects, review aggregate and monitor findings."""
-    scopes = [f"web:research:{task_id}", f"web:review:{task_id}"]
+    """The task's own questions: its proposal, contested subjects, review aggregate, monitor findings and autonomy
+    finding (its text quotes the objective). Their scope named the task, so it becomes 'web:forgotten' (R6 D11;
+    deletion_log alone names a forgotten task)."""
+    scopes = [f"web:research:{task_id}", f"web:review:{task_id}", f"web:autonomy:{task_id}"]
     scopes += [s for (s,) in db.execute("SELECT DISTINCT scope FROM pending WHERE scope LIKE 'web:finding:%' "
                                         "AND substr(scope, -?) = ?", (len(task_id) + 1, ":" + task_id))]
-    return _forget_pending(db, scopes, [f"web:contested:{task_id}:"], now)
+    closed = _forget_pending(db, scopes, [f"web:contested:{task_id}:"], now)
+    for part in _chunks(closed):
+        db.execute(f"UPDATE pending SET scope='web:forgotten' WHERE id IN ({_in(part)})", part)
+    return closed
 
 
 def forget_research(db, task_id, now):
     """Forget a research task: its row, events, sources, claims, links, mentions, feedback, questions and the
-    knowledge that rested only on it. The objective is kept nowhere (deletion_log names the task id only).
+    knowledge that rested only on it. The objective is kept nowhere (deletion_log names the task id only). Its
+    autonomy_ledger row keeps the day's usage numbers under a random id (_unlink_ledger).
     effects["cache"] = {"urls", "sha256"}: the task's public-cache keys no other task references, for the caller
     to drop from the public cache (returned, never persisted)."""
     if not isinstance(task_id, str) or not task_id:

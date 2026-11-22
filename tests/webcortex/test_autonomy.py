@@ -212,6 +212,21 @@ def test_a_finished_task_settles_to_what_it_used_and_forgetting_refunds_nothing(
     governance.forget_research(db, task["id"], T0 + 5)
     assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == 0
     assert autonomy.status(db, T0)["autonomous"]["committed"] == before
+    # R6 D11: the ledger keeps the numbers but no longer names the task, and its times are only the day
+    assert ledger(db, task["id"]) is None
+    (key, day, opened, settled, used), = db.execute("SELECT task_id, day, opened_at, settled_at, used FROM "
+                                                     "autonomy_ledger").fetchall()
+    assert key.startswith("forgotten:") and task["id"] not in key and state.loads(used, {}) == row["used"]
+    midnight = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp()
+    assert opened == settled == midnight
+    for table, in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
+        if table in ("deletion_log",):        # names the forgotten id by design (docs/governance)
+            continue
+        cols = [c[1] for c in db.execute(f"PRAGMA table_info({table})")]
+        for col in cols:
+            for needle in (task["id"], "Zephyr"):       # the id, and the objective an autonomy finding quoted
+                assert db.execute(f"SELECT count(*) FROM {table} WHERE CAST({col} AS TEXT) LIKE ?",
+                                  (f"%{needle}%",)).fetchone()[0] == 0, (table, col, needle)
 
 
 def test_day_rollover_uses_the_explicit_now(individual):

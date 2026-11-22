@@ -79,8 +79,11 @@ The console equivalent is `POST /api/web/autonomy` with the same keys.
   lock. A task refused only for concurrency stays queued, and the worker releases its claim.
 - When a task ends, `settle` replaces its allowance with what it actually used. A task cancelled before it
   started has no ledger row and costs nothing.
-- Forgetting a task (`nsf forget research`) keeps its ledger row, which holds the task id and numbers only, so a
-  budget cannot be refunded by forgetting.
+- Forgetting a task (`nsf forget research`) keeps its ledger row's numbers (scope, UTC day, allowance, usage), so a
+  budget cannot be refunded by forgetting, but unlinks the row from the task (R6 D11): its key becomes a random
+  `forgotten:<hex>` id and its open and settle times the start of its UTC day. The same happens in every checkpoint
+  the forget rewrites (the replay runs the same code), so neither the live database nor a rewritten archive links
+  the usage to the task. Only `deletion_log` names the forgotten task id, by design.
 - The 0.6 rolling 24-hour caps (`daily_autonomous`: tasks, requests and bytes) still apply in addition.
 
 ## 3. Prioritisation
