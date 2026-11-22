@@ -27,7 +27,34 @@ ExecStart=/opt/neuroscifi/venv/bin/nsf web searxng start --db ${NSF_DB}
 ExecStop=/opt/neuroscifi/venv/bin/nsf web searxng stop --db ${NSF_DB}
 TimeoutStartSec=180
 TimeoutStopSec=60
+# Sandbox of this wrapper process only (the container has its own hardening, above). It runs the docker CLI, which
+# talks to the daemon over /run/docker.sock, plus Python (`nsf web searxng`), which writes the SearXNG config directory and the instance database. Verified with
+# scripts/hardened_run.py (docs/operations/HARDENING_VERIFICATION.md). Not applied: ProtectSystem=strict and
+# ProtectHome (nsf writes the config directory under the service user's home and the database NSF_DB, whose paths the
+# template does not know), PrivateUsers (it must keep the docker group to reach the socket).
 NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=full
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
 UMask=0077
 
 [Install]

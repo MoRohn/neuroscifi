@@ -31,8 +31,15 @@ UMask=0077
 # No network at all.
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+
+# Resource ceilings: zstd compression of a large database stays bounded.
+MemoryMax=4G
+TasksMax=32
 
 NoNewPrivileges=yes
+RemoveIPC=yes
+PrivateUsers=yes
 CapabilityBoundingSet=
 AmbientCapabilities=
 ProtectSystem=strict
