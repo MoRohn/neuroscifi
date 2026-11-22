@@ -12,6 +12,11 @@ details when it is opened.
   {action: "unsubscribe"}            delete this device's subscription
   {action: "test"}                   queue one empty push to this device (same rate limit as every push)
 
+A device may store a new endpoint (a first subscription or a rotation) and ask for a test push at most CHANGES times
+per CHANGES_WINDOW each (429 push_limit, with retry_after in seconds); re-sending the stored endpoint is free. A
+rotation keeps the subscription's backoff (not_before) and its 404/410 grace clock (stored), and every send attempt
+counts for the per-device interval, so neither a rotation nor a test makes the Spark ignore Retry-After.
+
 Unpairing, revoking or erasing a device deletes its subscription (ON DELETE CASCADE from `devices`).
 """
 from __future__ import annotations
@@ -49,8 +54,10 @@ POLL = 5               # seconds between checks for finished research
 RECENT = 6 * 3600      # finishes older than this (a bridge that was down) are not announced
 TIMEOUT = 10           # per socket operation (connect, send, receive)
 # Live, FCM answered 410 to a registration 3 and 8 s old and 201 at 19 s: during this grace after an endpoint is
-# stored, 404/410 is retried every 15 s instead of deleting the subscription.
+# stored, 404/410 is retried (after 15 s, and no sooner than the per-device interval) instead of deleting it.
 GRACE = 120
+CHANGES = 5            # per device: new endpoints stored (subscribe, rotation) and test pushes, each per window
+CHANGES_WINDOW = 3600
 MAX_ENDPOINT = 1000
 MAX_BACKOFF = 86400
 TERMINAL = ("completed", "partial", "failed", "cancelled")
@@ -201,6 +208,20 @@ class Push:
         self.test_origins = frozenset(test_origins)
         self.wake = threading.Event()
         self.lock = threading.Lock()
+        self.changes, self.changes_lock = {}, threading.Lock()   # (kind, device) -> monotonic times (allow)
+
+    def allow(self, kind, device, now):
+        """Count one `kind` ("subscribe": a new endpoint stored, or "test") of this device: 0 when allowed, else the
+        seconds until it would be (CHANGES per CHANGES_WINDOW). In memory: a bridge restart forgets the counts."""
+        with self.changes_lock:
+            if len(self.changes) > 4096:      # devices that went quiet
+                self.changes = {k: v for k, v in self.changes.items() if v and v[-1] > now - CHANGES_WINDOW}
+            recent = [t for t in self.changes.get((kind, device), ()) if t > now - CHANGES_WINDOW]
+            if len(recent) >= CHANGES:
+                self.changes[(kind, device)] = recent
+                return max(1, math.ceil(recent[0] + CHANGES_WINDOW - now))
+            self.changes[(kind, device)] = recent + [now]
+            return 0
 
     # -- the request a push service receives
     def request(self, endpoint, now):
@@ -287,6 +308,7 @@ class Push:
                 status, wait = 0, 60        # unreachable or timed out: try again in a minute
             sent.append((host, status))
             with closing(connect(path)) as db, db:
+                # `last` records every attempt, so the per-device interval holds whatever the answer was
                 args = (device, endpoint)
                 if status in (200, 201, 202, 204):
                     db.execute("UPDATE push_subs SET pending=0, last=?, not_before=NULL WHERE device=? AND endpoint=?",
@@ -295,7 +317,8 @@ class Push:
                     db.execute("DELETE FROM push_subs WHERE device=? AND endpoint=?", args)
                 elif status is not None and (status in (0, 404, 410, 429) or status >= 500):   # honour Retry-After
                     backoff = wait or {0: 60, 404: 15, 410: 15, 429: 600}.get(status, 120)
-                    db.execute("UPDATE push_subs SET not_before=? WHERE device=? AND endpoint=?", (now + backoff, *args))
+                    db.execute("UPDATE push_subs SET last=?, not_before=? WHERE device=? AND endpoint=?",
+                               (now, now + backoff, *args))
                 else:   # refused (policy, 3xx, other 4xx): drop this push, keep the subscription
                     db.execute("UPDATE push_subs SET pending=0, last=? WHERE device=? AND endpoint=?", (now, *args))
             if status not in (200, 201, 202, 204):
@@ -344,12 +367,14 @@ def route(server, token, data):
                 return 400, {"error": "push_service"}
             if row and row[0] == endpoint:
                 return 200, {"subscribed": True}
+            wait = push.allow("subscribe", device, time.monotonic())
+            if wait:
+                return 429, {"error": "push_limit", "retry_after": wait}
             # One browser holds one subscription: the device that registers it last receives its pushes.
             db.execute("DELETE FROM push_subs WHERE endpoint=? AND device!=?", (endpoint, device))
             now = time.time()
-            if row:   # the browser's push service rotated the endpoint
-                db.execute("UPDATE push_subs SET endpoint=?, stored=?, not_before=NULL WHERE device=?",
-                           (endpoint, now, device))
+            if row:   # the browser's push service rotated the endpoint: its backoff and grace clock stay
+                db.execute("UPDATE push_subs SET endpoint=? WHERE device=?", (endpoint, device))
             else:
                 db.execute("INSERT INTO push_subs(device, endpoint, created, stored) VALUES(?,?,?,?)",
                            (device, endpoint, now, now))
@@ -361,6 +386,9 @@ def route(server, token, data):
             raise ValueError()
         if row is None:
             return 409, {"error": "not_subscribed"}
+        wait = push.allow("test", device, time.monotonic())
+        if wait:
+            return 429, {"error": "push_limit", "retry_after": wait}
         db.execute("UPDATE push_subs SET pending=1 WHERE device=?", (device,))
         after = math.ceil(push.due(row[1], row[2], time.time()))
     push.wake.set()   # after the commit, so the dispatcher sees the pending push

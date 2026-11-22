@@ -458,3 +458,53 @@ def test_push_replies_are_spark_signed_like_research_replies(spark, fake, device
                          ({"action": "unsubscribe"}, 200)):
         assert spark.req("push", body, a)[0] == status, body
         assert signed(), body
+
+
+def test_rotation_and_test_pushes_do_not_bypass_retry_after(spark, fake, devices):
+    """Security review B-1: rotating the endpoint reset not_before (and the 404/410 grace), and `last` was set only on
+    success, so a device that alternated subscribe and test made the Spark send one push per pair while the push
+    service answered 429 with Retry-After: 3600 (6 requests in 6 s)."""
+    a, _, _ = devices
+    fake.replies += [(429, {"Retry-After": "3600"})] * 10
+    now = time.time()
+    accepted = []
+    for i in range(6):
+        status, out = subscribe(spark, a, fake.endpoint("a" if i % 2 else "b"))
+        accepted.append(status)
+        if status == 201:
+            assert spark.req("push", {"action": "test"}, a)[0] == 202
+        spark.server.push.step(now + i)
+    assert len(fake.requests) == 1, "Retry-After holds across rotations"
+    assert accepted == [201] * push.CHANGES + [429]
+    with closing(bridge.connect(spark.server.store.path)) as db:
+        last, not_before, stored = db.execute("SELECT last, not_before, stored FROM push_subs").fetchone()
+    assert last == now and not_before == now + 3600 and stored < now + 1, "kept by the rotations"
+
+
+def test_endpoint_changes_and_test_pushes_are_limited_per_device(spark, fake, devices):
+    a, b, _ = devices
+    for i in range(push.CHANGES):
+        assert subscribe(spark, a, fake.endpoint(f"a{i}"))[0] == 201
+    assert subscribe(spark, a, fake.endpoint("a4"))[0] == 200, "re-sending the stored endpoint is free"
+    status, out = subscribe(spark, a, fake.endpoint("a5"))
+    assert status == 429 and out["error"] == "push_limit" and 3500 < out["retry_after"] <= 3600
+    assert spark.req("push", {"action": "unsubscribe"}, a)[0] == 200
+    assert subscribe(spark, a, fake.endpoint("a6"))[1]["error"] == "push_limit", "unsubscribing does not reset it"
+    assert subscribe(spark, b, fake.endpoint("b"))[0] == 201, "per device"
+    for _ in range(push.CHANGES):
+        assert spark.req("push", {"action": "test"}, b)[0] == 202
+    status, out = spark.req("push", {"action": "test"}, b)
+    assert status == 429 and out["error"] == "push_limit"
+    later = time.monotonic() + push.CHANGES_WINDOW + 1
+    assert spark.server.push.allow("test", bridge.fingerprint(b), later) == 0, "the window slides"
+
+
+def test_every_attempt_counts_for_the_per_device_interval(spark, fake, devices):
+    a, _, _ = devices
+    subscribe(spark, a, fake.endpoint("a"))
+    fake.replies += [(503, {"Retry-After": "1"})]
+    spark.req("push", {"action": "test"}, a)
+    now = time.time()
+    assert spark.server.push.step(now) == [("127.0.0.1", 503)]
+    assert spark.server.push.step(now + 2) == [], "Retry-After: 1 does not undercut the one-a-minute interval"
+    assert spark.server.push.step(now + push.INTERVAL) == [("127.0.0.1", 201)]

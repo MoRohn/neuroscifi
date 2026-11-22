@@ -343,6 +343,10 @@ async function pushOff(){
 // Called by mobile.js when the Spark erased the pairing (revoked) or the person forgot it, never when the vault merely
 // locks on hide: the browser's subscription must outlive a closed Pocket, which is the point of push.
 window.pocketPushDrop=()=>browserSub().then(sub=>sub?.unsubscribe()).catch(()=>{});
+// 429 push_limit: a device turns push on (or moves it to a new push address) and asks for a test push at most 5 times
+// an hour each, so it cannot make the Spark ignore a push service's Retry-After.
+const pushLimit=e=>{const m=Math.max(1,Math.ceil((Number(e.body?.retry_after)||3600)/60));
+  return "Your Spark accepts at most 5 push changes and 5 test pushes an hour from this device. Try again in about "+m+" minute"+(m===1?"":"s")+".";};
 $("pushswitch").onchange=async e=>{
   const box=e.target, g=generation;
   if(pushBusy||!push){box.checked=pushOn;return;}
@@ -363,6 +367,7 @@ $("pushswitch").onchange=async e=>{
   }catch(err){
     if(g!==generation)return;
     if(err.code==="push_service"){(await browserSub().catch(()=>null))?.unsubscribe().catch(()=>{});say("Your Spark does not send to this browser's push service, so push stays off. Pocket works without it.");}
+    else if(err.code==="push_limit")say(pushLimit(err));
     else if(err.status===404){push=null;say("Your Spark does not offer push right now.");}
     else if(typeof err.status==="number")fail(err);
     else say("This browser could not set up push ("+(err.name||"error")+"), so it stays off. Pocket works without it.");
@@ -379,6 +384,7 @@ $("pushtest").onclick=async()=>{
   }catch(e){
     if(g!==generation)return;
     if(e.code==="not_subscribed"){pushOn=false;say("Your Spark has no push subscription for this device. Turn push on again.");}
+    else if(e.code==="push_limit")say(pushLimit(e));
     else if(e.status===404){push=null;say("Your Spark does not offer push right now.");}
     else fail(e);
   }finally{pushBusy=false;if(g===generation)pushView();}
