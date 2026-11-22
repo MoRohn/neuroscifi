@@ -94,7 +94,10 @@ event. Presence shows it as the `waiting` activity in every process, because the
 `<db>.resources/idle.json` carries it. The gateway keeps it in `Gateway.notices`, and `nsf resources load` prints it.
 The reload runs the deploy's start command and then its wait command, under a per-service lock so two callers start
 it once. The measured start-to-ready time is recorded in the event. A failed reload is recorded with the command's
-output; the next use tries again. A service the owner unloaded is not reloaded on demand.
+output; the next use tries again. A service the owner unloaded is not reloaded on demand. While the policy has vLLM
+unloaded, the inference health check (`Gateway.health`) reports `unavailable` with `idle_unloaded: true` and the
+reason "the local model is unloaded while idle; the next request starts it again (about 33 s)", not an outage. The
+voice engine health reports ASR and TTS unavailable until a voice session starts them.
 
 **How stop and start run.** The policy uses the deploy's own commands. vLLM uses `deploy/vllm/run.sh
 stop|start|wait`, ASR and TTS use `deploy/voice/run.sh stop|start|wait asr|tts`, and SearXNG uses `nsf web searxng

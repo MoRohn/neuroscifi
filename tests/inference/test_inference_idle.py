@@ -25,6 +25,11 @@ def test_a_chat_reloads_an_idle_unloaded_model_first_and_tells_the_user(fake, ke
     policy.unload("vllm", reason="idle 31 min (timeout 30 min)", by="idle policy")
     gw = make_gateway(fake, key_file, tmp_path)
     gw.db_path = db_path
+    down = make_gateway(type("Gone", (), {"url": "http://127.0.0.1:9/v1"})(), key_file, tmp_path)
+    down.db_path = db_path
+    health = down.health()                     # nothing listens: unloaded by the policy, not an outage
+    assert health["state"] == "unavailable" and health["idle_unloaded"] is True
+    assert health["reason"] == "the local model is unloaded while idle; the next request starts it again (about 33 s)"
     fake.replies.append({"content": "ready"})
     result = gw.chat([{"role": "user", "content": "hello"}], purpose="test")
     assert result.text == "ready"

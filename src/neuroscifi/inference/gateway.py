@@ -399,6 +399,13 @@ class Gateway:
             served = self.models(retries=0)    # a health check reports, it does not wait out an outage
         except InferenceError as err:
             state = "unauthorised" if err.code == "unauthorised" else "unavailable"
+            if state == "unavailable" and self.db_path is not None and self.cfg.configured:
+                policy = idle.Idle(self.db_path)
+                if policy.unloaded_by_policy("vllm"):      # not an outage: say so, and what the next request costs
+                    n = policy.estimate("vllm")
+                    return out | {"state": state, "idle_unloaded": True,
+                                  "reason": "the local model is unloaded while idle; the next request starts it "
+                                            "again" + (f" (about {math.ceil(n)} s)" if n else "")}
             return out | {"state": state, "reason": str(err)}
         out["latency_ms"] = round((self.clock() - start) * 1000, 1)
         out["models"] = served
