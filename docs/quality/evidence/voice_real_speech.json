@@ -1,0 +1,2245 @@
+{
+ "generated": "2026-11-22T01:50:58Z",
+ "asr": {
+  "engine": "whisper-large-v3-turbo (vLLM)",
+  "model": "whisper-large-v3-turbo",
+  "url": "http://127.0.0.1:18431",
+  "client": "neuroscifi.voice.engines.WhisperASR.transcribe"
+ },
+ "tts": {
+  "engine": "Kokoro-82M",
+  "url": "http://127.0.0.1:18432"
+ },
+ "speech_level_dbfs": -26.0,
+ "seed": 20261121,
+ "wer": {
+  "clean (LibriSpeech test-clean)": {
+   "wer": 0.021,
+   "ci95": [
+    0.0158,
+    0.0265
+   ],
+   "utterances": 320,
+   "speakers": 40,
+   "ref_words": 7014,
+   "failed_requests": 0,
+   "note": "read speech, quiet",
+   "seconds": 33.9,
+   "top_substitutions": [
+    "margolotte -> margolot (2)",
+    "that -> it (2)",
+    "zoof -> zuf (1)",
+    "stairs -> downstairs (1)",
+    "was -> is (1)",
+    "keeper -> barkeeper (1)",
+    "bunnit -> bunnett (1)",
+    "crasweller -> cressweller (1)"
+   ]
+  },
+  "clean, harder speakers (LibriSpeech test-other)": {
+   "wer": 0.0419,
+   "ci95": [
+    0.0315,
+    0.053
+   ],
+   "utterances": 264,
+   "speakers": 33,
+   "ref_words": 4966,
+   "failed_requests": 0,
+   "note": "read speech, speakers with higher WER",
+   "seconds": 27.1,
+   "top_substitutions": [
+    "a -> the (4)",
+    "dickie -> dicky (4)",
+    "these -> this (3)",
+    "hermon -> hermann (2)",
+    "wilfrid -> wilfred (2)",
+    "beale -> biel (2)",
+    "kine -> kind (2)",
+    "franz -> france (2)"
+   ]
+  },
+  "noise SNR 20 dB (DEMAND)": {
+   "wer": 0.0241,
+   "ci95": [
+    0.0179,
+    0.0307
+   ],
+   "utterances": 320,
+   "speakers": 40,
+   "ref_words": 7014,
+   "failed_requests": 0,
+   "note": "kitchen, living room, office, meeting, cafeteria, station, traffic, bus, metro, park",
+   "seconds": 35.2,
+   "top_substitutions": [
+    "gamewell -> gainwell (2)",
+    "margolotte -> margolot (2)",
+    "that -> it (2)",
+    "more -> anymore (1)",
+    "zoof -> zuf (1)",
+    "sailorman -> man (1)",
+    "stairs -> downstairs (1)",
+    "was -> is (1)"
+   ]
+  },
+  "noise SNR 10 dB (DEMAND)": {
+   "wer": 0.0245,
+   "ci95": [
+    0.0191,
+    0.03
+   ],
+   "utterances": 320,
+   "speakers": 40,
+   "ref_words": 7014,
+   "failed_requests": 0,
+   "note": "kitchen, living room, office, meeting, cafeteria, station, traffic, bus, metro, park",
+   "seconds": 34.1,
+   "top_substitutions": [
+    "a -> the (3)",
+    "margolotte -> margolot (2)",
+    "that -> it (2)",
+    "more -> anymore (1)",
+    "zoof -> zuth (1)",
+    "stairs -> downstairs (1)",
+    "was -> is (1)",
+    "keeper -> barkeeper (1)"
+   ]
+  },
+  "noise SNR 5 dB (DEMAND)": {
+   "wer": 0.0297,
+   "ci95": [
+    0.0231,
+    0.0372
+   ],
+   "utterances": 320,
+   "speakers": 40,
+   "ref_words": 7014,
+   "failed_requests": 0,
+   "note": "kitchen, living room, office, meeting, cafeteria, station, traffic, bus, metro, park",
+   "seconds": 44.1,
+   "top_substitutions": [
+    "a -> the (2)",
+    "rodolfo -> rudolfo (2)",
+    "margolotte -> margolot (2)",
+    "that -> it (2)",
+    "more -> anymore (1)",
+    "zoof -> zuth (1)",
+    "if -> since (1)",
+    "dominions -> dominion (1)"
+   ]
+  },
+  "reverberation (real + simulated RIRs, near)": {
+   "wer": 0.0261,
+   "ci95": [
+    0.0192,
+    0.0335
+   ],
+   "utterances": 320,
+   "speakers": 40,
+   "ref_words": 7014,
+   "failed_requests": 0,
+   "note": "REVERB-2014 near / AIR / simulated small and medium rooms",
+   "seconds": 40.4,
+   "top_substitutions": [
+    "a -> the (2)",
+    "the -> a (2)",
+    "gamewell -> gainwell (2)",
+    "margolotte -> margolot (2)",
+    "that -> it (2)",
+    "more -> anymore (1)",
+    "zoof -> zuf (1)",
+    "if -> that (1)"
+   ]
+  },
+  "far field (far RIR + room noise 15 dB, -12 dB level)": {
+   "wer": 0.0324,
+   "ci95": [
+    0.0252,
+    0.0401
+   ],
+   "utterances": 320,
+   "speakers": 40,
+   "ref_words": 7014,
+   "failed_requests": 0,
+   "note": "REVERB-2014 far mic / simulated large rooms; recorded isotropic room noise",
+   "seconds": 33.7,
+   "top_substitutions": [
+    "a -> the (2)",
+    "and -> in (2)",
+    "margolotte -> margolot (2)",
+    "that -> it (2)",
+    "more -> anymore (1)",
+    "zoof -> zuf (1)",
+    "sailorman -> man (1)",
+    "stairs -> downstairs (1)"
+   ]
+  },
+  "telephone band (8 kHz, G.711)": {
+   "wer": 0.0214,
+   "ci95": [
+    0.0165,
+    0.0268
+   ],
+   "utterances": 320,
+   "speakers": 40,
+   "ref_words": 7014,
+   "failed_requests": 0,
+   "note": "300-3400 Hz, mu-law, resampled to 16 kHz as a headset or call bridge would deliver it",
+   "seconds": 47.2,
+   "top_substitutions": [
+    "a -> the (2)",
+    "margolotte -> margolot (2)",
+    "that -> it (2)",
+    "more -> anymore (1)",
+    "zoof -> zuf (1)",
+    "stairs -> downstairs (1)",
+    "was -> is (1)",
+    "keeper -> barkeeper (1)"
+   ]
+  },
+  "UK and Irish dialects (OpenSLR 83)": {
+   "wer": 0.0492,
+   "ci95": [
+    0.0274,
+    0.0806
+   ],
+   "utterances": 300,
+   "speakers": 8,
+   "ref_words": 4022,
+   "failed_requests": 0,
+   "note": "read speech, 5 dialect groups",
+   "seconds": 31.9,
+   "by_group": {
+    "irish_english_male": {
+     "wer": 0.1051,
+     "ci95": [
+      0.0242,
+      0.1778
+     ],
+     "utterances": 60,
+     "speakers": 3
+    },
+    "midlands_english_female": {
+     "wer": 0.0272,
+     "ci95": [
+      0.0179,
+      0.0333
+     ],
+     "utterances": 60,
+     "speakers": 2
+    },
+    "northern_english_female": {
+     "wer": 0.0483,
+     "ci95": [
+      0.0263,
+      0.0827
+     ],
+     "utterances": 60,
+     "speakers": 5
+    },
+    "scottish_english_female": {
+     "wer": 0.041,
+     "ci95": [
+      0.0202,
+      0.0768
+     ],
+     "utterances": 60,
+     "speakers": 6
+    },
+    "welsh_english_female": {
+     "wer": 0.0238,
+     "ci95": [
+      0.0112,
+      0.0409
+     ],
+     "utterances": 60,
+     "speakers": 8
+    }
+   },
+   "top_substitutions": [
+    "the -> a (3)",
+    "to -> they (2)",
+    "me -> gimme (2)",
+    "is -> it's (2)",
+    "imposition -> superimposition (2)",
+    "campion -> champion (2)",
+    "dogsbody -> body (1)",
+    "marseille -> marseilles (1)"
+   ]
+  },
+  "international accents, conversational (EdAcc)": {
+   "wer": 0.1862,
+   "ci95": [
+    0.1587,
+    0.2264
+   ],
+   "utterances": 311,
+   "speakers": 26,
+   "ref_words": 4302,
+   "failed_requests": 0,
+   "note": "spontaneous dialogue, 13 first languages",
+   "seconds": 42.8,
+   "by_group": {
+    "Bulgarian": {
+     "wer": 0.1056,
+     "ci95": [
+      0.0978,
+      0.1333
+     ],
+     "utterances": 25,
+     "speakers": 3
+    },
+    "Catalan": {
+     "wer": 0.2054,
+     "ci95": [
+      0.1818,
+      0.2344
+     ],
+     "utterances": 25,
+     "speakers": 3
+    },
+    "Hebrew": {
+     "wer": 0.1803,
+     "ci95": [
+      0.1803,
+      0.1803
+     ],
+     "utterances": 25,
+     "speakers": 1
+    },
+    "Indian English": {
+     "wer": 0.1803,
+     "ci95": [
+      0.1803,
+      0.1803
+     ],
+     "utterances": 7,
+     "speakers": 1
+    },
+    "Italian": {
+     "wer": 0.1246,
+     "ci95": [
+      0.1246,
+      0.1246
+     ],
+     "utterances": 25,
+     "speakers": 1
+    },
+    "Jamaican English": {
+     "wer": 0.2851,
+     "ci95": [
+      0.1797,
+      0.42
+     ],
+     "utterances": 23,
+     "speakers": 2
+    },
+    "Kenyan English": {
+     "wer": 0.1925,
+     "ci95": [
+      0.1414,
+      0.3015
+     ],
+     "utterances": 25,
+     "speakers": 2
+    },
+    "Lithuanian": {
+     "wer": 0.0672,
+     "ci95": [
+      0.0672,
+      0.0672
+     ],
+     "utterances": 25,
+     "speakers": 1
+    },
+    "Mainstream US English": {
+     "wer": 0.1324,
+     "ci95": [
+      0.1324,
+      0.1324
+     ],
+     "utterances": 6,
+     "speakers": 1
+    },
+    "Mandarin": {
+     "wer": 0.1553,
+     "ci95": [
+      0.1553,
+      0.1553
+     ],
+     "utterances": 22,
+     "speakers": 1
+    },
+    "Romanian": {
+     "wer": 0.3182,
+     "ci95": [
+      0.3182,
+      0.3182
+     ],
+     "utterances": 3,
+     "speakers": 1
+    },
+    "Scottish English": {
+     "wer": 0.2032,
+     "ci95": [
+      0.1781,
+      0.2637
+     ],
+     "utterances": 25,
+     "speakers": 2
+    },
+    "Sinhalese": {
+     "wer": 0.2559,
+     "ci95": [
+      0.1522,
+      0.3148
+     ],
+     "utterances": 25,
+     "speakers": 2
+    },
+    "Spanish": {
+     "wer": 0.1902,
+     "ci95": [
+      0.1902,
+      0.1902
+     ],
+     "utterances": 25,
+     "speakers": 1
+    },
+    "Vietnamese": {
+     "wer": 0.3148,
+     "ci95": [
+      0.183,
+      0.409
+     ],
+     "utterances": 25,
+     "speakers": 4
+    }
+   },
+   "top_substitutions": [
+    "wanna -> to (3)",
+    "wanna -> will (3)",
+    "are -> were (2)",
+    "but -> that (2)",
+    "i -> it (2)",
+    "a -> the (2)",
+    "plan -> plans (2)",
+    "where -> way (2)"
+   ]
+  }
+ },
+ "vad": {
+  "counts": {
+   "train": 747,
+   "test": 535
+  },
+  "before_params": {
+   "SPEECH_K": 3,
+   "SPEECH_MIN": 0.012,
+   "MIN_SPEECH_MS": 250,
+   "FLOOR_ALPHA": 0.05,
+   "BARGE_K": 5,
+   "BARGE_MIN": 0.03,
+   "BARGE_MS": 300
+  },
+  "shipped_params": {
+   "SPEECH_K": 4,
+   "SPEECH_MIN": 0.006,
+   "MIN_SPEECH_MS": 160,
+   "FLOOR_ALPHA": 0.05,
+   "BARGE_K": 2,
+   "BARGE_MIN": 0.03,
+   "BARGE_MS": 250
+  },
+  "train_before": {
+   "double_talk@-10": {
+    "n": 19,
+    "detected": 0.2632,
+    "detected_ci95": [
+     0.1181,
+     0.4879
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 860.0,
+    "latency_ms_p90": 1392.0
+   },
+   "double_talk@-20": {
+    "n": 13,
+    "detected": 0.7692,
+    "detected_ci95": [
+     0.4974,
+     0.9182
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 630.0,
+    "latency_ms_p90": 884.0
+   },
+   "double_talk@0": {
+    "n": 16,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.1936
+    ],
+    "false_before_user": 1.0
+   },
+   "double_talk@6": {
+    "n": 18,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.1759
+    ],
+    "false_before_user": 1.0
+   },
+   "echo@-10": {
+    "n": 17,
+    "falsely_interrupted": 0.0,
+    "ci95": [
+     0.0,
+     0.1843
+    ]
+   },
+   "echo@-20": {
+    "n": 5,
+    "falsely_interrupted": 0.0,
+    "ci95": [
+     0.0,
+     0.4345
+    ]
+   },
+   "echo@0": {
+    "n": 8,
+    "falsely_interrupted": 1.0,
+    "ci95": [
+     0.6756,
+     1.0
+    ]
+   },
+   "echo@6": {
+    "n": 17,
+    "falsely_interrupted": 1.0,
+    "ci95": [
+     0.8157,
+     1.0
+    ]
+   },
+   "music@-30": {
+    "n": 31,
+    "segments_with_trigger": 0.9677,
+    "segments_ci95": [
+     0.8381,
+     0.9943
+    ],
+    "triggers_per_minute": 2.516,
+    "minutes": 15.5
+   },
+   "music@-36": {
+    "n": 31,
+    "segments_with_trigger": 1.0,
+    "segments_ci95": [
+     0.8897,
+     1.0
+    ],
+    "triggers_per_minute": 2.968,
+    "minutes": 15.5
+   },
+   "music_playing@-30": {
+    "n": 31,
+    "segments_with_trigger": 0.7097,
+    "segments_ci95": [
+     0.5341,
+     0.839
+    ],
+    "triggers_per_minute": 2.258,
+    "minutes": 15.5
+   },
+   "music_playing@-36": {
+    "n": 31,
+    "segments_with_trigger": 0.0323,
+    "segments_ci95": [
+     0.0057,
+     0.1619
+    ],
+    "triggers_per_minute": 0.065,
+    "minutes": 15.5
+   },
+   "noise@10": {
+    "n": 12,
+    "segments_with_trigger": 1.0,
+    "segments_ci95": [
+     0.7575,
+     1.0
+    ],
+    "triggers_per_minute": 2.0,
+    "minutes": 6.0
+   },
+   "noise@20": {
+    "n": 12,
+    "segments_with_trigger": 0.0833,
+    "segments_ci95": [
+     0.0149,
+     0.3539
+    ],
+    "triggers_per_minute": 0.167,
+    "minutes": 6.0
+   },
+   "noise@5": {
+    "n": 12,
+    "segments_with_trigger": 0.9167,
+    "segments_ci95": [
+     0.6461,
+     0.9851
+    ],
+    "triggers_per_minute": 1.833,
+    "minutes": 6.0
+   },
+   "noise_playing@10": {
+    "n": 12,
+    "segments_with_trigger": 0.0,
+    "segments_ci95": [
+     0.0,
+     0.2425
+    ],
+    "triggers_per_minute": 0.0,
+    "minutes": 6.0
+   },
+   "noise_playing@20": {
+    "n": 12,
+    "segments_with_trigger": 0.0,
+    "segments_ci95": [
+     0.0,
+     0.2425
+    ],
+    "triggers_per_minute": 0.0,
+    "minutes": 6.0
+   },
+   "noise_playing@5": {
+    "n": 12,
+    "segments_with_trigger": 0.3333,
+    "segments_ci95": [
+     0.1381,
+     0.6094
+    ],
+    "triggers_per_minute": 0.667,
+    "minutes": 6.0
+   },
+   "onset@10.0": {
+    "n": 46,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.9229,
+     1.0
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 0.0,
+    "latency_ms_p90": 440.0
+   },
+   "onset@20.0": {
+    "n": 47,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.9244,
+     1.0
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 320.0,
+    "latency_ms_p90": 688.0
+   },
+   "onset@30.0": {
+    "n": 41,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.9143,
+     1.0
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 300.0,
+    "latency_ms_p90": 660.0
+   },
+   "onset@5.0": {
+    "n": 58,
+    "detected": 0.9828,
+    "detected_ci95": [
+     0.9086,
+     0.997
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 0.0,
+    "latency_ms_p90": 0.0
+   },
+   "stop_barge@-10": {
+    "n": 21,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.1546
+    ],
+    "false_before_user": 0.0
+   },
+   "stop_barge@-20": {
+    "n": 16,
+    "detected": 0.0625,
+    "detected_ci95": [
+     0.0111,
+     0.2833
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 340.0,
+    "latency_ms_p90": 340.0
+   },
+   "stop_barge@0": {
+    "n": 18,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.1759
+    ],
+    "false_before_user": 1.0
+   },
+   "stop_barge@6": {
+    "n": 20,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.1611
+    ],
+    "false_before_user": 1.0
+   },
+   "word@20.0": {
+    "n": 171,
+    "detected": 0.5965,
+    "detected_ci95": [
+     0.5216,
+     0.6671
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 260.0,
+    "latency_ms_p90": 558.0
+   }
+  },
+  "train_before_objective": {
+   "listen": [
+    1,
+    0.971
+   ],
+   "barge": [
+    0,
+    3.3083
+   ]
+  },
+  "train_shipped": {
+   "double_talk@-10": {
+    "n": 19,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.8318,
+     1.0
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 340.0,
+    "latency_ms_p90": 604.0
+   },
+   "double_talk@-20": {
+    "n": 13,
+    "detected": 0.8462,
+    "detected_ci95": [
+     0.5776,
+     0.9567
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 480.0,
+    "latency_ms_p90": 760.0
+   },
+   "double_talk@0": {
+    "n": 16,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.1936
+    ],
+    "false_before_user": 1.0
+   },
+   "double_talk@6": {
+    "n": 18,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.1759
+    ],
+    "false_before_user": 1.0
+   },
+   "echo@-10": {
+    "n": 17,
+    "falsely_interrupted": 0.0,
+    "ci95": [
+     0.0,
+     0.1843
+    ]
+   },
+   "echo@-20": {
+    "n": 5,
+    "falsely_interrupted": 0.0,
+    "ci95": [
+     0.0,
+     0.4345
+    ]
+   },
+   "echo@0": {
+    "n": 8,
+    "falsely_interrupted": 1.0,
+    "ci95": [
+     0.6756,
+     1.0
+    ]
+   },
+   "echo@6": {
+    "n": 17,
+    "falsely_interrupted": 1.0,
+    "ci95": [
+     0.8157,
+     1.0
+    ]
+   },
+   "music@-30": {
+    "n": 31,
+    "segments_with_trigger": 0.9355,
+    "segments_ci95": [
+     0.7928,
+     0.9821
+    ],
+    "triggers_per_minute": 2.323,
+    "minutes": 15.5
+   },
+   "music@-36": {
+    "n": 31,
+    "segments_with_trigger": 0.6452,
+    "segments_ci95": [
+     0.4695,
+     0.7888
+    ],
+    "triggers_per_minute": 2.258,
+    "minutes": 15.5
+   },
+   "music_playing@-30": {
+    "n": 31,
+    "segments_with_trigger": 1.0,
+    "segments_ci95": [
+     0.8897,
+     1.0
+    ],
+    "triggers_per_minute": 4.516,
+    "minutes": 15.5
+   },
+   "music_playing@-36": {
+    "n": 31,
+    "segments_with_trigger": 0.2258,
+    "segments_ci95": [
+     0.1139,
+     0.3981
+    ],
+    "triggers_per_minute": 0.581,
+    "minutes": 15.5
+   },
+   "noise@10": {
+    "n": 12,
+    "segments_with_trigger": 0.5,
+    "segments_ci95": [
+     0.2538,
+     0.7462
+    ],
+    "triggers_per_minute": 1.0,
+    "minutes": 6.0
+   },
+   "noise@20": {
+    "n": 12,
+    "segments_with_trigger": 0.1667,
+    "segments_ci95": [
+     0.047,
+     0.448
+    ],
+    "triggers_per_minute": 0.333,
+    "minutes": 6.0
+   },
+   "noise@5": {
+    "n": 12,
+    "segments_with_trigger": 1.0,
+    "segments_ci95": [
+     0.7575,
+     1.0
+    ],
+    "triggers_per_minute": 2.0,
+    "minutes": 6.0
+   },
+   "noise_playing@10": {
+    "n": 12,
+    "segments_with_trigger": 0.25,
+    "segments_ci95": [
+     0.0889,
+     0.5323
+    ],
+    "triggers_per_minute": 0.5,
+    "minutes": 6.0
+   },
+   "noise_playing@20": {
+    "n": 12,
+    "segments_with_trigger": 0.0,
+    "segments_ci95": [
+     0.0,
+     0.2425
+    ],
+    "triggers_per_minute": 0.0,
+    "minutes": 6.0
+   },
+   "noise_playing@5": {
+    "n": 12,
+    "segments_with_trigger": 1.0,
+    "segments_ci95": [
+     0.7575,
+     1.0
+    ],
+    "triggers_per_minute": 4.333,
+    "minutes": 6.0
+   },
+   "onset@10.0": {
+    "n": 46,
+    "detected": 0.9348,
+    "detected_ci95": [
+     0.825,
+     0.9776
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 160.0,
+    "latency_ms_p90": 776.0
+   },
+   "onset@20.0": {
+    "n": 47,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.9244,
+     1.0
+    ],
+    "false_utterance_before": 0.0213,
+    "latency_ms_p50": 200.0,
+    "latency_ms_p90": 516.0
+   },
+   "onset@30.0": {
+    "n": 41,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.9143,
+     1.0
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 160.0,
+    "latency_ms_p90": 280.0
+   },
+   "onset@5.0": {
+    "n": 58,
+    "detected": 0.7759,
+    "detected_ci95": [
+     0.6534,
+     0.8641
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 0.0,
+    "latency_ms_p90": 0.0
+   },
+   "stop_barge@-10": {
+    "n": 21,
+    "detected": 0.4286,
+    "detected_ci95": [
+     0.2447,
+     0.6345
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 680.0,
+    "latency_ms_p90": 960.0
+   },
+   "stop_barge@-20": {
+    "n": 16,
+    "detected": 0.1875,
+    "detected_ci95": [
+     0.0659,
+     0.4301
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 500.0,
+    "latency_ms_p90": 804.0
+   },
+   "stop_barge@0": {
+    "n": 18,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.1759
+    ],
+    "false_before_user": 1.0
+   },
+   "stop_barge@6": {
+    "n": 20,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.1611
+    ],
+    "false_before_user": 1.0
+   },
+   "word@20.0": {
+    "n": 171,
+    "detected": 0.8947,
+    "detected_ci95": [
+     0.8398,
+     0.9324
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 220.0,
+    "latency_ms_p90": 536.0
+   }
+  },
+  "grid": {
+   "listen": 96,
+   "barge": 100
+  },
+  "train_tuned_objective": {
+   "listen": [
+    0,
+    0.3658
+   ],
+   "barge": [
+    0,
+    1.7278
+   ]
+  },
+  "tuned_params": {
+   "SPEECH_K": 4,
+   "SPEECH_MIN": 0.006,
+   "MIN_SPEECH_MS": 160,
+   "FLOOR_ALPHA": 0.05,
+   "BARGE_K": 2,
+   "BARGE_MIN": 0.03,
+   "BARGE_MS": 250
+  },
+  "shipped_equals_tuned": true,
+  "test_before": {
+   "double_talk@-10": {
+    "n": 5,
+    "detected": 0.4,
+    "detected_ci95": [
+     0.1176,
+     0.7693
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 310.0,
+    "latency_ms_p90": 334.0
+   },
+   "double_talk@-20": {
+    "n": 11,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.7412,
+     1.0
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 500.0,
+    "latency_ms_p90": 620.0
+   },
+   "double_talk@0": {
+    "n": 8,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.3244
+    ],
+    "false_before_user": 1.0
+   },
+   "double_talk@6": {
+    "n": 6,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.3903
+    ],
+    "false_before_user": 1.0
+   },
+   "echo@-10": {
+    "n": 7,
+    "falsely_interrupted": 0.0,
+    "ci95": [
+     0.0,
+     0.3543
+    ]
+   },
+   "echo@-20": {
+    "n": 19,
+    "falsely_interrupted": 0.0,
+    "ci95": [
+     0.0,
+     0.1682
+    ]
+   },
+   "echo@0": {
+    "n": 16,
+    "falsely_interrupted": 1.0,
+    "ci95": [
+     0.8064,
+     1.0
+    ]
+   },
+   "echo@6": {
+    "n": 7,
+    "falsely_interrupted": 1.0,
+    "ci95": [
+     0.6457,
+     1.0
+    ]
+   },
+   "music@-30": {
+    "n": 30,
+    "segments_with_trigger": 0.9667,
+    "segments_ci95": [
+     0.8333,
+     0.9941
+    ],
+    "triggers_per_minute": 2.467,
+    "minutes": 15.0
+   },
+   "music@-36": {
+    "n": 30,
+    "segments_with_trigger": 0.9333,
+    "segments_ci95": [
+     0.7868,
+     0.9815
+    ],
+    "triggers_per_minute": 2.867,
+    "minutes": 15.0
+   },
+   "music_playing@-30": {
+    "n": 30,
+    "segments_with_trigger": 0.6667,
+    "segments_ci95": [
+     0.4878,
+     0.8077
+    ],
+    "triggers_per_minute": 2.067,
+    "minutes": 15.0
+   },
+   "music_playing@-36": {
+    "n": 30,
+    "segments_with_trigger": 0.0333,
+    "segments_ci95": [
+     0.0059,
+     0.1667
+    ],
+    "triggers_per_minute": 0.067,
+    "minutes": 15.0
+   },
+   "noise@10": {
+    "n": 8,
+    "segments_with_trigger": 0.875,
+    "segments_ci95": [
+     0.5291,
+     0.9776
+    ],
+    "triggers_per_minute": 2.25,
+    "minutes": 4.0
+   },
+   "noise@20": {
+    "n": 8,
+    "segments_with_trigger": 0.25,
+    "segments_ci95": [
+     0.0715,
+     0.5907
+    ],
+    "triggers_per_minute": 0.75,
+    "minutes": 4.0
+   },
+   "noise@5": {
+    "n": 8,
+    "segments_with_trigger": 0.875,
+    "segments_ci95": [
+     0.5291,
+     0.9776
+    ],
+    "triggers_per_minute": 1.75,
+    "minutes": 4.0
+   },
+   "noise_playing@10": {
+    "n": 8,
+    "segments_with_trigger": 0.25,
+    "segments_ci95": [
+     0.0715,
+     0.5907
+    ],
+    "triggers_per_minute": 0.5,
+    "minutes": 4.0
+   },
+   "noise_playing@20": {
+    "n": 8,
+    "segments_with_trigger": 0.0,
+    "segments_ci95": [
+     0.0,
+     0.3244
+    ],
+    "triggers_per_minute": 0.0,
+    "minutes": 4.0
+   },
+   "noise_playing@5": {
+    "n": 8,
+    "segments_with_trigger": 0.25,
+    "segments_ci95": [
+     0.0715,
+     0.5907
+    ],
+    "triggers_per_minute": 0.5,
+    "minutes": 4.0
+   },
+   "onset@10.0": {
+    "n": 36,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.9036,
+     1.0
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 0.0,
+    "latency_ms_p90": 460.0
+   },
+   "onset@20.0": {
+    "n": 34,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.8985,
+     1.0
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 350.0,
+    "latency_ms_p90": 734.0
+   },
+   "onset@30.0": {
+    "n": 29,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.883,
+     1.0
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 280.0,
+    "latency_ms_p90": 676.0
+   },
+   "onset@5.0": {
+    "n": 29,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.883,
+     1.0
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 0.0,
+    "latency_ms_p90": 0.0
+   },
+   "stop_barge@-10": {
+    "n": 3,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.5615
+    ],
+    "false_before_user": 0.0
+   },
+   "stop_barge@-20": {
+    "n": 8,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.3244
+    ],
+    "false_before_user": 0.0
+   },
+   "stop_barge@0": {
+    "n": 6,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.3903
+    ],
+    "false_before_user": 1.0
+   },
+   "stop_barge@6": {
+    "n": 4,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.4899
+    ],
+    "false_before_user": 1.0
+   },
+   "word@20.0": {
+    "n": 139,
+    "detected": 0.5971,
+    "detected_ci95": [
+     0.514,
+     0.675
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 260.0,
+    "latency_ms_p90": 556.0
+   }
+  },
+  "test_shipped": {
+   "double_talk@-10": {
+    "n": 5,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.5655,
+     1.0
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 760.0,
+    "latency_ms_p90": 804.0
+   },
+   "double_talk@-20": {
+    "n": 11,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.7412,
+     1.0
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 460.0,
+    "latency_ms_p90": 580.0
+   },
+   "double_talk@0": {
+    "n": 8,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.3244
+    ],
+    "false_before_user": 1.0
+   },
+   "double_talk@6": {
+    "n": 6,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.3903
+    ],
+    "false_before_user": 1.0
+   },
+   "echo@-10": {
+    "n": 7,
+    "falsely_interrupted": 0.0,
+    "ci95": [
+     0.0,
+     0.3543
+    ]
+   },
+   "echo@-20": {
+    "n": 19,
+    "falsely_interrupted": 0.0,
+    "ci95": [
+     0.0,
+     0.1682
+    ]
+   },
+   "echo@0": {
+    "n": 16,
+    "falsely_interrupted": 1.0,
+    "ci95": [
+     0.8064,
+     1.0
+    ]
+   },
+   "echo@6": {
+    "n": 7,
+    "falsely_interrupted": 1.0,
+    "ci95": [
+     0.6457,
+     1.0
+    ]
+   },
+   "music@-30": {
+    "n": 30,
+    "segments_with_trigger": 0.9667,
+    "segments_ci95": [
+     0.8333,
+     0.9941
+    ],
+    "triggers_per_minute": 2.467,
+    "minutes": 15.0
+   },
+   "music@-36": {
+    "n": 30,
+    "segments_with_trigger": 0.6667,
+    "segments_ci95": [
+     0.4878,
+     0.8077
+    ],
+    "triggers_per_minute": 2.267,
+    "minutes": 15.0
+   },
+   "music_playing@-30": {
+    "n": 30,
+    "segments_with_trigger": 0.9,
+    "segments_ci95": [
+     0.7438,
+     0.9654
+    ],
+    "triggers_per_minute": 4.133,
+    "minutes": 15.0
+   },
+   "music_playing@-36": {
+    "n": 30,
+    "segments_with_trigger": 0.2,
+    "segments_ci95": [
+     0.095,
+     0.3731
+    ],
+    "triggers_per_minute": 0.533,
+    "minutes": 15.0
+   },
+   "noise@10": {
+    "n": 8,
+    "segments_with_trigger": 0.625,
+    "segments_ci95": [
+     0.3057,
+     0.8632
+    ],
+    "triggers_per_minute": 1.5,
+    "minutes": 4.0
+   },
+   "noise@20": {
+    "n": 8,
+    "segments_with_trigger": 0.375,
+    "segments_ci95": [
+     0.1368,
+     0.6943
+    ],
+    "triggers_per_minute": 1.0,
+    "minutes": 4.0
+   },
+   "noise@5": {
+    "n": 8,
+    "segments_with_trigger": 0.875,
+    "segments_ci95": [
+     0.5291,
+     0.9776
+    ],
+    "triggers_per_minute": 1.75,
+    "minutes": 4.0
+   },
+   "noise_playing@10": {
+    "n": 8,
+    "segments_with_trigger": 0.75,
+    "segments_ci95": [
+     0.4093,
+     0.9285
+    ],
+    "triggers_per_minute": 2.25,
+    "minutes": 4.0
+   },
+   "noise_playing@20": {
+    "n": 8,
+    "segments_with_trigger": 0.0,
+    "segments_ci95": [
+     0.0,
+     0.3244
+    ],
+    "triggers_per_minute": 0.0,
+    "minutes": 4.0
+   },
+   "noise_playing@5": {
+    "n": 8,
+    "segments_with_trigger": 1.0,
+    "segments_ci95": [
+     0.6756,
+     1.0
+    ],
+    "triggers_per_minute": 3.75,
+    "minutes": 4.0
+   },
+   "onset@10.0": {
+    "n": 36,
+    "detected": 0.9722,
+    "detected_ci95": [
+     0.8583,
+     0.9951
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 200.0,
+    "latency_ms_p90": 644.0
+   },
+   "onset@20.0": {
+    "n": 34,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.8985,
+     1.0
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 240.0,
+    "latency_ms_p90": 634.0
+   },
+   "onset@30.0": {
+    "n": 29,
+    "detected": 1.0,
+    "detected_ci95": [
+     0.883,
+     1.0
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 140.0,
+    "latency_ms_p90": 516.0
+   },
+   "onset@5.0": {
+    "n": 29,
+    "detected": 0.8621,
+    "detected_ci95": [
+     0.6944,
+     0.945
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 0.0,
+    "latency_ms_p90": 0.0
+   },
+   "stop_barge@-10": {
+    "n": 3,
+    "detected": 0.6667,
+    "detected_ci95": [
+     0.2077,
+     0.9385
+    ],
+    "false_before_user": 0.0,
+    "latency_ms_p50": 620.0,
+    "latency_ms_p90": 668.0
+   },
+   "stop_barge@-20": {
+    "n": 8,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.3244
+    ],
+    "false_before_user": 0.0
+   },
+   "stop_barge@0": {
+    "n": 6,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.3903
+    ],
+    "false_before_user": 1.0
+   },
+   "stop_barge@6": {
+    "n": 4,
+    "detected": 0.0,
+    "detected_ci95": [
+     0.0,
+     0.4899
+    ],
+    "false_before_user": 1.0
+   },
+   "word@20.0": {
+    "n": 139,
+    "detected": 0.8705,
+    "detected_ci95": [
+     0.8046,
+     0.9165
+    ],
+    "false_utterance_before": 0.0,
+    "latency_ms_p50": 200.0,
+    "latency_ms_p90": 500.0
+   }
+  }
+ },
+ "commands": {
+  "sets": {
+   "author": {
+    "note": "written before the synonyms by their author: not held out",
+    "commands": 120,
+    "ordinary": 50,
+    "text_accuracy": {
+     "before": 0.6083,
+     "after": 1.0
+    },
+    "asr_error_variants": {
+     "before": 0.2979,
+     "after": 0.8375
+    },
+    "asr_error_variants_n": 480,
+    "ordinary_text_false_commands": {
+     "before": 0,
+     "after": 0
+    },
+    "spoken": {
+     "quiet": {
+      "before": 0.5708,
+      "after": 0.9583
+     },
+     "noise10": {
+      "before": 0.5708,
+      "after": 0.9708
+     }
+    },
+    "spoken_n": 480,
+    "spoken_misses_after": [
+     {
+      "text": "shush",
+      "expected": "stop_speaking",
+      "asr": "It's all she",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "shush",
+      "expected": "stop_speaking",
+      "asr": "- It's awesome.",
+      "after": "unclear",
+      "condition": "noise10"
+     },
+     {
+      "text": "shush",
+      "expected": "stop_speaking",
+      "asr": "Shash.",
+      "after": "unclear",
+      "condition": "quiet"
+     },
+     {
+      "text": "shush",
+      "expected": "stop_speaking",
+      "asr": "- Shaz.",
+      "after": "unclear",
+      "condition": "noise10"
+     },
+     {
+      "text": "silence please",
+      "expected": "stop_speaking",
+      "asr": "\"'Silence, please.'",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "no stop",
+      "expected": "stop_speaking",
+      "asr": "No stop here.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "no stop",
+      "expected": "stop_speaking",
+      "asr": "No stop it.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "continue",
+      "expected": "resume_speaking",
+      "asr": "Can't tell you.",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "keep reading",
+      "expected": "resume_speaking",
+      "asr": "Keep writing.",
+      "after": "unclear",
+      "condition": "quiet"
+     },
+     {
+      "text": "keep reading",
+      "expected": "resume_speaking",
+      "asr": "Keep writing.",
+      "after": "unclear",
+      "condition": "noise10"
+     },
+     {
+      "text": "please resume",
+      "expected": "resume_speaking",
+      "asr": "Plays resume.",
+      "after": "unclear",
+      "condition": "quiet"
+     },
+     {
+      "text": "help",
+      "expected": "help",
+      "asr": "Hellboot.",
+      "after": "unclear",
+      "condition": "quiet"
+     },
+     {
+      "text": "help",
+      "expected": "help",
+      "asr": "Hell, boo.",
+      "after": "unclear",
+      "condition": "noise10"
+     },
+     {
+      "text": "help",
+      "expected": "help",
+      "asr": "Help with",
+      "after": "unclear",
+      "condition": "quiet"
+     },
+     {
+      "text": "just answer in text",
+      "expected": "mode:voice_in_text_out",
+      "asr": "'Just answer in text.'",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "nope",
+      "expected": "deny",
+      "asr": "Note pick.",
+      "after": "unclear",
+      "condition": "quiet"
+     },
+     {
+      "text": "nope",
+      "expected": "deny",
+      "asr": "Note pick.",
+      "after": "unclear",
+      "condition": "noise10"
+     }
+    ],
+    "ordinary_spoken_false_commands": {
+     "before": 0,
+     "after": 0
+    }
+   },
+   "independent": {
+    "note": "separate model instance; its misses were seen once and motivated the frames: not held out",
+    "commands": 67,
+    "ordinary": 30,
+    "text_accuracy": {
+     "before": 0.1045,
+     "after": 0.7015
+    },
+    "asr_error_variants": {
+     "before": 0.0373,
+     "after": 0.4851
+    },
+    "asr_error_variants_n": 268,
+    "ordinary_text_false_commands": {
+     "before": 0,
+     "after": 0
+    },
+    "spoken": {
+     "quiet": {
+      "before": 0.1045,
+      "after": 0.6716
+     },
+     "noise10": {
+      "before": 0.1045,
+      "after": 0.6716
+     }
+    },
+    "spoken_n": 268,
+    "spoken_misses_after": [
+     {
+      "text": "remind me what we've looked into today",
+      "expected": "history",
+      "asr": "\"Remind me what we've looked into today.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "remind me what we've looked into today",
+      "expected": "history",
+      "asr": "Remind me what we've looked into today.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "remind me what we've looked into today",
+      "expected": "history",
+      "asr": "Remind me what we've looked into today.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "remind me what we've looked into today",
+      "expected": "history",
+      "asr": "Remind me what we've looked into today.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "um what was i researching earlier",
+      "expected": "history",
+      "asr": "on what was I researching earlier.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "can you go over my previous questions",
+      "expected": "history",
+      "asr": "Can you go over my previous questions?",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "can you go over my previous questions",
+      "expected": "history",
+      "asr": "Can you go over my previous questions?",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "can you go over my previous questions",
+      "expected": "history",
+      "asr": "Can you go over my previous questions?",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "can you go over my previous questions",
+      "expected": "history",
+      "asr": "Can you go over my previous questions?",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "okay so what topics have we covered in this session",
+      "expected": "history",
+      "asr": "Okay, so what topics have we covered in this session?",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "okay so what topics have we covered in this session",
+      "expected": "history",
+      "asr": "Okay, so what topics have we covered in this session?",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "okay so what topics have we covered in this session",
+      "expected": "history",
+      "asr": "Okay, so what topics have we covered in this session?",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "okay so what topics have we covered in this session",
+      "expected": "history",
+      "asr": "Okay, so what topics have we covered in this session?",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "what did i ask you before this one",
+      "expected": "history",
+      "asr": "What did I ask you before this one?",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "what did i ask you before this one",
+      "expected": "history",
+      "asr": "What did I ask you before this one?",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "what did i ask you before this one",
+      "expected": "history",
+      "asr": "What did I ask you before this one?",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "what did i ask you before this one",
+      "expected": "history",
+      "asr": "What did I ask you before this one?",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "recap what i've been digging into",
+      "expected": "history",
+      "asr": "Recap what I've been digging into.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "recap what i've been digging into",
+      "expected": "history",
+      "asr": "recap what I've been digging into.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "recap what i've been digging into",
+      "expected": "history",
+      "asr": "Recap what I've been digging into.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "recap what i've been digging into",
+      "expected": "history",
+      "asr": "Recap what I've been digging into.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "show me my earlier searches",
+      "expected": "history",
+      "asr": "Show me my earlier searches.",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "show me my earlier searches",
+      "expected": "history",
+      "asr": "Show me my earlier searches.",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "show me my earlier searches",
+      "expected": "history",
+      "asr": "Show me my earlier searches.",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "show me my earlier searches",
+      "expected": "history",
+      "asr": "Show me my earlier searches.",
+      "after": "research",
+      "condition": "noise10"
+     }
+    ],
+    "ordinary_spoken_false_commands": {
+     "before": 0,
+     "after": 0
+    }
+   },
+   "fresh": {
+    "note": "third model instance, written after the grammar was frozen; evaluated once: HELD OUT",
+    "commands": 56,
+    "ordinary": 26,
+    "text_accuracy": {
+     "before": 0.2143,
+     "after": 0.6607
+    },
+    "asr_error_variants": {
+     "before": 0.1116,
+     "after": 0.5045
+    },
+    "asr_error_variants_n": 224,
+    "ordinary_text_false_commands": {
+     "before": 0,
+     "after": 0
+    },
+    "spoken": {
+     "quiet": {
+      "before": 0.1875,
+      "after": 0.6161
+     },
+     "noise10": {
+      "before": 0.1875,
+      "after": 0.6429
+     }
+    },
+    "spoken_n": 224,
+    "spoken_misses_after": [
+     {
+      "text": "um stop right there",
+      "expected": "stop_speaking",
+      "asr": "Um, stop right there.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "um stop right there",
+      "expected": "stop_speaking",
+      "asr": "Um, stop right there.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "um stop right there",
+      "expected": "stop_speaking",
+      "asr": "Um, stop right there.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "um stop right there",
+      "expected": "stop_speaking",
+      "asr": "Um, stop right there.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "hold on stop",
+      "expected": "stop_speaking",
+      "asr": "Hold Unstop.",
+      "after": "unclear",
+      "condition": "quiet"
+     },
+     {
+      "text": "hold on stop",
+      "expected": "stop_speaking",
+      "asr": "Hold Unstop.",
+      "after": "unclear",
+      "condition": "noise10"
+     },
+     {
+      "text": "hold on stop",
+      "expected": "stop_speaking",
+      "asr": "Hold on stop.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "hold on stop",
+      "expected": "stop_speaking",
+      "asr": "Hold unstop.",
+      "after": "unclear",
+      "condition": "noise10"
+     },
+     {
+      "text": "go on so",
+      "expected": "resume_speaking",
+      "asr": "Go on sew.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "go on so",
+      "expected": "resume_speaking",
+      "asr": "Go on sew.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "go on so",
+      "expected": "resume_speaking",
+      "asr": "Go on so.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "go on so",
+      "expected": "resume_speaking",
+      "asr": "Go on so.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "keep talking",
+      "expected": "resume_speaking",
+      "asr": "while people are supposedly working.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "show my history",
+      "expected": "history",
+      "asr": "Show my history.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "show my history",
+      "expected": "history",
+      "asr": "Show my history.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "show my history",
+      "expected": "history",
+      "asr": "Show my history.",
+      "after": "chatter",
+      "condition": "quiet"
+     },
+     {
+      "text": "show my history",
+      "expected": "history",
+      "asr": "Show my history.",
+      "after": "chatter",
+      "condition": "noise10"
+     },
+     {
+      "text": "what were my previous questions",
+      "expected": "history",
+      "asr": "What were my previous questions?",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "what were my previous questions",
+      "expected": "history",
+      "asr": "What were my previous questions?",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "what were my previous questions",
+      "expected": "history",
+      "asr": "What were my previous questions?",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "what were my previous questions",
+      "expected": "history",
+      "asr": "What were my previous questions?",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "list the things i searched for",
+      "expected": "history",
+      "asr": "List the things I searched for.",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "list the things i searched for",
+      "expected": "history",
+      "asr": "List the things I searched for.",
+      "after": "research",
+      "condition": "noise10"
+     },
+     {
+      "text": "list the things i searched for",
+      "expected": "history",
+      "asr": "List the things I searched for.",
+      "after": "research",
+      "condition": "quiet"
+     },
+     {
+      "text": "list the things i searched for",
+      "expected": "history",
+      "asr": "List the things I searched for.",
+      "after": "research",
+      "condition": "noise10"
+     }
+    ],
+    "ordinary_spoken_false_commands": {
+     "before": 0,
+     "after": 0
+    }
+   }
+  },
+  "speech_commands_real": {
+   "expected": "stop -> stop_speaking, no -> deny, other words -> no command",
+   "per_word": {
+    "stop": {
+     "n": 150,
+     "before": 147,
+     "after": 147,
+     "asr_exact": 147
+    },
+    "no": {
+     "n": 60,
+     "before": 54,
+     "after": 54,
+     "asr_exact": 54
+    },
+    "yes": {
+     "n": 60,
+     "before": 60,
+     "after": 60,
+     "asr_exact": 60
+    },
+    "go": {
+     "n": 40,
+     "before": 40,
+     "after": 40,
+     "asr_exact": 36
+    },
+    "up": {
+     "n": 20,
+     "before": 20,
+     "after": 20,
+     "asr_exact": 15
+    },
+    "down": {
+     "n": 20,
+     "before": 17,
+     "after": 17,
+     "asr_exact": 16
+    },
+    "left": {
+     "n": 20,
+     "before": 20,
+     "after": 20,
+     "asr_exact": 16
+    },
+    "right": {
+     "n": 20,
+     "before": 20,
+     "after": 20,
+     "asr_exact": 20
+    },
+    "on": {
+     "n": 20,
+     "before": 20,
+     "after": 20,
+     "asr_exact": 18
+    },
+    "off": {
+     "n": 20,
+     "before": 20,
+     "after": 20,
+     "asr_exact": 14
+    }
+   }
+  },
+  "false_command_real_transcripts": {
+   "before": {
+    "n": 3115,
+    "commands": 1
+   },
+   "after": {
+    "n": 3115,
+    "commands": 1
+   }
+  },
+  "false_command_real_examples": {
+   "before": [
+    "No."
+   ],
+   "after": [
+    "No."
+   ]
+  },
+  "fuzzy_examples": [
+   {
+    "heard": "stop talkin",
+    "intent": "stop_speaking",
+    "fuzzy": true
+   },
+   {
+    "heard": "go on pleas",
+    "intent": "chatter",
+    "fuzzy": false
+   },
+   {
+    "heard": "cancel the reseach",
+    "intent": "cancel_research",
+    "fuzzy": true
+   },
+   {
+    "heard": "what was i re searching",
+    "intent": "history",
+    "fuzzy": true
+   },
+   {
+    "heard": "show me the evidense",
+    "intent": "show_evidence",
+    "fuzzy": true
+   }
+  ]
+ }
+}

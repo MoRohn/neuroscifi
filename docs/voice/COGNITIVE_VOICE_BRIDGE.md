@@ -50,6 +50,7 @@ deploy/voice/run.sh start all             # or: start asr | start tts
 deploy/voice/run.sh wait all 600          # ASR ~110 s, TTS ~15-25 s to ready
 deploy/voice/run.sh status
 nsf voice health --db INSTANCE            # engine states + real round trip: Kokoro speaks, Whisper transcribes, WER
+nsf voice selftest --db INSTANCE --report PATH   # guided mic/speaker/barge-in/echo check on this host (VOICE_VALIDATION §6)
 deploy/voice/run.sh stop all              # text keeps working; voice controls show "unavailable"
 ```
 
@@ -178,7 +179,14 @@ of its pairing; Pocket stores nothing in browser storage for voice.
 - End-of-utterance detection is energy-based client VAD (adaptive floor, 700 ms hang-over); the 700 ms is part of
   every measured response time from the owner's last word. No streaming ASR route exists for Whisper in vLLM; the
   provisional transcript is a re-transcription of the open utterance at most once a second.
-- Echo cancellation is the browser's (`echoCancellation: true`); not measured with real speakers and microphone.
-- Thresholds (barge 300 ms over max(5×floor, 0.03 RMS)) were tuned on synthetic speech only.
-- The bridge's command grammar is English and literal; paraphrases fall through to research.
+- Echo cancellation is the browser's (`echoCancellation: true`). It was simulated on recorded speech, not measured
+  with real speakers and a real microphone. Without it, NeuroSciFi's own voice interrupts it. The Voice check's echo
+  step measures this on the owner's hardware ([VOICE_VALIDATION](VOICE_VALIDATION.md)).
+- Thresholds live in `web/vad.mjs`. They were retuned in 0.7.0 on recorded human speech: listening is max(4×floor,
+  0.006) for 160 ms, barge-in is max(2×floor, 0.03) for 250 ms. Results before and after, on a held-out split, are
+  in VOICE_VALIDATION §4.
+- The command grammar is English. Beyond the literal phrases it applies canonical forms, synonyms, frames, clause
+  splitting and fuzzy matching. A fuzzy match of a command with effects asks for confirmation first. About two thirds
+  of freely phrased held-out commands are recognised (VOICE_VALIDATION §5); the rest fall through to chatter or
+  research.
 - PersonaPlex: interface and health only; not deployed, not real-time upstream (audit).
