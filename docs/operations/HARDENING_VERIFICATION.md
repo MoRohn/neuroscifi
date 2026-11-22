@@ -67,7 +67,7 @@ Results under the user manager (systemd 262), the same for console, pocket, webc
 | `ProtectHome=` (tmpfs in user mode) | `/home` shows only the read-only code binds; `/root` empty |
 | `MemoryMax=`, `TasksMax=` | `memory.max` 2147483648 (console, webcortex) / 1073741824 (pocket); `pids.max` 128 |
 | `CPUWeight=` | webcortex `cpu.weight` 50, checkpoint 20 |
-| **`IPAddressDeny=`/`IPAddressAllow=`** | **not enforced**: 1.1.1.1:443 and 192.168.68.1:80 reachable from the console and webcortex sandboxes. The journal says "unit configures an IP firewall, but not running as root" |
+| **`IPAddressDeny=`/`IPAddressAllow=`** | **not enforced**: 1.1.1.1:443 and a LAN router address reachable from the console and webcortex sandboxes. The journal says "unit configures an IP firewall, but not running as root" |
 | **`ProtectProc=invisible`, `ProcSubset=pid`** | **not enforced**: pid 1 and about 700 other processes visible |
 | **`IOWeight=`, `IOSchedulingClass=`** | the io controller is not delegated to the user manager (`io.weight` absent) |
 

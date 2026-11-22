@@ -59,7 +59,7 @@ Do this when you replace the CA or give the phone away.
 
 ## 3. Verified on the reference host (2026-11-22)
 
-- **Issue.** `nsf pocket tls init` issued a chain for `omarchy`, `omarchy.local`, `localhost`, `127.0.0.1` and `192.168.68.60`. Pocket served it under the `neuroscifi-pocket` sandbox ([HARDENING_VERIFICATION §4.4](HARDENING_VERIFICATION.md#44-pocket-neuroscifi-pocket-sandbox-https)).
+- **Issue.** `nsf pocket tls init` issued a chain for `spark`, `spark.local`, `localhost`, `127.0.0.1` and the host's LAN address. Pocket served it under the `neuroscifi-pocket` sandbox ([HARDENING_VERIFICATION §4.4](HARDENING_VERIFICATION.md#44-pocket-neuroscifi-pocket-sandbox-https)).
 - **OpenSSL** (`openssl s_client -verify_return_error -CAfile ca.pem -verify_hostname NAME`):
   - Every name returned `Verify return code: 0 (ok)` over TLS 1.3 with ECDSA P-256.
   - So did the address (`-verify_ip 127.0.0.1`), and `openssl verify -CAfile ca.pem fullchain.pem` returned OK.

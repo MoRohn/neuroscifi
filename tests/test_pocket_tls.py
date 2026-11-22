@@ -147,9 +147,9 @@ def test_names_without_a_lan_address_get_a_warning_with_the_machines_addresses(t
 def test_lan_addresses_leave_out_loopback_and_container_bridges(monkeypatch):
     import subprocess
     listing = ("2: lo    inet 127.0.0.1/8 scope host lo\n"
-               "5: wlP9s9    inet 192.168.68.60/22 brd 192.168.71.255 scope global dynamic wlP9s9\n"
-               "5: wlP9s9    inet6 fdd3::f228/64 scope global dynamic\n"
+               "5: wlan0    inet 192.168.1.20/24 brd 192.168.1.255 scope global dynamic wlan0\n"
+               "5: wlan0    inet6 fd00::20/64 scope global dynamic\n"
                "9: docker0    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0\n"
                "10: br-eb56be2bdc75    inet 172.18.0.1/16 scope global br-eb56be2bdc75\n")
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, listing, ""))
-    assert tls.lan_addresses() == ["192.168.68.60", "fdd3::f228"]
+    assert tls.lan_addresses() == ["192.168.1.20", "fd00::20"]
