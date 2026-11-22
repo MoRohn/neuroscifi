@@ -402,8 +402,8 @@ def test_scenario_f_phone_queues_spark_runs_tablet_reads(spark, devices, web):
     assert status == 200 and done["status"] == "completed" and done["stage"] is None
     assert done["stages_done"] == ["discovering", "reading", "evaluating", "synthesizing"]
     report = done["report"]
-    assert set(report) == {"live", "answer", "verdict", "contradictions", "uncertainties", "limitations", "freshness",
-                           "sources"}
+    assert set(report) == {"live", "reasoning", "answer", "verdict", "contradictions", "uncertainties", "limitations",
+                           "freshness", "sources"}      # reasoning: the model-written answer (R6 D8), None without one
     assert report["verdict"] is None, "only a claim check has a verdict"
     assert all(set(x) == {"text", "type", "citations", "status", "confidence", "copies", "independent_sources"}
                    for x in report["answer"])
