@@ -18,4 +18,4 @@ textarea{display:block;width:100%;font:inherit;border:1px solid #66847d;border-r
 
 #researchmode{width:100%}@media(pointer:coarse){input[type=range]{min-height:28px}}
 #researchnode h3{margin-top:0}.nodeprint code{font-family:ui-monospace,monospace;font-weight:700;letter-spacing:.02em;overflow-wrap:anywhere}.nodeprint small{display:block}.rwarn{color:var(--st-bad)}
-.rmodel{margin:4px 0}.rmodelanswer{padding-left:1.4rem;margin:4px 0 8px}.rmodelanswer li{margin:4px 0}.rmodelanswer small{display:block}.rnote{margin:8px 0;padding:6px 10px;border-left:3px solid #0876a5;background:#eef6fa}
+.rmodel{margin:4px 0}.rmodelanswer{padding-left:1.4rem;margin:4px 0 8px}.rmodelanswer li{margin:4px 0}.rmodelanswer small{display:block}.rnote{margin:8px 0;padding:6px 10px;border-left:3px solid var(--st-info);color:var(--st-info);background:var(--st-info-bg)}
