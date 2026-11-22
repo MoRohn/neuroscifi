@@ -138,10 +138,15 @@ included); failed and cancelled runs keep the extractive report only.
     subject token: a determiner, quantifier, pronoun or number word; a number or version; a name; a word in -s that is
     no stopword; or a gerund that a finite verb follows. Beside weak evidence a name comes only from trusted text
     (SECREVIEW7 R7-5, `_trusted_names`): the question (including the product word before a version: "Is numpy 2.5.5
-    secure?"), the supported claims of the bundle, and words a cited claim writes capitalised in mid-sentence (not
-    after a full stop, colon, quote or bracket) or in camel case ("NumPy"), never a word a cited claim or the question
-    also writes in lower case ("the Skip campaign … admins skip"), a common action verb, a source title's word or the
-    word before a version in a claim. After a quote mark that opens a quotation, or a reporting verb ("say", "wrote",
+    secure?"), the supported claims of the bundle and camel-case words ("NumPy"), never a word a cited claim or the
+    question also writes in lower case ("the Skip campaign … admins skip"), a common action verb, a source title's
+    word or the word before a version in a claim; or, from round 8, by an **independent source**
+    (`_independent_names`): a word that a read source of another domain than every source of the weak cited claims
+    writes capitalised in mid-sentence (not after a full stop, colon, quote or bracket), and that no read text writes
+    in lower case. The read texts are the whole evidence pool of the task (every claim extracted from every source
+    read, `name_index_for`, kept in the bundle as a compact index of such words with their source domains, never shown
+    to the model). A name particle (van, von, de, da, di, du, del, le, la, bin, al) at a clause head is part of the
+    name that follows ("Van Rossum"). After a quote mark that opens a quotation, or a reporting verb ("say", "wrote",
     "reads", "warns", "told", …), the next word heads a clause (R7-2: "The maintainers say uninstall …"). A clause
     headed by a preposition, "To", a participle or a gerund
     is a lead only when a comma and a clause with a subject follow ("In 2026, …", "Released in May, …"); a fragment
@@ -500,6 +505,17 @@ nsf llm usage                                                 # token ledger
   rounds 5 and 6: survival 75 % and 74 %. A new live run (44 new answers, this guard): template 12 of 44 (8
   empty), 2.41 kept per answer, survival 76 %. The 107 kept live sentences of the earlier
   request: faithful kept 40 of 71 (56 %; 45 with the round-6 guard), template fallback 28 of 68 answers (24).
+- **Round-8 name oracle, measured (2026-11-22).** The same 44 answers, the name index built from each task's whole
+  evidence pool in its instance database as `apply` does: template 12 of 44 (8 empty), 2.36 kept per answer,
+  survival 72 % (round 7: 2.59, 79 %; round 6: 3.07, 94 %); the new live answers of round 7: 2.18, 69 %. The oracle
+  recovers a name only when another domain of the pool writes it in mid-sentence, and in these tasks most names were
+  read from one domain only ("Van Rossum" — Python's single Wikipedia source; "Alain Goriely" — doi.org only; "ASML"
+  — yahoo.com only; "Trigger.dev" — written only at a sentence start). Round 8 costs more than round 7 because a
+  weak claim's own mid-sentence capitals no longer count (they let a single page write "the Ditch campaign" and then
+  "Ditch NumPy 2.5.5"). **Limit:** a word that a second, independent domain writes capitalised in mid-sentence and
+  that no read text writes in lower case is a name, so an attacker who controls two domains can open a sentence
+  with an uncommon verb ("Ditch NumPy 2.5.5 in production", `test_r8_limit_two_independent_domains_can_name_a_verb`);
+  common action verbs are never names, and a common verb is written in lower case somewhere in practically any pool.
 - **Declarative test, limits.** It is lexical and fails closed: what it cannot read as a subject is rejected beside
   weak evidence (above), whatever the sentence means. What it accepts can still carry an instruction in two shapes,
   both accepted as documented limits: a head word in -s ("Focus on NumPy 2.5.4 until …", "Alias numpy to
