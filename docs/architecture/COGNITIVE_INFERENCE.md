@@ -99,32 +99,49 @@ included); failed and cancelled runs keep the extractive report only.
   billion neurons" "not definitively established" on a Crossref title record that says neither. Every sentence that
   is not a caveat of the closed grammar is now checked, deterministically and without a model:
   - *Content words* are the sentence's words without stopwords, digits and the unit after a number (the number and
-    unit checks own them), attribution and hedge vocabulary ("according to one source", "states that", "may", "out
-    of date", "temporally unresolved", "not yet confirmed", "estimates vary widely") and its caveat-grammar
-    clauses.
-  - A content word is *covered* when a cited claim holds it: exactly, by stem or singular/plural, in a closed synonym
-    group (released/published/introduced, vary/range, rely/depend, has/contains/includes, bn/billion), by a common
-    6-letter prefix, as two claim words written as one, or (an all-capital word) as the initials of claim words; a
-    name or plain word may also be covered by a cited source's title.
+    unit checks own them), attribution and hedge vocabulary ("according to one source", "states that", "may", "may
+    be out of date", "temporally unresolved", "not yet confirmed", "estimates vary widely") and its caveat-grammar
+    clauses. Words that assert something (supported, unsupported, outdated, known, believed, considered, one, two,
+    several) are content, not attribution (round 4, SECREVIEW4_ENTAIL P1/P2).
+  - A content word is *covered* when a cited claim holds it: exactly, by stem (singular/plural, "-able":
+    "exploitable" meets "exploited"), in a closed synonym group (released/published/launched, vary/range,
+    rely/depend, bn/billion), or by a common 6-letter prefix when neither word is a verb form (-ed, -ing:
+    "exploitation" does not cover "exploited", "maintainers" not "maintained"). An acronym is covered only literally
+    ("RCE" is not "reported crash errors"); a cited source's title covers names only (a word with a capital letter in
+    the sentence), never a predicate.
   - Rejected — "says more than its cited claims support: secure, recommended, …" — when under 75 % of the content
     words are covered (`ENTAIL_COVERAGE`), when a clause of two or more content words has under a third covered
-    (`ENTAIL_CLAUSE`: the claim's words in an appositive cannot carry a new predicate), or when **any** uncovered word
-    carries assertion weight. Those classes are checked against the claims' own words only, never titles:
-    evaluatives (secure, safe, recommended, trusted, stable, best, critical, …), names, scope words (all, every, only,
-    …), comparatives (than, faster, more, …), time words (yesterday, currently, recent, last week, month names, …),
-    numbers in words, and an adjective after a copula ("is popular", "is unaffected").
+    (`ENTAIL_CLAUSE`), when a clause holds more than one uncovered content word (`ENTAIL_MAX_NEW_CLAUSE`) or the
+    sentence more than two (`ENTAIL_MAX_NEW`), or when **any** uncovered word carries assertion weight. Those
+    classes are checked against the claims' own words only: evaluatives (secure, safe, recommended, advisable,
+    outdated, stable, best, critical, …), names, scope words (all, every, only, universally, …), comparatives (than,
+    faster, more, outperforms, surpasses, …), time words (yesterday, currently, newly, recent, month names, …),
+    quantities in words (one, two, several, multiple, many, …; "one source" is attribution), an adjective after a
+    copula ("is popular", "is unaffected"), a new verb after "and" ("… and leaks memory") and a new verb right after
+    a name or version ("NumPy 2.5.5 contains …"). An embedded whether/if question is exempt from the clause rules.
   - Instructions — "gives an instruction its cited claims do not give: should" — a modal of obligation (should,
-    must, need, recommend, …), an address to the reader (you, everyone, anyone) or an imperative opening ("Reinstall
-    …", "Avoid …") fails unless a cited claim holds the same instruction ("Users should upgrade to NumPy 2.5.5"
-    supports "According to the advisory, users should upgrade …").
-  - Negation: a negator over content words that no cited claim negates nearby ("is not affected" for "is affected")
-    fails ("negates what its cited claims do not negate"), and so does a sentence with no negation that repeats the
-    word a cited claim negates ("is designed" for "is not designed": "drops the negation of its cited claims"). A
-    negator over an evidence word ("not established", "does not indicate", "does not contain information") is a
-    hedge.
+    must, need, recommend, advisable, …), an address to the reader (you, everyone, anyone), an imperative opening
+    ("Reinstall …", "Avoid …") or a recommendation phrase ("makes sense", "the way to go", "the way forward", "would
+    do well", "the recommended path", "is worth upgrading") fails unless a cited claim holds the same instruction
+    ("Users should upgrade to NumPy 2.5.5" supports "According to the advisory, users should upgrade …").
+  - Polarity (`_polarity`). Negators (not, no, never, n't, without, …) scope forward over the next content words
+    (in the sentence over the rest of the clause); privative words (lack, fail, missing, absent, drop, remove, stop,
+    abandon, …) do too, and after a copula also back over the subject ("the fix is missing", "support was
+    dropped"); "dropped by 30 percent" is an amount, not a negation. "It is not true that …" negates the rest, and
+    an even number of negators over a word is no negation. Hedge heads ("not believed to be", "not known to be") are
+    skipped, so they never cancel a claim's negation. "unX" is X negated. A negator over an evidence word ("not
+    established", "does not indicate", "lack recent or verified evidence") is a hedge. Rejected: the first word a
+    sentence negator negates when no cited claim negates it or stands next to a negation ("negates what its cited
+    claims do not negate": "is not affected", "lacks the fix", "is unsupported"); and the first word a claim negator
+    negates when the sentence states it unnegated and no claim states it so ("drops the negation of its cited
+    claims": "is affected" for "is not believed to be affected"), whatever other negator the sentence holds.
+  - Role swaps: a past-tense verb shared with a claim whose subject in the sentence is not its subject in the claim
+    but stands after the verb there ("The legacy branch abandoned the maintainers") — "changes who does what in its
+    cited claims". Passives are left alone.
   The check runs after the number and unit checks, so the attribution repair (R1-04) and the self-critique
-  confirmation use it unchanged. Tests: `test_e1_*` (the two E1 examples, R5-O1 and 35 attacks, each of which
-  passed before; 18 faithful paraphrases; 5 live sentences that must stay kept).
+  confirmation use it unchanged. Tests: `test_e1_*` (the two E1 examples, R5-O1, 36 attacks, all 47 cases of the
+  round-4 review and "the way to go", each rejected; 17 faithful paraphrases and 4 live sentences that must stay
+  kept; the measured costs, asserted as rejections).
 - **Honest caveats: a closed grammar** (`_caveat`, `insufficiency`, `gap_clause`). A sentence that only says what the
   evidence does not establish asserts no fact: it needs no supported claim, no hedge and (T2-03) no citation, and it
   may repeat the question's own numbers. Two security reviews (SECREVIEW_GUARD F1–F6, SECREVIEW2_GUARD N1–N4) showed
@@ -316,30 +333,40 @@ nsf llm usage                                                 # token ledger
   assertion in the cited claims or titles, paraphrase allowed), 19 grey (a faithful core plus a hedged inference the
   claims do not hold: "…, which may affect compatibility", "which suggests caution in deployment") and 17 unfaithful
   (R5-O1; "Rao and Ballard proposed …" on a title record that names neither; "numpy 2.5.5 is reported as stable"
-  on a PyPI release record; "has not been recently updated" for "last updated 6 days ago"). With the check: faithful
-  kept 63 of 71 (**89 %**; 8 false rejections, 11 %), grey 2 of 19, unfaithful 1 of 17. The 8 false rejections are
-  paraphrases in other words: "warned that superintelligence could manipulate human emotions" for "will hack your
-  limbic system", "a range between 62 and 94 billion neurons based on a sample of nine brains" for "variations
-  between 62 and 94 bn neurons (n = 9)", "the security status … may be out of date" (the claim says "vulnerabilities",
-  not "security"), "AI-related stocks experienced a significant sell-off" for a Nasdaq figure under the title
-  "Stocks Plunge as AI Trade Unwinds", "final release details were pending" for "bugfixes before the final
-  release". Of the 68 answers that kept at least one sentence, **14 (21 %) keep none** and fall back to the
-  labelled extractive template with the rules note; 11 of those 14 had kept only grey or unfaithful sentences (all
-  five of UAT "Is numpy 2.5.5 stable?"). The thresholds and word lists were tuned on this same corpus: there is no
-  held-out set, so retention on new model output may be lower. Live (2026-11-21, Qwen3-30B-A3B, 10 asks of the
-  four questions): two fact-verification runs degraded to the template because of this check alone, one sentence saying
-  "according to more recent studies" (study, paper, article, review are now evidence nouns) and one adding "though
-  estimates vary widely" (now a hedge phrase); every other rejected sentence also failed an earlier rule.
-- **Entailment coverage, limits.** It compares words, not meaning. Word order and roles are not checked ("Guido van
-  Rossum was first released in February 1991 by Python" passes on "Python was first released in February 1991 by
-  Guido van Rossum"); a pronoun's antecedent is not resolved (the one unfaithful sentence kept: "Python was first
-  introduced in 2000" on "They were firstly introduced in 2000", about PEPs). Up to a quarter of a sentence's
-  content words may be uncovered when none is in a weighted class and its clause is otherwise covered, so a short
-  new predicate joined by "and" without an auxiliary passes ("NumPy is the fundamental package for scientific
-  computing with Python and powers spreadsheets"). Attribution and hedge words are never content, so "may",
-  "estimated" or "estimates vary" add nothing and are not checked. The weighted classes and synonym groups are
-  closed lists: an evaluative outside them ("popular" is caught only after a copula) counts like any other word. A
-  paraphrase in other words is rejected; the extractive answer and the rules note remain.
+  on a PyPI release record; "has not been recently updated" for "last updated 6 days ago").
+
+  | | first version (round 3) | after the round-4 review |
+  |---|---|---|
+  | faithful kept | 63 of 71 (89 %) | **51 of 71 (72 %)** |
+  | grey kept | 2 of 19 | 1 of 19 |
+  | unfaithful kept | 1 of 17 | 1 of 17 |
+  | answers (of 68 with a kept sentence) falling back to the template | 14 (21 %) | **19 (28 %)** |
+
+  Retention is now below the 85 % aimed at. The 20 false rejections are paraphrases in other words:
+  "warned that superintelligence could manipulate human emotions" for "will hack your limbic system"; "a major math
+  problem" for "a Holy Grail of math problems"; "AI-affiliated individual of solving" for "someone linked to one
+  claims to have cracked"; "a range … based on a sample of nine brains" for "variations … (n = 9)"; "open-source AI
+  software" where the claim says "artificial intelligence" (acronyms only literally); "the security status … may be
+  out of date" (the claim says "vulnerabilities"). Ten of them are lost to the per-clause and per-sentence caps
+  alone: without the caps 61 of 71 (86 %) and 13 fallbacks; with two per clause and three per sentence 59 of 71
+  (83 %) and 14 — but "… fixes bugs discovered after the 2.5.4 release including backdoors" then passes. The caps
+  stay; aligning the model's prompt to the guard (a separate lane) is the way to raise acceptance. The thresholds and
+  word lists were tuned on this same corpus: there is no held-out set. Live (2026-11-21, Qwen3-30B-A3B, 10 asks of
+  the four questions, first version of the check): two fact-verification runs degraded to the template because of
+  this check alone ("according to more recent studies", now an evidence noun; "though estimates vary widely", now a
+  hedge phrase); every other rejected sentence also failed an earlier rule.
+- **Entailment coverage, limits.** It compares words, not meaning, and one new content word per clause is allowed:
+  a noun or verb swapped for one the claim does not hold passes when it is the only new word in a clause of the
+  claim's words and is not right after a name, a version or "and" ("NumPy is the fundamental package for scientific
+  espionage with Python"; "The new parser raises memory use in NumPy 2.5.5 by 30 percent" for "reduces"). Role swaps
+  are caught only for a past-tense verb the sentence shares with the claim, not in passives or with other verb
+  forms. A pronoun's antecedent is not resolved (the one unfaithful sentence kept: "Python was first introduced in
+  2000" on "They were firstly introduced in 2000", about PEPs). Polarity is lexical: negators, privatives and "unX"
+  are closed lists ("hardly", "barely" only count as uncovered words), and a sentence negator passes when its first
+  negated word stands within a few words of a claim's negation. Attribution and hedge words are never content, so
+  "may", "estimated" or "estimates vary" add nothing and are not checked. The weighted classes, recommendation
+  phrases and synonym groups are closed lists. A paraphrase in other words is rejected; the extractive answer and
+  the rules note remain.
 - Claim states are the ADR-035 states of `synthesis.decide`, written on each finding before reasoning; a stored
   report without them is read as `not_evaluated` (never upgraded from the legacy label). The model
   sees at most 12 findings; it cannot see evidence the extractive pipeline did not extract.
