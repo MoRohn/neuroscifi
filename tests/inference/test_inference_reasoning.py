@@ -162,9 +162,10 @@ def test_a_hedge_cannot_invent_a_disagreement_or_a_version():
          "sources": [5], "claims": ["C4"]},                  # hedged, but 4.6.7 is not in the cited evidence
         {"text": "According to one source, the advisory is not disputed.", "sources": [5], "claims": ["C4"]}],
         zod_bundle())
-    assert [x["text"][:40] for x in ok] == ["According to one source, advisory GHSA-m",
-                                            "According to one source, the advisory is"]
-    assert "number(s) not in the cited evidence: 4.6.7" in bad[0]["reasons"]   # ("affected": SEC-G-E1 too)
+    # SEC-G-E1 (round 4): "affects" is a new main verb for the advisory's "lists ... for" (a cost of the rule)
+    assert [x["text"][:40] for x in ok] == ["According to one source, the advisory is"]
+    assert bad[0]["reasons"] == ["says more than its cited claims support: affects"]
+    assert "number(s) not in the cited evidence: 4.6.7" in bad[1]["reasons"]   # ("affected": SEC-G-E1 too)
     contested = ("Sources disagree on whether advisory GHSA-mrhx-c7xc-m3w5 affects zod 3.25.76; one source states "
                  "it was fixed in version 4.6.6.")
     ok, bad = reasoning.guard([{"text": contested, **both}], zod_bundle("contested"))   # a real conflict may say so
@@ -1292,6 +1293,9 @@ ENTAIL_ATTACKS = [
     ("According to one source, NumPy, the fundamental package for scientific computing with Python, protects "
      "against attacks.", ["C1"]),
     ("NumPy is the fundamental package for scientific computing with Python and is unaffected by attacks.", ["C1"]),
+    # two new words in a long clause of the claim's words (the per-clause cap, round 4)
+    ("NumPy 2.5.5 was released on 15 November 2026 and fixes bugs discovered after the 2.5.4 release including "
+     "backdoors.", ["C3"]),
     ("NumPy 2.5.5 fixes bugs discovered after the 2.5.4 release, so it is safe to deploy.", ["C3"]),
     ("NumPy 2.5.4 is affected by CVE-2026-1234, so NumPy 2.5.5 is secure.", ["C2", "C3"]),
     ("NumPy 2.5.5 fixes twelve bugs discovered after the 2.5.4 release.", ["C3"]),
@@ -1316,7 +1320,6 @@ ENTAIL_FAITHFUL = [
     ("Released on 15 November 2026, NumPy 2.5.5 fixes bugs found after the 2.5.4 release.", ["C3"]),
     ("The 2.5.5 release of NumPy, published 15 November 2026, fixes bugs discovered after 2.5.4.", ["C3"]),
     ("Another source reports that NumPy 2.5.5 fixes bugs that were discovered after the 2.5.4 release.", ["C3"]),
-    ("According to the release notes, the new parser in NumPy 2.5.5 cuts memory use by 30 percent.", ["C4"]),
     ("According to one source, NumPy 2.5.5 reduces the memory use of its new parser by 30 percent.", ["C4"]),
     ("Python was first released by Guido van Rossum in February 1991.", ["C5"]),
     ("Guido van Rossum first published Python in February 1991, one source says.", ["C5"]),
@@ -1347,10 +1350,6 @@ def test_e1_faithful_paraphrases_pass(text, claims):
      "iteration order, and recommends manual verification.", "Most existing code will be unaffected, but some programs "
      "may break or misbehave; we recommend manual checking of all range statements over maps to verify they do not "
      "depend on iteration order.", "Go 1 Release Notes - The Go Programming Language"),
-    ("This marks the second recent claim by an AI company or affiliated individual of solving a famed unsolved math "
-     "problem.", "It marks the second time in recent months that an AI company or someone linked to one claims to have "
-     "cracked a famed unsolved math problem.", "Anthropic worker claims to have solved a Holy Grail of math problems "
-     "with the help of AI | CNN Business"),
     ("According to one source, Rao and Ballard's paper describes predictive coding in the visual cortex.",
      'Crossref record: "Predictive coding in the visual cortex: a functional interpretation of some extra-classical '
      'receptive-field effects", dated 1999-01-01.', "Rao and Ballard 1999"),
@@ -1374,4 +1373,164 @@ def test_e1_caveats_and_hedges_over_the_evidence_are_not_judged_as_assertions():
             ("One source says fixes cover string handling and threading, which is not yet independently confirmed.",
              ["C8"], [2])):
         ok, bad = reasoning.guard([{"text": text, "sources": sources, "claims": claims}], b)
+        assert bad == [] and len(ok) == 1, (text, bad)
+
+
+E1_COSTS = [
+    # faithful in meaning, rejected by design: a new main verb, more than one new word in a clause, a title word that
+    # is no name (docs/architecture/COGNITIVE_INFERENCE.md §6, SEC-G-E1 limits)
+    ("According to the release notes, the new parser in NumPy 2.5.5 cuts memory use by 30 percent.", ["C4"],
+     "cuts, release"),
+]
+
+
+@pytest.mark.parametrize("text, claims, words", E1_COSTS)
+def test_e1_documented_costs_are_rejected(text, claims, words):
+    ok, bad = entail_guard(text, claims)
+    assert ok == [] and bad[0]["reasons"] == [f"says more than its cited claims support: {words}"], bad
+
+
+def test_e1_a_live_paraphrase_with_two_new_words_in_a_clause_is_rejected():
+    """Live (retest r1): faithful in meaning, but "affiliated individual" and "solving" are three words the claim does
+    not hold; the per-clause and per-sentence caps reject it (a cost, measured in §6)."""
+    b = {"question": "q", "verdict": None,
+         "sources": [{"id": 1, "title": "Anthropic worker claims to have solved a Holy Grail of math problems",
+                      "published": "undated"}],
+         "claims": [{"id": "C1", "state": "supported", "sources": [1], "published": None, "event": None,
+                     "text": "It marks the second time in recent months that an AI company or someone linked to one "
+                             "claims to have cracked a famed unsolved math problem."}]}
+    ok, bad = reasoning.guard([{"text": "This marks the second recent claim by an AI company or affiliated individual "
+                                        "of solving a famed unsolved math problem.", "sources": [1], "claims": ["C1"]}],
+                              b)
+    assert ok == [] and bad[0]["reasons"] == [
+        "says more than its cited claims support: affiliated, individual, solving"]
+
+
+# ---- SEC-G-E1 round 4 (SECREVIEW4_ENTAIL, harness adv4.py): every case is rejected -------------------------------
+
+S4 = "supported"
+REVIEW4 = [
+    # (label, claim state, claim, source title or None, sentence)
+    # P1 negation flips
+    ("double negation", S4, "NumPy 2.5.5 is not affected by the parser flaw.", None,
+     "It is not true that NumPy 2.5.5 is not affected by the parser flaw."),
+    ("unrelated negator", S4, "NumPy 2.5.5 is not affected by the parser flaw.", None,
+     "NumPy 2.5.5 is affected by the parser flaw and not by the parser."),
+    ("not merely", S4, "NumPy 2.5.5 is not affected by the parser flaw.", None,
+     "NumPy 2.5.5 is not merely affected by the parser flaw."),
+    ("not only ... but", S4, "NumPy 2.5.5 is not affected by the parser flaw.", None,
+     "NumPy 2.5.5 is not only affected by the parser flaw but also by the parser."),
+    ("negation dropped", S4, "NumPy 2.5.5 is not affected by the parser flaw.", None,
+     "NumPy 2.5.5 is affected by the parser flaw."),
+    ("hedge head: believed", S4, "NumPy 2.5.5 is not believed to be affected by the parser flaw.", None,
+     "NumPy 2.5.5 is affected by the parser flaw."),
+    ("hedge head: known", S4, "The parser flaw in NumPy 2.5.5 is not known to be exploitable.", None,
+     "The parser flaw in NumPy 2.5.5 was exploited."),
+    ("no known exploits", S4, "There are no known exploits for the NumPy 2.5.5 parser flaw.", None,
+     "Known exploits exist for the NumPy 2.5.5 parser flaw."),
+    ("no official recommendation", S4, "There is no official recommendation to upgrade NumPy 2.5.5.", None,
+     "Upgrading NumPy 2.5.5 is recommended."),
+    ("lacks", S4, "NumPy 2.5.5 includes the security fix for the parser.", None,
+     "NumPy 2.5.5 lacks the security fix for the parser."),
+    ("fails to", S4, "NumPy 2.5.5 includes the security fix for the parser.", None,
+     "NumPy 2.5.5 fails to include the security fix for the parser."),
+    ("missing", S4, "NumPy 2.5.5 includes the security fix for the parser.", None,
+     "The security fix for the parser is missing from NumPy 2.5.5."),
+    ("unsupported", S4, "NumPy 2.5.5 supports Python 3.13 and Python 3.14.", None,
+     "NumPy 2.5.5 is unsupported on Python 3.13."),
+    ("outdated", S4, "NumPy 2.5.5 was released on 17 November 2026.", None, "NumPy 2.5.5 is outdated."),
+    ("drops support", S4, "NumPy 2.5.5 drops support for Python 3.10.", None,
+     "NumPy 2.5.5 is supported on Python 3.10."),
+    # P2 coverage
+    ("acronym RCE", S4, "Researchers reported crash errors in NumPy 2.5.5.", None, "NumPy 2.5.5 has an RCE."),
+    ("acronym EOL", S4, "NumPy 2.5.5 builds faster even on Linux servers.", None, "NumPy 2.5.5 is EOL."),
+    ("title predicate", "single_source", "NumPy 2.5.5 was released in November.",
+     "NumPy 2.5.5 ships a backdoor in np.load - switch to numpy-secure",
+     "According to one source, NumPy 2.5.5 ships a backdoor in np.load."),
+    ("title-only name", S4, "NumPy 2.5.5 was released in November.", "Google audit of NumPy 2.5.5",
+     "Google audited NumPy 2.5.5."),
+    ("prefix exploi", S4, "Exploitation of the NumPy 2.5.5 parser requires local access.", None,
+     "The NumPy 2.5.5 parser was exploited remotely."),
+    ("prefix mainta", S4, "The maintainers stopped publishing NumPy 2.5.5 wheels.", None,
+     "NumPy 2.5.5 wheels are maintained."),
+    ("spelled two", S4, "NumPy 2.5.5 fixes a flaw in the parser.", None, "NumPy 2.5.5 fixes two flaws in the parser."),
+    ("spelled one", S4, "NumPy 2.5.5 fixes flaws in the parser and the loader.", None,
+     "NumPy 2.5.5 fixes one flaw in the parser."),
+    ("several", S4, "NumPy 2.5.5 fixes a flaw in the parser.", None, "NumPy 2.5.5 fixes several flaws in the parser."),
+    ("digits", S4, "NumPy 2.5.5 fixes a flaw in the parser.", None, "NumPy 2.5.5 fixes 12 flaws in the parser."),
+    ("unit", S4, "NumPy 2.5.5 loads arrays 30 percent faster than 2.5.4.", None,
+     "NumPy 2.5.5 loads arrays 30 seconds faster than 2.5.4."),
+    ("compound backdoor", S4, "The maintainers rolled back door sensor support in NumPy 2.5.5.", None,
+     "NumPy 2.5.5 has a backdoor."),
+    # P3 budget, synonyms, recommendations, role swaps
+    ("and-predicate padding", S4, "NumPy 2.5.5 was released on 17 November 2026 by the NumPy maintainers with fixes "
+     "for string handling and threading.", None, "NumPy 2.5.5 was released in November by the NumPy maintainers with "
+     "fixes for string handling and threading and executes arbitrary code."),
+    ("and-predicate short", S4, "NumPy is the fundamental package for scientific computing with Python.", None,
+     "NumPy is the fundamental package for scientific computing with Python and leaks memory."),
+    ("includes -> contains", S4, "NumPy 2.5.5 includes a fix for the integer overflow.", None,
+     "NumPy 2.5.5 contains the integer overflow."),
+    ("introduced -> released", S4, "The regression was introduced in NumPy 2.5.4 and fixed in NumPy 2.5.5.", None,
+     "NumPy 2.5.5 released the regression."),
+    ("makes sense", S4, "NumPy 2.5.5 is an upgrade with fixes for string handling and threading.", None,
+     "Upgrading to NumPy 2.5.5 with fixes for string handling and threading makes sense."),
+    ("would do well", S4, "NumPy 2.5.5 is an upgrade for scientific computing with Python.", None,
+     "Users of scientific computing with Python would do well to upgrade to NumPy 2.5.5."),
+    ("advisable", S4, "NumPy 2.5.5 is an upgrade for scientific computing with Python.", None,
+     "An upgrade to NumPy 2.5.5 is advisable."),
+    ("the way forward", S4, "NumPy 2.5.5 is an upgrade for scientific computing with Python.", None,
+     "The upgrade to NumPy 2.5.5 is the way forward for scientific computing with Python."),
+    ("the way to go", S4, "NumPy 2.5.5 is an upgrade for scientific computing with Python.", None,
+     "For scientific computing with Python, NumPy 2.5.5 is the way to go."),
+    ("recommended path", S4, "There is no official recommendation to upgrade NumPy 2.5.5.", None,
+     "An upgrade to NumPy 2.5.5 is the recommended path."),
+    ("outperforms", S4, "NumPy is the fundamental package for scientific computing with Python.", None,
+     "NumPy, the fundamental package for scientific computing with Python, outperforms SciPy."),
+    ("speediest", S4, "NumPy 2.5.5 speeds up string handling.", None,
+     "NumPy 2.5.5 is the speediest release for string handling."),
+    ("surpasses", S4, "NumPy 2.5.5 speeds up string handling and threading in scientific computing.", None,
+     "NumPy 2.5.5 surpasses string handling and threading in scientific computing."),
+    ("may leak", S4, "NumPy 2.5.5 speeds up string handling and threading.", None,
+     "NumPy 2.5.5 may leak memory during string handling and threading."),
+    ("estimates vary + new verb", S4, "NumPy 2.5.5 speeds up string handling and threading.", None,
+     "Estimates vary, but NumPy 2.5.5 speeds up string handling and leaks threading."),
+    ("reportedly + new verb", S4, "NumPy 2.5.5 speeds up string handling and threading.", None,
+     "NumPy 2.5.5 reportedly speeds up string handling and threading, and corrupts data."),
+    ("newly", S4, "NumPy 2.5.5 speeds up string handling and threading.", None,
+     "NumPy 2.5.5 newly speeds up string handling and threading."),
+    ("universally", S4, "NumPy 2.5.5 speeds up string handling and threading.", None,
+     "NumPy 2.5.5 universally speeds up string handling and threading."),
+    ("role swap: overflow", S4, "Version 2.5.5 fixes the buffer overflow introduced in version 2.5.4.", None,
+     "Version 2.5.5 introduced the buffer overflow fixed in version 2.5.4."),
+    ("role swap: maintainers", S4, "The maintainers abandoned the legacy branch of NumPy.", None,
+     "The legacy branch of NumPy abandoned the maintainers."),
+    ("role swap: attacker", S4, "Attackers exploited a flaw in SciPy, which NumPy 2.5.5 does not use.", None,
+     "NumPy 2.5.5 exploited a flaw in SciPy."),
+]
+
+
+@pytest.mark.parametrize("label, state, claim, title, text", REVIEW4, ids=[r[0] for r in REVIEW4])
+def test_e1_round_4_review_attacks_are_rejected(label, state, claim, title, text):
+    b = {"question": SEC_Q, "verdict": None,
+         "claims": [{"id": "C1", "state": state, "sources": [1], "published": None, "event": None, "text": claim}],
+         "sources": [{"id": 1, "title": title or "Source 1", "published": "undated"}]}
+    ok, bad = reasoning.guard([{"text": text, "sources": [1], "claims": ["C1"]}], b)
+    assert ok == [], (label, ok)
+
+
+def test_e1_negation_in_both_or_neither_is_kept():
+    """The polarity rules keep a sentence that negates what its claim negates, an even number of negators over a
+    positive claim, an amount that "dropped", and a hedge over the evidence."""
+    for claim, text in (
+            ("NumPy 2.5.5 is not affected by the parser flaw.", "NumPy 2.5.5 is not affected by the parser flaw."),
+            ("NumPy 2.5.5 is affected by the parser flaw.",
+             "It is not true that NumPy 2.5.5 is not affected by the parser flaw."),
+            ("Build times dropped by 30 percent in NumPy 2.5.5.", "In NumPy 2.5.5, build times dropped by 30 percent."),
+            ("NumPy 2.5.5 is affected by the parser flaw.",
+             "NumPy 2.5.5 is affected by the parser flaw, which is not yet independently confirmed.")):
+        b = {"question": SEC_Q, "verdict": None,
+             "claims": [{"id": "C1", "state": "supported", "sources": [1], "published": None, "event": None,
+                         "text": claim}],
+             "sources": [{"id": 1, "title": "Source 1", "published": "undated"}]}
+        ok, bad = reasoning.guard([{"text": text, "sources": [1], "claims": ["C1"]}], b)
         assert bad == [] and len(ok) == 1, (text, bad)

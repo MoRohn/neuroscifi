@@ -41,8 +41,9 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
     says "41 metres", "86 neurons" vs "86 million neurons" is fine only without a unit; "$3 million" vs "3 billion"
     is not): every number with a unit must appear with the same unit in a cited claim or source title;
   - says more than the claims it cites (SEC-G-E1, _unentailed): its content words must be covered by the cited
-    claims (and, for names and plain words, the cited titles); an uncovered evaluative, instruction, name, scope,
-    comparative, time word or number in words, a negation no cited claim makes, or a negation it drops is rejected;
+    claims (names also by the cited titles), at most one new word per clause and two per sentence; an uncovered
+    evaluative, instruction or recommendation, name, scope, comparative, time word or quantity, a negation no cited
+    claim makes, a claim's negation it drops (_polarity) or a swapped subject is rejected;
   - contains instruction-like text (safety.scan_injection);
   - speculates: a prediction ("will", "likely", "may soon") is not a hedge for an unsupported claim, and a
     speculative sentence may not name anything that no cited claim or source title names (T1-09).
@@ -811,83 +812,107 @@ def _unit_mismatches(text: str, evidence: list[str]) -> list[str]:
     return bad
 
 
-# ---- entailment by content-word coverage (SEC-G-E1) ---------------------------------------------------------------
+# ---- entailment by content-word coverage (SEC-G-E1, round-4 review SECREVIEW4_ENTAIL) --------------------------------
 #
 # Citing a supported claim does not make a sentence true: "NumPy is secure and recommended for all production use",
 # citing "NumPy is the fundamental package for scientific computing with Python", passed every check above. Every
 # non-caveat sentence must therefore say no more than the claims it cites. Deterministic and lexical, no model:
-#   - content words: the sentence's words without stopwords, digits (the number check owns numbers), attribution and
-#     hedge vocabulary (_ENTAIL_META: "according to one source", "states that", "may", "out of date") and the clauses
-#     of the closed caveat grammar;
-#   - a content word is covered when a cited claim holds it (exactly, by stem, singular/plural, a closed synonym
-#     group, a 6-letter common prefix, two claim words written as one, an acronym of claim words) or, for names and
-#     plain words, a cited source's title holds it;
+#   - content words: the sentence's words without stopwords, digits and the unit after a number (the number and unit
+#     checks own them), attribution and hedge vocabulary (_ENTAIL_META: "according to one source", "states that",
+#     "may", "may be out of date") and the clauses of the closed caveat grammar;
+#   - a content word is covered when a cited claim holds it: exactly, by stem (singular/plural, -able), in a closed
+#     synonym group, or by a common 6-letter prefix when neither word is a verb form (-ed, -ing); an acronym only
+#     literally; a cited source's title covers names only (a capitalised or mixed-case word);
 #   - rejected when fewer than ENTAIL_COVERAGE of the content words are covered, when a clause of two or more content
-#     words has fewer than ENTAIL_CLAUSE of them covered (a padded appositive cannot carry a new predicate), or when
-#     ANY uncovered word carries assertion weight: an evaluative (secure, safe, recommended, best, stable, ...), an
-#     instruction (should, must, you, an imperative opening: "Reinstall ..."), a name, a scope word (all, every,
-#     only, ...), a comparative (than, faster, more, ...), a time word (today, currently, last week, ...), a number in
-#     words, or an adjective after a copula ("is popular"). These hard classes are checked against the claims' own
-#     text only, never against titles;
-#   - a negator that scopes over content words no cited claim negates ("is not affected" for "is affected"), and a
-#     sentence without any negation repeating the word a cited claim negates ("is designed" for "is not designed"),
-#     are rejected. A negator over an evidence word ("not established", "does not indicate") is a hedge.
+#     words has fewer than ENTAIL_CLAUSE of them covered, when a clause holds more than ENTAIL_MAX_NEW_CLAUSE or the
+#     sentence more than ENTAIL_MAX_NEW uncovered content words, or when ANY uncovered word carries assertion weight:
+#     an evaluative (secure, safe, recommended, advisable, ...), an instruction (should, must, you, an imperative
+#     opening "Reinstall ...", a recommendation phrase "makes sense", "the way to go"), a name, a scope word (all,
+#     every, only, universally, ...), a comparative (than, faster, outperforms, ...), a time word (today, currently,
+#     newly, ...), a quantity in words (one, two, several, many, ...), an adjective after a copula ("is popular") or a
+#     new verb after "and" ("... and leaks memory"). These classes are checked against the claims' own text only;
+#   - polarity (_polarity): negators (not, no, never, n't, without, ...) scope forward over the next content words;
+#     privative words (lack, fail, missing, drop, remove, stop, ...) forward, and back over the subject after a copula
+#     ("is missing", "was dropped"); "not true that" negates the rest; hedge heads ("not believed to be", "not known
+#     to be") are skipped, so they never cancel a negation; a negator over an evidence word ("not established", "does
+#     not indicate") is a hedge; an even number of negators is no negation; "unX" negates X. A word the sentence
+#     negates that no cited claim negates nearby, and a word a cited claim only negates that the sentence states
+#     unnegated (whatever other negator the sentence holds), are rejected.
 # Measured on 107 kept live sentences (docs/architecture/COGNITIVE_INFERENCE.md §6): limits are lexical.
 ENTAIL_COVERAGE = 0.75     # share of a sentence's content words its cited claims (and titles) must hold
 ENTAIL_CLAUSE = 0.34       # share of each clause's content words (clauses of two or more)
+ENTAIL_MAX_NEW_CLAUSE = 1  # uncovered content words a clause may hold (an embedded whether/if question excepted)
+ENTAIL_MAX_NEW = 2         # uncovered content words a sentence may hold
 _ENTAIL_META = frozenset("""according source sources account accounts record records report reports reported reporting
 states stated says said claim claims claimed claiming note notes noted indicate indicates indicated indicating suggest
 suggests suggested suggesting write writes wrote written describe describes described description list lists listed
 mention mentions mentioned cite cites cited evidence information provided available verdict label labeled labelled
-marked another different separate one two both several multiple various other others further additional may might
-could possibly possible reportedly apparently allegedly perhaps approximately about around roughly nearly some
-estimated estimate estimates unclear uncertain unknown unconfirmed unverified insufficient disputed contested
-conflicting disagree disagreement temporally unresolved outdated established confirmed verified corroborated
-definitively conclusively independently explicitly specifically fully firmly clearly confirm confirmation remains
-remain appears appear seems seem considered regarded believed yes indeed known particularly especially supported
-unsupported backed substantiated status however although though despite while whereas also additionally furthermore
-moreover notably importantly overall thus hence therefore consequently specific exact precise lack lacks lacking
-e.g i.e etc vs cf""".split())
-_ENTAIL_META_PHRASE = re.compile(r"\b(?:out[ -]of[ -]date|temporally unresolved|single source|lower trust|this claim|"
-                                 r"the claim|in (?:certain|some) contexts|estimates (?:vary|differ)(?: widely| "
-                                 r"considerably| greatly)?)\b", re.IGNORECASE)    # a hedge: it can only weaken
+marked another different separate other others further additional may might could possibly possible reportedly
+apparently allegedly perhaps approximately about around roughly nearly some estimated estimate estimates unclear
+uncertain unknown unconfirmed unverified insufficient disputed contested conflicting disagree disagreement temporally
+unresolved established confirmed verified corroborated definitively conclusively independently explicitly specifically
+fully firmly clearly confirm confirmation remains remain appears appear seems seem yes indeed particularly especially
+status however although though despite while whereas also additionally furthermore moreover notably importantly
+overall thus hence therefore consequently specific exact precise lack lacks lacking e.g i.e etc vs cf""".split())
+_ENTAIL_META_PHRASE = re.compile(r"\b(?:(?:may|might|could) be out[ -]of[ -]date|temporally unresolved|single source|"
+                                 r"lower trust|this claim|the claim|in (?:certain|some) contexts|"
+                                 r"estimates (?:vary|differ)(?: widely| considerably| greatly)?)\b",
+                                 re.IGNORECASE)    # a hedge: it only weakens
 _EVALUATIVE = frozenset("""secure securely insecure safe safely safer safest unsafe recommended recommend recommends
 recommendation endorsed endorse endorses approved approve certified trusted trustworthy untrustworthy reliable
 unreliable stable unstable robust mature production-ready ready best worst good bad great excellent superior inferior
 ideal preferred preferable official legitimate genuine authentic vulnerable exploitable dangerous harmful malicious
 compromised backdoored risky risk-free harmless flawless perfect perfectly bug-free fixed patched audited deprecated
-obsolete broken buggy fast slow efficient inefficient accurate inaccurate correct incorrect wrong proven effective
-ineffective successful critical severe""".split())
+obsolete outdated broken buggy fast slow efficient inefficient accurate inaccurate correct incorrect wrong proven
+effective ineffective successful critical severe advisable sensible wise prudent worthwhile""".split())
 _DEONTIC = frozenset("""should must ought need needs needed required require requires mandatory advise advises advised
-urge urges urged recommend recommends recommended""".split())
+urge urges urged recommend recommends recommended advisable""".split())
 _ADDRESSEE = frozenset("you your yours yourself yourselves everyone anyone everybody anybody".split())
 _IMPERATIVE = frozenset("""install reinstall uninstall upgrade downgrade update download use avoid run execute disable
 enable switch migrate pin remove delete replace visit click contact check ensure stop apply patch deploy trust ignore
 go read see consider buy sell keep do don't never always try""".split())
+_RECOMMENDING = re.compile(r"\bmakes? (?:good )?sense\b|\bthe way (?:to go|forward)\b|\bwould do well\b|\bgo-to\b|"
+                           r"\b(?:is|are|be) worth (?:it|the|upgrading|installing|using|considering|trying)\b|"
+                           r"\bthe (?:best|right|smart|safe|wise|recommended) (?:choice|option|bet|move|path|way)\b|"
+                           r"\bshould consider\b|\bno[- ]brainer\b", re.IGNORECASE)
 _SCOPE = frozenset("""all every always any entire entirely completely totally universally only never everywhere everyone
 everything whole each none sole solely exclusively""".split())
 _COMPARATIVE = frozenset("""than better worse best worst faster slower safer safest larger largest smaller smallest
 bigger biggest newer newest older oldest higher highest lower lowest greater greatest superior inferior more less
-most least fewer fastest slowest""".split())
-_TIME = frozenset("""today yesterday tomorrow now currently current recently recent upcoming soon later earlier
+most least fewer fastest slowest surpass surpasses surpassed outperform outperforms outperformed exceed exceeds
+exceeded beats""".split())
+_TIME = frozenset("""today yesterday tomorrow now currently current recently recent newly upcoming soon later earlier
 previously formerly already week weeks month months year years ago tonight weekend latest monday tuesday wednesday
 thursday friday saturday sunday january february march april june july august september october november
 december""".split())
+_QUANTITY_WORDS = _NUMBER_WORDS | frozenset("one several multiple many numerous few various both single "
+                                            "countless".split())
 _ENTAIL_NEG = frozenset("not no never none nothing neither nor cannot without non nobody nowhere".split())
-_ENTAIL_NEG_SIGNAL = _ENTAIL_NEG | frozenset("lack lacks lacking lacked absent absence missing unavailable fail fails "
-                                             "failed".split())
-_SYNONYMS = ({"released", "published", "launched", "introduced"}, {"vary", "varies", "varied", "range", "ranges",
-             "ranging"}, {"rely", "relies", "relying", "depend", "depends", "depending", "dependent"},
-             {"billion", "bn"}, {"million", "mn"},
-             {"contains", "contain", "has", "have", "had", "includes", "include", "including", "holds"})
+_PRIVATIVE = frozenset("""lack lacks lacked lacking absent absence missing unavailable fail fails failed failing drop
+drops dropped dropping remove removes removed removing discontinue discontinues discontinued stop stops stopped
+abandon abandons abandoned withdraw withdraws withdrew withdrawn cease ceases ceased omit omits omitted exclude
+excludes excluded""".split())
+_HEDGE_HEAD = frozenset("""believed known considered thought expected said reported likely seen understood deemed
+regarded""".split())
+_SYNONYMS = ({"released", "published", "launched"}, {"vary", "varies", "varied", "range", "ranges", "ranging"},
+             {"rely", "relies", "relying", "depend", "depends", "depending", "dependent"}, {"billion", "bn"},
+             {"million", "mn"})
 _SYNONYM_OF = {w: g for g in _SYNONYMS for w in g}
 _MONTH_NAMES = "january february march april may june july august september october november december".split()
 _MODIFIER = frozenset("""specific specifically explicit explicitly clear clearly known any single reliable credible
 direct directly definitive definitively conclusive conclusively independent independently yet fully firm firmly
-much""".split())
+much official""".split())
 _META_NOUN = frozenset("""evidence source sources confirmation information data estimate estimates record records report
 reports claim claims verification proof study studies research paper papers article articles analysis analyses review
 reviews literature""".split())
+_EVIDENCE_HEAD = _META_NOUN | frozenset("""established confirmed verified corroborated supported substantiated backed
+proven indicate indicates indicated state states stated show shows shown showed mention mentions mentioned specify
+specifies specified say says said report reported provide provides provided address addresses addressed determine
+determined clarify clarified document documented""".split())
+_DROP = frozenset("drop drops dropped dropping".split())
+_AMOUNT_LEAD = frozenset("by to from below under sharply slightly".split())
+_WHOLE_CLAUSE = frozenset("true case correct accurate".split())       # "it is not true that ...": negates the rest
+_BE = frozenset("is are was were be been being am remains remain remained".split())
 _E_COPULA = frozenset("is are was were remains remained seems seemed becomes became".split())
 _E_ADVERB = frozenset("very highly widely generally largely mostly often usually also now considered described "
                       "regarded seen viewed".split())
@@ -896,9 +921,12 @@ _E_CLAUSE = re.compile(r"(?<!\d),|,(?!\d)|[;:()\[\]—–]|\s-+\s|\b(?:that|whic
                        r"but|although|though|because|since|as|so|unless|until|when|where|if|whether)\b"
                        r"|\b(?:and|or)\s+(?=(?:is|are|was|were|has|have|had|will|would|can|could|may|might|must|"
                        r"should|does|do|did|remains|seems|becomes)\b)", re.IGNORECASE)
+_E_STRONG = re.compile(r"[;:]|\b(?:but|although|though|while|whereas|because|since|unless|however|despite)\b",
+                       re.IGNORECASE)
 _E_WORD = re.compile(r"[^\W_][\w'’.-]*[^\W_]|[^\W_]")
 _E_LEAD = re.compile(r"^(?:\W*(?:however|but|still|also|so|now|please|then|first|finally|instead)\W+)+|"
                      r"^according to [^,]{0,60},\s*", re.IGNORECASE)
+_DETERMINER = frozenset("the a an its their this these those arbitrary".split())
 
 
 def _e_plain(word: str) -> str:
@@ -908,8 +936,16 @@ def _e_plain(word: str) -> str:
 
 def _e_stem(word: str) -> str:
     w = word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
+    for suffix in ("ability", "ibility", "able", "ible"):     # "exploitable" and "exploited" meet
+        if w.endswith(suffix) and len(w) - len(suffix) >= 4:
+            w = w[:-len(suffix)]
+            break
     st = T.stem(w)
     return st[:-1] if len(st) > 3 and st[-1] == st[-2] and st[-1] not in "aeiouls" else st   # running -> run
+
+
+def _verb_form(w: str) -> bool:
+    return w.endswith(("ed", "ing"))
 
 
 class _Vocabulary:
@@ -923,21 +959,17 @@ class _Vocabulary:
                 words += [p] + [x for x in re.split(r"[.\-/]", p) if x and x != p]
             words += [_MONTH_NAMES[int(m.group(1)) - 1] for m in re.finditer(r"\b(?:19|20)\d\d-(\d\d)-\d\d\b", t or "")
                       if 1 <= int(m.group(1)) <= 12]          # "dated 1999-01-01" covers "January 1, 1999"
-        self.seq = words
         self.words = set(words)
         if self.words & set(_MONTH_NAMES) or any(re.search(r"\b(?:19|20)\d\d\b", t or "") for t in texts):
             self.words |= {"date", "dated", "dates"}     # "the release date" of a claim that gives one
         self.stems = {_e_stem(w) for w in words}
-        self.joined = {a + b for a, b in zip(words, words[1:])}          # "super intelligence" -> "superintelligence"
-        self.initials = {"".join(w[0] for w in words[i:i + n]) for n in (2, 3, 4) for i in range(len(words) - n + 1)}
 
-    def covers(self, w: str, strict: bool = False, acronym: bool = False) -> bool:
+    def covers(self, w: str, strict: bool = False) -> bool:
         if w in self.words or _e_stem(w) in self.stems or (w in _SYNONYM_OF and _SYNONYM_OF[w] & self.words):
             return True
-        if strict:
+        if strict or len(w) < 6 or _verb_form(w):
             return False
-        return w in self.joined or (acronym and len(w) <= 5 and w in self.initials) or \
-            (len(w) >= 6 and any(len(c) >= 6 and c[:6] == w[:6] for c in self.words))
+        return any(len(c) >= 6 and c[:6] == w[:6] and not _verb_form(c) for c in self.words)
 
 
 def _hard_class(w: str, name: bool) -> str | None:
@@ -945,40 +977,127 @@ def _hard_class(w: str, name: bool) -> str | None:
     if name:
         return "name"
     for cls, words in (("evaluative", _EVALUATIVE), ("instruction", _DEONTIC | _ADDRESSEE), ("scope", _SCOPE),
-                       ("comparative", _COMPARATIVE), ("time", _TIME), ("number", _NUMBER_WORDS)):
+                       ("comparative", _COMPARATIVE), ("time", _TIME), ("quantity", _QUANTITY_WORDS)):
         if w in words:
             return cls
     return None
 
 
-def _negated_spans(words: list[str]) -> list[list[str]]:
-    """The content words each negator in `words` scopes over (up to 3); a negator over an evidence word ("not
-    established", "does not indicate", "does not contain information") is a hedge and yields nothing."""
-    out = []
+def _polarity(text: str, wide: bool = False):
+    """(content words as (stem, negated), one (negated stems, backward) per assertive negator with its head first, the
+    stems near any negator) for `text` — see the section comment. A word is negated when an odd number of negators
+    scope over it; a word "unX" counts as X negated. A negator scopes over its next three content words, or with
+    `wide` (the sentence side, read generously) over the rest of its clause; a privative after a copula also over
+    the subject before it (backward)."""
+    toks = [(_e_plain(m.group(0)), m.start()) for m in _E_WORD.finditer(text)]
+    words = [w for w, _ in toks]
+    cuts = [m.start() for m in _E_CLAUSE.finditer(text)]
+    strong = [m.start() for m in _E_STRONG.finditer(text)]
+
+    def content(j):
+        w = words[j]
+        return bool(w) and len(w) > 1 and not (w in T.STOPWORDS or w in _MODIFIER or w in _HEDGE_HEAD or
+                                               w in _BE or w in _ENTAIL_META or any(c.isdigit() for c in w))
+
+    def negator(j):
+        if words[j] in _DROP and j + 1 < len(words) and (words[j + 1] in _AMOUNT_LEAD or
+                                                             any(c.isdigit() for c in words[j + 1])):
+            return False                                   # "dropped by 30 percent": an amount, not a negation
+        return words[j] in _ENTAIL_NEG or words[j].endswith("n't") or words[j] in _PRIVATIVE
+
+    def about_evidence(i):
+        """The negator at i scopes over an evidence word, past modifiers ("lack recent or verified evidence")."""
+        for j in range(i + 1, min(len(words), i + 7)):
+            x = words[j]
+            if any(toks[i][1] < c <= toks[j][1] for c in cuts):
+                return False
+            if x in _EVIDENCE_HEAD:
+                return True
+            if not (x in T.STOPWORDS or x in _MODIFIER or x in _TIME or x in _BE or x in _HEDGE_HEAD or
+                    x in _ENTAIL_META):
+                return False
+        return False
+
+    count = [0] * len(words)
+    scopes, near, cancelled = [], set(), set()
     for i, w in enumerate(words):
-        if not (w in _ENTAIL_NEG or w.endswith("n't")):
+        if not negator(i) or i in cancelled:
             continue
-        span = []
-        for x in words[i + 1:i + 7]:
-            if x in T.STOPWORDS or x in _MODIFIER or x in ("be", "been", "being") or any(c.isdigit() for c in x):
+        near.update(_e_stem(x) for x in words[max(0, i - 4):i + 7])
+        if about_evidence(i):
+            continue                                       # "not established", "does not indicate": a hedge
+        scope = [j for j in range(i + 1, len(words)) if not any(toks[i][1] < c <= toks[j][1] for c in cuts) and
+                 not negator(j) and content(j)]
+        scope = scope if wide else scope[:3]
+        if scope and words[scope[0]] in _WHOLE_CLAUSE:
+            inner = [j for j in range(scope[0] + 1, len(words)) if negator(j)]
+            if inner:                                      # "not true that X is not Y": the two cancel out
+                cancelled.add(inner[0])
                 continue
-            if len(span) <= 1 and x in _META_NOUN or not span and x in _ENTAIL_META:
-                span = None
-                break
-            if x not in _ENTAIL_META:
-                span.append(x)
-            if len(span) == 3:
-                break
-        if span:
-            out.append(span)
+            scope = [j for j in range(scope[0] + 1, len(words)) if content(j) and not negator(j)]
+        backward = w in _PRIVATIVE and i > 0 and words[i - 1] in _BE | {"has", "have", "had", "still"}
+        if backward:
+            back = [j for j in range(i - 1, -1, -1) if not any(toks[j][1] < c <= toks[i][1] for c in strong)]
+            scope = [j for j in back if content(j) and not negator(j)][:8] + scope
+            near.update(_e_stem(words[j]) for j in scope)
+        for j in scope:
+            count[j] += 1
+        if scope:
+            scopes.append((scope, backward))
+    out = []
+    for j, w in enumerate(words):
+        if not content(j) or negator(j):
+            continue
+        if w.startswith("un") and len(w) > 5:
+            out.append((_e_stem(w[2:]), count[j] % 2 == 0))
+        else:
+            out.append((_e_stem(w), count[j] % 2 == 1))
+    negated = [([_e_stem(words[j]) for j in scope if count[j] % 2 == 1], backward) for scope, backward in scopes]
+    negated += [([s], False) for s, neg in out if neg and not any(s in n for n, _ in negated)]     # "unX"
+    return out, [(n, backward) for n, backward in negated if n], near
+
+
+def _role_swaps(raw: str, claim_texts) -> list[str]:
+    """A past-tense verb the sentence shares with a claim whose subject in the sentence is not its subject in the
+    claim, though the claim holds that word after the verb ("The legacy branch abandoned the maintainers" for "The
+    maintainers abandoned the legacy branch"). Passives are left alone."""
+    def split(text):
+        cuts = [m.start() for m in _E_CLAUSE.finditer(text)]
+        toks = [(_e_plain(m.group(0)), sum(1 for c in cuts if c <= m.start())) for m in _E_WORD.finditer(text)]
+        return [w for w, _ in toks], [c for _, c in toks]
+
+    def content(ws):
+        return {_e_stem(w) for w in ws if w not in T.STOPWORDS and w not in _ENTAIL_META and
+                w not in _QUANTITY_WORDS and not any(c.isdigit() for c in w) and len(w) > 1}
+    out = []
+    mine, mine_clause = split(raw)
+    for claim in claim_texts:
+        theirs, their_clause = split(claim)
+        for v in set(mine) & set(theirs):
+            if not v.endswith("ed") or v in _BE or mine.count(v) != 1 or theirs.count(v) != 1:
+                continue
+            i, k = mine.index(v), theirs.index(v)
+            if (i and mine[i - 1] in _BE) or (k and theirs[k - 1] in _BE) or "by" in mine[i + 1:i + 2] + \
+                    theirs[k + 1:k + 2]:
+                continue                                   # a passive: roles are written the other way round
+            subject = content(w for w, c in zip(mine[:i], mine_clause[:i]) if c == mine_clause[i])
+            before = content(w for w, c in zip(theirs[:k], their_clause[:k]) if c == their_clause[k])
+            after = content(theirs[k + 1:])
+            if subject and before and not subject & before and subject & after:
+                out.append(v)
     return out
 
 
 def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
     """SEC-G-E1: why `text` says more than the claims it cites (`used`) and their sources' `titles` support, or []."""
     raw = _ENTAIL_META_PHRASE.sub(" ", _outside_gaps(text, question))
-    claims = _Vocabulary([c["text"] for c in used])
-    evidence = _Vocabulary([c["text"] for c in used] + list(titles))
+    claim_texts = [c["text"] for c in used]
+    claims = _Vocabulary(claim_texts)
+    names = _Vocabulary(list(titles))
+
+    def held(p, o):
+        """`p` (written `o`) is in a cited claim (an acronym literally), or a name in a cited title."""
+        return claims.covers(p, strict=o.isupper()) or (any(c.isupper() for c in o) and names.covers(p, strict=True))
     spans = [(m.group(0), m.start()) for m in _E_WORD.finditer(raw)]
     plain = [_e_plain(w) for w, _ in spans]
     cuts = [m.start() for m in _E_CLAUSE.finditer(raw)]
@@ -992,12 +1111,12 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
                                 any(c.isdigit() for c in plain[j]))), None)
             if nxt is not None:
                 complement.add(nxt)
-    content, uncovered, clauses = [], [], {}
+    content, uncovered, clauses, new_in = [], [], {}, {}
     for k, ((w0, at), w) in enumerate(zip(spans, plain)):
         if not w or len(w) == 1 or any(c.isdigit() for c in w) or \
                 (w in _UNIT_WORDS and k and any(c.isdigit() for c in plain[k - 1])):
             continue                        # numbers and their units: the number and unit checks own them
-        special = w in _SCOPE or w in _COMPARATIVE or w in _DEONTIC or w in _ADDRESSEE
+        special = w in _SCOPE or w in _COMPARATIVE or w in _DEONTIC or w in _ADDRESSEE or w in _QUANTITY_WORDS
         if (w in T.STOPWORDS and not special) or w in _ENTAIL_META or w in _ENTAIL_NEG:
             continue
         name = any(c.isupper() for c in w0[1:]) or (w0[0].isupper() and k > 0 and spans[k - 1][0][-1:] not in ".:")
@@ -1005,23 +1124,32 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
         nxt = next((x for x in plain[k + 1:k + 5] if x in _META_NOUN or x not in ("or", "and") and
                     x not in _MODIFIER and x not in _ENTAIL_META and x not in _TIME), "")
         if cls and cls != "name" and nxt in _META_NOUN:
-            continue                        # "current evidence", "recent or verified evidence": about the evidence
+            continue                        # "one source", "recent or verified evidence": about the evidence
         parts = [p for p in re.split(r"[-/]", w) if p]
+        originals = [o for o in re.split(r"[-/]", w0) if o]
         if cls and cls != "name":
             covered = claims.covers(w, strict=True)       # assertion weight: the claims' own words only
         else:
-            originals = [o for o in re.split(r"[-/]", w0) if o]
-            covered = evidence.covers(w, acronym=w0.isupper()) or (len(parts) > 1 and all(
-                evidence.covers(p, acronym=o.isupper()) for p, o in zip(parts, originals)))
+            covered = held(w, w0) or (len(parts) > 1 and all(held(p, o) for p, o in zip(parts, originals)))
             if not covered and name and len(parts) > 1 and all(
-                    evidence.covers(p, acronym=o.isupper()) for p, o in zip(parts, originals) if o[:1].isupper()):
+                    held(p, o) for p, o in zip(parts, originals) if o[:1].isupper()):
                 cls = None                  # "AI-related": its name part is in the evidence
-        if not covered and not cls and k in complement and _ADJECTIVE.search(w):
-            cls = "predicate"
-        content.append(w)
         clause = sum(1 for c in cuts if c <= at)
+        if not covered and not cls and k in complement and _ADJECTIVE.search(w) and clause not in asked:
+            cls = "predicate"
+        if not covered and not cls and clause not in asked and k > 0 and plain[k - 1] in ("and", "or") and \
+                w.endswith(("s", "ed")) and k + 1 < len(plain) and \
+                (plain[k + 1] in _DETERMINER or plain[k + 1] not in T.STOPWORDS):
+            cls = "predicate"               # "... and leaks memory": a new verb joined to the claim's words
+        if not covered and not cls and clause not in asked and k > 0 and w.endswith(("s", "ed")) and \
+                not w.endswith("ss") and \
+                (any(c.isdigit() for c in plain[k - 1]) or spans[k - 1][0][:1].isupper()) and \
+                k + 1 < len(plain) and (plain[k + 1] in _DETERMINER or plain[k + 1] not in T.STOPWORDS):
+            cls = "predicate"               # "NumPy 2.5.5 contains the overflow": a new verb after its subject
+        content.append(w)
         if clause not in asked:                  # an embedded whether/if question asserts nothing
             clauses.setdefault(clause, []).append(covered)
+            new_in[clause] = new_in.get(clause, 0) + (not covered)
         if not covered:
             uncovered.append((w, cls))
     out = []
@@ -1029,27 +1157,44 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
     if lead and _e_plain(lead[0]) in _IMPERATIVE and not (claims.covers(_e_plain(lead[0]), strict=True) and
                                                           any(d in claims.words for d in _DEONTIC)):
         uncovered.append((_e_plain(lead[0]), "instruction"))
+    recommending = _RECOMMENDING.search(raw)
+    if recommending and not any(_RECOMMENDING.search(t) for t in claim_texts):
+        uncovered.append((recommending.group(0).lower(), "instruction"))
     instructions = [w for w, cls in uncovered if cls == "instruction"]
     if instructions:
         out.append(f"gives an instruction its cited claims do not give: {', '.join(dict.fromkeys(instructions))}")
     weighty = [w for w, cls in uncovered if cls and cls != "instruction"]
-    share = 1 - len(uncovered) / len(content) if content else 1.0
+    plain_new = [w for w, cls in uncovered if not cls and w not in instructions]
+    share = 1 - len(plain_new + weighty) / len(content) if content else 1.0
     thin = [v for v in clauses.values() if len(v) >= 2 and sum(v) / len(v) < ENTAIL_CLAUSE]
-    if weighty or share < ENTAIL_COVERAGE or thin:
-        words = weighty + [w for w, cls in uncovered if not cls and w not in instructions]
+    crowded = len(plain_new) > ENTAIL_MAX_NEW or any(n > ENTAIL_MAX_NEW_CLAUSE for n in new_in.values())
+    if weighty or share < ENTAIL_COVERAGE or thin or crowded:
+        words = weighty + plain_new
         out.append(f"says more than its cited claims support: {', '.join(list(dict.fromkeys(words))[:8])}")
-    negated_near = set()
-    for i, w in enumerate(claims.seq):
-        if w in _ENTAIL_NEG_SIGNAL or w.endswith("n't"):
-            negated_near.update(_e_stem(x) for x in claims.seq[max(0, i - 4):i + 7])
-    flips = [" ".join(span) for span in _negated_spans(plain) if not any(_e_stem(x) in negated_near for x in span)]
+    mine, mine_negated, _ = _polarity(raw, wide=True)
+    claim_words, claim_negated, claim_near = [], [], set()
+    for t in claim_texts:
+        words, negated, near = _polarity(t)
+        claim_words += words
+        claim_negated += negated
+        claim_near |= near
+    claim_negated_stems = {s for n, _ in claim_negated for s in n}
+    # the word a negator of the sentence negates first (any word, for a subject negated backward: "X is missing")
+    # must be one a cited claim negates or stands next to a negation
+    flips = [n for n, backward in mine_negated
+             if not any(s in claim_near or s in claim_negated_stems for s in (n if backward else n[:1]))]
     if flips:
-        out.append(f"negates what its cited claims do not negate: not {'; not '.join(flips)}")
-    if not any(w in _ENTAIL_NEG_SIGNAL or w.endswith("n't") for w in plain):
-        mine = {_e_stem(x) for x in plain}
-        dropped = next((span[0] for span in _negated_spans(claims.seq) if _e_stem(span[0]) in mine), None)
-        if dropped:
-            out.append(f"drops the negation of its cited claims: {dropped}")
+        out.append(f"negates what its cited claims do not negate: {'; '.join(' '.join(n) for n in flips)}")
+    # the word a negator of a cited claim negates first may not be stated unnegated, unless a claim states it so too
+    stated = {s for s, neg in claim_words if not neg}
+    denied = {s for n, _ in mine_negated for s in n}
+    dropped = [s for s, neg in mine if not neg and s in {n[0] for n, _ in claim_negated} and s not in stated and
+               s not in denied]
+    if dropped:
+        out.append(f"drops the negation of its cited claims: {', '.join(dict.fromkeys(dropped))}")
+    swaps = _role_swaps(raw, claim_texts)
+    if swaps:
+        out.append(f"changes who does what in its cited claims: {', '.join(swaps)}")
     return out
 
 
