@@ -95,8 +95,8 @@ def test_pocket_insufficient_basis_says_why_t4_04(spark, new_page):
     page = new_page(390, 844)
     page.goto(spark.url)
     pair(page)
-    page.route("**/api/research_evidence*", lambda r: r.fulfill(
-        json={"subjects": 4, "evidence": [
+    page.route("**/api/research_evidence*", lambda r: spark.fulfill_signed(r,   # as the Spark signs it (ADR-040)
+        {"subjects": 4, "evidence": [
             {"state": "insufficient", "statement": "A claim", "basis": None, "sources": 1, "domain": "one.example"},
             {"state": "insufficient", "statement": "Another claim", "basis": None, "sources": 2},
             {"state": "insufficient", "statement": "", "basis": None, "sources": 0},
@@ -287,7 +287,7 @@ def test_changed_views_axe_clean(spark, owner, new_page, width, theme):
     assert page.evaluate(AXE_ALL) == []
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     # R2-06: the evidence review with each no-basis wording
-    page.route("**/api/research_evidence*", lambda r: r.fulfill(json={"subjects": 3, "evidence": [
+    page.route("**/api/research_evidence*", lambda r: spark.fulfill_signed(r, {"subjects": 3, "evidence": [
         {"state": "insufficient", "statement": "A claim", "basis": None, "sources": 1, "domain": "one.example"},
         {"state": "insufficient", "statement": "Another claim", "basis": None, "sources": 2},
         {"state": "supported", "statement": "Third", "basis": "corroboration", "sources": 3}]}))
