@@ -40,6 +40,9 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
   - gives a number a unit (or scale) that the cited evidence does not give that number ("41 feet" when the claim
     says "41 metres", "86 neurons" vs "86 million neurons" is fine only without a unit; "$3 million" vs "3 billion"
     is not): every number with a unit must appear with the same unit in a cited claim or source title;
+  - says more than the claims it cites (SEC-G-E1, _unentailed): its content words must be covered by the cited
+    claims (and, for names and plain words, the cited titles); an uncovered evaluative, instruction, name, scope,
+    comparative, time word or number in words, a negation no cited claim makes, or a negation it drops is rejected;
   - contains instruction-like text (safety.scan_injection);
   - speculates: a prediction ("will", "likely", "may soon") is not a hedge for an unsupported claim, and a
     speculative sentence may not name anything that no cited claim or source title names (T1-09).
@@ -808,6 +811,248 @@ def _unit_mismatches(text: str, evidence: list[str]) -> list[str]:
     return bad
 
 
+# ---- entailment by content-word coverage (SEC-G-E1) ---------------------------------------------------------------
+#
+# Citing a supported claim does not make a sentence true: "NumPy is secure and recommended for all production use",
+# citing "NumPy is the fundamental package for scientific computing with Python", passed every check above. Every
+# non-caveat sentence must therefore say no more than the claims it cites. Deterministic and lexical, no model:
+#   - content words: the sentence's words without stopwords, digits (the number check owns numbers), attribution and
+#     hedge vocabulary (_ENTAIL_META: "according to one source", "states that", "may", "out of date") and the clauses
+#     of the closed caveat grammar;
+#   - a content word is covered when a cited claim holds it (exactly, by stem, singular/plural, a closed synonym
+#     group, a 6-letter common prefix, two claim words written as one, an acronym of claim words) or, for names and
+#     plain words, a cited source's title holds it;
+#   - rejected when fewer than ENTAIL_COVERAGE of the content words are covered, when a clause of two or more content
+#     words has fewer than ENTAIL_CLAUSE of them covered (a padded appositive cannot carry a new predicate), or when
+#     ANY uncovered word carries assertion weight: an evaluative (secure, safe, recommended, best, stable, ...), an
+#     instruction (should, must, you, an imperative opening: "Reinstall ..."), a name, a scope word (all, every,
+#     only, ...), a comparative (than, faster, more, ...), a time word (today, currently, last week, ...), a number in
+#     words, or an adjective after a copula ("is popular"). These hard classes are checked against the claims' own
+#     text only, never against titles;
+#   - a negator that scopes over content words no cited claim negates ("is not affected" for "is affected"), and a
+#     sentence without any negation repeating the word a cited claim negates ("is designed" for "is not designed"),
+#     are rejected. A negator over an evidence word ("not established", "does not indicate") is a hedge.
+# Measured on 107 kept live sentences (docs/architecture/COGNITIVE_INFERENCE.md §6): limits are lexical.
+ENTAIL_COVERAGE = 0.75     # share of a sentence's content words its cited claims (and titles) must hold
+ENTAIL_CLAUSE = 0.34       # share of each clause's content words (clauses of two or more)
+_ENTAIL_META = frozenset("""according source sources account accounts record records report reports reported reporting
+states stated says said claim claims claimed claiming note notes noted indicate indicates indicated indicating suggest
+suggests suggested suggesting write writes wrote written describe describes described description list lists listed
+mention mentions mentioned cite cites cited evidence information provided available verdict label labeled labelled
+marked another different separate one two both several multiple various other others further additional may might
+could possibly possible reportedly apparently allegedly perhaps approximately about around roughly nearly some
+estimated estimate estimates unclear uncertain unknown unconfirmed unverified insufficient disputed contested
+conflicting disagree disagreement temporally unresolved outdated established confirmed verified corroborated
+definitively conclusively independently explicitly specifically fully firmly clearly confirm confirmation remains
+remain appears appear seems seem considered regarded believed yes indeed known particularly especially supported
+unsupported backed substantiated status however although though despite while whereas also additionally furthermore
+moreover notably importantly overall thus hence therefore consequently specific exact precise lack lacks lacking
+e.g i.e etc vs cf""".split())
+_ENTAIL_META_PHRASE = re.compile(r"\b(?:out[ -]of[ -]date|temporally unresolved|single source|lower trust|this claim|"
+                                 r"the claim|in (?:certain|some) contexts|estimates (?:vary|differ)(?: widely| "
+                                 r"considerably| greatly)?)\b", re.IGNORECASE)    # a hedge: it can only weaken
+_EVALUATIVE = frozenset("""secure securely insecure safe safely safer safest unsafe recommended recommend recommends
+recommendation endorsed endorse endorses approved approve certified trusted trustworthy untrustworthy reliable
+unreliable stable unstable robust mature production-ready ready best worst good bad great excellent superior inferior
+ideal preferred preferable official legitimate genuine authentic vulnerable exploitable dangerous harmful malicious
+compromised backdoored risky risk-free harmless flawless perfect perfectly bug-free fixed patched audited deprecated
+obsolete broken buggy fast slow efficient inefficient accurate inaccurate correct incorrect wrong proven effective
+ineffective successful critical severe""".split())
+_DEONTIC = frozenset("""should must ought need needs needed required require requires mandatory advise advises advised
+urge urges urged recommend recommends recommended""".split())
+_ADDRESSEE = frozenset("you your yours yourself yourselves everyone anyone everybody anybody".split())
+_IMPERATIVE = frozenset("""install reinstall uninstall upgrade downgrade update download use avoid run execute disable
+enable switch migrate pin remove delete replace visit click contact check ensure stop apply patch deploy trust ignore
+go read see consider buy sell keep do don't never always try""".split())
+_SCOPE = frozenset("""all every always any entire entirely completely totally universally only never everywhere everyone
+everything whole each none sole solely exclusively""".split())
+_COMPARATIVE = frozenset("""than better worse best worst faster slower safer safest larger largest smaller smallest
+bigger biggest newer newest older oldest higher highest lower lowest greater greatest superior inferior more less
+most least fewer fastest slowest""".split())
+_TIME = frozenset("""today yesterday tomorrow now currently current recently recent upcoming soon later earlier
+previously formerly already week weeks month months year years ago tonight weekend latest monday tuesday wednesday
+thursday friday saturday sunday january february march april june july august september october november
+december""".split())
+_ENTAIL_NEG = frozenset("not no never none nothing neither nor cannot without non nobody nowhere".split())
+_ENTAIL_NEG_SIGNAL = _ENTAIL_NEG | frozenset("lack lacks lacking lacked absent absence missing unavailable fail fails "
+                                             "failed".split())
+_SYNONYMS = ({"released", "published", "launched", "introduced"}, {"vary", "varies", "varied", "range", "ranges",
+             "ranging"}, {"rely", "relies", "relying", "depend", "depends", "depending", "dependent"},
+             {"billion", "bn"}, {"million", "mn"},
+             {"contains", "contain", "has", "have", "had", "includes", "include", "including", "holds"})
+_SYNONYM_OF = {w: g for g in _SYNONYMS for w in g}
+_MONTH_NAMES = "january february march april may june july august september october november december".split()
+_MODIFIER = frozenset("""specific specifically explicit explicitly clear clearly known any single reliable credible
+direct directly definitive definitively conclusive conclusively independent independently yet fully firm firmly
+much""".split())
+_META_NOUN = frozenset("""evidence source sources confirmation information data estimate estimates record records report
+reports claim claims verification proof study studies research paper papers article articles analysis analyses review
+reviews literature""".split())
+_E_COPULA = frozenset("is are was were remains remained seems seemed becomes became".split())
+_E_ADVERB = frozenset("very highly widely generally largely mostly often usually also now considered described "
+                      "regarded seen viewed".split())
+_ADJECTIVE = re.compile(r"(?:ous|ful|ive|able|ible|al|ic|ant|ent|less|est|ar|ary|ile|ure|ly)$|^un\w+ed$")
+_E_CLAUSE = re.compile(r"(?<!\d),|,(?!\d)|[;:()\[\]—–]|\s-+\s|\b(?:that|which|who|whom|whose|while|whereas|"
+                       r"but|although|though|because|since|as|so|unless|until|when|where|if|whether)\b"
+                       r"|\b(?:and|or)\s+(?=(?:is|are|was|were|has|have|had|will|would|can|could|may|might|must|"
+                       r"should|does|do|did|remains|seems|becomes)\b)", re.IGNORECASE)
+_E_WORD = re.compile(r"[^\W_][\w'’.-]*[^\W_]|[^\W_]")
+_E_LEAD = re.compile(r"^(?:\W*(?:however|but|still|also|so|now|please|then|first|finally|instead)\W+)+|"
+                     r"^according to [^,]{0,60},\s*", re.IGNORECASE)
+
+
+def _e_plain(word: str) -> str:
+    w = word.lower().replace("’", "'").rstrip(".")
+    return w if w.endswith("n't") else w.split("'")[0]
+
+
+def _e_stem(word: str) -> str:
+    w = word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
+    st = T.stem(w)
+    return st[:-1] if len(st) > 3 and st[-1] == st[-2] and st[-1] not in "aeiouls" else st   # running -> run
+
+
+class _Vocabulary:
+    """The words of the cited evidence, for coverage (see the section comment)."""
+
+    def __init__(self, texts):
+        words = []
+        for t in texts:
+            for w in _E_WORD.findall(t or ""):
+                p = _e_plain(w)
+                words += [p] + [x for x in re.split(r"[.\-/]", p) if x and x != p]
+            words += [_MONTH_NAMES[int(m.group(1)) - 1] for m in re.finditer(r"\b(?:19|20)\d\d-(\d\d)-\d\d\b", t or "")
+                      if 1 <= int(m.group(1)) <= 12]          # "dated 1999-01-01" covers "January 1, 1999"
+        self.seq = words
+        self.words = set(words)
+        if self.words & set(_MONTH_NAMES) or any(re.search(r"\b(?:19|20)\d\d\b", t or "") for t in texts):
+            self.words |= {"date", "dated", "dates"}     # "the release date" of a claim that gives one
+        self.stems = {_e_stem(w) for w in words}
+        self.joined = {a + b for a, b in zip(words, words[1:])}          # "super intelligence" -> "superintelligence"
+        self.initials = {"".join(w[0] for w in words[i:i + n]) for n in (2, 3, 4) for i in range(len(words) - n + 1)}
+
+    def covers(self, w: str, strict: bool = False, acronym: bool = False) -> bool:
+        if w in self.words or _e_stem(w) in self.stems or (w in _SYNONYM_OF and _SYNONYM_OF[w] & self.words):
+            return True
+        if strict:
+            return False
+        return w in self.joined or (acronym and len(w) <= 5 and w in self.initials) or \
+            (len(w) >= 6 and any(len(c) >= 6 and c[:6] == w[:6] for c in self.words))
+
+
+def _hard_class(w: str, name: bool) -> str | None:
+    """The assertion-weight class of a content word, or None."""
+    if name:
+        return "name"
+    for cls, words in (("evaluative", _EVALUATIVE), ("instruction", _DEONTIC | _ADDRESSEE), ("scope", _SCOPE),
+                       ("comparative", _COMPARATIVE), ("time", _TIME), ("number", _NUMBER_WORDS)):
+        if w in words:
+            return cls
+    return None
+
+
+def _negated_spans(words: list[str]) -> list[list[str]]:
+    """The content words each negator in `words` scopes over (up to 3); a negator over an evidence word ("not
+    established", "does not indicate", "does not contain information") is a hedge and yields nothing."""
+    out = []
+    for i, w in enumerate(words):
+        if not (w in _ENTAIL_NEG or w.endswith("n't")):
+            continue
+        span = []
+        for x in words[i + 1:i + 7]:
+            if x in T.STOPWORDS or x in _MODIFIER or x in ("be", "been", "being") or any(c.isdigit() for c in x):
+                continue
+            if len(span) <= 1 and x in _META_NOUN or not span and x in _ENTAIL_META:
+                span = None
+                break
+            if x not in _ENTAIL_META:
+                span.append(x)
+            if len(span) == 3:
+                break
+        if span:
+            out.append(span)
+    return out
+
+
+def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
+    """SEC-G-E1: why `text` says more than the claims it cites (`used`) and their sources' `titles` support, or []."""
+    raw = _ENTAIL_META_PHRASE.sub(" ", _outside_gaps(text, question))
+    claims = _Vocabulary([c["text"] for c in used])
+    evidence = _Vocabulary([c["text"] for c in used] + list(titles))
+    spans = [(m.group(0), m.start()) for m in _E_WORD.finditer(raw)]
+    plain = [_e_plain(w) for w, _ in spans]
+    cuts = [m.start() for m in _E_CLAUSE.finditer(raw)]
+    asked = {i + 1 for i, c in enumerate(cuts) if re.match(r"(?:whether|if)\b", raw[c:], re.IGNORECASE)}
+    complement = set()        # the first content word after a copula: "NumPy is popular"
+    for k, w in enumerate(plain):
+        if w in _E_COPULA:
+            nxt = next((j for j in range(k + 1, min(len(plain), k + 5))
+                        if not (plain[j] in T.STOPWORDS or plain[j] in _ENTAIL_META or plain[j] in _MODIFIER or
+                                plain[j] in _ENTAIL_NEG or plain[j] in _E_ADVERB or
+                                any(c.isdigit() for c in plain[j]))), None)
+            if nxt is not None:
+                complement.add(nxt)
+    content, uncovered, clauses = [], [], {}
+    for k, ((w0, at), w) in enumerate(zip(spans, plain)):
+        if not w or len(w) == 1 or any(c.isdigit() for c in w) or \
+                (w in _UNIT_WORDS and k and any(c.isdigit() for c in plain[k - 1])):
+            continue                        # numbers and their units: the number and unit checks own them
+        special = w in _SCOPE or w in _COMPARATIVE or w in _DEONTIC or w in _ADDRESSEE
+        if (w in T.STOPWORDS and not special) or w in _ENTAIL_META or w in _ENTAIL_NEG:
+            continue
+        name = any(c.isupper() for c in w0[1:]) or (w0[0].isupper() and k > 0 and spans[k - 1][0][-1:] not in ".:")
+        cls = _hard_class(w, name)
+        nxt = next((x for x in plain[k + 1:k + 5] if x in _META_NOUN or x not in ("or", "and") and
+                    x not in _MODIFIER and x not in _ENTAIL_META and x not in _TIME), "")
+        if cls and cls != "name" and nxt in _META_NOUN:
+            continue                        # "current evidence", "recent or verified evidence": about the evidence
+        parts = [p for p in re.split(r"[-/]", w) if p]
+        if cls and cls != "name":
+            covered = claims.covers(w, strict=True)       # assertion weight: the claims' own words only
+        else:
+            originals = [o for o in re.split(r"[-/]", w0) if o]
+            covered = evidence.covers(w, acronym=w0.isupper()) or (len(parts) > 1 and all(
+                evidence.covers(p, acronym=o.isupper()) for p, o in zip(parts, originals)))
+            if not covered and name and len(parts) > 1 and all(
+                    evidence.covers(p, acronym=o.isupper()) for p, o in zip(parts, originals) if o[:1].isupper()):
+                cls = None                  # "AI-related": its name part is in the evidence
+        if not covered and not cls and k in complement and _ADJECTIVE.search(w):
+            cls = "predicate"
+        content.append(w)
+        clause = sum(1 for c in cuts if c <= at)
+        if clause not in asked:                  # an embedded whether/if question asserts nothing
+            clauses.setdefault(clause, []).append(covered)
+        if not covered:
+            uncovered.append((w, cls))
+    out = []
+    lead = _E_WORD.findall(_E_LEAD.sub("", raw.strip()))[:1]
+    if lead and _e_plain(lead[0]) in _IMPERATIVE and not (claims.covers(_e_plain(lead[0]), strict=True) and
+                                                          any(d in claims.words for d in _DEONTIC)):
+        uncovered.append((_e_plain(lead[0]), "instruction"))
+    instructions = [w for w, cls in uncovered if cls == "instruction"]
+    if instructions:
+        out.append(f"gives an instruction its cited claims do not give: {', '.join(dict.fromkeys(instructions))}")
+    weighty = [w for w, cls in uncovered if cls and cls != "instruction"]
+    share = 1 - len(uncovered) / len(content) if content else 1.0
+    thin = [v for v in clauses.values() if len(v) >= 2 and sum(v) / len(v) < ENTAIL_CLAUSE]
+    if weighty or share < ENTAIL_COVERAGE or thin:
+        words = weighty + [w for w, cls in uncovered if not cls and w not in instructions]
+        out.append(f"says more than its cited claims support: {', '.join(list(dict.fromkeys(words))[:8])}")
+    negated_near = set()
+    for i, w in enumerate(claims.seq):
+        if w in _ENTAIL_NEG_SIGNAL or w.endswith("n't"):
+            negated_near.update(_e_stem(x) for x in claims.seq[max(0, i - 4):i + 7])
+    flips = [" ".join(span) for span in _negated_spans(plain) if not any(_e_stem(x) in negated_near for x in span)]
+    if flips:
+        out.append(f"negates what its cited claims do not negate: not {'; not '.join(flips)}")
+    if not any(w in _ENTAIL_NEG_SIGNAL or w.endswith("n't") for w in plain):
+        mine = {_e_stem(x) for x in plain}
+        dropped = next((span[0] for span in _negated_spans(claims.seq) if _e_stem(span[0]) in mine), None)
+        if dropped:
+            out.append(f"drops the negation of its cited claims: {dropped}")
+    return out
+
+
 def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[dict], bool, list[str]]:
     """The objective checks of one model sentence against the bundle -> (text, cited source ids, claim ids, the
     claims used, hedged, reasons it fails). Shared by the guard and the confirmation of self-critique flags."""
@@ -886,6 +1131,8 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     mismatched = _unit_mismatches(text, [c["text"] for c in used] + [x.get("title") or "" for x in cited_sources])
     if mismatched:
         reasons.append(f"number/unit mismatch with the cited evidence: {'; '.join(mismatched)}")
+    if used and not honest_gap:          # SEC-G-E1: no more than the cited claims say
+        reasons += _unentailed(text, used, [x.get("title") or "" for x in cited_sources], question)
     if safety.scan_injection(text):
         reasons.append("instruction-like text")
     return text, cites, ids, used, is_hedged, reasons

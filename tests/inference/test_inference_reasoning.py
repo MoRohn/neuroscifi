@@ -164,9 +164,15 @@ def test_a_hedge_cannot_invent_a_disagreement_or_a_version():
         zod_bundle())
     assert [x["text"][:40] for x in ok] == ["According to one source, advisory GHSA-m",
                                             "According to one source, the advisory is"]
-    assert bad[0]["reasons"] == ["number(s) not in the cited evidence: 4.6.7"]
-    ok, bad = reasoning.guard([{"text": LIVE_ZOD, **both}], zod_bundle("contested"))   # a real conflict may say so
+    assert "number(s) not in the cited evidence: 4.6.7" in bad[0]["reasons"]   # ("affected": SEC-G-E1 too)
+    contested = ("Sources disagree on whether advisory GHSA-mrhx-c7xc-m3w5 affects zod 3.25.76; one source states "
+                 "it was fixed in version 4.6.6.")
+    ok, bad = reasoning.guard([{"text": contested, **both}], zod_bundle("contested"))   # a real conflict may say so
     assert bad == [] and ok[0]["hedged"]
+    # the live wording says "vulnerability" and "issue" where the advisory says neither (SEC-G-E1, a lexical cost)
+    ok, bad = reasoning.guard([{"text": LIVE_ZOD, **both}], zod_bundle("contested"))
+    assert ok == [] and bad[0]["reasons"] == ["says more than its cited claims support: affected, vulnerability, "
+                                              "issue"]
 
 
 def test_an_honest_insufficiency_statement_passes_but_only_on_its_own():
@@ -228,9 +234,14 @@ def test_honest_uncertainty_and_meta_statements_about_the_evidence_pass():
     b = numpy_bundle()
     ok, bad = reasoning.guard([
         {"text": "It is unclear whether numpy 2.5.5 is recommended.", "sources": [1], "claims": ["C1"]},
-        {"text": "The relevance of recent NumPy developments may be uncertain, as some claims lack recent or verified "
-                 "evidence.", "sources": [1], "claims": ["C1"]}], b)
+        {"text": "NumPy is the fundamental package for scientific computing with Python, though some claims lack "
+                 "recent or verified evidence.", "sources": [1], "claims": ["C1"]}], b)
     assert bad == [] and len(ok) == 2, bad
+    # SEC-G-E1: a meta sentence still may not add a subject its cited claim does not hold
+    ok, bad = reasoning.guard([{"text": "The relevance of recent NumPy developments may be uncertain, as some claims "
+                                        "lack recent or verified evidence.", "sources": [1], "claims": ["C1"]}], b)
+    assert ok == [] and bad[0]["reasons"] == ["says more than its cited claims support: recent, relevance, "
+                                              "developments"]
     ok, bad = reasoning.guard([
         {"text": "According to one source, numpy 2.5.5 is recommended.", "sources": [1], "claims": ["C1"]},
         {"text": "According to one source, NumPy is verified for scientific computing.", "sources": [1],
@@ -1177,7 +1188,7 @@ def test_abbreviations_do_not_split_an_answer_sentence_but_a_second_sentence_sti
     b["claims"][0] = dict(b["claims"][0], state="supported",
                           text="NumPy 2.5.5 was released on Nov. 17, 2026 by U.S.-based maintainers.")
     for text in ("NumPy 2.5.5 was released on Nov. 17, 2026 by U.S.-based maintainers.",
-                 "NumPy 2.5.5 was released on Nov. 17, 2026, e.g. with new wheels, by U.S.-based maintainers."):
+                 "NumPy 2.5.5 was released on Nov. 17, 2026, e.g. by U.S.-based maintainers."):
         ok, bad = reasoning.guard([{"text": text, "sources": [1], "claims": ["C1"]}], b)
         assert bad == [] and len(ok) == 1, bad
     for text in ("NumPy 2.5.5 was released on Nov. 17, 2026. Upgrade now.",
@@ -1187,3 +1198,180 @@ def test_abbreviations_do_not_split_an_answer_sentence_but_a_second_sentence_sti
     ok, bad = reasoning.guard([{"text": "No source states whether numpy 2.5.5 is recommended, e.g. for production.",
                                 "sources": [], "claims": []}], numpy_bundle())
     assert ok == [], ok
+
+
+# ---- SEC-G-E1: a sentence may say no more than the claims it cites ----------------------------------------------
+
+ENTAIL_CLAIMS = {
+    "C1": ("NumPy is the fundamental package for scientific computing with Python.", [1]),
+    "C2": ("NumPy 2.5.4 is affected by CVE-2026-1234, a buffer overflow in the string parser.", [2]),
+    "C3": ("NumPy 2.5.5 was released on 15 November 2026 and fixes bugs discovered after the 2.5.4 release.", [3]),
+    "C4": ("The new parser in NumPy 2.5.5 reduces memory use by 30 percent.", [3]),
+    "C5": ("Python was first released in February 1991 by Guido van Rossum.", [4]),
+    "C6": ("Users should upgrade to NumPy 2.5.5 to fix the overflow.", [2]),
+    "C7": ("NumPy is not designed to be exposed directly to untrusted users.", [5])}
+ENTAIL_TITLES = {1: "NumPy", 2: "NumPy security advisory", 3: "NumPy 2.5.5 release notes", 4: "History of Python",
+                 5: "NumPy security"}
+
+
+def entail_guard(text, claims):
+    """Every claim SUPPORTED: before SEC-G-E1 each attack below passed the guard."""
+    b = {"question": SEC_Q, "verdict": None,
+         "claims": [{"id": k, "state": "supported", "sources": s, "published": None, "event": None, "text": t}
+                    for k, (t, s) in ENTAIL_CLAIMS.items()],
+         "sources": [{"id": n, "title": t, "published": "undated"} for n, t in ENTAIL_TITLES.items()]}
+    sources = sorted({n for c in claims for n in ENTAIL_CLAIMS[c][1]})
+    return reasoning.guard([{"text": text, "sources": sources, "claims": claims}], b)
+
+
+def test_e1_a_supported_citation_does_not_carry_a_new_judgement_or_instruction():
+    """SEC-G-E1 (pre-existing since ADR-036): citing ANY supported claim let any sentence through."""
+    ok, bad = entail_guard("NumPy is secure and recommended for all production use.", ["C1"])
+    assert ok == [] and bad[0]["reasons"] == [
+        "says more than its cited claims support: secure, recommended, all, production, use"]
+    ok, bad = entail_guard("Users should reinstall NumPy from the official mirror immediately.", ["C1"])
+    assert ok == [] and bad[0]["reasons"][0] == "gives an instruction its cited claims do not give: should"
+
+
+def test_e1_r5_o1_a_title_record_does_not_support_a_claim_about_the_figure():
+    """R5-O1 (live, retest/r5/ev/n2_2.json): a kept sentence cited a Crossref title record that says no such thing."""
+    title = ("Mapping how the 100 billion cells in the brain all fit together is the brave new world of "
+             "neuroscience")
+    b = {"question": "The human brain contains 100 billion neurons.",
+         "verdict": {"label": "disputed", "state": "disputed", "statement": "The human brain contains 100 billion "
+                                                                             "neurons."},
+         "claims": [{"id": "C4", "state": "insufficient", "sources": [3], "published": "2021-11-18",
+                     "event": "2021-11-18", "text": f'Crossref record: "{title}", dated 2021-11-18.'}],
+         "sources": [{"id": 3, "title": title, "published": "2021-11-18"}]}
+    ok, bad = reasoning.guard([{"text": "Another source states that the widely accepted figure of 100 billion neurons "
+                                        "in the human brain is not definitively established.",
+                                "sources": [3], "claims": ["C4"]}], b)
+    assert ok == [] and bad[0]["reasons"] == [
+        "says more than its cited claims support: widely, accepted, figure, neurons, human"]
+
+
+ENTAIL_ATTACKS = [
+    # an evaluative added to a neutral claim
+    ("NumPy is the most secure package for scientific computing with Python.", ["C1"]),
+    ("NumPy is a safe package for scientific computing with Python.", ["C1"]),
+    ("NumPy is the recommended package for scientific computing with Python.", ["C1"]),
+    ("NumPy 2.5.5 was released on 15 November 2026 and is stable.", ["C3"]),
+    ("NumPy is the fundamental and trusted package for scientific computing with Python.", ["C1"]),
+    ("According to one source, NumPy may be secure.", ["C1"]),
+    ("NumPy, the fundamental package for scientific computing with Python, is popular.", ["C1"]),
+    # an instruction
+    ("Upgrade to NumPy 2.5.5, which fixes bugs discovered after the 2.5.4 release.", ["C3"]),
+    ("You must install NumPy, the fundamental package for scientific computing with Python.", ["C1"]),
+    ("Everyone should use NumPy for scientific computing with Python.", ["C1"]),
+    ("Users need to uninstall NumPy 2.5.4, which is affected by CVE-2026-1234.", ["C2"]),
+    ("Avoid NumPy 2.5.4, which is affected by CVE-2026-1234.", ["C2"]),
+    # a new entity
+    ("NumPy, maintained by Google, is the fundamental package for scientific computing with Python.", ["C1"]),
+    ("NumPy 2.5.4 is affected by CVE-2026-1234, a buffer overflow Microsoft found in the string parser.", ["C2"]),
+    ("According to NIST, NumPy is the fundamental package for scientific computing with Python.", ["C1"]),
+    # a negation flip, both ways
+    ("NumPy 2.5.4 is not affected by CVE-2026-1234.", ["C2"]),
+    ("NumPy 2.5.5 does not fix bugs discovered after the 2.5.4 release.", ["C3"]),
+    ("No buffer overflow affects the string parser of NumPy 2.5.4.", ["C2"]),
+    ("NumPy is designed to be exposed directly to untrusted users.", ["C7"]),
+    # a scope change
+    ("All versions of NumPy are affected by CVE-2026-1234, a buffer overflow in the string parser.", ["C2"]),
+    ("Every NumPy release is affected by CVE-2026-1234.", ["C2"]),
+    ("NumPy 2.5.5 fixes all bugs discovered after the 2.5.4 release.", ["C3"]),
+    ("Only NumPy 2.5.4 is affected by CVE-2026-1234.", ["C2"]),
+    # a comparative
+    ("The new parser in NumPy 2.5.5 is faster than the old parser.", ["C4"]),
+    ("The new parser in NumPy 2.5.5 uses less memory than PyTorch.", ["C4"]),
+    ("NumPy is better than other packages for scientific computing with Python.", ["C1"]),
+    # a time shift
+    ("NumPy 2.5.5 was released yesterday and fixes bugs discovered after the 2.5.4 release.", ["C3"]),
+    ("NumPy 2.5.4 is currently affected by CVE-2026-1234.", ["C2"]),
+    ("Python was first released in February 1991 by Guido van Rossum and is still maintained today.", ["C5"]),
+    ("Python was first released last week by Guido van Rossum.", ["C5"]),
+    # padding a new predicate with the claim's words, an implication, a number in words
+    ("According to one source, NumPy, the fundamental package for scientific computing with Python, protects "
+     "against attacks.", ["C1"]),
+    ("NumPy is the fundamental package for scientific computing with Python and is unaffected by attacks.", ["C1"]),
+    ("NumPy 2.5.5 fixes bugs discovered after the 2.5.4 release, so it is safe to deploy.", ["C3"]),
+    ("NumPy 2.5.4 is affected by CVE-2026-1234, so NumPy 2.5.5 is secure.", ["C2", "C3"]),
+    ("NumPy 2.5.5 fixes twelve bugs discovered after the 2.5.4 release.", ["C3"]),
+]
+
+
+@pytest.mark.parametrize("text, claims", ENTAIL_ATTACKS)
+def test_e1_entailment_attacks_are_rejected(text, claims):
+    ok, bad = entail_guard(text, claims)
+    assert ok == [] and any(r.startswith(("says more than its cited claims support", "gives an instruction",
+                                          "negates what", "drops the negation")) for r in bad[0]["reasons"]), bad
+
+
+ENTAIL_FAITHFUL = [
+    ("According to one source, NumPy is the fundamental package for scientific computing with Python.", ["C1"]),
+    ("NumPy is a fundamental package for scientific computing in Python.", ["C1"]),
+    ("NumPy 2.5.4 is affected by CVE-2026-1234, a buffer overflow in its string parser.", ["C2"]),
+    ("A buffer overflow in the string parser, CVE-2026-1234, affects NumPy 2.5.4.", ["C2"]),
+    ("The string parser of NumPy 2.5.4 has a buffer overflow, CVE-2026-1234.", ["C2"]),
+    ("NumPy 2.5.5 was published on 15 November 2026.", ["C3"]),                        # a synonym
+    ("NumPy 2.5.5 came out on 15 November 2026, according to its release notes.", ["C3"]),
+    ("Released on 15 November 2026, NumPy 2.5.5 fixes bugs found after the 2.5.4 release.", ["C3"]),
+    ("The 2.5.5 release of NumPy, published 15 November 2026, fixes bugs discovered after 2.5.4.", ["C3"]),
+    ("Another source reports that NumPy 2.5.5 fixes bugs that were discovered after the 2.5.4 release.", ["C3"]),
+    ("According to the release notes, the new parser in NumPy 2.5.5 cuts memory use by 30 percent.", ["C4"]),
+    ("According to one source, NumPy 2.5.5 reduces the memory use of its new parser by 30 percent.", ["C4"]),
+    ("Python was first released by Guido van Rossum in February 1991.", ["C5"]),
+    ("Guido van Rossum first published Python in February 1991, one source says.", ["C5"]),
+    ("Python, first released in February 1991, was created by Guido van Rossum.", ["C5"]),
+    ("NumPy is not designed to be exposed directly to untrusted users.", ["C7"]),     # the claim's own negation
+    ("According to the advisory, users should upgrade to NumPy 2.5.5 to fix the overflow.", ["C6"]),  # its instruction
+    ("NumPy 2.5.4 is affected by a buffer overflow, but NumPy 2.5.5 fixes bugs discovered after the 2.5.4 release.",
+     ["C2", "C3"]),
+]
+
+
+@pytest.mark.parametrize("text, claims", ENTAIL_FAITHFUL)
+def test_e1_faithful_paraphrases_pass(text, claims):
+    ok, bad = entail_guard(text, claims)
+    assert bad == [] and len(ok) == 1, bad
+
+
+@pytest.mark.parametrize("text, claim, title", [
+    # kept live sentences (docs/architecture/COGNITIVE_INFERENCE.md §6 replay) that must stay kept
+    ("According to one source, there are no known vulnerabilities affecting NumPy 2.5.5, though this information may "
+     "be out of date.", "There are 8 total vulnerabilities, but none affect the latest version (2.5.5)",
+     "numpy | Snyk"),
+    ("According to one source, the human brain may contain around 86 billion neurons, though estimates vary between "
+     "61 and 99 billion.", "Through statistical analysis and comparison of different studies, Alain Goriely challenges "
+     "the widely accepted figure of 86 billion neurons in the human brain, and argues that the actual number is "
+     "uncertain, with estimates ranging between 61 and 99 billion.", "Eighty-six billion and counting"),
+    ("However, one source notes that some programs may break or misbehave, particularly those relying on map "
+     "iteration order, and recommends manual verification.", "Most existing code will be unaffected, but some programs "
+     "may break or misbehave; we recommend manual checking of all range statements over maps to verify they do not "
+     "depend on iteration order.", "Go 1 Release Notes - The Go Programming Language"),
+    ("This marks the second recent claim by an AI company or affiliated individual of solving a famed unsolved math "
+     "problem.", "It marks the second time in recent months that an AI company or someone linked to one claims to have "
+     "cracked a famed unsolved math problem.", "Anthropic worker claims to have solved a Holy Grail of math problems "
+     "with the help of AI | CNN Business"),
+    ("According to one source, Rao and Ballard's paper describes predictive coding in the visual cortex.",
+     'Crossref record: "Predictive coding in the visual cortex: a functional interpretation of some extra-classical '
+     'receptive-field effects", dated 1999-01-01.', "Rao and Ballard 1999"),
+])
+def test_e1_live_faithful_sentences_stay_kept(text, claim, title):
+    b = {"question": "q", "verdict": None, "sources": [{"id": 1, "title": title, "published": "undated"}],
+         "claims": [{"id": "C1", "state": "supported", "sources": [1], "published": None, "event": None,
+                     "text": claim}]}
+    ok, bad = reasoning.guard([{"text": text, "sources": [1], "claims": ["C1"]}], b)
+    assert bad == [] and len(ok) == 1, bad
+
+
+def test_e1_caveats_and_hedges_over_the_evidence_are_not_judged_as_assertions():
+    """A caveat of the closed grammar asserts nothing (no coverage needed), alone or beside a factual clause; a negator
+    over an evidence word ("not yet independently confirmed") is a hedge, not a negation of the claim."""
+    b = r5_bundle(SEC_Q)
+    for text, claims, sources in (
+            ("No source states whether numpy 2.5.5 is secure.", ["C1"], [1]),
+            ("According to one source, the release is unusually large for a patch release, but the evidence does not "
+             "state whether numpy 2.5.5 is secure.", ["C7"], [2]),
+            ("One source says fixes cover string handling and threading, which is not yet independently confirmed.",
+             ["C8"], [2])):
+        ok, bad = reasoning.guard([{"text": text, "sources": sources, "claims": claims}], b)
+        assert bad == [] and len(ok) == 1, (text, bad)
