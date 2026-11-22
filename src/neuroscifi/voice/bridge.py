@@ -42,6 +42,11 @@ LABEL_MODEL = ("Model-written summary by {model} from the collected evidence; ea
 STATE_MARKS = {"insufficient": "only one source or too little evidence; not independently confirmed",
                "temporally_unresolved": "not established as current", "conflicting": "sources conflict",
                "disputed": "disputed by other sources", "not_evaluated": "not checked against other sources"}
+# A command recognised only by spelling similarity (commands.FUZZY_MIN) runs after a confirmation when it does more
+# than stop or resume speech or show something; the sensitive commands ask for confirmation in any case.
+CONFIRM_IF_FUZZY = {"cancel_research": "cancel the research that is running",
+                    "continue_research": "continue the previous investigation",
+                    "mode": "change the voice mode", "disable_autonomy": "turn off autonomous research"}
 HELP = ("You can ask a question or say: research followed by a topic, show evidence, explain more simply, "
         "remember conclusions, what have you learned since yesterday, what was I researching, continue previous "
         "investigation, stop, "
@@ -267,6 +272,10 @@ class Bridge:
                 return _say("clarify", follow["clarify"])
             return self._submit(db, principal, ctx, follow["question"] if follow else intent.arg,
                                 instruction=intent.instruction)
+        if intent.fuzzy and intent.kind in CONFIRM_IF_FUZZY:
+            what = CONFIRM_IF_FUZZY[intent.kind] + (f" ({intent.arg.replace('_', ' ')})" if intent.arg else "")
+            return self._confirm(intent.kind, "intent", {"kind": intent.kind, "arg": intent.arg},
+                                 f"I heard \"{' '.join(text.split())[:80]}\". Did you mean: {what}?")
         handler = getattr(self, "_" + intent.kind)
         return handler(db, principal, ctx, intent.arg)
 
@@ -299,6 +308,8 @@ class Bridge:
                 except InstanceError:
                     continue
             out = _say("remember", f"I accepted {done} conclusion{'s' if done != 1 else ''} into memory.")
+        elif action == "intent" and args.get("kind") in CONFIRM_IF_FUZZY:   # a fuzzy match the owner confirmed
+            out = getattr(self, "_" + args["kind"])(db, principal, ctx, args.get("arg"))
         elif action == "handoff":
             out = Reply("handoff", speech=["The microphone is now on this device."],
                         text="Microphone moved to this device.", actions=[{"kind": "handoff"}])

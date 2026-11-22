@@ -1,0 +1,257 @@
+{
+ "about": "Fresh held-out set (docs/voice/VOICE_VALIDATION.md): written by a third, separate model instance in ASR style (lower case, no punctuation) from the intent descriptions only, AFTER the grammar changes were finished; evaluated once and never used to change the grammar. intent 'none' = must not become a command.",
+ "commands": [
+  [
+   "stop",
+   "stop_speaking"
+  ],
+  [
+   "okay stop talking",
+   "stop_speaking"
+  ],
+  [
+   "um stop right there",
+   "stop_speaking"
+  ],
+  [
+   "hold on stop",
+   "stop_speaking"
+  ],
+  [
+   "can you be quiet now",
+   "stop_speaking"
+  ],
+  [
+   "stop talking now",
+   "stop_speaking"
+  ],
+  [
+   "quiet",
+   "stop_speaking"
+  ],
+  [
+   "continue",
+   "resume_speaking"
+  ],
+  [
+   "okay keep going",
+   "resume_speaking"
+  ],
+  [
+   "go on so",
+   "resume_speaking"
+  ],
+  [
+   "resume",
+   "resume_speaking"
+  ],
+  [
+   "sorry go ahead and continue",
+   "resume_speaking"
+  ],
+  [
+   "keep talking",
+   "resume_speaking"
+  ],
+  [
+   "um continue reading please",
+   "resume_speaking"
+  ],
+  [
+   "what did i research earlier",
+   "history"
+  ],
+  [
+   "so what have i asked you today",
+   "history"
+  ],
+  [
+   "show my history",
+   "history"
+  ],
+  [
+   "what were my previous questions",
+   "history"
+  ],
+  [
+   "um what did we look up before",
+   "history"
+  ],
+  [
+   "list the things i searched for",
+   "history"
+  ],
+  [
+   "what topics did i research last week",
+   "history"
+  ],
+  [
+   "what are your sources for that",
+   "show_evidence"
+  ],
+  [
+   "show me the evidence",
+   "show_evidence"
+  ],
+  [
+   "where did that come from",
+   "show_evidence"
+  ],
+  [
+   "give me the citations",
+   "show_evidence"
+  ],
+  [
+   "um what is the source on that",
+   "show_evidence"
+  ],
+  [
+   "link me to the studies",
+   "show_evidence"
+  ],
+  [
+   "how do you know that is true",
+   "show_evidence"
+  ],
+  [
+   "explain that more simply",
+   "simpler"
+  ],
+  [
+   "say that simpler",
+   "simpler"
+  ],
+  [
+   "that is too complicated make it simple",
+   "simpler"
+  ],
+  [
+   "eli5 that please",
+   "simpler"
+  ],
+  [
+   "can you put that in simpler words",
+   "simpler"
+  ],
+  [
+   "uh say it in plain english",
+   "simpler"
+  ],
+  [
+   "make it simpler for me",
+   "simpler"
+  ],
+  [
+   "cancel the research",
+   "cancel_research"
+  ],
+  [
+   "stop the research now",
+   "cancel_research"
+  ],
+  [
+   "cancel that search",
+   "cancel_research"
+  ],
+  [
+   "abort the research run",
+   "cancel_research"
+  ],
+  [
+   "um cancel the current research",
+   "cancel_research"
+  ],
+  [
+   "kill the research job",
+   "cancel_research"
+  ],
+  [
+   "cancel research",
+   "cancel_research"
+  ],
+  [
+   "what can you do",
+   "help"
+  ],
+  [
+   "help",
+   "help"
+  ],
+  [
+   "what commands are there",
+   "help"
+  ],
+  [
+   "list your commands",
+   "help"
+  ],
+  [
+   "um what can i ask you",
+   "help"
+  ],
+  [
+   "how do i use this",
+   "help"
+  ],
+  [
+   "what are the voice commands",
+   "help"
+  ],
+  [
+   "no",
+   "deny"
+  ],
+  [
+   "no don't",
+   "deny"
+  ],
+  [
+   "nope cancel that",
+   "deny"
+  ],
+  [
+   "no keep it",
+   "deny"
+  ],
+  [
+   "uh no not that one",
+   "deny"
+  ],
+  [
+   "negative",
+   "deny"
+  ],
+  [
+   "no way",
+   "deny"
+  ]
+ ],
+ "ordinary": [
+  "how do i stop my sink from leaking",
+  "what is the evidence for vitamin d and mood",
+  "can you explain how neurons fire in plain terms",
+  "history of the roman empire in brief",
+  "wait what time is the meeting tomorrow",
+  "research on sleep and memory consolidation",
+  "help me understand synaptic plasticity",
+  "my cat goes quiet whenever i enter the room",
+  "what sources do journals use for peer review",
+  "the continue button on my router is broken",
+  "how long does a cancel refund take on amazon",
+  "is caffeine a stimulus that affects focus",
+  "quiet hours on my phone are not working",
+  "i want to know the history of the telescope",
+  "find studies about meditation and attention",
+  "what does an evidence based diet mean",
+  "how do i cancel my gym membership",
+  "my research paper is due on friday",
+  "simple brain exercises for older adults",
+  "is it safe to stop taking blood pressure pills suddenly",
+  "tell me about the history of the printing press",
+  "why do people continue to believe in myths",
+  "the sources of the river are in the alps",
+  "how do you help a child with dyslexia",
+  "stop by the store on the way home",
+  "they cancelled the conference because of the storm"
+ ]
+}
