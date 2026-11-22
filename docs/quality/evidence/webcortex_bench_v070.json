@@ -3,7 +3,7 @@
  "version": 1,
  "label": "offline benchmark: fictional corpus served by FixtureWeb through the real SafeFetcher; search is CorpusProvider (BM25 over title and snippet); no network; latency is wall-clock on this host",
  "quick": false,
- "generated_at": "2026-11-21T22:49:41Z",
+ "generated_at": "2026-11-22T05:42:44Z",
  "environment": {
   "host_digest": "382a803dcc0d",
   "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
@@ -20,7 +20,7 @@
    "markdownify": "1.2.4",
    "playwright": "1.64.1"
   },
-  "git_commit": "4c3f209",
+  "git_commit": "5f28e6b",
   "git_dirty": true
  },
  "corpus": {
@@ -1581,31 +1581,30 @@
     "auto_provisional_min_confidence": 0.72
    },
    "counts": {
-    "contested": 22,
-    "pending": 28,
-    "provisional": 8,
+    "contested": 20,
+    "pending": 26,
+    "provisional": 7,
     "strengthened": 0,
     "superseded": 0
    },
    "held_reasons": {
-    "N independent source(s) < N required (single source that is not an authoritative record)": 251,
-    "verification state insufficient (N independent group(s) support, N contradict; posterior N (stable: N group(s) needed)): kept as a research opportunity, not knowledge": 103,
-    "verification state insufficient (N independent group(s) support, N contradict; posterior N (historical: N group(s) needed)): kept as a research opportunity, not knowledge": 85,
-    "verification state temporally_unresolved (N independent group(s) support, N contradict; posterior N (time_sensitive: N group(s) needed, undated sources do not count)): kept as a research opportunity, not knowledge": 48,
-    "N independent source(s) < N required": 48,
-    "no source dated inside the time window establishes that it holds now": 48,
-    "verification state insufficient (N independent group(s) support, N contradict; posterior N (numerical: N group(s) needed)): kept as a research opportunity, not knowledge": 37,
-    "every claim comes from a source with instruction-like content (held, never knowledge)": 29,
-    "verification state insufficient (N independent group(s) support, N contradict; posterior N (time_sensitive: N group(s) needed, undated sources do not count)): kept as a research opportunity, not knowledge": 14,
-    "verification state insufficient (N independent group(s) support, N contradict; posterior N (comparative: N group(s) needed)): kept as a research opportunity, not knowledge": 7,
+    "N independent source(s) < N required (single source that is not an authoritative record)": 178,
+    "read, not cited: about another entity than the question's": 87,
+    "verification state insufficient (N independent group(s) support, N contradict; posterior N (stable: N group(s) needed)): kept as a research opportunity, not knowledge": 76,
+    "verification state insufficient (N independent group(s) support, N contradict; posterior N (historical: N group(s) needed)): kept as a research opportunity, not knowledge": 54,
+    "verification state temporally_unresolved (N independent group(s) support, N contradict; posterior N (time_sensitive: N group(s) needed, undated sources do not count)): kept as a research opportunity, not knowledge": 41,
+    "N independent source(s) < N required": 41,
+    "no source dated inside the time window establishes that it holds now": 41,
+    "every claim comes from a source with instruction-like content (held, never knowledge)": 28,
+    "verification state insufficient (N independent group(s) support, N contradict; posterior N (numerical: N group(s) needed)): kept as a research opportunity, not knowledge": 26,
+    "verification state insufficient (N independent group(s) support, N contradict; posterior N (time_sensitive: N group(s) needed, undated sources do not count)): kept as a research opportunity, not knowledge": 13,
+    "verification state insufficient (N independent group(s) support, N contradict; posterior N (comparative: N group(s) needed)): kept as a research opportunity, not knowledge": 6,
     "verification state not_evaluated (not evaluated: a judgement ('should') is not a checkable fact): kept as a research opportunity, not knowledge": 6,
-    "verification state insufficient (N independent group(s) support, N contradict; posterior N (scientific: N group(s) needed)): kept as a research opportunity, not knowledge": 5,
-    "not a specific, well-formed claim (off the question's subject (relevance N < N)): kept as a claim, no owner question": 4,
-    "verification state not_evaluated (not evaluated: a judgement ('better') is not a checkable fact): kept as a research opportunity, not knowledge": 2,
-    "verification state not_evaluated (not evaluated: a judgement ('good') is not a checkable fact): kept as a research opportunity, not knowledge": 1,
+    "read, not cited: never names the checked statement's subject": 4,
+    "verification state insufficient (N independent group(s) support, N contradict; posterior N (scientific: N group(s) needed)): kept as a research opportunity, not knowledge": 3,
     "verification state not_evaluated (not evaluated: a judgement ('important') is not a checkable fact): kept as a research opportunity, not knowledge": 1
    },
-   "knowledge_rows": 8
+   "knowledge_rows": 7
   },
   "usage_per_task": {
    "queries": {
@@ -1709,12 +1708,11 @@
    "config": {
     "auto_provisional_min_confidence": 0.0
    },
-   "accepted_items": 8,
-   "live_items": 8,
+   "accepted_items": 7,
+   "live_items": 7,
    "statements": [
-    "At the 2025 census Tessaly had a population of 248,000 residents.",
-    "Brisa is a general-purpose programming language for embedded devices.",
     "By default, the Orbix server listens on port 7420 for client connections.",
+    "Fennick is an incremental build tool for polyglot repositories.",
     "Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
     "PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
     "Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region.",
@@ -1722,10 +1720,11 @@
     "The Tolvane Lighthouse was built in 1874 by the Ostra Harbour Board."
    ],
    "queries": 11,
-   "queries_with_gold_in_memory": 4,
+   "queries_with_gold_in_memory": 3,
    "queries_without_gold_in_memory": [
     "M01",
     "M02",
+    "M03",
     "M04",
     "M05",
     "M09",
@@ -1757,11 +1756,11 @@
     {
      "id": "M03",
      "query": "Tessaly population",
-     "gold_items": 1,
-     "returned": 1,
-     "first_relevant_rank": 1,
-     "recall_at_3": 1.0,
-     "reciprocal_rank": 1.0
+     "gold_items": 0,
+     "returned": 0,
+     "first_relevant_rank": null,
+     "recall_at_3": null,
+     "reciprocal_rank": null
     },
     {
      "id": "M04",
@@ -1794,7 +1793,7 @@
      "id": "M07",
      "query": "Kestrel programming language creator",
      "gold_items": 1,
-     "returned": 2,
+     "returned": 1,
      "first_relevant_rank": 1,
      "recall_at_3": 1.0,
      "reciprocal_rank": 1.0
@@ -6184,213 +6183,213 @@
    "per_mode_seconds": {
     "fact_verification": {
      "n": 25,
-     "p50": 0.0543,
-     "p95": 0.1576,
-     "mean": 0.0673,
-     "max": 0.1746
+     "p50": 0.0554,
+     "p95": 0.1545,
+     "mean": 0.0654,
+     "max": 0.1613
     },
     "quick_lookup": {
      "n": 16,
-     "p50": 0.0263,
-     "p95": 0.1465,
+     "p50": 0.0264,
+     "p95": 0.147,
      "mean": 0.0407,
-     "max": 0.1481
+     "max": 0.1488
     },
     "scientific": {
      "n": 1,
-     "p50": 0.0634,
-     "p95": 0.0634,
-     "mean": 0.0634,
-     "max": 0.0634
+     "p50": 0.0653,
+     "p95": 0.0653,
+     "mean": 0.0653,
+     "max": 0.0653
     },
     "technical": {
      "n": 9,
-     "p50": 0.08,
-     "p95": 0.1722,
-     "mean": 0.0931,
-     "max": 0.2312
+     "p50": 0.0732,
+     "p95": 0.1689,
+     "mean": 0.0886,
+     "max": 0.2303
     }
    },
    "all_tasks_seconds": {
     "n": 51,
-    "p50": 0.0541,
-    "p95": 0.1553,
-    "mean": 0.0634,
-    "max": 0.2312
+    "p50": 0.0548,
+    "p95": 0.153,
+    "mean": 0.0618,
+    "max": 0.2303
    },
    "extraction_ms": {
     "scrapling": {
      "n": 61,
-     "p50": 0.5829,
-     "p95": 0.8753,
-     "mean": 0.6111,
-     "max": 1.0111
+     "p50": 0.662,
+     "p95": 1.2656,
+     "mean": 0.7415,
+     "max": 1.8256
     },
     "trafilatura": {
      "n": 61,
-     "p50": 1.3662,
-     "p95": 3.805,
-     "mean": 1.8547,
-     "max": 4.2349
+     "p50": 1.9223,
+     "p95": 3.7007,
+     "mean": 2.1212,
+     "max": 4.3921
     },
     "auto": {
      "n": 61,
-     "p50": 0.6677,
-     "p95": 3.691,
-     "mean": 1.1726,
-     "max": 4.1585
-    }
-   },
-   "probe_seconds": {
-    "html_bomb_extract": 0.227,
-    "js_render": 1.231
-   },
-   "run_seconds": 8.819
-  },
-  {
-   "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
-   "per_mode_seconds": {
-    "fact_verification": {
-     "n": 25,
-     "p50": 0.0549,
-     "p95": 0.1541,
-     "mean": 0.065,
-     "max": 0.1701
-    },
-    "quick_lookup": {
-     "n": 16,
-     "p50": 0.0275,
-     "p95": 0.1467,
-     "mean": 0.0413,
-     "max": 0.153
-    },
-    "scientific": {
-     "n": 1,
-     "p50": 0.0649,
-     "p95": 0.0649,
-     "mean": 0.0649,
-     "max": 0.0649
-    },
-    "technical": {
-     "n": 9,
-     "p50": 0.085,
-     "p95": 0.111,
-     "mean": 0.0854,
-     "max": 0.1195
-    }
-   },
-   "all_tasks_seconds": {
-    "n": 51,
-    "p50": 0.0533,
-    "p95": 0.1504,
-    "mean": 0.0612,
-    "max": 0.1701
-   },
-   "extraction_ms": {
-    "scrapling": {
-     "n": 61,
-     "p50": 0.6695,
-     "p95": 1.7542,
-     "mean": 0.8315,
-     "max": 2.1954
-    },
-    "trafilatura": {
-     "n": 61,
-     "p50": 1.9414,
-     "p95": 3.9208,
-     "mean": 2.2242,
-     "max": 4.7758
-    },
-    "auto": {
-     "n": 61,
-     "p50": 0.965,
-     "p95": 3.6449,
-     "mean": 1.3184,
-     "max": 3.9405
-    }
-   },
-   "probe_seconds": {
-    "html_bomb_extract": 0.179,
-    "js_render": 1.193
-   },
-   "run_seconds": 8.649
-  },
-  {
-   "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
-   "per_mode_seconds": {
-    "fact_verification": {
-     "n": 25,
-     "p50": 0.0529,
-     "p95": 0.1528,
-     "mean": 0.0652,
-     "max": 0.1682
-    },
-    "quick_lookup": {
-     "n": 16,
-     "p50": 0.0258,
-     "p95": 0.151,
-     "mean": 0.0406,
-     "max": 0.156
-    },
-    "scientific": {
-     "n": 1,
-     "p50": 0.0902,
-     "p95": 0.0902,
-     "mean": 0.0902,
-     "max": 0.0902
-    },
-    "technical": {
-     "n": 9,
-     "p50": 0.0766,
-     "p95": 0.0855,
-     "mean": 0.0758,
-     "max": 0.0897
-    }
-   },
-   "all_tasks_seconds": {
-    "n": 51,
-    "p50": 0.0524,
-    "p95": 0.1522,
-    "mean": 0.0599,
-    "max": 0.1682
-   },
-   "extraction_ms": {
-    "scrapling": {
-     "n": 61,
-     "p50": 0.6833,
-     "p95": 1.7643,
-     "mean": 0.8497,
-     "max": 2.1985
-    },
-    "trafilatura": {
-     "n": 61,
-     "p50": 1.9572,
-     "p95": 3.7333,
-     "mean": 2.2315,
-     "max": 4.8281
-    },
-    "auto": {
-     "n": 61,
-     "p50": 0.9587,
-     "p95": 3.5231,
-     "mean": 1.3249,
-     "max": 4.1201
+     "p50": 0.8524,
+     "p95": 3.5494,
+     "mean": 1.2477,
+     "max": 3.9544
     }
    },
    "probe_seconds": {
     "html_bomb_extract": 0.178,
-    "js_render": 1.208
+    "js_render": 1.278
    },
-   "run_seconds": 8.662
+   "run_seconds": 8.694
+  },
+  {
+   "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
+   "per_mode_seconds": {
+    "fact_verification": {
+     "n": 25,
+     "p50": 0.0543,
+     "p95": 0.1531,
+     "mean": 0.0653,
+     "max": 0.1669
+    },
+    "quick_lookup": {
+     "n": 16,
+     "p50": 0.0273,
+     "p95": 0.1535,
+     "mean": 0.0442,
+     "max": 0.17
+    },
+    "scientific": {
+     "n": 1,
+     "p50": 0.0661,
+     "p95": 0.0661,
+     "mean": 0.0661,
+     "max": 0.0661
+    },
+    "technical": {
+     "n": 9,
+     "p50": 0.0762,
+     "p95": 0.1132,
+     "mean": 0.0794,
+     "max": 0.1339
+    }
+   },
+   "all_tasks_seconds": {
+    "n": 51,
+    "p50": 0.0532,
+    "p95": 0.1527,
+    "mean": 0.0612,
+    "max": 0.17
+   },
+   "extraction_ms": {
+    "scrapling": {
+     "n": 61,
+     "p50": 0.5764,
+     "p95": 0.891,
+     "mean": 0.6063,
+     "max": 0.9892
+    },
+    "trafilatura": {
+     "n": 61,
+     "p50": 1.293,
+     "p95": 2.8545,
+     "mean": 1.5907,
+     "max": 3.3884
+    },
+    "auto": {
+     "n": 61,
+     "p50": 0.628,
+     "p95": 2.7886,
+     "mean": 1.0068,
+     "max": 3.0722
+    }
+   },
+   "probe_seconds": {
+    "html_bomb_extract": 0.227,
+    "js_render": 1.285
+   },
+   "run_seconds": 8.643
+  },
+  {
+   "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
+   "per_mode_seconds": {
+    "fact_verification": {
+     "n": 25,
+     "p50": 0.0521,
+     "p95": 0.1533,
+     "mean": 0.0637,
+     "max": 0.1647
+    },
+    "quick_lookup": {
+     "n": 16,
+     "p50": 0.0256,
+     "p95": 0.1461,
+     "mean": 0.0415,
+     "max": 0.1488
+    },
+    "scientific": {
+     "n": 1,
+     "p50": 0.063,
+     "p95": 0.063,
+     "mean": 0.063,
+     "max": 0.063
+    },
+    "technical": {
+     "n": 9,
+     "p50": 0.0727,
+     "p95": 0.0781,
+     "mean": 0.0719,
+     "max": 0.0792
+    }
+   },
+   "all_tasks_seconds": {
+    "n": 51,
+    "p50": 0.0516,
+    "p95": 0.1493,
+    "mean": 0.0582,
+    "max": 0.1647
+   },
+   "extraction_ms": {
+    "scrapling": {
+     "n": 61,
+     "p50": 0.663,
+     "p95": 1.6966,
+     "mean": 0.8206,
+     "max": 2.1833
+    },
+    "trafilatura": {
+     "n": 61,
+     "p50": 1.9033,
+     "p95": 3.6785,
+     "mean": 2.2372,
+     "max": 6.9748
+    },
+    "auto": {
+     "n": 61,
+     "p50": 0.9336,
+     "p95": 3.4847,
+     "mean": 1.299,
+     "max": 3.886
+    }
+   },
+   "probe_seconds": {
+    "html_bomb_extract": 0.18,
+    "js_render": 1.298
+   },
+   "run_seconds": 8.566
   }
  ],
  "resources": [
   {
    "per_task_db_growth_bytes": {
     "n": 51,
-    "p50": 49152.0,
-    "p95": 110592.0,
-    "mean": 58067.0,
+    "p50": 53248.0,
+    "p95": 114688.0,
+    "mean": 56621.0,
     "max": 135168.0
    },
    "per_task_cache_growth_bytes": {
@@ -6400,17 +6399,17 @@
     "mean": 3534.0,
     "max": 20480.0
    },
-   "db_bytes_final": 3428352,
+   "db_bytes_final": 3375104,
    "cache_bytes_final": 233472,
-   "peak_rss_bytes": 172273664,
+   "peak_rss_bytes": 179609600,
    "peak_rss_note": "process-wide ru_maxrss: includes the in-process fixture server and every earlier run in this process"
   },
   {
    "per_task_db_growth_bytes": {
     "n": 51,
     "p50": 49152.0,
-    "p95": 112640.0,
-    "mean": 57987.0,
+    "p95": 104448.0,
+    "mean": 56701.0,
     "max": 135168.0
    },
    "per_task_cache_growth_bytes": {
@@ -6420,9 +6419,9 @@
     "mean": 3534.0,
     "max": 20480.0
    },
-   "db_bytes_final": 3424256,
+   "db_bytes_final": 3379200,
    "cache_bytes_final": 233472,
-   "peak_rss_bytes": 180260864,
+   "peak_rss_bytes": 187420672,
    "peak_rss_note": "process-wide ru_maxrss: includes the in-process fixture server and every earlier run in this process"
   },
   {
@@ -6430,8 +6429,8 @@
     "n": 51,
     "p50": 49152.0,
     "p95": 108544.0,
-    "mean": 58067.0,
-    "max": 139264.0
+    "mean": 56541.0,
+    "max": 131072.0
    },
    "per_task_cache_growth_bytes": {
     "n": 51,
@@ -6440,9 +6439,9 @@
     "mean": 3534.0,
     "max": 20480.0
    },
-   "db_bytes_final": 3428352,
+   "db_bytes_final": 3371008,
    "cache_bytes_final": 233472,
-   "peak_rss_bytes": 183980032,
+   "peak_rss_bytes": 193892352,
    "peak_rss_note": "process-wide ru_maxrss: includes the in-process fixture server and every earlier run in this process"
   }
  ],

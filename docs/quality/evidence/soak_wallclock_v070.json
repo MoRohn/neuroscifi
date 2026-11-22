@@ -1,0 +1,194 @@
+{
+ "at": "2026-11-22T05:18:38+00:00",
+ "checks": {
+  "budget": "ok",
+  "decisions": "ok",
+  "leases": "ok",
+  "ledger": "ok"
+ },
+ "days": {
+  "2026-11-22": {
+   "autonomous_open_allowance": {},
+   "autonomous_used": {
+    "bytes": 1572711,
+    "engine_requests": 117,
+    "pages": 36,
+    "requests": 180,
+    "searches": 20,
+    "searxng_requests": 18,
+    "seconds": 67.01100000000001,
+    "spend_usd": 0.0
+   },
+   "tasks": {
+    "autonomous:completed": 3,
+    "autonomous:partial": 2,
+    "user:completed": 1
+   },
+   "user_used": {
+    "bytes": 72509,
+    "engine_requests": 0,
+    "pages": 2,
+    "requests": 2,
+    "searches": 2,
+    "searxng_requests": 0,
+    "seconds": 0.493,
+    "spend_usd": 0.0
+   }
+  }
+ },
+ "db": "<scratch>/soak/instance.sqlite",
+ "decisions": {
+  "by_kind": {
+   "enabled": 1,
+   "refused": 43
+  },
+  "last": [
+   {
+    "at": "2026-11-22T04:43:32+00:00",
+    "autonomy": "refused",
+    "reason": "daily autonomous research budget exhausted on 2026-11-22: searches: 20 used of 20"
+   },
+   {
+    "at": "2026-11-22T04:48:32+00:00",
+    "autonomy": "refused",
+    "reason": "daily autonomous research budget exhausted on 2026-11-22: searches: 20 used of 20"
+   },
+   {
+    "at": "2026-11-22T04:53:33+00:00",
+    "autonomy": "refused",
+    "reason": "daily autonomous research budget exhausted on 2026-11-22: searches: 20 used of 20"
+   },
+   {
+    "at": "2026-11-22T04:58:33+00:00",
+    "autonomy": "refused",
+    "reason": "daily autonomous research budget exhausted on 2026-11-22: searches: 20 used of 20"
+   },
+   {
+    "at": "2026-11-22T05:03:34+00:00",
+    "autonomy": "refused",
+    "reason": "daily autonomous research budget exhausted on 2026-11-22: searches: 20 used of 20"
+   },
+   {
+    "at": "2026-11-22T05:08:34+00:00",
+    "autonomy": "refused",
+    "reason": "daily autonomous research budget exhausted on 2026-11-22: searches: 20 used of 20"
+   },
+   {
+    "at": "2026-11-22T05:13:34+00:00",
+    "autonomy": "refused",
+    "reason": "daily autonomous research budget exhausted on 2026-11-22: searches: 20 used of 20"
+   },
+   {
+    "at": "2026-11-22T05:18:34+00:00",
+    "autonomy": "refused",
+    "reason": "daily autonomous research budget exhausted on 2026-11-22: searches: 20 used of 20"
+   }
+  ]
+ },
+ "events": 277,
+ "files": {
+  "instance.sqlite": 1564672,
+  "instance.sqlite-shm": 32768,
+  "instance.sqlite-wal": 1153632,
+  "instance.webcache.sqlite": 4423680,
+  "instance.webcache.sqlite-shm": 32768,
+  "instance.webcache.sqlite-wal": 8272
+ },
+ "knowledge": {
+  "web_claims": 231,
+  "web_knowledge": 2,
+  "web_sources": 38
+ },
+ "ledger_rows": {
+  "open": 0,
+  "total": 6
+ },
+ "limits": {
+  "pages": 60,
+  "searches": 20,
+  "seconds": 1800.0
+ },
+ "tasks": {
+  "by_origin": {
+   "curiosity": 5,
+   "monitor": 1
+  },
+  "by_status": {
+   "completed": 4,
+   "partial": 2
+  },
+  "running": [],
+  "total": 6
+ },
+ "trend": {
+  "all_bytes": {
+   "first": 5110208,
+   "last": 7191072,
+   "max": 11117432,
+   "min": 5110208
+  },
+  "db_bytes": {
+   "first": 5044672,
+   "last": 7125536,
+   "max": 11051896,
+   "min": 5044672
+  },
+  "events": {
+   "first": 93,
+   "last": 275,
+   "max": 275,
+   "min": 93
+  },
+  "memory_current": {
+   "first": 117559296,
+   "last": 122556416,
+   "max": 126275584,
+   "min": 117559296
+  },
+  "open_ledger": {
+   "first": 0,
+   "last": 0,
+   "max": 0,
+   "min": 0
+  },
+  "restarts": {
+   "first": 0,
+   "last": 0,
+   "max": 0,
+   "min": 0
+  },
+  "rss_kB": {
+   "first": 137960,
+   "last": 140684,
+   "max": 140684,
+   "min": 137960
+  },
+  "samples": 23,
+  "span": [
+   "2026-11-22T01:30:00+00:00",
+   "2026-11-22T05:10:00+00:00"
+  ],
+  "tasks": {
+   "first": 2,
+   "last": 6,
+   "max": 6,
+   "min": 2
+  }
+ },
+ "unit": {
+  "nsf-soak": {
+   "ActiveState": "active",
+   "CPUUsageNSec": 21556814000,
+   "ExecMainStartTimestamp": "Sat 2026-11-21 20:23:07 EST",
+   "MainPID": 3271327,
+   "MemoryCurrent": 122580992,
+   "MemoryPeak": 130416640,
+   "NRestarts": 0,
+   "Result": "success",
+   "SubState": "running",
+   "TasksCurrent": 20,
+   "VmRSS_kB": 140684
+  }
+ },
+ "note": "Wall-clock autonomy soak (deploy lane, 2026-11-22): worker, tick and sampler as transient systemd user units under the units' sandbox, frozen code at 94ccb09, live SearXNG, default daily budgets. Snapshot taken by the integrator."
+}
