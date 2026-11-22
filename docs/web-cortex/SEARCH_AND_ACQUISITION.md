@@ -100,7 +100,7 @@ An empty list is a soft failure only when all of these hold: the provider declar
 | 3. HTTP page | Any other result | `SafeFetcher.fetch(purpose="page")`, then `extract.extract` | `live` (also on a 304: the origin just confirmed the cached body, header `x-nsf-revalidated: 304`) |
 | 4. Feed | A result URL that serves RSS, Atom or RDF | Handled by the same fetch; `extract` parses it into a `kind="feed"` document (item titles and summaries) | `live` |
 | 5. Extraction | Every fetched body | HTML, PDF, XML or JSON/text to a `Document`, then `safety.quarantine` | as above |
-| 6. JavaScript rendering | Document has `flags["js_suspected"]`, or (news / time-sensitive question: a `news` query kind or the breaking / volatile freshness class) a scripted HTML page gave under `NEWS_RENDER_MIN_TEXT` (500) characters of static text (`thin_news_text`) or no publication date (`undated_news`); **and** `usage.browser_sessions < budget.max_browser_sessions`, the resource scheduler is not at critical memory pressure, the owner's switches allow it (`browser_rendering`; or `news_rendering`, on by default, for a news question a person asked), `BrowserRenderer.available()`, at least `RENDER_MIN_SECONDS` (10 s) of the time budget left and the day's render cap (`daily_renders`, 40) not reached. For news questions these pages are read **after** the dated, in-window static pages (static-first, ADR-040) | Re-load in sandboxed Chromium (section 9) with its own sub-request allowance (`budget.max_render_requests`, 100), never the task's requests; open shadow roots are inlined into the rendered DOM; the result is extracted and quarantined, replacing the first result. The `render` event names the reason (`js_shell` / `thin_news_text` / `undated_news`), `subrequests`, `allowance` and `blocked`. If not rendered, a `decision` event records why | `rendered` |
+| 6. JavaScript rendering | Document has `flags["js_suspected"]`, or (news / time-sensitive question: a `news` query kind or the breaking / volatile freshness class) a scripted HTML page gave under `NEWS_RENDER_MIN_TEXT` (500) characters of static text (`thin_news_text`) or no publication date (`undated_news`); **and** `usage.browser_sessions < budget.max_browser_sessions`, the resource scheduler is not at critical memory pressure, the owner's switches allow it (`browser_rendering`; or `news_rendering`, on by default, for a news question a person asked), `BrowserRenderer.available()`, at least `RENDER_MIN_SECONDS` (10 s) of the time budget left and the day's render cap (`daily_renders`, 40) not reached. For news questions these pages are read **after** the dated, in-window static pages (static-first, ADR-041) | Re-load in sandboxed Chromium (section 9) with its own sub-request allowance (`budget.max_render_requests`, 100), never the task's requests; open shadow roots are inlined into the rendered DOM; the result is extracted and quarantined, replacing the first result. The `render` event names the reason (`js_shell` / `thin_news_text` / `undated_news`), `subrequests`, `allowance` and `blocked`. If not rendered, a `decision` event records why | `rendered` |
 | 7. Link following | Mode `deep_research` and `budget.max_depth >= 1` | Up to `MAX_FOLLOW = 2` same-registrable-domain links from the first non-API document's main-content links, fetched with `purpose="crawl"`, while pages remain | `live` |
 
 Notes that matter:
@@ -226,11 +226,11 @@ Degraded behaviour, all recorded rather than hidden:
 
 Live behaviour of the engines on 2026-11-20 (duckduckgo answered, brave 429, startpage empty without error, bing redirect failure) is in DEPENDENCY_REVIEW §3.
 
-## 9. Browser rendering sandbox (`browser.py`, ADR-030, ADR-040)
+## 9. Browser rendering sandbox (`browser.py`, ADR-030, ADR-041)
 
-Two owner switches: `browser_rendering` (off by default) permits every render escalation; `news_rendering` (on by default since 0.7.0, ADR-040) permits renders only for a news / time-sensitive question a person asked (CLI, console, voice, Pocket, MCP), never for autonomous research. Turn it off with `nsf web config --no-news-render`. Rendering needs the `web-render` extra and a Chromium binary; without them the task reads the static page and records why. `WebConfig.budget_for` gives a task `max_browser_sessions` 1 when either switch is on (0 when both are off; the ceiling is 2).
+Two owner switches: `browser_rendering` (off by default) permits every render escalation; `news_rendering` (on by default since 0.7.0, ADR-041) permits renders only for a news / time-sensitive question a person asked (CLI, console, voice, Pocket, MCP), never for autonomous research. Turn it off with `nsf web config --no-news-render`. Rendering needs the `web-render` extra and a Chromium binary; without them the task reads the static page and records why. `WebConfig.budget_for` gives a task `max_browser_sessions` 1 when either switch is on (0 when both are off; the ceiling is 2).
 
-**Budget (ADR-040).** A render is accounted as:
+**Budget (ADR-041).** A render is accounted as:
 
 | Limit | Default | Where |
 |---|---|---|
@@ -286,8 +286,8 @@ Stored as JSON in `meta` key `webcortex`; validated by `state.set_config`. Const
 | `autonomous` | false | Scheduler may start refresh and curiosity research |
 | `pocket_research` | false | Paired Pocket devices may submit and read tasks |
 | `browser_rendering` | false | Permit sandboxed JavaScript rendering for every escalation |
-| `news_rendering` | true | Permit rendering for a news / time-sensitive question a person asked, when the static page gave no text or no date (ADR-040) |
-| `daily_renders` | 40 (0-1000) | Renders per UTC day across all tasks (ADR-040) |
+| `news_rendering` | true | Permit rendering for a news / time-sensitive question a person asked, when the static page gave no text or no date (ADR-041) |
+| `daily_renders` | 40 (0-1000) | Renders per UTC day across all tasks (ADR-041) |
 | `openwebsearch_url` | `http://127.0.0.1:3210` | Loopback daemon; validated as plain-HTTP loopback |
 | `engines` | duckduckgo, brave, startpage, bing | Engine order, tried one at a time |
 | `providers` | openwebsearch, wikipedia, arxiv, openalex, crossref, pubmed, pypi, npm, osv, github | Providers built, in order |

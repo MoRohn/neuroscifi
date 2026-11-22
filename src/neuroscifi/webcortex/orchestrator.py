@@ -18,7 +18,7 @@ I/O):
                 through SafeFetcher (purpose 'page'), extracted, quarantined; JavaScript shells (and, for news /
                 time-sensitive questions, scripted pages whose static text is under NEWS_RENDER_MIN_TEXT or that
                 carry no publication date) escalate to the renderer when the budget has browser sessions and the
-                owner's switches allow it (ADR-040: browser_rendering, or news_rendering for news questions a
+                owner's switches allow it (ADR-041: browser_rendering, or news_rendering for news questions a
                 person asked); for news questions those pages wait until the other candidates were read
                 (static-first), and a render spends its own sub-request allowance (budget.max_render_requests),
                 never the task's requests; deep_research follows <= 2 same-site links of the
@@ -125,7 +125,7 @@ WEB_RESERVE_MODES = ("scientific", "deep_research")
 API_PROVIDERS = ("wikipedia", "arxiv", "openalex", "crossref", "pubmed", "pypi", "npm", "osv", "github")
 NEWS_RENDER_MIN_TEXT = 500    # news/time-sensitive: a scripted page with less static text than this is rendered
 RENDER_MIN_SECONDS = 10.0     # a render is not started with less of the task's time budget left than this
-# news questions (ADR-040): the order of the candidates read after the dated, in-window pages
+# news questions (ADR-041): the order of the candidates read after the dated, in-window pages
 LATER_ORDER = {"js_shell": 0, "thin_news_text": 0, "undated_news": 1, "encyclopedia": 1, "stale_news": 1,
                "stale_hit": 1}
 SNIPPET_ONLY = ("wikipedia",)  # search hits whose metadata is a snippet: read the article, never the snippet
@@ -1023,7 +1023,7 @@ class _Run:
         scheduler (RD-46: no Chromium under critical memory pressure); the owner's switches (render_refusal); a
         renderer available; RENDER_MIN_SECONDS of the time budget left; the day's render cap (config.daily_renders,
         state.take_render). A render reuses the fetched page (`main`, not fetched twice) and spends its own
-        sub-request allowance (budget.max_render_requests, ADR-040), never the task's requests. Its sub-request
+        sub-request allowance (budget.max_render_requests, ADR-041), never the task's requests. Its sub-request
         outcomes (renderer.last_events) are checked: sub-requests refused for lack of allowance mean the rendered
         page may be incomplete -> a limitation (the run is 'partial') and the render event says ok false; other
         refused sub-requests are a limitation of the report. The rendered page is kept in the public cache
@@ -1066,7 +1066,7 @@ class _Run:
         return doc
 
     def render_refusal(self, why_render):
-        """None when the owner's switches let this run render a page for `why_render`, else why not (ADR-040).
+        """None when the owner's switches let this run render a page for `why_render`, else why not (ADR-041).
         browser_rendering permits every escalation; news_rendering (on by default) permits news reasons and
         JavaScript shells for a news / time-sensitive question a person asked (user_initiated), never for
         autonomous research."""
@@ -1173,7 +1173,7 @@ class _Run:
         """Work down the ranked candidates until max_pages documents succeed: a failed fetch (blocked, error,
         refused type) costs requests, never a page slot; the request, byte and time budgets bound the attempts.
         In scientific/deep_research modes API records leave web_reserve() slots to web pages; slots no web page
-        could fill go to the remaining API records afterwards. For a news / time-sensitive question (ADR-040) a
+        could fill go to the remaining API records afterwards. For a news / time-sensitive question (ADR-041) a
         scripted page whose static HTML gave no text or no date (render_reason), an encyclopedia article, a page
         dated before the required freshness window and a hit the search engine dates before it (not fetched yet)
         wait in `later` while the other candidates are read; slots still open then go to them in LATER_ORDER,
@@ -1283,7 +1283,7 @@ class _Run:
                     try:
                         static = safety.quarantine(_extract(result, hint))
                         why = self.render_reason(static, result)
-                        if timely and (why or self.stale(static.published_at)):   # in-window pages first (ADR-040)
+                        if timely and (why or self.stale(static.published_at)):   # in-window pages first (ADR-041)
                             later.append((r, result, hint, static, why or "stale_news"))
                             self.renew()
                             continue

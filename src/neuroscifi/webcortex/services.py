@@ -6,7 +6,7 @@
 - a ProviderRegistry over `providers.build(config, fetcher, feeds=state.get_feeds(db))` (or the given providers;
   a FeedProvider joins when the owner listed feeds) whose health state is
   loaded from procedural memory (web_strategies) and saved back by `persist()` after a run;
-- a BrowserRenderer only when `browser_rendering` or `news_rendering` is on (ADR-040: the run decides per page
+- a BrowserRenderer only when `browser_rendering` or `news_rendering` is on (ADR-041: the run decides per page
   whether the switches allow a render);
 - `fixture` (a FixtureWeb) injects its resolver/connector so tests and the offline bench never reach the network.
 

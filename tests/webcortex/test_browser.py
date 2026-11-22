@@ -98,7 +98,7 @@ EXTERNAL = """<!doctype html><html><head><title>Quotes</title><link rel="stylesh
 
 
 def test_render_runs_external_scripts_and_blocks_styles(web):
-    """F4: external scripts are served (purpose='subresource'); one from internal.test is refused. ADR-040: the
+    """F4: external scripts are served (purpose='subresource'); one from internal.test is refused. ADR-041: the
     stylesheet is not needed for text and is never fetched."""
     web.add("quotes.example", "/", EXTERNAL)
     web.add("quotes.example", "/style.css", "body { color: rgb(1, 2, 3); }", content_type="text/css")
@@ -233,7 +233,7 @@ customElements.define('sealed-box', class extends HTMLElement {
     assert b"light only!" in result.body and b"data-shadow-root" not in result.body
 
 
-# ---- ADR-040: the render's own sub-request allowance, blocking, robots on sub-resources -------------------------
+# ---- ADR-041: the render's own sub-request allowance, blocking, robots on sub-resources -------------------------
 
 from neuroscifi.webcortex.browser import blocked_domain  # noqa: E402
 

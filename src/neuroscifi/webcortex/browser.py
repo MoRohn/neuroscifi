@@ -16,12 +16,12 @@ Contract
   shorter `subresource_interval`, not Crawl-delay), Retry-After backoff and size/type limits apply to every
   sub-resource. That purpose also admits scripts and stylesheets (net.SUBRESOURCE_TYPES); its responses are never
   cached and never become documents. Anything refused is aborted.
-- Not needed for text, never fetched (ADR-040; outcome 'aborted' with `why`): BLOCKED_RESOURCES (images, media,
+- Not needed for text, never fetched (ADR-041; outcome 'aborted' with `why`): BLOCKED_RESOURCES (images, media,
   fonts, stylesheets, beacons, 'other' such as favicons and prefetches) -> why 'type'; sub-frame documents (iframes:
   ads, consent and login frames) -> 'frame'; requests to BLOCKED_DOMAINS (known advertising, analytics and beacon
   hosts, matched on the host and its parent domains) -> 'tracker'. A blocked request costs nothing: no robots.txt,
   no request.
-- Budget (ADR-040): the render costs one browser session of the task budget; its sub-requests (robots.txt of
+- Budget (ADR-041): the render costs one browser session of the task budget; its sub-requests (robots.txt of
   sub-resource hosts included) are charged to their own allowance of `budget.max_render_requests` requests (and the
   task's bytes left), not to the task's max_requests. When the allowance is spent the remaining sub-requests are
   refused (code budget_exhausted). Afterwards `usage.render_requests` and `usage.bytes` carry what the render spent
@@ -171,7 +171,7 @@ class BrowserRenderer:
             main = self.fetcher.fetch(url, purpose="page", budget=budget, usage=usage)
         if main.content_type not in ("text/html", "application/xhtml+xml"):
             return main
-        # the render's own sub-request allowance (ADR-040); bytes stay bounded by what the task has left
+        # the render's own sub-request allowance (ADR-041); bytes stay bounded by what the task has left
         allowance = Budget(max_requests=max(0, int(budget.max_render_requests)), max_pages=0, max_queries=0,
                            max_bytes=max(0, budget.max_bytes - usage.bytes), max_browser_sessions=0)
         spent = Usage()

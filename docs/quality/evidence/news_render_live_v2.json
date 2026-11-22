@@ -1,6 +1,6 @@
 {
  "evidence": "news_render_live_v2",
- "lane": "v0.7.0 news lane: OD-3 / O-05 news rendering budget (ADR-040)",
+ "lane": "v0.7.0 news lane: OD-3 / O-05 news rendering budget (ADR-041)",
  "generated_at": "2026-11-21",
  "code": {
   "before": "94ccb09 (build/neuroscifi-v1)",
@@ -14,7 +14,7 @@
   "individual": "fresh scratch database <scratch>/lane_news_live/ind.sqlite (not the owner's instance): `nsf init`, `nsf web config --enable --set searxng_url=...`, model configured; every other setting default, so browser_rendering false and news_rendering true (the new default)"
  },
  "decision": {
-  "adr": "ADR-040 (docs/architecture/ARCHITECTURAL_DECISIONS.md)",
+  "adr": "ADR-041 (docs/architecture/ARCHITECTURAL_DECISIONS.md)",
   "summary": [
    "A render is one page read of the task plus its own allowance of budget.max_render_requests sub-requests (default 100, ceiling 150), tallied in usage.render_requests, never charged to max_requests (20 in a quick lookup).",
    "Renders per task: max_browser_sessions (1; ceiling 2). Renders per UTC day: daily_renders 40, a meta counter forgetting does not refund. Refused at critical memory pressure and with under 10 s of the time budget left.",

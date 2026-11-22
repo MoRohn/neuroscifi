@@ -209,7 +209,7 @@ def set_config(db, changes: dict, now) -> wconfig.WebConfig:
     return get_config(db)
 
 
-# Renders of the current UTC day, across tasks and processes (ADR-040): {"day": "YYYY-MM-DD", "renders": n}. A meta
+# Renders of the current UTC day, across tasks and processes (ADR-041): {"day": "YYYY-MM-DD", "renders": n}. A meta
 # row, not a count of render events, so forgetting a task never gives its renders back.
 RENDERS_KEY = "webcortex.renders"
 

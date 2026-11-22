@@ -831,7 +831,7 @@ def register(sub):
     _switch(p, "pocket-research", "pocket_research", "let paired Pocket devices submit research", "forbid it")
     _switch(p, "browser", "browser", "permit sandboxed JavaScript rendering", "forbid it")
     _switch(p, "news-render", "news_render",
-            "let news questions a person asks render a scripted news page without text or date (default; ADR-040)",
+            "let news questions a person asks render a scripted news page without text or date (default; ADR-041)",
             "never render for news questions unless --browser is on")
     _switch(p, "search-browser-ua", "search_browser_ua",
             "let the search daemon's scrapers send browser User-Agent strings (impersonation; ADR-032)",

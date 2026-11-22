@@ -2,7 +2,7 @@
 
 Defaults are the reversible, conservative direction: network access OFF, autonomous research OFF, Pocket
 research OFF, general JavaScript rendering OFF, browser User-Agents for the search daemon OFF (honest User-Agent only).
-The owner turns each on explicitly (`nsf web config ...`). One bounded exception (ADR-040): `news_rendering` is ON, so
+The owner turns each on explicitly (`nsf web config ...`). One bounded exception (ADR-041): `news_rendering` is ON, so
 a news / time-sensitive question a person asked may render a scripted news page whose static HTML gave no text or no
 date, at most `max_browser_sessions` renders per task (1 by default), each within `max_render_requests` sub-requests
 (100) and `daily_renders` per UTC day (40); it does nothing while web access is off, and
@@ -48,7 +48,7 @@ class WebConfig:
     autonomous: bool = False                 # scheduler may start curiosity/refresh research on its own
     pocket_research: bool = False            # paired Pocket devices may submit and read research tasks
     browser_rendering: bool = False          # permit sandboxed JavaScript rendering (needs Playwright + Chromium)
-    # ADR-040: news / time-sensitive questions asked by a person may render a scripted news page when its static
+    # ADR-041: news / time-sensitive questions asked by a person may render a scripted news page when its static
     # HTML gave no text or no date (owner switch; on by default), at most daily_renders renders per UTC day in all.
     news_rendering: bool = True
     daily_renders: int = 40

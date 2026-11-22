@@ -148,7 +148,7 @@ Decision: twelve `web_*` tables (ARCHITECTURE §6), owned by `webcortex/state.py
 cascades to derived claims, links, knowledge versions and pending questions, marks checkpoints stale, and records a
 `deletion_log` row. Forgetting a task deletes its row, events, sources and claims; the deletion log keeps only the task id, and a byte-level test checks that the objective text leaves the file and its WAL. Owner questions about forgotten knowledge keep their row with the text replaced by `#forgotten`.
 
-**ADR-030 JavaScript rendering is an escalation, sandboxed and routed through SafeFetcher. R** (default and budget amended by ADR-040)
+**ADR-030 JavaScript rendering is an escalation, sandboxed and routed through SafeFetcher. R** (default and budget amended by ADR-041)
 Decision: when extraction finds a JavaScript shell and the task has a browser-session budget, `browser.BrowserRenderer`
 loads the page in a fresh Chromium context whose every request is intercepted and fulfilled by `SafeFetcher` (or
 refused; fetched with `purpose="subresource"`, which admits scripts and stylesheets, is never cached or extracted and

@@ -990,7 +990,7 @@ def intent_kinds(question):
 
 class HeavyRenderer(FakeRenderer):
     """An MSN-like page: `subrequests` sub-requests, spent from the render's own allowance (BrowserRenderer's
-    contract, ADR-040: budget.max_render_requests per render, tallied in usage.render_requests)."""
+    contract, ADR-041: budget.max_render_requests per render, tallied in usage.render_requests)."""
 
     def __init__(self, subrequests=80):
         super().__init__()
@@ -1014,7 +1014,7 @@ class HeavyRenderer(FakeRenderer):
 
 
 def test_a_render_spends_its_own_allowance_not_the_task_requests(individual, web, site):
-    """Live (O-05): an MSN article needs 70-100 sub-requests, the quick lookup allows 20 requests. ADR-040: a render
+    """Live (O-05): an MSN article needs 70-100 sub-requests, the quick lookup allows 20 requests. ADR-041: a render
     is one page read of the task plus its own allowance of budget.max_render_requests sub-requests, so the task's
     requests are left to the other pages and the render is not cut short."""
     db, path = individual
@@ -1056,7 +1056,7 @@ def news_hits(*urls):
 
 
 def test_news_questions_read_dated_static_pages_before_rendering(individual, web):
-    """O-05 / ADR-040 static-first: for a news question a scripted page without text (the MSN case) waits while the
+    """O-05 / ADR-041 static-first: for a news question a scripted page without text (the MSN case) waits while the
     other candidates are read. Dated static pages take the slots; the shell is rendered only for a slot still
     open. Rendering is on for news by default (news_rendering), with browser_rendering off."""
     db, path = individual
@@ -1206,7 +1206,7 @@ def test_the_daily_render_cap_counts_across_tasks_and_days(individual, web):
 
 
 def test_news_rendering_is_refused_under_critical_memory_pressure(individual, web, monkeypatch):
-    """RD-46 / ADR-040: Chromium (about 0.5 GiB PSS per render, measured) is never started at critical pressure;
+    """RD-46 / ADR-041: Chromium (about 0.5 GiB PSS per render, measured) is never started at critical pressure;
     the page is read as it is and the decision names the measurement."""
     from neuroscifi.resources import monitor
     db, path = individual

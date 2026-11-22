@@ -434,7 +434,7 @@ def test_ask_answers_history_questions_from_memory_and_refuses_bare_follow_ups(c
 
 
 def test_news_rendering_is_on_by_default_and_the_owner_can_turn_it_off(capsys, db):
-    """ADR-040: news / time-sensitive questions may render (bounded) by default; --no-news-render turns it off, and
+    """ADR-041: news / time-sensitive questions may render (bounded) by default; --no-news-render turns it off, and
     with both rendering switches off a task gets no browser session."""
     from neuroscifi.webcortex.config import WebConfig
     code, out = nsf(capsys, "web", "config", "--db", db)
