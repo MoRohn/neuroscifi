@@ -1,0 +1,421 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 870" width="1200" height="870" role="img" aria-labelledby="arch-title arch-desc">
+<title id="arch-title">NeuroSciFi system architecture</title>
+<desc id="arch-desc">NeuroSciFi runs on one NVIDIA DGX Spark. Clients on the left: the Pocket PWA on phones and tablets (HTTPS through a local CA, pairing families, signed node keys, opt-in Web Push), the owner's console on loopback with a session token, the nsf command line and MCP, and voice through the microphone and speaker of the console or Pocket. On the Spark, the Pocket bridge, console server, nsf process, opt-in autonomy and the Voice Cortex bridge all submit to one orchestrator (privacy screen, web switch, budgets), so a typed, spoken or Pocket question takes the same path. Web Cortex, off by default, runs intent, discovery, safe fetch with robots.txt and an honest User-Agent, extraction, claims, verification with six states, synthesis, word sense with other senses set aside, and consolidation. Only verified evidence goes to the inference gateway, whose local vLLM model writes the answer and whose evidence guard checks every sentence; the cited report goes back to the console, voice or Pocket, and an empty Web Push can wake Pocket. Verified claims become knowledge candidates, hypotheses and predictions, and enter the individual only when the owner accepts them. The individual is one SQLite file on the LUKS2-encrypted disk: beliefs, evidence, epochs, graphs, knowledge, transcripts and checkpoints. A resource scheduler and the Presence Cortex sit beside it. Loopback-only local services: vLLM on port 8811, Whisper ASR on 18431, Kokoro TTS on 18432 and SearXNG on 8888 in Docker, plus a sandboxed Chromium for bounded news rendering. Only screened queries, page fetches and empty pushes leave the host, to the public web, structured APIs (arXiv, OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub, Wikipedia), the optional keyed Brave Search API and the browser push services.</desc>
+<style>
+text{font-family:system-ui,-apple-system,"Segoe UI","Helvetica Neue",Arial,"Liberation Sans","Noto Sans",sans-serif;fill:#E6EDF3}
+.mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace}
+.bg{fill:#0D1117}
+.h1{font-size:22px;font-weight:700}
+.sub{font-size:13px;fill:#9DA7B3}
+.meta,.lbls,.cb,.pillt{font-size:12px;fill:#9DA7B3}
+.lbl{font-size:12px;font-weight:700;letter-spacing:.08em;fill:#9DA7B3}
+.ct{font-size:14px;font-weight:700}
+.cs{font-size:13px;font-weight:700}
+.ci{font-size:12px}
+.k-cli{fill:#161B22;stroke:#30363D;stroke-width:1.5}
+.k-spark{fill:#11152A;stroke:#818CF8;stroke-width:1.75}
+.k-wc{fill:#171C3A;stroke:#4C51A8;stroke-width:1.25}
+.k-loc{fill:#0F1E17;stroke:#3FB950;stroke-width:1.5;stroke-dasharray:2 3}
+.k-ext{fill:#0D1117;stroke:#6E7681;stroke-width:1.5;stroke-dasharray:8 5}
+.card{fill:#161B22;stroke:#30363D;stroke-width:1.25}
+.chip{fill:#161B22;stroke:#4C51A8;stroke-width:1.25}
+.proc{fill:#161B22;stroke:#8B949E;stroke-width:1.25;stroke-dasharray:4 3}
+.core{fill:#1E2150;stroke:#818CF8;stroke-width:2}
+.gw{fill:#161B22;stroke:#818CF8;stroke-width:1.75}
+.note{fill:#161B22;stroke:#30363D;stroke-width:1}
+.rail{fill:#191C45;stroke:#818CF8;stroke-width:1.25}
+.railt,.sub-i{font-size:12px;font-weight:700;fill:#818CF8}
+.railt{letter-spacing:.06em}
+.dot-cli{fill:#22D3EE}.dot-spark{fill:#818CF8}.dot-loc{fill:#22C55E}.dot-ext{fill:#8B949E}
+.pill{fill:#161B22;stroke:#9DA7B3;stroke-width:1}
+.f-q,.f-a,.f-o,.f-e,.f-l,.f-n{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.f-q{stroke:#818CF8;stroke-width:2}
+.f-a{stroke:#22C55E;stroke-width:2.25}
+.f-o{stroke:#E879F9;stroke-width:2;stroke-dasharray:6 4}
+.f-e{stroke:#22D3EE;stroke-width:2;stroke-dasharray:7 4;stroke-linecap:butt}
+.f-l{stroke:#8B949E;stroke-width:1.5;stroke-dasharray:1 3.5}
+.f-n{stroke:#8B949E;stroke-width:1.5}
+.m-q{fill:#818CF8}.m-a{fill:#22C55E}.m-o{fill:#E879F9}.m-e{fill:#22D3EE}.m-l,.m-n{fill:#8B949E}
+.jn{fill:#22D3EE}.jn-n{fill:#8B949E}
+.b-q{fill:#818CF8}.b-a{fill:#22C55E}.b-o{fill:#E879F9}.b-e{fill:#22D3EE}
+.bt{font-size:12px;font-weight:700;fill:#0D1117}
+.t-q,.t-a,.t-o,.t-e{font-size:12px;font-weight:600}
+.t-q{fill:#818CF8}.t-a{fill:#22C55E}.t-o{fill:#E879F9}.t-e{fill:#22D3EE}
+.hatch{stroke:#818CF8;stroke-width:1.4}
+.lock{fill:#9DA7B3;stroke:#9DA7B3}
+.dbtop{fill:#1E2150;stroke:#818CF8;stroke-width:1.5}
+.dbbody{fill:url(#luks);stroke:#818CF8;stroke-width:1.5}
+.sw{fill:#161B22;stroke-width:1.5}
+.sw-spark{stroke:#818CF8}.sw-loc{stroke:#3FB950;stroke-dasharray:2 3}.sw-ext{stroke:#6E7681;stroke-dasharray:8 5}
+</style>
+<defs>
+<marker id="ah-q" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.6L10 5L0 9.4z" class="m-q"/></marker>
+<marker id="ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.6L10 5L0 9.4z" class="m-a"/></marker>
+<marker id="ah-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.6L10 5L0 9.4z" class="m-o"/></marker>
+<marker id="ah-e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.6L10 5L0 9.4z" class="m-e"/></marker>
+<marker id="ah-l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.6L10 5L0 9.4z" class="m-l"/></marker>
+<marker id="ah-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0.6L10 5L0 9.4z" class="m-n"/></marker>
+<pattern id="luks" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" class="hatch"/></pattern>
+<symbol id="lock" viewBox="0 0 12 14"><path d="M3.2 6.2V4.4a2.8 2.8 0 0 1 5.6 0v1.8" fill="none" stroke-width="1.6"/><rect x="1" y="6" width="10" height="7.4" rx="1.6" stroke="none"/></symbol>
+</defs>
+<rect class="bg" width="1200" height="870"/>
+<g id="header">
+<text x="24" y="40" class="h1">NeuroSciFi architecture</text>
+<text x="24" y="62" class="sub">One individual in one SQLite file is the single authority. A typed, spoken or Pocket question takes the same path.</text>
+<text x="1176" y="40" class="meta" text-anchor="end">v0.7.0 · reference host: NVIDIA DGX Spark GB10</text>
+</g>
+<g id="layers">
+<rect x="24" y="100" width="150" height="660" rx="14" class="k-cli"/>
+<circle cx="40" cy="118" r="4" class="dot-cli"/><text x="50" y="122" class="lbl">CLIENTS</text>
+<rect x="190" y="100" width="758" height="660" rx="14" class="k-spark"/>
+<circle cx="206" cy="118" r="4" class="dot-spark"/><text x="216" y="122" class="lbl">DGX SPARK · ONE HOST</text>
+<use href="#lock" x="560" y="109" width="12" height="14" class="lock"/>
+<text x="578" y="122" class="lbls">LUKS2 disk: the individual, checkpoints, weights, Docker data</text>
+<rect x="972" y="100" width="204" height="660" rx="14" class="k-ext"/>
+<circle cx="988" cy="118" r="4" class="dot-ext"/><text x="998" y="122" class="lbl">EXTERNAL</text>
+<text x="984" y="138" class="lbls">outside the trust boundary</text>
+</g>
+<g id="clients">
+<g id="client-pocket" class="bx">
+<rect x="34" y="160" width="130" height="116" rx="8" class="card"/>
+<text x="45" y="182" class="ct">Pocket PWA</text>
+<text x="45" y="199" class="cb">phone · tablet</text>
+<text x="45" y="214" class="cb">HTTPS · local CA</text>
+<text x="45" y="229" class="cb">pairing family</text>
+<text x="45" y="244" class="cb">signed node key</text>
+<text x="45" y="259" class="cb">Web Push opt-in</text>
+</g>
+<g id="client-console" class="bx">
+<rect x="34" y="292" width="130" height="60" rx="8" class="card"/>
+<text x="45" y="314" class="ct">Console</text>
+<text x="45" y="331" class="cb">owner's browser</text>
+<text x="45" y="346" class="cb">loopback · token</text>
+</g>
+<g id="client-cli" class="bx">
+<rect x="34" y="368" width="130" height="46" rx="8" class="card"/>
+<text x="45" y="390" class="ct">CLI <tspan class="mono">nsf</tspan> · MCP</text>
+<text x="45" y="407" class="cb">local process</text>
+</g>
+<text x="36" y="466" class="cb">Autonomy has no</text>
+<text x="36" y="481" class="cb">client: the Spark</text>
+<text x="36" y="496" class="cb">researches its own</text>
+<text x="36" y="511" class="cb">open questions</text>
+<g id="client-voice" class="bx">
+<rect x="34" y="560" width="130" height="130" rx="8" class="card"/>
+<text x="45" y="582" class="ct">Voice</text>
+<text x="45" y="599" class="cb">mic and speaker</text>
+<text x="45" y="614" class="cb">in the console or</text>
+<text x="45" y="629" class="cb">in Pocket (HTTPS)</text>
+<text x="45" y="644" class="cb">one capture lease</text>
+<text x="45" y="659" class="cb">barge-in</text>
+</g>
+</g>
+<g id="interfaces">
+<g id="pocket-bridge" class="bx">
+<rect x="202" y="160" width="148" height="116" rx="8" class="card"/>
+<text x="213" y="182" class="ct">Pocket bridge</text>
+<text x="213" y="199" class="cb"><tspan class="mono">:8765</tspan> · HTTPS</text>
+<text x="213" y="214" class="cb">pairing families</text>
+<text x="213" y="229" class="cb">signed requests</text>
+<text x="213" y="244" class="cb">Spark-signed replies</text>
+<text x="213" y="259" class="cb">push dispatcher</text>
+</g>
+<g id="console-server" class="bx">
+<rect x="202" y="292" width="148" height="60" rx="8" class="card"/>
+<text x="213" y="314" class="ct">Console server</text>
+<text x="213" y="331" class="cb"><tspan class="mono">127.0.0.1:8766</tspan></text>
+<text x="213" y="346" class="cb">session token</text>
+</g>
+<g id="nsf-process" class="bx">
+<rect x="202" y="368" width="148" height="46" rx="8" class="card"/>
+<text x="213" y="390" class="ct"><tspan class="mono">nsf</tspan> · MCP stdio</text>
+<text x="213" y="407" class="cb">in-process, JSON</text>
+</g>
+<g id="autonomy" class="bx">
+<rect x="202" y="440" width="148" height="82" rx="8" class="card"/>
+<text x="213" y="462" class="ct">Autonomy</text>
+<g class="tag"><rect x="289" y="447" width="54" height="18" rx="9" class="pill"/><text x="316" y="460" class="pillt" text-anchor="middle">opt-in</text></g>
+<text x="213" y="479" class="cb">budget per day:</text>
+<text x="213" y="494" class="cb">20 searches, 60 pages,</text>
+<text x="213" y="509" class="cb">30 min, $1</text>
+</g>
+<g id="voice-bridge" class="bx">
+<rect x="202" y="560" width="148" height="130" rx="8" class="card"/>
+<text x="213" y="582" class="ct">Voice Cortex</text>
+<text x="213" y="599" class="cb">bridge: questions</text>
+<text x="213" y="614" class="cb">take the same path</text>
+<text x="213" y="629" class="cb">modes A · B · C</text>
+<text x="213" y="644" class="cb">PersonaPlex optional,</text>
+<text x="213" y="659" class="cb">experimental</text>
+</g>
+</g>
+<g id="orchestrator">
+<rect x="358" y="160" width="18" height="430" rx="9" class="rail"/>
+<text x="367" y="375" class="railt" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 367 375)">ORCHESTRATOR · privacy screen · web switch · budgets</text>
+<path d="M350 218H358" class="f-n"/>
+<circle cx="358" cy="218" r="3" class="jn-n"/>
+<path d="M350 322H358" class="f-n"/>
+<circle cx="358" cy="322" r="3" class="jn-n"/>
+<path d="M350 391H358" class="f-n"/>
+<circle cx="358" cy="391" r="3" class="jn-n"/>
+<path d="M350 481H358" class="f-n"/>
+<circle cx="358" cy="481" r="3" class="jn-n"/>
+<path d="M350 574H358" class="f-n"/>
+<circle cx="358" cy="574" r="3" class="jn-n"/>
+</g>
+<g id="web-cortex">
+<rect x="386" y="160" width="548" height="212" rx="12" class="k-wc"/>
+<text x="398" y="179" class="lbl">WEB CORTEX</text>
+<text x="492" y="179" class="lbls">governed research</text>
+<g class="tag"><rect x="682.5" y="166" width="104" height="18" rx="9" class="pill"/><text x="734.5" y="179" class="pillt" text-anchor="middle">off by default</text></g>
+<g id="wc-intent" class="bx">
+<rect x="398" y="188" width="157" height="46" rx="8" class="chip"/>
+<text x="408" y="208" class="cs">Intent</text>
+<text x="408" y="224" class="cb">plan · memory first</text>
+</g>
+<g id="wc-discovery" class="bx">
+<rect x="582" y="188" width="157" height="46" rx="8" class="chip"/>
+<text x="592" y="208" class="cs">Discovery</text>
+<text x="592" y="224" class="cb">Brave · SearXNG · APIs</text>
+</g>
+<g id="wc-fetch" class="bx">
+<rect x="765" y="188" width="157" height="46" rx="8" class="chip"/>
+<text x="775" y="208" class="cs">Safe fetch</text>
+<text x="775" y="224" class="cb">robots.txt · honest UA</text>
+</g>
+<g id="wc-extract" class="bx">
+<rect x="765" y="252" width="157" height="46" rx="8" class="chip"/>
+<text x="775" y="272" class="cs">Extraction</text>
+<text x="775" y="288" class="cb">injected text quarantined</text>
+</g>
+<g id="wc-claims" class="bx">
+<rect x="582" y="252" width="157" height="46" rx="8" class="chip"/>
+<text x="592" y="272" class="cs">Claims</text>
+<text x="592" y="288" class="cb">dated · cited · untrusted</text>
+</g>
+<g id="wc-verify" class="bx">
+<rect x="398" y="252" width="157" height="46" rx="8" class="chip"/>
+<text x="408" y="272" class="cs">Verification</text>
+<text x="408" y="288" class="cb">8 categories · 6 states</text>
+</g>
+<g id="wc-synth" class="bx">
+<rect x="398" y="316" width="157" height="46" rx="8" class="chip"/>
+<text x="408" y="336" class="cs">Synthesis</text>
+<text x="408" y="352" class="cb">extractive, cited</text>
+</g>
+<g id="wc-sense" class="bx">
+<rect x="582" y="316" width="157" height="46" rx="8" class="chip"/>
+<text x="592" y="336" class="cs">Word sense</text>
+<text x="592" y="352" class="cb">one sense · rest set aside</text>
+</g>
+<g id="wc-consolidate" class="bx">
+<rect x="765" y="316" width="157" height="46" rx="8" class="chip"/>
+<text x="775" y="336" class="cs">Consolidation</text>
+<text x="775" y="352" class="cb">verified claims only</text>
+</g>
+<path d="M555 211.0H580" class="f-q" marker-end="url(#ah-q)"/>
+<path d="M739 211.0H763" class="f-q" marker-end="url(#ah-q)"/>
+<path d="M843.5 234V250" class="f-q" marker-end="url(#ah-q)"/>
+<path d="M765 275.0H741" class="f-q" marker-end="url(#ah-q)"/>
+<path d="M582 275.0H557" class="f-q" marker-end="url(#ah-q)"/>
+<path d="M476.5 298V314" class="f-q" marker-end="url(#ah-q)"/>
+<path d="M555 339.0H580" class="f-q" marker-end="url(#ah-q)"/>
+<path d="M739 339.0H763" class="f-q" marker-end="url(#ah-q)"/>
+</g>
+<g id="reasoning">
+<g id="inference-gateway" class="bx">
+<rect x="470" y="388" width="282" height="100" rx="8" class="gw"/>
+<text x="481" y="409" class="cs">Inference gateway + evidence guard</text>
+<text x="481" y="427" class="cb">checks citations, claim states, numbers</text>
+<text x="481" y="442" class="cb">with units, entailment, injected text;</text>
+<text x="481" y="457" class="cb">closed caveat grammar · rules note</text>
+<text x="481" y="472" class="cb">label: <tspan class="mono">model:&lt;name&gt;</tspan> or <tspan class="mono">template</tspan></text>
+</g>
+<g id="knowledge-evolution" class="bx">
+<rect x="765" y="388" width="157" height="100" rx="8" class="card"/>
+<text x="776" y="409" class="cs">Knowledge evolution</text>
+<text x="776" y="427" class="cb">candidates, versions</text>
+<text x="776" y="442" class="cb">hypotheses with</text>
+<text x="776" y="457" class="cb">predictions</text>
+<text x="776" y="472" class="cb">calibration: Brier, ECE</text>
+</g>
+</g>
+<g id="individual" class="bx">
+<rect x="612" y="520" width="310" height="108" rx="10" class="core"/>
+<path class="dbbody" d="M628 546v36a18 6 0 0 0 36 0v-36"/>
+<ellipse class="dbtop" cx="646" cy="546" rx="18" ry="6"/>
+<use href="#lock" x="639" y="596" width="14" height="16" class="lock"/>
+<text x="678" y="545" class="ct">The individual</text>
+<text x="678" y="562" class="sub-i">one SQLite file · the single authority</text>
+<text x="678" y="581" class="ci">beliefs · evidence · epochs · graphs</text>
+<text x="678" y="596" class="ci">knowledge · transcripts · checkpoints</text>
+<text x="678" y="615" class="cb">executive: act, observe, ask, defer</text>
+</g>
+<g id="resource-scheduler" class="bx">
+<rect x="612" y="640" width="148" height="60" rx="8" class="card"/>
+<text x="623" y="661" class="cs">Resource scheduler</text>
+<text x="623" y="678" class="cb">ok · elevated · critical</text>
+<text x="623" y="693" class="cb">opt-in idle unload</text>
+</g>
+<g id="presence-cortex" class="bx">
+<rect x="774" y="640" width="148" height="60" rx="8" class="card"/>
+<text x="785" y="661" class="cs">Presence Cortex</text>
+<text x="785" y="678" class="cb">shows what it is doing</text>
+<text x="785" y="693" class="cb">in console and Pocket</text>
+</g>
+<g id="local-services">
+<rect x="386" y="520" width="170" height="228" rx="12" class="k-loc"/>
+<circle cx="400" cy="535" r="4" class="dot-loc"/><text x="410" y="539" class="lbl">LOOPBACK ONLY</text>
+<text x="410" y="554" class="lbls">Docker · digest-pinned</text>
+<g id="svc-vllm" class="bx">
+<rect x="396" y="562" width="150" height="38" rx="8" class="card"/>
+<text x="405" y="581" class="cs">vLLM <tspan class="mono">:8811</tspan></text>
+<text x="405" y="596" class="cb">Qwen3-30B-A3B FP8</text>
+</g>
+<g id="svc-asr" class="bx">
+<rect x="396" y="606" width="150" height="26" rx="8" class="card"/>
+<text x="404" y="624" class="cs">Whisper ASR <tspan class="mono">:18431</tspan></text>
+</g>
+<g id="svc-tts" class="bx">
+<rect x="396" y="638" width="150" height="26" rx="8" class="card"/>
+<text x="404" y="656" class="cs">Kokoro TTS <tspan class="mono">:18432</tspan></text>
+</g>
+<g id="svc-chromium" class="bx">
+<rect x="396" y="670" width="150" height="38" rx="8" class="proc"/>
+<text x="405" y="689" class="cs">Chromium sandbox</text>
+<text x="405" y="704" class="cb">bounded news renders</text>
+</g>
+<g id="svc-searxng" class="bx">
+<rect x="396" y="714" width="150" height="26" rx="8" class="card"/>
+<text x="404" y="732" class="cs">SearXNG <tspan class="mono">:8888</tspan></text>
+</g>
+</g>
+<g id="external">
+<g id="ext-push" class="bx">
+<rect x="982" y="140" width="184" height="74" rx="8" class="card"/>
+<text x="993" y="161" class="cs">Browser push services</text>
+<text x="993" y="178" class="cb">FCM · Mozilla · Apple · WNS</text>
+<text x="993" y="193" class="ci">empty POST, no payload</text>
+</g>
+<g id="ext-brave" class="bx">
+<rect x="982" y="228" width="184" height="68" rx="8" class="card"/>
+<text x="993" y="249" class="cs">Brave Search API</text>
+<g class="tag"><rect x="1111" y="235" width="48" height="18" rx="9" class="pill"/><text x="1135" y="248" class="pillt" text-anchor="middle">keyed</text></g>
+<text x="993" y="266" class="cb">general and news queries</text>
+<text x="993" y="281" class="cb">daily cap, default 30</text>
+</g>
+<g id="ext-apis" class="bx">
+<rect x="982" y="310" width="184" height="88" rx="8" class="card"/>
+<text x="993" y="331" class="cs">Structured APIs</text>
+<text x="993" y="348" class="cb">arXiv · OpenAlex · Crossref</text>
+<text x="993" y="363" class="cb">PubMed · PyPI · npm</text>
+<text x="993" y="378" class="cb">OSV · GitHub · Wikipedia</text>
+</g>
+<g id="ext-web" class="bx">
+<rect x="982" y="412" width="184" height="96" rx="8" class="card"/>
+<text x="993" y="433" class="cs">The public web</text>
+<text x="993" y="450" class="cb">sites and their robots.txt</text>
+<text x="993" y="465" class="cb">news pages</text>
+<text x="993" y="480" class="cb">search engines, which</text>
+<text x="993" y="495" class="cb">SearXNG queries</text>
+</g>
+<g id="egress-note" class="bx">
+<rect x="982" y="540" width="184" height="208" rx="8" class="note"/>
+<text x="993" y="563" class="lbl">LEAVES THE HOST</text>
+<text x="993" y="583" class="ci">screened queries</text>
+<text x="993" y="599" class="ci">page fetches, honest UA</text>
+<text x="993" y="615" class="ci">empty pushes</text>
+<text x="993" y="645" class="lbl">STAYS ON THE SPARK</text>
+<text x="993" y="665" class="ci">the individual, audio,</text>
+<text x="993" y="681" class="ci">transcripts, model weights</text>
+<text x="993" y="716" class="cb">remote inference: off unless</text>
+<text x="993" y="731" class="cb">the owner allows it</text>
+</g>
+</g>
+<g id="flows">
+<path d="M167 218H199" class="f-n" marker-start="url(#ah-n)" marker-end="url(#ah-n)"/>
+<path d="M167 322H199" class="f-n" marker-start="url(#ah-n)" marker-end="url(#ah-n)"/>
+<path d="M167 391H199" class="f-n" marker-start="url(#ah-n)" marker-end="url(#ah-n)"/>
+<path d="M167 600H199" class="f-n" marker-start="url(#ah-n)" marker-end="url(#ah-n)"/>
+<path d="M376 211H396" class="f-q" marker-end="url(#ah-q)"/>
+<path d="M660.5 362V386" class="f-q" marker-end="url(#ah-q)"/>
+<path d="M470 454H378" class="f-a" marker-end="url(#ah-a)"/>
+<path d="M843.5 362V386" class="f-o" marker-end="url(#ah-o)"/>
+<path d="M843.5 488V518" class="f-o" marker-end="url(#ah-o)"/>
+<path d="M538 490V560" class="f-l" marker-start="url(#ah-l)" marker-end="url(#ah-l)"/>
+<path d="M352 619H394" class="f-l" marker-start="url(#ah-l)" marker-end="url(#ah-l)"/>
+<path d="M352 651H394" class="f-l" marker-start="url(#ah-l)" marker-end="url(#ah-l)"/>
+<path d="M612 670H558" class="f-l" marker-end="url(#ah-l)"/>
+<path d="M332 160V148H960V727" class="f-e"/>
+<path d="M660.5 188V148" class="f-e"/>
+<circle cx="660.5" cy="148" r="3.5" class="jn"/>
+<path d="M843.5 188V148" class="f-e"/>
+<circle cx="843.5" cy="148" r="3.5" class="jn"/>
+<path d="M960 177H980" class="f-e" marker-end="url(#ah-e)"/>
+<circle cx="960" cy="177" r="3.5" class="jn"/>
+<path d="M960 262H980" class="f-e" marker-end="url(#ah-e)"/>
+<circle cx="960" cy="262" r="3.5" class="jn"/>
+<path d="M960 354H980" class="f-e" marker-end="url(#ah-e)"/>
+<circle cx="960" cy="354" r="3.5" class="jn"/>
+<path d="M960 446H980" class="f-e" marker-end="url(#ah-e)"/>
+<circle cx="960" cy="446" r="3.5" class="jn"/>
+<path d="M546 727H960" class="f-e"/>
+<circle cx="960" cy="727" r="3.5" class="jn"/>
+<path d="M1150 140V92H148V158" class="f-e" marker-end="url(#ah-e)"/>
+</g>
+<g id="flow-labels">
+<g class="badge"><circle cx="486" cy="138" r="9.5" class="b-e"/><text x="486" y="142.3" class="bt" text-anchor="middle">2</text></g>
+<text x="502" y="142" class="t-e">leaves the host · no private data</text>
+<g class="badge"><circle cx="446" cy="79" r="9.5" class="b-a"/><text x="446" y="83.3" class="bt" text-anchor="middle">5</text></g>
+<text x="462" y="83" class="t-e">empty push wakes Pocket; it then fetches the Spark-signed reply</text>
+<g class="badge"><circle cx="367" cy="177" r="9.5" class="b-q"/><text x="367" y="181.3" class="bt" text-anchor="middle">1</text></g>
+<g class="badge"><circle cx="642.5" cy="370" r="9.5" class="b-q"/><text x="642.5" y="374.3" class="bt" text-anchor="middle">3</text></g>
+<text x="670.5" y="374" class="t-q">verified evidence only</text>
+<g class="badge"><circle cx="556" cy="505" r="9.5" class="b-q"/><text x="556" y="509.3" class="bt" text-anchor="middle">4</text></g>
+<g class="badge"><circle cx="398" cy="404" r="9.5" class="b-a"/><text x="398" y="408.3" class="bt" text-anchor="middle">5</text></g>
+<text x="386" y="432" class="t-a">cited</text>
+<text x="386" y="446" class="t-a">report</text>
+<g class="badge"><circle cx="823.5" cy="504" r="9.5" class="b-o"/><text x="823.5" y="508.3" class="bt" text-anchor="middle">6</text></g>
+<text x="809.5" y="508" class="t-o" text-anchor="end">owner accepts</text>
+</g>
+<g id="legend">
+<text x="24" y="788" class="lbl">FLOW</text>
+<g class="badge"><circle cx="101" cy="784" r="9.5" class="b-q"/><text x="101" y="788.3" class="bt" text-anchor="middle">1</text></g>
+<text x="117" y="788" class="cb">a question from any client</text>
+<g class="badge"><circle cx="461" cy="784" r="9.5" class="b-e"/><text x="461" y="788.3" class="bt" text-anchor="middle">2</text></g>
+<text x="477" y="788" class="cb">screened queries leave the host</text>
+<g class="badge"><circle cx="821" cy="784" r="9.5" class="b-q"/><text x="821" y="788.3" class="bt" text-anchor="middle">3</text></g>
+<text x="837" y="788" class="cb">verified evidence only</text>
+<g class="badge"><circle cx="101" cy="808" r="9.5" class="b-q"/><text x="101" y="812.3" class="bt" text-anchor="middle">4</text></g>
+<text x="117" y="812" class="cb">the local model writes, the guard checks</text>
+<g class="badge"><circle cx="461" cy="808" r="9.5" class="b-a"/><text x="461" y="812.3" class="bt" text-anchor="middle">5</text></g>
+<text x="477" y="812" class="cb">cited reply: console, voice, Pocket</text>
+<g class="badge"><circle cx="821" cy="808" r="9.5" class="b-o"/><text x="821" y="812.3" class="bt" text-anchor="middle">6</text></g>
+<text x="837" y="812" class="cb">owner review → knowledge</text>
+<text x="24" y="838" class="lbl">LINES</text>
+<path d="M92 834H126" class="f-q" marker-end="url(#ah-q)"/>
+<text x="136" y="838" class="cb">question and research</text>
+<path d="M272 834H306" class="f-a" marker-end="url(#ah-a)"/>
+<text x="316" y="838" class="cb">guarded answer</text>
+<path d="M452 834H486" class="f-o" marker-end="url(#ah-o)"/>
+<text x="496" y="838" class="cb">owner review</text>
+<path d="M632 834H666" class="f-e" marker-end="url(#ah-e)"/>
+<text x="676" y="838" class="cb">leaves the host</text>
+<path d="M812 834H846" class="f-l" marker-end="url(#ah-l)"/>
+<text x="856" y="838" class="cb">loopback call</text>
+<path d="M992 834H1026" class="f-n" marker-end="url(#ah-n)"/>
+<text x="1036" y="838" class="cb">client link</text>
+<text x="24" y="862" class="lbl">AREAS</text>
+<rect x="92" y="851" width="26" height="14" rx="4" class="sw sw-spark"/>
+<text x="126" y="862" class="cb">the Spark host</text>
+<rect x="242" y="851" width="26" height="14" rx="4" class="sw sw-loc"/>
+<text x="276" y="862" class="cb">loopback only (127.0.0.1)</text>
+<rect x="452" y="851" width="26" height="14" rx="4" class="sw sw-ext"/>
+<text x="486" y="862" class="cb">outside the trust boundary</text>
+<rect x="672" y="851" width="26" height="14" rx="3" fill="url(#luks)" class="sw sw-spark"/>
+<use href="#lock" x="704" y="851" width="12" height="14" class="lock"/>
+<text x="722" y="862" class="cb">on the LUKS2-encrypted disk</text>
+<g class="tag"><rect x="902" y="849" width="54" height="18" rx="9" class="pill"/><text x="929" y="862" class="pillt" text-anchor="middle">opt-in</text></g>
+<text x="964" y="862" class="cb">off until the owner allows it</text>
+</g>
+</svg>
