@@ -98,249 +98,263 @@ The reference host is an **NVIDIA DGX Spark GB10** (aarch64, Blackwell sm_121, 1
 
 ## Quick start
 
-### Try it in 2 minutes (one computer, no phone)
+**What you'll have at the end:** your Spark (the host) runs the individual, a research worker, the owner console and the Pocket bridge. A phone and a tablet are paired over HTTPS, and a question asked on one continues on the other. Brave Search is optional.
 
-```sh
-git clone https://github.com/MoRohn/neuroscifi.git && cd neuroscifi
-uv venv .venv -p 3.12
-uv pip install -e '.[web]'
-. .venv/bin/activate
+**What you need:** a Linux host with Python 3.12 and [`uv`](https://docs.astral.sh/uv/), and a phone (and a tablet) on the same LAN as the host. Optional: the Docker services for SearXNG, the local model and voice ([Optional services](#optional-services)).
 
-export NSF_DB=$PWD/individual.sqlite             # every command reads NSF_DB or --db
-nsf init                                         # creates the individual; refuses to overwrite an existing file
-nsf web config --enable                          # web access stays off until you run this
-nsf web ask "When was Python first released?"    # a cited report; generated_by is "template" until a model is configured
-nsf console                                      # owner console on 127.0.0.1:8766; prints a URL with a one-time session token
-```
-
-Open the printed URL on the same computer. Every command prints JSON, and `nsf --help` lists them all. From another machine, tunnel the console with `ssh -L 8766:127.0.0.1:8766 HOST`.
-
-### Set up with phones and tablets
-
-The stages below take you from a fresh checkout to research shared across phones and tablets. Each command was checked against the CLI on the reference host, and the expected output is what it printed. Replace `spark.local` and `192.168.1.20` with your host's name and LAN address (`ip -o addr show scope global` lists them).
-
-| Stage | What you get | Needed for |
-|---|---|---|
-| [1](#stage-1-install) to [3](#stage-3-start-the-services) | The individual, a research worker and the console | everything |
-| [4](#stage-4-trusted-https-for-phones) to [6](#stage-6-pair-the-first-phone) | HTTPS that phones trust, the Pocket bridge, the first phone | Pocket |
-| [7](#stage-7-link-a-tablet-into-the-same-family) to [9](#stage-9-research-across-devices) | A linked tablet, another family, research across devices | multi-device |
-| [10](#stage-10-optional-research-nodes) to [12](#stage-12-optional-voice-check-on-your-hardware) | Research nodes, push, the Voice check | optional |
-
-In the end three processes run: the research worker, the console and the Pocket bridge. Each terminal needs `NSF_DB` exported (or `--db`).
-
-#### Stage 1: Install
-
-```sh
-git clone https://github.com/MoRohn/neuroscifi.git && cd neuroscifi
-uv venv .venv -p 3.12
-uv pip install -e '.[dev,research,web,crypto]'
-. .venv/bin/activate
-nsf --help
-```
-
-| Extra | Why |
+| Step | What happens |
 |---|---|
-| `web` | Web Cortex: HTML parsing, Markdown and PDF extraction |
-| `crypto` | **Needed for Pocket.** The private CA for HTTPS, the Spark's signed research replies and node keys, push. Without it, `nsf pocket serve --instance-db` stops with "signed research replies need the cryptography package" |
-| `dev` | pytest, ruff and Playwright, for the test suite and the browser tests |
-| `research` | SciPy, for the research analyses |
+| [1](#step-1-install) | Install |
+| [2](#step-2-run-nsf-setup) | `nsf setup` does every one-time step and prints the start commands |
+| [3](#step-3-start-neuroscifi) | Start the research worker, the console and the Pocket bridge |
+| [4](#step-4-pair-your-phone) | Install the CA on the phone and pair it |
+| [5](#step-5-add-a-tablet-or-another-family-member) | Add a tablet, or another family member |
+| [6](#step-6-ask-across-devices) | Ask on the phone, continue on the tablet |
 
-**Expect:** `nsf --help` lists the commands. The other extras are in [Requirements](#requirements).
-
-#### Stage 2: Create the individual
-
-```sh
-export NSF_DB=$PWD/individual.sqlite     # for real use, a path on an encrypted volume
-nsf init
-nsf web config --enable --pocket-research
-nsf llm config --url http://127.0.0.1:8811/v1 --model qwen3-30b-a3b-instruct-2507-fp8   # optional; see Local reasoning model
-```
-
-**Expect:**
-- `nsf init` prints the birth record with its `instance_id`.
-- `nsf web config` prints `"changed": ["enabled", "pocket_research"]` and two `next_steps`: start the bridge with `--instance-db`, and run a research worker. Both switches are needed: `--pocket-research` alone leaves the Research panel hidden.
-- `nsf llm config` prints the gateway settings with `"locality": "loopback"`. Without a model, answers are extractive and labelled `template`. Once the model runs, `nsf llm status --probe` checks it ([Local reasoning model](#local-reasoning-model-vllm)).
-
-#### Stage 3: Start the services
+### Step 1: Install
 
 ```sh
-nsf web work                             # terminal 1: the research worker
-nsf console --url-file ~/console.url     # terminal 2: the owner console
+git clone https://github.com/MoRohn/neuroscifi.git && cd neuroscifi
+uv venv .venv -p 3.12
+uv pip install -e '.[web,crypto]'      # add dev for the test suite; the other extras are in Requirements
+. .venv/bin/activate
 ```
 
-For development, `nsf console --web-worker` runs both in one process.
+`crypto` is needed for Pocket: the private CA, the Spark's signed research replies and push.
 
-**Expect:**
-- `nsf web work` prints nothing while it waits. `nsf web status` then shows `"worker": {"running": true, …}`. Without a worker, its `note` reads "Your Spark has no research worker running".
-- The console prints `Console URL (with its one-time session token) written to …/console.url`. Open the URL in that file (`http://127.0.0.1:8766/#…`). The file is 0600 and is removed when the console stops.
-
-#### Stage 4: Trusted HTTPS for phones
-
-Phones refuse a self-signed certificate before Pocket loads. `nsf pocket tls` creates a private certificate authority (CA) that you install once on each device.
+### Step 2: Run `nsf setup`
 
 ```sh
-nsf pocket tls init --out ~/nsf-tls --name spark.local --name 192.168.1.20   # every name and LAN address a phone will type
-nsf pocket tls export-ca --file ~/neuroscifi-ca.crt --der
-nsf pocket tls status --out ~/nsf-tls
+nsf setup --db /secure/nsf/individual.sqlite
 ```
 
-**Expect:**
-- `init` prints `"ca_created": true`, `"names": ["spark.local", "192.168.1.20"]`, the CA's `ca_fingerprints.sha256` and `serve`, the whole `nsf pocket serve` command for Stage 5. With no LAN address among the names, it warns and lists this machine's LAN addresses.
-- `export-ca` prints `fingerprints.sha256` and `written`. Note the fingerprint.
-- `status` shows `"verifies_against_ca": true` and `expires_in_days` (the certificate lasts 397 days; run `init` again with the same names to renew).
+`--db` (or `NSF_DB`) names the individual's file. For real use, put it on an encrypted volume; `nsf doctor --db PATH` checks that. `nsf setup` then does each one-time step in order and says `done`, `already done` or `skipped`, so you can run it again at any time:
+
+1. creates the individual (never overwrites one);
+2. turns on web access and Pocket research;
+3. configures the local model if one answers at `http://127.0.0.1:8811/v1`, and skips it otherwise;
+4. creates the private CA and a server certificate for this host's name, `NAME.local`, `localhost`, `127.0.0.1` and every LAN address it finds;
+5. exports the CA for phones and prints its SHA-256 fingerprint;
+6. stores a [Brave Search API key](#brave-search-api-key) and creates the push key, only when you ask.
+
+| Option | Use it to |
+|---|---|
+| `--brave-key-stdin` or `--brave-key-file PATH` | store a Brave Search API key: [Brave Search API key](#brave-search-api-key) |
+| `--brave-daily-cap N` | set Brave queries per UTC day (default 30; 0 turns Brave off) |
+| `--push` | create the push (VAPID) key; the printed bridge command then has `--push-key` |
+| `--no-model`, `--model-url URL` | skip the model step, or probe another loopback endpoint |
+| `--name HOST`, `--ip ADDR` | put these names or addresses on the certificate instead of the detected ones (repeatable) |
+| `--bind ADDR`, `--port N` | choose the bridge's address (default: the first LAN address) and port (default 8765) |
+| `--dry-run`, `--json` | show what would change without changing anything; print the report as JSON |
+
+**Expect** (from a real run; paths shortened):
+
+```text
+nsf setup: /secure/nsf/individual.sqlite
+  1. individual  done          created /secure/nsf/individual.sqlite
+  2. web         done          web access and Pocket research are on
+  3. model       skipped       no model answered at http://127.0.0.1:8811/v1 (unavailable); answers stay extractive until `nsf llm config --url URL`
+  4. pocket_tls  done          created the CA and issued a certificate for spark, spark.local, localhost, 192.168.1.20, 127.0.0.1 (valid until 2027-12-24)
+  5. ca_export   done          CA for phones: ~/.config/neuroscifi/pocket/neuroscifi-ca.crt (Android) and ~/.config/neuroscifi/pocket/neuroscifi-ca.pem; SHA-256 3B:F4:D4:…:03:B2
+  6. brave       skipped       key missing (optional: nsf setup --brave-key-stdin, or nsf web provider set-key brave --stdin)
+  7. push        skipped       optional: nsf setup --push
+
+Next: start NeuroSciFi, one terminal each (Ctrl-C stops a service):
+  1. research worker:
+     nsf web work --db /secure/nsf/individual.sqlite
+  2. owner console (open the URL written to the file, on this computer):
+     nsf console --db /secure/nsf/individual.sqlite --url-file /secure/nsf/individual.console.url
+  3. Pocket bridge:
+     nsf pocket serve --bind 192.168.1.20 --port 8765 --cert ~/.config/neuroscifi/pocket/tls/fullchain.pem --key ~/.config/neuroscifi/pocket/tls/privkey.pem --db /secure/nsf/individual.pocket.sqlite --instance-db /secure/nsf/individual.sqlite
+  4. On your phone: install the CA first (file ~/.config/neuroscifi/pocket/neuroscifi-ca.crt, SHA-256 fingerprint 3B:F4:D4:…:03:B2), then open https://spark.local:8765 or https://192.168.1.20:8765 and enter the one-use code the bridge prints.
+```
+
+| File | Where `nsf setup` puts it |
+|---|---|
+| The individual | `--db` |
+| Pocket pairings, console URL (0600, removed when the console stops) | next to it: `NAME.pocket.sqlite`, `NAME.console.url` |
+| CA key (0600, never read by a service) | `~/.config/neuroscifi/pocket-ca` (`--ca-dir`) |
+| Server certificate, exported CA, push key | `~/.config/neuroscifi/pocket` (`--pocket-dir`) |
+| Brave key (0600) | `~/.config/neuroscifi/search/brave.key` |
 
 > [!IMPORTANT]
-> The CA is limited to the names given when it was created. Adding a name or address later needs `nsf pocket tls init … --new-ca`, and every device must then install the new CA. List every name and the LAN address now.
+> The CA is limited to the names it was created for. Run `nsf setup` while the Spark is on the LAN your devices will use, so its address is detected. If an address appears later, `nsf setup` keeps the CA and warns; adding the address needs a new CA that every device installs again (the warning prints the command).
 
-The CA key stays in `~/.config/neuroscifi/pocket-ca` (0600) and never goes to the service. Copy `neuroscifi-ca.crt` to each device over a channel you trust (USB, AirDrop, a messenger to yourself), never a public link. Then install it:
+### Step 3: Start NeuroSciFi
 
-| Device | Install the CA | Check |
-|---|---|---|
-| **Android 13–15** (wording varies by vendor) | Settings → Security & privacy → More security settings → Encryption & credentials → Install a certificate → **CA certificate** → Install anyway → `neuroscifi-ca.crt` | Trusted credentials → **User** → "NeuroSciFi Pocket CA (…)": the SHA-256 fingerprint matches. A "network may be monitored" notice is expected |
-| **iPhone and iPad (iOS 16–18)** | Open the file (AirDrop, Files or Mail) → Settings → General → VPN & Device Management → the profile → Install. Then **Settings → General → About → Certificate Trust Settings** → turn on full trust for "NeuroSciFi Pocket CA". Without this second step Safari still refuses the site | The profile → More Details: the SHA-256 fingerprint matches |
-
-To remove it later: Android, Trusted credentials → User → the CA → Remove; iOS, the profile → Remove Profile. [TLS for Pocket](docs/operations/TLS.md) has the details and the Tailscale and Let's Encrypt alternatives.
-
-#### Stage 5: Start the Pocket bridge
+Run the commands `nsf setup` printed, one terminal each:
 
 ```sh
+nsf web work --db /secure/nsf/individual.sqlite                    # terminal 1: the research worker
+nsf console --db /secure/nsf/individual.sqlite \
+  --url-file /secure/nsf/individual.console.url                    # terminal 2: the owner console
 nsf pocket serve --bind 192.168.1.20 --port 8765 \
-  --cert ~/nsf-tls/fullchain.pem --key ~/nsf-tls/privkey.pem \
-  --db /path/on/encrypted-volume/mobile.sqlite --instance-db "$NSF_DB"
-```
-
-- `--bind`: an address on the certificate.
-- `--db`: the Pocket database of pairings. Keep it on an encrypted volume and out of backups and cloud sync.
-- `--instance-db`: the individual, for Research, nodes and push.
-
-**Expect:**
-
-```text
-Spark key fingerprint: XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
-One-use pairing code (5 minutes): <code>
-Listening on https://192.168.1.20:8765
-Open on your phone or tablet (names on the certificate): https://spark.local:8765, https://192.168.1.20:8765
-Pair another family later without a restart: nsf pocket invite --db /path/on/encrypted-volume/mobile.sqlite
-```
-
-Every device pins the **Spark key fingerprint** when it pairs.
-
-#### Stage 6: Pair the first phone
-
-1. On the phone, open one of the printed URLs, for example `https://spark.local:8765`. A lock and no warning means the CA is trusted. If the phone cannot resolve `spark.local`, use the address URL.
-   - **iPhone or iPad:** if you want push (Stage 11), first add Pocket to the Home Screen (Share → Add to Home Screen), open it from that icon and pair there. The installed app has its own storage.
-2. Under **Your Spark**, enter the one-use code within 5 minutes and press **Pair**.
-3. **Expect** the header **Paired with Spark**. Under Your Spark, "Your Spark's key fingerprint, pinned when this device paired" must equal the bridge's `Spark key fingerprint` line.
-4. **Keep the pairing across a reload.** Pocket holds the pairing in tab memory only (POC-07), so a reload or a closed app forgets it. To keep it: **Keep episodes on this device** → a passphrase of at least 12 characters → **Open or create vault** → **Keep pairing in this vault for 24 hours**. Expect "Pairing protected by this vault for 24 hours."
-
-#### Stage 7: Link a tablet into the same family
-
-1. **Phone:** Your Spark → **Link my phone or tablet** → confirm. Expect "Enter on your other device within five minutes:" followed by a code.
-2. **Tablet** (CA installed as in Stage 4): open the same URL and enter that code under Your Spark → **Pair**. Expect **Paired with Spark** and the same Spark fingerprint.
-3. **Spark:**
-
-   ```sh
-   nsf pocket list-pairings --db /path/on/encrypted-volume/mobile.sqlite
-   ```
-
-   **Expect** one line per device: its label, `family=`, `sponsor=` and `created=` (UTC). The phone and tablet share one `family=` tag. The phone's sponsor is `invitation`, and the tablet's is the phone's label. The tag is the same one the console and `nsf web node list` show; it needs the individual's database (`--instance-db`, default `$NSF_DB`).
-
-A family holds at most 6 devices. Linked devices see, follow and cancel the same questions.
-
-#### Stage 8: Pair another person or family without a restart
-
-```sh
-nsf pocket invite --db /path/on/encrypted-volume/mobile.sqlite
+  --cert ~/.config/neuroscifi/pocket/tls/fullchain.pem --key ~/.config/neuroscifi/pocket/tls/privkey.pem \
+  --db /secure/nsf/individual.pocket.sqlite --instance-db /secure/nsf/individual.sqlite   # terminal 3: Pocket
 ```
 
 **Expect:**
+- The worker prints nothing while it waits; `nsf web status` shows `"worker": {"running": true, …}`.
+- The console writes its URL with a one-time session token to the URL file. Open that URL on the Spark (from another machine, `ssh -L 8766:127.0.0.1:8766 HOST`). `nsf console --web-worker` runs the worker inside the console instead, for development.
+- The bridge prints:
 
-```text
-One-use pairing code (5 minutes): <code>
-Enter it on the new device; it replaces any earlier terminal code. Devices already paired are unaffected.
-```
+  ```text
+  Spark key fingerprint: XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
+  One-use pairing code (5 minutes): <code>
+  Listening on https://192.168.1.20:8765
+  Open on your phone or tablet (names on the certificate): https://spark:8765, https://spark.local:8765, https://192.168.1.20:8765
+  Pair another family later without a restart: nsf pocket invite --db /secure/nsf/individual.pocket.sqlite
+  ```
 
-Run it as the user that runs the bridge, with the bridge's `--db`: the request goes over a 0600 local socket. The new device installs the CA (Stage 4) and pairs as in Stage 6. It starts a new family, which sees none of the other families' questions. To remove devices:
+Ctrl-C stops each service cleanly. A restarted bridge prints a new code, and paired devices stay paired. For a service install, `sudo bash deploy/install.sh` installs systemd units, disabled (`--dry-run` shows the plan without root); see the [Runbook](docs/operations/RUNBOOK.md).
+
+### Step 4: Pair your phone
+
+1. **Copy the CA** `neuroscifi-ca.crt` to the phone over a channel you trust (USB, AirDrop, a message to yourself), never a public link.
+2. **Install it:**
+
+   | Device | Install the CA | Check |
+   |---|---|---|
+   | **Android 13–15** (wording varies) | Settings → Security & privacy → More security settings → Encryption & credentials → Install a certificate → **CA certificate** → Install anyway → `neuroscifi-ca.crt` | Trusted credentials → **User** → "NeuroSciFi Pocket CA (…)". A "network may be monitored" notice is expected |
+   | **iPhone and iPad (iOS 16–18)** | Open the file (AirDrop, Files or Mail) → Settings → General → VPN & Device Management → the profile → Install. Then **Settings → General → About → Certificate Trust Settings** → full trust for "NeuroSciFi Pocket CA". Without this second step Safari still refuses the site | The profile → More Details |
+
+3. **Compare the fingerprint:** the SHA-256 fingerprint the phone shows must equal the one `nsf setup` printed.
+4. **Open** a URL the bridge printed, such as `https://spark.local:8765`. A lock and no warning means the CA is trusted. If the phone cannot resolve `spark.local`, use the address URL. On an iPhone or iPad that will use push, first add Pocket to the Home Screen (Share → Add to Home Screen) and pair from that icon.
+5. **Pair:** under **Your Spark**, enter the one-use code within 5 minutes and press **Pair**. Expect **Paired with Spark**. "Your Spark's key fingerprint, pinned when this device paired" must equal the bridge's `Spark key fingerprint` line.
+6. **Keep the pairing across a reload:** Pocket holds it in tab memory only. **Keep episodes on this device** → a passphrase of at least 12 characters → **Open or create vault** → **Keep pairing in this vault for 24 hours**.
+
+To remove the CA later: Android, Trusted credentials → User → the CA → Remove; iOS, the profile → Remove Profile. [TLS for Pocket](docs/operations/TLS.md) has the details and the Tailscale and Let's Encrypt alternatives.
+
+### Step 5: Add a tablet or another family member
+
+Every new device installs the CA first (Step 4, steps 1–3).
+
+| To add | Get a code | Then |
+|---|---|---|
+| **Your own tablet** (same family: it sees, follows and cancels the same questions) | On the paired phone: Your Spark → **Link my phone or tablet** → confirm. The phone shows a code for 5 minutes | Open the same URL on the tablet, enter the code under Your Spark → **Pair** |
+| **Another person** (a new family: sees none of your questions) | On the Spark: `nsf pocket invite --db /secure/nsf/individual.pocket.sqlite` (as the bridge's user, no restart) | Open the URL on their device and pair with that code |
+
+A family holds at most 6 devices. To check and remove devices:
 
 ```sh
-nsf pocket erase-pairing LABEL --db /path/on/encrypted-volume/mobile.sqlite            # one device
-nsf pocket erase-pairing LABEL --family --db /path/on/encrypted-volume/mobile.sqlite   # it and every linked device
+nsf pocket list-pairings --db /secure/nsf/individual.pocket.sqlite --instance-db /secure/nsf/individual.sqlite
+nsf pocket erase-pairing LABEL --db /secure/nsf/individual.pocket.sqlite            # one device
+nsf pocket erase-pairing LABEL --family --db /secure/nsf/individual.pocket.sqlite   # it and every linked device
 ```
 
-#### Stage 9: Research across devices
+`list-pairings` prints one line per device with its `family=`, `sponsor=` and `created=` (UTC); a linked tablet shares the phone's `family=` tag.
 
-1. **Phone:** **Research** → type a question → **Submit**. Expect "Queued on your Spark. Its research worker runs it; this page follows each stage.", then Discovering, Reading, Evaluating, Synthesizing and Completed. Without a worker, the stage reads **Queued · Your Spark has no research worker running**.
-2. **Tablet:** the question appears within 10 seconds, or at once with **Refresh questions** under the list. Press **Open** and follow it to Completed.
-3. **Read the report.** When a model is configured, the **model-written answer** comes first: "Model-written summary" with the model's name, each kept sentence with its [n] citations and claim states, and the NeuroSciFi rules note. The extractive summary with quoted evidence follows, then the sources with publication and retrieval dates.
+### Step 6: Ask across devices
 
-Any device of the family can cancel a question, continue a cancelled, partial or failed one, and review its evidence by verification state. A family may submit 10 questions an hour. Pocket refuses a question that contains e-mail addresses, phone numbers, network addresses, file paths, secrets or names the owner marked private. The console and `nsf web tasks` see every task.
+1. **Phone:** **Research** → type a question → **Submit**. Expect "Queued on your Spark", then Discovering, Reading, Evaluating, Synthesizing and Completed.
+2. **Tablet:** the question appears within 10 seconds (or at once with **Refresh questions**). Press **Open** and follow it to Completed.
+3. **Read the report:** with a model configured, the model-written answer comes first, each sentence with its [n] citations and claim states; then the extractive summary with quoted evidence, and the sources with their dates.
 
-#### Stage 10 (optional): Research nodes
+Any device of the family can cancel a question, continue a cancelled, partial or failed one, and review its evidence. A family may submit 10 questions an hour. Pocket refuses a question that contains e-mail addresses, phone numbers, network addresses, file paths, secrets or names the owner marked private. The console and `nsf web tasks` see every task.
 
-A node is a paired device that may own a research session and hand it to another node of its family. Nodes never run research; the Spark does.
+### Just exploring? (no phone)
 
-1. **Device:** Research → **This device as a research node** → **Ask to enrol this device**. It shows its key fingerprint (8 groups of 4 hex digits).
-2. **Console:** **Autonomy** → **Refresh**. Under **Research nodes**, "Waiting for you" lists the key with its fingerprint. Compare it with the device's, type a name, and press **Fingerprints match: enrol**. From the terminal: `nsf web node list`, then `nsf web node enrol NAME --fingerprint FP` (or `nsf web node reject --fingerprint FP`).
-3. **Device:** **Check again**. Its research requests are now signed.
-4. **Sessions:** **Take ownership** (an unowned session or an expired lease) · **Offer hand-off** to another node of the family · **Accept hand-off** on that node within 5 minutes · **Release**. A lease lasts 15 minutes and renews with the owner's actions. Other devices of the family can read an owned session but not cancel or continue it.
-5. **Revoke:** the console's **Revoke** button on the node, or `nsf web node revoke NAME`. Its key is deleted and its sessions released. It stays paired and can still ask and read.
+After Step 1, one computer is enough:
 
-#### Stage 11 (optional): Push notifications while Pocket is closed
+```sh
+export NSF_DB=$PWD/individual.sqlite
+nsf init && nsf web config --enable
+nsf web ask "When was Python first released?"    # a cited report; generated_by is "template" until a model is configured
+nsf console                                      # prints a URL with a one-time session token
+```
 
-1. **Spark:** restart the bridge with a key path outside the repository. The VAPID key is created as a 0600 file on first start.
+### Brave Search API key
 
-   ```sh
-   nsf pocket serve --bind 192.168.1.20 --port 8765 \
-     --cert ~/nsf-tls/fullchain.pem --key ~/nsf-tls/privkey.pem \
-     --db /path/on/encrypted-volume/mobile.sqlite --instance-db "$NSF_DB" \
-     --push-key ~/.config/neuroscifi/pocket/vapid.pem
-   ```
+**Why.** Without a key, general web queries rely on SearXNG's two key-free general engines, which often find little. With a [Brave Search API](https://brave.com/search/api/) key, general and news queries go to Brave first, and SearXNG and open-webSearch become fallbacks.
 
-   A restart prints a new one-use code. Paired devices stay paired and reconnect on their own.
-2. **Device:** keep the pairing in the vault (Stage 6, step 4), so the reopened Pocket can show what finished.
-3. **Device:** Research → turn on **Notify me even when Pocket is closed (push)** and allow notifications. Expect "Push on for this device." and "this device is subscribed on your Spark".
-4. **Device:** **Send a test push**. Expect the notification "NeuroSciFi Pocket: Your Spark finished a research task." within a few seconds.
+**Cost and cap.** Brave's Search plan charges $5 per 1,000 requests and includes $5 of credit each month. Each general or news query is one request; a repeat within two minutes is free. The default cap of 30 queries a day (about 930 a month) stays inside the monthly credit. The cap counts every use of the key on this computer, autonomous research included. When the cap is reached or Brave rate-limits, queries go to SearXNG.
 
-- **iPhone and iPad:** push works only in Pocket added to the Home Screen (iOS 16.4 or later).
-- **Limits:** at most one push a minute per device. Turning push on and **Send a test push** each work 5 times an hour.
-- **Turn it off:**
-  - on one device, turn the switch off ("Push off.");
-  - on a device reopened without the vault, which shows **Phone only**: Your Spark → **Turn off push on this device**;
-  - for everyone, restart the bridge without `--push-key`.
+**Get a key.** Sign in to the Brave Search API dashboard, subscribe to the **Search** plan and create an API key.
 
-The push carries no content: see [What leaves the host](#what-leaves-the-host). The [Pocket guide](mobile/README.md#push-notifications-while-pocket-is-closed) has a guided test for a real phone.
+**Store it.** The key is never taken from the command line (it would show in `ps` and the shell history). Choose one:
 
-#### Stage 12 (optional): Voice check on your hardware
+```sh
+# (a) during setup: paste the key at the prompt (not echoed)
+nsf setup --db /secure/nsf/individual.sqlite --brave-key-stdin
 
-Start the voice services first ([Voice](#voice-whisper-asr-and-kokoro-tts)). Then run the check where you will talk to NeuroSciFi:
+# (b) later: the same prompt
+nsf web provider set-key brave --stdin --db /secure/nsf/individual.sqlite
 
-| Where | How |
-|---|---|
-| Console | **Voice** → **Voice check (microphone, speaker, interruptions)** → **Start voice check**. Use your normal microphone and speakers, headphones off for the first run |
-| Pocket | The **Voice** section on a paired phone. Run it twice: on the loudspeaker, and with the earpiece or headphones |
-| Terminal | `nsf voice selftest --report ~/voice-selftest-host.json`, on the host's own microphone and speaker. It has no browser echo canceller, so the echo step fails on open speakers |
+# (c) from a file only you can read, then destroy the file
+umask 077 && cat > ~/brave.key          # paste the key, Enter, then Ctrl-D
+nsf web provider set-key brave --from-file ~/brave.key --db /secure/nsf/individual.sqlite   # or: nsf setup --brave-key-file ~/brave.key
+shred -u ~/brave.key
+```
 
-**Expect** seven steps: microphone, read five sentences, silence, speaker, interrupt (say "stop" once), echo, and microphone off, each with a pass or fail and its reason. A pass needs every reading's WER ≤ 25 % and SNR ≥ 15 dB, an interruption detected within 1.5 s, and no false interruption by NeuroSciFi's own voice. The report is written 0600 under the instance folder (`voice-selftest/`) and offered as a download. Readings are deleted once scored, whatever the retention setting. [Voice validation §6](docs/voice/VOICE_VALIDATION.md#6-owner-device-self-test-voice-check) explains each failure.
+A source file that group or others can read, a symlink or another user's file is refused, with the fix. The key is stored in `~/.config/neuroscifi/search/brave.key` (0600, in a 0700 folder; `NSF_SEARCH_KEY_DIR` moves it). It belongs to this user, so run the worker as the same user. It is never printed, logged or kept in the individual: output says only `configured`.
 
-#### Troubleshooting
+**Check, cap and test:**
+
+```sh
+nsf web provider status --db /secure/nsf/individual.sqlite     # "key": "configured", "state", "daily_cap", "remaining_today"
+nsf web config --set 'daily_provider_queries={"brave": 30}' --db /secure/nsf/individual.sqlite   # 0 turns Brave off
+nsf web health --probe --db /secure/nsf/individual.sqlite      # one real Brave query, counted against the cap
+```
+
+**Remove or rotate.** `nsf web provider remove-key brave --db …` deletes the key file. To rotate, create a new key in the dashboard, store it as above (it replaces the old one) and revoke the old key there.
+
+**Privacy and terms.** Queries pass the same private-data screen as every other provider, so nothing private reaches Brave. Brave allows only transient storage of its results, so they are dropped from a task when it finishes, and the benchmark never uses Brave. Details: [search provider strategy §6](docs/web-cortex/SEARCH_PROVIDER_STRATEGY.md#6-keyed-provider-brave-search-api-adr-034-amendment-1).
+
+### Optional add-ons
+
+- **Research nodes (signed).** A paired device can ask to enrol from Research → **This device as a research node**. Compare its key fingerprint in the console (**Autonomy** → Research nodes) or with `nsf web node list`, then enrol it. Its requests are then signed, and it can take and hand off research sessions. The Spark stays the only executing node ([research policy §6](docs/autonomy/RESEARCH_POLICY.md#6-pocket-research-and-nodes)).
+- **Push notifications.** Run `nsf setup --push` and start the bridge with the `--push-key` it prints. On the device: Research → **Notify me even when Pocket is closed (push)**, then **Send a test push**. The push carries no content ([What leaves the host](#what-leaves-the-host)); iPhone and iPad need Pocket on the Home Screen ([Pocket guide](mobile/README.md#push-notifications-while-pocket-is-closed)).
+- **Voice and the Voice check.** Start the [voice services](#voice-whisper-asr-and-kokoro-tts), then run **Voice** → **Voice check** in the console or in Pocket on the hardware you will talk to. It measures microphone, speaker, interruptions and echo ([Voice validation §6](docs/voice/VOICE_VALIDATION.md#6-owner-device-self-test-voice-check)).
+- **Local model.** Start it as in [Local reasoning model](#local-reasoning-model-vllm), then run `nsf setup` again: it configures the model it finds. `nsf llm status --probe` checks it.
+- **Idle unloading.** `nsf resources idle --set vllm=30m --set asr=15m --set tts=15m` unloads idle services and reloads them on demand ([Resource scheduling](docs/architecture/RESOURCE_SCHEDULING.md)).
+
+<details>
+<summary><b>Manual setup (what <code>nsf setup</code> does)</b></summary>
+
+The same steps one command at a time, for full control. Replace `spark` and `192.168.1.20` with your host's name and LAN address (`ip -o addr show scope global` lists them).
+
+```sh
+export NSF_DB=/secure/nsf/individual.sqlite
+nsf init                                      # refuses to overwrite an existing file
+nsf web config --enable --pocket-research     # both switches: --pocket-research alone leaves Research hidden
+nsf llm config --url http://127.0.0.1:8811/v1 --model qwen3-30b-a3b-instruct-2507-fp8   # only with a running model
+
+P=~/.config/neuroscifi/pocket
+nsf pocket tls init --out $P/tls --name spark --name spark.local --name localhost \
+  --name 192.168.1.20 --name 127.0.0.1        # every name and LAN address a device will use
+nsf pocket tls export-ca --file $P/neuroscifi-ca.crt --der   # Android
+nsf pocket tls export-ca --file $P/neuroscifi-ca.pem         # iPhone and iPad accept either
+nsf pocket tls status --out $P/tls            # "verifies_against_ca": true, expires_in_days
+
+nsf web provider set-key brave --stdin        # optional: Brave Search API key
+```
+
+Then start the services as in [Step 3](#step-3-start-neuroscifi), with `--db "$NSF_DB"` and the `--cert`, `--key` and `--db` paths above. For push, add `--push-key ~/.config/neuroscifi/pocket/vapid.pem` to `nsf pocket serve`; the key is created as a 0600 file on first start. The server certificate lasts 397 days: run `nsf pocket tls init` again with the same names (or `nsf setup`) to renew it.
+
+</details>
+
+### Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| A question stays **Queued** ("Your Spark has no research worker running") | No research worker runs | Start `nsf web work`, or `nsf console --web-worker`. `nsf web status` shows `worker.running` |
-| No Research panel on the device | Web access or Pocket research is off, or the bridge runs without `--instance-db` | `nsf web config --enable --pocket-research`, then restart the bridge with `--instance-db "$NSF_DB"` |
-| Certificate warning, or `ERR_CERT_AUTHORITY_INVALID` | The CA is not installed, or on iOS its full trust is off | Stage 4. On iOS, Certificate Trust Settings is the required second step |
-| `ERR_CERT_COMMON_NAME_INVALID`, or `init` says "the existing CA is limited to …" | The name or address is not on the certificate | Use a URL the bridge printed. To add a name: `nsf pocket tls init --out ~/nsf-tls --new-ca --name …` with every name, then reinstall the CA on every device |
+| `nsf setup: name the individual's database` | Neither `--db` nor `NSF_DB` is set | Pass `--db PATH` or export `NSF_DB` |
+| A question stays **Queued** ("Your Spark has no research worker running") | No research worker runs | Start `nsf web work` (Step 3). `nsf web status` shows `worker.running` |
+| No Research panel on the device | Web access or Pocket research is off, or the bridge runs without `--instance-db` | Run `nsf setup` again, and start the bridge with the printed command |
+| Certificate warning, or `ERR_CERT_AUTHORITY_INVALID` | The CA is not installed, or on iOS its full trust is off | Step 4. On iOS, Certificate Trust Settings is the required second step |
+| `ERR_CERT_COMMON_NAME_INVALID`, or `nsf setup` warns "… not on the certificate" | The name or address is not on the certificate (a new DHCP or IPv6 address, or another name) | Use a URL the bridge printed. To add it, run the `--new-ca` command in the warning, then reinstall the CA on every device |
 | "That code was not accepted…" | The code expired (5 minutes), was used, or was replaced by a newer `nsf pocket invite` | `nsf pocket invite --db …`, or a new **Link my phone or tablet** code |
 | `nsf pocket invite: no running Pocket bridge answered` | The bridge is down, or the `--db` or user differs from the bridge's | Run it as the bridge's user with the bridge's `--db` |
-| After a reload, Pocket shows **Phone only** or "Not paired · pair again" | The pairing lived in tab memory only (POC-07) | Pair again, and keep the pairing in the vault (Stage 6, step 4) |
-| The console tab shows no session after a reload | Reloading the console tab drops its session | Open the URL in `~/console.url` again |
-| `family=-` in `list-pairings` | The individual's database was not given | Export `NSF_DB` or pass `--instance-db`. The tag then matches the console and `nsf web node list` |
+| After a reload, Pocket shows **Phone only** or "Not paired · pair again" | The pairing lived in tab memory only | Pair again and keep the pairing in the vault (Step 4, step 6) |
+| The console tab shows no session after a reload | Reloading the console tab drops its session | Open the URL in the URL file again |
+| `family=-` in `list-pairings` | The individual's database was not given | Pass `--instance-db` (or export `NSF_DB`) |
 | **Link my phone or tablet** refuses | The family already has 6 devices | Forget one first |
-| `nsf: cannot listen on ADDRESS:PORT: Address already in use` | Another process holds the port | Stop it, or choose another `--port` and use that port in the phone's URL |
-| No test push; the bridge prints `nsf-pocket: push to HOST: answered 410` | The push service had not finished registering the browser (up to about 20 s on FCM) | Wait. The Spark retries a minute later. On iOS, use the Home Screen app |
+| `nsf: cannot listen on ADDRESS:PORT: Address already in use` | Another process holds the port | Stop it, or run `nsf setup --port N` and use the new command and URL |
+| No test push; the bridge prints `nsf-pocket: push to HOST: answered 410` | The push service had not finished registering the browser (up to about 20 s on FCM) | Wait; the Spark retries a minute later. On iOS, use the Home Screen app |
 | A node's session action answers `reenrol` | The node was enrolled before nodes signed their requests | Enrol it again from its Research panel |
-
-For a service install, `sudo bash deploy/install.sh` creates a `neuroscifi` user and a virtual environment under `/opt/neuroscifi`, and installs the systemd units **disabled**. Add `--dry-run` to review the plan without root. The [Runbook](docs/operations/RUNBOOK.md) has the next steps.
+| Brave: `"key": "missing"` in `nsf web provider status` | No key stored for this user, or `NSF_SEARCH_KEY_DIR` differs from the worker's | [Store the key](#brave-search-api-key) as the user that runs the worker |
+| Brave: `"key": "insecure"` (state `failing`) | The key file or its folder can be read or written by others | `chmod 600` the key file and `chmod 700` its folder, or store the key again |
+| Brave: state `off` ("off (cap 0)") | `daily_provider_queries.brave` is 0 | `nsf web config --set 'daily_provider_queries={"brave": 30}'` |
+| Brave: state `rate_limited` | Today's cap is used, or Brave answered 429 | Queries go to SearXNG until the next UTC day or Brave's reset; raise the cap if you want more |
 
 ## Optional services
 
@@ -361,26 +375,7 @@ NeuroSciFi patches SearXNG at start so every engine request carries an honest Us
 
 ### Brave Search API (general discovery)
 
-Without a key, general web queries rely on SearXNG's two key-free general engines. With a [Brave Search API](https://brave.com/search/api/) key, general and news queries go to Brave first, and SearXNG and open-webSearch become fallbacks.
-
-1. Create a key for Brave's **Search** plan in the Brave Search API dashboard.
-2. Save the key alone in a file that only you can read. A source file that others can read, a symlink or another user's file is refused.
-3. Store it, delete the source and check:
-
-```sh
-chmod 600 ~/brave.key
-nsf web provider set-key brave --from-file ~/brave.key   # or --stdin (prompted without echo); never on the command line
-shred -u ~/brave.key                                     # the stored copy is ~/.config/neuroscifi/search/brave.key (0600)
-nsf web provider status                                  # "key": "configured" (never shown), daily_cap, remaining_today
-nsf web health --probe                                   # one real Brave query, counted against the cap
-nsf web config --set 'daily_provider_queries={"brave": 30}'   # queries per UTC day for this key; 0 switches Brave off
-nsf web provider remove-key brave
-```
-
-- **Cost and cap.** Brave's Search plan charges $5 per 1,000 requests and includes $5 of credit each month. Each general or news query is one request; a repeat within two minutes is free. The default cap of 30 queries a day (about 930 a month) stays inside the monthly credit. The cap counts every use of the key on this computer, autonomous research included. When the cap is reached or Brave rate-limits, queries go to SearXNG.
-- **Terms.** Brave allows only transient storage of its results, so they are dropped from a task when it finishes, and the benchmark never uses Brave.
-
-Details: [search provider strategy §6](docs/web-cortex/SEARCH_PROVIDER_STRATEGY.md#6-keyed-provider-brave-search-api-adr-034-amendment-1).
+An optional Brave Search API key makes Brave the first provider for general and news queries, within a daily cap. How to get, store, check, cap, test and remove the key: [Brave Search API key](#brave-search-api-key).
 
 ### Local reasoning model (vLLM)
 
@@ -408,7 +403,7 @@ nsf voice health                          # engine states + a real round trip: K
 deploy/voice/run.sh stop all              # text keeps working; voice controls show "unavailable"
 ```
 
-Use the **Voice** view in the console or the **Voice** section in Pocket, and run the [Voice check](#stage-12-optional-voice-check-on-your-hardware) once on your hardware. A spoken question goes through the same research path as a typed one. The modes are **A** voice and text, **B** voice in and text out, and **C** text only. `nsf voice settings`, `transcripts`, `forget` and `sweep` manage settings and data. The voice systemd units in `deploy/systemd/` are installed by hand, as their headers describe. `deploy/install.sh` does not install them.
+Use the **Voice** view in the console or the **Voice** section in Pocket, and run the [Voice check](docs/voice/VOICE_VALIDATION.md#6-owner-device-self-test-voice-check) once on your hardware. A spoken question goes through the same research path as a typed one. The modes are **A** voice and text, **B** voice in and text out, and **C** text only. `nsf voice settings`, `transcripts`, `forget` and `sweep` manage settings and data. The voice systemd units in `deploy/systemd/` are installed by hand, as their headers describe. `deploy/install.sh` does not install them.
 
 ### Autonomy, nodes and resources
 
@@ -485,7 +480,7 @@ The prototype's original learner is kept, with unchanged behaviour, as `python -
 
 Run `nsf pocket serve`, open `http://localhost:8765` on that computer, and try a sound or light check. Sensors start off, and nothing leaves the device before pairing. The field workspace works offline. Its optional vault lets you combine sound or device metrics with a goal, predict an outcome and return later with feedback. Requests are scoped to the device's pairing family and rate-limited.
 
-For phones and tablets, follow [Quick start](#set-up-with-phones-and-tablets) stages 4 to 11. The **[Pocket guide](mobile/README.md)** also covers the native Android and iOS collectors, offline operation, connection limits and privacy controls.
+For phones and tablets, follow the [Quick start](#quick-start). The **[Pocket guide](mobile/README.md)** also covers the native Android and iOS collectors, offline operation, connection limits and privacy controls.
 
 ## Web Cortex: governed web research
 
