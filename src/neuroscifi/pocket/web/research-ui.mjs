@@ -47,7 +47,7 @@ async function call(route,data,retry=true){
   if(!pin)throw Object.assign(Error("No Spark key pinned"),{status:0,code:"no_pin"});
   const text=JSON.stringify(data), bytes=new TextEncoder().encode(text), nonce=nodeKey.nonce(), path="/api/"+route;
   const headers={"Content-Type":"application/json",Authorization:"Bearer "+token,"X-NSF-Nonce":nonce};
-  if(signs(route,data))Object.assign(headers,await nodeKey.signedHeaders(path,bytes,nonce));
+  if(signs(route,data))Object.assign(headers,await nodeKey.signedHeaders(nodeInfo,path,bytes,nonce));
   let response;
   try{response=await fetch(path,{method:"POST",headers,body:text,cache:"no-store",credentials:"omit"});}
   catch{if(window.pocketToken?.()===token)window.pocketReach?.(false);throw Object.assign(Error("Spark unreachable"),{status:0});}

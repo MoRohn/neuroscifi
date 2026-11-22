@@ -40,12 +40,14 @@ def enrol(spark, page, label):
 
 # research_session status, accept and take from a page, signed with that browser's node key when `sign` is true
 SESSION_CALLS = """async ([id, sign]) => { const k = await import('/node-key.mjs');
+    const who = await (await fetch('/api/node_enrol', {method: 'POST', body: '{"action":"status"}', headers:
+        {'Content-Type': 'application/json', Authorization: 'Bearer ' + window.pocketToken()}})).json();
     return Promise.all(['status', 'accept', 'take'].map(async action => {
         const body = JSON.stringify({id, action}), nonce = k.nonce();
         const headers = {'Content-Type': 'application/json', Authorization: 'Bearer ' + window.pocketToken(),
                          'X-NSF-Nonce': nonce};
         if (sign && action !== 'status')
-            Object.assign(headers, await k.signedHeaders('/api/research_session', new TextEncoder().encode(body), nonce));
+            Object.assign(headers, await k.signedHeaders(who, '/api/research_session', new TextEncoder().encode(body), nonce));
         return (await fetch('/api/research_session', {method: 'POST', headers, body})).status; })); }"""
 
 

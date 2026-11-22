@@ -91,8 +91,8 @@ def test_attested_enrolment_over_http(spark, devices, alg):
             [(alg, key.fingerprint, spark.server.store.label(a))]
         nodes.approve(db, key.fingerprint, "phone", time.time(), by="owner:console")
     status, out = spark.req("node_enrol", {"action": "status"}, a)
-    assert out == {"node": challenge["node"], "state": "enrolled", "label": "phone", "alg": alg,
-                   "fingerprint": key.fingerprint}
+    assert out == {"node": challenge["node"], "family": challenge["family"], "state": "enrolled", "label": "phone",
+                   "alg": alg, "fingerprint": key.fingerprint}
     for bad in ({"action": "attest"}, {"action": "status", "x": 1}, {"action": "fly"}, {}):
         assert spark.req("node_enrol", bad, a)[0] == 400, bad
 
@@ -160,4 +160,38 @@ def test_a_small_order_key_neither_attests_nor_forges_a_signed_request(spark, de
     headers = {"X-NSF-Timestamp": str(int(time.time())), "X-NSF-Nonce": secrets.token_urlsafe(18),
                "X-NSF-Signature": forged}
     assert spark.req("research_submit", raw=body, token=a, headers=headers, sign=False, data=None) == \
+        (401, {"error": "signature_invalid"})
+
+
+def test_a_signed_request_is_bound_to_its_device_and_family_and_a_key_lives_on_one_row(spark, devices):
+    """Security review A-3: after a reload and re-pair, the same browser key was enrolled on its old and its new
+    device row, both live; a captured signed request then also verified with the other row's credential, in another
+    family (201). Approval now revokes the other row, and the signature names its family tag and node id (NSF-REQ-2)."""
+    old = devices[0]
+    new = spark.server.store.pair()                       # the same browser re-paired: another device and family
+    key = NodeKey()
+    enrol(spark, old, "phone-old", key=key)
+    enrol(spark, new, "phone-new", key=key)               # the same key attested again and approved
+    with spark.owner() as db:
+        states = {n["label"]: (n["state"], n["fingerprint"]) for n in nodes.listing(db)}
+        assert states == {"phone-old": ("revoked", None), "phone-new": ("enrolled", key.fingerprint)}
+    body = json.dumps({"objective": QUESTION})
+    captured = key.headers("research_submit", body.encode())
+    assert spark.req("research_submit", raw=body, token=new, headers=captured, sign=False, data=None)[0] == 201
+    assert spark.req("research_submit", raw=body, token=old, headers=captured, sign=False, data=None) == \
+        (401, {"error": "node_revoked"})
+    # even with both rows live on one key (as before the fix), the captured request does not verify on the other row
+    with spark.owner() as db, db:
+        db.execute("UPDATE autonomy_nodes SET revoked_at=NULL, alg=?, public_key=?, key_fingerprint=? WHERE label=?",
+                   (key.alg, signing.b64(key.raw), key.fingerprint, "phone-old"))
+    replay = key.headers("research_submit", body.encode())
+    assert spark.req("research_submit", raw=body, token=old, headers=replay, sign=False, data=None) == \
+        (401, {"error": "signature_invalid"})
+    assert spark.req("research_submit", raw=body, token=new, headers=replay, sign=False, data=None)[0] == 201
+    # the old canonical form (NSF-REQ-1: no family, no node) is refused
+    ts, nonce = int(time.time()), "legacy-nonce-0123456789"
+    legacy = key.sign(b"\n".join([b"NSF-REQ-1", b"POST", b"/api/research_submit",
+                                  signing.sha256_hex(body.encode()).encode(), str(ts).encode(), nonce.encode()]))
+    assert spark.req("research_submit", raw=body, token=new, sign=False, data=None, headers={
+        "X-NSF-Timestamp": str(ts), "X-NSF-Nonce": nonce, "X-NSF-Signature": signing.b64(legacy)}) == \
         (401, {"error": "signature_invalid"})

@@ -22,7 +22,9 @@ export const nonce=()=>b64(crypto.getRandomValues(new Uint8Array(18)));
 
 // The canonical forms: UTF-8, fields joined by "\n", each with its own tag.
 export const canonicalChallenge=c=>enc.encode(["NSF-ENROL-1",c.challenge,c.family,c.node,String(c.expires)].join("\n"));
-export const canonicalRequest=async(method,path,body,ts,n)=>enc.encode(["NSF-REQ-1",method.toUpperCase(),path,await sha256hex(body),String(ts),n].join("\n"));
+// A request names the family tag and node id it was signed for (node_enrol status), so it verifies for this device row
+// only; NSF-REQ-1 lacked both and the Spark no longer accepts it (security review A-3).
+export const canonicalRequest=async(family,node,method,path,body,ts,n)=>enc.encode(["NSF-REQ-2",family,node,method.toUpperCase(),path,await sha256hex(body),String(ts),n].join("\n"));
 export const canonicalResponse=async(status,path,n,body)=>enc.encode(["NSF-RES-1",String(status),path,n||"",await sha256hex(body)].join("\n"));
 export async function fingerprint(alg,raw){
   const d=hex(await crypto.subtle.digest("SHA-256",concat(enc.encode("NSF-KEY-1\n"+alg+"\n"),raw))).toUpperCase().slice(0,32);
@@ -68,10 +70,11 @@ export async function sign(bytes){
   if(!id)throw Object.assign(Error("This device has no node key."),{code:"no_key"});
   return new Uint8Array(await crypto.subtle.sign(SIGN[id.alg],id.privateKey,bytes));
 }
-// The three headers of a signed request; `n` is the request's X-NSF-Nonce.
-export async function signedHeaders(path,body,n){
+// The headers of a signed request besides its X-NSF-Nonce `n`; `who` is this device's node_enrol status ({family, node}).
+export async function signedHeaders(who,path,body,n){
+  if(typeof who?.family!=="string"||typeof who?.node!=="string")throw Object.assign(Error("This device's node id is unknown."),{code:"no_key"});
   const ts=Math.floor(Date.now()/1000);
-  return {"X-NSF-Timestamp":String(ts),"X-NSF-Signature":b64(await sign(await canonicalRequest("POST",path,body,ts,n)))};
+  return {"X-NSF-Timestamp":String(ts),"X-NSF-Signature":b64(await sign(await canonicalRequest(who.family,who.node,"POST",path,body,ts,n)))};
 }
 
 // ---- the Spark's signed replies --------------------------------------------------------------------------------

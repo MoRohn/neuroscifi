@@ -21,10 +21,12 @@
   "path": "/api/research_session",
   "ts": 1790000000,
   "nonce": "AbCdEfGhIjKlMnOpQr_-01",
-  "canonical": "NSF-REQ-1\nPOST\n/api/research_session\nbe10427725e37cc92c73f05bf3a96aa9af7212a7f7af4ddcc8c5b472807f2050\n1790000000\nAbCdEfGhIjKlMnOpQr_-01",
+  "family": "f-0123456789abcdef",
+  "node": "n-fedcba9876543210",
+  "canonical": "NSF-REQ-2\nf-0123456789abcdef\nn-fedcba9876543210\nPOST\n/api/research_session\nbe10427725e37cc92c73f05bf3a96aa9af7212a7f7af4ddcc8c5b472807f2050\n1790000000\nAbCdEfGhIjKlMnOpQr_-01",
   "p256": {
    "key": "BJ-thK6uCLvvfwEAFNgs72oJ3isM-HG1zgxPHROlmlk0B8tFdp8QcOLCRw_lsb_mMTPAsM3GTqS_N5Go7CoH_U8",
-   "signature": "cAEZHFixW5mzWcSV1igN-tP3ja1Vej7PfkzBBRau-WRIwlSpAr42qgagBBRq8lFKCsHnErtysD6r54MBa2eGhg",
+   "signature": "hJCMWs_XsxhUzPIerEEu2eSwWxzE8tpwa5NmBvDfViryiwkSEFqn5VYj6Z5RkANrbQieHX23ku-NkxBy_2WKcQ",
    "fingerprint": "7996-84D2-8EC1-33BF-71E2-F6C0-46FB-0EDE"
   }
  },

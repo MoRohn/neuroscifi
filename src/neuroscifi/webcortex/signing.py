@@ -4,8 +4,14 @@ Three canonical byte strings, UTF-8, fields joined by "\\n", each prefixed with 
 can never be replayed as another:
 
   enrolment challenge  NSF-ENROL-1 / challenge / family tag / node id / expires (integer seconds)
-  node request         NSF-REQ-1 / method / path / SHA-256 hex of the body bytes / timestamp (integer s) / nonce
+  node request         NSF-REQ-2 / family tag / node id / method / path / SHA-256 hex of the body bytes /
+                       timestamp (integer s) / nonce
   Spark response       NSF-RES-1 / status / path / the request's nonce / SHA-256 hex of the body bytes
+
+A request signature names the pairing family and the node it was made for (nodes.family_tag, nodes.node_id, as in the
+challenge), so it verifies for that device row only: the same key enrolled on another row (a re-paired browser)
+cannot replay it there. NSF-REQ-1 lacked both and is no longer accepted; a node's key is unchanged, so Pocket simply
+signs the new form.
 
 Node keys are Ed25519 (raw 32-byte public key, 64-byte signature) or, where the browser lacks Ed25519, ECDSA P-256
 with SHA-256 (uncompressed 65-byte public point, 64-byte r||s signature as WebCrypto produces it). The algorithm is
@@ -78,8 +84,9 @@ def canonical_challenge(challenge: str, family: str, node: str, expires: int) ->
     return _join("NSF-ENROL-1", challenge, family, node, int(expires))
 
 
-def canonical_request(method: str, path: str, body: bytes, timestamp: int, nonce: str) -> bytes:
-    return _join("NSF-REQ-1", method.upper(), path, sha256_hex(body), int(timestamp), nonce)
+def canonical_request(family: str, node: str, method: str, path: str, body: bytes, timestamp: int,
+                      nonce: str) -> bytes:
+    return _join("NSF-REQ-2", family, node, method.upper(), path, sha256_hex(body), int(timestamp), nonce)
 
 
 def canonical_response(status: int, path: str, nonce: str, body: bytes) -> bytes:

@@ -9,9 +9,11 @@ A *node* is a Pocket-paired device the owner enrolled with the 'node' capability
   3. the owner compares the fingerprint the console shows with the one the device shows and approves it
      (console, or `nsf web node enrol NAME --fingerprint FP`), naming the node. Only then is it a node.
 A node is identified by instance-salted digests of its device and family fingerprints, never by its credential.
-Every state-changing request of a signed node carries a signature over the canonical request (verify_request): a
-fresh timestamp (FRESH_SECONDS), a nonce never seen before, the node's recorded algorithm and key. Revoking a node
-deletes its key; rotating a key is re-enrolment. Nodes enrolled before signing existed (signed=0) must re-enrol.
+Every state-changing request of a signed node carries a signature over the canonical request (verify_request): its
+family tag and node id, a fresh timestamp (FRESH_SECONDS), a nonce never seen before, the node's recorded algorithm
+and key. A key lives on one node row: approving it revokes any other row that holds it (a re-paired browser's old
+row). Revoking a node deletes its key; rotating a key is re-enrolment. Nodes enrolled before signing existed
+(signed=0) must re-enrol.
 
 Enrolment does not make a node an executor: the Spark that runs `nsf web work` stays the one executing node
 (ADR-031). A node can submit research, continue it, take or hand off ownership of a research session, and read
@@ -79,6 +81,12 @@ def _record(db, device, family, label, now, *, by, key):
     alg, raw = key if key else (None, None)
     fp = signing.fingerprint(alg, raw) if key else None
     with store.write(db):
+        if fp:
+            # One live row per key: the same browser re-paired (POC-07) and enrolled again leaves its old row holding
+            # the same key; that row is revoked, so the key drives one device row only.
+            _revoke_devices(db, [d for (d,) in db.execute(
+                "SELECT device FROM autonomy_nodes WHERE key_fingerprint=? AND device!=? AND revoked_at IS NULL",
+                (fp, device))], now, why="the same key was enrolled for another pairing")
         db.execute("INSERT INTO autonomy_nodes(device,family,label,capabilities,enrolled_by,enrolled_at,alg,public_key,"
                    "key_fingerprint,signed) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(device) DO UPDATE SET "
                    "family=excluded.family, label=excluded.label, capabilities=excluded.capabilities, "
@@ -172,23 +180,30 @@ def reject(db, fingerprint, now) -> int:
     return n
 
 
+def _revoke_devices(db, devices, now, *, why, label=None):
+    """Revoke these node rows inside the caller's transaction: key deleted, nonces, pending enrolment and session
+    ownership dropped."""
+    for device in devices:
+        db.execute("UPDATE autonomy_nodes SET revoked_at=?, alg=NULL, public_key=NULL, key_fingerprint=NULL "
+                   "WHERE device=?", (now, device))
+        db.execute("DELETE FROM node_enrolments WHERE device=?", (device,))
+        db.execute("DELETE FROM node_nonces WHERE device=?", (device,))
+        db.execute("DELETE FROM autonomy_sessions WHERE owner=?", (device,))
+        db.execute("UPDATE autonomy_sessions SET offered_to=NULL, offer_expires_at=NULL WHERE offered_to=?",
+                   (device,))
+    if devices:
+        state.log_event(db, None, "decision", {"node": "revoked", "count": len(devices), "why": why,
+                                               **({"label": label} if label is not None else {})}, now)
+        store.bump_state_version(db)
+
+
 def revoke(db, label, now) -> int:
     """Revoke every live node with this label: its key is deleted (later signatures fail) and its sessions are
     released. Returns how many."""
     with store.write(db):
         devices = [d for (d,) in db.execute("SELECT device FROM autonomy_nodes WHERE label=? AND revoked_at IS NULL",
                                             (label,))]
-        for device in devices:
-            db.execute("UPDATE autonomy_nodes SET revoked_at=?, alg=NULL, public_key=NULL, key_fingerprint=NULL "
-                       "WHERE device=?", (now, device))
-            db.execute("DELETE FROM node_enrolments WHERE device=?", (device,))
-            db.execute("DELETE FROM node_nonces WHERE device=?", (device,))
-            db.execute("DELETE FROM autonomy_sessions WHERE owner=?", (device,))
-            db.execute("UPDATE autonomy_sessions SET offered_to=NULL, offer_expires_at=NULL WHERE offered_to=?",
-                       (device,))
-        if devices:
-            state.log_event(db, None, "decision", {"node": "revoked", "label": label, "count": len(devices)}, now)
-            store.bump_state_version(db)
+        _revoke_devices(db, devices, now, why="revoked by the owner", label=label)
     return len(devices)
 
 
@@ -216,8 +231,9 @@ def node(db, device) -> dict | None:
 
 def status(db, device, family, now) -> dict:
     """What a paired device learns about itself: none, challenged, attested (waiting for the owner), enrolled,
-    reenrol (enrolled before signing) or revoked; with its node id and, once it proved a key, the fingerprint."""
-    out = {"node": node_id(device), "state": "none"}
+    reenrol (enrolled before signing) or revoked; with its node id and family tag (both part of every request it
+    signs) and, once it proved a key, the fingerprint."""
+    out = {"node": node_id(device), "family": family_tag(family), "state": "none"}   # what a request signs
     row = _node_row(db, device)
     if row is not None and row["family"] == family:
         if row["revoked_at"] is not None:
@@ -262,7 +278,7 @@ def verify_request(db, device, family, method, path, body: bytes, timestamp, non
         raise SignatureError("malformed", "timestamp, nonce or signature is malformed") from None
     if abs(now - ts) > signing.FRESH_SECONDS:
         raise SignatureError("stale_request", "the request's timestamp is more than 120 s from the Spark's clock")
-    message = signing.canonical_request(method, path, body, ts, nonce)
+    message = signing.canonical_request(family_tag(family), node_id(device), method, path, body, ts, nonce)
     if not signing.verify(row["alg"], signing.unb64(row["public_key"]), sig, message):
         raise SignatureError("signature_invalid", "the signature does not verify with the node's key")
     with store.write(db):

@@ -27,17 +27,18 @@ def db(tmp_path):
 
 def test_canonical_forms_are_exact_bytes():
     body = b'{"id":"x"}'
-    assert signing.canonical_request("post", "/api/research_cancel", body, 1700000000, "n" * 16) == (
-        b"NSF-REQ-1\nPOST\n/api/research_cancel\n" + signing.sha256_hex(body).encode() + b"\n1700000000\n" + b"n" * 16)
+    assert signing.canonical_request("f-1", "n-2", "post", "/api/research_cancel", body, 1700000000, "n" * 16) == (
+        b"NSF-REQ-2\nf-1\nn-2\nPOST\n/api/research_cancel\n" + signing.sha256_hex(body).encode() + b"\n1700000000\n"
+        + b"n" * 16)
     assert signing.canonical_challenge("c", "f-1", "n-2", 1700000300.9) == b"NSF-ENROL-1\nc\nf-1\nn-2\n1700000300"
     assert signing.canonical_response(200, "/api/research_get", "nonce", b"{}") == (
         b"NSF-RES-1\n200\n/api/research_get\nnonce\n"
         b"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
     # a field cannot smuggle a line break that would make two different requests sign the same bytes
     with pytest.raises(ValueError):
-        signing.canonical_request("POST", "/api/x\n200", body, 1, "n" * 16)
+        signing.canonical_request("f", "n", "POST", "/api/x\n200", body, 1, "n" * 16)
     # the three forms never coincide, whatever their fields
-    assert len({signing.canonical_request("POST", "p", b"", 1, "n")[:9], signing.canonical_challenge("c", "f", "n", 1)[:9],
+    assert len({signing.canonical_request("f", "n", "POST", "p", b"", 1, "n")[:9], signing.canonical_challenge("c", "f", "n", 1)[:9],
                 signing.canonical_response(200, "p", "n", b"")[:9]}) == 3
 
 
@@ -51,10 +52,10 @@ def test_base64url_is_strict_and_canonical():
 @pytest.mark.parametrize("alg", BOTH)
 def test_both_node_algorithms_verify_and_reject_tampering(alg):
     key, other = NodeKey(alg), NodeKey(alg)
-    msg = signing.canonical_request("POST", "/api/research_submit", b'{"objective":"q"}', 1, "n" * 16)
+    msg = signing.canonical_request("f", "n", "POST", "/api/research_submit", b'{"objective":"q"}', 1, "n" * 16)
     sig = key.sign(msg)
     assert len(sig) == 64 and signing.verify(alg, key.raw, sig, msg)
-    tampered = signing.canonical_request("POST", "/api/research_submit", b'{"objective":"r"}', 1, "n" * 16)
+    tampered = signing.canonical_request("f", "n", "POST", "/api/research_submit", b'{"objective":"r"}', 1, "n" * 16)
     assert tampered != msg and not signing.verify(alg, key.raw, sig, tampered)  # tampered body
     assert not signing.verify(alg, other.raw, sig, msg)                          # another key
     assert not signing.verify(alg, key.raw, sig[:-1] + bytes([sig[-1] ^ 1]), msg)
@@ -112,8 +113,9 @@ def test_attested_enrolment_then_signed_requests(db, alg):
     device, fam, key = _enrolled(db, alg=alg)
     found = nodes.node(db, device)
     assert found["alg"] == alg and found["key_fingerprint"] == key.fingerprint and found["signed"] is True
-    assert nodes.status(db, device, fam, T0 + 3) == {"node": nodes.node_id(device), "state": "enrolled",
-                                                     "label": "phone", "alg": alg, "fingerprint": key.fingerprint}
+    assert nodes.status(db, device, fam, T0 + 3) == {"node": nodes.node_id(device), "family": nodes.family_tag(fam),
+                                                     "state": "enrolled", "label": "phone", "alg": alg,
+                                                     "fingerprint": key.fingerprint}
     assert [n["state"] for n in nodes.listing(db)] == ["enrolled"] and nodes.pending(db, T0 + 3) == []
     assert _signed(db, device, fam, key)["label"] == "phone"
     assert nodes.requires_signature(db, device)
@@ -268,8 +270,8 @@ def js_vectors():
     nonce = "AbCdEfGhIjKlMnOpQr_-01"
     p256 = ec.derive_private_key(0x1234567890ABCDEF, ec.SECP256R1())
     p256_raw = p256.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
-    request = signing.canonical_request("POST", "/api/research_session", b'{"id":"x","action":"take"}', 1790000000,
-                                        nonce)
+    request = signing.canonical_request("f-0123456789abcdef", "n-fedcba9876543210", "POST", "/api/research_session",
+                                        b'{"id":"x","action":"take"}', 1790000000, nonce)
     r, s = decode_dss_signature(p256.sign(request, ec.ECDSA(hashes.SHA256())))
     challenge = {"challenge": "c" * 43, "family": "f-0123456789abcdef", "node": "n-fedcba9876543210",
                  "expires": 1790000300}
@@ -279,7 +281,8 @@ def js_vectors():
                   "signature": signing.b64(spark.sign(signing.canonical_response(200, "/api/research_get", nonce,
                                                                                   body.encode())))},
         "request": {"body": '{"id":"x","action":"take"}', "path": "/api/research_session", "ts": 1790000000,
-                    "nonce": nonce, "canonical": request.decode(),
+                    "nonce": nonce, "family": "f-0123456789abcdef", "node": "n-fedcba9876543210",
+                    "canonical": request.decode(),
                     "p256": {"key": signing.b64(p256_raw), "signature": signing.b64(r.to_bytes(32, "big") +
                                                                                     s.to_bytes(32, "big")),
                              "fingerprint": signing.fingerprint(signing.P256, p256_raw)}},

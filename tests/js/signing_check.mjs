@@ -11,7 +11,9 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 const r = v.reply, body = enc.encode(r.body);
 
 // canonicalisation: byte for byte what signing.py builds
-assert.equal(dec.decode(await k.canonicalRequest("post", v.request.path, enc.encode(v.request.body), v.request.ts, v.request.nonce)), v.request.canonical);
+const req = v.request;
+assert.equal(dec.decode(await k.canonicalRequest(req.family, req.node, "post", req.path, enc.encode(req.body), req.ts, req.nonce)), req.canonical);
+assert.ok(req.canonical.startsWith("NSF-REQ-2\n" + req.family + "\n" + req.node + "\n"), "requests are bound to family and node");
 assert.equal(dec.decode(k.canonicalChallenge(v.challenge)), v.challenge.canonical);
 assert.equal(await k.fingerprint(k.ED25519, k.unb64(v.ed25519_fingerprint.key)), v.ed25519_fingerprint.fingerprint);
 assert.equal(await k.fingerprint(k.P256, k.unb64(v.request.p256.key)), v.request.p256.fingerprint);
@@ -58,6 +60,22 @@ try {
 const p256 = await subtle.importKey("raw", k.unb64(v.request.p256.key), {name: "ECDSA", namedCurve: "P-256"}, false, ["verify"]);
 assert.equal(await subtle.verify({name: "ECDSA", hash: "SHA-256"}, p256, k.unb64(v.request.p256.signature), enc.encode(v.request.canonical)), true);
 
+// signedHeaders signs NSF-REQ-2 for the device that node_enrol status names, and refuses without one
+const store = new Map(), signed = [];
+globalThis.indexedDB ??= {open() {   // a minimal IndexedDB with one store, enough for identity()
+  const req = {}; queueMicrotask(() => { req.result = {transaction: () => { const t = {};
+    t.objectStore = () => ({get: key => { const r = {result: store.get(key)}; queueMicrotask(() => t.oncomplete?.()); return r; },
+                            put: (value, key) => { store.set(key, value); const r = {}; queueMicrotask(() => t.oncomplete?.()); return r; }});
+    return t; }, close() {}}; req.onsuccess(); }); return req; }};
+const id = await k.identity(true);
+const who = {family: "f-0123456789abcdef", node: "n-fedcba9876543210"}, sent = enc.encode(req.body);
+const h = await k.signedHeaders(who, req.path, sent, req.nonce);
+const nodeKey = await subtle.importKey("raw", k.unb64(id.publicKey), id.alg === k.ED25519 ? {name: "Ed25519"} : {name: "ECDSA", namedCurve: "P-256"}, false, ["verify"]);
+const expected = enc.encode(["NSF-REQ-2", who.family, who.node, "POST", req.path, [...new Uint8Array(await subtle.digest("SHA-256", sent))].map(b => b.toString(16).padStart(2, "0")).join(""), h["X-NSF-Timestamp"], req.nonce].join("\n"));
+assert.equal(await subtle.verify(id.alg === k.ED25519 ? {name: "Ed25519"} : {name: "ECDSA", hash: "SHA-256"}, nodeKey, k.unb64(h["X-NSF-Signature"]), expected), true, "JS signs NSF-REQ-2");
+await assert.rejects(k.signedHeaders(null, req.path, sent, req.nonce), /node id is unknown/);
+await assert.rejects(k.signedHeaders({family: who.family}, req.path, sent, req.nonce), /node id is unknown/);
+
 // Run-time algorithm detection: Ed25519 here; P-256 when generateKey refuses Ed25519.
 assert.equal(await k.algorithm(), k.ED25519);
 const generateKey = subtle.generateKey.bind(subtle);
@@ -65,4 +83,4 @@ subtle.generateKey = (alg, ...rest) => alg?.name === "Ed25519"
   ? Promise.reject(new DOMException("Ed25519 unsupported", "NotSupportedError")) : generateKey(alg, ...rest);
 try { assert.equal(await k.algorithm(), k.P256); } finally { subtle.generateKey = generateKey; }
 
-console.log("Passed Pocket signing: canonical bytes and fingerprints match the Spark; Spark-signed replies accepted only untampered, for their own request, route and status, under the pinned key (WebCrypto Ed25519 and the fallback verifier); P-256 r||s interop; algorithm detection.");
+console.log("Passed Pocket signing: canonical bytes (NSF-REQ-2, bound to family and node) and fingerprints match the Spark; signedHeaders signs NSF-REQ-2; Spark-signed replies accepted only untampered, for their own request, route and status, under the pinned key (WebCrypto Ed25519 and the fallback verifier); P-256 r||s interop; algorithm detection.");
