@@ -470,7 +470,7 @@ neuroscifi/
   - A person using NVDA, Orca, TalkBack and VoiceOver (protocol in ACCESSIBILITY).
   - Pocket on physical phones and tablets.
   - Push notifications on a real phone: verified live only with headless Chromium through Google's FCM; the owner's guided test is in the [Pocket guide](mobile/README.md#guided-owner-test-on-a-real-phone).
-- **Scope.** Multi-node is minimal: there is no worker federation, attestation or result signing, and session hand-off is API-only. Idle unloading of models is opt-in (every timeout is off by default), and the live vLLM reload time through it is still to be measured on the owner's host. A voice session forgotten after a checkpoint stays in older checkpoint files until they are pruned.
+- **Scope.** Multi-node is minimal: there is no worker federation, attestation or result signing, and session hand-off is API-only. Idle unloading of models is opt-in (every timeout is off by default), and the live vLLM reload time through it is still to be measured on the owner's host. A forgotten voice session (or research task, knowledge item or source) is removed from older checkpoint files by an in-place, crash-safe rewrite. Evidence, epoch, partner and dataset forgets still leave older archives stale until `nsf checkpoint rebuild` replaces them, and an expiry does not rewrite archives.
 - **Release status.** The open items and the 0.7.0 acceptance matrix are in [RELEASE_DECISIONS](docs/qa/RELEASE_DECISIONS.md) and the QA reports.
 
 ### Interpretation of the research results

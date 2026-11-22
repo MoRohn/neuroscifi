@@ -303,6 +303,18 @@ Connections set `journal_size_limit=0` and `recursive_triggers=ON`.
 - `rebuild_stale(..., keep=7)` returns `pruned`.
 - `create` may raise `WritesPaused`, and may register as `stale` with a `warning` if a deletion committed during packing.
 - `restore` returns `graphs_invalidated` and `derived_rows_scrubbed`.
+- 0.7: `rewrite(db, id, now)` rewrites one stale archive in place without what was forgotten since. It applies the
+  replay `restore` applies, plus VACUUM INTO, integrity check, re-pack with the archive's policy and a decode check.
+  A journal and an atomic rename make it crash-safe; `_recover` settles a killed run at the next verify, restore or
+  sweep. It returns {id, path, old_sha256, new_sha256, old_bytes, bytes, removed, seconds}. It raises `Conflict`
+  for a hash mismatch, or when `rewritable()` refuses: only archives made stale solely by `voice_session`,
+  `research`, `knowledge` or `source` forgets qualify. `rewrite_stale(db, now, ids=None)` returns {rewritten,
+  not_rewritten: [{id, reason}]}. `after_forget(db, now)` returns {checkpoints_rewritten, checkpoints_not_rewritten?,
+  checkpoints_stale}.
+- 0.7: `transcripts.forget_session(..., rewrite=True)` and `nsf forget evidence|epoch|partner|dataset|research|
+  knowledge|source|voice` merge `after_forget` into their result. `next_steps` stays only while archives are still
+  stale. `VoiceHub.forget` rewrites in the background and returns `checkpoints_rewriting` [ids].
+  `nsf checkpoint rewrite [--id N ...]` prints `rewrite_stale`.
 
 **datasets and legacy** gain `path=` for free-space regulation.
 

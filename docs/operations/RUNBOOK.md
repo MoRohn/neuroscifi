@@ -119,7 +119,7 @@ Backups: the checkpoint folder lives on the encrypted volume. Do not copy the Po
 
 ## 6. Forgetting and erasure requests
 
-Forgetting removes evidence, leaves a payload-free tombstone, recomputes beliefs, supersedes affected open questions, invalidates derived graphs and marks checkpoints stale.
+Forgetting removes evidence, leaves a payload-free tombstone, recomputes beliefs, supersedes affected open questions, invalidates derived graphs and marks checkpoints stale. Voice and web forgets then rewrite those checkpoints in place (below).
 
 | Request | Command |
 |---|---|
@@ -132,9 +132,13 @@ Forgetting removes evidence, leaves a payload-free tombstone, recomputes beliefs
 
 Find ids with `nsfs memory evidence --epoch NAME`, `nsfs memory dataset`, and `nsfs memory deletion` (the deletion log).
 
+A voice session: `nsfs forget voice SESSION` (or `nsfs voice forget SESSION`); a research task, knowledge item or source: `nsfs forget research|knowledge|source TARGET`.
+
+**Checkpoints are rewritten in place.** After a voice, research, knowledge or source forget, every checkpoint archive that the forget made stale, and that only such forgets made stale, is rewritten without the forgotten rows. The rewrite applies the same replay as a restore and vacuums the copy into a new file. It checks the copy (`PRAGMA integrity_check`), packs it with the archive's own policy, decodes the result again and compares hashes, and only then replaces the file. A journal (`<archive>.rewrite`) and an atomic rename make it crash-safe: a kill at any moment leaves the old archive whole (still `stale`) or the new one whole (`valid`). The next `verify`, `restore`, `rewrite` or `prune` of it, or the next console start, settles the registry. The forget result lists `checkpoints_rewritten` (id, path, old and new size, seconds); `checkpoints_not_rewritten` gives each remaining archive's reason, and `next_steps` appears only for archives still stale. `nsfs memory deletion` holds one `checkpoint` row per rewrite (`status: rewritten`, old and new sha256, the counts removed; no forgotten text). Evidence, epoch, partner, dataset and expiry forgets are not rewritten, because their derived rows are not fully replayed; those archives wait for `rebuild`. `nsfs checkpoint rewrite [--id N]` retries a rewrite, for example after a console forget or a failed one. Measured on the GB10 host with a synthetic instance of 420–432 MiB (transcript text plus about 45 % incompressible retained audio), archived to 235–247 MiB, in two runs; the second ran beside the test suite. A `cold` archive rewrote in 36.0–41.9 s, about as long as creating it (33.1–40.8 s). A `fast` archive rewrote in 3.9–5.4 s. `verify` took 2.8–3.2 s (`cold`) and 1.4–1.6 s (`fast`). The command waits that long; the voice hub rewrites in the background. A rewrite needs free space for one decoded copy and one new archive next to the old one; without it the archive stays stale and the reason is reported.
+
 An erasure is complete only when old copies are gone. After every forget:
 
-1. `nsfs checkpoint rebuild --policy cold` (the nightly timer also does this). This writes a clean archive and deletes stale ones.
+1. If the forget result lists `checkpoints_stale` (or `next_steps`): `nsfs checkpoint rebuild --policy cold` (the nightly timer also does this). This writes a clean archive and deletes stale ones.
 2. `nsfs checkpoint list` and confirm no `stale` rows remain.
 3. Check `nsfs memory deletion` for the entry and for a `failure` field.
 4. Pocket data: the person's own phone records expire after 24 hours; unpairing deletes a device's records at once (section 8).

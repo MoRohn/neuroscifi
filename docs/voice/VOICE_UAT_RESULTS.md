@@ -66,7 +66,9 @@ WAV fetch + decode + scheduling the rest. From the owner's **last word** add the
   the transcript shows stage progress.
 - Whisper occasionally returns "Thank you." / "you" for noise; such finals are dropped (`_noise`).
 - Checkpoints copy the instance database, so a voice session forgotten after a checkpoint still exists in older
-  checkpoint files until they are pruned (voice forgets are not replayed on restore).
+  checkpoint files until they are pruned (voice forgets are not replayed on restore). Resolved since: migration 11
+  replays voice tombstones on restore, and from 0.7.0 a voice forget rewrites every archive it made stale without
+  the session (`docs/operations/RUNBOOK.md` §6).
 
 ## RC2 voice follow-ups (2026-11-21, fake-device audio)
 

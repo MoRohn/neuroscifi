@@ -317,8 +317,9 @@ def test_restore_scrubs_roots_forgotten_after_the_checkpoint(instance, tmp_path)
 
 
 def test_restore_drops_voice_sessions_and_audio_forgotten_after_the_checkpoint(instance, tmp_path):
-    """A voice session forgotten after a checkpoint, and raw audio swept since, stay gone in a restored copy;
-    deletion_log keeps only a digest label (no session id, no transcript text)."""
+    """A voice session forgotten after a checkpoint, and raw audio swept since, stay gone in a restored copy even
+    from an archive that was not rewritten (rewrite=False: the replay is the guarantee); deletion_log keeps only a
+    digest label (no session id, no transcript text)."""
     db, path = instance
     from neuroscifi.voice import transcripts as tx
     secret = "my bank PIN is 4417-zq"
@@ -329,7 +330,7 @@ def test_restore_drops_voice_sessions_and_audio_forgotten_after_the_checkpoint(i
     swept = tx.upsert(db, kept, "u1", speaker="user", source="asr", status="final", text="keep me", now=T0 + 3)
     tx.retain_audio(db, swept["id"], b"\x03" * 100, 16000, T0 + 3, 1)
     cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 4)
-    assert tx.forget_session(db, gone, now=T0 + 5)["segments"] == 1
+    assert tx.forget_session(db, gone, now=T0 + 5, rewrite=False)["segments"] == 1
     assert tx.sweep(db, T0 + 2 * 3600) == 1                     # the kept session's audio expired since
     out = checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 2 * 3600 + 1)
     assert out["voice_sessions_removed"] == 1 and out["voice_audio_removed"] == 1   # the swept row

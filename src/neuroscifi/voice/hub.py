@@ -722,8 +722,9 @@ class VoiceHub:
                 self._apply_mode(s, action["mode"])
             elif action["kind"] == "forget_conversation":
                 with self.db() as db:
-                    tx.forget_session(db, s.id, now=self.clock())
+                    forgot = tx.forget_session(db, s.id, now=self.clock(), rewrite=False)
                     sid = tx.start_session(db, s.principal.name, s.device, s.mode, self.clock())
+                self._rewrite_checkpoints(forgot)
                 self._emit(s, "forgotten", new_session=sid)
                 with self.lock:
                     self.sessions.pop(s.id, None)
@@ -962,10 +963,23 @@ class VoiceHub:
     def forget(self, principal, session_id) -> dict:
         with self.db() as db:
             out = tx.forget_session(db, session_id, principal=None if principal.owner else principal.name,
-                                    now=self.clock())
+                                    now=self.clock(), rewrite=False)
         s = self.sessions.get(session_id)
         if s is not None:
             self._end(s, "forgotten")
+        return self._rewrite_checkpoints(out)
+
+    def _rewrite_checkpoints(self, out) -> dict:
+        """Rewrite, in the background, the checkpoint archives a forget made stale (a large archive takes seconds to
+        minutes; the voice turn and the HTTP request do not wait). A killed rewrite leaves each archive whole."""
+        stale = out.get("checkpoints_stale") or []
+        if stale:
+            def run():
+                from ..instance import checkpoints
+                with self.db() as db:
+                    checkpoints.after_forget(db, self.clock())
+            threading.Thread(target=run, daemon=True, name="nsf-checkpoint-rewrite").start()
+            out = {k: v for k, v in out.items() if k != "next_steps"} | {"checkpoints_rewriting": stale}
         return out
 
 

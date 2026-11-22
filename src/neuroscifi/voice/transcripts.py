@@ -215,9 +215,11 @@ def search(db, query, *, principal=None, limit=50) -> list[dict]:
     return [_public(r) for r in _rows(db, sql, params)]
 
 
-def forget_session(db, sid, *, principal=None, now=None) -> dict:
+def forget_session(db, sid, *, principal=None, now=None, rewrite=True) -> dict:
     """Delete a voice session, its transcript and any retained audio, record its payload-free tombstone (a restored
-    checkpoint drops it again; governance.forget_voice_session), then truncate the WAL."""
+    checkpoint drops it again; governance.forget_voice_session), then truncate the WAL. With `rewrite` the checkpoint
+    archives the forget made stale are rewritten in place without the session (checkpoints.after_forget; the result
+    names them). `rewrite=False` leaves that to the caller (the voice hub runs it in the background)."""
     now = time.time() if now is None else now
     with store.write(db):
         row = db.execute("SELECT principal FROM voice_sessions WHERE id=?", (sid,)).fetchone()
@@ -227,8 +229,15 @@ def forget_session(db, sid, *, principal=None, now=None) -> dict:
     store.truncate_wal(db)
     out = {"forgotten": sid, "segments": effects["segments"],
            "research_tasks_forgotten": effects["research_tasks_forgotten"]}
-    if effects["checkpoints_stale"]:
-        out["next_steps"] = [governance.REBUILD_HINT.format(n=len(effects["checkpoints_stale"]))]
+    stale = effects["checkpoints_stale"]
+    if stale and rewrite:
+        from ..instance import checkpoints
+        out |= checkpoints.after_forget(db, now)
+        stale = out["checkpoints_stale"]
+    elif stale:
+        out["checkpoints_stale"] = stale
+    if stale:
+        out["next_steps"] = [governance.REBUILD_HINT.format(n=len(stale))]
     return out
 
 

@@ -65,14 +65,18 @@ Forward-only migration 9 (`instance/schema.py`; v8 is Lane D's knowledge-evoluti
   model/template label. Only approximate segments can be corrected; the original text is kept.
 - Search: case-insensitive substring over text and corrected text (`GET transcripts?q=`, `nsf voice transcripts
   --search`), LIKE wildcards escaped; a Pocket principal sees only its own sessions.
-- Forget: `POST forget {session_id, confirm: true}`, the voice command "forget this conversation" (confirmed), or
-  `nsf voice forget SESSION`; rows are deleted and the WAL truncated.
+- Forget: `POST forget {session_id, confirm: true}`, the voice command "forget this conversation" (confirmed),
+  `nsf voice forget SESSION` or `nsf forget voice SESSION`. The rows are deleted and the WAL is truncated. Every
+  checkpoint archive the forget made stale is then rewritten in place without the session
+  (`checkpoints.rewrite`; see `docs/operations/RUNBOOK.md` §6). The commands wait for the rewrite and list the
+  archives under `checkpoints_rewritten`. The hub (HTTP and spoken forget) runs the rewrite in the background and
+  answers `checkpoints_rewriting` with the archive ids.
 - Retention: `retain_audio` (default **false**) and `audio_ttl_hours` (1–168, default 24) are owner-only settings;
   the hub sweeps every minute (`nsf voice sweep` by hand); switching retention off deletes every retained clip.
   A new checkpoint deletes expired clips before it archives (so it never contains audio past its TTL). Limitation:
-  archives are immutable and hash-registered, so a clip that was live when an earlier checkpoint was written stays
-  in that archive until the archive is pruned (`nsf checkpoint prune --keep N`); a restore from it
-  drops every clip the live instance no longer holds.
+  an expiry does not rewrite archives. A clip that was live when an earlier checkpoint was written stays in that
+  archive until a forget rewrites the archive (a rewrite drops every clip the live instance no longer holds, as a
+  restore does), or until the archive is rebuilt or pruned (`nsf checkpoint prune --keep N`).
 
 ## 5. Capture ownership (one device at a time)
 
