@@ -16,7 +16,7 @@ WEB = Path(__file__).resolve().parent / "web"
 MIME = {".mjs": "text/javascript; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".html": "text/html; charset=utf-8"}
 # Served by the console and by Pocket; POCKET is also cached by Pocket's service worker shell (pocket/web/sw.js).
-SHARED = ("theme-boot.js", "theme.css", "theme.mjs", "contracts.mjs", "geometry.mjs", "canonical.mjs", "composer.mjs",
+SHARED = ("ui.css", "theme-boot.js", "theme.css", "theme.mjs", "contracts.mjs", "geometry.mjs", "canonical.mjs", "composer.mjs",
           "validator.mjs", "interpreter.mjs", "planner.mjs", "motion.mjs", "renderer.mjs", "a11y.mjs", "channel.mjs",
           "presence.mjs")
 POCKET = SHARED + ("pocket-boot.mjs",)

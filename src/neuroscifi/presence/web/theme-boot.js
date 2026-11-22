@@ -10,4 +10,8 @@
   var root = document.documentElement;
   root.setAttribute('data-theme-pref', pref);
   root.setAttribute('data-theme', dark ? 'dark' : 'light');
+  // the browser's own chrome (scrollbars, form controls, the Android/iOS address and status bar) follows the same theme
+  var set = function (name, value) { var m = document.querySelector('meta[name="' + name + '"]'); if (m) m.setAttribute('content', value); };
+  set('color-scheme', dark ? 'dark' : 'light');
+  set('theme-color', dark ? '#121011' : '#F6F4F3');
 }());

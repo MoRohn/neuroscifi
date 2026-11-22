@@ -36,7 +36,15 @@ function apply(pref) {
   const changed = root.getAttribute('data-theme') !== theme || root.getAttribute('data-theme-pref') !== pref;
   root.setAttribute('data-theme-pref', pref);
   root.setAttribute('data-theme', theme);
+  chrome(theme);
   if (changed) for (const fn of listeners) fn(theme, pref);
+}
+
+// The browser chrome follows the app theme (same values as theme-boot.js and ui.css --bg).
+export const CHROME = Object.freeze({ light: '#F6F4F3', dark: '#121011' });
+function chrome(theme) {
+  document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', theme);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', CHROME[theme]);
 }
 
 export function setThemePref(pref) {

@@ -214,7 +214,7 @@ def test_theme_toggle_mid_animation_keeps_state_and_motion(spark, new_page):
     page.get_by_label("Theme").select_option("dark")
     after_d = nums(body_d(page))
     assert stroke(page) == "rgb(247, 247, 247)"
-    assert page.evaluate("getComputedStyle(document.body).backgroundColor") == "rgb(7, 9, 8)"
+    assert page.evaluate("getComputedStyle(document.body).backgroundColor") == "rgb(18, 16, 17)"   # ui.css --bg, dark
     assert page.evaluate("document.documentElement.dataset.theme") == "dark"
     page.wait_for_timeout(500)
     after = stats(page)
@@ -356,10 +356,16 @@ def test_small_screens_console_and_pocket(idle_spark, bridge, new_page, width):
         page.goto(url)
         root = page.locator(".nsf-presence")
         expect(root).to_be_visible()
-        expect(root).to_have_attribute("data-size", "compact")
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (url, width)
         box = page.locator(".nsf-presence .pc-svg").bounding_box()
-        assert box["width"] <= 44 and box["x"] >= 0 and box["x"] + box["width"] <= width
+        assert box["x"] >= 0 and box["x"] + box["width"] <= width
+        if url == idle_spark.url:   # console overview: the compact header button
+            expect(root).to_have_attribute("data-size", "compact")
+            assert box["width"] <= 44
+        else:                       # Pocket: the entity is the hero on its interaction stage (docs/ui/DESIGN_SYSTEM.md)
+            expect(root).to_have_attribute("data-place", "dock")
+            expect(root).to_have_attribute("data-size", "expanded")
+            assert 140 < box["width"] <= 0.5 * width + 30, (width, box)
         page.locator(".pc-toggle").click()
         panel = page.locator(".pc-panel").bounding_box()
         assert panel["x"] >= 0 and panel["x"] + panel["width"] <= width + 0.5, (url, width, panel)
@@ -491,9 +497,9 @@ def test_pocket_presence_shows_own_family_task(bridge, new_page, tmp_path):
     assert page.problems == []
 
 
-# ---- sizes in the app: normal beside the conversation (console), small indicator (Pocket navigation) -----------------
+# ---- sizes in the app: the hero on an interaction stage (console research and voice, Pocket), small indicator (Pocket nav) ---
 
-def test_console_research_and_voice_views_dock_the_presence_at_normal_size(idle_spark, new_page):
+def test_console_research_and_voice_views_stage_the_presence_as_the_hero(idle_spark, new_page):
     page = new_page(1280, 900)
     open_console(page, idle_spark)
     root = page.locator(".nsf-presence")
@@ -503,19 +509,21 @@ def test_console_research_and_voice_views_dock_the_presence_at_normal_size(idle_
     for view in ("research", "voice"):
         page.locator(f"#nav a[data-view={view}]").click()
         expect(page.locator(f"#{view} [data-presence-dock] .nsf-presence")).to_have_count(1)
-        expect(root).to_have_attribute("data-size", "normal")
+        # the interaction stage (owner direction, docs/ui/DESIGN_SYSTEM.md): the entity is the hero, beside the dialogue
+        expect(root).to_have_attribute("data-size", "expanded")
         expect(root).to_have_attribute("data-place", "dock")
         box = page.locator(".nsf-presence .pc-svg").bounding_box()
-        assert 65 <= box["width"] <= 96, box                       # normal size, not dominating the view header
-        head = page.locator(f"#{view} .viewhead").bounding_box()
-        assert head["height"] <= 110, head
-        page.locator(".pc-toggle").click()                          # the panel works from the dock
-        expect(root).to_have_attribute("data-size", "expanded")
+        assert box["width"] >= 200, box
+        dialogue = page.locator(f"#{view} .dialogue").bounding_box()
+        assert box["x"] + box["width"] <= dialogue["x"] and box["y"] < dialogue["y"] + 200, (box, dialogue)
+        page.locator(".pc-toggle").click()                          # the panel works from the stage
+        expect(page.locator(".pc-panel")).to_be_visible()
+        expect(page.locator(f"#{view} [data-presence-dock] .pc-toggle svg.pc-svg")).to_have_count(1)   # the figure stays
         panel = page.locator(".pc-panel").bounding_box()
         assert panel["x"] >= 0 and panel["x"] + panel["width"] <= 1280
         page.keyboard.press("Escape")
         expect(page.locator(".pc-toggle")).to_be_focused()
-        expect(root).to_have_attribute("data-size", "normal")
+        expect(root).to_have_attribute("data-size", "expanded")
         SHOTS.mkdir(exist_ok=True)
         page.screenshot(path=str(SHOTS / f"presence-dock-{view}.png"))
     page.locator("#nav a[data-view=overview]").click()

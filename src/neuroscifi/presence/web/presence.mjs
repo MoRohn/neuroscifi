@@ -167,7 +167,9 @@ export class Presence {
   expand() {
     this.toggle.setAttribute('aria-expanded', 'true');
     this.panel.hidden = false;
-    this.stage.append(this.svg);             // the same SVG moves: nothing restarts
+    // the same SVG moves into the panel (nothing restarts); on an interaction stage (dock) the figure is already the
+    // hero, so it stays there and the panel carries the words, facts and settings
+    if (this.root.dataset.place !== 'dock') this.stage.append(this.svg);
     this.controls.theme.value = themePref();
     this.renderPanel();
   }
@@ -175,7 +177,7 @@ export class Presence {
   collapse(focus) {
     this.toggle.setAttribute('aria-expanded', 'false');
     this.panel.hidden = true;
-    this.toggle.prepend(this.svg);
+    if (this.svg.parentNode !== this.toggle) this.toggle.prepend(this.svg);
     if (focus) this.toggle.focus();
   }
 

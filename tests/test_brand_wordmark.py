@@ -96,7 +96,9 @@ def test_the_header_wordmarks_are_inline_named_images_that_follow_the_theme():
 
 
 def test_the_palette_meets_text_contrast_on_its_backgrounds():
-    backgrounds = {"dark": ("#070A1F", "#0E0F33", "#1A0F3D", "#070908", "#101413"), "light": ("#F4F7F5", "#FFFFFF")}
+    # the README banner's grounds, the earlier app pages, and the shared design system's header and page (ui.css)
+    backgrounds = {"dark": ("#070A1F", "#0E0F33", "#1A0F3D", "#070908", "#101413", "#121011", "#1A1719"),
+                   "light": ("#F4F7F5", "#FFFFFF", "#F6F4F3")}
     for variant, palette in wm.PALETTES.items():
         for key in ("rim", "body", "nest_rim", "nest_body"):
             for colour in palette[key]:

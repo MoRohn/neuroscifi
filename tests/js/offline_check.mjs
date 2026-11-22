@@ -23,12 +23,13 @@ vm.runInContext(readFileSync(new URL("../../src/neuroscifi/pocket/web/sw.js",imp
 async function lifecycle(name){let work;callbacks[name]({waitUntil:p=>work=p});await work;}
 async function read(path,method="GET"){let answer;callbacks.fetch({request:{url:"https://example.test"+path,method},respondWith:p=>answer=p});return answer;}
 await lifecycle("install");await lifecycle("activate");
-const installed=[...stores.get("neuroscifi-pocket-shell-23").keys()];
+const installed=[...stores.get("neuroscifi-pocket-shell-24").keys()];
 // Plan p.20 names six shell assets; the manifest and its icon make eight (ADR-015) and the Research module nine
 // (ADR-028: saved findings must reopen offline), its node-key module ten (ADR-042 draft: the research module imports
 // it), plus the 16 Presence Cortex/theme files (docs/presence/) and the 7 Voice Cortex files (docs/voice/; vad.mjs and
-// voice-check.mjs since the Voice check). Deviations.
-assert.equal(installed.length,33);assert(installed.includes("/node-key.mjs"));assert(installed.includes("/voice/pocket-voice.mjs"));assert(installed.includes("/voice/vad.mjs")&&installed.includes("/voice/voice-check.mjs"));assert(installed.includes("/presence/pocket-boot.mjs")&&installed.includes("/presence/theme-boot.js"));assert(installed.includes("/manifest.webmanifest")&&installed.includes("/icon.svg"));
+// voice-check.mjs since the Voice check), plus the shared design system (/presence/ui.css, docs/ui/DESIGN_SYSTEM.md) and the
+// maskable home-screen icon (Android adaptive icons crop to a circle or squircle). Deviations.
+assert.equal(installed.length,35);assert(installed.includes("/presence/ui.css")&&installed.includes("/icon-maskable.svg"));assert(installed.includes("/node-key.mjs"));assert(installed.includes("/voice/pocket-voice.mjs"));assert(installed.includes("/voice/vad.mjs")&&installed.includes("/voice/voice-check.mjs"));assert(installed.includes("/presence/pocket-boot.mjs")&&installed.includes("/presence/theme-boot.js"));assert(installed.includes("/manifest.webmanifest")&&installed.includes("/icon.svg"));
 assert(installed.includes("/research-ui.mjs"));assert.match(await read("/research-ui.mjs"),/keepFinding/);assert.match(await read("/research-ui.mjs"),/research_session/);
 assert.equal(await read("/api/research_get","POST"),undefined);
 const manifest=JSON.parse(await read("/manifest.webmanifest"));
@@ -45,4 +46,4 @@ assert.equal(shown.length,2);
 for(const n of shown)assert.deepEqual(JSON.parse(JSON.stringify(n)),{title:"NeuroSciFi Pocket",body:"Your Spark finished a research task.",tag:"pocket-push",icon:"/icon.svg"});
 assert.equal(JSON.stringify(told),JSON.stringify([{type:"pocket-push"},{type:"pocket-push"}]));  // objects from the vm realm
 console.log("Passed generic empty-push notification and page refresh message.");
-console.log("Passed deterministic offline asset replay, 33-asset shell (ten app assets with manifest (share target), icon, research and node-key modules, plus 16 presence and 7 voice files), cache upgrade, private API exclusion and URL query exclusion.");
+console.log("Passed deterministic offline asset replay, 35-asset shell (eleven app assets with manifest (share target), icon and maskable icon, research and node-key modules, plus 17 presence/theme/design-system and 7 voice files), cache upgrade, private API exclusion and URL query exclusion.");
