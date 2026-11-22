@@ -214,3 +214,22 @@ def test_a_node_enrolled_before_signing_neither_keeps_nor_renews_a_session(spark
     with spark.owner() as db:
         assert db.execute("SELECT expires_at FROM autonomy_sessions").fetchone()[0] == now + 60   # not renewed
     assert spark.req("research_continue", {"id": task_id}, b)[0] == 201  # the family is not locked out
+
+
+def test_errors_of_research_and_push_routes_are_signed_too(spark, devices):
+    """ADR-042 section 4 said errors are signed, but 400, 403, 404 (research off), 500 and 503 were not. They are now,
+    for every research and push route; field, presence and voice replies stay unsigned."""
+    a, _, _ = devices
+    for route, kwargs, status in (("research_list", {"data": {}}, 403),                       # no credential
+                                  ("research_list", {"data": {}, "token": "x" * 43}, 403),    # unknown credential
+                                  ("research_list", {"data": {}, "token": a, "origin": "http://evil.example"}, 403),
+                                  ("research_get", {"raw": "[1]", "token": a}, 400),
+                                  ("research_get", {"raw": "{", "token": a}, 400),
+                                  ("research_get", {"data": {"id": 1, "x": 2}, "token": a}, 400),
+                                  ("push", {"data": {"action": "status"}, "token": "x" * 43}, 403)):
+        assert spark.req(route, **kwargs)[0] == status, (route, kwargs)
+        assert verifies(spark), (route, kwargs)
+    spark.configure(pocket_research=False)
+    assert spark.req("research_list", {}, a)[0] == 404 and verifies(spark)
+    spark.req("state", {}, a)
+    assert "X-NSF-Spark-Signature" not in spark.last[4]

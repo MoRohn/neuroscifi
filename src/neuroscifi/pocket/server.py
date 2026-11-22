@@ -597,10 +597,14 @@ class Handler(BaseHTTPRequestHandler):
         from ..voice.http import POCKET_ROUTES as VOICE
         if self.path != "/api/" + route or route not in ROUTES | RESEARCH | VOICE | {"presence", PUSH}:
             return self.reply(404)
+        # Every reply of a research or push route, refusals and errors included, is signed over this nonce
+        # (ADR-042 section 4); field, presence and voice replies are not (signed is None).
+        nonce = self.headers.get("X-NSF-Nonce", "")
+        signed = (nonce if NONCE.fullmatch(nonce) else "") if route in RESEARCH or route == PUSH else None
         origin = self.headers.get("Origin")
         scheme = "https://" if isinstance(self.connection, ssl.SSLSocket) else "http://"
         if origin and origin != scheme + self.headers.get("Host", ""):
-            return self.reply(403)
+            return self.reply(403, nonce=signed)
         if route in VOICE:   # Voice Cortex: own auth and size rules (voice/http.py: JSON <= 512 B, audio <= 64 KiB)
             try:
                 from ..voice.http import pocket as voice_pocket
@@ -618,19 +622,19 @@ class Handler(BaseHTTPRequestHandler):
                 # same empty 403 whether research is on or off. A paired device then sees 404 while it is off.
                 auth = self.headers.get("Authorization", "")
                 if not auth.startswith("Bearer "):
-                    return self.reply(403)
+                    return self.reply(403, nonce=signed)
                 self.server.store.family(auth[7:])
                 if not research_on(self.server):
-                    return self.reply(404)  # invisible while off, like an unknown route
+                    return self.reply(404, nonce=signed)  # invisible while off, like an unknown route
             size = int(self.headers.get("Content-Length", "0"))
             # a push endpoint URL can take several hundred bytes (WNS), so `push` shares research_submit's 1 KiB
             limit = RESEARCH_BODY_LIMIT if route in ("research_submit", PUSH) else BODY_LIMIT
             if self.headers.get_content_type() != "application/json" or not 2 <= size <= limit:
-                return self.reply(400)
+                return self.reply(400, nonce=signed)
             raw = self.read_body(size)
             data = json.loads(raw)
             if not isinstance(data, dict):
-                return self.reply(400)
+                return self.reply(400, nonce=signed)
             if route == "pair":
                 with self.server.pair_lock:
                     code = data.get("code")
@@ -667,13 +671,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(201,{"code":code})
             if route == PUSH:   # Pocket's call() verifies push replies like research replies (ADR-040, ADR-042)
                 from . import push
-                nonce = self.headers.get("X-NSF-Nonce", "")
-                status, payload = push.route(self.server, auth[7:], data)
-                return self.reply(status, payload, nonce=nonce if NONCE.fullmatch(nonce) else "")
+                return self.reply(*push.route(self.server, auth[7:], data), nonce=signed)
             if route in RESEARCH:
-                nonce = self.headers.get("X-NSF-Nonce", "")
-                status, payload = research(self.server, auth[7:], route, data, raw, self.headers)
-                return self.reply(status, payload, nonce=nonce if NONCE.fullmatch(nonce) else "")
+                return self.reply(*research(self.server, auth[7:], route, data, raw, self.headers), nonce=signed)
             if route == "presence":  # family-scoped presence state (presence/routes.py)
                 from ..presence.routes import pocket_state
                 return self.reply(*pocket_state(self.server, auth[7:], data))
@@ -684,16 +684,16 @@ class Handler(BaseHTTPRequestHandler):
                     payload["push"] = True  # and its push switch (ADR-040)
             self.reply(status, payload)
         except PermissionError:
-            self.reply(403)
+            self.reply(403, nonce=signed)
         except (ValueError, TypeError):
-            self.reply(400)
+            self.reply(400, nonce=signed)
         except sqlite3.Error:
-            self.reply(503, {})
+            self.reply(503, {}, nonce=signed)
         except Exception:
             if self.replied:
                 raise
             print("nsf-pocket: request failed", file=sys.stderr, flush=True)  # no body, token or traceback
-            self.reply(500, {})
+            self.reply(500, {}, nonce=signed)
 
 
 class _Connection:
