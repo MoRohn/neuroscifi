@@ -46,6 +46,7 @@ Severity: **High** breaks the product's intent or a WCAG AA rule; **Medium** hur
 | U-16 | Low | voice | The volume slider was 28 px tall on touch screens; ranges and radios used the engine's default blue, also in dark. | 44 px on coarse pointers; accent colour from the theme; NeuroSciFi's replies in the claim serif. | `07` |
 | U-17 | Medium | both | Dark mode was a green-black (#070908) with green-tinted greys: cards barely separated from the page, and it clashed with the new gray-matter wordmark. | A warm graphite dark set with distinct page, card and muted levels, deeper shadows with a faint inner highlight; every text pair >= 6:1. | `02`, `04`, `06` |
 | U-18 | Low | both | Selects drew engine-specific arrows (Linux Chromium, Firefox and WebKit all differ). | One CSP-safe gradient chevron; forced colours get the native arrow back. | `01` |
+| U-20 | Low | both | On touch screens the 44 px citation links ([1], [2]) stretched the line they sat on, so sentences and quotes had uneven spacing. | Same 44 px targets with negative block margins: the line keeps its spacing. | — |
 | U-19 | Low | both | Busy states showed only text, while the presence (which already shows activity) was out of sight. | No spinner by design: the entity on the stage is the activity indicator. | `01` |
 
 ## Gallery
@@ -85,6 +86,13 @@ Pairs are the same state, size and theme before and after (`docs/ui/gallery/befo
   manifest and pre-cached through a page reference; the brand icon itself is hash-locked.
 - iOS ignores SVG home-screen icons: a PNG `apple-touch-icon` needs a binary asset, a server route and a shell
   entry; not added in this pass.
+- Phones: after a question is sent, nothing next to the stage names the question being read (the entity shows the
+  state; the question is in the list further down). A one-line caption under the stage would close the gap.
+- The presence ranks a fresh open question above a running research task, so the console can say "Waiting for your
+  answer" while research reads. That is the presence engine's rule (user-critical first), unchanged here.
+- Pocket once showed "Your Spark has no research worker running" while its list already said "Reading · step 2 of
+  4" (seen with the e2e one-shot worker during the README captures, not with a persistent worker); unconfirmed,
+  possibly the 10 s list refresh lagging.
 - Pocket's pairing card stays at the end of the page; a first-run layout that leads with pairing would help new
   owners.
 - RTL: layouts use `start` alignment and logical gaps where cheap, but no RTL locale exists to verify against.

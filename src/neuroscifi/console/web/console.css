@@ -191,7 +191,7 @@ a.cite { display: inline-flex; align-items: center; justify-content: center; min
 a.cite:hover { background: var(--primary-soft); }
 a.related { font-weight: 600; }
 .copies, .seealso { font-size: var(--fs-sm); }
-@media (pointer: coarse) { a.cite { min-width: 44px; min-height: 44px; } a.related { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; } }
+@media (pointer: coarse) { a.cite { min-width: 44px; min-height: 44px; margin-block: -11px; vertical-align: middle; } a.related { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; } }
 .sources li:focus { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
 .srctitle, .srcurl { margin: 2px 0; }
 .srctitle { font-weight: 600; }
