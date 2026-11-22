@@ -14,6 +14,10 @@ const STATUS={corroborated:"Corroborated",single_source:"Single source",conteste
 const VERDICT={supported:"Supported",disputed:"Disputed",contested:"Contested",insufficient:"Not enough evidence"};
 const MAX=300, MAX_BYTES=1024, MAX_SAVED_BYTES=64000, SUMMARIZE="Summarize: ";
 let research=false, paired=false, tasks=[], current=null, timer=0, generation=0, busy=false, dictation=null, savedSignature="";
+// R6 setup (f): the list itself is refreshed every LIST_MS while the page is visible, so a question asked on another
+// linked device appears without pressing anything; a hidden page checks nothing.
+const LIST_MS=10000;
+let listTimer=0;
 let sharing=false, notify=false, away=null, reading=null, session=null, shown=null;
 let offered=false, push=null, pushOn=false, pushBusy=false, pushOld=false, pushTesting=false;  // push: the Spark's status
 // This device as a research node (ADR-042 draft): the Spark's view (node_enrol status) and this browser's own key.
@@ -633,13 +637,17 @@ async function refresh(){
   if(!research||!paired)return;
   const g=generation;
   try{
-    const reply=await call("research_list",{});if(g!==generation)return;tasks=reply.tasks;drawList();schedule();
+    const reply=await call("research_list",{});if(g!==generation)return;tasks=reply.tasks;drawList();schedule();scheduleList();
     if(!nodeInfo||nodeInfo.error||nodeInfo.pending==="attested")loadNode();
     const left=away;away=null;
     const done=left?tasks.filter(t=>left.has(t.id)&&!active(t)):[];
     if(done.length)say("Finished while you were away: "+done.map(t=>"“"+t.objective+"” ("+(LABEL[t.status]||t.status)+")").join("; ")+".");
   }
   catch(e){if(g===generation)fail(e);}
+}
+function scheduleList(){
+  clearTimeout(listTimer);listTimer=0;
+  if(research&&paired&&!document.hidden)listTimer=setTimeout(refresh,LIST_MS);
 }
 // Poll only while a task is still running and the page is visible; a hidden page stops polling.
 function schedule(){
@@ -713,7 +721,7 @@ document.addEventListener("pocketpair",e=>{
   const next=!!e.detail?.paired, allowed=next&&e.detail?.research===true, pushes=allowed&&e.detail?.push===true;
   if(next===paired&&allowed===research&&pushes===offered){refresh();return;}
   if(paired&&!next)say("");  // a revoked or erased pairing: no stale outcome of the old one (RT-B-08)
-  generation++;clearTimeout(timer);paired=next;research=allowed;offered=pushes;tasks=[];away=null;pushTesting=false;nodeInfo=null;localKey=null;
+  generation++;clearTimeout(timer);clearTimeout(listTimer);paired=next;research=allowed;offered=pushes;tasks=[];away=null;pushTesting=false;nodeInfo=null;localKey=null;
   if(current&&!current.saved)close();
   drawList();layout();drawNode();refresh();loadPush();
   if(sharing&&research&&paired&&$("objective").value)$("objective").focus();
@@ -722,10 +730,11 @@ document.addEventListener("pocketvault",drawSaved);
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){
     away=new Set(tasks.filter(active).map(t=>t.id));
-    generation++;clearTimeout(timer);stopDictation();close();$("objective").value="";sharing=false;layout();
+    generation++;clearTimeout(timer);clearTimeout(listTimer);stopDictation();close();$("objective").value="";sharing=false;layout();
   }
   else refresh();
 });
+$("researchrefresh").onclick=()=>refresh();
 // Web Share Target (manifest.webmanifest): Android opens /?share_url=…&share_text=…. The link is taken from the
 // address bar at once, so it stays out of history, and only prefills "Summarize: <link>" for the owner to submit.
 function sharedLink(){

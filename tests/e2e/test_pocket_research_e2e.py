@@ -221,6 +221,35 @@ def test_tablet_continues_phone_research_and_polling_stops_when_hidden(spark, ne
     assert not phone.problems and not tablet.problems and not stranger.problems
 
 
+def test_a_linked_devices_question_appears_without_pressing_anything(spark, new_page):
+    """R6 setup (f): the tablet needed "Refresh history" (in the Your Spark card) to see the phone's question. The
+    Research list now refreshes itself every 10 s while visible (never while hidden), and has its own Refresh."""
+    phone, tablet = new_page(390, 844), new_page(1024, 768)
+    phone.goto(spark.url)
+    pair(phone)
+    phone.locator("#linkdevice").click()
+    expect(phone.locator("#handoff")).to_contain_text("Enter on your other device")
+    code = phone.locator("#handoff").inner_text().rsplit(": ", 1)[1].strip()
+    tablet.clock.install()
+    sent = posts(tablet)
+    tablet.goto(spark.url)
+    pair(tablet, code)
+    expect(tablet.locator("#researchlist")).to_contain_text("No questions from your devices yet.")
+    expect(tablet.locator("#researchtasks").get_by_role("button", name="Refresh questions")).to_be_visible()
+    ask(phone)
+    lists = lambda: sum(1 for route, _ in sent if route == "research_list")  # noqa: E731
+    before = lists()
+    tablet.clock.run_for(10_500)
+    expect(tablet.locator("#researchlist")).to_contain_text(QUESTION)
+    assert lists() > before
+    tablet.evaluate("""() => { Object.defineProperty(document,'hidden',{configurable:true,value:true});
+        document.dispatchEvent(new Event('visibilitychange')); }""")
+    hidden = lists()
+    tablet.clock.run_for(60_000)
+    assert lists() == hidden, "a hidden page checks nothing"
+    assert not phone.problems and not tablet.problems
+
+
 def test_dictation_fills_the_field_and_never_submits(spark, new_page):
     page = new_page()
     page.add_init_script("""(() => {
