@@ -377,6 +377,14 @@ def test_citation_targets_on_touch(bridge, new_page):
     assert min(cite) >= 44, cite
 
 
+def collapsed(page, selector):
+    """An empty live region stays in the accessibility tree (test_a11y_tree.py) but is visually hidden: at most 1 px,
+    clipped, so a sighted user sees nothing while a screen reader still hears the next message."""
+    page.wait_for_function("""s => { const e = document.querySelector(s); if (!e) return false;
+        const r = e.getBoundingClientRect(); const c = getComputedStyle(e).clipPath;
+        return r.width <= 1 && r.height <= 1 && c && c !== 'none'; }""", arg=selector)
+
+
 # ---- U-09: the status line clears itself and can be dismissed ------------------------------------------------------
 def test_message_dismiss_and_auto_clear(bridge, new_page):
     page = new_page()
@@ -386,12 +394,12 @@ def test_message_dismiss_and_auto_clear(bridge, new_page):
     expect(page.locator("#messagebar")).to_be_visible()
     page.locator("#dismiss").click()
     expect(page.locator("#message")).to_have_text("")
-    expect(page.locator("#messagebar")).to_be_hidden()
+    collapsed(page, "#messagebar")
     assert active_id(page) == "main"
     share_tag(page)
     page.clock.run_for(8100)
     expect(page.locator("#message")).to_have_text("")
-    expect(page.locator("#messagebar")).to_be_hidden()
+    collapsed(page, "#messagebar")
 
 
 # ---- U-26: landmarks, skip link and section headings ---------------------------------------------------------------
