@@ -326,8 +326,8 @@ nsf llm usage                                                 # token ledger
   release". Of the 68 answers that kept at least one sentence, **14 (21 %) keep none** and fall back to the
   labelled extractive template with the rules note; 11 of those 14 had kept only grey or unfaithful sentences (all
   five of UAT "Is numpy 2.5.5 stable?"). The thresholds and word lists were tuned on this same corpus: there is no
-  held-out set, so retention on new model output may be lower. Live (2026-11-21, Qwen3-30B-A3B, 10 runs of four
-  questions): two fact-verification runs degraded to the template because of this check alone, one sentence saying
+  held-out set, so retention on new model output may be lower. Live (2026-11-21, Qwen3-30B-A3B, 10 asks of the
+  four questions): two fact-verification runs degraded to the template because of this check alone, one sentence saying
   "according to more recent studies" (study, paper, article, review are now evidence nouns) and one adding "though
   estimates vary widely" (now a hedge phrase); every other rejected sentence also failed an earlier rule.
 - **Entailment coverage, limits.** It compares words, not meaning. Word order and roles are not checked ("Guido van
