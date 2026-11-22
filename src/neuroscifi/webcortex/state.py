@@ -89,7 +89,8 @@ def _str_list(name, value, *, max_items=200, max_len=256):
 
 def _validate(name, value):
     """Return the validated value for one WebConfig field, or raise ValidationError."""
-    if name in ("enabled", "autonomous", "pocket_research", "browser_rendering", "search_browser_user_agent"):
+    if name in ("enabled", "autonomous", "pocket_research", "browser_rendering", "news_rendering",
+                "search_browser_user_agent"):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value
@@ -149,6 +150,10 @@ def _validate(name, value):
         if not _is_int(value) or not 1 <= value <= 1000:
             raise ValidationError(f"{name} must be an integer between 1 and 1000")
         return value
+    if name == "daily_renders":
+        if not _is_int(value) or not 0 <= value <= 1000:
+            raise ValidationError("daily_renders must be an integer between 0 and 1000")
+        return value
     if name == "mcp_research_per_hour":
         if not _is_int(value) or not 0 <= value <= 1000:
             raise ValidationError("mcp_research_per_hour must be an integer between 0 and 1000")
@@ -202,6 +207,32 @@ def set_config(db, changes: dict, now) -> wconfig.WebConfig:
                    (wconfig.META_KEY, dumps(current)))
         store.bump_state_version(db)
     return get_config(db)
+
+
+# Renders of the current UTC day, across tasks and processes (ADR-040): {"day": "YYYY-MM-DD", "renders": n}. A meta
+# row, not a count of render events, so forgetting a task never gives its renders back.
+RENDERS_KEY = "webcortex.renders"
+
+
+def render_day(db, now) -> dict:
+    from datetime import datetime, timezone
+    day = datetime.fromtimestamp(float(now), tz=timezone.utc).strftime("%Y-%m-%d")
+    row = db.execute("SELECT value FROM meta WHERE key=?", (RENDERS_KEY,)).fetchone()
+    held = loads(row[0], {}) if row else {}
+    return {"day": day, "renders": int(held.get("renders") or 0) if held.get("day") == day else 0}
+
+
+def take_render(db, now, cap) -> tuple[bool, int]:
+    """Count one render against the day's cap: (True, renders now) or (False, renders so far) when the cap is
+    reached. One short write transaction, so concurrent workers cannot both take the last render."""
+    with store.write(db):
+        today = render_day(db, now)
+        if today["renders"] >= int(cap):
+            return False, today["renders"]
+        today["renders"] += 1
+        db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                   (RENDERS_KEY, dumps(today)))
+    return True, today["renders"]
 
 
 # ---- feeds ---------------------------------------------------------------------------------------------------

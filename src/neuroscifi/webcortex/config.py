@@ -1,7 +1,12 @@
 """Per-individual Web Cortex configuration, stored as JSON in the instance `meta` table (key 'webcortex').
 
 Defaults are the reversible, conservative direction: network access OFF, autonomous research OFF, Pocket
-research OFF, JavaScript rendering OFF, browser User-Agents for the search daemon OFF (honest User-Agent only). The owner turns each on explicitly (`nsf web config ...`).
+research OFF, general JavaScript rendering OFF, browser User-Agents for the search daemon OFF (honest User-Agent only).
+The owner turns each on explicitly (`nsf web config ...`). One bounded exception (ADR-040): `news_rendering` is ON, so
+a news / time-sensitive question a person asked may render a scripted news page whose static HTML gave no text or no
+date, at most `max_browser_sessions` renders per task (1 by default), each within `max_render_requests` sub-requests
+(100) and `daily_renders` per UTC day (40); it does nothing while web access is off, and
+`nsf web config --no-news-render` turns it off.
 Respecting robots.txt, the private-address block and the read-only default are constants, not settings.
 """
 from __future__ import annotations
@@ -43,6 +48,10 @@ class WebConfig:
     autonomous: bool = False                 # scheduler may start curiosity/refresh research on its own
     pocket_research: bool = False            # paired Pocket devices may submit and read research tasks
     browser_rendering: bool = False          # permit sandboxed JavaScript rendering (needs Playwright + Chromium)
+    # ADR-040: news / time-sensitive questions asked by a person may render a scripted news page when its static
+    # HTML gave no text or no date (owner switch; on by default), at most daily_renders renders per UTC day in all.
+    news_rendering: bool = True
+    daily_renders: int = 40
     # Owner opt-in (ADR-032), off by default: let the upstream open-webSearch scrapers send their built-in browser
     # User-Agent strings (a form of impersonation) instead of the honest USER_AGENT patched in by `npm run
     # patch-ua`. With it off, `nsf web daemon start` refuses an unpatched build.
@@ -63,7 +72,7 @@ class WebConfig:
         "github"])
     budget_ceiling: dict = field(default_factory=lambda: asdict(Budget(
         max_queries=16, max_requests=200, max_pages=30, max_bytes=60_000_000, max_seconds=600, max_depth=2,
-        max_browser_sessions=2, max_concurrency=6, max_context_tokens=6000)))
+        max_browser_sessions=2, max_render_requests=150, max_concurrency=6, max_context_tokens=6000)))
     daily_autonomous: dict = field(default_factory=lambda: {"tasks": 12, "requests": 400, "bytes": 80_000_000})
     min_domain_interval: float = 1.0         # seconds between requests to one host
     max_document_bytes: int = 5_000_000
@@ -100,7 +109,7 @@ class WebConfig:
     def budget_for(self, mode: str, requested: dict | None = None) -> Budget:
         base = MODE_BUDGETS.get(mode, MODE_BUDGETS["quick_lookup"])
         budget = Budget.from_json(requested, base=base)
-        if not self.browser_rendering:
+        if not (self.browser_rendering or self.news_rendering):
             budget.max_browser_sessions = 0
         elif not (requested and "max_browser_sessions" in requested):
             budget.max_browser_sessions = max(budget.max_browser_sessions, 1)   # rendering only as an escalation

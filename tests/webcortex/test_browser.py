@@ -55,7 +55,8 @@ def test_render_executes_js_through_safe_fetcher(web):
     result = renderer.render("http://app.example/", budget=Budget(max_browser_sessions=1), usage=usage)
     assert result.retrieval_mode == "rendered" and result.content_type == "text/html"
     assert b"Rendered: hello from the API" in result.body
-    assert usage.browser_sessions == 1 and usage.requests == 3          # robots.txt, page, data.json
+    assert usage.browser_sessions == 1 and usage.requests == 2          # robots.txt, page
+    assert usage.render_requests == 1                                   # data.json, from the render's allowance
     served = {r["path"] for r in web.requests_to("app.example")}
     assert served == {"/robots.txt", "/", "/data.json"}
     assert web.requests_to("internal.test") == [] and web.requests_to("127.0.0.1") == []
@@ -96,8 +97,9 @@ EXTERNAL = """<!doctype html><html><head><title>Quotes</title><link rel="stylesh
 </body></html>"""
 
 
-def test_render_runs_external_scripts_and_styles(web):
-    """F4: external scripts and stylesheets are served (purpose='subresource'); one from internal.test is refused."""
+def test_render_runs_external_scripts_and_blocks_styles(web):
+    """F4: external scripts are served (purpose='subresource'); one from internal.test is refused. ADR-040: the
+    stylesheet is not needed for text and is never fetched."""
     web.add("quotes.example", "/", EXTERNAL)
     web.add("quotes.example", "/style.css", "body { color: rgb(1, 2, 3); }", content_type="text/css")
     web.add("quotes.example", "/app.js", "document.getElementById('quotes').textContent = "
@@ -109,13 +111,15 @@ def test_render_runs_external_scripts_and_styles(web):
     usage = Usage()
     result = renderer.render("http://quotes.example/", budget=Budget(max_browser_sessions=1), usage=usage)
     text = result.body.decode()
-    assert "“Written by an external script” color=rgb(1, 2, 3)" in text
-    assert web.requests_to("internal.test") == []
+    assert "“Written by an external script” color=rgb(0, 0, 0)" in text          # the default colour: no CSS
+    assert web.requests_to("internal.test") == [] and web.requests_to("quotes.example", "/style.css") == []
     outcomes = {e["url"]: e.get("code") or e["outcome"] for e in renderer.last_events if e["url"]}
     assert outcomes["http://internal.test/evil.js"] == "blocked_policy"
-    for url in ("http://quotes.example/style.css", "http://quotes.example/app.js", "http://cdn.example/lib.js"):
+    assert outcomes["http://quotes.example/style.css"] == "aborted"
+    for url in ("http://quotes.example/app.js", "http://cdn.example/lib.js"):
         assert outcomes[url] == "served"
-    assert usage.requests == 6        # robots.txt + page + style + app on quotes.example; robots.txt + lib on cdn
+    assert usage.requests == 2        # robots.txt + page on quotes.example (the task's budget)
+    assert usage.render_requests == 3  # app.js; robots.txt + lib.js on cdn.example (the render's allowance)
 
 
 # ---- review remediation (V1): hung renders, blocked navigations, no double fetch --------------------------------
@@ -227,3 +231,89 @@ customElements.define('sealed-box', class extends HTMLElement {
     web.add("light.example", "/", plain + "</body></html>")
     result = renderer.render("http://light.example/", budget=Budget(max_browser_sessions=1), usage=Usage())
     assert b"light only!" in result.body and b"data-shadow-root" not in result.body
+
+
+# ---- ADR-040: the render's own sub-request allowance, blocking, robots on sub-resources -------------------------
+
+from neuroscifi.webcortex.browser import blocked_domain  # noqa: E402
+
+CHUNKS = """<!doctype html><html><body><div id="out">loading</div><script>
+const parts = [];
+Promise.all([1, 2, 3, 4, 5, 6].map((i) => fetch('/chunk' + i + '.json').then((r) => r.json())
+  .then((d) => parts.push(d.n)).catch(() => {})))
+  .then(() => { document.getElementById('out').textContent = 'chunks ' + parts.length; });
+</script></body></html>"""
+
+
+def test_render_sub_requests_spend_their_own_allowance_never_the_task_requests(web):
+    web.add("heavy.example", "/", CHUNKS)
+    for i in range(1, 7):
+        web.add("heavy.example", f"/chunk{i}.json", f'{{"n": {i}}}', content_type="application/json")
+    renderer = renderer_or_skip(fetcher_for(web))
+    usage = Usage()
+    budget = Budget(max_browser_sessions=1, max_requests=2, max_render_requests=4)
+    result = renderer.render("http://heavy.example/", budget=budget, usage=usage)
+    assert usage.requests == 2                       # robots.txt + page: the task's 2 requests are not exceeded
+    assert usage.render_requests == 4 and renderer.last_usage["requests"] == 4
+    assert renderer.last_usage["allowance"] == 4
+    assert len([r for r in web.requests_to("heavy.example") if r["path"].startswith("/chunk")]) == 4
+    chunks = [e for e in renderer.last_events if "/chunk" in (e.get("url") or "")]
+    assert [e["outcome"] for e in chunks].count("served") == 4
+    assert [e.get("code") for e in chunks].count("budget_exhausted") == 1      # the 5th is refused by the cap,
+    assert [e["outcome"] for e in chunks].count("aborted") == 1                # the 6th is not even tried
+    assert any(e.get("outcome") == "budget_exhausted" for e in renderer.last_events)
+    assert b"chunks 4" in result.body
+    assert usage.bytes >= len(result.body) // 10     # sub-resource bytes still count against the task's bytes
+
+
+BLOCKING = """<!doctype html><html><head><link rel="stylesheet" href="/s.css">
+<link rel="icon" href="/favicon.ico"></head><body><p id="p">static</p>
+<img src="/a.png"><iframe src="http://frames.example/ad.html"></iframe>
+<script src="https://www.google-analytics.com/analytics.js"></script>
+<script>fetch('http://px.doubleclick.net/pixel?x=1').catch(() => {});
+document.getElementById('p').textContent = 'rendered text';</script></body></html>"""
+
+
+def test_images_styles_frames_and_trackers_are_blocked_without_a_request(web):
+    web.add("blocking.example", "/", BLOCKING)
+    for path, kind in (("/s.css", "text/css"), ("/a.png", "image/png"), ("/favicon.ico", "image/x-icon")):
+        web.add("blocking.example", path, "x", content_type=kind)
+    web.add("frames.example", "/ad.html", "<p>ad</p>")
+    web.add("www.google-analytics.com", "/analytics.js", "1", content_type="application/javascript")
+    web.add("px.doubleclick.net", "/pixel", "1", content_type="application/javascript")
+    renderer = renderer_or_skip(fetcher_for(web))
+    usage = Usage()
+    result = renderer.render("http://blocking.example/", budget=Budget(max_browser_sessions=1), usage=usage)
+    assert b"rendered text" in result.body
+    assert {r["path"] for r in web.requests_to("blocking.example")} == {"/robots.txt", "/"}
+    for host in ("frames.example", "www.google-analytics.com", "px.doubleclick.net"):
+        assert web.requests_to(host) == []          # not even robots.txt
+    why = {e["url"].split("?")[0]: e.get("why") for e in renderer.last_events if e.get("url")}
+    assert why["http://blocking.example/s.css"] == "type" and why["http://blocking.example/a.png"] == "type"
+    assert why["http://frames.example/ad.html"] == "frame"
+    assert why["https://www.google-analytics.com/analytics.js"] == "tracker"
+    assert why["http://px.doubleclick.net/pixel"] == "tracker"
+    assert usage.render_requests == 0
+
+
+def test_blocked_domain_matches_the_host_and_its_parents_only():
+    assert blocked_domain("securepubads.g.doubleclick.net") and blocked_domain("doubleclick.net")
+    assert blocked_domain("C.Bing.com.") and not blocked_domain("www.bing.com")
+    assert not blocked_domain("notdoubleclick.net") and not blocked_domain("assets.msn.com")
+    assert not blocked_domain("") and not blocked_domain(None) and not blocked_domain("net")
+
+
+def test_robots_rules_apply_to_every_sub_resource(web):
+    web.add("robots.example", "/", "<html><body><p id='p'>static</p><script src='http://cdn2.example/private/x.js'>"
+            "</script><script src='http://cdn2.example/public/y.js'></script></body></html>")
+    web.add("cdn2.example", "/robots.txt", "User-agent: *\nDisallow: /private/\n", content_type="text/plain")
+    web.add("cdn2.example", "/private/x.js", "document.getElementById('p').textContent += ' private';",
+            content_type="application/javascript")
+    web.add("cdn2.example", "/public/y.js", "document.getElementById('p').textContent += ' public';",
+            content_type="application/javascript")
+    renderer = renderer_or_skip(fetcher_for(web))
+    result = renderer.render("http://robots.example/", budget=Budget(max_browser_sessions=1), usage=Usage())
+    assert b">static public</p>" in result.body
+    assert {r["path"] for r in web.requests_to("cdn2.example")} == {"/robots.txt", "/public/y.js"}
+    outcomes = {e["url"]: e.get("code") or e["outcome"] for e in renderer.last_events if e.get("url")}
+    assert outcomes["http://cdn2.example/private/x.js"] == "blocked_robots"

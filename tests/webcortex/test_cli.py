@@ -431,3 +431,20 @@ def test_ask_answers_history_questions_from_memory_and_refuses_bare_follow_ups(c
     code, err = nsf(capsys, "web", "ask", "Is that version secure, stable and recommended?", "--queue", "--db", db)
     assert code == 2 and "Which version do you mean?" in err
     assert nsf(capsys, "web", "tasks", "--db", db)[1] == []
+
+
+def test_news_rendering_is_on_by_default_and_the_owner_can_turn_it_off(capsys, db):
+    """ADR-040: news / time-sensitive questions may render (bounded) by default; --no-news-render turns it off, and
+    with both rendering switches off a task gets no browser session."""
+    from neuroscifi.webcortex.config import WebConfig
+    code, out = nsf(capsys, "web", "config", "--db", db)
+    assert out["config"]["news_rendering"] is True and out["config"]["browser_rendering"] is False
+    assert out["config"]["daily_renders"] == 40
+    assert WebConfig().budget_for("quick_lookup").max_browser_sessions == 1
+    assert WebConfig().budget_for("quick_lookup").max_render_requests == 100
+    assert WebConfig(news_rendering=False).budget_for("quick_lookup").max_browser_sessions == 0
+    code, out = nsf(capsys, "web", "config", "--no-news-render", "--set", "daily_renders=5", "--db", db)
+    assert code == 0 and out["changed"] == ["daily_renders", "news_rendering"]
+    assert out["config"]["news_rendering"] is False and out["config"]["daily_renders"] == 5
+    code, out = nsf(capsys, "web", "config", "--news-render", "--db", db)
+    assert out["config"]["news_rendering"] is True

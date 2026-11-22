@@ -988,27 +988,35 @@ def intent_kinds(question):
     return intent.assess(question, now=T0)["kinds"]
 
 
-class GreedyRenderer(FakeRenderer):
-    """A heavy page: charges sub-requests to the budget it is given until that budget refuses one."""
+class HeavyRenderer(FakeRenderer):
+    """An MSN-like page: `subrequests` sub-requests, spent from the render's own allowance (BrowserRenderer's
+    contract, ADR-040: budget.max_render_requests per render, tallied in usage.render_requests)."""
+
+    def __init__(self, subrequests=80):
+        super().__init__()
+        self.subrequests, self.budgets = subrequests, []
 
     def render(self, url, *, budget, usage, main=None):
-        from neuroscifi.webcortex.types import BudgetExceeded, FetchResult
+        from neuroscifi.webcortex.types import FetchResult
         usage.charge(budget, browser_sessions=1)
-        self.calls, self.given = self.calls + 1, budget.max_requests
-        self.last_events = []
-        try:
-            while True:
-                usage.charge(budget, requests=1)
-                self.last_events.append({"url": "http://spa.example/chunk.js", "outcome": "served"})
-        except BudgetExceeded:
-            self.last_events.append({"url": None, "outcome": "budget_exhausted"})
+        self.calls += 1
+        self.budgets.append(budget)
+        spent = min(self.subrequests, budget.max_render_requests)
+        usage.render_requests += spent
+        self.last_usage = {"requests": spent, "bytes": 0, "allowance": budget.max_render_requests}
+        self.last_events = [{"url": "http://spa.example/chunk.js", "outcome": "served"}] * spent
+        if spent < self.subrequests:
+            self.last_events = self.last_events + [{"url": "http://spa.example/more.js", "outcome": "refused",
+                                                    "code": "budget_exhausted"}, {"url": None,
+                                                                                  "outcome": "budget_exhausted"}]
         return FetchResult(url=main.url, final_url=main.final_url, status=200, headers={}, content_type="text/html",
                            body=RENDERED.encode(), retrieved_at=T0, retrieval_mode="rendered")
 
 
-def test_a_render_leaves_requests_for_the_other_pages(individual, web, site):
-    """Live: rendering msn.com spent the quick lookup's whole request budget ("requests 21 of 20"), so none of the
-    other news results was read. A render gets the requests left minus RENDER_RESERVE_PER_PAGE per open page slot."""
+def test_a_render_spends_its_own_allowance_not_the_task_requests(individual, web, site):
+    """Live (O-05): an MSN article needs 70-100 sub-requests, the quick lookup allows 20 requests. ADR-040: a render
+    is one page read of the task plus its own allowance of budget.max_render_requests sub-requests, so the task's
+    requests are left to the other pages and the render is not cut short."""
     db, path = individual
     state.set_config(db, {"browser_rendering": True}, T0)
     web.add("spa.example", "/zephyr", JS_SHELL)
@@ -1016,14 +1024,150 @@ def test_a_render_leaves_requests_for_the_other_pages(individual, web, site):
         {"url": f"http://{host}{p}", "title": title, "snippet": title} for (host, p), (title, _, _) in PAGES.items()]
     task = orchestrator.submit(db, "Zephyr compiler 4.2 release", T0, mode="fact_verification",
                                budget={"max_browser_sessions": 1, "max_pages": 3, "max_requests": 20})
-    renderer = GreedyRenderer()
+    assert task["budget"]["max_render_requests"] == 100
+    renderer = HeavyRenderer(80)
     done = run_rendering(db, path, web, task, results, renderer)
-    assert renderer.calls == 1
+    assert renderer.calls == 1 and renderer.budgets[0].max_requests == 20      # the task budget, not lowered
     assert done["usage"]["pages"] == 3 and done["usage"]["requests"] <= 20
+    assert done["usage"]["render_requests"] == 80
     hosts = {s["url"].split("/")[2] for s in done["result"]["sources"]}
     assert hosts == {"spa.example", "news-one.example", "tech-two.example"}
-    assert renderer.given == 20 - orchestrator.RENDER_RESERVE_PER_PAGE * 2
-    assert any("ran out of request budget" in x for x in done["result"]["limitations"])
+    render = next(e["detail"] for e in state.events(db, task["id"]) if e["kind"] == "render")
+    assert render["ok"] is True and render["subrequests"] == 80 and render["allowance"] == 100
+    assert not any("ran out of request budget" in x for x in done["result"]["limitations"])
+    capped = orchestrator.submit(db, "Zephyr compiler 4.2 release notes", T0, mode="fact_verification",
+                                 budget={"max_browser_sessions": 1, "max_pages": 1, "max_render_requests": 30})
+    small = HeavyRenderer(80)
+    done = run_rendering(db, path, web, capped, results[:1], small)
+    assert done["usage"]["render_requests"] == 30
+    assert any("ran out of request budget (allowance 30)" in x for x in done["result"]["limitations"])
+
+
+NEWS_SHELL = ("<html><head><title>AI stocks fall</title></head><body><div id='root'></div>"
+              "<script src='/bundle.js'></script></body></html>")
+UNDATED_NEWS = ("<html><head><title>AI week</title></head><body><article>" + "".join(
+    f"<p>Paragraph {i}: the AI industry announced new models and chips this week, analysts said on Friday.</p>"
+    for i in range(8)) + "</article><script src='/app.js'></script></body></html>")
+AI_QUESTION = "What happened in AI this week?"
+
+
+def news_hits(*urls):
+    return [{"url": u, "title": "AI news", "snippet": "AI news this week"} for u in urls]
+
+
+def test_news_questions_read_dated_static_pages_before_rendering(individual, web):
+    """O-05 / ADR-040 static-first: for a news question a scripted page without text (the MSN case) waits while the
+    other candidates are read. Dated static pages take the slots; the shell is rendered only for a slot still
+    open. Rendering is on for news by default (news_rendering), with browser_rendering off."""
+    db, path = individual
+    serve(web)
+    web.add("msn.example", "/ar-1", NEWS_SHELL)
+    hits = news_hits("http://msn.example/ar-1", "http://news-one.example/zephyr", "http://tech-two.example/news/zephyr-42")
+    cfg = state.get_config(db)
+    assert cfg.news_rendering is True and cfg.browser_rendering is False
+    two = orchestrator.submit(db, AI_QUESTION, T0, mode="quick_lookup", budget={"max_pages": 2})
+    assert two["budget"]["max_browser_sessions"] == 1
+    renderer = FakeRenderer()
+    done = run_rendering(db, path, web, two, hits, renderer)
+    assert renderer.calls == 0                   # the dated static pages filled both slots
+    assert [s["url"].split("/")[2] for s in done["result"]["sources"]] == ["news-one.example", "tech-two.example"]
+    assert all(s["published_at"] for s in done["result"]["sources"])
+    three = orchestrator.submit(db, AI_QUESTION + " Tell me.", T0, mode="quick_lookup", budget={"max_pages": 3})
+    renderer = FakeRenderer()
+    done = run_rendering(db, path, web, three, hits, renderer)
+    assert renderer.calls == 1
+    sources = done["result"]["sources"]
+    assert [s["url"].split("/")[2] for s in sources] == ["news-one.example", "tech-two.example", "msn.example"]
+    assert sources[2]["retrieval_mode"] == "rendered"
+    render = next(e["detail"] for e in state.events(db, three["id"]) if e["kind"] == "render")
+    assert render["reason"] == "js_shell"
+
+
+def test_news_pages_without_text_render_before_undated_ones(individual, web):
+    """A news page with text but no publication date may be rendered for its date, but a page without text comes
+    first; with one render per task the undated page is read as it is."""
+    db, path = individual
+    web.add("undated.example", "/week", UNDATED_NEWS)
+    web.add("msn.example", "/ar-2", NEWS_SHELL)
+    task = orchestrator.submit(db, AI_QUESTION, T0, mode="quick_lookup", budget={"max_pages": 2})
+    renderer = FakeRenderer()
+    done = run_rendering(db, path, web, task, news_hits("http://undated.example/week", "http://msn.example/ar-2"),
+                         renderer)
+    assert renderer.calls == 1
+    modes = {s["url"].split("/")[2]: s["retrieval_mode"] for s in done["result"]["sources"]}
+    assert modes == {"msn.example": "rendered", "undated.example": "live"}
+    decisions = [e["detail"] for e in state.events(db, task["id"]) if e["kind"] == "decision"
+                 and e["detail"].get("render") is False]
+    assert decisions == []                       # the undated page was never offered a render: sessions spent
+
+
+def render_decisions(db, task_id):
+    return [e["detail"]["reason"] for e in state.events(db, task_id)
+            if e["kind"] == "decision" and e["detail"].get("render") is False]
+
+
+def test_news_rendering_follows_the_owner_switches(individual, web):
+    db, path = individual
+    web.add("msn.example", "/ar-3", NEWS_SHELL)
+    web.add("spa.example", "/zephyr", JS_SHELL)
+    state.set_config(db, {"news_rendering": False}, T0)
+    off = orchestrator.submit(db, AI_QUESTION, T0, mode="quick_lookup")
+    assert off["budget"]["max_browser_sessions"] == 0          # neither switch on: no browser session at all
+    renderer = FakeRenderer()
+    run_rendering(db, path, web, off, news_hits("http://msn.example/ar-3"), renderer)
+    assert renderer.calls == 0
+    state.set_config(db, {"news_rendering": True}, T0)
+    stable = orchestrator.submit(db, "Zephyr compiler 4.2 release notes", T0, mode="quick_lookup")
+    renderer = FakeRenderer()
+    run_rendering(db, path, web, stable, news_hits("http://spa.example/zephyr"), renderer)
+    assert renderer.calls == 0                   # a JavaScript shell for a question that is not news: --browser only
+    assert any("not news or time-sensitive" in r for r in render_decisions(db, stable["id"]))
+    run = orchestrator._Run.__new__(orchestrator._Run)
+    run.cfg, run.checkpoint = state.get_config(db), {"assessment": {"kinds": ["news"]}}
+    for origin, refused in (("cli", False), ("console", False), ("pocket", False), ("curiosity", True),
+                            ("refresh:7", True), ("monitor:3", True)):
+        run.origin = origin
+        assert (run.render_refusal("thin_news_text") is not None) is refused, origin
+    state.set_config(db, {"browser_rendering": True}, T0)
+    run.cfg = state.get_config(db)
+    run.origin = "curiosity"
+    assert run.render_refusal("js_shell") is None     # the owner's general switch covers every escalation
+
+
+def test_the_daily_render_cap_counts_across_tasks_and_days(individual, web):
+    db, path = individual
+    web.add("msn.example", "/ar-4", NEWS_SHELL)
+    state.set_config(db, {"daily_renders": 1}, T0)
+    first = orchestrator.submit(db, AI_QUESTION, T0, mode="quick_lookup")
+    renderer = FakeRenderer()
+    run_rendering(db, path, web, first, news_hits("http://msn.example/ar-4"), renderer)
+    assert renderer.calls == 1 and state.render_day(db, T0)["renders"] == 1
+    second = orchestrator.submit(db, AI_QUESTION + " Again.", T0, mode="quick_lookup")
+    renderer = FakeRenderer()
+    done = run_rendering(db, path, web, second, news_hits("http://msn.example/ar-4"), renderer)
+    assert renderer.calls == 0
+    assert any("render cap is reached (1 of 1)" in r for r in render_decisions(db, second["id"]))
+    assert any("day's render cap (1) is reached" in x for x in done["result"]["limitations"])
+    assert state.take_render(db, T0 + 86400, 1) == (True, 1)       # a new UTC day starts from zero
+    with pytest.raises(Exception):
+        state.set_config(db, {"daily_renders": -1}, T0)
+
+
+def test_news_rendering_is_refused_under_critical_memory_pressure(individual, web, monkeypatch):
+    """RD-46 / ADR-040: Chromium (about 1.1-1.4 GiB per render, measured) is never started at critical pressure;
+    the page is read as it is and the decision names the measurement."""
+    from neuroscifi.resources import monitor
+    db, path = individual
+    web.add("msn.example", "/ar-5", NEWS_SHELL)
+    monkeypatch.setattr(monitor, "sample", lambda: {"level": "critical",
+                                                    "reasons": ["memory available 3.0 GiB of 119 GiB is below the "
+                                                                "critical threshold 7.1 GiB"]})
+    task = orchestrator.submit(db, AI_QUESTION, T0, mode="quick_lookup")
+    renderer = FakeRenderer()
+    done = run_rendering(db, path, web, task, news_hits("http://msn.example/ar-5"), renderer)
+    assert renderer.calls == 0 and state.render_day(db, T0)["renders"] == 0
+    assert any("memory pressure critical" in r for r in render_decisions(db, task["id"]))
+    assert done["result"]["sources"][0]["retrieval_mode"] == "live"
 
 
 class WikiProvider(ListProvider):
@@ -1714,7 +1858,7 @@ def test_an_empty_news_answer_says_why_and_lists_dated_headlines(individual, web
     assert lead.startswith("No usable claims were extracted from 1 source read. Why: searched: searxng ")
     loaded = lead.split("not loaded: ")[1].split(";")[0].split(", ")
     assert sorted(loaded) == ["hn.example rate_limited", "markets.example dns_failure", "paywall.example HTTP 403 x2"]
-    assert "no readable text (JavaScript page; rendering is off by default): shell.example" in lead
+    assert "no readable text (JavaScript page, not rendered): shell.example" in lead
     assert "«AI agents story 0» (hn.example, 2026-11-20, date from the search engine)" in lead
     heads = r["unread_headlines"]
     assert heads[0]["title"] == "AI agents story 0" and heads[0]["date_source"] == "the search engine"

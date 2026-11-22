@@ -250,7 +250,8 @@ def _config(db, a, now):
     from . import state
     changes = {}
     for flag, key in (("enable", "enabled"), ("autonomous", "autonomous"), ("pocket_research", "pocket_research"),
-                      ("browser", "browser_rendering"), ("search_browser_ua", "search_browser_user_agent")):
+                      ("browser", "browser_rendering"), ("news_render", "news_rendering"),
+                      ("search_browser_ua", "search_browser_user_agent")):
         value = getattr(a, flag)
         if value is not None:
             changes[key] = value
@@ -277,14 +278,15 @@ def _status(db, a, now):
     daemon = _daemon(db, path).status()
     return {"enabled": cfg.enabled,
             "switches": {"enabled": cfg.enabled, "autonomous": cfg.autonomous, "pocket_research": cfg.pocket_research,
-                         "browser_rendering": cfg.browser_rendering,
+                         "browser_rendering": cfg.browser_rendering, "news_rendering": cfg.news_rendering,
                          "search_browser_user_agent": cfg.search_browser_user_agent},
             "config": {"providers": cfg.providers, "unknown_providers": unknown(cfg), "engines": cfg.engines,
                        "openwebsearch_url": cfg.openwebsearch_url, "searxng_url": cfg.searxng_url,
                        "searxng_engines": cfg.searxng_engines, "budget_ceiling": cfg.budget_ceiling,
                        "daily_autonomous": cfg.daily_autonomous, "deny_domains": len(cfg.deny_domains),
                        "private_terms": len(cfg.private_terms),
-                       "daily_provider_queries": cfg.daily_provider_queries},
+                       "daily_provider_queries": cfg.daily_provider_queries,
+                       "renders": {"today": state.render_day(db, now)["renders"], "daily_cap": cfg.daily_renders}},
             "provider_health": _health_view(db, now), "daemon": daemon, "searxng": _searxng_view(db, cfg, now),
             "keyed_providers": _keyed_view(db, cfg, now),
             "public_cache": _cache_stats(path, db, now),
@@ -828,6 +830,9 @@ def register(sub):
     _switch(p, "autonomous", "autonomous", "allow timer-driven refresh and curiosity research", "forbid it")
     _switch(p, "pocket-research", "pocket_research", "let paired Pocket devices submit research", "forbid it")
     _switch(p, "browser", "browser", "permit sandboxed JavaScript rendering", "forbid it")
+    _switch(p, "news-render", "news_render",
+            "let news questions a person asks render a scripted news page without text or date (default; ADR-040)",
+            "never render for news questions unless --browser is on")
     _switch(p, "search-browser-ua", "search_browser_ua",
             "let the search daemon's scrapers send browser User-Agent strings (impersonation; ADR-032)",
             "honest User-Agent only (default; needs `npm run patch-ua`)")

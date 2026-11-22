@@ -205,7 +205,8 @@ class Budget(JsonMixin):
     max_bytes: int = 20_000_000
     max_seconds: float = 120.0
     max_depth: int = 1                # link-following depth for bounded crawls (0 = no following)
-    max_browser_sessions: int = 0     # 0 disables JavaScript rendering for the task
+    max_browser_sessions: int = 0     # renders per task; 0 disables JavaScript rendering for the task
+    max_render_requests: int = 100    # sub-requests ONE render may make (its own allowance, not max_requests)
     max_concurrency: int = 4
     max_context_tokens: int = 2000    # working-memory pack size (approx. 1 token ~ 0.75 words)
 
@@ -231,6 +232,7 @@ class Usage(JsonMixin):
     seconds: float = 0.0
     browser_sessions: int = 0
     tokens: int = 0
+    render_requests: int = 0          # sub-requests of all renders (each within budget.max_render_requests)
 
     def charge(self, budget: Budget, *, queries=0, requests=0, pages=0, bytes=0, browser_sessions=0):
         """Check then add, atomically. Raises BudgetExceeded before the limit would be passed (pre-flight)."""

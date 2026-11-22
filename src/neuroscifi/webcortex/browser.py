@@ -13,9 +13,19 @@ Contract
   their constructors throw (init script in every frame); popups closed, dialogs dismissed.
 - Network: `context.route("**/*")` intercepts every request. Only GET/HEAD over http(s) is served, and only through
   `SafeFetcher.fetch(purpose="subresource")`, so the URL/address policy, DNS pinning, robots.txt, throttle (the
-  shorter `subresource_interval`, not Crawl-delay), size/type limits and the task budget apply to every
+  shorter `subresource_interval`, not Crawl-delay), Retry-After backoff and size/type limits apply to every
   sub-resource. That purpose also admits scripts and stylesheets (net.SUBRESOURCE_TYPES); its responses are never
-  cached and never become documents. Images, media and fonts are aborted (budget), anything refused is aborted.
+  cached and never become documents. Anything refused is aborted.
+- Not needed for text, never fetched (ADR-040; outcome 'aborted' with `why`): BLOCKED_RESOURCES (images, media,
+  fonts, stylesheets, beacons, 'other' such as favicons and prefetches) -> why 'type'; sub-frame documents (iframes:
+  ads, consent and login frames) -> 'frame'; requests to BLOCKED_DOMAINS (known advertising, analytics and beacon
+  hosts, matched on the host and its parent domains) -> 'tracker'. A blocked request costs nothing: no robots.txt,
+  no request.
+- Budget (ADR-040): the render costs one browser session of the task budget; its sub-requests (robots.txt of
+  sub-resource hosts included) are charged to their own allowance of `budget.max_render_requests` requests (and the
+  task's bytes left), not to the task's max_requests. When the allowance is spent the remaining sub-requests are
+  refused (code budget_exhausted). Afterwards `usage.render_requests` and `usage.bytes` carry what the render spent
+  and `last_usage` = {requests, bytes, allowance}.
   Defence in depth for traffic that bypasses routing: all DNS inside Chromium resolves to NOTFOUND, a dead proxy
   is configured, and WebRTC may not use non-proxied UDP. Chromium therefore never opens a
   socket to the page's hosts itself.
@@ -41,7 +51,7 @@ import time
 from urllib.parse import urlsplit
 
 from .net import _charge, _redact, check_url
-from .types import BudgetExceeded, FetchError, FetchResult
+from .types import _CHARGE_LOCK, Budget, BudgetExceeded, FetchError, FetchResult, Usage
 
 CHROMIUM_ARGS = [
     "--disable-extensions", "--disable-background-networking", "--disable-sync", "--disable-default-apps",
@@ -54,7 +64,24 @@ CHROMIUM_ARGS = [
     "--mute-audio", "--disable-remote-fonts", "--disable-speech-api", "--disable-gpu",
 ]
 DEAD_PROXY = {"server": "http://127.0.0.1:1"}
-BLOCKED_RESOURCES = ("image", "media", "font", "eventsource", "websocket", "manifest", "texttrack", "ping")
+BLOCKED_RESOURCES = ("image", "media", "font", "stylesheet", "eventsource", "websocket", "manifest", "texttrack",
+                     "ping", "other")
+# Advertising, analytics and beacon hosts (and their subdomains) seen on news pages: never needed for an article's
+# text. Matched on the request host and each parent domain; refusing them is never a robots.txt question.
+BLOCKED_DOMAINS = frozenset({
+    "doubleclick.net", "googlesyndication.com", "googletagmanager.com", "googletagservices.com",
+    "google-analytics.com", "googleadservices.com", "adtrafficquality.google", "amazon-adsystem.com",
+    "scorecardresearch.com", "clarity.ms", "btloader.com", "webcontentassessor.com", "adsdk.microsoft.com",
+    "confiant-integrations.net", "chartbeat.com", "chartbeat.net", "parsely.com", "parse.ly", "quantserve.com",
+    "taboola.com", "outbrain.com", "criteo.com", "criteo.net", "adnxs.com", "rubiconproject.com", "pubmatic.com",
+    "openx.net", "casalemedia.com", "moatads.com", "doubleverify.com", "permutive.com", "permutive.app",
+    "cloudflareinsights.com", "hotjar.com", "segment.io", "segment.com", "nr-data.net", "newrelic.com",
+    "skimresources.com", "realtimely.io", "c.bing.com", "bat.bing.com", "facebook.net",
+    "krxd.net", "bluekai.com", "demdex.net", "omtrdc.net", "everesttech.net", "adsrvr.org", "liadm.com",
+    "rlcdn.com", "teads.tv", "yieldmo.com", "sharethrough.com", "media.net", "mediavine.com",
+    "disqus.com", "audioeye.com", "onetrust.com", "cookielaw.org", "privacy-mgmt.com", "consensu.org",
+    "analytics.yahoo.com", "opus.analytics.yahoo.com", "reelboat.com", "succeedscene.com",
+})
 BLOCK_SCRIPT = """(() => {
   for (const name of ['WebSocket', 'WebSocketStream', 'RTCPeerConnection', 'webkitRTCPeerConnection', 'EventSource']) {
     const refuse = function () { throw new DOMException(name + ' is blocked by the renderer', 'SecurityError'); };
@@ -91,12 +118,19 @@ FLATTEN_SCRIPT = """(limit) => {
 RENDER_GRACE = 5.0      # seconds past the render timeout before the watchdog kills the driver and Chromium
 
 
+def blocked_domain(host: str | None) -> bool:
+    """Whether `host` or one of its parent domains is in BLOCKED_DOMAINS."""
+    labels = (host or "").lower().rstrip(".").split(".")
+    return any(".".join(labels[i:]) in BLOCKED_DOMAINS for i in range(len(labels) - 1))
+
+
 class BrowserRenderer:
     def __init__(self, fetcher, *, executable=None, timeout=20.0):
         self.fetcher = fetcher
         self.executable = executable
         self.timeout = float(timeout)
         self.last_events: list[dict] = []
+        self.last_usage: dict = {}
 
     def _executable(self) -> str | None:
         for candidate in (self.executable, os.environ.get("NSF_CHROMIUM"), "/usr/bin/chromium",
@@ -121,9 +155,11 @@ class BrowserRenderer:
             return True, f"playwright chromium at {bundled}"
         return False, "no chromium found (install chromium or set NSF_CHROMIUM)"
 
-    def render(self, url, *, budget, usage, main: FetchResult | None = None) -> FetchResult:
+    def render(self, url, *, budget, usage, main: FetchResult | None = None, timeout=None) -> FetchResult:
         """`main`: the FetchResult of `url` the caller already fetched (purpose='page'); it is not fetched or
-        charged again. Without it the page is fetched here."""
+        charged again. Without it the page is fetched here. `timeout` may shorten (never lengthen) self.timeout,
+        e.g. to what is left of the task's time budget."""
+        limit = self.timeout if timeout is None else max(1.0, min(self.timeout, float(timeout)))
         ok, reason = self.available()
         if not ok:
             raise FetchError("disabled", _redact(url), reason)
@@ -135,33 +171,45 @@ class BrowserRenderer:
             main = self.fetcher.fetch(url, purpose="page", budget=budget, usage=usage)
         if main.content_type not in ("text/html", "application/xhtml+xml"):
             return main
+        # the render's own sub-request allowance (ADR-040); bytes stay bounded by what the task has left
+        allowance = Budget(max_requests=max(0, int(budget.max_render_requests)), max_pages=0, max_queries=0,
+                           max_bytes=max(0, budget.max_bytes - usage.bytes), max_browser_sessions=0)
+        spent = Usage()
         box: dict = {}
-        worker = threading.Thread(target=self._render_thread, args=(main, budget, usage, box), daemon=True,
+        worker = threading.Thread(target=self._render_thread, args=(main, allowance, spent, box, limit), daemon=True,
                                   name="webcortex-render")
         worker.start()
-        worker.join(self.timeout + RENDER_GRACE)
-        if worker.is_alive():
-            _kill_tree(box.get("driver_pid"))   # Chromium dies with its driver; the thread's next call then fails
-            worker.join(RENDER_GRACE)
-            raise FetchError("timeout", _redact(url), f"renderer did not finish within {self.timeout:g}s; killed")
+        try:
+            worker.join(limit + RENDER_GRACE)
+            if worker.is_alive():
+                _kill_tree(box.get("driver_pid"))   # Chromium dies with its driver; the thread's next call then fails
+                worker.join(RENDER_GRACE)
+                raise FetchError("timeout", _redact(url), f"renderer did not finish within {limit:g}s; killed")
+        finally:
+            with _CHARGE_LOCK:
+                usage.render_requests += spent.requests
+                usage.bytes += spent.bytes
+            self.last_usage = {"requests": spent.requests, "bytes": spent.bytes,
+                               "allowance": allowance.max_requests}
         if "error" in box:
             raise box["error"]
         return box["result"]
 
     # ---- inside the render thread (Playwright's sync API must not share a thread with an asyncio loop) -------
-    def _render_thread(self, main, budget, usage, box):
+    def _render_thread(self, main, budget, usage, box, limit=None):
         try:
-            box["result"] = self._render(main, budget, usage, box)
+            box["result"] = self._render(main, budget, usage, box, limit)
         except BaseException as error:          # handed back to the calling thread
             box["error"] = error
 
-    def _render(self, main: FetchResult, budget, usage, box=None) -> FetchResult:
+    def _render(self, main: FetchResult, budget, usage, box=None, limit=None) -> FetchResult:
         from playwright.sync_api import Error as PlaywrightError
         from playwright.sync_api import TimeoutError as PlaywrightTimeout
         from playwright.sync_api import sync_playwright
 
+        limit = self.timeout if limit is None else limit
         started = time.monotonic()
-        deadline = started + self.timeout
+        deadline = started + limit
         events: list[dict] = []
         self.last_events = events
         state = {"exhausted": None, "main_served": False}
@@ -177,11 +225,19 @@ class BrowserRenderer:
                 record["outcome"] = "served-main"
                 route.fulfill(status=main.status, headers=_served_headers(main), body=main.body)
                 return
-            scheme = urlsplit(target).scheme.lower()
-            if (request.method not in ("GET", "HEAD") or scheme not in ("http", "https")
-                    or request.resource_type in BLOCKED_RESOURCES or state["exhausted"]
-                    or time.monotonic() > deadline):
+            parts = urlsplit(target)
+            why = None
+            if request.resource_type in BLOCKED_RESOURCES:
+                why = "type"
+            elif request.resource_type == "document" and _subframe(request):
+                why = "frame"
+            elif blocked_domain(parts.hostname):
+                why = "tracker"
+            if why or (request.method not in ("GET", "HEAD") or parts.scheme.lower() not in ("http", "https")
+                       or state["exhausted"] or time.monotonic() > deadline):
                 record["outcome"] = "aborted"
+                if why:
+                    record["why"] = why
                 route.abort("blockedbyclient")
                 return
             try:
@@ -242,7 +298,7 @@ class BrowserRenderer:
                         final = page.url
                     except PlaywrightTimeout:
                         raise FetchError("timeout", _redact(main.final_url),
-                                         f"render exceeded {self.timeout:g}s") from None
+                                         f"render exceeded {limit:g}s") from None
                     except PlaywrightError as error:
                         raise FetchError("decode_error", _redact(main.final_url),
                                          f"render failed ({str(error).splitlines()[0][:120]})") from None
@@ -261,6 +317,14 @@ class BrowserRenderer:
                            body=body[:policy.max_bytes], retrieved_at=self.fetcher._clock(),
                            retrieval_mode="rendered", redirects=list(main.redirects), truncated=truncated,
                            elapsed=time.monotonic() - started + main.elapsed, remote_ip=main.remote_ip)
+
+
+def _subframe(request) -> bool:
+    """A document request for a frame below the page (an iframe), not the page's own navigation."""
+    try:
+        return request.frame.parent_frame is not None
+    except Exception:              # no frame (e.g. a worker's request): not a sub-frame document
+        return False
 
 
 def _served_headers(result: FetchResult) -> dict:

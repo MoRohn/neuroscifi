@@ -97,7 +97,8 @@ def test_config_defaults_validation_and_persistence(tmp_path):
                     {"budget_ceiling": {"max_pagez": 1}}, {"budget_ceiling": {"max_pages": -1}},
                     {"freshness_ttl": {"eternal": 5}}, {"daily_autonomous": {"tasks": 1.5}},
                     {"auto_provisional_min_confidence": 2}, {"auto_provisional_min_sources": 0},
-                    {"private_terms": ["ok", ""]}, {"engines": "duckduckgo"}, {}):
+                    {"private_terms": ["ok", ""]}, {"engines": "duckduckgo"}, {"news_rendering": "yes"},
+                    {"daily_renders": 1001}, {"daily_renders": 2.5}, {}):
             with pytest.raises(ValidationError):
                 state.set_config(db, bad, T0)
         assert store.state_version(db) == version + 1

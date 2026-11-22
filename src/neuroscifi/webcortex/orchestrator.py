@@ -16,10 +16,12 @@ I/O):
                 SUCCEED (a failed fetch costs requests, not a page; the request/byte/time budgets bound the
                 attempts); scientific/deep_research keep ceil(max_pages/3) slots for web pages. Pages are fetched
                 through SafeFetcher (purpose 'page'), extracted, quarantined; JavaScript shells (and, for news /
-                time-sensitive questions, scripted pages whose static text is under NEWS_RENDER_MIN_TEXT) escalate
-                to the renderer when the budget has browser sessions, with a request allowance that leaves
-                RENDER_RESERVE_PER_PAGE requests to each page slot still open (render_budget: a render never
-                starves the other pages); deep_research follows <= 2 same-site links of the
+                time-sensitive questions, scripted pages whose static text is under NEWS_RENDER_MIN_TEXT or that
+                carry no publication date) escalate to the renderer when the budget has browser sessions and the
+                owner's switches allow it (ADR-040: browser_rendering, or news_rendering for news questions a
+                person asked); for news questions those pages wait until the other candidates were read
+                (static-first), and a render spends its own sub-request allowance (budget.max_render_requests),
+                never the task's requests; deep_research follows <= 2 same-site links of the
                 first page when depth and pages remain. Each document is recorded (web_sources, event, checkpoint)
                 as soon as it is read; the lease is renewed after every fetch. API records are quarantined like
                 pages. An unexpected exception while extracting one document (or reading it back from the cache)
@@ -122,8 +124,7 @@ MAX_UNREAD_HEADLINES = 6      # dated search hits shown when nothing usable coul
 WEB_RESERVE_MODES = ("scientific", "deep_research")
 API_PROVIDERS = ("wikipedia", "arxiv", "openalex", "crossref", "pubmed", "pypi", "npm", "osv", "github")
 NEWS_RENDER_MIN_TEXT = 500    # news/time-sensitive: a scripted page with less static text than this is rendered
-RENDER_RESERVE_PER_PAGE = 2   # requests a render leaves to every other open page slot (robots.txt + the page)
-MIN_RENDER_REQUESTS = 4       # a render with fewer sub-requests than this cannot load a page's data: not started
+RENDER_MIN_SECONDS = 10.0     # a render is not started with less of the task's time budget left than this
 SNIPPET_ONLY = ("wikipedia",)  # search hits whose metadata is a snippet: read the article, never the snippet
 CONFIG_RECHECK = 2.0          # seconds between re-reads of the web configuration (enabled, deny_domains) in a run
 WEB_OFF = "Web access was turned off during the run"
@@ -1003,79 +1004,107 @@ class _Run:
         return self.services.fetcher.fetch(url, purpose=purpose, budget=self.budget, usage=self.usage)
 
     def finish(self, url, result, published_hint=None):
-        """Extract -> quarantine (-> render escalation) of a fetched page, on the run's own thread.
-
-        A render reuses the fetched page (`main`, not fetched twice). Its sub-request outcomes
-        (renderer.last_events) are checked: sub-requests refused for lack of budget mean the rendered page may be
-        incomplete -> a limitation (the run is 'partial') and the render event says ok false; other refused
-        sub-requests are a limitation of the report. The rendered page is kept in the public cache (put_rendered)
-        so a resume re-reads it instead of rendering again."""
+        """Extract -> quarantine (-> render escalation) of a fetched page, on the run's own thread."""
         from . import safety
         doc = safety.quarantine(_extract(result, published_hint))
+        return self.escalate(url, result, published_hint, doc, self.render_reason(doc, result))
+
+    def render_reason(self, doc, result):
+        """Why this page would be rendered: 'js_shell', a news reason (thin_news), or None."""
+        return "js_shell" if doc.flags.get("js_suspected") else self.thin_news(doc, result)
+
+    def escalate(self, url, result, published_hint, doc, why_render):
+        """The render escalation of a fetched page (`doc` is its static document; returned when not rendered).
+
+        Gates, in order, each refusal a 'decision' event: a browser session left in the task budget; the resource
+        scheduler (RD-46: no Chromium under critical memory pressure); the owner's switches (render_refusal); a
+        renderer available; RENDER_MIN_SECONDS of the time budget left; the day's render cap (config.daily_renders,
+        state.take_render). A render reuses the fetched page (`main`, not fetched twice) and spends its own
+        sub-request allowance (budget.max_render_requests, ADR-040), never the task's requests. Its sub-request
+        outcomes (renderer.last_events) are checked: sub-requests refused for lack of allowance mean the rendered
+        page may be incomplete -> a limitation (the run is 'partial') and the render event says ok false; other
+        refused sub-requests are a limitation of the report. The rendered page is kept in the public cache
+        (put_rendered) so a resume re-reads it instead of rendering again."""
+        from . import safety
         renderer = self.services.renderer
-        why_render = "js_shell" if doc.flags.get("js_suspected") else self.thin_news(doc, result)
-        if why_render and renderer is not None and self.usage.browser_sessions < self.budget.max_browser_sessions:
-            from ..resources import policy as rpolicy
-            ok, why = rpolicy.engine_gate("browser rendering")      # RD-46: no Chromium under critical memory
-            if ok:
-                ok, why = renderer.available()
-            budget = self.render_budget() if ok else None
-            if ok and budget is None:
-                ok, why = False, (f"not rendered: the request budget left would not cover the {self.open_slots()} "
-                                  "other page slot(s)")
-            if ok:
-                self.check()
-                try:
-                    rendered = self.render(renderer, url, result, budget)
-                    doc = safety.quarantine(_extract(rendered, published_hint))
-                    self.event("render", self.render_outcome(renderer, url) | {"reason": why_render}, "reading")
-                    self.keep_rendered(rendered)
-                except BudgetExceeded as exc:
-                    self.limit(f"Rendering {_host(url)} ran out of budget ({exc}); the page was read without it")
-                    self.event("render", {"url": url, "ok": False, "error": {"code": "budget_exhausted",
-                                                                             "detail": str(exc)}}, "reading")
-                except FetchError as exc:
-                    self.failures.append({"stage": "reading", **exc.to_json()})
-                    self.event("render", {"url": url, "ok": False, "error": exc.to_json()}, "reading")
-            else:
-                self.event("decision", {"render": False, "url": url, "reason": why}, "reading")
+        if not why_render or renderer is None or self.usage.browser_sessions >= self.budget.max_browser_sessions:
+            return doc
+        from ..resources import policy as rpolicy
+        ok, why = rpolicy.engine_gate("browser rendering")      # RD-46: no Chromium under critical memory
+        if ok:
+            why = self.render_refusal(why_render)
+            ok = why is None
+        if ok:
+            ok, why = renderer.available()
+        left = self.budget.max_seconds - self.elapsed() if ok else 0.0
+        if ok and left < RENDER_MIN_SECONDS:
+            ok, why = False, f"not rendered: {max(0.0, left):.0f} s of the time budget left"
+        if ok:
+            self.check()
+            taken, today = state.take_render(self.db, self.clock(), self.cfg.daily_renders)
+            if not taken:
+                ok, why = False, f"not rendered: the day's render cap is reached ({today} of {self.cfg.daily_renders})"
+                self.note(f"{_host(url)} was not rendered: the day's render cap ({self.cfg.daily_renders}) is reached")
+        if not ok:
+            self.event("decision", {"render": False, "url": url, "reason": why}, "reading")
+            return doc
+        try:
+            rendered = self.render(renderer, url, result, timeout=left - 2.0)
+            doc = safety.quarantine(_extract(rendered, published_hint))
+            self.event("render", self.render_outcome(renderer, url) | {"reason": why_render}, "reading")
+            self.keep_rendered(rendered)
+        except BudgetExceeded as exc:
+            self.limit(f"Rendering {_host(url)} ran out of budget ({exc}); the page was read without it")
+            self.event("render", {"url": url, "ok": False, "error": {"code": "budget_exhausted",
+                                                                     "detail": str(exc)}}, "reading")
+        except FetchError as exc:
+            self.failures.append({"stage": "reading", **exc.to_json()})
+            self.event("render", {"url": url, "ok": False, "error": exc.to_json()}, "reading")
         return doc
 
-    def thin_news(self, doc, result):
-        """'thin_news_text' when the question is news / time-sensitive (a news query kind, or the breaking /
-        volatile freshness class) and a scripted HTML page gave less than NEWS_RENDER_MIN_TEXT characters of
-        static text (news sites often fill the article in with JavaScript), else None."""
+    def render_refusal(self, why_render):
+        """None when the owner's switches let this run render a page for `why_render`, else why not (ADR-040).
+        browser_rendering permits every escalation; news_rendering (on by default) permits news reasons and
+        JavaScript shells for a news / time-sensitive question a person asked (user_initiated), never for
+        autonomous research."""
+        if self.cfg.browser_rendering:
+            return None
+        if not self.cfg.news_rendering:
+            return "rendering is off (nsf web config --browser or --news-render)"
+        if not self.timely():
+            return "rendering is off for questions that are not news or time-sensitive (nsf web config --browser)"
+        if not user_initiated(self.origin):
+            return "news rendering serves questions a person asked; autonomous research renders only with --browser"
+        return None
+
+    def timely(self) -> bool:
+        """A news / time-sensitive question: a news query kind, or the breaking / volatile freshness class."""
         assessment = self.checkpoint.get("assessment") or {}
-        timely = "news" in (assessment.get("kinds") or []) or \
+        return "news" in (assessment.get("kinds") or []) or \
             assessment.get("freshness_class") in ("breaking", "volatile")
-        if not timely or len(doc.text or "") >= NEWS_RENDER_MIN_TEXT or \
-                getattr(result, "content_type", None) not in ("text/html", "application/xhtml+xml"):
+
+    def thin_news(self, doc, result):
+        """For a news / time-sensitive question and a scripted HTML page (news sites often fill the article in
+        with JavaScript): 'thin_news_text' when its static text is under NEWS_RENDER_MIN_TEXT characters,
+        'undated_news' when the text is there but no publication date was found (JSON-LD, article:published_time
+        and the other meta dates, <time>); else None."""
+        if not self.timely() or getattr(result, "content_type", None) not in ("text/html", "application/xhtml+xml") \
+                or not re.search(rb"<script\b", result.body or b"", re.I):
             return None
-        return "thin_news_text" if re.search(rb"<script\b", result.body or b"", re.I) else None
+        if len(doc.text or "") < NEWS_RENDER_MIN_TEXT:
+            return "thin_news_text"
+        return "undated_news" if doc.published_at is None else None
 
-    def open_slots(self) -> int:
-        """Page slots still open besides the page being read."""
-        return max(0, self.budget.max_pages - self.usage.pages - 1)
-
-    def render_budget(self):
-        """The task budget with max_requests lowered so a render leaves RENDER_RESERVE_PER_PAGE requests to every
-        other open page slot, or None when that leaves fewer than MIN_RENDER_REQUESTS. Charges still go to the
-        task's usage; nothing is added to the budget."""
-        allowance = self.budget.max_requests - self.usage.requests - RENDER_RESERVE_PER_PAGE * self.open_slots()
-        if allowance < MIN_RENDER_REQUESTS:
-            return None
-        return replace(self.budget, max_requests=self.usage.requests + allowance)
-
-    def render(self, renderer, url, result, budget=None):
+    def render(self, renderer, url, result, timeout=None):
         import inspect
-        budget = budget or self.budget
         try:
-            takes_main = "main" in inspect.signature(renderer.render).parameters
+            accepts = inspect.signature(renderer.render).parameters
         except (TypeError, ValueError):
-            takes_main = False
-        if takes_main:
-            return renderer.render(url, budget=budget, usage=self.usage, main=result)
-        return renderer.render(url, budget=budget, usage=self.usage)
+            accepts = {}
+        extra = {"timeout": timeout} if timeout is not None and "timeout" in accepts else {}
+        if "main" in accepts:
+            return renderer.render(url, budget=self.budget, usage=self.usage, main=result, **extra)
+        return renderer.render(url, budget=self.budget, usage=self.usage, **extra)
 
     def render_outcome(self, renderer, url) -> dict:
         """The render event, from the renderer's sub-request log; records the limitations (W-08)."""
@@ -1084,13 +1113,17 @@ class _Run:
                         for e in events)
         refused = [e for e in events if e.get("outcome") == "refused" and e.get("code") != "budget_exhausted"]
         short = sum(1 for e in events if e.get("code") == "budget_exhausted")
+        spent = getattr(renderer, "last_usage", None) or {}
         if exhausted:
-            self.limit(f"Rendering {_host(url)} ran out of request budget: {short} sub-request(s) were refused, so "
-                       "the rendered page may be incomplete")
+            allowance = f" (allowance {spent['allowance']})" if spent.get("allowance") is not None else ""
+            self.limit(f"Rendering {_host(url)} ran out of request budget{allowance}: {short} sub-request(s) were "
+                       "refused, so the rendered page may be incomplete")
         if refused:
             self.note(f"Rendering {_host(url)}: {len(refused)} sub-request(s) were refused by the network policy; "
                       "the rendered page may be incomplete")
-        return {"url": url, "ok": not exhausted, "refused": len(refused) + short, "budget_exhausted": exhausted}
+        return {"url": url, "ok": not exhausted, "refused": len(refused) + short, "budget_exhausted": exhausted,
+                "subrequests": spent.get("requests"), "allowance": spent.get("allowance"),
+                "blocked": sum(1 for e in events if e.get("why"))}
 
     def keep_rendered(self, rendered):
         """Keep the rendered DOM in the public cache under its content hash (W-23); best effort."""
@@ -1123,7 +1156,10 @@ class _Run:
         """Work down the ranked candidates until max_pages documents succeed: a failed fetch (blocked, error,
         refused type) costs requests, never a page slot; the request, byte and time budgets bound the attempts.
         In scientific/deep_research modes API records leave web_reserve() slots to web pages; slots no web page
-        could fill go to the remaining API records afterwards."""
+        could fill go to the remaining API records afterwards. For a news / time-sensitive question a scripted page
+        whose static HTML gave no text or no date (render_reason) waits in `later` while the other candidates are
+        read; slots still open then go to those pages, rendered when escalate() may, without text first."""
+        from . import safety
         from .extract import canonical_url
         assessment = self.checkpoint.get("assessment") or {}
         done = {d["canonical_url"]: d for d in self.checkpoint.get("documents", [])}
@@ -1150,6 +1186,8 @@ class _Run:
         self.save(selected=[{"url": r.url, "provider": r.provider, "api": api} for r, api in picked])
         api_cap = max(0, self.budget.max_pages - self.web_reserve(picked))
         deferred = []
+        later = []     # news pages whose static HTML gave no text or no date: rendered / read after the others
+        timely = self.timely()
         waiting = {}   # host -> candidates skipped: its next polite request slot is beyond the fetch timeout
 
         def full():
@@ -1213,7 +1251,13 @@ class _Run:
                 hint = r.published_at if r.provider == "feeds" else None   # the feed item's date
                 if not article:
                     try:
-                        doc = self.finish(r.url, result, hint)
+                        static = safety.quarantine(_extract(result, hint))
+                        why = self.render_reason(static, result)
+                        if why and timely:       # static-first: dated static pages take the slots first (ADR-040)
+                            later.append((r, result, hint, static, why))
+                            self.renew()
+                            continue
+                        doc = self.escalate(r.url, result, hint, static, why)
                     except _STOP:
                         raise
                     except FetchError as exc:   # the render escalation's own fetches
@@ -1228,6 +1272,27 @@ class _Run:
                 self.usage.charge(self.budget, pages=1)
                 self.record(doc, provider=r.provider, api=as_api, published_hint=hint,
                             search_date=None if as_api or hint is not None else _search_date(r))
+            # pages without text before undated ones; rank order within each (sorted() is stable)
+            for r, result, hint, static, why in sorted(later, key=lambda item: item[4] == "undated_news"):
+                if full():
+                    break
+                self.check()
+                try:
+                    doc = self.escalate(r.url, result, hint, static, why)
+                except _STOP:
+                    raise
+                except FetchError as exc:   # the render escalation's own fetches
+                    self.failures.append({"stage": "reading", "found_by": r.provider, **exc.to_json()})
+                    self.event("error", {"stage": "reading", **exc.to_json()}, "reading")
+                    self.renew()
+                    continue
+                except Exception as exc:   # one untrusted document never costs the task its other evidence
+                    self.document_failed(r.url, r.provider, exc)
+                    self.renew()
+                    continue
+                self.usage.charge(self.budget, pages=1)
+                self.record(doc, provider=r.provider, api=False, published_hint=hint,
+                            search_date=None if hint is not None else _search_date(r))
             for r in deferred:
                 if full() or self.exhausted:
                     break
@@ -1622,7 +1687,7 @@ def _nothing_usable(report, checkpoint, failures):
         why.append("not loaded: " + ", ".join(f"{host} {code}" + (f" x{n}" if n > 1 else "")
                                               for (host, code), n in blocked.items()))
     if shells:
-        why.append("no readable text (JavaScript page; rendering is off by default): " +
+        why.append("no readable text (JavaScript page, not rendered): " +
                    ", ".join(f"{d}" + (f" x{n}" if n > 1 else "") for d, n in shells.items()))
     assessment = checkpoint.get("assessment") or {}
     timely = "news" in (assessment.get("kinds") or []) or \

@@ -82,8 +82,8 @@ def test_autonomy_is_off_by_default_and_the_owner_enable_is_recorded(individual)
 def test_cli_and_console_switches_record_the_owner(individual):
     from neuroscifi.webcortex import cli
     db, _ = individual
-    args = SimpleNamespace(enable=None, autonomous=True, pocket_research=None, browser=None, search_browser_ua=None,
-                           set=None)
+    args = SimpleNamespace(enable=None, autonomous=True, pocket_research=None, browser=None, news_render=None,
+                           search_browser_ua=None, set=None)
     cli._config(db, args, T0)
     assert autonomy.enabled(db) and autonomy.policy(db)["record"]["enabled_by"] == "owner:cli"
 

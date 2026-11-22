@@ -6,7 +6,8 @@
 - a ProviderRegistry over `providers.build(config, fetcher, feeds=state.get_feeds(db))` (or the given providers;
   a FeedProvider joins when the owner listed feeds) whose health state is
   loaded from procedural memory (web_strategies) and saved back by `persist()` after a run;
-- a BrowserRenderer only when `browser_rendering` is on;
+- a BrowserRenderer only when `browser_rendering` or `news_rendering` is on (ADR-040: the run decides per page
+  whether the switches allow a render);
 - `fixture` (a FixtureWeb) injects its resolver/connector so tests and the offline bench never reach the network.
 
 The public cache is disposable (ADR-023): a corrupt cache file is quarantined (renamed `<name>.corrupt-<time>`) and
@@ -158,7 +159,7 @@ def build(db, db_path, *, fixture=None, providers=None, clock=time.time, sleep=t
     registry = ProviderRegistry(list(providers), clock=clock)
     registry.load_state(state.load_strategies(db))
     renderer = None
-    if cfg.browser_rendering:
+    if cfg.browser_rendering or cfg.news_rendering:
         from .browser import BrowserRenderer
         renderer = BrowserRenderer(fetcher)
     services = Services(fetcher=fetcher, cache=cache, registry=registry, renderer=renderer, clock=clock, config=cfg,
