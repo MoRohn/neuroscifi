@@ -442,6 +442,13 @@ MIGRATIONS = [
       device TEXT NOT NULL, nonce TEXT NOT NULL, seen_at REAL NOT NULL, PRIMARY KEY(device, nonce));
     CREATE INDEX node_nonces_age ON node_nonces(seen_at);
     """,
+    # ---- version 13 (retired node keys; ADR-042 draft section 5) ------------------------------------------------
+    """
+    -- Fingerprints of node keys that were live and then revoked or replaced by another enrolment, live on no node row
+    -- since (webcortex/nodes.py). A checkpoint restore or rewrite revokes every restored node row holding one, so a
+    -- copy made before a revocation or a rotation never brings the old key back as live.
+    CREATE TABLE node_keys_retired(fingerprint TEXT PRIMARY KEY, retired_at REAL NOT NULL);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

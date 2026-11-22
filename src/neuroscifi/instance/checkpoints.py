@@ -200,7 +200,9 @@ def _forgets(db):
         "audio": set(db.execute("SELECT segment_id,created_at FROM voice_audio").fetchall()),
         # Node revocations are authorisation withdrawn: like tombstones they are replayed, so a restore never brings
         # a revoked research node back as active (UAT T5-C03).
-        "revoked": db.execute("SELECT device,revoked_at FROM autonomy_nodes WHERE revoked_at IS NOT NULL").fetchall()}
+        "revoked": db.execute("SELECT device,revoked_at FROM autonomy_nodes WHERE revoked_at IS NOT NULL").fetchall(),
+        # Keys revoked or replaced since (a rotation leaves no revoked row): no restored row may hold one live.
+        "retired": db.execute("SELECT fingerprint,retired_at FROM node_keys_retired").fetchall()}
 
 
 def _replay(copy, forgets, now):
@@ -213,6 +215,7 @@ def _replay(copy, forgets, now):
     live_streams = forgets["streams"] if forgets else None
     live_audio = forgets["audio"] if forgets else None
     revoked = forgets["revoked"] if forgets else []
+    retired = forgets["retired"] if forgets else []
     removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = 0
     web_removed = {"tasks": 0, "knowledge": 0, "sources": 0}
     invalidated = []
@@ -249,6 +252,19 @@ def _replay(copy, forgets, now):
         copy.execute("DELETE FROM autonomy_sessions WHERE owner=?", (device,))
         copy.execute("UPDATE autonomy_sessions SET offered_to=NULL, offer_expires_at=NULL "
                      "WHERE offered_to=?", (device,))
+    # A key the live instance retired (revoked, or replaced by a later enrolment of the same row, which leaves no
+    # revoked row) is revoked wherever the copy still holds it, so neither a revocation nor a rotation is undone.
+    copy.executemany("INSERT OR IGNORE INTO node_keys_retired(fingerprint,retired_at) VALUES(?,?)", retired)
+    for device, at in copy.execute("SELECT n.device, r.retired_at FROM autonomy_nodes n JOIN node_keys_retired r ON "
+                                   "r.fingerprint=n.key_fingerprint WHERE n.revoked_at IS NULL").fetchall():
+        nodes_revoked += copy.execute("UPDATE autonomy_nodes SET revoked_at=?, alg=NULL, public_key=NULL, "
+                                      "key_fingerprint=NULL WHERE device=?", (at, device)).rowcount
+        copy.execute("DELETE FROM node_enrolments WHERE device=?", (device,))
+        copy.execute("DELETE FROM node_nonces WHERE device=?", (device,))
+        copy.execute("DELETE FROM autonomy_sessions WHERE owner=?", (device,))
+        copy.execute("UPDATE autonomy_sessions SET offered_to=NULL, offer_expires_at=NULL "
+                     "WHERE offered_to=?", (device,))
+    copy.execute("DELETE FROM node_enrolments WHERE key_fingerprint IN (SELECT fingerprint FROM node_keys_retired)")
     if live_audio is not None:
         for row in copy.execute("SELECT segment_id,created_at FROM voice_audio").fetchall():
             if row not in live_audio:

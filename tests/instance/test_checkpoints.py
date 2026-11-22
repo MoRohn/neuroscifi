@@ -351,8 +351,8 @@ def test_restore_drops_voice_sessions_and_audio_forgotten_after_the_checkpoint(i
 
 def _as_schema_10(db):
     """Put a live individual back at schema 10: web_forgotten with the v10 kind CHECK (no voice kind), and without
-    migration 12's node keys, enrolments and nonces."""
-    db.executescript("BEGIN IMMEDIATE; DROP TABLE node_enrolments; DROP TABLE node_nonces; "
+    migration 12's node keys, enrolments and nonces or migration 13's retired keys."""
+    db.executescript("BEGIN IMMEDIATE; DROP TABLE node_keys_retired; DROP TABLE node_enrolments; DROP TABLE node_nonces; "
                      + "".join(f"ALTER TABLE autonomy_nodes DROP COLUMN {c}; "
                                for c in ("alg", "public_key", "key_fingerprint", "signed")) + "COMMIT;")
     db.executescript("BEGIN IMMEDIATE; CREATE TABLE wf10(kind TEXT NOT NULL CHECK(kind IN ('task','knowledge',"
@@ -597,5 +597,87 @@ def test_restore_keeps_a_node_revoked_after_the_checkpoint_revoked(instance, tmp
         assert nodes.node(copy, device) is None
         assert [n["label"] for n in nodes.listing(copy) if n["revoked_at"] is None] == ["tablet"]
         assert copy.execute("SELECT count(*) FROM autonomy_sessions WHERE owner=?", (device,)).fetchone()[0] == 0
+    finally:
+        copy.close()
+
+
+def _node_key():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from nodekeys import NodeKey
+    return NodeKey()
+
+
+def _attested(db, device, family, key, now):
+    from neuroscifi.webcortex import nodes
+    nodes.attest(db, device, family, key.attestation(nodes.challenge(db, device, family, "pocket", now)), now + 1)
+    return nodes.approve(db, key.fingerprint, "phone", now + 2)
+
+
+def _old_key_verifies(copy, device, family, key):
+    """Whether a request signed with `key` is accepted by the restored copy for that device."""
+    from neuroscifi.webcortex import nodes
+    from neuroscifi.webcortex.signing import SignatureError
+    now = time.time()
+    h = key.headers("research_cancel", b'{"id":"x"}', timestamp=now)
+    try:
+        nodes.verify_request(copy, device, family, "POST", "/api/research_cancel", b'{"id":"x"}', h["X-NSF-Timestamp"],
+                             h["X-NSF-Nonce"], h["X-NSF-Signature"], now)
+        return True
+    except SignatureError as refused:
+        return refused.code
+
+
+@pytest.mark.parametrize("revoked_first", [True, False])
+def test_restore_never_brings_back_a_retired_node_key(instance, tmp_path, revoked_first):
+    """Security review A-2: the owner revokes a node's key K1 (or the node simply re-enrols with K2), then restores a
+    checkpoint from before that. The restored copy held K1 as live (0 revocations applied: the device's live row is
+    not revoked any more). Revoking and replacing a key now retires its fingerprint, and the replay revokes any
+    restored row holding a retired key."""
+    from neuroscifi.webcortex import nodes
+    db, path = instance
+    device, fam = nodes.device_digest(db, "dev-1"), nodes.state.family_digest(db, "fam-1")
+    k1, k2 = _node_key(), _node_key()
+    _attested(db, device, fam, k1, T0)
+    with store.write(db):
+        db.execute("INSERT INTO autonomy_sessions(session,family,owner,acquired_at,expires_at) VALUES('s1',?,?,?,?)",
+                   (fam, device, T0, T0 + 900))
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 10)
+    if revoked_first:
+        assert nodes.revoke(db, "phone", T0 + 20) == 1
+    _attested(db, device, fam, k2, T0 + 30)
+    assert nodes.node(db, device)["key_fingerprint"] == k2.fingerprint
+    assert [r[0] for r in db.execute("SELECT fingerprint FROM node_keys_retired")] == [k1.fingerprint]
+    out = checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 40)
+    assert out["node_revocations_applied"] == 1
+    copy = store.open_existing(tmp_path / "r.sqlite")
+    try:
+        row = nodes._node_row(copy, device)
+        assert row["key_fingerprint"] is None and row["revoked_at"] == (T0 + 20 if revoked_first else T0 + 32)
+        assert _old_key_verifies(copy, device, fam, k1) == "node_revoked"
+        assert copy.execute("SELECT count(*) FROM autonomy_sessions").fetchone()[0] == 0
+        assert [r[0] for r in copy.execute("SELECT fingerprint FROM node_keys_retired")] == [k1.fingerprint]
+    finally:
+        copy.close()
+
+
+def test_a_key_approved_again_after_revocation_is_live_again_and_restores_live(instance, tmp_path):
+    """The same browser keeps its key: when the owner revokes it and later approves it again, it is no longer
+    retired, so a restore does not revoke it."""
+    from neuroscifi.webcortex import nodes
+    db, path = instance
+    device, fam = nodes.device_digest(db, "dev-1"), nodes.state.family_digest(db, "fam-1")
+    key = _node_key()
+    _attested(db, device, fam, key, T0)
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 10)
+    nodes.revoke(db, "phone", T0 + 20)
+    _attested(db, device, fam, key, T0 + 30)
+    assert db.execute("SELECT count(*) FROM node_keys_retired").fetchone()[0] == 0
+    checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 40)
+    copy = store.open_existing(tmp_path / "r.sqlite")
+    try:
+        assert nodes.node(copy, device)["key_fingerprint"] == key.fingerprint
+        assert _old_key_verifies(copy, device, fam, key) is True
     finally:
         copy.close()

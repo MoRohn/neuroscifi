@@ -87,6 +87,8 @@ def _record(db, device, family, label, now, *, by, key):
             _revoke_devices(db, [d for (d,) in db.execute(
                 "SELECT device FROM autonomy_nodes WHERE key_fingerprint=? AND device!=? AND revoked_at IS NULL",
                 (fp, device))], now, why="the same key was enrolled for another pairing")
+        replaced = db.execute("SELECT key_fingerprint FROM autonomy_nodes WHERE device=? AND revoked_at IS NULL",
+                              (device,)).fetchone()
         db.execute("INSERT INTO autonomy_nodes(device,family,label,capabilities,enrolled_by,enrolled_at,alg,public_key,"
                    "key_fingerprint,signed) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(device) DO UPDATE SET "
                    "family=excluded.family, label=excluded.label, capabilities=excluded.capabilities, "
@@ -96,6 +98,9 @@ def _record(db, device, family, label, now, *, by, key):
                    (device, family, label, state.dumps([CAPABILITY]), str(by)[:64], now, alg,
                     signing.b64(raw) if key else None, fp, 1 if key else 0))
         db.execute("DELETE FROM node_enrolments WHERE device=?", (device,))
+        # the owner approved this key (again): it is live; a key it replaces on this row is retired
+        db.execute("DELETE FROM node_keys_retired WHERE fingerprint=?", (fp,))
+        _retire(db, [replaced[0]] if replaced and replaced[0] != fp else [], now)
         state.log_event(db, None, "decision", {"node": "enrolled", "label": label, "by": str(by)[:64],
                                                **({"alg": alg, "fingerprint": fp} if key else {})}, now)
         store.bump_state_version(db)
@@ -180,9 +185,21 @@ def reject(db, fingerprint, now) -> int:
     return n
 
 
+def _retire(db, fingerprints, now):
+    """Record keys that stopped being live (revoked or replaced), unless another live row still holds one: a
+    checkpoint restore or rewrite revokes any restored row holding a retired key (instance/checkpoints.py _replay)."""
+    for fp in fingerprints:
+        if fp and db.execute("SELECT 1 FROM autonomy_nodes WHERE key_fingerprint=? AND revoked_at IS NULL",
+                             (fp,)).fetchone() is None:
+            db.execute("INSERT INTO node_keys_retired(fingerprint, retired_at) VALUES(?,?) "
+                       "ON CONFLICT(fingerprint) DO NOTHING", (fp, now))
+
+
 def _revoke_devices(db, devices, now, *, why, label=None):
-    """Revoke these node rows inside the caller's transaction: key deleted, nonces, pending enrolment and session
-    ownership dropped."""
+    """Revoke these node rows inside the caller's transaction: key deleted and retired, nonces, pending enrolment
+    and session ownership dropped."""
+    retired = [fp for d in devices for (fp,) in db.execute("SELECT key_fingerprint FROM autonomy_nodes WHERE device=?",
+                                                           (d,))]
     for device in devices:
         db.execute("UPDATE autonomy_nodes SET revoked_at=?, alg=NULL, public_key=NULL, key_fingerprint=NULL "
                    "WHERE device=?", (now, device))
@@ -191,6 +208,7 @@ def _revoke_devices(db, devices, now, *, why, label=None):
         db.execute("DELETE FROM autonomy_sessions WHERE owner=?", (device,))
         db.execute("UPDATE autonomy_sessions SET offered_to=NULL, offer_expires_at=NULL WHERE offered_to=?",
                    (device,))
+    _retire(db, retired, now)
     if devices:
         state.log_event(db, None, "decision", {"node": "revoked", "count": len(devices), "why": why,
                                                **({"label": label} if label is not None else {})}, now)
