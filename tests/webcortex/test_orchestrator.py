@@ -1101,6 +1101,34 @@ def test_news_pages_without_text_render_before_undated_ones(individual, web):
     assert decisions == []                       # the undated page was never offered a render: sessions spent
 
 
+def test_news_questions_read_encyclopedia_and_out_of_window_pages_after_dated_ones(individual, web):
+    """Live (O-05): two Wikipedia articles and a site's 2020-dated home page filled the quick lookup's 3 slots for
+    "What happened in AI this week?", so the MSN article was never rendered and no source was in the window. Undated
+    encyclopedia articles and pages dated before the recency window now come after the dated, in-window pages and
+    the pages to render."""
+    db, path = individual
+    serve(web)
+    web.add("old.example", "/", html("AI news home", "2020-03-19T10:00:00Z", [
+        "The AI news home page collects artificial intelligence stories from around the industry every day."]))
+    web.add("msn.example", "/ar-6", NEWS_SHELL)
+    wiki = {"url": "https://en.wikipedia.org/wiki/Generative_AI", "title": "Generative AI", "kind": "encyclopedia",
+            "snippet": "Generative AI", "metadata": {"pageid": 1, "language": "en"}}
+    provider = WikiProvider([wiki], extract="Generative artificial intelligence is a subfield of AI that uses "
+                                            "generative models to produce text, images and other data.")
+    task = orchestrator.submit(db, AI_QUESTION, T0, mode="quick_lookup", budget={"max_pages": 3})
+    services = svc_mod.build(db, path, fixture=web, clock=lambda: T0, providers=[provider, ListProvider(news_hits(
+        "http://old.example/", "http://msn.example/ar-6", "http://news-one.example/zephyr"))])
+    renderer = FakeRenderer()
+    services.renderer = renderer
+    try:
+        done = orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    order = [e["detail"]["url"].split("/")[2] for e in state.events(db, task["id"]) if e["kind"] == "fetch"]
+    assert order == ["news-one.example", "msn.example", "en.wikipedia.org"], order     # the reading order
+    assert renderer.calls == 1 and "old.example" not in {s["domain"] for s in done["result"]["sources"]}
+
+
 def render_decisions(db, task_id):
     return [e["detail"]["reason"] for e in state.events(db, task_id)
             if e["kind"] == "decision" and e["detail"].get("render") is False]
