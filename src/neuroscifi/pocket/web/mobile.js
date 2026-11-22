@@ -62,7 +62,7 @@ function revoked() {
   el("pairhelp").textContent = "Your Spark no longer accepts this pairing. Enter a new code from your Spark or a linked device.";
   el("history").replaceChildren(); el("forecast").textContent = ""; el("handoff").textContent = "";
   linkText(); statusText("Your Spark no longer accepts this pairing. Pair again.");
-  window.pocketDropPair?.();
+  window.pocketDropPair?.(); window.pocketPushDrop?.();
   pairing(false); buttons();
 }
 
@@ -108,7 +108,7 @@ function sensorTime() {
     : lastActive ? new Date(lastActive).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}) : "none since this page opened";
 }
 // Tells the Research panel whether this pairing may research (the bridge says so in `state` only when enabled).
-function pairing(research) { document.dispatchEvent?.(new CustomEvent("pocketpair", {detail:{paired:!!key, research}})); }
+function pairing(research, push = false) { document.dispatchEvent?.(new CustomEvent("pocketpair", {detail:{paired:!!key, research, push}})); }
 function item(channel, value) { return {id:crypto.randomUUID(), channel, value}; }
 function stop(reason = "Sensors off") {
   generation++;
@@ -306,10 +306,10 @@ async function forgetSession() {
 }
 async function historyView() {
   const requestedKey=key;
-  const {records,prediction,muted,research} = await api("state",{});
+  const {records,prediction,muted,research,push} = await api("state",{});
   const {episodes} = await api("episodes",{});
   if (requestedKey!==key || document.hidden) return;
-  pairing(research === true);
+  pairing(research === true, push === true);
   el("history").replaceChildren();
   for (const r of [...records,...(episodes||[]).map(e=>({id:e.id,channel:"field episode",value:e.outcome,learn:e.learn,episode:true}))]) {
     const li = document.createElement("li"), btn = document.createElement("button");
@@ -370,7 +370,7 @@ async function forgetPairing(family) {
   stop(); review(null);
   try {
     await api("unpair", family ? {family:true} : {});
-    key=""; await window.pocketDropPair?.(); location.reload();
+    key=""; await window.pocketDropPair?.(); await window.pocketPushDrop?.(); location.reload();
   } catch (e) {failure(e, "Could not confirm erasure. Retry or erase the pairing on your Spark.");}
 }
 el("unpair").onclick=()=>once("unpair", ()=>forgetPairing(false));

@@ -19,6 +19,12 @@ def register(sub):
     serve.add_argument("--instance-db", metavar="PATH",
                        help="the individual's database; with `nsf web config` pocket_research on, paired devices "
                             "may queue and read research tasks of their own family (the Spark's worker runs them)")
+    serve.add_argument("--push-key", metavar="PATH",
+                       help="offer Web Push to paired devices that opt in (ADR-040): the Spark's VAPID private key, "
+                            "created as a new 0600 file on first start; keep it outside git (needs --instance-db and "
+                            "the crypto extra)")
+    serve.add_argument("--push-contact", metavar="URI",
+                       help="the VAPID contact (mailto: or https:) the push service sees")
     serve.set_defaults(handler=_serve)
     listing = ops.add_parser("list-pairings", help="print paired devices: label, family, sponsor, created (UTC)")
     listing.add_argument("--db", default="mobile-private.sqlite")
@@ -44,6 +50,10 @@ def _serve(a):
         argv += ["--invitation-file", a.invitation_file]
     if a.instance_db:
         argv += ["--instance-db", a.instance_db]
+    if a.push_key:
+        argv += ["--push-key", a.push_key]
+    if a.push_contact:
+        argv += ["--push-contact", a.push_contact]
     server.main(argv)
 
 

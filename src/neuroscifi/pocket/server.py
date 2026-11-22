@@ -58,6 +58,7 @@ ROUTES = {"pair","save","forget","state","unpair","episode","episodes","forget_e
 # Web Cortex research (ADR-028): exist only with --instance-db and the individual's pocket_research switch on.
 RESEARCH = {"research_submit","research_list","research_get","research_cancel",
             "research_evidence","research_continue","research_session"}   # 0.7.0: pocket/research_routes.py
+PUSH = "push"   # Web Push opt-in (ADR-040, pocket/push.py): exists only with research on and --push-key
 # An omitted mode lets the Spark assess one from the question, as the console does.
 RESEARCH_MODES = ("quick_lookup","deep_research","fact_verification","comparative","scientific","technical")
 MAX_OBJECTIVE = 300
@@ -129,6 +130,14 @@ class Store:
                   device TEXT REFERENCES devices(key) ON DELETE CASCADE,id TEXT,PRIMARY KEY(device,id));
                 CREATE TABLE IF NOT EXISTS muted(
                   device TEXT REFERENCES devices(key) ON DELETE CASCADE,ch TEXT,PRIMARY KEY(device,ch));
+                -- Web Push (ADR-040): one endpoint per opted-in device, erased with the device (`created`: opted in,
+                -- `stored`: this endpoint registered); push_seen holds which finishes were announced (family '' = the
+                -- owner's autonomy findings), ids only, for two days.
+                CREATE TABLE IF NOT EXISTS push_subs(device TEXT PRIMARY KEY REFERENCES devices(key) ON DELETE CASCADE,
+                  endpoint TEXT UNIQUE NOT NULL, created REAL NOT NULL, stored REAL NOT NULL,
+                  pending INTEGER NOT NULL DEFAULT 0, last REAL, not_before REAL);
+                CREATE TABLE IF NOT EXISTS push_seen(family TEXT NOT NULL, item TEXT NOT NULL, at REAL NOT NULL,
+                  PRIMARY KEY(family,item));
             """)
             if "asked" not in [r[1] for r in db.execute("PRAGMA table_info(events)")]:
                 db.execute("ALTER TABLE events ADD COLUMN asked INTEGER")  # learn value originally requested
@@ -205,6 +214,8 @@ class Store:
         db.execute("INSERT OR IGNORE INTO retired_episodes SELECT device,id FROM episodes WHERE until<=?", (now,))
         db.execute("DELETE FROM episodes WHERE until<=?",(now,))
         db.execute("DELETE FROM submissions WHERE at<=? OR family NOT IN (SELECT family FROM members)", (now - 3600,))
+        db.execute("DELETE FROM push_seen WHERE at<=? OR (family!='' AND family NOT IN (SELECT family FROM members))",
+                   (now - 2 * DAY,))
 
     def sweep(self):
         with closing(connect(self.path)) as db, db:
@@ -550,7 +561,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(421)
         route = self.path.removeprefix("/api/")
         from ..voice.http import POCKET_ROUTES as VOICE
-        if self.path != "/api/" + route or route not in ROUTES | RESEARCH | VOICE | {"presence"}:
+        if self.path != "/api/" + route or route not in ROUTES | RESEARCH | VOICE | {"presence", PUSH}:
             return self.reply(404)
         origin = self.headers.get("Origin")
         scheme = "https://" if isinstance(self.connection, ssl.SSLSocket) else "http://"
@@ -568,7 +579,7 @@ class Handler(BaseHTTPRequestHandler):
                 print("nsf-pocket: voice request failed", file=sys.stderr, flush=True)
                 return self.reply(500, {})
         try:
-            if route in RESEARCH:
+            if route in RESEARCH or route == PUSH:
                 # Authenticate before consulting the feature state, so a caller without a live credential gets the
                 # same empty 403 whether research is on or off. A paired device then sees 404 while it is off.
                 auth = self.headers.get("Authorization", "")
@@ -578,7 +589,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not research_on(self.server):
                     return self.reply(404)  # invisible while off, like an unknown route
             size = int(self.headers.get("Content-Length", "0"))
-            limit = RESEARCH_BODY_LIMIT if route == "research_submit" else BODY_LIMIT
+            # a push endpoint URL can take several hundred bytes (WNS), so `push` shares research_submit's 1 KiB
+            limit = RESEARCH_BODY_LIMIT if route in ("research_submit", PUSH) else BODY_LIMIT
             if self.headers.get_content_type() != "application/json" or not 2 <= size <= limit:
                 return self.reply(400)
             data = json.loads(self.read_body(size))
@@ -617,6 +629,9 @@ class Handler(BaseHTTPRequestHandler):
                     handoffs[fingerprint(code)]=(sponsor,now+300)
                     self.server.handoffs=handoffs
                 return self.reply(201,{"code":code})
+            if route == PUSH:
+                from . import push
+                return self.reply(*push.route(self.server, auth[7:], data))
             if route in RESEARCH:
                 return self.reply(*research(self.server, auth[7:], route, data))
             if route == "presence":  # family-scoped presence state (presence/routes.py)
@@ -625,6 +640,8 @@ class Handler(BaseHTTPRequestHandler):
             status, payload = self.server.store.action(auth[7:], route, data)
             if route == "state" and status == 200 and research_on(self.server):
                 payload["research"] = True  # lets the page show its Research panel without probing a 404
+                if getattr(self.server, "push", None) is not None:
+                    payload["push"] = True  # and its push switch (ADR-040)
             self.reply(status, payload)
         except PermissionError:
             self.reply(403)
@@ -824,6 +841,12 @@ def main(argv=None):
     p.add_argument("--instance-db", metavar="PATH",
                    help="the individual's database; with its pocket_research switch on, paired devices may queue "
                         "and read research tasks of their own family")
+    p.add_argument("--push-key", metavar="PATH",
+                   help="offer Web Push to paired devices (ADR-040): the Spark's VAPID private key, created as a new "
+                        "0600 file on first start; keep it outside git. Needs --instance-db and the crypto extra")
+    p.add_argument("--push-contact", metavar="URI", default=None,
+                   help="the VAPID contact (mailto: or https:) the push service sees; default "
+                        "mailto:pocket@neuroscifi.invalid")
     p.add_argument("--list-pairings", action="store_true")
     p.add_argument("--erase-pairing", metavar="LABEL")
     p.add_argument("--family", action="store_true",
@@ -844,6 +867,19 @@ def main(argv=None):
         return
     if bool(a.cert) != bool(a.key) or (a.bind not in {"127.0.0.1","localhost"} and not a.cert):
         p.error("LAN access requires both --cert and --key for HTTPS.")
+    vapid = None
+    if a.push_key or a.push_contact:
+        if not a.push_key or not a.instance_db:
+            p.error("--push-key needs --instance-db (pushes announce finished research); --push-contact needs --push-key")
+        if a.push_contact and not re.fullmatch(r"(mailto:|https://)[!-~]{3,200}", a.push_contact):
+            p.error("--push-contact must be a mailto: or https:// URI")
+        try:
+            from . import push
+            vapid = push.load_key(a.push_key)
+        except ImportError:
+            p.error("Web Push needs the crypto extra: pip install 'neuroscifi[crypto]'")
+        except (OSError, ValueError) as error:
+            p.error(f"cannot use push key {a.push_key}: {error}")
     if a.instance_db:
         from ..instance import store as individual
         from ..instance.errors import InstanceError
@@ -869,6 +905,9 @@ def main(argv=None):
     server.allowed_hosts = {h.lower() for h in a.allowed_host or ()}
     server.store, server.pair_lock = store, threading.Lock()
     server.instance_db = a.instance_db
+    server.push = None
+    if vapid is not None:
+        server.push = push.Push(server, vapid, **({"subject": a.push_contact} if a.push_contact else {}))
     server.invitation = secrets.token_urlsafe(24)
     server.invitation_deadline = time.monotonic() + INVITATION_SECONDS
     server.invitation_file = a.invitation_file
@@ -895,6 +934,8 @@ def main(argv=None):
         while not stop.wait(60):
             store.sweep()
     threading.Thread(target=upkeep, daemon=True).start()
+    if server.push is not None:
+        threading.Thread(target=server.push.run, args=(stop,), daemon=True).start()
     try:
         print(announcement, flush=True)  # inside the try: a stop signal right after this line still cleans up
         server.serve_forever()
@@ -902,6 +943,8 @@ def main(argv=None):
         pass
     finally:
         stop.set()
+        if server.push is not None:
+            server.push.wake.set()
         server.server_close()
         remove_invitation_file(server)
         if held is not None:

@@ -1,7 +1,8 @@
 // Research from Pocket (ADR-028): queue a question for the Spark, follow its stages, read and save the report.
 // Pocket never researches itself. Server text is rendered with textContent only; links are http(s) only.
 // Shared links prefill the question for review (never submitted for you); Read aloud uses an on-device voice only;
-// notifications are opt-in and come only from this open page (no push service), see mobile/README.md.
+// notifications are opt-in: from this open page (no push service), or per device through an empty Web Push (ADR-040);
+// see mobile/README.md.
 import {vaultOpen,findings,keepFinding,forgetFinding} from "./field-ui.mjs";
 const $=id=>document.getElementById(id);
 const TERMINAL=["completed","partial","failed","cancelled"], STAGES=["discovering","reading","evaluating","synthesizing"];
@@ -13,6 +14,7 @@ const VERDICT={supported:"Supported",disputed:"Disputed",contested:"Contested",i
 const MAX=300, MAX_BYTES=1024, MAX_SAVED_BYTES=64000, SUMMARIZE="Summarize: ";
 let research=false, paired=false, tasks=[], current=null, timer=0, generation=0, busy=false, dictation=null, savedSignature="";
 let sharing=false, notify=false, away=null, reading=null, session=null, shown=null;
+let offered=false, push=null, pushOn=false, pushBusy=false, pushOld=false, pushTesting=false;  // push: the Spark's status
 const say=t=>{$("researchmsg").textContent=t;};
 const active=t=>!TERMINAL.includes(t.status);
 
@@ -245,9 +247,9 @@ async function readAloud(id,r){
 }
 // Local notifications, opt-in for this visit. Permission is asked only from this switch. A notification is shown
 // only when a poll of this open, visible page sees a question finish while the page lacks focus (another window
-// or split screen); hidden pages do not poll, and there is no push service, so a closed Pocket never notifies.
+// or split screen); hidden pages do not poll and this path uses no push service (a closed Pocket is push's job).
 function finished(t){
-  if(!notify||Notification.permission!=="granted"||document.hasFocus())return;
+  if(pushOn||!notify||Notification.permission!=="granted"||document.hasFocus())return;  // push already tells this device
   navigator.serviceWorker?.getRegistration?.().then(reg=>reg?.showNotification("Pocket research finished",
     {body:(LABEL[t.status]||"Finished")+". Open Pocket to read it.",tag:"pocket-research-"+t.id,icon:"/icon.svg"})).catch(()=>{});
 }
@@ -260,6 +262,99 @@ $("notifyswitch").onchange=async e=>{
   notify=box.checked=permission==="granted";
   say(notify?"Notifications on for this visit while Pocket stays open.":"Notifications are blocked for this site in your browser settings.");
 };
+// Web Push (ADR-040), opt-in per device: the Spark sends an empty push through this browser's push service when a
+// question of this family finishes (or an autonomy finding reaches the owner). Nothing about the question is sent; the
+// service worker shows a generic notification and Pocket loads the details from the Spark when opened. Permission is
+// asked only from this switch. Without PushManager (iOS outside an installed home-screen app) Pocket works as before.
+const pushable=()=>"serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window;
+const apple=()=>/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+const installed=()=>matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
+function keyBytes(b64){const s=atob(b64.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((b64.length+3)%4));return Uint8Array.from(s,c=>c.charCodeAt(0));}
+const sameKey=(a,b)=>!!a&&a.byteLength===b.length&&new Uint8Array(a).every((x,i)=>x===b[i]);
+async function browserSub(){return pushable()?(await navigator.serviceWorker.ready).pushManager.getSubscription():null;}
+function pushView(){
+  const supported=pushable();
+  $("pushbox").hidden=!push||!supported;
+  $("pushhint").hidden=!push||supported;
+  $("pushhint").textContent=apple()&&!installed()
+    ?"Notifications while Pocket is closed: on iPhone and iPad, add Pocket to your Home Screen (Share, then Add to Home Screen) and open it from there (iOS 16.4 or later). Everything else works here as it is."
+    :"This browser cannot receive push notifications. Everything else in Pocket works; the switch above notifies you while Pocket is open.";
+  if($("pushbox").hidden)return;
+  const p=Notification.permission;
+  if(!pushBusy)$("pushswitch").checked=pushOn;  // while busy the switch shows what was asked for
+  $("pushstate").textContent="Browser permission: "+(p==="granted"?"allowed":p==="denied"?"blocked (change it in this site's browser settings)":"not asked yet")+
+    " · "+(pushOn?"this device is subscribed on your Spark":pushOld?"not subscribed (this browser still holds a push subscription from an earlier pairing; turn push on to move it here)":"not subscribed");
+  $("pushtest").disabled=!pushOn;
+}
+async function loadPush(){
+  push=null;pushOn=false;pushOld=false;
+  if(!paired||!research||!offered){pushView();return;}  // `state` says whether this Spark offers push
+  const g=generation;
+  let status;
+  try{status=await call("push",{action:"status"});}catch{if(g===generation)pushView();return;}  // 404: no push here
+  if(g!==generation)return;
+  push=status;
+  const sub=await browserSub().catch(()=>null);
+  if(g!==generation)return;
+  if(sub&&status.subscribed){pushOn=true;call("push",{action:"subscribe",endpoint:sub.endpoint}).catch(()=>{});}  // a rotated endpoint
+  else if(status.subscribed)call("push",{action:"unsubscribe"}).catch(()=>{});  // site data cleared: nothing to reach
+  else pushOld=!!sub;
+  pushView();
+}
+// Turning push off: the Spark first, then this browser, so neither keeps a subscription even if the Spark is away.
+async function pushOff(){
+  try{await call("push",{action:"unsubscribe"});}
+  finally{pushOn=false;pushOld=false;const sub=await browserSub().catch(()=>null);await sub?.unsubscribe().catch(()=>{});}
+}
+// Called by mobile.js when the Spark erased the pairing (revoked) or the person forgot it, never when the vault merely
+// locks on hide: the browser's subscription must outlive a closed Pocket, which is the point of push.
+window.pocketPushDrop=()=>browserSub().then(sub=>sub?.unsubscribe()).catch(()=>{});
+$("pushswitch").onchange=async e=>{
+  const box=e.target, g=generation;
+  if(pushBusy||!push){box.checked=pushOn;return;}
+  pushBusy=true;pushView();
+  try{
+    if(!box.checked){await pushOff();if(g===generation)say("Push off. Your Spark no longer sends to this device, and this browser dropped its push subscription.");return;}
+    let permission=Notification.permission;
+    if(permission==="default"){try{permission=await Notification.requestPermission();}catch{permission="denied";}}
+    if(permission!=="granted"){if(g===generation)say("Notifications are blocked for this site in your browser settings.");return;}
+    const manager=(await navigator.serviceWorker.ready).pushManager, key=keyBytes(push.key);
+    let sub=await manager.getSubscription();
+    if(sub&&!sameKey(sub.options?.applicationServerKey,key)){await sub.unsubscribe();sub=null;}  // another Spark's key
+    sub=sub||await manager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+    if(g!==generation)return;
+    await call("push",{action:"subscribe",endpoint:sub.endpoint});
+    pushOn=true;pushOld=false;
+    say("Push on for this device. Your Spark sends an empty push when a question finishes; the question never leaves your Spark.");
+  }catch(err){
+    if(g!==generation)return;
+    if(err.code==="push_service"){(await browserSub().catch(()=>null))?.unsubscribe().catch(()=>{});say("Your Spark does not send to this browser's push service, so push stays off. Pocket works without it.");}
+    else if(err.status===404){push=null;say("Your Spark does not offer push right now.");}
+    else if(typeof err.status==="number")fail(err);
+    else say("This browser could not set up push ("+(err.name||"error")+"), so it stays off. Pocket works without it.");
+  }finally{pushBusy=false;if(g===generation)pushView();}
+};
+$("pushtest").onclick=async()=>{
+  if(pushBusy||!pushOn)return;
+  const g=generation;pushBusy=true;pushView();
+  try{
+    const {after}=await call("push",{action:"test"});if(g!==generation)return;
+    pushTesting=true;
+    say(after>0?"Test push queued. Your Spark sends at most one push a minute to a device; this one leaves in about "+after+" s."
+      :"Test push requested. A notification saying “Your Spark finished a research task” should appear within a few seconds.");
+  }catch(e){
+    if(g!==generation)return;
+    if(e.code==="not_subscribed"){pushOn=false;say("Your Spark has no push subscription for this device. Turn push on again.");}
+    else if(e.status===404){push=null;say("Your Spark does not offer push right now.");}
+    else fail(e);
+  }finally{pushBusy=false;if(g===generation)pushView();}
+};
+navigator.serviceWorker?.addEventListener("message",e=>{
+  if(e.data?.type!=="pocket-push")return;
+  if(pushTesting){pushTesting=false;say("A push from your Spark arrived on this device.");}
+  refresh();
+});
+navigator.serviceWorker?.startMessages?.();
 async function saveOffline(t){
   if(!vaultOpen()){say("Open your device vault first (Device memory → Keep episodes on this device). Nothing was stored.");return;}
   const entry={id:t.id,created:Date.now(),keep:"day",research:{id:t.id,objective:t.objective,status:t.status,mode:t.mode,updated:t.updated,report:t.report}};
@@ -490,12 +585,12 @@ $("researchform").onsubmit=async e=>{
   finally{busy=false;buttons();}
 };
 document.addEventListener("pocketpair",e=>{
-  const next=!!e.detail?.paired, allowed=next&&e.detail?.research===true;
-  if(next===paired&&allowed===research){refresh();return;}
+  const next=!!e.detail?.paired, allowed=next&&e.detail?.research===true, pushes=allowed&&e.detail?.push===true;
+  if(next===paired&&allowed===research&&pushes===offered){refresh();return;}
   if(paired&&!next)say("");  // a revoked or erased pairing: no stale outcome of the old one (RT-B-08)
-  generation++;clearTimeout(timer);paired=next;research=allowed;tasks=[];away=null;
+  generation++;clearTimeout(timer);paired=next;research=allowed;offered=pushes;tasks=[];away=null;pushTesting=false;
   if(current&&!current.saved)close();
-  drawList();layout();refresh();
+  drawList();layout();refresh();loadPush();
   if(sharing&&research&&paired&&$("objective").value)$("objective").focus();
 });
 document.addEventListener("pocketvault",drawSaved);
