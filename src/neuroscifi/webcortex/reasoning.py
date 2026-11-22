@@ -83,6 +83,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import functools
 import json
+from pathlib import Path
 import re
 import time
 import unicodedata
@@ -903,7 +904,7 @@ def _mid_sentence(plain: str, at: int) -> bool:
 def _name_index(items) -> dict:
     """{word (lower case): {"keys": independence keys of the sources that write it capitalised in mid-sentence,
     "lower": whether any text writes it in lower case}} over `items` of (text, source key), for the words written
-    capitalised in mid-sentence somewhere only (a compact index, not the texts). A source key is its domain."""
+    capitalised somewhere only (a compact index, not the texts). A source key is its domain."""
     caps, lower = {}, set()
     for text, key in items:
         plain = _URLISH.sub(" ", _norm(text).translate(_PUNCT_ASCII))      # "finance.yahoo.com/.../asml-vs-...": no use
@@ -911,8 +912,10 @@ def _name_index(items) -> dict:
             w = m.group(0)
             if w.isalpha() and w.islower():
                 lower.add(w)
-            elif w[:1].isupper() and _mid_sentence(plain, m.start()):
-                caps.setdefault(_e_plain(w), set()).add(str(key))
+            elif w[:1].isupper():
+                keys = caps.setdefault(_e_plain(w), set())
+                if _mid_sentence(plain, m.start()):
+                    keys.add(str(key))
     return {w: {"keys": sorted(k), "lower": w in lower} for w, k in caps.items()}
 
 
@@ -953,13 +956,83 @@ def _pool_index(b: dict) -> dict:
     return index
 
 
+@functools.lru_cache(maxsize=1)
+def _verb_bases() -> frozenset:
+    """The hand-compiled list of common English verbs, base forms (data/verbs.txt)."""
+    path = Path(__file__).with_name("data") / "verbs.txt"
+    return frozenset(w for line in path.read_text(encoding="utf-8").splitlines() if not line.startswith("#")
+                     for w in line.split())
+
+
+@functools.lru_cache(maxsize=1)
+def _verbs() -> frozenset:
+    """The verb list with the -s/-ed/-ing forms of every verb, by rule (_inflections)."""
+    return frozenset(x for w in _verb_bases() for x in _inflections(w))
+
+
+def _inflections(w: str) -> set[str]:
+    """`w` and its -s, -ed and -ing forms by rule (over-generated: "stop" -> stops, stoped, stopped, stoping, ...)."""
+    out = {w}
+    if w.endswith(("s", "x", "z", "ch", "sh", "o")):
+        out.add(w + "es")
+    elif w.endswith("y") and w[-2:-1] not in ("a", "e", "i", "o", "u"):
+        out.add(w[:-1] + "ies")
+    else:
+        out.add(w + "s")
+    if w.endswith("ie"):
+        out |= {w + "d", w[:-2] + "ying"}
+    elif w.endswith("e"):
+        out |= {w + "d", w[:-1] + "ing", w + "ing"}
+    elif w.endswith("y") and w[-2:-1] not in ("a", "e", "i", "o", "u"):
+        out |= {w[:-1] + "ied", w + "ing"}
+    else:
+        out |= {w + "ed", w + "ing", w + w[-1] + "ed", w + w[-1] + "ing"}
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def _common_words() -> frozenset:
+    return frozenset(T.STOPWORDS | _PREPOSITIONS | _DISCOURSE | _CLAUSE_WORDS | _ENTAIL_META | _MODIFIER |
+                     _EVALUATIVE | _TIME | _QUANTITY_WORDS | _SCOPE | _COMPARATIVE | _DEONTIC | _ADDRESSEE |
+                     _SUBJECT_HEADS | _HEDGE_HEAD | _FINITE | _ENTAIL_NEG | _PRIVATIVE | _REPORTING |
+                     frozenset("let lets here yes no hi hello dear note warning please".split()))
+
+
+class _WeakNames(set):
+    """The names beside weak evidence (_weak_names), with what the negative oracle reads (_name_like): the pool's
+    name index and the words the question or a cited claim writes in lower case."""
+
+    def __init__(self, names, pool: dict, lower: set):
+        super().__init__(names)
+        self.pool, self.lower = pool, lower
+
+
+def _name_like(w0: str, names: _WeakNames) -> bool:
+    """Round 9, the negative oracle: a capitalised word beside weak evidence is name-like when it is no word of the
+    verb list (_verbs, with its inflections; in a hyphenated word, no part a verb's base form: "Pip-install"), no
+    stopword, common function word or -ly adverb, neither the question, a cited claim nor any read text in the
+    task's pool (the name index) writes it in lower case, and neither the question nor a cited claim writes it
+    inflected as a verb ("defenestrated"). A bare verb with its object after it is checked by _subject_head."""
+    w = _e_plain(w0)
+    if not w0[:1].isupper() or not w.replace("-", "").replace(".", "").isalnum() or w in names.lower or \
+            names.lower & _inflections(w):
+        return False
+    if w in _verbs() or any(x in _verb_bases() for x in w.split("-")) or w in _common_words() or \
+            (w.endswith("ly") and len(w) > 5):    # "Promptly", "Simply"; not "Italy", "Emily"
+        return False
+    entry = names.pool.get(w)
+    return not (entry and entry["lower"])
+
+
 def _weak_names(b: dict, weak, used) -> set[str]:
     """The names beside weak evidence (round 8): trusted (_trusted_names: the question, the supported claims, camel
     case, never a word a cited claim or the question writes in lower case) or written by an independent source
     (_independent_names: never a word any read text writes in lower case)."""
     question = b.get("question") or ""
-    return _trusted_names(question, used, [c["text"] for c in b.get("claims") or []
-                                           if c.get("state") in SUPPORTED_STATES]) | _independent_names(b, weak, used)
+    lower = {_e_plain(w) for t in [question] + [c["text"] for c in used] for w in _E_WORD.findall(t) if w.islower()}
+    return _WeakNames(_trusted_names(question, used, [c["text"] for c in b.get("claims") or []
+                                                      if c.get("state") in SUPPORTED_STATES]) |
+                      _independent_names(b, weak, used), _pool_index(b), lower)
 
 
 def _trusted_names(question: str, used, supported=()) -> set[str]:
@@ -1023,6 +1096,28 @@ def _bare_verb(toks: list[str], k: int, oracle: set, head: bool = True, plural: 
                                 nxt.endswith("s") and not nxt.endswith("ss") and after not in _FINITE)
 
 
+def _verb_with_object(orig: list[str], k: int) -> bool:
+    """orig[k] is a verb of the list in its base form (_verb_bases) followed by a name, a number or version, or a
+    determiner, pronoun or particle ("uninstall NumPy 2.5.5", "drop 2.5.5", "remove the parser")."""
+    if k + 1 >= len(orig) or _e_plain(orig[k]) not in _verb_bases() or _e_plain(orig[k]) in T.STOPWORDS:
+        return False
+    nxt = orig[k + 1]
+    return nxt[:1].isupper() or nxt[:1].isdigit() or _e_plain(nxt) in _OBJECT_START
+
+
+def _verb_follows(orig: list[str], k: int) -> bool:
+    """A verb of the list in its base form with its object (_verb_with_object) follows the head orig[k] after only
+    singular words, as no subject is followed ("ASAP uninstall NumPy 2.5.5", "Ops note drop NumPy 2.5.5"; not "Ops
+    teams drop NumPy 2.5.5", "Exploitation requires ...")."""
+    for j in range(k + 1, min(k + 4, len(orig))):
+        if _verb_with_object(orig, j):
+            return True
+        w = _e_plain(orig[j])
+        if not w.isalpha() or w in T.STOPWORDS or w in _FINITE or w.endswith(("s", "ed", "ing", "ly")):
+            return False
+    return False
+
+
 def _subject_head(orig: list[str], k: int, names: set, oracle: set, loose: bool = True) -> bool:
     """orig[k] (as written) can open a declarative clause (see the section comment). `loose` (beside supported claims
     only): also the first word of a name ("Van Rossum")."""
@@ -1033,9 +1128,13 @@ def _subject_head(orig: list[str], k: int, names: set, oracle: set, loose: bool 
     if w in _SUBJECT_HEADS or any(c.isdigit() for c in w) or \
             (w.replace("-", "").isalpha() and all(x in _NUMBER_WORDS or x in _QUANTITY_WORDS for x in w.split("-"))):
         return True                       # also a number in words ("Eighty-six billion ...")
-    if any(c.isupper() for c in w0) and (w in names or (loose or w in _NAME_PARTICLES) and k + 1 < len(orig) and
-                                        orig[k + 1][:1].isupper() and _e_plain(orig[k + 1]) in names):
-        return True                       # a name, or the first word of one ("Van Rossum")
+    weak = isinstance(names, _WeakNames)
+    if any(c.isupper() for c in w0) and (w in names or (loose or w in _NAME_PARTICLES and w not in _verb_bases()) and
+                                        k + 1 < len(orig) and orig[k + 1][:1].isupper() and
+                                        (_e_plain(orig[k + 1]) in names or weak and _name_like(orig[k + 1], names))):
+        return True                       # a name, or the first word of one ("Van Rossum"; never "Bin NumPy")
+    if weak and _name_like(w0, names) and not _verb_follows(orig, k):
+        return True                       # round 9: no verb, no common word, never lower case (not "ASAP uninstall X")
     if w in names and k + 1 < len(orig) and orig[k + 1][:1].isdigit():
         return True                       # a product name before its version, as the claims write it ("numpy 2.5.5")
     if w.endswith("ing"):                 # a gerund subject needs a finite verb after its object
@@ -1077,6 +1176,9 @@ def _strip_attribution(text: str) -> str:
 # reporting verbs in forms that are rarely nouns ("the release notes", "some claims", "blog posts" are not checked)
 _REPORTING = frozenset("""say says said saying writes wrote reads warn warns warned tell tells told posted noted stated
 added announces announced urges""".split())
+# reporting verbs that are nouns as often: reporting only before a bare verb with its object ("Admin reports
+# uninstall NumPy 2.5.5", not "Bug reports show ...")
+_REPORTING_NOUN = frozenset("reports claims notes states posts".split())
 
 
 def _non_declarative(text: str, names: set, oracle: set, record: bool = False, loose: bool = True) -> list[str]:
@@ -1131,8 +1233,8 @@ def _non_declarative(text: str, names: set, oracle: set, record: bool = False, l
                 not head.endswith(("ed", "ing")):
             # a fragment after a comma ("..., less than a mile from port"): non-declarative when a bare verb opens it
             # or follows inside it ("..., uninstall it", "..., remove plugins built for ...")
-            if _bare_verb(toks, k, oracle) or any(_bare_verb(toks, j, oracle, head=False, plural=False)
-                                                  for j in range(k + 1, len(toks))):
+            if _bare_verb(toks, k, oracle) or _verb_with_object(orig, k) or \
+                    any(_bare_verb(toks, j, oracle, head=False, plural=False) for j in range(k + 1, len(toks))):
                 faults.append(orig[k])
         elif head in _PREPOSITIONS or head.endswith(("ed", "ing")) or (head.endswith("ly") and len(head) > 4):
             if n == 0 or need_subject:
@@ -1147,7 +1249,8 @@ def _non_declarative(text: str, names: set, oracle: set, record: bool = False, l
         # inside the segment: a clause word, or "and"/"or" before a verb, opens a clause that needs a subject
         for j in range(k, len(toks) - 1):
             if toks[j] in _REPORTING and toks[j + 1] != "that" and toks[j + 1] not in _PREPOSITIONS and \
-                    not _subject_head(orig, j + 1, names, oracle, loose):
+                    not _subject_head(orig, j + 1, names, oracle, loose) or \
+                    toks[j] in _REPORTING_NOUN and _verb_with_object(orig, j + 1):
                 faults.append(orig[j + 1])      # R7-2: "The maintainers say uninstall NumPy 2.5.5"
             elif j > k and toks[j] in _CLAUSE_WORDS and toks[j + 1] not in ("far", "that", "of", "as") and \
                     not _subject_head(orig, j + 1, names, oracle, loose) and toks[j + 1] not in _DISCOURSE and \
