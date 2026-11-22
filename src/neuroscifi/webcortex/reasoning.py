@@ -782,6 +782,15 @@ _URGING = re.compile(r"\burg(?:e|es|ed|ing)\b|\bhad better\b|\b(?:need|needs|nee
                      r"\b(?:essential|imperative|vital|crucial|critical|important|necessary|urgent|wise|prudent|best|"
                      r"better|encouraged|required|obliged|obligated|asked|told|warned|instructed|directed) to "
                      r"(?:\w+ly )?(?:be|not|never|always|\w+)\b", re.IGNORECASE)
+# F1: a reported command ("says to uninstall", "tells users to uninstall"; not "is said to be", "wants it to be") and
+# three recommendation idioms
+_REPORTED = re.compile(
+    r"(?<!is )(?<!are )(?<!was )(?<!were )(?<!be )(?<!been )\b(?:say|says|said)\s+to\s+(?!be\b)[a-z]+\b|"
+    r"\b(?:tells?|told|asks?|asked|wants?|wanted|urges?|urged|instructs?|instructed|directs?|directed|reminds?|"
+    r"reminded|encourages?|encouraged|advises?|advised|warns?|warned|orders?|ordered|requests?|requested|expects?|"
+    r"expected|requires?|required|calls on)\s+(?:\w+\s+){1,3}?to\s+(?!be\b)[a-z]+\b|"
+    r"\bit pays to\b|\b(?:are|is|be) better off\b|"
+    r"\bthe (?:safest|smartest|best|wisest) (?:move|bet|course|option|step)\b", re.IGNORECASE)
 _IMPERATIVE_HEAD = frozenset("""install reinstall uninstall upgrade downgrade update download use avoid run execute
 disable enable switch migrate pin remove delete replace visit click contact check ensure stop apply patch deploy trust
 ignore go read consider buy sell keep do don't never always try verify rebuild recompile restart rotate change revert
@@ -934,8 +943,8 @@ def name_index_for(db, task_id, report: dict) -> dict:
 def _independent_names(b: dict, weak, used) -> set[str]:
     """Round-8 name oracle beside weak evidence: a word written capitalised in mid-sentence by a read source whose
     domain differs from every source of the weak cited claims, that no read text, no cited claim and not the question
-    writes in lower case, and that is no common action verb. The attacker's own page (or another page of its domain)
-    cannot whitelist its verb."""
+    writes in lower case, and that is no verb of the list (_verbs, F3). The attacker's own page (or another page of
+    its domain) cannot whitelist its verb."""
     domain = {x["id"]: (x.get("domain") or f"#{x['id']}") for x in b.get("sources") or []}
     index = _pool_index(b)
     weak_keys = {domain.get(n, f"#{n}") for c in weak for n in c["sources"]} | {f"#{n}" for c in weak
@@ -943,7 +952,7 @@ def _independent_names(b: dict, weak, used) -> set[str]:
     lowered = {w.lower() for t in [c.get("text") or "" for c in used] + [b.get("question") or ""]
                for w in _E_WORD.findall(_URLISH.sub(" ", t)) if w.isalpha() and w.islower()}
     return {w for w, e in index.items() if not e["lower"] and w not in lowered and set(e["keys"]) - weak_keys} - \
-        _IMPERATIVE_HEAD
+        _IMPERATIVE_HEAD - _verbs()                               # F3: never a verb of the list
 
 
 def _pool_index(b: dict) -> dict:
@@ -1105,6 +1114,11 @@ def _verb_with_object(orig: list[str], k: int) -> bool:
     return nxt[:1].isupper() or nxt[:1].isdigit() or _e_plain(nxt) in _OBJECT_START
 
 
+# F4: what follows a verb, never a name-like subject ("Defenestrate the server", "Text them")
+_OBJECT_WORD = frozenset("the a an this that these those it them its their his her our my your all any every each "
+                         "some".split())
+
+
 def _verb_follows(orig: list[str], k: int) -> bool:
     """A verb of the list in its base form with its object (_verb_with_object) follows the head orig[k] after only
     singular words, as no subject is followed ("ASAP uninstall NumPy 2.5.5", "Ops note drop NumPy 2.5.5"; not "Ops
@@ -1133,8 +1147,13 @@ def _subject_head(orig: list[str], k: int, names: set, oracle: set, loose: bool 
                                         k + 1 < len(orig) and orig[k + 1][:1].isupper() and
                                         (_e_plain(orig[k + 1]) in names or weak and _name_like(orig[k + 1], names))):
         return True                       # a name, or the first word of one ("Van Rossum"; never "Bin NumPy")
-    if weak and _name_like(w0, names) and not _verb_follows(orig, k):
-        return True                       # round 9: no verb, no common word, never lower case (not "ASAP uninstall X")
+    if weak and _name_like(w0, names) and not _verb_follows(orig, k) and not (
+            k + 1 < len(orig) and (_e_plain(orig[k + 1]) in _OBJECT_WORD or _e_plain(orig[k + 1]) in names or
+                                   orig[k + 1].islower() and _e_plain(orig[k + 1]) in _verb_bases() and
+                                   _e_plain(orig[k + 1]) not in T.STOPWORDS)):
+        return True                       # round 9: no verb, no common word, never lower case (not "ASAP uninstall X");
+                                          # F4: not before "the"/"it", a name or a lower-case verb ("Defenestrate
+                                          # NumPy 2.5.5", "Pip install ..."; "Le Chat" stays a name)
     if w in names and k + 1 < len(orig) and orig[k + 1][:1].isdigit():
         return True                       # a product name before its version, as the claims write it ("numpy 2.5.5")
     if w.endswith("ing"):                 # a gerund subject needs a finite verb after its object
@@ -1162,7 +1181,31 @@ def _instruction_markers(text: str) -> list[str]:
     found += [m.group(0).lower() for m in _URGING.finditer(text)]
     found += [m.group(0).lower() for m in _RECOMMENDING.finditer(text)]
     found += [m.group(0).lower() for m in _NON_DECLARATIVE.finditer(text)]
+    found += [m.group(0).lower() for m in _REPORTED.finditer(text)]
+    found += _serial_verbs(_E_WORD.findall(text))
     return list(dict.fromkeys(found))
+
+
+_NOT_SERIAL = frozenset("help helps helped make makes made let lets go goes went come comes came".split())
+
+
+def _serial_verbs(orig: list[str]) -> list[str]:
+    """F2: a finite verb directly followed by a verb of the list in its base form with its object (_verb_with_object)
+    reports a command ("Experts agree uninstall NumPy 2.5.5", "The advisory concludes uninstall ..."). Finite: a verb
+    of the list in an -s/-ed form, a reporting verb (_REPORTING), or a base form after a plural -s word or
+    they/we/I; never help/make/let/go/come ("help build the wheels"). An -s/-ed form that opens the sentence or
+    follows a determiner or quantifier is a plural noun subject ("Studies show the ...", "Both releases include the
+    ...", "The patches fix the ..."): such a head is the documented -s limit of rule 1."""
+    found = []
+    for j in range(len(orig) - 2):
+        a, v = _e_plain(orig[j]), _e_plain(orig[j + 1])
+        prev = _e_plain(orig[j - 1]) if j else ""
+        finite = a.endswith(("s", "ed")) and not a.endswith("ss") and j and prev not in _PRE_VERB or a in _REPORTING or \
+            a in _verb_bases() and (prev.endswith("s") and not prev.endswith("ss") or prev in ("they", "we", "i"))
+        if finite and a in _verbs() and a not in T.STOPWORDS and a not in _NOT_SERIAL and v in _verb_bases() and \
+                v not in T.STOPWORDS and _verb_with_object(orig, j + 1):
+            found.append(f"{a} {v}")
+    return found
 
 
 def _strip_attribution(text: str) -> str:
@@ -1179,6 +1222,29 @@ added announces announced urges""".split())
 # reporting verbs that are nouns as often: reporting only before a bare verb with its object ("Admin reports
 # uninstall NumPy 2.5.5", not "Bug reports show ...")
 _REPORTING_NOUN = frozenset("reports claims notes states posts".split())
+
+
+_QUANTIFIER_PRONOUNS = frozenset("none all both many few several most some".split())
+
+
+def _disagreement(orig: list[str]) -> list[str]:
+    """F5, beside weak evidence: a singular head noun followed by a verb of the list in its base form with its object,
+    with no finite verb between, is no declarative clause ("The guidance from maintainers uninstall NumPy 2.5.5",
+    "Guidance from maintainers uninstall ..."; not "Most maintainers uninstall ...", "None affect version 2.5.5").
+    The head is the last word that is no stopword before the first preposition."""
+    low = [_e_plain(w) for w in orig]
+    for v in range(1, len(orig)):
+        if low[v] in _verb_bases() and low[v] not in T.STOPWORDS and _verb_with_object(orig, v):
+            before = low[:v]
+            if any(x in _FINITE or x.endswith(("s", "ed")) and not x.endswith("ss") and x in _verbs() for x in before):
+                return []
+            cut = next((i for i, x in enumerate(before) if x in _PREPOSITIONS), len(before))
+            head = next((x for x in reversed(before[:cut]) if x.isalpha() and x not in T.STOPWORDS), "")
+            if head and not (head.endswith("s") and not head.endswith("ss")) and \
+                    head not in ("they", "we", "i", "you") and head not in _QUANTIFIER_PRONOUNS:
+                return [f"{head} {low[v]}"]
+            return []
+    return []
 
 
 def _non_declarative(text: str, names: set, oracle: set, record: bool = False, loose: bool = True) -> list[str]:
@@ -1216,6 +1282,8 @@ def _non_declarative(text: str, names: set, oracle: set, record: bool = False, l
         if k >= len(toks):
             continue
         head = toks[k]
+        if isinstance(names, _WeakNames):
+            faults += _disagreement(orig)
         if n >= 2 and words_of[n - 1] and all(t in _DISCOURSE for t in words_of[n - 1]) and \
                 words_of[n - 2][-1:] and words_of[n - 2][-1] in _FINITE:
             pass                          # "It does, however, use ...": the verb its auxiliary began
