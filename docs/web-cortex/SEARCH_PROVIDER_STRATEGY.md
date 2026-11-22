@@ -146,7 +146,10 @@ keeps its count, and a damaged ledger file counts as a used-up day. 30 × 31 = 9
 daily research budgets (`nsf web autonomy`) still bound the searches of each task first.
 
 **The key.** `nsf web provider set-key brave --from-file PATH` or `--stdin` (prompted without echo on a terminal);
-never from argv. Stored in `~/.config/neuroscifi/search/brave.key` (`$NSF_SEARCH_KEY_DIR`, else
+never from argv. The `--from-file` source must be as private as the stored key: a regular file owned by this user
+with no group or other permission (`chmod 600 PATH`); a symlink, another user's file or a mode such as 0644 is
+refused with the reason and the chmod fix, and nothing is stored (checked on the opened descriptor). Delete the
+source once the key is stored. Stored in `~/.config/neuroscifi/search/brave.key` (`$NSF_SEARCH_KEY_DIR`, else
 `$XDG_CONFIG_HOME/neuroscifi/search`), 0600 in a 0700 directory, outside git; a symlink, another owner, any
 group/other permission on the file or a directory others can write to is refused (the file is re-checked after
 opening, by inode). Read at each request and kept nowhere else; error text from the API is scrubbed

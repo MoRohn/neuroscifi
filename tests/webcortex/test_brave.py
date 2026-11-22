@@ -226,6 +226,7 @@ def test_set_key_reads_a_file_or_stdin_never_argv_and_prints_only_configured(key
     capsys.readouterr()
     source = tmp_path / "brave-key.txt"
     source.write_text(KEY + "\n")
+    source.chmod(0o600)
     assert main(["web", "provider", "set-key", "brave", "--from-file", str(source), "--db", db]) == 0
     out = capsys.readouterr().out
     view = json.loads(out)
@@ -244,6 +245,36 @@ def test_set_key_reads_a_file_or_stdin_never_argv_and_prints_only_configured(key
     assert "BSAsecondKEY987" not in status and json.loads(status)["providers"]["brave"]["key"] == "configured"
     assert main(["web", "provider", "remove-key", "brave", "--db", db]) == 0
     assert json.loads(capsys.readouterr().out)["removed"] is True and keys.key_state("brave")["key"] == "missing"
+
+
+def test_set_key_refuses_a_source_file_others_could_read_a_symlink_or_another_owners_file(keydir, tmp_path, capsys,
+                                                                                          monkeypatch):
+    """R6 D1: a 0644 source file was accepted. The source must be as private as the stored key."""
+    import os
+    db = str(tmp_path / "i.sqlite")
+    assert main(["init", "--db", db]) == 0
+    capsys.readouterr()
+    source = tmp_path / "brave-key.txt"
+    source.write_text(KEY + "\n")
+    for mode in (0o644, 0o640, 0o604):
+        source.chmod(mode)
+        assert main(["web", "provider", "set-key", "brave", "--from-file", str(source), "--db", db]) == 2
+        captured = capsys.readouterr()
+        assert f"mode {mode:04o}" in captured.err and f"chmod 600 {source}" in captured.err
+        assert KEY not in captured.out + captured.err and keys.key_state("brave")["key"] == "missing"
+    source.chmod(0o600)
+    link = tmp_path / "link.txt"
+    link.symlink_to(source)
+    assert main(["web", "provider", "set-key", "brave", "--from-file", str(link), "--db", db]) == 2
+    assert "symbolic link" in capsys.readouterr().err and keys.key_state("brave")["key"] == "missing"
+    real_getuid = os.getuid
+    monkeypatch.setattr(os, "getuid", lambda: real_getuid() + 1)
+    assert main(["web", "provider", "set-key", "brave", "--from-file", str(source), "--db", db]) == 2
+    assert "not owned by this user" in capsys.readouterr().err
+    monkeypatch.setattr(os, "getuid", real_getuid)
+    assert keys.key_state("brave")["key"] == "missing"
+    assert main(["web", "provider", "set-key", "brave", "--from-file", str(source), "--db", db]) == 0
+    assert json.loads(capsys.readouterr().out)["key"] == "configured" and keys.read_key("brave") == KEY
 
 
 def test_status_health_and_console_never_contain_the_key(key, tmp_path, capsys):

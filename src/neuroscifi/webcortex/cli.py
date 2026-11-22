@@ -13,7 +13,9 @@ offline FixtureWeb, fake providers, a fixed clock). Production code never sets i
 from __future__ import annotations
 
 import argparse
+import errno
 import json
+import os
 import sys
 import time
 
@@ -427,6 +429,34 @@ def _searxng_cmd(db, a, now):
 KEY_SOURCE_MAX = 4096
 
 
+def _read_key_source(path) -> str:
+    """The key source file named by --from-file, read only when nobody else could have read or swapped it: a regular
+    file (not a symlink), owned by this user, with no group or other permission. Checked on the opened descriptor
+    (O_NOFOLLOW), so the file checked is the file read."""
+    import stat
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise ValidationError(f"{path} is a symbolic link; name the key file itself, or pipe the key with "
+                                  "--stdin") from None
+        raise ValidationError(f"cannot read {path}: {exc.strerror or type(exc).__name__}") from None
+    with os.fdopen(fd, "r", encoding="ascii", errors="replace") as fh:
+        info = os.fstat(fh.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise ValidationError(f"{path} is not a regular file; name the key file itself, or pipe the key with "
+                                  "--stdin")
+        if info.st_uid != os.getuid():
+            raise ValidationError(f"{path} is not owned by this user; copy the key into a file of your own "
+                                  f"(chmod 600) or pipe it with --stdin")
+        mode = stat.S_IMODE(info.st_mode)
+        if mode & 0o077:
+            raise ValidationError(f"{path} has mode {mode:04o}: group and others can reach the key, so it is not "
+                                  f"stored. Run chmod 600 {path} and set it again (then delete the file), or pipe "
+                                  "the key with --stdin")
+        return fh.read(KEY_SOURCE_MAX)
+
+
 def _provider_cmd(db, a, now):
     """status | set-key NAME (--from-file PATH | --stdin) | remove-key NAME. The key is never taken from argv
     (visible in ps and the shell history) and never printed: output says only "configured"."""
@@ -444,11 +474,7 @@ def _provider_cmd(db, a, now):
     if bool(a.from_file) == bool(a.stdin):
         raise ValidationError("set-key reads the key from --from-file PATH or --stdin, never from the command line")
     if a.from_file:
-        try:
-            with open(a.from_file, encoding="ascii", errors="replace") as fh:
-                text = fh.read(KEY_SOURCE_MAX)
-        except OSError as exc:
-            raise ValidationError(f"cannot read {a.from_file}: {exc.strerror or type(exc).__name__}") from None
+        text = _read_key_source(a.from_file)
     elif sys.stdin.isatty():
         import getpass
         text = getpass.getpass(f"{a.name} API key (not echoed): ")
