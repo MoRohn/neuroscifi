@@ -1,8 +1,8 @@
 # Resource scheduling (RD-46, directive §14)
 
 NeuroSciFi measures memory and GPU use on the host and turns the readings into one pressure level. It applies three
-policies: audio priority, memory pressure and idle unload. The policies are deliberately small and every refusal says
-why. Code: `src/neuroscifi/resources/` (`monitor.py` measures, `policy.py` decides). Surfaces: `nsf resources`,
+policies: audio priority, memory pressure and an opt-in idle unload. The policies are deliberately small and every
+refusal or unload says why. Code: `src/neuroscifi/resources/` (`monitor.py` measures, `policy.py` decides). Surfaces: `nsf resources`,
 `GET /api/resources` and Presence `resource_constrained`. Evidence: `docs/quality/evidence/resources_live.json`.
 
 ## 1. What is measured
@@ -56,25 +56,66 @@ Chromium renderer is also refused, and the task records a `decision` event `{ren
 continues without rendering. At `elevated`, nothing is refused: Presence shows `resource_constrained` and the
 reasons appear in `nsf resources`.
 
-**(c) Idle unload: not automatic.** The worker does not stop or start the voice containers, for three reasons:
-1. A stopped ASR container makes the next utterance fail until the container is ready again: 17–20 s measured (§4).
-   Only the voice hub could restart it on demand, and that code is not part of this lane.
-2. Under systemd, `neuroscifi-voice-*.service` runs `run.sh foreground` and restarts the container itself. A worker
-   that ran `run.sh stop` would fight the unit.
-3. The saving is at most about 11 GiB: 4.1 + 1.5 GiB of GPU memory plus 3.1 + 2.5 GiB of container memory (§4;
-   the two accountings may overlap on unified memory, so the real saving can be smaller). The host had 41.9 GiB
-   available with everything resident.
-
-Idle unload is therefore an owner-run command:
+**(c) Idle unload: opt-in, per service.** Code: `src/neuroscifi/resources/idle.py`. Every idle timeout is off by
+default, so nothing is unloaded until the owner sets one:
 
 ```sh
-deploy/voice/run.sh stop all                                         # unload ASR and TTS (Docker shape)
-deploy/voice/run.sh start all && deploy/voice/run.sh wait all        # load again; measured 17-20 s (ASR) / 5 s (TTS)
-systemctl stop neuroscifi-voice-asr neuroscifi-voice-tts             # systemd shape (start the same way)
-nsf resources --cold-start                                           # the last measured start-to-ready times
+nsf resources idle --set vllm=30m --set asr=15m --set tts=15m   # suggested; searxng too; `=off` turns one off
+nsf resources tick                                               # one pass; neuroscifi-idle.timer runs it every minute
+nsf resources unload vllm      # the owner unloads now (never reloaded on demand: `nsf resources load vllm` brings it back)
+nsf resources load vllm        # the owner loads now; prints "Starting the local model, about N s" while it starts
+nsf resources                  # policy.idle_unload: timeouts, state, last use, reload estimate, the last 20 events
 ```
 
-NeuroSciFi never unloads vLLM. Its last measured cold start was 32.5 s, and an earlier start took 35.7 s.
+A pass unloads a service only when all of these hold:
+1. Its timeout is set and its container runs.
+2. No voice session is open and no research task is running. A voice session counts from start to end, whether it
+   is capturing or not, the owner's or a Pocket device's. The console that hosts the voice hub publishes open
+   sessions in the audio beacon (`session`, §3(a)), so the pass in the timer's process sees them. A running task is a
+   `web_tasks` row in a running stage with a live lease.
+3. Nothing is in flight. Every model call through the gateway, every SearXNG search and every voice session start
+   holds the service's in-use lock (`<db>.resources/idle-inuse-<service>.lock`, shared). The pass takes it exclusively
+   and keeps it while the service stops, so a call either finishes first or waits and then reloads the service. For
+   vLLM and the Whisper ASR (both vLLM servers) the pass also reads `/metrics`: a running or waiting request there,
+   from any client, blocks the unload. When `/metrics` cannot be read, the pass does not unload.
+4. Nothing used it within the timeout. The last use is the newest of: the in-use marker (written at the start and
+   end of every call), a change in the served-request counter in `/metrics`, the container's start time, and the
+   policy's own last load. A voice session's end marks ASR and TTS as used.
+
+At pressure `critical` (§2) the timeout shrinks to a quarter of the configured one, never under 2 minutes: 30 min
+becomes 7.5 min. This is the same level at which background autonomy and rendering are refused. A timeout that is
+off stays off. The unload event names the level and the measured numbers.
+
+**Reload on demand.** A service the idle policy unloaded starts again on its next use: a model call (gateway), a
+SearXNG search, or a voice session that needs ASR (any voice mode) or TTS (`voice_text`). The user is told before the
+wait starts: "Starting the local model, about 33 s", "Starting speech recognition, about 18 s". N is the last
+measured reload of that service, else the documented cold start (§4). The voice client receives it as a `notice`
+event. Presence shows it as the `waiting` activity in every process, because the state file
+`<db>.resources/idle.json` carries it. The gateway keeps it in `Gateway.notices`, and `nsf resources load` prints it.
+The reload runs the deploy's start command and then its wait command, under a per-service lock so two callers start
+it once. The measured start-to-ready time is recorded in the event. A failed reload is recorded with the command's
+output; the next use tries again. A service the owner unloaded is not reloaded on demand.
+
+**How stop and start run.** The policy uses the deploy's own commands. vLLM uses `deploy/vllm/run.sh
+stop|start|wait`, ASR and TTS use `deploy/voice/run.sh stop|start|wait asr|tts`, and SearXNG uses `nsf web searxng
+stop|start`. When the service's systemd unit is active, the policy runs `systemctl --no-ask-password stop|start
+<unit>` instead, so it never fights the unit (an earlier reason this policy was manual). The user running the pass
+then needs permission to manage that unit; without it the event records the refusal and the service stays loaded.
+Install the timer by hand (`deploy/systemd/neuroscifi-idle.{service,timer}`, header comments).
+
+**Events.** Every load, unload and timeout change is one line in `<db>.resources/idle-events.jsonl`: time, service,
+action, reason, who (`idle policy`, `on demand`, `owner`), success, seconds, shape (`docker` or `systemd`) and, for
+a load, what the user was told. The file is capped at the last 500 to 1000 lines. `nsf resources` and
+`GET /api/resources` show the last 20.
+
+**What it saves, and what a reload costs.** These are the §4 figures. vLLM holds 43.1 GiB of GPU memory and 7.4 GiB of
+container memory. ASR holds 4.1 + 3.1 GiB and TTS 1.5 + 2.5 GiB; on unified memory the two accountings may overlap.
+The last measured start-to-ready times, read from the container logs on 2026-11-21 (`nsf resources --cold-start`),
+are vLLM 32.5 s, ASR 17.2 s and TTS 5.8 s. A reload through the policy adds the time to create the container and the
+wait command's poll interval (5 s for vLLM, 3 s for voice). The live reload time of vLLM through the idle policy
+remains to be measured by the owner: the first reload records it in the event log, and later messages use it. The
+lane that built this policy did not restart the shared vLLM, ASR, TTS or SearXNG containers. It verified the stop,
+reload and measurement path against a disposable container (§4).
 
 ## 4. Measurements (2026-11-21, DGX Spark GB10, all services resident)
 
@@ -129,6 +170,14 @@ the audio beacon; poll 0.5 s.
 | Voice session end to autonomous task claimed | 1.05 s (beacon poll 1 s + worker poll 0.5 s) |
 | Worker decision events | `deferring new autonomous research` (reason: audio priority), then `autonomous research may start again` |
 
+**Idle unload against a disposable container** (`nsf-test-idle-*`, `python:3.12-slim-bookworm` running
+`python -m http.server`, removed afterwards; the same code path with that container's start, stop and wait commands).
+With a 1 min timeout, a pass right after a use kept it (`used 0 s ago`). A pass 2 min later (the policy's clock moved
+forward) ran `docker rm -f` and logged `idle 2 min (timeout 1 min)`. The next request through `using()` told
+"Starting the test service, about 1 s", started it, waited until it answered (HTTP 200) and recorded the reload as
+0.6 s. The offline tests (`tests/test_resources_idle.py`, a fake docker host) cover each unload condition, the
+`critical` timeout, the systemd shape, the owner's commands, failed reloads and Presence.
+
 ## 5. Limits
 
 - The audio state is what the voice client reported. A client that goes silent for 30 s is no longer counted
@@ -138,3 +187,8 @@ the audio beacon; poll 0.5 s.
 - Monitors are owner-scheduled and are not deferred.
 - The latency measurements use one host, six questions and two runs. They show a direction and a size, not a
   distribution.
+- Idle unload sees in-flight work from NeuroSciFi's own calls (the in-use lock) and, for vLLM and ASR, from any client
+  (`/metrics`). A client outside NeuroSciFi that calls TTS or SearXNG directly is not seen. Such a request that starts
+  in the moment between the pass's check and the stop fails.
+- The reload is on demand and blocks the call that needs it for the reload time. Nothing preloads a service ahead of
+  use.

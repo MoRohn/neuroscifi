@@ -14,12 +14,12 @@ Policies (all deterministic; each refusal carries its reason):
 (b) memory pressure. At "critical" (monitor.pressure) background_gate() refuses background autonomy and
     engine_gate() refuses optional engines (the headless Chromium renderer); the refusal reason names the measured
     numbers. User-initiated research continues, read without rendering.
-(c) idle unload. Not automatic: see RESOURCE_SCHEDULING.md (the voice containers are owner-run
-    `deploy/voice/run.sh stop|start`; vLLM is never unloaded by NeuroSciFi).
+(c) idle unload. Opt-in, per service: resources/idle.py (never while a voice session is open or a task runs;
+    voice_session_active() below tells it about voice sessions in other processes).
 
-AudioBeacon (run by the console, which hosts the voice hub) writes the in-process audio state to
-<db>.resources/audio.json when it changes (checked every BEACON_POLL s) and every BEACON_HEARTBEAT s while active, so a
-worker in another process (the neuroscifi-webcortex service) honours audio priority too."""
+AudioBeacon (run by the console, which hosts the voice hub) writes the in-process audio state (and whether any voice
+session is open) to <db>.resources/audio.json when it changes (checked every BEACON_POLL s) and every BEACON_HEARTBEAT s
+while either is on, so a worker or the idle policy in another process honours them too."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -69,9 +69,16 @@ def local_audio() -> bool:
         return False
 
 
-def audio_active(db_path=None, *, now=None) -> bool:
-    if local_audio():
-        return True
+def local_session() -> bool:
+    """This process's voice hub has an open voice session (any principal's)."""
+    try:
+        from ..voice import state as vstate
+        return vstate.any_session()
+    except Exception:          # the voice module is optional
+        return False
+
+
+def _beacon(db_path, key, now) -> bool:
     path = _beacon_path(db_path)
     if path is None:
         return False
@@ -81,7 +88,16 @@ def audio_active(db_path=None, *, now=None) -> bool:
         return False
     now = time.time() if now is None else now
     at = beacon.get("at") if isinstance(beacon, dict) else None
-    return bool(isinstance(at, (int, float)) and 0 <= now - at <= BEACON_STALE and beacon.get("active"))
+    return bool(isinstance(at, (int, float)) and 0 <= now - at <= BEACON_STALE and beacon.get(key))
+
+
+def audio_active(db_path=None, *, now=None) -> bool:
+    return local_audio() or _beacon(db_path, "active", now)
+
+
+def voice_session_active(db_path=None, *, now=None) -> bool:
+    """A voice session is open in this process or in the process whose beacon is fresh (the idle policy's guard)."""
+    return local_session() or _beacon(db_path, "session", now)
 
 
 def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
@@ -161,24 +177,24 @@ class AudioBeacon:
         self.thread.start()
         return self
 
-    def write(self, active: bool) -> None:
+    def write(self, active: bool, session: bool = False) -> None:
         self.path.parent.mkdir(mode=0o700, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"active": bool(active), "at": self.clock(), "pid": os.getpid()}),
-                       encoding="utf-8")
+        tmp.write_text(json.dumps({"active": bool(active), "session": bool(session), "at": self.clock(),
+                                   "pid": os.getpid()}), encoding="utf-8")
         os.replace(tmp, self.path)
 
     def tick(self) -> None:
-        """Write when audio starts or stops and every BEACON_HEARTBEAT seconds while it runs; nothing is written
-        before the first voice activity (an idle console leaves no file behind)."""
-        active = local_audio()
+        """Write when audio or an open session starts or stops and every BEACON_HEARTBEAT seconds while either is on;
+        nothing is written before the first voice activity (an idle console leaves no file behind)."""
+        flags = (local_audio(), local_session())
         now = time.monotonic()
-        if self.last is None and not active:
+        if self.last is None and not any(flags):
             return
-        if self.last is None or active != self.last[0] or (active and now - self.last[1] >= BEACON_HEARTBEAT):
+        if self.last is None or flags != self.last[0] or (any(flags) and now - self.last[1] >= BEACON_HEARTBEAT):
             try:
-                self.write(active)
-                self.last = (active, now)
+                self.write(*flags)
+                self.last = (flags, now)
             except OSError:
                 pass
 
@@ -190,12 +206,13 @@ class AudioBeacon:
         self.stop.set()
         if self.thread.is_alive():
             self.thread.join(timeout=5)
-        if self.last is not None and self.last[0]:
+        if self.last is not None and any(self.last[0]):
             try:
-                self.write(False)
+                self.write(False, False)
             except OSError:
                 pass
 
 
 __all__ = ["AUDIO_REASON", "AudioBeacon", "BACKGROUND_MODEL_SLOTS", "BACKGROUND_MODEL_SLOTS_AUDIO", "audio_active",
-           "background_gate", "background_model_slot", "db_file", "engine_gate", "local_audio", "model_slots"]
+           "background_gate", "background_model_slot", "db_file", "engine_gate", "local_audio", "local_session",
+           "model_slots", "voice_session_active"]

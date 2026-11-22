@@ -1,0 +1,11 @@
+[Unit]
+Description=NeuroSciFi idle-unload pass every minute (does nothing until an idle timeout is set)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=neuroscifi-idle.service
+
+[Install]
+WantedBy=timers.target

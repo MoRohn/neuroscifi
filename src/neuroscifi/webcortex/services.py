@@ -152,6 +152,9 @@ def build(db, db_path, *, fixture=None, providers=None, clock=time.time, sleep=t
     if providers is None:
         from . import providers as provider_modules
         providers = provider_modules.build(cfg, fetcher, feeds=state.get_feeds(db), clock=clock)
+    from ..resources import idle   # an idle-unloaded SearXNG is loaded again on the first search (RD-46)
+    providers = [idle.on_demand(p, "searxng", db_path) if getattr(p, "name", None) == "searxng" else p
+                 for p in providers]
     registry = ProviderRegistry(list(providers), clock=clock)
     registry.load_state(state.load_strategies(db))
     renderer = None

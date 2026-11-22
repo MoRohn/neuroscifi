@@ -75,6 +75,12 @@ def snapshot() -> dict:
         return out
 
 
+def any_session() -> bool:
+    """Some voice session (the owner's or a Pocket principal's) is open in this process."""
+    with _LOCK:
+        return any(s.get("session_active") for s in _SESSIONS.values())
+
+
 def set_engines(health: dict) -> None:
     """Record the speech engines' measured states (the hub's health result)."""
     if not isinstance(health, dict):

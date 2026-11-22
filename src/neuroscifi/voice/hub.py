@@ -35,6 +35,7 @@ import time
 
 from ..instance import store
 from ..instance.errors import Conflict, InstanceError, NotFound, ValidationError
+from ..resources import idle
 from . import bridge as vbridge, commands as vcommands, config as vconfig, engines as vengines, state as vstate, \
     transcripts as tx
 
@@ -224,7 +225,15 @@ class VoiceHub:
             self._end(v, "evicted")
         self._state(s, mode=mode, session_active=True, capture_device=None, mic_capturing=False, speaking=False,
                     user_speaking=False, interrupted_at=None)
+        self._wake(s, mode)
         return self.public(s)
+
+    def _wake(self, s: Session, mode):
+        """Load again the speech services this mode needs if the idle policy unloaded them; the client is told
+        ("Starting speech recognition, about 17 s") while they start (resources/idle.py)."""
+        needed = {"voice_text": ("asr", "tts"), "voice_in_text_out": ("asr",)}.get(mode, ())
+        idle.wake(self.db_path, needed, purpose="voice session",
+                  notify=lambda text: self._emit(s, "notice", text=text + "."))
 
     def _expire_idle(self):
         """End sessions whose client has not called for SESSION_IDLE seconds (every open client long-polls events
@@ -280,6 +289,7 @@ class VoiceHub:
             except (NotFound, InstanceError):
                 pass
         self._emit(s, "session", status="ended", reason=why)
+        idle.mark_used(self.db_path, ("asr", "tts"))      # the idle timeout counts from the session's end
         vstate.end(s.id)
         with self.lock:
             self.sessions.pop(s.id, None)
@@ -389,6 +399,7 @@ class VoiceHub:
             changes.update(speaking=False)
         self._state(s, **changes)
         self._emit(s, "mode", mode=mode)
+        self._wake(s, mode)
 
     # ---- capture ownership --------------------------------------------------------------------------------------
     def capture(self, sid, principal, action, *, handoff_confirm=None) -> dict:

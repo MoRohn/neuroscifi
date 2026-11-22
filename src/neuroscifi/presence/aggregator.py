@@ -215,6 +215,20 @@ def _resource_level():
         return "unknown"
 
 
+_IDLE_SUBSYSTEM = {"vllm": "reasoning", "asr": "voice", "tts": "voice", "searxng": "web_cortex"}
+
+
+def _starting(db_path):
+    """Services the idle policy is loading again right now, with what the user is told (resources.idle)."""
+    if not db_path:
+        return []
+    try:
+        from ..resources import idle
+        return idle.Idle(db_path).loading()
+    except Exception:
+        return []
+
+
 def _providers(db, now):
     """Provider names whose circuit breaker is open (persisted by the last research run); no network call."""
     def compute():
@@ -405,6 +419,10 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
                                     subsystem=entry["subsystem"], priority="tool", since=entry["since"],
                                     detail=f"Model call in progress ({entry['purpose']}; {entry['tokens']} tokens "
                                            "streamed so far)", task_id=entry["task_id"]))
+
+        for entry in _starting(db_path):     # a service the idle policy unloaded is loading again (RD-46)
+            cands.append(_candidate("waiting", subsystem=_IDLE_SUBSYSTEM.get(entry["service"], "reasoning"),
+                                    priority="foreground", since=entry["since"], detail=entry["told"]))
 
     reg = _regulation(db, db_path, now)
     if not reg["writes_allowed"]:

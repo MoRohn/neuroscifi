@@ -381,9 +381,13 @@ review or configuration tools.
 
 ## 9. Resource scheduling (0.7, RD-46)
 
-`docs/architecture/RESOURCE_SCHEDULING.md`. Read-only; nothing here starts, stops or unloads anything.
+`docs/architecture/RESOURCE_SCHEDULING.md`. GET /api/resources is read-only. The `nsf resources` actions
+`tick`, `unload` and `load` stop and start services (opt-in idle unload, §3(c) there).
 
 | Surface | Result |
 |---|---|
-| GET /api/resources[?cold_start=1] (console token rules as §6) | `resources.status`: `level` (`ok` \| `elevated` \| `critical` \| `unknown`), `reasons`, `thresholds`, `memory` (/proc/meminfo bytes, PSI), `gpu` (nvidia-smi; `memory_readable` false where it reports N/A), `containers` (docker stats of neuroscifi-*), `audio_active`, `policy` {`background_research`, `browser_rendering`: {allowed, reason}, `background_model_slots`, `idle_unload`}; with `cold_start=1` also `cold_starts` [{name, started_at, ready_at, seconds}] |
+| GET /api/resources[?cold_start=1] (console token rules as §6) | `resources.status`: `level` (`ok` \| `elevated` \| `critical` \| `unknown`), `reasons`, `thresholds`, `memory` (/proc/meminfo bytes, PSI), `gpu` (nvidia-smi; `memory_readable` false where it reports N/A), `containers` (docker stats of neuroscifi-*), `audio_active`, `policy` {`background_research`, `browser_rendering`: {allowed, reason}, `background_model_slots`, `idle_unload` {`automatic` (some timeout set), `services` {vllm, asr, tts, searxng: {`timeout_s` (null: off), `suggested_minutes`, `loaded`, `state`, `state_by`, `last_used_at`, `idle_s`, `reload_estimate_s`}}, `critical_share`, `events` (last 20: {at, service, action, reason, by, ok, seconds, shape, told?, error?}), `how`}}; with `cold_start=1` also `cold_starts` [{name, started_at, ready_at, seconds}] |
 | `nsf resources [--db] [--quick] [--cold-start]` | the same JSON on stdout (`--quick`: memory only, no subprocesses) |
+| `nsf resources idle [--set SERVICE=DURATION ...]` | show or set idle timeouts (`30m`, `900s`, `1h`, `off`; at least 1 min); prints `idle_unload` |
+| `nsf resources tick` | one idle-policy pass: {`enabled`, `level`, `blockers`, `decisions` {service: {action `none` \| `unload` \| `failed`, why, idle_s?, event?}}} |
+| `nsf resources unload\|load SERVICE` | the owner's manual command: {action, why, event; load: seconds, told}; exit 1 when the command failed |

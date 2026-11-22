@@ -36,6 +36,7 @@ import time
 from urllib.parse import urlsplit
 
 from ..presence import activity
+from ..resources import idle
 from . import config as iconfig
 from .jsonschema import check_schema, validate
 
@@ -182,6 +183,8 @@ class Gateway:
         self.cfg, self.key, self.ledger = cfg, key, ledger
         self.clock, self.wall, self.sleep, self.resolver = clock, wall, sleep, resolver
         self.task_id = task_id
+        self.db_path = None          # set by from_db: the idle policy (resources.idle) reloads an unloaded vLLM
+        self.notices: list[str] = []  # what the user was told while this gateway waited (e.g. a model reload)
         self._locality = None
         self._addresses: list[str] = []
         self._model = cfg.model or None
@@ -192,7 +195,9 @@ class Gateway:
         cfg = iconfig.get_config(db)
         key = iconfig.read_key(cfg) if cfg.configured else None
         ledger = Ledger(ledger_path(db_path)) if db_path is not None and cfg.configured else None
-        return cls(cfg, key=key, ledger=ledger, **kwargs)
+        gateway = cls(cfg, key=key, ledger=ledger, **kwargs)
+        gateway.db_path = db_path
+        return gateway
 
     # ---- endpoint policy ------------------------------------------------------------------------------------
     def locality(self) -> tuple[str, str]:
@@ -424,7 +429,8 @@ class Gateway:
         if need > self.cfg.max_context_tokens:
             raise InferenceError("context_overflow", f"prompt estimate {need - max_tokens} + output {max_tokens} "
                                  f"tokens exceeds max_context_tokens {self.cfg.max_context_tokens}")
-        model = self.model()
+        with self._loaded(purpose):
+            model = self.model()
         wire = [{k: v for k, v in m.items() if k in ("role", "content", "name", "tool_calls", "tool_call_id")}
                 for m in messages]
         payload = {"model": model, "messages": wire, "max_tokens": max_tokens,
@@ -448,7 +454,7 @@ class Gateway:
         inflight = activity.track("generating", subsystem="reasoning", purpose=purpose, task_id=self.task_id,
                                   clock=self.wall) if stream else nullcontext(None)
         try:
-            with inflight as count:
+            with self._loaded(purpose), inflight as count:
                 conn, resp, attempts, deadline = self._call("POST", "/chat/completions", payload, timeout=timeout)
                 try:
                     if stream:
@@ -472,6 +478,13 @@ class Gateway:
                             "first_token_ms": result.first_token_ms, "attempts": attempts,
                             "tokens_per_second": result.tokens_per_second})
         return result
+
+    def _loaded(self, purpose):
+        """The idle policy may have unloaded the local model: reload it first (the user is told, see self.notices)
+        and keep it loaded while the block runs (resources/idle.py). No-op for a gateway without an instance."""
+        if self.db_path is None or not self.cfg.configured:
+            return nullcontext(None)
+        return idle.using(self.db_path, "vllm", purpose=purpose, notify=self.notices.append)
 
     def _record(self, row):
         if self.ledger is not None:

@@ -1,10 +1,10 @@
 """Resource scheduling: measure memory/GPU/container use, derive a pressure level and apply the audio-priority,
-memory-pressure and idle policies (RD-46; docs/architecture/RESOURCE_SCHEDULING.md).
+memory-pressure and (opt-in) idle-unload policies (RD-46; docs/architecture/RESOURCE_SCHEDULING.md).
 
 status(db_path, full=True) is what `nsf resources` and GET /api/resources show."""
 from __future__ import annotations
 
-from . import monitor, policy
+from . import idle, monitor, policy
 
 
 def status(db_path=None, *, full: bool = True, cold_start: bool = False) -> dict:
@@ -19,13 +19,11 @@ def status(db_path=None, *, full: bool = True, cold_start: bool = False) -> dict
            "policy": {"background_research": {"allowed": gate["allowed"], "reason": gate["reason"]},
                       "browser_rendering": {"allowed": engine_ok, "reason": engine_why},
                       "background_model_slots": policy.model_slots(db_path),
-                      "idle_unload": {"automatic": False,
-                                      "voice": "owner-run: deploy/voice/run.sh stop all (and start all; see "
-                                               "docs/architecture/RESOURCE_SCHEDULING.md)",
-                                      "vllm": "never unloaded by NeuroSciFi"}}}
+                      "idle_unload": idle.Idle(db_path).status(s["containers"]) if db_path else
+                      {"automatic": False}}}
     if cold_start:
         out["cold_starts"] = monitor.cold_starts()
     return out
 
 
-__all__ = ["monitor", "policy", "status"]
+__all__ = ["idle", "monitor", "policy", "status"]
