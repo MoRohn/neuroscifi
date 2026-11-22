@@ -107,6 +107,7 @@ The reference host is an **NVIDIA DGX Spark GB10** (aarch64, Blackwell sm_121, 1
 | `web` | Scrapling 0.5.1, markdownify 1.2.4, pypdf 7.1.1 | Web Cortex: HTML parsing, Markdown and PDF extraction |
 | `web-extract` | trafilatura 2.3.1 | Web Cortex: optional second article-extraction engine |
 | `web-render` | Playwright 1.64.1 | Web Cortex: optional JavaScript rendering (needs a Chromium) |
+| `crypto` | cryptography 50.0.2 | Pocket push notifications (VAPID keys and signatures, ADR-040) |
 
 ## Quick start
 
@@ -146,6 +147,13 @@ nsf pocket serve --instance-db "$NSF_DB"   # loopback 127.0.0.1:8765; prints a o
 ```
 
 Open `http://localhost:8765` on the same computer, or over HTTPS from a phone (see the [Pocket guide](mobile/README.md)), and enter the code within five minutes. Research and voice from Pocket stay hidden until the owner runs `nsf web config --pocket-research`.
+
+To let paired devices opt in to notifications while Pocket is closed, install the `crypto` extra and give the bridge a VAPID key path outside the repository (created 0600 on first start):
+
+```sh
+uv pip install -e '.[crypto]'
+nsf pocket serve --instance-db "$NSF_DB" --push-key ~/.config/neuroscifi/pocket/vapid.pem
+```
 
 For a service install, `sudo bash deploy/install.sh` creates a `neuroscifi` user and a virtual environment under `/opt/neuroscifi`, and installs the systemd units **disabled**. Add `--dry-run` to review the plan without root. The [Runbook](docs/operations/RUNBOOK.md) has the next steps.
 
@@ -281,7 +289,8 @@ Run `nsf pocket serve`, open `http://localhost:8765` on that computer, and try a
 
 With `--instance-db` and `pocket_research` on, a paired device can also:
 - submit research, follow it, continue or cancel it, and review the evidence by verification state;
-- speak to the individual over HTTPS, holding the single microphone lease.
+- speak to the individual over HTTPS, holding the single microphone lease;
+- opt in, per device, to an empty push when a question finishes, even while Pocket is closed. The bridge needs `--push-key`. The push goes through the browser vendor's push service and carries no question text ([details](mobile/README.md#push-notifications-while-pocket-is-closed)).
 
 Requests are scoped to the device's pairing family and rate-limited. For a real smartphone, use the private HTTPS setup in the **[Pocket guide](mobile/README.md)**. It also covers native Android and iOS collectors, offline operation, tablet hand-off and privacy controls.
 
@@ -307,6 +316,7 @@ Read the [architecture](docs/web-cortex/ARCHITECTURE.md), the [security model](d
 | **Loopback by default** | The console listens on 127.0.0.1 with a one-time session token and Host and Origin checks. SearXNG (8888), vLLM (8811), ASR (18431) and TTS (18432) are published on 127.0.0.1 only, and the run scripts refuse any other bind. The containers run read-only, without capabilities, from digest-pinned images. API keys are generated outside git with mode 0600. |
 | **Off until the owner says so** | Web access, autonomy, Pocket research, JavaScript rendering, remote inference, model-proposed Presence doodles and audio retention all default to off. |
 | **No private context leaves without authorisation** | Every query to any provider passes the privacy screen and local-context stripping. SearXNG is treated as external because it forwards queries to third-party engines. A model endpoint off this host is refused without `--remote-allowed`. With it, messages are privacy-screened, private memory needs a second authorisation (`--remote-private-memory`), and a public endpoint must use https. |
+| **Empty pushes** | Pocket push is off until the owner starts the bridge with `--push-key` and a device turns it on. The Spark sends an empty push to an allow-listed push service (FCM, Mozilla, Apple, WNS) over pinned HTTPS, without proxies or redirects. That service learns the device's push address and the timing, never the question. The switch, unpairing, or starting without `--push-key` turns it off. |
 | **Consent before capture** | The microphone needs recorded consent on each device, a visible capture indicator and the single capture lease. Mic off stops every track. The server refuses audio from any device without consent or the lease. |
 | **No raw audio by default** | Audio stays in memory for each utterance (at most 30 s) and is then dropped. Retention is an owner-only setting with a 1–168 h TTL. Expired clips are swept every minute. |
 | **Evidence over generation** | Model text never changes a claim's state or becomes knowledge. Web text never edits a belief, graph or weight. Sensitive voice commands (forget, enabling autonomy, accepting conclusions, microphone hand-off) need a same-session confirmation within 60 s. |
@@ -459,7 +469,7 @@ neuroscifi/
   - Days of wall-clock autonomy: read the `nsf-soak` report.
   - A person using NVDA, Orca, TalkBack and VoiceOver (protocol in ACCESSIBILITY).
   - Pocket on physical phones and tablets.
-  - Notifications while Pocket is closed: they arrive only while it is open.
+  - Push notifications on a real phone: verified live only with headless Chromium through Google's FCM; the owner's guided test is in the [Pocket guide](mobile/README.md#guided-owner-test-on-a-real-phone).
 - **Scope.** Multi-node is minimal: there is no worker federation, attestation or result signing, and session hand-off is API-only. Idle unloading of models is manual. A voice session forgotten after a checkpoint stays in older checkpoint files until they are pruned.
 - **Release status.** The open items and the 0.7.0 acceptance matrix are in [RELEASE_DECISIONS](docs/qa/RELEASE_DECISIONS.md) and the QA reports.
 

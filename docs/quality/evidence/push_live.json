@@ -1,0 +1,86 @@
+{
+ "date": "2026-11-21",
+ "adr": "ADR-040",
+ "browser": "Chromium 153.0.8010.36 (Arch Linux ARM), headless, persistent profile (Playwright's default contexts are incognito: no Push API)",
+ "network": "real Google FCM; the endpoint host this Chromium build returned is jmt17.google.com (path /fcm/send/...); endpoint URLs are not recorded",
+ "raw_request": {
+  "what": "Push.request() straight after a real PushManager.subscribe",
+  "browser": "153.0.8010.36",
+  "subscribe_seconds": 2.95,
+  "subscribe": {
+   "host": "jmt17.google.com",
+   "path_prefix": "fcm/send",
+   "length": 186
+  },
+  "allow_listed": true,
+  "attempts": [
+   {
+    "after_subscribe_s": 3.2,
+    "status": 410
+   },
+   {
+    "after_subscribe_s": 8.4,
+    "status": 410
+   },
+   {
+    "after_subscribe_s": 18.8,
+    "status": 201
+   }
+  ],
+  "received_by_service_worker": [
+   {
+    "type": "pocket-push"
+   }
+  ],
+  "delivery_seconds": 0.43,
+  "notifications": [
+   {
+    "title": "NeuroSciFi Pocket",
+    "body": "Your Spark finished a research task."
+   }
+  ],
+  "after_unsubscribe_status": 201
+ },
+ "through_pocket": {
+  "what": "Pocket UI opt-in, Send a test push, a finished question, then a test push with the Pocket tab closed; the bridge's dispatcher thread sent every push (pinned HTTPS, no test origins, interval 5 s for this run)",
+  "after_opt_in": "Push on for this device. Your Spark sends an empty push when a question finishes; the question never leaves your Spark.",
+  "pushstate": "Browser permission: allowed \u00b7 this device is subscribed on your Spark",
+  "test_push_arrived_s": 5.9,
+  "finish_notification": [
+   {
+    "title": "NeuroSciFi Pocket",
+    "body": "Your Spark finished a research task."
+   }
+  ],
+  "windows_open": "1 (the persistent profile's initial about:blank tab; the Pocket tab was closed)",
+  "closed_test_reply": [
+   202,
+   {
+    "after": 0
+   }
+  ],
+  "closed_notification": [
+   {
+    "title": "NeuroSciFi Pocket",
+    "body": "Your Spark finished a research task."
+   }
+  ],
+  "push_service_answers": [
+   {
+    "t": 5.5,
+    "host": "jmt17.google.com",
+    "status": 201
+   },
+   {
+    "t": 13.0,
+    "host": "jmt17.google.com",
+    "status": 201
+   },
+   {
+    "t": 19.7,
+    "host": "jmt17.google.com",
+    "status": 201
+   }
+  ]
+ }
+}

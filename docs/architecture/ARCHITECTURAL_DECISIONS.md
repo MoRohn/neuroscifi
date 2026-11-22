@@ -594,3 +594,115 @@ between devices. RD-11 asked for a multi-node scope decision before any implemen
   the owner as a knowledge candidate but did not settle the prediction, because the keys differed.
 - Tests: `tests/webcortex/test_autonomy.py`, `tests/test_pocket_autonomy.py`, `tests/console/test_console_autonomy.py`,
   `tests/e2e/test_pocket_autonomy_e2e.py`. Live: `docs/quality/evidence/autonomy_live.json`.
+
+# ADR-040 (draft) Pocket Web Push: an empty push per opted-in device, through the browser vendor's push service. R
+
+Status: draft (lane "push", v0.7.0), owner decision: Web Push with a minimal payload. Amends ADR-028 (Pocket research,
+family scope) and the "notifications only from the open page" behaviour (mobile/README.md). Keeps POC-07: the pairing
+credential stays in tab memory only. Code: `src/neuroscifi/pocket/push.py`; tests: `tests/test_pocket_push.py`,
+`tests/e2e/test_pocket_push_e2e.py`, `tests/js/offline_check.mjs`.
+
+## Context
+
+Pocket notified only while its page was open and visible: a hidden or closed Pocket checked nothing, and RD-22 recorded
+"notifications while Pocket is closed" as not available. Delivering to a closed page needs a push service, and the
+only one a browser accepts is its vendor's: FCM for Chrome and Android, Mozilla autopush for Firefox, Apple web push
+for Safari and home-screen apps on iOS, WNS for Edge. That service is a third party. The service worker that receives
+a push holds no pairing credential (POC-07), so it cannot ask the Spark what happened.
+
+## Decision
+
+1. **Opt-in per device.** Push exists only when the bridge is started with `--push-key PATH` (and `--instance-db`, with
+   Pocket research on). The key is the Spark's VAPID key: an EC P-256 key generated once, on first start, as a new
+   0600 file (refused later when it is a symlink, not owned, or not 0600; keep it outside git). A paired device turns
+   push on with its own switch: the page asks for notification permission, subscribes with
+   `PushManager.subscribe({userVisibleOnly: true, applicationServerKey})`, and sends only the endpoint URL to the Spark
+   over the authenticated pairing channel (`push` route). The p256dh and auth keys are never sent or stored, because
+   nothing is encrypted for the device. The table `push_subs` holds one endpoint per device. It references `devices`
+   with `ON DELETE CASCADE`, so unsubscribing, unpairing, revoking a family and `erase-pairing` (with or without
+   `--family`) delete it. One browser holds one subscription per origin: the device that registers it last receives
+   its pushes.
+2. **No payload.** The Spark sends an empty POST (`Content-Length: 0`, no `Content-Encoding`), so nothing about a
+   question leaves the host. The service worker shows the same text for every push ("NeuroSciFi Pocket: Your Spark
+   finished a research task.", tag `pocket-push`) and tells open pages to refresh. Pocket loads the details from the
+   Spark when it is opened. Because the worker holds no credential, generic text is the only option, and it is the
+   point of the design.
+3. **Sending.** VAPID per RFC 8292: an ES256 JWT (`aud` = the endpoint's origin, `exp` = 12 hours, `sub` = a contact URI,
+   default `mailto:pocket@neuroscifi.invalid`, or `--push-contact`), signed with `cryptography` and sent as
+   `Authorization: vapid t=…, k=…`. The request also carries `TTL: 43200` and `Urgency: normal`. Each push goes to
+   the stored endpoint URL exactly as the browser's push service returned it. SSRF rules:
+   - The endpoint must be `https` on port 443, with a plain DNS name and no credentials, fragment, backslash,
+     whitespace or non-ASCII character, and at most 1000 characters.
+   - Its host must be on the allow-list: `fcm.googleapis.com`, `jmt17.google.com` (the FCM host that Chromium builds
+     without Google's keys return, seen live), `updates.push.services.mozilla.com`, `*.push.apple.com` or
+     `*.notify.windows.com`. Anything else is refused at subscription (`400 push_service`) and again before every
+     send.
+   - The name is resolved once. If any resolved address is not public (`webcortex.net.check_address`), nothing is
+     contacted. Otherwise the connection is pinned to that address, with SNI and certificate verification for the
+     name.
+   - `http.client` is used directly: no proxy settings are read and redirects are not followed (a 3xx drops that
+     push). Every socket operation has a 10-second timeout.
+4. **Responses.**
+   - 2xx sends it.
+   - 404 or 410 deletes the subscription. Exception: within 120 s of the endpoint being stored, it is retried every
+     15 s instead, because live, FCM answered 410 to a registration 3 and 8 seconds old and 201 at 19 seconds.
+   - 429 and 5xx keep the push pending until `Retry-After` (seconds or an HTTP date, at most a day) or a default
+     backoff of 10 min for 429 and 2 min for 5xx. A timeout or connection error retries after 1 min.
+   - Any other status drops that push and keeps the subscription. The log line names the service host and status,
+     never the endpoint path.
+5. **Trigger and rate limit.** A dispatcher thread in the bridge checks every 5 s, using the individual's database:
+   - a research task of a subscribed family reached a terminal state (completed, partial, failed or cancelled, as the
+     open-page notification counts them). It is announced to that family's subscribed devices only, once per finish
+     (`push_seen`, ids only, kept two days);
+   - an autonomy finding reached the owner (a new `web:autonomy:<task>` pending question, ADR-039). It goes to every
+     subscribed device, because every pairing is made by the owner;
+   - only finishes after the device subscribed and within the last 6 hours count.
+
+   A device gets at most one push a minute. Events in between collapse into the next push, which says no more anyway.
+   **Send a test push** queues one push under the same limit.
+6. **UI.** In the Research panel, Pocket shows:
+   - the switch "Notify me even when Pocket is closed (push)", off by default, with the text "Uses your browser vendor's
+     push service; no question text is sent";
+   - the browser permission state and whether the Spark holds a subscription;
+   - the **Send a test push** button.
+
+   The Spark says in `state` whether it offers push, so the page never probes a 404. Without `PushManager` the switch
+   is hidden and a hint is shown. On iPhone and iPad outside an installed home-screen app, the hint says to add Pocket
+   to the Home Screen (iOS 16.4 or later). Everything else works as before. With push on, the open-page notification
+   stays silent to avoid duplicates.
+
+## Alternatives rejected
+
+- **An encrypted payload with the question or status (RFC 8291).** It would still pass ciphertext and its size through
+  the push service, and it would need the device's p256dh and auth keys on the Spark. The owner chose a minimal
+  payload, and the generic text says enough.
+- **Giving the service worker the credential so it can fetch details.** That would break POC-07, which keeps the
+  credential in tab memory only (DD-2).
+- **A self-hosted push server or a long-lived connection.** Browsers deliver background pushes only through their
+  vendor's service. A closed page holds no connection.
+- **A per-request `Topic` header to collapse pending pushes.** The per-device rate limit already collapses them, and
+  not every service documents the header.
+
+## Consequences
+
+- The push service learns the device's endpoint (a random URL that identifies this browser's subscription to it), the
+  Spark's public IP address and VAPID public key, the contact URI, and when each push is sent. It never learns the
+  question, the answer, the task id or which family it belongs to. Timing can reveal when research finishes.
+- Owners turn push off per device (the switch, which unsubscribes on the Spark and in the browser), per family
+  (unpair), or entirely (start the bridge without `--push-key`; the routes then answer 404). Deleting the key file
+  invalidates every subscription.
+- New dependency `cryptography==50.0.2` as the `crypto` extra, shared with node signing. Without it `--push-key` is
+  refused with an install hint.
+- The `push` route takes 1 KiB bodies like `research_submit`, because WNS endpoints run to several hundred bytes. All
+  other routes stay at 512 bytes.
+- Verified live (`docs/quality/evidence/push_live.json`): headless Chromium 153 (Linux, persistent profile)
+  subscribed through FCM. An empty push from `Push.request` was answered 201 and reached the service worker 0.43 s
+  later, which showed the generic notification. Through the Pocket UI and the bridge's dispatcher, the test push, a
+  finished question and a test push sent after the Pocket tab was closed were all answered 201 and shown. FCM also
+  answered 201 to a push sent right after the browser unsubscribed, so a dropped subscription is cleaned up on a
+  later 404/410, not at once.
+  Playwright's default contexts are incognito, where Chromium offers no Push API, so the hermetic e2e stubs
+  `PushManager` and simulates delivery with CDP `ServiceWorker.deliverPushMessage`. Real phones (Android Chrome, iOS
+  home-screen app) are covered by the owner's guided test in mobile/README.md.
+- Shared files touched: Pocket server, CLI, index, research-ui, mobile.js, sw.js (cache `neuroscifi-pocket-shell-19`),
+  `tests/js/offline_check.mjs`.

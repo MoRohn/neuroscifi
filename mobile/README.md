@@ -78,12 +78,65 @@ If either is missing, the four research actions answer a paired device 404 like 
 - **Read.** The phone receives a trimmed report: for a claim check, the verdict (supported, disputed, contested or not enough evidence) with its confidence and the claim checked; the answer with quoted sentences and [n] citations, each marked corroborated, single source or contested with its confidence where the Spark computed one, contradictions, uncertainties, limitations, freshness, and sources with publication and retrieval dates, each marked **Live** or **From cache**. All server text is shown as plain text. Source links open only for http and https addresses, with no referrer.
 - **Read aloud.** Optional and off until pressed. **Read aloud** speaks only the quoted answer sentences, each followed by "Source n" for its citations (no titles, domains or links), with the browser's speech synthesis. Only a voice the browser marks as on-device (`localService`) is used; with network voices alone nothing is read and the page says so. **Stop reading**, closing the report or hiding the page stops it.
 - **Finished while you were away.** Hiding the page stops polling. When the page is shown again, it lists the questions that were running when you left and have finished since. This needs no permission.
-- **Notifications.** Off by default, for this visit only; the switch **Notify me when a question finishes** is the only place that asks for notification permission. With permission, the service worker shows "Pocket research finished: Completed. Open Pocket to read it." when a status check of the open page sees a question finish while the page is visible but not focused (beside another window, split screen). The notification never contains the question. What does not work: there is no push service, so a hidden, backgrounded or closed Pocket checks nothing and shows no notification; you get the summary above on return instead. Native background delivery remains design work (POC-25/26).
+- **Notifications while Pocket is open.** Off by default, for this visit only. The switch **Notify me when a question finishes** asks for notification permission (so does the push switch below). With permission, the service worker shows "Pocket research finished: Completed. Open Pocket to read it." when a status check of the open page sees a question finish while the page is visible but not focused (beside another window, split screen). The notification never contains the question. This switch uses no push service: a hidden, backgrounded or closed Pocket checks nothing, and you get the summary above on return instead. For a closed Pocket, use push (next section); with push on, this switch stays silent so you are not told twice.
 - **Cancel.** A queued question is cancelled at once. A running one stops before its next network step.
 - **Save for offline.** This stores the report in the encrypted device vault (the same AES-GCM vault, passphrase and lock-on-hide as field episodes). It counts toward the vault's 64 entries, with at most 8 saved findings, and expires after 24 hours. Without an open vault nothing is stored. After going offline, reopen the page, unlock the vault and choose **View**. **Erase local vault** removes saved findings too.
 - **Linked devices.** A phone or tablet joined through **Link my phone or tablet** belongs to the same pairing family. It sees, reads and can cancel the same questions. An unrelated pairing sees none of them: their ids answer 404 and they are absent from its list. Tasks are stored under an instance-salted digest of the family, never the credential or its fingerprint.
 - **Owner.** The console and `nsf web` CLI see every task, whichever device asked. Erasing or unpairing a device does not delete the questions it asked: they belong to the individual, and a linked device of the same family still sees them. The owner removes them with `nsf forget research` (ADR-029) or the console.
 - **Limits of the surface.** Pocket can submit, list, read, cancel and save. It cannot accept knowledge, change configuration or forget the individual's memory. Request bodies stay at most 512 bytes under the existing bearer, origin, content-type and TLS rules, except `research_submit`, which may take 1024 bytes. Deviation, with reason: 300 characters of a non-Latin script take up to 900 bytes of UTF-8, which the 512-byte cap refused although the question was within its character limit; the character limit is unchanged. No access logs are written, and the `Server` header names no Python version.
+
+## Push: notifications while Pocket is closed
+
+Off by default, twice: the Spark offers push only when the owner starts the bridge with `--push-key`, and each device opts in with its own switch (ADR-040). The Spark then sends an **empty** push through the push service of the device's browser vendor when a question of that device's family finishes, or when your Spark's autonomous research finds something for you (ADR-039). The service worker shows the same notification every time: **NeuroSciFi Pocket: Your Spark finished a research task.** Pocket loads the details from your Spark when you open it. The service worker cannot fetch them itself, because the pairing credential lives only in the tab (POC-07).
+
+**Set up on the Spark.** Install the `crypto` extra and start the bridge with a key path outside the repository:
+
+~~~sh
+uv pip install -e '.[crypto]'          # or: pip install 'neuroscifi[crypto]'  (cryptography 50.0.2)
+nsf pocket serve --bind PRIVATE_INTERFACE_IP --port 8765 --cert /path/to/fullchain.pem --key /path/to/privkey.pem \
+  --db /path/on/encrypted-volume/mobile.sqlite --instance-db /path/on/encrypted-volume/individual.sqlite \
+  --push-key ~/.config/neuroscifi/pocket/vapid.pem
+~~~
+
+The first start creates the VAPID key as a new 0600 file. Later starts refuse it when it is a symlink, belongs to another user or is readable by others. `--push-contact mailto:you@example.org` replaces the default VAPID contact (`mailto:pocket@neuroscifi.invalid`), which every push service sees. Set it if a push service refuses the default (Apple answers 403 `BadJwtToken` to a contact it does not accept). Push needs `--instance-db` with Pocket research on, as the Research panel does.
+
+**On the device.** In the Research panel, turn on **Notify me even when Pocket is closed (push)**. The switch asks for notification permission, subscribes this browser and sends the push address to your Spark over the pairing. The line under it shows the browser permission (allowed, not asked yet, or blocked) and whether your Spark holds a subscription for this device. **Send a test push** asks your Spark for one push now. A device gets at most one push a minute, and finishes in between collapse into the next one. Without push support the switch is hidden and Pocket works as before. On iPhone and iPad, push works only in Pocket added to the Home Screen (Share, then Add to Home Screen, iOS 16.4 or later), and the page says so. One browser holds one push subscription for Pocket: if two pairings in one browser both turn push on, the later one receives it.
+
+**What the push service learns.** The push service is Google (FCM) for Chrome and Android, Mozilla for Firefox, Apple for Safari and iOS, and Microsoft (WNS) for Edge. It learns:
+
+- this browser's push address (a random URL);
+- your Spark's public IP address and its VAPID public key;
+- the contact URI;
+- the time of each push.
+
+It never receives the question, the answer, a task id, a family or any other content: the push is empty. Timing can still tell it roughly when research finishes. Your Spark contacts only those services' hosts, over HTTPS on port 443, without proxies or redirects. It refuses any other push address, including one that resolves to a private or local address.
+
+**Turn it off.**
+
+- **One device:** turn the switch off. Your Spark deletes the subscription, and the browser drops its own.
+- **A device or family on the Spark:** **Forget this pairing**, **Forget all linked devices**, or `nsf pocket erase-pairing LABEL [--family]` deletes the subscription with the pairing.
+- **Everything:** restart the bridge without `--push-key`. The switch disappears and nothing is sent. Deleting the key file makes every existing subscription unusable.
+- **In the browser:** revoke this site's notification permission in the browser settings.
+
+A push service that reports a subscription gone (404 or 410) makes your Spark delete it. 429 and 5xx answers are retried after `Retry-After`.
+
+### Guided owner test on a real phone
+
+The automated tests cover push against a local fake push service, plus one live run with headless Chromium through Google's FCM. Do this once with a real phone, and note the phone, OS and browser versions with the result of each step.
+
+1. **Spark.** Set up the private HTTPS bridge from "Connect an actual phone", with `--instance-db` and `--push-key ~/.config/neuroscifi/pocket/vapid.pem` as above. Run `nsf web config --enable --pocket-research` for the individual. Check that `ls -l ~/.config/neuroscifi/pocket/vapid.pem` shows `-rw-------`.
+2. **Open Pocket.**
+   - **Android:** open `https://YOUR_CERTIFICATE_HOSTNAME:8765` in Chrome and pair with the terminal code.
+   - **iPhone or iPad:** open the same address in Safari. Before pairing, Pocket's Research panel is hidden, so first add Pocket to the Home Screen (Share, then Add to Home Screen) and open it from that icon. Pair inside the installed app, which has its own storage.
+3. **Keep the pairing.** Under **Device memory**, open a vault with a passphrase of at least 12 characters and press **Keep pairing in this vault for 24 hours**. A closed Pocket forgets a pairing held in tab memory only (POC-07). The vault lets the reopened Pocket show what finished; pushes arrive without it.
+4. **Opt in.** In **Research**, turn on **Notify me even when Pocket is closed (push)** and allow notifications when asked. Expect "Push on for this device." and "this device is subscribed on your Spark".
+5. **Test push.** Press **Send a test push**. Expect the notification "NeuroSciFi Pocket: Your Spark finished a research task." within a few seconds. With Pocket in front, the page also says "A push from your Spark arrived on this device." If the bridge prints `nsf-pocket: push to HOST: answered 410` right after you opted in, the push service had not finished registering this browser (seen live with FCM for up to about 20 s). Your Spark retries every 15 s for two minutes.
+6. **Closed Pocket.** Ask a question, for example "When was Python first released?". Close Pocket completely (swipe it away from the recent apps) and lock the phone. On the Spark, run `nsf web work --once`. Expect the same generic notification on the lock screen within about a minute of the worker finishing, with no question text in it.
+7. **Open from the notification.** Tap it. Pocket opens at Research. Unlock the vault, and the question is listed as Completed with its report.
+8. **Opt out.** Turn the switch off and expect "Push off." Ask another question, close Pocket and run the worker again. No notification may arrive.
+9. **Unpair.** Turn push on again, then press **Forget this pairing**. On the Spark, `nsf pocket list-pairings --db …` no longer lists the device. Ask from another paired device, close both and run the worker. The forgotten phone gets nothing.
+
+Report any step that differs, together with the bridge's `nsf-pocket: push to HOST: …` lines. They name the push service host and status, never the device's address.
 
 ## Native collectors
 

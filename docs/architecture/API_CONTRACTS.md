@@ -362,7 +362,18 @@ JSON content type and 512-byte body rules apply.
 | research_get | `{id}` | status, stage and a phone-sized report; 404 for unknown ids and other families |
 | research_cancel | `{id}` | 200; 404 as above |
 
-`state` gains `"research": true` only when the feature is on. A pairing family holds at most 6 devices (`link` → 409 `family_full`); `unpair {"family": true}` revokes the whole family.
+`state` gains `"research": true` only when the feature is on, and `"push": true` when the bridge also runs with `--push-key`. A pairing family holds at most 6 devices (`link` → 409 `family_full`); `unpair {"family": true}` revokes the whole family.
+
+**Pocket Web Push** (ADR-040, `pocket/push.py`). One route, `push`, gated like the research actions, and 404 also when the bridge runs without `--push-key`. Bodies may take up to 1024 bytes, because push endpoints are long.
+
+| Body | Result |
+|---|---|
+| `{action: "status"}` | 200 `{key, subscribed}`: the Spark's VAPID public key (base64url, uncompressed P-256) and whether this device has a subscription |
+| `{action: "subscribe", endpoint}` | 201 `{subscribed: true}`, or 200 when unchanged. The endpoint must be https on 443 of `fcm.googleapis.com`, `jmt17.google.com`, `updates.push.services.mozilla.com`, `*.push.apple.com` or `*.notify.windows.com`, else 400 `push_service`. The last device to register an endpoint holds it. |
+| `{action: "unsubscribe"}` | 200 `{subscribed: false}` |
+| `{action: "test"}` | 202 `{after}`: seconds until the push may leave (at most one a minute per device); 409 `not_subscribed` |
+
+Every push is an empty POST to the stored endpoint, with `TTL: 43200`, `Urgency: normal` and `Authorization: vapid t=<ES256 JWT>, k=<key>`. 404 or 410 deletes the subscription (after a 120 s grace for new registrations). 429 and 5xx are retried after `Retry-After`.
 
 **MCP (`nsf web mcp`, stdio JSON-RPC 2.0, protocol 2025-06-18).** Tools: `web_search`, `web_research`, `web_task`,
 `web_evidence`, `web_knowledge`. Retrieved content is wrapped in `safety.untrusted` envelopes. There are no forget,
