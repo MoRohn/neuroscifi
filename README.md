@@ -8,11 +8,11 @@
 ![Version](https://img.shields.io/badge/version-0.7.0-818CF8)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-E879F9)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-22D3EE?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-2588%20passed-22C55E)
+![Tests](https://img.shields.io/badge/tests-3303%20passed-22C55E)
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-22C55E)
 ![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-22C55E)
 
-**[Overview](#overview)** · **[New in 0.7.0](#whats-new-in-070)** · **[Architecture](#architecture)** · **[Requirements](#requirements)** · **[Quick start](#quick-start)** · **[Optional services](#optional-services)** · **[Privacy & trust](#privacy-security-and-trust)** · **[Testing](#testing-and-verification)** · **[Limitations](#known-limitations)** · **[Docs](#documentation)**
+**[Overview](#overview)** · **[Architecture](#architecture)** · **[Requirements](#requirements)** · **[Quick start](#quick-start)** · **[Optional services](#optional-services)** · **[Privacy & trust](#privacy-security-and-trust)** · **[Testing](#testing-and-verification)** · **[Limitations](#known-limitations)** · **[Docs](#documentation)**
 
 </div>
 
@@ -29,29 +29,20 @@ The cognitive prototype needs no pretrained model and no cloud service. Text res
 | 🧠 **One individual, one file** | A persistent instance in a single SQLite file holds beliefs, evidence, epochs, graphs, knowledge, transcripts and checkpoints. It decides whether to *act, observe, ask, test a reference or defer*, and gives a reason. |
 | 🔁 **Scoped relearning** | Detects a silent sensor change, asks about the specific scope, and relearns only what changed. |
 | 🕸️ **Executable connectome** | Graphs are learned, evaluated and promoted through an immutable-rule gate, recalled per context and rolled back. |
-| 🌐 **Governed web research** | Off by default. Discovery through self-hosted SearXNG and direct structured APIs, category-aware claim verification, cited reports. Web text never edits a belief, graph or weight. |
-| 🧩 **Evidence-bound reasoning** | A local model behind a model-independent inference gateway writes answers from verified evidence only. A guard rejects sentences without valid citations, unhedged single-source claims, unsupported numbers and injected instructions. Without the model, a labelled extractive answer is shown. |
-| 📈 **Knowledge evolution** | Versioned knowledge, hypotheses with testable predictions, calibration and change history. The owner accepts every knowledge item. |
-| 🎙️ **Voice Cortex** | Whisper speech recognition and Kokoro speech synthesis behind a bridge in which NeuroSciFi stays authoritative. Three modes, barge-in, one capturing device at a time. |
+| 🌐 **Governed web research** | Off by default. Discovery goes through a self-hosted, digest-pinned SearXNG with an honest User-Agent, and through structured APIs called directly (arXiv, OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub, Wikipedia). An optional **Brave Search API** key serves general and news queries first, within a daily cap. A news question a person asks may render one scripted news page per task in a sandbox (ADR-041). Web text never edits a belief, graph or weight. |
+| ✅ **Claim verification** | 8 claim categories and 6 states (`supported`, `disputed`, `conflicting`, `insufficient`, `temporally_unresolved`, `not_evaluated`). Syndicated copies count once. **Word sense:** when the sources hold two senses of the subject ("Rust" the language and the video game), the other sense's pages are read and listed, never cited. |
+| 🧩 **Evidence-bound reasoning** | A local model behind a model-independent, OpenAI-compatible gateway writes answers from verified evidence only. The **guard** checks every sentence: citations, claim states, numbers with their units, coverage of the sentence by the claims it cites (entailment), and structural declarative checks that reject injected instructions. Honest caveats pass only in a closed grammar, and a rules-written note says what the evidence does not settle. Without the model, a labelled extractive answer is shown. |
+| 📈 **Knowledge evolution** | Versioned knowledge, hypotheses with testable predictions, calibration and change history. The owner accepts every knowledge item. Model weights never change. |
+| 🤖 **Controlled autonomy** | Opt-in with a recorded owner enable. Its own daily budget (20 searches, 60 pages, 30 min, $1, 2 concurrent investigations). Research is chosen from stored records by expected information gain. |
+| 🎙️ **Voice Cortex** | Whisper speech recognition and Kokoro speech synthesis behind a bridge in which NeuroSciFi stays authoritative. Three modes, barge-in, one capturing device at a time. The **Voice check** measures microphone, speaker, barge-in and echo on your own hardware. PersonaPlex is an opt-in experiment. |
 | ✳️ **Presence Cortex** | A small vector entity in the console and Pocket headers that shows what the individual is actually doing. |
-| 📱 **Pocket and nodes** | A mobile-first phone and tablet interface. It works offline, pairs explicitly, and can research and talk to the individual when the owner allows it. |
-| 🧾 **Governed forgetting** | `nsf forget` cascades through derived records. Tombstones keep forgotten records from returning on a checkpoint restore. |
+| 📱 **Pocket** | A mobile-first web app for phones and tablets, served over HTTPS with a private CA. Devices pair with one-use codes into families, and linked devices share research. Opt-in **push** sends an empty notification through the browser vendor's push service when research finishes (ADR-040). |
+| 🔏 **Signed research nodes** | The owner enrols a paired device after comparing key fingerprints. A node signs its requests and can take and hand off research sessions. Pocket checks the Spark's signature on every research reply (ADR-042). The Spark stays the only executing node. |
+| ⚖️ **Resource scheduling** | One pressure level from memory and GPU data, with audio first. Opt-in **idle unloading** per service (vLLM, ASR, TTS, SearXNG) reloads on demand and logs every load and unload. |
+| 🧾 **Governed forgetting** | `nsf forget` cascades through derived records, and tombstones keep a checkpoint restore from bringing records back. A voice or web forget rewrites older checkpoint archives in place, crash-safe. Other forgets mark them stale until `nsf checkpoint rebuild`. |
+| 🩺 **Health checks** | `nsf doctor` checks Python and pinned dependencies, file modes, WAL mode, schema version, integrity and free space. It also reports whether the database (and any `--path`, such as the model cache) sits on an encrypted device, and what the swap is. |
 
 The **[34-page architecture brief](NeuroSciFi_Architecture.pdf)** is also available as editable [`Architecture.md`](Architecture.md). It covers reanalyses of human brain and behavioural data, controlled simulations, CPU benchmark runs, the TufaZip evaluation, the DGX Spark implementation plan and the mobile field runtime.
-
-## What's new in 0.7.0
-
-| Area | What ships | Details |
-|---|---|---|
-| **SearXNG discovery** | A self-hosted SearXNG, pinned by digest and published on `127.0.0.1:8888`, is the primary general discovery provider. NeuroSciFi patches it at start so every engine request carries an **honest User-Agent**. A header probe stops the container if any request still looks like a browser. Only robots-compliant or public-API engines are enabled: 10 engines across the general, news, it and science categories. Each query goes to one category. Structured APIs (arXiv, OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub, Wikipedia) are **still called directly**. open-webSearch becomes the fallback. With SearXNG unconfigured, behaviour is unchanged from 0.6.0. | [SEARXNG_INTEGRATION](docs/web-cortex/SEARXNG_INTEGRATION.md) · [SEARCH_PROVIDER_STRATEGY](docs/web-cortex/SEARCH_PROVIDER_STRATEGY.md) · ADR-034 |
-| **Local reasoning model** | A model-independent, OpenAI-compatible **inference gateway** (standard library only: streaming, structured output, allow-listed tools, a token ledger that stores no prompt text). The reference deployment is Qwen3-30B-A3B-Instruct-2507-FP8 on vLLM at `127.0.0.1:8811`. An **evidence guard** checks every sentence for citations, claim states, numbers with their units, and injected instructions. The self-critique pass can flag a sentence but cannot remove it alone. When the model is missing or late, the report shows the extractive answer labelled `template`, never `model:<name>`. | [COGNITIVE_INFERENCE](docs/architecture/COGNITIVE_INFERENCE.md) · ADR-036 |
-| **Claim verification** | The evidence required depends on the kind of statement. There are 8 categories (stable, historical, time-sensitive, scientific, numerical, comparative, registry, interpretive) and **6 states**: `supported`, `disputed`, `conflicting`, `insufficient`, `temporally_unresolved`, `not_evaluated`. Syndicated copies count once. A registry record settles "published" without settling "stable", "secure" or "recommended". On the offline benchmark, `supported` recall rose from 0.4 to 1.0 at precision 1.0. | [CLAIM_VERIFICATION](docs/knowledge/CLAIM_VERIFICATION.md) · ADR-035 |
-| **Knowledge evolution** | Only `supported` clusters become knowledge candidates, and the owner reviews each one. Unverified clusters become hypotheses with probabilistic predictions, which later evidence settles. Calibration reports the Brier score, ECE and reliability bins. Versions are never destroyed, and provenance stays separate (raw evidence, provisional claim, verified conclusion, user asserted). Procedural learning is bounded, logged and reversible. Model weights never change: a guard refuses adaptation. | [KNOWLEDGE_EVOLUTION](docs/knowledge/KNOWLEDGE_EVOLUTION.md) · [CONTINUAL_LEARNING](docs/knowledge/CONTINUAL_LEARNING.md) · ADR-038 |
-| **Controlled autonomy** | Opt-in, with a recorded owner enable. The default daily budget is **20 searches, 60 pages, 30 min, $1 and 2 concurrent investigations**, separate from the user's budget. Budgets are enforced when a worker claims a task. Research is chosen only from stored records, by expected information gain. The owner is notified only of meaningful findings. | [RESEARCH_POLICY](docs/autonomy/RESEARCH_POLICY.md) · ADR-039 |
-| **Voice Cortex** | The hybrid path is Whisper large-v3-turbo for recognition (vLLM, `127.0.0.1:18431`) and Kokoro-82M for synthesis (`127.0.0.1:18432`). A spoken question goes through the same research path as a typed one. There are three modes: **A** voice and text, **B** voice in and text out, **C** text only. Barge-in stops playback in the client. A single capture lease means only one device holds the microphone at a time. Transcripts separate approximate recognised text from authoritative replies. **PersonaPlex** is an opt-in experimental engine behind the same interface. It is not deployed and never answers a question. | [COGNITIVE_VOICE_BRIDGE](docs/voice/COGNITIVE_VOICE_BRIDGE.md) · [STREAMING_AND_TRANSCRIPTS](docs/voice/STREAMING_AND_TRANSCRIPTS.md) · [PERSONAPLEX_INTEGRATION](docs/voice/PERSONAPLEX_INTEGRATION.md) · ADR-037 |
-| **Presence Cortex** | A vector entity, not a mascot, avatar or spinner. Its 20 activities are read from persisted or in-process state. When nothing runs it shows idle or resting; when the server is unreachable it shows "unknown". Tier A is canonical compositions, Tier B is procedural, and Tier C is model-proposed (off by default, schema-validated on server and client). It has no faces and honours reduced motion. | [PRESENCE_CORTEX_ARCHITECTURE](docs/presence/PRESENCE_CORTEX_ARCHITECTURE.md) |
-| **Resource scheduling** | One pressure level (`ok`, `elevated`, `critical`) is derived from host memory and readable GPU data. While audio is active, new autonomous research waits and background model calls are capped. At `critical`, autonomy and rendering are refused. Every refusal gives its reason. Idle unloading is opt-in per service: never during a voice session, a running task or an in-flight request; reloaded on demand with the expected wait told; every load and unload logged with its reason. | [RESOURCE_SCHEDULING](docs/architecture/RESOURCE_SCHEDULING.md) |
-| **Pocket and nodes** | Paired devices can submit, follow, continue and cancel research and review its evidence, scoped to their pairing family. Pocket voice works over HTTPS. The owner can enrol a paired device as a **research node** that owns a session: one owner at a time, with a lease and explicit hand-off. Enrolment is attested, and the owner compares key fingerprints on the console. A node signs its changes, and Pocket checks the Spark's signature on every research reply. The Spark remains the only executing node. | [Pocket guide](mobile/README.md) · [RESEARCH_POLICY §6](docs/autonomy/RESEARCH_POLICY.md) |
 
 <div align="center">
 <picture>
@@ -63,27 +54,22 @@ The **[34-page architecture brief](NeuroSciFi_Architecture.pdf)** is also availa
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    IN["Console · CLI · MCP<br/>Pocket · nodes<br/>Voice (Whisper ASR)"] --> PS["Privacy screen<br/>web switch · budgets"]
-    AU["Controlled autonomy<br/>daily budgets"] --> PS
-    RS["Resource scheduler<br/>audio priority · memory pressure"] -.-> AU
-    PS --> MEM["Memory<br/>one SQLite individual"]
-    PS --> DIS["Discovery<br/>SearXNG · structured APIs · feeds"]
-    DIS --> READ["Safe reading<br/>extraction · quarantine"]
-    READ --> VER["Claim verification<br/>8 categories · 6 states"]
-    VER --> GW["Inference gateway<br/>local model + evidence guard"]
-    GW --> REP["Cited report<br/>model-written or labelled extractive"]
-    REP --> CON["Consolidation<br/>owner-reviewed knowledge<br/>hypotheses · predictions"]
-    CON --> MEM
-    REP --> OUT["Text · Kokoro speech<br/>Presence"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture/neuroscifi-architecture-dark.svg">
+  <img src="docs/assets/architecture/neuroscifi-architecture-light.svg" width="100%"
+       alt="NeuroSciFi architecture: clients, the DGX Spark with the orchestrator, Web Cortex, inference gateway, the individual and loopback services, and the external services that receive only screened queries, page fetches and empty pushes">
+</picture>
 
-- **One authority.** Every input reaches the same orchestrator, so the same privacy screen, web switch, budgets and verification apply everywhere. The voice bridge reads the finished report and never asks a model what is true.
-- **The model is a writer, not a judge.** It runs after verification. It cannot change a claim's state, and its text never becomes knowledge.
-- **Owner in the loop.** Knowledge candidates, contested findings and autonomous discoveries arrive as owner questions. Nothing is promoted on its own.
+One host, the DGX Spark, holds the individual and every service. The numbers follow the diagram's legend:
 
-The full design is in [System architecture](docs/architecture/SYSTEM_ARCHITECTURE.md), and ADR-034 to ADR-039 are at the end of [Architectural decisions](docs/architecture/ARCHITECTURAL_DECISIONS.md).
+- **① A question from any client.** The console, the CLI, MCP, Pocket, voice and the autonomy loop all reach one orchestrator. It applies the same privacy screen, web switch and budgets to each.
+- **② Screened queries leave the host.** Only privacy-screened queries and page fetches go out, to SearXNG's engines, Brave (with a key), the structured APIs and the sites read. No private data leaves.
+- **③ Verified evidence only.** Web Cortex runs intent, discovery, safe fetch, extraction, claims, verification, word sense and synthesis. Only verified evidence reaches the inference gateway.
+- **④ The local model writes, the guard checks.** vLLM, Whisper, Kokoro and SearXNG listen on 127.0.0.1 only, and news pages render in a sandboxed Chromium on the same host. The model runs after verification and cannot change a claim's state.
+- **⑤ A cited reply.** The answer goes to the console, voice or Pocket. For a closed Pocket, an empty push wakes it, and Pocket then fetches the Spark-signed reply.
+- **⑥ Owner review, then knowledge.** Knowledge candidates and autonomous findings arrive as owner questions. Nothing is promoted on its own.
+
+The full design is in [System architecture](docs/architecture/SYSTEM_ARCHITECTURE.md). ADR-034 to ADR-042 are at the end of [Architectural decisions](docs/architecture/ARCHITECTURAL_DECISIONS.md).
 
 ## Requirements
 
@@ -92,8 +78,9 @@ The reference host is an **NVIDIA DGX Spark GB10** (aarch64, Blackwell sm_121, 1
 | For | You need |
 |---|---|
 | Core: the individual, console, Pocket, Web Cortex text research with extractive answers | Python 3.12 and [`uv`](https://docs.astral.sh/uv/); extras `web` (and optionally `web-extract`) |
+| Pocket on phones and tablets (HTTPS, signed replies, nodes, push) | extra `crypto` |
 | Quality gate (JavaScript checks) and the open-webSearch fallback daemon | Node 22 and npm |
-| Optional JavaScript rendering of pages, and the browser tests | Chromium: Playwright's (`playwright install chromium`) or a system one via `NSF_CHROMIUM=/usr/bin/chromium` |
+| News rendering, optional JavaScript rendering of pages, and the browser tests | Chromium: Playwright's (`playwright install chromium`) or a system one via `NSF_CHROMIUM=/usr/bin/chromium` |
 | SearXNG discovery | Rootful Docker and the digest-pinned SearXNG image |
 | Local reasoning model | Docker with **NVIDIA CDI** (`--device nvidia.com/gpu=all`), the pinned vLLM image, and the model weights (31.2 GB on disk). On GB10 the engine holds about 44 GiB |
 | Voice (ASR and TTS) | Docker with NVIDIA CDI, images built from the pinned vLLM base, and the Whisper large-v3-turbo and Kokoro-82M weights. Speech adds about 5 GiB of GPU memory. Pocket voice needs HTTPS |
@@ -106,54 +93,252 @@ The reference host is an **NVIDIA DGX Spark GB10** (aarch64, Blackwell sm_121, 1
 | `gpu` | CuPy 14.2.0 for CUDA 13 | `profile_device --device cuda` |
 | `web` | Scrapling 0.5.1, markdownify 1.2.4, pypdf 7.1.1 | Web Cortex: HTML parsing, Markdown and PDF extraction |
 | `web-extract` | trafilatura 2.3.1 | Web Cortex: optional second article-extraction engine |
-| `web-render` | Playwright 1.64.1 | Web Cortex: optional JavaScript rendering (needs a Chromium) |
-| `crypto` | cryptography 50.0.2 | Pocket push notifications (VAPID keys and signatures, ADR-040) |
+| `web-render` | Playwright 1.64.1 | Web Cortex: JavaScript rendering (needs a Chromium) |
+| `crypto` | cryptography 50.0.2 | Pocket: the private CA (`nsf pocket tls`), the Spark's signed research replies and node keys (ADR-042), push (ADR-040) |
 
 ## Quick start
+
+### Try it in 2 minutes (one computer, no phone)
 
 ```sh
 git clone https://github.com/MoRohn/neuroscifi.git && cd neuroscifi
 uv venv .venv -p 3.12
-uv pip install -e '.[dev,research,web]'
+uv pip install -e '.[web]'
 . .venv/bin/activate
 
-nsf --help                 # every command; each prints JSON
-bash scripts/check.sh      # lint, tests, JavaScript checks, numerical reproduction
+export NSF_DB=$PWD/individual.sqlite             # every command reads NSF_DB or --db
+nsf init                                         # creates the individual; refuses to overwrite an existing file
+nsf web config --enable                          # web access stays off until you run this
+nsf web ask "When was Python first released?"    # a cited report; generated_by is "template" until a model is configured
+nsf console                                      # owner console on 127.0.0.1:8766; prints a URL with a one-time session token
 ```
 
-**Create the individual and open the console.** `nsf init` refuses to overwrite an existing file. Every command reads `NSF_DB` or `--db`.
+Open the printed URL on the same computer. Every command prints JSON, and `nsf --help` lists them all. From another machine, tunnel the console with `ssh -L 8766:127.0.0.1:8766 HOST`.
+
+### Set up with phones and tablets
+
+The stages below take you from a fresh checkout to research shared across phones and tablets. Each command was checked against the CLI on the reference host, and the expected output is what it printed. Replace `spark.local` and `192.168.1.20` with your host's name and LAN address (`ip -o addr show scope global` lists them).
+
+| Stage | What you get | Needed for |
+|---|---|---|
+| [1](#stage-1-install) to [3](#stage-3-start-the-services) | The individual, a research worker and the console | everything |
+| [4](#stage-4-trusted-https-for-phones) to [6](#stage-6-pair-the-first-phone) | HTTPS that phones trust, the Pocket bridge, the first phone | Pocket |
+| [7](#stage-7-link-a-tablet-into-the-same-family) to [9](#stage-9-research-across-devices) | A linked tablet, another family, research across devices | multi-device |
+| [10](#stage-10-optional-research-nodes) to [12](#stage-12-optional-voice-check-on-your-hardware) | Research nodes, push, the Voice check | optional |
+
+In the end three processes run: the research worker, the console and the Pocket bridge. Each terminal needs `NSF_DB` exported (or `--db`).
+
+#### Stage 1: Install
 
 ```sh
-export NSF_DB=$PWD/individual.sqlite
-nsf init --action-semantics '{"0":"turn left","1":"turn right"}'
-nsf console                # owner console on 127.0.0.1:8766; prints a one-time URL with a session token
+git clone https://github.com/MoRohn/neuroscifi.git && cd neuroscifi
+uv venv .venv -p 3.12
+uv pip install -e '.[dev,research,web,crypto]'
+. .venv/bin/activate
+nsf --help
 ```
 
-From another machine, tunnel the console: `ssh -L 8766:127.0.0.1:8766 HOST`. To run queued research inside the console process during development, add `--web-worker`.
+| Extra | Why |
+|---|---|
+| `web` | Web Cortex: HTML parsing, Markdown and PDF extraction |
+| `crypto` | **Needed for Pocket.** The private CA for HTTPS, the Spark's signed research replies and node keys, push. Without it, `nsf pocket serve --instance-db` stops with "signed research replies need the cryptography package" |
+| `dev` | pytest, ruff and Playwright, for the test suite and the browser tests |
+| `research` | SciPy, for the research analyses |
 
-**Ask a first research question** (web access stays off until you enable it):
+**Expect:** `nsf --help` lists the commands. The other extras are in [Requirements](#requirements).
+
+#### Stage 2: Create the individual
 
 ```sh
-nsf web config --enable
-nsf web ask "When was Python first released?"   # cited report; result.generated_by says model:<name> or template
+export NSF_DB=$PWD/individual.sqlite     # for real use, a path on an encrypted volume
+nsf init
+nsf web config --enable --pocket-research
+nsf llm config --url http://127.0.0.1:8811/v1 --model qwen3-30b-a3b-instruct-2507-fp8   # optional; see Local reasoning model
 ```
 
-General web discovery is thin without a search API key. To add a Brave Search API key (paid per query, with a daily cap of 30 by default), run `nsf web provider set-key brave --from-file PATH`. See [Brave Search API](#brave-search-api-general-discovery).
+**Expect:**
+- `nsf init` prints the birth record with its `instance_id`.
+- `nsf web config` prints `"changed": ["enabled", "pocket_research"]` and two `next_steps`: start the bridge with `--instance-db`, and run a research worker. Both switches are needed: `--pocket-research` alone leaves the Research panel hidden.
+- `nsf llm config` prints the gateway settings with `"locality": "loopback"`. Without a model, answers are extractive and labelled `template`. Once the model runs, `nsf llm status --probe` checks it ([Local reasoning model](#local-reasoning-model-vllm)).
 
-**Pair a phone or tablet with Pocket.**
+#### Stage 3: Start the services
 
 ```sh
-nsf pocket serve --instance-db "$NSF_DB"   # loopback 127.0.0.1:8765; prints a one-use pairing code
+nsf web work                             # terminal 1: the research worker
+nsf console --url-file ~/console.url     # terminal 2: the owner console
 ```
 
-Open `http://localhost:8765` on the same computer, or over HTTPS from a phone (see the [Pocket guide](mobile/README.md)), and enter the code within five minutes. Research and voice from Pocket stay hidden until the owner runs `nsf web config --pocket-research`.
+For development, `nsf console --web-worker` runs both in one process.
 
-To let paired devices opt in to notifications while Pocket is closed, install the `crypto` extra and give the bridge a VAPID key path outside the repository (created 0600 on first start):
+**Expect:**
+- `nsf web work` prints nothing while it waits. `nsf web status` then shows `"worker": {"running": true, …}`. Without a worker, its `note` reads "Your Spark has no research worker running".
+- The console prints `Console URL (with its one-time session token) written to …/console.url`. Open the URL in that file (`http://127.0.0.1:8766/#…`). The file is 0600 and is removed when the console stops.
+
+#### Stage 4: Trusted HTTPS for phones
+
+Phones refuse a self-signed certificate before Pocket loads. `nsf pocket tls` creates a private certificate authority (CA) that you install once on each device.
 
 ```sh
-uv pip install -e '.[crypto]'
-nsf pocket serve --instance-db "$NSF_DB" --push-key ~/.config/neuroscifi/pocket/vapid.pem
+nsf pocket tls init --out ~/nsf-tls --name spark.local --name 192.168.1.20   # every name and LAN address a phone will type
+nsf pocket tls export-ca --file ~/neuroscifi-ca.crt --der
+nsf pocket tls status --out ~/nsf-tls
 ```
+
+**Expect:**
+- `init` prints `"ca_created": true`, `"names": ["spark.local", "192.168.1.20"]`, the CA's `ca_fingerprints.sha256` and `serve`, the whole `nsf pocket serve` command for Stage 5. With no LAN address among the names, it warns and lists this machine's LAN addresses.
+- `export-ca` prints `fingerprints.sha256` and `written`. Note the fingerprint.
+- `status` shows `"verifies_against_ca": true` and `expires_in_days` (the certificate lasts 397 days; run `init` again with the same names to renew).
+
+> [!IMPORTANT]
+> The CA is limited to the names given when it was created. Adding a name or address later needs `nsf pocket tls init … --new-ca`, and every device must then install the new CA. List every name and the LAN address now.
+
+The CA key stays in `~/.config/neuroscifi/pocket-ca` (0600) and never goes to the service. Copy `neuroscifi-ca.crt` to each device over a channel you trust (USB, AirDrop, a messenger to yourself), never a public link. Then install it:
+
+| Device | Install the CA | Check |
+|---|---|---|
+| **Android 13–15** (wording varies by vendor) | Settings → Security & privacy → More security settings → Encryption & credentials → Install a certificate → **CA certificate** → Install anyway → `neuroscifi-ca.crt` | Trusted credentials → **User** → "NeuroSciFi Pocket CA (…)": the SHA-256 fingerprint matches. A "network may be monitored" notice is expected |
+| **iPhone and iPad (iOS 16–18)** | Open the file (AirDrop, Files or Mail) → Settings → General → VPN & Device Management → the profile → Install. Then **Settings → General → About → Certificate Trust Settings** → turn on full trust for "NeuroSciFi Pocket CA". Without this second step Safari still refuses the site | The profile → More Details: the SHA-256 fingerprint matches |
+
+To remove it later: Android, Trusted credentials → User → the CA → Remove; iOS, the profile → Remove Profile. [TLS for Pocket](docs/operations/TLS.md) has the details and the Tailscale and Let's Encrypt alternatives.
+
+#### Stage 5: Start the Pocket bridge
+
+```sh
+nsf pocket serve --bind 192.168.1.20 --port 8765 \
+  --cert ~/nsf-tls/fullchain.pem --key ~/nsf-tls/privkey.pem \
+  --db /path/on/encrypted-volume/mobile.sqlite --instance-db "$NSF_DB"
+```
+
+- `--bind`: an address on the certificate.
+- `--db`: the Pocket database of pairings. Keep it on an encrypted volume and out of backups and cloud sync.
+- `--instance-db`: the individual, for Research, nodes and push.
+
+**Expect:**
+
+```text
+Spark key fingerprint: XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
+One-use pairing code (5 minutes): <code>
+Listening on https://192.168.1.20:8765
+Open on your phone or tablet (names on the certificate): https://spark.local:8765, https://192.168.1.20:8765
+Pair another family later without a restart: nsf pocket invite --db /path/on/encrypted-volume/mobile.sqlite
+```
+
+Every device pins the **Spark key fingerprint** when it pairs.
+
+#### Stage 6: Pair the first phone
+
+1. On the phone, open one of the printed URLs, for example `https://spark.local:8765`. A lock and no warning means the CA is trusted. If the phone cannot resolve `spark.local`, use the address URL.
+   - **iPhone or iPad:** if you want push (Stage 11), first add Pocket to the Home Screen (Share → Add to Home Screen), open it from that icon and pair there. The installed app has its own storage.
+2. Under **Your Spark**, enter the one-use code within 5 minutes and press **Pair**.
+3. **Expect** the header **Paired with Spark**. Under Your Spark, "Your Spark's key fingerprint, pinned when this device paired" must equal the bridge's `Spark key fingerprint` line.
+4. **Keep the pairing across a reload.** Pocket holds the pairing in tab memory only (POC-07), so a reload or a closed app forgets it. To keep it: **Keep episodes on this device** → a passphrase of at least 12 characters → **Open or create vault** → **Keep pairing in this vault for 24 hours**. Expect "Pairing protected by this vault for 24 hours."
+
+#### Stage 7: Link a tablet into the same family
+
+1. **Phone:** Your Spark → **Link my phone or tablet** → confirm. Expect "Enter on your other device within five minutes:" followed by a code.
+2. **Tablet** (CA installed as in Stage 4): open the same URL and enter that code under Your Spark → **Pair**. Expect **Paired with Spark** and the same Spark fingerprint.
+3. **Spark:**
+
+   ```sh
+   nsf pocket list-pairings --db /path/on/encrypted-volume/mobile.sqlite
+   ```
+
+   **Expect** one line per device: its label, `family=`, `sponsor=` and `created=` (UTC). The phone and tablet share one `family=` tag. The phone's sponsor is `invitation`, and the tablet's is the phone's label. The tag is the same one the console and `nsf web node list` show; it needs the individual's database (`--instance-db`, default `$NSF_DB`).
+
+A family holds at most 6 devices. Linked devices see, follow and cancel the same questions.
+
+#### Stage 8: Pair another person or family without a restart
+
+```sh
+nsf pocket invite --db /path/on/encrypted-volume/mobile.sqlite
+```
+
+**Expect:**
+
+```text
+One-use pairing code (5 minutes): <code>
+Enter it on the new device; it replaces any earlier terminal code. Devices already paired are unaffected.
+```
+
+Run it as the user that runs the bridge, with the bridge's `--db`: the request goes over a 0600 local socket. The new device installs the CA (Stage 4) and pairs as in Stage 6. It starts a new family, which sees none of the other families' questions. To remove devices:
+
+```sh
+nsf pocket erase-pairing LABEL --db /path/on/encrypted-volume/mobile.sqlite            # one device
+nsf pocket erase-pairing LABEL --family --db /path/on/encrypted-volume/mobile.sqlite   # it and every linked device
+```
+
+#### Stage 9: Research across devices
+
+1. **Phone:** **Research** → type a question → **Submit**. Expect "Queued on your Spark. Its research worker runs it; this page follows each stage.", then Discovering, Reading, Evaluating, Synthesizing and Completed. Without a worker, the stage reads **Queued · Your Spark has no research worker running**.
+2. **Tablet:** the question appears within 10 seconds, or at once with **Refresh questions** under the list. Press **Open** and follow it to Completed.
+3. **Read the report.** When a model is configured, the **model-written answer** comes first: "Model-written summary" with the model's name, each kept sentence with its [n] citations and claim states, and the NeuroSciFi rules note. The extractive summary with quoted evidence follows, then the sources with publication and retrieval dates.
+
+Any device of the family can cancel a question, continue a cancelled, partial or failed one, and review its evidence by verification state. A family may submit 10 questions an hour. Pocket refuses a question that contains e-mail addresses, phone numbers, network addresses, file paths, secrets or names the owner marked private. The console and `nsf web tasks` see every task.
+
+#### Stage 10 (optional): Research nodes
+
+A node is a paired device that may own a research session and hand it to another node of its family. Nodes never run research; the Spark does.
+
+1. **Device:** Research → **This device as a research node** → **Ask to enrol this device**. It shows its key fingerprint (8 groups of 4 hex digits).
+2. **Console:** **Autonomy** → **Refresh**. Under **Research nodes**, "Waiting for you" lists the key with its fingerprint. Compare it with the device's, type a name, and press **Fingerprints match: enrol**. From the terminal: `nsf web node list`, then `nsf web node enrol NAME --fingerprint FP` (or `nsf web node reject --fingerprint FP`).
+3. **Device:** **Check again**. Its research requests are now signed.
+4. **Sessions:** **Take ownership** (an unowned session or an expired lease) · **Offer hand-off** to another node of the family · **Accept hand-off** on that node within 5 minutes · **Release**. A lease lasts 15 minutes and renews with the owner's actions. Other devices of the family can read an owned session but not cancel or continue it.
+5. **Revoke:** the console's **Revoke** button on the node, or `nsf web node revoke NAME`. Its key is deleted and its sessions released. It stays paired and can still ask and read.
+
+#### Stage 11 (optional): Push notifications while Pocket is closed
+
+1. **Spark:** restart the bridge with a key path outside the repository. The VAPID key is created as a 0600 file on first start.
+
+   ```sh
+   nsf pocket serve --bind 192.168.1.20 --port 8765 \
+     --cert ~/nsf-tls/fullchain.pem --key ~/nsf-tls/privkey.pem \
+     --db /path/on/encrypted-volume/mobile.sqlite --instance-db "$NSF_DB" \
+     --push-key ~/.config/neuroscifi/pocket/vapid.pem
+   ```
+
+   A restart prints a new one-use code. Paired devices stay paired and reconnect on their own.
+2. **Device:** keep the pairing in the vault (Stage 6, step 4), so the reopened Pocket can show what finished.
+3. **Device:** Research → turn on **Notify me even when Pocket is closed (push)** and allow notifications. Expect "Push on for this device." and "this device is subscribed on your Spark".
+4. **Device:** **Send a test push**. Expect the notification "NeuroSciFi Pocket: Your Spark finished a research task." within a few seconds.
+
+- **iPhone and iPad:** push works only in Pocket added to the Home Screen (iOS 16.4 or later).
+- **Limits:** at most one push a minute per device. Turning push on and **Send a test push** each work 5 times an hour.
+- **Turn it off:**
+  - on one device, turn the switch off ("Push off.");
+  - on a device reopened without the vault, which shows **Phone only**: Your Spark → **Turn off push on this device**;
+  - for everyone, restart the bridge without `--push-key`.
+
+The push carries no content: see [What leaves the host](#what-leaves-the-host). The [Pocket guide](mobile/README.md#push-notifications-while-pocket-is-closed) has a guided test for a real phone.
+
+#### Stage 12 (optional): Voice check on your hardware
+
+Start the voice services first ([Voice](#voice-whisper-asr-and-kokoro-tts)). Then run the check where you will talk to NeuroSciFi:
+
+| Where | How |
+|---|---|
+| Console | **Voice** → **Voice check (microphone, speaker, interruptions)** → **Start voice check**. Use your normal microphone and speakers, headphones off for the first run |
+| Pocket | The **Voice** section on a paired phone. Run it twice: on the loudspeaker, and with the earpiece or headphones |
+| Terminal | `nsf voice selftest --report ~/voice-selftest-host.json`, on the host's own microphone and speaker. It has no browser echo canceller, so the echo step fails on open speakers |
+
+**Expect** seven steps: microphone, read five sentences, silence, speaker, interrupt (say "stop" once), echo, and microphone off, each with a pass or fail and its reason. A pass needs every reading's WER ≤ 25 % and SNR ≥ 15 dB, an interruption detected within 1.5 s, and no false interruption by NeuroSciFi's own voice. The report is written 0600 under the instance folder (`voice-selftest/`) and offered as a download. Readings are deleted once scored, whatever the retention setting. [Voice validation §6](docs/voice/VOICE_VALIDATION.md#6-owner-device-self-test-voice-check) explains each failure.
+
+#### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A question stays **Queued** ("Your Spark has no research worker running") | No research worker runs | Start `nsf web work`, or `nsf console --web-worker`. `nsf web status` shows `worker.running` |
+| No Research panel on the device | Web access or Pocket research is off, or the bridge runs without `--instance-db` | `nsf web config --enable --pocket-research`, then restart the bridge with `--instance-db "$NSF_DB"` |
+| Certificate warning, or `ERR_CERT_AUTHORITY_INVALID` | The CA is not installed, or on iOS its full trust is off | Stage 4. On iOS, Certificate Trust Settings is the required second step |
+| `ERR_CERT_COMMON_NAME_INVALID`, or `init` says "the existing CA is limited to …" | The name or address is not on the certificate | Use a URL the bridge printed. To add a name: `nsf pocket tls init --out ~/nsf-tls --new-ca --name …` with every name, then reinstall the CA on every device |
+| "That code was not accepted…" | The code expired (5 minutes), was used, or was replaced by a newer `nsf pocket invite` | `nsf pocket invite --db …`, or a new **Link my phone or tablet** code |
+| `nsf pocket invite: no running Pocket bridge answered` | The bridge is down, or the `--db` or user differs from the bridge's | Run it as the bridge's user with the bridge's `--db` |
+| After a reload, Pocket shows **Phone only** or "Not paired · pair again" | The pairing lived in tab memory only (POC-07) | Pair again, and keep the pairing in the vault (Stage 6, step 4) |
+| The console tab shows no session after a reload | Reloading the console tab drops its session | Open the URL in `~/console.url` again |
+| `family=-` in `list-pairings` | The individual's database was not given | Export `NSF_DB` or pass `--instance-db`. The tag then matches the console and `nsf web node list` |
+| **Link my phone or tablet** refuses | The family already has 6 devices | Forget one first |
+| `nsf: cannot listen on ADDRESS:PORT: Address already in use` | Another process holds the port | Stop it, or choose another `--port` and use that port in the phone's URL |
+| No test push; the bridge prints `nsf-pocket: push to HOST: answered 410` | The push service had not finished registering the browser (up to about 20 s on FCM) | Wait. The Spark retries a minute later. On iOS, use the Home Screen app |
+| A node's session action answers `reenrol` | The node was enrolled before nodes signed their requests | Enrol it again from its Research panel |
 
 For a service install, `sudo bash deploy/install.sh` creates a `neuroscifi` user and a virtual environment under `/opt/neuroscifi`, and installs the systemd units **disabled**. Add `--dry-run` to review the plan without root. The [Runbook](docs/operations/RUNBOOK.md) has the next steps.
 
@@ -172,22 +357,30 @@ nsf web searxng health --probe   # one real query per category
 nsf web searxng stop
 ```
 
-The container is read-only, unprivileged and resource-limited, with its secret generated once outside git. For systemd, run `sudo bash deploy/install.sh --searxng`, then set `User=` and `NSF_DB` with `systemctl edit neuroscifi-searxng.service`.
+NeuroSciFi patches SearXNG at start so every engine request carries an honest User-Agent, and a header probe stops the container if any request still looks like a browser. Only robots-compliant or public-API engines are enabled: 10 engines across the general, news, it and science categories. The container is read-only, unprivileged and resource-limited, with its secret generated once outside git. For systemd, run `sudo bash deploy/install.sh --searxng`, then set `User=` and `NSF_DB` with `systemctl edit neuroscifi-searxng.service`. Details: [SearXNG integration](docs/web-cortex/SEARXNG_INTEGRATION.md).
 
 ### Brave Search API (general discovery)
 
-Without a key, general web queries rely on SearXNG's two key-free engines. With a [Brave Search API](https://brave.com/search/api/) key, general and news queries go to Brave first, and SearXNG and open-webSearch become fallbacks.
+Without a key, general web queries rely on SearXNG's two key-free general engines. With a [Brave Search API](https://brave.com/search/api/) key, general and news queries go to Brave first, and SearXNG and open-webSearch become fallbacks.
+
+1. Create a key for Brave's **Search** plan in the Brave Search API dashboard.
+2. Save the key alone in a file that only you can read. A source file that others can read, a symlink or another user's file is refused.
+3. Store it, delete the source and check:
 
 ```sh
-nsf web provider set-key brave --from-file ~/brave.key   # or: --stdin (prompts without echo); never on the command line
-shred -u ~/brave.key                                     # the copy now lives in ~/.config/neuroscifi/search (0600)
-nsf web provider status                                  # "key": "configured" (the key is never shown), today's use, routing
+chmod 600 ~/brave.key
+nsf web provider set-key brave --from-file ~/brave.key   # or --stdin (prompted without echo); never on the command line
+shred -u ~/brave.key                                     # the stored copy is ~/.config/neuroscifi/search/brave.key (0600)
+nsf web provider status                                  # "key": "configured" (never shown), daily_cap, remaining_today
 nsf web health --probe                                   # one real Brave query, counted against the cap
 nsf web config --set 'daily_provider_queries={"brave": 30}'   # queries per UTC day for this key; 0 switches Brave off
 nsf web provider remove-key brave
 ```
 
-**Cost and cap.** Brave's Search plan charges $5 per 1,000 requests and includes $5 of credit each month. Each general or news query is one request, and a repeat within two minutes is free. The default cap of 30 queries a day (about 930 a month) stays inside the monthly credit. The cap counts every use of the key on this computer, including autonomous research. When the cap is reached or Brave rate-limits, queries go to SearXNG. Brave's terms allow only transient storage of its results, so they are dropped from a task when it finishes, and the benchmark never uses Brave. Details: [search provider strategy §6](docs/web-cortex/SEARCH_PROVIDER_STRATEGY.md#6-keyed-provider-brave-search-api-adr-034-amendment-1).
+- **Cost and cap.** Brave's Search plan charges $5 per 1,000 requests and includes $5 of credit each month. Each general or news query is one request; a repeat within two minutes is free. The default cap of 30 queries a day (about 930 a month) stays inside the monthly credit. The cap counts every use of the key on this computer, autonomous research included. When the cap is reached or Brave rate-limits, queries go to SearXNG.
+- **Terms.** Brave allows only transient storage of its results, so they are dropped from a task when it finishes, and the benchmark never uses Brave.
+
+Details: [search provider strategy §6](docs/web-cortex/SEARCH_PROVIDER_STRATEGY.md#6-keyed-provider-brave-search-api-adr-034-amendment-1).
 
 ### Local reasoning model (vLLM)
 
@@ -197,11 +390,11 @@ Place the weights in `~/.local/share/neuroscifi/models/qwen3-30b-a3b-instruct-25
 deploy/vllm/run.sh start && deploy/vllm/run.sh wait          # first start about 3 min; deploy/vllm/run.sh print shows the docker command
 nsf llm config --url http://127.0.0.1:8811/v1 --model qwen3-30b-a3b-instruct-2507-fp8
 nsf llm status --probe                                       # ready + a one-word generation
-nsf web ask "When was Python first released?"                # result.generated_by: model:qwen3-...
+nsf web ask "When was Python first released?"                # generated_by: model:qwen3-...
 nsf llm usage                                                # token ledger
 ```
 
-The run script refuses a non-loopback bind and an image without a digest. Its API key lives at `~/.config/neuroscifi/inference/api_key` (0600). For systemd, use `sudo bash deploy/install.sh --llm --llm-user USER`. Endpoints off this host are refused unless you pass `nsf llm config --remote-allowed` (see [Privacy, security and trust](#privacy-security-and-trust)).
+The run script refuses a non-loopback bind and an image without a digest. Its API key lives at `~/.config/neuroscifi/inference/api_key` (0600). For systemd, use `sudo bash deploy/install.sh --llm --llm-user USER`. Endpoints off this host are refused unless you pass `nsf llm config --remote-allowed` (see [Privacy, security and trust](#privacy-security-and-trust)). How the model may speak: [Cognitive inference](docs/architecture/COGNITIVE_INFERENCE.md).
 
 ### Voice (Whisper ASR and Kokoro TTS)
 
@@ -215,7 +408,7 @@ nsf voice health                          # engine states + a real round trip: K
 deploy/voice/run.sh stop all              # text keeps working; voice controls show "unavailable"
 ```
 
-Use the **Voice** view in the console or the **Voice** section in Pocket. `nsf voice settings`, `transcripts`, `forget` and `sweep` manage settings and data. The voice systemd units in `deploy/systemd/` are installed by hand, as their headers describe. `deploy/install.sh` does not install them.
+Use the **Voice** view in the console or the **Voice** section in Pocket, and run the [Voice check](#stage-12-optional-voice-check-on-your-hardware) once on your hardware. A spoken question goes through the same research path as a typed one. The modes are **A** voice and text, **B** voice in and text out, and **C** text only. `nsf voice settings`, `transcripts`, `forget` and `sweep` manage settings and data. The voice systemd units in `deploy/systemd/` are installed by hand, as their headers describe. `deploy/install.sh` does not install them.
 
 ### Autonomy, nodes and resources
 
@@ -223,11 +416,14 @@ Use the **Voice** view in the console or the **Voice** section in Pocket. `nsf v
 nsf web autonomy enable          # recorded owner enable; off by default
 nsf web autonomy status          # both budgets, refusals, recent decisions
 nsf web autonomy set --policy-json '{"autonomous_daily": {"searches": 10, "concurrent": 1}}'
-nsf web work                     # the worker that runs queued and autonomous tasks
 nsf web node list                # research nodes, and devices waiting with their key fingerprint
 nsf web node enrol NAME --fingerprint FP     # enrol the device that shows this fingerprint (ADR-042)
 nsf resources --cold-start       # pressure level, policy decisions, container start-to-ready times
+nsf resources idle --set vllm=30m --set asr=15m --set tts=15m   # opt-in idle unloading; SERVICE=off turns one off
+nsf resources tick               # one idle-policy pass; deploy/systemd/neuroscifi-idle.timer runs it every minute
 ```
+
+Idle unloading never stops a service during a voice session, a running task or an in-flight request. A service it unloaded reloads on its next use, and the caller is told the expected wait. Details: [Resource scheduling](docs/architecture/RESOURCE_SCHEDULING.md) and [Research policy](docs/autonomy/RESEARCH_POLICY.md).
 
 ## Run a persistent instance
 
@@ -268,32 +464,28 @@ flowchart LR
 |---|---|
 | `nsf pending` / `nsf resolve` | List and answer open questions |
 | `nsf memory evidence\|belief\|graph\|…` | Retrieve records with scope, permissions and state version |
-| `nsf forget evidence\|epoch\|partner\|dataset\|…` | Delete with a full cascade: derived beliefs, questions and decisions are scrubbed, dependent graphs are invalidated, checkpoints are marked stale |
+| `nsf forget evidence\|epoch\|partner\|dataset\|research\|knowledge\|source\|voice` | Delete with a full cascade: derived beliefs, questions and decisions are scrubbed and dependent graphs invalidated. A voice or web forget rewrites older checkpoints in place; the others mark them stale |
 | `nsf promote` | Keep evidence past its default 7-day lifetime |
-| `nsf checkpoint create\|verify\|restore\|rebuild\|prune` | Manage verified lossless archives. A restore never resurrects forgotten ids |
+| `nsf checkpoint create\|list\|verify\|restore\|rebuild\|prune\|rewrite` | Manage verified lossless archives. A restore never resurrects forgotten ids |
 | `nsf graph simulate CTX --seed N` | Generate labelled synthetic trajectories. `learn`, `evaluate` and `promote` run the immutable-rule gate. Also `recall`, `coactivation`, `lesion` and `rollback` |
 | `nsf console` | Owner web console on loopback only |
-| `nsf web …` | Web Cortex: `config`, `ask`, `tasks`, `show`, `evidence`, `searxng`, `provider`, `autonomy`, `node`, `work`, `deps`, `mcp` and more |
+| `nsf pocket serve\|invite\|list-pairings\|erase-pairing\|tls` | Pocket bridge, pairing codes, paired devices and the private CA |
+| `nsf web …` | Web Cortex: `config`, `ask`, `tasks`, `show`, `status`, `evidence`, `searxng`, `provider`, `autonomy`, `node`, `work`, `deps`, `mcp` and more |
 | `nsf knowledge …` | `evolution`, `changes`, `hypotheses`, `hypothesize`, `calibration`, `graph`, `learning`, `assert`, `adapt` |
 | `nsf llm config\|status\|models\|ask\|usage` | Inference gateway (off until configured). `nsf llm ask` is labelled "not checked against evidence" |
-| `nsf voice health\|settings\|transcripts\|forget\|sweep` | Voice Cortex services, settings and transcripts |
-| `nsf resources` | Memory and GPU pressure level and resource-scheduling decisions |
+| `nsf voice health\|settings\|transcripts\|forget\|sweep\|selftest` | Voice Cortex services, settings, transcripts and the Voice check |
+| `nsf resources [status\|idle\|tick\|unload\|load]` | Memory and GPU pressure, scheduling decisions and idle unloading |
 | `nsf acceptance --all` | Run the brief's first-release milestones as labelled simulations |
-| `nsf doctor --db FILE` | Check permissions, WAL mode, free space and volume encryption |
+| `nsf doctor --db FILE [--path PATH]` | Check dependencies, permissions, WAL mode, integrity, free space and encryption |
 | `nsf import-legacy OLD.sqlite` | Import a database from the prototype's `live.py` |
 
 The prototype's original learner is kept, with unchanged behaviour, as `python -m neuroscifi.legacy_live`. It is the parity oracle for the new inference.
 
 ## Pocket, the phone interface
 
-Run `nsf pocket serve`, open `http://localhost:8765` on that computer, and try a sound or light check. Sensors start off, and nothing leaves the device before pairing. The optional field vault lets you combine sound or device metrics with a goal, predict an outcome and return later with feedback.
+Run `nsf pocket serve`, open `http://localhost:8765` on that computer, and try a sound or light check. Sensors start off, and nothing leaves the device before pairing. The field workspace works offline. Its optional vault lets you combine sound or device metrics with a goal, predict an outcome and return later with feedback. Requests are scoped to the device's pairing family and rate-limited.
 
-With `--instance-db` and `pocket_research` on, a paired device can also:
-- submit research, follow it, continue or cancel it, and review the evidence by verification state;
-- speak to the individual over HTTPS, holding the single microphone lease;
-- opt in, per device, to an empty push when a question finishes, even while Pocket is closed. The bridge needs `--push-key`. The push goes through the browser vendor's push service and carries no question text ([details](mobile/README.md#push-notifications-while-pocket-is-closed)).
-
-Requests are scoped to the device's pairing family and rate-limited. For a real smartphone, use the private HTTPS setup in the **[Pocket guide](mobile/README.md)**. It also covers native Android and iOS collectors, offline operation, tablet hand-off and privacy controls.
+For phones and tablets, follow [Quick start](#set-up-with-phones-and-tablets) stages 4 to 11. The **[Pocket guide](mobile/README.md)** also covers the native Android and iOS collectors, offline operation, connection limits and privacy controls.
 
 ## Web Cortex: governed web research
 
@@ -308,20 +500,31 @@ nsf web mcp                                      # read-mostly MCP tool server o
 - **Console.** The Research and Knowledge views show stages, sources, verification states, the model answer with its label, and the owner's accept or reject questions.
 - **Governed.** `nsf forget` reaches web evidence, hypotheses, predictions and graph edges. A checkpoint restore never brings forgotten research back.
 
-Read the [architecture](docs/web-cortex/ARCHITECTURE.md), the [security model](docs/web-cortex/SECURITY_MODEL.md) and the [measured results](docs/web-cortex/TEST_RESULTS.md).
+Read the [architecture](docs/web-cortex/ARCHITECTURE.md), the [claim verification rules](docs/knowledge/CLAIM_VERIFICATION.md), the [security model](docs/web-cortex/SECURITY_MODEL.md) and the [measured results](docs/web-cortex/TEST_RESULTS.md).
 
 ## Privacy, security and trust
 
 | Principle | How it holds |
 |---|---|
 | **Loopback by default** | The console listens on 127.0.0.1 with a one-time session token and Host and Origin checks. SearXNG (8888), vLLM (8811), ASR (18431) and TTS (18432) are published on 127.0.0.1 only, and the run scripts refuse any other bind. The containers run read-only, without capabilities, from digest-pinned images. API keys are generated outside git with mode 0600. |
-| **Off until the owner says so** | Web access, autonomy, Pocket research, JavaScript rendering, remote inference, model-proposed Presence doodles and audio retention all default to off. |
-| **No private context leaves without authorisation** | Every query to any provider passes the privacy screen and local-context stripping. SearXNG is treated as external because it forwards queries to third-party engines. A model endpoint off this host is refused without `--remote-allowed`. With it, messages are privacy-screened, private memory needs a second authorisation (`--remote-private-memory`), and a public endpoint must use https. |
-| **Empty pushes** | Pocket push is off until the owner starts the bridge with `--push-key` and a device turns it on. The Spark sends an empty push to an allow-listed push service (FCM, Mozilla, Apple, WNS) over pinned HTTPS, without proxies or redirects. That service learns the device's push address and the timing, never the question. The switch, unpairing, or starting without `--push-key` turns it off. |
+| **Off until the owner says so** | Web access, autonomy, Pocket research, push, JavaScript rendering, remote inference, model-proposed Presence doodles, idle unloading and audio retention all default to off. News rendering for a person's news question is on once web access is on (`--no-news-render` turns it off). |
+| **Paired devices are checked both ways** | Pocket serves HTTPS from a private CA that is limited to the names given at its creation. Each device pins the Spark's key when it pairs and refuses any research reply without a valid Spark signature. A research node signs its requests with a key the owner enrolled after comparing fingerprints. |
 | **Consent before capture** | The microphone needs recorded consent on each device, a visible capture indicator and the single capture lease. Mic off stops every track. The server refuses audio from any device without consent or the lease. |
 | **No raw audio by default** | Audio stays in memory for each utterance (at most 30 s) and is then dropped. Retention is an owner-only setting with a 1–168 h TTL. Expired clips are swept every minute. |
 | **Evidence over generation** | Model text never changes a claim's state or becomes knowledge. Web text never edits a belief, graph or weight. Sensitive voice commands (forget, enabling autonomy, accepting conclusions, microphone hand-off) need a same-session confirmation within 60 s. |
 | **Forgetting with tombstones** | `nsf forget`, `nsf web forget` and `nsf voice forget` delete with a full cascade and leave payload-free tombstones. `checkpoint restore` replays the tombstones, so forgotten records do not come back. |
+
+### What leaves the host
+
+| What | To whom | When |
+|---|---|---|
+| Search queries, after the privacy screen and local-context stripping | SearXNG's upstream engines (SearXNG is treated as external), Brave with a key, the structured APIs | Web access on |
+| Page fetches with an honest User-Agent, robots.txt respected | The sites read | Web access on |
+| A news page's own sub-requests, rendered in the Chromium sandbox | That news site and the hosts it loads | A person's news question, one page per task, unless `--no-news-render` |
+| An **empty** push. The service learns the device's push address, the Spark's public IP and VAPID public key, the contact URI and the time | The device browser's push service only (FCM, Mozilla, Apple, WNS), over pinned HTTPS without proxies or redirects | The bridge runs with `--push-key` and the device turned push on |
+| Model prompts, privacy-screened. Private memory needs a second authorisation (`--remote-private-memory`) | A model endpoint off this host | Only with `nsf llm config --remote-allowed`; a public endpoint must use https |
+
+Pocket traffic stays between the Spark and your devices, over HTTPS on your LAN or VPN. The individual, audio, transcripts, the Pocket database, the keys and the model weights stay on the Spark.
 
 ## Packed graphs, restored skills and verified archives
 
@@ -401,12 +604,20 @@ nsf acceptance --all                                                     # simul
 
 | Gate | Result |
 |---|---|
-| Quality gate (`bash scripts/check.sh`) | **2588 passed**, 6 skipped (live-internet tests), 0 failed |
-| Browser end-to-end (`tests/e2e`) | **167 passed**, 1 skipped, 0 failed |
+| Quality gate (`bash scripts/check.sh`) | **3303 passed**, 18 skipped (live-service tests), 0 failed |
+| Browser end-to-end (`tests/e2e`) | **184 passed**, 1 skipped (opt-in degraded-voice test), 0 failed |
 | Acceptance scenarios (`nsf acceptance --all`) | 7 of 7 pass. The D-1 redesign was [pre-registered](docs/quality/PREREGISTRATION_D1.md) |
 | Reproduction | 8 of 8 analyses within tolerance |
 
-CI runs three jobs on every push and pull request: the quality gate, the simulated milestones, and the browser end-to-end tests with an accessibility check. Measured 0.7.0 results are in the QA reports listed under [Documentation](#documentation).
+CI runs three jobs on every push and pull request: the quality gate, the simulated milestones, and the browser end-to-end tests with an accessibility check.
+
+**Verified on the reference host without root** (2026-11-22):
+- The console, the research worker, the checkpoint jobs and Pocket ran under their units' sandbox, and the kernel enforced it ([hardening and storage](docs/operations/HARDENING_VERIFICATION.md)).
+- Pocket served a chain from `nsf pocket tls`, verified by OpenSSL and by Chromium with negative controls ([TLS](docs/operations/TLS.md#3-verified-on-the-reference-host-2026-11-22)).
+- The instance, checkpoints, model cache and Docker data sit on LUKS2, swap is zram, and `nsf doctor` reports both.
+- A 7-day accelerated autonomy soak with injected faults stayed inside its budgets ([soak](docs/autonomy/RESEARCH_POLICY.md#9-soak-results)).
+- The remote-provider path of the inference gateway passed a live contract against vLLM behind TLS ([remote inference](docs/architecture/COGNITIVE_INFERENCE.md#7-remote-providers-live-contract-2026-11-22)).
+- Push reached headless Chromium through Google's FCM.
 
 ## Repository layout
 
@@ -414,13 +625,13 @@ CI runs three jobs on every push and pull request: the quality gate, the simulat
 neuroscifi/
 ├── src/neuroscifi/
 │   ├── instance/        persistent individual: beliefs, executive, governance, memory, graphs, checkpoints
-│   ├── webcortex/       governed web research, claim verification, knowledge evolution, autonomy
+│   ├── webcortex/       governed web research, claim verification, knowledge evolution, autonomy, nodes
 │   ├── inference/       model-independent OpenAI-compatible inference gateway
-│   ├── voice/           Voice Cortex: engines, bridge, capture hub, transcripts, browser client
+│   ├── voice/           Voice Cortex: engines, bridge, capture hub, transcripts, Voice check, browser client
 │   ├── presence/        Presence Cortex: state aggregator and renderer
-│   ├── resources/       memory and GPU monitoring, scheduling policy
+│   ├── resources/       memory and GPU monitoring, scheduling policy, idle unloading
 │   ├── console/         loopback owner console
-│   ├── pocket/          phone bridge and web client
+│   ├── pocket/          phone bridge, private CA, push and web client
 │   ├── lab/             deterministic research analyses and benchmarks
 │   ├── acceptance/      simulated first-release scenarios
 │   ├── vendor_tufazip/  pinned upstream arithmetic coder
@@ -438,41 +649,37 @@ neuroscifi/
 
 | Area | Documents |
 |---|---|
-| **Architecture** | [System architecture](docs/architecture/SYSTEM_ARCHITECTURE.md) · [Decisions (ADRs)](docs/architecture/ARCHITECTURAL_DECISIONS.md) · [Cognitive inference](docs/architecture/COGNITIVE_INFERENCE.md) · [Resource scheduling](docs/architecture/RESOURCE_SCHEDULING.md) · [API contracts](docs/architecture/API_CONTRACTS.md) · [Requirements matrix](docs/architecture/REQUIREMENTS_MATRIX.md) |
+| **Architecture** | [System architecture](docs/architecture/SYSTEM_ARCHITECTURE.md) · [Decisions (ADRs)](docs/architecture/ARCHITECTURAL_DECISIONS.md) · [Cognitive inference](docs/architecture/COGNITIVE_INFERENCE.md) · [Resource scheduling](docs/architecture/RESOURCE_SCHEDULING.md) · [API contracts](docs/architecture/API_CONTRACTS.md) · [Requirements matrix](docs/architecture/REQUIREMENTS_MATRIX.md) · [Diagram sources](docs/assets/architecture/README.md) |
 | **Web Cortex** | [Architecture](docs/web-cortex/ARCHITECTURE.md) · [SearXNG integration](docs/web-cortex/SEARXNG_INTEGRATION.md) · [Search provider strategy](docs/web-cortex/SEARCH_PROVIDER_STRATEGY.md) · [Security model](docs/web-cortex/SECURITY_MODEL.md) · [Measured results](docs/web-cortex/TEST_RESULTS.md) · [Dependency review](docs/web-cortex/DEPENDENCY_REVIEW.md) |
 | **Knowledge** | [Claim verification](docs/knowledge/CLAIM_VERIFICATION.md) · [Knowledge evolution](docs/knowledge/KNOWLEDGE_EVOLUTION.md) · [Continual learning](docs/knowledge/CONTINUAL_LEARNING.md) |
 | **Autonomy** | [Research policy](docs/autonomy/RESEARCH_POLICY.md) |
 | **Voice** | [Cognitive voice bridge](docs/voice/COGNITIVE_VOICE_BRIDGE.md) · [Streaming and transcripts](docs/voice/STREAMING_AND_TRANSCRIPTS.md) · [PersonaPlex audit](docs/voice/PERSONAPLEX_INTEGRATION.md) · [Voice UAT results](docs/voice/VOICE_UAT_RESULTS.md) · [Voice validation on real speech](docs/voice/VOICE_VALIDATION.md) |
 | **Presence** | [Architecture](docs/presence/PRESENCE_CORTEX_ARCHITECTURE.md) · [Visual design](docs/presence/VISUAL_DESIGN_SYSTEM.md) · [State mapping](docs/presence/COGNITIVE_STATE_MAPPING.md) · [Accessibility](docs/presence/ACCESSIBILITY.md) · [Performance](docs/presence/PERFORMANCE_RESULTS.md) |
-| **Operations** | [Runbook](docs/operations/RUNBOOK.md) · [Environment](docs/operations/ENVIRONMENT.md) · [Hardening and storage verification](docs/operations/HARDENING_VERIFICATION.md) · [TLS for Pocket](docs/operations/TLS.md) · [Migrations](docs/operations/MIGRATIONS.md) · [Testing](docs/operations/TESTING.md) |
-| **QA** | [Release decisions](docs/qa/RELEASE_DECISIONS.md) · [E2E results](docs/qa/E2E_TEST_RESULTS.md) · [Defect log](docs/qa/DEFECT_RESOLUTION_LOG.md) · [Journey matrix](docs/qa/USER_JOURNEY_MATRIX.md) · [UX validation](docs/qa/UX_VALIDATION.md) · [Regression report](docs/qa/REGRESSION_REPORT.md) · [Production readiness (0.6.0)](docs/qa/PRODUCTION_READINESS.md) |
-| **Quality and research** | [Acceptance criteria](docs/quality/ACCEPTANCE_CRITERIA.md) · [Verification report](docs/quality/VERIFICATION_REPORT.md) · [Research workflow](research/README.md) · [Pocket guide](mobile/README.md) |
+| **Pocket and operations** | [Pocket guide](mobile/README.md) · [TLS for Pocket](docs/operations/TLS.md) · [Runbook](docs/operations/RUNBOOK.md) · [Environment](docs/operations/ENVIRONMENT.md) · [Hardening and storage verification](docs/operations/HARDENING_VERIFICATION.md) · [Migrations](docs/operations/MIGRATIONS.md) · [Testing](docs/operations/TESTING.md) |
+| **QA** | [0.7.0 release acceptance](docs/qa/V0.7.0_RELEASE_ACCEPTANCE.md) · [Release decisions](docs/qa/RELEASE_DECISIONS.md) · [E2E results](docs/qa/E2E_TEST_RESULTS.md) · [Defect log](docs/qa/DEFECT_RESOLUTION_LOG.md) · [Journey matrix](docs/qa/USER_JOURNEY_MATRIX.md) · [UX validation](docs/qa/UX_VALIDATION.md) · [Regression report](docs/qa/REGRESSION_REPORT.md) · [Production readiness (0.6.0)](docs/qa/PRODUCTION_READINESS.md) |
+| **Quality and research** | [Acceptance criteria](docs/quality/ACCEPTANCE_CRITERIA.md) · [Verification report](docs/quality/VERIFICATION_REPORT.md) · [Research workflow](research/README.md) |
 
 ## Known limitations
 
-- **General web discovery is thin without a search API key.** An honest User-Agent and robots.txt compliance leave two key-free general engines. DuckDuckGo answered with a CAPTCHA on 4 of 9 calls. Mwmbl is a small index that returns no dates. News, software and science discovery work, and structured APIs carry most factual answers. With a Brave Search API key (see [Brave Search API](#brave-search-api-general-discovery)), general and news queries go to Brave's full, dated index first and SearXNG becomes the fallback (ADR-034 amendment 1). Each query costs one Brave request, within a daily cap. This path has offline tests but has not been run live yet, because no key was available. Browser impersonation will not be enabled.
-- **News that needs rendering.** Bing News results carry no publication date, and its MSN articles have no text or date until JavaScript runs. Since ADR-041 a news question a person asks reads dated static pages first and may render one such page per task in the sandbox. That render gets its own allowance of 100 sub-requests, apart from the quick lookup's 20 requests, and at most 40 renders run a day. Live, "What happened in AI this week?" (three runs) and "What is the latest news about NVIDIA?" met the freshness requirement with dated, cited sources in 36–42 s. Limits: a page that needs more than 100 sub-requests renders incomplete, current-event answers are usually single-source, and news rendering runs Chromium on news-site JavaScript by default once web access is on. Turn it off with `nsf web config --no-news-render`; general rendering (`--browser`) stays off by default ([evidence](docs/quality/evidence/news_render_live_v2.json)).
-- **Voice on real hardware is not yet verified.** Recorded human speech from public corpora was tested: Whisper WER is 2.1% on clean read speech, at most 3.2% with noise down to 5 dB SNR, reverberation, far field or the telephone band, and 18.6% on accented conversational English (EdAcc). The VAD and barge-in thresholds were retuned on a TRAIN split of real speech, noise, music and simulated echo and checked on a held-out TEST split ([voice validation](docs/voice/VOICE_VALIDATION.md)). Echo, rooms and phones were simulated, not measured. Without the browser's echo cancellation, NeuroSciFi's own voice interrupts it. A short spoken "stop" during playback is often missed. Loud background noise or music falsely stops playback more often than before. The command grammar is English only and recognises about two thirds of freely phrased commands. The guided **Voice check** (console, Pocket, `nsf voice selftest`) measures all of this on the owner's microphone, speaker and phone. Its e2e tests use a fake device, and the owner's run is still to be done.
-- **PersonaPlex is not real-time on GB10 upstream.** It measured 99–152 ms per 80 ms frame. It cannot speak external text through its shipped server, and it is not deployed.
-- **The guard is lexical, not semantic.** Honest "the evidence does not establish …" caveats are accepted only in a closed grammar, and anything else is rejected. A rules-written note says when the evidence does not settle the question. Numbers are matched by value and unit, not by meaning. A sentence that cites a supported claim is **not** checked for entailment, so a misbehaving model could attach an unsupported statement to an unrelated supported claim. This gap predates 0.7.0 and is open as an owner decision. The self-critique only flags sentences. The model sees at most 12 findings and adds about 4–5 s to each answer.
-- **Ambiguous subjects.** Research has no notion of word sense. "When was Rust first released?" can be answered about the video game rather than the programming language (open, high severity).
-- **Verified on the Spark without root (2026-11-22; [hardening and storage](docs/operations/HARDENING_VERIFICATION.md), [TLS](docs/operations/TLS.md), [soak](docs/autonomy/RESEARCH_POLICY.md#9-soak-results), [remote inference](docs/architecture/COGNITIVE_INFERENCE.md#7-remote-providers-live-contract-2026-11-22), [accessibility tree](docs/presence/ACCESSIBILITY.md#accessibility-tree-checks-console-and-pocket-2026-11-22)):**
-  - The console, the research worker, the checkpoint jobs and Pocket ran under their units' sandbox as transient systemd user units: status API, live SearXNG research, checkpoint and verify, pairing. The kernel enforced capabilities, seccomp, W^X, namespaces, a read-only system, private /tmp and devices, and memory and task limits.
-  - Pocket served a chain from `nsf pocket tls`. It was verified by `openssl s_client -verify_return_error` and by Chromium with the CA in a scratch NSS database, with negative controls.
-  - Instance, checkpoints, model cache and Docker data sit on LUKS2, swap is zram, and `nsf doctor` reports both.
-  - A 7-day accelerated autonomy soak with injected faults stayed inside the budgets with no drift, leaks or stuck leases. A wall-clock soak runs (`nsf-soak`).
-  - The remote-provider path of the inference gateway passed a live contract against vLLM rehearsed as a remote endpoint behind TLS, including the private-data consent gate.
-  - Accessibility-tree checks cover names, roles, live regions and focus order. Three live regions that were silent while empty are fixed.
-- **Not verified (owner-side):**
-  - The IP firewall (`IPAddressDeny`), `ProtectProc` and `User=` under the system manager (commands in HARDENING_VERIFICATION §5).
-  - Installing the CA on a physical Android phone and iPhone.
-  - A real external inference provider: run the live contract with `NSF_LIVE_REMOTE=1`.
-  - Days of wall-clock autonomy: read the `nsf-soak` report.
-  - A person using NVDA, Orca, TalkBack and VoiceOver (protocol in ACCESSIBILITY).
-  - Pocket on physical phones and tablets.
-  - Push notifications on a real phone: verified live only with headless Chromium through Google's FCM; the owner's guided test is in the [Pocket guide](mobile/README.md#guided-owner-test-on-a-real-phone).
-- **Scope.** Multi-node is minimal. Node identities, their requests and the Spark's research replies are signed, and enrolment is attested (ADR-042). There is no worker federation: the Spark is the only executing node. Voice and field replies are not signed. Idle unloading of models is opt-in (every timeout is off by default), and the live vLLM reload time through it is still to be measured on the owner's host. A forgotten voice session (or research task, knowledge item or source) is removed from older checkpoint files by an in-place, crash-safe rewrite. Evidence, epoch, partner and dataset forgets still leave older archives stale until `nsf checkpoint rebuild` replaces them, and an expiry does not rewrite archives.
-- **Release status.** The open items and the 0.7.0 acceptance matrix are in [RELEASE_DECISIONS](docs/qa/RELEASE_DECISIONS.md) and the QA reports.
+- **The guard is lexical, not semantic.** It compares words, not meaning. A faithful paraphrase in other words, or an honest caveat outside the closed grammar, is rejected; the extractive answer and the rules note remain. A sentence that swaps one word for an antonym, or that recommends something by its content alone, can pass. Numbers are matched by value and unit, not by meaning. Details: [Cognitive inference §6](docs/architecture/COGNITIVE_INFERENCE.md#6-limitations).
+- **Voice on real hardware rests on the owner's Voice check.** Recorded speech from public corpora gave a Whisper WER of 2.1 % on clean read speech, at most 3.2 % with noise down to 5 dB SNR, reverberation, far field or the telephone band, and 18.6 % on accented conversational English. Echo, rooms and phones were simulated, and the Voice check's own tests use a fake device. The owner's run on real hardware is still to be filed ([voice validation](docs/voice/VOICE_VALIDATION.md)).
+  - **Barge-in trade-off.** The thresholds were retuned so that a spoken "stop" interrupts reliably. In return, loud background noise or music stops playback falsely more often: about 4 times a minute with music at −30 dBFS. "Go on" resumes.
+  - **Echo without AEC.** Without the browser's echo cancellation, NeuroSciFi's own voice interrupts it. The terminal Voice check has no echo canceller, so it fails the echo step on open speakers.
+  - The command grammar is English only and recognises about two thirds of freely phrased commands.
+- **PersonaPlex is not real-time and stays opt-in.** On GB10 upstream it measured 99–152 ms per 80 ms frame. It cannot speak external text through its shipped server, is not deployed, and never answers a question.
+- **News rendering.** A page that needs more than 100 sub-requests renders incomplete. Answers about current events are usually single-source. Once web access is on, news rendering runs Chromium on news-site JavaScript by default; turn it off with `nsf web config --no-news-render` ([evidence](docs/quality/evidence/news_render_live_v2.json)).
+- **General discovery is thin without a key, and Brave is untested live.** An honest User-Agent and robots.txt compliance leave two key-free general engines: DuckDuckGo often answers with a CAPTCHA, and Mwmbl is a small index without dates. Brave has offline tests only; no valid key has been available to run it live. Browser impersonation will not be enabled.
+- **DOI records count as one source.** Independence groups join every claim from one host, and DOI records all resolve through doi.org, so distinct papers fetched that way count as one source group ([claim verification](docs/knowledge/CLAIM_VERIFICATION.md#6-independent-sources-and-syndication)).
+- **No worker federation.** Nodes submit, read, own and hand off research sessions, but the Spark that runs `nsf web work` is the only executing node. Voice and field replies are not signed ([research policy §6](docs/autonomy/RESEARCH_POLICY.md#6-pocket-research-and-nodes)).
+- **Owner-side checks.** These need root, handsets or time, and were not run on the reference host:
+  - the root-only hardening checks: the IP firewall (`IPAddressDeny=`), `ProtectProc=`, `IOWeight=`, `User=` and `DynamicUser=` ([hardening §5](docs/operations/HARDENING_VERIFICATION.md#5-owner-side-checks-system-manager-root));
+  - installing the CA on a physical Android phone and iPhone ([TLS §2](docs/operations/TLS.md#2-install-the-ca-on-a-phone)), and Pocket and push on real phones and tablets ([guided test](mobile/README.md#guided-owner-test-on-a-real-phone));
+  - a real external inference provider (`NSF_LIVE_REMOTE=1`), days of wall-clock autonomy (the `nsf-soak` report), and the live vLLM reload time through idle unloading;
+  - a person using NVDA, Orca, TalkBack or VoiceOver ([accessibility protocol](docs/presence/ACCESSIBILITY.md#manual-screen-reader-protocol-owner-side)).
+
+### Release status
+
+The 0.7.0 acceptance judgement, its evidence and the owner decisions still open are in [0.7.0 release acceptance](docs/qa/V0.7.0_RELEASE_ACCEPTANCE.md) and [Release decisions](docs/qa/RELEASE_DECISIONS.md).
 
 ### Interpretation of the research results
 
