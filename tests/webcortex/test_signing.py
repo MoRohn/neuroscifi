@@ -215,6 +215,16 @@ def test_attestation_is_bound_to_the_challenge_family_and_expiry(db):
     assert nodes.reject(db, key.fingerprint, T0 + 4) == 1 and nodes.pending(db, T0 + 4) == []
 
 
+def test_the_same_key_attested_by_a_new_pairing_supersedes_the_old_request(db):
+    """A reload forgets the pairing (POC-07) but not the key: the re-paired browser asks again with the same key."""
+    key = NodeKey()
+    for n in (1, 2):
+        device, fam = _device(db, n)
+        nodes.attest(db, device, fam, key.attestation(nodes.challenge(db, device, fam, f"pocket{n}", T0)), T0)
+    assert [p["pocket_label"] for p in nodes.pending(db, T0)] == ["pocket2"]
+    assert nodes.approve(db, key.fingerprint, "phone", T0)["device"] == _device(db, 2)[0]
+
+
 VECTORS = Path(__file__).resolve().parents[1] / "js" / "spark_vectors.json"
 
 

@@ -134,6 +134,9 @@ def attest(db, device, family, data, now) -> dict:
                           (alg, signing.b64(raw), fp, now, now + PENDING_SECONDS, device, row[1])).rowcount
         if done != 1:
             raise SignatureError("no_challenge", "the challenge was used meanwhile")
+        # The same key proved again by another pairing is the same browser re-paired (a reload forgets the pairing,
+        # POC-07; the key cannot leave it): the newer request supersedes, so the owner's approval stays unambiguous.
+        db.execute("DELETE FROM node_enrolments WHERE key_fingerprint=? AND device!=?", (fp, device))
         state.log_event(db, None, "decision", {"node": "attested", "alg": alg, "fingerprint": fp}, now)
         store.bump_state_version(db)
     return status(db, device, family, now)
