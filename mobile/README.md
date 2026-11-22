@@ -62,7 +62,7 @@ With `--invitation-file`, the code goes to a new 0600 file. After a crash the fi
 
 Off by default. Pocket can queue a research question for your Spark only when both of these hold:
 
-1. The individual has web access and Pocket research on: `nsf web config` with `enabled` and `pocket_research` true (ADR-021, ADR-028).
+1. The individual has web access and Pocket research on: `nsf web config --enable --pocket-research` (`enabled` and `pocket_research` true; ADR-021, ADR-028). Both are needed: web access is never switched on implicitly, so `--pocket-research` alone leaves the Research panel hidden, and the command says so (stderr and `next_steps`, which also list `--instance-db` and a research worker).
 2. The bridge is started with the individual's database:
 
 ~~~sh

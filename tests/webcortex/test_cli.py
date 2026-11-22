@@ -35,6 +35,20 @@ def enable(capsys, db, *extra):
     return out
 
 
+def test_pocket_research_without_enable_says_what_else_is_needed(capsys, db):
+    """R6 setup (e): `nsf web config --pocket-research` without --enable did nothing visible on Pocket. Web access
+    is never switched on implicitly; the reply says it is still off and lists the other steps."""
+    assert main(["web", "config", "--pocket-research", "--db", db]) == 0
+    captured = capsys.readouterr()
+    out = json.loads(captured.out)
+    assert out["config"]["pocket_research"] is True and out["config"]["enabled"] is False
+    assert "nsf web config --enable" in out["next_steps"][0] and "Research panel" in out["next_steps"][0]
+    assert any("--instance-db" in s for s in out["next_steps"]) and any("nsf web work" in s for s in out["next_steps"])
+    assert captured.err.startswith("nsf web config: warning: Web Cortex is off")
+    code, both = nsf(capsys, "web", "config", "--enable", "--pocket-research", "--db", db)
+    assert code == 0 and not any("--enable" in s for s in both["next_steps"])
+
+
 def test_config_switches_and_validation(capsys, db):
     code, out = nsf(capsys, "web", "config", "--db", db)
     assert code == 0 and out["changed"] == [] and out["config"]["enabled"] is False

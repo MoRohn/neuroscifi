@@ -267,7 +267,20 @@ def _config(db, a, now):
     if "autonomous" in changes and (changes["autonomous"] or before):   # the owner's switch is recorded (D4)
         from . import autonomy
         autonomy.record_switch(db, bool(changes["autonomous"]), now, by="owner:cli")
-    return {"config": cfg.to_json(), "changed": sorted(changes)}
+    out = {"config": cfg.to_json(), "changed": sorted(changes)}
+    if changes.get("pocket_research"):     # R6 setup (e): the switch alone shows nothing on Pocket
+        steps = []
+        if not cfg.enabled:
+            steps.append("Web Cortex is off (enabled: false), so Pocket shows no Research panel yet: turn web access "
+                         "on with `nsf web config --enable` (it is never switched on implicitly)")
+        steps.append("start the bridge with the individual's database: nsf pocket serve ... --instance-db "
+                     f"{_db_path(a)}")
+        steps.append("run a research worker, or Pocket questions stay Queued: nsf web work (or nsf console "
+                     "--web-worker)")
+        out["next_steps"] = steps
+        if not cfg.enabled:
+            print(f"nsf web config: warning: {steps[0]}", file=sys.stderr)
+    return out
 
 
 def _status(db, a, now):
