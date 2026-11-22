@@ -18,7 +18,25 @@ from neuroscifi.instance import store
 from neuroscifi.webcortex import autonomy, evolution, state
 
 TOKEN = "e2e-autonomy-token-" + "a" * 30
-NOW = time.time()
+
+
+def anchor(t, history=1200, run=3600):
+    """NOW for this module: the wall clock, unless the fixtures' history (NOW - history) and the next `run` seconds
+    would straddle a UTC midnight. Daily budgets are per UTC day, so a ledger row and a decision on opposite sides
+    of midnight never meet (CI collected at 23:54 and built `decided` at 00:01). Then NOW moves back, never forward,
+    to `run` seconds before that midnight, and the console runs on the same shifted clock."""
+    midnight = (t + run) - (t + run) % 86400
+    return t if t - history >= midnight else midnight - run
+
+
+NOW = anchor(time.time())
+SKEW = NOW - time.time()
+
+
+def clock():
+    return time.time() + SKEW
+
+
 CHOSEN = "The Zephyr compiler version 4.2.0 was released on 17 November 2026"
 CERTAIN = "The Quartz editor licence changed to MIT in 2025"
 AUTO_USED = {"searches": 6, "pages": 8, "seconds": 16.9, "spend_usd": 0.0, "searxng_requests": 2, "engine_requests": 14}
@@ -42,7 +60,7 @@ def charge(db, task_id, scope, used):
     """A settled ledger row for today, as autonomy.settle leaves it after a task ran."""
     with store.write(db):
         db.execute("INSERT INTO autonomy_ledger(task_id,scope,day,state,allowed,used,opened_at,settled_at) "
-                   "VALUES(?,?,?,'settled','{}',?,?,?)", (task_id, scope, autonomy.day_of(time.time()),
+                   "VALUES(?,?,?,'settled','{}',?,?,?)", (task_id, scope, autonomy.day_of(NOW),
                                                           json.dumps(used), NOW, NOW))
 
 
@@ -60,7 +78,7 @@ class AutoConsole:
                 assert autonomy.idle(db, NOW - 1000)["action"] == "queued"
                 autonomy.set_policy(db, {"autonomous_daily": {"searches": 6}}, NOW - 800)
                 assert autonomy.idle(db, NOW - 500)["action"] == "refused"
-        self.server = ConsoleServer(self.path, 0, token=TOKEN)
+        self.server = ConsoleServer(self.path, 0, token=TOKEN, clock=clock)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.url = self.server.url
         self.base = f"http://127.0.0.1:{self.server.server_port}/"
