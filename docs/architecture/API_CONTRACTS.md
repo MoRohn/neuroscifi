@@ -381,11 +381,11 @@ JSON content type and 512-byte body rules apply.
 | Body | Result |
 |---|---|
 | `{action: "status"}` | 200 `{key, subscribed}`: the Spark's VAPID public key (base64url, uncompressed P-256) and whether this device has a subscription |
-| `{action: "subscribe", endpoint}` | 201 `{subscribed: true}`, or 200 when unchanged. The endpoint must be https on 443 of `fcm.googleapis.com`, `jmt17.google.com`, `updates.push.services.mozilla.com`, `*.push.apple.com` or `*.notify.windows.com`, else 400 `push_service`. The last device to register an endpoint holds it. |
+| `{action: "subscribe", endpoint}` | 201 `{subscribed: true}`, or 200 when unchanged. The endpoint must be https on 443 of `fcm.googleapis.com`, `jmt17.google.com`, `updates.push.services.mozilla.com`, `*.push.apple.com` or `*.notify.windows.com`, else 400 `push_service`. The last device to register an endpoint holds it. A new endpoint (first or rotated) is accepted at most 5 times an hour per device, else 429 `{error: "push_limit", retry_after}` (seconds); a rotation keeps the subscription's backoff. |
 | `{action: "unsubscribe"}` | 200 `{subscribed: false}` |
-| `{action: "test"}` | 202 `{after}`: seconds until the push may leave (at most one a minute per device); 409 `not_subscribed` |
+| `{action: "test"}` | 202 `{after}`: seconds until the push may leave (at most one a minute per device); 409 `not_subscribed`; at most 5 an hour per device, else 429 `{error: "push_limit", retry_after}` |
 
-Every push is an empty POST to the stored endpoint, with `TTL: 43200`, `Urgency: normal` and `Authorization: vapid t=<ES256 JWT>, k=<key>`. 404 or 410 deletes the subscription (after a 120 s grace for new registrations). 429 and 5xx are retried after `Retry-After`.
+Every push is an empty POST to the stored endpoint, with `TTL: 43200`, `Urgency: normal` and `Authorization: vapid t=<ES256 JWT>, k=<key>`. 404 or 410 deletes the subscription (after a 120 s grace for new registrations). 429 and 5xx are retried after `Retry-After`, and every attempt counts for the one-a-minute interval. Every reply of the `push` route, like every research reply, carries `X-NSF-Spark-Signature` (ADR-042 §4).
 
 **MCP (`nsf web mcp`, stdio JSON-RPC 2.0, protocol 2025-06-18).** Tools: `web_search`, `web_research`, `web_task`,
 `web_evidence`, `web_knowledge`. Retrieved content is wrapped in `safety.untrusted` envelopes. There are no forget,
