@@ -665,9 +665,11 @@ class Handler(BaseHTTPRequestHandler):
                     handoffs[fingerprint(code)]=(sponsor,now+300)
                     self.server.handoffs=handoffs
                 return self.reply(201,{"code":code})
-            if route == PUSH:
+            if route == PUSH:   # Pocket's call() verifies push replies like research replies (ADR-040, ADR-042)
                 from . import push
-                return self.reply(*push.route(self.server, auth[7:], data))
+                nonce = self.headers.get("X-NSF-Nonce", "")
+                status, payload = push.route(self.server, auth[7:], data)
+                return self.reply(status, payload, nonce=nonce if NONCE.fullmatch(nonce) else "")
             if route in RESEARCH:
                 nonce = self.headers.get("X-NSF-Nonce", "")
                 status, payload = research(self.server, auth[7:], route, data, raw, self.headers)

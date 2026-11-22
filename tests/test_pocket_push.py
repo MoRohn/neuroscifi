@@ -439,3 +439,22 @@ def test_one_browser_subscription_belongs_to_the_device_that_registered_it_last(
     assert spark.req("push", {"action": "status"}, c)[1]["subscribed"] is True
     assert subscribe(spark, c, fake.endpoint("rotated"))[0] == 201, "a rotated endpoint replaces the old one"
     assert set(subs(spark)) == {"rotated"}
+
+
+def test_push_replies_are_spark_signed_like_research_replies(spark, fake, devices):
+    """Security review B-0: Pocket's call() refuses an unsigned success, so an unsigned push reply kept the switch
+    hidden. Every push reply carries X-NSF-Spark-Signature over status, path, the request's nonce and the body."""
+    from neuroscifi.webcortex import signing
+    a, _, _ = devices
+    pin = signing.SparkKey.load_or_create(signing.key_path(spark.instance)).pin()
+
+    def signed():
+        status, path, nonce, body, headers = spark.last
+        sig = headers.get("X-NSF-Spark-Signature")
+        return sig is not None and signing.verify(pin["alg"], signing.unb64(pin["key"]), signing.unb64(sig),
+                                                  signing.canonical_response(status, path, nonce, body))
+    for body, status in (({"action": "status"}, 200), ({"action": "test"}, 409),
+                         ({"action": "subscribe", "endpoint": fake.endpoint("a")}, 201), ({"action": "test"}, 202),
+                         ({"action": "unsubscribe"}, 200)):
+        assert spark.req("push", body, a)[0] == status, body
+        assert signed(), body
