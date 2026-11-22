@@ -123,8 +123,8 @@ included); failed and cancelled runs keep the extractive report only.
     negator over an evidence word ("not established", "does not indicate", "does not contain information") is a
     hedge.
   The check runs after the number and unit checks, so the attribution repair (R1-04) and the self-critique
-  confirmation use it unchanged. Tests: `test_e1_*` (36 attacks that each passed before, 18 faithful paraphrases,
-  5 live sentences that must stay kept).
+  confirmation use it unchanged. Tests: `test_e1_*` (the two E1 examples, R5-O1 and 35 attacks, each of which
+  passed before; 18 faithful paraphrases; 5 live sentences that must stay kept).
 - **Honest caveats: a closed grammar** (`_caveat`, `insufficiency`, `gap_clause`). A sentence that only says what the
   evidence does not establish asserts no fact: it needs no supported claim, no hedge and (T2-03) no citation, and it
   may repeat the question's own numbers. Two security reviews (SECREVIEW_GUARD F1–F6, SECREVIEW2_GUARD N1–N4) showed
