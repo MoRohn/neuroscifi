@@ -36,7 +36,7 @@ def _bench(args):
 
 
 def _doctor(args):
-    report = doctor.run(args.db)
+    report = doctor.run(args.db, args.path or ())
     _emit(report)
     return 1 if doctor.failed(report) else 0
 
@@ -69,4 +69,6 @@ def register(sub):
 
     p = sub.add_parser("doctor", help="check runtime versions and, with --db, the instance file's safety")
     p.add_argument("--db", type=Path, default=None, help="instance database to inspect read-only")
+    p.add_argument("--path", type=Path, action="append", metavar="PATH",
+                   help="also report whether PATH is on an encrypted device (model cache, docker data root, ...)")
     p.set_defaults(handler=_doctor)

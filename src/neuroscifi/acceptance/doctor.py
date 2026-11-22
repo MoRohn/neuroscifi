@@ -2,7 +2,10 @@
 
 Every check returns {"name", "status": "ok"|"warn"|"fail", "detail"}. The doctor opens the database
 read-only (SQLite may still create its -wal/-shm sidecars, with the database file's permissions) and never
-claims encryption without evidence from the kernel.
+claims encryption without evidence from the kernel: the database's filesystem must be backed by a dm-crypt device
+(/sys/dev/block/*/dm/uuid CRYPT-...), every swap area must be zram or on dm-crypt, and tmpfs is reported as
+memory-backed. Anything else is "unknown" (warn), never "ok". --path adds other places (model cache, docker data
+root, archives) to the same check.
 """
 from importlib import metadata
 import json
@@ -11,6 +14,7 @@ from pathlib import Path
 import shutil
 import sqlite3
 import stat
+import subprocess
 import sys
 
 from ..instance.schema import SCHEMA_VERSION
@@ -19,6 +23,7 @@ FALLBACK_PINS = {"numpy": "2.3.5", "zstandard": "0.25.0"}
 MIN_PYTHON = (3, 12)
 MIN_SQLITE = (3, 24, 0)   # UPSERT (ON CONFLICT ... DO UPDATE) is used by the store
 NETWORK_FILESYSTEMS = {"nfs", "nfs4", "cifs", "smb3", "smbfs", "9p", "ceph", "glusterfs", "fuse.sshfs", "afs"}
+MEMORY_FILESYSTEMS = {"tmpfs", "ramfs"}
 
 
 def _check(name, status, detail):
@@ -143,15 +148,9 @@ def _crypt_uuid(device, seen=None):
     return None
 
 
-def _storage_checks(path):
-    mount = _mount(path)
-    if mount is None:
-        return [_check("filesystem", "warn", "unknown: /proc/self/mountinfo is unavailable"),
-                _check("encryption", "warn", "unknown: no mount information")]
-    network = mount["fstype"] in NETWORK_FILESYSTEMS
-    checks = [_check("filesystem", "warn" if network else "ok",
-                     f"{mount['fstype']} at {mount['mount_point']} (source {mount['source']}, device "
-                     f"{mount['device']})" + ("; SQLite WAL is unsafe on network filesystems" if network else ""))]
+def _block_device(mount):
+    """major:minor of the block device behind a mount; btrfs and others report an anonymous 0:N device in
+    mountinfo, so the source node is stat'ed instead. None when there is no block device."""
     device = mount["device"]
     if device.startswith("0:") and mount["source"].startswith("/dev/"):
         try:
@@ -159,15 +158,105 @@ def _storage_checks(path):
             device = f"{os.major(rdev)}:{os.minor(rdev)}"
         except OSError:
             pass
-    uuid = None if device.startswith("0:") else _crypt_uuid(device)
+    return None if device.startswith("0:") else device
+
+
+def _lsblk_chain(device):
+    """'root (crypt, btrfs) <- nvme0n1p2 (part, crypto_LUKS) <- nvme0n1 (disk)' from `lsblk -s`, or None. Display
+    only: the verdict comes from the kernel's dm uuid, never from parsing a tool's output."""
+    lsblk = shutil.which("lsblk")
+    if not lsblk:
+        return None
+    try:
+        done = subprocess.run([lsblk, "-s", "-J", "-o", "NAME,TYPE,FSTYPE", f"/dev/block/{device}"],
+                              capture_output=True, text=True, timeout=5, check=False)
+        nodes = json.loads(done.stdout)["blockdevices"]
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        return None
+    chain = []
+    while nodes:
+        node = nodes[0]
+        kind = ", ".join(x for x in (node.get("type"), node.get("fstype")) if x)
+        chain.append(f"{node.get('name')} ({kind})")
+        nodes = node.get("children") or []
+    return " <- ".join(chain) or None
+
+
+def _encryption(path, name="encryption"):
+    """Whether `path` is stored on dm-crypt, from /proc/self/mountinfo and /sys/dev/block (kernel evidence)."""
+    mount = _mount(path)
+    if mount is None:
+        return None, _check(name, "warn", "unknown: no mount information (/proc/self/mountinfo is unavailable)")
+    if mount["fstype"] in MEMORY_FILESYSTEMS:
+        return mount, _check(name, "warn", f"memory-backed ({mount['fstype']} at {mount['mount_point']}): nothing "
+                                           "is written to a disk, and everything here is lost at reboot")
+    device = _block_device(mount)
+    uuid = _crypt_uuid(device) if device else None
     if uuid:
         kind = uuid.split("-")[1] if uuid.count("-") >= 1 else "CRYPT"
-        checks.append(_check("encryption", "ok", f"backing device {device} is dm-crypt ({kind}) per "
-                                                 f"/sys/dev/block/{device}/dm/uuid or a device below it"))
-    else:
-        checks.append(_check("encryption", "warn",
-                             f"unknown: no dm-crypt evidence for device {device} ({mount['fstype']}); "
-                             "encryption at rest is not confirmed"))
+        chain = _lsblk_chain(device)
+        return mount, _check(name, "ok", f"backing device {device} is dm-crypt ({kind}) per "
+                                         f"/sys/dev/block/{device}/dm/uuid or a device below it"
+                                         + (f"; lsblk: {chain}" if chain else ""))
+    return mount, _check(name, "warn", f"unknown: no dm-crypt evidence for device {device or mount['device']} "
+                                       f"({mount['fstype']} from {mount['source']}); encryption at rest is not "
+                                       "confirmed")
+
+
+def _storage_checks(path):
+    mount, encryption = _encryption(path)
+    if mount is None:
+        return [_check("filesystem", "warn", "unknown: /proc/self/mountinfo is unavailable"), encryption]
+    network = mount["fstype"] in NETWORK_FILESYSTEMS
+    return [_check("filesystem", "warn" if network else "ok",
+                   f"{mount['fstype']} at {mount['mount_point']} (source {mount['source']}, device "
+                   f"{mount['device']})" + ("; SQLite WAL is unsafe on network filesystems" if network else "")),
+            encryption]
+
+
+def swap_check(swaps=None):
+    """Swap can hold any page of the process, so plaintext reaches a disk unless every swap area is RAM (zram) or
+    on dm-crypt. Reads /proc/swaps (or `swaps`, its text); a swap file is judged by the filesystem that holds it."""
+    try:
+        lines = (Path("/proc/swaps").read_text() if swaps is None else swaps).splitlines()[1:]
+    except OSError:
+        return _check("swap", "warn", "unknown: /proc/swaps is unavailable")
+    if not lines:
+        return _check("swap", "ok", "no swap: memory pages never reach a disk")
+    worst, details = "ok", []
+    for line in lines:
+        fields = line.split()
+        if len(fields) < 2:
+            continue
+        area, kind = fields[0].replace("\\040", " "), fields[1]
+        if kind == "partition" and Path(area).name.startswith("zram"):
+            details.append(f"{area}: zram (compressed RAM)")
+            continue
+        if kind == "partition":
+            try:
+                rdev = os.stat(area).st_rdev
+                device = f"{os.major(rdev)}:{os.minor(rdev)}"
+            except OSError:
+                device = None
+            encrypted = bool(device and _crypt_uuid(device))
+        else:
+            _, check = _encryption(Path(area), "swap")
+            encrypted = check["status"] == "ok"
+        details.append(f"{area}: {kind} " + ("on dm-crypt" if encrypted else "not shown to be encrypted"))
+        if not encrypted:
+            worst = "warn"
+    return _check("swap", worst, "; ".join(details))
+
+
+def path_checks(paths):
+    """Encryption of other places that hold the individual's data: model cache, docker data root, archives."""
+    checks = []
+    for item in paths:
+        item = Path(item)
+        if not item.exists():
+            checks.append(_check(f"encryption:{item}", "warn", f"unknown: {item} does not exist"))
+            continue
+        checks.append(_encryption(item, f"encryption:{item}")[1])
     return checks
 
 
@@ -216,6 +305,10 @@ def database_checks(path):
         checks.append(_check("free_space", status, f"{free} bytes free; reserve {min_free} bytes"
                                                    + ("; writes are paused" if status == "fail" else "")))
     checks.extend(_storage_checks(path))
+    checks.append(swap_check())
+    archives = path.resolve().with_name(f"{path.resolve().stem}.checkpoints")
+    if archives.is_dir() and _mount(archives) != _mount(path):
+        checks.append(_encryption(archives, "encryption:checkpoints")[1])
     checks.append(_cache_check(path))
     return checks
 
@@ -242,10 +335,13 @@ def _cache_check(path):
                                           "research run renames it to .corrupt-<time> and starts an empty cache")
 
 
-def run(db=None):
+def run(db=None, paths=()):
     checks = runtime_checks()
     if db is not None:
         checks.extend(database_checks(db))
+    elif paths:
+        checks.append(swap_check())
+    checks.extend(path_checks(paths))
     return {"checks": checks}
 
 

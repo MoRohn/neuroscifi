@@ -53,10 +53,11 @@ def test_doctor_passes_a_good_database(tmp_path, capsys):
         assert name in statuses
     for name in ("file_mode", "parent_directory", "journal_mode", "schema_version", "integrity"):
         assert statuses[name] == "ok", name
-    # Encryption is either proven by the kernel or reported as unknown; never asserted without evidence.
+    # Encryption is either proven by the kernel or reported as unknown (or memory-backed: a tmpfs /tmp); never
+    # asserted without evidence.
     encryption = next(c for c in report["checks"] if c["name"] == "encryption")
     assert encryption["status"] == "ok" and "dm-crypt" in encryption["detail"] or \
-        encryption["status"] == "warn" and encryption["detail"].startswith("unknown")
+        encryption["status"] == "warn" and encryption["detail"].startswith(("unknown", "memory-backed"))
     assert _cli(["doctor", "--db", str(path)]) == 0
     capsys.readouterr()
 
@@ -93,3 +94,39 @@ def test_doctor_checks_the_public_cache_file(tmp_path):
     cache.write_bytes(b"not a database" * 512)
     check = next(c for c in doctor.run(path)["checks"] if c["name"] == "public_cache")
     assert check["status"] == "warn" and "corrupt" in check["detail"]
+
+
+def test_doctor_reports_memory_backed_storage_and_never_claims_encryption_without_evidence(tmp_path, monkeypatch):
+    path = _instance(tmp_path)
+    monkeypatch.setattr(doctor, "_mount", lambda p: {"mount_point": "/tmp", "device": "0:59", "fstype": "tmpfs",
+                                                     "source": "tmpfs"})
+    encryption = next(c for c in doctor.run(path)["checks"] if c["name"] == "encryption")
+    assert encryption["status"] == "warn" and encryption["detail"].startswith("memory-backed (tmpfs")
+    monkeypatch.setattr(doctor, "_mount", lambda p: {"mount_point": "/", "device": "0:34", "fstype": "btrfs",
+                                                     "source": "/nonexistent/device"})
+    encryption = next(c for c in doctor.run(path)["checks"] if c["name"] == "encryption")
+    assert encryption["status"] == "warn" and encryption["detail"].startswith("unknown")
+    monkeypatch.setattr(doctor, "_mount", lambda p: None)
+    encryption = next(c for c in doctor.run(path)["checks"] if c["name"] == "encryption")
+    assert encryption["status"] == "warn" and encryption["detail"].startswith("unknown")
+
+
+def test_swap_is_ok_only_when_it_is_ram_or_absent(monkeypatch):
+    header = "Filename\tType\tSize\tUsed\tPriority\n"
+    assert doctor.swap_check(header)["status"] == "ok"
+    zram = doctor.swap_check(header + "/dev/zram0 partition 127848444 5012824 100\n")
+    assert zram["status"] == "ok" and "zram" in zram["detail"]
+    disk = doctor.swap_check(header + "/dev/nonexistent-swap partition 1000 0 -2\n")
+    assert disk["status"] == "warn" and "not shown to be encrypted" in disk["detail"]
+    monkeypatch.setattr(doctor, "_mount", lambda p: {"mount_point": "/", "device": "0:1", "fstype": "ext4",
+                                                     "source": "/dev/nonexistent"})
+    swapfile = doctor.swap_check(header + "/swapfile file 1000 0 -2\n")
+    assert swapfile["status"] == "warn" and "file not shown" in swapfile["detail"]
+
+
+def test_extra_paths_are_reported_and_a_missing_one_is_unknown(tmp_path):
+    report = doctor.run(None, [tmp_path, tmp_path / "absent"])
+    names = {c["name"]: c for c in report["checks"]}
+    assert f"encryption:{tmp_path}" in names and "swap" in names
+    assert names[f"encryption:{tmp_path / 'absent'}"]["detail"].startswith("unknown")
+    assert names[f"encryption:{tmp_path}"]["status"] in ("ok", "warn")
