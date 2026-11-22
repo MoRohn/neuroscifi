@@ -51,6 +51,10 @@ guard(sentences, bundle) is the authority, not the model. A sentence is rejected
     claims (names also by the cited titles), at most one new word per clause and two per sentence; an uncovered
     evaluative, instruction or recommendation, name, scope, comparative, time word or quantity, a negation no cited
     claim makes, a claim's negation it drops (_polarity) or a swapped subject is rejected;
+  - holds instruction content (_instruction: obligation, reader address, urging, a recommendation phrase, an
+    imperative at any clause head) beside a cited claim that is not supported, hedged or not (SECREVIEW5 C1; never
+    repaired by attribution); cites, beside others, a claim that supports none of it (C3); puts two numbers of one
+    clause in the opposite order to its cited claims;
   - contains instruction-like text (safety.scan_injection);
   - speculates: a prediction ("will", "likely", "may soon") is not a hedge for an unsupported claim, and a
     speculative sentence may not name anything that no cited claim or source title names (T1-09).
@@ -133,11 +137,18 @@ HEDGES = {"disputed": "according to {who}, though the claim is disputed",
           "conflicting": "according to {who}, though the sources disagree",
           "temporally_unresolved": "according to {who}, possibly out of date",
           "insufficient": "according to {who}", "not_evaluated": "according to {who}"}
-_OWN_ATTRIBUTION = re.compile(r"^\s*according to [^,]{1,60},\s*|,?\s*\baccording to [^,.;:!?]{1,60}[.!?]?\s*$",
+# The model's own attribution, replaced by the one of HEDGES: "according to" a source word ("one source", "the cited
+# sources", "a report"), never other uses ("handles strings according to the Unicode standard" keeps its content).
+_SOURCE_PHRASE = (r"according to (?:(?:one|a|an|another|the|two|three|several|multiple|some|other|both|its|their)\s+)?"
+                  r"(?:(?:cited|single|second|different|separate|available|same|independent|older|newer|recent|"
+                  r"official|other|release)\s+)*(?:sources?|reports?|records?|accounts?|articles?|stud(?:y|ies)|"
+                  r"papers?|claims?|evidence|websites?|sites?|pages?|documents?|documentation|announcements?|notes|"
+                  r"advisor(?:y|ies)|benchmarks?|surveys?|analys[ie]s|reviews?|data)")
+_OWN_ATTRIBUTION = re.compile(rf"^\s*{_SOURCE_PHRASE},\s*|,?\s*\b{_SOURCE_PHRASE}[^,.;:!?]{{0,40}}[.!?]?\s*$",
                               re.IGNORECASE)
 # "Yes, ..." / "No, ...": the model answering the question in a word no cited claim holds (the entailment check
 # reads "yes" as hedge vocabulary); compose() removes it, so the sentence says only its restatement.
-_ANSWER_WORD = re.compile(r"^\s*(?:yes|no)\s*[,;:!\u2014\u2013-]+\s*", re.IGNORECASE)
+_ANSWER_WORD = re.compile(r"^\s*(?:yes|no)\b(?!-)\s*[,;:!\u2014\u2013-]+\s*", re.IGNORECASE)   # never "No-one"
 
 
 def attribution(text: str, states, sources: int) -> str:
@@ -757,31 +768,67 @@ def answer_schema(b: dict) -> dict:
     return schema
 
 
-_OBLIGATION = frozenset("should must ought shall".split())
+_OBLIGATION = frozenset("should must ought shall mandatory recommend recommends recommended advise advises advised "
+                        "advisable".split())
+_YOU = frozenset("you your yours yourself yourselves".split())
+# urging: "users are urged to", "it is essential to uninstall", "need to", "had better"
+_URGING = re.compile(r"\burg(?:e|es|ed|ing)\b|\bhad better\b|\b(?:need|needs|needed|have|has|got) to\b|"
+                     r"\b(?:essential|imperative|vital|crucial|critical|important|necessary|urgent|wise|prudent|best|"
+                     r"better|encouraged|required|obliged|obligated|asked|told|warned|instructed|directed) to "
+                     r"(?:\w+ly )?(?:be|not|never|always|\w+)\b", re.IGNORECASE)
+_IMPERATIVE_HEAD = frozenset("""install reinstall uninstall upgrade downgrade update download use avoid run execute
+disable enable switch migrate pin remove delete replace visit click contact check ensure stop apply patch deploy trust
+ignore go read consider buy sell keep do don't never always try verify rebuild recompile restart rotate change revert
+purge wipe erase submit send paste enter type copy sign log register follow donate pay transfer audit beware block
+allow add move set turn reset quarantine isolate""".split())
+_HEAD_SKIP = frozenset("now then first also just please still instead so finally thus therefore today soon again "
+                       "and or but simply".split())
+_NOT_AN_OBJECT = frozenset("of is are was were has have had can will may might must should would could we they i he "
+                           "she".split())         # "do we know ...?" is a question
+_INSTRUCTION_CLAUSE = re.compile(r"[;:,()\[\]\u2014\u2013!?]|\s-+\s")
+
+
+def _instruction(text: str) -> list[str]:
+    """Instruction content in `text` (SECREVIEW5 C1): a modal of obligation or recommendation (should, must,
+    recommended, advisable, ...), an address to the reader (you, your), urging ("urged to", "it is essential to",
+    "need to"), a recommendation phrase ("makes sense", "the way to go") or an imperative at the head of any clause,
+    after leading adverbs or a "To ...," lead ("Promptly remove ...", "To stay safe, uninstall ..."). A word that
+    could be an imperative heads no instruction when a plural noun, "of" or a verb follows it ("Patch releases fix
+    bugs", "Use of the parser is deprecated"). The one detector of compose() and the guard."""
+    text = text or ""
+    words = [_e_plain(w) for w in _E_WORD.findall(text)]
+    found = [w for w in words if w in _OBLIGATION or w in _YOU]
+    found += [m.group(0).lower() for m in _URGING.finditer(text)]
+    found += [m.group(0).lower() for m in _RECOMMENDING.finditer(text)]
+    for part in _INSTRUCTION_CLAUSE.split(text):
+        toks = [_e_plain(w) for w in _E_WORD.findall(part)]
+        k = 0
+        while k < len(toks) and (toks[k] in _HEAD_SKIP or (toks[k].endswith("ly") and len(toks[k]) > 4)):
+            k += 1
+        if k < len(toks) and toks[k] in _IMPERATIVE_HEAD:
+            nxt = toks[k + 1] if k + 1 < len(toks) else ""
+            plural = nxt.endswith("s") and not nxt.endswith("ss") and nxt not in ("this", "its", "his", "us", "as")
+            if not (plural or nxt in _NOT_AN_OBJECT):
+                found.append(toks[k])
+    return list(dict.fromkeys(found))
 
 
 def _relays_instruction(text: str) -> bool:
-    """A modal of obligation, an address to the reader, or an imperative opening the sentence or a part after ";", ":"
-    or a dash ("The compiler is unsafe; uninstall it."). compose() attributes no such sentence: an instruction the
-    evidence relays is left to the guard's hedge and instruction rules exactly as the model wrote it."""
-    if any(_e_plain(w) in _OBLIGATION or _e_plain(w) in _ADDRESSEE for w in _E_WORD.findall(text)):
-        return True
-    for part in re.split(r"[;:\u2014\u2013]|\s-+\s", text):
-        first = _E_WORD.findall(_E_LEAD.sub("", part.strip()))[:1]
-        if first and _e_plain(first[0]) in _IMPERATIVE:
-            return True
-    return False
+    """compose() attributes no sentence with instruction content (_instruction): the guard rejects it whenever a cited
+    claim is not supported, hedged or not, so an instruction relayed from the evidence never reaches the reader."""
+    return bool(_instruction(text))
 
 
 def compose(value, b: dict) -> list[dict]:
     """The model's answer ({"sentences": [{"claims", "text"}]}) as guard input ({"text", "sources", "claims"}): the
     sources are the cited claims' own (a claim is never cited through a source that does not carry it), and a sentence
     citing a claim that is not supported gets the attribution its weakest state requires (attribution, HEDGES), so the
-    hedge cannot be forgotten or misworded. A leading "Yes," or "No," (an answer no claim gives) and a sentence the
-    model already wrote are removed. A caveat
-    of the closed grammar, a question (an attribution would make it a statement) and a relayed instruction
-    (_relays_instruction) get no attribution. Unknown claim ids are kept for the guard to reject; the guard judges
-    every composed sentence."""
+    hedge cannot be forgotten or misworded. A leading "Yes," or "No," (an answer no claim gives; never the "No" of
+    "No-one") and a sentence the model already wrote citing the same claims are removed. Of several cited claims, one
+    that supports none of the sentence (_claim_supports) is dropped, so the attribution counts only the claims that
+    support it (SECREVIEW5 C3). A caveat of the closed grammar, a question (an attribution would make it a statement)
+    and instruction content (_relays_instruction, the guard's _instruction) get no attribution. Unknown claim ids are
+    kept for the guard to reject; the guard judges every composed sentence."""
     claims = {c["id"]: c for c in b["claims"]}
     question = b.get("question") or ""
     out, seen = [], set()
@@ -790,13 +837,21 @@ def compose(value, b: dict) -> list[dict]:
             continue
         ids = [str(c).strip() for c in s.get("claims") or []]
         used = [claims[c] for c in dict.fromkeys(ids) if c in claims]
-        sources = list(dict.fromkeys(n for c in used for n in c["sources"]))
         text = _clean(s.get("text"))
         bare = _ANSWER_WORD.sub("", text)
         if bare != text and bare:
             text = bare[0].upper() + bare[1:]
-        key = _canon(text).rstrip(".!? ")
-        if key and key in seen:
+        if len(used) > 1 and not insufficiency(text, question):
+            # SECREVIEW5 C3: a cited claim that supports none of the sentence is no source for it, and does not count
+            # towards "the cited sources"
+            covering = [c for c in used if _claim_supports(text, c, question)]
+            if covering and len(covering) < len(used):
+                dropped = {c["id"] for c in used} - {c["id"] for c in covering}
+                ids = [i for i in ids if i not in dropped]
+                used = covering
+        sources = list(dict.fromkeys(n for c in used for n in c["sources"]))
+        key = (_canon(text).rstrip(".!? "), tuple(sorted(set(ids))))
+        if key[0] and key in seen:
             continue                        # the same sentence again (live: a model repeating its last items)
         seen.add(key)
         if used and text and not text.rstrip().endswith("?") and not insufficiency(text, question) and \
@@ -989,9 +1044,6 @@ effective ineffective successful critical severe advisable sensible wise prudent
 _DEONTIC = frozenset("""should must ought need needs needed required require requires mandatory advise advises advised
 urge urges urged recommend recommends recommended advisable""".split())
 _ADDRESSEE = frozenset("you your yours yourself yourselves everyone anyone everybody anybody".split())
-_IMPERATIVE = frozenset("""install reinstall uninstall upgrade downgrade update download use avoid run execute disable
-enable switch migrate pin remove delete replace visit click contact check ensure stop apply patch deploy trust ignore
-go read see consider buy sell keep do don't never always try""".split())
 _RECOMMENDING = re.compile(r"\bmakes? (?:good )?sense\b|\bthe way (?:to go|forward)\b|\bwould do well\b|\bgo-to\b|"
                            r"\b(?:is|are|be) worth (?:it|the|upgrading|installing|using|considering|trying)\b|"
                            r"\bthe (?:best|right|smart|safe|wise|recommended) (?:choice|option|bet|move|path|way)\b|"
@@ -1007,12 +1059,15 @@ previously formerly already week weeks month months year years ago tonight weeke
 thursday friday saturday sunday january february march april june july august september october november
 december""".split())
 _QUANTITY_WORDS = _NUMBER_WORDS | frozenset("one several multiple many numerous few various both single "
-                                            "countless".split())
+                                            "countless handful couple dozen dozens lot lots plenty".split())
+_NOT_ADVERB = frozenset("""reply supply family assembly italy anomaly monopoly butterfly ally rely apply imply comply
+multiply early""".split())
 _ENTAIL_NEG = frozenset("not no never none nothing neither nor cannot without non nobody nowhere".split())
 _PRIVATIVE = frozenset("""lack lacks lacked lacking absent absence missing unavailable fail fails failed failing drop
 drops dropped dropping remove removes removed removing discontinue discontinues discontinued stop stops stopped
 abandon abandons abandoned withdraw withdraws withdrew withdrawn cease ceases ceased omit omits omitted exclude
-excludes excluded""".split())
+excludes excluded immune spare spares spared sparing strip strips stripped stripping revert reverts reverted reverting
+free""".split())     # "free" only as "free of/from" (_polarity)
 _HEDGE_HEAD = frozenset("""believed known considered thought expected said reported likely seen understood deemed
 regarded""".split())
 _SYNONYMS = ({"released", "published", "launched"}, {"vary", "varies", "varied", "range", "ranges", "ranging"},
@@ -1031,13 +1086,13 @@ proven indicate indicates indicated state states stated show shows shown showed 
 specifies specified say says said report reported provide provides provided address addresses addressed determine
 determined clarify clarified document documented""".split())
 _DROP = frozenset("drop drops dropped dropping".split())
+_NO_HYPHEN = re.compile(r"\bno-(?=[^\W\d_])", re.IGNORECASE)
 _AMOUNT_LEAD = frozenset("by to from below under sharply slightly".split())
 _WHOLE_CLAUSE = frozenset("true case correct accurate".split())       # "it is not true that ...": negates the rest
 _BE = frozenset("is are was were be been being am remains remain remained".split())
 _E_COPULA = frozenset("is are was were remains remained seems seemed becomes became".split())
 _E_ADVERB = frozenset("very highly widely generally largely mostly often usually also now considered described "
                       "regarded seen viewed".split())
-_ADJECTIVE = re.compile(r"(?:ous|ful|ive|able|ible|al|ic|ant|ent|less|est|ar|ary|ile|ure|ly)$|^un\w+ed$")
 _E_CLAUSE = re.compile(r"(?<!\d),|,(?!\d)|[;:()\[\]—–]|\s-+\s|\b(?:that|which|who|whom|whose|while|whereas|"
                        r"but|although|though|because|since|as|so|unless|until|when|where|if|whether)\b"
                        r"|\b(?:and|or)\s+(?=(?:is|are|was|were|has|have|had|will|would|can|could|may|might|must|"
@@ -1045,8 +1100,6 @@ _E_CLAUSE = re.compile(r"(?<!\d),|,(?!\d)|[;:()\[\]—–]|\s-+\s|\b(?:that|whic
 _E_STRONG = re.compile(r"[;:]|\b(?:but|although|though|while|whereas|because|since|unless|however|despite)\b",
                        re.IGNORECASE)
 _E_WORD = re.compile(r"[^\W_][\w'’.-]*[^\W_]|[^\W_]")
-_E_LEAD = re.compile(r"^(?:\W*(?:however|but|still|also|so|now|please|then|first|finally|instead)\W+)+|"
-                     r"^according to [^,]{0,60},\s*", re.IGNORECASE)
 _DETERMINER = frozenset("the a an its their this these those arbitrary".split())
 
 
@@ -1097,6 +1150,8 @@ def _hard_class(w: str, name: bool) -> str | None:
     """The assertion-weight class of a content word, or None."""
     if name:
         return "name"
+    if w.endswith("ly") and len(w) > 4 and w not in _NOT_ADVERB:
+        return "manner"                     # "handles strings insecurely", "badly", "poorly", "dangerously"
     for cls, words in (("evaluative", _EVALUATIVE), ("instruction", _DEONTIC | _ADDRESSEE), ("scope", _SCOPE),
                        ("comparative", _COMPARATIVE), ("time", _TIME), ("quantity", _QUANTITY_WORDS)):
         if w in words:
@@ -1110,6 +1165,7 @@ def _polarity(text: str, wide: bool = False):
     scope over it; a word "unX" counts as X negated. A negator scopes over its next three content words, or with
     `wide` (the sentence side, read generously) over the rest of its clause; a privative after a copula also over
     the subject before it (backward)."""
+    text = _NO_HYPHEN.sub("no ", text)            # "No-one has exploited": "no" negates (SECREVIEW5 C2)
     toks = [(_e_plain(m.group(0)), m.start()) for m in _E_WORD.finditer(text)]
     words = [w for w, _ in toks]
     cuts = [m.start() for m in _E_CLAUSE.finditer(text)]
@@ -1124,7 +1180,10 @@ def _polarity(text: str, wide: bool = False):
         if words[j] in _DROP and j + 1 < len(words) and (words[j + 1] in _AMOUNT_LEAD or
                                                              any(c.isdigit() for c in words[j + 1])):
             return False                                   # "dropped by 30 percent": an amount, not a negation
-        return words[j] in _ENTAIL_NEG or words[j].endswith("n't") or words[j] in _PRIVATIVE
+        if words[j] == "free":
+            return j + 1 < len(words) and words[j + 1] in ("of", "from")      # "free of the flaw", not "free software"
+        return words[j] in _ENTAIL_NEG or words[j] in ("zero",) or words[j].endswith("n't") or \
+            words[j] in _PRIVATIVE
 
     def about_evidence(i):
         """The negator at i scopes over an evidence word, past modifiers ("lack recent or verified evidence")."""
@@ -1149,6 +1208,16 @@ def _polarity(text: str, wide: bool = False):
             continue                                       # "not established", "does not indicate": a hedge
         scope = [j for j in range(i + 1, len(words)) if not any(toks[i][1] < c <= toks[j][1] for c in cuts) and
                  not negator(j) and content(j)]
+        if wide:
+            # (prompt lane A) the scope ends at the next negator that has a content word before it ("not X and not
+            # Y": each negates its own) and at "and"/"or" before a new subject ("... and NumPy 2.5.4 is patched")
+            later = next((k for k in range(i + 1, len(words)) if negator(k) and
+                          not any(toks[i][1] < c <= toks[k][1] for c in cuts)), None)
+            if later is not None and any(content(j) for j in range(i + 1, later)):
+                scope = [j for j in scope if j < later]
+            subject = next((m.start() for m in _AND_NAME.finditer(text) if m.start() > toks[i][1]), None)
+            if subject is not None:
+                scope = [j for j in scope if toks[j][1] < subject]
         scope = scope if wide else scope[:3]
         if scope and words[scope[0]] in _WHOLE_CLAUSE:
             inner = [j for j in range(scope[0] + 1, len(words)) if negator(j)]
@@ -1178,10 +1247,26 @@ def _polarity(text: str, wide: bool = False):
     return out, [(n, backward) for n, backward in negated if n], near
 
 
+def _root(stem: str) -> str:
+    """A noun's root for comparing "un-" words: "certainty" -> "certain"."""
+    return re.sub(r"(?:ity|ty|ness|li|ly)$", "", stem) if len(stem) > 6 else stem
+
+
+def _negator_pairs(text: str) -> set:
+    """Two negators with no content word between them ("not without", "never without", "does not lack")."""
+    ws = [_e_plain(w) for w in _E_WORD.findall(_NO_HYPHEN.sub("no ", text))]
+    neg = [i for i, w in enumerate(ws) if w in _ENTAIL_NEG or w.endswith("n't") or
+           (w in _PRIVATIVE and w != "free")]
+    return {(ws[a], ws[z]) for a, z in zip(neg, neg[1:])
+            if all(x in T.STOPWORDS or x in _MODIFIER or x in _BE for x in ws[a + 1:z])}
+
+
 def _role_swaps(raw: str, claim_texts) -> list[str]:
     """A past-tense verb the sentence shares with a claim whose subject in the sentence is not its subject in the
     claim, though the claim holds that word after the verb ("The legacy branch abandoned the maintainers" for "The
-    maintainers abandoned the legacy branch"). Passives are left alone."""
+    maintainers abandoned the legacy branch"); in two passives, an agent after "by" that is not the claim's agent of
+    that verb but stands elsewhere in the claim ("fixed by Google and reported by the maintainers" for "reported by
+    Google and fixed by the maintainers")."""
     def split(text):
         cuts = [m.start() for m in _E_CLAUSE.finditer(text)]
         toks = [(_e_plain(m.group(0)), sum(1 for c in cuts if c <= m.start())) for m in _E_WORD.finditer(text)]
@@ -1190,6 +1275,15 @@ def _role_swaps(raw: str, claim_texts) -> list[str]:
     def content(ws):
         return {_e_stem(w) for w in ws if w not in T.STOPWORDS and w not in _ENTAIL_META and
                 w not in _QUANTITY_WORDS and not any(c.isdigit() for c in w) and len(w) > 1}
+    def agent_of(ws, clause, j):
+        """The words after "by" at j, up to "and"/"or" or the end of the clause."""
+        out = []
+        for w, c in zip(ws[j:], clause[j:]):
+            if c != clause[j] or w in ("and", "or"):
+                break
+            out.append(w)
+        return out
+
     out = []
     mine, mine_clause = split(raw)
     for claim in claim_texts:
@@ -1198,6 +1292,12 @@ def _role_swaps(raw: str, claim_texts) -> list[str]:
             if not v.endswith("ed") or v in _BE or mine.count(v) != 1 or theirs.count(v) != 1:
                 continue
             i, k = mine.index(v), theirs.index(v)
+            if mine[i + 1:i + 2] == ["by"] and theirs[k + 1:k + 2] == ["by"]:
+                agent = content(agent_of(mine, mine_clause, i + 2))
+                their_agent = content(agent_of(theirs, their_clause, k + 2))
+                if agent and their_agent and not agent & their_agent and agent <= content(theirs):
+                    out.append(v)
+                continue
             if (i and mine[i - 1] in _BE) or (k and theirs[k - 1] in _BE) or "by" in mine[i + 1:i + 2] + \
                     theirs[k + 1:k + 2]:
                 continue                                   # a passive: roles are written the other way round
@@ -1257,7 +1357,7 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
                     held(p, o) for p, o in zip(parts, originals) if o[:1].isupper()):
                 cls = None                  # "AI-related": its name part is in the evidence
         clause = sum(1 for c in cuts if c <= at)
-        if not covered and not cls and k in complement and _ADJECTIVE.search(w) and clause not in asked:
+        if not covered and not cls and k in complement and clause not in asked:
             cls = "predicate"
         if not covered and not cls and clause not in asked and k > 0 and plain[k - 1] in ("and", "or") and \
                 w.endswith(("s", "ed")) and k + 1 < len(plain) and \
@@ -1275,13 +1375,9 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
         if not covered:
             uncovered.append((w, cls))
     out = []
-    lead = _E_WORD.findall(_E_LEAD.sub("", raw.strip()))[:1]
-    if lead and _e_plain(lead[0]) in _IMPERATIVE and not (claims.covers(_e_plain(lead[0]), strict=True) and
-                                                          any(d in claims.words for d in _DEONTIC)):
-        uncovered.append((_e_plain(lead[0]), "instruction"))
-    recommending = _RECOMMENDING.search(raw)
-    if recommending and not any(_RECOMMENDING.search(t) for t in claim_texts):
-        uncovered.append((recommending.group(0).lower(), "instruction"))
+    told = _instruction(raw)          # an imperative at any clause head, urging, a recommendation phrase (C1)
+    if told and not any(_instruction(t) for t in claim_texts):
+        uncovered += [(w, "instruction") for w in told]
     instructions = [w for w, cls in uncovered if cls == "instruction"]
     if instructions:
         out.append(f"gives an instruction its cited claims do not give: {', '.join(dict.fromkeys(instructions))}")
@@ -1303,8 +1399,13 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
     claim_negated_stems = {s for n, _ in claim_negated for s in n}
     # the word a negator of the sentence negates first (any word, for a subject negated backward: "X is missing")
     # must be one a cited claim negates or stands next to a negation
+    # (prompt lane B2) an "un-" word the sentence negates on its own may derive from the claim's ("uncertainty" for
+    # "uncertain")
+    un_roots = {_root(_e_stem(w[2:])) for t in claim_texts for w in map(_e_plain, _E_WORD.findall(t))
+                if w.startswith("un") and len(w) > 5}
     flips = [n for n, backward in mine_negated
-             if not any(s in claim_near or s in claim_negated_stems for s in (n if backward else n[:1]))]
+             if not any(s in claim_near or s in claim_negated_stems for s in (n if backward else n[:1])) and
+             not (len(n) == 1 and _root(n[0]) in un_roots)]
     if flips:
         out.append(f"negates what its cited claims do not negate: {'; '.join(' '.join(n) for n in flips)}")
     # the word a negator of a cited claim negates first may not be stated unnegated, unless a claim states it so too
@@ -1314,10 +1415,62 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
                s not in denied]
     if dropped:
         out.append(f"drops the negation of its cited claims: {', '.join(dict.fromkeys(dropped))}")
+    doubled = _negator_pairs(raw) - set().union(*(_negator_pairs(t) for t in claim_texts))
+    if doubled:                         # (prompt lane E) "not without", "does not lack": a double negation
+        out.append("states a double negation its cited claims do not state: " +
+                   ", ".join(" ".join(p) for p in sorted(doubled)))
     swaps = _role_swaps(raw, claim_texts)
     if swaps:
         out.append(f"changes who does what in its cited claims: {', '.join(swaps)}")
     return out
+
+
+def _claim_supports(text: str, claim: dict, question: str = "") -> bool:
+    """SECREVIEW5 C3: `claim` covers part of what `text` says: one of the sentence's content words other than a name
+    (or, in a sentence of names only, a name). A claim cited beside others for its subject's name alone ("NumPy 2.5.5
+    was released on 17 November" beside "NumPy 2.5.5 ships a backdoor") supports none of it."""
+    raw = _ENTAIL_META_PHRASE.sub(" ", _outside_gaps(_inline_refs(_clean(_norm(text)))[0], question))
+    vocabulary = _Vocabulary([claim.get("text") or ""])
+    names, others = [], []
+    spans = _E_WORD.findall(raw)
+    for k, w0 in enumerate(spans):
+        w = _e_plain(w0)
+        if not w or len(w) == 1 or any(c.isdigit() for c in w) or w in T.STOPWORDS or w in _ENTAIL_META or \
+                w in _ENTAIL_NEG or w in _UNIT_WORDS:
+            continue
+        name = any(c.isupper() for c in w0[1:]) or (w0[0].isupper() and k > 0)
+        (names if name else others).append(w)
+    return any(vocabulary.covers(w) for w in (others or names))
+
+
+_DATE_PART = re.compile(rf"\b\d{{4}}-\d{{2}}-\d{{2}}\b|\b\d{{1,2}}(?:st|nd|rd|th)?\s+{T.MONTH_RE}\b|"
+                        rf"\b{T.MONTH_RE}\.?\s+\d{{1,2}}\b|\b(?:19|20)\d\d\b", re.IGNORECASE)
+
+
+def _ordered_numbers(text: str) -> list[str]:
+    """The numbers and versions of `text` in order, without the parts of dates (a date may be written either way) and
+    of identifiers ("CVE-2026-1234")."""
+    text = _DATE_PART.sub(" ", text or "")
+    return list(dict.fromkeys(n for n, at in _number_positions(text)
+                              if not (at and (text[at - 1].isalpha() or text[at - 1] in "-_/")) and
+                              not text[at + len(n):at + len(n) + 1] in ("-", "_")))
+
+
+def _order_swaps(text: str, used) -> list[str]:
+    """Pairs of numbers or versions one clause of the sentence puts in the opposite order to every cited claim that
+    holds both ("The flaw affected NumPy 2.5.5 before the fix in NumPy 2.5.4" for "... 2.5.4 before the fix in NumPy
+    2.5.5"). Pairs in different clauses are not compared ("2.5.4 is affected, but 2.5.5 fixes the bugs found after
+    2.5.4")."""
+    theirs = [_ordered_numbers(c["text"]) for c in used]
+    swapped = []
+    for a0, z0 in _clauses(text):
+        mine = _ordered_numbers(text[a0:z0])
+        for i, a in enumerate(mine):
+            for z in mine[i + 1:]:
+                holding = [t for t in theirs if a in t and z in t]
+                if holding and not any(t.index(a) < t.index(z) for t in holding):
+                    swapped.append(f"{a} before {z}")
+    return swapped
 
 
 def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[dict], bool, list[str]]:
@@ -1333,8 +1486,20 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     cites += [n for n in inline_sources if n not in cites]
     ids += [c for c in inline_claims if c not in ids]
     reasons = []
+    held = " ".join(claims[c]["text"] for c in ids if c in claims)
+    # (prompt lane D) a code name the cited claim holds ("numpy.dtypes.StringDType": two dots, "_" or camelCase after
+    # a dot) ends no sentence; a capitalised word after a dot that is no camelCase name still starts one
+    # ("numpy.org.Upgrade now")
+    def code_name(m):
+        name = m.group(0)
+        segments = name.split(".")[1:]
+        if name in held and (name.count(".") >= 2 or "_" in name or re.search(r"\.[\w-]*[a-z][A-Z]", name)) and \
+                all(not x[:1].isupper() or re.search(r"[a-z][A-Z]", x) for x in segments):
+            return name.replace(".", "")
+        return name
+    single = re.sub(r"[\w-]+(?:\.[\w-]+)+", code_name, text)
     if _MORE_SENTENCES.search(_ABBREVIATION.sub(lambda m: m.group(0).replace(".", ""),
-                                                 text.translate(_PUNCT_ASCII))):
+                                                 single.translate(_PUNCT_ASCII))):
         reasons.append("holds more than one sentence")
     honest_gap = insufficiency(text, question)      # T2-03: "the evidence does not contain X" needs no supported claim
     if not cites and not honest_gap:
@@ -1384,7 +1549,11 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     if _DISAGREE.search(_NEGATED_DISAGREE.sub(" ", text)) and verdict_state not in CONFLICT_STATES and \
             not any(c["state"] in CONFLICT_STATES for c in used):
         reasons.append("says the sources disagree, but no cited claim is contested")
-    if _MANY_SOURCES.search(text) and len(set(cites)) < 2:
+    phrases = " ".join(c["text"] for c in used).lower()
+    if len(set(cites)) < 2 and any(           # (prompt lane C) the claim's own phrase after a preposition
+            m.group(0).lower() not in phrases or
+            not re.search(r"\b(?:of|from|in|between|across|among|with)\s+$", text[:m.start()], re.IGNORECASE)
+            for m in _MANY_SOURCES.finditer(text)):
         reasons.append("attributes it to several sources, but cites fewer than 2 distinct sources")
     reasons += _absence_problems(text, b)
     cited_sources = [by_source[n] for n in cites if n in by_source]
@@ -1400,6 +1569,18 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
         reasons.append(f"number/unit mismatch with the cited evidence: {'; '.join(mismatched)}")
     if used and not honest_gap:          # SEC-G-E1: no more than the cited claims say
         reasons += _unentailed(text, used, [x.get("title") or "" for x in cited_sources], question)
+        asserted = _outside_gaps(text, question)
+        told = _instruction(asserted)
+        if told and weak:
+            # SECREVIEW5 C1: an instruction is never relayed from a claim that is not supported, hedged or not (an
+            # obeyed injection: "Users should uninstall NumPy 2.5.5, according to one source.")
+            reasons.append("relays an instruction from a claim that is not supported: " + ", ".join(told))
+        idle = [c["id"] for c in used if len(used) > 1 and not _claim_supports(text, c, question)]
+        if idle:
+            reasons.append(f"cites {', '.join(idle)}, which support(s) none of what it says")   # C3
+        swapped = _order_swaps(asserted, used)
+        if swapped:
+            reasons.append(f"puts numbers in the opposite order to its cited claims: {'; '.join(swapped)}")
     if safety.scan_injection(text):
         reasons.append("instruction-like text")
     return text, cites, ids, used, is_hedged, reasons
@@ -1427,9 +1608,9 @@ RESTATE_CLAIM = 0.6        # share of one cited claim's content words the senten
 
 def _restates(text: str, used) -> bool:
     """The sentence repeats a cited claim in other words (and adds almost nothing): attributing it to its source
-    is then faithful. A relayed instruction or an added clause does not qualify."""
+    is then faithful. A relayed instruction (_instruction) or an added clause does not qualify."""
     from .claims import _stems
-    if ";" in text or not used:
+    if ";" in text or not used or _instruction(text):
         return False
     own = set(_stems(text))
     if not own:
