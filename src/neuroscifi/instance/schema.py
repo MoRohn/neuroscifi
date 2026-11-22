@@ -422,6 +422,26 @@ MIGRATIONS = [
     DROP TABLE web_forgotten;
     ALTER TABLE web_forgotten_v11 RENAME TO web_forgotten;
     """,
+    # ---- version 12 (signed node identities and attested enrolment; ADR-040 draft, webcortex/signing.py) ----------
+    """
+    -- A node's public key, its algorithm (Ed25519 or ECDSA-P256) and fingerprint, recorded when the owner approves
+    -- an attested enrolment. `signed` marks a node enrolled with a key: its state-changing requests must be signed.
+    -- Nodes enrolled before version 12 keep signed=0 and no key, and must re-enrol. Revocation deletes the key.
+    ALTER TABLE autonomy_nodes ADD COLUMN alg TEXT;
+    ALTER TABLE autonomy_nodes ADD COLUMN public_key TEXT;
+    ALTER TABLE autonomy_nodes ADD COLUMN key_fingerprint TEXT;
+    ALTER TABLE autonomy_nodes ADD COLUMN signed INTEGER NOT NULL DEFAULT 0;
+    -- One pending enrolment per paired device: a Spark-issued challenge bound to the family, the node id and an
+    -- expiry; once the device signed it, the key it proved, waiting for the owner to compare fingerprints.
+    CREATE TABLE node_enrolments(
+      device TEXT PRIMARY KEY, family TEXT NOT NULL, pocket_label TEXT NOT NULL, challenge TEXT NOT NULL,
+      issued_at REAL NOT NULL, expires_at REAL NOT NULL, alg TEXT, public_key TEXT, key_fingerprint TEXT,
+      attested_at REAL);
+    -- Nonces of accepted signed requests, kept for twice the freshness window (replay defence).
+    CREATE TABLE node_nonces(
+      device TEXT NOT NULL, nonce TEXT NOT NULL, seen_at REAL NOT NULL, PRIMARY KEY(device, nonce));
+    CREATE INDEX node_nonces_age ON node_nonces(seen_at);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

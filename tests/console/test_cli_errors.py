@@ -100,6 +100,8 @@ def _main(*argv):
     (("web", "autonomy", "status", "--policy-json", '{"x": 1}'), 2, "only to `set`"),
     (("web", "node", "revoke", "ghost"), 2, "no enrolled node"),
     (("web", "node", "list", "x"), 2, "takes no LABEL"),
+    (("web", "node", "enrol", "phone"), 2, "needs --fingerprint"),
+    (("web", "node", "enrol", "phone", "--fingerprint", "AAAA-BBBB"), 2, "no pending enrolment"),
 ])
 def test_cli_failures_are_one_line_with_a_non_zero_exit(tmp_path, capsys, argv, code, text):
     """T5-C01, C04, C05, M03: tracebacks, overflow, negative limits accepted, failures that exited 0."""

@@ -7,8 +7,8 @@ import time
 
 import pytest
 
-from neuroscifi.pocket import server as bridge
 from neuroscifi.webcortex import autonomy, nodes, orchestrator, scheduler, state
+from nodekeys import enrol
 from test_pocket_research import PAGES, QUESTION, Spark, corpus, html, submit
 from neuroscifi.webcortex.fixtureweb import FixtureWeb
 
@@ -37,11 +37,6 @@ def devices(spark):
     a = spark.req("pair", {"code": "invite"})[1]["key"]
     b = spark.req("pair", {"code": spark.req("link", {}, a)[1]["code"]})[1]["key"]
     return a, b, spark.server.store.pair()
-
-
-def enrol(spark, token, label):
-    with spark.owner() as db:
-        nodes.enrol(db, bridge.fingerprint(token), spark.server.store.family(token), label, time.time())
 
 
 @pytest.fixture
@@ -173,7 +168,10 @@ def test_a_revoked_node_loses_its_sessions_and_the_continuation_stays_in_the_ses
     assert spark.req("research_continue", {"id": task_id}, b)[1]["error"] == "owned"
     with spark.owner() as db:
         assert nodes.revoke(db, "phone", time.time()) == 1
-    assert spark.req("research_session", {"id": cont, "action": "take"}, a) == (409, {"error": "not_a_node"})
+    # its key was deleted: a signed request now fails; unsigned, it is an ordinary paired device again
+    assert spark.req("research_session", {"id": cont, "action": "take"}, a) == (401, {"error": "node_revoked"})
+    assert spark.req("research_session", {"id": cont, "action": "take"}, a, sign=False) == \
+        (409, {"error": "not_a_node"})
     assert spark.req("research_session", {"id": cont, "action": "take"}, b)[1]["owner"] == "laptop"
 
 

@@ -350,7 +350,11 @@ def test_restore_drops_voice_sessions_and_audio_forgotten_after_the_checkpoint(i
 
 
 def _as_schema_10(db):
-    """Put a live individual back at schema 10: web_forgotten with the v10 kind CHECK (no voice kind)."""
+    """Put a live individual back at schema 10: web_forgotten with the v10 kind CHECK (no voice kind), and without
+    migration 12's node keys, enrolments and nonces."""
+    db.executescript("BEGIN IMMEDIATE; DROP TABLE node_enrolments; DROP TABLE node_nonces; "
+                     + "".join(f"ALTER TABLE autonomy_nodes DROP COLUMN {c}; "
+                               for c in ("alg", "public_key", "key_fingerprint", "signed")) + "COMMIT;")
     db.executescript("BEGIN IMMEDIATE; CREATE TABLE wf10(kind TEXT NOT NULL CHECK(kind IN ('task','knowledge',"
                      "'source_url','source_domain')), digest TEXT NOT NULL, forgotten_at REAL NOT NULL, "
                      "PRIMARY KEY(kind, digest)); INSERT INTO wf10 SELECT * FROM web_forgotten; "

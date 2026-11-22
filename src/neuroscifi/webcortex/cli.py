@@ -958,10 +958,11 @@ def register(sub):
                    choices=("status", "enable", "disable", "set", "candidates", "idle"))
     p.add_argument("--policy-json", help='set: e.g. \'{"autonomous_daily": {"searches": 10}}\'')
     p.add_argument("--limit", type=_positive_int, default=10)
-    p = cmd("node", nodes.cli, "research nodes: enrol a paired Pocket device as a node, revoke, list (RD-11)")
-    p.add_argument("node_action", choices=("list", "enrol", "revoke"))
-    p.add_argument("label", nargs="?")
-    p.add_argument("--pocket-db", help="enrol: the Pocket bridge's private database (read only)")
+    p = cmd("node", nodes.cli, "research nodes: list nodes and pending attested enrolments, enrol (approve) one by "
+            "its fingerprint, reject, revoke (RD-11, ADR-040)")
+    p.add_argument("node_action", choices=("list", "enrol", "reject", "revoke"))
+    p.add_argument("label", nargs="?", help="enrol: the node's name (hand-off target); revoke: the node to revoke")
+    p.add_argument("--fingerprint", help="enrol/reject: the key fingerprint the device shows (compare it first)")
 
     p = cmd("curiosity", _curiosity, "rank what would be most informative to research next")
     p.add_argument("--limit", type=_positive_int, default=10)

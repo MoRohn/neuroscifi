@@ -67,20 +67,27 @@ class Spark:
         self.server.instance_db = str(self.instance)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.host = f"127.0.0.1:{self.server.server_port}"
+        self.signers = {}      # token -> tests/nodekeys.NodeKey of an enrolled node: it signs as Pocket does
+        self.last = None       # (status, path, nonce, body bytes, response headers) of the last request
 
-    def req(self, route, data=None, token="", origin=None, raw=None):
+    def req(self, route, data=None, token="", origin=None, raw=None, headers=None, sign=True):
+        from neuroscifi.pocket import research_routes
         c = HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)
-        headers = {"Content-Type": "application/json"}
+        body = raw if raw is not None else json.dumps({} if data is None else data)
+        sent = {"Content-Type": "application/json", "X-NSF-Nonce": "test-nonce-" + str(time.monotonic_ns())}
         if token:
-            headers["Authorization"] = "Bearer " + token
+            sent["Authorization"] = "Bearer " + token
         if origin:
-            headers["Origin"] = origin
-        c.request("POST", "/api/" + route, raw if raw is not None else json.dumps({} if data is None else data),
-                  headers)
+            sent["Origin"] = origin
+        if sign and token in self.signers and isinstance(data, dict) and research_routes.state_changing(route, data):
+            sent.update(self.signers[token].headers(route, body.encode()))
+        sent.update(headers or {})
+        c.request("POST", "/api/" + route, body, sent)
         resp = c.getresponse()
-        status, body = resp.status, resp.read()
+        status, reply = resp.status, resp.read()
+        self.last = (status, "/api/" + route, sent["X-NSF-Nonce"], reply, dict(resp.getheaders()))
         c.close()
-        return status, json.loads(body) if body else {}
+        return status, json.loads(reply) if reply else {}
 
     def get(self, path):
         c = HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)

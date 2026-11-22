@@ -388,6 +388,42 @@ def _web_autonomy_set(c, p, q, b):
     return autonomy.status(c.db, c.now)
 
 
+def _web_nodes(c, p, q, b):
+    """Research nodes (ADR-040 draft): enrolled, needing re-enrolment or revoked, each with its key algorithm and
+    fingerprint; enrolments attested by a device and waiting for the owner; and this Spark's own key fingerprint
+    (the one devices pin at pairing), when the Pocket bridge has created it next to this instance."""
+    from ..webcortex import nodes, signing
+    key = signing.key_path(c.path)
+    try:
+        spark = signing.SparkKey.load_or_create(key).pin() if key.is_file() else None
+    except (OSError, ValueError):
+        spark = None
+    return {"nodes": nodes.listing(c.db), "pending": nodes.pending(c.db, c.now), "spark": spark}
+
+
+def _web_nodes_set(c, p, q, b):
+    """{"action": "enrol", "fingerprint", "label"}: the owner compared the fingerprint with the device and enrols
+    it under that name; {"action": "reject", "fingerprint"}; {"action": "revoke", "label"} deletes its key."""
+    from ..instance.errors import NotFound
+    from ..webcortex import nodes
+    action = b.get("action")
+    _fields(b, ("action",) + {"enrol": ("fingerprint", "label"), "reject": ("fingerprint",),
+                              "revoke": ("label",)}.get(action, ()))
+    if action == "enrol":
+        if not isinstance(b["fingerprint"], str):
+            raise ValidationError("fingerprint must be a string")
+        nodes.approve(c.db, b["fingerprint"], b["label"], c.now, by="owner:console")
+    elif action == "reject":
+        if not isinstance(b["fingerprint"], str) or not nodes.reject(c.db, b["fingerprint"], c.now):
+            raise NotFound("no pending enrolment has that fingerprint")
+    elif action == "revoke":
+        if not isinstance(b["label"], str) or not nodes.revoke(c.db, b["label"], c.now):
+            raise NotFound("no enrolled node has that name")
+    else:
+        raise ValidationError("action must be enrol, reject or revoke")
+    return _web_nodes(c, p, q, b)
+
+
 def _web_tasks(c, p, q, b):
     from ..webcortex import orchestrator
     q = _query(q, ("status", "limit"))
@@ -608,6 +644,8 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("POST", "web/config", _web_config_set),
     ("GET", "web/autonomy", _web_autonomy),
     ("POST", "web/autonomy", _web_autonomy_set),
+    ("GET", "web/nodes", _web_nodes),
+    ("POST", "web/nodes", _web_nodes_set),
     ("GET", "web/tasks", _web_tasks),
     ("POST", "web/tasks", _web_submit),
     ("GET", f"web/tasks/{SEGMENT}", _web_task),

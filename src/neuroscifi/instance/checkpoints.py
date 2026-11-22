@@ -241,8 +241,10 @@ def _replay(copy, forgets, now):
         web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now)
         voice = governance.replay_voice_forgets(copy, {(k, d) for k, d, _ in web}, now)
     for device, at in revoked:
-        hit = copy.execute("UPDATE autonomy_nodes SET revoked_at=? WHERE device=? AND (revoked_at IS "
-                           "NULL OR revoked_at<?)", (at, device, at)).rowcount
+        # revocation deletes the node's key (ADR-042 draft): a restore or rewrite never brings it back
+        hit = copy.execute("UPDATE autonomy_nodes SET revoked_at=?, alg=NULL, public_key=NULL, key_fingerprint=NULL "
+                           "WHERE device=? AND (revoked_at IS NULL OR revoked_at<?)", (at, device, at)).rowcount
+        copy.execute("DELETE FROM node_enrolments WHERE device=?", (device,))
         nodes_revoked += hit
         copy.execute("DELETE FROM autonomy_sessions WHERE owner=?", (device,))
         copy.execute("UPDATE autonomy_sessions SET offered_to=NULL, offer_expires_at=NULL "

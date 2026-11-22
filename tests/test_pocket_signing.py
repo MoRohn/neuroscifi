@@ -1,0 +1,142 @@
+"""Signed node identities over the real in-process Pocket bridge (ADR-040 draft; RESEARCH_POLICY.md section 6):
+the Spark key pinned at pairing signs every research reply; attested enrolment; signed state-changing requests from
+nodes, and each refusal (unsigned from a signed node, replay, stale, tampered body, another family, revoked,
+enrolled before signing)."""
+import json
+import stat
+import time
+from pathlib import Path
+
+import pytest
+
+from neuroscifi.pocket import server as bridge
+from neuroscifi.webcortex import nodes, signing
+from nodekeys import NodeKey, enrol
+from test_pocket_research import QUESTION, Spark, submit
+
+
+@pytest.fixture
+def spark(tmp_path):
+    s = Spark(tmp_path)
+    yield s
+    s.close()
+
+
+@pytest.fixture
+def devices(spark):
+    """Phone A paired by invitation (with the Spark pin), tablet B linked from it, C of another family."""
+    status, paired = spark.req("pair", {"code": "invite"})
+    assert status == 201
+    a = paired["key"]
+    b = spark.req("pair", {"code": spark.req("link", {}, a)[1]["code"]})[1]["key"]
+    spark.pin = paired["spark"]
+    return a, b, spark.server.store.pair()
+
+
+def verifies(spark, pin=None):
+    """Whether the last reply's X-NSF-Spark-Signature verifies with the pinned key (as Pocket checks it)."""
+    status, path, nonce, body, headers = spark.last
+    pin = pin or spark.pin
+    sig = headers.get("X-NSF-Spark-Signature")
+    return sig is not None and signing.verify(pin["alg"], signing.unb64(pin["key"]), signing.unb64(sig),
+                                              signing.canonical_response(status, path, nonce, body))
+
+
+def test_pairing_pins_the_spark_key_and_every_research_reply_is_signed(spark, devices, tmp_path):
+    a, b, _ = devices
+    key_file = Path(str(spark.instance) + ".spark-key")
+    assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+    own = signing.SparkKey.load_or_create(key_file)
+    assert spark.pin == own.pin() and spark.pin["alg"] == "Ed25519"
+    linked = spark.req("pair", {"code": spark.req("link", {}, a)[1]["code"]})[1]
+    assert linked["spark"] == spark.pin                                   # a linked device pins the same Spark
+    task_id = submit(spark, a, QUESTION)[1]["id"]
+    assert verifies(spark)
+    for route, data in (("research_list", {}), ("research_get", {"id": task_id}), ("research_evidence", {"id": task_id}),
+                        ("research_session", {"id": task_id, "action": "status"}), ("node_enrol", {"action": "status"}),
+                        ("research_get", {"id": "6a3c0e8e-2d6c-4f7e-9d47-1f0d2c9b8e11"})):     # a 404 is signed too
+        spark.req(route, data, b)
+        assert verifies(spark), route
+    status, path, nonce, body, headers = spark.last
+    # tampered body, another request's nonce, another path or status, or a key that is not the pinned one: refused
+    for forged in ((status, path, nonce, body.replace(b"{", b"{ ", 1)), (status, path, "other-nonce-12345678", body),
+                   (status, "/api/research_list", nonce, body), (200, path, nonce, body)):
+        assert not signing.verify("Ed25519", signing.unb64(spark.pin["key"]),
+                                  signing.unb64(headers["X-NSF-Spark-Signature"]), signing.canonical_response(*forged))
+    impostor = signing.SparkKey.load_or_create(tmp_path / "impostor.spark-key")
+    assert not verifies(spark, impostor.pin())                            # pinning mismatch
+    # field routes carry no research result and are not signed
+    spark.req("state", {}, a)
+    assert "X-NSF-Spark-Signature" not in spark.last[4]
+
+
+@pytest.mark.parametrize("alg", [signing.ED25519, signing.P256])
+def test_attested_enrolment_over_http(spark, devices, alg):
+    a, _, c = devices
+    assert spark.req("node_enrol", {"action": "status"}, a)[1]["state"] == "none"
+    status, challenge = spark.req("node_enrol", {"action": "challenge"}, a)
+    assert status == 200 and set(challenge) == {"challenge", "family", "node", "expires"}
+    assert challenge["expires"] - time.time() <= nodes.CHALLENGE_SECONDS
+    key = NodeKey(alg)
+    body = key.attestation(challenge)
+    assert len(json.dumps(body)) < bridge.BODY_LIMIT                  # P-256's 65-byte key fits the 512-byte bodies
+    assert spark.req("node_enrol", body, c) == (409, {"error": "no_challenge"})   # another family's device
+    status, out = spark.req("node_enrol", body, a)
+    assert status == 200 and out["state"] == "none" and out["pending"] == "attested"
+    assert out["pending_alg"] == alg and out["pending_fingerprint"] == key.fingerprint
+    assert spark.req("node_enrol", body, a) == (409, {"error": "no_challenge"})   # used once
+    with spark.owner() as db:
+        listed = nodes.pending(db, time.time())
+        assert [(p["alg"], p["fingerprint"], p["pocket_label"]) for p in listed] == \
+            [(alg, key.fingerprint, spark.server.store.label(a))]
+        nodes.approve(db, key.fingerprint, "phone", time.time(), by="owner:console")
+    status, out = spark.req("node_enrol", {"action": "status"}, a)
+    assert out == {"node": challenge["node"], "state": "enrolled", "label": "phone", "alg": alg,
+                   "fingerprint": key.fingerprint}
+    for bad in ({"action": "attest"}, {"action": "status", "x": 1}, {"action": "fly"}, {}):
+        assert spark.req("node_enrol", bad, a)[0] == 400, bad
+
+
+def test_signed_node_requests_and_their_refusals(spark, devices):
+    a, b, c = devices
+    key = enrol(spark, a, "phone")
+    enrol(spark, b, "tablet")
+    task_id = submit(spark, a, QUESTION)[1]["id"]                         # signed by the test client, as Pocket does
+    assert spark.req("research_submit", {"objective": QUESTION}, a, sign=False) == (401, {"error": "signature_required"})
+    assert verifies(spark)                                                # refusals are signed replies too
+    take = {"id": task_id, "action": "take"}
+    assert spark.req("research_session", take, a, sign=False) == (401, {"error": "signature_required"})
+    assert spark.req("research_session", {"id": task_id, "action": "status"}, a, sign=False)[0] == 200   # a read
+    assert spark.req("research_get", {"id": task_id}, a, sign=False)[0] == 200
+    raw = json.dumps(take).encode()
+    fixed = key.headers("research_session", raw)
+    assert spark.req("research_session", take, a, headers=fixed)[1]["owner"] == "phone"
+    assert spark.req("research_session", take, a, headers=fixed) == (401, {"error": "replayed_request"})
+    old = key.headers("research_session", raw, timestamp=time.time() - 121)
+    assert spark.req("research_session", take, a, headers=old) == (401, {"error": "stale_request"})
+    ahead = key.headers("research_session", raw, timestamp=time.time() + 121)
+    assert spark.req("research_session", take, a, headers=ahead) == (401, {"error": "stale_request"})
+    other = key.headers("research_session", json.dumps({"id": task_id, "action": "release"}).encode())
+    assert spark.req("research_session", take, a, headers=other) == (401, {"error": "signature_invalid"})  # tampered
+    cancel = key.headers("research_cancel", json.dumps({"id": task_id}).encode())
+    assert spark.req("research_cancel", {"id": task_id}, b, headers=cancel) == (401, {"error": "signature_invalid"})
+    assert spark.req("research_cancel", {"id": task_id}, c, headers=cancel) == (401, {"error": "unknown_node"})
+    assert spark.req("research_cancel", {"id": task_id}, c, sign=False) == (404, {})   # another family, unsigned
+    assert spark.req("research_cancel", {"id": task_id}, a)[1]["status"] == "cancelled"
+    with spark.owner() as db:
+        assert nodes.revoke(db, "phone", time.time()) == 1
+    assert spark.req("research_continue", {"id": task_id}, a) == (401, {"error": "node_revoked"})
+    assert spark.req("node_enrol", {"action": "status"}, a)[1]["state"] == "revoked"
+
+
+def test_a_node_enrolled_before_signing_is_told_to_re_enrol(spark, devices):
+    a, _, _ = devices
+    with spark.owner() as db:                                             # enrolled by 0.7.0 software: no key
+        nodes.enrol(db, bridge.fingerprint(a), spark.server.store.family(a), "phone", time.time())
+    task_id = submit(spark, a, QUESTION)[1]["id"]
+    assert spark.req("node_enrol", {"action": "status"}, a)[1]["state"] == "reenrol"
+    assert spark.req("research_session", {"id": task_id, "action": "take"}, a) == (409, {"error": "reenrol"})
+    enrol(spark, a, "phone")                                              # re-enrolment restores it, signed
+    assert spark.req("research_session", {"id": task_id, "action": "take"}, a)[1]["you"] is True
+    assert spark.req("research_session", {"id": task_id, "action": "release"}, a, sign=False) == \
+        (401, {"error": "signature_required"})

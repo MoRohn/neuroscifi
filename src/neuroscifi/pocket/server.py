@@ -29,7 +29,7 @@ ASSETS = {"/": ("index.html", "text/html; charset=utf-8"), "/mobile.js": ("mobil
           "/style.css": ("style.css", "text/css"),
           "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
           "/icon.svg": ("icon.svg", "image/svg+xml")}
-for asset in ("field-model.mjs","field-ui.mjs","research-ui.mjs","sw.js"):
+for asset in ("field-model.mjs","field-ui.mjs","research-ui.mjs","node-key.mjs","sw.js"):
     ASSETS["/"+asset]=(asset,"text/javascript")
 from ..presence import POCKET as PRESENCE_FILES, assets as presence_assets  # noqa: E402  shared presence + theme
 ASSETS.update(presence_assets(PRESENCE_FILES))
@@ -57,8 +57,10 @@ INVITATION_FORMAT = re.compile(r"[A-Za-z0-9_-]{32}\n?")
 ROUTES = {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link","mute","unmute"}
 # Web Cortex research (ADR-028): exist only with --instance-db and the individual's pocket_research switch on.
 RESEARCH = {"research_submit","research_list","research_get","research_cancel",
-            "research_evidence","research_continue","research_session"}   # 0.7.0: pocket/research_routes.py
+            "research_evidence","research_continue","research_session",   # 0.7.0: pocket/research_routes.py
+            "node_enrol"}                                                  # attested node enrolment (ADR-042 draft)
 PUSH = "push"   # Web Push opt-in (ADR-040, pocket/push.py): exists only with research on and --push-key
+NONCE = re.compile(r"[A-Za-z0-9_-]{16,64}")   # X-NSF-Nonce: binds the Spark's signed reply to this request
 # An omitted mode lets the Spark assess one from the question, as the console does.
 RESEARCH_MODES = ("quick_lookup","deep_research","fact_verification","comparative","scientific","technical")
 MAX_OBJECTIVE = 300
@@ -198,6 +200,12 @@ class Store:
             return db.execute("DELETE FROM devices WHERE key IN (SELECT device FROM members WHERE family IN "
                               "(SELECT m.family FROM members m JOIN devices d ON d.key=m.device WHERE d.label=?))",
                               (label,)).rowcount
+
+    def label(self, token):
+        """The pairing's label (list-pairings), shown to the owner beside a pending node enrolment."""
+        with closing(connect(self.path)) as db:
+            row = db.execute("SELECT label FROM devices WHERE key=?", (fingerprint(token),)).fetchone()
+        return row[0] if row else ""
 
     def family(self, token):
         """The pairing family fingerprint of a live credential (PermissionError when unknown or revoked)."""
@@ -342,6 +350,21 @@ def research_db(server):
     return None
 
 
+def spark_key(server):
+    """The Spark's Ed25519 signing key (webcortex/signing.py): --spark-key, else `<instance>.spark-key`; created once
+    with mode 0600. None while the bridge has no individual (no research, nothing to sign or pin)."""
+    from ..webcortex import signing
+    path = getattr(server, "spark_key_path", None)
+    if not path and getattr(server, "instance_db", None):
+        path = str(signing.key_path(server.instance_db))
+    if not path:
+        return None
+    cached = getattr(server, "_spark_key", None)
+    if cached is None or cached[0] != path:
+        cached = server._spark_key = (path, signing.SparkKey.load_or_create(path))
+    return cached[1]
+
+
 def research_on(server):
     db = research_db(server)
     if db is None:
@@ -432,8 +455,9 @@ def family_tag(family):
     return hashlib.sha256(("pocket-family:" + family).encode()).hexdigest()[:8] if family else "-"
 
 
-def research(server, token, route, data):
-    """Family-scoped research actions (ADR-028). Pocket queues and reads; the Spark's worker runs the task."""
+def research(server, token, route, data, raw=b"", headers=None):
+    """Family-scoped research actions (ADR-028). Pocket queues and reads; the Spark's worker runs the task.
+    `raw` and `headers` are the request's body bytes and headers, for a node's signature (ADR-042 draft)."""
     from ..instance.errors import Conflict, InstanceError, NotFound, ValidationError, WritesPaused
     from ..webcortex import autonomy, nodes, orchestrator, state
     from . import research_routes
@@ -443,7 +467,11 @@ def research(server, token, route, data):
         return 404, {}
     with closing(db):
         digest = state.family_digest(db, family)  # instance-salted; never the credential or its fingerprint
+        device = nodes.device_digest(db, fingerprint(token))
         try:
+            refused = research_routes.gate(db, digest, device, route, data, raw, headers or {}, time.time())
+            if refused:
+                return refused
             if route == "research_submit":
                 objective, mode = data.get("objective"), data.get("mode")
                 if not {"objective"} <= set(data) <= {"objective", "mode"}:
@@ -466,8 +494,8 @@ def research(server, token, route, data):
                     raise ValueError()
                 return 200, {"tasks": [task_summary(t) for t in orchestrator.listing(db, family=digest, limit=50)]}
             if route in research_routes.ROUTES or route == "research_cancel":   # 0.7.0: evidence, continue, sessions
-                return research_routes.handle(server, db, digest, nodes.device_digest(db, fingerprint(token)), route,
-                                              data, token_family=family)
+                return research_routes.handle(server, db, digest, device, route, data, token_family=family,
+                                              pocket_label=server.store.label(token))
             if set(data) != {"id"}:
                 raise ValueError()
             ident = event_id(data["id"])
@@ -517,9 +545,14 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("incomplete request body")
         return data
 
-    def reply(self, code, body=b"", mime="application/json"):
+    def reply(self, code, body=b"", mime="application/json", nonce=None):
+        """`nonce` (a research reply): sign status, path, the request's nonce and the body with the Spark's key."""
         if not isinstance(body, bytes):
             body = json.dumps(body, allow_nan=False).encode()
+        extra, spark = {}, spark_key(self.server) if nonce is not None else None
+        if spark is not None:
+            from ..webcortex.signing import b64, canonical_response
+            extra["X-NSF-Spark-Signature"] = b64(spark.sign(canonical_response(code, self.path, nonce, body)))
         self.replied = True
         getattr(self.server, "replying", lambda: None)()  # the request is complete: its deadline no longer applies
         self.send_response(code)
@@ -529,6 +562,7 @@ class Handler(BaseHTTPRequestHandler):
             "Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
             "Content-Security-Policy": "default-src 'none'; worker-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; manifest-src 'self'; img-src 'self'; media-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
             **({"Strict-Transport-Security": "max-age=31536000"} if isinstance(self.connection, ssl.SSLSocket) else {}),
+            **extra,
         }.items():
             self.send_header(name, value)
         self.end_headers()
@@ -593,7 +627,8 @@ class Handler(BaseHTTPRequestHandler):
             limit = RESEARCH_BODY_LIMIT if route in ("research_submit", PUSH) else BODY_LIMIT
             if self.headers.get_content_type() != "application/json" or not 2 <= size <= limit:
                 return self.reply(400)
-            data = json.loads(self.read_body(size))
+            raw = self.read_body(size)
+            data = json.loads(raw)
             if not isinstance(data, dict):
                 return self.reply(400)
             if route == "pair":
@@ -613,7 +648,8 @@ class Handler(BaseHTTPRequestHandler):
                             key=self.server.store.pair(sponsor=link[0])
                         except FamilyFull:
                             return self.reply(409, {"error": "family_full"})
-                return self.reply(201, {"key":key})
+                spark = spark_key(self.server)   # pinned by the device: it verifies every research reply with it
+                return self.reply(201, {"key":key, **({"spark": spark.pin()} if spark else {})})
             auth = self.headers.get("Authorization","")
             if not auth.startswith("Bearer "):
                 return self.reply(403)
@@ -633,7 +669,9 @@ class Handler(BaseHTTPRequestHandler):
                 from . import push
                 return self.reply(*push.route(self.server, auth[7:], data))
             if route in RESEARCH:
-                return self.reply(*research(self.server, auth[7:], route, data))
+                nonce = self.headers.get("X-NSF-Nonce", "")
+                status, payload = research(self.server, auth[7:], route, data, raw, self.headers)
+                return self.reply(status, payload, nonce=nonce if NONCE.fullmatch(nonce) else "")
             if route == "presence":  # family-scoped presence state (presence/routes.py)
                 from ..presence.routes import pocket_state
                 return self.reply(*pocket_state(self.server, auth[7:], data))
@@ -847,6 +885,9 @@ def main(argv=None):
     p.add_argument("--push-contact", metavar="URI", default=None,
                    help="the VAPID contact (mailto: or https:) the push service sees; default "
                         "mailto:pocket@neuroscifi.invalid")
+    p.add_argument("--spark-key", metavar="PATH",
+                   help="the Spark's Ed25519 signing key (created once, mode 0600; default: INSTANCE_DB.spark-key); "
+                        "devices pin its fingerprint at pairing and check every research reply against it")
     p.add_argument("--list-pairings", action="store_true")
     p.add_argument("--erase-pairing", metavar="LABEL")
     p.add_argument("--family", action="store_true",
@@ -892,6 +933,15 @@ def main(argv=None):
                 db.close()
         except (InstanceError, sqlite3.Error) as error:
             p.error(f"cannot open instance {a.instance_db}: {error}")
+    holder = argparse.Namespace(instance_db=a.instance_db, spark_key_path=a.spark_key)
+    if a.instance_db or a.spark_key:
+        try:
+            spark = spark_key(holder)
+        except ImportError:
+            p.error("signed research replies need the cryptography package: pip install 'neuroscifi[crypto]'")
+        except (OSError, ValueError) as error:
+            p.error(f"cannot use the Spark signing key: {error}")
+        print(f"Spark key fingerprint: {spark.fingerprint}", flush=True)
     ctx = None
     if a.cert:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -908,6 +958,7 @@ def main(argv=None):
     server.push = None
     if vapid is not None:
         server.push = push.Push(server, vapid, **({"subject": a.push_contact} if a.push_contact else {}))
+    server.spark_key_path, server._spark_key = holder.spark_key_path, getattr(holder, "_spark_key", None)
     server.invitation = secrets.token_urlsafe(24)
     server.invitation_deadline = time.monotonic() + INVITATION_SECONDS
     server.invitation_file = a.invitation_file
