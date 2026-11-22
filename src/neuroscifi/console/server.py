@@ -320,7 +320,7 @@ def _provider_health(db, cfg, now):
                "successes": 0, "failures": 0, "last_error": None, "last_ok_at": None, "last_failure_at": None,
                "since_ok": None, "p50_latency": None}
         rows.append(row)
-    if keyed["state"] in ("unconfigured", "rate_limited") or keyed["key"] == "insecure":
+    if keyed["state"] in ("unconfigured", "off", "rate_limited") or keyed["key"] == "insecure":
         row["health"] = keyed["state"]
     row.update({"key": keyed["key"], "daily_cap": keyed["daily_cap"], "used_today": keyed["used_today"],
                 "rate_limited_until": keyed["rate_limited_until"], "rate_limit_reason": keyed.get("rate_limit_reason"),

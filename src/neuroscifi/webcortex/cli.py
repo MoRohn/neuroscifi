@@ -140,7 +140,7 @@ def _searxng_view(db, cfg, now, *, container=True) -> dict:
 
 def _keyed_view(db, cfg, now) -> dict:
     """Keyed providers (ADR-034 amendment 1) as status, health and the console show them: whether a key is
-    configured (never the key), state (unconfigured / configured / failing / rate_limited), today's use of the daily
+    configured (never the key), state (unconfigured / off / configured / failing / rate_limited), today's use of the daily
     cap, the rate limit in force, the last error and the time since the last success. No network call."""
     from .providers import brave, daily_cap
     stored = _health_view(db, now).get("brave")

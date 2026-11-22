@@ -95,7 +95,8 @@ query per category to refresh that evidence. Engine breakers and counters appear
 
 Brave (`nsf web provider status`, `nsf web status` and `nsf web health` under `keyed_providers.brave`, and a `brave`
 row in the console's provider health, always shown): `key` is `configured`, `missing` or `insecure` (never the key);
-`state` is **unconfigured** (no key, or cap 0), **failing** (insecure key file, or the most recent call failed),
+`state` is **unconfigured** (no key), **off** (a usable key is stored but the daily cap is 0; `state_note` says
+"off (cap 0)" and how to raise it), **failing** (insecure key file, or the most recent call failed),
 **rate_limited** (Brave's limit in force, or today's cap used; `rate_limit_reason`, `rate_limited_until`) or
 **configured**; plus `last_error`, `since_ok` (seconds since the last success), `used_today` / `daily_cap` and the
 last `X-RateLimit-Remaining` per window. `nsf web health --probe` sends one Brave query (counted against the cap).

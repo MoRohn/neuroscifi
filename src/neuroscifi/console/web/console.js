@@ -1711,7 +1711,8 @@ function verdictBlock(r) {
 // from the circuit alone, which stays closed until several failures in a row.
 const PROVIDER_HEALTH = { healthy: ['healthy', 'ok'], failing: ['failing: last call failed', 'warn'], down: ['down', 'warn'],
   unchecked: ['no recent success', 'neutral'], unused: ['not used yet', 'neutral'],
-  rate_limited: ['rate-limited', 'warn'], unconfigured: ['not configured (no API key)', 'neutral'] };
+  rate_limited: ['rate-limited', 'warn'], unconfigured: ['not configured (no API key)', 'neutral'],
+  off: ['off (cap 0)', 'neutral'] };
 function providerBadge(p) {
   const fallback = p.state === 'closed' ? 'healthy' : p.state === 'open' ? 'down' : String(p.state ?? 'unknown');
   const [word, tone] = PROVIDER_HEALTH[p.health ?? fallback] ?? [String(p.health ?? p.state).replace('_', ' '), 'neutral'];

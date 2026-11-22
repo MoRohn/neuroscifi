@@ -295,8 +295,8 @@ def status(*, daily_cap: int = DEFAULT_DAILY_CAP, stored: dict | None = None, cl
     """What `nsf web provider status`, `nsf web status` and the console show for Brave. No network call; never the
     key. `stored` is the registry breaker snapshot persisted by the last run (procedural memory), when any.
 
-    state: 'unconfigured' (no key file, or a daily cap of 0), 'failing' (insecure key file, or the most recent
-    call failed), 'rate_limited' (Brave's own limit in force, or today's cap reached), else 'configured'."""
+    state: 'unconfigured' (no key file), 'failing' (insecure key file, or the most recent call failed), 'off' (a
+    usable key is stored but the daily cap is 0: Brave is switched off, not unconfigured), 'rate_limited' (Brave's own limit in force, or today's cap reached), else 'configured'."""
     now = clock()
     out = {"provider": "brave", **keys.key_state("brave"), "daily_cap": int(daily_cap),
            "endpoints": dict(ENDPOINTS), "docs": "https://api-dashboard.search.brave.com/api-reference/web/search/get"}
@@ -311,10 +311,15 @@ def status(*, daily_cap: int = DEFAULT_DAILY_CAP, stored: dict | None = None, cl
     out["since_ok"] = None if not isinstance(last_ok, (int, float)) else round(max(0.0, now - last_ok), 1)
     until = ledger.get("rate_limited_until")
     out["rate_limited_until"] = until if isinstance(until, (int, float)) and until > now else None
-    if out["key"] == "missing" or int(daily_cap) <= 0:
+    if out["key"] == "missing":
         out["state"] = "unconfigured"
     elif out["key"] == "insecure":
         out["state"], out["last_error"] = "failing", out["problem"]
+    elif int(daily_cap) <= 0:
+        out["state"] = "off"
+        out["state_note"] = ("off (cap 0): the key is stored but daily_provider_queries.brave is 0, so no query "
+                             "reaches Brave; raise the cap with nsf web config --set "
+                             "'daily_provider_queries={\"brave\": 30}'")
     elif out["rate_limited_until"] or used >= int(daily_cap):
         out["state"] = "rate_limited"
         out["rate_limit_reason"] = (ledger.get("rate_limit_reason") if out["rate_limited_until"]

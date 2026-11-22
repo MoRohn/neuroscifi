@@ -293,6 +293,25 @@ def test_status_health_and_console_never_contain_the_key(key, tmp_path, capsys):
         db.close()
 
 
+def test_a_stored_key_with_cap_0_is_off_not_unconfigured(key, tmp_path):
+    """R6 D9: key configured and cap 0 showed state 'unconfigured'. It is 'off (cap 0)' in the CLI and console."""
+    from neuroscifi.console import server
+    view = bv.status(daily_cap=0, clock=Clock())
+    assert view["key"] == "configured" and view["state"] == "off" and view["state_note"].startswith("off (cap 0)")
+    keys.remove_key("brave")
+    assert bv.status(daily_cap=0, clock=Clock())["state"] == "unconfigured"
+    keys.write_key("brave", KEY)
+    db = store.create(tmp_path / "i.sqlite", T0)
+    try:
+        state.set_config(db, {"daily_provider_queries": {"brave": 0}}, T0)
+        cfg = state.get_config(db)
+        assert wcli._keyed_view(db, cfg, T0)["brave"]["state"] == "off"
+        row = next(r for r in server._provider_health(db, cfg, T0) if r["name"] == "brave")
+        assert row["health"] == "off" and row["key"] == "configured"
+    finally:
+        db.close()
+
+
 # ---- rate limits, Retry-After and the daily cap ---------------------------------------------------------------
 
 def test_rate_limit_headers_parse():
