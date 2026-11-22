@@ -126,7 +126,8 @@ API_PROVIDERS = ("wikipedia", "arxiv", "openalex", "crossref", "pubmed", "pypi",
 NEWS_RENDER_MIN_TEXT = 500    # news/time-sensitive: a scripted page with less static text than this is rendered
 RENDER_MIN_SECONDS = 10.0     # a render is not started with less of the task's time budget left than this
 # news questions (ADR-040): the order of the candidates read after the dated, in-window pages
-LATER_ORDER = {"js_shell": 0, "thin_news_text": 0, "undated_news": 1, "encyclopedia": 1, "stale_news": 2}
+LATER_ORDER = {"js_shell": 0, "thin_news_text": 0, "undated_news": 1, "encyclopedia": 1, "stale_news": 1,
+               "stale_hit": 1}
 SNIPPET_ONLY = ("wikipedia",)  # search hits whose metadata is a snippet: read the article, never the snippet
 CONFIG_RECHECK = 2.0          # seconds between re-reads of the web configuration (enabled, deny_domains) in a run
 WEB_OFF = "Web access was turned off during the run"
@@ -1085,10 +1086,19 @@ class _Run:
         return "news" in (assessment.get("kinds") or []) or \
             assessment.get("freshness_class") in ("breaking", "volatile")
 
-    def stale(self, doc) -> bool:
-        """A page dated before the question's recency window ("this week": 7 days) began."""
-        window = (self.checkpoint.get("assessment") or {}).get("recency_window")
-        return bool(window and doc.published_at is not None and doc.published_at < self.clock() - float(window))
+    def required_window(self):
+        """The freshness the report will require (synthesis): the question's recency window ("this week": 7 days),
+        else its freshness class TTL (volatile: 2 days), with the owner's overrides."""
+        assessment = self.checkpoint.get("assessment") or {}
+        if assessment.get("recency_window"):
+            return float(assessment["recency_window"])
+        cls = assessment.get("freshness_class")
+        return float(temporal.ttl(cls, self.ttl_overrides())) if cls else None
+
+    def stale(self, published_at) -> bool:
+        """Dated before the required freshness window began (required_window)."""
+        window = self.required_window()
+        return bool(window and published_at is not None and published_at < self.clock() - window)
 
     def thin_news(self, doc, result):
         """For a news / time-sensitive question and a scripted HTML page (news sites often fill the article in
@@ -1164,9 +1174,10 @@ class _Run:
         refused type) costs requests, never a page slot; the request, byte and time budgets bound the attempts.
         In scientific/deep_research modes API records leave web_reserve() slots to web pages; slots no web page
         could fill go to the remaining API records afterwards. For a news / time-sensitive question (ADR-040) a
-        scripted page whose static HTML gave no text or no date (render_reason), an encyclopedia article and a page
-        dated before the recency window wait in `later` while the other candidates are read; slots still open then
-        go to them in LATER_ORDER, pages without text rendered when escalate() may."""
+        scripted page whose static HTML gave no text or no date (render_reason), an encyclopedia article, a page
+        dated before the required freshness window and a hit the search engine dates before it (not fetched yet)
+        wait in `later` while the other candidates are read; slots still open then go to them in LATER_ORDER,
+        pages without text rendered when escalate() may."""
         from . import safety
         from .extract import canonical_url
         assessment = self.checkpoint.get("assessment") or {}
@@ -1239,6 +1250,11 @@ class _Run:
                 if article and timely:        # an encyclopedia article is undated: after the dated news pages
                     later.append((r, None, hint_of(r), None, "encyclopedia"))
                     continue
+                if timely and not article and self.stale(r.published_at):
+                    # the search engine dates the hit before the window: not fetched until the others were read
+                    # (an engine date only orders candidates; it is never a source's date)
+                    later.append((r, None, hint_of(r), None, "stale_hit"))
+                    continue
                 try:
                     if article:
                         doc, as_api = self.wikipedia(r)
@@ -1267,7 +1283,7 @@ class _Run:
                     try:
                         static = safety.quarantine(_extract(result, hint))
                         why = self.render_reason(static, result)
-                        if timely and (why or self.stale(static)):   # dated, in-window pages first (ADR-040)
+                        if timely and (why or self.stale(static.published_at)):   # in-window pages first (ADR-040)
                             later.append((r, result, hint, static, why or "stale_news"))
                             self.renew()
                             continue
@@ -1286,9 +1302,9 @@ class _Run:
                 self.usage.charge(self.budget, pages=1)
                 self.record(doc, provider=r.provider, api=as_api, published_hint=hint,
                             search_date=None if as_api or hint is not None else _search_date(r))
-            # pages without text (to render) first, then undated pages and encyclopedia articles, then pages dated
-            # outside the question's window; rank order within each (sorted() is stable). A page without text that
-            # could not be rendered takes a slot only after all of them (`unread`).
+            # pages without text (to render) first, then undated pages, encyclopedia articles and pages (or hits)
+            # dated before the required window, in rank order (sorted() is stable). A page without text that could
+            # not be rendered takes a slot only after all of them (`unread`).
             unread = []
             for r, result, hint, static, why in sorted(later, key=lambda item: LATER_ORDER[item[4]]):
                 if full():
@@ -1297,6 +1313,8 @@ class _Run:
                 try:
                     if why == "encyclopedia":
                         doc, as_api = self.wikipedia(r)
+                    elif why == "stale_hit":
+                        doc, as_api = safety.quarantine(_extract(self.fetch(r.url), hint)), False
                     else:
                         doc, as_api = self.escalate(r.url, result, hint, static,
                                                     None if why == "stale_news" else why), False

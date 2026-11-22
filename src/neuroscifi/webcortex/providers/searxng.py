@@ -23,7 +23,8 @@ connection is retried once; a 429 is reported as `rate_limited` with its Retry-A
 Normalisation (SearchResult): title and snippet (`content`) stripped of HTML; `engine` = the engine that ranked
 it first, `metadata.engines` = every engine that returned it; `published_at` only when SearXNG sends a parseable
 `publishedDate` (never inferred); `metadata.retrieved_at` = when NeuroSciFi received it; `metadata.canonical_url`;
-`metadata.searxng_score`; `kind` 'academic' for the science category, else 'web'. Results are untrusted data.
+`metadata.searxng_score`; `kind` 'academic' for the science category, else 'web'. News results are interleaved
+engine by engine before the list is cut to the caller's limit (`_interleave`). Results are untrusted data.
 
 `health()` says "healthy" only when SearXNG answers AND some search returned real results within HEALTHY_WINDOW;
 an instance that only answers /healthz is "degraded" (see `verdict`).
@@ -319,7 +320,7 @@ class SearXNGProvider:
                                     snippet=strip_html(item.get("content"))[:1000], provider=self.name,
                                     engine=(engines or [""])[0], rank=len(out) + 1,
                                     kind=kind, published_at=published, metadata=metadata))
-        return out
+        return _interleave(out) if category == "news" else out
 
     def search(self, query: Query, limit: int, *, budget=None, usage=None) -> list[SearchResult]:
         from ..intent import searxng_route
@@ -438,6 +439,23 @@ class SearXNGProvider:
 
 
 # ---- the container -------------------------------------------------------------------------------------------
+
+def _interleave(results: list[SearchResult]) -> list[SearchResult]:
+    """News results taken in turn from each engine (by `engine`, each engine's own order kept), re-ranked, so one
+    engine cannot fill the list before it is cut to `limit`. Live (O-05): "NVIDIA" in the news category returned 30
+    Hacker News items ahead of 10 Bing News articles, and the 8 kept were all Hacker News threads, mostly years old."""
+    from dataclasses import replace
+    queues: dict[str, deque] = {}
+    for r in results:
+        queues.setdefault(r.engine or "", deque()).append(r)
+    out = []
+    while queues:
+        for engine in list(queues):
+            out.append(replace(queues[engine].popleft(), rank=len(out) + 1))
+            if not queues[engine]:
+                del queues[engine]
+    return out
+
 
 def honest_client(text: str) -> str:
     """Patch SearXNG's network/client.py (IMAGE_VERSION) so no request impersonates a browser: curl_cffi

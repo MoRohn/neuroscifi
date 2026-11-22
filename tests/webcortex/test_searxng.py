@@ -566,3 +566,17 @@ def test_cli_status_and_health_show_searxng(capsys, tmp_path, fake, monkeypatch)
     assert out["searxng"]["engines"]["duckduckgo"]["last_error"].startswith("captcha")
     code, out = nsf("web", "health", "--db", db)
     assert code == 0 and out["searxng"]["verdict"] == "healthy"
+
+
+def test_news_results_are_interleaved_engine_by_engine():
+    """Live (O-05): 30 Hacker News items ranked ahead of 10 Bing News articles filled the 8 kept results."""
+    from neuroscifi.webcortex.providers.searxng import _interleave
+    from neuroscifi.webcortex.types import SearchResult
+    hits = [SearchResult(url=f"https://{e}.example/{i}", title="t", snippet="s", provider="searxng", engine=e, rank=k)
+            for k, (e, i) in enumerate([("hackernews", 1), ("hackernews", 2), ("hackernews", 3), ("bing news", 1),
+                                        ("bing news", 2)], start=1)]
+    out = _interleave(hits)
+    assert [r.url for r in out] == ["https://hackernews.example/1", "https://bing news.example/1",
+                                    "https://hackernews.example/2", "https://bing news.example/2",
+                                    "https://hackernews.example/3"]
+    assert [r.rank for r in out] == [1, 2, 3, 4, 5]

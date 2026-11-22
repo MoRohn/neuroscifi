@@ -1129,6 +1129,30 @@ def test_news_questions_read_encyclopedia_and_out_of_window_pages_after_dated_on
     assert renderer.calls == 1 and "old.example" not in {s["domain"] for s in done["result"]["sources"]}
 
 
+def test_news_hits_the_search_engine_dates_before_the_window_are_fetched_last(individual, web):
+    """Live (O-05): "What is the latest news about NVIDIA?" read a 2022 Hacker News thread first (SearXNG dated it
+    2022-05-11). A hit the search engine dates before the required window (volatile: 2 days) is not fetched until
+    the other candidates were read; the engine date orders candidates only and never dates a source."""
+    db, path = individual
+    serve(web)
+    web.add("forum.example", "/item", html("Old thread", "2022-05-11T10:00:00Z", ["An old discussion thread."]))
+    web.add("fresh.example", "/nvidia", html("NVIDIA news", "2026-11-20T20:00:00Z", [
+        "NVIDIA shares fell 4 percent on Friday after the company reported data centre revenue below estimates."]))
+    old = {"url": "http://forum.example/item", "title": "NVIDIA thread", "snippet": "NVIDIA",
+           "published_at": T0 - 4 * 365 * 86400}
+    fresh = {"url": "http://fresh.example/nvidia", "title": "NVIDIA news", "snippet": "NVIDIA"}
+    task = orchestrator.submit(db, "What is the latest news about NVIDIA?", T0, mode="quick_lookup",
+                               budget={"max_pages": 1})
+    done = run_rendering(db, path, web, task, [old, fresh], FakeRenderer())
+    assert web.requests_to("forum.example") == []
+    assert [s["domain"] for s in done["result"]["sources"]] == ["fresh.example"]
+    two = orchestrator.submit(db, "What is the latest news about NVIDIA? More.", T0, mode="quick_lookup",
+                              budget={"max_pages": 2})
+    done = run_rendering(db, path, web, two, [old, fresh], FakeRenderer())
+    order = [e["detail"]["url"].split("/")[2] for e in state.events(db, two["id"]) if e["kind"] == "fetch"]
+    assert order == ["fresh.example", "forum.example"]          # read when a slot is left, never dropped
+
+
 def render_decisions(db, task_id):
     return [e["detail"]["reason"] for e in state.events(db, task_id)
             if e["kind"] == "decision" and e["detail"].get("render") is False]
