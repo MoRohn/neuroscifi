@@ -34,6 +34,10 @@ def register(sub):
                          help="the individual's database (default: $NSF_DB); the family tags are then the ones the "
                               "console and `nsf web node list` show")
     listing.set_defaults(handler=_list)
+    invite = ops.add_parser("invite", help="ask the running bridge for a new one-use pairing code (5 minutes), for "
+                                           "another family, without a restart (owner only: a 0600 local socket)")
+    invite.add_argument("--db", default="mobile-private.sqlite", help="the Pocket database the bridge serves")
+    invite.set_defaults(handler=_invite)
     erase = ops.add_parser("erase-pairing", help="remove a paired device")
     erase.add_argument("label")
     erase.add_argument("--family", action="store_true",
@@ -64,6 +68,20 @@ def _serve(a):
 
 def _list(a):
     server.main(["--db", a.db, "--list-pairings", *(["--instance-db", a.instance_db] if a.instance_db else [])])
+
+
+def _invite(a):
+    import sys
+    try:
+        reply = server.request_invitation(a.db)
+    except (OSError, ValueError) as error:
+        print(f"nsf pocket invite: no running Pocket bridge answered for {a.db} ({getattr(error, 'strerror', None) or error}). "
+              f"Start it with `nsf pocket serve --db {a.db} ...` (its first code is printed at start).", file=sys.stderr)
+        return 1
+    minutes = max(1, int(reply.get("expires_in") or server.INVITATION_SECONDS) // 60)
+    print(f"One-use pairing code ({minutes} minutes): {reply['code']}")
+    print("Enter it on the new device; it replaces any earlier terminal code. Devices already paired are unaffected.")
+    return 0
 
 
 def _erase(a):

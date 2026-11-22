@@ -899,6 +899,141 @@ def remove_invitation_file(server):
             pass
 
 
+# `nsf pocket invite` (R6 setup (b)): the owner asks the RUNNING bridge for a new one-use terminal pairing code, so
+# another family pairs without a restart. The request goes over a Unix socket only this user can use: a 0700
+# folder of its own ($NSF_POCKET_CONTROL_DIR, which the systemd unit sets to /run/neuroscifi; else
+# $XDG_RUNTIME_DIR/neuroscifi; else /tmp/neuroscifi-<uid>), the socket 0600, and the peer's uid
+# (SO_PEERCRED) must be ours. The new code replaces any earlier terminal code, is one-use and lasts
+# INVITATION_SECONDS; it goes back to the asking process only (never to stdout, logs or the invitation file).
+
+def control_path(db) -> Path:
+    """The control socket of the bridge serving Pocket database `db` (short: AF_UNIX paths are limited)."""
+    base = os.environ.get("XDG_RUNTIME_DIR")
+    folder = Path(os.environ["NSF_POCKET_CONTROL_DIR"]) if os.environ.get("NSF_POCKET_CONTROL_DIR") else \
+        Path(base) / "neuroscifi" if base and Path(base).is_dir() else Path(f"/tmp/neuroscifi-{os.getuid()}")
+    digest = hashlib.sha256(os.path.realpath(db).encode()).hexdigest()[:16]
+    return folder / f"pocket-{digest}.sock"
+
+
+def _private_folder(folder: Path):
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = os.lstat(folder)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+        raise OSError(errno.EPERM, "not a private folder of this user (0700)", str(folder))
+
+
+def issue_invitation(server) -> str:
+    """A new one-use terminal pairing code for `server`, valid INVITATION_SECONDS; it replaces any earlier one."""
+    with server.pair_lock:
+        server.invitation = secrets.token_urlsafe(24)
+        server.invitation_deadline = time.monotonic() + INVITATION_SECONDS
+        remove_invitation_file(server)       # the file's earlier code is no longer valid
+        return server.invitation
+
+
+def open_control(server, db):
+    """Listen on control_path(db) for `nsf pocket invite`; None (with a note on stderr) when it cannot."""
+    path = control_path(db)
+    try:
+        _private_folder(path.parent)
+        if path.exists() or path.is_symlink():
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                probe.connect(str(path))
+                raise OSError(errno.EADDRINUSE, "another bridge serves this database", str(path))
+            except (ConnectionRefusedError, FileNotFoundError):
+                os.unlink(path)               # left by a bridge that died
+            finally:
+                probe.close()
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        old = os.umask(0o177)
+        try:
+            sock.bind(str(path))
+        finally:
+            os.umask(old)
+        os.chmod(path, 0o600)
+        sock.listen(4)
+    except OSError as error:
+        print(f"nsf-pocket: `nsf pocket invite` is unavailable for this bridge: {error.strerror or error}",
+              file=sys.stderr, flush=True)
+        return None
+
+    def serve():
+        while True:
+            try:
+                conn, _ = sock.accept()
+            except OSError:
+                return                        # closed at shutdown
+            with conn:
+                try:
+                    conn.settimeout(5)
+                    creds = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
+                    if int.from_bytes(creds[4:8], sys.byteorder) != os.getuid():
+                        continue              # only the bridge's own user
+                    if conn.recv(64).strip() != b"invite":
+                        conn.sendall(b'{"error": "unknown request"}\n')
+                        continue
+                    code = issue_invitation(server)
+                    conn.sendall(json.dumps({"code": code, "expires_in": INVITATION_SECONDS}).encode() + b"\n")
+                except OSError:
+                    pass
+    threading.Thread(target=serve, daemon=True).start()
+    return sock, path
+
+
+def close_control(control):
+    if control is not None:
+        sock, path = control
+        sock.close()
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+
+
+def request_invitation(db, timeout=5.0) -> dict:
+    """Ask the running bridge for `db` for a new code ({"code", "expires_in"}); OSError when none answers."""
+    path = control_path(db)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(timeout)
+        sock.connect(str(path))
+        sock.sendall(b"invite\n")
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+    reply = json.loads(data or b"{}")
+    if not isinstance(reply, dict) or not isinstance(reply.get("code"), str):
+        raise OSError(errno.EPROTO, "the bridge refused the request", str(path))
+    return reply
+
+
+def certificate_names(cert_path) -> list[str]:
+    """The DNS names and IP addresses in a PEM certificate's subjectAltName (the first certificate of a chain)."""
+    try:
+        info = ssl._ssl._test_decode_cert(str(cert_path))
+    except (OSError, ssl.SSLError, AttributeError):
+        return []
+    return [value for kind, value in info.get("subjectAltName", ()) if kind in ("DNS", "IP Address")]
+
+
+def listen_lines(bind, port, cert) -> list[str]:
+    """What the bridge prints at start (R6 setup (a)): its listen URL and, with a certificate, the URL for each name
+    on it (what a phone may type; `nsf pocket tls init` put them there)."""
+    scheme = "https" if cert else "http"
+    host = f"[{bind}]" if ":" in bind else bind
+    lines = [f"Listening on {scheme}://{host}:{port}"]
+    if cert:
+        names = [n for n in certificate_names(cert) if n not in ("localhost", "127.0.0.1", "::1")
+                 and not n.startswith("::1")]
+        urls = [f"https://{'[' + n + ']' if ':' in n else n}:{port}" for n in names]
+        if urls:
+            lines.append("Open on your phone or tablet (names on the certificate): " + ", ".join(urls))
+    return lines
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--db", default="mobile-private.sqlite")
@@ -1031,6 +1166,12 @@ def main(argv=None):
         expiry.start()
     else:
         announcement = f"One-use pairing code (5 minutes): {server.invitation}"
+    control = open_control(server, a.db)
+    if control is not None:
+        try:
+            signal.signal(signal.SIGTERM, signal.default_int_handler)  # a service stop removes the control socket
+        except ValueError:
+            pass  # not the main thread
     stop = threading.Event()
     def upkeep():
         while not stop.wait(60):
@@ -1040,6 +1181,10 @@ def main(argv=None):
         threading.Thread(target=server.push.run, args=(stop,), daemon=True).start()
     try:
         print(announcement, flush=True)  # inside the try: a stop signal right after this line still cleans up
+        for line in listen_lines(a.bind, server.server_port, a.cert):
+            print(line, flush=True)
+        if control is not None:
+            print(f"Pair another family later without a restart: nsf pocket invite --db {a.db}", flush=True)
         server.serve_forever()
     except KeyboardInterrupt:
         pass
@@ -1048,6 +1193,7 @@ def main(argv=None):
         if server.push is not None:
             server.push.wake.set()
         server.server_close()
+        close_control(control)
         remove_invitation_file(server)
         if held is not None:
             os.close(held)

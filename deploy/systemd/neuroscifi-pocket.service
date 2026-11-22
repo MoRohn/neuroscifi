@@ -22,6 +22,9 @@ Environment=NSF_POCKET_DB=%S/neuroscifi/pocket.sqlite
 Environment=NSF_POCKET_BIND=127.0.0.1
 Environment=NSF_POCKET_PORT=8765
 Environment=NSF_POCKET_TLS_ARGS=
+# `nsf pocket invite` (a new pairing code without a restart) talks to the bridge over a 0600 socket here:
+#   sudo -u neuroscifi NSF_POCKET_CONTROL_DIR=/run/neuroscifi /opt/neuroscifi/venv/bin/nsf pocket invite --db ...
+Environment=NSF_POCKET_CONTROL_DIR=%t/neuroscifi
 EnvironmentFile=-/etc/neuroscifi/neuroscifi.env
 
 # The one-use pairing code goes to a 0600 file in the runtime directory (tmpfs, removed at stop),

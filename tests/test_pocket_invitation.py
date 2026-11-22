@@ -164,3 +164,96 @@ class InvitationFile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InviteRunningBridge(unittest.TestCase):
+    """R6 setup (b): pairing another family needed a bridge restart (one terminal code per start). `nsf pocket
+    invite` asks the RUNNING bridge for a new one-use code over a 0600 local socket only this user can use; (a) the
+    bridge prints where it listens."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.db = self.dir / "p.sqlite"
+        self.port = free_port()
+        runtime = self.dir / "run"
+        runtime.mkdir(mode=0o700)
+        self.env = {**os.environ, "XDG_RUNTIME_DIR": str(runtime)}
+
+    def start(self):
+        proc = subprocess.Popen([sys.executable, "-m", "neuroscifi.pocket.server", "--db", str(self.db),
+                                 "--port", str(self.port)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, env=self.env)
+        self.addCleanup(lambda: (proc.poll() is None and proc.kill(), proc.wait(), proc.stdout.close(),
+                                 proc.stderr.close()))
+        import threading
+        lines = []
+        reader = threading.Thread(target=lambda: lines.extend(proc.stdout.readline().strip() for _ in range(3)),
+                                  daemon=True)
+        reader.start()
+        reader.join(15)
+        self.assertEqual(len(lines), 3, f"the bridge printed {lines}")
+        return proc, lines
+
+    def invite(self):
+        return subprocess.run([sys.executable, "-m", "neuroscifi.cli", "pocket", "invite", "--db", str(self.db)],
+                              capture_output=True, text=True, env=self.env, timeout=30)
+
+    def pair(self, code):
+        return InvitationFile.pair(self, code)
+
+    def test_invite_issues_a_new_one_use_code_to_the_running_bridge(self):
+        proc, lines = self.start()
+        first = lines[0].rsplit(": ", 1)[1]
+        self.assertEqual(lines[1], f"Listening on http://127.0.0.1:{self.port}")
+        self.assertEqual(lines[2], f"Pair another family later without a restart: nsf pocket invite --db {self.db}")
+        self.assertEqual(self.pair(first), 201)                     # the start code pairs the first family
+        out = self.invite()
+        self.assertEqual(out.returncode, 0, out.stderr)
+        code = out.stdout.splitlines()[0].rsplit(": ", 1)[1]
+        self.assertTrue(out.stdout.startswith("One-use pairing code (5 minutes): "), out.stdout)
+        self.assertNotEqual(code, first)
+        sock = Path(self.env["XDG_RUNTIME_DIR"]) / "neuroscifi"
+        self.assertEqual(stat.S_IMODE(sock.stat().st_mode), 0o700)
+        (control,) = list(sock.iterdir())
+        self.assertTrue(stat.S_ISSOCK(control.stat().st_mode))
+        self.assertEqual(stat.S_IMODE(control.stat().st_mode), 0o600)
+        again = self.invite().stdout.splitlines()[0].rsplit(": ", 1)[1]
+        self.assertEqual(self.pair(code), 403, "a newer code replaces an earlier unused one")
+        self.assertEqual(self.pair(again), 201)
+        self.assertEqual(self.pair(again), 403, "one use")
+        proc.send_signal(signal.SIGTERM)
+        out, err = proc.communicate(timeout=10)
+        self.assertNotIn(code, out + err)
+        self.assertNotIn(again, out + err)
+        self.assertEqual(list(sock.iterdir()), [], "the socket is removed at shutdown")
+        gone = self.invite()
+        self.assertEqual(gone.returncode, 1)
+        self.assertIn("no running Pocket bridge answered", gone.stderr)
+
+    def test_an_invitation_expires_after_five_minutes(self):
+        import threading
+        from neuroscifi.pocket import server as bridge
+        srv = bridge.PocketServer(("127.0.0.1", 0), bridge.Handler)
+        self.addCleanup(srv.server_close)
+        srv.store, srv.pair_lock = bridge.Store(self.db), threading.Lock()
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        self.port = srv.server_port
+        before = time.monotonic()
+        code = bridge.issue_invitation(srv)
+        self.assertAlmostEqual(srv.invitation_deadline - before, bridge.INVITATION_SECONDS, delta=2)
+        srv.invitation_deadline = time.monotonic() - 1                # five minutes later
+        self.assertEqual(self.pair(code), 403)
+
+    def test_the_bridge_prints_the_names_on_its_certificate(self):
+        from neuroscifi.pocket import server as bridge, tls
+        try:
+            out = tls.init(self.dir / "tls", ["spark.local", "192.168.1.20", "localhost"], ca_dir=self.dir / "ca")
+        except tls.TLSError as error:
+            self.skipTest(str(error))
+        lines = bridge.listen_lines("192.168.1.20", 8765, out["files"]["fullchain"])
+        self.assertEqual(lines, ["Listening on https://192.168.1.20:8765",
+                                 "Open on your phone or tablet (names on the certificate): https://spark.local:8765, "
+                                 "https://192.168.1.20:8765"])

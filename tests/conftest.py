@@ -1,7 +1,9 @@
 """Suite-wide fixtures. The host's real memory pressure must not decide test outcomes: resources.monitor reads a
 fixed, unpressured memory sample unless a test replaces it (tests/test_resources.py). The owner's search API keys
 (~/.config/neuroscifi/search) must not either: NSF_SEARCH_KEY_DIR points at an empty location for every test but
-the live ones, so no test builds a keyed provider or spends a paid query unless it stores a key of its own."""
+the live ones, so no test builds a keyed provider or spends a paid query unless it stores a key of its own. Pocket
+bridges started by tests put their `nsf pocket invite` control sockets under a per-session XDG_RUNTIME_DIR, never
+the owner's."""
 import pytest
 
 GIB = 1024 ** 3
@@ -22,3 +24,11 @@ def steady_host_memory(monkeypatch):
 def no_owner_search_keys(request, monkeypatch, tmp_path_factory):
     if "live" not in request.keywords:
         monkeypatch.setenv("NSF_SEARCH_KEY_DIR", str(tmp_path_factory.getbasetemp() / "no-search-keys"))
+
+
+@pytest.fixture(autouse=True)
+def private_runtime_dir(monkeypatch, tmp_path_factory):
+    folder = tmp_path_factory.getbasetemp() / "runtime"
+    folder.mkdir(mode=0o700, exist_ok=True)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(folder))
+    monkeypatch.delenv("NSF_POCKET_CONTROL_DIR", raising=False)

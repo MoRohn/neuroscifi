@@ -62,7 +62,7 @@ Pocket issues one invitation per run, valid five minutes, usable once. The servi
 1. Start or restart Pocket: `sudo systemctl restart neuroscifi-pocket.service`. The journal says `Invitation written to /run/neuroscifi/invitation`.
 2. Read the code within five minutes: `sudo cat /run/neuroscifi/invitation`.
 3. On the phone, open the HTTPS address and enter the code. The file is deleted the moment the pairing succeeds, when the five minutes expire, and when the service stops. A wrong code does not consume it.
-4. For another phone or after expiry, restart the service (a new invitation each time). A paired phone can instead hand off to a tablet with **Link my phone or tablet**, which needs no operator step. A device and the devices linked from it form a **pairing family**; a family holds at most 6 devices, and the page refuses a hand-off code when it is full (HTTP 409 `family_full`).
+4. For another phone or after expiry, ask the running service for a new code (no restart; it replaces any unused earlier code and is valid five minutes, once): `sudo -u neuroscifi NSF_POCKET_CONTROL_DIR=/run/neuroscifi /opt/neuroscifi/venv/bin/nsf pocket invite --db /var/lib/neuroscifi/pocket.sqlite`. It prints the code on your terminal only (the request goes over a 0600 socket in `/run/neuroscifi` that only the service user can use). Restarting the service also issues a new invitation. A paired phone can instead hand off to a tablet with **Link my phone or tablet**, which needs no operator step. A device and the devices linked from it form a **pairing family**; a family holds at most 6 devices, and the page refuses a hand-off code when it is full (HTTP 409 `family_full`).
 
 List and erase pairings:
 
