@@ -195,3 +195,22 @@ def test_a_signed_request_is_bound_to_its_device_and_family_and_a_key_lives_on_o
     assert spark.req("research_submit", raw=body, token=new, sign=False, data=None, headers={
         "X-NSF-Timestamp": str(ts), "X-NSF-Nonce": nonce, "X-NSF-Signature": signing.b64(legacy)}) == \
         (401, {"error": "signature_invalid"})
+
+
+def test_a_node_enrolled_before_signing_neither_keeps_nor_renews_a_session(spark, devices):
+    """Security review A-6: a signed=0 node that owned a session at the upgrade kept cancelling and continuing it
+    unsigned, each action renewing its lease to +900 s, so the family's other devices stayed locked out (409)."""
+    a, b, _ = devices
+    task_id = submit(spark, a, QUESTION)[1]["id"]
+    now = time.time()
+    with spark.owner() as db:   # enrolled before migration 12 and owning the session at the upgrade
+        nodes.enrol(db, bridge.fingerprint(a), spark.server.store.family(a), "legacy", now)
+        device = nodes.device_digest(db, bridge.fingerprint(a))
+        with nodes.store.write(db):
+            db.execute("INSERT INTO autonomy_sessions(session,family,owner,acquired_at,expires_at) VALUES(?,?,?,?,?)",
+                       (task_id, nodes.state.family_digest(db, spark.server.store.family(a)), device, now, now + 60))
+    assert spark.req("research_session", {"id": task_id, "action": "status"}, b)[1]["owner"] is None
+    assert spark.req("research_cancel", {"id": task_id}, a)[0] == 200     # an ordinary family device, unsigned
+    with spark.owner() as db:
+        assert db.execute("SELECT expires_at FROM autonomy_sessions").fetchone()[0] == now + 60   # not renewed
+    assert spark.req("research_continue", {"id": task_id}, b)[0] == 201  # the family is not locked out

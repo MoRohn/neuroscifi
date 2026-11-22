@@ -442,12 +442,20 @@ MIGRATIONS = [
       device TEXT NOT NULL, nonce TEXT NOT NULL, seen_at REAL NOT NULL, PRIMARY KEY(device, nonce));
     CREATE INDEX node_nonces_age ON node_nonces(seen_at);
     """,
-    # ---- version 13 (retired node keys; ADR-042 draft section 5) ------------------------------------------------
+    # ---- version 13 (retired node keys; sessions of unsigned nodes released; ADR-042 draft sections 5 and 6) ----
     """
     -- Fingerprints of node keys that were live and then revoked or replaced by another enrolment, live on no node row
     -- since (webcortex/nodes.py). A checkpoint restore or rewrite revokes every restored node row holding one, so a
     -- copy made before a revocation or a rotation never brings the old key back as live.
     CREATE TABLE node_keys_retired(fingerprint TEXT PRIMARY KEY, retired_at REAL NOT NULL);
+    -- A node enrolled before signing (signed=0, no key) is not a node until it re-enrols, so it owns no research
+    -- session and is offered none: whatever it held when version 12 arrived is released (nodes.py also ignores such
+    -- an owner from now on).
+    DELETE FROM autonomy_sessions WHERE NOT EXISTS (SELECT 1 FROM autonomy_nodes n WHERE n.device=autonomy_sessions.owner
+      AND n.signed=1 AND n.public_key IS NOT NULL AND n.revoked_at IS NULL);
+    UPDATE autonomy_sessions SET offered_to=NULL, offer_expires_at=NULL WHERE offered_to IS NOT NULL AND NOT EXISTS
+      (SELECT 1 FROM autonomy_nodes n WHERE n.device=autonomy_sessions.offered_to AND n.signed=1
+       AND n.public_key IS NOT NULL AND n.revoked_at IS NULL);
     """,
 ]
 

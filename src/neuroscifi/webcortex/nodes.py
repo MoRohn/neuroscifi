@@ -340,7 +340,9 @@ def _row(db, session, now) -> dict | None:
     out = dict(zip(("session", "family", "owner", "acquired_at", "expires_at", "offered_to", "offer_expires_at"), row))
     if out["offer_expires_at"] is not None and out["offer_expires_at"] <= now:
         out["offered_to"] = out["offer_expires_at"] = None
-    out["live"] = out["expires_at"] > now
+    # only a live signed node owns a session: a lease held by a node enrolled before signing, or revoked meanwhile,
+    # binds nobody (migration 13 released those that existed at the upgrade)
+    out["live"] = out["expires_at"] > now and node(db, out["owner"]) is not None
     return out
 
 
@@ -360,7 +362,8 @@ def view(db, session, device, now) -> dict:
 
 
 def may_drive(db, task_id, device, now) -> bool:
-    """Whether `device` may cancel or continue the task: its session is unowned, expired, or owned by it."""
+    """Whether `device` may cancel or continue the task: its session is unowned, expired, owned by it, or held by a
+    device that is not a live signed node (_row)."""
     row = _row(db, session_of(db, task_id), now)
     return row is None or not row["live"] or row["owner"] == device
 
@@ -444,7 +447,9 @@ def release(db, task_id, device, family, now) -> dict:
 
 
 def renew(db, task_id, device, now):
-    """The owner's action renews its lease (no-op for anyone else)."""
+    """The owner's action renews its lease (no-op for anyone else, and for a device that is not a live signed node)."""
+    if node(db, device) is None:
+        return
     session = session_of(db, task_id)
     with store.write(db):
         db.execute("UPDATE autonomy_sessions SET expires_at=max(expires_at, ?) WHERE session=? AND owner=? AND "

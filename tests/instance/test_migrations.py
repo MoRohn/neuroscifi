@@ -293,3 +293,31 @@ def test_migration_11_is_atomic_and_replays_after_an_interruption(tmp_path, monk
             ("voice_session",)
     finally:
         db.close()
+
+
+# ---- migration 13: retired node keys; sessions held by nodes enrolled before signing are released ------------------
+
+def test_migration_13_releases_sessions_of_unsigned_nodes(tmp_path):
+    """Security review A-6: a node enrolled before signing (signed=0) that owned a session, or was offered one, when
+    version 12 arrived kept it; version 13 releases both, and keeps a signed node's session."""
+    path = tmp_path / "v12.sqlite"
+    store.create(path, T0).close()
+    raw = sqlite3.connect(path, isolation_level=None)
+    raw.executescript("BEGIN; DROP TABLE node_keys_retired; PRAGMA user_version=12; COMMIT;")
+    raw.executemany("INSERT INTO autonomy_nodes(device,family,label,capabilities,enrolled_by,enrolled_at,alg,"
+                    "public_key,key_fingerprint,signed) VALUES(?,?,?,'[\"node\"]','owner',?,?,?,?,?)",
+                    [("legacy", "fam", "old", T0, None, None, None, 0),
+                     ("signed", "fam", "new", T0, "Ed25519", "A" * 43, "F" * 39, 1)])
+    raw.executemany("INSERT INTO autonomy_sessions(session,family,owner,acquired_at,expires_at,offered_to,"
+                    "offer_expires_at) VALUES(?,?,?,?,?,?,?)",
+                    [("s1", "fam", "legacy", T0, T0 + 900, None, None),
+                     ("s2", "fam", "signed", T0, T0 + 900, "legacy", T0 + 300)])
+    raw.close()
+    db = store.open_existing(path)
+    try:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION >= 13
+        assert db.execute("SELECT session, owner, offered_to FROM autonomy_sessions").fetchall() == \
+            [("s2", "signed", None)]
+        assert db.execute("SELECT count(*) FROM node_keys_retired").fetchone()[0] == 0
+    finally:
+        db.close()
