@@ -6,7 +6,8 @@ A deletion that commits while the archive is being written makes the new checkpo
 `restore` never publishes a partial file and re-applies current tombstones, forgotten datasets (with their
 graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
 the same cascade as the live forget: governance.replay_web_forgets; forgotten voice sessions with their
-transcripts and audio: governance.replay_voice_forgets) and research-node revocations, and drops epoch streams and
+transcripts and audio: governance.replay_voice_forgets), research-node revocations and retired node keys, and the
+nonces of signed node requests still inside their replay window, and drops epoch streams and
 retained voice audio the instance no longer holds, so nothing forgotten (or revoked) comes back.
 `prune` keeps the newest valid archives and deletes the rest.
 `rewrite` (run after a voice-session or web forget: `rewrite_stale`) rewrites a stale archive in place without the
@@ -166,7 +167,7 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
         raise NotFound(f"Destination directory {dest.parent} does not exist")
     if _sha256(path) != row["sha256"]:
         raise Conflict(f"Checkpoint {checkpoint_id} fails verification: archive hash differs from the registry")
-    forgets = _forgets(db) if apply_tombstones else None
+    forgets = _forgets(db, now) if apply_tombstones else None
     old_umask = os.umask(0o077)
     try:
         with archive.partial_dir(dest.parent) as directory:
@@ -187,8 +188,9 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
     return {"checkpoint": checkpoint_id, "path": str(dest), **counts}
 
 
-def _forgets(db):
+def _forgets(db, now):
     """Everything the live instance has forgotten (or revoked), read once for a replay into an archive copy."""
+    from ..webcortex.signing import FRESH_SECONDS
     return {
         "tombstones": db.execute("SELECT id,seq,epoch,deleted_at,reason FROM tombstones").fetchall(),
         "datasets": [r[0] for r in db.execute("SELECT id FROM datasets WHERE deleted_at IS NOT NULL")],
@@ -202,7 +204,11 @@ def _forgets(db):
         # a revoked research node back as active (UAT T5-C03).
         "revoked": db.execute("SELECT device,revoked_at FROM autonomy_nodes WHERE revoked_at IS NOT NULL").fetchall(),
         # Keys revoked or replaced since (a rotation leaves no revoked row): no restored row may hold one live.
-        "retired": db.execute("SELECT fingerprint,retired_at FROM node_keys_retired").fetchall()}
+        "retired": db.execute("SELECT fingerprint,retired_at FROM node_keys_retired").fetchall(),
+        # Nonces of signed node requests accepted within the replay window (twice the freshness window, as
+        # nodes.verify_request keeps them): the copy must refuse those requests again too.
+        "nonces": db.execute("SELECT device,nonce,seen_at FROM node_nonces WHERE seen_at>=?",
+                             (now - 2 * FRESH_SECONDS,)).fetchall()}
 
 
 def _replay(copy, forgets, now):
@@ -216,6 +222,7 @@ def _replay(copy, forgets, now):
     live_audio = forgets["audio"] if forgets else None
     revoked = forgets["revoked"] if forgets else []
     retired = forgets["retired"] if forgets else []
+    nonces = forgets["nonces"] if forgets else []
     removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = 0
     web_removed = {"tasks": 0, "knowledge": 0, "sources": 0}
     invalidated = []
@@ -243,6 +250,8 @@ def _replay(copy, forgets, now):
         copy.executemany("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", web)
         web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now)
         voice = governance.replay_voice_forgets(copy, {(k, d) for k, d, _ in web}, now)
+    # a signed request accepted after the archive was written stays a replay in the copy (security review A-5)
+    copy.executemany("INSERT OR IGNORE INTO node_nonces(device,nonce,seen_at) VALUES(?,?,?)", nonces)
     for device, at in revoked:
         # revocation deletes the node's key (ADR-042 draft): a restore or rewrite never brings it back
         hit = copy.execute("UPDATE autonomy_nodes SET revoked_at=?, alg=NULL, public_key=NULL, key_fingerprint=NULL "
@@ -412,7 +421,7 @@ def rewrite(db, checkpoint_id, now):
     path = Path(row["path"])
     if not path.is_file():
         raise NotFound(f"Checkpoint file {path} is missing")
-    forgets = _forgets(db)
+    forgets = _forgets(db, now)
     old_umask = os.umask(0o077)
     try:
         with _folder_lock(path.parent), archive.partial_dir(path.parent) as directory:

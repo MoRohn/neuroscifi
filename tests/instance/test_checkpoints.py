@@ -681,3 +681,32 @@ def test_a_key_approved_again_after_revocation_is_live_again_and_restores_live(i
         assert _old_key_verifies(copy, device, fam, key) is True
     finally:
         copy.close()
+
+
+def test_restore_carries_over_recent_node_nonces(instance, tmp_path):
+    """Security review A-5: a signed request accepted after the checkpoint was accepted again by the restored copy
+    within its freshness window, because the nonce store rolled back with the restore."""
+    from neuroscifi.webcortex import nodes
+    from neuroscifi.webcortex.signing import SignatureError
+    db, path = instance
+    now = time.time()
+    device, fam = nodes.device_digest(db, "dev-1"), nodes.state.family_digest(db, "fam-1")
+    key = _node_key()
+    _attested(db, device, fam, key, now)
+    cp = checkpoints.create(db, path, tmp_path / "cps", now)
+    h = key.headers("research_cancel", b'{"id":"x"}', timestamp=now)
+    request = ("POST", "/api/research_cancel", b'{"id":"x"}', h["X-NSF-Timestamp"], h["X-NSF-Nonce"],
+               h["X-NSF-Signature"])
+    nodes.verify_request(db, device, fam, *request, now + 1)
+    with store.write(db):          # a nonce older than the replay window is not carried over
+        db.execute("INSERT INTO node_nonces(device,nonce,seen_at) VALUES(?,?,?)", (device, "o" * 16, now - 241))
+    out = checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", now + 3)
+    copy = store.open_existing(tmp_path / "r.sqlite")
+    try:
+        with pytest.raises(SignatureError) as refused:
+            nodes.verify_request(copy, device, fam, *request, now + 4)
+        assert refused.value.code == "replayed_request"
+        assert [r[0] for r in copy.execute("SELECT nonce FROM node_nonces")] == [h["X-NSF-Nonce"]]
+    finally:
+        copy.close()
+    assert out["node_revocations_applied"] == 0
