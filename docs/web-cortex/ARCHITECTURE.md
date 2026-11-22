@@ -182,6 +182,7 @@ temporal.supersedes(new: dict, old: dict) -> bool  ; temporal.describe_age(ts, n
 synthesis.synthesize(question, assessment, documents, clusters, *, now, usage, failures, ttl_overrides=None) -> dict  # the Report, §5
 # SUPPORTED_MIN_CONFIDENCE = 0.72 (= WebConfig.auto_provisional_min_confidence default)
 synthesis.context_pack(report: dict, *, max_tokens) -> dict  # bounded working-memory bundle with citations + uncertainty
+sense.separate(question, assessment, documents, names, *, mentions) -> dict|None   # word sense of the subject (EVIDENCE_AND_PROVENANCE §9)
 ```
 
 ### 4.4 Memory, orchestration, autonomy (`state.py`, `orchestrator.py`, `consolidate.py`, `curiosity.py`, `predictions.py`, `scheduler.py`, `services.py`)
@@ -241,8 +242,15 @@ scheduler.work(db_path, *, once=False, stop=None, ...) -> dict   # drains queued
  "verdict": null | {"label": "supported|disputed|insufficient|contested", "confidence": 0.7, "reasons": [...]},
  "comparison": null | {"items": [...], "rows": [...]},
  "methodology": null | [{"source": 2, "design": "in vitro", "sample": "n = 24", "kind": "primary|review|preprint"}],
- "usage": {...}, "budget": {...}}
+ "usage": {...}, "budget": {...},
+ "sense": null | {"name": "Rust", "sense": "software", "label": "the programming language", "by": "technical question",
+                  "others": ["a video game"], "sources": {"url": "software", ...}, "set_aside": ["url", ...],
+                  "note": "NeuroSciFi note: this answer is about Rust, the programming language. ..." | null}}
 ```
+
+`sense` is set when the sources read hold two or more senses of the question's subject ("Rust" the programming
+language and the video game): the sources of the other senses are read, listed and never cited
+(EVIDENCE_AND_PROVENANCE §9).
 
 `live` is true only if at least one cited source was retrieved live during this task; otherwise the report
 says `"live": false` and every source carries `retrieval_mode: "cache"`.
@@ -297,4 +305,5 @@ Additive changes made during implementation (all backwards compatible with §4):
 | UAT fixes: discovery | `WikipediaProvider.article`, search hits `snippet_only`; plain package names with a release cue to `pypi:`/`npm:` lookups (`intent._plain_packages`, soft 404 miss, `search.REGISTRY_QUERY` never falls back to web); comparison sides exclude the predicate; `intent.searchable_text`, `query_text`, `refine(..., remaining=)`; feed relevance rule (`FEED_BM25_FLOOR`, two terms or all entities) and per-feed `last_attempts`; daemon `port_in_use`, `status()` ownership fields (`started_here`, `owned_by_pid_file`, `alive`, `port_in_use`), 0700 state directory and 0600 pid and log files. |
 | UAT fixes: orchestration and memory | `consolidate.next_version` (MAX+1), owner rejection stands; `knowledge.decide` (one transition, decision history); owner refreshes use origin `refresh-owner:<id>` (`origin_label`); `forget_knowledge` forgets unfinished refresh tasks (`refresh_tasks_forgotten`) and forget results carry `next_steps`; run result status `forgotten`; `CONFIG_RECHECK` (2 s) stops a run when web is turned off and skips newly denied hosts; all-failed reading ends `failed`; render shortfall limitation and rendered pages cached (`#nsf-rendered`); proposals counted against and clamped to the daily allowance; lease holder `host:pid:thread:start`, `services.holder_alive`, `worker_alive`; crawl page by page, topic-less crawls by salience; identical submissions deduplicated, `requeue` idempotent; corrupt public cache quarantined and rebuilt, `nsf doctor` `public_cache`; free-space regulation without a path. Recorded clock exceptions: RESEARCH_ORCHESTRATION §10. |
 | UAT fixes: Pocket | Per-family device cap 6 (`409 family_full`) and persisted per-family research rate limit (10 per hour, `submissions` table); `members.sponsor` and `created`, `list-pairings` columns, `erase-pairing --family`, `unpair` with `{"family": true}`; 10 s whole-request deadline, 8 connections per address, eviction of the oldest waiting connection; `research_submit` body up to 1024 bytes (ADR-028); `Server: NeuroSciFi-Pocket` and headered error pages; stale invitation replacement rules; one-line port-in-use error; precache cache `neuroscifi-pocket-shell-8`. |
+| word sense (T1-07, R4) | `sense.py` (`separate`, `source_sense`, `question_cue`, `SENSES`); report key `sense`; `synthesis.first_release` ranking cue for first-release questions; `orchestrator._sense_note` adds the sense note to `reasoning.note`; the encyclopedia query of a technical one-fact question gets "software" only when the question names no other sense. |
 | interfaces | `orchestrator.submit(..., context={"packages": [...]})` for technical mode; `cli.SERVICES_OPTIONS` test hook; console `web_worker`, `worker_options`; Pocket `state.research` flag, precache 9 assets (ADR-015); HTTP routes in API_CONTRACTS §8. |

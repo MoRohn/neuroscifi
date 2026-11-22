@@ -27,13 +27,14 @@ TOKENS_PER_WORD         token estimate for context packs (1 token ~ 0.75 words)
 """
 from __future__ import annotations
 
+import functools
 import math
 import re
 from dataclasses import replace
 from datetime import datetime, timezone
 
 from . import claims as _claims
-from . import safety, temporal
+from . import safety, sense, temporal
 from . import text as T
 from .types import Claim, ClaimCluster, Document
 
@@ -1525,7 +1526,9 @@ def subject_tier(claim: Claim | None, focus: dict) -> int:
     head, rest = _head(claim)
     if not head:
         return 1
-    if any((e <= head and not _other_name(claim, head - e)) or _claims.same_subject(e, head) for e in entities):
+    # a head of fact predicates only ("First released in Japan ..., the PlayStation ...") names nothing (T1-07, R4)
+    if any((e <= head and not _other_name(claim, head - e)) or _claims.same_subject(e, head - _fact_stems())
+           for e in entities):
         return 0
     words = frozenset().union(*focus["relation"]) if focus.get("relation") else frozenset()
     page = _claims.subject_tokens(_claims.title_subject(claim.title or "") or "")
@@ -1533,9 +1536,22 @@ def subject_tier(claim: Claim | None, focus: dict) -> int:
         if page and (e <= page or _claims.same_subject(e, page)):
             # "Van Rossum first released it in 1991": "it" is the page's subject (R1-04 live, Python article)
             rest = [t for w in rest for t in (sorted(e) if w in ("it", "its") else [w])]
-    if any(_states_relation(rest, words, e) for e in entities):
+    if any(_states_relation(rest, words, _without_predicate(e)) for e in entities):
         return 0                            # it states the question's relation about the entity
     return 2
+
+
+@functools.cache
+def _fact_stems() -> frozenset:
+    from .intent import _FACT_PREDICATE
+    return frozenset(T.stem(w) for w in _FACT_PREDICATE)
+
+
+def _without_predicate(entity: frozenset) -> frozenset:
+    """The entity's name without a fact predicate its phrase absorbed ("Rust first" of "When was Rust first
+    released?"): "The first stable release, Rust 1.0, was published in May 2015." states the release about Rust,
+    though its "first" stands in the head the relation check replaces (T1-07, R4)."""
+    return (entity - _fact_stems()) or entity
 
 
 def _other_name(claim: Claim, extra: frozenset) -> bool:
@@ -1561,6 +1577,22 @@ def mentions_name(text: str, name: str) -> bool:
         if not (proper(before) or proper(after)):
             return True
     return False
+
+
+# D-R5-4 / T1-07 (R4): a sentence that states a first release with its date ("The first stable release, Rust 1.0,
+# was published in May 2015.", "Van Rossum first released it in 1991") answers a first-release question; among
+# statements of equal subject tier, sense and relation coverage it leads (it ranked 14th-21st behind "Since the full
+# release, Rust has followed a simple rhythm", so the model never saw it).
+_FIRST_RELEASE = re.compile(
+    r"\b(?:first|initial|original|earliest|debut)\s+(?:[\w.-]+\s+){0,2}?(?:release|version|launch)\b|"
+    r"\b(?:first|initially|originally)\s+(?:[a-z]+ly\s+)?(?:released|launched|published|introduced|shipped|"
+    r"appeared)\b|\b(?:version\s+)?v?1\.0\b(?=[^.]*\b(?:released?|published|launched|stable)\b)", re.IGNORECASE)
+_YEAR = re.compile(r"\b(?:1[6-9]|20)\d\d\b")
+
+
+def first_release(text: str | None) -> bool:
+    """`text` states a first release (or version 1.0) together with a year (see the comment above)."""
+    return bool(text and _FIRST_RELEASE.search(text) and _YEAR.search(text))
 
 
 def off_subject_sources(clusters, focus: dict) -> set:
@@ -1748,6 +1780,12 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
     unrelated = off_subject_sources(clusters, focus)
     if mode == "fact_verification":      # N2: a record that shares only the number is not about the statement
         unrelated |= statement_off_subject(clusters, checkable_statement(assessment.get("claim") or question))
+    # T1-07 (R4): "Rust (video game)" is read for "When was Rust first released?" but is another sense of the name
+    senses = sense.separate(assessment.get("claim") or question, assessment, documents, focus.get("names"),
+                            mentions=mentions_name)
+    if senses:
+        unrelated |= set(senses["set_aside"])
+    own_sense = {u for u, v in (senses or {}).get("sources", {}).items() if v == (senses or {}).get("sense")}
     if unrelated:            # T1-07: a page about another entity is a source read, never cited
         clusters = [replace(c, claims=kept) for c in clusters
                     for kept in [[x for x in c.claims if x.source_url not in unrelated]] if kept]
@@ -1762,7 +1800,7 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         factor = 1.0 if ok else (UNDATED_VALUE if ok is None else STALE_VALUE)
         return c.confidence * (rep.relevance if rep else 0.0) * factor
 
-    def order(t):            # UAT-W-24: on-subject first, then relation coverage, then value
+    def order(t):            # UAT-W-24: on-subject first, then the question's sense, relation coverage, value
         c = t[0]
         rep = _representative(c)
         # a contested cluster is placed by the best of its two sides: "Van Rossum first released it in 1991 as
@@ -1770,8 +1808,9 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         # (for Python version 0.9.1)" (R1-04 live)
         sides = {x["a"] for x in c.contradicting} | {x["b"] for x in c.contradicting}
         claims = [rep] + [x for x in c.claims if x.id in sides and x is not rep]
-        return (min(subject_tier(x, focus) for x in claims), -max(relation_coverage(x, focus) for x in claims),
-                -t[1], c.key, c.statement)
+        return (min(subject_tier(x, focus) for x in claims), 0 if any(x.source_url in own_sense for x in claims)
+                else 1, -max(relation_coverage(x, focus) for x in claims),
+                -max(historical and first_release(x.text) for x in claims), -t[1], c.key, c.statement)
 
     ranked = sorted(((c, value(c)) for c in usable if report_safe_text(_representative(c)) == c.statement),
                     key=order)
@@ -1878,6 +1917,11 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
                        "detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)")
 
     uncertainties: list[str] = list(dict.fromkeys(aside.values()))
+    if senses:
+        uncertainties.append(f"{senses['name']} also names {sense._join(senses['others'])}: "
+                             f"{len(senses['set_aside'])} source(s) about {'it' if len(senses['others']) == 1 else 'them'}"
+                             f" were read, not cited" + (f"; this answer is about {senses['label']}" if senses['label']
+                                                         else "") + f" ({senses['by']}).")
     for c, _ in ranked:
         rep = _representative(c)
         if c.status == "single_source" and rep is not None:
@@ -1955,7 +1999,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
     return {"question": question, "mode": mode, "as_of": now, "live": bool(live), "answer": answer,
             "findings": findings, "contradictions": contradictions, "uncertainties": uncertainties,
             "limitations": limitations, "freshness": freshness, "sources": sources.finish(), "verdict": verdict,
-            "comparison": comparison, "methodology": methodology, "usage": usage_json, "budget": None}
+            "comparison": comparison, "methodology": methodology, "usage": usage_json, "budget": None,
+            "sense": senses}
 
 
 def _lead(documents, usable, ranked, satisfied, newest, required, now, live, cited) -> str:

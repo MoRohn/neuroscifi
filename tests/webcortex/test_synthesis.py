@@ -13,7 +13,7 @@ from neuroscifi.webcortex.types import Document, FetchError, Usage
 NOW = datetime(2026, 11, 20, 12, tzinfo=timezone.utc).timestamp()
 H, D = 3600.0, 86400.0
 KEYS = {"question", "mode", "as_of", "live", "answer", "findings", "contradictions", "uncertainties", "limitations",
-        "freshness", "sources", "verdict", "comparison", "methodology", "usage", "budget"}
+        "freshness", "sources", "verdict", "comparison", "methodology", "usage", "budget", "sense"}
 
 
 def ts(*args):

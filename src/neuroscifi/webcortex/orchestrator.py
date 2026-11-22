@@ -2029,12 +2029,29 @@ def _reason(db, run, report):
                                               f"({rpolicy.model_slots(db_path)} at a time{audio})", asked=asked)
     except Exception as exc:   # the extractive report must survive any reasoning defect
         out = reasoning._degraded(report, "error", f"reasoning failed: {type(exc).__name__}", asked=asked)
+    _sense_note(report, asked)
     run.usage.seconds = round(run.elapsed(), 3)     # model time counts against the task's time budget
     report["usage"] = run.usage.to_json()
     if out["status"] != "not_configured":
         run.event("decision", {"reasoning": out["status"], "generated_by": out["generated_by"],
                                "accepted": len(out.get("answer") or []), "rejected": len(out.get("rejected") or []),
                                "reason": out.get("reason"), "usage": out.get("usage")}, "synthesizing")
+
+
+def _sense_note(report, asked):
+    """T1-07 (R4): when the sources hold several senses of the question's subject and the question named none, the
+    reader is told which one was answered ("NeuroSciFi note: this answer is about Rust, the programming language.
+    Rust also names a video game; ..."), beside any verdict note. Built from the question's name and fixed sense
+    labels only (sense.separate); not for an autonomous task no owner saw (as verdict_note)."""
+    from . import sense
+    note = (report.get("sense") or {}).get("note")
+    reasoning = report.get("reasoning")
+    if not note or asked == "autonomous" or not isinstance(reasoning, dict):
+        return
+    prior = reasoning.get("note") if isinstance(reasoning.get("note"), dict) else None
+    body = note[len(sense.NOTE_LEAD):]
+    text = f"{prior['text']} {body[:1].upper()}{body[1:]}" if prior and prior.get("text") else note
+    reasoning["note"] = {"text": text, "by": "rules"}
 
 
 def _lost_lease(db, task_id, run):

@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import re
 
-from . import temporal
+from . import sense, temporal
 from .config import MODE_BUDGETS
 from .types import Query, QueryPlan
 
@@ -1004,8 +1004,9 @@ def plan(question: str, assessment: dict, *, now: float, local_terms=()) -> Quer
             # programming language"), whose lead states such facts; the web query keeps the predicate
             thing = " ".join(w for w in kw.split() if w.lower() not in _FACT_PREDICATE) \
                 if assessment.get("simple_fact") else ""
+            # nor when it names another sense ("the Rust video game": T1-07, R4)
             if thing and "technical" in kinds and not assessment.get("packages") and \
-                    not _SOFTWARE_SENSE & {w.lower() for w in thing.split()}:
+                    not _SOFTWARE_SENSE & {w.lower() for w in thing.split()} and not sense.question_cue(thing):
                 thing = f"{thing} software"
             add(1, thing or kw, "encyclopedia", f"{label}: encyclopedia")
     if dependency_check and not assessment.get("packages"):
