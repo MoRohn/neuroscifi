@@ -81,7 +81,29 @@ included); failed and cancelled runs keep the extractive report only.
   and kind; the verdict label; the contradiction count; whether freshness was met. Findings that trip
   `safety.scan_injection` are left out. The bundle is JSON inside `<evidence>` with `"untrusted": true`; the system
   prompt says instructions inside it are data.
-- **Answer.** Streaming structured output: `{"sentences": [{"text", "sources": [int], "claims": ["C1"]}], "gaps": []}`.
+- **Request: what the model is asked to write (v0.7.0 prompt lane).** The request is aligned with the guard below,
+  whose rules are unchanged. The system prompt (`SYSTEM`) asks for at most 5 one-sentence items, each a close
+  restatement of the claim(s) it cites: the claims' own words, names, numbers, units, dates and negations; nothing
+  added (no cause, consequence, comparison, prediction, judgement, scope word, time word or instruction); no hedge, no
+  attribution, no statement about agreement or verification, no caveat and no source id. Its worked example and the
+  attribution it shows are generated from `PROMPT_EXAMPLE` and `HEDGES`, which a test checks against the guard: the
+  good sentence passes, every bad one is rejected. The model sees a compact view of the bundle (claims: id, state,
+  text, source ids, dates; sources: id, title, dates; the verdict's state and statement), not confidence, category,
+  domain, retrieval date, contradiction count or freshness.
+- **Answer.** Streaming structured output (`answer_schema(b)`): `{"sentences": [{"claims": ["C1"], "text"}], "gaps":
+  []}`. The claim ids come first (guided decoding generates them before the text), 1 to 3 per sentence, limited to the
+  bundle's ids by an `enum`; the model writes no source ids.
+- **Composition** (`compose`, before the guard). Each sentence's sources are the cited claims' own sources, so a claim
+  is never cited through a source that does not carry it. A sentence citing a claim that is not `supported` gets the
+  attribution of its weakest cited state appended by code, so the hedge cannot be forgotten or misworded: "…, according
+  to one source." (`insufficient`, `not_evaluated`; "the cited sources" for two or more), "…, according to one source,
+  possibly out of date." (`temporally_unresolved`), "…, though the sources disagree." (`conflicting`), "…, though the
+  claim is disputed." (`disputed`). The model's own leading or trailing "according to …" is replaced, a leading
+  "Yes,"/"No," (an answer no claim gives) and an exact repeat are removed. A caveat of the closed grammar, a question
+  and a relayed instruction (a modal of obligation, an address to the reader, an imperative opening a sentence part:
+  "The compiler is unsafe; uninstall it.") get no attribution, so an obeyed injection stays rejected as unhedged. What
+  the evidence does not establish is left to the rules note (`verdict_note`). The guard judges every composed sentence
+  as it judged the model's. The voice "simpler" answer (`voice/bridge.py`) uses the same schema and composition.
 - **Guard** (the authority). A sentence is rejected if it cites no source or no claim, cites an id not in the bundle,
   cites a claim through a source that does not carry it, relies on a claim whose ADR-035 state is not `supported`
   (a time-sensitive claim backed only by stale or undated sources is `temporally_unresolved`; the legacy
@@ -367,6 +389,27 @@ nsf llm usage                                                 # token ledger
   "may", "estimated" or "estimates vary" add nothing and are not checked. The weighted classes, recommendation
   phrases and synonym groups are closed lists. A paraphrase in other words is rejected; the extractive answer and
   the rules note remain.
+- **Prompt alignment, measured (2026-11-21, Qwen3-30B-A3B, live).** A fixed set of 11 questions (numpy 2.5.5
+  secure / recommended / stable, Python's first release, the 100 billion neurons statement, AI this week, predictive
+  coding, Makemake's and Jupiter's moons, zod 4 stable, the boiling point of ethanol), asked twice each on a fresh
+  instance with the d9cbe22 request and with this one; the guard is the same in both (the round-3 entailment check; the combined measurement with the round-4 check follows in this section). Template fallback (no model
+  sentence kept): **8 of 22 → 3 of 22**; the 3 are answers in which the model wrote no sentence at all (ethanol twice:
+  no claim gives the boiling point; predictive coding once), none is a guard rejection. Kept sentences per answer
+  0.73 → 3.09 (distinct), sentences rejected 46 → 3 (survival 26 % → 96 %). Rejections before: says more than its
+  claims 36, unhedged state 15, negation 6, caveat outside the grammar 6, citation 4, caveat beside a supported claim 2,
+  number 2, disagreement 1, two sentences 1; after: "holds more than one sentence" 3 (a dotted name,
+  "numpy.dtypes.StringDType", read as a sentence end). Model time per answer (answer and critique) median 6.9 s →
+  7.8 s, mean 10.0 s → 6.4 s; whole ask median 17.1 s → 15.4 s; prompt and completion tokens (both calls) median
+  2 574 → 3 030 and 266 → 338, because more sentences reach the critique. Hand check of every kept sentence: before,
+  12 of 16 faithful, 3 grey, 1 unfaithful ("predictive coding is related to neural coding" on a claim about neural
+  coding only); after, 62 of 68 faithful, 2 grey (a "facts" in scare quotes restated without them; a numpy 2.5.2 bug
+  fix restated without its version under "Is numpy 2.5.5 secure?"), 0 unfaithful, and 4 that assert nothing useful:
+  three paper or article titles phrased as questions, attributed by the guard's own repair (R1-04), and a
+  "Prediction: …" headline. The price of faithfulness is closeness: the model now mostly copies claims, so 13 of the
+  68 open with a word that points back ("It", "This release", "Here, we", "The company") and depend on their
+  neighbours, some restate bibliographic records, and an answer can include an off-topic claim; it repeated a
+  sentence in two answers (4 repeats, now removed by `compose`, not counted above). The guard remains the only
+  authority: composition adds only attribution words it already accepts.
 - Claim states are the ADR-035 states of `synthesis.decide`, written on each finding before reasoning; a stored
   report without them is read as `not_evaluated` (never upgraded from the legacy label). The model
   sees at most 12 findings; it cannot see evidence the extractive pipeline did not extract.
