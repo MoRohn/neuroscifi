@@ -11,7 +11,9 @@
 .nsfv-indicator{display:inline-flex;align-items:center;min-height:44px;padding:4px 12px;border-radius:999px;border:1px solid var(--line,var(--pc-panel-line,#ccc));font-weight:700}
 .nsfv-indicator[data-on="true"]{border-color:var(--rust,#b3261e);color:var(--rust,#b3261e);background:var(--rust-soft,transparent)}
 .nsfv-health,.nsfv-notice{margin:0;font-size:.9rem;color:var(--muted,var(--pc-panel-muted,#555))}
-.nsfv-notice:empty{display:none}
+/* Empty: out of the layout but still in the accessibility tree, so the first notice is announced (a live region
+   must exist before its text arrives; display:none removed it). */
+.nsfv-notice:empty{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .nsfv-modes{display:grid;gap:6px;margin:0;padding:8px 12px;border:1px solid var(--line,var(--pc-panel-line,#ccc));border-radius:10px}
 .nsfv-mode{display:grid;grid-template-columns:auto 1fr;gap:0 8px;align-items:center}
 .nsfv-mode input{width:24px;height:24px;margin:0;grid-row:span 2}

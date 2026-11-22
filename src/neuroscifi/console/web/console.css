@@ -83,7 +83,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
 /* messages */
 .msg{margin:10px 0 0;min-height:0}
-.msg:empty{display:none}
+/* Empty status messages leave the layout but stay in the accessibility tree: a live region must exist before its
+   text arrives, or screen readers miss the first message (display:none removed it). */
+.msg:empty{position:absolute;width:1px;height:1px;margin:0;padding:0;border:0;overflow:hidden;clip-path:inset(50%)}
 .msg.ok{color:var(--ok)}
 .msg.error{color:var(--rust);font-weight:600}
 .msg.busy{color:var(--muted)}
