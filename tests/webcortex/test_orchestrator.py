@@ -1971,3 +1971,28 @@ def test_an_objective_with_control_characters_is_refused(individual, objective):
     db, _ = individual
     with pytest.raises(ValidationError, match="control characters"):
         orchestrator.submit(db, objective, T0, mode="quick_lookup")
+
+
+def test_a_run_consolidates_without_the_sources_its_answer_set_aside(individual, web):
+    """T1-07 follow-up, end to end: the report's set_aside (here the Rust video game's pages for a question about
+    the language) is what the run hands consolidation, so no claim of theirs becomes a knowledge candidate, an owner
+    question or a hypothesis."""
+    from test_consolidate import rests_on
+    from test_sense import ANNOUNCE, FACEPUNCH, FORCEWIPE, RUST_GAME, RUST_LANG, TUTORIAL
+    db, path = individual
+    pages = {f"http://{d.domain.replace('en.wikipedia.org', 'encyclo.example')}/{n}": d
+             for n, d in enumerate((RUST_LANG, RUST_GAME, FORCEWIPE, FACEPUNCH, TUTORIAL, ANNOUNCE))}
+    for url, d in pages.items():
+        host, page = url[len("http://"):].split("/", 1)
+        web.add(host, "/" + page, html(d.title, "2026-10-20T10:00:00Z", [d.text]))
+    hits = [{"url": url, "title": d.title, "snippet": d.text[:160]} for url, d in pages.items()]
+    task = orchestrator.submit(db, "When was Rust first released?", T0)
+    done = run_with(db, path, web, task, [ListProvider(hits, name="searxng")])
+    assert done["status"] == "completed", done["error"]
+    report = done["result"]
+    game = {url for url, d in pages.items() if d in (RUST_GAME, FORCEWIPE, FACEPUNCH)}
+    assert set(report["set_aside"]) == game, report["set_aside"]
+    assert rests_on(db, game) == [], rests_on(db, game)
+    held = [r for h in report["consolidation"]["held"] for r in h["reasons"]]
+    assert "read, not cited: another sense of Rust (video game)" in held, held
+    assert db.execute("SELECT count(*) FROM web_hypotheses").fetchone()[0] > 0     # the language's claims still are

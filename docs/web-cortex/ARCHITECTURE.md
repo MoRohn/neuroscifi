@@ -202,7 +202,7 @@ orchestrator.resume(db, task_id, services) -> dict # continues from the last che
 orchestrator.requeue(db, task_id, now, *, origin=None, family=None) -> dict   # failed: same id queued; partial/cancelled: linked child task
 orchestrator.get(db, task_id, *, family=None) -> dict ; orchestrator.listing(db, *, family=None, status=None, limit=50)
 orchestrator.evidence(db, task_id, *, family=None) -> dict    # sources, claims, links ("show your evidence")
-consolidate.run(db, task_id, now) -> dict          # candidates -> knowledge (provisional|pending owner) with versions
+consolidate.run(db, task_id, now, *, holder=None, set_aside=None) -> dict   # candidates -> knowledge (provisional|pending owner) with versions; set_aside = the report's
 knowledge.query(db, topic, now, *, limit=10) -> dict   # what is known, from where, verified when, stale, provisional, contested
 knowledge.staleness(item, now, cfg=None, db=None) -> (bool, str)   # with db: newer_release_seen / revision_seen
 knowledge.feedback(db, subject: int|str, *, limit=5) -> list[dict]   # newest web_feedback rows for a knowledge id or key
@@ -245,11 +245,17 @@ scheduler.work(db_path, *, once=False, stop=None, ...) -> dict   # drains queued
  "usage": {...}, "budget": {...},
  "sense": null | {"name": "Rust", "sense": "software", "label": "the programming language", "by": "technical question",
                   "others": ["a video game"], "sources": {"url": "software", ...}, "set_aside": ["url", ...],
-                  "note": "NeuroSciFi note: this answer is about Rust, the programming language. ..." | null}}
+                  "note": "NeuroSciFi note: this answer is about Rust, the programming language. ..." | null},
+ "set_aside": {"url": "another sense of Rust (video game)", "url2": "about another entity than the question's", ...}}
 ```
 
 `sense` is set when the sources read hold two or more senses of the question's subject ("Rust" the programming
 language and the video game): the sources of the other senses are read, listed and never cited
+(EVIDENCE_AND_PROVENANCE §9).
+
+`set_aside` lists every source read but never cited, with why (another entity, a record that never names the
+checked statement's subject, another sense, another ecosystem's package). Consolidation receives it from the run
+and removes those sources' claims, so they never become knowledge, owner questions or hypotheses
 (EVIDENCE_AND_PROVENANCE §9).
 
 `live` is true only if at least one cited source was retrieved live during this task; otherwise the report

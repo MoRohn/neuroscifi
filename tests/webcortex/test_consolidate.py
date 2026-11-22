@@ -61,9 +61,9 @@ def task_with(db, clusters, now=T0, objective="What is the latest numpy release 
     return task_id
 
 
-def consolidated(db, clusters, now=T0, **kw):
+def consolidated(db, clusters, now=T0, set_aside=None, **kw):
     tid = task_with(db, clusters, now, **kw)
-    return tid, consolidate.run(db, tid, now)
+    return tid, consolidate.run(db, tid, now, set_aside=set_aside)
 
 
 def reworded(text, n):
@@ -637,3 +637,138 @@ def test_the_impersonal_python_marketing_sentence_stays_held_although_it_names_p
     tid, out = consolidated(db, [official_page], objective="When was the Python programming language first released?")
     assert consolidate._question_focus(state.task(db, tid))["entities"], "the question's entity is known"
     assert out["provisional"] == [] and any("off the question's subject" in r for r in out["held"][0]["reasons"])
+
+
+# ---- the answer's set-aside sources (T1-07): read, never cited, and never knowledge either ---------------------
+def answered(db, question, docs, assessment=None, *, set_aside=True):
+    """Evaluate `docs` as the orchestrator does, write the report (synthesis.synthesize) and consolidate the task
+    with the report's set_aside (orchestrator._execute), or without it (the behaviour before)."""
+    from neuroscifi.webcortex import claims as wclaims, intent, synthesis
+    now = max(d.retrieved_at for d in docs) + 60
+    assessment = assessment or intent.assess(question, now=now)
+    found = [c for d in docs for c in wclaims.extract_claims(d, question)]
+    wclaims.stamp_origins(found, docs)
+    clusters = [wclaims.score(c, now=now, freshness_class=assessment.get("freshness_class") or "stable")
+                for c in wclaims.cluster(found)]
+    report = synthesis.synthesize(question, assessment, docs, clusters, now=now)
+    prepared = orchestrator.prepare(db, question, now, origin="test")
+    with store.write(db):
+        tid = orchestrator.insert(db, prepared, now)
+        state.save_clusters(db, tid, clusters, now)
+        state.update_task(db, tid, now, checkpoint=state.task(db, tid)["checkpoint"] | {"assessment": assessment})
+    return report, consolidate.run(db, tid, now, set_aside=report["set_aside"] if set_aside else None)
+
+
+def second_individual(tmp_path, name):
+    """Another individual (closed with the test's tmp_path), to compare one run with another."""
+    (tmp_path / name).mkdir()
+    conn = store.create(tmp_path / name / "individual.sqlite", T0)
+    state.set_config(conn, {"enabled": True, "min_domain_interval": 0.0}, T0)
+    return conn
+
+
+def rests_on(db, urls) -> list:
+    """Every knowledge row, hypothesis, owner question and graph edge (claim -> knowledge, hypothesis, entity, source,
+    interval) that rests on a claim of a source in `urls`."""
+    marks, urls = ",".join("?" * len(urls)), list(urls)
+    rows = db.execute(f"SELECT id, text FROM web_claims WHERE source_url IN ({marks})", urls).fetchall()
+    ids, texts = {i for i, _ in rows}, {t for _, t in rows}
+    out = [("knowledge", s) for s, sup in db.execute("SELECT statement, supporting FROM web_knowledge")
+           if ids & set(json.loads(sup))]
+    out += [("hypothesis", s) for s, cl in db.execute("SELECT statement, claims FROM web_hypotheses")
+            if ids & set(json.loads(cl))]
+    out += [("question", q) for (q,) in db.execute("SELECT question FROM pending")
+            if any(knowledge.quote(t)[:60] in q for t in texts)]
+    out += [("edge", f"{k} -> {dk}") for src, k, dk in db.execute(
+        "SELECT src, kind, dst_kind FROM web_claim_links WHERE src_kind='claim' AND dst_kind<>'claim'") if src in ids]
+    return out
+
+
+def test_a_rust_language_question_never_makes_knowledge_of_the_games_pages(db, tmp_path):
+    """T1-07 follow-up: synthesis reads "Rust (video game)" and the game's fan pages for "When was Rust first
+    released?" but never cites them; consolidation read every evaluated cluster, so the game's sentences became
+    hypotheses and a mixed cluster asked the owner "Sources disagree about Rust: one says 2015-05-15, ... 2013-12-11"
+    (shown below on a second individual). With the report's set_aside, no claim of another sense is a candidate, an
+    owner question or a hypothesis, and the language's 1.0 sentence, freed of the game's dates, is the candidate."""
+    from test_sense import ANNOUNCE, GAME_SIDE, RUST_FILM, RUST_GAME, RUST_LANG, TUTORIAL, FACEPUNCH, FORCEWIPE
+    docs = [RUST_FILM, RUST_LANG, RUST_GAME, FORCEWIPE, FACEPUNCH, TUTORIAL, ANNOUNCE]
+    other = GAME_SIDE | {RUST_FILM.url}
+    before = second_individual(tmp_path, "before")
+    _, was = answered(before, "When was Rust first released?", docs, set_aside=False)
+    fed = {kind for kind, _ in rests_on(before, other)}
+    assert "hypothesis" in fed and any("2013-12-11" in c["reason"] for c in was["contested"]), (fed, was)  # the defect
+    report, out = answered(db, "When was Rust first released?", docs)
+    assert set(report["set_aside"]) == other and set(report["set_aside"]) == set(report["sense"]["set_aside"])
+    assert report["set_aside"][RUST_GAME.url] == "another sense of Rust (video game)"
+    assert rests_on(db, other) == [], rests_on(db, other)
+    questions = [q for (q,) in db.execute("SELECT question FROM pending")]
+    assert out["contested"] == [] and not any(y in q for q in questions for y in ("2013", "2018", "2021")), questions
+    assert any(r == "read, not cited: another sense of Rust (video game)" for h in out["held"] for r in h["reasons"])
+    (statement, sources), = db.execute("SELECT statement, sources FROM web_knowledge").fetchall()
+    assert statement.startswith("The first stable release, Rust 1.0, was published")
+    assert {s["url"] for s in json.loads(sources)} == {RUST_LANG.url, ANNOUNCE.url}
+    assert db.execute("SELECT count(*) FROM pending WHERE scope LIKE 'web:knowledge:%'").fetchone()[0] == 1
+
+
+def _off_subject_cases():
+    from test_synthesis import doc
+    neurons = "The human brain contains 100 billion neurons."
+    return [
+        pytest.param(neurons, [
+            doc("https://doi.org/10.1093/brain/awaf049", "Yes, the human brain has around 86 billion neurons.",
+                title="Reply: Yes, the human brain has around 86 billion neurons", kind="api"),
+            doc("https://doi.org/10.64628/aai.chq7v5t4g", "Mapping how the 100 billion cells in the brain all fit "
+                "together is the brave new world of neuroscience.", title="Mapping the brain", kind="api"),
+            doc("https://doi.org/10.1002/scin.5591810410", "Analysis suggests Milky Way contains 100 billion planets.",
+                title="Atom & cosmos: Planets common as stars in galaxy", kind="api"),
+            doc("https://doi.org/10.1787/9789264274204-en", "Developed countries committed to mobilise USD 100 "
+                "billion a year in climate finance by 2020.",
+                title="2020 Projections of Climate Finance Towards the USD 100 Billion Goal", kind="api")],
+            {"mode": "fact_verification", "claim": neurons, "freshness_class": "stable"},
+            {"https://doi.org/10.1002/scin.5591810410": "never names the checked statement's subject",
+             "https://doi.org/10.1787/9789264274204-en": "never names the checked statement's subject"},
+            id="R4-N2 neurons fact check"),
+        pytest.param("When was Python first released?", [
+            doc("https://en.wikipedia.org/wiki/Python_(programming_language)", "Python is a high-level, "
+                "general-purpose programming language. Python was first released in 1991 as Python 0.9.0.",
+                title="Python (programming language)", kind="api"),
+            doc("https://en.wikipedia.org/wiki/Monty_Python", "Monty Python, also known as the Pythons, were a "
+                "British comedy troupe formed in 1969. They followed their television work by making the films Monty "
+                "Python and the Holy Grail (1975) and Life of Brian (1979).", title="Monty Python", kind="api")],
+            None, {"https://en.wikipedia.org/wiki/Monty_Python": "about another entity than the question's"},
+            id="Monty Python"),
+    ]
+
+
+@pytest.mark.parametrize("question, docs, assessment, expected", _off_subject_cases())
+def test_an_off_subject_sources_claims_never_become_knowledge_questions_or_hypotheses(db, tmp_path, question, docs,
+                                                                                      assessment, expected):
+    """N2 / T1-07: the "Milky Way contains 100 billion planets" record (and the climate-finance one) checked against
+    "The human brain contains 100 billion neurons.", and Wikipedia "Monty Python" for "When was Python first
+    released?", are read, never cited; before, each also opened a hypothesis of its own."""
+    before = second_individual(tmp_path, "before")
+    answered(before, question, docs, assessment, set_aside=False)
+    assert {kind for kind, _ in rests_on(before, expected)} >= {"hypothesis"}     # the defect this test guards
+    report, out = answered(db, question, docs, assessment)
+    assert report["set_aside"] == expected
+    assert rests_on(db, expected) == [], rests_on(db, expected)
+    statements = {s for (s,) in db.execute("SELECT statement FROM web_hypotheses")}
+    assert statements and not any("Milky Way" in s or "climate" in s or "Monty" in s for s in statements), statements
+    assert sum(r.startswith("read, not cited: ") for h in out["held"] for r in h["reasons"]) >= 1
+
+
+def test_on_subject_candidates_keep_their_sources_when_a_set_aside_source_shared_their_cluster(db, tmp_path):
+    """A set-aside source leaves the cluster; the two on-subject sources still make the candidate, its sources and
+    supporting claims are only theirs, and a cluster without a set-aside source is consolidated exactly as before."""
+    kept = two_sources()
+    aside = claim("http://game.example/numpy", reworded(TEXT, 2))
+    mixed = cluster(kept.claims + [aside])
+    _, out = consolidated(db, [mixed], set_aside={"http://game.example/numpy": "another sense of NumPy (video game)"})
+    item = knowledge.row(db, out["provisional"][0])
+    assert {s["url"] for s in item["sources"]} == {"http://a.example/numpy", "http://b.example/numpy"}
+    assert set(item["supporting"]) == {c.id for c in kept.claims}
+    plain, other = second_individual(tmp_path, "plain"), second_individual(tmp_path, "other")
+    _, without = consolidated(plain, [two_sources()])
+    _, with_aside = consolidated(other, [two_sources()], set_aside={"http://game.example/numpy": "another sense"})
+    assert without["provisional"] and {k: v for k, v in without.items() if k != "task_id"} == \
+        {k: v for k, v in with_aside.items() if k != "task_id"}

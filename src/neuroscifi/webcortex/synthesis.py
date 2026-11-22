@@ -1777,14 +1777,18 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
         clusters = [replace(c, claims=kept) for c in clusters
                     for kept in [[x for x in c.claims if x.source_url not in aside]] if kept]
     focus = question_focus(question, assessment)
-    unrelated = off_subject_sources(clusters, focus)
+    # {url: why} of the sources read but never cited; report.set_aside hands this one decision to consolidation,
+    # which removes the same claims, so a set-aside source never feeds knowledge, owner questions or hypotheses
+    unrelated = dict.fromkeys(off_subject_sources(clusters, focus), "about another entity than the question's")
     if mode == "fact_verification":      # N2: a record that shares only the number is not about the statement
-        unrelated |= statement_off_subject(clusters, checkable_statement(assessment.get("claim") or question))
+        for url in statement_off_subject(clusters, checkable_statement(assessment.get("claim") or question)):
+            unrelated.setdefault(url, "never names the checked statement's subject")
     # T1-07 (R4): "Rust (video game)" is read for "When was Rust first released?" but is another sense of the name
     senses = sense.separate(assessment.get("claim") or question, assessment, documents, focus.get("names"),
                             mentions=mentions_name)
     if senses:
-        unrelated |= set(senses["set_aside"])
+        for url in senses["set_aside"]:
+            unrelated.setdefault(url, f"another sense of {senses['name']} ({senses['sources'][url]})")
     own_sense = {u for u, v in (senses or {}).get("sources", {}).items() if v == (senses or {}).get("sense")}
     if unrelated:            # T1-07: a page about another entity is a source read, never cited
         clusters = [replace(c, claims=kept) for c in clusters
@@ -2000,7 +2004,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
             "findings": findings, "contradictions": contradictions, "uncertainties": uncertainties,
             "limitations": limitations, "freshness": freshness, "sources": sources.finish(), "verdict": verdict,
             "comparison": comparison, "methodology": methodology, "usage": usage_json, "budget": None,
-            "sense": senses}
+            "sense": senses, "set_aside": dict(sorted((dict.fromkeys(aside, "another ecosystem's package of the same "
+                                                                     "name") | unrelated).items()))}
 
 
 def _lead(documents, usable, ranked, satisfied, newest, required, now, live, cited) -> str:

@@ -13,9 +13,13 @@ the loop the task's verified clusters settle open hypothesis predictions (evolut
 
 Steps for each scored cluster of the task (state.load_clusters):
 1. candidates: clusters ranked by confidence;
-2. relevance and evidence quality: claims from adversarial sources (claim.flags['adversarial_source'], or a
-   source of this task whose quarantine found instruction-like content) are removed from the cluster first - they
-   never support, strengthen or contest knowledge, and a cluster made only of them is *held*; then
+2. relevance and evidence quality: claims from the sources the answer set aside (`set_aside`, the report's:
+   another entity, another sense of the name, a record that never names the checked statement's subject - read,
+   never cited) leave the cluster first and it is re-scored as synthesis re-scores it; a cluster made only of
+   them is *held* ("read, not cited"), so they never become knowledge, owner questions, hypotheses or prediction
+   observations. Then claims from adversarial sources (claim.flags['adversarial_source'], or a source of this task
+   whose quarantine found instruction-like content) are removed from the cluster - they never support, strengthen
+   or contest knowledge, and a cluster made only of them is *held*; then
    'corroborated', or 'single_source' from a primary structured source (an API document or a metadata claim),
    with at least one relevant claim; 'contested' clusters become owner questions instead; everything else is
    *held* (stays a claim, listed with reasons);
@@ -712,13 +716,30 @@ def _contested_against(db, task_id, cluster, item, reason, now, summary, questio
                         weaken=False)
 
 
-def run(db, task_id, now, *, holder=None) -> dict:
+def _without_set_aside(cluster, set_aside, *, now, freshness, ttl_overrides):
+    """The cluster without claims from the `set_aside` sources, re-scored as synthesis re-scores its clusters
+    (claims.score: supporting side, contradictions, statement and confidence over the remaining claims); with no
+    claims left when every claim came from one of them. Unchanged when none did."""
+    from dataclasses import replace
+    kept = [c for c in cluster.claims if c.source_url not in set_aside]
+    if len(kept) == len(cluster.claims):
+        return cluster
+    if not kept:
+        return replace(cluster, claims=[])
+    return _claims.score(replace(cluster, claims=kept), now=now, freshness_class=freshness,
+                         ttl_overrides=ttl_overrides)
+
+
+def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
     """Consolidate one task's scored clusters into knowledge candidates. One transaction, one state bump.
 
+    `set_aside` ({source url: why}, the task report's set_aside): the sources the answer read but never cited.
+    Their claims are removed before anything is decided (step 2), by the answer's own decision, never re-derived.
     WritesPaused while instance regulation pauses writes. With `holder` (the running worker) the transaction is
     fenced: state.LostLease when another worker took the task over meanwhile, and nothing is written."""
     cfg = state.get_config(db)
     state.require_writable(db)
+    set_aside = dict(set_aside or {})
     summary = {"task_id": task_id, "candidates": 0, "provisional": [], "strengthened": [], "unchanged": [],
                "superseded": [], "contested": [], "held": [], "pending": [], "feedback": 0, "entities": 0,
                "questions_deferred": 0, "review_question": None, "hypotheses": [], "verification": [],
@@ -737,6 +758,12 @@ def run(db, task_id, now, *, holder=None) -> dict:
         adversarial = _adversarial_urls(db, task_id)
         ids_by_key, cleaned, observed = {}, [], []
         for n, cluster in enumerate(clusters):
+            whole, cluster = cluster, _without_set_aside(cluster, set_aside, now=now, freshness=freshness,
+                                                         ttl_overrides=cfg.freshness_ttl or None)
+            if whole.claims and not cluster.claims:
+                summary["held"].append(_held(whole, [f"read, not cited: {why}" for why in dict.fromkeys(
+                    set_aside[c.source_url] for c in whole.claims)]))
+                continue
             cluster, removed = _without_adversarial(cluster, adversarial)
             cleaned.append(cluster)
             if not cluster.claims:

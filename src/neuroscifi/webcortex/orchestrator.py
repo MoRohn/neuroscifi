@@ -2077,7 +2077,8 @@ def _execute(db, task_id, services, *, resume):
     if report is not None and status in ("completed", "partial") and needs_web_report(report) and not paused:
         try:
             from . import consolidate
-            consolidation = consolidate.run(db, task_id, now, holder=run.holder)
+            # the answer's read-not-cited sources (report.set_aside) never feed knowledge either (T1-07)
+            consolidation = consolidate.run(db, task_id, now, holder=run.holder, set_aside=report.get("set_aside"))
             run.checkpoint["verification"] = list(consolidation.get("verification") or [])[:200]
             run.checkpoint["predictions_settled"] = list(consolidation.get("predictions_settled") or [])[:50]
             report["consolidation"] = {k: consolidation[k] for k in ("provisional", "strengthened", "unchanged",
