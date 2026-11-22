@@ -34,7 +34,8 @@ def _status(args):
                 policy.configure(changes)
             except ValueError as error:
                 raise SystemExit(f"nsf resources idle: {error}") from None
-        return emit(policy.status())
+        from . import monitor               # `loaded` as `nsf resources` shows it (from the running containers)
+        return emit(policy.status(monitor.containers()))
     if args.action == "tick":
         return emit(policy.tick())
     if not args.service:

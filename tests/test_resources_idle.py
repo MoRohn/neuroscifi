@@ -354,3 +354,20 @@ def test_parse_timeout():
     assert idle.parse_timeout("off") is None and idle.parse_timeout("0") is None
     with pytest.raises(ValueError):
         idle.parse_timeout("soon")
+
+
+def test_resources_idle_shows_loaded_as_resources_does(fake, capsys, monkeypatch):
+    """R6 minor: `nsf resources idle` showed `loaded: null` while `nsf resources` showed `true` for the same service.
+    Both now read the running neuroscifi-* containers."""
+    from neuroscifi.cli import main
+    from neuroscifi.resources import monitor
+    running = [{"name": "neuroscifi-vllm"}, {"name": "neuroscifi-searxng"}]
+    monkeypatch.setattr(monitor, "containers", lambda: running)
+    monitor.clear_cache()
+    assert main(["resources", "idle", "--db", str(fake.path)]) == 0
+    idle_view = {k: v["loaded"] for k, v in json.loads(capsys.readouterr().out)["services"].items()}
+    assert main(["resources", "--db", str(fake.path)]) == 0
+    status_view = {k: v["loaded"] for k, v in
+                   json.loads(capsys.readouterr().out)["policy"]["idle_unload"]["services"].items()}
+    assert idle_view == status_view == {"vllm": True, "asr": False, "tts": False, "searxng": True}
+    monitor.clear_cache()
