@@ -17,11 +17,13 @@ nsf pocket tls init --out /etc/neuroscifi/tls \
 - **Name constraints.** The CA is limited (critical X.509 name constraints) to the names given at its creation. If its key leaked, it could not mint a certificate that any client accepts for another site.
   - Reissuing for a subset of those names reuses the CA.
   - A new name needs `--new-ca`, and every phone must then install the new CA.
+  - So list every name and the LAN address now. When no LAN address is among the names, `init` warns on stderr and in `warnings`: the CA is limited to those names, and it lists this machine's LAN addresses (`ip -o addr show scope global`, container bridges left out) with the `init` command that adds them (`--new-ca` when the CA already exists).
 - **`--out`** gets only what the service reads:
   - `fullchain.pem`: the server certificate, then the CA.
   - `privkey.pem`: 0600; make it `root:neuroscifi 0640` as in ENVIRONMENT §4.
   - `ca.pem`.
 - **The server certificate** lasts 397 days (`--days`, at most 825, the iOS limit). It carries `serverAuth` and the names as subjectAltName, which is what Chrome, Android and iOS check; they ignore the common name.
+- **Serve hint.** `serve` in the output is the whole command: `nsf pocket serve --bind ADDRESS --port 8765 --cert OUT/fullchain.pem --key OUT/privkey.pem --db /path/on/encrypted-volume/mobile.sqlite --instance-db "$NSF_DB" [--push-key ~/.config/neuroscifi/pocket/vapid.pem]` (`--bind` is the LAN address on the certificate when there is one); `serve_notes` says what each part is for, and that `--push-key` is optional. At start the bridge prints `Listening on https://ADDRESS:8765` and the URL for each name on the certificate.
 - **Renew:** run `init` again with the same names before expiry, then `sudo systemctl restart neuroscifi-pocket.service`. `nsf pocket tls status --out DIR` shows the days left and whether the chain verifies.
 
 Then set `NSF_POCKET_BIND` and `NSF_POCKET_TLS_ARGS=--cert /etc/neuroscifi/tls/fullchain.pem --key /etc/neuroscifi/tls/privkey.pem` (ENVIRONMENT §4).

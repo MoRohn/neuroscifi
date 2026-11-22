@@ -116,3 +116,40 @@ def test_pocket_serves_the_issued_chain_and_a_client_trusting_only_the_ca_accept
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_the_serve_hint_is_the_whole_command(tmp_path):
+    """R6 setup (c): the printed hint left out --port, --db and --instance-db."""
+    out = tls.init(tmp_path / "tls", ["spark.local", "192.168.1.20"], ca_dir=tmp_path / "ca")
+    serve = out["serve"]
+    for part in ("--bind 192.168.1.20", "--port 8765", f"--cert {tmp_path / 'tls' / 'fullchain.pem'}",
+                 f"--key {tmp_path / 'tls' / 'privkey.pem'}", "--db ", "--instance-db ", "[--push-key "):
+        assert part in serve, (part, serve)
+    assert "optional" in out["serve_notes"] and "warnings" not in out      # a LAN address is on the certificate
+
+
+def test_names_without_a_lan_address_get_a_warning_with_the_machines_addresses(tmp_path, monkeypatch, capsys):
+    """R6 setup (d): the CA is limited to the names given at creation; adding the LAN IP later means --new-ca and
+    reinstalling it on every device. Without a LAN address among the names, init says so and suggests them."""
+    monkeypatch.setattr(tls, "lan_addresses", lambda: ["192.168.1.20", "fd00::5"])
+    assert cli.main(["pocket", "tls", "init", "--out", str(tmp_path / "tls"), "--ca-dir", str(tmp_path / "ca"),
+                     "--name", "spark.local"]) == 0
+    captured = capsys.readouterr()
+    (warning,) = json.loads(captured.out)["warnings"]
+    assert "limited to spark.local" in warning and "--new-ca" in warning
+    assert "This machine's LAN addresses: 192.168.1.20, fd00::5." in warning
+    assert "nsf pocket tls init --out OUT --name spark.local --name 192.168.1.20 --name fd00::5." in warning
+    assert captured.err.startswith("nsf pocket tls: warning: No LAN address is among the names")
+    again = tls.init(tmp_path / "tls2", ["spark.local"], ca_dir=tmp_path / "ca")       # the CA exists now
+    assert again["warnings"][0].endswith(" --new-ca.")
+
+
+def test_lan_addresses_leave_out_loopback_and_container_bridges(monkeypatch):
+    import subprocess
+    listing = ("2: lo    inet 127.0.0.1/8 scope host lo\n"
+               "5: wlP9s9    inet 192.168.68.60/22 brd 192.168.71.255 scope global dynamic wlP9s9\n"
+               "5: wlP9s9    inet6 fdd3::f228/64 scope global dynamic\n"
+               "9: docker0    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0\n"
+               "10: br-eb56be2bdc75    inet 172.18.0.1/16 scope global br-eb56be2bdc75\n")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, listing, ""))
+    assert tls.lan_addresses() == ["192.168.68.60", "fdd3::f228"]

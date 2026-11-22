@@ -84,6 +84,51 @@ def _split(names) -> tuple[list[str], list]:
     return list(dict.fromkeys(dns)), list(dict.fromkeys(ips))
 
 
+_VIRTUAL = ("docker", "br-", "veth", "virbr", "cni", "flannel", "podman", "lxc", "vmnet")
+
+
+def lan_addresses() -> list[str]:
+    """This machine's LAN addresses, best effort, for a suggestion only: IPv4 first, from `ip -o addr show scope
+    global` (container and virtual bridges left out), else the address a UDP socket would leave by (no packet is
+    sent)."""
+    import subprocess
+    found = []
+    try:
+        lines = subprocess.run(["ip", "-o", "addr", "show", "scope", "global"], capture_output=True, text=True,
+                               timeout=2).stdout.splitlines()
+    except (OSError, subprocess.SubprocessError):
+        lines = []
+    for line in lines:
+        parts = line.split()
+        if len(parts) > 3 and parts[2] in ("inet", "inet6") and not parts[1].startswith(_VIRTUAL):
+            found.append((parts[2] == "inet6", parts[3].split("/")[0]))
+    if not found:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                probe.connect(("192.0.2.1", 9))          # TEST-NET-1: routing only, nothing is sent
+                found.append((False, probe.getsockname()[0]))
+        except OSError:
+            pass
+    return list(dict.fromkeys(addr for _, addr in sorted(found, key=lambda x: x[0])
+                              if not ipaddress.ip_address(addr).is_loopback))
+
+
+def _lan_warning(dns, ips, created) -> str | None:
+    """R6 setup (d): the CA is limited to the names it was created for; without a LAN address among them a phone on
+    the LAN can only use a host name it resolves. Say so, and how to add the address."""
+    if any(not ip.is_loopback for ip in ips):
+        return None
+    lan = lan_addresses()
+    names = dns + [str(ip) for ip in ips]
+    add = " ".join(f"--name {n}" for n in names) + " " + (" ".join(f"--name {a}" for a in lan[:2]) or "--name LAN_IP")
+    return (f"No LAN address is among the names: this CA and certificate are limited to {', '.join(names)}, so a phone "
+            "must reach the Spark by one of those names. To add the LAN address later the CA must be replaced "
+            "(--new-ca) and reinstalled on every device. "
+            + (f"This machine's LAN addresses: {', '.join(lan)}. " if lan else "")
+            + f"To include it now: nsf pocket tls init --out OUT {add.strip()}"
+            + ("" if created else " --new-ca") + ".")
+
+
 def default_names() -> list[str]:
     host = socket.gethostname()
     return [host, f"{host}.local", "localhost", "127.0.0.1", "::1"]
@@ -195,6 +240,7 @@ def init(out: Path, names, *, ca_dir: Path = DEFAULT_CA_DIR, days=SERVER_DAYS, c
             raise TLSError(f"the existing CA is limited to {sorted(allowed_dns) + sorted(map(str, allowed_ips))}; "
                            f"{', '.join(outside)} would be refused by every client. Use --new-ca (phones must then "
                            "install the new CA)")
+    warning = _lan_warning(dns, ips, created)
     key, cert = _issue(ca_key, ca_cert, dns, ips, now, days)
     _private_dir(out)
     _write(out / "privkey.pem", key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
@@ -202,12 +248,25 @@ def init(out: Path, names, *, ca_dir: Path = DEFAULT_CA_DIR, days=SERVER_DAYS, c
     pem = serialization.Encoding.PEM
     _write(out / "fullchain.pem", cert.public_bytes(pem) + ca_cert.public_bytes(pem), 0o644)
     _write(out / "ca.pem", ca_cert.public_bytes(pem), 0o644)
-    return {"ca_created": created, "ca_dir": str(ca_dir), "out": str(out),
-            "files": {"fullchain": str(out / "fullchain.pem"), "privkey": str(out / "privkey.pem"),
-                      "ca": str(out / "ca.pem")},
-            "names": dns + [str(ip) for ip in ips], "server_not_after": cert.not_valid_after_utc.isoformat(),
-            "ca_not_after": ca_cert.not_valid_after_utc.isoformat(), "ca_fingerprints": fingerprints(ca_cert),
-            "serve": f"nsf pocket serve --cert {out / 'fullchain.pem'} --key {out / 'privkey.pem'} --bind ADDRESS"}
+    bind = next((str(ip) for ip in ips if not ip.is_loopback), "LAN_IP")
+    # R6 setup (c): the whole command, with the optional push key in brackets
+    serve = (f"nsf pocket serve --bind {bind} --port 8765 --cert {out / 'fullchain.pem'} --key {out / 'privkey.pem'} "
+             "--db /path/on/encrypted-volume/mobile.sqlite --instance-db \"$NSF_DB\" "
+             "[--push-key ~/.config/neuroscifi/pocket/vapid.pem]")
+    report = {"ca_created": created, "ca_dir": str(ca_dir), "out": str(out),
+              "files": {"fullchain": str(out / "fullchain.pem"), "privkey": str(out / "privkey.pem"),
+                        "ca": str(out / "ca.pem")},
+              "names": dns + [str(ip) for ip in ips], "server_not_after": cert.not_valid_after_utc.isoformat(),
+              "ca_not_after": ca_cert.not_valid_after_utc.isoformat(), "ca_fingerprints": fingerprints(ca_cert),
+              "serve": serve,
+              "serve_notes": "--bind: an address on the certificate (phones open https://NAME:8765 for a NAME "
+                             "above); --db: the Pocket database, on an encrypted volume; --instance-db: the "
+                             "individual's database, for Research (with nsf web config --enable --pocket-research) "
+                             "and node enrolment; --push-key (optional): Web Push, the VAPID key is created as a "
+                             "0600 file on first start (needs --instance-db)"}
+    if warning:
+        report["warnings"] = [warning]
+    return report
 
 
 def export_ca(dest: Path | None, *, ca_dir: Path = DEFAULT_CA_DIR, der=False) -> dict:
@@ -301,7 +360,12 @@ def _run(fn):
 
 
 def _init(a):
-    return _run(lambda: init(a.out, a.name, ca_dir=a.ca_dir, days=a.days, new_ca=a.new_ca))
+    def run():
+        out = init(a.out, a.name, ca_dir=a.ca_dir, days=a.days, new_ca=a.new_ca)
+        for warning in out.get("warnings", ()):
+            print(f"nsf pocket tls: warning: {warning}", file=sys.stderr)
+        return out
+    return _run(run)
 
 
 def _export(a):
