@@ -1,0 +1,975 @@
+{
+ "evidence": "news_render_live_v2",
+ "lane": "v0.7.0 news lane: OD-3 / O-05 news rendering budget (ADR-040)",
+ "generated_at": "2026-11-21",
+ "code": {
+  "before": "94ccb09 (build/neuroscifi-v1)",
+  "after": "c64d8d5: fd3b69d (render allowance, blocking, static-first, news_rendering switch), d26a882 (encyclopedia and out-of-window pages after dated news), c64d8d5 (SearXNG news interleaved by engine; hits dated before the window fetched last)"
+ },
+ "environment": {
+  "host": "DGX Spark class host (GB10, 121 GiB MemTotal unified memory, 20 cores); memory pressure 'ok' during the runs (about 36 GiB available)",
+  "searxng": "shared SearXNG on 127.0.0.1:8888 (loopback JSON API, honest User-Agent)",
+  "model": "shared vLLM on 127.0.0.1:8811 (nsf llm config --url http://127.0.0.1:8811/v1 --reasoning)",
+  "browser": "Playwright with system Chromium /usr/bin/chromium; Chromium sandbox on; every sub-request through SafeFetcher (robots.txt, address policy, Retry-After, honest User-Agent)",
+  "individual": "fresh scratch database <scratch>/lane_news_live/ind.sqlite (not the owner's instance): `nsf init`, `nsf web config --enable --set searxng_url=...`, model configured; every other setting default, so browser_rendering false and news_rendering true (the new default)"
+ },
+ "decision": {
+  "adr": "ADR-040 (docs/architecture/ARCHITECTURAL_DECISIONS.md)",
+  "summary": [
+   "A render is one page read of the task plus its own allowance of budget.max_render_requests sub-requests (default 100, ceiling 150), tallied in usage.render_requests, never charged to max_requests (20 in a quick lookup).",
+   "Renders per task: max_browser_sessions (1; ceiling 2). Renders per UTC day: daily_renders 40, a meta counter forgetting does not refund. Refused at critical memory pressure and with under 10 s of the time budget left.",
+   "Never fetched: images, media, fonts, stylesheets, beacons, 'other' (favicons, prefetches), iframes, and known ad/analytics hosts (browser.BLOCKED_DOMAINS).",
+   "Static-first for news questions: dated, in-window static pages first; pages without text (rendered when allowed), undated pages, encyclopedia articles and out-of-window pages or hits after them. SearXNG news results interleaved by engine. Search-engine dates order candidates only and never date a source.",
+   "news_rendering on by default (owner switch `nsf web config --no-news-render`), only for questions a person asked; general browser_rendering stays off by default."
+  ]
+ },
+ "method": [
+  "request counts: one BrowserRenderer.render per URL through a SafeFetcher with the honest User-Agent, before (94ccb09 renderer: one budget, stylesheets/iframes/trackers fetched) and after (blocking + allowance; allowance raised to 400 for measurement so nothing was cut). sub_requests excludes the page's own robots.txt and page fetch. Sites: msn.com (Bing News's main source) and three other news sites whose robots.txt admits the honest User-Agent for the article path: finance.yahoo.com, foxbusiness.com, wccftech.com. Their static HTML already has text and a JSON-LD date, so the product does not render them; they are measured for the request count only",
+  "memory: summed RSS and summed PSS of the Playwright driver and every Chromium process, sampled every 0.2 s; RSS double-counts shared pages, PSS does not; child_cpu_s from os.times() of the reaped driver",
+  "live: `nsf web ask \"What happened in AI this week?\"` three times and `nsf web ask \"What is the latest news about NVIDIA?\"` once, default (auto) mode -> quick_lookup budget (3 pages, 3 queries, 20 requests, 1 browser session, 100 render sub-requests, 45 s); wall_ms from the shell around the CLI process",
+  "date_obtained_from: the extractor's date_source of the stored source (json-ld = JSON-LD datePublished in the static or rendered HTML; meta:article:published_time = OpenGraph article meta in the rendered DOM); search-engine dates are not source dates",
+  "text_chars: the stored body (public cache) re-extracted",
+  "an exploratory run on d26a882's parent (fd3b69d) is summarised under exploratory_run; the four reported runs are on the final code"
+ ],
+ "request_counts": {
+  "before_blocking": [
+   {
+    "url": "https://www.msn.com/en-us/money/top-stocks/goldman-sachs-admits-the-ai-unwind-has-spiraled-into-some",
+    "phase": "before",
+    "sub_requests": 80,
+    "intercepted": 107,
+    "outcomes": {
+     "served-main": 1,
+     "served": 73,
+     "aborted": 30,
+     "refused": 3
+    },
+    "blocked_by": {},
+    "text_chars_after_render": 5800,
+    "date_source": "meta:article:published_time",
+    "wall_s": 19.7
+   },
+   {
+    "url": "https://finance.yahoo.com/markets/stocks/articles/nvidia-stock-crashed-48-now-004700969.html",
+    "phase": "before",
+    "sub_requests": 246,
+    "intercepted": 419,
+    "outcomes": {
+     "served-main": 1,
+     "served": 239,
+     "aborted": 176,
+     "refused": 3
+    },
+    "blocked_by": {},
+    "text_chars_after_render": 4133,
+    "date_source": "json-ld",
+    "wall_s": 42.0
+   },
+   {
+    "url": "https://www.foxbusiness.com/economy/anthropic-ipo-signals-beginning-gold-rush-small-businesses-says-",
+    "phase": "before",
+    "sub_requests": 76,
+    "intercepted": 141,
+    "outcomes": {
+     "served-main": 1,
+     "served": 47,
+     "refused": 16,
+     "aborted": 77
+    },
+    "blocked_by": {},
+    "text_chars_after_render": 3832,
+    "date_source": "json-ld",
+    "wall_s": 18.9
+   },
+   {
+    "url": "https://wccftech.com/nvidia-releases-gpu-hotfix-driver-621-35-fixes-excessive-ssd-writes/",
+    "phase": "before",
+    "sub_requests": 26,
+    "intercepted": 45,
+    "outcomes": {
+     "served-main": 1,
+     "refused": 5,
+     "aborted": 23,
+     "served": 16
+    },
+    "blocked_by": {},
+    "text_chars_after_render": 5329,
+    "date_source": "json-ld",
+    "wall_s": 23.5
+   },
+   {
+    "url": "https://www.msn.com/en-ca/news/other/un-talks-on-ai-in-warfare-end-with-no-commitment-to-binding-rul",
+    "phase": "before",
+    "sub_requests": 76,
+    "intercepted": 95,
+    "outcomes": {
+     "served-main": 1,
+     "served": 70,
+     "aborted": 21,
+     "refused": 3
+    },
+    "blocked_by": {},
+    "text_chars_after_render": 4372,
+    "date_source": "meta:article:published_time",
+    "wall_s": 17.8
+   }
+  ],
+  "after_blocking": [
+   {
+    "url": "https://www.msn.com/en-us/money/top-stocks/goldman-sachs-admits-the-ai-unwind-has-spiraled-into-some",
+    "phase": "after",
+    "sub_requests": 78,
+    "intercepted": 122,
+    "outcomes": {
+     "served-main": 1,
+     "served": 76,
+     "aborted": 43,
+     "refused": 2
+    },
+    "blocked_by": {
+     "tracker": 7,
+     "type": 35,
+     "frame": 1
+    },
+    "text_chars_after_render": 5800,
+    "date_source": "meta:article:published_time",
+    "wall_s": 18.6,
+    "peak_rss_mib_sum": 1361,
+    "child_cpu_s": 3.0
+   },
+   {
+    "url": "https://www.msn.com/en-ca/news/other/un-talks-on-ai-in-warfare-end-with-no-commitment-to-binding-rul",
+    "phase": "after",
+    "sub_requests": 76,
+    "intercepted": 110,
+    "outcomes": {
+     "served-main": 1,
+     "served": 76,
+     "aborted": 31,
+     "refused": 2
+    },
+    "blocked_by": {
+     "tracker": 7,
+     "type": 23,
+     "frame": 1
+    },
+    "text_chars_after_render": 4372,
+    "date_source": "meta:article:published_time",
+    "wall_s": 14.0,
+    "peak_rss_mib_sum": 1311,
+    "child_cpu_s": 3.1
+   },
+   {
+    "url": "https://finance.yahoo.com/markets/stocks/articles/nvidia-stock-crashed-48-now-004700969.html",
+    "phase": "after",
+    "sub_requests": 236,
+    "intercepted": 381,
+    "outcomes": {
+     "served-main": 1,
+     "served": 231,
+     "aborted": 146,
+     "refused": 3
+    },
+    "blocked_by": {
+     "type": 123,
+     "tracker": 2
+    },
+    "text_chars_after_render": 4133,
+    "date_source": "json-ld",
+    "wall_s": 42.4,
+    "peak_rss_mib_sum": 1281,
+    "child_cpu_s": 5.1
+   },
+   {
+    "url": "https://www.foxbusiness.com/economy/anthropic-ipo-signals-beginning-gold-rush-small-businesses-says-",
+    "phase": "after",
+    "sub_requests": 36,
+    "intercepted": 109,
+    "outcomes": {
+     "served-main": 1,
+     "aborted": 77,
+     "served": 29,
+     "refused": 2
+    },
+    "blocked_by": {
+     "type": 59,
+     "tracker": 13
+    },
+    "text_chars_after_render": 3832,
+    "date_source": "json-ld",
+    "wall_s": 18.5,
+    "peak_rss_mib_sum": 1210,
+    "child_cpu_s": 3.8
+   },
+   {
+    "url": "https://wccftech.com/nvidia-releases-gpu-hotfix-driver-621-35-fixes-excessive-ssd-writes/",
+    "phase": "after",
+    "sub_requests": 8,
+    "intercepted": 32,
+    "outcomes": {
+     "served-main": 1,
+     "aborted": 26,
+     "served": 4,
+     "refused": 1
+    },
+    "blocked_by": {
+     "type": 19,
+     "tracker": 7
+    },
+    "text_chars_after_render": 5327,
+    "date_source": "json-ld",
+    "wall_s": 11.9,
+    "peak_rss_mib_sum": 1136,
+    "child_cpu_s": 1.8
+   },
+   {
+    "url": "https://www.msn.com/en-us/money/general/nvidia-s-new-china-threat-could-reach-your-401-k/ar-AA2hWu5i",
+    "phase": "after",
+    "sub_requests": 81,
+    "intercepted": 121,
+    "outcomes": {
+     "served-main": 1,
+     "served": 79,
+     "aborted": 39,
+     "refused": 2
+    },
+    "blocked_by": {
+     "tracker": 7,
+     "type": 31,
+     "frame": 1
+    },
+    "text_chars_after_render": 9497,
+    "date_source": "meta:article:published_time",
+    "wall_s": 17.8,
+    "peak_rss_mib_sum": 1328,
+    "peak_pss_mib_sum": 534,
+    "child_cpu_s": 3.5
+   },
+   {
+    "url": "https://www.msn.com/en-us/money/top-stocks/goldman-sachs-admits-the-ai-unwind-has-spiraled-into-some",
+    "phase": "after",
+    "sub_requests": 76,
+    "intercepted": 121,
+    "outcomes": {
+     "served-main": 1,
+     "served": 76,
+     "aborted": 42,
+     "refused": 2
+    },
+    "blocked_by": {
+     "tracker": 7,
+     "type": 34,
+     "frame": 1
+    },
+    "text_chars_after_render": 5800,
+    "date_source": "meta:article:published_time",
+    "wall_s": 15.6,
+    "peak_rss_mib_sum": 1331,
+    "peak_pss_mib_sum": 533,
+    "child_cpu_s": 3.1
+   },
+   {
+    "url": "https://www.foxbusiness.com/economy/anthropic-ipo-signals-beginning-gold-rush-small-businesses-says-",
+    "phase": "after",
+    "sub_requests": 34,
+    "intercepted": 103,
+    "outcomes": {
+     "served-main": 1,
+     "aborted": 72,
+     "served": 28,
+     "refused": 2
+    },
+    "blocked_by": {
+     "type": 61,
+     "tracker": 11
+    },
+    "text_chars_after_render": 4026,
+    "date_source": "json-ld",
+    "wall_s": 9.7,
+    "peak_rss_mib_sum": 1207,
+    "peak_pss_mib_sum": 427,
+    "child_cpu_s": 3.0
+   }
+  ],
+  "summary": {
+   "msn.com": "76 and 80 sub-requests before; after: 78, 76, 81, 76 (probes), 75, 25, 75, 69 (final live runs) and 72, 72, 79 (live runs on d26a882); the 25 was a render whose page stopped loading early (text, no date). MSN assembles the article from about 60 first-party script chunks on assets.msn.com, which no blocking can remove; blocking removes the ad/analytics hosts, the login iframe and their robots.txt fetches (about 5-8) but the page then loads a few more first-party chunks. Fits the 100 allowance in every run.",
+   "foxbusiness.com": "76 -> 34-36 (ads, ad-tech scripts and stylesheets no longer fetched)",
+   "wccftech.com": "26 -> 8",
+   "finance.yahoo.com": "246 -> 236 (about 230 first-party script chunks); exceeds the allowance, but its static HTML carries text and a JSON-LD date, so it is never rendered"
+  },
+  "chromium_resources": "peak per render: summed PSS 427-534 MiB, summed RSS 1.2-1.4 GiB, 3-5 s of CPU over 10-20 s wall"
+ },
+ "runs": [
+  {
+   "run": 1,
+   "question": "What happened in AI this week?",
+   "task_status": "completed",
+   "mode": "quick_lookup",
+   "wall_ms": 42193,
+   "budget": {
+    "max_browser_sessions": 1,
+    "max_bytes": 20000000,
+    "max_concurrency": 4,
+    "max_context_tokens": 2000,
+    "max_depth": 0,
+    "max_pages": 3,
+    "max_queries": 3,
+    "max_render_requests": 100,
+    "max_requests": 20,
+    "max_seconds": 45
+   },
+   "usage": {
+    "browser_sessions": 1,
+    "bytes": 3065375,
+    "pages": 3,
+    "queries": 3,
+    "render_requests": 75,
+    "requests": 16,
+    "seconds": 41.795,
+    "tokens": 780
+   },
+   "freshness": {
+    "class": "breaking",
+    "newest_source_at": 1795297512.0,
+    "observed_at": null,
+    "required_seconds": 604800.0,
+    "satisfied": true,
+    "ttl_seconds": 10800.0,
+    "window_seconds": 604800.0
+   },
+   "freshness_satisfied": true,
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "answer_lead": "3 sources read; 20 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 3 hours ago.",
+   "answer_items": [
+    {
+     "text": "While the Chinese leader was riding high as host to global leaders this week, the market’s downturn jeopardizes his plan to turn China’s savers into stock investors who can finance the AI buildout and de-emphasize the property market.",
+     "citations": [
+      1
+     ]
+    },
+    {
+     "text": "\"It's clear tech leaders do not care about AI safety for humans or machines.\"",
+     "citations": [
+      2
+     ]
+    },
+    {
+     "text": "\"Super intelligence will hack your limbic system,\" Musk, 55, wrote via his X platform on Tuesday, November 17, resharing an announcement about the first AI-generated influencer.",
+     "citations": [
+      2
+     ]
+    }
+   ],
+   "model_answer": [
+    {
+     "citations": [
+      1
+     ],
+     "claims": [
+      "C1"
+     ],
+     "hedged": true,
+     "states": {
+      "C1": "insufficient"
+     },
+     "text": "According to one source, the Chinese stock market downturn threatens President Xi Jinping's plan to shift investment from property to AI via stock market financing."
+    },
+    {
+     "citations": [
+      2
+     ],
+     "claims": [
+      "C3"
+     ],
+     "hedged": true,
+     "states": {
+      "C3": "insufficient"
+     },
+     "text": "On November 17, Elon Musk shared a post on X warning that superintelligence could hack the human limbic system, coinciding with the launch of an AI-generated influencer."
+    },
+    {
+     "citations": [
+      1
+     ],
+     "claims": [
+      "C7"
+     ],
+     "hedged": true,
+     "states": {
+      "C7": "insufficient"
+     },
+     "text": "Analysts suggest new U.S. controls on chip shipments and overseas computing access could slow China’s AI model development and rollout."
+    }
+   ],
+   "reading_order": [
+    "https://www.yahoo.com/entertainment/celebrity/articles/grimes-addresses-elon-musk-criticism-164046286.html",
+    "https://www.msn.com/en-us/money/general/the-ai-bust-is-a-growing-threat-to-china-s-economy-and-a-moment-of-real-danger-for-president-xi-jinping-analyst-warns/ar-AA2hVXt2",
+    "https://www.artificialintelligence-news.com/"
+   ],
+   "sources": [
+    {
+     "n": 1,
+     "url": "https://msn.com/en-us/money/general/the-ai-bust-is-a-growing-threat-to-china-s-economy-and-a-moment-of-real-danger-for-president-xi-jinping-analyst-warns/ar-AA2hVXt2",
+     "domain": "msn.com",
+     "retrieval_mode": "rendered",
+     "published_at": "2026-11-21T21:45:12Z",
+     "date_obtained_from": "meta:article:published_time",
+     "search_engine_date": null,
+     "cited_by_answer": true,
+     "text_chars": 4291,
+     "provider": "searxng"
+    },
+    {
+     "n": 2,
+     "url": "https://yahoo.com/entertainment/celebrity/articles/grimes-addresses-elon-musk-criticism-164046286.html",
+     "domain": "yahoo.com",
+     "retrieval_mode": "live",
+     "published_at": "2026-11-21T16:40:46Z",
+     "date_obtained_from": "json-ld",
+     "search_engine_date": null,
+     "cited_by_answer": true,
+     "text_chars": 6132,
+     "provider": "searxng"
+    },
+    {
+     "n": 3,
+     "url": "https://artificialintelligence-news.com/",
+     "domain": "artificialintelligence-news.com",
+     "retrieval_mode": "live",
+     "published_at": "2020-03-19T07:58:20Z",
+     "date_obtained_from": "json-ld",
+     "search_engine_date": null,
+     "cited_by_answer": false,
+     "text_chars": 6730,
+     "provider": "searxng"
+    }
+   ],
+   "renders": [
+    {
+     "allowance": 100,
+     "blocked": 27,
+     "budget_exhausted": false,
+     "ok": true,
+     "reason": "js_shell",
+     "refused": 2,
+     "subrequests": 75,
+     "url": "https://www.msn.com/en-us/money/general/the-ai-bust-is-a-growing-threat-to-china-s-economy-and-a-moment-of-real-danger-for-president-xi-jinping-analyst-warns/ar-AA2hVXt2"
+    }
+   ],
+   "render_refusals": [],
+   "reading_errors": [
+    {
+     "code": "rate_limited",
+     "host": "news.ycombinator.com",
+     "status": null
+    },
+    {
+     "code": "http_error",
+     "host": "www.usatoday.com",
+     "status": 402
+    },
+    {
+     "code": "blocked_robots",
+     "host": "www.reuters.com",
+     "status": null
+    }
+   ],
+   "limitations": [
+    "wikipedia: rate_limited: HTTP 429",
+    "news.ycombinator.com: rate_limited",
+    "www.usatoday.com: http_error",
+    "www.reuters.com: blocked_robots",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Rendering www.msn.com: 2 sub-request(s) were refused by the network policy; the rendered page may be incomplete",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 3 sentence(s) passed the citation and claim-state guard, 2 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ]
+  },
+  {
+   "run": 2,
+   "question": "What happened in AI this week?",
+   "task_status": "completed",
+   "mode": "quick_lookup",
+   "wall_ms": 36699,
+   "usage": {
+    "browser_sessions": 1,
+    "bytes": 1423048,
+    "pages": 3,
+    "queries": 3,
+    "render_requests": 25,
+    "requests": 14,
+    "seconds": 36.322,
+    "tokens": 820
+   },
+   "freshness": {
+    "class": "breaking",
+    "newest_source_at": 1795279501.0,
+    "observed_at": null,
+    "required_seconds": 604800.0,
+    "satisfied": true,
+    "ttl_seconds": 10800.0,
+    "window_seconds": 604800.0
+   },
+   "freshness_satisfied": true,
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "answer_lead": "3 sources read; 19 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 9 hours ago.",
+   "answer_items": [
+    {
+     "text": "ASML vs. Intel: Which AI Chip Stock Is a Better Buy in 2026?",
+     "citations": [
+      1
+     ]
+    },
+    {
+     "text": "While the Chinese leader was riding high as host to global leaders this week, the market’s downturn jeopardizes his plan to turn China’s savers into stock investors who can finance the AI buildout and de-emphasize the property market.",
+     "citations": [
+      2
+     ]
+    },
+    {
+     "text": "This resulted in an exceptionally high net margin of 70.3%, as demand for premium AI memory products outpaced supply across the industry.",
+     "citations": [
+      1
+     ]
+    }
+   ],
+   "model_answer": [
+    {
+     "citations": [
+      2
+     ],
+     "claims": [
+      "C2",
+      "C8",
+      "C11"
+     ],
+     "hedged": true,
+     "states": {
+      "C11": "temporally_unresolved",
+      "C2": "temporally_unresolved",
+      "C8": "temporally_unresolved"
+     },
+     "text": "According to one source, the Chinese stock market downturn threatens President Xi Jinping's plan to shift investment from property to the stock market to fund AI development."
+    }
+   ],
+   "reading_order": [
+    "https://finance.yahoo.com/technology/ai/articles/asml-vs-sk-hynix-artificial-164501490.html",
+    "https://www.msn.com/en-us/money/general/the-ai-bust-is-a-growing-threat-to-china-s-economy-and-a-moment-of-real-danger-for-president-xi-jinping-analyst-warns/ar-AA2hVXt2",
+    "https://en.wikipedia.org/wiki/Generative_AI"
+   ],
+   "sources": [
+    {
+     "n": 1,
+     "url": "https://finance.yahoo.com/technology/ai/articles/asml-vs-sk-hynix-artificial-164501490.html",
+     "domain": "yahoo.com",
+     "retrieval_mode": "live",
+     "published_at": "2026-11-21T16:45:01Z",
+     "date_obtained_from": "json-ld",
+     "search_engine_date": null,
+     "cited_by_answer": true,
+     "text_chars": 4305,
+     "provider": "searxng"
+    },
+    {
+     "n": 2,
+     "url": "https://msn.com/en-us/money/general/the-ai-bust-is-a-growing-threat-to-china-s-economy-and-a-moment-of-real-danger-for-president-xi-jinping-analyst-warns/ar-AA2hVXt2",
+     "domain": "msn.com",
+     "retrieval_mode": "rendered",
+     "published_at": null,
+     "date_obtained_from": null,
+     "search_engine_date": null,
+     "cited_by_answer": true,
+     "text_chars": 4291,
+     "provider": "searxng"
+    },
+    {
+     "n": 3,
+     "url": "https://en.wikipedia.org/wiki/Generative_AI",
+     "domain": "wikipedia.org",
+     "retrieval_mode": "api",
+     "published_at": null,
+     "date_obtained_from": null,
+     "search_engine_date": null,
+     "cited_by_answer": false,
+     "text_chars": null,
+     "provider": "wikipedia"
+    }
+   ],
+   "renders": [
+    {
+     "allowance": 100,
+     "blocked": 16,
+     "budget_exhausted": false,
+     "ok": true,
+     "reason": "js_shell",
+     "refused": 1,
+     "subrequests": 25,
+     "url": "https://www.msn.com/en-us/money/general/the-ai-bust-is-a-growing-threat-to-china-s-economy-and-a-moment-of-real-danger-for-president-xi-jinping-analyst-warns/ar-AA2hVXt2"
+    }
+   ],
+   "render_refusals": [],
+   "reading_errors": [
+    {
+     "code": "http_error",
+     "host": "www.usatoday.com",
+     "status": 402
+    },
+    {
+     "code": "rate_limited",
+     "host": "news.ycombinator.com",
+     "status": null
+    }
+   ],
+   "limitations": [
+    "www.usatoday.com: http_error",
+    "news.ycombinator.com: rate_limited",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Rendering www.msn.com: 1 sub-request(s) were refused by the network policy; the rendered page may be incomplete",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 1 sentence(s) passed the citation and claim-state guard, 3 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ]
+  },
+  {
+   "run": 3,
+   "question": "What happened in AI this week?",
+   "task_status": "completed",
+   "mode": "quick_lookup",
+   "wall_ms": 42106,
+   "usage": {
+    "browser_sessions": 1,
+    "bytes": 2849334,
+    "pages": 3,
+    "queries": 3,
+    "render_requests": 75,
+    "requests": 14,
+    "seconds": 41.737,
+    "tokens": 820
+   },
+   "freshness": {
+    "class": "breaking",
+    "newest_source_at": 1795297512.0,
+    "observed_at": null,
+    "required_seconds": 604800.0,
+    "satisfied": true,
+    "ttl_seconds": 10800.0,
+    "window_seconds": 604800.0
+   },
+   "freshness_satisfied": true,
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "answer_lead": "3 sources read; 19 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 4 hours ago.",
+   "answer_items": [
+    {
+     "text": "While the Chinese leader was riding high as host to global leaders this week, the market’s downturn jeopardizes his plan to turn China’s savers into stock investors who can finance the AI buildout and de-emphasize the property market.",
+     "citations": [
+      1
+     ]
+    },
+    {
+     "text": "ASML vs. Intel: Which AI Chip Stock Is a Better Buy in 2026?",
+     "citations": [
+      2
+     ]
+    },
+    {
+     "text": "“Yet this is a moment of real danger for Xi. A bursting AI bubble would not merely erase wealth or dent China’s technological prestige. It would weaken Beijing’s attempt to replace a broken property model with a stock-market-led one,” Yardeni warned.",
+     "citations": [
+      1
+     ]
+    }
+   ],
+   "model_answer": [
+    {
+     "citations": [
+      1
+     ],
+     "claims": [
+      "C1"
+     ],
+     "hedged": true,
+     "states": {
+      "C1": "insufficient"
+     },
+     "text": "According to one source, China's AI ambitions face risks due to a market downturn that could undermine efforts to shift funding from property to stock-market-backed AI development."
+    }
+   ],
+   "reading_order": [
+    "https://finance.yahoo.com/technology/ai/articles/asml-vs-sk-hynix-artificial-164501490.html",
+    "https://www.msn.com/en-us/money/general/the-ai-bust-is-a-growing-threat-to-china-s-economy-and-a-moment-of-real-danger-for-president-xi-jinping-analyst-warns/ar-AA2hVXt2",
+    "https://en.wikipedia.org/wiki/Generative_AI"
+   ],
+   "sources": [
+    {
+     "n": 1,
+     "url": "https://msn.com/en-us/money/general/the-ai-bust-is-a-growing-threat-to-china-s-economy-and-a-moment-of-real-danger-for-president-xi-jinping-analyst-warns/ar-AA2hVXt2",
+     "domain": "msn.com",
+     "retrieval_mode": "rendered",
+     "published_at": "2026-11-21T21:45:12Z",
+     "date_obtained_from": "meta:article:published_time",
+     "search_engine_date": null,
+     "cited_by_answer": true,
+     "text_chars": 4291,
+     "provider": "searxng"
+    },
+    {
+     "n": 2,
+     "url": "https://finance.yahoo.com/technology/ai/articles/asml-vs-sk-hynix-artificial-164501490.html",
+     "domain": "yahoo.com",
+     "retrieval_mode": "live",
+     "published_at": "2026-11-21T16:45:01Z",
+     "date_obtained_from": "json-ld",
+     "search_engine_date": null,
+     "cited_by_answer": true,
+     "text_chars": 4305,
+     "provider": "searxng"
+    },
+    {
+     "n": 3,
+     "url": "https://en.wikipedia.org/wiki/Generative_AI",
+     "domain": "wikipedia.org",
+     "retrieval_mode": "api",
+     "published_at": null,
+     "date_obtained_from": null,
+     "search_engine_date": null,
+     "cited_by_answer": false,
+     "text_chars": null,
+     "provider": "wikipedia"
+    }
+   ],
+   "renders": [
+    {
+     "allowance": 100,
+     "blocked": 27,
+     "budget_exhausted": false,
+     "ok": true,
+     "reason": "js_shell",
+     "refused": 2,
+     "subrequests": 75,
+     "url": "https://www.msn.com/en-us/money/general/the-ai-bust-is-a-growing-threat-to-china-s-economy-and-a-moment-of-real-danger-for-president-xi-jinping-analyst-warns/ar-AA2hVXt2"
+    }
+   ],
+   "render_refusals": [],
+   "reading_errors": [
+    {
+     "code": "http_error",
+     "host": "www.usatoday.com",
+     "status": 402
+    },
+    {
+     "code": "rate_limited",
+     "host": "news.ycombinator.com",
+     "status": null
+    },
+    {
+     "code": "http_error",
+     "host": "www.artificialintelligence-news.com",
+     "status": 403
+    }
+   ],
+   "limitations": [
+    "www.usatoday.com: http_error",
+    "news.ycombinator.com: rate_limited",
+    "www.artificialintelligence-news.com: http_error",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Rendering www.msn.com: 2 sub-request(s) were refused by the network policy; the rendered page may be incomplete",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 1 sentence(s) passed the citation and claim-state guard, 2 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ]
+  },
+  {
+   "run": 4,
+   "question": "What is the latest news about NVIDIA?",
+   "task_status": "completed",
+   "mode": "quick_lookup",
+   "wall_ms": 35985,
+   "usage": {
+    "browser_sessions": 1,
+    "bytes": 2595830,
+    "pages": 3,
+    "queries": 1,
+    "render_requests": 69,
+    "requests": 9,
+    "seconds": 35.699,
+    "tokens": 585
+   },
+   "freshness": {
+    "class": "volatile",
+    "newest_source_at": 1795290420.0,
+    "observed_at": null,
+    "required_seconds": 172800.0,
+    "satisfied": true,
+    "ttl_seconds": 172800.0,
+    "window_seconds": null
+   },
+   "freshness_satisfied": true,
+   "generated_by": "model:qwen3-30b-a3b-instruct-2507-fp8",
+   "answer_lead": "3 sources read; 24 statement clusters had usable evidence; the top statement is reported by a single source (1 agreeing independent source group of 1). Newest cited source: 6 hours ago.",
+   "answer_items": [
+    {
+     "text": "Nvidia’s China restrictions have already cost it money",
+     "citations": [
+      1
+     ]
+    },
+    {
+     "text": "Nvidia’s Nov. 17 announcement details the committee’s responsibilities.",
+     "citations": [
+      1
+     ]
+    },
+    {
+     "text": "What Nvidia’s investigation means for your money",
+     "citations": [
+      1
+     ]
+    }
+   ],
+   "model_answer": [
+    {
+     "citations": [
+      1
+     ],
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "hedged": true,
+     "states": {
+      "C1": "insufficient"
+     },
+     "text": "Nvidia’s China restrictions have reportedly already caused financial losses."
+    },
+    {
+     "citations": [
+      2
+     ],
+     "claims": [
+      "C5"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "hedged": true,
+     "states": {
+      "C5": "insufficient"
+     },
+     "text": "The U.S. administration is making decisions that could substantially affect Nvidia's business."
+    },
+    {
+     "citations": [
+      2
+     ],
+     "claims": [
+      "C11"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "hedged": true,
+     "states": {
+      "C11": "insufficient"
+     },
+     "text": "One source notes that Trump made Nvidia stock purchases around the same time Nvidia agreed to acquire Hugging Face."
+    }
+   ],
+   "reading_order": [
+    "https://www.newsweek.com/trump-stock-trades-nvidia-spacex-financial-disclosure-12744178",
+    "https://www.msn.com/en-us/money/general/nvidia-s-new-china-threat-could-reach-your-401-k/ar-AA2hWu5i",
+    "https://news.ycombinator.com/item?id=31344981"
+   ],
+   "sources": [
+    {
+     "n": 1,
+     "url": "https://msn.com/en-us/money/general/nvidia-s-new-china-threat-could-reach-your-401-k/ar-AA2hWu5i",
+     "domain": "msn.com",
+     "retrieval_mode": "rendered",
+     "published_at": "2026-11-21T19:47:00Z",
+     "date_obtained_from": "meta:article:published_time",
+     "search_engine_date": null,
+     "cited_by_answer": true,
+     "text_chars": 9497,
+     "provider": "searxng"
+    },
+    {
+     "n": 2,
+     "url": "https://newsweek.com/trump-stock-trades-nvidia-spacex-financial-disclosure-12744178",
+     "domain": "newsweek.com",
+     "retrieval_mode": "live",
+     "published_at": "2026-11-20T02:00:01Z",
+     "date_obtained_from": "json-ld",
+     "search_engine_date": null,
+     "cited_by_answer": true,
+     "text_chars": 12250,
+     "provider": "searxng"
+    },
+    {
+     "n": 3,
+     "url": "https://news.ycombinator.com/item?id=31344981",
+     "domain": "ycombinator.com",
+     "retrieval_mode": "live",
+     "published_at": null,
+     "date_obtained_from": null,
+     "search_engine_date": "2022-05-11T19:59:46Z",
+     "cited_by_answer": false,
+     "text_chars": 134710,
+     "provider": "searxng"
+    }
+   ],
+   "renders": [
+    {
+     "allowance": 100,
+     "blocked": 29,
+     "budget_exhausted": false,
+     "ok": true,
+     "reason": "js_shell",
+     "refused": 2,
+     "subrequests": 69,
+     "url": "https://www.msn.com/en-us/money/general/nvidia-s-new-china-threat-could-reach-your-401-k/ar-AA2hWu5i"
+    }
+   ],
+   "render_refusals": [],
+   "reading_errors": [
+    {
+     "code": "http_error",
+     "host": "www.nytimes.com",
+     "status": 403
+    }
+   ],
+   "limitations": [
+    "www.nytimes.com: http_error",
+    "Extractive synthesis: statements are quoted from sources, not generated; contradiction detection covers numbers, versions, dates, polarity and explicit opposites only (ADR-022)",
+    "Rendering www.msn.com: 2 sub-request(s) were refused by the network policy; the rendered page may be incomplete",
+    "Model-written answer (model:qwen3-30b-a3b-instruct-2507-fp8): 3 sentence(s) passed the citation and claim-state guard, 2 rejected; the quoted extractive answer remains the evidence of record and model text is never stored as knowledge"
+   ]
+  }
+ ],
+ "exploratory_run": {
+  "code": "fd3b69d",
+  "question": "What happened in AI this week?",
+  "freshness_satisfied": false,
+  "what_happened": "two Wikipedia articles (read first as encyclopedia hits) and artificialintelligence-news.com's home page dated 2020-03-19 (JSON-LD) filled the 3 page slots; the MSN article waiting for a render was never reached (0 renders, 15 requests). Fixed by d26a882 (encyclopedia and out-of-window pages after the dated news pages).",
+  "second_exploratory_runs": "on d26a882 the three AI runs met freshness (msn.com rendered, 72/72/79 sub-requests); the NVIDIA run did not: SearXNG kept 8 of 40 news results, all Hacker News threads, and a 2022 thread was read and rendered (reason undated_news, 1 sub-request). Fixed by c64d8d5."
+ },
+ "bench": {
+  "command": "nsf web bench --repeat 3",
+  "baseline": "docs/quality/evidence/webcortex_bench_v070.json",
+  "result": "every metric identical (retrieval 12/12, coverage 21/24, top answer 9/12, citation precision 193/194, freshness 8/8, verdicts 29/29, contradiction P/R 1.0/0.8571, recall@3 1.0, identical across 3 runs); only resource noise changed (peak RSS +3 to +4 %, per-task DB growth within +-4 KiB, task wall p50 +7 % on a shared host). The offline bench renders nothing: its fixture questions never reach the render gate"
+ },
+ "findings": [
+  "All 4 live runs met the freshness requirement with dated, cited sources (AI x3: 7-day window; NVIDIA: 2-day volatile window). Before (news_render_live.json, default config) the same AI question ended 'freshness requirement not met' with 0 sources with text.",
+  "Each run rendered exactly one msn.com article (reason js_shell) within its own allowance (75, 25, 75 and 69 sub-requests of 100, never exhausted) and spent 9-16 of the task's 20 requests on discovery and static pages; no render was cut short.",
+  "Dates came from the publishers' own markup: JSON-LD datePublished in static HTML (yahoo.com, newsweek.com) and article:published_time in MSN's rendered DOM. In run 2 the rendered MSN page (25 sub-requests) carried text but no date; freshness was met by the static yahoo.com page.",
+  "Robots and site rules held: www.reuters.com blocked_robots, news.ycombinator.com rate_limited by its 30 s Crawl-delay (not waited out), usatoday.com HTTP 402 and nytimes.com HTTP 403 not retried or bypassed; 1-2 MSN sub-requests per render refused by robots.txt (api.msn.com LiveRamp) and left refused.",
+  "Wall time 36-42 s against the quick lookup's 45 s; the render step (deferred static reads plus the render) took 9-16 s of it, the model answer most of the rest. The model answer was written in all 4 runs (1-3 sentences accepted by the guard)."
+ ],
+ "limitations": [
+  "Four runs on one evening; live rankings change from minute to minute (three of the AI runs read the same MSN article).",
+  "Every answer cluster is single-source; current events rarely get a second independent source within 3 pages.",
+  "A page whose article needs more than 100 sub-requests (Yahoo Finance, about 236) would render incomplete and the report says so; such pages are rendered only when their static HTML has no text or date.",
+  "news_rendering runs Chromium on untrusted news-site JavaScript by default once web access is enabled (sandboxed, at most 1 per task and 40 per day)."
+ ]
+}

@@ -148,7 +148,7 @@ Decision: twelve `web_*` tables (ARCHITECTURE §6), owned by `webcortex/state.py
 cascades to derived claims, links, knowledge versions and pending questions, marks checkpoints stale, and records a
 `deletion_log` row. Forgetting a task deletes its row, events, sources and claims; the deletion log keeps only the task id, and a byte-level test checks that the objective text leaves the file and its WAL. Owner questions about forgotten knowledge keep their row with the text replaced by `#forgotten`.
 
-**ADR-030 JavaScript rendering is an escalation, sandboxed and routed through SafeFetcher. R**
+**ADR-030 JavaScript rendering is an escalation, sandboxed and routed through SafeFetcher. R** (default and budget amended by ADR-040)
 Decision: when extraction finds a JavaScript shell and the task has a browser-session budget, `browser.BrowserRenderer`
 loads the page in a fresh Chromium context whose every request is intercepted and fulfilled by `SafeFetcher` (or
 refused; fetched with `purpose="subresource"`, which admits scripts and stylesheets, is never cached or extracted and
@@ -706,3 +706,107 @@ a push holds no pairing credential (POC-07), so it cannot ask the Spark what hap
   home-screen app) are covered by the owner's guided test in mobile/README.md.
 - Shared files touched: Pocket server, CLI, index, research-ui, mobile.js, sw.js (cache `neuroscifi-pocket-shell-19`),
   `tests/js/offline_check.mjs`.
+
+# ADR-041 (draft) News rendering: a bounded per-render allowance, static-first reading, and rendering on for a person's news questions. R
+
+Status: draft, v0.7.0 news lane. Settles owner decision OD-3 and open item O-05. Amends ADR-030 (rendering is no
+longer off for every question by default). Rules and the budget table: docs/web-cortex/SEARCH_AND_ACQUISITION.md §9.
+Evidence: `docs/quality/evidence/news_render_live_v2.json`.
+
+## Context
+
+- Bing News, the main dated-news engine behind SearXNG, returns no `publishedDate`, and most of its hits are msn.com
+  articles whose static HTML has no text and no date.
+- A complete MSN render needs 70 to 80 sub-requests. The renderer charged them to the task's request budget, which
+  is 20 for a quick lookup, so the render was cut short. "What happened in AI this week?" then ended "freshness
+  requirement not met" (`news_render_live.json`).
+- Rendering was off by default (ADR-030), so a default individual never rendered at all.
+- Many news sites need no render: Yahoo, Fox Business, Newsweek, TechCrunch, The Motley Fool and wccftech carry text
+  and a JSON-LD `datePublished` in their static HTML. In the live runs, Wikipedia articles and a 2020-dated home page
+  took the page slots ahead of them.
+
+## Decision
+
+1. **Accounting.** A render counts as one page read against `max_pages`. The page itself is fetched once and
+   charged to the task's requests. The render's sub-requests, including robots.txt for sub-resource hosts, are
+   charged to their own allowance, `budget.max_render_requests`, and never to `max_requests`.
+   | Limit | Default | Ceiling or switch |
+   |---|---|---|
+   | Sub-requests per render | 100 | ceiling 150 |
+   | Renders per task | `max_browser_sessions` 1 | ceiling 2 |
+   | Renders per UTC day | `daily_renders` 40 | 0 to 1000 |
+   | Render time | 20 s, cut to the task's time left minus 2 s | not started with less than 10 s left |
+   | Sub-resource bytes | count against the task's `max_bytes` | |
+   The day's count is a meta counter, so forgetting a task does not give its renders back. When the allowance runs
+   out, the remaining sub-requests are refused and the run is `partial` with a limitation.
+2. **Blocking.** The renderer never fetches anything a text extractor does not need:
+   - images, media, fonts, stylesheets, beacons, and other resources such as favicons and prefetches;
+   - sub-frame documents (iframes);
+   - known advertising, analytics and beacon hosts (`browser.BLOCKED_DOMAINS`).
+   Everything else still goes through SafeFetcher, with robots.txt, Retry-After, the address policy and the honest
+   User-Agent.
+3. **Static first for news and time-sensitive questions.**
+   - Dated static pages inside the question's freshness window are read first. The date comes from JSON-LD,
+     `article:published_time` and the other meta dates, `<time>`, or the feed item.
+   - These wait until the dated pages have been read: scripted pages with no text or no date, encyclopedia articles,
+     pages dated before the window, and hits the search engine dates before the window (these are not fetched yet).
+   - Open slots go to pages with no text first, which are rendered when allowed. The other waiting candidates follow
+     in rank order. A page with no text that could not be rendered takes a slot last.
+   - SearXNG news results are interleaved engine by engine before the list is cut to its limit.
+   - Search-engine dates order candidates only. They never date a source or satisfy freshness.
+4. **Default.**
+   - `news_rendering` is **on** by default and `nsf web config --no-news-render` turns it off. It permits a render
+     only for a news or time-sensitive question that a person asked (`user_initiated`), never for autonomous
+     research.
+   - `browser_rendering`, which allows rendering for every question, stays off by default.
+   - Nothing renders until the owner enables web access.
+   - Resource basis: measured peaks for one render are 427 to 534 MiB summed PSS (1.2 to 1.4 GiB summed RSS) and 3 to
+     5 s of CPU over 10 to 20 s. On the GB10's 121 GiB of unified memory that is under 0.5 % of memory. It also fits
+     the service units' `MemoryMax=2G` next to the worker.
+   - At most one render runs per task, and at most 40 a day. That bounds the daily cost to about 7 GiB-minutes of
+     memory (40 x 0.53 GiB x 20 s) and about 3.5 CPU-minutes.
+   - The resource scheduler refuses the render at `critical` pressure (less than 6 GiB, or 6 %, available, or GPU
+     memory at 97 % or more). The task then reads the static page and records why.
+
+## Measured
+
+Sub-requests per render, before and after blocking:
+
+| Site | Before | After | Note |
+|---|---|---|---|
+| msn.com | 76 to 80 | 69 to 81 | About 60 first-party script chunks build the article, so blocking removes only the ad, analytics and login-frame requests |
+| foxbusiness.com | 76 | 34 to 36 | |
+| wccftech.com | 26 | 8 | |
+| finance.yahoo.com | 246 | 236 | Over the allowance, but its static HTML is dated, so it is not rendered |
+
+Live, with default settings and web access enabled, "What happened in AI this week?" (three times) and "What is the
+latest news about NVIDIA?" (once) all met the freshness requirement:
+
+- Each run read one rendered msn.com article (25 to 75 of its 100 sub-requests) and one or two statically dated
+  pages.
+- Each task spent 9 to 16 of its 20 requests.
+- Wall time was 36 to 42 s.
+
+## Alternatives rejected
+
+- Raising the quick-lookup request budget to 150. That gives every quick lookup the cost of the worst page, and a
+  heavy render still starves the other pages.
+- Using search-engine dates for freshness. They are not the publisher's date, and Bing News sends none.
+- Site-specific article APIs, such as MSN's content JSON. They are site scraping outside the page's own rules and
+  break silently.
+- Turning on `browser_rendering` for every question. It costs more and widens what Chromium runs, with no gain for
+  questions that are not about the news.
+- Blocking first-party script chunks. That breaks the page the render is for.
+
+## Consequences
+
+- Current-event questions can now return dated, cited answers by default.
+- With web access enabled, Chromium runs untrusted news-site JavaScript by default. It stays inside the ADR-030
+  sandbox, at most once per task and 40 times a day.
+- A page that needs more than 100 sub-requests renders incomplete, and the report says so.
+- `usage.render_requests`, the render event fields (`subrequests`, `allowance`, `blocked`) and `nsf web status`
+  (`renders.today`) make every render visible.
+- Tests: `tests/webcortex/test_browser.py` (allowance, blocking, robots on sub-resources) and
+  `tests/webcortex/test_orchestrator.py` (accounting, static-first ordering, switches, daily cap, critical pressure,
+  stale hits). Also `tests/webcortex/test_searxng.py` (interleaving) and `tests/webcortex/test_cli.py` (defaults and
+  switch).

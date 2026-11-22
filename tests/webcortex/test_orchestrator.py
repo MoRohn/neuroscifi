@@ -1206,7 +1206,7 @@ def test_the_daily_render_cap_counts_across_tasks_and_days(individual, web):
 
 
 def test_news_rendering_is_refused_under_critical_memory_pressure(individual, web, monkeypatch):
-    """RD-46 / ADR-040: Chromium (about 1.1-1.4 GiB per render, measured) is never started at critical pressure;
+    """RD-46 / ADR-040: Chromium (about 0.5 GiB PSS per render, measured) is never started at critical pressure;
     the page is read as it is and the decision names the measurement."""
     from neuroscifi.resources import monitor
     db, path = individual

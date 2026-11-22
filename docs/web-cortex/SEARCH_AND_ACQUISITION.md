@@ -100,7 +100,7 @@ An empty list is a soft failure only when all of these hold: the provider declar
 | 3. HTTP page | Any other result | `SafeFetcher.fetch(purpose="page")`, then `extract.extract` | `live` (also on a 304: the origin just confirmed the cached body, header `x-nsf-revalidated: 304`) |
 | 4. Feed | A result URL that serves RSS, Atom or RDF | Handled by the same fetch; `extract` parses it into a `kind="feed"` document (item titles and summaries) | `live` |
 | 5. Extraction | Every fetched body | HTML, PDF, XML or JSON/text to a `Document`, then `safety.quarantine` | as above |
-| 6. JavaScript rendering | Document has `flags["js_suspected"]`, or (news / time-sensitive question: a `news` query kind or the breaking / volatile freshness class) a scripted HTML page gave under `NEWS_RENDER_MIN_TEXT` (500) characters of static text; **and** `usage.browser_sessions < budget.max_browser_sessions` **and** `BrowserRenderer.available()` **and** the request allowance (`render_budget`: requests left minus 2 per other open page slot) is at least 4 | Re-load in sandboxed Chromium (section 9) with that allowance as its request limit, so a render never starves the other pages; open shadow roots are inlined into the rendered DOM; the result is extracted and quarantined, replacing the first result. The `render` event names the reason (`js_shell` / `thin_news_text`). If not rendered, a `decision` event records why | `rendered` |
+| 6. JavaScript rendering | Document has `flags["js_suspected"]`, or (news / time-sensitive question: a `news` query kind or the breaking / volatile freshness class) a scripted HTML page gave under `NEWS_RENDER_MIN_TEXT` (500) characters of static text (`thin_news_text`) or no publication date (`undated_news`); **and** `usage.browser_sessions < budget.max_browser_sessions`, the resource scheduler is not at critical memory pressure, the owner's switches allow it (`browser_rendering`; or `news_rendering`, on by default, for a news question a person asked), `BrowserRenderer.available()`, at least `RENDER_MIN_SECONDS` (10 s) of the time budget left and the day's render cap (`daily_renders`, 40) not reached. For news questions these pages are read **after** the dated, in-window static pages (static-first, ADR-040) | Re-load in sandboxed Chromium (section 9) with its own sub-request allowance (`budget.max_render_requests`, 100), never the task's requests; open shadow roots are inlined into the rendered DOM; the result is extracted and quarantined, replacing the first result. The `render` event names the reason (`js_shell` / `thin_news_text` / `undated_news`), `subrequests`, `allowance` and `blocked`. If not rendered, a `decision` event records why | `rendered` |
 | 7. Link following | Mode `deep_research` and `budget.max_depth >= 1` | Up to `MAX_FOLLOW = 2` same-registrable-domain links from the first non-API document's main-content links, fetched with `purpose="crawl"`, while pages remain | `live` |
 
 Notes that matter:
@@ -226,15 +226,55 @@ Degraded behaviour, all recorded rather than hidden:
 
 Live behaviour of the engines on 2026-11-20 (duckduckgo answered, brave 429, startpage empty without error, bing redirect failure) is in DEPENDENCY_REVIEW §3.
 
-## 9. Browser rendering sandbox (`browser.py`, ADR-030)
+## 9. Browser rendering sandbox (`browser.py`, ADR-030, ADR-040)
 
-Off by default (`browser_rendering`); needs the `web-render` extra and a Chromium binary. A task may render at most `budget.max_browser_sessions` pages (clamped to the ceiling; 0 when rendering is off; at least 1 when it is on and the caller did not choose a number).
+Two owner switches: `browser_rendering` (off by default) permits every render escalation; `news_rendering` (on by default since 0.7.0, ADR-040) permits renders only for a news / time-sensitive question a person asked (CLI, console, voice, Pocket, MCP), never for autonomous research. Turn it off with `nsf web config --no-news-render`. Rendering needs the `web-render` extra and a Chromium binary; without them the task reads the static page and records why. `WebConfig.budget_for` gives a task `max_browser_sessions` 1 when either switch is on (0 when both are off; the ceiling is 2).
 
+**Budget (ADR-040).** A render is accounted as:
+
+| Limit | Default | Where |
+|---|---|---|
+| Page read | the render replaces the page's static read: one page of `max_pages`; the page itself is fetched once (`main`) and charged to the task's requests | `orchestrator._Run.escalate` |
+| Renders per task | `max_browser_sessions` 1 (ceiling 2) | task budget |
+| Sub-requests per render | `max_render_requests` 100 (ceiling 150), robots.txt of sub-resource hosts included; tallied in `usage.render_requests`, **not** charged to `max_requests` | task budget, `BrowserRenderer.render` |
+| Bytes | sub-resource bytes count against the task's `max_bytes` | task budget |
+| Time | one render at most 20 s (`BrowserRenderer.timeout`), shortened to the task's time left minus 2 s; not started with under 10 s left | `RENDER_MIN_SECONDS` |
+| Renders per day | `daily_renders` 40 per UTC day, all tasks and processes; a meta counter (`webcortex.renders`), so forgetting a task does not refund it | `state.take_render` |
+| Memory pressure | refused at `critical` (RD-46 `engine_gate`) | `resources.policy` |
+
+When the allowance runs out the remaining sub-requests are refused (`budget_exhausted`), the report says the rendered page may be incomplete and the run is `partial`. `nsf web status` shows `renders.today` and `renders.daily_cap`.
+
+**What a render fetches.** Measured on 2026-11-21 (`docs/quality/evidence/news_render_live_v2.json`):
+
+| Site | Sub-requests before blocking | After | Note |
+|---|---|---|---|
+| msn.com | 76 to 80 | 69 to 81 | About 60 first-party script chunks build the article; blocking cannot remove them |
+| foxbusiness.com | 76 | 34 to 36 | |
+| wccftech.com | 26 | 8 | |
+| finance.yahoo.com | 246 | 236 | Over the allowance; its static HTML already carries text and a JSON-LD date, so it is never rendered |
+
+A render's peak is 427 to 534 MiB of summed PSS for the Playwright driver and Chromium (1.2 to 1.4 GiB of summed RSS)
+and 3 to 5 s of CPU.
+
+- **Static first for news questions.** Before any render, the static HTML is read for text and a date: JSON-LD
+  `datePublished`, `article:published_time` and the other meta dates, `<time datetime>`, or the feed item's date
+  when the page came from a feed.
+  - Dated pages inside the required freshness window are read at once. The window is the question's recency
+    window, else the TTL of its freshness class.
+  - Five kinds of candidate wait: pages without text, undated scripted pages, encyclopedia articles, pages dated
+    before the window, and hits the search engine dates before the window (not fetched yet).
+  - Open slots then go to them in `LATER_ORDER`: pages without text first (rendered when allowed), then the rest
+    in rank order.
+  - A page without text that could not be rendered takes a slot last.
+  - SearXNG news results are interleaved engine by engine before the cut to the limit.
+  - Search-engine dates (SearXNG `publishedDate`) only order candidates (`orchestrator._search_dates`,
+    EVIDENCE_AND_PROVENANCE). They never date a source and never satisfy a freshness requirement.
 - The page body is first fetched with `SafeFetcher(purpose="page")`, so URL policy and robots apply before Chromium starts (`test_render_refuses_internal_targets_before_launch`).
-- Fresh context per render, closed afterwards: no profile, `accept_downloads=False`, `permissions=[]`, `service_workers="block"`, Chromium sandbox on (`chromium_sandbox=True`), no extensions, background networking off.
-- `context.route("**/*")` intercepts **every** request. Only GET and HEAD over http(s) are served, and only through `SafeFetcher(purpose="subresource")`, so SSRF, DNS pinning, robots, throttle, size, type and budget rules cover each sub-resource. That purpose admits scripts and stylesheets in addition to the page types, uses the 0.1 s same-host interval instead of `Crawl-delay`, is never cached and never becomes a document. Images, media, fonts, manifests and pings are aborted (`test_render_executes_js_through_safe_fetcher`, `test_render_runs_external_scripts_and_styles`).
+- Fresh context per render, closed afterwards: no profile, `accept_downloads=False`, `permissions=[]`, `service_workers="block"`, Chromium sandbox on (`chromium_sandbox=True`), no extensions, background networking off. The honest User-Agent (`config.USER_AGENT`) is the context's User-Agent.
+- `context.route("**/*")` intercepts **every** request. Only GET and HEAD over http(s) are served, and only through `SafeFetcher(purpose="subresource")`, so SSRF, DNS pinning, robots, Retry-After backoff, throttle, size and type rules cover each sub-resource. That purpose admits scripts and stylesheets in addition to the page types, uses the 0.1 s same-host interval instead of `Crawl-delay`, is never cached and never becomes a document (`test_render_executes_js_through_safe_fetcher`, `test_robots_rules_apply_to_every_sub_resource`).
+- Never fetched, because text does not need them (`aborted` with `why`): images, media, fonts, stylesheets, manifests, pings and `other` (favicons, prefetches) → `type`; sub-frame documents (ads, consent and login iframes) → `frame`; hosts in `browser.BLOCKED_DOMAINS` (advertising, analytics and beacon domains such as doubleclick.net, googletagmanager.com, scorecardresearch.com, clarity.ms) and their subdomains → `tracker`. A blocked request costs nothing, not even robots.txt (`test_images_styles_frames_and_trackers_are_blocked_without_a_request`, `test_render_runs_external_scripts_and_blocks_styles`).
 - Defence in depth for traffic that bypasses routing: Chromium resolves every name to NOTFOUND (`--host-resolver-rules=MAP * ~NOTFOUND`), a dead proxy is configured, WebRTC may not use non-proxied UDP. `WebSocket`, `RTCPeerConnection` and `EventSource` constructors throw inside every frame.
-- One wall-clock timeout per render (20 s); rendered body capped at the fetcher's `max_bytes`; `last_events` keeps each sub-request outcome (URL without query) for audit.
+- One wall-clock timeout per render (20 s, see above); rendered body capped at the fetcher's `max_bytes`; `last_events` keeps each sub-request outcome (URL without query) and `last_usage` the requests and bytes spent, for audit.
 
 ## 10. Configuration knobs (`config.WebConfig`)
 
@@ -245,11 +285,13 @@ Stored as JSON in `meta` key `webcortex`; validated by `state.set_config`. Const
 | `enabled` | false | Master switch for every network path |
 | `autonomous` | false | Scheduler may start refresh and curiosity research |
 | `pocket_research` | false | Paired Pocket devices may submit and read tasks |
-| `browser_rendering` | false | Permit sandboxed JavaScript rendering |
+| `browser_rendering` | false | Permit sandboxed JavaScript rendering for every escalation |
+| `news_rendering` | true | Permit rendering for a news / time-sensitive question a person asked, when the static page gave no text or no date (ADR-040) |
+| `daily_renders` | 40 (0-1000) | Renders per UTC day across all tasks (ADR-040) |
 | `openwebsearch_url` | `http://127.0.0.1:3210` | Loopback daemon; validated as plain-HTTP loopback |
 | `engines` | duckduckgo, brave, startpage, bing | Engine order, tried one at a time |
 | `providers` | openwebsearch, wikipedia, arxiv, openalex, crossref, pubmed, pypi, npm, osv, github | Providers built, in order |
-| `budget_ceiling` | queries 16, requests 200, pages 30, bytes 60,000,000, seconds 600, depth 2, browser sessions 2, concurrency 6, context tokens 6000 | Upper bound for any task budget |
+| `budget_ceiling` | queries 16, requests 200, pages 30, bytes 60,000,000, seconds 600, depth 2, browser sessions 2, render requests 150, concurrency 6, context tokens 6000 | Upper bound for any task budget |
 | `daily_autonomous` | tasks 12, requests 400, bytes 80,000,000 | 24 h cap for curiosity and refresh tasks |
 | `min_domain_interval` | 1.0 s (0-3600) | Minimum gap between requests to one host; the effective gap is the largest of this, the host's `NetPolicy.host_intervals` entry (arXiv 3.0 s, NCBI 0.34 s) and `Crawl-delay` |
 | `max_document_bytes` | 5,000,000 (min 1024) | Body cap per fetch |

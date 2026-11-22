@@ -244,13 +244,15 @@ stackoverflow, askubuntu, superuser 3/3 each; europepmc 2/2; openairepublication
    direct Brave Search API provider is the primary general and news provider when a key is configured, with
    SearXNG as its fallback ([SEARCH_PROVIDER_STRATEGY.md §6](SEARCH_PROVIDER_STRATEGY.md)); without a key this
    blocker stands.
-2. **Freshness of news.** Bing News results carry no `publishedDate`; dated news comes from Hacker News. Pages read
-   from msn.com are JavaScript shells (0 claims). Current-event questions therefore often end with "freshness
-   requirement not met" — honestly, but not usefully. Since 0.7.0 the renderer inlines open shadow roots (where
-   MSN puts the article) and a render leaves requests for the other pages, but a complete MSN render needs about
-   70-100 sub-requests against the quick lookup's 20-request budget: with the default budget the answer is still
-   empty; with an owner-raised budget two articles were read, dated and answered
-   (`docs/quality/evidence/news_render_live.json`). Rendering stays off by default (ADR-030).
+2. **Freshness of news.** Bing News results carry no `publishedDate`, and its msn.com articles have no text or date
+   until JavaScript runs. Hacker News results are dated but often years old. Since ADR-041:
+   - news results are interleaved engine by engine before the cut to the limit (`_interleave`);
+   - hits the search engine dates before the question's freshness window are fetched last (the date only orders
+     them);
+   - dated static pages are read first;
+   - one MSN article per task may be rendered within its own 100-sub-request allowance.
+   Live, all four current-event runs met the freshness requirement (`docs/quality/evidence/news_render_live_v2.json`;
+   before: `news_render_live.json`). Search-engine dates stay display-only.
 3. ~~**"Latest releases affecting NeuroSciFi"** is planned as a web search for "releases"~~ — fixed (Lane G):
    `intent.dependency_question` recognises "releases / advisories affecting <this system>" and the task runs the
    `nsf web deps` logic (project inventory + direct PyPI/npm/OSV pass, `report.dependencies`); no general search is
