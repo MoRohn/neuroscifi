@@ -293,6 +293,8 @@ def test_changed_views_axe_clean(spark, owner, new_page, width, theme):
         {"state": "supported", "statement": "Third", "basis": "corroboration", "sources": 3}]}))
     page.locator("#objective").fill("What is the latest version of the Zephyr compiler?")
     page.locator("#researchsubmit").click()
+    # the question must be stored on the Spark before the one-shot worker runs, or it finds nothing to claim
+    expect(page.locator("#researchmsg")).to_contain_text("Queued on your Spark")
     spark.work()
     expect(page.locator("#researchstage")).to_contain_text("Completed", timeout=15_000)
     page.get_by_role("button", name="Review evidence").click()
