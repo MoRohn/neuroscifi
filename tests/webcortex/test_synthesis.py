@@ -160,6 +160,22 @@ def test_a_first_release_question_has_no_recency_requirement():
     assert r["freshness"]["satisfied"] is False and r["freshness"]["required_seconds"] == 7 * D
 
 
+def test_the_lead_says_registry_records_were_read_live_only_when_one_is_cited():
+    """R6 D2: "When was Python first released?" answered from Wikipedia alone, yet the lead said "The cited registry
+    records were read live." That sentence needs a cited registry record read live."""
+    wiki = doc("https://en.wikipedia.org/wiki/Python_(programming_language)",
+               "Python is a high-level, general-purpose programming language. Python was first released in 1991 as "
+               "Python 0.9.0.", title="Python (programming language)", published=None)
+    lead = run("When was Python first released?", [wiki])["answer"][0]["text"]
+    assert "registry" not in lead and "read live" not in lead, lead
+    assert "past release" in lead, lead
+    pypi = doc("https://pypi.org/project/hera/", "", kind="api", mode="api", published=None,
+               metadata={"provider": "pypi", "package": "hera", "latest": "1.0.0"})
+    r = run("What is the latest hera release?", [pypi], {"freshness_class": "release"})
+    assert r["freshness"]["satisfied"] is True, r["freshness"]
+    assert "The cited registry records were read live." in r["answer"][0]["text"], r["answer"][0]["text"]
+
+
 def test_undated_sources_never_satisfy_freshness_and_are_named():
     docs = _docs(AGREE, published=None)
     r = run(Q, docs, {"freshness_class": "stable"})

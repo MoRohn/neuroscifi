@@ -1983,7 +1983,8 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
     lead_citations = sorted({n for it in items for n in it["citations"]})
     quoted = [r for r in (_representative(c) for c, _ in ranked) if r is not None and r.kind != "metadata"]
     notable = bool(quoted) and all((r.flags or {}).get("notable") for r in quoted)
-    lead = _lead(documents, usable, ranked, satisfied, newest, required, now, live, cited)
+    registry_live = any(_observed_live(d) for d in answer_docs)
+    lead = _lead(documents, usable, ranked, satisfied, newest, required, now, live, cited, registry_live)
     if notable:            # W-19: a request without a question gets the pages' notable statements, not answers
         for entry in items + findings:
             entry["notable"] = True
@@ -2008,7 +2009,7 @@ def synthesize(question: str, assessment: dict | None, documents, clusters, *, n
                                                                      "name") | unrelated).items()))}
 
 
-def _lead(documents, usable, ranked, satisfied, newest, required, now, live, cited) -> str:
+def _lead(documents, usable, ranked, satisfied, newest, required, now, live, cited, registry_live=False) -> str:
     n_docs = len(documents)
     if not n_docs:
         return "No source was read: the searches returned nothing that could be read."
@@ -2024,8 +2025,10 @@ def _lead(documents, usable, ranked, satisfied, newest, required, now, live, cit
             f"{top.independent_sources}).")
     if satisfied and newest is not None:
         text += f" Newest cited source: {temporal.describe_age(newest, now)}."
-    elif satisfied:
+    elif satisfied and registry_live:     # R6 D2: only when a cited source is a registry record read live
         text += " The cited registry records were read live."
+    elif satisfied:                        # a first-release question: history, so no recency is required
+        text += " No cited source is dated; the question asks about a past release, so no recency is required."
     else:
         text += f" No cited source is dated within the required {_span(required)}; these statements may be out of date."
     if cited and not live:
