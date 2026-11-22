@@ -369,4 +369,6 @@ The units are transient, so nothing is left in `~/.config/systemd`. They do not 
 - 167 claims from 30 sources. Files grew from 5.1 to 7.7 MB. Worker RSS 138 → 140 MB.
 - All four checks ok.
 
+By 01:47 UTC the day's autonomous budget was spent: exactly 20 of 20 searches (36 of 60 pages) over 5 curiosity tasks, none beyond the cap, with no task running and no open ledger row. The worker then waits for the 00:00 UTC reset.
+
 The report at hand-off is in the lane's final message. Days-long wall-clock results are owner-side: read the report after a few UTC midnights. Expect `autonomous_used.searches` ≤ 20 on every day, a new day's row after each 00:00 UTC, `restarts` 0, and flat RSS.
