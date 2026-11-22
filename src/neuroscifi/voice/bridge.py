@@ -14,10 +14,10 @@ base ("what have you learned") is owner-only. A Pocket device changes research (
 rules of the HTTP research routes (pocket/research_routes.py, ADR-042): a device enrolled as a signed research node
 must sign its changes, and a spoken or typed command carries no node signature, so voice refuses them there and
 points to the Research panel's signed controls (reading, explaining and showing research stay open); and no device
-cancels or continues a research session another device owns (nodes.may_drive). Sensitive commands - forget/delete, enabling autonomy, disclosing
-private terms to the web, moving the microphone to another device, accepting conclusions into memory - return a
-confirmation request; nothing happens until the same session confirms it (voice "confirm" or the Confirm button)
-within CONFIRM_SECONDS.
+cancels or continues a research session another device owns (nodes.may_drive). Sensitive commands - forget/delete,
+enabling autonomy, disclosing private terms to the web, moving the microphone to another device, accepting
+conclusions into memory - return a confirmation request; nothing happens until the same session confirms it (voice
+"confirm" or the Confirm button) within CONFIRM_SECONDS.
 """
 from __future__ import annotations
 
