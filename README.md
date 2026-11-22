@@ -12,8 +12,16 @@
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-22C55E)
 ![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-22C55E)
 
-**[Overview](#overview)** · **[Architecture](#architecture)** · **[Requirements](#requirements)** · **[Quick start](#quick-start)** · **[Optional services](#optional-services)** · **[Privacy & trust](#privacy-security-and-trust)** · **[Testing](#testing-and-verification)** · **[Limitations](#known-limitations)** · **[Docs](#documentation)**
+**[Overview](#overview)** · **[See it in action](#see-it-in-action)** · **[Architecture](#architecture)** · **[Requirements](#requirements)** · **[Quick start](#quick-start)** · **[Optional services](#optional-services)** · **[Privacy & trust](#privacy-security-and-trust)** · **[Testing](#testing-and-verification)** · **[Limitations](#known-limitations)** · **[Docs](#documentation)**
 
+</div>
+
+<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/hero-dark.png">
+  <img src="docs/assets/screenshots/hero-light.png" width="100%" alt="NeuroSciFi on a desktop console, a tablet and a phone: the Presence entity is reading sources on each device while a cited, guarded research report is shown beside it">
+</picture>
+<br><sub>One individual, every device: the Presence entity shows what NeuroSciFi is really doing while it researches, answers and listens.</sub>
 </div>
 
 ---
@@ -35,7 +43,7 @@ The cognitive prototype needs no pretrained model and no cloud service. Text res
 | 📈 **Knowledge evolution** | Versioned knowledge, hypotheses with testable predictions, calibration and change history. The owner accepts every knowledge item. Model weights never change. |
 | 🤖 **Controlled autonomy** | Opt-in with a recorded owner enable. Its own daily budget (20 searches, 60 pages, 30 min, $1, 2 concurrent investigations). Research is chosen from stored records by expected information gain. |
 | 🎙️ **Voice Cortex** | Whisper speech recognition and Kokoro speech synthesis behind a bridge in which NeuroSciFi stays authoritative. Three modes, barge-in, one capturing device at a time. The **Voice check** measures microphone, speaker, barge-in and echo on your own hardware. PersonaPlex is an opt-in experiment. |
-| ✳️ **Presence Cortex** | A small vector entity in the console and Pocket headers that shows what the individual is actually doing. |
+| ✳️ **Presence Cortex** | A minimal, abstract, physics-driven entity at the centre of every interaction view: its light, geometry and motion show what the individual is really doing (reading, reasoning, listening, speaking), never invented activity. |
 | 📱 **Pocket** | A mobile-first web app for phones and tablets, served over HTTPS with a private CA. Devices pair with one-use codes into families, and linked devices share research. Opt-in **push** sends an empty notification through the browser vendor's push service when research finishes (ADR-040). |
 | 🔏 **Signed research nodes** | The owner enrols a paired device after comparing key fingerprints. A node signs its requests and can take and hand off research sessions. Pocket checks the Spark's signature on every research reply (ADR-042). The Spark stays the only executing node. |
 | ⚖️ **Resource scheduling** | One pressure level from memory and GPU data, with audio first. Opt-in **idle unloading** per service (vLLM, ASR, TTS, SearXNG) reloads on demand and logs every load and unload. |
@@ -51,6 +59,47 @@ The **[34-page architecture brief](NeuroSciFi_Architecture.pdf)** is also availa
 </picture>
 <br><sub>Presence Cortex compositions, captured from the production renderer by the end-to-end tests.</sub>
 </div>
+
+## See it in action
+
+All screenshots come from the real console and Pocket on seeded scratch instances ([how they are made](docs/assets/screenshots/README.md)); they follow your light or dark setting.
+
+<table>
+<tr>
+<td width="62%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/console-research-dark.png">
+  <img src="docs/assets/screenshots/console-research-light.png" alt="Owner console research view: the Presence entity on its stage beside a report with a model-written answer, citations and claim states">
+</picture>
+<br><b>Owner console · Research.</b> The entity has its own stage while a question is researched. The report shows the model-written answer, citations, each claim's verification state, knowledge gaps and the quoted evidence.
+</td>
+<td width="38%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/pocket-phone-dark.png">
+  <img src="docs/assets/screenshots/pocket-phone-light.png" alt="Pocket on a phone: the Presence entity above the research question">
+</picture>
+<br><b>Pocket on a phone.</b> The entity sits above the question, in thumb reach, while the Spark reads.
+</td>
+</tr>
+<tr>
+<td valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/voice-dark.png">
+  <img src="docs/assets/screenshots/voice-light.png" alt="Voice view: the Presence entity with a voice transcript and the Voice check panel">
+</picture>
+<br><b>Voice.</b> Speak or type; the same research path answers, and the Voice check tests your own microphone and speakers.
+</td>
+<td valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/pocket-tablet-dark.png">
+  <img src="docs/assets/screenshots/pocket-tablet-light.png" alt="Pocket on a tablet continuing research started on the phone">
+</picture>
+<br><b>Pocket on a tablet.</b> A linked tablet continues the phone's research.
+</td>
+</tr>
+</table>
+
+The design system shared by both apps, the cross-device audit and a before/after gallery are in [docs/ui](docs/ui/DESIGN_SYSTEM.md).
 
 ## Architecture
 
