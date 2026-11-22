@@ -23,7 +23,10 @@ a{color:var(--link)}
 /* header */
 .top{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);background:#fff}
 .brandline{display:flex;gap:.6rem;align-items:baseline}
-.brand{font-weight:750;letter-spacing:-.025em}
+/* The wordmark is an inline SVG (theme.css .nsf-wm) whose box ends at its descenders; the product name is raised
+   by the descent so it shares the wordmark's cap baseline. */
+.brand{display:inline-flex;flex:none}
+.brandline .product{position:relative;top:calc(var(--wm-h) * var(--wm-descent) * -1)}
 .product{color:var(--muted);font-size:.92rem}
 .meta{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0;font-size:.86rem}
 .meta div{display:flex;gap:6px;align-items:center}
