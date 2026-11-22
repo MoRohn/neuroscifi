@@ -810,3 +810,90 @@ latest news about NVIDIA?" (once) all met the freshness requirement:
   `tests/webcortex/test_orchestrator.py` (accounting, static-first ordering, switches, daily cap, critical pressure,
   stale hits). Also `tests/webcortex/test_searxng.py` (interleaving) and `tests/webcortex/test_cli.py` (defaults and
   switch).
+
+# ADR-042 (draft) Signed node identities, signed requests and Spark-signed results; attested enrolment. R
+
+Status: draft (lane "sign", v0.7.0). Owner decision: signed node identities, signed results and attested enrolment
+for multi-node; no worker federation. Amends ADR-039 §7 (enrolment and the node requests it lists) and keeps ADR-031
+(one executing node) and POC-07 (the pairing credential lives in tab memory only). Rules: docs/autonomy/RESEARCH_POLICY.md
+§6. Code: `webcortex/signing.py`, `webcortex/nodes.py`, `pocket/research_routes.py`, `pocket/web/node-key.mjs`.
+
+## Context
+
+ADR-031 and ADR-039 deferred federation because "it needs enrolment, attestation and result signing, none of which
+exist". ADR-039's minimal nodes were enrolled from the CLI by pairing label and then trusted on their bearer
+credential alone: a stolen credential could take, hand off or cancel research as the node, and nothing a phone showed
+as "from your Spark" was authenticated beyond TLS.
+
+## Decision
+
+1. **Node identity.** Each node holds its own key pair, generated in the browser with WebCrypto: Ed25519 where
+   `generateKey` supports it, otherwise ECDSA P-256 with SHA-256 (detected at run time; the algorithm is recorded at
+   enrolment and never read from a request). The private key is generated non-extractable and stored as a
+   `CryptoKey` in IndexedDB (`nsf-node`), so it survives reloads without script ever reading its material. The
+   pairing credential stays in tab memory (POC-07); a reload still unpairs, and re-pairing makes a new device that
+   must enrol again with the same key.
+2. **Attested enrolment.** A paired device asks for a challenge (`node_enrol` challenge). The Spark issues 32 random
+   bytes bound to the pairing family (`f-` + 16 hex of the salted family digest), the node id (`n-` + 16 hex of the
+   salted device digest) and an expiry (5 minutes), one pending challenge per device. The device signs
+   `NSF-ENROL-1\nchallenge\nfamily\nnode\nexpires` and sends its raw public key (attest). The Spark verifies, keeps the
+   key as pending (1 hour) and records nothing as a node. The device shows the fingerprint it computed itself
+   (SHA-256 of `NSF-KEY-1\nalg\nkey`, 128 bits as eight groups of four hex digits). The console lists pending keys
+   with the same fingerprint, and the owner enrols the device only after comparing the two
+   (`POST /api/web/nodes {"action": "enrol", "fingerprint", "label"}` or
+   `nsf web node enrol NAME --fingerprint FP`). The Spark stores the public key, algorithm and fingerprint.
+3. **Signed requests.** Every state-changing request from a node enrolled with a key (`research_submit`,
+   `research_continue`, `research_cancel`, `research_session` except `status`) carries `X-NSF-Timestamp`,
+   `X-NSF-Nonce` and `X-NSF-Signature` over `NSF-REQ-1\nPOST\npath\nsha256(body)\ntimestamp\nnonce`. The Spark refuses
+   it with 401 and a short code unless the signature verifies with the recorded key and algorithm
+   (`signature_invalid`), the timestamp is within ±120 s (`stale_request`), the nonce is new for that device
+   (`replayed_request`; kept 240 s) and the node belongs to the caller's family (`wrong_family`). It also refuses
+   unsigned changes from a signed node (`signature_required`), a revoked node (`node_revoked`), and a device with no
+   key (`unknown_node`). A signature that is present is verified whoever sends it. Pocket has no evidence-review
+   decision route today; one added later belongs in the signed set.
+4. **Spark-signed results.** The Spark holds its own Ed25519 key, generated once with mode 0600 next to the instance
+   (`INSTANCE.spark-key`, `*.spark-key` is git-ignored; `--spark-key PATH` overrides). The bridge refuses a key file
+   that is not a regular 0600 file owned by the user. The `pair` reply includes the Spark's public key and
+   fingerprint, and the device pins them with the credential (tab memory, or the vault when the owner keeps the
+   pairing there). Every reply of a research route (task results, lists, evidence, session views and hand-off
+   grants, node status, and their errors) carries `X-NSF-Spark-Signature` over
+   `NSF-RES-1\nstatus\npath\nrequest nonce\nsha256(body)`. Pocket checks it against the pinned key before showing
+   anything as from the Spark. An unverified success is refused ("could not confirm"), and an unverified error
+   is reduced to its status. Browsers without WebCrypto Ed25519 verify with a small RFC 8032 verifier in
+   `node-key.mjs`.
+5. **Revocation and rotation.** Revoking a node deletes its key, nonces and pending enrolment and releases its
+   sessions. A later signed request fails with `node_revoked`; unsigned, it is an ordinary paired device again.
+   Key rotation is re-enrolment: a new challenge, attestation and owner approval replace the key. A checkpoint
+   restore replays revocations, so a restored copy loses the key too.
+6. **Back-compatibility.** Migration 12 adds `alg`, `public_key`, `key_fingerprint` and `signed` to
+   `autonomy_nodes`, plus `node_enrolments` and `node_nonces`. Nodes enrolled before it have `signed=0` and no key.
+   They are not nodes until they re-enrol: session actions answer 409 `reenrol`, Pocket and the console say so, and
+   they cannot be hand-off targets. A node marked signed never has an unsigned change accepted. Pairings made before
+   this change have no pinned Spark key, so Pocket asks the user to pair again before showing research.
+
+## Alternatives rejected
+
+- **Signing with the bearer credential (HMAC).** The credential is a shared secret that the Spark also holds, so it
+  cannot attest a device. It is also in tab memory only, so it would not survive a reload.
+- **Extractable keys or keys stored in the vault.** These would expose key material to script. Non-extractable
+  `CryptoKey` objects in IndexedDB give persistence without exposure.
+- **Approval without fingerprint comparison (trust on first attestation).** A stolen credential could enrol an
+  attacker's key. Comparing the device's own fingerprint with the console's closes that.
+- **Spark P-256 so every browser verifies natively.** The owner chose Ed25519 for the Spark. The fallback verifier
+  is a few dozen lines over public data and is checked against the Spark's own vectors.
+- **Worker federation.** Still out of scope: nodes submit, continue, read and own sessions, and only the Spark
+  executes (ADR-031).
+
+## Consequences
+
+- A stolen pairing credential no longer lets an attacker drive a node's sessions. It still reads and submits as an
+  ordinary family device, as before (ADR-028).
+- A substituted or tampered research reply (rogue bridge, TLS interception with an accepted certificate) is refused,
+  provided the pin was not substituted at pairing. Pinning is trust on first use. The owner can compare the Spark
+  fingerprint that the console and Pocket both show.
+- Not covered: field and voice routes (voice replies are not signed), the console (loopback with its own token),
+  and the pairing exchange itself.
+- Clock skew over 2 minutes refuses a node's changes. Pocket says to correct the clock.
+- Tests: `tests/webcortex/test_signing.py`, `tests/test_pocket_signing.py`, `tests/test_pocket_autonomy.py`,
+  `tests/console/test_console_autonomy.py`, `tests/js/signing_check.mjs` (with `tests/js/spark_vectors.json`),
+  `tests/e2e/test_pocket_signing_e2e.py`, `tests/e2e/test_pocket_handoff_e2e.py`.

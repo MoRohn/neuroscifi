@@ -151,7 +151,7 @@ Modes map to implementations as follows (RD-09):
 | Current ranking | `nsf web autonomy candidates` |
 | One idle decision now | `nsf web autonomy idle` |
 | Cancel any task | `nsf web cancel`, console, Pocket `research_cancel` |
-| Research nodes | `nsf web node enrol LABEL --pocket-db PATH`, `nsf web node revoke LABEL`, `nsf web node list` |
+| Research nodes (§6) | console Autonomy → Research nodes (`GET`/`POST /api/web/nodes`); `nsf web node list`, `nsf web node enrol NAME --fingerprint FP`, `nsf web node reject --fingerprint FP`, `nsf web node revoke NAME` |
 
 ## 5. Scheduling, recovery and notifications
 
@@ -193,12 +193,43 @@ Authorised devices keep the ADR-028 rules: family scope, 10 submissions per hour
 | `research_continue {id}` | any device of the family, unless another device owns the session | continue a cancelled, partial or failed task (`orchestrator.requeue`), counted in the hourly limit |
 | `research_cancel {id}` | any device of the family, unless another device owns the session | as before |
 | `research_session {id, action[, to]}` | `status`: any device; `take`, `handoff`, `accept`, `release`: enrolled nodes | session ownership |
+| `node_enrol {action[, ...]}` | any device of the family | `status`; `challenge`; `attest {challenge, alg, public_key, signature}` (below) |
 
-Multi-node, minimal scope (RD-11 assumption, ADR-031 kept):
+Multi-node, minimal scope (RD-11 assumption, ADR-031 kept; signing and attestation ADR-040 draft):
 
-- A node is a paired Pocket device that the owner enrolled with the `node` capability. It is stored as
-  instance-salted digests of its device and family fingerprints, never the credential. Nodes submit, continue,
-  read and own sessions. They never execute: the Spark that runs `nsf web work` is the only executing node.
+- A node is a paired Pocket device that the owner enrolled with the `node` capability after an attested
+  enrolment. It is stored as instance-salted digests of its device and family fingerprints, never the credential,
+  with its public key, algorithm and fingerprint. Nodes submit, continue, read and own sessions. They never execute:
+  the Spark that runs `nsf web work` is the only executing node. There is no worker federation.
+- **Node key.** Pocket generates the node's key pair with WebCrypto: Ed25519 when the browser supports it, else
+  ECDSA P-256 (SHA-256). The private key is non-extractable and kept in IndexedDB, so it survives reloads. The
+  pairing credential stays in tab memory (POC-07).
+- **Attested enrolment.**
+  1. The device asks for a challenge (`node_enrol challenge`). The Spark binds it to the pairing family, the node
+     id and an expiry of 5 minutes.
+  2. The device signs the challenge and sends its public key (`attest`). The Spark verifies the signature and keeps
+     the key pending for at most 1 hour.
+  3. The device shows its key fingerprint (8 groups of 4 hex digits). The console (Autonomy → Research nodes) lists
+     the pending key with its fingerprint and algorithm.
+  4. The owner compares the two fingerprints and enrols the device under a name, or rejects it. Nothing is a node
+     before that.
+- **Signed requests.** A node's state-changing requests (`research_submit`, `research_continue`, `research_cancel`,
+  `research_session` other than `status`) carry `X-NSF-Timestamp`, `X-NSF-Nonce` and `X-NSF-Signature` over the
+  canonical request: method, path, SHA-256 of the body, timestamp and nonce. The Spark answers `401` with a code
+  unless the signature verifies with the recorded key and algorithm and the timestamp is within ±120 s of the
+  Spark's clock. The nonce must not have been used before by that device; nonces are kept 240 s. The codes are
+  `signature_invalid`, `stale_request`, `replayed_request`, `wrong_family`, `malformed`, `node_revoked` and
+  `unknown_node`. An unsigned change from a node enrolled with a key is `signature_required`, never accepted
+  silently.
+- **Signed results.** The Spark's own Ed25519 key (`INSTANCE.spark-key`, mode 0600, outside git; `--spark-key`)
+  signs every research reply, errors included: status, path, the request's nonce and the body. A device pins the
+  Spark key and fingerprint from the `pair` reply. Pocket shows nothing as from your Spark unless the signature
+  verifies under the pinned key. A tampered reply or one signed by any other key is refused. A pairing made before
+  this change has no pin, and Pocket asks the user to pair again.
+- **Revocation and rotation.** Revoking a node deletes its key, nonces and pending enrolment, so its later
+  signatures fail (`node_revoked`). Rotating a key means enrolling again.
+- **Back-compatibility.** Nodes enrolled before signing existed have no key. They must re-enrol: session actions
+  answer `409 reenrol`, and Pocket and the console say so.
 - A session is a chain of continued tasks, named by its root task id. A session has one owner at a time; the
   primary key of `autonomy_sessions` guarantees it. Ownership is a 15-minute lease renewed by the owner's actions.
 - Another node can get ownership in one of two ways:
@@ -207,9 +238,16 @@ Multi-node, minimal scope (RD-11 assumption, ADR-031 kept):
     within 5 minutes. The transfer is one conditional `UPDATE`.
 - While a session is owned, no other device of the family can cancel or continue it (`409 owned`). Reading stays
   open to the family.
-- Revoking a node releases its sessions.
-- Tests cover a race of 8 concurrent `take` calls (exactly one owner), hand-off and accept, revocation, and family
-  isolation (another family gets 404 on every route).
+- Revoking a node releases its sessions and deletes its key.
+- Tests cover:
+  - a race of 8 concurrent `take` calls (exactly one owner);
+  - hand-off and accept, revocation, and family isolation (another family gets 404 on every route);
+  - canonicalisation, both algorithms, replay, stale timestamps, wrong family, revoked nodes, tampered bodies,
+    unsigned requests from signed nodes and re-enrolment (`tests/webcortex/test_signing.py`,
+    `tests/test_pocket_signing.py`);
+  - Spark-signed replies and pinning in JavaScript (`tests/js/signing_check.mjs`);
+  - enrol, claim and hand-off in Chromium with Ed25519 and with the P-256 fallback, and a tampered reply
+    (`tests/e2e/test_pocket_signing_e2e.py`).
 
 ## 7. Measured live results (2026-11-21, `docs/quality/evidence/autonomy_live.json`)
 
