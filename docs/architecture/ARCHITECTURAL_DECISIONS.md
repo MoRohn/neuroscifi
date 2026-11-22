@@ -621,7 +621,9 @@ a push holds no pairing credential (POC-07), so it cannot ask the Spark what hap
    nothing is encrypted for the device. The table `push_subs` holds one endpoint per device. It references `devices`
    with `ON DELETE CASCADE`, so unsubscribing, unpairing, revoking a family and `erase-pairing` (with or without
    `--family`) delete it. One browser holds one subscription per origin: the device that registers it last receives
-   its pushes.
+   its pushes. Every reply of the `push` route is signed by the Spark key like a research reply (ADR-042 §4), and
+   Pocket refuses an unverified success. Before this was so, push never turned on, because the unsigned status reply
+   was refused (security review B-0).
 2. **No payload.** The Spark sends an empty POST (`Content-Length: 0`, no `Content-Encoding`), so nothing about a
    question leaves the host. The service worker shows the same text for every push ("NeuroSciFi Pocket: Your Spark
    finished a research task.", tag `pocket-push`) and tells open pages to refresh. Pocket loads the details from the
@@ -637,15 +639,17 @@ a push holds no pairing credential (POC-07), so it cannot ask the Spark what hap
      without Google's keys return, seen live), `updates.push.services.mozilla.com`, `*.push.apple.com` or
      `*.notify.windows.com`. Anything else is refused at subscription (`400 push_service`) and again before every
      send.
-   - The name is resolved once. If any resolved address is not public (`webcortex.net.check_address`), nothing is
-     contacted. Otherwise the connection is pinned to that address, with SNI and certificate verification for the
-     name.
+   - The name is resolved once, in at most 5 s (`DNS_TIMEOUT`; a slower lookup counts as unreachable, so a slow
+     resolver for one service does not hold up everyone's pushes). If any resolved address is not public
+     (`webcortex.net.check_address`), nothing is contacted. Otherwise the connection is pinned to that address, with
+     SNI and certificate verification for the name.
    - `http.client` is used directly: no proxy settings are read and redirects are not followed (a 3xx drops that
      push). Every socket operation has a 10-second timeout.
 4. **Responses.**
    - 2xx sends it.
-   - 404 or 410 deletes the subscription. Exception: within 120 s of the endpoint being stored, it is retried every
-     15 s instead, because live, FCM answered 410 to a registration 3 and 8 seconds old and 201 at 19 seconds.
+   - 404 or 410 deletes the subscription. Exception: within 120 s of the endpoint being first stored, it is retried
+     instead (after 15 s, and no sooner than the one-a-minute interval), because live, FCM answered 410 to a
+     registration 3 and 8 seconds old and 201 at 19 seconds.
    - 429 and 5xx keep the push pending until `Retry-After` (seconds or an HTTP date, at most a day) or a default
      backoff of 10 min for 429 and 2 min for 5xx. A timeout or connection error retries after 1 min.
    - Any other status drops that push and keeps the subscription. The log line names the service host and status,
@@ -658,8 +662,17 @@ a push holds no pairing credential (POC-07), so it cannot ask the Spark what hap
      subscribed device, because every pairing is made by the owner;
    - only finishes after the device subscribed and within the last 6 hours count.
 
-   A device gets at most one push a minute. Events in between collapse into the next push, which says no more anyway.
-   **Send a test push** queues one push under the same limit.
+   A device gets at most one push a minute, and every attempt counts, whatever the push service answered. Events in
+   between collapse into the next push, which says no more anyway. **Send a test push** queues one push under the
+   same limit.
+
+   A device can also make the Spark contact the push service by storing a new endpoint and asking for test pushes.
+   So that it cannot make the Spark ignore a `Retry-After` (security review B-1):
+   - a rotated endpoint keeps the subscription's backoff (`not_before`) and its 404/410 grace clock (`stored`);
+   - storing a new endpoint (a first subscription or a rotation) and asking for a test push are each limited to 5 an
+     hour per device. Beyond that the route answers `429 push_limit` with `retry_after` in seconds, and Pocket says
+     when to try again. Sending the stored endpoint again is free, and unsubscribing does not reset the count. The
+     count is kept in the bridge's memory, so a bridge restart clears it.
 6. **UI.** In the Research panel, Pocket shows:
    - the switch "Notify me even when Pocket is closed (push)", off by default, with the text "Uses your browser vendor's
      push service; no question text is sent";
@@ -704,8 +717,8 @@ a push holds no pairing credential (POC-07), so it cannot ask the Spark what hap
   Playwright's default contexts are incognito, where Chromium offers no Push API, so the hermetic e2e stubs
   `PushManager` and simulates delivery with CDP `ServiceWorker.deliverPushMessage`. Real phones (Android Chrome, iOS
   home-screen app) are covered by the owner's guided test in mobile/README.md.
-- Shared files touched: Pocket server, CLI, index, research-ui, mobile.js, sw.js (cache `neuroscifi-pocket-shell-19`),
-  `tests/js/offline_check.mjs`.
+- Shared files touched: Pocket server, CLI, index, research-ui, mobile.js, sw.js (cache `neuroscifi-pocket-shell-19`,
+  now 21), `tests/js/offline_check.mjs`.
 
 # ADR-041 (draft) News rendering: a bounded per-render allowance, static-first reading, and rendering on for a person's news questions. R
 
@@ -837,38 +850,79 @@ as "from your Spark" was authenticated beyond TLS.
    bytes bound to the pairing family (`f-` + 16 hex of the salted family digest), the node id (`n-` + 16 hex of the
    salted device digest) and an expiry (5 minutes), one pending challenge per device. The device signs
    `NSF-ENROL-1\nchallenge\nfamily\nnode\nexpires` and sends its raw public key (attest). The Spark verifies, keeps the
-   key as pending (1 hour) and records nothing as a node. The device shows the fingerprint it computed itself
+   key as pending (1 hour) and records nothing as a node. An Ed25519 key of small order (libsodium's blocklist, in
+   every encoding, including -0 and the non-canonical y = p and y = p + 1) is refused as `bad_key`: under such a key
+   the signature (R = identity, S = 0) verifies for every message, so it proves no private key. `signing.verify` never
+   accepts a signature by one either. The device shows the fingerprint it computed itself
    (SHA-256 of `NSF-KEY-1\nalg\nkey`, 128 bits as eight groups of four hex digits). The console lists pending keys
    with the same fingerprint, and the owner enrols the device only after comparing the two
    (`POST /api/web/nodes {"action": "enrol", "fingerprint", "label"}` or
-   `nsf web node enrol NAME --fingerprint FP`). The Spark stores the public key, algorithm and fingerprint.
+   `nsf web node enrol NAME --fingerprint FP`). The Spark stores the public key, algorithm and fingerprint. A key
+   lives on one node row: approving it revokes any other live row that holds it (the old row of a browser that was
+   re-paired and enrolled again with the key it kept).
 3. **Signed requests.** Every state-changing request from a node enrolled with a key (`research_submit`,
    `research_continue`, `research_cancel`, `research_session` except `status`) carries `X-NSF-Timestamp`,
-   `X-NSF-Nonce` and `X-NSF-Signature` over `NSF-REQ-1\nPOST\npath\nsha256(body)\ntimestamp\nnonce`. The Spark refuses
+   `X-NSF-Nonce` and `X-NSF-Signature` over
+   `NSF-REQ-2\nfamily\nnode\nPOST\npath\nsha256(body)\ntimestamp\nnonce`, where `family` and `node` are the family
+   tag and node id of the challenge, which `node_enrol` status also returns. The signature thus verifies for that
+   device row only. `NSF-REQ-1` (without them) let a captured request signed for one row be replayed with another
+   row's credential when both held the same key; it is no longer accepted. A node's key does not change, so a node
+   enrolled under `NSF-REQ-1` needs no re-enrolment: the current Pocket signs `NSF-REQ-2` with the same key. The Spark refuses
    it with 401 and a short code unless the signature verifies with the recorded key and algorithm
    (`signature_invalid`), the timestamp is within ±120 s (`stale_request`), the nonce is new for that device
    (`replayed_request`; kept 240 s) and the node belongs to the caller's family (`wrong_family`). It also refuses
    unsigned changes from a signed node (`signature_required`), a revoked node (`node_revoked`), and a device with no
    key (`unknown_node`). A signature that is present is verified whoever sends it. Pocket has no evidence-review
    decision route today; one added later belongs in the signed set.
+
+   Pocket voice follows the same rules (`voice/bridge.py`). A typed or spoken command that would submit, cancel or
+   continue research goes through `research_routes.gate` for an unsigned request and, for a task, `nodes.may_drive`.
+   A voice command carries no node signature, so a device enrolled as a signed node changes research only with the
+   Research panel's signed controls. By voice it can still read, show and explain research, and voice tells it to
+   use the panel for changes. Any device is refused, by voice as over HTTP, when it tries to cancel or continue a
+   session another device owns. Continuing by voice counts in the family's hourly limit, like `research_continue`. A
+   Pocket voice session belongs to the device that started it. Signing voice commands was rejected: spoken commands
+   are recognised on the Spark from many audio chunks, and a signature over the audio would not show which command
+   the Spark heard. The owner console's voice is unchanged.
 4. **Spark-signed results.** The Spark holds its own Ed25519 key, generated once with mode 0600 next to the instance
    (`INSTANCE.spark-key`, `*.spark-key` is git-ignored; `--spark-key PATH` overrides). The bridge refuses a key file
    that is not a regular 0600 file owned by the user. The `pair` reply includes the Spark's public key and
    fingerprint, and the device pins them with the credential (tab memory, or the vault when the owner keeps the
-   pairing there). Every reply of a research route (task results, lists, evidence, session views and hand-off
-   grants, node status, and their errors) carries `X-NSF-Spark-Signature` over
-   `NSF-RES-1\nstatus\npath\nrequest nonce\nsha256(body)`. Pocket checks it against the pinned key before showing
-   anything as from the Spark. An unverified success is refused ("could not confirm"), and an unverified error
-   is reduced to its status. Browsers without WebCrypto Ed25519 verify with a small RFC 8032 verifier in
-   `node-key.mjs`.
+   pairing there). Every reply of a research route and of the `push` route carries `X-NSF-Spark-Signature` over
+   `NSF-RES-1\nstatus\npath\nrequest nonce\nsha256(body)`. This covers task results, lists, evidence, session views
+   and hand-off grants, node status and push status. It also covers every refusal and error: the routes' own 401,
+   409 and 429 answers, and the bridge's 400, 403 (no or unknown credential, wrong `Origin`), 404 (research or push
+   off), 500 and 503. Pocket checks the signature against the pinned key before showing anything as from the Spark. An
+   unverified success is refused ("could not confirm"), and an unverified error is reduced to its status. Browsers
+   without WebCrypto Ed25519 verify with a small RFC 8032 verifier in `node-key.mjs`.
+
+   These replies stay unsigned:
+   - `421` for a `Host` the bridge does not serve, and `404` for an unknown route. Both are answered before any
+     route is known.
+   - Malformed HTTP that the server library refuses before the handler runs (`400`, `414`, `431`, `501`).
+   - The field, presence and voice routes, and `pair` (its reply carries the pin).
+
+   Pocket forgets a pairing on any `403` (`mobile.js` `revoked()`), signed or not, including the unsigned `403` of a
+   field route. The `403` of a research route is signed, but anyone who can reach the Spark gets a genuine signed
+   `403` for any nonce by sending the request without a credential. So a rogue bridge or a TLS interceptor can make
+   Pocket forget its pairing and pair again. That is a denial of service only: it reveals nothing and changes
+   nothing on the Spark.
 5. **Revocation and rotation.** Revoking a node deletes its key, nonces and pending enrolment and releases its
    sessions. A later signed request fails with `node_revoked`; unsigned, it is an ordinary paired device again.
-   Key rotation is re-enrolment: a new challenge, attestation and owner approval replace the key. A checkpoint
-   restore replays revocations, so a restored copy loses the key too.
+   Key rotation is re-enrolment: a new challenge, attestation and owner approval replace the key. Revoking a key and
+   replacing it both record its fingerprint in `node_keys_retired` (migration 13), unless another live row still
+   holds it. Approving the same key again removes it from that table. A checkpoint restore or rewrite replays both
+   revocations and retired keys: any restored row that holds a retired key is revoked. So neither a revocation nor
+   a rotation is undone by restoring a copy made before it. The replay also copies the live `node_nonces` of the
+   last 240 s, so a signed request accepted after the checkpoint stays a replay in the copy. All of this happens in
+   the replay's single transaction, before the crash-safe publish.
 6. **Back-compatibility.** Migration 12 adds `alg`, `public_key`, `key_fingerprint` and `signed` to
    `autonomy_nodes`, plus `node_enrolments` and `node_nonces`. Nodes enrolled before it have `signed=0` and no key.
    They are not nodes until they re-enrol: session actions answer 409 `reenrol`, Pocket and the console say so, and
-   they cannot be hand-off targets. A node marked signed never has an unsigned change accepted. Pairings made before
+   they cannot be hand-off targets. A node marked signed never has an unsigned change accepted. Migration 13
+   releases any session such a node owned when version 12 arrived, and any offer made to it. From then on
+   `nodes.may_drive`, `view`, `take` and `renew` ignore a lease held by anything but a live signed node, so a
+   leftover lease never locks the family out. Pairings made before
    this change have no pinned Spark key, so Pocket asks the user to pair again before showing research.
 
 ## Alternatives rejected
@@ -886,14 +940,19 @@ as "from your Spark" was authenticated beyond TLS.
 
 ## Consequences
 
-- A stolen pairing credential no longer lets an attacker drive a node's sessions. It still reads and submits as an
-  ordinary family device, as before (ADR-028).
+- A stolen pairing credential no longer lets an attacker drive a node's sessions, over HTTP or by voice. A stolen
+  credential of an ordinary family device still reads and submits as before (ADR-028); a stolen node credential
+  reads only, because every change of a node needs its key.
 - A substituted or tampered research reply (rogue bridge, TLS interception with an accepted certificate) is refused,
   provided the pin was not substituted at pairing. Pinning is trust on first use. The owner can compare the Spark
   fingerprint that the console and Pocket both show.
-- Not covered: field and voice routes (voice replies are not signed), the console (loopback with its own token),
-  and the pairing exchange itself.
+- Not covered: signatures on field and voice replies, the console (loopback with its own token), and the pairing
+  exchange itself. Voice commands follow the node and session rules above.
 - Clock skew over 2 minutes refuses a node's changes. Pocket says to correct the clock.
 - Tests: `tests/webcortex/test_signing.py`, `tests/test_pocket_signing.py`, `tests/test_pocket_autonomy.py`,
-  `tests/console/test_console_autonomy.py`, `tests/js/signing_check.mjs` (with `tests/js/spark_vectors.json`),
-  `tests/e2e/test_pocket_signing_e2e.py`, `tests/e2e/test_pocket_handoff_e2e.py`.
+  `tests/test_pocket_voice_nodes.py`, `tests/console/test_console_autonomy.py`, `tests/instance/test_checkpoints.py`
+  and `tests/instance/test_migrations.py` (retired keys, nonces, migration 13), `tests/js/signing_check.mjs` (with
+  `tests/js/spark_vectors.json`), `tests/e2e/test_pocket_signing_e2e.py`, `tests/e2e/test_pocket_handoff_e2e.py`.
+- A security review of signed nodes and push found A-1 (voice bypassed node signatures and session ownership) and
+  A-2 to A-6, B-0 and B-1. Each is fixed as described here and in ADR-040, and each has a regression test that
+  fails before its fix.

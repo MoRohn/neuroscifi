@@ -117,7 +117,10 @@ or the Confirm button). "Yes" alone is not accepted.
 (default off, the same switch as Pocket research; otherwise `voice_status` answers `{"voice": false}` and every other
 voice route 404). A Pocket principal is its pairing family: research with Pocket's per-family hourly limit, only its
 family's tasks and transcripts, no owner settings (retention, endpoints), no knowledge-base reads ("what have you
-learned"), no sensitive owner commands ("needs the owner console").
+learned"), no sensitive owner commands ("needs the owner console"). Asking, cancelling and continuing research by
+Pocket voice follow the research routes' rules (ADR-042 §3): a device enrolled as a signed research node changes
+research only with the Research panel's signed controls (voice reads and explains there), no device cancels or
+continues a session another device owns, and a voice session belongs to the device that started it.
 
 **Replies.** `compose_answer(task)` uses the model answer when `report.reasoning.status == "model"` (sentences that
 passed the guard; label "Advanced reasoning by …"), otherwise the extractive answer, spoken as "According to

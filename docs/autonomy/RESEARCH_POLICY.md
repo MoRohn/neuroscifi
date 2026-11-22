@@ -213,23 +213,45 @@ Multi-node, minimal scope (RD-11 assumption, ADR-031 kept; signing and attestati
      the pending key with its fingerprint and algorithm.
   4. The owner compares the two fingerprints and enrols the device under a name, or rejects it. Nothing is a node
      before that.
+
+  An Ed25519 key of small order is refused at step 2 (`bad_key`): it would "verify" a signature without any private
+  key. A key belongs to one node: approving it revokes any other node row that holds it, such as the old row of a
+  browser that was re-paired and enrolled again with the key it kept.
 - **Signed requests.** A node's state-changing requests (`research_submit`, `research_continue`, `research_cancel`,
   `research_session` other than `status`) carry `X-NSF-Timestamp`, `X-NSF-Nonce` and `X-NSF-Signature` over the
-  canonical request: method, path, SHA-256 of the body, timestamp and nonce. The Spark answers `401` with a code
+  canonical request `NSF-REQ-2`: the family tag and node id (as `node_enrol` status returns them), method, path,
+  SHA-256 of the body, timestamp and nonce. The signature is valid for that one device only. The older
+  `NSF-REQ-1` form, without family and node, is refused; a node keeps its key, so the current Pocket simply signs the
+  new form and nothing needs re-enrolling. The Spark answers `401` with a code
   unless the signature verifies with the recorded key and algorithm and the timestamp is within ±120 s of the
   Spark's clock. The nonce must not have been used before by that device; nonces are kept 240 s. The codes are
   `signature_invalid`, `stale_request`, `replayed_request`, `wrong_family`, `malformed`, `node_revoked` and
   `unknown_node`. An unsigned change from a node enrolled with a key is `signature_required`, never accepted
   silently.
+- **Voice.** Pocket voice changes research under the same rules. A spoken or typed command that would ask, cancel
+  or continue research is checked like an unsigned request to the matching route, and like it against session
+  ownership. A voice command carries no node signature, so on a device enrolled as a node, voice reads, shows and
+  explains research but changes nothing: it tells the person to use the Research panel, whose requests are signed.
+  On any device, voice cannot cancel or continue a session another device owns. Continuing by voice counts in the
+  family's 10 submissions per hour. A voice session belongs to the device that started it. The owner console's
+  voice is not affected.
 - **Signed results.** The Spark's own Ed25519 key (`INSTANCE.spark-key`, mode 0600, outside git; `--spark-key`)
-  signs every research reply, errors included: status, path, the request's nonce and the body. A device pins the
+  signs every reply of the research and push routes, refusals and errors included: status, path, the request's
+  nonce and the body. Still unsigned: `421` (unknown host name), `404` for an unknown route, malformed HTTP refused
+  before the handler, and the field, presence, voice and `pair` replies (ADR-042 §4). Any `403` makes Pocket forget
+  the pairing; anyone who reaches the Spark can obtain a signed `403`, so a rogue bridge can force a new pairing,
+  which is a denial of service only. A device pins the
   Spark key and fingerprint from the `pair` reply. Pocket shows nothing as from your Spark unless the signature
   verifies under the pinned key. A tampered reply or one signed by any other key is refused. A pairing made before
   this change has no pin, and Pocket asks the user to pair again.
 - **Revocation and rotation.** Revoking a node deletes its key, nonces and pending enrolment, so its later
-  signatures fail (`node_revoked`). Rotating a key means enrolling again.
+  signatures fail (`node_revoked`). Rotating a key means enrolling again. A revoked or replaced key is recorded as
+  retired (`node_keys_retired`, migration 13). A checkpoint restore or rewrite revokes every restored node that
+  holds a retired key, so restoring a copy made earlier never brings an old key back. It also carries over the
+  nonces of the last 240 s, so a request accepted after the checkpoint is still refused as a replay.
 - **Back-compatibility.** Nodes enrolled before signing existed have no key. They must re-enrol: session actions
-  answer `409 reenrol`, and Pocket and the console say so.
+  answer `409 reenrol`, and Pocket and the console say so. Migration 13 releases any session such a node still
+  owned, and a lease held by anything but a live signed node binds nobody.
 - A session is a chain of continued tasks, named by its root task id. A session has one owner at a time; the
   primary key of `autonomy_sessions` guarantees it. Ownership is a 15-minute lease renewed by the owner's actions.
 - Another node can get ownership in one of two ways:
@@ -245,6 +267,11 @@ Multi-node, minimal scope (RD-11 assumption, ADR-031 kept; signing and attestati
   - canonicalisation, both algorithms, replay, stale timestamps, wrong family, revoked nodes, tampered bodies,
     unsigned requests from signed nodes and re-enrolment (`tests/webcortex/test_signing.py`,
     `tests/test_pocket_signing.py`);
+  - the security review's findings, each with a regression test that fails before its fix: voice under the node
+    and session rules (`tests/test_pocket_voice_nodes.py`), retired keys and nonces across a restore
+    (`tests/instance/test_checkpoints.py`), migration 13 (`tests/instance/test_migrations.py`), small-order keys,
+    `NSF-REQ-2` binding, one live row per key, sessions of unsigned nodes and signed errors
+    (`tests/webcortex/test_signing.py`, `tests/test_pocket_signing.py`);
   - Spark-signed replies and pinning in JavaScript (`tests/js/signing_check.mjs`);
   - enrol, claim and hand-off in Chromium with Ed25519 and with the P-256 fallback, and a tampered reply
     (`tests/e2e/test_pocket_signing_e2e.py`).
