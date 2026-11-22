@@ -833,6 +833,8 @@ class PocketServer(ThreadingHTTPServer):
                     _abort(conn.sock)
 
     def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+            return            # the device went away (tab closed, network switched): not an error worth reporting
         print("nsf-pocket: connection error", file=sys.stderr, flush=True)  # no address, no traceback
 
 

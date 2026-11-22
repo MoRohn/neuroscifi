@@ -904,6 +904,10 @@ class ConsoleServer(ThreadingHTTPServer):
         super().server_close()
 
     def handle_error(self, request, client_address):
+        # R6: a tab closed or reloaded while its presence long-poll waited raised BrokenPipeError at the reply,
+        # five times in normal navigation; a client that went away is not an error worth reporting
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+            return
         print("nsf-console: connection error", file=sys.stderr, flush=True)  # no address, no traceback
 
     @property

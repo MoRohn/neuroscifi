@@ -337,10 +337,12 @@ def test_graph_learn_uses_a_lease_holder_per_request(console):
     assert status == 423 and "leased by console" in data["error"]  # a fixed holder would renew and proceed
 
 
-def test_connection_errors_print_a_fixed_line(console):
+def test_connection_errors_print_a_fixed_line_and_a_closed_tab_prints_nothing(console):
+    """A handler error prints one fixed line (no address, no traceback). R6: a client that went away (a tab closed or
+    reloaded while its presence long-poll waited: BrokenPipeError at the reply; a reset mid-request) printed
+    "nsf-console: connection error" five times in normal navigation; it now prints nothing."""
     err = io.StringIO()
-    # A valid Host (with the port) so the server blocks reading the body when the RST arrives. Without the port the
-    # server answered 403 before reading the body, and the test raced that write against the RST (~2% no error).
+    # A valid Host (with the port) so the server blocks reading the body when the RST arrives.
     with contextlib.redirect_stderr(err):
         sock = socket.create_connection(("127.0.0.1", console.port))
         sock.sendall(f"POST /api/epochs HTTP/1.1\r\nHost: 127.0.0.1:{console.port}\r\n".encode() +
@@ -348,11 +350,19 @@ def test_connection_errors_print_a_fixed_line(console):
                      b"Authorization: Bearer " + TOKEN.encode() + b"\r\nContent-Length: 50\r\n\r\n{")
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
         sock.close()
-        deadline = time.monotonic() + 3
-        while "connection error" not in err.getvalue() and time.monotonic() < deadline:
-            time.sleep(0.05)
+        time.sleep(0.5)
+        for gone in (BrokenPipeError(32, "Broken pipe"), ConnectionResetError(104, "reset")):
+            try:
+                raise gone
+            except OSError:
+                console.srv.handle_error(None, ("127.0.0.1", 1))
+        assert err.getvalue() == ""
+        try:
+            raise ValueError("a real handler bug")
+        except ValueError:
+            console.srv.handle_error(None, ("127.0.0.1", 1))
     text = err.getvalue()
-    assert "nsf-console: connection error" in text
+    assert text == "nsf-console: connection error\n"
     assert "127.0.0.1" not in text and "Traceback" not in text
 
 

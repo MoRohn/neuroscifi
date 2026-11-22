@@ -249,17 +249,22 @@ class PocketPlainHTTP(unittest.TestCase):
         self.assertEqual((status, json.loads(body)), (503, {}))
 
     def test_reset_mid_request_leaks_no_address_or_traceback(self):
+        """A device that went away (RST mid-request, a closed tab) prints nothing (R6); another handler error prints
+        one fixed line without the address or a traceback."""
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
             s = socket.create_connection(("127.0.0.1", self.server.server_port))
             s.sendall(b"POST /api/save HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{")
             s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
             s.close()  # RST while the server is blocked reading the body
-            deadline = time.monotonic() + 3
-            while "connection error" not in err.getvalue() and time.monotonic() < deadline:
-                time.sleep(0.05)
+            time.sleep(0.5)
+            self.assertEqual(err.getvalue(), "")
+            try:
+                raise ValueError("a real handler bug")
+            except ValueError:
+                self.server.handle_error(None, ("127.0.0.1", 1))
         text = err.getvalue()
-        self.assertIn("nsf-pocket: connection error", text)
+        self.assertEqual(text, "nsf-pocket: connection error\n")
         self.assertNotIn("127.0.0.1", text)
         self.assertNotIn("Traceback", text)
 
