@@ -22,3 +22,32 @@ ExecStart=/usr/bin/env bash -c 'exec "${NSF_REPO}/.venv/bin/nsf" resources tick 
 # A pass that unloads waits for the stop command (run.sh stop allows 30 s); it never waits for a load.
 TimeoutStartSec=5min
 Nice=10
+
+# Sandbox of this pass (the same wrapper sandbox as neuroscifi-vllm.service): it runs nsf, the docker CLI over
+# /run/docker.sock, deploy/*/run.sh, systemctl (D-Bus over AF_UNIX) and reads /metrics on 127.0.0.1. Not applied:
+# ProtectSystem=strict and ProtectHome (it writes the instance database and the run.sh caches under the service
+# user's home, whose path the template does not know), PrivateUsers (it must keep the docker group).
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=full
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
