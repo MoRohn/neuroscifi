@@ -105,12 +105,16 @@ included); failed and cancelled runs keep the extractive report only.
   cites several claims, a claim that supports none of it (none of its content words other than names: "NumPy 2.5.5
   was released on 17 November" beside "NumPy 2.5.5 ships a backdoor") is dropped from its claims and sources, and the
   attribution counts only the claims that support it ("according to one source", not "the cited sources";
-  SECREVIEW5 C3). A caveat of the closed grammar, a question and a sentence with instruction content (`_instruction`,
-  below) get no attribution. **An obeyed injection stays rejected:** the guard rejects instruction content beside any
-  cited claim that is not `supported`, hedged or not, and never repairs it (tested end to end through `compose` and
-  through `apply` with a model that obeys). What the evidence does not establish is left to the rules note
-  (`verdict_note`). The guard judges every composed sentence as it judged the model's. The voice "simpler" answer
-  (`voice/bridge.py`) uses the same schema and composition.
+  SECREVIEW5 C3; since SECREVIEW6 a claim must cover a word of the sentence's predicate, from its first finite verb
+  on, not only its subject or setting). A caveat of the closed grammar, a question and a sentence the guard will reject
+  as relayed instruction content (`_relays_instruction`: instruction words, or, beside a weak claim, a sentence that
+  is not declarative) get no attribution. **What is guaranteed (SECREVIEW6):** evidence that is not `supported` never
+  yields an instruction or any non-declarative sentence, hedged or not — the guard rejects the sentence when it, or
+  the weak claim's own text, fails a fail-closed declarative test (below), and never repairs it (R1-04); beside
+  `supported` claims an instruction passes only when a cited claim instructs the same verb with the same object.
+  Tested end to end through `compose` and through `apply` with a model that obeys. What the evidence does not
+  establish is left to the rules note (`verdict_note`). The guard judges every composed sentence as it judged the
+  model's. The voice "simpler" answer (`voice/bridge.py`) uses the same schema and composition.
 - **Guard** (the authority). A sentence is rejected if it cites no source or no claim, cites an id not in the bundle,
   cites a claim through a source that does not carry it, relies on a claim whose ADR-035 state is not `supported`
   (a time-sensitive claim backed only by stale or undated sources is `temporally_unresolved`; the legacy
@@ -122,24 +126,47 @@ included); failed and cancelled runs keep the extractive report only.
   normalised, "%" = "percent"; an ambiguous one-letter unit such as "5m" is not judged), says more than the claims
   it cites (SEC-G-E1, below), or contains instruction-like text. `check_sentence` holds these checks, and (SECREVIEW5)
   three more:
-  - **Instruction content beside a weak claim** — "relays an instruction from a claim that is not supported" — any
-    sentence with instruction content (`_instruction`) that cites a claim whose state is not `supported`, whether or
-    not it is hedged; such a sentence is also never repaired by attribution (R1-04, `_restates`). `_instruction` is
-    the one detector of `compose` and the guard: a modal of obligation or recommendation (should, must, shall, ought,
-    recommend(ed), advise(d), advisable, mandatory), an address to the reader (you, your), urging ("urged", "had
-    better", "need to", "essential / imperative / vital / crucial / important / necessary / encouraged / required to
-    …"), a recommendation phrase ("makes sense", "the way to go", "would do well", "the recommended path", "is worth
-    upgrading") and an imperative at the head of any clause, after leading adverbs or a "To …," lead ("Promptly
-    remove …", "To stay safe, uninstall …"; a closed list of action verbs, and no imperative when a plural noun, "of",
-    a verb or a pronoun follows: "Patch releases fix bugs", "Use of the parser", "do we know …?"). Beside supported
-    claims, instruction content passes only when a cited claim holds instruction content too ("Users should upgrade to
-    NumPy 2.5.5" supports "According to the advisory, users should upgrade …").
-  - **A cited claim that supports none of the sentence** — "cites C1, which support(s) none of what it says" — when a
-    sentence cites several claims (SECREVIEW5 C3, `_claim_supports`).
-  - **Numbers in the opposite order** — "puts numbers in the opposite order to its cited claims" — two numbers or
-    versions in one clause in the reverse order of every cited claim holding both ("affected NumPy 2.5.5 before the fix
-    in NumPy 2.5.4" for "affected NumPy 2.5.4 before the fix in NumPy 2.5.5"); dates and identifiers
-    ("CVE-2026-1234") are left out, and numbers in different clauses are not compared.
+  - **Weak evidence carries only declarative sentences** (SECREVIEW6 rule 1, `_non_declarative`, fail closed) —
+    "relays an instruction or a non-declarative sentence from weak evidence" — when any cited claim is not
+    `supported`, the sentence and each such claim's own text must be declarative. After a closed list of discourse
+    and attribution leads ("however", "according to one source", "possibly out of date"), every clause — split at
+    punctuation, at but / so / then / while / whereas / because / although / though / unless, and at and / or before a
+    verb — must begin with a subject token: a determiner, quantifier or pronoun; a number or version; a name (a
+    capitalised word the cited claims or the question write capitalised away from a sentence start, a mixed-case,
+    all-capital or dotted word they hold, a capitalised word of a short or sentence-case source title, a word right
+    before a version as in "numpy 2.5.5", or the first word of a name: "Van Rossum"); a word in -s that is no
+    stopword; or a gerund that a finite verb follows. A clause headed by a preposition, "To", a participle or a gerund
+    is a lead only when a comma and a clause with a subject follow ("In 2026, …", "Released in May, …"); a fragment
+    after a comma ("…, with breaking changes", "…, released on 15 November") may hold no verb before its object
+    ("…, uninstall it"); "and is …" continues the predicate; a verb its auxiliary began before an adverb ("It does,
+    however, use …") continues it. Anything else at a clause head is non-declarative: a bare verb ("Skip …", "Hold off
+    …", "Roll back …"), a lowercase or sentence-initial-only capitalised word, "Let's", a preposition without a comma
+    ("For safety uninstall …"). Non-declarative anywhere: obligation and recommendation words (should, must, ought,
+    recommended, urged, need to, essential / required … to), "you/your" (not a generic one: "depending on what you
+    mean", "if you count"), "is to (be)", "the fix / remedy / solution is", recommendation phrases. The claims are a
+    part-of-speech oracle: a head word they hold only inflected as a verb ("skips" for "Skip") is a bare verb.
+    NeuroSciFi's own record claims ("Crossref record: \"T\"", "OSV lists advisory X: …") are checked from their
+    data on. A false positive drops only a sentence that cites weak evidence; the extractive evidence stays.
+  - **Supported instructions are exactly backed** (rule 2, `_instructed`) — "gives an instruction its cited claims do
+    not give" — each instructed (verb, object head) of the sentence (the verb after an obligation word, the object of
+    "recommend", a clause head that is no subject and looks verbal) must be an instructed (verb, object head) of a
+    cited claim: "Users should downgrade NumPy 2.5.5" is not backed by "Users should upgrade to NumPy 2.5.5", nor
+    "… and remove plugins" by an instruction to upgrade beside the fact that 2.5.5 removes plugins.
+  - **Versions and names keep their predicate and polarity** (rule 3, `_anchor_problems`) — "ties a version or name
+    to what its cited claims do not say of it" — "v2.5.5" is read as 2.5.5; for a version, number or name in both the
+    sentence and a cited claim, the content words that the sentence's clause holding it shares with a claim clause
+    holding it must have the same polarity there ("NumPy 2.5.5 is affected …" for "… NumPy 2.5.5 is not affected"),
+    a clause that shares none may not take the words a claim says of another version or name ("2.5.5 has the parser
+    flaw" for "2.5.4 has the parser flaw and 2.5.5 has the fix"), and the content word right before a version names
+    what it is ("the fix in NumPy 2.5.4" for "affected NumPy 2.5.4 before the fix in NumPy 2.5.5"). Clauses here end
+    only where a new subject or a contrast starts, not at every comma, and two versions of one such clause keep their
+    claim's order. A claim clause that names nothing else ("… and it is not cryptographically secure") may support a
+    name's polarity.
+  - **A cited claim that supports none of the sentence's predicate** — "cites C1, which support(s) none of what it
+    says" — when a sentence cites several claims (C3, `_claim_supports`; rule 4).
+  - **Meaning changes** (R6 retest D5, `_meaning_changes`): words of at most four that a cited claim puts in (scare)
+    quotes, repeated without them ("a number of 'facts' about the human brain"); a "not merely / not only / not just
+    X" without its complement.
   A code name the cited claim holds ("numpy.dtypes.StringDType") ends no sentence; "several / other / different
   sources" in the cited claim's own words after a preposition ("a comparison of different studies") attributes
   nothing (R2-03).
@@ -174,10 +201,9 @@ included); failed and cancelled runs keep the extractive report only.
     "is exposed", "is a priority", "is behind", "was created by"); an uncovered "-ly" adverb is weighted ("handles
     strings insecurely", "badly", "poorly"); "handful", "couple", "dozen", "lot" are quantities.
   - Instructions — "gives an instruction its cited claims do not give: should" — a modal of obligation (should,
-    must, need, recommend, advisable, …), an address to the reader (you, everyone, anyone), an imperative opening
-    ("Reinstall …", "Avoid …") or a recommendation phrase ("makes sense", "the way to go", "the way forward", "would
-    do well", "the recommended path", "is worth upgrading") fails unless a cited claim holds the same instruction
-    ("Users should upgrade to NumPy 2.5.5" supports "According to the advisory, users should upgrade …").
+    must, need, recommend, advisable, …), an address to the reader (you, everyone, anyone) or a recommendation phrase
+    ("makes sense", "the way to go", "would do well", "the recommended path") fails unless a cited claim holds
+    instruction words too, and an instructed verb unless it is exactly backed (rule 2 above).
   - Polarity (`_polarity`). Negators (not, no, never, n't, without, …) scope forward over the next content words
     (in the sentence over the rest of the clause); privative words (lack, fail, missing, absent, drop, remove, stop,
     abandon, strip, revert, spare, immune, "free of", …) do too, and after a copula also back over the subject ("the
@@ -434,21 +460,39 @@ nsf llm usage                                                 # token ledger
   kept per answer, survival 96 %; its 5 rejections are all C1 (the zod "your" four times, and "A user who can freely
   execute NumPy functions must be considered to have the same privileges …", where "must" is epistemic). The same
   fresh answers under the c7eede8 guard: 3.05 kept, survival 94 % (8 code names read as sentence ends).
-- **Instruction content, limits.** `_instruction` is lexical. Imperatives are a closed list of action verbs at a
-  clause head; one outside it ("Ditch NumPy 2.5.5") counts only as an uncovered word, and a clause head followed by a
-  plural noun, "of", a verb or a pronoun is read as a noun or a question ("Update checks run daily"), which a
-  disguised command can imitate. A modal is an instruction whatever its sense ("must be considered" above), and a
-  relayed changelog title in the imperative ("BUG: avoid segfaults when …") is rejected beside a weak claim. Reader
-  address is "you"/"your" only: "anyone"/"everyone" are weighted words that the claim must hold, not instructions.
+- **Round-6 guard (structural rules), measured (2026-11-22).** Same inputs as above. The 44 answers of the paired
+  replay: template 8 of 44 (the empty answers), 3.07 kept per answer (3.18 with the round-5 guard), 9 rejected,
+  survival 94 % (97 %); the new rejections are a mailing-list "Hi All, …", a "Prediction: …" headline, a commit title
+  "#32221: BUG: avoid segfaults …", "Here, we provide …" (non-declarative, as intended) and the zod "your" (C1). The
+  fresh live answers of round 5: 8 of 44, 2.91 kept, survival 90 % (3.11, 96 %), adding the two copies of "a number
+  of facts about the human brain" without the claim's scare quotes (D5). A fresh live run with this guard (44 new
+  answers): template 8 of 44 (all empty), 2.84 kept per answer, survival 89 %; its 15 rejections are all of the
+  classes above (scare quotes 3, the zod "your" 4, headlines and commit titles 4, an epistemic "must", a list item
+  "translation models such as …", a claim's "release notes and the changelog are available …", "Here, we …").
+  The 107 kept live sentences of the earlier
+  request: faithful kept 45 of 71 (63 %; 50 with the round-5 guard), grey 1 of 19, unfaithful 1 of 17; template
+  fallback 24 of 68 answers (20). The structural test costs sentences that open with a generic noun or adjective
+  ("Predictive coding offers …", "Biased or inaccurate training data …", "Exploitation requires …"), list items after
+  a comma or "and" that look like a verb and its object ("…, infrastructure updates, and compromise fixes"), a
+  modal in its epistemic sense ("should, with few exceptions, continue to compile"), "is to minimize", and a
+  capitalised name the claims write only at a sentence start when no title names it — each only beside weak evidence.
+- **Declarative test, limits.** It is lexical and fails closed: what it cannot read as a subject is rejected beside
+  weak evidence (above). What it accepts as a subject can still head an instruction in a few shapes: a word in -s
+  ("Focus on numpy-secure"), a gerund with a finite verb later in the clause, a name the claims or a short title
+  hold. Beside supported claims an imperative is recognised only when it looks verbal (a determiner, pronoun,
+  particle or code word follows, the claims hold it inflected, or it is a common action verb); an unknown verb before
+  a plural-noun object is then judged only by coverage (one new word per clause, a new verb after a name). Rule 3
+  compares words: a paraphrase with no shared word, a pronoun's antecedent, and a version in a clause with no other
+  content word are not judged.
 - **Entailment coverage, limits.** It compares words, not meaning, and one new content word per clause is allowed:
   a noun or verb swapped for one the claim does not hold passes when it is the only new word in a clause of the
   claim's words and is not right after a name, a version or "and" ("NumPy is the fundamental package for scientific
   espionage with Python"; "The new parser raises memory use in NumPy 2.5.5 by 30 percent" for "reduces"). Role swaps
   are caught only for a past-tense verb the sentence shares with the claim and for swapped "by" agents of two
   passives: a present-tense swap ("NumPy 2.5.5 users target attackers" for "Attackers target NumPy 2.5.5 users") and
-  an object swap with the same verb ("replaces the new loader with the legacy parser") pass. Numbers are compared in
-  order only within one clause: a passive that reorders two versions in one clause is rejected (a cost), a swap
-  across two clauses is not caught. An antonym outside the closed privative list counts only as an uncovered word:
+  an object swap with the same verb ("replaces the new loader with the legacy parser") pass. Two versions in one
+  clause keep their claim's order (a passive that reorders them is rejected, a cost); across clauses rule 3 ties each
+  to its own predicate. An antonym outside the closed privative list counts only as an uncovered word:
   "NumPy 2.5.5 is clear of the parser flaw" passes on "NumPy 2.5.5 is affected by the parser flaw". A pronoun's
   antecedent is not resolved (the one unfaithful sentence kept: "Python was first introduced in 2000" on "They were
   firstly introduced in 2000", about PEPs). Polarity is lexical: negators, privatives and "unX" are closed lists
