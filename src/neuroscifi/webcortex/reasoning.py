@@ -1122,9 +1122,10 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
         name = any(c.isupper() for c in w0[1:]) or (w0[0].isupper() and k > 0 and spans[k - 1][0][-1:] not in ".:")
         cls = _hard_class(w, name)
         nxt = next((x for x in plain[k + 1:k + 5] if x in _META_NOUN or x not in ("or", "and") and
-                    x not in _MODIFIER and x not in _ENTAIL_META and x not in _TIME), "")
+                    x not in _MODIFIER and x not in _ENTAIL_META and x not in _TIME and x not in _COMPARATIVE and
+                    x not in _QUANTITY_WORDS), "")
         if cls and cls != "name" and nxt in _META_NOUN:
-            continue                        # "one source", "recent or verified evidence": about the evidence
+            continue                        # "two older sources", "recent or verified evidence": about the evidence
         parts = [p for p in re.split(r"[-/]", w) if p]
         originals = [o for o in re.split(r"[-/]", w0) if o]
         if cls and cls != "name":
