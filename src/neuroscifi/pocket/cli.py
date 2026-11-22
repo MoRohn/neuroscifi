@@ -1,5 +1,5 @@
 """`nsf pocket`: the phone interface bridge."""
-from . import server
+from . import server, tls
 
 
 def register(sub):
@@ -29,6 +29,7 @@ def register(sub):
                        help="also remove every device in the label's pairing family (linked phones and tablets)")
     erase.add_argument("--db", default="mobile-private.sqlite")
     erase.set_defaults(handler=_erase)
+    tls.register(ops)
 
 
 def _serve(a):
