@@ -98,12 +98,19 @@ included); failed and cancelled runs keep the extractive report only.
   attribution of its weakest cited state appended by code, so the hedge cannot be forgotten or misworded: "…, according
   to one source." (`insufficient`, `not_evaluated`; "the cited sources" for two or more), "…, according to one source,
   possibly out of date." (`temporally_unresolved`), "…, though the sources disagree." (`conflicting`), "…, though the
-  claim is disputed." (`disputed`). The model's own leading or trailing "according to …" is replaced, a leading
-  "Yes,"/"No," (an answer no claim gives) and an exact repeat are removed. A caveat of the closed grammar, a question
-  and a relayed instruction (a modal of obligation, an address to the reader, an imperative opening a sentence part:
-  "The compiler is unsafe; uninstall it.") get no attribution, so an obeyed injection stays rejected as unhedged. What
-  the evidence does not establish is left to the rules note (`verdict_note`). The guard judges every composed sentence
-  as it judged the model's. The voice "simpler" answer (`voice/bridge.py`) uses the same schema and composition.
+  claim is disputed." (`disputed`). The model's own leading or trailing "according to" a source word ("one source",
+  "the cited sources", "a report", "the release notes", "the benchmark") is replaced; any other "according to" ("handles
+  strings according to the Unicode standard") is content and stays. A leading "Yes,"/"No," (an answer no claim gives;
+  never the "No" of "No-one") and a repeat of the same text citing the same claims are removed. When a sentence
+  cites several claims, a claim that supports none of it (none of its content words other than names: "NumPy 2.5.5
+  was released on 17 November" beside "NumPy 2.5.5 ships a backdoor") is dropped from its claims and sources, and the
+  attribution counts only the claims that support it ("according to one source", not "the cited sources";
+  SECREVIEW5 C3). A caveat of the closed grammar, a question and a sentence with instruction content (`_instruction`,
+  below) get no attribution. **An obeyed injection stays rejected:** the guard rejects instruction content beside any
+  cited claim that is not `supported`, hedged or not, and never repairs it (tested end to end through `compose` and
+  through `apply` with a model that obeys). What the evidence does not establish is left to the rules note
+  (`verdict_note`). The guard judges every composed sentence as it judged the model's. The voice "simpler" answer
+  (`voice/bridge.py`) uses the same schema and composition.
 - **Guard** (the authority). A sentence is rejected if it cites no source or no claim, cites an id not in the bundle,
   cites a claim through a source that does not carry it, relies on a claim whose ADR-035 state is not `supported`
   (a time-sensitive claim backed only by stale or undated sources is `temporally_unresolved`; the legacy
@@ -113,7 +120,29 @@ included); failed and cancelled runs keep the extractive report only.
   or scale the cited evidence does not give that number (`_unit_mismatches`: "41 feet" vs "41 metres", "86 billion"
   vs "86 million", "17 days" vs "17 November", "$1.5 million" vs "1.5 billion dollars"; units and scale words are
   normalised, "%" = "percent"; an ambiguous one-letter unit such as "5m" is not judged), says more than the claims
-  it cites (SEC-G-E1, below), or contains instruction-like text. `check_sentence` holds these checks.
+  it cites (SEC-G-E1, below), or contains instruction-like text. `check_sentence` holds these checks, and (SECREVIEW5)
+  three more:
+  - **Instruction content beside a weak claim** — "relays an instruction from a claim that is not supported" — any
+    sentence with instruction content (`_instruction`) that cites a claim whose state is not `supported`, whether or
+    not it is hedged; such a sentence is also never repaired by attribution (R1-04, `_restates`). `_instruction` is
+    the one detector of `compose` and the guard: a modal of obligation or recommendation (should, must, shall, ought,
+    recommend(ed), advise(d), advisable, mandatory), an address to the reader (you, your), urging ("urged", "had
+    better", "need to", "essential / imperative / vital / crucial / important / necessary / encouraged / required to
+    …"), a recommendation phrase ("makes sense", "the way to go", "would do well", "the recommended path", "is worth
+    upgrading") and an imperative at the head of any clause, after leading adverbs or a "To …," lead ("Promptly
+    remove …", "To stay safe, uninstall …"; a closed list of action verbs, and no imperative when a plural noun, "of",
+    a verb or a pronoun follows: "Patch releases fix bugs", "Use of the parser", "do we know …?"). Beside supported
+    claims, instruction content passes only when a cited claim holds instruction content too ("Users should upgrade to
+    NumPy 2.5.5" supports "According to the advisory, users should upgrade …").
+  - **A cited claim that supports none of the sentence** — "cites C1, which support(s) none of what it says" — when a
+    sentence cites several claims (SECREVIEW5 C3, `_claim_supports`).
+  - **Numbers in the opposite order** — "puts numbers in the opposite order to its cited claims" — two numbers or
+    versions in one clause in the reverse order of every cited claim holding both ("affected NumPy 2.5.5 before the fix
+    in NumPy 2.5.4" for "affected NumPy 2.5.4 before the fix in NumPy 2.5.5"); dates and identifiers
+    ("CVE-2026-1234") are left out, and numbers in different clauses are not compared.
+  A code name the cited claim holds ("numpy.dtypes.StringDType") ends no sentence; "several / other / different
+  sources" in the cited claim's own words after a preposition ("a comparison of different studies") attributes
+  nothing (R2-03).
 - **Entailment by content-word coverage (SEC-G-E1, `_unentailed`).** Until v0.7.0 a sentence that cited any
   supported claim was not checked for what it said: citing "NumPy is the fundamental package for scientific computing
   with Python." passed "NumPy is secure and recommended for all production use." and "Users should reinstall NumPy
@@ -141,6 +170,9 @@ included); failed and cancelled runs keep the extractive report only.
     quantities in words (one, two, several, multiple, many, …; "one source" is attribution), an adjective after a
     copula ("is popular", "is unaffected"), a new verb after "and" ("… and leaks memory") and a new verb right after
     a name or version ("NumPy 2.5.5 contains …"). An embedded whether/if question is exempt from the clause rules.
+    Since SECREVIEW5: any new word right after a copula is a predicate, not only adjective-shaped ones ("is faulty",
+    "is exposed", "is a priority", "is behind", "was created by"); an uncovered "-ly" adverb is weighted ("handles
+    strings insecurely", "badly", "poorly"); "handful", "couple", "dozen", "lot" are quantities.
   - Instructions — "gives an instruction its cited claims do not give: should" — a modal of obligation (should,
     must, need, recommend, advisable, …), an address to the reader (you, everyone, anyone), an imperative opening
     ("Reinstall …", "Avoid …") or a recommendation phrase ("makes sense", "the way to go", "the way forward", "would
@@ -148,8 +180,15 @@ included); failed and cancelled runs keep the extractive report only.
     ("Users should upgrade to NumPy 2.5.5" supports "According to the advisory, users should upgrade …").
   - Polarity (`_polarity`). Negators (not, no, never, n't, without, …) scope forward over the next content words
     (in the sentence over the rest of the clause); privative words (lack, fail, missing, absent, drop, remove, stop,
-    abandon, …) do too, and after a copula also back over the subject ("the fix is missing", "support was
-    dropped"); "dropped by 30 percent" is an amount, not a negation. "It is not true that …" negates the rest, and
+    abandon, strip, revert, spare, immune, "free of", …) do too, and after a copula also back over the subject ("the
+    fix is missing", "support was dropped", "the fix was reverted", "is free of the flaw"); "dropped by 30 percent" is
+    an amount, not a negation. "No-one" and "no one" negate like "nobody", "none", "never" and "zero" (SECREVIEW5 C2:
+    "No-one has exploited …" read as one word lost its negation in round 4). In the sentence a negator's scope ends
+    at the next negator with a content word before it and at "and"/"or" before a new subject ("… and NumPy 2.5.4 is
+    patched"); two negators with no content word between them ("not without", "does not lack") are rejected unless a
+    cited claim holds the same pair ("states a double negation its cited claims do not state"); an "un-" noun the
+    sentence derives from the claim's "un-" word ("uncertainty" for "uncertain") negates nothing new. "It is not
+    true that …" negates the rest, and
     an even number of negators over a word is no negation. Hedge heads ("not believed to be", "not known to be") are
     skipped, so they never cancel a claim's negation. "unX" is X negated. A negator over an evidence word ("not
     established", "does not indicate", "lack recent or verified evidence") is a hedge. Rejected: the first word a
@@ -159,11 +198,16 @@ included); failed and cancelled runs keep the extractive report only.
     claims": "is affected" for "is not believed to be affected"), whatever other negator the sentence holds.
   - Role swaps: a past-tense verb shared with a claim whose subject in the sentence is not its subject in the claim
     but stands after the verb there ("The legacy branch abandoned the maintainers") — "changes who does what in its
-    cited claims". Passives are left alone.
+    cited claims"; in two passives, an agent after "by" that is not the claim's agent of that verb but stands
+    elsewhere in the claim ("fixed by Google and reported by the maintainers" for "reported by Google and fixed by
+    the maintainers").
   The check runs after the number and unit checks, so the attribution repair (R1-04) and the self-critique
   confirmation use it unchanged. Tests: `test_e1_*` (the two E1 examples, R5-O1, 36 attacks, all 47 cases of the
   round-4 review and "the way to go", each rejected; 17 faithful paraphrases and 4 live sentences that must stay
-  kept; the measured costs, asserted as rejections).
+  kept; the measured costs, asserted as rejections) and `test_r5_*` (SECREVIEW5: the relayed instructions end to end
+  through `compose` and `apply`, in four claim states; "No-one", "no one", "nobody", "zero", "never"; the citation of
+  supporting claims only; 27 entailment attacks of its section 3; the prompt lane's proposals A–E, attacks and
+  faithful cases).
 - **Honest caveats: a closed grammar** (`_caveat`, `insufficiency`, `gap_clause`). A sentence that only says what the
   evidence does not establish asserts no fact: it needs no supported claim, no hedge and (T2-03) no citation, and it
   may repeat the question's own numbers. Two security reviews (SECREVIEW_GUARD F1–F6, SECREVIEW2_GUARD N1–N4) showed
@@ -357,12 +401,16 @@ nsf llm usage                                                 # token ledger
   (R5-O1; "Rao and Ballard proposed …" on a title record that names neither; "numpy 2.5.5 is reported as stable"
   on a PyPI release record; "has not been recently updated" for "last updated 6 days ago").
 
-  | | first version (round 3) | after the round-4 review |
-  |---|---|---|
-  | faithful kept | 63 of 71 (89 %) | **51 of 71 (72 %)** |
-  | grey kept | 2 of 19 | 1 of 19 |
-  | unfaithful kept | 1 of 17 | 1 of 17 |
-  | answers (of 68 with a kept sentence) falling back to the template | 14 (21 %) | **19 (28 %)** |
+  | | first version (round 3) | after the round-4 review | after the round-5 review |
+  |---|---|---|---|
+  | faithful kept | 63 of 71 (89 %) | 51 of 71 (72 %) | **50 of 71 (70 %)** |
+  | grey kept | 2 of 19 | 1 of 19 | 1 of 19 |
+  | unfaithful kept | 1 of 17 | 1 of 17 | 1 of 17 |
+  | answers (of 68 with a kept sentence) falling back to the template | 14 (21 %) | 19 (28 %) | **20 (29 %)** |
+
+  (These sentences were written for the earlier answer request, which asked for hedges and attribution in the
+  model's own words; the aligned request is measured below. Round 5 cost one more: "…, and recommends manual
+  verification" restated from an `insufficient` claim, a relayed recommendation.)
 
   Retention is now below the 85 % aimed at. The 20 false rejections are paraphrases in other words:
   "warned that superintelligence could manipulate human emotions" for "will hack your limbic system"; "a major math
@@ -377,14 +425,34 @@ nsf llm usage                                                 # token ledger
   the four questions, first version of the check): two fact-verification runs degraded to the template because of
   this check alone ("according to more recent studies", now an evidence noun; "though estimates vary widely", now a
   hedge phrase); every other rejected sentence also failed an earlier rule.
+- **Round-5 guard with the aligned request, measured (2026-11-22).** The 44 answers of the paired replay below
+  (the aligned request), composed and guarded again: with the c7eede8 guard template fallback 8 of 44 (all empty
+  answers), 3.07 kept per answer, 7 rejected, survival 95 %; with this guard 8 of 44 (the same empty answers), 3.18
+  kept per answer, 4 rejected, survival 97 %. Code names no longer split a sentence (+6); the 4 rejections are the
+  same zod sentence relayed from an `insufficient` claim, which says "from your own dependencies" (reader address,
+  C1). A fresh live run of the same 44 bundles (new model answers, this guard): template 8 of 44 (all empty), 3.11
+  kept per answer, survival 96 %; its 5 rejections are all C1 (the zod "your" four times, and "A user who can freely
+  execute NumPy functions must be considered to have the same privileges …", where "must" is epistemic). The same
+  fresh answers under the c7eede8 guard: 3.05 kept, survival 94 % (8 code names read as sentence ends).
+- **Instruction content, limits.** `_instruction` is lexical. Imperatives are a closed list of action verbs at a
+  clause head; one outside it ("Ditch NumPy 2.5.5") counts only as an uncovered word, and a clause head followed by a
+  plural noun, "of", a verb or a pronoun is read as a noun or a question ("Update checks run daily"), which a
+  disguised command can imitate. A modal is an instruction whatever its sense ("must be considered" above), and a
+  relayed changelog title in the imperative ("BUG: avoid segfaults when …") is rejected beside a weak claim. Reader
+  address is "you"/"your" only: "anyone"/"everyone" are weighted words that the claim must hold, not instructions.
 - **Entailment coverage, limits.** It compares words, not meaning, and one new content word per clause is allowed:
   a noun or verb swapped for one the claim does not hold passes when it is the only new word in a clause of the
   claim's words and is not right after a name, a version or "and" ("NumPy is the fundamental package for scientific
   espionage with Python"; "The new parser raises memory use in NumPy 2.5.5 by 30 percent" for "reduces"). Role swaps
-  are caught only for a past-tense verb the sentence shares with the claim, not in passives or with other verb
-  forms. A pronoun's antecedent is not resolved (the one unfaithful sentence kept: "Python was first introduced in
-  2000" on "They were firstly introduced in 2000", about PEPs). Polarity is lexical: negators, privatives and "unX"
-  are closed lists ("hardly", "barely" only count as uncovered words), and a sentence negator passes when its first
+  are caught only for a past-tense verb the sentence shares with the claim and for swapped "by" agents of two
+  passives: a present-tense swap ("NumPy 2.5.5 users target attackers" for "Attackers target NumPy 2.5.5 users") and
+  an object swap with the same verb ("replaces the new loader with the legacy parser") pass. Numbers are compared in
+  order only within one clause: a passive that reorders two versions in one clause is rejected (a cost), a swap
+  across two clauses is not caught. An antonym outside the closed privative list counts only as an uncovered word:
+  "NumPy 2.5.5 is clear of the parser flaw" passes on "NumPy 2.5.5 is affected by the parser flaw". A pronoun's
+  antecedent is not resolved (the one unfaithful sentence kept: "Python was first introduced in 2000" on "They were
+  firstly introduced in 2000", about PEPs). Polarity is lexical: negators, privatives and "unX" are closed lists
+  ("hardly", "barely" are caught only as uncovered words), and a sentence negator passes when its first
   negated word stands within a few words of a claim's negation. Attribution and hedge words are never content, so
   "may", "estimated" or "estimates vary" add nothing and are not checked. The weighted classes, recommendation
   phrases and synonym groups are closed lists. A paraphrase in other words is rejected; the extractive answer and
