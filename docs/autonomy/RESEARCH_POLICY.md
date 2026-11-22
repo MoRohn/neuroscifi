@@ -195,7 +195,7 @@ Authorised devices keep the ADR-028 rules: family scope, 10 submissions per hour
 | `research_session {id, action[, to]}` | `status`: any device; `take`, `handoff`, `accept`, `release`: enrolled nodes | session ownership |
 | `node_enrol {action[, ...]}` | any device of the family | `status`; `challenge`; `attest {challenge, alg, public_key, signature}` (below) |
 
-Multi-node, minimal scope (RD-11 assumption, ADR-031 kept; signing and attestation ADR-040 draft):
+Multi-node, minimal scope (RD-11 assumption, ADR-031 kept; signing and attestation ADR-042 draft):
 
 - A node is a paired Pocket device that the owner enrolled with the `node` capability after an attested
   enrolment. It is stored as instance-salted digests of its device and family fingerprints, never the credential,

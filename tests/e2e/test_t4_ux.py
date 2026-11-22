@@ -95,7 +95,7 @@ def test_pocket_insufficient_basis_says_why_t4_04(spark, new_page):
     page = new_page(390, 844)
     page.goto(spark.url)
     pair(page)
-    page.route("**/api/research_evidence*", lambda r: spark.fulfill_signed(r,   # as the Spark signs it (ADR-040)
+    page.route("**/api/research_evidence*", lambda r: spark.fulfill_signed(r,   # as the Spark signs it (ADR-042)
         {"subjects": 4, "evidence": [
             {"state": "insufficient", "statement": "A claim", "basis": None, "sources": 1, "domain": "one.example"},
             {"state": "insufficient", "statement": "Another claim", "basis": None, "sources": 2},

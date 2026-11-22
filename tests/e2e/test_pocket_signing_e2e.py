@@ -1,4 +1,4 @@
-"""Signed node identities in a real Chromium (ADR-040 draft; RESEARCH_POLICY.md section 6). A phone (WebCrypto
+"""Signed node identities in a real Chromium (ADR-042 draft; RESEARCH_POLICY.md section 6). A phone (WebCrypto
 Ed25519) and a tablet whose browser lacks Ed25519 (stubbed, so it falls back to ECDSA P-256 and checks the Spark's
 replies with the fallback verifier) ask to be enrolled; the owner compares fingerprints on the Spark console and
 enrols them; the phone claims a research session and hands it to the tablet with signed requests. The node key is

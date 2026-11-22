@@ -225,7 +225,7 @@ nsf web autonomy status          # both budgets, refusals, recent decisions
 nsf web autonomy set --policy-json '{"autonomous_daily": {"searches": 10, "concurrent": 1}}'
 nsf web work                     # the worker that runs queued and autonomous tasks
 nsf web node list                # research nodes, and devices waiting with their key fingerprint
-nsf web node enrol NAME --fingerprint FP     # enrol the device that shows this fingerprint (ADR-040)
+nsf web node enrol NAME --fingerprint FP     # enrol the device that shows this fingerprint (ADR-042)
 nsf resources --cold-start       # pressure level, policy decisions, container start-to-ready times
 ```
 

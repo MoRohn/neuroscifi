@@ -3,7 +3,7 @@ const el = id => document.getElementById(id);
 let key = "", draft = null, selected = null, generation = 0, sharing = false, lastActive = 0;
 let reach = "", refused = false, muting = false, pairingNow = false, messageTimer = 0;
 let probeTimer = 0, probeDelay = 0, restoring = false;
-// The Spark's signing key as pinned at pairing (ADR-040 draft): kept with the credential, in tab memory or the vault.
+// The Spark's signing key as pinned at pairing (ADR-042 draft): kept with the credential, in tab memory or the vault.
 // research-ui.mjs checks every research reply against it before showing anything as from your Spark.
 let spark = null;
 function showPin() {   // a bridge without research pins nothing; research-ui.mjs explains a missing pin where it matters

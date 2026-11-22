@@ -1,5 +1,5 @@
 """Research nodes and research-session ownership (RD-11 minimal multi-node scope; ADR-039 draft; ADR-031 kept), with
-signed node identities and attested enrolment (ADR-040 draft; signing.py).
+signed node identities and attested enrolment (ADR-042 draft; signing.py).
 
 A *node* is a Pocket-paired device the owner enrolled with the 'node' capability. Enrolment is attested:
   1. the paired device asks for a challenge (Pocket `node_enrol` challenge); the Spark issues one bound to the

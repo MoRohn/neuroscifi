@@ -389,7 +389,7 @@ def _web_autonomy_set(c, p, q, b):
 
 
 def _web_nodes(c, p, q, b):
-    """Research nodes (ADR-040 draft): enrolled, needing re-enrolment or revoked, each with its key algorithm and
+    """Research nodes (ADR-042 draft): enrolled, needing re-enrolment or revoked, each with its key algorithm and
     fingerprint; enrolments attested by a device and waiting for the owner; and this Spark's own key fingerprint
     (the one devices pin at pairing), when the Pocket bridge has created it next to this instance."""
     from ..webcortex import nodes, signing

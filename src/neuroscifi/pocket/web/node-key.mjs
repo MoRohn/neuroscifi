@@ -1,4 +1,4 @@
-// Research node identity (ADR-040 draft; webcortex/signing.py is the Spark's side of every form below).
+// Research node identity (ADR-042 draft; webcortex/signing.py is the Spark's side of every form below).
 // This device's own signing key: WebCrypto Ed25519 where the browser has it, else ECDSA P-256 (detected at run time
 // and recorded). The private key is generated NON-EXTRACTABLE and kept in IndexedDB, so it survives a reload without
 // its material ever being readable by script; the pairing credential itself stays in tab memory (POC-07).

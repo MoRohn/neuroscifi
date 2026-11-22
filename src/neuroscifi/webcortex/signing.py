@@ -1,4 +1,4 @@
-"""Signed node identities, signed requests and Spark-signed results (ADR-040 draft; RESEARCH_POLICY.md section 6).
+"""Signed node identities, signed requests and Spark-signed results (ADR-042 draft; RESEARCH_POLICY.md section 6).
 
 Three canonical byte strings, UTF-8, fields joined by "\\n", each prefixed with its own tag so a signature over one
 can never be replayed as another:

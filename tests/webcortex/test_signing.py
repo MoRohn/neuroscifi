@@ -1,4 +1,4 @@
-"""Signed node identities (ADR-040 draft; webcortex/signing.py, webcortex/nodes.py): canonical forms, both node
+"""Signed node identities (ADR-042 draft; webcortex/signing.py, webcortex/nodes.py): canonical forms, both node
 algorithms, the Spark key file, attested enrolment, and every refusal of a signed request."""
 import os
 import stat

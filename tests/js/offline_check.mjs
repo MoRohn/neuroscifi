@@ -25,7 +25,7 @@ async function read(path,method="GET"){let answer;callbacks.fetch({request:{url:
 await lifecycle("install");await lifecycle("activate");
 const installed=[...stores.get("neuroscifi-pocket-shell-19").keys()];
 // Plan p.20 names six shell assets; the manifest and its icon make eight (ADR-015) and the Research module nine
-// (ADR-028: saved findings must reopen offline), its node-key module ten (ADR-040 draft: the research module imports
+// (ADR-028: saved findings must reopen offline), its node-key module ten (ADR-042 draft: the research module imports
 // it), plus the 16 Presence Cortex/theme files (docs/presence/) and the 5 Voice Cortex files (docs/voice/). Deviations.
 assert.equal(installed.length,31);assert(installed.includes("/node-key.mjs"));assert(installed.includes("/voice/pocket-voice.mjs"));assert(installed.includes("/presence/pocket-boot.mjs")&&installed.includes("/presence/theme-boot.js"));assert(installed.includes("/manifest.webmanifest")&&installed.includes("/icon.svg"));
 assert(installed.includes("/research-ui.mjs"));assert.match(await read("/research-ui.mjs"),/keepFinding/);assert.match(await read("/research-ui.mjs"),/research_session/);

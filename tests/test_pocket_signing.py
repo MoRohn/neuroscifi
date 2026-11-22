@@ -1,4 +1,4 @@
-"""Signed node identities over the real in-process Pocket bridge (ADR-040 draft; RESEARCH_POLICY.md section 6):
+"""Signed node identities over the real in-process Pocket bridge (ADR-042 draft; RESEARCH_POLICY.md section 6):
 the Spark key pinned at pairing signs every research reply; attested enrolment; signed state-changing requests from
 nodes, and each refusal (unsigned from a signed node, replay, stale, tampered body, another family, revoked,
 enrolled before signing)."""

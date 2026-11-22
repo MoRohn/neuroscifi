@@ -1,4 +1,4 @@
-// Pocket's side of ADR-040 (draft) against vectors the Spark's Python code produced (tests/js/spark_vectors.json, kept
+// Pocket's side of ADR-042 (draft) against vectors the Spark's Python code produced (tests/js/spark_vectors.json, kept
 // in sync by tests/webcortex/test_signing.py): the same canonical bytes and fingerprints, Spark-signed replies accepted
 // only when untampered and under the pinned key, with WebCrypto Ed25519 and with the fallback verifier used where a
 // browser lacks it, and a P-256 node signature in WebCrypto's r||s form.

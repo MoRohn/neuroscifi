@@ -37,7 +37,7 @@ def test_autonomy_status_switch_and_limits(tmp_path):
 
 
 def test_research_nodes_enrol_by_fingerprint_reject_and_revoke(tmp_path):
-    """ADR-040 draft: the console lists attested enrolments with their fingerprint, enrols one under a name, rejects
+    """ADR-042 draft: the console lists attested enrolments with their fingerprint, enrols one under a name, rejects
     another, revokes (deleting the key) and shows the Spark's own fingerprint once the bridge created its key."""
     import sys
     from pathlib import Path

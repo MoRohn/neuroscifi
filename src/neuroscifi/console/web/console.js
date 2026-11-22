@@ -2061,7 +2061,7 @@ async function loadAutonomy() {
   scheduleAutoPoll();
 }
 
-// ---- research nodes (ADR-040 draft; RESEARCH_POLICY.md section 6) ----
+// ---- research nodes (ADR-042 draft; RESEARCH_POLICY.md section 6) ----
 // GET /api/web/nodes: nodes with their key algorithm and fingerprint, attested enrolments waiting for the owner and
 // this Spark's own fingerprint. POST /api/web/nodes enrols a pending device by fingerprint, rejects it, or revokes.
 const ALG_TEXT = { Ed25519: 'Ed25519', 'ECDSA-P256': 'ECDSA P-256' };

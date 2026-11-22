@@ -9,7 +9,7 @@ research_session   {id, action[, to]}       session ownership (webcortex/nodes.p
                                             family; take, handoff (to = a node label), accept and release for
                                             enrolled nodes only
 research_cancel    {id}                     as before, refused while another device owns the task's session
-node_enrol         {action[, ...]}          attested enrolment (ADR-040 draft): status; challenge (a Spark-issued
+node_enrol         {action[, ...]}          attested enrolment (ADR-042 draft): status; challenge (a Spark-issued
                                             challenge bound to family, node id and expiry); attest {challenge, alg,
                                             public_key, signature}. The owner then approves the fingerprint on the
                                             console; nothing here makes a device a node.
@@ -17,7 +17,7 @@ node_enrol         {action[, ...]}          attested enrolment (ADR-040 draft): 
 Every route resolves the task within the caller's family (another family's task is 404, as before), bodies stay at
 512 bytes (pocket/server.py), and errors are short codes, never task text.
 
-Signatures (ADR-040 draft): a state-changing request (SIGNED_ROUTES; research_session except its status) from a node
+Signatures (ADR-042 draft): a state-changing request (SIGNED_ROUTES; research_session except its status) from a node
 enrolled with a key must carry X-NSF-Timestamp, X-NSF-Nonce and X-NSF-Signature over the canonical request
 (signing.canonical_request); a request that carries a signature is verified whoever sends it. Refusals are 401 with
 a short code (gate). Every reply of these routes is signed by the Spark's key (pocket/server.py).

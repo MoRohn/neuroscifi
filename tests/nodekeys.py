@@ -1,5 +1,5 @@
 """Test-side research node: the key a Pocket device holds (Ed25519 or ECDSA P-256 as WebCrypto produces them), the
-attested enrolment it performs, and the headers of a signed request (webcortex/signing.py, ADR-040 draft)."""
+attested enrolment it performs, and the headers of a signed request (webcortex/signing.py, ADR-042 draft)."""
 import secrets
 import time
 

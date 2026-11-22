@@ -422,7 +422,7 @@ MIGRATIONS = [
     DROP TABLE web_forgotten;
     ALTER TABLE web_forgotten_v11 RENAME TO web_forgotten;
     """,
-    # ---- version 12 (signed node identities and attested enrolment; ADR-040 draft, webcortex/signing.py) ----------
+    # ---- version 12 (signed node identities and attested enrolment; ADR-042 draft, webcortex/signing.py) ----------
     """
     -- A node's public key, its algorithm (Ed25519 or ECDSA-P256) and fingerprint, recorded when the owner approves
     -- an attested enrolment. `signed` marks a node enrolled with a key: its state-changing requests must be signed.

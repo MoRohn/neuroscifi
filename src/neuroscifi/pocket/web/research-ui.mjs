@@ -37,7 +37,7 @@ const PRIVATE_WORDS={api_key:"an API key",jwt:"a login token",email:"an e-mail a
 export function privateKinds(text){return [...new Set(PRIVATE_RULES.filter(([,rx])=>rx.test(text)).map(([kind])=>kind))];}
 // Every research reply must carry the Spark's signature over its status, route, this request's nonce and body, under
 // the key pinned at pairing; an unverified success is refused and an unverified error says nothing beyond its status.
-// A node's state-changing requests are signed with its own key (ADR-040 draft; RESEARCH_POLICY.md section 6).
+// A node's state-changing requests are signed with its own key (ADR-042 draft; RESEARCH_POLICY.md section 6).
 const SIGNED=new Set(["research_submit","research_continue","research_cancel","research_session"]);
 const NODE_REFUSALS=new Set(["signature_required","signature_invalid","stale_request","replayed_request","malformed","node_revoked","unknown_node","reenrol","wrong_family"]);
 const signs=(route,data)=>SIGNED.has(route)&&!(route==="research_session"&&(data.action||"status")==="status")&&nodeInfo?.state==="enrolled"&&nodeInfo.mine;

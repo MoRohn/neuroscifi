@@ -959,7 +959,7 @@ def register(sub):
     p.add_argument("--policy-json", help='set: e.g. \'{"autonomous_daily": {"searches": 10}}\'')
     p.add_argument("--limit", type=_positive_int, default=10)
     p = cmd("node", nodes.cli, "research nodes: list nodes and pending attested enrolments, enrol (approve) one by "
-            "its fingerprint, reject, revoke (RD-11, ADR-040)")
+            "its fingerprint, reject, revoke (RD-11, ADR-042)")
     p.add_argument("node_action", choices=("list", "enrol", "reject", "revoke"))
     p.add_argument("label", nargs="?", help="enrol: the node's name (hand-off target); revoke: the node to revoke")
     p.add_argument("--fingerprint", help="enrol/reject: the key fingerprint the device shows (compare it first)")

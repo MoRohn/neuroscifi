@@ -51,7 +51,7 @@ class Spark:
         self.worker = None
 
     def fulfill_signed(self, route, body: dict, status=200):
-        """Answer `route` with `body` as this Spark would: signed with its key for that request's nonce (ADR-040
+        """Answer `route` with `body` as this Spark would: signed with its key for that request's nonce (ADR-042
         draft). Lets a test shape a reply without being the tampering that Pocket refuses."""
         from neuroscifi.webcortex import signing
         raw = json.dumps(body).encode()

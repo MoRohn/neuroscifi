@@ -23,7 +23,7 @@ def spark(tmp_path):
 
 
 def enrol(spark, page, label):
-    """Attested enrolment (ADR-040 draft): the device asks, signing the Spark's challenge with its own key; the owner
+    """Attested enrolment (ADR-042 draft): the device asks, signing the Spark's challenge with its own key; the owner
     compares the fingerprint the device shows and enrols it under `label` (console, or `nsf web node enrol`)."""
     box = page.locator("#researchnode")
     box.get_by_role("button", name=re.compile("enrol this device", re.I)).click()
@@ -98,7 +98,7 @@ def test_handoff_between_two_devices_of_one_family_and_refused_across_families(s
     # signed with the stranger's own node key, as Pocket signs: still nothing of another family (404)
     refused = stranger.evaluate(SESSION_CALLS, [task_id, True])
     assert refused == [404, 404, 404]
-    # unsigned, the stranger's node is refused before anything else (ADR-040 draft)
+    # unsigned, the stranger's node is refused before anything else (ADR-042 draft)
     assert stranger.evaluate(SESSION_CALLS, [task_id, False]) == [404, 401, 401]
 
     # Offer to the tablet of the same family; the tablet accepts.
