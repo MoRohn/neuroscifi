@@ -169,9 +169,12 @@ def test_terminal_self_test_on_a_fake_device(tmp_path):
     script = {f"read{i}": silence(0.6) + tone(1.5, 0.1) + silence(1.2) for i in range(len(selftest.SENTENCES))}
     script.update(mic=silence(1.5), silence=silence(0.2) + tone(0.0) + bytes(320 * 2 * 5),
                   barge=silence(1.0) + tone(0.6, 0.2) + silence(1.0), echo=silence(4.0), playback=silence(4.0))
-    asked = []
+    asked, said = [], []
     ev = selftest.run_terminal(eng, selftest.ScriptedAudio(script), lambda q: asked.append(q) or True,
-                               lambda text: None)
+                               said.append)
+    # R6 minor: with --fake-input it said "this computer's default microphone and speaker"
+    assert said[0].startswith("Voice check on a fake device (scripted audio, no microphone or speaker).")
+    assert not any("default microphone" in s for s in said)
     v = ev["verdict"]
     assert v["all_passed"], ev["steps"]
     assert ev["device"]["fake"] is True and ev["audio_retained"] is False

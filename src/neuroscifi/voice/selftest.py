@@ -422,8 +422,10 @@ def run_terminal(engines, audio, ask, say, *, voice="af_heart", speed=1.0) -> di
             if not audio.fake and clock() - t0 > seconds + 2:
                 return
 
-    say("Voice check on this computer's default microphone and speaker. Nothing is recorded to disk; readings are "
-        "scored by the local speech recognition and dropped.")
+    # R6 minor: name the device actually used; a FAKE device plays nothing aloud and reads no microphone
+    where = (f"a {audio.label}" if audio.fake else "this computer's default microphone and speaker")
+    say(f"Voice check on {where}. Nothing is recorded to disk; readings are scored by the local speech recognition "
+        "and dropped.")
     select("mic")
     audio.open()
     first = audio.frame()
