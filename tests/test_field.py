@@ -74,7 +74,9 @@ class Family(unittest.TestCase):
 
     def test_pairings_list_and_family_erase(self):
         b=self.link(self.a);self.s.pair()
-        rows=self.s.pairings()
+        from neuroscifi.instance import store
+        instance=store.create(Path(self.s.path).parent/"individual.sqlite",self.t);self.addCleanup(instance.close)
+        rows=self.s.pairings(instance)
         self.assertEqual(len(rows),3)
         (la,fa,sa,ca),(lb,fb,sb,cb),(lo,fo,so,co)=rows
         self.assertEqual((sa,sb,so),(None,la,None))

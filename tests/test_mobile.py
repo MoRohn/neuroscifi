@@ -179,8 +179,48 @@ class OwnerCommands(unittest.TestCase):
             cli.main(["pocket", *argv, "--db", self.db])
         return out.getvalue().splitlines()
 
+    def instance(self):
+        import time
+        from neuroscifi.instance import store
+        path = Path(self.tmp.name) / "individual.sqlite"
+        if not path.exists():
+            store.create(path, time.time()).close()
+        return str(path)
+
+    def test_family_tags_are_the_consoles(self):
+        """R6 D4: list-pairings showed family=36554896 while the console and `nsf web node list` showed abe0d75f for
+        the same family. With the individual's database (--instance-db or NSF_DB) both show the salted digest."""
+        from contextlib import closing
+        from unittest import mock
+        from neuroscifi.instance import store
+        from neuroscifi.webcortex import state
+        path = self.instance()
+        with closing(store.open_existing(path)) as db:
+            console = state.family_digest(db, self.store.family(self.a))[:8]   # what nodes.pending/listing show
+            other = state.family_digest(db, self.store.family(self.other))[:8]
+        shown = [line.split()[1] for line in self.nsf("list-pairings", "--instance-db", path)]
+        self.assertEqual(shown, [f"family={console}", f"family={console}", f"family={other}"])
+        with mock.patch.dict("os.environ", {"NSF_DB": path}):
+            from neuroscifi import cli
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                cli.main(["pocket", "list-pairings", "--db", self.db])
+        self.assertEqual([line.split()[1] for line in out.getvalue().splitlines()], shown)
+        err = io.StringIO()
+        with mock.patch.dict("os.environ", {"NSF_DB": ""}), contextlib.redirect_stderr(err):
+            from neuroscifi.pocket import cli as pocket_cli
+            import argparse
+            parser = argparse.ArgumentParser()
+            pocket_cli.register(parser.add_subparsers(dest="cmd"))
+            a = parser.parse_args(["pocket", "list-pairings", "--db", self.db])
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                a.handler(a)
+        self.assertEqual({line.split()[1] for line in out.getvalue().splitlines()}, {"family=-"})
+        self.assertIn("--instance-db", err.getvalue())
+
     def test_list_and_erase_family(self):
-        lines = self.nsf("list-pairings")
+        lines = self.nsf("list-pairings", "--instance-db", self.instance())
         self.assertEqual(len(lines), 3)
         pattern = re.compile(r"^([0-9a-f]{12})  family=([0-9a-f]{8})  sponsor=(invitation|[0-9a-f]{12})  "
                              r"created=\d{4}-\d\d-\d\dT\d\d:\d\dZ$")
@@ -190,7 +230,7 @@ class OwnerCommands(unittest.TestCase):
         self.assertEqual(fa, fb)
         self.assertNotEqual(fa, fo)
         self.assertEqual(self.nsf("erase-pairing", lb, "--family"), ["Erased pairings: 2"])
-        self.assertEqual([line.split()[0] for line in self.nsf("list-pairings")], [lo])
+        self.assertEqual([line.split()[0] for line in self.nsf("list-pairings", "--instance-db", self.instance())], [lo])
         for token in (self.a, self.b):
             with self.assertRaises(PermissionError):
                 self.store.action(token, "state", {})
@@ -205,7 +245,7 @@ class OwnerCommands(unittest.TestCase):
                              " family TEXT NOT NULL);")
         old = bridge.Store(path)
         bridge.Store(path)
-        self.assertEqual(old.pairings(), [("aaaaaaaaaaaa", bridge.family_tag("k"), None, None)])
+        self.assertEqual(old.pairings(), [("aaaaaaaaaaaa", "-", None, None)])
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             bridge.main(["--db", str(path), "--list-pairings"])

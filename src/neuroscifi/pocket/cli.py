@@ -1,4 +1,6 @@
 """`nsf pocket`: the phone interface bridge."""
+import os
+
 from . import server, tls
 
 
@@ -28,6 +30,9 @@ def register(sub):
     serve.set_defaults(handler=_serve)
     listing = ops.add_parser("list-pairings", help="print paired devices: label, family, sponsor, created (UTC)")
     listing.add_argument("--db", default="mobile-private.sqlite")
+    listing.add_argument("--instance-db", metavar="PATH", default=os.environ.get("NSF_DB") or None,
+                         help="the individual's database (default: $NSF_DB); the family tags are then the ones the "
+                              "console and `nsf web node list` show")
     listing.set_defaults(handler=_list)
     erase = ops.add_parser("erase-pairing", help="remove a paired device")
     erase.add_argument("label")
@@ -58,7 +63,7 @@ def _serve(a):
 
 
 def _list(a):
-    server.main(["--db", a.db, "--list-pairings"])
+    server.main(["--db", a.db, "--list-pairings", *(["--instance-db", a.instance_db] if a.instance_db else [])])
 
 
 def _erase(a):

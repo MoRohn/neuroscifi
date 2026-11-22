@@ -184,12 +184,13 @@ class Store:
                 db.execute("INSERT INTO submissions VALUES(?,?)", (family, now))
             return result
 
-    def pairings(self):
-        """(label, family tag, sponsor label or None, created epoch or None) per device, oldest first."""
+    def pairings(self, instance=None):
+        """(label, family tag, sponsor label or None, created epoch or None) per device, oldest first. `instance` is
+        the open individual's database the family tag is salted with (family_tag); without it the tag is '-'."""
         with closing(connect(self.path)) as db:
             rows = db.execute("SELECT d.label,m.family,m.sponsor,m.created FROM devices d "
                               "LEFT JOIN members m ON m.device=d.key ORDER BY d.rowid").fetchall()
-        return [(label, family_tag(family), sponsor, created) for label, family, sponsor, created in rows]
+        return [(label, family_tag(family, instance), sponsor, created) for label, family, sponsor, created in rows]
 
     def erase(self, label, family=False):
         """Erase one pairing by label, or with `family` every device of its family. Returns the number erased."""
@@ -450,9 +451,15 @@ def task_detail(task):
                                  "report": phone_report(task.get("result"))}
 
 
-def family_tag(family):
-    """A short, stable name for a pairing family in list-pairings (not the credential fingerprint itself)."""
-    return hashlib.sha256(("pocket-family:" + family).encode()).hexdigest()[:8] if family else "-"
+def family_tag(family, instance):
+    """The one name of a pairing family the owner sees (R6 D4): the first 8 hex digits of the instance-salted family
+    digest (webcortex.state.family_digest), as the console, `nsf web node list` and the start of a task's `family` in
+    `nsf web tasks` show it; never the credential fingerprint. `instance` is the open individual's database; without
+    one no surface shows a family, so the tag is '-'."""
+    if not family or instance is None:
+        return "-"
+    from ..webcortex import state
+    return state.family_digest(instance, family)[:8]
 
 
 def research(server, token, route, data, raw=b"", headers=None):
@@ -890,7 +897,8 @@ def main(argv=None):
     p.add_argument("--spark-key", metavar="PATH",
                    help="the Spark's Ed25519 signing key (created once, mode 0600; default: INSTANCE_DB.spark-key); "
                         "devices pin its fingerprint at pairing and check every research reply against it")
-    p.add_argument("--list-pairings", action="store_true")
+    p.add_argument("--list-pairings", action="store_true",
+                   help="print paired devices; with --instance-db each family tag matches the console's")
     p.add_argument("--erase-pairing", metavar="LABEL")
     p.add_argument("--family", action="store_true",
                    help="with --erase-pairing: erase every device of that label's pairing family")
@@ -904,9 +912,24 @@ def main(argv=None):
         print(f"Erased pairings: {store.erase(a.erase_pairing, family=a.family)}")
         return
     if a.list_pairings:
-        for label, family, sponsor, created in store.pairings():
-            when = time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(created)) if created else "unknown"
-            print(f"{label}  family={family}  sponsor={sponsor or 'invitation'}  created={when}")
+        instance = None
+        if a.instance_db:
+            from ..instance import store as individual
+            from ..instance.errors import InstanceError
+            try:
+                instance = individual.open_existing(a.instance_db)
+            except (InstanceError, sqlite3.Error) as error:
+                p.error(f"cannot open instance {a.instance_db}: {error}")
+        else:
+            print("nsf: family tags need the individual's database (--instance-db PATH or NSF_DB); they are the tags "
+                  "the console and `nsf web node list` show", file=sys.stderr)
+        try:
+            for label, family, sponsor, created in store.pairings(instance):
+                when = time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(created)) if created else "unknown"
+                print(f"{label}  family={family}  sponsor={sponsor or 'invitation'}  created={when}")
+        finally:
+            if instance is not None:
+                instance.close()
         return
     if bool(a.cert) != bool(a.key) or (a.bind not in {"127.0.0.1","localhost"} and not a.cert):
         p.error("LAN access requires both --cert and --key for HTTPS.")

@@ -9,7 +9,7 @@ Copied from `--help`.
 | Command | Flags |
 |---|---|
 | `nsf pocket serve` | `--db DB` (default `mobile-private.sqlite`), `--bind BIND` (default `127.0.0.1`), `--port PORT` (default 8765), `--cert CERT`, `--key KEY`, `--allowed-host NAME` (repeatable), `--invitation-file PATH` |
-| `nsf pocket list-pairings` | `--db DB` |
+| `nsf pocket list-pairings` | `--db DB`, `--instance-db PATH` (default `$NSF_DB`) |
 | `nsf pocket erase-pairing LABEL` | `--db DB`, `--family` (also erase every device of the label's pairing family: linked phones and tablets) |
 | `nsf init` | `--db DB`, `--action-semantics JSON`, `--founding-graph FILE`, `--ttl-days N` (default 7), `--ask-budget N` (default 3), `--note TEXT` |
 | `nsf checkpoint create` / `rebuild` | `--db DB`, `--dir DIR` (default: `checkpoints` next to the database), `--policy {cold,experimental,fast}` (default `cold`) |
@@ -29,7 +29,7 @@ Copied from `--help`.
 - Request bodies are at most 512 bytes (`research_submit`: 1024, so a 300-character question in a non-Latin script fits). Responses, including error pages for malformed requests, carry the same security headers, and the `Server` header is `NeuroSciFi-Pocket` (no Python or library version).
 - A port that is already in use ends the start with one line on stderr, `nsf: cannot listen on ADDRESS:PORT: Address already in use`, and exit status 2.
 - Per pairing family: at most 6 devices, and at most 10 research submissions per hour. The submission count lives in the Pocket database (family and time only), so restarting the bridge does not reset it.
-- `nsf pocket list-pairings` prints one line per device: `LABEL  family=TAG  sponsor=invitation|LABEL  created=UTC time|unknown`.
+- `nsf pocket list-pairings` prints one line per device: `LABEL  family=TAG  sponsor=invitation|LABEL  created=UTC time|unknown`. `TAG` is the family tag the console and `nsf web node list` show (8 hex digits of the instance-salted family digest); it needs `--instance-db` or `$NSF_DB`, else it is `-`.
 - Connection errors print one fixed line (`nsf-pocket: connection error`) to stderr with no client address and no traceback. A database error while handling a request answers 503 with `{}`.
 - The process sets umask 0077 for every file it creates.
 - `nsf console --url-file PATH`: the URL with its session token is written atomically to PATH (mode 0600) and removed at shutdown (Ctrl-C or SIGTERM). If PATH exists and is a regular file owned by the same user, not a symbolic link, and starts with `http://127.0.0.1:`, it is a leftover of an earlier console (for example after a crash or SIGKILL) and is replaced; any other existing PATH makes the console exit 2 and leave the file alone.

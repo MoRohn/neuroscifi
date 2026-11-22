@@ -348,7 +348,9 @@ def test_family_cap_over_http(spark, devices):
         assert status == 201
     assert spark.req("link", {}, a) == (409, {"error": "family_full"})
     assert spark.req("pair", {"code": second}) == (409, {"error": "family_full"})
-    assert len([p for p in spark.server.store.pairings() if p[1] == bridge.family_tag(spark.server.store.family(a))]) == 6
+    with spark.owner() as db:
+        tag = bridge.family_tag(spark.server.store.family(a), db)
+        assert len([p for p in spark.server.store.pairings(db) if p[1] == tag]) == 6
 
 
 def test_scenario_f_phone_queues_spark_runs_tablet_reads(spark, devices, web):
