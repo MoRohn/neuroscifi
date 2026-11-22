@@ -221,7 +221,9 @@ def test_manifest_is_linked_and_shortcut_targets_exist(bridge, new_page):
     page = new_page()
     page.goto(bridge.url)
     assert page.locator('link[rel="manifest"]').get_attribute("href") == "/manifest.webmanifest"
-    assert page.locator('meta[name="theme-color"]').get_attribute("content") == "#184e42"
+    # the browser chrome matches the page in the resolved theme (ui.css --bg; docs/ui/DESIGN_SYSTEM.md)
+    assert page.locator('meta[name="theme-color"]').get_attribute("content") == "#F6F4F3"
+    assert page.locator('meta[name="color-scheme"]').get_attribute("content") == "light"
     manifest = page.evaluate("fetch('/manifest.webmanifest').then(r=>r.json())")
     for shortcut in manifest["shortcuts"]:
         assert page.locator("#" + shortcut["url"].split("#")[1]).count() == 1

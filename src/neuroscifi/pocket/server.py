@@ -28,7 +28,7 @@ VOCAB = {"sound": ("soft", "moderate", "strong"), "light": ("dim", "midrange", "
 ASSETS = {"/": ("index.html", "text/html; charset=utf-8"), "/mobile.js": ("mobile.js", "text/javascript"),
           "/style.css": ("style.css", "text/css"),
           "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
-          "/icon.svg": ("icon.svg", "image/svg+xml"), "/icon-maskable.svg": ("icon-maskable.svg", "image/svg+xml")}
+          "/icon.svg": ("icon.svg", "image/svg+xml")}
 for asset in ("field-model.mjs","field-ui.mjs","research-ui.mjs","node-key.mjs","sw.js"):
     ASSETS["/"+asset]=(asset,"text/javascript")
 from ..presence import POCKET as PRESENCE_FILES, assets as presence_assets  # noqa: E402  shared presence + theme

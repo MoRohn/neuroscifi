@@ -16,7 +16,7 @@
    must exist before its text arrives; display:none removed it). */
 .nsfv-notice:empty{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .nsfv-modes{display:grid;gap:6px;margin:0;padding:8px 12px;border:1px solid var(--line,var(--pc-panel-line,#ccc));border-radius:var(--r-md,12px)}
-.nsfv-mode{display:grid;grid-template-columns:auto 1fr;gap:0 8px;align-items:center}
+.nsfv-mode{display:grid;grid-template-columns:auto 1fr;gap:0 10px;align-items:center;min-height:44px;padding:4px 0;cursor:pointer}
 .nsfv-mode input{width:24px;height:24px;margin:0;grid-row:span 2}
 .nsfv-mode small{color:var(--muted,var(--pc-panel-muted,#555))}
 .nsfv-settings{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 10px;align-items:center}

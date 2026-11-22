@@ -56,7 +56,7 @@
   --ink: #EEE9EA;
   --ink-muted: #B5ABAF;
   --primary: #25735F;       /* 5.7:1 with white text */
-  --primary-hover: #2C8570;
+  --primary-hover: #1F6452;   /* hover darkens in both themes: white text stays >= 4.5:1 */
   --on-primary: #FFFFFF;
   --primary-soft: #16302A;
   --primary-line: #2F5A4E;
@@ -156,8 +156,8 @@ button {
   display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
   min-height: var(--control-h); padding: 8px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-sm);
   background: var(--surface); color: var(--ink); font-weight: 600; line-height: 1.25; text-align: center; cursor: pointer;
-  transition: background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out),
-    box-shadow var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out);
+  /* no colour transitions: a button re-enabled mid-check must never be caught with its old ground under new text */
+  transition: box-shadow var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out);
 }
 button:hover:not(:disabled) { background: var(--surface-muted); }
 button:active:not(:disabled) { transform: translateY(1px); }
@@ -189,7 +189,7 @@ select {
   background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
 }
 select:disabled, input:disabled, textarea:disabled { opacity: .6; cursor: not-allowed; }
-input[type="checkbox"], input[type="radio"] { accent-color: var(--control-accent); width: 22px; height: 22px; margin: 0; flex: none; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--control-accent); width: 24px; height: 24px; margin: 0; flex: none; }
 input[type="range"], progress { accent-color: var(--control-accent); }
 input[type="range"] { min-height: 32px; }
 input[type="file"] { max-width: 100%; font-size: var(--fs-sm); color: var(--ink-muted); }
@@ -232,7 +232,7 @@ details[open] > summary::before { transform: rotate(45deg) translate(-2px, -1px)
 table { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
 caption { text-align: start; font-weight: 650; padding: var(--sp-1) 0 var(--sp-2); }
 th, td { text-align: start; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-muted);
+th { font-size: var(--fs-sm); font-weight: 700; letter-spacing: .03em; font-variant-caps: all-small-caps; color: var(--ink-muted);
   background: var(--surface-muted); white-space: nowrap; }
 tbody tr:hover > td { background: color-mix(in srgb, var(--surface-muted) 55%, transparent); }
 td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
@@ -258,7 +258,8 @@ dialog::backdrop { background: var(--scrim); }
 .presence-stage .nsf-presence { display: flex; justify-content: center; }
 .presence-stage .pc-toggle { flex-direction: column; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-2);
   border-radius: var(--r-xl); border-color: transparent; }
-.presence-stage .pc-toggle:hover { border-color: transparent; background: color-mix(in srgb, var(--surface-muted) 50%, transparent); }
+.presence-stage .pc-toggle:hover { border-color: transparent; background: transparent; }
+.presence-stage .pc-toggle:hover .pc-word { color: var(--ink); text-decoration: underline; text-underline-offset: .25em; }
 .presence-stage .pc-toggle .pc-svg { width: var(--stage-size); height: var(--stage-size); }
 .presence-stage .pc-word { display: block; max-width: 28ch; font-size: var(--fs-sm); font-weight: 600; color: var(--ink-muted);
   letter-spacing: .01em; white-space: normal; text-align: center; }
