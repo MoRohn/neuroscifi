@@ -195,7 +195,28 @@ function show(t,saved=false){
       view.append(p);
       if(v.statement){const claim=node("p","Claim checked: "+v.statement,"rclaim");claim.append(cites(v.citations||[]));view.append(claim);}
     }
-    view.append(node("h4","Answer"));
+    // R6 D8: the model-written answer and its rules note, as the console shows them; the quoted extractive answer
+    // stays the evidence of record below it
+    const x=r.reasoning, model=!!(x&&typeof x.generated_by==="string"&&x.generated_by.startsWith("model:")&&x.answer?.length);
+    if(x&&!model)for(const text of [x.unanswered,x.note])if(text)view.append(node("p",text,"rnote"));
+    if(model){
+      view.append(node("h4","Answer"));
+      const label=node("p",null,"rmodel");label.id="rmodellabel";
+      label.append(node("span","Model-written summary","badge")," Written by "+x.generated_by.slice(6)+" from the collected evidence. "+
+        "Each sentence was checked against its cited sources; single-source statements are marked.");
+      view.append(label);
+      const ol=node("ol",null,"rmodelanswer");ol.id="rmodelanswer";
+      for(const s of x.answer){
+        const li=node("li");li.append(node("span",s.text),cites(s.citations||[]));
+        const marks=[...new Set((s.states||[]).map(k=>STATUS[k]||(k==="supported"?"Supported":null)).filter(Boolean))];
+        if(s.flagged)marks.push("Self-check flagged (not confirmed by the checks)");
+        if(marks.length)li.append(node("small",marks.join(" · "),"rconf"));
+        ol.append(li);
+      }
+      view.append(ol);
+      if(x.note)view.append(node("p",x.note,"rnote"));
+    }
+    view.append(node("h4",model?"Extractive summary (quoted evidence)":"Answer"));
     for(const item of r.answer||[]){
       const block=item.type==="quote"?node("blockquote"):node("p");
       block.append(node("span",item.type==="quote"?"“"+item.text+"”":item.text),cites(item.citations||[]));

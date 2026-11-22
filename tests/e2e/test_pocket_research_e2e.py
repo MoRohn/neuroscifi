@@ -349,6 +349,45 @@ def test_claim_verdict_confidence_and_read_aloud(spark, new_page):
     assert [v for v in found if v["impact"] in ("serious", "critical")] == []
 
 
+def test_model_written_answer_with_its_label_and_rules_note(spark, new_page):
+    """R6 D8: Pocket showed only the extractive answer while its Limitations said "Model-written answer ... passed".
+    It now shows the model-written answer first, with who wrote it, its citations and the rules note, and labels the
+    quoted answer "Extractive summary (quoted evidence)", as the console does."""
+    page = new_page()
+    page.goto(spark.url)
+    pair(page)
+    ask(page)
+    spark.work()
+    note = "NeuroSciFi note: this answer is about the Zephyr compiler; another Zephyr was read, not cited."
+    sentence = "The Zephyr compiler version 4.2.0 was released on 17 November 2026."
+    with closing(store.connect(spark.instance)) as db:
+        task_id, raw = db.execute("SELECT id, result FROM web_tasks").fetchone()
+        result = json.loads(raw)
+        result["generated_by"] = "model:test-model"
+        result["reasoning"] = {"generated_by": "model:test-model", "status": "model", "label": "x",
+                               "answer": [{"text": sentence, "citations": [1, 2], "claims": ["C1"],
+                                           "states": {"C1": "corroborated"}, "hedged": False}],
+                               "rejected": [], "gaps": [], "note": {"text": note, "by": "rules"}}
+        result["limitations"].append("Model-written answer (model:test-model): 1 sentence(s) passed the citation and "
+                                     "claim-state guard, 0 rejected")
+        db.execute("UPDATE web_tasks SET result=? WHERE id=?", (json.dumps(result), task_id))
+        db.commit()
+    page.locator("#refresh").click()
+    expect(page.locator("#researchlist")).to_contain_text("Completed")
+    page.get_by_role("button", name="Open: " + QUESTION).click()
+    expect(page.locator("#rmodellabel")).to_contain_text("Model-written summary")
+    expect(page.locator("#rmodellabel")).to_contain_text("Written by test-model from the collected evidence.")
+    expect(page.locator("#rmodelanswer li")).to_have_count(1)
+    expect(page.locator("#rmodelanswer li").first).to_contain_text(sentence)
+    expect(page.locator("#rmodelanswer li .cites a")).to_have_text(["[1]", "[2]"])
+    expect(page.locator("#rmodelanswer li small")).to_have_text("Corroborated")
+    expect(page.locator("#researchview .rnote")).to_have_text(note)
+    expect(page.locator("#researchview h4", has_text="Extractive summary (quoted evidence)")).to_be_visible()
+    headings = page.locator("#researchview h4").all_inner_texts()
+    assert headings.index("Answer") < headings.index("Extractive summary (quoted evidence)"), headings
+    assert not page.problems
+
+
 NOTIFY = """(() => {
     window.shown = []; window.asked = 0;
     ServiceWorkerRegistration.prototype.showNotification = function (title, options) {

@@ -396,9 +396,32 @@ def _count(value):
     return value if type(value) is int and 0 <= value <= 1000 else None
 
 
+CLAIM_STATES = ("corroborated", "supported", "single_source", "contested", "insufficient", "disputed")
+
+
+def _reasoning(value):
+    """The model-written answer as the console shows it (R6 D8): who wrote it, its guarded sentences with their
+    citations and claim states, and the rules notes; None when the report has none."""
+    if not isinstance(value, dict):
+        return None
+    def note(name):
+        x = value.get(name)
+        return _text(x.get("text"), 600) or None if isinstance(x, dict) else None
+    by = _text(value.get("generated_by"), 160)
+    model = by.startswith("model:")
+    rows = value.get("answer") if model and isinstance(value.get("answer"), list) else []
+    answer = [{"text": _text(s.get("text")), "citations": _citations(s.get("citations")),
+               "states": sorted({x for x in (s.get("states") or {}).values() if x in CLAIM_STATES})
+               if isinstance(s.get("states"), dict) else [],
+               "flagged": isinstance(s.get("flag"), dict)}
+              for s in rows[:12] if isinstance(s, dict) and isinstance(s.get("text"), str) and s["text"]]
+    return {"generated_by": by if model else "template", "answer": answer, "note": note("note"),
+            "unanswered": note("unanswered")}
+
+
 def phone_report(report):
-    """The report trimmed for a phone: answer, verdict, contradictions, uncertainties, limitations, freshness,
-    sources."""
+    """The report trimmed for a phone: the model-written answer (reasoning), answer, verdict, contradictions,
+    uncertainties, limitations, freshness, sources."""
     if not isinstance(report, dict):
         return None
     def side(s):
@@ -413,6 +436,7 @@ def phone_report(report):
     verdict = report.get("verdict") if isinstance(report.get("verdict"), dict) else {}
     return {
         "live": bool(report.get("live")),
+        "reasoning": _reasoning(report.get("reasoning")),
         "answer": [{"text": _text(a.get("text")), "type": "quote" if a.get("type") == "quote" else "template",
                     "citations": _citations(a.get("citations")),
                     "status": _text(a.get("status"), 40), "confidence": _confidence(a.get("confidence")),

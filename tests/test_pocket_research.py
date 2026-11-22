@@ -424,6 +424,32 @@ def test_phone_report_carries_copies_and_independent_sources():
     assert (items[1]["copies"], items[1]["independent_sources"]) == (None, None)
 
 
+def test_phone_report_carries_the_model_written_answer_and_its_rules_note():
+    """R6 D8: Pocket never showed the model-written answer although its Limitations said "Model-written answer ... 1
+    sentence(s) passed". The projection now carries who wrote it, the guarded sentences with citations and claim
+    states, and the rules notes; a template report carries only its notes."""
+    from neuroscifi.pocket.server import phone_report
+    note = "NeuroSciFi note: this answer is about Rust, the programming language."
+    raw = {"answer": [], "sources": [], "reasoning": {
+        "generated_by": "model:qwen3", "status": "model", "label": "Model-written summary by qwen3",
+        "answer": [{"text": "Rust 1.0 was published in May 2015, according to one source.", "citations": [1, "2", 3],
+                    "claims": ["C1"], "states": {"C1": "single_source", "C2": "<b>bogus</b>"}, "hedged": True},
+                   {"text": "Flagged sentence.", "citations": [2], "states": {}, "flag": {"problem": "overstated"}},
+                   {"text": 7, "citations": [1]}],
+        "rejected": [{"text": "secret rejected text", "reasons": ["x"]}], "usage": {"calls": 2},
+        "note": {"text": note, "by": "rules"}}}
+    x = phone_report(raw)["reasoning"]
+    assert x == {"generated_by": "model:qwen3", "note": note, "unanswered": None, "answer": [
+        {"text": "Rust 1.0 was published in May 2015, according to one source.", "citations": [1, 3],
+         "states": ["single_source"], "flagged": False},
+        {"text": "Flagged sentence.", "citations": [2], "states": [], "flagged": True}]}
+    assert "secret rejected text" not in json.dumps(phone_report(raw))
+    template = phone_report({"answer": [], "reasoning": {"generated_by": "template", "answer": [{"text": "x"}],
+                                                         "unanswered": {"text": "Not established."}}})["reasoning"]
+    assert template == {"generated_by": "template", "answer": [], "note": None, "unanswered": "Not established."}
+    assert phone_report({"answer": []})["reasoning"] is None
+
+
 def test_pocket_private_data_rules_are_the_sparks_own():
     """R2-05 (R4 retest): Pocket POSTed a question with an e-mail address to research_submit and showed the Spark's
     400 refusal. research-ui.mjs now refuses before sending, with copies of the webcortex/safety.py patterns whose
