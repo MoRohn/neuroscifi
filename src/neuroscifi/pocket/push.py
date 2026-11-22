@@ -53,6 +53,7 @@ INTERVAL = 60          # at most one push per device per minute; finishes meanwh
 POLL = 5               # seconds between checks for finished research
 RECENT = 6 * 3600      # finishes older than this (a bridge that was down) are not announced
 TIMEOUT = 10           # per socket operation (connect, send, receive)
+DNS_TIMEOUT = 5        # per DNS lookup of a push service host (_resolve)
 # Live, FCM answered 410 to a registration 3 and 8 s old and 201 at 19 s: during this grace after an endpoint is
 # stored, 404/410 is retried (after 15 s, and no sooner than the per-device interval) instead of deleting it.
 GRACE = 120
@@ -152,9 +153,26 @@ def check_endpoint(endpoint, test_origins=()):
     return parts
 
 
-def _resolve(host, port):
+def _resolve(host, port, timeout=None):
+    """The host's distinct addresses. getaddrinfo has no timeout of its own, so it runs in a daemon thread and a lookup
+    slower than DNS_TIMEOUT is an OSError (retried like an unreachable service): a slow resolver for one push host
+    cannot stall the dispatcher's pushes to everyone else."""
+    found = {}
+
+    def lookup():
+        try:
+            found["infos"] = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        except OSError as error:
+            found["error"] = error
+    worker = threading.Thread(target=lookup, daemon=True, name="nsf-push-dns")
+    worker.start()
+    worker.join(DNS_TIMEOUT if timeout is None else timeout)
+    if worker.is_alive():
+        raise OSError(f"DNS lookup of {host} took longer than {DNS_TIMEOUT} s")
+    if "error" in found:
+        raise found["error"]
     out = []
-    for *_, sockaddr in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
+    for *_, sockaddr in found["infos"]:
         if sockaddr[0] not in out:
             out.append(sockaddr[0])
     return out

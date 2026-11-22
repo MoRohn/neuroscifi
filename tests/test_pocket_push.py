@@ -508,3 +508,17 @@ def test_every_attempt_counts_for_the_per_device_interval(spark, fake, devices):
     assert spark.server.push.step(now) == [("127.0.0.1", 503)]
     assert spark.server.push.step(now + 2) == [], "Retry-After: 1 does not undercut the one-a-minute interval"
     assert spark.server.push.step(now + push.INTERVAL) == [("127.0.0.1", 201)]
+
+
+def test_a_slow_dns_lookup_times_out_instead_of_stalling_every_push(tmp_path, monkeypatch):
+    """getaddrinfo has no timeout: a slow resolver for one push host held up the dispatcher's pushes to everyone."""
+    release = threading.Event()
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: release.wait(10) and [])
+    monkeypatch.setattr(push, "DNS_TIMEOUT", 0.2)
+    started = time.monotonic()
+    with pytest.raises(OSError, match="took longer"):
+        push._resolve("fcm.googleapis.com", 443)
+    assert time.monotonic() - started < 2
+    release.set()
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(0, 0, 0, "", ("142.250.1.1", 443))] * 2)
+    assert push._resolve("fcm.googleapis.com", 443) == ["142.250.1.1"]
