@@ -2053,7 +2053,8 @@ FAITHFUL_WEAK = [
 
 
 NAMING_QUESTION = {"Python": "When was Python first released?", "Rust": "When was Rust first released?",
-                   "Makemake": "How many moons does Makemake have?", "Van": "When did Van Rossum release Python?"}
+                   "Makemake": "How many moons does Makemake have?", "Van": "When did Van Rossum release Python?",
+                   "Zod": "Is zod 4 stable?"}
 
 
 @pytest.mark.parametrize("text, title", FAITHFUL_WEAK)
@@ -2267,3 +2268,76 @@ def test_r7_elliptical_and_pronoun_clauses_keep_their_versions_polarity(text, ke
 def test_r7_declarative_weak_claims_still_pass(claim):
     ok, bad = composed(multi_claim(("insufficient", claim)), (claim, ["C1"]))
     assert bad == [] and len(ok) == 1, bad
+
+
+# ---- independent-source name oracle (round 8): R7-5's cost recovered without letting a page name its own verb -----
+
+def pooled(*claims):
+    """multi_claim() whose sources carry domains: (state, text, source id, domain) per claim."""
+    b = multi_claim(*[(st, t, [n]) for st, t, n, _ in claims])
+    domains = {n: d for _, _, n, d in claims}
+    for s in b["sources"]:
+        s["domain"] = domains[s["id"]]
+    b.pop("name_index", None)
+    return b
+
+
+@pytest.mark.parametrize("weak, other", [
+    ("Van Rossum first released Python in 1991.", "Python was created by Guido van Rossum in the Netherlands."),
+    ("SK Hynix produces the memory hardware itself.", "Shares of SK Hynix rose after the earnings call."),
+    ("Trigger.dev now uses Zod 4 internally.", "Projects built with Trigger.dev depend on Zod."),
+])
+def test_r8_a_name_another_domain_writes_mid_sentence_is_a_name(weak, other):
+    b = pooled(("insufficient", weak, 1, "a.example"), ("supported", other, 2, "b.example"))
+    ok, bad = composed(b, (weak, ["C1"]))
+    assert bad == [] and len(ok) == 1, bad
+    # the same text with only its own source: the name is not recovered (R7-5)
+    ok, bad = composed(pooled(("insufficient", weak, 1, "a.example")), (weak, ["C1"]))
+    assert ok == [], ok
+
+
+def test_r8_a_name_particle_joins_a_trusted_name():
+    """"Van Rossum": the particle at a clause head is part of a name when the next word is a name under the oracle."""
+    b = pooled(("insufficient", "Van Rossum first released Python in 1991.", 1, "a.example"),
+               ("supported", "Python 3.0 was released in 2008 by the Python Software Foundation, which Guido van Rossum "
+                             "created.", 2, "b.example"))
+    ok, bad = composed(b, ("Van Rossum first released Python in 1991.", ["C1"]))
+    assert bad == [] and len(ok) == 1, bad
+    b = pooled(("insufficient", "Van Skip released Python in 1991.", 1, "a.example"))      # "Skip": no name
+    assert composed(b, ("Van Skip released Python in 1991.", ["C1"]))[0] == []
+
+
+DITCH = "Ditch NumPy 2.5.5 in production."
+
+
+@pytest.mark.parametrize("claims", [
+    # the attacker's own page writes "Ditch" in mid-sentence
+    [("insufficient", "Since the Ditch campaign began, teams run NumPy 2.5.4. " + DITCH, 1, "evil.example")],
+    # two pages of the same source domain
+    [("insufficient", DITCH, 1, "evil.example"),
+     ("insufficient", "Members of the Ditch movement met in Berlin.", 2, "evil.example")],
+    # an independent page writes it capitalised, but a read text writes "ditch" in lower case
+    [("insufficient", DITCH, 1, "evil.example"),
+     ("insufficient", "Members of the Ditch movement met in Berlin.", 2, "news.example"),
+     ("insufficient", "Teams ditch old releases quickly.", 3, "blog.example")],
+])
+def test_r8_the_attacker_cannot_name_its_own_verb(claims):
+    b = pooled(*claims)
+    ok, bad = composed(b, (DITCH, ["C1"]))
+    assert ok == [], ok
+
+
+def test_r8_limit_two_independent_domains_can_name_a_verb():
+    """Documented limit (§6): a word that a second, independent domain writes capitalised in mid-sentence, and that
+    no read text writes in lower case, is a name, so "Ditch ..." passes when the attacker controls both domains and
+    "ditch" is not a common action verb. The test pins the limit, so a change is seen."""
+    b = pooled(("insufficient", DITCH, 1, "evil.example"),
+               ("insufficient", "Members of the Ditch movement met in Berlin.", 2, "evil-two.example"))
+    ok, bad = composed(b, (DITCH, ["C1"]))
+    assert len(ok) == 1, bad
+
+
+def test_r8_the_name_index_covers_the_report_and_holds_no_text():
+    b = reasoning.bundle(report(), Q)
+    assert "zephyr" in b["name_index"] and set(b["name_index"]["zephyr"]) == {"keys", "lower"}
+    assert "name_index" not in json.dumps(reasoning.messages(b))         # never shown to the model

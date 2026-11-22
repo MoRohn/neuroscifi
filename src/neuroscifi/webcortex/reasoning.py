@@ -709,8 +709,11 @@ def bundle(report: dict, question: str) -> dict:
                   if by_n[n].get("published_at") is None and by_n[n].get("search_published_at") else {})
                for n in sorted(cited)]
     verdict = report.get("verdict")
+    domains = {n: (s.get("domain") or f"#{n}") for n, s in by_n.items()}
+    index = _name_index((f.get("statement") or "", domains.get((f.get("citations") or [None])[0], "?"))
+                        for f in items)
     return {"question": _clean(question, 2000), "as_of": _day(report.get("as_of")), "claims": claims,
-            "sources": sources,
+            "sources": sources, "name_index": index,
             "verdict": {"label": verdict.get("label"), "state": verdict.get("state"),
                         "statement": _clean(verdict.get("statement"), 300)}
             if isinstance(verdict, dict) else None,
@@ -887,14 +890,87 @@ def _names(texts, titles=()) -> set[str]:
 _QUESTION_LEAD = frozenset("is are was were does do did has have the a an of in for about on with to and or".split())
 
 
+_URLISH = re.compile(r"\S+://\S+|\bwww\.\S+|\S+@\S+|<[^>]*>")
+_NAME_PARTICLES = frozenset("van von de da di du del della le la bin al".split())
+
+
+def _mid_sentence(plain: str, at: int) -> bool:
+    """The word at `at` stands away from a sentence, title, quote or bracket start."""
+    before = plain[:at].rstrip()
+    return bool(before) and before[-1] not in '.:!?"\'(['
+
+
+def _name_index(items) -> dict:
+    """{word (lower case): {"keys": independence keys of the sources that write it capitalised in mid-sentence,
+    "lower": whether any text writes it in lower case}} over `items` of (text, source key), for the words written
+    capitalised in mid-sentence somewhere only (a compact index, not the texts). A source key is its domain."""
+    caps, lower = {}, set()
+    for text, key in items:
+        plain = _URLISH.sub(" ", _norm(text).translate(_PUNCT_ASCII))      # "finance.yahoo.com/.../asml-vs-...": no use
+        for m in _E_WORD.finditer(plain):
+            w = m.group(0)
+            if w.isalpha() and w.islower():
+                lower.add(w)
+            elif w[:1].isupper() and _mid_sentence(plain, m.start()):
+                caps.setdefault(_e_plain(w), set()).add(str(key))
+    return {w: {"keys": sorted(k), "lower": w in lower} for w, k in caps.items()}
+
+
+def name_index_for(db, task_id, report: dict) -> dict:
+    """_name_index over every claim the task extracted from every source it read (state.claims), and the report's
+    findings: the evidence pool, not only the claims the model was shown."""
+    from . import state
+    by_n = {s["n"]: s for s in report.get("sources") or [] if isinstance(s.get("n"), int)}
+    items = [(c.get("text") or "", c.get("domain") or c.get("canonical_url") or c.get("source_id"))
+             for c in state.claims(db, task_id)]
+    items += [(f.get("statement") or "", (by_n.get((f.get("citations") or [None])[0]) or {}).get("domain") or "?")
+              for f in report.get("findings") or []]
+    return _name_index(items)
+
+
+def _independent_names(b: dict, weak, used) -> set[str]:
+    """Round-8 name oracle beside weak evidence: a word written capitalised in mid-sentence by a read source whose
+    domain differs from every source of the weak cited claims, that no read text, no cited claim and not the question
+    writes in lower case, and that is no common action verb. The attacker's own page (or another page of its domain)
+    cannot whitelist its verb."""
+    domain = {x["id"]: (x.get("domain") or f"#{x['id']}") for x in b.get("sources") or []}
+    index = _pool_index(b)
+    weak_keys = {domain.get(n, f"#{n}") for c in weak for n in c["sources"]} | {f"#{n}" for c in weak
+                                                                               for n in c["sources"]}
+    lowered = {w.lower() for t in [c.get("text") or "" for c in used] + [b.get("question") or ""]
+               for w in _E_WORD.findall(_URLISH.sub(" ", t)) if w.isalpha() and w.islower()}
+    return {w for w, e in index.items() if not e["lower"] and w not in lowered and set(e["keys"]) - weak_keys} - \
+        _IMPERATIVE_HEAD
+
+
+def _pool_index(b: dict) -> dict:
+    """The bundle's name index (bundle(), name_index_for), or one over the bundle's own claims."""
+    index = b.get("name_index")
+    if index is None:
+        domain = {x["id"]: (x.get("domain") or f"#{x['id']}") for x in b.get("sources") or []}
+        index = _name_index((c.get("text") or "", domain.get(n, f"#{n}")) for c in b.get("claims") or []
+                            for n in c["sources"])
+    return index
+
+
+def _weak_names(b: dict, weak, used) -> set[str]:
+    """The names beside weak evidence (round 8): trusted (_trusted_names: the question, the supported claims, camel
+    case, never a word a cited claim or the question writes in lower case) or written by an independent source
+    (_independent_names: never a word any read text writes in lower case)."""
+    question = b.get("question") or ""
+    return _trusted_names(question, used, [c["text"] for c in b.get("claims") or []
+                                           if c.get("state") in SUPPORTED_STATES]) | _independent_names(b, weak, used)
+
+
 def _trusted_names(question: str, used, supported=()) -> set[str]:
     """R7-5: the names (lower case) a sentence beside weak evidence may open with, from trusted text only: the
     question and the supported cited claims (a word written capitalised away from a segment start, a mixed-case or
     all-capital word; in the question also the product word before a version after "is"/"the"/"of" ...: "Is numpy
-    2.5.5 secure?"); in any cited claim a word written capitalised in mid-sentence, or a camel-case brand ("NumPy",
-    "PyPI"); NeuroSciFi's record providers. Never a word that a cited claim or the question also writes in lower case
-    ("the Skip campaign ... admins skip"), never a common action verb, never a source title's word. `supported`: the
-    texts of the bundle's other supported claims, trusted like the question."""
+    2.5.5 secure?"); in any cited claim a camel-case brand ("NumPy", "PyPI"); NeuroSciFi's record providers. A weak
+    claim's own mid-sentence capitals count only through an independent source (_independent_names). Never a word
+    that a cited claim or the question also writes in lower case ("the Skip campaign ... admins skip"), never a common
+    action verb, never a source title's word. `supported`: the texts of the bundle's other supported claims, trusted
+    like the question."""
     texts = [c.get("text") or "" for c in used]
     lower = {w for t in texts + [question] for w in _E_WORD.findall(t) if w.isalpha() and w.islower()}
     found = set()
@@ -904,12 +980,7 @@ def _trusted_names(question: str, used, supported=()) -> set[str]:
             found.update(w for k, w in enumerate(toks) if any(c.isupper() for c in w[1:]) or
                          (w[:1].isupper() and k > 0))
     for t in texts:
-        plain = _norm(t).translate(_PUNCT_ASCII)
-        for m in _E_WORD.finditer(plain):
-            w, before = m.group(0), plain[:m.start()].rstrip()
-            mid = bool(before) and before[-1] not in '.:!?"\'(['        # not a sentence, title or quote start
-            if (w[:1].isupper() and mid) or re.search(r"[a-z][A-Z]", w):
-                found.add(w)
+        found.update(w for w in _E_WORD.findall(t) if re.search(r"[a-z][A-Z]", w))        # "NumPy", "PyPI"
     out = {_e_plain(w) for w in found} - {w.lower() for w in lower}
     q = _E_WORD.findall(question or "")
     for k, w in enumerate(q[:-1]):
@@ -962,7 +1033,7 @@ def _subject_head(orig: list[str], k: int, names: set, oracle: set, loose: bool 
     if w in _SUBJECT_HEADS or any(c.isdigit() for c in w) or \
             (w.replace("-", "").isalpha() and all(x in _NUMBER_WORDS or x in _QUANTITY_WORDS for x in w.split("-"))):
         return True                       # also a number in words ("Eighty-six billion ...")
-    if any(c.isupper() for c in w0) and (w in names or loose and k + 1 < len(orig) and
+    if any(c.isupper() for c in w0) and (w in names or (loose or w in _NAME_PARTICLES) and k + 1 < len(orig) and
                                         orig[k + 1][:1].isupper() and _e_plain(orig[k + 1]) in names):
         return True                       # a name, or the first word of one ("Van Rossum")
     if w in names and k + 1 < len(orig) and orig[k + 1][:1].isdigit():
@@ -1146,8 +1217,7 @@ def _relays_instruction(text: str, b: dict | None = None, used=()) -> bool:
     weak = [c for c in used if c.get("state") not in SUPPORTED_STATES]
     if not weak or b is None:
         return False
-    names = _trusted_names(b.get("question") or "", used,
-                           [c["text"] for c in b.get("claims") or [] if c.get("state") in SUPPORTED_STATES])
+    names = _weak_names(b, weak, used)
     oracle = {_e_plain(w) for c in used for w in _E_WORD.findall(c["text"])}
     return bool(_non_declarative(text, names, oracle, loose=False))
 
@@ -2081,7 +2151,7 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
             # SECREVIEW6 rule 1 (fail closed): weak evidence carries only declarative sentences. The sentence and each
             # weak claim's own text must be declarative, hedged or not (an obeyed injection: "Users should uninstall
             # NumPy 2.5.5, according to one source.", "Skip NumPy 2.5.5 and stay on NumPy 2.5.4.")
-            names = _trusted_names(question, used, [c["text"] for c in b["claims"] if c["state"] in SUPPORTED_STATES])
+            names = _weak_names(b, weak, used)
             # (R7-5: never from the weak claims' own sentence starts or the sources' titles)
             oracle = {_e_plain(w) for c in used for w in _E_WORD.findall(c["text"])}
             faults = _non_declarative(asserted, names, oracle, loose=False)
@@ -2343,6 +2413,11 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     if not gw.cfg.reasoning:
         return _degraded(report, "disabled", "model reasoning is turned off (nsf llm config --reasoning)")
     b = bundle(report, question)
+    if db is not None and task_id is not None:
+        try:
+            b["name_index"] = name_index_for(db, task_id, report)
+        except Exception:                 # no pool readable: the report's own findings stay the index
+            pass
     if not b["claims"]:
         return _degraded(report, "no_evidence", "no verified evidence claim to reason over")
     deadline = None
