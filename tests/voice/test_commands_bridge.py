@@ -184,6 +184,30 @@ REPORT_MODEL = {
 }
 
 
+def test_a_simpler_answer_asks_with_the_answer_schema_and_gets_the_composed_attribution(monkeypatch):
+    """The voice "simpler" request uses the research answer request (reasoning.SYSTEM, answer_schema) and the same
+    composition and guard: the model writes the restatement, code adds the attribution its claim state requires."""
+    from types import SimpleNamespace
+    from neuroscifi.webcortex import reasoning
+    calls = []
+
+    class Model:
+        cfg = SimpleNamespace(model="m")
+
+        def structured(self, msgs, schema, **kw):
+            calls.append((msgs, schema))
+            return {"sentences": [{"claims": ["C1"], "text": "Zephyr 4.2.0 was released on 17 November 2026."}],
+                    "gaps": []}, []
+    monkeypatch.setattr(reasoning, "gateway_for", lambda *a, **k: Model())
+    task = {"id": "t", "status": "completed", "objective": "When was Zephyr 4.2.0 released?", "result": REPORT_MODEL}
+    reply = vbridge.Bridge(time.time)._simplify_with_model(None, task, REPORT_MODEL)
+    (msgs, schema), = calls
+    assert msgs[0]["content"].startswith(reasoning.SYSTEM) and "SIMPLER" in msgs[0]["content"]
+    assert schema == reasoning.answer_schema(reasoning.bundle(REPORT_MODEL, task["objective"]))
+    assert reply.source == "model" and reply.speech == ["Zephyr 4.2.0 was released on 17 November 2026, according to "
+                                                        "one source."]
+
+
 def test_compose_answer_speaks_checked_model_text_concisely():
     r = vbridge.compose_answer({"id": "t", "status": "completed", "objective": "q", "result": REPORT_MODEL})
     assert r.source == "model" and r.label.startswith("Model-written summary by the local model")

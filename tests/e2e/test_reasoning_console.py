@@ -27,15 +27,14 @@ def evidence_of(body):
 
 
 def reply(body):
-    """Answer: the first supported claim restated with its first source. Critique: flag that sentence (the guard
-    already passed it, so the flag must not remove it)."""
+    """Answer: the first supported claim restated (its sources are the claim's own, reasoning.compose). Critique: flag
+    that sentence (the guard already passed it, so the flag must not remove it)."""
     if body["messages"][0]["content"].startswith("You check an answer"):
         return {"content": json.dumps({"issues": [{"sentence": 1, "problem": "overstated", "note": "test flag"}],
                                        "gaps": ["an independent benchmark"]})}
     ev = evidence_of(body)
     claim = next(c for c in ev["claims"] if c["state"] in ("corroborated", "supported"))
-    return {"content": json.dumps({"sentences": [{"text": claim["text"], "sources": claim["sources"][:1],
-                                                  "claims": [claim["id"]]}], "gaps": []})}
+    return {"content": json.dumps({"sentences": [{"claims": [claim["id"]], "text": claim["text"]}], "gaps": []})}
 
 
 class Replies(list):
@@ -98,7 +97,9 @@ def test_model_answer_label_flag_and_verdict_fields(research, model, new_page):
     answer = report.locator("#modelAnswer li")
     expect(answer).to_have_count(1)
     expect(answer.first.locator("p.generated")).to_contain_text("4.2.0")
-    expect(answer.first.locator(".answermeta a.cite")).to_have_count(1)
+    claim = next(c for c in evidence_of(model.requests[0])["claims"] if c["state"] in ("corroborated", "supported"))
+    # the model writes no source ids: the sentence cites every source carrying its claim (reasoning.compose)
+    expect(answer.first.locator(".answermeta a.cite")).to_have_count(len(claim["sources"]))
     expect(answer.first).to_contain_text("self-check flagged: overstated (not confirmed by the checks)")
     expect(report.locator("#modelGaps")).to_contain_text("an independent benchmark")
     expect(report.locator("h4", has_text="Extractive summary (quoted evidence)")).to_be_visible()

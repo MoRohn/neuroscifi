@@ -518,14 +518,14 @@ class Bridge:
             return None
         msgs = reasoning.messages(b)
         msgs[0] = {"role": "system", "content": reasoning.SYSTEM + "\nAdditionally: the owner asked for a SIMPLER "
-                   "explanation. Use at most 3 short sentences in plain words a teenager understands; keep every "
-                   "hedge; never drop a qualifier that limits a claim."}
+                   "explanation. Use at most 3 short sentences, each restating one claim in fewer of its own words; "
+                   "never drop a qualifier that limits a claim."}
         try:
-            value, _ = gw.structured(msgs, reasoning.ANSWER_SCHEMA, name="nsf_simple", purpose="voice_simplify",
+            value, _ = gw.structured(msgs, reasoning.answer_schema(b), name="nsf_simple", purpose="voice_simplify",
                                      max_tokens=400, temperature=0.1)
         except InferenceError:
             return None
-        accepted, _rejected = reasoning.guard(value.get("sentences"), b)
+        accepted, _rejected = reasoning.guard(reasoning.compose(value, b), b)
         if not accepted:
             return None
         lines = [_cited(a) for a in accepted]
