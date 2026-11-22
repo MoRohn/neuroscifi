@@ -29,9 +29,11 @@ Providers may also expose:
   `general_web: bool`        see the empty-answer rule
   `last_attempts`            per-engine attempt dicts of the calling thread's most recent search (open-webSearch)
   `engine_snapshot() / load_engine_state(engine, data) / record_engine(engine, ok, latency, error)`
-  `fallback_for: str`        name of a primary provider (open-webSearch -> "searxng", ADR-034): when the primary
-                             is a candidate for the same query and its circuit is not open, this provider waits and
-                             runs only if the primary failed or found nothing
+  `fallback_for: str`        name of a primary provider (open-webSearch -> "searxng", ADR-034; SearXNG -> "brave"
+                             when a Brave key is configured): when the primary is a candidate for the same query and
+                             its circuit is not open, this provider waits and runs only if the primary failed or found
+                             nothing. Fallbacks chain (brave -> searxng -> openwebsearch): each tier waits for the one
+                             before it, and a fallback whose primary did not run does not run either
 """
 from __future__ import annotations
 
@@ -54,7 +56,7 @@ HEALTH_WINDOW = 6 * 3600.0   # "healthy" needs a successful call at most this ol
 GENERAL_KINDS = ("web", "news")
 # Error codes that say nothing about a provider's health: never move a breaker.
 NON_HEALTH_CODES = frozenset({"budget_exhausted", "disabled", "blocked_policy", "blocked_robots", "circuit_open",
-                              "not_applicable"})
+                              "not_applicable", "daily_cap"})
 # Registry lookups ("pypi:numpy", "osv:PyPI:x@1.0") are never re-sent to general web search when nobody answers.
 REGISTRY_QUERY = re.compile(r"^(?:pypi|npm|osv|github):\S", re.I)
 _USAGE_LOCK = threading.Lock()   # Usage.charge is not atomic; discovery charges go through this lock
@@ -523,13 +525,20 @@ class ProviderRegistry:
                                      "error": f"no provider serves kind {query.kind!r}", "latency": 0.0})
                     continue
                 deferred = self._deferred(providers)
-                done = self._round(pool, [p for p in providers if p not in deferred], query, per_query, budget,
-                                   usage, attempts, failures, lists, qi)
-                if deferred:
-                    primaries = {p.fallback_for for p in deferred}
-                    if not any(d["results"] for d in done if d["provider"] in primaries):
-                        done += self._round(pool, deferred, query, per_query, budget, usage, attempts, failures,
-                                            lists, qi)
+                first = [p for p in providers if p not in deferred]
+                done = self._round(pool, first, query, per_query, budget, usage, attempts, failures, lists, qi)
+                tried = {p.name for p in first}
+                while deferred:          # one tier at a time: a fallback runs after its primary found nothing
+                    tier = [p for p in deferred if p.fallback_for in tried]
+                    if not tier:
+                        break
+                    deferred = [p for p in deferred if p not in tier]
+                    found = {d["provider"] for d in done if d["results"]}
+                    tier = [p for p in tier if p.fallback_for not in found]
+                    tried |= {p.name for p in tier}
+                    if tier:
+                        done += self._round(pool, tier, query, per_query, budget, usage, attempts, failures, lists,
+                                            qi)
                 if query.kind != "web" and not any(d["results"] for d in done) and not REGISTRY_QUERY.match(query.text):
                     # fallback: specialist providers produced nothing usable -> general web providers
                     fallback = [p for p in self._candidates(Query(query.text, "web", query.since, query.site,

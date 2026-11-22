@@ -14,7 +14,7 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
   TLS verifies the certificate against the original hostname; the Host header carries the original hostname.
 - Redirects are followed manually (at most policy.max_redirects); every hop is re-checked (URL policy, resolution,
   address policy, robots), https -> http downgrades are refused, 303 (and 301/302 after POST) become GET, and
-  credentials headers are dropped when the origin changes.
+  credentials headers (Authorization, Cookie, a provider API key header) are dropped when the origin changes.
 - Limits: total wall-clock timeout per fetch, enforced by a per-exchange watchdog that shuts the socket down at
   the deadline (a server trickling bytes in the status line, headers or body cannot outlive it), streamed body
   cap (policy.max_bytes; policy.max_api_bytes for purpose='api'; pages/crawls are truncated and flagged,
@@ -95,7 +95,7 @@ _HOST_RE = re.compile(r"^(?=.{1,253}$)([a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?)(
 _NUMERIC_LABEL = re.compile(r"^(0x[0-9a-f]*|[0-9]+)$")
 _FORBIDDEN_HEADERS = {"host", "accept-encoding", "connection", "content-length", "transfer-encoding", "user-agent",
                       "te", "upgrade", "proxy-authorization", "if-none-match", "if-modified-since"}
-_CREDENTIAL_HEADERS = {"authorization", "cookie"}
+_CREDENTIAL_HEADERS = {"authorization", "cookie", "x-subscription-token"}   # the last: Brave Search API key
 _DIGITS = re.compile(r"[0-9]+")         # ASCII only: str.isdigit() accepts '²' and other Unicode digits
 _CHARGE_LOCK = threading.Lock()
 

@@ -116,6 +116,13 @@ def _validate(name, value):
         if not isinstance(value, dict) or set(value) - set(categories):
             raise ValidationError(f"searxng_engines keys must be among {', '.join(categories)}")
         return {k: _str_list(f"searxng_engines.{k}", v, max_items=20, max_len=64) for k, v in value.items()}
+    if name == "daily_provider_queries":
+        keyed = tuple(wconfig.DEFAULT_PROVIDER_DAILY_QUERIES)
+        if not isinstance(value, dict) or set(value) - set(keyed):
+            raise ValidationError(f"daily_provider_queries keys must be among {', '.join(keyed)}")
+        if not all(_is_int(v) and 0 <= v <= 100_000 for v in value.values()):
+            raise ValidationError("daily_provider_queries values must be integers from 0 to 100000 (0 = off)")
+        return dict(get_default(name), **value)
     if name in ("engines", "providers", "deny_domains"):
         return [v.lower() for v in _str_list(name, value)] if name == "deny_domains" else _str_list(name, value)
     if name == "private_terms":

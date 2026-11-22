@@ -176,6 +176,19 @@ def screen(db, text, cfg) -> list[dict]:
     return safety.privacy_screen(text, private_terms=private_terms(db, cfg))
 
 
+def _without_transient(checkpoint: dict) -> dict:
+    """A finished task's checkpoint without the search results its provider allows only transiently
+    (metadata.transient: Brave Search API Terms of Use §3(b)(i), ADR-034 amendment 1). The run needed them to
+    resume; the documents read, claims, attempts and report stay."""
+    results = checkpoint.get("results")
+    if not isinstance(results, list):
+        return checkpoint
+    kept = [r for r in results if not (isinstance(r, dict) and (r.get("metadata") or {}).get("transient"))]
+    if len(kept) == len(results):
+        return checkpoint
+    return {**checkpoint, "results": kept, "transient_results_dropped": len(results) - len(kept)}
+
+
 # ---- task API ----------------------------------------------------------------------------------------------------
 
 def _budget(cfg, mode, requested):
@@ -1971,7 +1984,8 @@ def _execute(db, task_id, services, *, resume):
         with store.write(db):
             state.update_task(db, task_id, now, holder=run.holder, status=status, stage=None, result=report,
                               error=error, usage=run.usage.to_json(), finished_at=now, lease_holder=None,
-                              lease_expires_at=None, checkpoint=run.checkpoint | {"usage": run.usage.to_json()})
+                              lease_expires_at=None,
+                              checkpoint=_without_transient(run.checkpoint) | {"usage": run.usage.to_json()})
             state.log_event(db, task_id, status, {"live": (report or {}).get("live"),
                                                   "sources": len((report or {}).get("sources") or []),
                                                   "limitations": len((report or {}).get("limitations") or []),

@@ -1388,7 +1388,7 @@ function renderWebStatus(s) {
   ]));
   fill($('providerTable'), s.providers.length
     ? table('Search provider and engine health', ['Provider / engine', 'State', 'Calls', 'Last error'],
-        s.providers.map((p) => [p.name, providerBadge(p), `${p.successes ?? 0} ok, ${p.failures ?? 0} failed${p.last_ok_at ? `; last success ${ago(p.last_ok_at)}` : ''}`,
+        s.providers.map((p) => [p.name, providerBadge(p), `${p.successes ?? 0} ok, ${p.failures ?? 0} failed${p.last_ok_at ? `; last success ${ago(p.last_ok_at)}` : ''}${p.key === 'configured' ? `; key configured, ${p.used_today ?? 0} of ${p.daily_cap} queries today` : ''}`,
           p.last_error ? `${p.last_error}${p.last_failure_at ? ` (${ago(p.last_failure_at)})` : ''}` : 'none']))
     : empty('No providers configured.'));
   const cur = s.curiosity;
@@ -1710,7 +1710,8 @@ function verdictBlock(r) {
 // T1-11: health from the most recent outcome and the time since the last success (the backend's `health`), not
 // from the circuit alone, which stays closed until several failures in a row.
 const PROVIDER_HEALTH = { healthy: ['healthy', 'ok'], failing: ['failing: last call failed', 'warn'], down: ['down', 'warn'],
-  unchecked: ['no recent success', 'neutral'], unused: ['not used yet', 'neutral'] };
+  unchecked: ['no recent success', 'neutral'], unused: ['not used yet', 'neutral'],
+  rate_limited: ['rate-limited', 'warn'], unconfigured: ['not configured (no API key)', 'neutral'] };
 function providerBadge(p) {
   const fallback = p.state === 'closed' ? 'healthy' : p.state === 'open' ? 'down' : String(p.state ?? 'unknown');
   const [word, tone] = PROVIDER_HEALTH[p.health ?? fallback] ?? [String(p.health ?? p.state).replace('_', ' '), 'neutral'];

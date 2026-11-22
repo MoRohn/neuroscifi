@@ -262,7 +262,10 @@ def run(*, port: int = 3291) -> dict:
     path = tmp / "live.sqlite"
     start = time.time()
     db = store.create(path, start, note="nsf web bench --live (temporary individual)")
-    state.set_config(db, {"enabled": True, "openwebsearch_url": f"http://127.0.0.1:{port}"}, start)
+    # Brave stays off even when the owner configured a key: its terms (§3(b)(xiii)) forbid benchmarking AI systems
+    # with its results, and the benchmark measures the key-free providers (ADR-034 amendment 1).
+    state.set_config(db, {"enabled": True, "openwebsearch_url": f"http://127.0.0.1:{port}",
+                          "daily_provider_queries": {"brave": 0}}, start)
     daemon = Daemon(port=port, state_dir=tmp / "openwebsearch")
     started_daemon, daemon_info = False, None
     try:

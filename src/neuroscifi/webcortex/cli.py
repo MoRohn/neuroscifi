@@ -136,6 +136,26 @@ def _searxng_view(db, cfg, now, *, container=True) -> dict:
     return out
 
 
+def _keyed_view(db, cfg, now) -> dict:
+    """Keyed providers (ADR-034 amendment 1) as status, health and the console show them: whether a key is
+    configured (never the key), state (unconfigured / configured / failing / rate_limited), today's use of the daily
+    cap, the rate limit in force, the last error and the time since the last success. No network call."""
+    from .providers import brave, daily_cap
+    stored = _health_view(db, now).get("brave")
+    return {"brave": brave.status(daily_cap=daily_cap(cfg, "brave"), stored=stored, clock=lambda: now)}
+
+
+def _routing(db, cfg) -> dict:
+    """Which providers a general and a news query reach, in order; 'X after Y' runs only when Y found nothing."""
+    from . import state
+    from .providers import build
+    out = {}
+    for kind in ("web", "news"):
+        out[kind] = [p.name + (f" after {p.fallback_for}" if getattr(p, "fallback_for", None) else "")
+                     for p in build(cfg, None, feeds=state.get_feeds(db)) if kind in p.kinds]
+    return out
+
+
 def _cache_stats(db_path, db=None, now=None):
     """Public-cache statistics. A corrupt cache is quarantined and rebuilt by PublicCache (S-05); with `db` the
     quarantine is recorded as a warning event like the worker does."""
@@ -263,8 +283,10 @@ def _status(db, a, now):
                        "openwebsearch_url": cfg.openwebsearch_url, "searxng_url": cfg.searxng_url,
                        "searxng_engines": cfg.searxng_engines, "budget_ceiling": cfg.budget_ceiling,
                        "daily_autonomous": cfg.daily_autonomous, "deny_domains": len(cfg.deny_domains),
-                       "private_terms": len(cfg.private_terms)},
+                       "private_terms": len(cfg.private_terms),
+                       "daily_provider_queries": cfg.daily_provider_queries},
             "provider_health": _health_view(db, now), "daemon": daemon, "searxng": _searxng_view(db, cfg, now),
+            "keyed_providers": _keyed_view(db, cfg, now),
             "public_cache": _cache_stats(path, db, now),
             "tasks": tasks, "memory": state.counts(db), "node": node_info()}
 
@@ -279,8 +301,10 @@ def _health(db, a, now):
     if isinstance(out["daemon"], dict):
         out["honest_user_agent"] = out["daemon"].get("honest_user_agent")
     out["searxng"] = _searxng_view(db, cfg, now, container=False)
+    out["keyed_providers"] = _keyed_view(db, cfg, now)
     if not a.probe:
-        out["note"] = "pass --probe to send one cheap request per structured provider"
+        out["note"] = "pass --probe to send one cheap request per structured provider (and one Brave query, counted " \
+                      "against its daily cap, when a key is configured)"
         return out
     state.require_enabled(db)
     from .types import Query, Usage
@@ -289,7 +313,8 @@ def _health(db, a, now):
               "crossref": Query("sleep memory", "academic"), "pubmed": Query("sleep memory", "academic"),
               "pypi": Query("pypi:pip", "technical"), "npm": Query("npm:left-pad", "technical"),
               "osv": Query("osv:PyPI:zstandard@0.25.0", "technical"), "github": Query("github:python/cpython",
-                                                                                     "technical")}
+                                                                                     "technical"),
+              "brave": Query("open source software", "web")}
     services = build_services(db, _db_path(a))
     try:
         for provider in services.registry.providers:
@@ -314,6 +339,7 @@ def _health(db, a, now):
     finally:
         services.close()
     out["probed"] = True
+    out["keyed_providers"] = _keyed_view(db, cfg, now)
     return out
 
 
@@ -394,6 +420,47 @@ def _searxng_cmd(db, a, now):
     out.update({"probed": True, "probes": probes, "searxng": _searxng_view(db, state.get_config(db), now,
                                                                             container=False)})
     return out
+
+
+KEY_SOURCE_MAX = 4096
+
+
+def _provider_cmd(db, a, now):
+    """status | set-key NAME (--from-file PATH | --stdin) | remove-key NAME. The key is never taken from argv
+    (visible in ps and the shell history) and never printed: output says only "configured"."""
+    from . import state
+    from .providers import keys
+    cfg = state.get_config(db)
+    if a.action == "status":
+        return {"providers": _keyed_view(db, cfg, now), "routing": _routing(db, cfg),
+                "daily_provider_queries": cfg.daily_provider_queries}
+    if not a.name:
+        raise ValidationError(f"{a.action} needs the provider name: {', '.join(keys.KEYED)}")
+    if a.action == "remove-key":
+        removed = keys.remove_key(a.name)
+        return {"provider": a.name, "removed": removed, "key": "missing", "routing": _routing(db, cfg)}
+    if bool(a.from_file) == bool(a.stdin):
+        raise ValidationError("set-key reads the key from --from-file PATH or --stdin, never from the command line")
+    if a.from_file:
+        try:
+            with open(a.from_file, encoding="ascii", errors="replace") as fh:
+                text = fh.read(KEY_SOURCE_MAX)
+        except OSError as exc:
+            raise ValidationError(f"cannot read {a.from_file}: {exc.strerror or type(exc).__name__}") from None
+    elif sys.stdin.isatty():
+        import getpass
+        text = getpass.getpass(f"{a.name} API key (not echoed): ")
+    else:
+        text = sys.stdin.read(KEY_SOURCE_MAX)
+    try:
+        path = keys.write_key(a.name, text)
+    except keys.KeyProblem as exc:
+        raise ValidationError(f"key not stored: {exc.detail}") from None
+    view = _keyed_view(db, cfg, now)[a.name]
+    return {"provider": a.name, "key": view["key"], "key_file": str(path), "state": view["state"],
+            "daily_cap": view["daily_cap"], "routing": _routing(db, cfg),
+            "note": "general and news queries now go to this provider first; each query counts against the daily "
+                    "cap (daily_provider_queries); `nsf web provider status` shows today's use"}
 
 
 def _search(db, a, now):
@@ -775,6 +842,15 @@ def register(sub):
     p = cmd("searxng", _searxng_cmd, "start, stop, inspect or probe the loopback SearXNG container (ADR-034)")
     p.add_argument("action", choices=("start", "stop", "status", "health"))
     p.add_argument("--probe", action="store_true", help="health: one real query per category")
+
+    from .providers.keys import KEYED
+    p = cmd("provider", _provider_cmd, "keyed search providers (Brave): status, set-key from a file or stdin, "
+                                       "remove-key; the key is never printed")
+    p.add_argument("action", choices=("status", "set-key", "remove-key"))
+    p.add_argument("name", nargs="?", choices=KEYED)
+    p.add_argument("--from-file", metavar="PATH", help="set-key: read the key from this file (holding only the key)")
+    p.add_argument("--stdin", action="store_true", help="set-key: read the key from standard input (prompted "
+                                                        "without echo on a terminal)")
 
     p = cmd("search", _search, "discovery only: one privacy-screened query through the providers")
     p.add_argument("query")

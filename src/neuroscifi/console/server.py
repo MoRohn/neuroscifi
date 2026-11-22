@@ -309,6 +309,23 @@ def _provider_health(db, cfg, now):
     rows += [{"name": name, "provider": name, "engine": None, "state": "unused", "health": "unused", "successes": 0,
               "failures": 0, "last_error": None, "last_ok_at": None, "last_failure_at": None, "since_ok": None,
               "p50_latency": None} for name in cfg.providers if name not in seen]
+    # The keyed provider is always disclosed (ADR-034 amendment 1): its key is "configured" or not (never shown),
+    # and a rate limit, today's cap or an unusable key file decide its health before the breaker does.
+    from ..webcortex.providers import brave, daily_cap
+    keyed = brave.status(daily_cap=daily_cap(cfg, "brave"),
+                         stored=next((r for r in rows if r["name"] == "brave"), None), clock=lambda: now)
+    row = next((r for r in rows if r["name"] == "brave"), None)
+    if row is None:
+        row = {"name": "brave", "provider": "brave", "engine": None, "state": "unused", "health": "unused",
+               "successes": 0, "failures": 0, "last_error": None, "last_ok_at": None, "last_failure_at": None,
+               "since_ok": None, "p50_latency": None}
+        rows.append(row)
+    if keyed["state"] in ("unconfigured", "rate_limited") or keyed["key"] == "insecure":
+        row["health"] = keyed["state"]
+    row.update({"key": keyed["key"], "daily_cap": keyed["daily_cap"], "used_today": keyed["used_today"],
+                "rate_limited_until": keyed["rate_limited_until"], "rate_limit_reason": keyed.get("rate_limit_reason"),
+                "last_error": row["last_error"] or keyed["last_error"],
+                "last_ok_at": row["last_ok_at"] or keyed["last_ok_at"]})
     return sorted(rows, key=lambda r: r["name"])
 
 

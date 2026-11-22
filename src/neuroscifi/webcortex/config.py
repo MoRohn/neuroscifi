@@ -18,6 +18,9 @@ META_KEY = "webcortex"
 USER_AGENT = f"NeuroSciFi-WebCortex/{'.'.join(__version__.split('.')[:2])} (research agent; honours robots.txt)"
 RESPECT_ROBOTS = True            # constant by design (SECURITY_MODEL §5); there is no switch
 DEFAULT_ENGINES = ("duckduckgo", "brave", "startpage", "bing")
+# Keyed search providers (ADR-034 amendment 1): queries per UTC day per API key, so a paid key is never drained.
+# Brave: 30 x 31 days = 930, inside the 1,000 requests the Search plan's $5 monthly credit buys (brave.com/search/api).
+DEFAULT_PROVIDER_DAILY_QUERIES = {"brave": 30}
 
 # Per-mode default budgets. A task may ask for less; never more than WebConfig.budget_ceiling.
 MODE_BUDGETS = {
@@ -50,6 +53,10 @@ class WebConfig:
     # only as its fallback. searxng_engines optionally pins the engines per category ({"news": ["bing news"]}).
     searxng_url: str = ""
     searxng_engines: dict = field(default_factory=dict)
+    # Keyed providers (ADR-034 amendment 1): Brave is the primary general provider while its key file exists
+    # (`nsf web provider set-key brave`); this caps the queries sent with each key per UTC day, every origin
+    # (autonomy included) counted. 0 switches the provider off without removing the key.
+    daily_provider_queries: dict = field(default_factory=lambda: dict(DEFAULT_PROVIDER_DAILY_QUERIES))
     engines: list = field(default_factory=lambda: list(DEFAULT_ENGINES))
     providers: list = field(default_factory=lambda: [
         "openwebsearch", "wikipedia", "arxiv", "openalex", "crossref", "pubmed", "pypi", "npm", "osv",
