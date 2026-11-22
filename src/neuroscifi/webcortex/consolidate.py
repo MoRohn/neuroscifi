@@ -379,18 +379,40 @@ _TITLE_START = re.compile(r"^(?:how|why|what|when|where|which|who|whose)\b", re.
 _SENTENCE_END = re.compile(r"[.!][\"'”’)\]]*$")
 _VAGUE = re.compile(r"\b(?:many|much|several|various|numerous|some|a\s+(?:large|small|great|huge|vast)\s+"
                     r"(?:amount|number|deal)\s+of|a\s+lot\s+of|lots\s+of|a\s+number\s+of|a\s+variety\s+of)\b", re.I)
+# DD-3: relevance counts the question's words, so a claim about the question's own entity that shares no other word
+# with it ("Fennick is an incremental build tool ..." for "Is it true that Fennick was created by Oda Haraldsen?",
+# relevance 0.07) read as off-subject. Such a claim is on the subject when it defines the entity ("X is a/an
+# <class>", not "X is a crucial part of <something else>") or states a value about it, and carries no judgement or
+# promotional word (marketing copy about the entity stays held).
+_DEFINITION = re.compile(r"^[^,;:]+?\s(?:is|was)\s+an?\s+(?P<cls>[^,;:]+)", re.I)
+_CONSTITUENT = re.compile(r"^(?:[\w-]+\s+){0,3}?(?:part|parts|piece|component|element|member|portion|feature|aspect|"
+                          r"ingredient|cornerstone|backbone|pillar)\s+of\b", re.I)
+_PROMOTIONAL = re.compile(r"\b(?:crucial|essential|vital|powerful|leading|premier|popular|innovative|"
+                          r"cutting[\s-]edge|state[\s-]of[\s-]the[\s-]art|world[\s-]class|robust|seamless(?:ly)?|"
+                          r"easy|easier|effortless(?:ly)?|versatile|vibrant|amazing|awesome|revolutionary|trusted|"
+                          r"beloved|de[\s-]facto)\b", re.I)
 
 
-def unaskable(statement, relevance=1.0) -> str | None:
+def _about_entity_shape(s: str) -> bool:
+    """`s`, a claim about the question's entity, defines it or states a value about it, without judging it."""
+    from . import temporal, text as T
+    if temporal._INTERPRETIVE.search(s) or _PROMOTIONAL.search(s):
+        return False
+    definition = _DEFINITION.match(s)
+    return bool(definition and not _CONSTITUENT.match(definition.group("cls"))) or bool(T.values(s))
+
+
+def unaskable(statement, relevance=1.0, *, about=False) -> str | None:
     """None when `statement` deserves an owner question: a structured record's statement, or a self-contained
     (curiosity.claim_shaped), complete sentence that is not a title and states something specific (an
     unquantified "many", "some", "a large amount of" ... without any number is too vague to check), whose best
     claim `relevance` to the task's question is at least MIN_QUESTION_RELEVANCE (R2-04: a python.org marketing
-    sentence, relevance 0.23, was proposed for "When was Python first released?"). Else why not."""
+    sentence, relevance 0.23, was proposed for "When was Python first released?"), or that is `about` the question's
+    entity (synthesis.subject_tier 0) and defines it or states a value about it (DD-3). Else why not."""
     from .curiosity import claim_shaped
-    if state.finite(relevance, 0.0) < MIN_QUESTION_RELEVANCE:
-        return f"off the question's subject (relevance {state.finite(relevance, 0.0):.2f} < {MIN_QUESTION_RELEVANCE})"
     s = " ".join(str(statement or "").split())
+    if state.finite(relevance, 0.0) < MIN_QUESTION_RELEVANCE and not (about and _about_entity_shape(s)):
+        return f"off the question's subject (relevance {state.finite(relevance, 0.0):.2f} < {MIN_QUESTION_RELEVANCE})"
     if s and _claims.record_template(s) is not None:
         return None
     why = claim_shaped(s)
@@ -403,6 +425,25 @@ def unaskable(statement, relevance=1.0) -> str | None:
     if _VAGUE.search(s) and not re.search(r"\d", s):
         return "too vague to check (an unquantified 'many', 'some' or 'a large amount of')"
     return None
+
+
+def _question_focus(task) -> dict:
+    """The task question's entities and relation words (synthesis.question_focus, with the run's assessment)."""
+    from . import synthesis
+    return synthesis.question_focus(task.get("objective") or "", (task.get("checkpoint") or {}).get("assessment"))
+
+
+def _unaskable_cluster(cluster, focus) -> str | None:
+    """unaskable for a cluster: its best claim relevance, and whether the claim stating it is about the question's
+    entity (synthesis.subject_tier 0) and writes its name as the question does: a capitalised name stays
+    capitalised ("A python is a large snake" shares only the word with "When was Python first released?")."""
+    from . import synthesis
+    statement = _statement(cluster)
+    claim = next((c for c in cluster.claims if c.text == statement), _head(cluster))
+    named = any(re.search(rf"(?<![\w-]){re.escape(n)}(?![\w-])", claim.text or "", 0 if n[:1].isupper() else re.I)
+                for n in focus.get("names") or ())
+    return unaskable(statement, max(state.finite(c.relevance, 0.0) for c in cluster.claims),
+                     about=named and synthesis.subject_tier(claim, focus) == 0)
 
 
 def _question_value(cluster, verdict) -> float:
@@ -691,6 +732,7 @@ def run(db, task_id, now, *, holder=None) -> dict:
         summary["candidates"] = len(clusters)
         freshness = _freshness(db, task)
         window = _window(task)
+        focus = _question_focus(task)
         feedback_before = db.execute("SELECT count(*) FROM web_feedback").fetchone()[0]
         adversarial = _adversarial_urls(db, task_id)
         ids_by_key, cleaned, observed = {}, [], []
@@ -784,7 +826,7 @@ def run(db, task_id, now, *, holder=None) -> dict:
                                                            f"#{rejected['id']})"]))
                     continue
                 ok, bar = _meets_bar(cluster, cfg, verdict)
-                shape = unaskable(_statement(cluster), max(state.finite(c.relevance, 0.0) for c in cluster.claims))
+                shape = _unaskable_cluster(cluster, focus)
                 if newer and ok and shape is not None:
                     summary["held"].append(_held(cluster, [f"not a specific, well-formed claim ({shape}): kept as a "
                                                            "claim, no owner question"]))
@@ -820,7 +862,7 @@ def run(db, task_id, now, *, holder=None) -> dict:
             if not ok:
                 summary["held"].append(_held(cluster, bar))
                 continue
-            shape = unaskable(_statement(cluster), max(state.finite(c.relevance, 0.0) for c in cluster.claims))
+            shape = _unaskable_cluster(cluster, focus)
             if shape is not None:
                 summary["held"].append(_held(cluster, [f"not a specific, well-formed claim ({shape}): kept as a "
                                                        "claim, no owner question"]))

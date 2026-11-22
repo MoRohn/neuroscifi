@@ -537,3 +537,103 @@ def test_questions_go_to_the_most_valuable_candidates_first(db):
     asked = [q for (q,) in db.execute("SELECT question FROM pending WHERE scope LIKE 'web:knowledge:%'")]
     assert len(asked) == state.get_config(db).max_web_questions_per_task == 3
     assert all("Gadget" in q for q in asked), asked
+
+
+# ---- DD-3: a claim about the question's own entity is on its subject, whatever its question-word relevance --------
+
+def corroborated(sentence, *, relevance, hosts=("meson.example", "buildnotes.example"), key="build meson system"):
+    """A sentence two independent sources state (so verification passes and only the question test decides), with
+    the given relevance to the question: low, it shares (almost) no word with the question but its entity."""
+    return cluster([claim(f"http://{h}/about", reworded(sentence, n), key=key, published=None, relevance=relevance)
+                    for n, h in enumerate(hosts)], confidence=0.9)
+
+
+@pytest.mark.parametrize("sentence, objective", [
+    # a definition of the entity ("X is a/an <class>"): what the bench's Fennick row is (relevance 0.07)
+    ("Meson is an open source build system for C and C++ projects.",
+     "Is it true that Meson was created by Jussi Pakkanen?"),
+    # a value stated about the entity: what the bench's "The Brisa compiler was first released in 2021." is (0.08)
+    ("The Meson build system was first released in 2013.", "What kind of build system is Meson?"),
+])
+def test_a_definition_or_a_value_about_the_questions_entity_is_on_its_subject(db, sentence, objective):
+    """DD-3: relevance counts the question's words, so a sentence about the question's entity that shares no other
+    word with it read as "off the question's subject" (Fennick, 0.07). It is a knowledge candidate and asked."""
+    _, out = consolidated(db, [corroborated(sentence, relevance=0.07)], objective=objective)
+    assert len(out["provisional"]) == 1 and len(out["pending"]) == 1, out["held"]
+
+
+@pytest.mark.parametrize("sentence, objective", [
+    # about the entity, but neither a definition nor a stated value
+    ("Meson makes builds fast and simple for every project.", "Is it true that Meson was created by Jussi Pakkanen?"),
+    # "X is a part of Y" is about Y, not a definition of X
+    ("Meson is a part of the release process of the GNOME desktop.", "Is it true that Meson was created by Jussi "
+                                                                       "Pakkanen?"),
+    # promotional or judging copy about the entity
+    ("Meson is a powerful build system that developers love.", "Is it true that Meson was created by Jussi Pakkanen?"),
+    ("Meson is a crucial part of the Acme software solution.", "Is it true that Meson was created by Jussi Pakkanen?"),
+    ("Meson is an excellent build system for C projects.", "Is it true that Meson was created by Jussi Pakkanen?"),
+    ("Meson is the de-facto standard for building C projects.", "What kind of build system is Meson?"),
+    # a definition or a value about ANOTHER entity (the bench's Quillstream roadmap for a Varnel River question)
+    ("Ninja is a small build system with a focus on speed.", "Is it true that Meson was created by Jussi Pakkanen?"),
+    ("The Ninja build system was first released in 2012.", "What kind of build system is Meson?"),
+    ("The Quillstream roadmap lists exactly-once delivery, a Rust core and WebAssembly plugins as long-term goals.",
+     "Is it true that the Varnel River is 520 km long?"),
+    # a definition headed by an entity, read for an unrelated question
+    ("Meson is an open source build system for C and C++ projects.", "Is it true that the Varnel River is 520 km "
+                                                                      "long?"),
+    # the head shares only the word with the question's entity: the snake, the comedy troupe
+    ("A python is a large constricting snake found in Africa and Asia.",
+     "When was the Python programming language first released?"),
+    ("Monty Python is a British comedy group formed in 1969.", "When was the Python programming language first "
+                                                                "released?"),
+])
+def test_near_misses_about_the_entity_or_about_another_one_stay_off_subject(db, sentence, objective):
+    """Held: off the question's subject, or (a judgement such as "excellent") not even a checkable fact."""
+    _, out = consolidated(db, [corroborated(sentence, relevance=0.07)], objective=objective)
+    assert out["provisional"] == [] and out["pending"] == []
+    assert any("off the question's subject" in r or "judgement" in r for r in out["held"][0]["reasons"]), out["held"]
+
+
+def test_an_entity_headed_definition_that_is_vague_stays_held(db):
+    """The DD-3 rule only lifts the relevance test: a vague definition of the entity is still not asked."""
+    _, out = consolidated(db, [corroborated("Meson is a build tool that many projects use.", relevance=0.07)],
+                          objective="Is it true that Meson was created by Jussi Pakkanen?")
+    assert out["provisional"] == [] and out["pending"] == []
+    assert any("too vague to check" in r for r in out["held"][0]["reasons"]), out["held"]
+
+
+@pytest.mark.parametrize("sentence", [
+    "NumPy enables many of these analyses.",                                         # R1-02 live repro
+    "Advice for using NumPy on untrusted data#",                                     # R1-02 live repro
+    "NumPy brings the computational power of languages like C and Fortran to Python, a language much easier to learn "
+    "and use.",                                                                       # numpy.org marketing
+    "Nearly every scientist working in Python draws on the power of NumPy.",          # numpy.org marketing
+    "NumPy is a powerful and versatile library trusted by millions of developers.",   # marketing, definition shape
+])
+def test_numpy_trivial_and_marketing_lines_stay_held_when_barely_relevant(db, sentence):
+    """R1-02 / R2-04 with the DD-3 rule: the live numpy.org repro and marketing lines, about NumPy but barely
+    relevant to "Is NumPy 2.5.5 stable?" (NumPy is the question's entity, so the DD-3 rule applies), are never
+    proposed."""
+    tid, out = consolidated(db, [corroborated(sentence, relevance=0.12, hosts=("numpy.org", "scipy-lectures.example"),
+                                              key="numpy power")], objective="Is NumPy 2.5.5 stable?")
+    assert consolidate._question_focus(state.task(db, tid))["names"] == ["NumPy"]
+    assert out["provisional"] == [] and out["pending"] == []
+    assert any("not a specific, well-formed claim" in r for r in out["held"][0]["reasons"])
+
+
+def test_a_plain_numpy_definition_is_proposed_for_the_same_question(db):
+    """The control for the test above: the rule is live for that question, and a plain definition passes it."""
+    _, out = consolidated(db, [corroborated("NumPy is a library for array computing in Python.", relevance=0.12,
+                                            hosts=("numpy.org", "scipy-lectures.example"), key="numpy power")],
+                          objective="Is NumPy 2.5.5 stable?")
+    assert len(out["provisional"]) == 1, out["held"]
+
+
+def test_the_impersonal_python_marketing_sentence_stays_held_although_it_names_python(db):
+    """R2-04: its head is the question's entity (Python), so only the DD-3 shape test keeps it off the subject."""
+    official_page = cluster([claim("http://python.org/", "Python is a crucial part of the Acme software solution for "
+                                   "user operator interfaces.", key="operator python solution user", published=None,
+                                   relevance=0.234879)], confidence=0.62)
+    tid, out = consolidated(db, [official_page], objective="When was the Python programming language first released?")
+    assert consolidate._question_focus(state.task(db, tid))["entities"], "the question's entity is known"
+    assert out["provisional"] == [] and any("off the question's subject" in r for r in out["held"][0]["reasons"])
