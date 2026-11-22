@@ -237,6 +237,45 @@ limitation. Disabling the patch (browser impersonation) is not offered.
 Supersedes ADR-032 (the honest-User-Agent rule now covers both search backends; the open-webSearch opt-in
 `search_browser_user_agent` stays for that daemon only).
 
+**ADR-034 (amended) A keyed engine, the Brave Search API, is the primary general discovery provider when its key is
+configured. R** (draft amendment 1, 2026-11-21; amends ADR-034)
+
+Context. ADR-034 measured that no honest, robots-compliant key-free engine gives a full general web index
+(DuckDuckGo answered the honest User-Agent with a CAPTCHA on 4 of 9 calls; Mwmbl is small and undated) and named a
+keyed API engine as the owner's option. The owner chose one: the Brave Search API, a documented API (ADR-034
+decision 3 admits engines that call one), with web and news endpoints and a `page_age` date on results.
+
+Decision.
+1. Routing: with a key, Brave (`providers/brave.py`) is built first and answers `web` and `news` queries; SearXNG
+   gets `fallback_for="brave"`, open-webSearch stays SearXNG's fallback (Brave's when SearXNG is not configured),
+   and the registry runs fallbacks as a chain, one tier after the other. Technical and academic queries keep
+   SearXNG's it/science engines and the structured APIs. Without a key, or with the cap at 0, nothing changes.
+2. The key is the owner's secret: `~/.config/neuroscifi/search/brave.key` (NSF_SEARCH_KEY_DIR), 0600 in a 0700
+   directory, outside git, written only by `nsf web provider set-key brave --from-file PATH | --stdin` (never argv);
+   a symlinked, foreign-owned or group/other-accessible file is refused. It is read per request and never logged,
+   printed ("configured" only), stored in the instance, an event, an error or an evidence file; API error text is
+   scrubbed of it; SafeFetcher drops its header on a cross-origin redirect.
+3. Cost: `daily_provider_queries.brave` (default 30 per UTC day; 0 = off) is counted per key, across instances,
+   processes and origins (autonomy included), before a request is sent, and refunded when Brave did not answer 200
+   (Brave bills only successful requests). X-RateLimit-* headers are honoured (a used-up window longer than one
+   second blocks until its reset), a 429 sets the host backoff (Retry-After, else 60 s), and requests to the API
+   host are at least one second apart. Rate limits and the cap are health-neutral and hand the query to SearXNG.
+4. Policy unchanged: every query has passed the privacy screen and the task and daily budgets before the registry
+   sends it; SafeFetcher `purpose="api"` with the honest User-Agent; nothing is cached on disk.
+5. Terms (Search API Terms of Use, 1 Sep 2026): results are kept only transiently (120 s in memory, marked
+   `metadata.transient`, dropped from a task's checkpoint when it ends) and are never used for benchmarks
+   (`nsf web bench --live` sets the Brave cap to 0).
+6. Marginalia Search is not added: its shared `public` key is offered for experimentation and often rate-limited;
+   ongoing use needs a personal key requested by e-mail, and its results are undated.
+
+Consequences. With a key, general and news discovery rest on a full, dated web index instead of DuckDuckGo and
+Mwmbl; each such query costs one Brave request ($5 per 1,000 on the Search plan, which includes a $5 monthly credit;
+the default cap of 30 a day stays inside it). The ADR-034 release blocker "general web discovery is thin" is
+resolved for an owner who configures a key and stays for one who does not. Open: the report's unread-headline list
+can quote a few Brave titles and URLs and is kept with the task (an owner question under §3(b)(i)). Live
+validation waits for the owner's key (`tests/webcortex/test_live_providers.py`). Details:
+docs/web-cortex/SEARCH_PROVIDER_STRATEGY.md §6.
+
 **ADR-035 Claim verification depends on the kind of statement: categories, six states, syndication-aware
 independence. R** (draft; supersedes ADR-026's verification rule; amends ADR-033, see ADR-033-amendment.md)
 

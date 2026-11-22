@@ -240,7 +240,10 @@ stackoverflow, askubuntu, superuser 3/3 each; europepmc 2/2; openairepublication
    mimicry; they stay off. "SearXNG as primary general provider" therefore works for news, software and science
    discovery but gives weak general web coverage. Owner options: a keyed API engine (for example Brave Search API
    or a Google Programmable Search key, both supported by SearXNG), or accepting the limitation. Re-enabling
-   browser impersonation is not an option under the project rules.
+   browser impersonation is not an option under the project rules. **Owner decision (ADR-034 amendment 1):** a
+   direct Brave Search API provider is the primary general and news provider when a key is configured, with
+   SearXNG as its fallback ([SEARCH_PROVIDER_STRATEGY.md §6](SEARCH_PROVIDER_STRATEGY.md)); without a key this
+   blocker stands.
 2. **Freshness of news.** Bing News results carry no `publishedDate`; dated news comes from Hacker News. Pages read
    from msn.com are JavaScript shells (0 claims). Current-event questions therefore often end with "freshness
    requirement not met" — honestly, but not usefully. Since 0.7.0 the renderer inlines open shadow roots (where

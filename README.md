@@ -137,6 +137,8 @@ nsf web config --enable
 nsf web ask "When was Python first released?"   # cited report; result.generated_by says model:<name> or template
 ```
 
+General web discovery is thin without a search API key. To add a Brave Search API key (paid per query, with a daily cap of 30 by default), run `nsf web provider set-key brave --from-file PATH`. See [Brave Search API](#brave-search-api-general-discovery).
+
 **Pair a phone or tablet with Pocket.**
 
 ```sh
@@ -163,6 +165,21 @@ nsf web searxng stop
 ```
 
 The container is read-only, unprivileged and resource-limited, with its secret generated once outside git. For systemd, run `sudo bash deploy/install.sh --searxng`, then set `User=` and `NSF_DB` with `systemctl edit neuroscifi-searxng.service`.
+
+### Brave Search API (general discovery)
+
+Without a key, general web queries rely on SearXNG's two key-free engines. With a [Brave Search API](https://brave.com/search/api/) key, general and news queries go to Brave first, and SearXNG and open-webSearch become fallbacks.
+
+```sh
+nsf web provider set-key brave --from-file ~/brave.key   # or: --stdin (prompts without echo); never on the command line
+shred -u ~/brave.key                                     # the copy now lives in ~/.config/neuroscifi/search (0600)
+nsf web provider status                                  # "key": "configured" (the key is never shown), today's use, routing
+nsf web health --probe                                   # one real Brave query, counted against the cap
+nsf web config --set 'daily_provider_queries={"brave": 30}'   # queries per UTC day for this key; 0 switches Brave off
+nsf web provider remove-key brave
+```
+
+**Cost and cap.** Brave's Search plan charges $5 per 1,000 requests and includes $5 of credit each month. Each general or news query is one request, and a repeat within two minutes is free. The default cap of 30 queries a day (about 930 a month) stays inside the monthly credit. The cap counts every use of the key on this computer, including autonomous research. When the cap is reached or Brave rate-limits, queries go to SearXNG. Brave's terms allow only transient storage of its results, so they are dropped from a task when it finishes, and the benchmark never uses Brave. Details: [search provider strategy §6](docs/web-cortex/SEARCH_PROVIDER_STRATEGY.md#6-keyed-provider-brave-search-api-adr-034-amendment-1).
 
 ### Local reasoning model (vLLM)
 
@@ -247,7 +264,7 @@ flowchart LR
 | `nsf checkpoint create\|verify\|restore\|rebuild\|prune` | Manage verified lossless archives. A restore never resurrects forgotten ids |
 | `nsf graph simulate CTX --seed N` | Generate labelled synthetic trajectories. `learn`, `evaluate` and `promote` run the immutable-rule gate. Also `recall`, `coactivation`, `lesion` and `rollback` |
 | `nsf console` | Owner web console on loopback only |
-| `nsf web …` | Web Cortex: `config`, `ask`, `tasks`, `show`, `evidence`, `searxng`, `autonomy`, `node`, `work`, `deps`, `mcp` and more |
+| `nsf web …` | Web Cortex: `config`, `ask`, `tasks`, `show`, `evidence`, `searxng`, `provider`, `autonomy`, `node`, `work`, `deps`, `mcp` and more |
 | `nsf knowledge …` | `evolution`, `changes`, `hypotheses`, `hypothesize`, `calibration`, `graph`, `learning`, `assert`, `adapt` |
 | `nsf llm config\|status\|models\|ask\|usage` | Inference gateway (off until configured). `nsf llm ask` is labelled "not checked against evidence" |
 | `nsf voice health\|settings\|transcripts\|forget\|sweep` | Voice Cortex services, settings and transcripts |
@@ -422,7 +439,7 @@ neuroscifi/
 
 ## Known limitations
 
-- **General web discovery is thin.** An honest User-Agent and robots.txt compliance leave two general engines. DuckDuckGo answered with a CAPTCHA on 4 of 9 calls. Mwmbl is a small index that returns no dates. News, software and science discovery work, and structured APIs carry most factual answers. This is recorded as a release blocker. The owner's options are a keyed API engine or accepting the gap. Browser impersonation will not be enabled.
+- **General web discovery is thin without a search API key.** An honest User-Agent and robots.txt compliance leave two key-free general engines. DuckDuckGo answered with a CAPTCHA on 4 of 9 calls. Mwmbl is a small index that returns no dates. News, software and science discovery work, and structured APIs carry most factual answers. With a Brave Search API key (see [Brave Search API](#brave-search-api-general-discovery)), general and news queries go to Brave's full, dated index first and SearXNG becomes the fallback (ADR-034 amendment 1). Each query costs one Brave request, within a daily cap. This path has offline tests but has not been run live yet, because no key was available. Browser impersonation will not be enabled.
 - **News that needs rendering.** Bing News results carry no publication date. JavaScript news pages such as MSN need about 70–100 sub-requests against the quick lookup's 20-request budget, so current-event questions often end "freshness requirement not met". Rendering is off by default.
 - **Voice is verified only with synthetic audio.** Real microphones, speakers, echo cancellation, accents, room noise and real handsets were not tested. All UAT audio came from Chromium's fake capture device. The barge-in thresholds were tuned on synthetic speech, and the command grammar is English and literal.
 - **PersonaPlex is not real-time on GB10 upstream.** It measured 99–152 ms per 80 ms frame. It cannot speak external text through its shipped server, and it is not deployed.
