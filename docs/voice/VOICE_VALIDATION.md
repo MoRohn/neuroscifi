@@ -318,7 +318,7 @@ the same VAD and the same output gain as a voice session. While it runs, the voi
 | Speaker | listens | output peak level, mute/volume state | owner heard it |
 | Interrupt | says "stop" while NeuroSciFi talks (~20 s phrase) | barge-in detected; onset-to-stop latency | detected, ≤ 1.5 s, owner confirms it stopped |
 | Echo | stays silent while it talks | false barge-ins caused by its own voice; echo level at the mic | none |
-| Microphone off | watches the indicator | every capture track `ended`, no frames after; indicator out | all ended, owner confirms |
+| Microphone off | watches the indicator | live and ended track counts; audio frames after stopping (a frame already in flight within 150 ms is tolerated, then 300 ms are watched); indicator out | no track live, at least one ended, no frame in the watched 300 ms, owner confirms; a failure names its reason (tracks still live, no track ended, or frames still arriving) |
 
 Pocket also records the device and browser model: the user agent, `userAgentData` brands, platform, mobile flag,
 `model` and `platformVersion` where the browser offers them, screen size, and the AudioContext base and output

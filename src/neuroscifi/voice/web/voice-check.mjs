@@ -12,6 +12,11 @@ const FRAME = 320;                 // 20 ms at 16 kHz
 const CHUNK_SAMPLES = 32000;       // 64 000 bytes per upload (< 64 KiB)
 const READ_TIMEOUT_MS = 15000;
 const SILENCE_MS = 5000;
+// Microphone off (R6 D3): a frame the worklet posted just before it stopped can still be in the message queue, so
+// frames within MICOFF_GRACE_MS of stopping are tolerated; any frame in the MICOFF_WATCH_MS after that means capture
+// went on.
+const MICOFF_GRACE_MS = 150;
+const MICOFF_WATCH_MS = 300;
 
 function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -27,6 +32,16 @@ function h(tag, attrs = {}, ...kids) {
 }
 
 const db = (x) => (x > 0 ? Math.round(200 * Math.log10(x)) / 10 : -120);
+
+// The Microphone off result in words, naming the true reason when capture did not stop.
+export function micOffMessage(r) {
+  if (r.capture_stopped) return `Capture stopped: ${r.tracks_ended} track(s) ended, no frames after.`;
+  const why = [];
+  if (r.live_tracks_after) why.push(`${r.live_tracks_after} track(s) still live`);
+  if (!r.tracks_ended) why.push("no capture track ended");
+  if (r.frames_after) why.push(`${r.frames_after} audio frame(s) arrived after the tracks ended`);
+  return `Capture did NOT stop: ${why.join("; ") || "the capture state is unknown"}.`;
+}
 
 export class VoiceCheck extends EventTarget {
   constructor(transport, client, { surface }) {
@@ -97,11 +112,16 @@ export class VoiceCheck extends EventTarget {
     const tracks = this.stream ? this.stream.getTracks() : [];
     for (const t of tracks) t.stop();
     const framesAt = this.frames;
-    await new Promise((ok) => setTimeout(ok, 300));
+    await new Promise((ok) => setTimeout(ok, MICOFF_GRACE_MS));
+    const settled = this.frames;
+    await new Promise((ok) => setTimeout(ok, MICOFF_WATCH_MS));
     this.node = this.src = null;
-    return { live_tracks_before: before, live_tracks_after: tracks.filter((t) => t.readyState === "live").length,
-             tracks_ended: tracks.filter((t) => t.readyState === "ended").length,
-             capture_stopped: tracks.every((t) => t.readyState === "ended") && this.frames === framesAt };
+    const live = tracks.filter((t) => t.readyState === "live").length;
+    const ended = tracks.filter((t) => t.readyState === "ended").length;
+    const after = this.frames - settled;
+    return { live_tracks_before: before, live_tracks_after: live, tracks_ended: ended,
+             frames_in_grace: settled - framesAt, frames_after: after,
+             capture_stopped: live === 0 && ended >= 1 && after === 0 };
   }
 
   // ---- steps --------------------------------------------------------------------------------------------------------
@@ -400,8 +420,7 @@ export function mountVoiceCheck(root, transport, client, { surface }) {
           : `No false interruption (echo at the microphone: median ${r.echo_median_dbfs}, peak ${r.echo_peak_dbfs} dBFS).`);
       } else if (id === "micoff") {
         const r = await check.micOff();
-        mark(id, "running", r.capture_stopped ? `Capture stopped: ${r.tracks_ended} track(s) ended, no frames after.`
-          : `Capture did NOT stop: ${r.live_tracks_after} track(s) still live.`);
+        mark(id, "running", micOffMessage(r));
         const ok = await askUser("micoff", r);
         mark(id, r.capture_stopped && ok ? "passed" : "failed");
       }
