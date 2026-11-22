@@ -418,15 +418,21 @@ class ProviderRegistry:
         return chosen
 
     def _deferred(self, providers) -> list:
-        """Fallback providers (`fallback_for`) whose primary is among `providers` with a circuit that is not open."""
-        names = {p.name for p in providers}
+        """Fallback providers (`fallback_for`) with a provider up their chain (the primary, its primary, ...) among
+        `providers` whose circuit is not open: with Brave live and SearXNG's circuit open, open-webSearch still
+        waits for Brave."""
+        by_name = {p.name: p for p in providers}
         now = self._clock()
         out = []
         with self._lock:
             for p in providers:
-                primary = getattr(p, "fallback_for", None)
-                if primary in names and primary in self._health and self._health[primary].view_state(now) != "open":
-                    out.append(p)
+                primary, seen = getattr(p, "fallback_for", None), set()
+                while primary in by_name and primary not in seen:
+                    seen.add(primary)
+                    if primary in self._health and self._health[primary].view_state(now) != "open":
+                        out.append(p)
+                        break
+                    primary = getattr(by_name[primary], "fallback_for", None)
         return out
 
     def _call(self, provider, query: Query, limit: int, budget, usage) -> dict:

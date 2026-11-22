@@ -430,7 +430,7 @@ def test_private_data_is_refused_before_any_request(key, tmp_path):
                 with pytest.raises(ValidationError) as info:
                     wcli.web_search(db, services, text)
                 assert "not sent anywhere" in str(info.value)
-            assert fetcher.calls == [] and keys.Ledger("brave").read()["queries"] == 0
+            assert fetcher.calls == [] and keys.Ledger("brave", clock=Clock()).read()["queries"] == 0
             wcli.web_search(db, services, "fusion record")
             assert len(fetcher.calls) == 1
         finally:
@@ -448,11 +448,68 @@ def test_a_finished_task_keeps_no_transient_result():
     assert orchestrator._without_transient(same) is same
 
 
-def test_provider_errors_are_provider_errors_not_crashes(key):
-    for reply, code in ((FetchError("timeout", "u", "slow"), "timeout"), (answer(200, b"not json"), "bad_response"),
-                        (answer(422, {"error": {"code": "VALIDATION", "detail": "q too long"}}), "bad_request"),
-                        (answer(403, b""), "forbidden")):
+def test_provider_errors_are_provider_errors_and_only_unbilled_requests_are_refunded(key):
+    from neuroscifi.webcortex.types import BudgetExceeded
+    ledger = keys.Ledger("brave", clock=Clock())
+    for reply, code, counted in (
+            (answer(422, {"error": {"code": "VALIDATION", "detail": "q too long"}}), "bad_request", 0),
+            (answer(403, b""), "forbidden", 0),
+            (FetchError("http_error", "u", "HTTP 500", status=500), "http_error", 0),
+            (FetchError("connect_failed", "u", "refused"), "connect_failed", 0),
+            (BudgetExceeded("requests", 13, 12), "budget_exhausted", 0),       # refused before sending
+            (FetchError("timeout", "u", "slow"), "timeout", 1),                 # may have reached Brave: kept
+            (FetchError("too_large", "u", "body exceeds"), "too_large", 1),     # after a 2xx status line
+            (BudgetExceeded("bytes", 10, 5), "budget_exhausted", 1),            # while reading the body
+            (answer(200, b"not json"), "bad_response", 1)):                     # a 200 is billed
+        before = ledger.read()["queries"]
         with pytest.raises(ProviderError) as err:
             bv.BraveProvider(FakeFetcher(reply), clock=Clock()).search(Query("x", "web"), 5)
-        assert err.value.code == code
-    assert keys.Ledger("brave").read()["queries"] == 0
+        assert err.value.code == code and ledger.read()["queries"] - before == counted, (code, counted)
+
+
+def test_a_damaged_ledger_counts_as_a_used_up_day(key, keydir):
+    clock = Clock()
+    fetcher = FakeFetcher(WEB)
+    (keydir / "brave.usage.json").write_text('{"day": "2026-11-17", "quer')        # cut off mid-write
+    with pytest.raises(ProviderError) as err:
+        bv.BraveProvider(fetcher, clock=clock).search(Query("x", "web"), 5)
+    assert err.value.code == "daily_cap" and fetcher.calls == []
+    clock.t += 86400                                                           # the next UTC day starts afresh
+    assert bv.BraveProvider(fetcher, clock=clock).search(Query("x", "web"), 5)
+
+
+def test_a_429_never_shortens_a_quota_block_and_our_own_spacing_is_not_recorded(key):
+    clock = Clock()
+    ledger = keys.Ledger("brave", clock=clock)
+    ledger.note(ok=False, limited_for=3600, reason="quota window of 2592000 s used up")
+    ledger.note(ok=False, error="rate_limited: HTTP 429", limited_for=60, reason="Brave answered 429")
+    assert ledger.limited() == {"until": T0 + 3600, "reason": "quota window of 2592000 s used up"}
+    (ledger.path).unlink()
+    spacing = FetchError("rate_limited", "u", "next request slot in 20s", retry_after=20.0)    # SafeFetcher's own
+    with pytest.raises(ProviderError) as err:
+        bv.BraveProvider(FakeFetcher(spacing), clock=clock).search(Query("x", "web"), 5)
+    assert err.value.code == "rate_limited" and err.value.retry_after == 20.0 and ledger.limited() is None
+
+
+def test_a_key_directory_others_can_write_or_we_cannot_read_is_refused_without_raising(key, keydir):
+    os.chmod(keydir, 0o770)
+    assert keys.key_state("brave")["key"] == "insecure" and "chmod 700" in keys.key_state("brave")["problem"]
+    os.chmod(keydir, 0o000)
+    try:
+        assert keys.key_state("brave")["key"] == "insecure"                    # never raises: search goes on
+        assert [p.name for p in providers.build(WebConfig(searxng_url=SX), fetcher=None)][0] == "brave"
+    finally:
+        os.chmod(keydir, 0o700)
+    assert keys.key_state("brave")["key"] == "configured"
+
+
+def test_open_websearch_waits_for_brave_while_searxng_is_open():
+    def run(found):
+        b, s, o = Fake("brave", found), Fake("searxng", True, "brave"), Fake("openwebsearch", True, "searxng")
+        reg = ProviderRegistry([b, s, o])
+        for _ in range(3):
+            reg.record("searxng", False, 0.1, "down")                          # SearXNG's circuit is open
+        out = reg.search(QueryPlan(queries=(Query("q", "web"),)), budget=Budget(), usage=Usage())
+        return [len(x.calls) for x in (b, s, o)], sorted({r.provider for r in out.results})
+    assert run(True) == ([1, 0, 0], ["brave"])
+    assert run(False) == ([1, 0, 1], ["openwebsearch"])                        # SearXNG skipped, open circuit

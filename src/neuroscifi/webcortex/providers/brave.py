@@ -33,8 +33,8 @@ the provider until its X-RateLimit-Reset. Either is `rate_limited` with `retry_a
 registry's fallback (SearXNG) answers instead.
 
 Daily cap: `daily_provider_queries['brave']` (WebConfig, default DEFAULT_DAILY_CAP) queries per UTC day, counted per
-key in keys.Ledger before a request is sent and returned when Brave did not answer 200 (Brave bills only successful
-requests), so every origin (owner, Pocket, MCP, monitors and autonomy) draws from one cap. 0 switches the provider
+key in keys.Ledger before a request is sent and returned only when Brave cannot have billed it (Brave bills only
+successful requests: `_unbilled`), so every origin (owner, Pocket, MCP, monitors and autonomy) draws from one cap. 0 switches the provider
 off without removing the key. Reaching it is `daily_cap` (health-neutral).
 
 Terms: §3(b)(i) forbids storing, caching or creating a database of Search Results "other than transient storage
@@ -110,6 +110,17 @@ def rate_limit(headers: dict) -> dict:
     return {"windows": windows, "exhausted": max(exhausted, key=lambda w: w["reset"]) if exhausted else None}
 
 
+def _unbilled(exc) -> bool:
+    """Can Brave have counted this request? Only successful requests are billed: an error status, or a refusal
+    before anything was sent, was not; a failure after a 2xx status line (body too large or cut off, the byte
+    budget) or an ambiguous timeout may have been, and keeps its count (erring towards the cap)."""
+    if isinstance(exc, BudgetExceeded):
+        return exc.resource != "bytes"            # the request charge comes before sending; bytes while reading
+    if exc.status is not None:
+        return not 200 <= exc.status < 300
+    return exc.code in ("blocked_policy", "dns_failure", "connect_failed", "tls_error", "rate_limited")
+
+
 class BraveProvider:
     """`BASE` (class attribute) is the API origin; tests point it at FixtureWeb over plain HTTP."""
     name = "brave"
@@ -177,40 +188,27 @@ class BraveProvider:
         except keys.CapReached as exc:
             raise self._fail("daily_cap", str(exc), retryable=False) from None
         url = f"{self.BASE}{PATHS[engine]}?{urlencode(params)}"
-        billed = False
         try:
             result = self.fetcher.fetch(url, headers={"X-Subscription-Token": key, "Accept": "application/json"},
                                         purpose="api", budget=budget, usage=usage)
-            billed = result.status == 200
-            if not billed:
-                raise self._status_error(result, key)
-            try:
-                payload = json.loads(result.body.decode("utf-8"))
-            except (ValueError, UnicodeDecodeError) as exc:
-                raise self._fail("bad_response", f"unparseable JSON: {exc}", retryable=False) from None
-            if not isinstance(payload, dict):
-                raise self._fail("bad_response", "response is not a JSON object", retryable=False)
-        except FetchError as exc:
-            detail = keys.scrub(exc.detail or exc, key)
-            if exc.status in _STATUS_HINTS:
-                detail = f"{detail} ({_STATUS_HINTS[exc.status]})"
-            if exc.code == "rate_limited":
-                wait = exc.retry_after if exc.retry_after is not None else 60.0
-                self.ledger.note(ok=False, error=f"rate_limited: {detail}", limited_for=wait,
-                                 reason=f"Brave answered {exc.status or 429}" if exc.status else detail)
-                raise self._fail("rate_limited", detail, retry_after=wait) from None
-            code = _STATUS_CODES.get(exc.status, exc.code) if exc.code == "http_error" else exc.code
-            self.ledger.note(ok=False, error=f"{code}: {detail}")
-            raise self._fail(code, detail, retryable=code in ("timeout", "connect_failed", "dns_failure",
-                                                              "http_error", "tls_error")) from None
-        except BudgetExceeded as exc:
-            raise self._fail("budget_exhausted", str(exc), retryable=False) from None
-        except ProviderError as exc:
-            self.ledger.note(ok=False, error=f"{exc.code}: {exc.detail}")
-            raise
-        finally:
-            if not billed:
+        except (FetchError, BudgetExceeded) as exc:
+            if _unbilled(exc):
                 self.ledger.refund()
+            raise self._fetch_error(exc, key) from None
+        if result.status != 200:
+            if not 200 <= result.status < 300:
+                self.ledger.refund()
+            error = self._status_error(result, key)
+            self.ledger.note(ok=False, error=f"{error.code}: {error.detail}")
+            raise error
+        try:
+            payload = json.loads(result.body.decode("utf-8"))
+            problem = None if isinstance(payload, dict) else "response is not a JSON object"
+        except (ValueError, UnicodeDecodeError) as exc:
+            problem = f"unparseable JSON: {exc}"
+        if problem:
+            self.ledger.note(ok=False, error=f"bad_response: {problem}")
+            raise self._fail("bad_response", problem, retryable=False)
         limits = rate_limit(result.headers)
         exhausted = limits["exhausted"]
         self.ledger.note(ok=True, remaining={str(int(w["window"] or 0)): w["remaining"] for w in limits["windows"]},
@@ -224,6 +222,25 @@ class BraveProvider:
                 while len(self._cache) > CACHE_MAX:
                     self._cache.pop(next(iter(self._cache)))
         return results[:limit]
+
+    def _fetch_error(self, exc, key) -> ProviderError:
+        """A SafeFetcher failure as a ProviderError (key scrubbed). Only Brave's own 429 enters the shared ledger as
+        a rate limit; SafeFetcher's spacing or a backoff already in force is ours and stays per process."""
+        if isinstance(exc, BudgetExceeded):
+            return self._fail("budget_exhausted", str(exc), retryable=False)
+        detail = keys.scrub(exc.detail or exc, key)
+        if exc.status in _STATUS_HINTS:
+            detail = f"{detail} ({_STATUS_HINTS[exc.status]})"
+        if exc.code == "rate_limited":
+            wait = exc.retry_after if exc.retry_after is not None else 60.0
+            if exc.status == 429:
+                self.ledger.note(ok=False, error=f"rate_limited: {detail}", limited_for=wait,
+                                 reason="Brave answered 429")
+            return self._fail("rate_limited", detail, retry_after=wait)
+        code = _STATUS_CODES.get(exc.status, exc.code) if exc.code == "http_error" else exc.code
+        self.ledger.note(ok=False, error=f"{code}: {detail}")
+        return self._fail(code, detail, retryable=code in ("timeout", "connect_failed", "dns_failure", "http_error",
+                                                           "tls_error"))
 
     def _status_error(self, result, key) -> ProviderError:
         status = int(result.status)

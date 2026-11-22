@@ -248,16 +248,18 @@ decision 3 admits engines that call one), with web and news endpoints and a `pag
 Decision.
 1. Routing: with a key, Brave (`providers/brave.py`) is built first and answers `web` and `news` queries; SearXNG
    gets `fallback_for="brave"`, open-webSearch stays SearXNG's fallback (Brave's when SearXNG is not configured),
-   and the registry runs fallbacks as a chain, one tier after the other. Technical and academic queries keep
+   and the registry runs fallbacks as a chain, one tier after the other (a fallback waits while any provider up
+   its chain is live). Technical and academic queries keep
    SearXNG's it/science engines and the structured APIs. Without a key, or with the cap at 0, nothing changes.
 2. The key is the owner's secret: `~/.config/neuroscifi/search/brave.key` (NSF_SEARCH_KEY_DIR), 0600 in a 0700
    directory, outside git, written only by `nsf web provider set-key brave --from-file PATH | --stdin` (never argv);
-   a symlinked, foreign-owned or group/other-accessible file is refused. It is read per request and never logged,
+   a symlinked, foreign-owned or group/other-accessible file, or a directory others can write to, is refused. It is read per request and never logged,
    printed ("configured" only), stored in the instance, an event, an error or an evidence file; API error text is
    scrubbed of it; SafeFetcher drops its header on a cross-origin redirect.
 3. Cost: `daily_provider_queries.brave` (default 30 per UTC day; 0 = off) is counted per key, across instances,
-   processes and origins (autonomy included), before a request is sent, and refunded when Brave did not answer 200
-   (Brave bills only successful requests). X-RateLimit-* headers are honoured (a used-up window longer than one
+   processes and origins (autonomy included), before a request is sent, and refunded only when Brave cannot have
+   billed it (refused before sending, or an error status; Brave bills only successful requests); a damaged ledger
+   counts as a used-up day. X-RateLimit-* headers are honoured (a used-up window longer than one
    second blocks until its reset), a 429 sets the host backoff (Retry-After, else 60 s), and requests to the API
    host are at least one second apart. Rate limits and the cap are health-neutral and hand the query to SearXNG.
 4. Policy unchanged: every query has passed the privacy screen and the task and daily budgets before the registry

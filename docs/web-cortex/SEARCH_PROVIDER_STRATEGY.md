@@ -21,8 +21,9 @@ amendment 1 (a keyed engine is the primary general discovery provider when confi
 4. **open-webSearch is SearXNG's fallback**, not a peer: with SearXNG configured it carries
    `fallback_for = "searxng"` (Brave's when only Brave is configured) and runs for a query only when SearXNG's
    circuit is open (same round) or SearXNG failed or found nothing (next round). Fallbacks chain one tier at a
-   time (brave → searxng → openwebsearch): a fallback whose primary did not run does not run either. Its own
-   honest-User-Agent rule (ADR-032) is unchanged.
+   time (brave → searxng → openwebsearch): a fallback waits while any provider up its chain is live (so with
+   SearXNG's circuit open, open-webSearch still waits for Brave), and a fallback whose primary did not run does
+   not run either. Its own honest-User-Agent rule (ADR-032) is unchanged.
 5. **One category per query, never every engine.** `intent.searxng_route` maps the planned query to one SearXNG
    category (two for a software cue), so a query reaches 1–5 upstream engines, not all of them.
 6. **No configuration, no change.** With `searxng_url` empty the provider list, routing and results are exactly
@@ -139,14 +140,16 @@ Brave cap to 0 (§3(b)(xiii)); the offline bench never builds Brave.
 **Cost and cap.** One general or news query is one Brave request (a cached repeat within 120 s is free). The daily
 cap `daily_provider_queries.brave` (default 30 per UTC day; `nsf web config --set 'daily_provider_queries={"brave":
 50}'`, 0 = off) is kept per key in `<key dir>/brave.usage.json`, so every instance and process on the host, and
-every origin including autonomy, draws from one count. A query is counted before it is sent and returned when Brave
-did not answer 200. 30 × 31 = 930 requests a month stays inside the $5 monthly credit (1,000 requests). The
+every origin including autonomy, draws from one count. A query is counted before it is sent and returned only when
+Brave cannot have billed it (refused before sending, or an error status); a timeout or a failure after a 2xx status
+keeps its count, and a damaged ledger file counts as a used-up day. 30 × 31 = 930 requests a month stays inside the $5 monthly credit (1,000 requests). The
 daily research budgets (`nsf web autonomy`) still bound the searches of each task first.
 
 **The key.** `nsf web provider set-key brave --from-file PATH` or `--stdin` (prompted without echo on a terminal);
 never from argv. Stored in `~/.config/neuroscifi/search/brave.key` (`$NSF_SEARCH_KEY_DIR`, else
-`$XDG_CONFIG_HOME/neuroscifi/search`), 0600 in a 0700 directory, outside git; a symlink, another owner or any
-group/other permission is refused. Read at each request and kept nowhere else; error text from the API is scrubbed
+`$XDG_CONFIG_HOME/neuroscifi/search`), 0600 in a 0700 directory, outside git; a symlink, another owner, any
+group/other permission on the file or a directory others can write to is refused (the file is re-checked after
+opening, by inode). Read at each request and kept nowhere else; error text from the API is scrubbed
 of it; output shows only `"key": "configured"`. `nsf web provider remove-key brave` deletes it. Tests never see the
 owner's key directory (`tests/conftest.py` points NSF_SEARCH_KEY_DIR elsewhere for every test but the live ones).
 

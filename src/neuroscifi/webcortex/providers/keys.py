@@ -27,6 +27,7 @@ import time
 
 KEYED = ("brave",)
 MAX_KEY_CHARS = 256
+UNREADABLE_QUERIES = 1_000_000          # a damaged ledger counts as a used-up day, never as an empty one
 _LOCK = threading.Lock()
 
 
@@ -67,11 +68,18 @@ def normalise_key(text) -> str:
 
 
 def _check(path: Path) -> os.stat_result:
-    """lstat of a usable key file, else KeyProblem (missing, or insecure: what is wrong and how to fix it)."""
+    """lstat of a usable key file, else KeyProblem (missing, or insecure: what is wrong and how to fix it). The
+    directory must be ours and closed to writes by group and others (nobody else can swap the file)."""
     try:
         info = os.lstat(path)
-    except FileNotFoundError:
+        folder = os.stat(path.parent)
+    except (FileNotFoundError, NotADirectoryError):
         raise KeyProblem("key_missing", f"no key file {path}") from None
+    except OSError as exc:
+        raise KeyProblem("key_insecure", f"cannot inspect {path}: {exc.strerror or type(exc).__name__}") from None
+    if folder.st_uid != os.getuid() or stat.S_IMODE(folder.st_mode) & 0o022:
+        raise KeyProblem("key_insecure", f"{path.parent} must be owned by this user and not writable by group or "
+                                         f"others (chmod 700 {path.parent})")
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
         raise KeyProblem("key_insecure", f"{path} is not a regular file (a symlink is refused)")
     if info.st_uid != os.getuid():
@@ -84,8 +92,13 @@ def _check(path: Path) -> os.stat_result:
 
 
 def key_state(name: str) -> dict:
-    """{'key': 'configured' | 'missing' | 'insecure', 'key_file': path, 'problem': text or None}. Never the key."""
-    path = key_path(name)
+    """{'key': 'configured' | 'missing' | 'insecure', 'key_file': path, 'problem': text or None}. Never the key.
+    Never raises for a key that is merely absent or unreadable (no home directory included): search must not stop
+    for a provider the owner does not use."""
+    try:
+        path = key_path(name)
+    except RuntimeError:                     # no home directory to resolve ~/.config from
+        return {"key": "missing", "key_file": None, "problem": None}
     try:
         _check(path)
     except KeyProblem as exc:
@@ -97,11 +110,15 @@ def key_state(name: str) -> dict:
 def read_key(name: str) -> str:
     """The key, read now (no copy is kept). KeyProblem when missing, insecure or malformed."""
     path = key_path(name)
-    _check(path)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    checked = _check(path)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)   # a swapped-in FIFO cannot block us
+    except OSError as exc:
+        raise KeyProblem("key_insecure", f"cannot open {path}: {exc.strerror or type(exc).__name__}") from None
     with os.fdopen(fd, "r", encoding="ascii", errors="replace") as fh:
         info = os.fstat(fh.fileno())
-        if stat.S_IMODE(info.st_mode) & 0o077 or info.st_uid != os.getuid():
+        if (info.st_dev, info.st_ino) != (checked.st_dev, checked.st_ino) or not stat.S_ISREG(info.st_mode) \
+                or stat.S_IMODE(info.st_mode) & 0o077 or info.st_uid != os.getuid():
             raise KeyProblem("key_insecure", f"{path} changed while it was opened")
         text = fh.read(MAX_KEY_CHARS + 64)
     return normalise_key(text)
@@ -181,12 +198,14 @@ class Ledger:
                 raw = b""
                 while chunk := os.read(fd, 65536):
                     raw += chunk
+                today = day_of(self._clock())
                 try:
                     data = json.loads(raw.decode("utf-8")) if raw else {}
                 except ValueError:
-                    data = {}
-                data = data if isinstance(data, dict) else {}
-                today = day_of(self._clock())
+                    data = None
+                if not isinstance(data, dict):     # damaged (crash mid-write): fail closed, today's cap is used
+                    data = {"day": today, "queries": UNREADABLE_QUERIES,
+                            "last_error": "usage ledger was unreadable; today's cap is treated as used"}
                 if data.get("day") != today:
                     data["day"], data["queries"] = today, 0
                 yield data
@@ -194,6 +213,7 @@ class Ledger:
                 os.lseek(fd, 0, os.SEEK_SET)
                 os.ftruncate(fd, 0)
                 os.write(fd, out)
+                os.fsync(fd)
             finally:
                 os.close(fd)
 
@@ -214,8 +234,8 @@ class Ledger:
             return used + 1
 
     def refund(self) -> None:
-        """Return a reserved query the provider did not bill (no 200 answer). A crash before it over-counts, which
-        only errs towards the cap."""
+        """Return a reserved query the provider cannot have billed (refused before sending, or answered with an
+        error status). A crash before it over-counts, which only errs towards the cap."""
         with self._edit() as data:
             data["queries"] = max(0, int(data.get("queries") or 0) - 1)
 
@@ -235,8 +255,10 @@ class Ledger:
                 data["last_ok_at"] = now
             elif error:
                 data["last_error"], data["last_error_at"] = str(error)[:300], now
-            if limited_for is not None:
-                data["rate_limited_until"] = now + max(0.0, float(limited_for))
+            until = now + max(0.0, float(limited_for)) if limited_for is not None else None
+            current = data.get("rate_limited_until")
+            if until is not None and not (isinstance(current, (int, float)) and current >= until):
+                data["rate_limited_until"] = until        # the later block wins (a 429 never shortens a quota wait)
                 data["rate_limit_reason"] = str(reason or "rate limited")[:200]
             if remaining is not None:
                 data["remaining"] = remaining
