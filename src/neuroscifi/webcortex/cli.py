@@ -291,7 +291,8 @@ def _status(db, a, now):
     tasks = dict(db.execute("SELECT status, count(*) FROM web_tasks GROUP BY status").fetchall()) \
         if state.has_tables(db) else {}
     daemon = _daemon(db, path).status()
-    return {"enabled": cfg.enabled,
+    from .scheduler import worker_status
+    return {"enabled": cfg.enabled, "worker": worker_status(path),
             "switches": {"enabled": cfg.enabled, "autonomous": cfg.autonomous, "pocket_research": cfg.pocket_research,
                          "browser_rendering": cfg.browser_rendering, "news_rendering": cfg.news_rendering,
                          "search_browser_user_agent": cfg.search_browser_user_agent},

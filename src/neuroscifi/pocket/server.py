@@ -523,7 +523,9 @@ def research(server, token, route, data, raw=b"", headers=None):
             if route == "research_list":
                 if data:
                     raise ValueError()
-                return 200, {"tasks": [task_summary(t) for t in orchestrator.listing(db, family=digest, limit=50)]}
+                from ..webcortex.scheduler import worker_status   # R6 setup (h): say when no worker runs
+                return 200, {"tasks": [task_summary(t) for t in orchestrator.listing(db, family=digest, limit=50)],
+                             "worker_running": worker_status(server.instance_db)["running"]}
             if route in research_routes.ROUTES or route == "research_cancel":   # 0.7.0: evidence, continue, sessions
                 return research_routes.handle(server, db, digest, device, route, data, token_family=family,
                                               pocket_label=server.store.label(token))

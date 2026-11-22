@@ -34,8 +34,11 @@ web:finding:<monitor>:<task> within the web question budget.
 """
 from __future__ import annotations
 
+import json
+import os
 import re
 import sqlite3
+import threading
 import time
 
 from ..instance import store
@@ -550,6 +553,58 @@ def claim_next(db, holder, now, *, lease=None):
     return row[0], resume
 
 
+# R6 setup (h): without a running worker, Pocket and console questions stayed "Queued" with no word why. A running
+# work() loop beats every HEARTBEAT_EVERY s into `<db>.worker` (its lease-holder name and the time; no task, no
+# text), from a thread, so a long task does not silence it; it removes the file when it stops. worker_status()
+# says a worker runs when the beat is under HEARTBEAT_STALE s old and its process (on this host) is alive.
+HEARTBEAT_EVERY = 10.0
+HEARTBEAT_STALE = 45.0
+
+
+def heartbeat_path(db_path) -> str:
+    return f"{db_path}.worker"
+
+
+def _beat(db_path, holder):
+    path = heartbeat_path(db_path)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            json.dump({"holder": holder, "at": time.time()}, fh)
+        os.replace(tmp, path)
+    except OSError:
+        pass                    # a status hint only: never stops the worker
+
+
+def _stop_beating(db_path, holder):
+    try:
+        with open(heartbeat_path(db_path)) as fh:
+            mine = json.load(fh).get("holder") == holder
+        if mine:                # another worker on the same database keeps its own beat
+            os.unlink(heartbeat_path(db_path))
+    except (OSError, ValueError, AttributeError):
+        pass
+
+
+def worker_status(db_path, now=None) -> dict:
+    """{"running": bool, "beat_at": time or None, "note": what to do when none runs}: whether a research worker
+    (`nsf web work`, the neuroscifi-webcortex service or `nsf console --web-worker`) serves this database now."""
+    from .services import holder_alive
+    now = time.time() if now is None else now
+    try:
+        with open(heartbeat_path(db_path)) as fh:
+            beat = json.load(fh)
+        at, holder = float(beat["at"]), str(beat["holder"])
+    except (OSError, ValueError, KeyError, TypeError):
+        at, holder = None, None
+    running = at is not None and now - at <= HEARTBEAT_STALE and holder_alive(holder) is not False
+    return {"running": running, "beat_at": at,
+            "note": None if running else "Your Spark has no research worker running: queued questions wait until "
+                                         "one starts (`nsf web work`, the neuroscifi-webcortex service, or `nsf "
+                                         "console --web-worker`)"}
+
+
 def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=time.time, fixture=None,
          providers=None, max_tasks=None, idle=True) -> dict:
     """Drain queued tasks with its own connection. once=True returns when nothing is runnable; otherwise polls
@@ -565,6 +620,14 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=ti
     from . import orchestrator, services as service_builder
     db = store.open_existing(db_path)
     done, svc, built_for, paused, deferred = [], None, None, None, None
+    holder, beating = service_builder.holder_id(), threading.Event()
+
+    def beat():
+        while not beating.is_set():
+            _beat(db_path, holder)
+            beating.wait(HEARTBEAT_EVERY)
+    beater = threading.Thread(target=beat, daemon=True, name="nsf-worker-heartbeat")
+    beater.start()
     try:
         while not (stop is not None and stop.is_set()):
             if max_tasks is not None and len(done) >= max_tasks:
@@ -620,6 +683,9 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=ti
                 out = {"id": task_id, "status": "skipped", "error": str(exc)}
             done.append({"task_id": task_id, "status": out["status"], "resumed": resume})
     finally:
+        beating.set()
+        beater.join(5)
+        _stop_beating(db_path, holder)
         if svc is not None:
             svc.close()
         db.close()

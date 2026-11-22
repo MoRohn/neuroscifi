@@ -347,11 +347,19 @@ def _web_status(c, p, q, b):
             "tasks": counts, "active": sum(n for s, n in counts.items() if s not in TERMINAL_STATES),
             "curiosity": [x for x in curiosity.rank(c.db, c.now, limit=5) if not x["excluded"]][:5]
             if cfg.enabled else None,
-            "worker": {"embedded": worker is not None, "running": bool(worker and worker.is_alive()),
-                       "note": None if worker is not None else
-                       "queued tasks run in the neuroscifi-webcortex service (`nsf web work`); start the console "
-                       "with --web-worker to run them here"},
+            "worker": _worker_view(c, worker),
             "modes": list(MODES), "memory": wstate.counts(c.db)}
+
+
+def _worker_view(c, worker) -> dict:
+    """The research worker: the console's own (--web-worker) or any other on this database (its heartbeat,
+    scheduler.worker_status); `alive` false says plainly that no worker runs (R6 setup h)."""
+    from ..webcortex import scheduler
+    beat = scheduler.worker_status(c.path)
+    embedded = bool(worker and worker.is_alive())
+    alive = embedded or beat["running"]
+    return {"embedded": worker is not None, "running": embedded, "alive": alive, "beat_at": beat["beat_at"],
+            "note": None if alive else beat["note"]}
 
 
 def _web_config_set(c, p, q, b):

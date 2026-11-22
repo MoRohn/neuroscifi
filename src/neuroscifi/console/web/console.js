@@ -1573,7 +1573,10 @@ function workerMissing(t) {
 }
 
 function queuedHint() {
-  return h('p', { class: 'msg error', id: 'queuedHint' }, ...rich('No research worker has picked this task up yet. Is the research service running? ' +
+  // R6 setup (h): the worker heartbeat (web status `worker.alive`) says plainly when none runs
+  const none = web.status?.worker?.alive === false;
+  return h('p', { class: 'msg error', id: 'queuedHint' }, ...rich((none ? 'Your Spark has no research worker running, so this task waits. '
+    : 'No research worker has picked this task up yet. Is the research service running? ') +
     'Start `neuroscifi-webcortex` (or run `nsf web work`), or restart the console with `--web-worker`.'));
 }
 

@@ -14,6 +14,8 @@ const STATUS={corroborated:"Corroborated",single_source:"Single source",conteste
 const VERDICT={supported:"Supported",disputed:"Disputed",contested:"Contested",insufficient:"Not enough evidence"};
 const MAX=300, MAX_BYTES=1024, MAX_SAVED_BYTES=64000, SUMMARIZE="Summarize: ";
 let research=false, paired=false, tasks=[], current=null, timer=0, generation=0, busy=false, dictation=null, savedSignature="";
+let workerRunning=null;   // research_list worker_running: false says plainly that no research worker runs (R6 setup h)
+const NO_WORKER="Your Spark has no research worker running";
 // R6 setup (f): the list itself is refreshed every LIST_MS while the page is visible, so a question asked on another
 // linked device appears without pressing anything; a hidden page checks nothing.
 const LIST_MS=10000;
@@ -108,7 +110,7 @@ const pct=c=>typeof c==="number"&&isFinite(c)&&c>=0&&c<=1?Math.round(c*100)+"% c
 const day=ts=>typeof ts==="number"&&isFinite(ts)?new Date(ts*1000).toLocaleDateString([], {year:"numeric",month:"short",day:"numeric"}):null;
 function stageText(t){
   if(t.cancel_requested&&active(t))return "Cancelling…";
-  if(t.status==="queued")return "Queued · waiting for your Spark's research worker";
+  if(t.status==="queued")return workerRunning===false?"Queued · "+NO_WORKER:"Queued · waiting for your Spark's research worker";
   const i=STAGES.indexOf(t.status), s=t.spent||{};
   // incremental progress: what the Spark has spent on it so far (0.7.0 research_get.spent)
   const spent=typeof s.searches==="number"&&(s.searches||s.pages)?" · "+s.searches+" searches, "+(s.pages||0)+" pages so far":"";
@@ -654,7 +656,10 @@ async function refresh(){
   if(!research||!paired)return;
   const g=generation;
   try{
-    const reply=await call("research_list",{});if(g!==generation)return;tasks=reply.tasks;drawList();schedule();scheduleList();
+    const reply=await call("research_list",{});if(g!==generation)return;tasks=reply.tasks;
+    workerRunning=typeof reply.worker_running==="boolean"?reply.worker_running:null;drawList();schedule();scheduleList();
+    $("researchworker").hidden=workerRunning!==false;
+    $("researchworker").textContent=workerRunning===false?NO_WORKER+": questions wait as Queued until your owner starts one on the Spark.":"";
     if(!nodeInfo||nodeInfo.error||nodeInfo.pending==="attested")loadNode();
     const left=away;away=null;
     const done=left?tasks.filter(t=>left.has(t.id)&&!active(t)):[];
@@ -730,7 +735,9 @@ $("researchform").onsubmit=async e=>{
   try{
     const {id}=await call("research_submit",data);if(g!==generation)return;
     $("objective").value="";sharing=false;layout();say("Queued on your Spark. Its research worker runs it; this page follows each stage.");
-    await refresh();if(g!==generation)return;await openTask(id);
+    await refresh();if(g!==generation)return;
+    if(workerRunning===false)say("Queued on your Spark, but "+NO_WORKER.charAt(0).toLowerCase()+NO_WORKER.slice(1)+": it waits until your owner starts one.");
+    await openTask(id);
   }catch(err){if(g===generation)fail(err);}
   finally{busy=false;buttons();}
 };

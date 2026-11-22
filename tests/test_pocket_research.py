@@ -6,6 +6,8 @@ linked tablet reads the report and can cancel, an unrelated pairing sees nothing
 from contextlib import closing
 from http.client import HTTPConnection
 import json
+from pathlib import Path
+import subprocess
 import threading
 import time
 
@@ -351,6 +353,42 @@ def test_family_cap_over_http(spark, devices):
     with spark.owner() as db:
         tag = bridge.family_tag(spark.server.store.family(a), db)
         assert len([p for p in spark.server.store.pairings(db) if p[1] == tag]) == 6
+
+
+def test_pocket_says_plainly_when_no_research_worker_runs(spark, devices, tmp_path):
+    """R6 setup (h): without a worker, Pocket questions stayed "Queued" with no reason. research_list says whether a
+    worker runs (its heartbeat, scheduler.worker_status); a stale beat or a dead process is no worker."""
+    from neuroscifi.webcortex import scheduler, services
+    a, _, _ = devices
+    submit(spark, a, QUESTION)
+    assert spark.req("research_list", {}, a)[1]["worker_running"] is False
+    scheduler._beat(str(spark.instance), services.holder_id())          # a worker of this process beats
+    assert spark.req("research_list", {}, a)[1]["worker_running"] is True
+    status = scheduler.worker_status(str(spark.instance), now=time.time() + scheduler.HEARTBEAT_STALE + 1)
+    assert status["running"] is False and status["note"].startswith("Your Spark has no research worker running")
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    scheduler._beat(str(spark.instance), f"{services.host_digest()}:{dead.pid}:1:0")
+    assert spark.req("research_list", {}, a)[1]["worker_running"] is False
+
+
+def test_a_running_worker_beats_and_removes_its_beat_when_it_stops(tmp_path, monkeypatch):
+    from neuroscifi.webcortex import scheduler
+    path = tmp_path / "individual.sqlite"
+    with closing(store.create(path, time.time())) as db:
+        state.set_config(db, {"enabled": True}, time.time())
+    stop = threading.Event()
+    worker = threading.Thread(target=scheduler.work, args=(str(path),), kwargs={"stop": stop, "poll": 0.05,
+                                                                              "idle": False}, daemon=True)
+    worker.start()
+    deadline = time.monotonic() + 10
+    while not scheduler.worker_status(str(path))["running"] and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert scheduler.worker_status(str(path))["running"] is True
+    assert json.loads(Path(scheduler.heartbeat_path(path)).read_text()).keys() == {"holder", "at"}
+    stop.set()
+    worker.join(10)
+    assert not Path(scheduler.heartbeat_path(path)).exists() and not scheduler.worker_status(str(path))["running"]
 
 
 def test_scenario_f_phone_queues_spark_runs_tablet_reads(spark, devices, web):

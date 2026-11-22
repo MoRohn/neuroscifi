@@ -169,7 +169,8 @@ def test_disabled_by_default_and_owner_switches(console):
     status = c.ok("GET", "/api/web/status")
     assert status["config"] == {**status["config"], "enabled": False, "autonomous": False, "pocket_research": False,
                                 "browser_rendering": False}
-    assert status["worker"] == {"embedded": True, "running": True, "note": None}
+    assert {k: status["worker"][k] for k in ("embedded", "running", "alive", "note")} == \
+        {"embedded": True, "running": True, "alive": True, "note": None}
     assert status["curiosity"] is None and status["tasks"] == {} and status["active"] == 0
     assert "deep_research" in status["modes"] and len(status["modes"]) == 9
     assert {p["name"] for p in status["providers"]} >= {"openwebsearch", "wikipedia"}
@@ -374,6 +375,11 @@ def test_web_worker_is_opt_in_and_shutdown_stops_the_worker(instance, web):
         status = c.ok("GET", "/api/web/status")["worker"]
         assert c.srv.worker is None and status["embedded"] is False and status["running"] is False
         assert "neuroscifi-webcortex" in status["note"] and "--web-worker" in status["note"]
+        # R6 setup (h): no worker anywhere says so plainly; another process's heartbeat counts as one
+        assert status["alive"] is False and status["note"].startswith("Your Spark has no research worker running")
+        from neuroscifi.webcortex import scheduler, services
+        scheduler._beat(str(instance), services.holder_id())
+        assert c.ok("GET", "/api/web/status")["worker"]["alive"] is True
     finally:
         stop_console(c)
 

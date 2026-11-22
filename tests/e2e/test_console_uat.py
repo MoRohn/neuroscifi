@@ -326,7 +326,8 @@ def test_queued_task_without_worker_says_so(uat, new_page):
     go(page, "research")
     open_report(page, objective)
     hint = page.locator("#queuedHint")
-    expect(hint).to_contain_text("No research worker has picked this task up yet")
+    # R6 setup (h): no worker heartbeat, so the console says plainly that none runs
+    expect(hint).to_contain_text("Your Spark has no research worker running, so this task waits.")
     expect(hint.locator("code", has_text="nsf web work")).to_be_visible()
     expect(page.locator("#taskList .stalled")).to_contain_text("no worker yet")
     # U-09/S-14: the same question again is the same task, said plainly

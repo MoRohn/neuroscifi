@@ -250,6 +250,23 @@ def test_a_linked_devices_question_appears_without_pressing_anything(spark, new_
     assert not phone.problems and not tablet.problems
 
 
+def test_pocket_says_when_the_spark_has_no_research_worker(spark, new_page):
+    """R6 setup (h): without a worker a question stayed "Queued" with no reason given."""
+    from neuroscifi.webcortex import scheduler, services
+    page = new_page()
+    page.goto(spark.url)
+    pair(page)
+    ask(page)
+    expect(page.locator("#researchmsg")).to_contain_text("your Spark has no research worker running")
+    expect(page.locator("#researchstage")).to_have_text("Queued · Your Spark has no research worker running")
+    expect(page.locator("#researchworker")).to_contain_text("Your Spark has no research worker running")
+    scheduler._beat(str(spark.instance), services.holder_id())          # a worker starts
+    page.get_by_role("button", name="Refresh questions").click()
+    expect(page.locator("#researchworker")).to_be_hidden()
+    expect(page.locator("#researchlist")).to_contain_text("Queued · waiting for your Spark's research worker")
+    assert not page.problems
+
+
 def test_dictation_fills_the_field_and_never_submits(spark, new_page):
     page = new_page()
     page.add_init_script("""(() => {
