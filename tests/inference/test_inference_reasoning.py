@@ -2299,8 +2299,8 @@ def test_r8_a_name_another_domain_writes_mid_sentence_is_a_name(weak, other):
 def test_r8_a_name_particle_joins_a_trusted_name():
     """"Van Rossum": the particle at a clause head is part of a name when the next word is a name under the oracle."""
     b = pooled(("insufficient", "Van Rossum first released Python in 1991.", 1, "a.example"),
-               ("supported", "Python 3.0 was released in 2008 by the Python Software Foundation, which Guido van Rossum "
-                             "created.", 2, "b.example"))
+               ("supported", "Python 3.0 was released in 2008 by the Python Software Foundation, which Guido "
+                             "van Rossum created.", 2, "b.example"))
     ok, bad = composed(b, ("Van Rossum first released Python in 1991.", ["C1"]))
     assert bad == [] and len(ok) == 1, bad
     b = pooled(("insufficient", "Van Skip released Python in 1991.", 1, "a.example"))      # "Skip": no name
