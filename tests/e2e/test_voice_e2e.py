@@ -24,6 +24,8 @@ import time
 import pytest
 from playwright.sync_api import expect
 
+from conftest import launch_chromium
+
 from neuroscifi.console.server import ConsoleServer
 from neuroscifi.instance import store
 from neuroscifi.voice import config as vconfig, engines as vengines
@@ -122,7 +124,7 @@ def launch(browser, tmp_path):
     opened = []
 
     def make(wav, console):
-        b = browser.browser_type.launch(executable_path=os.environ.get("NSF_CHROMIUM") or None, args=[
+        b = launch_chromium(browser.browser_type, [
             "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
             f"--use-file-for-fake-audio-capture={wav}", "--autoplay-policy=no-user-gesture-required"])
         opened.append(b)
@@ -387,7 +389,7 @@ def test_voice_pocket_https_capture_and_one_device_at_a_time(launch, browser, tm
     srv.instance_db = str(console.path)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     wav = fake_capture_wav(tmp_path / "phone.wav", [1.0, "Show me the evidence please.", 30.0])
-    b = browser.browser_type.launch(executable_path=os.environ.get("NSF_CHROMIUM") or None, args=[
+    b = launch_chromium(browser.browser_type, [
         "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--ignore-certificate-errors",
         f"--use-file-for-fake-audio-capture={wav}", "--autoplay-policy=no-user-gesture-required"])
     try:
@@ -474,7 +476,7 @@ def test_voice_asr_failure_turns_the_microphone_off(browser, tmp_path):
     wav = _tone_wav(tmp_path / "tone.wav", [1.5, ("tone", 1.2), 2.0] * 10)
     console = Console(tmp_path)
     console.server.voice_hub = hub = VoiceHub(console.path, engines_factory=_ScriptedEngines)
-    b = browser.browser_type.launch(executable_path=os.environ.get("NSF_CHROMIUM") or None, args=[
+    b = launch_chromium(browser.browser_type, [
         "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
         f"--use-file-for-fake-audio-capture={wav}"])
     try:
@@ -522,7 +524,7 @@ def test_voice_pocket_asks_and_the_owner_hands_over_the_microphone(browser, tmp_
     srv.instance_db = str(console.path)
     srv.voice_hub = VoiceHub(console.path, engines_factory=_ScriptedEngines)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    b = browser.browser_type.launch(executable_path=os.environ.get("NSF_CHROMIUM") or None, args=[
+    b = launch_chromium(browser.browser_type, [
         "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
         f"--use-file-for-fake-audio-capture={wav}"])
     try:

@@ -42,11 +42,22 @@ def bridge(tmp_path):
     b.close()
 
 
+def launch_chromium(browser_type, args):
+    """NSF_CHROMIUM (e.g. /usr/bin/chromium) if set, else Playwright's full bundled Chromium in new headless mode.
+
+    Not the default chromium-headless-shell: its browser process registers no binder for
+    media.mojom.OnDeviceSpeechRecognition, so the page's own SpeechRecognition.available() feature check gets the
+    renderer killed ("bad Mojo message ... reason 123"). Full Chromium of the same build answers "unavailable".
+    """
+    override = os.environ.get("NSF_CHROMIUM") or None
+    return browser_type.launch(executable_path=override, channel=None if override else "chromium", args=args)
+
+
 @pytest.fixture(scope="session")
 def browser():
-    override = os.environ.get("NSF_CHROMIUM") or None  # e.g. /usr/bin/chromium; default is Playwright's bundled build
+    override = os.environ.get("NSF_CHROMIUM") or None
     with sync_playwright() as pw:
-        b = pw.chromium.launch(executable_path=override, args=FAKE_MEDIA)
+        b = launch_chromium(pw.chromium, FAKE_MEDIA)
         print(f"\nchromium: {'NSF_CHROMIUM=' + override if override else pw.chromium.executable_path} {b.version}")
         yield b
         b.close()
