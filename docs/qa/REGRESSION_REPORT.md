@@ -95,8 +95,10 @@ under hardening, a public TLS chain, screen readers, concurrent heavy load, and 
 
 # 0.7.0
 
-**Code under test:** RC3 `0cd8d8b` and the final tree `HEAD` = `4c3f209` (RC3 plus two test-only commits, 9 fixes from
-fix lanes fixr4 and fixr5, and the fixes from the security review of the evidence guard). Version 0.7.0
+**Code under test:** RC3 `0cd8d8b`; the first acceptance pass `4c3f209` (RC3 plus two test-only commits, 9 fixes from
+fix lanes fixr4 and fixr5, and the fixes from the security review of the evidence guard), pushed with CI fixes as
+`94ccb09`; and the final tree `5f28e6b` (94 commits after the owner's decisions of 2026-11-22 to `594e244`, then the
+final guard round `dd02f16` and its documentation `5f28e6b`; not pushed). Version 0.7.0
 on `build/neuroscifi-v1`. Same host as above. The full 0.7.0 regression record, including build, migration and live
 evidence, is `FINAL_REGRESSION_REPORT.md`; this section holds the 0.6.0 to 0.7.0 comparison.
 
@@ -115,10 +117,14 @@ evidence, is `FINAL_REGRESSION_REPORT.md`; this section holds the 0.6.0 to 0.7.0
 | fixr4 (R5 ran here) | `1e8bf3b` | 2213 passed, 6 skipped | 167 passed, 1 skipped | integrator |
 | fixr5 | `090cb7d` | 2259 passed, 6 skipped | 167 passed, 1 skipped | integrator |
 | Guard review, round 1 fixes | `bca1ad9` | 2392 passed, 6 skipped | 167 passed, 1 skipped | integrator |
-| `HEAD` (final tree) | `4c3f209` | 2588 passed, 6 skipped, 0 failed (ruff clean) | 167 passed, 1 skipped, 0 failed | integrator |
+| First acceptance pass | `4c3f209` | 2588 passed, 6 skipped, 0 failed (ruff clean) | 167 passed, 1 skipped, 0 failed | integrator |
+| Pushed | `94ccb09` | GitHub Actions CI green | GitHub Actions CI green | CI |
+| Owner-decision work | `594e244` | 3267 passed | 184 passed, 1 skipped | integrator |
+| Final tree | `5f28e6b` | 3303 passed, 18 skipped (live-service tests), 0 failed | 184 passed, 1 skipped (opt-in degraded-voice test), 0 failed | integrator |
 
 Every gate above had 0 failures except RC2's G-01; every e2e run had 0 failures except RC3's R2-01-flake. From 0.6.0 to
-the final tree the gate grew by 1031 tests (1557 to 2588) and the e2e suite from 107 to 167. The 6
+the first acceptance pass the gate grew by 1031 tests (1557 to 2588) and the e2e suite from 107 to 167; to the final tree
+by 1746 (to 3303) and to 184. The final tree's 18 skipped tests are opt-in live-service tests. The 6
 skipped gate tests are the opt-in live-internet tests (`NSF_LIVE=1`), as in 0.6.0.
 
 ## 2. Offline benchmark: 0.6.0 against 0.7.0
@@ -168,12 +174,22 @@ Notes on the comparison:
   documented with before and after metrics in `docs/knowledge/CLAIM_VERIFICATION.md` §11 and recorded as decision in
   `RELEASE_DECISIONS.md` §5.
 - **Knowledge rows.** RC2 wrote 10 knowledge rows; RC3 writes 8, because two on-subject items are now held as
-  off-question. This is recorded as a precision/recall trade-off awaiting the owner's agreement (`RELEASE_DECISIONS.md` §5).
+  off-question. The owner then decided to fix it (OD-4): 8 → 9 → 7, below (`RELEASE_DECISIONS.md` §5 DD-13).
 - **Environment block.** `environment.packages.neuroscifi` reads `0.5.0` in both files. That is the installed
   distribution metadata in the virtual environment, not the source version (`pyproject.toml` says 0.7.0).
   `git_dirty: true` in the 0.7.0 file reflects uncommitted documentation.
 - **Final tree.** The fix lane found all 393 metric keys on `090cb7d` identical to the `373104e` regeneration; the
   integrator's regeneration on `4c3f209` has the same headline metrics.
+
+**After the owner's decisions (2026-11-22).** The bench's knowledge rows changed twice, both recorded in the commit
+messages with nothing else moving: `26e16a0` restored the on-subject definition row (8 → 9, provisional 8 → 9); `d88758a`
+keeps knowledge from set-aside sources out of consolidation (9 → 7: the Brisa and Tessaly rows came from sources the
+answer had set aside as another entity; memory recall@3 and MRR stay 1.0). Bench on the final tree `5f28e6b`:
+regenerated into `webcortex_bench_v070.json`, identical across 3 runs, every headline metric as in the table above except
+knowledge rows 7 (retrieval 12/12, coverage 21/24, top answer 9/12, citation precision 193/194 with 189/190 items fully
+supported, legacy citation support 190/190, freshness 8/8, verdict accuracy and verification states 29/29, contradiction
+end-to-end precision/recall 1.0/0.8571, memory recall@3 and MRR 1.0/1.0, fact-check discrimination 2/2, latest version
+2/2, top answer on-subject 14/14, 0 cross-subject merges, safety invariants hold).
 
 ## 3. Regressions found and fixed in the 0.7.0 cycle
 
@@ -187,7 +203,11 @@ Notes on the comparison:
 | T3-03 | `test_voice_wer_and_mic_off_stops_capture` failed once in 3 RC1 runs (fixed 60 s wait under shared load) | T3 | `d315fb7` bounded wait | PASS (R3) |
 | T3-04 | The committed 0.7.0 bench file did not match a fresh run (RC1: 28/29 against 29/29; RC2: 8/12 top answers against 9/12) | T3, R3 | regenerated on `373104e` and on the final tree `4c3f209` | Regenerated on `4c3f209` |
 | T3-05 | The e2e suite rewrote a tracked document; the README badge lagged the gate count | T3, R3 | `d315fb7`; README count from the final gate | Perf part PASS (R3); README says 2588 (Fixed) |
-| Knowledge rows | Offline bench knowledge rows 10 (RC2) to 8 (RC3) | integrator | none; accepted trade-off pending owner agreement | Open (owner decision) |
+| Knowledge rows | Offline bench knowledge rows 10 (RC2) to 8 (RC3) | integrator | `26e16a0` (8 → 9), then `d88758a` (9 → 7 by design) | Resolved (owner decision OD-4: fix) |
+| Guard round 4 | "No-one has exploited …" lost its negation: `5bfbaac` read "no-one" as one non-negating word, so "Someone has exploited …" passed; `compose()` stripped "No-" | Review round 5 (C2) | `549179c` | Fixed; round 6 confirmed closed |
+| Push after signing | Pocket refused the unsigned push status reply after `be2d234`, so push never turned on (5 of 6 push e2e tests failed) | Security review of signing and push (B-0) | `56b62da`, `e2a3378` | Fixed; push live with real FCM, R6 PASS |
+| CI on GitHub runners | The pushed tree failed CI: missing Web Cortex extras, Chromium's sandbox on Ubuntu 24.04, the snap shim, the extraction bound on slower runners, chromium-headless-shell killing Pocket's renderer, an autonomy fixture crossing UTC midnight | GitHub Actions | `779f78b`, `13ee248`, `b9cc716`, `65e1602`, `2fca7da`, `94ccb09` | Fixed; CI green on `94ccb09` |
+| Guard answer retention | Each stricter guard round cost faithful sentences: replay survival 97 % (round 5) → 94 % (6) → 79 % (7) → 72 % (8) → 90 % (9, negative name oracle) → 88 % (final round F1–F5) | `COGNITIVE_INFERENCE.md` §6 measurements | `9477b3f` recovered sentence-initial names | Measured; the guard fails closed by design |
 
 Intentional behaviour changes from 0.6.0 (not regressions): `nsf llm ask --tools` is refused unless the owner switched tools on (`nsf llm config --tools`, default off); a remark that is
 neither a question nor an explicit request no longer starts web research, and each principal starts at most 8 tasks

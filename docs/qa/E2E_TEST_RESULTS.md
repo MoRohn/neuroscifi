@@ -96,9 +96,11 @@ See `REGRESSION_REPORT.md` §4 (A, B, C, D, E at `abcd303`; F by automated end-t
 # 0.7.0
 
 Executed test cases for the 0.7.0 release candidates. **RC1 = `7c64b64`** (discovery, §2), **RC2 = `281e18b`**
-(independent retests R1 to R3, §7), **RC3 = `0cd8d8b`** (fixes for what R1 and R2 found, §8), `HEAD` = `4c3f209` (final tree: RC3, two test-only commits, 9 fixes from fix lanes fixr4 and fixr5 to `090cb7d`, and 11 commits from the security review of the evidence guard). R4
-retested the RC3 fixes live (§8.1); R5 retested the fixr4 fixes (§8.2). The final gate on `HEAD` passed (§8). The guard
-security review is in §8.3. Status words:
+(independent retests R1 to R3, §7), **RC3 = `0cd8d8b`** (fixes for what R1 and R2 found, §8), first acceptance pass = `4c3f209` (RC3, two test-only commits, 9 fixes from fix lanes fixr4 and fixr5 to `090cb7d`, and
+11 commits from the security review of the evidence guard), pushed with CI fixes as `94ccb09`. R4 retested the RC3 fixes
+live (§8.1); R5 retested the fixr4 fixes (§8.2); the first pass's gate passed (§8); the first guard review is §8.3.
+**After the owner's decisions of 2026-11-22** (§9): the local `HEAD` `5f28e6b` (the owner-decision work to `594e244`, then
+the final guard round), the independent live retest R6, the lane evidence, and the final run on `5f28e6b` (§9.3). Status words:
 PASS, FAIL, BLOCKED, NOT TESTED, UNVERIFIED. Where a tester wrote PARTIAL, this section records FAIL or PASS with the
 defects named.
 
@@ -266,13 +268,13 @@ Other T3 findings: T3-02 (no `nsf --version`), T3-05 (e2e rewrites a tracked fil
 
 | Item | Status | Reason |
 |---|---|---|
-| Real microphone and speaker; real phone or tablet; mobile browsers | BLOCKED | No devices. All voice and Presence audio (RC1 and RC2) is fake-device |
-| PersonaPlex real-time duplex speech | BLOCKED | Not real-time upstream on this host (`DEFECT_RESOLUTION_LOG.md` O-02) |
-| $1 spend cap, tight caps with several workers, days-long autonomy | NOT TESTED | Zero prices; R3 ran 3 workers without reaching a tight cap; no soak |
+| Real microphone and speaker; real phone or tablet; mobile browsers | BLOCKED (owner-side) | No devices. Voice is validated on recorded human speech (§9.2); the owner's Voice check and the guided phone test are built |
+| PersonaPlex real-time duplex speech | BLOCKED; owner decision: leave as it is | Not real-time upstream on this host (`DEFECT_RESOLUTION_LOG.md` O-02) |
+| $1 spend cap, tight caps with several workers, days-long wall-clock autonomy | NOT TESTED / owner-side | Zero prices; R3 ran 3 workers without reaching a tight cap; a 7-day accelerated soak and the first wall-clock day ran (§9.2) |
 | T5-05 Pocket voice-on path, T5-M06 breaker state, T5-07 multi-worker search charging | UNVERIFIED (R3) | Pocket bridge had voice off; breaker state not read; the fake SearXNG expired mid-run |
-| Remote inference endpoint | NOT TESTED | None configured |
-| Real screen reader, 200 % zoom | NOT TESTED | Unchanged from 0.6.0 (forced colours was exercised by T4) |
-| Notifications while Pocket is closed; public TLS chain; systemd under namespace hardening | BLOCKED / NOT TESTED | Unchanged from 0.6.0 |
+| Real external inference provider | Owner-side | The remote path ran live against the local vLLM as a stand-in (`COGNITIVE_INFERENCE.md` §7) |
+| Real screen reader used by a person, 200 % zoom | NOT TESTED (owner-side) | The e2e suite checks the accessibility tree of the console and Pocket flows (`3a4cb14`) |
+| Notifications while Pocket is closed on a real phone; root-only systemd hardening; Brave live | Owner-side | Push ran live through real FCM in headless Chromium; units ran as transient user units; Brave has no key on the host (§9.2) |
 | Pocket hand-off and continue as an enrolled node | NOT TESTED by T4 | Covered by the repository e2e suite only |
 
 ## 5. Environment observations that are not product defects
@@ -417,7 +419,7 @@ Chromium. Report: UAT evidence (not in repo) `retest/r5/REPORT.md`; evidence `re
 | R2-05 (`f41879e`) | PASS: e-mail and obfuscated e-mail give 0 `research_submit` POSTs and "Nothing was sent ..." with `aria-invalid`; a phone number is refused by the Spark; a clean question is queued | `p_r205.json` |
 | O-09 User-Agent (`4aae409`) | PASS: httpbin echoes "NeuroSciFi-WebCortex/0.7 (research agent; honours robots.txt)" | `ua_full.txt` |
 | Python first release (regression) | PASS: "first released Python in 1991 as Python 0.9.0", citing the Wikipedia article on the programming language. A 7-day freshness requirement was applied (D-R5-4) | `reg_python.json` |
-| Rust first release (T1-07) | Not fixed by fixr4; open High | |
+| Rust first release (T1-07) | Not fixed by fixr4; open High at the time (fixed after the owner's decision, R6 PASS: §9.1) | |
 
 fixr5 (`f510512`, `224a843`, `090cb7d`) was checked by the fix lane only (evidence not in repo: `fixr5_live/`): the
 labelled "NeuroSciFi note" appeared in 6 of 6 numpy secure and recommended runs; caveats were accepted in some runs;
@@ -435,7 +437,70 @@ integrator.
 |---|---|---|
 | 1 | fixr5 (`f510512`, `224a843`) | 6 findings: SEC-G-F1 Critical, F2 and F3 High, F4 and F5 Medium, F6 Low |
 | 2 | `bca1ad9` (after the F1 to F6 fixes) | 4 findings: SEC-G-N1 and N2 High, N3 Medium, N4 Low |
-| 3 | final guard (`128c339`, `c317ea9`, `4c3f209`) | 0 of 73 original and 0 of 65 round-2 sentences pass; about 50 new grammar attacks found no bypass. Verdict ACCEPT-with-documented-limits. Open: SEC-G-E1 (no entailment check for supported-cited sentences, pre-existing, High for the release decision), SEC-G-R1 (Low); SEC-G-R2 (Low) accepted |
+| 3 | final guard (`128c339`, `c317ea9`, `4c3f209`) | 0 of 73 original and 0 of 65 round-2 sentences pass; about 50 new grammar attacks found no bypass. Verdict ACCEPT-with-documented-limits. Open: SEC-G-E1 (no entailment check for supported-cited sentences, pre-existing, High for the release decision), SEC-G-R1 (Low); SEC-G-R2 (Low) accepted (SEC-G-E1 was fixed after the owner's decision: §9.2) |
 
 Fix-lane live run of the rebuilt guard: the rules note appeared in 2 of 2 runs, and sentences were kept or rejected as
 designed. No independent live retest of the rebuilt guard was done.
+
+## 9. After the owner's decisions (2026-11-22)
+
+The owner decided to fix T1-07, SEC-G-E1, news rendering and the bench knowledge rows, to leave PersonaPlex as it is, and
+to resolve the README limitations (Brave keyed search, public speech corpora plus a guided device test, empty-payload
+Web Push, node signing without federation). 94 commits followed on the local branch, `94ccb09..594e244`, then the final guard round (`dd02f16`, `5f28e6b`)
+(`DEFECT_RESOLUTION_LOG.md`, grouped by lane).
+
+### 9.1 R6: independent live retest at `a9f5e37`
+
+Run for real on this host: three scratch instances, system Chromium 153 driven by Playwright, real FCM for push; the
+shared SearXNG, vLLM, ASR and TTS were not touched. Report: UAT evidence (not in repo) `retest/r6/REPORT.md`; evidence
+folders E1 to E11 under `retest/r6/`.
+
+| Item | Result | Observations |
+|---|---|---|
+| 1 Multi-device Pocket | PASS | `nsf pocket tls init` and `export-ca`; Chromium trusted the chain (TLS 1.3, issuer "NeuroSciFi Pocket CA") and refused it untrusted (`ERR_CERT_AUTHORITY_INVALID`). The phone paired with the terminal code, the tablet with the phone's link code into one family. The tablet followed the phone's question from Queued to Completed in 24 s and continued a cancelled one. A stranger family paired after a bridge restart saw an empty list and 404 on all three family tasks |
+| 2 Node enrolment and signing | PASS | Fingerprints matched on device and console; the owner enrolled. With the tablet owning the session, the phone's Cancel and its typed voice command "cancel the research" were refused; a node's own voice command got "signed requests only". Hand-off tablet to phone, release, revoke from the console and from `nsf web node revoke` all worked |
+| 3 Web Push | PASS | VAPID key created as a new 0600 file; the subscription went to a Google push endpoint (real FCM). The test push and a push 13 s after a question submitted with Pocket closed were received and shown; after opt-out `push_subs` was empty and no push arrived over 70 s |
+| 4 Word sense | PASS | "When was Rust first released?" twice: the language, "Rust 1.0 … May 2015", with the rules note naming the video game. The game when named: December 2013 (Early Access), February 2018. Python: February 1991. No knowledge candidate from game pages for the language questions |
+| 5 News | PASS | Freshness met on every run (AI twice: class `breaking`, 7-day window, newest source 5 h; NVIDIA: `volatile`, 2 days, 7 h); one render per news query; `--no-news-render` left the count unchanged with no rendering. Answers leaned on finance; one run quoted an undated 2022 thread (labelled `temporally_unresolved`) |
+| 6 Answers and guard | FAIL (minor) | All answers model-written, none with an instruction; rules notes present where expected. Hand check: numpy secure 4 of 4 and recommended 3 of 3 faithful, Jupiter 1 of 1; neurons 1 of 5 kept sentences not faithful (D5); the claim check was `insufficient` (D6) |
+| 7 Brave key UX | FAIL | A 0644 `--from-file` source was accepted (D1). A 0600 file was accepted, the key never appeared in output, a stored key made 0644 was refused, cap 0 and `remove-key` worked; Brave was never contacted |
+| 8 Idle unloading | PASS in part; unload NOT TESTED | Configuration, refusals of bad values and `tick` (disabled) correct; no shared service could be proven idle, so none was unloaded |
+| 9 Forget and checkpoints | PASS | `forget research` rewrote both archives (`checkpoints_rewritten`, sizes down), both still verify, and the forgotten objective, URL, claim and source rows are absent from the decoded archives; the task id survived only in `autonomy_ledger` (D11) |
+| 10 Voice check | PASS (one intermittent issue) | Fake-device WAV: mic, read (5 of 5, average WER 2 %), speaker and interrupt passed; silence and echo failed as expected with a looping input; "Microphone off" failed 1 of 5 runs with a contradictory message (D3). `nsf voice selftest --fake-input --yes` ran all 7 steps |
+| 11 `nsf doctor` | PASS | tmpfs `/tmp` reported memory-backed; zram swap ok; `--path` showed dm-crypt LUKS2 for the model directory |
+
+Defects D1 to D11, eight setup rough edges and three minor observations were fixed by 21 polish commits with tests
+(`DEFECT_RESOLUTION_LOG.md`, R6 table). They were not retested live by an independent tester.
+
+### 9.2 Lane evidence (developer runs, not independent)
+
+| Area | What ran | Result | Evidence |
+|---|---|---|---|
+| Evidence guard (SEC-G-E1) | Entailment coverage and review rounds 4 to 8 (independent reviewer, harnesses `adv4.py` to `adv11.py` re-run each round; adv11 re-run by the integrator after `dd02f16`) | Rounds 4 to 7 BLOCK, 17 findings, each fixed; round 8: F1 to F5 fixed in `dd02f16`. Integrator re-run on main: adv11 4 accepted (2 documented limits, 2 controls), adv4 0 of 47, adv8 0, adv9 3 (documented -s heads, a control), adv10 2 controls, adv7 7 (faithful or documented). Aligned 44-answer replay: template fallback 8 of 44 (all empty model answers), survival 88 %, 0 unfaithful in hand checks. Verdict ACCEPT-with-documented-limits (round-8 condition met: F1–F5 in dd02f16; adv11 re-run by the integrator) | `COGNITIVE_INFERENCE.md` §6; reviews (not in repo) |
+| Prompt alignment | 11 questions asked twice, live, the earlier request against the aligned one | Template fallback 8 of 22 → 3 of 22, all 3 empty answers (round-3 check); survival 26 % → 96 % | `COGNITIVE_INFERENCE.md` §6 |
+| Keyed search (Brave) | Offline tests against a fake Brave; key-file and ledger rules | Built and tested offline; live NOT TESTED (no key) | `SEARCH_PROVIDER_STRATEGY.md` §6; `tests/webcortex/test_brave.py` |
+| News rendering | 4 live questions with defaults | 4 of 4 met freshness | `news_render_live_v2.json`; ADR-041 |
+| Web Push | Headless Chromium 153 with a persistent profile, real FCM | Test push, finished question and push after the tab closed: 201 and shown | `push_live.json`; ADR-040 |
+| Node signing | Unit, JS and e2e tests; security review (A-1 to A-6, B-0, B-1 fixed) | Regression test per finding | ADR-042; `SECREVIEW_SIGNPUSH.md` (not in repo) |
+| Voice on recorded speech | Public corpora (LibriSpeech, OpenSLR 83, EdAcc, DEMAND, MUSAN, RIRS_NOISES, Speech Commands) through the product's ASR client, VAD and grammar | WER 2.1 % clean read to 18.6 % accented conversational; VAD word detection 60 % → 87 %, false barge-ins in loud noise 0.5 → 2.25 and 3.75/min; command grammar 21 % → 66 % held-out | `VOICE_VALIDATION.md`; `voice_real_speech.json` |
+| Hardening | Units run as transient user units; `hardening_probe.py`; `systemd-analyze security --offline` | Sandbox enforced in user mode; docker wrapper exposure 9.0–9.2 → 1.6–1.9; `IPAddressDeny=` and other system-manager directives owner-side | `HARDENING_VERIFICATION.md` |
+| Encrypted storage | `nsf doctor` with `--path`; `lsblk` chain | Instance, checkpoints, models, keys and docker data on LUKS2; swap zram; `/tmp` tmpfs | `HARDENING_VERIFICATION.md` §6 |
+| Trusted TLS chain | `nsf pocket tls init/export-ca/status` | Private CA with name constraints; R6 trusted it in Chromium | `TLS.md` |
+| Autonomy soak | 7 simulated days on the real scheduler; the wall-clock `nsf-soak` session | All six checks passed; 20 of 20 searches every simulated day; wall clock: 20 of 20 on its first day | `RESEARCH_POLICY.md` §9 |
+| Wall-clock soak snapshot | The `nsf-soak` units under the services' sandbox, frozen code at `94ccb09`, live SearXNG | wall-clock soak (`soak_wallclock_v070.json`): about 4 h from 01:23 to 05:18 UTC on 2026-11-22, 0 restarts, RSS 138–141 MB, exactly 20 of 20 autonomous searches that UTC day, then one "refused" decision every 5 min (about 12 an hour); budget, leases, ledger and decisions checks ok | `soak_wallclock_v070.json` |
+| Remote inference provider | Live contract gated on `NSF_LIVE_REMOTE=1`, run against the local vLLM as a stand-in | 8 passed, 1 skipped (the CLI test needs a really remote address); a real external provider is owner-side | `COGNITIVE_INFERENCE.md` §7 |
+| Idle unloading | A throwaway container (`nsf-test-idle-*`) | Unloaded after its 1 min timeout and reloaded on the next request (0.6 s) | `RESOURCE_SCHEDULING.md` |
+| Accessibility tree | e2e checks of the console and Pocket flows | Empty live regions kept in the tree | `3a4cb14` |
+
+### 9.3 CI and the final run
+
+GitHub Actions CI was green on the pushed `94ccb09` after six fixes (Web Cortex extras, Chromium's sandbox on Ubuntu
+24.04, Playwright's Chromium instead of the snap shim, the extraction bound on slower runners, full Chromium in e2e, the
+autonomy fixtures across a UTC midnight).
+
+| Run | Commit | Result |
+|---|---|---|
+| Lint and gate (`bash scripts/check.sh`) | `5f28e6b` | ALL CHECKS PASSED: 3303 passed, 18 skipped (live-service tests), 0 failed |
+| e2e (`NSF_CHROMIUM=/usr/bin/chromium .venv/bin/python -m pytest -q tests/e2e`) | `5f28e6b` | 184 passed, 1 skipped (opt-in degraded-voice test), 0 failed |
+| Offline bench (`nsf web bench --repeat 3`) | `5f28e6b` | Identical across 3 runs: retrieval 12/12, coverage 21/24, top answer 9/12, citation precision 193/194 (189/190 items fully supported), legacy citation support 190/190, freshness 8/8, verdict accuracy 29/29, verification states 29/29, contradiction end-to-end P/R 1.0/0.8571, memory recall@3/MRR 1.0/1.0, fact-check discrimination 2/2, latest version 2/2, top answer on-subject 14/14, 0 cross-subject merges, safety invariants hold |
+| Integrated run before the final guard round | `594e244` | gate 3267 passed; e2e 184 passed, 1 skipped |

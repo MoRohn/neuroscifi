@@ -74,86 +74,103 @@ integrator's bounded runs rather than an independent journey (`E2E_TEST_RESULTS.
 
 # 0.7.0
 
-**Release candidate:** RC3 `0cd8d8b`, version 0.7.0 (SearXNG discovery, evidence-sensitive verification, local
-reasoning model, knowledge evolution, controlled autonomy, voice through the Cognitive Voice Bridge, Presence Cortex);
-final tree `HEAD` `4c3f209` (RC3 plus test-only commits, the fixr4 and fixr5 fixes and the guard security-review fixes). **Assessed by:** the integrating lead, from independent testers' results (RC1
-T1 to T5, RC2 R1 to R3, R4 on `373104e`, R5 on `1e8bf3b`) and the integrator's own gate runs. No single agent certified readiness. The criterion-by-
-criterion judgement is `V0.7.0_RELEASE_ACCEPTANCE.md`.
+**Release candidate:** version 0.7.0 (SearXNG discovery and an optional keyed search provider, evidence-sensitive
+verification, local reasoning model under an evidence guard, knowledge evolution, controlled autonomy, voice through
+the Cognitive Voice Bridge, Presence Cortex, Pocket with signed nodes and Web Push). The first acceptance pass ended at
+`4c3f209` and was pushed with CI fixes as `94ccb09`; the final tree is the local `HEAD` `5f28e6b` (94 commits after the
+owner's decisions of 2026-11-22 to `594e244`, then the final guard round `dd02f16` and its documentation; not pushed). **Assessed by:** the integrating lead, from independent testers' results
+(RC1 T1 to T5, RC2 R1 to R3, R4 on `373104e`, R5 on `1e8bf3b`, R6 on `a9f5e37`), independent reviews (architecture,
+security, the evidence guard in rounds 1 to 8, signed nodes and push) and the integrator's own gate runs. No single
+agent certified readiness. The criterion-by-criterion judgement is `V0.7.0_RELEASE_ACCEPTANCE.md`.
 
 ## Verdict
 
-**Not production-ready. Release status: release candidate; not accepted. Open High: T1-07 (ambiguous-subject sense) and SEC-G-E1 (no entailment check for supported-cited sentences, pre-existing); owner decisions OD-5, OD-6.**
+**Release status: Release candidate, ready for owner acceptance with listed limitations. Not production-ready: owner-side verification remains (real phones and handsets including the Voice check, CA install on phones, push on a real phone, root-only systemd hardening checks, Brave live with the owner's key, a real external inference provider, screen readers with people), plus the open owner decisions OD-7 to OD-11.**
 
-- Open High: T1-07, "When was Rust first released?" answered about the video game (no word-sense handling). Design
-  proposed in `RELEASE_DECISIONS.md` §7; owner decision required.
-- Open High (security, pre-existing since ADR-036): SEC-G-E1, a sentence citing any supported claim is not checked for
-  entailment; exploiting it needs a prompt-injected or misbehaving model. Owner decision OD-6.
-- The caveat guard was rebuilt as a closed grammar after an independent adversarial security review (10 findings fixed,
-  round-3 re-review ACCEPT-with-documented-limits); it was run live by the fix lane only.
-- Final gate on `HEAD` `4c3f209`: 2588 passed, 6 skipped (the `NSF_LIVE=1` live-internet tests), 0 failed, 35 subtests (345 s); e2e 167 passed, 1 skipped, 0 failed (790 s); bench regenerated (3 identical runs).
+The evidence supports "ready for owner acceptance with listed limitations" for an owner-operated deployment on the
+DGX Spark, and no stronger statement:
 
-The release is fit to be put before the owner for a decision with these items and the limitations in §3 and §4. It is not
-verified for real microphones, speakers or handsets, for PersonaPlex as a real-time voice, or for unattended days-long
-autonomous research.
+- the evidence guard's final review: ACCEPT-with-documented-limits (round-8 condition met: F1–F5 in dd02f16; adv11 re-run by the integrator);
+- the final run on `5f28e6b`: `bash scripts/check.sh` 3303 passed, 18 skipped (live-service tests), 0 failed; e2e 184 passed, 1 skipped (opt-in degraded-voice test), 0 failed; offline bench identical across 3 runs.
+
+It does not support a production claim while these remain owner-side (BLOCKED here):
+
+- real phones and handsets: Pocket, Web Push (live only through real FCM in headless Chromium) and voice;
+- real microphones and speakers (voice is validated on recorded human speech; the owner's Voice check is built);
+- root-only hardening directives (`IPAddressDeny=`/`IPAddressAllow=`, `ProtectProc=`, `User=`, `DynamicUser=`);
+- Brave Search live with the owner's key;
+- a real external inference provider (the remote path ran live against the local vLLM as a stand-in);
+- screen readers used by people (the e2e suite checks the accessibility tree);
+- days-long wall-clock autonomy (about 4 h of wall-clock soak within the cap, `soak_wallclock_v070.json`, and a 7-day
+  accelerated soak ran).
+
+The two High items of the first pass are fixed: T1-07 (word sense; independent live retest R6 PASS) and SEC-G-E1
+(entailment coverage; review rounds 4 to 8 answered; final review ACCEPT-with-documented-limits).
 
 ## 1. Mandatory acceptance criteria (directive §9, as applied in 0.6.0)
 
 | Criterion | Status | Evidence |
 |---|---|---|
-| All critical user journeys pass real end-to-end execution | **PASS, most with limitations; the Rust first-release question (T1-07) FAILS** | `USER_JOURNEY_MATRIX.md` (0.7.0); R1, R2, R3 retests |
-| Every applicable major feature has observable verification evidence | **PASS** with gaps listed | `E2E_TEST_RESULTS.md` (0.7.0); NOT TESTED and UNVERIFIED rows are named there |
-| No known critical or high-severity release-blocking defects remain | **FAIL** | T1-07 (Rust answered about the video game) is open and rated High by R4; SEC-G-E1 (no entailment check for supported-cited sentences, pre-existing) is open and rated High for the release decision. R1-01 (High) PASS in R4; T1-01 range case PASS; all High and Critical findings of the guard security review fixed |
-| Authentication, authorization and data-integrity checks pass | **PASS** | SEC-H1, M2, M3 PASS (R2); Pocket family isolation and holder-confirmed hand-off (S10); R3 `kill -9`: 0 lost acknowledged writes |
-| Persistent data survives the expected lifecycle | **PASS** | R3: migration 0.6.0 to 0.7.0 (schema 7 to 11), checkpoint restore without resurrection, crash recovery |
-| Frontend and backend integrations function correctly | **PASS** | console, Pocket, voice hub, MCP and autonomy all go through `orchestrator.submit` (architecture review); e2e 166 passed on RC3 with 1 test flake (fixed) |
-| Supported mobile and desktop experiences are usable | **PASS (emulated)** / **BLOCKED (handsets)** | axe 0 violations in 203 runs, console and Pocket, light and dark (R2); 320 to 1920 px; no physical phone or tablet |
-| Error and recovery scenarios behave predictably | **PASS** | S11 (SearXNG, model and voice services down), hostile model and SearXNG endpoints (R3), crash recovery |
-| Relevant automated regression suites pass | **PASS on `HEAD`** | `4c3f209`: ruff clean; gate 2588 passed, 6 skipped, 0 failed; e2e 167 passed, 1 skipped, 0 failed |
-| The application can be built and started reproducibly | **PASS** | R3: wheel from a clean `git archive`, fresh virtual environment, all web assets present |
+| All critical user journeys pass real end-to-end execution | **PASS, most with limitations** | `USER_JOURNEY_MATRIX.md` (0.7.0); R1 to R6. R6: 9 of 11 items PASS; its two failures (Brave key-file check D1, guard sentences D5) are fixed, not retested live |
+| Every applicable major feature has observable verification evidence | **PASS** with gaps listed | `E2E_TEST_RESULTS.md` (0.7.0 §9); NOT TESTED, UNVERIFIED and owner-side rows are named there |
+| No known critical or high-severity release-blocking defects remain | **PASS** | T1-07 fixed, R6 PASS; SEC-G-E1 fixed, final review ACCEPT-with-documented-limits (round-8 condition met: F1–F5 in dd02f16; adv11 re-run by the integrator); the signing and push review found nothing above Medium, all fixed |
+| Authentication, authorization and data-integrity checks pass | **PASS** | Pocket family isolation (R6: a stranger family sees nothing); signed node requests and Spark-signed replies (ADR-042; review A-1 to A-6 fixed); R3 `kill -9`: 0 lost acknowledged writes; forget rewrites checkpoints crash-safe (R6 PASS) |
+| Persistent data survives the expected lifecycle | **PASS** | R3: migration 0.6.0 to 0.7.0; migration 13 (retired node keys, nonces); checkpoint restore without resurrection, including revoked node keys |
+| Frontend and backend integrations function correctly | **PASS** | e2e on the first pass 167 passed, 0 failed; CI green on `94ccb09`; final tree `5f28e6b`: e2e 184 passed, 1 skipped, 0 failed |
+| Supported mobile and desktop experiences are usable | **PASS (emulated)** / **owner-side (handsets)** | axe 0 violations (R2); accessibility-tree checks (`3a4cb14`); R6 multi-device flows in Chromium; no physical phone or tablet |
+| Error and recovery scenarios behave predictably | **PASS** | S11 (SearXNG, model and voice services down), hostile endpoints (R3), crash recovery, 7-day soak with injected outages and a crash (all six checks passed) |
+| Relevant automated regression suites pass | **PASS on `HEAD`** | `5f28e6b`: gate 3303 passed, 18 skipped, 0 failed; e2e 184 passed, 1 skipped, 0 failed; bench identical across 3 runs. Earlier: `594e244` gate 3267 passed, e2e 184 passed; `4c3f209` gate 2588, e2e 167 |
+| The application can be built and started reproducibly | **PASS** | R3: wheel from a clean `git archive`; R6: the documented multi-device setup sequence ran end to end |
 | External integrations classified verified / sandbox-tested / blocked | **PASS** | §2 |
-| No synthetic, mocked or unexecuted functionality presented as production-verified | **PASS** | fake-device audio, simulated acceptance and the fixture-web bench are labelled as such everywhere |
+| No synthetic, mocked or unexecuted functionality presented as production-verified | **PASS** | fake-device audio, simulated channels, the fake Brave, the stand-in remote provider and the fixture-web bench are labelled as such everywhere |
 
 ## 2. External integrations
 
 | Integration | Classification | Evidence |
 |---|---|---|
-| SearXNG (pinned image, loopback, honest User-Agent) | **Verified live; coverage thin** | R1 (115 queries); `searxng_live.json`: some engines answer with a CAPTCHA or rate limits |
-| Structured APIs (Wikipedia, arXiv, OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub) | **Verified live** (bounded) | R1 S3 and S5; quotes re-fetched; rate limits reported |
-| Local reasoning model: Qwen3-30B-A3B-Instruct-2507-FP8 on vLLM (nightly arm64 image), loopback | **Verified live** | `inference_live.json`; R1 model answers; R3 hostile-endpoint cases |
-| Remote inference endpoint | **Not tested live** | regression tests only (loopback-only without `remote_allowed`, no key over http off-host) |
-| Whisper ASR and Kokoro TTS containers | **Verified with fake-device audio** | R2 S7 to S11; `VOICE_UAT_RESULTS.md` |
-| NVIDIA PersonaPlex 7B | **Runs; not real-time upstream; experimental, opt-in** | `PERSONAPLEX_INTEGRATION.md` |
-| Chromium rendering of JavaScript pages (news) | **Verified live; limited by the default request budget** | `news_render_live.json` |
-| Real microphones, speakers, handsets, OS share sheet, push | **Blocked** | no devices; no push server |
-| systemd units, encrypted volume, public TLS chain | **Sandbox-tested only** | as in 0.6.0 |
+| SearXNG (pinned image, loopback, honest User-Agent) | **Verified live; coverage thin** | R1; `searxng_live.json` |
+| Brave Search API (keyed, ADR-034 amendment 1) | **Built; tested offline against a fake Brave; live NOT TESTED** (no key; owner-side) | `SEARCH_PROVIDER_STRATEGY.md` §6; R6 item 7 (key handling, Brave never contacted) |
+| Structured APIs (Wikipedia, arXiv, OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub) | **Verified live** (bounded) | R1, R6 |
+| Local reasoning model: Qwen3-30B-A3B-Instruct-2507-FP8 on vLLM, loopback | **Verified live** | `inference_live.json`; R6 (all answers model-written) |
+| Remote inference provider | **Remote path verified live against the local vLLM as a stand-in** (8 passed, 1 skipped); a real provider owner-side | `COGNITIVE_INFERENCE.md` §7 |
+| Whisper ASR and Kokoro TTS containers | **Verified on recorded human speech (public corpora) and fake-device audio** | `VOICE_VALIDATION.md`; R2; R6 item 10 |
+| NVIDIA PersonaPlex 7B | **Runs; not real-time upstream; experimental, opt-in; owner: leave as it is** | `PERSONAPLEX_INTEGRATION.md` |
+| Chromium rendering of news pages (ADR-041) | **Verified live** | `news_render_live_v2.json`; R6 item 5 |
+| Web Push through browser vendors' push services (ADR-040) | **Verified live with real FCM in headless Chromium**; real phones owner-side | `push_live.json`; R6 item 3 |
+| Real microphones, speakers, handsets, OS share sheet | **Owner-side** | Voice check and guided phone test built |
+| systemd units, encrypted volume, TLS chain | **Units verified as transient user units; root-only directives owner-side; LUKS2 verified on this host; private-CA chain verified in Chromium** | `HARDENING_VERIFICATION.md`; `TLS.md`; R6 items 1 and 11 |
 
 ## 3. Release risks (0.6.0 risks re-assessed, and new)
 
 | ID | Risk | 0.7.0 status |
 |---|---|---|
-| R-1 | Key-free engines return nothing with the honest User-Agent | Replaced by SearXNG (ADR-034). General coverage is still thin (O-08) |
+| R-1 | Key-free engines return nothing with the honest User-Agent | Replaced by SearXNG (ADR-034); a keyed Brave provider is built for the owner's key (live not tested) |
 | R-2 | Undated sources keep true claims "insufficient" | Replaced by evidence-sensitive verification (ADR-035): bench `supported` recall 0.4 to 1.0 and discrimination 0/2 to 2/2 (on a larger corpus) |
-| R-3 | Lexical evidence reasoning, no model | A local model writes answers under the evidence guard; the model cannot raise a verification state. The caveat guard is a closed grammar (`128c339`) plus a rules-labelled note (`224a843`), accepted with documented limits by an independent adversarial review; open: no entailment check for supported-cited sentences (SEC-G-E1) |
-| R-4 | Pocket and autonomous research enlarge the attack surface | Both still opt-in; voice adds a LAN surface; security findings H1, M2, M3 PASS on RC2 |
-| R-5 | zod advisory in the open-webSearch daemon | Not re-assessed in this release; the daemon remains the loopback fallback behind SearXNG (`search_reasoning_live.json`) |
-| R-6 | A registry record alone settles release statements | Kept (ADR-033) for "published" only; stable, compatible, secure and recommended are answered separately |
-| R-7 | PersonaPlex not real-time; hybrid default not approved | Owner decision (ADR-037) |
-| R-8 | News answers thin under the default render budget | Owner decision |
-| R-9 | Fake-device audio only | BLOCKED until real devices are attached |
+| R-3 | Lexical evidence reasoning, no model | A local model writes answers under the evidence guard; entailment coverage checks every cited sentence (SEC-G-E1); the guard is lexical and fails closed, with documented limits (`DEFECT_RESOLUTION_LOG.md` O-12); final review ACCEPT-with-documented-limits (round 8); survival 88 % on the aligned replay |
+| R-4 | Pocket and autonomous research enlarge the attack surface | Both opt-in; nodes sign their changes and the Spark signs its replies (ADR-042); push carries no payload (ADR-040) |
+| R-5 | zod advisory in the open-webSearch daemon | Not re-assessed in this release; the daemon remains a loopback fallback |
+| R-6 | A registry record alone settles release statements | Kept (ADR-033) for "published" only |
+| R-7 | PersonaPlex not real-time | Owner decision: leave as it is; ADR-037 hybrid default |
+| R-8 | News answers thin under the default render budget | Fixed (ADR-041); rendering on by default for a person's news questions is owner decision OD-10 |
+| R-9 | Voice verified only on recorded and fake-device audio | Owner-side Voice check; VAD sensitivity is owner decision OD-9 |
+| R-10 | Brave terms of use for headline storage and AI evaluation | Owner decision OD-7 |
 
 ## 4. Not verified in this environment
 
-Real microphones, speakers and handsets; PersonaPlex real-time duplex speech; the $1 autonomy cap (prices are 0) and
-days-long autonomy; the remote inference endpoint; T5-05 Pocket voice-on path, T5-M06 breaker state and T5-07
-multi-worker search charging (UNVERIFIED in R3); real screen readers and 200 % zoom; systemd services under hardening;
-a public TLS chain; an encrypted state volume.
+Owner-side: real microphones, speakers and handsets; Pocket and push on real phones; Brave live; a real external
+inference provider; root-only hardening directives; screen readers used by people; days-long wall-clock autonomy.
+Not tested or unverified: PersonaPlex real-time duplex speech; the $1 autonomy cap (prices are 0); T5-05 Pocket
+voice-on path, T5-M06 breaker state and T5-07 multi-worker search charging (UNVERIFIED in R3); an actual idle unload of a
+shared service (verified on a throwaway container); the R6 polish fixes without an independent re-run.
 
 ## 5. Recommended before a wider rollout
 
-1. Decide OD-6 (SEC-G-E1) and on T1-07 (fix with the proposed word-sense design, or accept the release with it open); record the final
-   gate and the security review of the guard change.
-2. Take the four open owner decisions (`V0.7.0_RELEASE_ACCEPTANCE.md` §5).
-3. Run the voice journeys (S7 to S11, Presence A, B, F) with a real microphone and speaker, and the Pocket journeys on
-   at least one Android and one iOS device.
-4. Re-run `nsf web bench --repeat 3` and the live evidence after each dependency or policy change; compare with
-   `docs/quality/evidence/webcortex_bench_v070.json`.
+1. Push the final tree when the owner accepts; keep the guard's documented limits in view (O-12).
+2. Take the open owner decisions OD-7 to OD-11 (`RELEASE_DECISIONS.md` §6).
+3. Run the owner-side checks: the Voice check on the owner's microphone, speaker and phone; the guided phone test for
+   Pocket and push (Android Chrome, iOS home-screen app); Brave with the owner's key; the root-only hardening checks of
+   `HARDENING_VERIFICATION.md` §5; a screen reader on the console and Pocket flows.
+4. Read the wall-clock soak report after a few UTC midnights (`RESEARCH_POLICY.md` §9.2). The snapshot so far
+   (`soak_wallclock_v070.json`) shows one "refused" decision every 5 min after the cap, about 12 an hour: bounded, but
+   noise in the decision log.
+5. Re-run `nsf web bench --repeat 3` and the live evidence after each dependency or policy change.

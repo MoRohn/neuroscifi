@@ -98,7 +98,7 @@ page; no real microphone was used.
 # 0.7.0
 
 Journeys for the 0.7.0 release candidates. **RC1 = `7c64b64`** (discovery testers T1 to T5); **RC2 = `281e18b`**
-(independent retesters R1, R2, R3); **RC3 = `0cd8d8b`** (RC2 plus fixes for what R1 and R2 found); `HEAD` = `4c3f209` (final tree: RC3, two test-only commits, 9 fixes from fix lanes fixr4 and fixr5 to `090cb7d`, and 11 commits from the security review of the evidence guard).
+(independent retesters R1, R2, R3); **RC3 = `0cd8d8b`** (RC2 plus fixes for what R1 and R2 found); first acceptance pass = `4c3f209` (RC3, two test-only commits, 9 fixes from fix lanes fixr4 and fixr5 to `090cb7d`, and 11 commits from the security review of the evidence guard), pushed as `94ccb09`; final tree = `5f28e6b` (after the owner's decisions of 2026-11-22 and the final guard round; R6 below).
 **R4** retested the RC3 fixes live on `373104e` (UAT evidence (not in repo) `retest/r4/REPORT.md`); **R5** retested the
 fixr4 fixes live on `1e8bf3b` (`retest/r5/REPORT.md`). The fixr5 fixes (`f510512`, `224a843`, `090cb7d`) were run live
 by the fix lane only; the guard was then rebuilt after an independent adversarial security review (`DEFECT_RESOLUTION_LOG.md`,
@@ -200,6 +200,32 @@ migration, crash-safety and CLI parts on RC2. Journey IDs are the 0.6.0 IDs abov
 | Acceptance harness and reproduction | | PASS: `nsf acceptance --all` 7 of 7 (simulated, ADR-014); reproduce 8 of 8 bit-exact | Not repeated by R3; reproduce runs in every gate (`scripts/check.sh`) | `uat/t3/acc/` |
 | J-PK-1..4, J-RS-6..10, J-OP-3, J-SE-3 | | NOT TESTED as independent 0.7.0 journeys; covered by the repository e2e suite | Same | |
 
+## Journeys after the owner's decisions (R6, 2026-11-22)
+
+After the owner decided to fix T1-07, SEC-G-E1, news rendering and the bench rows, and to resolve the README limitations
+(Brave keyed search, public speech corpora plus a guided device test, empty-payload Web Push, node signing), the
+independent retester **R6** ran these journeys live at `a9f5e37` (UAT evidence (not in repo) `retest/r6/REPORT.md`,
+E1 to E11). Defects R6 found were fixed by the polish lane with tests and **not retested live**
+(`DEFECT_RESOLUTION_LOG.md`, R6 table). The final tree is `5f28e6b`.
+
+| ID | Persona | Journey | Scenario | R6 result | After R6 | Evidence |
+|---|---|---|---|---|---|---|
+| J7-TLS | P5 | Issue a private-CA chain (`nsf pocket tls init`, `export-ca`, `status`); the phone trusts it; untrusted it fails | S10 | PASS (TLS 1.3, issuer "NeuroSciFi Pocket CA"; untrusted `ERR_CERT_AUTHORITY_INVALID`) | Serve hint completed; warning when no LAN address is on the CA (`32a675e`) | E1 |
+| J7-FAM | P4 | Phone pairs with the terminal code; tablet pairs with the phone's link code into one family; the tablet follows and continues the phone's question; a stranger family sees nothing | S10 | PASS (Queued to Completed in 24 s on the tablet; stranger 404 on all three family tasks) | `nsf pocket invite` issues a code without a restart, the bridge prints its URLs (`7675292`); the list refreshes itself (`93afb4e`); one family tag everywhere (`8aea6d5`) | E1 |
+| J7-NODE | P4 | Enrol a device as a research node by comparing fingerprints; it owns a session; other devices and voice are refused; hand-off; revoke | S10 | PASS | — | E1 (screenshots 09–17) |
+| J7-PUSH | P4 | Turn push on, test push, a push with Pocket closed, opt out | S10 | PASS (real FCM; notification 13 s after a question; no push after opt-out over 70 s) | Opt-out without the vault or a pairing (`bf470cc`) | E1 (screenshots 20–22); `push_live.json` |
+| J7-SENSE | P6 | "When was Rust first released?"; the Rust video game; Python | S1-type question | PASS (the language 2 of 2 runs with a rules note; the game when named; Python February 1991) | Game guide fragments are not knowledge (`c98bd29`) | E4 |
+| J7-NEWS | P6 | "What happened in AI this week?", NVIDIA news; rendering off with `--no-news-render` | S1 | PASS (freshness met on every run; one render per news query) | — | E5; `news_render_live_v2.json` |
+| J7-GUARD | P6 | Model answers for numpy secure and recommended, Jupiter, the neurons claim; hand check | S3, S4 | FAIL (minor): 1 of 5 neurons sentences unfaithful (D5); claim check `insufficient` (D6) | D5 fixed by the round-6 guard (`2a0747b`; final guard review ACCEPT-with-documented-limits (round 8)); D6 now disputed (`6aa5381`) | E6 |
+| J7-BRAVE | P5 | Store, show, refuse an insecure key, cap 0, remove (fake key; Brave never contacted) | — | FAIL: a 0644 source file was accepted (D1) | Refused now (`ee32d21`); cap 0 reads "off (cap 0)" (`966c9c0`). Brave live NOT TESTED (no key) | E7 |
+| J7-IDLE | P5 | Idle-unload configuration, refusals, tick | — | PASS in part; an actual unload NOT TESTED (shared services) | `nsf resources idle` shows `loaded` (`abeac2b`) | E8 |
+| J7-FORGET | P3 | Forget a research task; both checkpoint archives rewritten; forgotten text absent; archives verify | — | PASS | Budget row and questions unlinked (`17bcf6f`) | E9 |
+| J7-VCHECK | P1 | Console Voice check and `nsf voice selftest` with a fake device | S7 to S9 | PASS (mic, read 5 of 5 at 2 % WER, speaker, interrupt; "Microphone off" failed 1 of 5 runs, D3) | D3 fixed (`1e1d7c4`); `--fake-input` names the fake device (`d79ba31`). The real microphone is owner-side | E10 |
+| J7-DOCTOR | P5 | `nsf doctor` on this host, with `--path` | — | PASS (tmpfs memory-backed, zram swap, LUKS2 under the model directory) | — | E11 |
+
+The voice journeys on recorded human speech (public corpora) are developer evidence: `docs/voice/VOICE_VALIDATION.md`.
+The owner's Voice check and the guided phone test are the owner-side journeys for real hardware.
+
 ## Release criteria
 
 The judgement per criterion is in `V0.7.0_RELEASE_ACCEPTANCE.md`; statuses are mirrored in `RELEASE_DECISIONS.md` §4.
@@ -208,5 +234,7 @@ review, not a retest.
 
 ## Not executable here (BLOCKED)
 
-Real microphone, speaker and handset (RD-21); PersonaPlex real-time duplex speech (not real-time upstream on this host,
-`DEFECT_RESOLUTION_LOG.md` O-02); a trusted public TLS chain; a real screen reader. Unchanged from 0.6.0 otherwise.
+Owner-side: real microphone, speaker and handset (RD-21; the owner's Voice check and guided phone test are built);
+Pocket and Web Push on real phones; Brave live with the owner's key; root-only hardening; a real external inference
+provider; a screen reader used by a person. PersonaPlex real-time duplex speech is not real-time upstream on this host
+(`DEFECT_RESOLUTION_LOG.md` O-02; the owner left it as it is).

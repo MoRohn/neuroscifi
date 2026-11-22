@@ -3,7 +3,7 @@
 This document records the baseline, the owner decisions that scope 0.7.0, the release-readiness matrix, the release
 acceptance criteria and the decisions taken and still open at release. Sections 1 to 3 are the planning record written
 before implementation; the per-row "Verification evidence" column of §3 was not updated row by row and still reads
-`pending`. The outcome is in §4 (criteria statuses), §5 (decisions taken during 0.7.0), §6 (owner decisions open) and
+`pending`. The outcome is in §4 (criteria statuses), §5 (decisions taken during 0.7.0), §6 (owner decisions, decided and open) and
 §7 (open items); the evidence for each criterion is in `V0.7.0_RELEASE_ACCEPTANCE.md`.
 
 Commits: RC1 `7c64b64`, RC2 `281e18b`, RC3 `0cd8d8b`, final tree `HEAD` `4c3f209` (RC3, two test-only commits, the fixr4
@@ -12,7 +12,14 @@ evidence guard). Retest reports: UAT evidence (not in repo)
 `retest/r1/` to `retest/r5/`. Final gate on `HEAD` `4c3f209`: ruff clean;
 `bash scripts/check.sh` 2588 passed, 6 skipped (the `NSF_LIVE=1` live-internet tests), 0 failed, 35 subtests (345 s); e2e 167 passed, 1 skipped, 0 failed (790 s); offline bench regenerated, 3 identical runs.
 
-**Release status: release candidate; not accepted. Open High: T1-07 (ambiguous-subject sense) and SEC-G-E1 (no entailment check for supported-cited sentences, pre-existing); owner decisions OD-5, OD-6.** Not production-ready.
+The first acceptance pass ended at `4c3f209` with the status "release candidate; not accepted. Open High: T1-07 and
+SEC-G-E1; owner decisions OD-5, OD-6", and was pushed with CI fixes as `94ccb09` (GitHub Actions CI green). On 2026-11-22
+the owner decided OD-3 to OD-6 (fix all four), left PersonaPlex as it is, and asked for every README known limitation
+to be resolved (§5 DD-8 to DD-12). That work, and the final guard round (`dd02f16`, `5f28e6b`), is on the local branch,
+`HEAD` `5f28e6b` (not pushed). Final run on `5f28e6b`: `bash scripts/check.sh` 3303 passed, 18 skipped (live-service tests), 0 failed; e2e 184 passed, 1 skipped (opt-in degraded-voice test), 0 failed; offline bench regenerated into `webcortex_bench_v070.json`, identical across 3 runs (retrieval 12/12, coverage 21/24, top answer 9/12, citation precision 193/194, verification states 29/29, safety invariants hold). The evidence-guard review
+ended ACCEPT-with-documented-limits (round-8 condition met: F1–F5 in dd02f16; adv11 re-run by the integrator).
+
+**Release status: Release candidate, ready for owner acceptance with listed limitations. Not production-ready: owner-side verification remains (real phones and handsets including the Voice check, CA install on phones, push on a real phone, root-only systemd hardening checks, Brave live with the owner's key, a real external inference provider, screen readers with people), plus the open owner decisions OD-7 to OD-11.**
 
 ## 1. Baseline
 
@@ -43,7 +50,7 @@ All six decisions were made by the owner's v0.7.0 directive, 2026-11-21.
 | D3 | A real local reasoning model is connected through a model-independent inference gateway. Remote endpoints need explicit owner authorisation and a privacy screen. The model never bypasses evidence verification or authorisation. | Extends ADR-022; new ADR-036 |
 | D4 | Controlled autonomous research is opt-in. Daily limits: 20 searches, 60 pages, 30 minutes, $1, 2 concurrent tasks. It has a budget separate from the user's. Pocket research is available to authorised devices. | Builds on ADR-027 and ADR-028 |
 | D5 | ADR-033 is kept: a package's own registry record may settle a release statement. The documents and answers distinguish published, stable, compatible, secure and recommended. | ADR-033 retained, scope clarified |
-| D6 | NVIDIA PersonaPlex is the voice model, connected through a Cognitive Voice Bridge in which NeuroSciFi stays authoritative for facts, tools, memory and permissions. Three modes: A voice and text, B voice in and text out, C text only. | New ADR-037. **Outcome:** PersonaPlex is not real-time upstream on GB10 and cannot speak external text through its shipped server, so ADR-037 makes the Whisper plus Kokoro hybrid the default with PersonaPlex opt-in. That departs from D6 and awaits the owner's approval (§6) |
+| D6 | NVIDIA PersonaPlex is the voice model, connected through a Cognitive Voice Bridge in which NeuroSciFi stays authoritative for facts, tools, memory and permissions. Three modes: A voice and text, B voice in and text out, C text only. | New ADR-037. **Outcome:** PersonaPlex is not real-time upstream on GB10 and cannot speak external text through its shipped server, so ADR-037 makes the Whisper plus Kokoro hybrid the default with PersonaPlex opt-in. That departs from D6; the owner approved it on 2026-11-22 (PersonaPlex left as it is, §6 OD-1) |
 
 Prior ADRs affected: ADR-021 to ADR-033 are listed in `docs/architecture/ARCHITECTURAL_DECISIONS.md`. ADR-034 to
 ADR-037 are assigned here and must exist in that file before release (see RD-48).
@@ -136,29 +143,29 @@ the source of the problem, not as evidence that the proposed solution works.
 
 ## 4. Release acceptance criteria for 0.7.0
 
-Statuses at the time of writing, after the live retest R4. Evidence and limitations per row:
+Statuses at the time of writing, after the owner's decisions of 2026-11-22 and the live retest R6. Evidence and limitations per row:
 `V0.7.0_RELEASE_ACCEPTANCE.md` §1.
 
 | # | Criterion | Related rows | Status |
 |---|---|---|---|
-| 1 | SearXNG general search is verified, or upstream limits are recorded as blockers | RD-01, RD-24, RD-25, RD-26 | PASS-with-limitation (general coverage thin; news render budget open) |
+| 1 | SearXNG general search is verified, or upstream limits are recorded as blockers | RD-01, RD-24, RD-25, RD-26 | PASS-with-limitation (SearXNG coverage thin; keyed Brave provider built and tested offline, live NOT TESTED without a key; news rendering fixed, R6 PASS) |
 | 2 | Authoritative integrations (structured APIs, feeds) still work | RD-01, RD-49 | PASS |
 | 3 | A real reasoning model is connected and tested | RD-29, RD-30, RD-31 | PASS (remote endpoint NOT TESTED live) |
-| 4 | Claim verification is correct for stable, current and authoritative claims | RD-02, RD-07, RD-27, RD-28 | PASS-with-limitation (bench 29/29 states; R4-N2 PASS in R5; caveat guard rebuilt as a closed caveat grammar after the security review, fix-lane live, re-review PASS; an ambiguous name can bring evidence about the wrong entity, T1-07 under criterion 14) |
-| 5 | Consolidation preserves evidence and history | RD-13, RD-33 | PASS-with-limitation (T1-18 PASS in R4; bench knowledge rows 10 to 8) |
-| 6 | Autonomy respects opt-in and budgets | RD-36 | PASS-with-limitation ($1 cap and days-long operation NOT TESTED; T5-07 UNVERIFIED) |
-| 7 | Pocket research keeps permission boundaries | RD-05, RD-37 | PASS-with-limitation (R2-09 cross-family eviction NOT TESTED live; handsets BLOCKED) |
-| 8 | PersonaPlex is validated on the target runtime | RD-38, RD-39 | PASS-with-limitation: validated, result negative (not real-time upstream) |
-| 9 | Speech and cognition are integrated | RD-40, RD-41 | PASS-with-limitation (fake-device audio; T4-02 and R2-07 PASS in R4; ethanol search miss, O-10) |
-| 10 | Transcripts are accurate within documented limits | RD-44 | PASS-with-limitation (synthetic speech only) |
+| 4 | Claim verification is correct for stable, current and authoritative claims | RD-02, RD-07, RD-27, RD-28 | PASS-with-limitation (bench verification states 29/29; word sense fixed, R6 PASS; entailment coverage added and reviewed in rounds 4 to 8, final review ACCEPT-with-documented-limits (round 8); the guard's lexical limits, O-12) |
+| 5 | Consolidation preserves evidence and history | RD-13, RD-33 | PASS-with-limitation (T1-18 PASS in R4; knowledge never from set-aside sources; bench knowledge rows 8 to 9 to 7 by design; forget rewrites checkpoints, R6 PASS) |
+| 6 | Autonomy respects opt-in and budgets | RD-36 | PASS-with-limitation (7-day accelerated soak on the real scheduler: 20 of 20 searches every day, never above a limit; wall-clock soak (`soak_wallclock_v070.json`): about 4 h from 01:23 to 05:18 UTC on 2026-11-22, 0 restarts, RSS 138–141 MB, exactly 20 of 20 autonomous searches that UTC day, then one "refused" decision every 5 min (about 12 an hour); budget, leases, ledger and decisions checks ok; days-long wall-clock owner-side; $1 cap not reachable at price 0; T5-07 UNVERIFIED) |
+| 7 | Pocket research keeps permission boundaries | RD-05, RD-37 | PASS-with-limitation (signed nodes and attested enrolment, ADR-042; security review A-1 to A-6 fixed; R6 PASS: stranger family sees nothing, a node's session refuses other devices and voice; real handsets owner-side) |
+| 8 | PersonaPlex is validated on the target runtime | RD-38, RD-39 | PASS-with-limitation: validated, result negative (not real-time upstream); owner decision 2026-11-22: leave as it is, ADR-037 hybrid default |
+| 9 | Speech and cognition are integrated | RD-40, RD-41 | PASS-with-limitation (fake-device and recorded-corpus audio; real hardware owner-side through the Voice check) |
+| 10 | Transcripts are accurate within documented limits | RD-44 | PASS-with-limitation (recorded human speech: WER 2.1 % clean read speech to 18.6 % accented conversational, `VOICE_VALIDATION.md`; real microphone owner-side) |
 | 11 | Mode switching works | RD-42 | PASS-with-limitation (fake-device audio) |
-| 12 | Interruption and recovery are tested | RD-45 | PASS-with-limitation (fake-device audio; R2-08 and R2-01 PASS in R4) |
-| 13 | Critical security checks pass | RD-05, RD-32, RD-43, RD-49 | PASS-with-limitation (guard security review: 10 findings fixed, round-3 re-review ACCEPT-with-documented-limits; SEC-G-E1 open: no entailment check for supported-cited sentences; SEC-L4 to L8 by regression tests only; R2-05 PASS in R5) |
-| 14 | No unresolved high-severity release blockers | all High and Critical rows | FAIL: T1-07 (Rust answered about the video game) is an open High defect. R1-01 PASS in R4; T1-01 range case PASS |
-| 15 | v0.6.0 critical workflows pass | RD-49 | PASS (S12 on RC1 and RC2; final gate on `4c3f209` 2588 passed, e2e 167 passed, 0 failed) |
+| 12 | Interruption and recovery are tested | RD-45 | PASS-with-limitation (fake-device audio; VAD retuned on recorded speech: more barge-ins detected, more false barge-ins in loud noise, owner decision OD-9) |
+| 13 | Critical security checks pass | RD-05, RD-32, RD-43, RD-49 | PASS-with-limitation (signed nodes and push review: 1 Medium, 6 Low and a functional blocker, all fixed; evidence guard: SEC-G-E1 fixed, rounds 4 to 8 fixed, final review ACCEPT-with-documented-limits (round-8 condition met: F1–F5 in dd02f16; adv11 re-run by the integrator); root-only hardening owner-side) |
+| 14 | No unresolved high-severity release blockers | all High and Critical rows | PASS (T1-07 fixed, R6 PASS; SEC-G-E1 fixed, final review ACCEPT-with-documented-limits (round 8); no other High open) |
+| 15 | v0.6.0 critical workflows pass | RD-49 | PASS (S12 on RC1 and RC2; gate on `4c3f209` 2588 passed, e2e 167 passed, 0 failed; final tree `5f28e6b`: gate 3303 passed, e2e 184 passed, 0 failed) |
 
 A criterion moves from `pending` only when its linked rows hold verification evidence recorded by someone other than
-the author of the change. Every status above rests on an independent tester's result (T1 to T5 on RC1, R1 to R3 on RC2)
+the author of the change. Every status above rests on an independent tester's result (T1 to T5 on RC1, R1 to R3 on RC2, R4 to R6 later)
 except where a row names a regression test, the offline bench or developer evidence.
 
 ## 5. Decisions taken during 0.7.0
@@ -172,17 +179,29 @@ except where a row names a regression test, the offline bench or developer evide
 | DD-5 | `nsf llm ask --tools` (and `--allow-research`) is refused unless the owner switched tools on (`nsf llm config --tools`); the setting defaults to off | Fix lane | T5-M03: the tools setting had no effect; the CLI now honours it | `src/neuroscifi/inference/cli.py`; commit `54285d9` |
 | DD-6 | Rendering stays off by default and the quick-lookup budget stays 20 requests until the owner decides. **Superseded by DD-7** after the owner's OD-3 decision | Integrator | A budget change is an owner decision (§6) | `docs/quality/evidence/news_render_live.json` |
 | DD-7 | **News rendering (OD-3 decided: fix before release).** ADR-041: a render is one page read plus its own allowance of 100 sub-requests (not the task's 20 requests). The renderer skips images, styles, iframes and tracker hosts. News questions read dated static pages first. `news_rendering` is on for questions a person asks (1 render per task, 40 per day, refused at critical memory pressure; `--no-news-render`). `browser_rendering` stays off | News lane, on the owner's decision | Live: 4 of 4 current-event questions met freshness with dated, cited sources; bench unchanged | ADR-041; `docs/quality/evidence/news_render_live_v2.json` |
+| DD-8 | **Owner decisions of 2026-11-22.** "Fix 1-3. Leave PersonaPlex as-is. Fix 5 too": T1-07 word sense (OD-5), SEC-G-E1 entailment (OD-6), news rendering (OD-3) and the bench knowledge rows (OD-4) are fixed; PersonaPlex stays experimental and opt-in behind the ADR-037 hybrid default (OD-1, OD-2) | Owner | Release items 1 to 3 and 5 | `DEFECT_RESOLUTION_LOG.md` T1-07, SEC-G-E1, O-05, O-07 |
+| DD-9 | **Keyed web search API: Brave**, the primary general and news provider when the owner stores a key (ADR-034 amendment 1); SearXNG stays the default without a key. Key from a private file or stdin only, 0600 in a 0700 directory; daily cap per key (default 30, inside the $5 monthly credit) | Owner (the owner supplies the key later) | Thin general coverage (O-08) | `SEARCH_PROVIDER_STRATEGY.md` §6; `0b2f038`, `0198006`, `11fe2b3`, `ee32d21`, `966c9c0` |
+| DD-10 | **Voice: public speech corpora plus a guided owner device test** (the Voice check in the console, Pocket and `nsf voice selftest`) | Owner | Real-microphone verification is owner hardware | `docs/voice/VOICE_VALIDATION.md`; `voice_real_speech.json` |
+| DD-11 | **Web Push with an empty payload** (ADR-040): opt-in per device; nothing about a question leaves the host; allow-listed push services; 5 endpoint changes and 5 test pushes an hour per device | Owner | Notifications while Pocket is closed (RD-22) | ADR-040; `push_live.json` |
+| DD-12 | **Node signing and attested enrolment, no federation** (ADR-042): a non-extractable key per node, the owner compares fingerprints, signed node requests, Spark-signed replies; only the Spark executes | Owner | A stolen pairing credential could drive a node's sessions | ADR-042; `RESEARCH_POLICY.md` §6 |
+| DD-13 | **Bench knowledge rows (OD-4)**: `26e16a0` restores an on-subject definition (8 to 9); `d88758a` keeps knowledge from set-aside sources out by design (9 to 7: the Brisa and Tessaly rows came from off-subject sources). Supersedes DD-3 | Lanes, on the owner's decision | Precision without losing on-subject definitions | `26e16a0`, `d88758a` messages |
+| DD-14 | **Prompt aligned to the guard**: the model is asked for restatements the guard accepts; code composes hedges and sources (`d742d6d`, `e014448`) | Guard lane | The stricter guard rejected the model's own hedging | `COGNITIVE_INFERENCE.md` §3, §6 |
 
-## 6. Owner decisions open
+## 6. Owner decisions
 
 | ID | Question | Evidence | Default until decided |
 |---|---|---|---|
-| OD-1 | Approve ADR-037: the Whisper plus Kokoro hybrid as the default voice, PersonaPlex experimental and opt-in (departs from D6) | PersonaPlex upstream 99 to 152 ms per 80 ms frame on GB10; cannot speak external text through its shipped server (`docs/voice/PERSONAPLEX_INTEGRATION.md`) | Hybrid default |
-| OD-2 | PersonaPlex runtime: upstream, or the unmerged third-party `jethac` fork (47 ms per frame here, output quality not evaluated) | same document §6.2 | Upstream, opt-in |
-| OD-3 | News rendering budget: a quick lookup allows 20 requests; an MSN article needs about 70 to 100. **Decided: fix before release** (DD-7, ADR-041) | `news_render_live.json`, `news_render_live_v2.json`; `DEFECT_RESOLUTION_LOG.md` O-05 | Closed by DD-7: 20 requests + 1 render with 100 sub-requests |
-| OD-4 | Accept the bench knowledge-row reduction 10 to 8 (DD-3) | `REGRESSION_REPORT.md` (0.7.0 §2) | Accepted provisionally |
-| OD-6 | Release with SEC-G-E1 (no entailment check for supported-cited sentences, pre-existing) documented, or hold the release for the entailment check proposed in §7 | §7; `DEFECT_RESOLUTION_LOG.md` SEC-G-E1 | Not accepted until decided |
-| OD-5 | Release with T1-07 (ambiguous-subject sense, High) open, or hold the release for the word-sense design in §7 | §7; `DEFECT_RESOLUTION_LOG.md` T1-07 | Not accepted until decided |
+| OD-1 | Approve ADR-037: the Whisper plus Kokoro hybrid as the default voice, PersonaPlex experimental and opt-in (departs from D6) | `docs/voice/PERSONAPLEX_INTEGRATION.md` | **Decided 2026-11-22: leave PersonaPlex as it is**; hybrid default |
+| OD-2 | PersonaPlex runtime: upstream, or the unmerged third-party `jethac` fork (47 ms per frame here, output quality not evaluated) | same document §6.2 | **Decided 2026-11-22: as it is** (upstream, opt-in) |
+| OD-3 | News rendering budget | `news_render_live.json`, `news_render_live_v2.json` | **Decided: fix** (DD-7, ADR-041); R6 PASS |
+| OD-4 | Bench knowledge-row reduction 10 to 8 | `REGRESSION_REPORT.md` (0.7.0 §2) | **Decided: fix** (DD-13) |
+| OD-6 | SEC-G-E1, no entailment check for supported-cited sentences | `DEFECT_RESOLUTION_LOG.md` SEC-G-E1 | **Decided: fix**; fixed, final review ACCEPT-with-documented-limits (round 8) |
+| OD-5 | T1-07, ambiguous-subject sense | `DEFECT_RESOLUTION_LOG.md` T1-07 | **Decided: fix**; fixed, R6 PASS |
+| OD-7 | Brave Search API Terms: does a finished report's list of unread dated headlines (a few Brave titles and URLs kept with the task) count as storage under §3(b)(i) ("no storing … other than transient storage required for operation")? And how §3(b)(xiii) (no use to train, evaluate or benchmark AI models) applies to NeuroSciFi's use | `SEARCH_PROVIDER_STRATEGY.md` §6: results are in-memory for 120 s and dropped from checkpoints; `nsf web bench --live` sets the Brave cap to 0 | Headlines kept in the report; Brave off until a key is stored |
+| OD-8 | Should a push for an owner's autonomy finding go to every subscribed family (it reveals timing only, no content)? | ADR-040 Decision 5; `SECREVIEW_SIGNPUSH.md` accepted limits | Every subscribed device |
+| OD-9 | VAD sensitivity: detection of single command words 60 % → 87 %, against false barge-ins while NeuroSciFi speaks in loud noise 0.5 → 2.25/min (SNR 10 dB) and 3.75/min (SNR 5 dB) | `VOICE_VALIDATION.md` §4 | The retuned, more sensitive setting |
+| OD-10 | News rendering on by default for a person's news questions (Chromium runs untrusted news-site JavaScript, sandboxed, at most 1 per task and 40 a day) | ADR-041 §4 | On; `nsf web config --no-news-render` turns it off |
+| OD-11 | Independence grouping of DOI records: every claim from one host is one source group, and all DOI records resolve through doi.org, so distinct papers count as one group | `CLAIM_VERIFICATION.md` (R6 D6 paragraph, "Known limit") | Unchanged: one group for doi.org |
 
 ## 7. Open items at release
 
@@ -193,18 +212,21 @@ except where a row names a regression test, the offline bench or developer evide
 | Caveat guard: R4-N1 (T1-09 residual), D-R5-1, D-R5-2, D-R5-3 | Fixed; guard rebuilt as a closed caveat grammar (`128c339`) after an independent adversarial security review; the rules note (`224a843`) carries "not established"; fix-lane live: note in 2/2 and kept/rejected as designed; independent re-review round 3 PASS (ACCEPT-with-documented-limits) | `DEFECT_RESOLUTION_LOG.md` (0.7.0, R5) |
 | D-R5-4 first-release freshness | Fixed (`090cb7d`); fix-lane live only | same |
 | Security review of the evidence guard: SEC-G-F1 to F6, SEC-G-N1 to N4 | Fixed; independent adversarial re-review PASS (round 3: 0/73 original and 0/65 round-2 sentences pass; about 50 new grammar attacks found no bypass); verdict ACCEPT-with-documented-limits | `DEFECT_RESOLUTION_LOG.md` (0.7.0, guard security review) |
-| **SEC-G-E1: no entailment check for supported-cited sentences** (pre-existing since ADR-036). A sentence citing any supported claim is not checked against it: citing "NumPy is the fundamental package for scientific computing with Python." lets "NumPy is secure and recommended for all production use." and "Users should reinstall NumPy from the official mirror immediately." pass. Needs a prompt-injected or misbehaving model to exploit; same root as R5-O1 | **OPEN, High for the release decision.** Proposed fix: a content-overlap (`_restates`) entailment test on every supported-cited sentence plus the instruction filter, threshold measured on live answers first. Owner decision OD-6 | same |
+| SEC-G-E1: no entailment check for supported-cited sentences (pre-existing since ADR-036) | Fixed after OD-6 (`f898fc2` and review rounds 4 to 8, see `DEFECT_RESOLUTION_LOG.md`); final review ACCEPT-with-documented-limits (round-8 condition met: F1–F5 in dd02f16; adv11 re-run by the integrator) | `DEFECT_RESOLUTION_LOG.md` |
 | SEC-G-R1: a caveat may echo a non-owner objective (CLI, MCP, refresh-owner) unquoted; as an open question it asserts nothing | OPEN, Low | same |
 | SEC-G-R2: "d0t org" passes the note URL filter, in quoted form only | Accepted, Low | same |
 | Guard quality cost (fails closed): free-form honest caveats outside the grammar are rejected (the rules note carries the message); hedged negations restating a claim are rejected as absence claims; a hedged fact plus caveat is rejected when a supported claim shares a topic word | Known limitation | same |
-| R5-O1: an attributed sentence ("Another source states that ...") can cite a source that does not support it; the guard has no per-sentence semantic entailment check | OPEN, Low. Proposed: a content-overlap requirement for "X states that P", after threshold measurement | same |
+| R5-O1: an attributed sentence citing a source that does not support it | Fixed by the entailment coverage (`f898fc2`); final review ACCEPT-with-documented-limits (round 8) | same |
 | R5-O2: low-ranked off-topic findings can be flagged `cited: true` when the question has no named entity | OPEN, Low (same root as T1-07) | same |
-| **T1-07 / R1-04: ambiguous-subject sense.** "When was Rust first released?" is answered about the video game (R4, 2 of 2 runs); Python is answered correctly (R5) | **OPEN, High.** Root cause (fixr4 analysis): synthesis has no notion of word sense, so any page naming "Rust" counts as on-subject; the "<thing> software" intent hint changes only the encyclopedia query string; the game's "first released in early access in December 2013" sentence ranks 2nd while "The first stable release, Rust 1.0, was published in May 2015" ranks 21st, and only the top 12 findings reach the model; when Wikipedia was rate-limited, only game pages had release sentences. **Proposed design:** give each source a sense (from Wikipedia "(qualifier)" titles, defining sentences and vocabulary propagation), prefer the sense the question's context supports, and say "Rust also names ...". Owner decision: fix before release or accept with it open | `DEFECT_RESOLUTION_LOG.md` T1-07 |
+| T1-07 / R1-04: ambiguous-subject sense ("When was Rust first released?" answered about the video game) | Fixed after OD-5 (`4807d7c`: one sense per answer from title qualifiers, defining sentences and vocabulary; other senses read, never cited, with a rules note; `d88758a`: no knowledge from set-aside sources). R6 PASS: 2 of 2 language runs, the game when named | `DEFECT_RESOLUTION_LOG.md` T1-07 |
 | Gate, e2e and bench regeneration on `HEAD` `4c3f209`; README test count | Done: gate 2588 passed, 0 failed; e2e 167 passed, 0 failed; bench regenerated (3 identical runs, headline metrics unchanged); README says 2588 | `E2E_TEST_RESULTS.md` (0.7.0 §8) |
-| Real microphones, speakers, handsets (RD-19 to RD-21) | BLOCKED | O-01 |
-| PersonaPlex real-time voice (RD-39) | Not real-time upstream; owner decision | O-02, OD-1, OD-2 |
-| General web coverage through SearXNG | Thin (CAPTCHA, rate limits) | O-08 |
+| Real microphones, speakers, handsets (RD-19 to RD-21) | BLOCKED here; public-corpus validation done; the owner's Voice check is built | O-01 |
+| PersonaPlex real-time voice (RD-39) | Not real-time upstream; owner decision: leave as it is | O-02 |
+| General web coverage | Brave keyed provider built (DD-9); live NOT TESTED until the owner stores a key | O-08 |
 | T5-05 Pocket voice-on path, T5-M06 breaker state, T5-07 multi-worker charging | UNVERIFIED in R3 | O-06 |
-| $1 autonomy cap, days-long autonomy (RD-54), remote inference endpoint (RD-32) | NOT TESTED | O-06 |
+| $1 autonomy cap, days-long wall-clock autonomy (RD-54), a real external inference provider (RD-32) | $1 cap not reachable at price 0; 7-day accelerated soak PASS and about 4 h of wall-clock soak within the cap (`soak_wallclock_v070.json`; days-long owner-side); the remote path ran live against the local vLLM as a stand-in (owner-side for a real provider) | O-06 |
 | Voice search coverage: ethanol question answered "not provided" (search missed the article; honest answer) | Known limitation | O-10 |
-| systemd under hardening (RD-50), public TLS (RD-51), encrypted volume (RD-52), screen readers (RD-53) | NOT TESTED, unchanged from 0.6.0 | `PRODUCTION_READINESS.md` |
+| systemd under hardening (RD-50), public TLS (RD-51), encrypted volume (RD-52), screen readers (RD-53), real phones for push | Hardening verified as transient user units with exposure scores (root-only directives owner-side, `HARDENING_VERIFICATION.md`); a private-CA trusted chain (`nsf pocket tls`, R6 PASS in Chromium); LUKS2 verified on this host; accessibility-tree checks in e2e (screen readers with people owner-side); push live with real FCM in headless Chromium (phones owner-side) | O-15 |
+| Gate, e2e and bench on the final tree `5f28e6b` | Done: gate 3303 passed, 18 skipped, 0 failed; e2e 184 passed, 1 skipped, 0 failed; bench identical across 3 runs (the integrated run on `594e244` was also green: gate 3267 passed, e2e 184 passed) | `E2E_TEST_RESULTS.md` (0.7.0 §9.3) |
+| Evidence-guard final review | ACCEPT-with-documented-limits (round-8 condition met: F1–F5 in dd02f16; adv11 re-run by the integrator); documented limits remain | `DEFECT_RESOLUTION_LOG.md` O-12 |
+| Guard's documented lexical limits; VAD trade-off; voice command coverage 66 % held-out | Known limitations | O-12, O-13, O-14 |

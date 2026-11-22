@@ -151,6 +151,28 @@ These are what a person would see or hear, as measured in the T2 run. Results fo
 | Voice history question | RC2: "what was I researching" started a web search (R2-07) | FAIL on RC2; fixed in `b5955c3`; PASS in R4 (history reply, no web task) |
 | Cross-device voice | A phone-started research could not be reached by voice (T2-06); another family could see and take the microphone (T2-04) | FAIL on RC1; fixed (`e70410c`, `df12353`); PASS on RC2 (R2) |
 
+## After the owner's decisions (R6 and lanes, 2026-11-22)
+
+What a person sees changed in these places; R6 (UAT evidence (not in repo) `retest/r6/`) found the issues, the polish
+lane fixed them with tests, and they were **not retested live**.
+
+| Area | Finding | Fix | Status |
+|---|---|---|---|
+| Pocket setup | The bridge printed no URL; a second family needed a restart; the `tls init` hint was incomplete; no warning when the LAN address was not on the CA; `--pocket-research` silently needed `--enable`; questions stayed "Queued" with no worker and no message | `7675292`, `32a675e`, `d95160d`, `cd3563b` | Fixed; not retested live |
+| Pocket Research | The question list did not refresh itself; Refresh history sat in another card | `93afb4e` (refreshes while visible, its own Refresh) | Fixed; not retested live |
+| Pocket report | The model-written answer was never shown though Limitations mentioned it (R6 D8) | `212fe3a` (answer with attribution and rules note) | Fixed; not retested live |
+| Family tags | Two tags for one family across console and CLI (D4) | `8aea6d5` | Fixed; not retested live |
+| Push opt-out | Turning push off needed the vault or a fresh pairing | `bf470cc` | Fixed; not retested live |
+| Voice check | "Microphone off" failed 1 of 5 runs with a contradictory reason (D3); `--fake-input` named the default microphone | `1e1d7c4`, `d79ba31` | Fixed; not retested live |
+| Answer lead | "The cited registry records were read live." when no registry was cited (D2) | `05d39d4` | Fixed; not retested live |
+| Brave status | `key: configured` with `state: unconfigured` at cap 0 (D9) | `966c9c0` ("off (cap 0)") | Fixed; not retested live |
+| Dark mode | Pocket research notes used colours outside the theme's info colours | `594e244` | Fixed; no test in the commit |
+| Accessibility tree | Checks of the console and Pocket flows added; empty live regions kept in the tree | `3a4cb14` | In the e2e suite |
+| Rules note | Answers about a name with two senses say "this answer is about Rust, the programming language. Rust also names a video game; those sources were read, not cited." | `4807d7c` | R6 PASS |
+| Voice | Detects more barge-ins (60 % → 87 % single command words), stops more often by mistake in loud noise (owner decision OD-9); understands more freely phrased commands (21 % → 66 % held-out); a guided Voice check for the owner's hardware | `b6032af`, `8959833` | Measured on recorded speech (`VOICE_VALIDATION.md`) |
+
+Not covered: real phones, a real microphone and speaker, and screen readers used by people (owner-side).
+
 ## Not covered
 
 - Real microphone, speaker and speech engines in a real browser session: BLOCKED. Everything above is fake-device.
