@@ -215,6 +215,33 @@ def test_attestation_is_bound_to_the_challenge_family_and_expiry(db):
     assert nodes.reject(db, key.fingerprint, T0 + 4) == 1 and nodes.pending(db, T0 + 4) == []
 
 
+P25519 = 2 ** 255 - 19
+SMALL_ORDER = [bytes(32), (1).to_bytes(32, "little"), (P25519 - 1).to_bytes(32, "little"), P25519.to_bytes(32, "little"),
+               (P25519 + 1).to_bytes(32, "little"),
+               bytes.fromhex("26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05"),
+               bytes.fromhex("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a")]
+
+
+@pytest.mark.parametrize("raw", SMALL_ORDER + [k[:31] + bytes([k[31] | 0x80]) for k in SMALL_ORDER])
+def test_small_order_ed25519_keys_are_refused_at_attestation(db, raw):
+    """Security review A-4: under a small-order key the signature (R = identity, S = 0) verifies for any message, so
+    the attestation proved no private key. Every encoding of every small-order point is refused (libsodium's list,
+    sign bit ignored, non-canonical y = p and p + 1 included); a real key still attests."""
+    device, fam = _device(db, 1)
+    ch = nodes.challenge(db, device, fam, "abc", T0)
+    identity = (1).to_bytes(32, "little")
+    forged = {"action": "attest", "challenge": ch["challenge"], "alg": signing.ED25519, "public_key": signing.b64(raw),
+              "signature": signing.b64(identity + bytes(32))}
+    with pytest.raises(SignatureError) as refused:
+        nodes.attest(db, device, fam, forged, T0 + 1)
+    assert refused.value.code == "bad_key" and nodes.pending(db, T0 + 1) == []
+    assert signing.small_order(raw)
+    assert not signing.verify(signing.ED25519, raw, identity + bytes(32), b"any message")
+    real = NodeKey()
+    assert not signing.small_order(real.raw)
+    assert nodes.attest(db, device, fam, real.attestation(ch), T0 + 1)["pending_fingerprint"] == real.fingerprint
+
+
 def test_the_same_key_attested_by_a_new_pairing_supersedes_the_old_request(db):
     """A reload forgets the pairing (POC-07) but not the key: the re-paired browser asks again with the same key."""
     key = NodeKey()

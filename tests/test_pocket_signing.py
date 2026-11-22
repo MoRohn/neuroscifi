@@ -140,3 +140,24 @@ def test_a_node_enrolled_before_signing_is_told_to_re_enrol(spark, devices):
     assert spark.req("research_session", {"id": task_id, "action": "take"}, a)[1]["you"] is True
     assert spark.req("research_session", {"id": task_id, "action": "release"}, a, sign=False) == \
         (401, {"error": "signature_required"})
+
+
+def test_a_small_order_key_neither_attests_nor_forges_a_signed_request(spark, devices):
+    """Security review A-4 over HTTP: the identity point as public key with (R = identity, S = 0) as signature was
+    attested without any private key, and once approved its credential forged "signed" requests (201)."""
+    import secrets
+    a, _, _ = devices
+    identity = (1).to_bytes(32, "little")
+    forged = signing.b64(identity + bytes(32))
+    challenge = spark.req("node_enrol", {"action": "challenge"}, a)[1]
+    attest = {"action": "attest", "challenge": challenge["challenge"], "alg": "Ed25519",
+              "public_key": signing.b64(identity), "signature": forged}
+    assert spark.req("node_enrol", attest, a) == (409, {"error": "bad_key"})
+    with spark.owner() as db:                       # a row approved before the fix still verifies nothing
+        nodes.enrol(db, bridge.fingerprint(a), spark.server.store.family(a), "keyless", time.time(),
+                    key=(signing.ED25519, identity))
+    body = json.dumps({"objective": QUESTION})
+    headers = {"X-NSF-Timestamp": str(int(time.time())), "X-NSF-Nonce": secrets.token_urlsafe(18),
+               "X-NSF-Signature": forged}
+    assert spark.req("research_submit", raw=body, token=a, headers=headers, sign=False, data=None) == \
+        (401, {"error": "signature_invalid"})

@@ -28,6 +28,17 @@ ALGORITHMS = (ED25519, P256)
 FRESH_SECONDS = 120          # a signed request's timestamp must be within this many seconds of the Spark's clock
 NONCE = re.compile(r"[A-Za-z0-9_-]{16,64}")
 _KEY_SIZE = {ED25519: 32, P256: 65}
+# Ed25519 public keys of small order: libsodium's blocklist of y-encodings, compared with the sign bit cleared, so the
+# x = -0 forms and the non-canonical y = p and y = p + 1 are covered too. Under such a key the signature
+# (R = identity, S = 0) verifies for every message, so it would prove possession of no private key.
+_SMALL_ORDER = frozenset(bytes.fromhex(h) for h in (
+    "0000000000000000000000000000000000000000000000000000000000000000",    # order 4
+    "0100000000000000000000000000000000000000000000000000000000000000",    # the identity
+    "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",    # order 8
+    "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",    # order 8
+    "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",    # p - 1, order 2
+    "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",    # p, a non-canonical 0
+    "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"))   # p + 1, a non-canonical 1
 
 
 class SignatureError(Exception):
@@ -81,11 +92,19 @@ def fingerprint(alg: str, public_key: bytes) -> str:
     return "-".join(digest[i:i + 4] for i in range(0, 32, 4))
 
 
+def small_order(raw: bytes) -> bool:
+    """Whether 32 bytes encode an Ed25519 point of small order (_SMALL_ORDER), in any encoding."""
+    return len(raw) == 32 and raw[:31] + bytes([raw[31] & 0x7F]) in _SMALL_ORDER
+
+
 def public_key(alg: str, raw: bytes):
-    """A cryptography public key from the raw bytes a browser exports; ValueError for anything else."""
+    """A cryptography public key from the raw bytes a browser exports; ValueError for anything else, including an
+    Ed25519 key of small order (attestation refuses it as bad_key, and verify never accepts a signature by it)."""
     if alg not in ALGORITHMS or len(raw) != _KEY_SIZE[alg]:
         raise ValueError("unsupported algorithm or key size")
     if alg == ED25519:
+        if small_order(raw):
+            raise ValueError("an Ed25519 key of small order proves no private key")
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
         return Ed25519PublicKey.from_public_bytes(raw)
     from cryptography.hazmat.primitives.asymmetric import ec
