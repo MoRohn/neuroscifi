@@ -548,6 +548,55 @@ def corroborated(sentence, *, relevance, hosts=("meson.example", "buildnotes.exa
                     for n, h in enumerate(hosts)], confidence=0.9)
 
 
+ROADMAP = ("A wipe-day-to-endgame Rust progression roadmap: scrap first, WB1 to WB3, first gun to AK, then C4 "
+           "raids.")
+
+
+@pytest.mark.parametrize("sentence", [
+    ROADMAP,                                                                              # the R6 live candidate
+    "A wipe-day-to-endgame Rust plan: scrap first, WB1 to WB3, first gun to AK, then C4 raids.",   # no guide word
+    "Rust early game checklist: gather wood and stone, build a base, craft a bow.",
+])
+def test_guide_roadmap_and_listicle_fragments_never_become_knowledge(db, sentence):
+    """R6 D10: the game question made "A wipe-day-to-endgame Rust progression roadmap: ..." (rustly.com) a provisional
+    knowledge candidate. A guide heading with its items, a colon-led sequence of steps or a numbered step is a
+    page's advice, not knowledge: held as a claim with the reason, and nothing is asked."""
+    _, out = consolidated(db, [corroborated(sentence, relevance=0.9, hosts=("rustly.example", "rustguide.example"),
+                                            key="rust roadmap progression")],
+                          objective="When was the Rust video game released?")
+    assert out["provisional"] == [] and out["pending"] == [], out
+    reasons = out["held"][0]["reasons"]
+    assert any("not a specific, well-formed claim" in r and "not knowledge" in r for r in reasons), reasons
+
+
+def test_definitions_after_a_colon_and_clauses_with_their_own_verb_are_still_proposed(db):
+    """The control for R6 D10 through consolidation: a definition after a colon and a clause with its own verb before
+    the colon keep their shape."""
+    for n, sentence in enumerate(("Rust (video game): a multiplayer survival game developed by Facepunch Studios.",
+                                  "The Rust video game has its own progression system: workbenches, blueprints and "
+                                  "tech trees.")):
+        _, out = consolidated(db, [corroborated(sentence, relevance=0.9, hosts=("rustly.example", "rustguide.example"),
+                                                key=f"rust game {n}")],
+                              objective="What is the Rust video game?", now=T0 + n)
+        assert len(out["provisional"]) == 1, out["held"]
+
+
+@pytest.mark.parametrize("sentence, held", [
+    ("Top 10 Rust tips: build a base early, farm scrap at monuments, craft a workbench.", True),
+    ("Step 2: craft a level 1 workbench and research the Rust pickaxe.", True),
+    ("Recipe: mix 200 g flour, then 3 eggs, then bake for 20 minutes.", True),
+    ("Python: a high-level programming language first released in 1991.", False),           # a value after a colon
+    ("Rust release history: Early Access in December 2013, then the full release in February 2018.", False),  # dated
+    ("Python Developer's Guide: Python 3.12 was released on 2 October 2023.", False),        # a dated fact
+    ("Switzerland's official languages: German, French, Italian and Romansh.", False),       # a plain list of names
+    ("Rust 1.0 was released in May 2015, then Rust 1.1 followed in June 2015.", False),      # no colon heading
+])
+def test_the_guide_shape_rule(sentence, held):
+    """R6 D10, the shape rule alone (the fixtures above cannot carry numbers past verification)."""
+    why = consolidate.unaskable(sentence)
+    assert (why is not None and "not knowledge" in why) is held, why
+
+
 @pytest.mark.parametrize("sentence, objective", [
     # a definition of the entity ("X is a/an <class>"): what the bench's Fennick row is (relevance 0.07)
     ("Meson is an open source build system for C and C++ projects.",

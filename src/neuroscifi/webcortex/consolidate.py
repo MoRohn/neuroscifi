@@ -41,7 +41,8 @@ Steps for each scored cluster of the task (state.load_clusters):
    question budget: at most config.max_web_questions_per_task new questions per task and none while
    config.max_open_web_questions are open; the rest stay provisional (or recorded) without a question of their
    own and ONE aggregate question (scope web:review:<task>) says how many await review. Only a specific,
-   well-formed claim on the question's subject is proposed at all (unaskable: R1-02, R2-04; others are held), the
+   well-formed claim on the question's subject is proposed at all (unaskable: R1-02, R2-04; a guide, roadmap or
+   listicle fragment is not one, R6 D10; others are held), the
    questions go to the most valuable candidates first, and a statement already asked is not asked again.
 A contested cluster about live knowledge compares values first: when its supporting side agrees with the item,
 the item is strengthened by it and never lowered; only claims that really conflict with the item are recorded as
@@ -397,6 +398,37 @@ _PROMOTIONAL = re.compile(r"\b(?:crucial|essential|vital|powerful|leading|premie
                           r"beloved|de[\s-]facto)\b", re.I)
 
 
+# R6 D10: a guide, roadmap or listicle fragment is a page's advice or structure, not knowledge ("A wipe-day-to-endgame
+# Rust progression roadmap: scrap first, WB1 to WB3, first gun to AK, then C4 raids."). Its shape: a verbless heading
+# before a colon that names a guide (roadmap, guide, checklist, tier list, top 10, ...), or that introduces an undated
+# sequence of steps (three or more items joined by "then", "next", "finally" or arrows); or numbered steps ("Step
+# 2:"). A definition or value after a colon ("Python: a programming language first released in 1991."), a dated
+# sequence (a timeline: "Note: Rust 0.1 came in 2012, then 1.0 in 2015.") and a plain list of names keep their shape.
+_GUIDE_NOUN = re.compile(r"\b(?:road[\s-]?maps?|guides?|walk[\s-]?throughs?|tutorials?|check[\s-]?lists?|"
+                         r"cheat[\s-]?sheets?|tier[\s-]lists?|build[\s-]orders?|tips|tricks|hacks|playbooks?|"
+                         r"progression|step[\s-]by[\s-]step|how[\s-]to|top\s+\d+|\d+\s+(?:best|ways|tips|things|"
+                         r"reasons|steps|mistakes))\b", re.I)
+_SEQUENCE = re.compile(r"\b(?:then|next|finally|afterwards|after\s+that|lastly)\b|→|->|=>|»", re.I)
+_STEP = re.compile(r"\bstep\s*\d+\s*[:.)-]", re.I)
+
+
+def _guide_fragment(s: str) -> str | None:
+    """Why `s` is a guide, roadmap, listicle or step-list fragment (see the comment above), else None."""
+    if _STEP.search(s):
+        return "a numbered step of a guide, not knowledge"
+    head, colon, tail = s.partition(":")
+    if not colon or not head.strip() or _claims._spans(head)[1] is not None:
+        return None                         # no colon, or the part before it is a clause with its own verb
+    from . import text as T
+    items = [x for x in re.split(r"[,;]|\s(?:and\s+)?then\s", tail) if x.strip()]
+    dated = any(T.value_kind(v)[0] in ("date", "year") for v in T.values(tail))
+    if _GUIDE_NOUN.search(head) and len(items) >= 2 and not dated:
+        return "a guide, roadmap or list heading with its items, not knowledge"
+    if len(items) >= 3 and _SEQUENCE.search(tail) and not dated:
+        return "a colon-led sequence of steps, not knowledge"
+    return None
+
+
 def _about_entity_shape(s: str) -> bool:
     """`s`, a claim about the question's entity, defines it or states a value about it, without judging it."""
     from . import temporal, text as T
@@ -419,7 +451,7 @@ def unaskable(statement, relevance=1.0, *, about=False) -> str | None:
         return f"off the question's subject (relevance {state.finite(relevance, 0.0):.2f} < {MIN_QUESTION_RELEVANCE})"
     if s and _claims.record_template(s) is not None:
         return None
-    why = claim_shaped(s)
+    why = claim_shaped(s) or _guide_fragment(s)
     if why is not None:
         return why
     if not _SENTENCE_END.search(s):
