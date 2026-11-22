@@ -80,6 +80,8 @@ def command(a) -> list[str]:
         cmd += ["-p", "Type=exec"]
     for prop in properties(unit, user=a.user, bind_ro=a.bind_ro, bind_rw=a.bind_rw):
         cmd += ["-p", prop]
+    for prop in a.property:
+        cmd += ["-p", prop]
     for env in a.setenv:
         cmd += ["--setenv", env]
     if a.workdir:
@@ -95,6 +97,8 @@ def main(argv=None):
     p.add_argument("--bind-ro", action="append", default=[], metavar="PATH")
     p.add_argument("--bind-rw", action="append", default=[], metavar="PATH")
     p.add_argument("--setenv", action="append", default=[], metavar="K=V")
+    p.add_argument("-p", "--property", action="append", default=[], metavar="KEY=VALUE",
+                   help="an extra property, e.g. User=neuroscifi (system manager only)")
     p.add_argument("--workdir")
     mode = p.add_mutually_exclusive_group(required=True)
     mode.add_argument("--wait", action="store_true", help="run to completion, output here")

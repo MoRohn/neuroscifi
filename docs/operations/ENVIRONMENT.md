@@ -65,6 +65,7 @@ Keys not in this table are ignored by the units. Do not put secrets in this file
 Required for any non-loopback bind (OPS-02). Pocket loads them with `ssl.SSLContext.load_cert_chain` and accepts TLS 1.2 or newer.
 
 - The certificate must be valid for the exact hostname the phone types, include the full chain, and be trusted by the phone (a public CA, or a private CA whose root is installed on the phone). A self-signed certificate that the phone does not trust fails in the phone's browser before Pocket is reached.
+- `nsf pocket tls init --out /etc/neuroscifi/tls --name HOST ...` issues such a chain from a private CA and `nsf pocket tls export-ca` exports the CA for the phones ([TLS.md](TLS.md), with the Android and iOS steps and the Tailscale / Let's Encrypt alternatives).
 - The key must match the certificate and be unencrypted (no passphrase prompt is possible under systemd).
 - Location: `/etc/neuroscifi/tls/fullchain.pem` and `/etc/neuroscifi/tls/privkey.pem`. The folder is `root:neuroscifi` 0750 and the files `root:neuroscifi` 0640, so the service reads them through its group and no other account can. The key is not copied into the state directory.
 - Renewal: replace both files, then `sudo systemctl restart neuroscifi-pocket.service`. Pocket does not reload certificates while running.

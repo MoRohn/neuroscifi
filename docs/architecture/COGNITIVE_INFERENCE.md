@@ -348,6 +348,42 @@ nsf llm usage                                                 # token ledger
   token).
 - `deploy/install.sh --llm` installs the vLLM unit but neither enables it nor provides Docker or the weights (host
   choices, §5).
-- Not done in this release: remote providers were tested only with fakes (no remote endpoint is configured); no
-  per-sentence semantic entailment check (the SEC-G-E1 check is lexical coverage, above); voice/PersonaPlex
-  integration is area 6.
+- Remote providers: the remote code path is verified live against the local vLLM rehearsed as a remote provider
+  (§7). A real external provider is owner-side: `tests/inference/test_inference_remote_live.py` runs against one.
+- Not done in this release: no per-sentence semantic entailment check (the SEC-G-E1 check is lexical coverage, above);
+  voice/PersonaPlex integration is area 6.
+
+## 7. Remote providers: live contract (2026-11-22)
+
+`tests/inference/test_inference_remote_live.py` exercises the gateway's remote path against a real OpenAI-compatible endpoint. It is skipped unless `NSF_LIVE_REMOTE=1`.
+
+```sh
+# a real external provider (owner-side)
+NSF_LIVE_REMOTE=1 NSF_REMOTE_URL=https://api.example.com/v1 NSF_REMOTE_KEY_FILE=/abs/path/key \
+  [NSF_REMOTE_MODEL=name] [NSF_REMOTE_CA=/abs/ca.pem] pytest -q tests/inference/test_inference_remote_live.py
+# the local vLLM rehearsed as a remote provider (what ran here)
+NSF_LIVE_REMOTE=1 NSF_REMOTE_UPSTREAM=127.0.0.1:8811 NSF_REMOTE_KEY_FILE=~/.config/neuroscifi/inference/api_key \
+  pytest -q tests/inference/test_inference_remote_live.py
+```
+
+**The rehearsal setup:**
+
+- A TLS proxy fronts vLLM, with a certificate for `inference.remote.test` from a throwaway `nsf pocket tls` CA. The test process trusts only that CA (`SSL_CERT_FILE`).
+- The locality decision is fixed to `remote`, and the connection is pinned to 127.0.0.1.
+- Everything after the locality decision is production code: the owner's `remote_allowed`, https only, the privacy screen and private-memory consent, SNI and certificate verification against the configured name, the whole-call deadline, retries and the ledger.
+- The key is read from its 0600 file and never printed.
+
+**Result: 8 passed, 1 skipped**, against Qwen3-30B-A3B-Instruct-2507-FP8 in vLLM. The skipped test is the CLI test, which needs a really remote address.
+
+| Contract | Observed |
+|---|---|
+| Owner authorisation | without `remote_allowed`: `remote_not_authorised`, health `not_configured`, no connection attempted; with it: health `ready` with a probe |
+| https only | the same endpoint over `http://`: refused before connecting |
+| Chat and ledger | reply, server token counts; ledger row `locality=remote`, tokens, latency; a marker string from the prompt absent from the ledger file |
+| Streaming | ≥ 3 deltas, first-token time recorded (ledger `stream=1`) |
+| Structured output | a JSON Schema answer validated locally (Paris, France, a population number) |
+| Tool allow-list | the model called the allow-listed `release_lookup`, which ran and returned its value into the answer; a forced call to an unlisted `forget_memory` was refused ("not on the allow-list") and never executed; an ungranted permission offers no tools |
+| Timeouts | `read_timeout` 1.0 s on a 2000-token request: `timeout` raised at the deadline and recorded in the ledger; the same for a stream |
+| Consent and privacy gate | a message marked `private` without `remote_private_memory`: `private_blocked`. E-mail, phone and API-key text: `private_blocked`. In every blocked case no connection was opened (gateway spy and proxy connection count unchanged) and no ledger row written. Owner-approved disclosure sends the screened text; `remote_private_memory` sends private memory but does not switch off the identifier screen |
+
+Only the gateway marks and gates private messages: no current caller sends memory marked `private`. Research synthesis sends the question and public web evidence, both of which pass the screen.

@@ -2,7 +2,7 @@
 
 Audience: the owner or operator of one NeuroSciFi instance on a Linux host such as the NVIDIA DGX Spark (Arm, DGX OS, Ubuntu-based).
 
-Status of this document: these are procedures. **No service deployment has been performed.** The units, `install.sh` and the switchover steps have not been run as real system services. The software itself was built and tested on a DGX Spark (GB10) development host running a general-purpose distribution, not DGX OS, with no sensors attached. Steps marked *(unverified on a host)* use system tools (`systemd`, `cryptsetup`, `ssh`) that the project's tests do not cover. Commands marked *(available from 0.5.0)* belong to the console, acceptance and doctor tools and are verified by the integrator, not by this document.
+Status of this document: these are procedures. **No system-level service deployment has been performed.** The services were run under their units' sandbox as transient user units, and their encrypted storage was checked ([HARDENING_VERIFICATION.md](HARDENING_VERIFICATION.md); section 5 there lists the checks that need root). The units, `install.sh` and the switchover steps have not been run as real system services. The software itself was built and tested on a DGX Spark (GB10) development host running a general-purpose distribution, not DGX OS, with no sensors attached. Steps marked *(unverified on a host)* use system tools (`systemd`, `cryptsetup`, `ssh`) that the project's tests do not cover. Commands marked *(available from 0.5.0)* belong to the console, acceptance and doctor tools and are verified by the integrator, not by this document.
 
 Related: [ENVIRONMENT.md](ENVIRONMENT.md) (every setting), [MIGRATIONS.md](MIGRATIONS.md) (upgrades), [TESTING.md](TESTING.md).
 

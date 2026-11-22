@@ -433,7 +433,7 @@ neuroscifi/
 | **Autonomy** | [Research policy](docs/autonomy/RESEARCH_POLICY.md) |
 | **Voice** | [Cognitive voice bridge](docs/voice/COGNITIVE_VOICE_BRIDGE.md) · [Streaming and transcripts](docs/voice/STREAMING_AND_TRANSCRIPTS.md) · [PersonaPlex audit](docs/voice/PERSONAPLEX_INTEGRATION.md) · [Voice UAT results](docs/voice/VOICE_UAT_RESULTS.md) |
 | **Presence** | [Architecture](docs/presence/PRESENCE_CORTEX_ARCHITECTURE.md) · [Visual design](docs/presence/VISUAL_DESIGN_SYSTEM.md) · [State mapping](docs/presence/COGNITIVE_STATE_MAPPING.md) · [Accessibility](docs/presence/ACCESSIBILITY.md) · [Performance](docs/presence/PERFORMANCE_RESULTS.md) |
-| **Operations** | [Runbook](docs/operations/RUNBOOK.md) · [Environment](docs/operations/ENVIRONMENT.md) · [Migrations](docs/operations/MIGRATIONS.md) · [Testing](docs/operations/TESTING.md) |
+| **Operations** | [Runbook](docs/operations/RUNBOOK.md) · [Environment](docs/operations/ENVIRONMENT.md) · [Hardening and storage verification](docs/operations/HARDENING_VERIFICATION.md) · [TLS for Pocket](docs/operations/TLS.md) · [Migrations](docs/operations/MIGRATIONS.md) · [Testing](docs/operations/TESTING.md) |
 | **QA** | [Release decisions](docs/qa/RELEASE_DECISIONS.md) · [E2E results](docs/qa/E2E_TEST_RESULTS.md) · [Defect log](docs/qa/DEFECT_RESOLUTION_LOG.md) · [Journey matrix](docs/qa/USER_JOURNEY_MATRIX.md) · [UX validation](docs/qa/UX_VALIDATION.md) · [Regression report](docs/qa/REGRESSION_REPORT.md) · [Production readiness (0.6.0)](docs/qa/PRODUCTION_READINESS.md) |
 | **Quality and research** | [Acceptance criteria](docs/quality/ACCEPTANCE_CRITERIA.md) · [Verification report](docs/quality/VERIFICATION_REPORT.md) · [Research workflow](research/README.md) · [Pocket guide](mobile/README.md) |
 
@@ -445,7 +445,21 @@ neuroscifi/
 - **PersonaPlex is not real-time on GB10 upstream.** It measured 99–152 ms per 80 ms frame. It cannot speak external text through its shipped server, and it is not deployed.
 - **The guard is lexical, not semantic.** Honest "the evidence does not establish …" caveats are accepted only in a closed grammar, and anything else is rejected. A rules-written note says when the evidence does not settle the question. Numbers are matched by value and unit, not by meaning. A sentence that cites a supported claim is **not** checked for entailment, so a misbehaving model could attach an unsupported statement to an unrelated supported claim. This gap predates 0.7.0 and is open as an owner decision. The self-critique only flags sentences. The model sees at most 12 findings and adds about 4–5 s to each answer.
 - **Ambiguous subjects.** Research has no notion of word sense. "When was Rust first released?" can be answered about the video game rather than the programming language (open, high severity).
-- **Not verified:** Pocket on physical phones and tablets, notifications while Pocket is closed (they arrive only while it is open), days-long unattended autonomy, systemd units under hardening on a real deployment, a trusted TLS chain, encrypted-volume deployment, and screen readers. Remote inference providers were tested only against fakes.
+- **Verified on the Spark without root (2026-11-22; [hardening and storage](docs/operations/HARDENING_VERIFICATION.md), [TLS](docs/operations/TLS.md), [soak](docs/autonomy/RESEARCH_POLICY.md#9-soak-results), [remote inference](docs/architecture/COGNITIVE_INFERENCE.md#7-remote-providers-live-contract-2026-11-22), [accessibility tree](docs/presence/ACCESSIBILITY.md#accessibility-tree-checks-console-and-pocket-2026-11-22)):**
+  - The console, the research worker, the checkpoint jobs and Pocket ran under their units' sandbox as transient systemd user units: status API, live SearXNG research, checkpoint and verify, pairing. The kernel enforced capabilities, seccomp, W^X, namespaces, a read-only system, private /tmp and devices, and memory and task limits.
+  - Pocket served a chain from `nsf pocket tls`. It was verified by `openssl s_client -verify_return_error` and by Chromium with the CA in a scratch NSS database, with negative controls.
+  - Instance, checkpoints, model cache and Docker data sit on LUKS2, swap is zram, and `nsf doctor` reports both.
+  - A 7-day accelerated autonomy soak with injected faults stayed inside the budgets with no drift, leaks or stuck leases. A wall-clock soak runs (`nsf-soak`).
+  - The remote-provider path of the inference gateway passed a live contract against vLLM rehearsed as a remote endpoint behind TLS, including the private-data consent gate.
+  - Accessibility-tree checks cover names, roles, live regions and focus order. Three live regions that were silent while empty are fixed.
+- **Not verified (owner-side):**
+  - The IP firewall (`IPAddressDeny`), `ProtectProc` and `User=` under the system manager (commands in HARDENING_VERIFICATION §5).
+  - Installing the CA on a physical Android phone and iPhone.
+  - A real external inference provider: run the live contract with `NSF_LIVE_REMOTE=1`.
+  - Days of wall-clock autonomy: read the `nsf-soak` report.
+  - A person using NVDA, Orca, TalkBack and VoiceOver (protocol in ACCESSIBILITY).
+  - Pocket on physical phones and tablets.
+  - Notifications while Pocket is closed: they arrive only while it is open.
 - **Scope.** Multi-node is minimal: there is no worker federation, attestation or result signing, and session hand-off is API-only. Idle unloading of models is manual. A voice session forgotten after a checkpoint stays in older checkpoint files until they are pruned.
 - **Release status.** The open items and the 0.7.0 acceptance matrix are in [RELEASE_DECISIONS](docs/qa/RELEASE_DECISIONS.md) and the QA reports.
 

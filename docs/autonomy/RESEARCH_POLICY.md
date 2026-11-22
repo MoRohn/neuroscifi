@@ -288,5 +288,85 @@ Earlier live trials, kept to explain two choices:
 - Multi-node is the minimal RD-11 scope. Nodes are Pocket-paired devices with a capability; there is no worker
   federation, remote attestation or result signing. The Pocket page offers Continue and Evidence review; session
   hand-off is API only for now.
-- Not verified: days-long unattended operation (RD-54). Notifications reach a phone only while Pocket is open
-  (RD-22).
+- Days-long unattended operation (RD-54) is verified in a 7-day accelerated simulation and a wall-clock soak that was
+  started on 2026-11-22 and is still running (section 9). A multi-day wall-clock result is owner-side until that soak
+  has run for days. Notifications reach a phone only while Pocket is open (RD-22).
+
+## 9. Soak results
+
+### 9.1 Accelerated: 7 simulated days (`scripts/soak_sim.py`, 2026-11-22)
+
+**What ran.** The production scheduler, worker loop (`scheduler.work` with its idle investigator), `scheduler.tick`, orchestrator, D4 admission and settlement, and consolidation, on real SQLite.
+
+**What was simulated:**
+
+- the clock: injected, advanced by the worker's poll sleep and by 2 s for each search;
+- the web: FixtureWeb with 12 topics × 3 dated pages, and a CorpusProvider as the search engine;
+- the owner: 8 hypotheses with predictions, 2 monitors every 6 h, and 3 questions a day.
+
+The budgets were the defaults: autonomous 20 searches, 60 pages and 1800 s per UTC day; user 400 and 1200.
+
+**Injected faults:**
+
+- a provider outage (day 2, 06:00–12:00 UTC: every search fails);
+- a partial outage (day 5, 00:00–03:00: one search in two fails);
+- a page outage (day 4, 09:00–15:00: two of three hosts answer 503);
+- a worker restart every day at 12:00 UTC;
+- a crash in the middle of a task (day 3, 12:15 UTC, after its reading stage).
+
+| | Result |
+|---|---|
+| Wall time | 71 s for 7 days (2026-11-23 06:00 to 2026-11-30 06:00 UTC) |
+| Tasks | 116: 39 autonomous (curiosity), 56 monitor, 21 owner; 111 completed, 1 partial, 3 failed (the full provider outage), 1 queued at the end |
+| Autonomous use per UTC day | 20 searches every day (the cap), 25–28 pages, 40 s; never above a limit |
+| Midnight reset | autonomous research resumed on every one of the 7 following UTC days |
+| User budget | 18–25 searches and 54–73 pages a day, separate from the autonomous one |
+| Ticks | 96 on every full day (every 15 min, no drift); idle decisions never closer than `idle_interval` |
+| Ledger | every row on the UTC day its task started; no open row of an ended task |
+| Crash recovery | the crashed task was resumed by the next worker after its lease expired; 9 worker starts |
+| Provider failures | 16 searches failed during the outages; the 3 tasks that found nothing failed with a stated reason |
+| Leases | no running task with an expired lease at the end |
+| DB size (instance + cache + WAL), end of day | 2.9, 6.0, 4.9, 6.9, 6.8, 6.6, 10.3, 8.1 MB: grows with the knowledge it holds and falls back at WAL checkpoints |
+| Python heap growth per day | 0.2–1.2 MB, last day −0.6 MB; RSS 95 → 104 MB |
+| Decision log | 4980 events; 1640 "refused" idle decisions (about 234 a day) |
+
+All six checks passed: budget, reset, drift, growth, leases and decisions. The gate runs 3 simulated days (`tests/webcortex/test_soak_sim.py`).
+
+**Observation for the owner.** Once the day's budget is spent, the idle investigator records one "refused" decision every `idle_interval` (300 s) until midnight UTC, about 234 rows a day, roughly 85 000 a year. That growth is bounded and linear, but it is noise in the decision log. Raising `idle_interval`, or logging the refusal once per day and reason, would remove it.
+
+### 9.2 Wall-clock: the `nsf-soak` session (started 2026-11-22 01:23 UTC, still running)
+
+**Setup.** The scratch instance lives in `lane_deploy_live/soak`. It has web on, autonomy enabled by the owner, SearXNG at 127.0.0.1:8888, 5 owner hypotheses and one 6-hour monitor. The code is a snapshot of 94ccb09 in `soak/code`, so later edits do not change the soak. The budgets are the defaults (20 searches, 60 pages).
+
+**Units** (transient user units, all under the `neuroscifi-webcortex` and `neuroscifi-webcortex-tick` sandboxes through `scripts/hardened_run.py`):
+
+- `nsf-soak.service`: `nsf web work`;
+- `nsf-soak-tick.timer`: `nsf web tick --queue` every 15 min;
+- `nsf-soak-sample.timer`: `scripts/soak_report.py --append` every 10 min, to `soak/samples.jsonl`.
+
+**Report:**
+
+```sh
+L=…/scratchpad/v07/lane_deploy_live
+python3 $L/soak/soak_report.py --db $L/soak/instance.sqlite --unit nsf-soak --samples $L/soak/samples.jsonl
+```
+
+**Stop and remove:**
+
+```sh
+systemctl --user stop nsf-soak-tick.timer nsf-soak-sample.timer nsf-soak.service
+systemctl --user reset-failed 'nsf-soak*' 2>/dev/null
+```
+
+The units are transient, so nothing is left in `~/.config/systemd`. They do not survive a reboot or a logout without lingering, which was not enabled.
+
+**First hour** (report at 01:43 UTC):
+
+- The worker had been active with 0 restarts.
+- Autonomous: 4 curiosity tasks (3 completed, 1 partial) used 17 of 20 searches and 28 of 60 pages, with 15 SearXNG requests and 96 upstream engine requests.
+- User: the monitor ran once (2 searches, 2 pages).
+- No running task, no open ledger row, no expired lease.
+- 167 claims from 30 sources. Files grew from 5.1 to 7.7 MB. Worker RSS 138 → 140 MB.
+- All four checks ok.
+
+The report at hand-off is in the lane's final message. Days-long wall-clock results are owner-side: read the report after a few UTC midnights. Expect `autonomous_used.searches` ≤ 20 on every day, a new day's row after each 00:00 UTC, `restarts` 0, and flat RSS.
