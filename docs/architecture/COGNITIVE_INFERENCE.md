@@ -408,8 +408,15 @@ nsf llm usage                                                 # token ledger
   "Prediction: …" headline. The price of faithfulness is closeness: the model now mostly copies claims, so 13 of the
   68 open with a word that points back ("It", "This release", "Here, we", "The company") and depend on their
   neighbours, some restate bibliographic records, and an answer can include an off-topic claim; it repeated a
-  sentence in two answers (4 repeats, now removed by `compose`, not counted above). The guard remains the only
-  authority: composition adds only attribution words it already accepts.
+  sentence in two answers (4 repeats, now removed by `compose`, not counted above). A paired replay removes the
+  search variance: the answer call alone, once with each request, on the same 44 bundles of those runs, the two run
+  side by side. Template fallback 14 of 44 → 8 of 44, all 8 empty answers (ethanol 4, predictive coding 3, AI this
+  week 1; before, every fallback was a guard rejection); kept per answer 0.91 → 3.09; survival 32 % → 96 %; answer
+  call median 6.0 s → 6.5 s, mean 6.1 s → 5.3 s; prompt tokens median 1 686 → 1 544 (the compact evidence view
+  outweighs the longer prompt), completion tokens median 190 → 192. The model now writes nothing more often when
+  the claims are weak; for ethanol that is right (no claim gives the boiling point), for predictive coding it is not
+  (a claim defines it). The guard remains the only authority: composition adds only attribution words it already
+  accepts.
 - Claim states are the ADR-035 states of `synthesis.decide`, written on each finding before reasoning; a stored
   report without them is read as `not_evaluated` (never upgraded from the legacy label). The model
   sees at most 12 findings; it cannot see evidence the extractive pipeline did not extract.
