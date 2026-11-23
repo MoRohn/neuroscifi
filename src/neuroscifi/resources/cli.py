@@ -46,7 +46,7 @@ def _status(args):
         out = policy.load(args.service, reason="owner command", by="owner",
                           notify=lambda text: print(text, file=sys.stderr, flush=True))
     emit(out)
-    return 1 if out["action"] == "failed" else 0
+    return 1 if out["action"] in ("failed", "refused") else 0
 
 
 def register(sub):

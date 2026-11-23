@@ -17,6 +17,10 @@ same level at which background autonomy and rendering are refused. Timeouts that
 `ensure_loaded()` reloads on demand a service the idle policy unloaded: it tells the user "Starting the local model,
 about N s" (N: the last measured reload, else the documented cold start), runs the deploy's start and wait commands
 and records the measured reload time. A service the owner unloaded is left alone (`nsf resources load` loads it).
+Before any load, `headroom()` compares MemAvailable with the service's footprint (the memory its last load took or
+its last unload freed, else the documented figure): a load that would leave less than the critical threshold free is
+refused and recorded, rather than starting a container that crash-loops. `using(..., timeout=)` (the gateway passes
+its call's time) waits for a reload no longer than the caller may; the reload then finishes in the background.
 Every load and unload is an event in <db>.resources/idle-events.jsonl with its reason; `nsf resources` shows them.
 
 Stop and start use the deploy's own commands: deploy/vllm/run.sh and deploy/voice/run.sh (docker shape), or systemctl
@@ -60,6 +64,7 @@ class Service:
     metrics: str | None = None       # a vLLM /metrics URL (requests running / waiting / served)
     documented_seconds: float | None = None   # measured cold start (RESOURCE_SCHEDULING.md §4)
     suggested_minutes: int | None = None
+    documented_gib: float | None = None       # memory it takes when loaded (§4), until a load or unload measures it
 
 
 def _port(env, default):
@@ -70,15 +75,15 @@ SERVICES = {
     "vllm": Service("vllm", "the local model", "neuroscifi-vllm",
                     ("bash", "{repo}/deploy/vllm/run.sh", "start"), ("bash", "{repo}/deploy/vllm/run.sh", "stop"),
                     ("bash", "{repo}/deploy/vllm/run.sh", "wait", "1200"), "neuroscifi-vllm.service",
-                    f"http://127.0.0.1:{_port('NSF_VLLM_PORT', '8811')}/metrics", 32.5, 30),
+                    f"http://127.0.0.1:{_port('NSF_VLLM_PORT', '8811')}/metrics", 32.5, 30, 44.1),
     "asr": Service("asr", "speech recognition", "neuroscifi-voice-asr",
                    ("bash", "{repo}/deploy/voice/run.sh", "start", "asr"), ("bash", "{repo}/deploy/voice/run.sh", "stop", "asr"),
                    ("bash", "{repo}/deploy/voice/run.sh", "wait", "asr", "900"), "neuroscifi-voice-asr.service",
-                   f"http://127.0.0.1:{_port('NSF_VOICE_ASR_PORT', '18431')}/metrics", 17.2, 15),
+                   f"http://127.0.0.1:{_port('NSF_VOICE_ASR_PORT', '18431')}/metrics", 17.2, 15, 4.1),
     "tts": Service("tts", "speech synthesis", "neuroscifi-voice-tts",
                    ("bash", "{repo}/deploy/voice/run.sh", "start", "tts"), ("bash", "{repo}/deploy/voice/run.sh", "stop", "tts"),
                    ("bash", "{repo}/deploy/voice/run.sh", "wait", "tts", "900"), "neuroscifi-voice-tts.service",
-                   None, 5.2, 15),
+                   None, 5.2, 15, 1.5),
     "searxng": Service("searxng", "the search engine", "neuroscifi-searxng",
                        ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "start", "--db", "{db}"),
                        ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "stop", "--db", "{db}")),
@@ -155,7 +160,7 @@ class Idle:
     """The idle policy of one instance (`db_path`); its files live in <db>.resources/ next to the audio beacon."""
 
     def __init__(self, db_path, *, runner=None, clock=None, monotonic=None, services=None, metrics=None,
-                 sample=None):
+                 sample=None, memory=None):
         self.db_path = Path(db_path)
         self.folder = Path(f"{db_path}.resources")
         self.runner = runner or _run
@@ -163,6 +168,7 @@ class Idle:
         self.services = services or SERVICES
         self.read_metrics = metrics or _metrics
         self.sample = sample or (lambda: monitor.sample())
+        self.read_memory = memory or (lambda: monitor.memory())     # uncached: a load or unload measures the change
 
     # ---- files ------------------------------------------------------------------------------------------------
     def _file(self, name) -> Path:
@@ -359,12 +365,16 @@ class Idle:
                 return self.unload(name, reason=reason, by=by, _locked=True)
         systemd = self._systemd(svc)
         argv = ["systemctl", "--no-ask-password", "stop", svc.unit] if systemd else self._cmd(svc.stop)
+        before = self._available()
         started = self.monotonic()
         done = self.runner(argv, COMMAND_TIMEOUT)
         ok = getattr(done, "returncode", 1) == 0
         seconds = round(self.monotonic() - started, 1)
+        after = self._available() if ok and before is not None else None
+        freed = None if after is None else after - before
         event = self._event(name, "unload", reason, by=by, ok=ok, seconds=seconds,
                             shape="systemd" if systemd else "docker",
+                            **({"freed_bytes": freed} if freed and freed > 0 else {}),
                             **({} if ok else {"error": (getattr(done, "stdout", "") or "")[-400:]}))
         if ok:
             with self._state() as data:
@@ -383,6 +393,53 @@ class Idle:
                 return event["seconds"]
         return self.services[name].documented_seconds
 
+    def _available(self) -> int | None:
+        """MemAvailable in bytes now (uncached), None when /proc/meminfo cannot be read."""
+        try:
+            return (self.read_memory() or {}).get("available_bytes")
+        except Exception:      # a measurement must never stop a load or an unload
+            return None
+
+    def footprint(self, name) -> dict | None:
+        """{"bytes", "source"}: the memory the service took when it last loaded, or freed when it last unloaded
+        (MemAvailable before and after: on unified memory this counts its GPU allocations too), else the documented
+        figure; None when neither exists (no headroom check). Another workload changing at the same moment skews a
+        measurement; a reading that was not an increase is not recorded."""
+        for event in reversed(self.events(limit=0)):
+            if event.get("service") != name or not event.get("ok"):
+                continue
+            for field, how in (("took_bytes", "taken by its last load"), ("freed_bytes", "freed by its last unload")):
+                if isinstance(event.get(field), (int, float)) and event[field] > 0:
+                    return {"bytes": int(event[field]), "source": f"{how} (measured)"}
+        gib = self.services[name].documented_gib
+        return None if gib is None else {"bytes": int(gib * monitor.GIB),
+                                         "source": "documented (RESOURCE_SCHEDULING.md §4)"}
+
+    def headroom(self, name) -> dict:
+        """{"fits", "why"}: may the service load without pushing MemAvailable under the critical threshold (§2)? On
+        a shared host another workload may have taken the memory the unload freed; loading into too little memory
+        is what makes a container crash-loop. Unknown memory or footprint is not a refusal (the check is skipped and
+        says so)."""
+        need = self.footprint(name)
+        mem = None
+        try:
+            mem = self.read_memory()
+        except Exception:
+            pass
+        if need is None:
+            return {"fits": True, "why": "not checked: no measured or documented footprint"}
+        if not mem or mem.get("available_bytes") is None:
+            return {"fits": True, "why": "not checked: /proc/meminfo is not readable"}
+        floor = monitor.thresholds(mem.get("total_bytes"))["critical_below_bytes"]
+        avail = mem["available_bytes"]
+        gib = monitor._gib
+        detail = (f"{gib(avail)} available, {self.services[name].label} needs about {gib(need['bytes'])} "
+                  f"({need['source']}) and {gib(floor)} must stay free (the critical threshold)")
+        if avail - need["bytes"] < floor:
+            return {"fits": False, "why": f"not enough memory to load {self.services[name].label}: {detail}",
+                    "available_bytes": avail, "need_bytes": need["bytes"], "floor_bytes": floor}
+        return {"fits": True, "why": detail}
+
     def message(self, name) -> str:
         svc = self.services[name]
         n = self.estimate(name)
@@ -399,6 +456,13 @@ class Idle:
                     data["services"].setdefault(name, {}).update(state="loaded", by="already running",
                                                                  at=self.clock())
                 return {"action": "none", "why": "already running"}
+            room = self.headroom(name)
+            if not room["fits"]:       # refuse rather than start a container the kernel or vLLM will kill
+                event = self._event(name, "load", reason, by=by, ok=False, refused=True, seconds=0.0,
+                                    error=room["why"], **{k: room[k] for k in room if k.endswith("_bytes")})
+                with self._state() as data:
+                    data["services"].setdefault(name, {}).update(refused_at=event["at"])
+                return {"action": "refused", "why": room["why"], "event": event}
             text = self.message(name)
             with self._state() as data:     # Presence shows this while the service starts (any process)
                 data["services"].setdefault(name, {}).update(loading={"told": text, "since": self.clock()})
@@ -411,6 +475,7 @@ class Idle:
             steps = [["systemctl", "--no-ask-password", "start", svc.unit]] if systemd else [self._cmd(svc.start)]
             if svc.wait:
                 steps.append(self._cmd(svc.wait))
+            before = self._available()
             started = self.monotonic()
             done = None
             for argv in steps:
@@ -419,8 +484,11 @@ class Idle:
                     break
             ok = getattr(done, "returncode", 1) == 0
             seconds = round(self.monotonic() - started, 1)
+            after = self._available() if ok and before is not None else None
+            took = None if after is None else before - after
             event = self._event(name, "load", reason, by=by, ok=ok, seconds=seconds, told=text,
-                                shape="systemd" if systemd else "docker",
+                                shape="systemd" if systemd else "docker", headroom=room["why"],
+                                **({"took_bytes": took} if took and took > 0 else {}),
                                 **({} if ok else {"error": (getattr(done, "stdout", "") or "")[-400:]}))
             with self._state() as data:
                 entry = data["services"].setdefault(name, {})
@@ -474,11 +542,96 @@ class Idle:
                        "(neuroscifi-idle.timer); nsf resources unload|load SERVICE"}
 
 
+_LOADS: dict = {}                   # (db_path, service) -> the _Load running in this process
+_LOADS_LOCK = threading.Lock()
+
+
+class _Load(threading.Thread):
+    """One on-demand reload running in the background. Every caller waiting for it is a listener: each is told
+    once what the user is told (the first message from Idle.load, or the estimate when it has not come yet)."""
+
+    def __init__(self, idle, name, purpose):
+        super().__init__(daemon=True, name=f"nsf-idle-load-{name}")
+        self.idle, self.service, self.purpose = idle, name, purpose
+        self.lock = threading.Lock()
+        self.listeners: dict = {}
+        self.told = None
+        self.result = None
+
+    def listen(self, token, notify) -> None:
+        with self.lock:
+            told = self.told
+            if told is None and notify is not None:
+                self.listeners[token] = notify
+        if told is not None and notify is not None:
+            _tell(notify, told)
+
+    def leave(self, token) -> str | None:
+        """Stop listening; returns what this listener was told (None: nothing yet)."""
+        with self.lock:
+            heard = token not in self.listeners
+            self.listeners.pop(token, None)
+            return self.told if heard else None
+
+    def _notify(self, text) -> None:
+        with self.lock:
+            self.told = text
+            listeners, self.listeners = list(self.listeners.values()), {}
+        for notify in listeners:
+            _tell(notify, text)
+
+    def run(self) -> None:
+        try:
+            self.result = self.idle.ensure_loaded(self.service, purpose=self.purpose, notify=self._notify)
+        except Exception as error:   # recorded for the callers; the next use tries again
+            self.result = {"action": "failed", "why": f"{type(error).__name__}: {error}"}
+
+
+def _tell(notify, text) -> None:
+    try:
+        notify(text)
+    except Exception:   # a closed client must not stop the load
+        pass
+
+
+def _bounded_load(idle, name, *, purpose, notify, timeout) -> dict | None:
+    """Idle.ensure_loaded, waiting at most `timeout` seconds. The load runs in a background thread (one per instance
+    and service in this process; later callers wait for the same one), so a caller whose time runs out gets
+    {"action": "loading", "why", "told"} at once while the service keeps starting, and the next call finds it
+    loaded. A crash-looping container therefore costs a call its own deadline, not the deploy's wait limit."""
+    if not idle.unloaded_by_policy(name):
+        return None
+    key = (str(idle.db_path), name)
+    token = object()
+    with _LOADS_LOCK:
+        job = _LOADS.get(key)
+        fresh = job is None or not job.is_alive()
+        if fresh:
+            job = _LOADS[key] = _Load(idle, name, purpose)
+    job.listen(token, notify)
+    if fresh:
+        job.start()
+    job.join(max(0.0, timeout))
+    if not job.is_alive():
+        job.leave(token)
+        return job.result
+    told = job.leave(token)
+    if told is None:
+        told = idle.message(name)
+        if notify is not None:
+            _tell(notify, told)
+    return {"action": "loading", "told": told,
+            "why": f"{told}: not ready within this call's {timeout:.0f} s; it keeps starting in the background"}
+
+
 @contextmanager
-def using(db_path, name, *, purpose, notify=None, idle=None):
+def using(db_path, name, *, purpose, notify=None, idle=None, timeout=None):
     """Wrap one call to a service: hold its in-use lock (shared) so the idle policy cannot stop it mid-call, mark the
     use, and reload it first if the idle policy unloaded it (the user is told through `notify`). No-op without a
-    db_path, and while the policy is off for the service. Yields the reload result (None: nothing was loaded)."""
+    db_path, and while the policy is off for the service. Yields the reload result (None: nothing was loaded).
+    With `timeout` (the caller's remaining seconds) the reload waits no longer than that: the result is then
+    {"action": "loading", ...} and the reload finishes in the background (_bounded_load); a reload refused for
+    lack of memory yields {"action": "refused", "why"}."""
     idle = idle or (Idle(db_path) if db_path else None)
     data = idle.read() if idle is not None else {}
     if idle is None or (data["timeouts"].get(name) is None and
@@ -492,7 +645,8 @@ def using(db_path, name, *, purpose, notify=None, idle=None):
             stack.callback(idle.touch, name)
         except OSError:      # an unwritable folder must never break a call
             pass
-        yield idle.ensure_loaded(name, purpose=purpose, notify=notify)
+        yield idle.ensure_loaded(name, purpose=purpose, notify=notify) if timeout is None else \
+            _bounded_load(idle, name, purpose=purpose, notify=notify, timeout=timeout)
 
 
 def wake(db_path, names, *, purpose, notify=None) -> list[threading.Thread]:

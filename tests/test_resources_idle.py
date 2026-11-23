@@ -1,7 +1,10 @@
 """Opt-in idle unloading (RD-46 policy (c), resources/idle.py) against a fake docker / systemctl / run.sh host: off by
 default, the unload conditions (timeout, in-flight calls and requests, voice sessions, running tasks), the shorter
 timeout at critical pressure, reload on demand with what the user is told and the measured reload time, the owner's
-manual unload and load, the systemd shape, the event log in `nsf resources`, and Presence while a service starts."""
+manual unload and load, the systemd shape, the event log in `nsf resources`, and Presence while a service starts.
+Also the two reload safeguards: the memory headroom check (refused and recorded when the service would not fit) and
+a reload bounded by the caller's time (it finishes in the background), plus the deploy scripts' `wait`, which fails at
+once on a crash-looping container."""
 from datetime import datetime, timezone
 import json
 import subprocess
@@ -17,6 +20,7 @@ from neuroscifi.voice import state as vstate
 
 T0 = 1_795_200_000.0
 MIN = 60.0
+GIB = 1024 ** 3
 
 
 def _iso(at):
@@ -371,3 +375,105 @@ def test_resources_idle_shows_loaded_as_resources_does(fake, capsys, monkeypatch
                    json.loads(capsys.readouterr().out)["policy"]["idle_unload"]["services"].items()}
     assert idle_view == status_view == {"vllm": True, "asr": False, "tts": False, "searxng": True}
     monitor.clear_cache()
+
+
+# ---- memory headroom before a reload --------------------------------------------------------------------------
+
+def _memory(*available_gib):
+    """A /proc/meminfo reader that returns the given MemAvailable readings in turn (the last one repeats)."""
+    readings = list(available_gib)
+
+    def read():
+        gib = readings.pop(0) if len(readings) > 1 else readings[0]
+        return {"total_bytes": 128 * GIB, "available_bytes": int(gib * GIB), "swap_total_bytes": 0,
+                "swap_free_bytes": 0, "psi": None}
+    return read
+
+
+def _unloaded_by_policy(fake, memory):
+    policy_ = fake.make()
+    policy_.read_memory = memory
+    policy_.configure({"vllm": 30 * MIN})
+    policy_.unload("vllm", reason="idle 31 min (timeout 30 min)", by="idle policy")
+    return policy_
+
+
+def test_a_reload_that_would_not_fit_in_free_memory_is_refused_recorded_and_starts_nothing(fake):
+    policy_ = _unloaded_by_policy(fake, _memory(40))     # 40 GiB free; vLLM is documented at 44.1 GiB
+    told = []
+    with idle.using(fake.path, "vllm", purpose="chat", notify=told.append, idle=policy_) as result:
+        assert result["action"] == "refused"
+    assert "not enough memory to load the local model: 40.0 GiB available" in result["why"]
+    assert "44.1 GiB (documented (RESOURCE_SCHEDULING.md §4))" in result["why"] and "7.7 GiB must stay free" in \
+        result["why"]
+    assert not [c for c in fake.calls if "start" in c] and told == []          # nothing started, nobody told
+    event = policy_.events()[-1]
+    assert event["action"] == "load" and event["ok"] is False and event["refused"] is True
+    assert event["error"] == result["why"] and event["reason"] == "on demand: chat"
+    assert policy_.unloaded_by_policy("vllm")                                   # the next use checks again
+    assert policy_.estimate("vllm") == 32.5                                     # a refusal is not a reload time
+
+
+def test_a_reload_that_fits_records_how_much_memory_it_took_and_the_next_check_uses_it(fake):
+    # Unload: 20 GiB free before the stop, 50 after (30 GiB freed). Reload: 50 GiB free before, 18 after (32 taken).
+    policy_ = _unloaded_by_policy(fake, _memory(20, 50))
+    assert policy_.events()[-1]["freed_bytes"] == 30 * GIB
+    assert policy_.footprint("vllm") == {"bytes": 30 * GIB, "source": "freed by its last unload (measured)"}
+    policy_.read_memory = _memory(50, 50, 18)    # headroom check, then before and after the start
+    out = policy_.ensure_loaded("vllm", purpose="chat")
+    assert out["action"] == "load"
+    assert out["event"]["took_bytes"] == 32 * GIB and "50.0 GiB available" in out["event"]["headroom"]
+    assert policy_.footprint("vllm") == {"bytes": 32 * GIB, "source": "taken by its last load (measured)"}
+
+
+def test_unreadable_memory_skips_the_headroom_check_and_says_so(fake):
+    policy_ = _unloaded_by_policy(fake, lambda: None)
+    out = policy_.ensure_loaded("vllm", purpose="chat")
+    assert out["action"] == "load" and out["event"]["headroom"] == "not checked: /proc/meminfo is not readable"
+
+
+def test_the_owner_load_command_exits_non_zero_when_the_reload_is_refused(fake, capsys, monkeypatch):
+    from neuroscifi.cli import main
+    from neuroscifi.resources import monitor
+    _unloaded_by_policy(fake, _memory(64))
+    monkeypatch.setattr(monitor, "memory", lambda *a, **k: _memory(10)())
+    assert main(["resources", "load", "vllm", "--db", str(fake.path)]) == 1
+    assert json.loads(capsys.readouterr().out)["action"] == "refused"
+
+
+# ---- a reload bounded by the caller's time --------------------------------------------------------------------
+
+def test_using_with_a_timeout_returns_the_reload_when_it_finishes_in_time(fake):
+    policy_ = _unloaded_by_policy(fake, _memory(64))
+    told = []
+    with idle.using(fake.path, "vllm", purpose="chat", notify=told.append, idle=policy_, timeout=30) as result:
+        assert result["action"] == "load" and result["seconds"] == 41.0
+    assert told == ["Starting the local model, about 33 s"]
+    with idle.using(fake.path, "vllm", purpose="chat", notify=told.append, idle=policy_, timeout=30) as result:
+        assert result is None                                                   # loaded: nothing to wait for
+    assert len(told) == 1
+
+
+def test_callers_that_run_out_of_time_share_one_background_reload_and_each_is_told_once(fake):
+    policy_ = _unloaded_by_policy(fake, _memory(64))
+    gate = threading.Event()
+    runner = policy_.runner
+
+    def slow(argv, timeout):                     # the deploy's wait blocks until the test lets it finish
+        if "wait" in [str(a) for a in argv]:
+            gate.wait(10)
+        return runner(argv, timeout)
+    policy_.runner = slow
+    first, second = [], []
+    with idle.using(fake.path, "vllm", purpose="chat", notify=first.append, idle=policy_, timeout=0.2) as a:
+        pass
+    with idle.using(fake.path, "vllm", purpose="chat", notify=second.append, idle=policy_, timeout=0.2) as b:
+        pass
+    assert a["action"] == b["action"] == "loading"
+    assert first == second == ["Starting the local model, about 33 s"] and a["told"] == first[0]
+    assert "keeps starting in the background" in a["why"]
+    gate.set()
+    idle._LOADS[(str(policy_.db_path), "vllm")].join(10)
+    assert len([c for c in fake.calls if "start" in c]) == 1                    # one start for both callers
+    assert policy_.events()[-1]["action"] == "load" and policy_.events()[-1]["ok"] is True
+    assert first == second == ["Starting the local model, about 33 s"]          # nobody was told twice

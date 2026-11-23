@@ -454,7 +454,7 @@ class Gateway:
         if need > self.cfg.max_context_tokens:
             raise InferenceError("context_overflow", f"prompt estimate {need - max_tokens} + output {max_tokens} "
                                  f"tokens exceeds max_context_tokens {self.cfg.max_context_tokens}")
-        with self._loaded(purpose):
+        with self._loaded(purpose, timeout):
             model = self.model()
         wire = [{k: v for k, v in m.items() if k in ("role", "content", "name", "tool_calls", "tool_call_id")}
                 for m in messages]
@@ -483,7 +483,7 @@ class Gateway:
         inflight = activity.track("generating", subsystem="reasoning", purpose=purpose, task_id=self.task_id,
                                   clock=self.wall) if stream else nullcontext(None)
         try:
-            with self._loaded(purpose), inflight as count:
+            with self._loaded(purpose, timeout), inflight as count:
                 conn, resp, attempts, deadline = self._call("POST", "/chat/completions", payload, timeout=timeout)
                 try:
                     if stream:
@@ -589,12 +589,25 @@ class Gateway:
             return out
         return self._memory_call("/rerank", payload, [query, *documents], purpose, timeout, parse)
 
-    def _loaded(self, purpose):
+    def _loaded(self, purpose, timeout=None):
         """The idle policy may have unloaded the local model: reload it first (the user is told, see self.notices)
-        and keep it loaded while the block runs (resources/idle.py). No-op for a gateway without an instance."""
+        and keep it loaded while the block runs (resources/idle.py). No-op for a gateway without an instance.
+        The reload waits no longer than the call may take (`timeout`, capped by cfg.read_timeout like the call's
+        own deadline): past that, or when the policy refuses the reload for lack of free memory, the call ends
+        'unavailable' at once with the reason, and an unfinished reload keeps going so a later call finds it."""
         if self.db_path is None or not self.cfg.configured:
             return nullcontext(None)
-        return idle.using(self.db_path, "vllm", purpose=purpose, notify=self.notices.append)
+        from contextlib import contextmanager
+        limit = self.cfg.read_timeout if timeout is None else min(timeout, self.cfg.read_timeout)
+
+        @contextmanager
+        def loaded():
+            with idle.using(self.db_path, "vllm", purpose=purpose, notify=self.notices.append,
+                            timeout=limit) as reload:
+                if reload and reload.get("action") in ("loading", "refused"):
+                    raise InferenceError("unavailable", reload["why"], retryable=True)
+                yield reload
+        return loaded()
 
     def _record(self, row):
         if self.ledger is not None:
