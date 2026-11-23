@@ -5,7 +5,8 @@
 
    Principle: the Presence Cortex entity is the focal point of every interaction surface. Everything around it is
    quiet (a grayscale of warm "gray matter" neutrals, graphite actions, generous space) so that its light, geometry
-   and motion read clearly. Hue is reserved for the two signals that must never be missed: warning and danger. */
+   and motion read clearly. Hue is reserved for the two signals that must never be missed (warning and danger) and
+   for the entity's own minor multicoloured flairs (theme.css accents). */
 
 /* ---- 1. tokens: light (default) ------------------------------------------------------------------------------ */
 :root, [data-theme="light"] {

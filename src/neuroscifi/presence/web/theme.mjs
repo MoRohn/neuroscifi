@@ -6,15 +6,14 @@
 export const THEME_KEY = 'nsf.theme';
 export const THEME_PREFS = Object.freeze(['system', 'light', 'dark']);
 
-// The palette (spec): grayscale light and dark tokens, the same values as theme.css. The accent tone names are
-// identifiers of the scene contract; each renders as a step of luminance, so the entity speaks in light, not hue.
-// Light, darkest to lightest: purple, blue, pink, mint, yellow (every step >= 3:1 on white). Dark, brightest first:
-// yellow, purple, blue, pink, mint. "Yellow" (sparks and rays) is the lightest in light mode and the brightest in dark.
+// The palette (spec), the same values as theme.css: ink and secondary carry meaning; the five accents are the
+// entity's minor multicoloured flairs (sparks, rays, small props), the one touch of colour on the grayscale UI (owner
+// direction, 2026-11-23). Dark accents are contrast-adjusted (slightly lighter, no neon).
 export const TOKENS = Object.freeze({
-  light: Object.freeze({ bg: '#FFFFFF', ink: '#101010', secondary: '#666666', purple: '#3F3F3F', blue: '#525252',
-    mint: '#707070', yellow: '#808080', pink: '#616161' }),
-  dark: Object.freeze({ bg: '#050505', ink: '#F7F7F7', secondary: '#A8A8A8', purple: '#D6D6D6', blue: '#BDBDBD',
-    mint: '#9E9E9E', yellow: '#EDEDED', pink: '#B0B0B0' }),
+  light: Object.freeze({ bg: '#FFFFFF', ink: '#101010', secondary: '#666666', purple: '#B45CFF', blue: '#4A9CFF',
+    mint: '#3DDDB2', yellow: '#FFC928', pink: '#F45CA7' }),
+  dark: Object.freeze({ bg: '#050505', ink: '#F7F7F7', secondary: '#A8A8A8', purple: '#C27DFF', blue: '#6BAFFF',
+    mint: '#52E3BE', yellow: '#FFD24A', pink: '#F77DB9' }),
 });
 
 const media = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;

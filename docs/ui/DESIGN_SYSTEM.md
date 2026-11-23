@@ -25,7 +25,8 @@ figure that shows the agent's presence and cognitive state through small changes
   from 1800 px, 304 px on the console from 2200 px; 132 px on a phone held sideways. The renderer's `expanded` level (> 140 px) draws every slot, so no
   new size class was needed.
 - **Calm surroundings.** No border or card around the stage. The surrounding UI is grayscale, so the entity's
-  light, geometry and motion are the only living things on the surface. The stage adds no motion of its own, and
+  light, geometry and motion, and its few multicoloured flairs, are the only living, colourful things on the
+  surface. The stage adds no motion of its own, and
   busy messages carry no spinner: the entity is the activity indicator.
 - **Alive.** On screen the entity is never frozen: the life layer (docs/presence/MOTION_ENGINE.md) keeps it
   breathing and flowing, deepens with real activity, swells with the measured voice level, turns its attention to
@@ -56,7 +57,8 @@ No file outside `ui.css` defines a colour (the presence palette and the wordmark
 ## Colour
 
 Grayscale (owner direction, 2026-11-23): warm graphite neutrals with a trace of rose ("gray matter", in step with
-the wordmark), graphite actions, and hue only for the two signals that must never be missed, warning and danger.
+the wordmark), graphite actions, and hue only for the two signals that must never be missed, warning and danger,
+and for the Presence entity's own minor multicoloured flairs (docs/presence/VISUAL_DESIGN_SYSTEM.md).
 Primary actions are the ink itself: a graphite button on light, a light button on graphite in dark. Values are tokens on `:root` / `[data-theme]`; `tests/e2e/test_ui_matrix.py` reads them from
 the running page and checks every pair below.
 

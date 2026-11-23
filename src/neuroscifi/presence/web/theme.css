@@ -3,17 +3,17 @@
    Presence colours are custom properties, so a theme switch never touches the SVG geometry or its animation. */
 
 /* ---- presence tokens (any subtree may set data-theme, e.g. the gallery's light and dark panels) ----
-   Grayscale: the entity speaks in light, geometry and motion, not hue. The accent tone names are identifiers of the
-   scene contract (contracts.mjs TONES); each renders as a step of luminance between the ink and the background. */
+   The interface around it is grayscale; the entity keeps its few multicoloured flairs (sparks, rays, small props) in
+   the five accent tones, so it is the one touch of colour on the surface (owner direction, 2026-11-23). */
 :root, [data-theme="light"] {
   --pc-bg:#FFFFFF; --pc-ink:#101010; --pc-secondary:#666666;
-  --pc-purple:#3F3F3F; --pc-blue:#525252; --pc-mint:#707070; --pc-yellow:#808080; --pc-pink:#616161;
+  --pc-purple:#B45CFF; --pc-blue:#4A9CFF; --pc-mint:#3DDDB2; --pc-yellow:#FFC928; --pc-pink:#F45CA7;
   --pc-halo:#E2DDDC;
   --pc-panel:var(--surface,#FFFFFF); --pc-panel-line:var(--line,#E0DAD9); --pc-panel-text:var(--ink,#101010); --pc-panel-muted:var(--ink-muted,#595155);
 }
 [data-theme="dark"] {
   --pc-bg:#050505; --pc-ink:#F7F7F7; --pc-secondary:#A8A8A8;
-  --pc-purple:#D6D6D6; --pc-blue:#BDBDBD; --pc-mint:#9E9E9E; --pc-yellow:#EDEDED; --pc-pink:#B0B0B0;
+  --pc-purple:#C27DFF; --pc-blue:#6BAFFF; --pc-mint:#52E3BE; --pc-yellow:#FFD24A; --pc-pink:#F77DB9;
   --pc-halo:#2C282A;
   --pc-panel:var(--surface,#1A1719); --pc-panel-line:var(--line,#302A2D); --pc-panel-text:var(--ink,#F7F7F7); --pc-panel-muted:var(--ink-muted,#B5ABAF);
 }
