@@ -1142,3 +1142,37 @@ def test_a_call_that_waits_for_its_service_asks_and_waits_for_the_wake_unit(spoo
     fake.make().tick()
     assert idle.wake(fake.path, ("asr",), purpose="voice session", notify=told.append) == []
     assert (fake.spool / "asr.wake").exists() and told[-1].startswith("Starting speech recognition")
+
+
+# ---- review F8: one reading of where the memory models are -----------------------------------------------------
+
+def test_memory_settings_are_read_as_run_sh_resolves_them_and_nothing_is_evaluated(tmp_path):
+    repo, folder = tmp_path / "repo", tmp_path / "cfg"
+    (repo / "deploy" / "memory").mkdir(parents=True)
+    folder.mkdir()
+    (repo / "deploy" / "memory" / "memory.env").write_text(
+        "# shipped\nNSF_MEMORY_BIND=127.0.0.1\nNSF_MEMORY_EMBED_PORT=18441\nNSF_MEMORY_RERANK_PORT=18442\n"
+        "NSF_MEMORY_DIR=${NSF_MEMORY_DIR:-${HOME}/.config/neuroscifi/memory}\n")
+    env = {"NSF_MEMORY_DIR": str(folder), "NSF_MEMORY_EMBED_PORT": "1"}       # the script ignores this port too
+    assert idle.memory_settings(env, repo) == {"dir": folder, "key_file": folder / "api_key", "bind": "127.0.0.1",
+                                               "embed_port": 18441, "rerank_port": 18442}
+    marker = tmp_path / "evaluated"
+    (folder / "memory.env").write_text(                                   # the owner's override
+        f"NSF_MEMORY_EMBED_PORT=28441\nNSF_MEMORY_RERANK_PORT=$(touch {marker})\n"
+        f"NSF_MEMORY_BIND=`touch {marker}`\nexport NSF_MEMORY_RERANK_PORT=9\nNSF_MEMORY_RERANK_PORT=99999999\n")
+    found = idle.memory_settings(env, repo)
+    assert (found["embed_port"], found["rerank_port"], found["bind"]) == (28441, 18442, "127.0.0.1")
+    assert not marker.exists()
+
+
+def test_setup_and_the_policy_look_where_the_script_listens(tmp_path, monkeypatch):
+    from neuroscifi import setup_cli
+    folder = tmp_path / "cfg"
+    folder.mkdir()
+    (folder / "memory.env").write_text("NSF_MEMORY_EMBED_PORT=28441\nNSF_MEMORY_RERANK_PORT=28442\n")
+    monkeypatch.setenv("NSF_MEMORY_DIR", str(folder))
+    found = setup_cli.memory_defaults()
+    assert found == {"urls": {"embed": "http://127.0.0.1:28441/v1", "rerank": "http://127.0.0.1:28442/v1"},
+                     "key_file": folder / "api_key"}
+    script = (idle.REPO / "deploy" / "memory" / "memory.env").read_text()
+    assert "NSF_MEMORY_DIR=${NSF_MEMORY_DIR:-${HOME}/.config/neuroscifi/memory}" in script   # run.sh honours it too

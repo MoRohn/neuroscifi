@@ -323,13 +323,13 @@ def _push(report, a, path):
 # ---- memory by meaning (webcortex/semantic.py; deploy/memory) -----------------------------------------------------
 
 def memory_defaults(a=None) -> dict:
-    """Where deploy/memory puts the two memory models and their key: the same environment names as its memory.env."""
-    folder = Path(os.environ.get("NSF_MEMORY_DIR") or Path.home() / ".config" / "neuroscifi" / "memory")
-    bind = os.environ.get("NSF_MEMORY_BIND") or "127.0.0.1"
-    host = f"[{bind}]" if ":" in bind else bind
-    urls = {"embed": f"http://{host}:{os.environ.get('NSF_MEMORY_EMBED_PORT') or '18441'}/v1",
-            "rerank": f"http://{host}:{os.environ.get('NSF_MEMORY_RERANK_PORT') or '18442'}/v1"}
-    key_file = folder / "api_key"
+    """Where deploy/memory puts the two memory models and their key, as its run.sh resolves them
+    (resources.idle.memory_settings: memory.env and the owner's override, never the environment alone)."""
+    from .resources import idle
+    found = idle.memory_settings()
+    host = f"[{found['bind']}]" if ":" in found["bind"] else found["bind"]
+    urls = {"embed": f"http://{host}:{found['embed_port']}/v1", "rerank": f"http://{host}:{found['rerank_port']}/v1"}
+    key_file = found["key_file"]
     if a is not None:
         urls["embed"] = getattr(a, "memory_embed_url", None) or urls["embed"]
         urls["rerank"] = getattr(a, "memory_rerank_url", None) or urls["rerank"]

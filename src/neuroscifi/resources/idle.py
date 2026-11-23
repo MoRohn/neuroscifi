@@ -42,6 +42,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import sqlite3
 import subprocess
 import sys
@@ -81,6 +82,39 @@ def _port(env, default):
     return os.environ.get(env, default)
 
 
+_MEMORY_LINE = re.compile(r"^(NSF_MEMORY_(?:BIND|EMBED_PORT|RERANK_PORT))=([0-9A-Za-z.:\[\]]{1,64})$")
+
+
+def memory_settings(environ=None, repo=None) -> dict:
+    """{"dir", "key_file", "bind", "embed_port", "rerank_port"}: where deploy/memory/run.sh puts the two memory
+    models and their key, read the way the script resolves them (review F8: `nsf setup` and the idle policy looked
+    at the environment only, so an owner's override of a port was seen by the script alone). The folder is
+    NSF_MEMORY_DIR or ~/.config/neuroscifi/memory; address and ports come from deploy/memory/memory.env and then
+    from the owner's override `<folder>/memory.env`. Both files are read as plain `NAME=value` lines for these
+    three names; nothing is evaluated, and a line with anything else in its value is ignored."""
+    environ = os.environ if environ is None else environ
+    folder = Path(environ.get("NSF_MEMORY_DIR") or Path.home() / ".config" / "neuroscifi" / "memory")
+    found = {"NSF_MEMORY_BIND": environ.get("NSF_MEMORY_BIND") or "127.0.0.1",
+             "NSF_MEMORY_EMBED_PORT": environ.get("NSF_MEMORY_EMBED_PORT") or "18441",
+             "NSF_MEMORY_RERANK_PORT": environ.get("NSF_MEMORY_RERANK_PORT") or "18442"}
+    for path in (Path(repo or REPO) / "deploy" / "memory" / "memory.env", folder / "memory.env"):
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            match = _MEMORY_LINE.match(line.strip())
+            if match:
+                found[match.group(1)] = match.group(2)
+
+    def port(name, default):
+        return int(found[name]) if found[name].isdigit() and 0 < int(found[name]) < 65536 else default
+    return {"dir": folder, "key_file": folder / "api_key", "bind": found["NSF_MEMORY_BIND"],
+            "embed_port": port("NSF_MEMORY_EMBED_PORT", 18441), "rerank_port": port("NSF_MEMORY_RERANK_PORT", 18442)}
+
+
+_MEMORY = memory_settings()
+
 SERVICES = {
     "vllm": Service("vllm", "the local model", "neuroscifi-vllm",
                     ("bash", "{repo}/deploy/vllm/run.sh", "start"), ("bash", "{repo}/deploy/vllm/run.sh", "stop"),
@@ -103,14 +137,14 @@ SERVICES = {
                      ("bash", "{repo}/deploy/memory/run.sh", "start", "embed"),
                      ("bash", "{repo}/deploy/memory/run.sh", "stop", "embed"),
                      ("bash", "{repo}/deploy/memory/run.sh", "wait", "embed", "600"), "neuroscifi-memory-embed.service",
-                     f"http://127.0.0.1:{_port('NSF_MEMORY_EMBED_PORT', '18441')}/metrics", 20.0, 15, 4.4,
+                     f"http://127.0.0.1:{_MEMORY['embed_port']}/metrics", 20.0, 15, 4.4,
                      background=True),
     "rerank": Service("rerank", "memory search (the reranker)", "neuroscifi-memory-rerank",
                       ("bash", "{repo}/deploy/memory/run.sh", "start", "rerank"),
                       ("bash", "{repo}/deploy/memory/run.sh", "stop", "rerank"),
                       ("bash", "{repo}/deploy/memory/run.sh", "wait", "rerank", "600"),
                       "neuroscifi-memory-rerank.service",
-                      f"http://127.0.0.1:{_port('NSF_MEMORY_RERANK_PORT', '18442')}/metrics", 20.0, 15, 4.4,
+                      f"http://127.0.0.1:{_MEMORY['rerank_port']}/metrics", 20.0, 15, 4.4,
                       background=True),
 }
 
