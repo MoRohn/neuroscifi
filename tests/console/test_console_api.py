@@ -291,8 +291,9 @@ def test_forget_a_consolidated_reading_by_its_seq_and_a_camera_by_its_root(conso
         assert c.post("/api/forget", {"kind": "consolidated", "target": seq}, token=token)[0] == 403
         assert c.post("/api/forget", {"kind": "camera", "target": "cam1"}, token=token)[0] == 403
     assert c.post("/api/forget", {"kind": "camera", "target": "cam1"}, headers={"Origin": "http://evil.example"})[0] == 403
-    for bad in (str(seq), 1.5, True, None, 0):
+    for bad in (str(seq), 1.5, True, None, 0, 2 ** 63, 10 ** 30):       # beyond SQLite's integers: 400, not a 500
         assert c.post("/api/forget", {"kind": "consolidated", "target": bad})[0] == 400
+    assert c.post("/api/forget", {"kind": "dataset", "target": 2 ** 63})[0] == 400
     assert c.post("/api/forget", {"kind": "camera", "target": 7})[0] == 400
     assert len(c.ok("GET", "/api/memory?kind=consolidated&epoch=e1")["items"]) == 15       # nothing went so far
     status, data = c.post("/api/forget", {"kind": "consolidated", "target": seq})
