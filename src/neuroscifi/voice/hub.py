@@ -57,7 +57,8 @@ MAX_EVENTS = 500
 EVENT_WAIT_MAX = 20.0
 HEALTH_TTL = 5.0
 SWEEP_EVERY = 60.0
-FOLLOW_POLL = 1.0
+FOLLOW_POLL = 1.0            # longest wait between two checks of a followed research task
+FOLLOW_FIRST = 0.1           # the first wait; it doubles up to FOLLOW_POLL (follow_waits)
 FOLLOW_MAX = 3 * 3600.0
 PROGRESS_SPEAK_EVERY = 30.0
 TERMINAL = ("completed", "partial", "failed", "cancelled")
@@ -65,6 +66,16 @@ STAGE_WORDS = {"discovering": "searching for sources", "reading": "reading sourc
                "checking the evidence", "synthesizing": "writing the answer", "queued": "waiting for the worker"}
 _SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
 ID = re.compile(r"^[A-Za-z0-9_-]{4,64}$")
+
+
+def follow_waits():
+    """The waits between checks of a followed research task: FOLLOW_FIRST, doubling up to FOLLOW_POLL. A task
+    answered from knowledge or a quick lookup is reported within a fraction of a second instead of a whole poll;
+    a long task is checked once per FOLLOW_POLL as before (about five extra reads in its first two seconds)."""
+    wait = min(FOLLOW_FIRST, FOLLOW_POLL)
+    while True:
+        yield wait
+        wait = min(FOLLOW_POLL, wait * 2)
 
 
 def sentences(texts) -> list[str]:
@@ -951,6 +962,7 @@ class VoiceHub:
         from ..webcortex import orchestrator
         started = time.monotonic()
         last_stage, last_spoken = None, time.monotonic()
+        waits = follow_waits()
         while time.monotonic() - started < FOLLOW_MAX:
             try:
                 with self.db() as db:
@@ -974,7 +986,7 @@ class VoiceHub:
                     last_spoken = time.monotonic()
                     self._deliver(s, vbridge.Reply("progress", speech=[f"Still working: {words}."],
                                                    text=f"Still working: {words}.", task_id=None))
-            time.sleep(FOLLOW_POLL)
+            time.sleep(next(waits))
 
     # ---- transcripts -------------------------------------------------------------------------------------------------
     def transcripts(self, principal, *, session_id=None, query=None, limit=200) -> dict:
