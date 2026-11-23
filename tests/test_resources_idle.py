@@ -477,3 +477,54 @@ def test_callers_that_run_out_of_time_share_one_background_reload_and_each_is_to
     assert len([c for c in fake.calls if "start" in c]) == 1                    # one start for both callers
     assert policy_.events()[-1]["action"] == "load" and policy_.events()[-1]["ok"] is True
     assert first == second == ["Starting the local model, about 33 s"]          # nobody was told twice
+
+
+# ---- run.sh wait fails promptly on a crash-looping container --------------------------------------------------
+
+def _fake_tools(tmp_path, *, states, healthy=False):
+    """docker / curl / sleep on PATH: `docker inspect` reports the container states in turn (the last repeats),
+    `curl` fails unless `healthy`, and `sleep` returns at once (and counts the polls)."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "states").write_text("\n".join(states) + "\n")
+    (bin_dir / "docker").write_text(
+        "#!/usr/bin/env bash\n"
+        f'S="{tmp_path}/states"\n'
+        'case "$*" in\n'
+        '  *"{{.State.Status}} {{.RestartCount}}"*)\n'
+        '    head -n1 "$S"; [ "$(wc -l < "$S")" -gt 1 ] && sed -i 1d "$S"; exit 0 ;;\n'
+        '  *"{{.RestartCount}}"*) head -n1 "$S" | cut -d" " -f2 ;;\n'
+        "esac\n")
+    (bin_dir / "curl").write_text(f"#!/usr/bin/env bash\nexit {0 if healthy else 7}\n")
+    (bin_dir / "sleep").write_text(f'#!/usr/bin/env bash\necho x >> "{tmp_path}/polls"\n')
+    for tool in ("docker", "curl", "sleep"):
+        (bin_dir / tool).chmod(0o755)
+    import os
+    return {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path)}
+
+
+def _wait(env, *args):
+    return subprocess.run(["bash", *args], env=env, capture_output=True, text=True, timeout=60, check=False,
+                          cwd=str(idle.REPO))
+
+
+@pytest.mark.parametrize("script", [("deploy/vllm/run.sh", "wait", "1200"),
+                                    ("deploy/voice/run.sh", "wait", "asr", "900")])
+def test_run_sh_wait_fails_at_once_when_the_container_is_restarting(tmp_path, script):
+    done = _wait(_fake_tools(tmp_path, states=["restarting 1"]), *script)
+    assert done.returncode != 0 and "is restarting (it stopped while starting)" in done.stderr
+    assert not (tmp_path / "polls").exists()                                   # failed on the first look
+
+
+@pytest.mark.parametrize("script", [("deploy/vllm/run.sh", "wait", "1200"),
+                                    ("deploy/voice/run.sh", "wait", "asr", "900")])
+def test_run_sh_wait_fails_when_the_restart_count_grows_between_two_polls(tmp_path, script):
+    # docker shows the container `running` again between crashes: only the restart count gives the loop away
+    done = _wait(_fake_tools(tmp_path, states=["running 2", "running 3"]), *script)
+    assert done.returncode != 0 and "restarted 1 time(s) while starting" in done.stderr
+    assert (tmp_path / "polls").read_text().count("x") == 1
+
+
+def test_run_sh_wait_still_returns_when_the_server_is_healthy(tmp_path):
+    done = _wait(_fake_tools(tmp_path, states=["running 0"], healthy=True), "deploy/vllm/run.sh", "wait", "60")
+    assert done.returncode == 0 and "healthy after" in done.stdout

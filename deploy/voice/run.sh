@@ -142,9 +142,17 @@ case "$cmd" in
   wait)
     limit="${3:-900}"; start=$(date +%s)
     for s in $(services "${2:-all}"); do
+      # A crash-looping container (restart policy unless-stopped) keeps existing: its state or a growing restart
+      # count fails the wait at once instead of after the whole limit.
+      restarts="$(docker inspect -f '{{.RestartCount}}' "$(container "$s")" 2>/dev/null || echo 0)"
       until curl -fsS -m 5 "http://$NSF_VOICE_BIND:$(port "$s")/health" >/dev/null 2>&1; do
         [ $(( $(date +%s) - start )) -ge "$limit" ] && die "$s not ready after ${limit}s"
-        docker inspect "$(container "$s")" >/dev/null 2>&1 || die "$s container exited; see: docker logs $(container "$s")"
+        state="$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$(container "$s")" 2>/dev/null)" \
+          || die "$s container exited; see: docker logs $(container "$s")"
+        case "${state% *}" in
+          restarting|exited|dead) die "$s container is ${state% *} (it stopped while starting); see: docker logs $(container "$s")" ;;
+        esac
+        [ "${state#* }" -gt "$restarts" ] && die "$s container restarted $(( ${state#* } - restarts )) time(s) while starting; see: docker logs $(container "$s")"
         sleep 3
       done
       echo "$s ready after $(( $(date +%s) - start ))s"

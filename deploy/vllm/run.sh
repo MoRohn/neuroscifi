@@ -106,10 +106,18 @@ case "$cmd" in
       echo
     fi ;;
   wait)
+    # Fails at once when the container is crash-looping: with --restart unless-stopped it keeps existing, so only
+    # its state (restarting / exited / dead) or a growing restart count shows that it will never become healthy.
     limit="${2:-1200}"; start=$(date +%s)
+    restarts="$(docker inspect -f '{{.RestartCount}}' "$NSF_VLLM_CONTAINER" 2>/dev/null || echo 0)"
     until curl -fsS -m 5 "$(url)/health" >/dev/null 2>&1; do
       [ $(( $(date +%s) - start )) -ge "$limit" ] && die "not healthy after ${limit}s"
-      docker inspect "$NSF_VLLM_CONTAINER" >/dev/null 2>&1 || die "container exited; see: docker logs $NSF_VLLM_CONTAINER"
+      state="$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$NSF_VLLM_CONTAINER" 2>/dev/null)" \
+        || die "container exited; see: docker logs $NSF_VLLM_CONTAINER"
+      case "${state% *}" in
+        restarting|exited|dead) die "container is ${state% *} (it stopped while starting); see: docker logs $NSF_VLLM_CONTAINER" ;;
+      esac
+      [ "${state#* }" -gt "$restarts" ] && die "container restarted $(( ${state#* } - restarts )) time(s) while starting; see: docker logs $NSF_VLLM_CONTAINER"
       sleep 5
     done
     echo "healthy after $(( $(date +%s) - start ))s" ;;
