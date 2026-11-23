@@ -235,6 +235,7 @@ class Usage(JsonMixin):
     render_requests: int = 0          # sub-requests of all renders (each within budget.max_render_requests)
     # Requests sent and bytes received for pages fetched ahead of their turn (config.read_ahead) that the task then
     # did not use: real traffic to the sites, counted apart from requests/bytes (what the task used and was charged).
+    # The daily allowances add them to requests/bytes (scheduler.traffic).
     prefetch_unused_requests: int = 0
     prefetch_unused_bytes: int = 0
 

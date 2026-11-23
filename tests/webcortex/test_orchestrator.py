@@ -71,6 +71,15 @@ def page_hits(web):
     return [r for r in web.log if r["path"] != "/robots.txt"]
 
 
+def one_page_at_a_time(db):
+    """These tests stop a task once its first page has been read and count the pages ever requested. Reading one
+    page at a time, that is one. With read-ahead (the default since it became 4) the next pages were requested
+    while the first was being read, before the stop existed, so the count says nothing about the stop; what holds
+    there (no request starts after the stop, the run ends as one-at-a-time reading ends it) is asserted in
+    test_read_ahead_stops.py and test_read_ahead.py."""
+    state.set_config(db, {"read_ahead": 1}, T0)
+
+
 def test_completed_report_cites_live_sources_and_consolidates(individual, site):
     db, path = individual
     task = orchestrator.submit(db, QUESTION, T0)
@@ -127,6 +136,7 @@ class CancellingFetcher:
 
 def test_cancel_from_another_connection_stops_before_the_next_fetch(individual, site):
     db, path = individual
+    one_page_at_a_time(db)
     task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
     services = build(db, path, site)
     with store.write(db):   # the run holds the lease, so cancel() requests instead of cancelling outright
@@ -743,6 +753,7 @@ def test_turning_web_access_off_mid_run_stops_the_task_partial(individual, site,
     runs stops it at the next check, 'partial', with a plain limitation."""
     monkeypatch.setattr(orchestrator, "CONFIG_RECHECK", 0.0)
     db, path = individual
+    one_page_at_a_time(db)
     task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
 
     def off(n):
@@ -763,6 +774,7 @@ def test_a_domain_denied_mid_run_is_never_fetched(individual, site, monkeypatch)
     """W-06: a deny_domains change during the run applies to the next request (the host is skipped and recorded)."""
     monkeypatch.setattr(orchestrator, "CONFIG_RECHECK", 0.0)
     db, path = individual
+    one_page_at_a_time(db)
     task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
 
     def deny(n):

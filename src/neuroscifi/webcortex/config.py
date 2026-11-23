@@ -81,12 +81,13 @@ class WebConfig:
     min_domain_interval: float = 1.0         # seconds between requests to one host
     # Pages a research task may fetch at once while reading: the next candidates are fetched ahead of their turn, one
     # per host, at most budget.max_concurrency; what the task reads, charges and reports is unchanged. Measured with
-    # 300 ms per response: task time 2.10 s at 1, 0.99 s at 4. The default is 1 (one at a time, as 0.7.0), because
-    # with a larger window up to window - 1 fetches already under way go on after a cancel, after web access is
-    # turned off or after a domain is denied, until the reader's next check (a fetch is its page, robots.txt and
-    # up to five redirect hops with theirs: about a dozen requests at most, within 15 s), and unused requests are
-    # not in the daily caps. The owner may accept that for the speed: `nsf web config --set read_ahead=4`.
-    read_ahead: int = 1
+    # 300 ms per response: task time 2.10 s at 1, 0.99 s at 4. Every fetch, ahead of its turn or not, asks before
+    # each of its network steps whether the task was cancelled, web access turned off or the deny list changed, so
+    # no request starts after one of these; a request ahead that is already on the wire is cut (at most
+    # read_ahead - 1 of them), the reader's own finishes. Tasks under a daily allowance (curiosity, refreshes, MCP)
+    # always read one page at a time, and the allowances count unused read-ahead traffic.
+    # 1 reads one page at a time for every task, as 0.7.0 did: `nsf web config --set read_ahead=1`.
+    read_ahead: int = 4
     max_document_bytes: int = 5_000_000
     cache_max_bytes: int = 512 * 1024 * 1024
     cache_max_age_days: float = 30.0

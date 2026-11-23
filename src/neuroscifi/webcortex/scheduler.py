@@ -318,17 +318,25 @@ def _window(now):
     return _WINDOW, (now - DAY, now - DAY, *TERMINAL_STATES)
 
 
+def traffic(used, key) -> int:
+    """What a task sent (key 'requests') or received ('bytes') according to its usage: what it was charged plus what
+    read-ahead sent or received for pages it then did not use (Usage.prefetch_unused_*). The daily allowances count
+    traffic, so an unused request is never free. Tasks under an allowance read one page at a time
+    (orchestrator.daily_capped) and have none; the sum does not rely on that."""
+    return int(used.get(key, 0) or 0) + int(used.get(f"prefetch_unused_{key}", 0) or 0)
+
+
 def autonomous_usage(db, now, *, mcp=False) -> dict:
     """Tasks, requests and bytes spent by autonomous research (curiosity/refresh; mcp=True: MCP-origin tasks) in
-    the last 24 h (_window)."""
+    the last 24 h (_window); requests and bytes are traffic (traffic())."""
     tasks = requests = volume = 0
     where, params = _window(now)
     for origin, usage in db.execute(f"SELECT origin, usage FROM web_tasks WHERE {where}", params):
         if _counted(origin, mcp):
             used = state.loads(usage, {})
             tasks += 1
-            requests += int(used.get("requests", 0) or 0)
-            volume += int(used.get("bytes", 0) or 0)
+            requests += traffic(used, "requests")
+            volume += traffic(used, "bytes")
     return {"tasks": tasks, "requests": requests, "bytes": volume}
 
 
@@ -348,7 +356,7 @@ def autonomous_remaining(db, now, cfg, *, mcp=False, exclude=None, reserved=True
         used, limits = state.loads(usage, {}), state.loads(budget, {})
         running = status not in TERMINAL_STATES and (status != "queued" or started is not None)
         for key in committed:
-            spent = int(used.get(key, 0) or 0)
+            spent = traffic(used, key)
             if reserved and running:
                 spent = max(spent, int(limits.get(f"max_{key}", 0) or 0))
             committed[key] += spent

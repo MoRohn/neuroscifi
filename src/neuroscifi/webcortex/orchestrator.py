@@ -55,7 +55,10 @@ that exhausts its budget or loses a stage ends 'partial' when it still has a rep
 A run that read nothing because every provider or page failed ends 'failed' (W-07; 'partial' when knowledge about
 the question exists), its stages cleared so a retry searches again. check() also re-reads the owner's
 configuration (at most every CONFIG_RECHECK seconds): web access turned off stops the run 'partial' (WEB_OFF), a
-newly denied domain is skipped. A task forgotten while it runs stops at its next fenced write and writes nothing.
+newly denied domain is skipped. Inside a page fetch the same is asked before every network step (_Run.fetch,
+still_wanted: the cancel flag and the configuration read at that moment), and a fetch made ahead of its turn asks
+its own gate (_Lookout), so no request starts after a cancel, after web access was turned off or to a host denied
+meanwhile. A task forgotten while it runs stops at its next fenced write and writes nothing.
 Leases name the holder's host digest, pid and process start time: a dead worker on this host does not hold its task
 (cancel, resume, requeue and the worker act at once; task JSON carries `worker_alive` and `origin_label`). An
 identical submission while one is queued or running returns that task (`deduplicated: true`).
@@ -155,8 +158,63 @@ class _Disabled(Exception):
     """The owner turned web access off while the task ran: it stops at the next check and ends 'partial'."""
 
 
+class _Denied(Exception):
+    """Raised by the run's gate inside a fetch (_Run.still_wanted): the host about to be contacted is on the owner's
+    deny list now. _Run.fetch turns it into the FetchError('blocked_policy') of that page."""
+
+    def __init__(self, url, domain):
+        super().__init__(domain)
+        self.url, self.domain = url, domain
+
+
 # Control flow that per-document isolation must never swallow.
 _STOP = (_Cancelled, _OutOfTime, _Paused, _Disabled, BudgetExceeded, state.LostLease)
+
+
+def daily_capped(origin) -> bool:
+    """Origins whose traffic counts against a daily allowance (config.daily_autonomous, config.daily_mcp;
+    scheduler._counted). They read one page at a time: every request they send is one the task was charged for."""
+    return is_autonomous(origin) or origin == "mcp"
+
+
+class _Lookout:
+    """The gate of a run's read-ahead fetches (SafeFetcher.speculate(wanted=...)). Those fetches run on their own
+    threads while the reader is busy with its own page, so they cannot wait for the reader's next check: before
+    every network step each asks here, and the answer is read at that moment from the individual's file through a
+    connection of its own (read only): the task's cancel flag and lease, and the owner's web configuration. A reason
+    to stop: the task was cancelled, forgotten or taken over, web access is off, or the deny list is not the one the
+    reader last applied (the reader then decides, with the new list, what is still fetched). After close() every
+    answer is a stop."""
+
+    def __init__(self, run):
+        import threading
+        self.run, self.lock = run, threading.Lock()
+        self.db = sqlite3.connect(run.services_db_path(), timeout=5, isolation_level=None, check_same_thread=False)
+        self.db.execute("PRAGMA query_only=ON")
+
+    def __call__(self, _url) -> str | None:
+        run = self.run
+        with self.lock:
+            if self.db is None:
+                return "the reader moved on"
+            rows = self.db.execute("SELECT cancel_requested, lease_holder FROM web_tasks WHERE id=?",
+                                   (run.id,)).fetchall()
+            cfg = state.get_config(self.db)
+        if not rows or rows[0][1] != run.holder:
+            return "the task was forgotten or taken over"
+        if rows[0][0]:
+            return "the task was cancelled"
+        if not cfg.enabled:
+            return "web access was turned off"
+        if tuple(cfg.deny_domains) != run.deny_list:
+            return "the deny list changed"
+        return None
+
+    def close(self):
+        with self.lock:
+            db, self.db = self.db, None
+        if db is not None:
+            db.close()
 
 
 def executed_on() -> dict:
@@ -569,6 +627,7 @@ class _Run:
         self.deny_list = tuple(self.cfg.deny_domains)
         self.denied_at_start = frozenset(d.strip(".").lower() for d in self.deny_list)
         self.config_read = time.monotonic()
+        self.lookout = None               # the gate of read-ahead fetches while read() has any (_Lookout)
 
     def clock(self):
         return float(self.services.clock())
@@ -1034,8 +1093,40 @@ class _Run:
         return self.finish(url, self.fetch(url, purpose))
 
     def fetch(self, url, purpose="page"):
-        """One fetch through SafeFetcher."""
-        return self.services.fetcher.fetch(url, purpose=purpose, budget=self.budget, usage=self.usage)
+        """One fetch through SafeFetcher. With a fetcher that asks (SafeFetcher.gated), every network step of the
+        fetch (each name lookup, robots.txt, the page, every redirect hop) first asks still_wanted, so nothing is
+        sent after a cancel, after web access was turned off or to a host denied meanwhile; the request already on
+        the wire finishes. A host denied meanwhile is that page's FetchError('blocked_policy')."""
+        fetcher = self.services.fetcher
+        gated = getattr(fetcher, "gated", None)
+        if gated is None:
+            return fetcher.fetch(url, purpose=purpose, budget=self.budget, usage=self.usage)
+        try:
+            with gated(self.still_wanted):
+                return fetcher.fetch(url, purpose=purpose, budget=self.budget, usage=self.usage)
+        except _Denied as stop:
+            from .net import _redact
+            if stop.domain not in self.denied_at_start:
+                self.limit(f"the owner denied {stop.domain} during the run: sources on it were not read")
+            raise FetchError("blocked_policy", _redact(stop.url), "domain is on the deny list") from None
+
+    def still_wanted(self, url):
+        """The run's gate (SafeFetcher.gated), asked on the run's own thread before every network step of a fetch
+        it makes, with the URL about to be contacted. Read now, not at the reader's last check: the task's cancel
+        flag and lease (-> _Cancelled, state.LostLease) and the owner's web configuration (web access off ->
+        _Disabled; a changed deny list is applied at once, and a host on it -> _Denied)."""
+        row = self.db.execute("SELECT cancel_requested, lease_holder FROM web_tasks WHERE id=?",
+                              (self.id,)).fetchone()
+        if row is None:
+            raise state.LostLease(f"research task {self.id} was forgotten while it ran")
+        if row[0]:
+            raise _Cancelled()
+        if row[1] != self.holder:
+            raise state.LostLease(f"research task {self.id}: the lease is held by another worker")
+        self.recheck_config(force=True)
+        domain = self.denied(url)
+        if domain is not None:
+            raise _Denied(url, domain)
 
     def finish(self, url, result, published_hint=None):
         """Extract -> quarantine (-> render escalation) of a fetched page, on the run's own thread."""
@@ -1393,12 +1484,21 @@ class _Run:
             self.limit("time budget exhausted while reading")
         finally:
             self.drop_prefetched(ahead)     # cancelled, stopped or crashed: nothing fetched ahead is used
+            if self.lookout is not None:
+                self.lookout.close()        # a fetch ahead that is still running gets "stop" from now on
+                self.lookout = None
         self.done("reading")
 
     def read_window(self) -> int:
         """Pages the reader may have in flight at once: config.read_ahead, at most budget.max_concurrency. 1 reads
-        one page at a time, and so does a fetcher that cannot fetch ahead (no speculate())."""
-        if getattr(self.services.fetcher, "speculate", None) is None:
+        one page at a time, and so does a fetcher that cannot fetch ahead (no speculate()), a task whose traffic
+        counts against a daily allowance (daily_capped: nobody waits for curiosity or a refresh, and an allowance
+        must not be spent on requests the task did not use), and a run without a file of its own to read the
+        owner's stops from at request time (_Lookout)."""
+        if getattr(self.services.fetcher, "speculate", None) is None or daily_capped(self.origin):
+            return 1
+        path = self.services_db_path()
+        if not path or not os.path.isfile(path):
             return 1
         return max(1, min(int(self.cfg.read_ahead), int(self.budget.max_concurrency)))
 
@@ -1410,9 +1510,17 @@ class _Run:
         pages left in the budget, and two requests (robots.txt and page) per page in flight within the requests
         left. Only when the network time is spent changes: read() still takes, extracts, charges and records each
         page when it reaches it, and the fetcher hands over a page fetched ahead only when a fetch made then would
-        have done exactly the same. `ahead` (candidate index -> URL) gains the fetches started."""
+        have done exactly the same. `ahead` (candidate index -> URL) gains the fetches started. Each fetch ahead
+        asks the run's _Lookout before every network step, so none sends a request after a cancel, after web access
+        was turned off or once the deny list changed, and none sends a request the task's request budget has no
+        room for."""
         from .extract import canonical_url
         fetcher = self.services.fetcher
+        if self.lookout is None:
+            try:
+                self.lookout = _Lookout(self)
+            except sqlite3.Error:        # no gate to ask at request time: nothing is fetched ahead
+                return
         pages_left = self.budget.max_pages - self.usage.pages
         requests_left = self.budget.max_requests - self.usage.requests
         timely = self.timely()
@@ -1433,14 +1541,14 @@ class _Run:
                     or r.provider in SNIPPET_ONLY or (timely and self.stale(r.published_at)):
                 continue
             hosts.add(host)
-            if fetcher.speculate(r.url, purpose="page", usage=self.usage):
+            if fetcher.speculate(r.url, purpose="page", usage=self.usage, budget=self.budget, wanted=self.lookout):
                 ahead[j] = r.url
 
     def drop_prefetched(self, ahead, below=None):
         """Abandon the read-ahead fetches of candidates read() has passed (index < below; all when None). One read()
         used was claimed and is gone already; any other (read() skipped it, had enough pages, ran out of budget or
-        was stopped) is never charged, cached or recorded, and its traffic counts as unused prefetch
-        (Usage.prefetch_unused_requests / _bytes)."""
+        was stopped) is never charged, cached or recorded, its request on the wire is cut, and its traffic counts
+        as unused prefetch (Usage.prefetch_unused_requests / _bytes)."""
         for j in [j for j in ahead if below is None or j < below]:
             self.services.fetcher.abandon(ahead.pop(j), purpose="page", usage=self.usage)
 

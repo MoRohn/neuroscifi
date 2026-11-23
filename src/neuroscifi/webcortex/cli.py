@@ -302,7 +302,8 @@ def _status(db, a, now):
             "config": {"providers": cfg.providers, "unknown_providers": unknown(cfg), "engines": cfg.engines,
                        "openwebsearch_url": cfg.openwebsearch_url, "searxng_url": cfg.searxng_url,
                        "searxng_engines": cfg.searxng_engines, "budget_ceiling": cfg.budget_ceiling,
-                       "daily_autonomous": cfg.daily_autonomous, "deny_domains": len(cfg.deny_domains),
+                       "daily_autonomous": cfg.daily_autonomous, "read_ahead": cfg.read_ahead,
+                       "deny_domains": len(cfg.deny_domains),
                        "private_terms": len(cfg.private_terms),
                        "daily_provider_queries": cfg.daily_provider_queries,
                        "renders": {"today": state.render_day(db, now)["renders"], "daily_cap": cfg.daily_renders}},
@@ -919,7 +920,8 @@ def register(sub):
             "let the search daemon's scrapers send browser User-Agent strings (impersonation; ADR-032)",
             "honest User-Agent only (default; needs `npm run patch-ua`)")
     p.add_argument("--read-ahead", type=_positive_int, metavar="N",
-                   help="pages a research task may fetch at once while reading, one per site (1 = one at a time)")
+                   help="pages a research task may fetch at once while reading, one per site (default 4; 1 = one at "
+                        "a time for every task)")
     p.add_argument("--set", action="append", metavar="KEY=JSON", help="set one field, e.g. --set 'engines=[\"bing\"]'")
 
     cmd("status", _status, "configuration, provider health, daemon, cache, tasks and executing node")
