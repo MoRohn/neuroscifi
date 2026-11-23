@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from neuroscifi.graph_store import decode
+from neuroscifi.graph_store import decode, encode
 from neuroscifi.instance import learner, store
 from neuroscifi.instance.errors import ValidationError
 from neuroscifi.lab import graph_bench
@@ -263,3 +263,112 @@ def test_exchange_agrees_with_the_loop_on_awkward_values():
         growing = np.where(use, rng.choice(values[:7], size=(n, n)), 0.0)
         _exchange_both(growing, rng.choice(values, size=(n, n)), use)
     assert _exchange_both(np.zeros((1, 1)), np.ones((1, 1)), np.zeros((1, 1), bool))[0] == 0
+
+
+# ---- pack: gate-v1 unchanged, and the optional parts of a rule (learned_sparse, pack_reference) --------------------
+
+def _pack_before(dense, validation, rule):
+    """learner.pack as it was before a rule could name the learned sparse graph (commit 307b907), verbatim."""
+    states, targets = validation
+    dense = np.asarray(dense).astype("f4")
+    baseline = learner.mse(dense, states, targets)
+    cols = dense.shape[1]
+    tolerance = float(rule["validation_tolerance"])
+    options = [(cols, 32)] + [(degree, bits) for degree in rule["pack_candidates"]["degrees"]
+                              for bits in rule["pack_candidates"]["bits"] if degree <= cols]
+    candidates = []
+    for degree, bits in options:
+        blob = encode(dense, degree, bits)
+        loss = learner.mse(decode(blob), states, targets)
+        candidates.append({"bits": bits, "degree": degree, "byte_size": len(blob), "validation_mse": loss,
+                           "eligible": loss <= (1 + tolerance) * baseline, "blob": blob})
+    chosen = min((c for c in candidates if c["eligible"]), key=lambda c: c["byte_size"])
+    return {"blob": chosen["blob"], "bits": chosen["bits"], "degree": chosen["degree"],
+            "byte_size": chosen["byte_size"], "validation_mse": chosen["validation_mse"],
+            "dense_validation_mse": baseline,
+            "candidates": [{key: c[key] for key in ("bits", "degree", "byte_size", "validation_mse", "eligible")}
+                           for c in candidates]}
+
+
+SPARSE_TOO = dict(store.GATE_V1, version="sparse-too",
+                  pack_candidates=dict(store.GATE_V1["pack_candidates"], learned_sparse=True))
+BEST_LEARNER = dict(SPARSE_TOO, version="best-learner", pack_reference="best_learner")
+
+
+def _fitted(n, true_k, seed, steps=1536):
+    states, targets = _world_stream(n, true_k, steps + 256, seed)
+    return learner.fit(states[:steps], targets[:steps], seed=seed), (states[steps:], targets[steps:])
+
+
+def test_pack_under_a_rule_without_the_new_parts_is_what_it_was():
+    rules = [store.GATE_V1, dict(store.GATE_V1, pack_candidates={"degrees": [6], "bits": [8]}),
+             dict(store.GATE_V1, validation_tolerance=0.0), dict(store.GATE_V1, pack_reference="dense"),
+             # (3, 8 bit) and (4, 4 bit) are files of one size: the first in the rule's order is taken, as before
+             dict(store.GATE_V1, validation_tolerance=1.0, pack_candidates={"degrees": [3, 4], "bits": [8, 4]})]
+    for n, true_k, seed in ((24, 3, 0), (24, 3, 1), (24, 6, 2), (24, 2, 3), (7, 2, 4), (96, 3, 5), (1, 0, 6)):
+        fitted, val = _fitted(n, true_k, seed)
+        for rule in rules:
+            before = _pack_before(fitted["dense"], val, rule)
+            assert learner.pack(fitted["dense"], val, rule) == before                       # no sparse matrix given
+            assert learner.pack(fitted["dense"], val, rule, sparse=fitted["sparse"]) == before   # given and ignored
+
+
+def test_pack_with_the_learned_sparse_graph_as_a_candidate():
+    fitted, val = _fitted(24, 3, 0)
+    before = _pack_before(fitted["dense"], val, store.GATE_V1)
+    out = learner.pack(fitted["dense"], val, SPARSE_TOO, sparse=fitted["sparse"])
+    assert [(c["learner"], c["degree"], c["bits"]) for c in out["candidates"]] == \
+        [("dense", 24, 32)] + [("dense", d, b) for d in (2, 3, 4, 6, 12) for b in (4, 8)] + \
+        [("sparse", 24, 32), ("sparse", 3, 4), ("sparse", 3, 8)]
+    # the dense candidates are scored exactly as before, against the same reference
+    assert [{k: v for k, v in c.items() if k != "learner"} for c in out["candidates"][:11]] == before["candidates"]
+    assert out["reference"] == "dense" and out["reference_validation_mse"] == out["dense_validation_mse"]
+    # two files of 247 bytes are eligible, one per learner: the lower validation error is taken
+    same_size = [c for c in out["candidates"] if c["eligible"] and c["byte_size"] == 247]
+    assert sorted(c["learner"] for c in same_size) == ["dense", "sparse"] and out["byte_size"] == 247
+    assert out["validation_mse"] == min(c["validation_mse"] for c in same_size)
+    assert out["learner"] == min(same_size, key=lambda c: c["validation_mse"])["learner"]
+    assert learner.mse(decode(out["blob"]), *val) == out["validation_mse"]
+    with pytest.raises(ValidationError, match="none was given"):
+        learner.pack(fitted["dense"], val, SPARSE_TOO)
+    with pytest.raises(ValidationError, match="different shapes"):
+        learner.pack(fitted["dense"], val, SPARSE_TOO, sparse=fitted["sparse"][:, :5])
+    # a sparse matrix with no edge at all (k = 0, or one population) is still a file
+    empty = learner.pack(fitted["dense"], val, SPARSE_TOO, sparse=np.zeros((24, 24)))
+    assert [c["degree"] for c in empty["candidates"] if c["learner"] == "sparse"] == [24, 1, 1]
+    single, single_val = _fitted(1, 0, 6)
+    assert learner.pack(single["dense"], single_val, BEST_LEARNER, sparse=single["sparse"])["byte_size"] > 0
+
+
+def test_pack_measures_the_tolerance_against_the_better_learner():
+    # 96 populations: the sparse learner reaches the noise floor, the dense one about twice its error
+    fitted, val = _fitted(96, 3, 5)
+    gate = _pack_before(fitted["dense"], val, store.GATE_V1)
+    out = learner.pack(fitted["dense"], val, BEST_LEARNER, sparse=fitted["sparse"])
+    sparse_fp32 = learner.mse(fitted["sparse"].astype("f4"), *val)
+    assert out["reference"] == "best_learner" and out["reference_validation_mse"] == sparse_fp32
+    assert sparse_fp32 < .6 * out["dense_validation_mse"]
+    assert (out["learner"], out["degree"], out["bits"]) == ("sparse", 3, 4)
+    assert out["validation_mse"] < .6 * gate["validation_mse"]            # against the cut gate-v1 takes
+    assert out["validation_mse"] <= 1.02 * sparse_fp32
+    by = {(c["learner"], c["degree"], c["bits"]): c for c in out["candidates"]}
+    assert by[("sparse", 96, 32)]["eligible"] and by[("sparse", 96, 32)]["validation_mse"] == sparse_fp32
+    assert not by[("dense", 96, 32)]["eligible"]
+    # the edge of the tolerance: a hair above the 4-bit file's loss it is in, a hair below it is out
+    loss = by[("sparse", 3, 4)]["validation_mse"] / sparse_fp32 - 1
+    assert 0 < loss < .02
+    inside = learner.pack(fitted["dense"], val, dict(BEST_LEARNER, validation_tolerance=loss * (1 + 1e-9)),
+                          sparse=fitted["sparse"])
+    outside = learner.pack(fitted["dense"], val, dict(BEST_LEARNER, validation_tolerance=loss * (1 - 1e-9)),
+                           sparse=fitted["sparse"])
+    assert (inside["learner"], inside["bits"]) == ("sparse", 4)
+    assert (outside["learner"], outside["bits"]) == ("sparse", 8)         # the next smallest file that is within
+    # at zero tolerance only a file at the reference qualifies: the better learner's FP32 graph, so there is a choice
+    strict = learner.pack(fitted["dense"], val, dict(BEST_LEARNER, validation_tolerance=0.0), sparse=fitted["sparse"])
+    assert strict["validation_mse"] <= sparse_fp32 and strict["learner"] == "sparse"
+    # where the dense learner is the better one, the reference and the choice are gate-v1's
+    six, six_val = _fitted(24, 6, 2)
+    dense_wins = learner.pack(six["dense"], six_val, BEST_LEARNER, sparse=six["sparse"])
+    before = _pack_before(six["dense"], six_val, store.GATE_V1)
+    assert dense_wins["learner"] == "dense" and dense_wins["blob"] == before["blob"]
+    assert dense_wins["reference_validation_mse"] == before["dense_validation_mse"]

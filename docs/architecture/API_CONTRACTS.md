@@ -112,13 +112,35 @@ datasets.listing(db, context=None) -> list[dict]
 
 learner.fit(states, targets, *, k=3, seed=0) -> {"dense": ndarray, "sparse": ndarray, "support": bool ndarray, "swaps": int}
 #   The windowed learner from lab.graph_bench.simulate (window 32, lr .28, score EMA .85/.15, swap check every
-#   4 windows with |score| > 1.15|w| + .035), generalised to N populations and one stream.
-learner.pack(dense, validation, rule) -> {"blob": bytes, "bits", "degree", "byte_size", "validation_mse", "dense_validation_mse"}
+#   4 windows with |score| > 1.15|w| + .035), generalised to N populations and one stream. The swap check runs for
+#   all receivers at once and gives the lab loop's result bit for bit (tests/instance/test_learner.py); the window
+#   update is the lab's, so a fit costs about 2.5 to 4 times a dense-only one (the second matrix and its score).
+#   Range: the dense matrix is updated from every input with a step normalised per input, so its error grows with
+#   the population count: on the lab's stream it is twice the noise floor at 96 populations, and from 160 the
+#   snapshot cut from it is worse than a graph with no edges. The sparse matrix, updated on k inputs per receiver,
+#   stays at the noise floor up to the 1024 populations a dataset may have (scripts/bench_graph_learner.py sizes).
+learner.pack(dense, validation, rule, sparse=None) -> {"blob": bytes, "bits", "degree", "byte_size", "validation_mse", "dense_validation_mse", "candidates"}
 #   lab.graph_compression_bench selection: FP32 plus degrees x bits from the rule. Keep candidates with
 #   val MSE <= (1 + validation_tolerance) * dense val MSE, then take the smallest complete file.
+#   Which graph is packed. Under gate-v1 (and any rule without the two optional parts below) only the dense fit is
+#   packed; `sparse` is ignored and the result is what it always was. A rule the owner adds may carry:
+#     "pack_candidates": {..., "learned_sparse": true}   the sparse learner's matrix is a candidate too, as FP32
+#                                                        and at its own degree with each bit width of the rule
+#     "pack_reference": "best_learner"                   the tolerance is measured against the lower validation MSE
+#                                                        of the two learners' FP32 graphs (needs learned_sparse)
+#   With learned_sparse, files of equal size are separated by the lower validation MSE and the result adds
+#   "learner" ('dense'|'sparse'), "reference", "reference_validation_mse" and a "learner" per candidate.
+#   No such rule is registered by the software. Adopt: `nsf graph rules add FILE.json --owner-approved` with
+#   gate-v1's definition plus the two parts and a new version name; candidates learned afterwards use it, earlier
+#   ones keep their recorded rule. Back: add gate-v1's definition again under another version name (rules are
+#   immutable and the newest is used). Measured effect: docs/quality/evidence/accel_decisions_graph_learner_*.json.
 
 graphs.register_founding(db, nsg_blob, now) -> int           # caller owns txn? No: opens its own write(); status 'active', context 'founding'
 graphs.learn(db, context, now, *, train: int, validation: int, holder: str) -> int   # candidate revision id; takes the context lease
+#   metrics: validation_mse, dense_validation_mse, pack (the candidates and the choice), sparse (the sparse learner's
+#   swaps, edges, validation_mse and how much of its support the snapshot shares), and no_graph_validation_mse with
+#   beats_no_graph: the error of a graph with no edges on the same validation data, and whether the snapshot is
+#   below it. A snapshot that is not has learned nothing; under gate-v1 that happens with many populations (above).
 graphs.evaluate(db, revision_id, now) -> dict                # metrics on held-out sets not in its lineage; stored in metrics
 graphs.promote(db, revision_id, now) -> {"promoted": bool, "decision": {...all numbers and the rule version...}}
 #   Gate (rule recorded on the candidate):

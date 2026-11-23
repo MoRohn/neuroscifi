@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 
@@ -6,7 +7,7 @@ import pytest
 
 from neuroscifi import cli
 from neuroscifi.graph_store import decode, encode
-from neuroscifi.instance import datasets, graphs, rules, store
+from neuroscifi.instance import datasets, graphs, learner, recall, rules, store
 from neuroscifi.instance.errors import Conflict, Gone, LeaseHeld, NotFound, ValidationError
 from neuroscifi.lab import graph_bench
 
@@ -555,3 +556,164 @@ def test_every_write_path_honours_the_free_space_reserve_without_a_path(instance
         evidence.start_epoch(db, "desk-2", T0 + 3)
     assert db.execute("SELECT count(*) FROM graph_revisions WHERE origin='learner'").fetchone()[0] == 0
     assert db.execute("SELECT count(*) FROM epochs WHERE name='desk-2'").fetchone()[0] == 0
+
+
+# ---- which learner's graph is packed (rules.py: pack_candidates.learned_sparse, pack_reference) ---------------------
+
+BEST_LEARNER = dict(store.GATE_V1, version="best-learner-v1", pack_reference="best_learner",
+                    pack_candidates=dict(store.GATE_V1["pack_candidates"], learned_sparse=True))
+
+
+def _panel(db, context, now, populations, seed, *, steps=1536):
+    """Train, validation and held-out data of one world with `populations` populations and 3 inputs per receiver
+    (lab.graph_bench.world and .stream for any population count), stored like owner data."""
+    rng = np.random.default_rng([populations, seed])
+    a = np.zeros((populations, populations))
+    for j in range(populations):
+        idx = rng.choice(np.delete(np.arange(populations), j), 3, replace=False)
+        a[j, idx] = rng.choice([-1., 1.], 3) * rng.uniform(.17, .25, 3)
+    ids = {}
+    for split, length in (("train", steps), ("validation", 256), ("heldout", 512)):
+        prev = np.zeros(populations)
+        states, targets = np.empty((length, populations)), np.empty((length, populations))
+        for t in range(length):
+            residual = a @ prev + rng.normal(0, .065, populations)
+            states[t], targets[t] = prev, residual
+            prev = .2 * prev + residual + rng.normal(0, .6, populations) * (rng.random(populations) < .22)
+        ids[split] = datasets.add(db, context, split, states, targets, "simulated", now)
+    return ids, a
+
+
+def test_rule_format_gate_v1_is_unchanged_and_the_new_parts_are_validated():
+    # the birth rule and its digest are what they were: an individual's recorded rule still passes its integrity check
+    assert hashlib.sha256(rules.canonical(store.GATE_V1).encode()).hexdigest() == \
+        "b999e4b9c16571463bc883733cb091a3956c578df292de643ce8fec4f4522e57"
+    assert rules.validate(dict(store.GATE_V1)) == store.GATE_V1
+    assert "pack_reference" not in store.GATE_V1 and "learned_sparse" not in store.GATE_V1["pack_candidates"]
+    assert rules.validate(dict(BEST_LEARNER))["pack_reference"] == "best_learner"
+    candidates = store.GATE_V1["pack_candidates"]
+    rules.validate(dict(store.GATE_V1, version="x", pack_candidates=dict(candidates, learned_sparse=True)))
+    rules.validate(dict(store.GATE_V1, version="x", pack_reference="dense"))
+    for bad in (
+            dict(store.GATE_V1, pack_reference="best_learner"),                           # needs learned_sparse
+            dict(BEST_LEARNER, pack_candidates=dict(candidates, learned_sparse=False)),
+            dict(BEST_LEARNER, pack_reference="smallest"),
+            dict(BEST_LEARNER, pack_reference=True),
+            dict(BEST_LEARNER, pack_candidates=dict(candidates, learned_sparse="yes")),
+            dict(BEST_LEARNER, pack_candidates=dict(candidates, learned_sparse=1)),
+            dict(BEST_LEARNER, pack_candidates=dict(candidates, learned_sparse=True, learner="sparse")),
+            dict(BEST_LEARNER, pack_candidates={"degrees": [3], "bits": [], "learned_sparse": True}),
+            dict(BEST_LEARNER, pack_baseline="best"),                                     # an unknown part
+            {k: v for k, v in BEST_LEARNER.items() if k != "byte_budget"}):
+        with pytest.raises(ValidationError):
+            rules.validate(bad)
+
+
+def test_no_rule_with_the_new_parts_is_registered_unless_the_owner_adds_one(instance):
+    db, _ = instance
+    assert [(r["version"], r["created_by"]) for r in rules.listing(db)] == [("gate-v1", "birth")]
+    assert rules.get(db, "gate-v1") == store.GATE_V1
+    rev, _ = _learn(db, "desk", T0)
+    shown = graphs.show(db, rev)
+    assert shown["rule_version"] == "gate-v1" and (shown["bits"], shown["degree"], shown["byte_size"]) == (4, 3, 247)
+    assert set(shown["metrics"]["pack"]) == {"bits", "degree", "byte_size", "validation_mse", "dense_validation_mse",
+                                             "candidates"}
+    assert all(set(c) == {"bits", "degree", "byte_size", "validation_mse", "eligible"}
+               for c in shown["metrics"]["pack"]["candidates"])
+    # the dense fit's own snapshot, as before: the same bytes as packing the dense fit alone
+    x, y = datasets.load(db, shown["metrics"]["train_dataset"])
+    val = datasets.load(db, shown["metrics"]["validation_dataset"])
+    blob = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (rev,)).fetchone()[0]
+    assert blob == learner.pack(learner.fit(x, y, seed=shown["metrics"]["train_dataset"])["dense"], val,
+                                store.GATE_V1)["blob"]
+    assert shown["metrics"]["beats_no_graph"] is True
+    assert shown["metrics"]["validation_mse"] < .3 * shown["metrics"]["no_graph_validation_mse"]
+
+
+def test_many_populations_the_dense_fit_fails_and_the_owner_rule_packs_the_sparse_learner(instance):
+    """With 192 populations the dense learner no longer fits (its step grows with the population count), and
+    gate-v1 packs a cut of it that is worse than a graph with no edges; the metrics now say so. The sparse learner
+    still fits, and a rule the owner adds can pack its graph."""
+    db, _ = instance
+    ids, truth = _panel(db, "panel", T0, 192, 1)
+    old = graphs.show(db, graphs.learn(db, "panel", T0 + 1, train=ids["train"], validation=ids["validation"],
+                                       holder="tester"))
+    floor = .065 ** 2                                              # the noise of the stream: no graph can do better
+    assert old["rule_version"] == "gate-v1"
+    assert old["metrics"]["beats_no_graph"] is False
+    assert old["metrics"]["validation_mse"] > 5 * old["metrics"]["no_graph_validation_mse"]
+    assert old["metrics"]["dense_validation_mse"] > 50 * old["metrics"]["no_graph_validation_mse"]
+    assert old["metrics"]["sparse"]["validation_mse"] < 1.1 * floor     # measured, and not used by gate-v1
+
+    with store.write(db):
+        assert rules.register(db, BEST_LEARNER, T0 + 2, created_by="owner") == "best-learner-v1"
+    rev = graphs.learn(db, "panel", T0 + 3, train=ids["train"], validation=ids["validation"], holder="tester")
+    new = graphs.show(db, rev)
+    pack = new["metrics"]["pack"]
+    assert new["rule_version"] == "best-learner-v1"
+    assert (pack["learner"], pack["reference"], new["degree"], new["bits"]) == ("sparse", "best_learner", 3, 4)
+    assert pack["reference_validation_mse"] < 1.1 * floor < pack["dense_validation_mse"]
+    assert new["metrics"]["beats_no_graph"] is True and new["metrics"]["validation_mse"] < 1.1 * floor
+    assert new["metrics"]["sparse"]["support_agreement_with_snapshot"] == 1.0
+    assert not any(c["eligible"] for c in pack["candidates"] if c["learner"] == "dense")
+    support = np.array(new["support"])
+    assert (support & (truth != 0)).sum() / support.sum() > .95    # the generator's edges
+    # everything downstream reads it as any other snapshot
+    assert decode(db.execute("SELECT blob FROM graph_revisions WHERE id=?", (rev,)).fetchone()[0]).shape == (192, 192)
+    evaluation = graphs.evaluate(db, rev, T0 + 4)
+    assert evaluation["heldout_mse"] < 1.1 * floor
+    promoted = graphs.promote(db, rev, T0 + 5)
+    assert promoted["promoted"] and promoted["decision"]["rule"]["pack_reference"] == "best_learner"
+    assert _status(db, rev) == "active"
+    lesion = graphs.lesion(db, rev, ids["heldout"], T0 + 6)
+    assert len(lesion["edges"]) == 192 * 3 and lesion["permuted_control_mse"] > 2 * lesion["base_mse"]
+    assert recall.run(db, ids["heldout"], T0 + 7, contexts=["panel"])["verdict"] == "known:panel"
+    # the old candidate keeps the rule it was learned under and is judged by it
+    assert graphs.show(db, old["id"])["rule_version"] == "gate-v1"
+
+
+def test_owner_rule_keeps_the_dense_snapshot_when_the_sparse_budget_is_too_small(instance):
+    """Six true inputs per receiver and an edge budget of three: the sparse learner cannot fit, so the reference
+    is the dense graph and the choice is the one gate-v1 makes, byte for byte."""
+    db, _ = instance
+    rng = np.random.default_rng(3)
+    a = np.zeros((24, 24))
+    for j in range(24):
+        idx = rng.choice(np.delete(np.arange(24), j), 6, replace=False)
+        a[j, idx] = rng.choice([-1., 1.], 6) * rng.uniform(.17, .25, 6)
+    ids = {}
+    for split, length in (("train", 1536), ("validation", 256)):
+        states, targets = graph_bench.stream(a, length, rng)
+        ids[split] = datasets.add(db, "six", split, states, targets, "simulated", T0)
+    first = graphs.learn(db, "six", T0 + 1, train=ids["train"], validation=ids["validation"], holder="tester")
+    with store.write(db):
+        rules.register(db, BEST_LEARNER, T0 + 2, created_by="owner")
+    second = graphs.learn(db, "six", T0 + 3, train=ids["train"], validation=ids["validation"], holder="tester")
+    blobs = [db.execute("SELECT blob FROM graph_revisions WHERE id=?", (r,)).fetchone()[0] for r in (first, second)]
+    assert blobs[0] == blobs[1]
+    pack = graphs.show(db, second)["metrics"]["pack"]
+    assert pack["learner"] == "dense" and pack["reference_validation_mse"] == pack["dense_validation_mse"]
+    assert graphs.show(db, second)["degree"] == 6
+    assert not any(c["eligible"] for c in pack["candidates"] if c["learner"] == "sparse")
+
+
+def test_cli_owner_adds_the_best_learner_rule(tmp_path, capsys):
+    db = str(tmp_path / "cli.sqlite")
+    assert _nsf(capsys, "init", "--db", db)[0] == 0
+    rule = tmp_path / "rule.json"
+    rule.write_text(json.dumps(BEST_LEARNER))
+    code, err = _nsf(capsys, "graph", "rules", "add", str(rule), "--db", db)
+    assert code == 2 and "--owner-approved" in err
+    code, added = _nsf(capsys, "graph", "rules", "add", str(rule), "--owner-approved", "--db", db)
+    assert code == 0 and added["latest"] == "best-learner-v1" and added["definition"] == BEST_LEARNER
+    rule.write_text(json.dumps(dict(BEST_LEARNER, version="broken", pack_reference="best")))
+    code, err = _nsf(capsys, "graph", "rules", "add", str(rule), "--owner-approved", "--db", db)
+    assert code == 2 and "pack_reference" in err
+    code, ids = _nsf(capsys, "graph", "simulate", "desk", "--seed", str(SEED), "--db", db)
+    code, learned = _nsf(capsys, "graph", "learn", "desk", "--train", str(ids["train"]),
+                         "--validation", str(ids["validation"]), "--db", db)
+    code, shown = _nsf(capsys, "graph", "show", str(learned["revision_id"]), "--db", db)
+    assert code == 0 and shown["rule_version"] == "best-learner-v1" and shown["byte_size"] == 247
+    assert shown["metrics"]["pack"]["learner"] in ("dense", "sparse")
+    code, promoted = _nsf(capsys, "graph", "promote", str(learned["revision_id"]), "--db", db)
+    assert code == 0 and promoted["promoted"]

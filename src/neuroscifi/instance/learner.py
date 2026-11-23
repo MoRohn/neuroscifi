@@ -4,7 +4,15 @@
 to N. It trains, in the same pass, a dense matrix and a sparse matrix whose per-receiver support of k
 inputs is rewired by a scored swap test. `pack` is the selection rule of
 `lab.graph_compression_bench`: the smallest complete NSG1 file whose validation error stays within
-the scoring rule's tolerance of the dense FP32 graph.
+the scoring rule's tolerance of the dense FP32 graph. Under the birth rule only the dense matrix is packed
+and the sparse one is measured beside it; a rule the owner adds can make the sparse matrix a candidate and
+the better of the two the reference (`pack`, rules.py).
+
+The two learners do not have the same range. The dense update takes a step from every input, each
+normalised by that input alone, so the steps add up with the population count: on the lab's stream the
+dense error is twice the noise floor at 96 populations and above a graph with no edges from 128, and it
+grows without bound beyond. The sparse matrix moves on k inputs per receiver and stays at the noise floor
+at every size a dataset may have (scripts/bench_graph_learner.py sizes).
 """
 import numpy as np
 
@@ -135,28 +143,59 @@ def mse(matrix, states, targets):
     return float(np.mean((states @ np.asarray(matrix).T - targets) ** 2))
 
 
-def pack(dense, validation, rule):
-    """Pick the smallest NSG1 file within (1 + validation_tolerance) of the dense validation MSE.
+def pack(dense, validation, rule, sparse=None):
+    """Pick the smallest NSG1 file within (1 + validation_tolerance) of the reference validation MSE.
 
     `validation` is (states, targets). Candidates are FP32 plus every (degree, bits) pair from
-    rule["pack_candidates"] with degree <= N. FP32 always qualifies, so a choice always exists.
+    rule["pack_candidates"] with degree <= N, cut from `dense`. The reference is the dense FP32 graph, which always
+    qualifies, so a choice always exists.
+
+    A rule may ask for more (rules.py; absent in gate-v1, whose choice and result are unchanged):
+    - pack_candidates.learned_sparse: `sparse`, the matrix the edge-exchange learner fitted, is a candidate as
+      well: as FP32 and at its own degree (the most inputs any receiver has) with each bit width of the rule.
+    - pack_reference "best_learner": the reference is the lower validation MSE of the two learners' FP32 graphs.
+      The better learner's FP32 file is exactly at the reference, so a choice still always exists.
+    With learned_sparse, files of equal size are separated by the lower validation MSE, and the result also says
+    which learner the chosen file came from ("learner"), the reference used and each candidate's learner.
     """
     states, targets = validation
     dense = np.asarray(dense).astype("f4")
     baseline = mse(dense, states, targets)
     cols = dense.shape[1]
     tolerance = float(rule["validation_tolerance"])
-    options = [(cols, 32)] + [(degree, bits) for degree in rule["pack_candidates"]["degrees"]
-                              for bits in rule["pack_candidates"]["bits"] if degree <= cols]
+    spec = rule["pack_candidates"]
+    learned = bool(spec.get("learned_sparse", False))
+    matrices = {"dense": dense}
+    options = [("dense", cols, 32)] + [("dense", degree, bits) for degree in spec["degrees"]
+                                       for bits in spec["bits"] if degree <= cols]
+    reference = baseline
+    if learned:
+        if sparse is None:
+            raise ValidationError("This scoring rule packs the learned sparse graph, and none was given")
+        matrices["sparse"] = np.asarray(sparse).astype("f4")
+        if matrices["sparse"].shape != dense.shape:
+            raise ValidationError("The dense and the sparse graph have different shapes")
+        own_degree = max(1, int((matrices["sparse"] != 0).sum(axis=1).max()))
+        options += [("sparse", cols, 32)] + [("sparse", own_degree, bits) for bits in spec["bits"]]
+        if rule.get("pack_reference", "dense") == "best_learner":
+            reference = min(baseline, mse(matrices["sparse"], states, targets))
     candidates = []
-    for degree, bits in options:
-        blob = encode(dense, degree, bits)
+    for source, degree, bits in options:
+        blob = encode(matrices[source], degree, bits)
         loss = mse(decode(blob), states, targets)
         candidates.append({"bits": bits, "degree": degree, "byte_size": len(blob), "validation_mse": loss,
-                           "eligible": loss <= (1 + tolerance) * baseline, "blob": blob})
-    chosen = min((c for c in candidates if c["eligible"]), key=lambda c: c["byte_size"])
-    return {"blob": chosen["blob"], "bits": chosen["bits"], "degree": chosen["degree"],
-            "byte_size": chosen["byte_size"], "validation_mse": chosen["validation_mse"],
-            "dense_validation_mse": baseline,
-            "candidates": [{key: c[key] for key in ("bits", "degree", "byte_size", "validation_mse", "eligible")}
-                           for c in candidates]}
+                           "eligible": loss <= (1 + tolerance) * reference, "blob": blob, "learner": source})
+    eligible = [c for c in candidates if c["eligible"]]
+    if learned:
+        chosen = min(eligible, key=lambda c: (c["byte_size"], c["validation_mse"]))
+    else:
+        chosen = min(eligible, key=lambda c: c["byte_size"])
+    keys = ("bits", "degree", "byte_size", "validation_mse", "eligible") + (("learner",) if learned else ())
+    out = {"blob": chosen["blob"], "bits": chosen["bits"], "degree": chosen["degree"],
+           "byte_size": chosen["byte_size"], "validation_mse": chosen["validation_mse"],
+           "dense_validation_mse": baseline,
+           "candidates": [{key: c[key] for key in keys} for c in candidates]}
+    if learned:
+        out |= {"learner": chosen["learner"], "reference": rule.get("pack_reference", "dense"),
+                "reference_validation_mse": reference}
+    return out

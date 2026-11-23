@@ -144,35 +144,16 @@ def run_time(repeats):
     return {"repeats": repeats, "sizes": out}
 
 
-def _candidates(fitted, k, rule, val, held):
-    """Every candidate file: FP32 and each (degree, bits) of the dense fit as `learner.pack` builds them, and the
-    learned sparse matrix at its own degree k with each bit width. Each with its size and both errors."""
-    dense = np.asarray(fitted["dense"]).astype("f4")
-    cols = dense.shape[1]
-    options = [("dense", cols, 32)] + [("dense", degree, bits) for degree in rule["pack_candidates"]["degrees"]
-                                       for bits in rule["pack_candidates"]["bits"] if degree <= cols]
-    options += [("sparse", k, bits) for bits in rule["pack_candidates"]["bits"]]
-    out = []
-    for source, degree, bits in options:
-        blob = encode(dense if source == "dense" else np.asarray(fitted["sparse"]).astype("f4"), degree, bits)
-        graph = decode(blob)
-        out.append({"source": source, "degree": degree, "bits": bits, "byte_size": len(blob),
-                    "validation_mse": learner.mse(graph, *val), "heldout_mse": learner.mse(graph, *held)})
-    return out
-
-
-def _choose(candidates, baseline, tolerance):
-    """The smallest file within the tolerance of `baseline`; at equal size the lower validation error."""
-    eligible = [c for c in candidates if c["validation_mse"] <= (1 + tolerance) * baseline]
-    return min(eligible, key=lambda c: (c["byte_size"], c["validation_mse"]))
-
-
 SELECTIONS = {
-    "rule_today": "candidates from the dense fit only; within the tolerance of the dense FP32 error (learner.pack)",
-    "sparse_added": "the learned sparse graph added as a candidate; the same tolerance of the dense FP32 error",
-    "best_candidate_baseline": "the learned sparse graph added; within the tolerance of the best candidate's error "
-                               "(a different exam: it asks for accuracy, not only for no loss against dense)",
+    "rule_today": "gate-v1: candidates cut from the dense fit; within the tolerance of the dense FP32 error",
+    "sparse_added": "pack_candidates.learned_sparse: the learned sparse graph is a candidate too; the same reference",
+    "best_learner": "learned_sparse and pack_reference best_learner: within the tolerance of the better learner",
 }
+
+
+def _rules(rule):
+    sparse_too = dict(rule, pack_candidates=dict(rule["pack_candidates"], learned_sparse=True))
+    return {"rule_today": rule, "sparse_added": sparse_too, "best_learner": dict(sparse_too, pack_reference="best_learner")}
 
 
 def run_select(worlds, rule):
@@ -186,31 +167,34 @@ def run_select(worlds, rule):
         (24, 2, 3, 1536, "2 true inputs per receiver, k = 3 (the edge budget is too large)"),
         (96, 3, 3, 1536, "96 populations, 3 true inputs, k = 3"),
         (96, 3, 3, 6144, "96 populations on a long stream: 6144 steps"),
+        (160, 3, 3, 1536, "160 populations, 3 true inputs, k = 3"),
         (256, 3, 3, 1536, "256 populations, 3 true inputs, k = 3"),
     ]
     out = []
     for n, true_k, k, steps, label in configs:
         rows = []
-        for w in range(worlds if n < 256 else min(worlds, 16)):
+        for w in range(worlds if n < 160 else min(worlds, 16)):
             rng = np.random.default_rng(813240 + w)
             a = world(n, true_k, rng)
             x, y = stream(a, steps, rng)
             val = stream(a, 256, np.random.default_rng(10_000 + w))
             held = stream(a, 1024, np.random.default_rng(20_000 + w))
             fitted = learner.fit(x, y, k=k, seed=w)
-            packed = learner.pack(fitted["dense"], val, rule)
-            candidates = _candidates(fitted, k, rule, val, held)
-            dense_fp32 = candidates[0]
-            chosen = {
-                "rule_today": _choose([c for c in candidates if c["source"] == "dense"], dense_fp32["validation_mse"],
-                                      tolerance),
-                "sparse_added": _choose(candidates, dense_fp32["validation_mse"], tolerance),
-                "best_candidate_baseline": _choose(candidates, min(c["validation_mse"] for c in candidates), tolerance),
-            }
-            today = chosen["rule_today"]     # the same file learner.pack chooses, except on an exact size tie
-            assert today["byte_size"] == packed["byte_size"] and dense_fp32["validation_mse"] == packed["dense_validation_mse"]
-            sparse = {c["bits"]: c for c in candidates if c["source"] == "sparse"}
+            chosen = {}
+            for name, definition in _rules(rule).items():
+                packed = learner.pack(fitted["dense"], val, definition, sparse=fitted["sparse"])
+                chosen[name] = {"source": packed.get("learner", "dense"), "degree": packed["degree"],
+                                "bits": packed["bits"], "byte_size": packed["byte_size"],
+                                "validation_mse": packed["validation_mse"],
+                                "heldout_mse": learner.mse(decode(packed["blob"]), *held)}
+            dense_fp32 = {"validation_mse": packed["dense_validation_mse"],
+                          "heldout_mse": learner.mse(fitted["dense"].astype("f4"), *held)}
+            sparse = {}
+            for bits in rule["pack_candidates"]["bits"]:
+                graph = decode(encode(fitted["sparse"].astype("f4"), k, bits))
+                sparse[bits] = {"validation_mse": learner.mse(graph, *val), "heldout_mse": learner.mse(graph, *held)}
             rows.append({"dense": dense_fp32, "chosen": chosen, "sparse": sparse,
+                         "no_graph_heldout_mse": float(np.mean(held[1] ** 2)),
                          "sparse_eligible": {bits: c["validation_mse"] <= (1 + tolerance) * dense_fp32["validation_mse"]
                                              for bits, c in sparse.items()},
                          "true_edges_in_sparse_support": float((fitted["support"] & (a != 0)).sum()
@@ -233,6 +217,7 @@ def run_select(worlds, rule):
             "sparse_within_tolerance_of_dense_share": {str(bits): share(lambda r, bits=bits: r["sparse_eligible"][bits])
                                                        for bits in rule["pack_candidates"]["bits"]},
             "median_true_edges_in_sparse_support": med(r["true_edges_in_sparse_support"] for r in rows),
+            "median_no_graph_heldout_mse": med(r["no_graph_heldout_mse"] for r in rows),
             "selection": {},
         }
         for name in SELECTIONS:
@@ -253,6 +238,8 @@ def run_select(worlds, rule):
                 "heldout_worse_than_rule_today_share": round(
                     sum(1 for c, r in zip(picks, rows) if c["heldout_mse"] > r["chosen"]["rule_today"]["heldout_mse"])
                     / len(picks), 3),
+                "worse_than_no_graph_share": round(
+                    sum(1 for c, r in zip(picks, rows) if c["heldout_mse"] >= r["no_graph_heldout_mse"]) / len(picks), 3),
             }
         out.append(summary)
         print(json.dumps(summary), flush=True)

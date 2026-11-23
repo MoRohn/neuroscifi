@@ -199,18 +199,24 @@ def learn(db, context, now, *, train, validation, holder):
         x, y = datasets.load(db, train)
         val = datasets.load(db, validation)
         fitted = learner.fit(x, y, seed=train)
-        packed = learner.pack(fitted["dense"], val, rule)
+        packed = learner.pack(fitted["dense"], val, rule, sparse=fitted["sparse"])
         sparse_support = fitted["support"]
         packed_support = decode(packed["blob"]) != 0
         edges = int(sparse_support.sum())
+        # The error of a graph with no edges on the same validation data: a snapshot that does not beat it has
+        # learned nothing (the dense learner stops fitting when there are many populations; the sparse one does not).
+        no_graph = float(np.mean(val[1] ** 2))
         metrics = {
             "train_dataset": train, "validation_dataset": validation, "train_steps": int(len(x)),
             "learner": {"window": learner.WINDOW, "learning_rate": learner.LEARNING_RATE, "k": 3,
                         "initial_support_seed": train},
             "validation_mse": packed["validation_mse"],
             "dense_validation_mse": packed["dense_validation_mse"],
+            "no_graph_validation_mse": no_graph,
+            "beats_no_graph": bool(packed["validation_mse"] < no_graph),
             "pack": {key: packed[key] for key in ("bits", "degree", "byte_size", "validation_mse",
-                                                  "dense_validation_mse", "candidates")},
+                                                  "dense_validation_mse", "candidates", "learner", "reference",
+                                                  "reference_validation_mse") if key in packed},
             "sparse": {"swaps": fitted["swaps"], "edges": edges,
                        "validation_mse": learner.mse(fitted["sparse"], *val),
                        "support_agreement_with_snapshot":
