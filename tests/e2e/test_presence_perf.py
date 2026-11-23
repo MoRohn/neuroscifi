@@ -100,18 +100,25 @@ def test_presence_performance(spark, new_page, browser):
         cdp = page.context.new_cdp_session(page)
         results["runs"][label] = {"x1": measure(page, cdp, 1), "x4": measure(page, cdp, 4)}
         assert page.problems == []
-    # the production console element: idle overhead (no frames: CSS breathing; one open long-poll)
+    # the production console element at rest: the physics settles (resting decays), and the life layer keeps the
+    # entity alive at LIFE.ambientFps (30) with one open long-poll
     page = new_page(1280, 900)
     open_console(page, spark)
+    page.mouse.move(5, 895)          # then the pointer is left alone: its attention is long over before the sample
     t_open = time.monotonic()
-    while page.evaluate("window.__nsfPresence.stats().running") and time.monotonic() - t_open < 90:
+    while not page.evaluate("window.__nsfPresence.stats().settled") and time.monotonic() - t_open < 90:
         page.wait_for_timeout(500)   # resting decays to stillness (wait_for_function needs eval, blocked by the CSP)
     settle_s = round(time.monotonic() - t_open, 1)
+    page.wait_for_timeout(2000)
     s0 = page.evaluate("window.__nsfPresence.stats()")
     page.wait_for_timeout(10_000)
     s1 = page.evaluate("window.__nsfPresence.stats()")
-    results["console_idle_10s"] = {"frames": s1["frames"] - s0["frames"], "requests_completed": s1["requests"] - s0["requests"],
-                                   "concept": s1["concept"], "seconds_until_still_after_load": settle_s}
+    n = s1["frames"] - s0["frames"]
+    script = page.evaluate("window.__nsfPresence.frames()")["scriptMs"][-n:] if n > 0 else []
+    results["console_idle_10s"] = {"frames": n, "ambient_frames": s1["ambientFrames"] - s0["ambientFrames"],
+                                   "renderer_script_ms_per_frame_p95": pct(script, 95),
+                                   "requests_completed": s1["requests"] - s0["requests"],
+                                   "concept": s1["concept"], "seconds_until_settled_after_load": settle_s}
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(results, indent=2) + "\n")
     for label in ("desktop_1280", "phone_390"):
@@ -123,6 +130,9 @@ def test_presence_performance(spark, new_page, browser):
             assert t["heap_delta_kb"] < 2048, t           # no growth beyond noise over 200 transitions
             assert r["continuous_motion_5s"]["frames"] > 100, r
             assert r["continuous_motion_5s"]["renderer_script_ms_per_frame_p95"] < 8, r
-    assert results["console_idle_10s"]["frames"] == 0
+    idle = results["console_idle_10s"]
+    assert 150 <= idle["frames"] <= 330, idle            # alive, and capped at about 30 fps while only the life layer moves
+    assert idle["ambient_frames"] >= idle["frames"] - 3, idle
+    assert idle["renderer_script_ms_per_frame_p95"] < 4, idle
     assert results["console_idle_10s"]["requests_completed"] <= 2
     assert re.match(r"^\d", results["chromium"])

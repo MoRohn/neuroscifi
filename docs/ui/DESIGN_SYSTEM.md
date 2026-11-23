@@ -24,18 +24,21 @@ figure that shows the agent's presence and cognitive state through small changes
 - **Size.** `--stage-size`: `clamp(148px, 42vw, 212px)` on phones, 216 px from 600 px, 232 px from 1200 px, 272 px
   from 1800 px, 304 px on the console from 2200 px; 132 px on a phone held sideways. The renderer's `expanded` level (> 140 px) draws every slot, so no
   new size class was needed.
-- **Calm surroundings.** No border or card around the stage; a still, low-contrast halo gives it a place. The
-  surrounding UI uses neutral tones and one action colour, so the entity's accents and motion are the only
-  colourful, moving things on the surface. The stage adds no motion of its own, and busy messages carry no
-  spinner: the entity is the activity indicator.
+- **Calm surroundings.** No border or card around the stage. The surrounding UI is grayscale, so the entity's
+  light, geometry and motion are the only living things on the surface. The stage adds no motion of its own, and
+  busy messages carry no spinner: the entity is the activity indicator.
+- **Alive.** On screen the entity is never frozen: the life layer (docs/presence/MOTION_ENGINE.md) keeps it
+  breathing and flowing, deepens with real activity, swells with the measured voice level, turns its attention to
+  the owner's pointer, carries the inertia of scrolling and answers keystrokes. Its light is a soft halo behind
+  the figure whose strength follows the activity; real stage transitions send a wave round its outline.
 - **Honesty.** The stage only shows what the presence engine draws from real system state. No faces, avatars,
   chat bubbles from the entity or decorative motion are added. The short word under the figure is the presence's
   own `pc-word` (hidden from assistive technology; the live region and description are unchanged).
 - **Panel.** Activating the figure opens its panel (status sentence, facts, theme and motion settings). On a stage
   the figure stays where it is and the panel carries the words; on phones the panel is a bottom sheet above the home
   indicator.
-- **Modes.** Reduced motion keeps the static but expressive geometry; hidden tabs and off-screen stages pause the
-  loop (unchanged); forced colours drop the halo and keep the strokes in system colours.
+- **Modes.** Reduced motion keeps the static but expressive geometry and turns the life layer off; hidden tabs and
+  off-screen stages pause the loop; forced colours drop the halo and keep the strokes in system colours.
 
 ## Files
 
@@ -52,8 +55,9 @@ No file outside `ui.css` defines a colour (the presence palette and the wordmark
 
 ## Colour
 
-Warm graphite neutrals with a trace of rose ("gray matter", in step with the wordmark), one evergreen action colour
-and four status pairs. Values are tokens on `:root` / `[data-theme]`; `tests/e2e/test_ui_matrix.py` reads them from
+Grayscale (owner direction, 2026-11-23): warm graphite neutrals with a trace of rose ("gray matter", in step with
+the wordmark), graphite actions, and hue only for the two signals that must never be missed, warning and danger.
+Primary actions are the ink itself: a graphite button on light, a light button on graphite in dark. Values are tokens on `:root` / `[data-theme]`; `tests/e2e/test_ui_matrix.py` reads them from
 the running page and checks every pair below.
 
 | Token | Light | Dark | Use |
@@ -64,12 +68,13 @@ the running page and checks every pair below.
 | `--surface-sunken` | `#E9E5E4` | `#0C0A0B` | meter tracks |
 | `--line` / `--line-strong` | `#E0DAD9` / `#8A8084` | `#302A2D` / `#7A7075` | hairlines / control borders (>= 3:1) |
 | `--ink` / `--ink-muted` | `#1D191B` / `#595155` | `#EEE9EA` / `#B5ABAF` | text (15.9:1) / secondary text (>= 6.1:1) |
-| `--primary` (+ `--on-primary`, `--primary-hover`) | `#184E42` | `#25735F` | primary buttons, current place (white text 9.5:1 / 5.7:1; hover darkens in both themes, >= 7:1) |
-| `--primary-soft` / `--primary-line` | `#E2EEE9` / `#A9CBBD` | `#16302A` / `#2F5A4E` | current navigation item, quotes' rule, sensing card |
-| `--link` | `#17594A` | `#86D2BC` | links, citations |
-| `--accent` | `#8A4556` | `#E3A6B3` | counts (e.g. "2 open"); brand details only |
-| `--focus` | `#0A72A0` | `#5BB8E6` | the 3 px focus ring (>= 4.3:1) |
-| `--ok`, `--warn`, `--danger`, `--info`, `--neutral` | dark tones on `*-soft` grounds with `*-line` borders | light tones on deep grounds | badges, messages, states (all >= 6.6:1) |
+| `--primary` (+ `--on-primary`, `--primary-hover`) | `#1D191B` (white text) | `#EEE9EA` (`#141213` text) | primary buttons, current place (>= 12:1; hover `#3A3437` / `#D6D0D2`, text stays >= 4.5:1) |
+| `--primary-soft` / `--primary-line` | `#ECE8E7` / `#BDB5B7` | `#2A2628` / `#554D51` | current navigation item, quotes' rule, sensing card |
+| `--link` | `#1D191B` | `#EEE9EA` | links and citations: the ink, always underlined (citations with a quieter `--line-strong` underline that turns to ink on hover) |
+| `--accent` | `#595155` | `#C9C0C3` | counts (e.g. "2 open") |
+| `--focus` | `#1D191B` | `#EEE9EA` | the 3 px focus ring, set off from the control (2 px on buttons, 1 px on fields; inset on navigation), >= 3:1 on every surface |
+| `--ok`, `--info`, `--neutral` | graphite tones on `*-soft` grounds with `*-line` borders | light tones on deep grounds | done (ink with a stronger border), informational and neutral (muted) states; the word always carries the meaning (all >= 6.6:1) |
+| `--warn`, `--danger` | `#8A3A14`, `#A3361A` on warm grounds | `#F2A88A`, `#F59C84` on deep grounds | the only hues: warnings, errors and destructive actions |
 
 Rules:
 

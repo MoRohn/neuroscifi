@@ -4,13 +4,13 @@
 
 <br>
 
-[![CI](https://github.com/MoRohn/neuroscifi/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MoRohn/neuroscifi/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-0.7.0-818CF8)
-[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-E879F9)](LICENSE)
-![Python](https://img.shields.io/badge/python-3.12-22D3EE?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-3320%20passed-22C55E)
-![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-22C55E)
-![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-22C55E)
+[![CI](https://img.shields.io/github/actions/workflow/status/MoRohn/neuroscifi/ci.yml?branch=main&label=CI&color=3A3437)](https://github.com/MoRohn/neuroscifi/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/version-0.7.0-3A3437)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-3A3437)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.12-3A3437?logo=python&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-3321%20passed-3A3437)
+![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-3A3437)
+![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-3A3437)
 
 **[Overview](#overview)** · **[See it in action](#see-it-in-action)** · **[Architecture](#architecture)** · **[Requirements](#requirements)** · **[Quick start](#quick-start)** · **[Optional services](#optional-services)** · **[Privacy & trust](#privacy-security-and-trust)** · **[Testing](#testing-and-verification)** · **[Limitations](#known-limitations)** · **[Docs](#documentation)**
 
@@ -43,7 +43,7 @@ The cognitive prototype needs no pretrained model and no cloud service. Text res
 | 📈 **Knowledge evolution** | Versioned knowledge, hypotheses with testable predictions, calibration and change history. The owner accepts every knowledge item. Model weights never change. |
 | 🤖 **Controlled autonomy** | Opt-in with a recorded owner enable. Its own daily budget (20 searches, 60 pages, 30 min, $1, 2 concurrent investigations). Research is chosen from stored records by expected information gain. |
 | 🎙️ **Voice Cortex** | Whisper speech recognition and Kokoro speech synthesis behind a bridge in which NeuroSciFi stays authoritative. Three modes, barge-in, one capturing device at a time. The **Voice check** measures microphone, speaker, barge-in and echo on your own hardware. PersonaPlex is an opt-in experiment. |
-| ✳️ **Presence Cortex** | A minimal, abstract, physics-driven entity at the centre of every interaction view: its light, geometry and motion show what the individual is really doing (reading, reasoning, listening, speaking), never invented activity. |
+| ✳️ **Presence Cortex** | A minimal, abstract, physics-driven entity at the centre of every interaction view, alive in real time: its light, geometry and motion follow what the individual is really doing (reading, reasoning, listening, speaking) and its surroundings (your pointer, typing, scrolling, the voice level), never invented activity. |
 | 📱 **Pocket** | A mobile-first web app for phones and tablets, served over HTTPS with a private CA. Devices pair with one-use codes into families, and linked devices share research. Opt-in **push** sends an empty notification through the browser vendor's push service when research finishes (ADR-040). |
 | 🔏 **Signed research nodes** | The owner enrols a paired device after comparing key fingerprints. A node signs its requests and can take and hand off research sessions. Pocket checks the Spark's signature on every research reply (ADR-042). The Spark stays the only executing node. |
 | ⚖️ **Resource scheduling** | One pressure level from memory and GPU data, with audio first. Opt-in **idle unloading** per service (vLLM, ASR, TTS, SearXNG) reloads on demand and logs every load and unload. |
@@ -63,6 +63,14 @@ The **[34-page architecture brief](NeuroSciFi_Architecture.pdf)** is also availa
 ## See it in action
 
 All screenshots come from the real console and Pocket on seeded scratch instances ([how they are made](docs/assets/screenshots/README.md)); they follow your light or dark setting.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/entity-alive-dark.webp">
+  <img src="docs/assets/screenshots/entity-alive-light.webp" width="360" alt="The Presence entity alive on the console's research stage: its eyes follow the pointer, it answers each keystroke, then it morphs through the stages of a real research run">
+</picture>
+<br><sub><b>The entity, alive.</b> Recorded from the real console: it follows your pointer, answers each keystroke, then morphs through the real stages of the question you asked.</sub>
+</p>
 
 <table>
 <tr>
@@ -648,7 +656,7 @@ nsf acceptance --all                                                     # simul
 
 | Gate | Result |
 |---|---|
-| Quality gate (`bash scripts/check.sh`) | **3320 passed**, 18 skipped (live-service tests), 0 failed |
+| Quality gate (`bash scripts/check.sh`) | **3321 passed**, 18 skipped (live-service tests), 0 failed |
 | Browser end-to-end (`tests/e2e`) | **184 passed**, 1 skipped (opt-in degraded-voice test), 0 failed |
 | Acceptance scenarios (`nsf acceptance --all`) | 7 of 7 pass. The D-1 redesign was [pre-registered](docs/quality/PREREGISTRATION_D1.md) |
 | Reproduction | 8 of 8 analyses within tolerance |

@@ -40,7 +40,7 @@ GET_SWEEP_BUSY_MS = 200        # a GET never waits longer than this for the writ
 POST_BUSY_MS = 2000
 WEB = Path(__file__).resolve().parent / "web"
 ICON = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" '
-        b'fill="#184e42"/><circle cx="16" cy="16" r="7" fill="none" stroke="#f4f7f5" stroke-width="3"/></svg>')
+        b'fill="#1d191b"/><circle cx="16" cy="16" r="7" fill="none" stroke="#eee9ea" stroke-width="3"/></svg>')
 ASSETS = {"/": ("index.html", "text/html; charset=utf-8"),
           "/console.css": ("console.css", "text/css; charset=utf-8"),
           "/console.js": ("console.js", "text/javascript; charset=utf-8")}

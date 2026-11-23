@@ -1,6 +1,6 @@
 # Performance results
 
-The measurements were taken on 2026-11-21 by `tests/e2e/test_presence_perf.py`. Raw numbers are in
+The measurements were taken on 2026-11-23 by `tests/e2e/test_presence_perf.py`, with the life layer (MOTION_ENGINE.md) on. Raw numbers are in
 `perf/measurements.json` and are overwritten on every run.
 
 **Setup**
@@ -13,8 +13,8 @@ The measurements were taken on 2026-11-21 by `tests/e2e/test_presence_perf.py`. 
 **What runs**
 
 - **Subject**: the gallery's live harness. It is the production `Presence` controller, interpreter, planner,
-  motion engine and renderer, drawn 180 px wide (expanded size). The page also holds 62 static figures, which are
-  why there are about 2,040 DOM nodes.
+  motion engine and renderer, drawn 180 px wide (expanded size). The page also holds the static figures of every
+  composition in both themes, which are why there are about 2,780 DOM nodes.
 - **Continuous motion**: 5 s of the *thinking* composition (orbit swing plus accents) at intensity 0.6.
 - **200 transitions**: one synthetic state every 30 ms, cycling through all 20 activities.
 
@@ -30,37 +30,43 @@ The measurements were taken on 2026-11-21 by `tests/e2e/test_presence_perf.py`. 
 
 | Viewport | CPU | Frames | rAF interval p50 / p95 (ms) | Renderer script per frame p50 / p95 (ms) | DevTools script / layout / style per frame (ms) |
 |---|---|---|---|---|---|
-| desktop 1280 | 1× | 304 | 16.7 / 16.7 | 0.2 / 0.3 | 0.25 / 0.13 / 0.11 |
-| desktop 1280 | 4× | 304 | 16.7 / 16.7 | 0.2 / 0.7 | 0.27 / 0.26 / 0.14 |
-| phone 390 | 1× | 304 | 16.7 / 16.7 | 0.2 / 0.3 | 0.27 / 0.15 / 0.12 |
-| phone 390 | 4× | 305 | 16.7 / 16.8 | 0.2 / 0.8 | 0.31 / 0.32 / 0.20 |
+| desktop 1280 | 1× | 305 | 16.7 / 16.8 | 1.3 / 1.6 | 1.37 / 0.61 / 0.41 |
+| desktop 1280 | 4× | 304 | 16.7 / 16.7 | 0.2 / 0.8 | 0.33 / 0.30 / 0.20 |
+| phone 390 | 1× | 303 | 16.7 / 16.8 | 1.6 / 2.0 | 1.56 / 0.69 / 0.47 |
+| phone 390 | 4× | 305 | 16.7 / 16.8 | 0.2 / 0.8 | 0.31 / 0.27 / 0.14 |
 
-The animation held 60 fps (p95 16.8 ms) even with 4× CPU throttling. Script cost per frame stays below 1 ms at p95.
+The animation held 60 fps (p95 16.8 ms) even with 4× CPU throttling. Script cost per frame stays at or below 2 ms at
+p95. The 1× rows run first on a fresh page, so they include the JIT warming up for the life layer; the 4× rows,
+measured next on the same page, are lower although the CPU is slower. Each configuration ran once.
 
 ## 200 transitions
 
 | Viewport | CPU | Wall (s) | Scene commits | Heap before → after GC (KB) | DOM nodes | Listeners | Loops | Paths | Peak point speed |
 |---|---|---|---|---|---|---|---|---|---|
-| desktop 1280 | 1× | 6.54 | 31 | 2780 → 2851 (+71) | 2041 → 2041 | 69 → 69 | 1 | 14 | 260 |
-| desktop 1280 | 4× | 7.05 | 63 | 2873 → 3041 (+169) | 2041 → 2041 | 69 → 69 | 1 | 14 | 260 |
-| phone 390 | 1× | 6.65 | 31 | 2840 → 2850 (+10) | 2041 → 2041 | 69 → 69 | 1 | 14 | 260 |
-| phone 390 | 4× | 6.67 | 62 | 2873 → 2880 (+7) | 2041 → 2041 | 69 → 69 | 1 | 14 | 260 |
+| desktop 1280 | 1× | 7.15 | 33 | 3015 → 3110 (+95) | 2776 → 2776 | 75 → 75 | 1 | 14 | 260 |
+| desktop 1280 | 4× | 7.07 | 65 | 3130 → 3142 (+12) | 2776 → 2776 | 75 → 75 | 1 | 14 | 260 |
+| phone 390 | 1× | 6.46 | 31 | 3014 → 3067 (+53) | 2776 → 2776 | 75 → 75 | 1 | 14 | 260 |
+| phone 390 | 4× | 6.95 | 63 | 3088 → 3180 (+92) | 2776 → 2776 | 75 → 75 | 1 | 14 | 260 |
 
 How to read the table:
 
-- **Coalescing**: 200 incoming states produced 31 scene commits at 1× and about 62 at 4×. The commit gap is
+- **Coalescing**: 200 incoming states produced 31–33 scene commits at 1× and 63–65 at 4×. The commit gap is
   220 ms, and under throttling the timers slip, so more gaps elapse during the same wall time.
 - **No accumulation**: DOM nodes, listeners, path count and loop count are unchanged after the run.
-- **Heap**: the deltas (7–169 KB) are single measurements. A delta of this size, which does not repeat across
+- **Listeners**: 75, six more than before the life layer (pointer move and down, pointer out, scroll, focus, blur),
+  registered once per presence and unchanged by the run.
+- **Heap**: the deltas (12–95 KB) are single measurements. A delta of this size, which does not repeat across
   runs, is within V8 GC noise. No trend was established, because each configuration ran only once.
 - **Peak point speed**: 260 units/s is exactly the engine's velocity cap. Fast transitions hit the limit rather
   than exceeding it.
 
 ## Console element at rest
 
-On a fresh instance the state is *resting*. Its "z" marks decay to stillness 55.6 s after load. After that, over
-10 s the element drew **0 frames** and completed **1** presence request: the long-poll answered "unchanged" after
-its 20 s window, and no other polling happens.
+On a fresh instance the state is *resting*. Its "z" marks decay 55.6 s after load and the physics settles. The
+entity stays alive (the life layer), so over the next 10 s the element drew **300 frames**, all at the 30 fps
+ambient cap, at **1.2 ms** of renderer script per frame (p95), and completed **1** presence request: the long-poll
+answered "unchanged" after its 20 s window, and no other polling happens. Before the life layer this element drew
+0 frames at rest; the owner asked for an entity that is never frozen, and 30 fps at about 1 ms is the cost.
 
 ## Other measured behaviour
 

@@ -1,7 +1,8 @@
 # README screenshots
 
-Product screenshots of the owner console and Pocket, for the project README. Each image exists as WebP (use this
-one) and as a 256-colour PNG fallback. "light" and "dark" follow the system colour scheme the app was given.
+Product screenshots of the owner console and Pocket, for the project README. Each still image exists as WebP (use
+this one) and as a 256-colour PNG fallback; the entity clip is an animated WebP. "light" and "dark" follow the system
+colour scheme the app was given.
 
 | File (`.webp` / `.png`) | Viewport → image (px) | Caption |
 |---|---|---|
@@ -10,6 +11,7 @@ one) and as a 256-colour PNG fallback. "light" and "dark" follow the system colo
 | `pocket-phone-light`, `pocket-phone-dark` | 390 × 844, touch → 780 × 1688 | Pocket on a paired phone: the entity on its stage above the research form while the Spark reads sources for the phone's question. |
 | `pocket-tablet-light`, `pocket-tablet-dark` | 820 × 1180, touch → 1100 × 1583 | Pocket on a second device linked with the phone's hand-off code: the phone's question continued here, with its finished, cited report. |
 | `voice-light`, `voice-dark` | 1280 × 900 → 1600 × 1125 | Console Voice view: a text-only voice session with an answered research question and a second question in progress, and the Voice check panel open. |
+| `entity-alive-light`, `entity-alive-dark` (`.webp`, animated) | 1440 × 900, stage region → 480 px wide, 20 fps, about 14 s | The entity alive on the console's research stage: at rest it follows the pointer round it, answers each typed keystroke, then morphs through the real stages of the question it was asked. |
 
 ## How they are made
 
@@ -29,10 +31,16 @@ directory, from the end-to-end test helpers in `tests/e2e`:
   engines' "ready" health line comes from the scripted engines.
 - **Hero**: a small local HTML page lays the three captures out in plain rounded frames on the theme's page colour
   (`#F6F4F3` light, `#121011` dark) and is captured at 2400 × 1300 pixels.
+- **Entity clip**: the console setup without the model stand-in, motion ON. The real pointer circles the figure for
+  four seconds, the question is typed (55 ms per key) and asked, and seven seconds of the run follow. Frames come
+  from Chromium's screencast (`Page.startScreencast`, device pixels) as they are painted, each with its real
+  timestamp; ffmpeg's concat demuxer keeps those durations, crops the stage region, resamples to 20 fps and writes a
+  looping animated WebP (`libwebp_anim`, quality 78, about 1 MB).
 
-The entity's state is never scripted. It shows what the presence endpoint reports for the seeded work. The browsers
-emulate reduced motion, so the entity is drawn in each state's static key pose. Captures are taken at device scale 2
-and downscaled with ImageMagick: WebP at quality 82, PNG8 with 256 colours and no dithering.
+The entity's state is never scripted. It shows what the presence endpoint reports for the seeded work. For the still
+images the browsers emulate reduced motion, so the entity is drawn in each state's static key pose. Captures are
+taken at device scale 2 and downscaled with ImageMagick: WebP at quality 82, PNG8 with 256 colours and no
+dithering.
 
 Before each capture, the console's instance id, Pocket's hand-off code and key fingerprints are masked (text only).
 A capture fails if its visible text shows a host path, the host name, a loopback address, an e-mail address or a
@@ -45,8 +53,8 @@ PYTHONPATH=src python scripts/ui/readme_screenshots.py            # writes into 
 PYTHONPATH=src python scripts/ui/readme_screenshots.py --out DIR --only console,voice --keep-raw RAWDIR
 ```
 
-`--only` takes any of `console`, `pocket`, `hero` and `voice`. `hero` also captures `console` and `pocket`. A full
-run takes about three minutes.
+`--only` takes any of `console`, `pocket`, `hero`, `voice` and `entity`. `hero` also captures `console` and
+`pocket`. A full run takes about four minutes.
 
 Requirements:
 
@@ -54,5 +62,6 @@ Requirements:
 - Chromium: `NSF_CHROMIUM`, else `/usr/bin/chromium`, else Playwright's bundled Chromium.
 - ImageMagick 7 (`magick`) with WebP support, for encoding. Without `magick` the script copies the raw device-scale-2
   PNG captures instead, which are much larger.
+- ffmpeg with `libwebp_anim`, for the entity clip only.
 
 Nothing outside the process is contacted: no search engine, model server or speech service.

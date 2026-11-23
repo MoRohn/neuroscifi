@@ -9,7 +9,9 @@ local deterministic OpenAI-compatible stand-in for the model (tests/inference/fa
 paired phone and a linked tablet, and the Voice view with in-process scripted speech engines (no speech services).
 No shared service on the host is contacted. The entity's state is never set by script: it is whatever the presence
 endpoint reports for the seeded work (a slow FixtureWeb page read keeps a research task in "Reading"). Contexts
-emulate reduced motion, so the entity is drawn in each state's static key pose (deterministic captures). Before each
+emulate reduced motion, so the entity is drawn in each state's static key pose (deterministic captures); the one
+exception is the entity clip (`--only entity`), recorded with motion on from the research view's stage while the
+pointer moves around it and a question is typed and asked, then encoded by ffmpeg as a looping animated WebP. Before each
 capture the console's instance id, Pocket's hand-off code and key fingerprints are masked (text only), and a capture
 whose visible text shows a host path, the host name, a loopback address, an e-mail address or a long hex id fails.
 
@@ -22,6 +24,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import math
 import os
 import re
 import shutil
@@ -281,6 +284,95 @@ def console_research(browser, tmp, raw):
     return shots
 
 
+# ---- the entity, alive: an animated clip of the console's interaction stage -----------------------------------------
+CLIP_FPS = 20
+CLIP_VIEW = (1440, 900)
+
+
+def entity_clip(browser, tmp, raw, theme):
+    """The research view's stage with motion ON: the entity at rest follows the pointer round it, the owner types and
+    asks a question (each keystroke reaches the entity), and it morphs through the run's real stages (its state is
+    whatever the presence endpoint reports). Frames come from Chromium's screencast as they are painted, each with
+    its real timestamp; the stage region is cropped out at encoding."""
+    import base64
+    folder = tmp / f"clip-{theme}"
+    folder.mkdir()
+    r = research_console(folder)
+    frames = []
+    try:
+        w, h = CLIP_VIEW
+        ctx = browser.new_context(viewport={"width": w, "height": h}, device_scale_factor=2, color_scheme=theme,
+                                  timezone_id="UTC", locale="en-US")
+        page = ctx.new_page()
+        page.goto(r.url)
+        console_go(page, "research", "Research")
+        tcr.enable_web(page)
+        slow_down(r.web, PYTHON, SLOW_READ)
+        page.locator("#askMode").select_option("auto")
+        mask(page, [["#instanceId", "demo"]])
+        leak_check(page, f"entity-{theme}")
+        fig = page.locator("#research [data-presence-dock] .pc-svg").bounding_box()
+        cx, cy = fig["x"] + fig["width"] / 2, fig["y"] + fig["height"] / 2
+        side = fig["width"] * 1.3
+        region = (cx - side / 2, fig["y"] - fig["height"] * 0.16, side, fig["height"] * 1.34)
+        page.mouse.move(cx + 420, cy + 60)
+        page.wait_for_timeout(1500)
+        cdp = ctx.new_cdp_session(page)
+
+        def on_frame(ev):
+            path = raw / f"clip-{theme}-{len(frames):04d}.jpg"
+            path.write_bytes(base64.b64decode(ev["data"]))
+            frames.append((path, ev["metadata"]["timestamp"]))
+            cdp.send("Page.screencastFrameAck", {"sessionId": ev["sessionId"]})
+        cdp.on("Page.screencastFrame", on_frame)
+        cdp.send("Page.startScreencast", {"format": "jpeg", "quality": 92, "everyNthFrame": 1,   # device pixels
+                                          "maxWidth": w * 2, "maxHeight": h * 2})
+        t0 = time.monotonic()
+        while (t := time.monotonic() - t0) < 4.0:          # attention: the pointer circles the figure once
+            a = t / 4.0 * 2 * math.pi
+            page.mouse.move(cx + 420 * math.cos(a), cy + 60 + 260 * math.sin(a))
+            page.wait_for_timeout(30)
+        box = page.locator("#askObjective").bounding_box()
+        page.mouse.move(box["x"] + box["width"] * 0.6, box["y"] + box["height"] / 2)
+        page.locator("#askObjective").focus()
+        page.keyboard.type(PYTHON_Q, delay=55)               # typing: each keystroke reaches the entity
+        page.locator("#askBtn").click()
+        page.wait_for_timeout(7000)                          # the run's real stages: queued, planning, searching, reading
+        cdp.send("Page.stopScreencast")
+        page.wait_for_timeout(300)
+        ctx.close()
+    finally:
+        r.close()
+    if len(frames) < 50:
+        raise RuntimeError(f"the screencast delivered only {len(frames)} frames")
+    print(f"  recorded {len(frames)} frames of the entity ({theme}, {frames[-1][1] - frames[0][1]:.1f} s)")
+    return frames, region
+
+
+def encode_clip(clip, out_dir, name, width):
+    """Screencast frames with timestamps -> the stage region as a looping animated WebP at CLIP_FPS (ffmpeg concat
+    demuxer with the real frame durations)."""
+    frames, (x, y, cw, ch) = clip
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("the entity clip needs ffmpeg (libwebp_anim)")
+    listing = frames[0][0].parent / f"{name}.ffconcat"
+    lines = ["ffconcat version 1.0"]
+    for (path, t), nxt in zip(frames, frames[1:] + [(None, frames[-1][1] + 1 / CLIP_FPS)]):
+        lines += [f"file '{path.name}'", f"duration {max(0.001, nxt[1] - t):.4f}"]
+    lines.append(f"file '{frames[-1][0].name}'")
+    listing.write_text("\n".join(lines) + "\n")
+    vw, vh = CLIP_VIEW
+    crop = f"crop=iw*{cw / vw:.5f}:ih*{ch / vh:.5f}:iw*{x / vw:.5f}:ih*{y / vh:.5f}"
+    out = out_dir / f"{name}.webp"
+    subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(listing),
+                    "-vf", f"{crop},fps={CLIP_FPS},scale={width}:-2:flags=lanczos", "-c:v", "libwebp_anim",
+                    "-lossless", "0", "-quality", "78", "-compression_level", "6", "-loop", "0", "-an", str(out)],
+                   check=True, timeout=600)
+    return [out]
+
+
 # ---- Pocket: a phone and a linked tablet of one family -------------------------------------------------------------
 POCKET_MASK = [["#handoff", "Enter on your other device: \u2022\u2022\u2022\u2022"]]   # key fingerprints: MASK_JS
 
@@ -504,7 +596,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--only", default="",
-                    help="comma-separated subset of console,pocket,hero,voice (hero also captures console and pocket)")
+                    help="comma-separated subset of console,pocket,hero,voice,entity (hero also captures console and pocket)")
     ap.add_argument("--keep-raw", type=Path, help="also keep the device-scale-2 PNG captures here")
     a = ap.parse_args()
     only = set(filter(None, a.only.split(",")))
@@ -536,6 +628,9 @@ def main():
                 if want("voice"):
                     for theme, path in voice(browser, tmp, raw).items():
                         written += encode(path, a.out, f"voice-{theme}", 1600)
+                if want("entity"):
+                    for theme in THEMES:
+                        written += encode_clip(entity_clip(browser, tmp, raw, theme), a.out, f"entity-alive-{theme}", 480)
             finally:
                 browser.close()
     finally:

@@ -1022,12 +1022,12 @@ function renderHeatmap(g) {
   const cell = 16, pad = 34;   // labels are 13 units: about 11 px when the matrix is scaled down to a phone
   const svg = s('svg', { class: 'heatmap', id: 'heatmap', viewBox: `0 0 ${pad + cols * cell + 2} ${pad + rows * cell + 2}`, role: 'img', 'aria-labelledby': 'heatTitle heatSummary' });
   svg.append(s('title', { id: 'heatTitle' }, `Weight matrix of revision ${g.id}`));
-  svg.append(s('rect', { x: pad, y: pad, width: cols * cell, height: rows * cell, fill: '#ffffff', stroke: '#c6d2cb' }));
+  svg.append(s('rect', { x: pad, y: pad, width: cols * cell, height: rows * cell, fill: '#ffffff', stroke: '#CFC8C8' }));
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) {
       const w = matrix[i][j];
       const rect = s('rect', { class: 'cell', x: pad + j * cell, y: pad + i * cell, width: cell, height: cell,
-        fill: weightColor(w, max), stroke: '#e3e9e5', 'stroke-width': 0.5, 'data-w': w });
+        fill: weightColor(w, max), stroke: '#E7E2E1', 'stroke-width': 0.5, 'data-w': w });
       rect.append(s('title', {}, `target ${i} ← source ${j}: ${w}`));
       svg.append(rect);
     }
@@ -1040,7 +1040,7 @@ function renderHeatmap(g) {
   const legend = s('svg', { class: 'legend', viewBox: '0 0 300 46', role: 'img', 'aria-label': `Colour legend from ${(-max).toFixed(3)} (rust) through 0 (white) to +${max.toFixed(3)} (blue)` });
   for (let k = 0; k < steps; k++) {
     const w = -max + (2 * max * k) / (steps - 1);
-    legend.append(s('rect', { x: 10 + k * 31, y: 4, width: 31, height: 16, fill: weightColor(Math.abs(w) < 1e-12 ? 0 : w, max), stroke: '#c6d2cb' }));
+    legend.append(s('rect', { x: 10 + k * 31, y: 4, width: 31, height: 16, fill: weightColor(Math.abs(w) < 1e-12 ? 0 : w, max), stroke: '#CFC8C8' }));
   }
   legend.append(s('text', { x: 10, y: 36 }, (-max).toFixed(3)), s('text', { x: 150, y: 36, 'text-anchor': 'middle' }, '0'), s('text', { x: 289, y: 36, 'text-anchor': 'end' }, `+${max.toFixed(3)}`));
   const edges = [];

@@ -97,7 +97,9 @@ def test_static_presence_assets_carry_the_console_csp(console):
         assert r.headers["Content-Security-Policy"] == console_server.HEADERS["Content-Security-Policy"]
 
 
-def test_scene_proposal_not_configured_falls_back(console):
+def test_scene_proposal_not_configured_falls_back(console, monkeypatch):
+    # the proposal cache is process-wide: an earlier test (e.g. the e2e Tier C run) may have cached this concept
+    monkeypatch.setattr(scene_spec, "_results", {})
     status, body = call(console.server_port, "POST", "/api/presence/scene", {"concept": "untangling a timeline"})
     assert status == 200 and body["status"] == "not_configured" and body["fallback"] in scene_spec.CANONICAL
     assert call(console.server_port, "POST", "/api/presence/scene", {"concept": "<svg onload=x>"})[0] == 400

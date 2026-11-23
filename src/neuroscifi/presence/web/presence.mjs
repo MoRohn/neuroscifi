@@ -57,7 +57,7 @@ export class Presence {
     this.battery = false;
     this.engine = new MotionEngine();
     this.svg = createSvg();
-    this.renderer = new Renderer(this.svg);
+    this.renderer = new Renderer(this.svg, { halo: true });
     this.player = new Player(this.engine, this.renderer);
     this.views = [this.svg];   // every SVG of this presence on the page (the main figure plus indicators)
 
@@ -102,9 +102,32 @@ export class Presence {
     addEventListener('nsf:voice', this.onVoice);
     this.onInput = (e) => {
       if (this.root.contains(e.target)) return;
-      if (e.target?.matches?.(TEXT_ENTRY)) { this.local.typingAt = Date.now(); this.request(); }   // not radios etc. (T2-11)
+      if (e.target?.matches?.(TEXT_ENTRY)) { this.local.typingAt = Date.now(); this.engine.tap(0.5); this.request(); }   // not radios etc. (T2-11)
     };
     document.addEventListener('input', this.onInput, true);
+    // The environment feeds the life layer directly (motion.mjs LIFE; nothing re-plans the scene): the owner's pointer
+    // (attention), scrolling (inertia), window focus (calmer while the window is in the background).
+    this.onPointer = (e) => this.lookAt(e.clientX, e.clientY, e.pointerType);
+    addEventListener('pointermove', this.onPointer, { passive: true });
+    addEventListener('pointerdown', this.onPointer, { passive: true });
+    // a mouse leaving the window ends the attention; a lifted finger also fires pointerout, so touch keeps its hold
+    this.onPointerOut = (e) => { if (!e.relatedTarget && e.pointerType === 'mouse') this.engine.release(); };
+    document.addEventListener('pointerout', this.onPointerOut, { passive: true });
+    this.scrolls = new WeakMap();
+    this.onScroll = (e) => {
+      const el = e.target === document ? document.scrollingElement : e.target;
+      if (!el || typeof el.scrollTop !== 'number') return;
+      const y = el.scrollTop, dy = y - (this.scrolls.get(el) ?? y);
+      this.scrolls.set(el, y);
+      this.rectAt = 0;
+      if (dy) this.engine.kick(-Math.sign(dy) * Math.min(Math.abs(dy) * 3, 140));
+    };
+    addEventListener('scroll', this.onScroll, { passive: true, capture: true });
+    this.onFocus = () => this.engine.focus(true);
+    this.onBlur = () => this.engine.focus(false);
+    addEventListener('focus', this.onFocus);
+    addEventListener('blur', this.onBlur);
+    if (typeof document.hasFocus === 'function') this.engine.focus(document.hasFocus());
     this.onInteract = () => { const now = Date.now(); if (now - this.local.interactedAt > 5000) { this.local.interactedAt = now; this.request(); } };
     document.addEventListener('pointerdown', this.onInteract, true);
     document.addEventListener('keydown', this.onInteract, true);
@@ -154,7 +177,6 @@ export class Presence {
     svg.classList.add('pc-ind');
     svg.classList.toggle('pc-static', this.engine.reduced);
     const renderer = new Renderer(svg, { keep: SIZES.indicator.slots, keepWithoutEyes: SIZES.indicator.objectSlots, crop: true });
-    renderer.setBreathe(!!this.scene?.breathe && !this.engine.reduced);
     host.replaceChildren(svg);
     this.views.push(svg);
     this.player.add(renderer);
@@ -202,6 +224,29 @@ export class Presence {
     const pref = INTENSITY_PREFS[this.prefs.intensity] ?? 1;
     const subtle = this.intent?.subtle ? 0.5 : 1;
     this.engine.energy = pref * subtle * (this.battery ? 0.5 : 1) * (0.35 + 0.65 * this.smoothed);
+    this.engine.vigor = pref * subtle * (this.battery ? 0.5 : 1);
+    this.engine.activity = this.intent?.intensity ?? 0;   // the life layer smooths it over about a second
+  }
+
+  // Attention: the direction from the figure to the owner's pointer (or last touch), with less reach close by; it
+  // returns to rest after a pause (6 s for a mouse, 1.6 s after a touch) or when the mouse leaves the window. The
+  // figure measured is the largest view on screen (the hero, or Pocket's small indicator when the hero is away).
+  lookAt(x, y, type) {
+    if (!this.engine.alive || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const now = performance.now();
+    if (!this.rect || now - this.rectAt > 400) {
+      let best = null;
+      for (const v of this.views) {
+        const r = v.getBoundingClientRect();
+        if (r.width && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth && (!best || r.width > best.width)) best = r;
+      }
+      this.rect = best; this.rectAt = now;
+    }
+    const r = this.rect;
+    if (!r) return;
+    const dx = x - (r.left + r.width / 2), dy = y - (r.top + r.height / 2), m = Math.hypot(dx, dy);
+    const reach = Math.min(1, m / Math.max(80, r.width));
+    this.engine.look(m ? (dx / m) * reach : 0, m ? (dy / m) * reach : 0, type === 'touch' ? 1.6 : 6);
   }
 
   // Real voice activity from Lane V's page (event contract: docs/presence/VOICE_INTEGRATION.md).
@@ -253,12 +298,17 @@ export class Presence {
       const t = performance.now() / 1000;
       this.engine.setScene(scene, { t, instant: this.engine.reduced || !this.scene0 });
       this.scene0 = true;
-      for (const r of this.player.renderers) r.setBreathe(scene.breathe && !this.engine.reduced);
       this.root.dataset.concept = scene.concept;
       this.root.dataset.tier = scene.tier;
       if (this.engine.reduced) this.player.renderOnce(); else this.player.start();
       this.maybeAskModel(intent, scene);
     } else if (!this.engine.reduced) this.player.start();
+    // a real stage transition of the task being shown sends one wave round the outline and brightens the light
+    const step = intent.step ? `${intent.taskId ?? ''}#${intent.step.index}/${intent.step.of}` : null;
+    if (step && this.lastStep && step !== this.lastStep && step.split('#')[0] === this.lastStep.split('#')[0]) this.engine.pulse();
+    this.lastStep = step;
+    // disconnected, signed out or not yet known: a faint breath and a low light, and no attention (nothing to claim)
+    this.engine.dim = intent.concept === 'disconnected' || !!intent.unknown;
     this.root.dataset.activity = intent.activity;
     this.word.textContent = intent.short;
     this.name.textContent = `Presence: ${intent.short}. Show details`;
@@ -305,6 +355,12 @@ export class Presence {
     document.removeEventListener('pointerdown', this.onInteract, true);
     document.removeEventListener('keydown', this.onInteract, true);
     document.removeEventListener('visibilitychange', this.onVisibility);
+    removeEventListener('pointermove', this.onPointer);
+    removeEventListener('pointerdown', this.onPointer);
+    document.removeEventListener('pointerout', this.onPointerOut);
+    removeEventListener('scroll', this.onScroll, { capture: true });
+    removeEventListener('focus', this.onFocus);
+    removeEventListener('blur', this.onBlur);
     this.io?.disconnect(); this.ro?.disconnect();
     this.host.replaceChildren();
   }

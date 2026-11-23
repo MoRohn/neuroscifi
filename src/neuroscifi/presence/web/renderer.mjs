@@ -1,8 +1,9 @@
 // Presence renderer (docs/presence/PRESENCE_CORTEX_ARCHITECTURE.md): a fixed pool of SVG paths (one per slot, never
 // re-created), colours by class (theme.css custom properties), one requestAnimationFrame chain at most, paused while
-// the page is hidden or the element is off screen, stopped when the scene is settled and still.
+// the page is hidden or the element is off screen, and capped at LIFE.ambientFps while only the life layer moves.
 import { SLOTS } from './contracts.mjs';
 import { toPath } from './geometry.mjs';
+import { LIFE } from './motion.mjs';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -18,13 +19,36 @@ export function createSvg(doc = document) {
 // A Renderer draws one SVG. A page may attach extra renderers to the same engine and frame loop (Player.add), e.g.
 // the small status indicator: `keep` limits it to some slots (detail simplification) and `crop` frames the viewBox
 // on them, following the moving geometry smoothly so the tiny figure stays legible without a hard cut.
+// `halo`: the light of the entity on an interaction stage, a soft radial glow behind the figure whose strength and
+// reach follow engine.glow() (the activity, the voice, real stage changes); theme.css shows it only on a stage.
+let haloId = 0;
 export class Renderer {
-  constructor(svg, { keep = null, keepWithoutEyes = keep, crop = false } = {}) {
+  constructor(svg, { keep = null, keepWithoutEyes = keep, crop = false, halo = false } = {}) {
     this.svg = svg;
     this.keep = keep ? new Set(keep) : null;
     this.keepWithoutEyes = keepWithoutEyes ? new Set(keepWithoutEyes) : null;
     this.crop = crop;
     this.vb = null;
+    this.halo = null;
+    if (halo) {
+      const doc = svg.ownerDocument, id = `pc-halo-${++haloId}`;
+      const defs = doc.createElementNS(NS, 'defs'), grad = doc.createElementNS(NS, 'radialGradient');
+      grad.setAttribute('id', id);
+      for (const [offset, cls] of [['0', 'pc-halo-0'], ['0.55', 'pc-halo-1'], ['1', 'pc-halo-2']]) {
+        const stop = doc.createElementNS(NS, 'stop');
+        stop.setAttribute('offset', offset);
+        stop.setAttribute('class', cls);
+        grad.append(stop);
+      }
+      defs.append(grad);
+      this.halo = doc.createElementNS(NS, 'circle');
+      this.halo.setAttribute('class', 'pc-halo');
+      this.halo.setAttribute('cx', '50');
+      this.halo.setAttribute('cy', '50');
+      this.halo.setAttribute('fill', `url(#${id})`);
+      this.haloAt = -1;
+      svg.append(defs, this.halo);
+    }
     this.figure = svg.ownerDocument.createElementNS(NS, 'g');
     this.figure.setAttribute('class', 'pc-figure');
     this.paths = new Map();
@@ -47,16 +71,17 @@ export class Renderer {
     for (const [name, s] of engine.slots) {
       const path = this.paths.get(name);
       const visible = s.pos && s.opacity > 0.02 && (!keep || keep.has(name));
+      const p = visible ? engine.view(s) : null;
       if (visible && this.crop) {
-        for (let i = 0; i < s.pos.length; i += 2) {
-          const x = s.pos[i], y = s.pos[i + 1];
+        for (let i = 0; i < p.length; i += 2) {
+          const x = p[i], y = p[i + 1];
           if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
         }
       }
       const cls = visible ? `pc-t-${s.tone} pc-w-${s.width}${s.fill ? ' pc-fill' : ''}${s.dash ? ' pc-dash' : ''}` : 'pc-off';
       if (this.cls.get(name) !== cls) { path.setAttribute('class', cls); this.cls.set(name, cls); }
       if (!visible) continue;
-      path.setAttribute('d', toPath(s.pos, s.closed));
+      path.setAttribute('d', toPath(p, s.closed));
       if (s.opacity < 0.995) path.setAttribute('opacity', s.opacity.toFixed(3));
       else if (path.hasAttribute('opacity')) path.removeAttribute('opacity');
     }
@@ -65,9 +90,15 @@ export class Renderer {
       this.vb = !this.vb || snap ? want : this.vb.map((v, i) => v + (want[i] - v) * 0.18);
       this.svg.setAttribute('viewBox', `${this.vb[0].toFixed(2)} ${this.vb[1].toFixed(2)} ${this.vb[2].toFixed(2)} ${this.vb[2].toFixed(2)}`);
     }
+    if (this.halo) {
+      const g = Math.round(engine.glow() * 400) / 400;
+      if (g !== this.haloAt) {
+        this.haloAt = g;
+        this.halo.setAttribute('r', (46 + 10 * g).toFixed(2));   // <= 56: inside the viewBox, never clipped
+        this.halo.setAttribute('opacity', (0.35 + 0.65 * g).toFixed(3));
+      }
+    }
   }
-
-  setBreathe(on) { this.svg.classList.toggle('pc-breathe', !!on); }
 }
 
 // The frame loop. stats are read by the e2e tests and PERFORMANCE_RESULTS.md (frame pacing, scripting per frame).
@@ -82,7 +113,9 @@ export class Player {
     this.fpsCap = fpsCap;
     this.lastTs = null;
     this.lastDraw = 0;
-    this.stats = { frames: 0, loopStarts: 0, running: false, intervals: [], scriptMs: [], maxConcurrentLoops: 0 };
+    this.mode = 'physics';   // what moved last frame: physics (display rate), responsive (60 fps cap), ambient (30)
+    this.stats = { frames: 0, ambientFrames: 0, loopStarts: 0, running: false, settled: false, intervals: [], scriptMs: [],
+      maxConcurrentLoops: 0 };
     this.tick = this.tick.bind(this);
   }
 
@@ -91,6 +124,8 @@ export class Player {
   start() {
     if (this.raf || !this.active) return;
     if (this.engine.reduced) { this.renderOnce(); return; }
+    this.engine.rest?.();   // impulses that arrived while the loop was paused belong to a moment nobody saw
+    this.mode = 'physics';
     this.lastTs = null;
     this.stats.loopStarts++;
     this.stats.running = true;
@@ -116,7 +151,9 @@ export class Player {
   tick(ts) {
     this.raf = 0;
     if (!this.active) { this.stats.running = false; return; }
-    if (this.fpsCap && this.lastTs !== null && ts - this.lastDraw < 1000 / this.fpsCap - 1) {
+    const lim = this.mode === 'ambient' ? LIFE.ambientFps : this.mode === 'responsive' ? LIFE.responsiveFps : 0;
+    const cap = lim ? Math.min(this.fpsCap || lim, lim) : this.fpsCap;
+    if (cap && this.lastTs !== null && ts - this.lastDraw < 1000 / cap - 1) {
       this.raf = requestAnimationFrame(this.tick);
       return;
     }
@@ -128,8 +165,11 @@ export class Player {
     const moving = this.engine.step(dt, ts / 1000);
     this.draw(false);
     this.stats.frames++;
+    if (this.mode === 'ambient') this.stats.ambientFrames++;
     push(this.stats.scriptMs, performance.now() - t0);
-    if (moving) this.raf = requestAnimationFrame(this.tick);
+    this.mode = moving ? 'physics' : this.engine.excited ? 'responsive' : 'ambient';
+    this.stats.settled = !moving;
+    if (moving || this.engine.alive) this.raf = requestAnimationFrame(this.tick);
     else this.stats.running = false;
   }
 

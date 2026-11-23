@@ -58,7 +58,10 @@ subsystems ──► Cognitive State Aggregator ──► channel ──► Sema
 - **User preferences**: `nsf.theme` (system | light | dark) and `nsf.presence.prefs` (`motion`: system | reduced
   | full; `intensity`: low | normal | high; `modelDoodles`: false by default), both in localStorage.
 - **Render lifecycle**: `commit` (at most one every 220 ms) → `plan` → `engine.setScene` → `Player.start`. The
-  loop stops when the scene is settled and still, the page is hidden or the element is off screen.
+  life layer (MOTION_ENGINE.md) keeps the entity moving while it is on screen, at 30 fps once the physics has
+  settled; the loop pauses while the page is hidden or the element is off screen, and never runs under reduced
+  motion. Environment inputs (pointer, scrolling, typing, window focus, the measured audio level, stage
+  transitions) feed the life layer directly and never re-plan the scene.
 
 ## Channel
 

@@ -377,6 +377,55 @@ def test_small_screens_console_and_pocket(idle_spark, bridge, new_page, width):
         assert page.problems == [], page.problems
 
 
+# ---- the life layer: alive on screen, following its real environment (docs/presence/MOTION_ENGINE.md, Life layer) ---
+
+def slot_box(page, slot):
+    xs = nums(page.evaluate(f"document.querySelector('.nsf-presence path[data-slot={slot}]').getAttribute('d')"))
+    return min(xs[0::2]), min(xs[1::2]), max(xs[0::2]), max(xs[1::2])
+
+
+def test_the_entity_is_alive_and_follows_its_environment(idle_spark, new_page):
+    page = new_page(1280, 900)
+    open_console(page, idle_spark)
+    page.locator("#nav a[data-view=research]").click()      # the interaction stage: hero size, with its light
+    root = page.locator(".nsf-presence")
+    expect(root).to_have_attribute("data-place", "dock")
+    halo = page.locator(".nsf-presence .pc-halo")
+    expect(halo).to_be_visible()
+    assert 0.3 <= float(halo.get_attribute("opacity")) <= 1
+    page.mouse.move(640, 899)
+    page.wait_for_timeout(1500)
+    # alive: with no input at all the figure keeps moving, at about 30 fps once the physics has settled
+    f0, d0 = stats(page)["frames"], nums(body_d(page))
+    page.wait_for_timeout(2000)
+    s1, d1 = stats(page), nums(body_d(page))
+    assert s1["running"] is True and s1["frames"] - f0 >= 40, s1
+    assert len(d0) == len(d1) and 0.05 < max(abs(a - b) for a, b in zip(d0, d1)) < 6, "alive, and calm"
+    # attention: the eyes turn towards the owner's pointer
+    box = page.locator(".nsf-presence .pc-svg").bounding_box()
+    cy = box["y"] + box["height"] / 2
+    page.mouse.move(box["x"] + box["width"] + 500, cy)
+    page.wait_for_timeout(900)
+    right = sum(slot_box(page, "eyeL")[0::2]) / 2
+    page.mouse.move(2, cy)
+    page.wait_for_timeout(900)
+    left = sum(slot_box(page, "eyeL")[0::2]) / 2
+    assert right - left > 1.5, (right, left)
+    # the measured voice level swells the figure in real time (listening: no level, then a loud one)
+    voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.0)
+    expect(root).to_have_attribute("data-activity", "listening")
+    page.wait_for_timeout(1200)
+    x0, y0, x1, y1 = slot_box(page, "body")
+    for _ in range(8):
+        voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.95)
+        page.wait_for_timeout(100)
+    X0, Y0, X1, Y1 = slot_box(page, "body")
+    assert (X1 - X0) > (x1 - x0) * 1.015, ((x0, x1), (X0, X1))
+    voice(page, mic_capturing=False, speaking=False, output_muted=False, mode="voice_text", level=0.0)
+    assert stats(page)["maxConcurrentLoops"] <= 1
+    assert page.problems == []
+
+
 # ---- L: reduced motion -----------------------------------------------------------------------------------------------
 
 def test_reduced_motion_is_static_and_distinguishable(idle_spark, new_page):
@@ -562,8 +611,9 @@ def test_pocket_navigation_shows_the_small_indicator(bridge, new_page, tmp_path)
     voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.3)
     expect(page.locator(".nsf-presence")).to_have_attribute("data-concept", "listening", timeout=2000)
     page.wait_for_timeout(2000)
-    main = page.evaluate("document.querySelector('.nsf-presence path[data-slot=body]').getAttribute('d')")
-    mirror = page.evaluate("document.querySelector('#navresearch path[data-slot=body]').getAttribute('d')")
+    # both read in one task: the life layer keeps the figure moving, and a frame may land between two evaluations
+    main, mirror = page.evaluate("['.nsf-presence', '#navresearch'].map(s => "
+                                 "document.querySelector(s + ' path[data-slot=body]').getAttribute('d'))")
     assert main == mirror
     SHOTS.mkdir(exist_ok=True)
     page.locator("header").screenshot(path=str(SHOTS / "presence-pocket-header.png"))

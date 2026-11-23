@@ -187,8 +187,9 @@ pre { white-space: pre-wrap; font-size: .82rem; background: var(--surface-muted)
 .verdictline { margin: var(--sp-1) 0; font-size: var(--fs-lg); line-height: 1.45; }
 .verdictline .badge { font-size: var(--fs-sm); padding: 2px 12px; margin-right: 4px; vertical-align: .08em; }
 a.cite { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 28px; padding: 0 4px;
-  font-weight: 700; text-decoration: none; border-radius: var(--r-xs); font-variant-numeric: tabular-nums; }
-a.cite:hover { background: var(--primary-soft); }
+  font-weight: 700; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: .22em;
+  border-radius: var(--r-xs); font-variant-numeric: tabular-nums; }
+a.cite:hover { background: var(--primary-soft); text-decoration-color: currentColor; }
 a.related { font-weight: 600; }
 .copies, .seealso { font-size: var(--fs-sm); }
 @media (pointer: coarse) { a.cite { min-width: 44px; min-height: 44px; margin-block: -11px; vertical-align: middle; } a.related { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; } }

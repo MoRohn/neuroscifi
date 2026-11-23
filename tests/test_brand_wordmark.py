@@ -19,8 +19,11 @@ ICON_GROUP_OPEN = '<g transform="translate(250 200) scale(1.2) translate(-128 -1
 ICON_GROUP_SHA256 = "e3a01d3db6176fedd5685a0d2eaee81f2c804482746f1135fe3115e91d112714"
 ICON_FILES_SHA256 = {
     "docs/assets/brand/neuroscifi-icon.svg": "9cec14c79eabc1d4a7ff570e827267700f37de23f784183bbd3d3ded9717ca2a",
-    "src/neuroscifi/pocket/web/icon.svg": "5e767a8e1ab7021713a923fa983017dfe312ec4805d811708c7d83934e091ea4",
 }
+# The app icon (Pocket home screen, console favicon) is a separate ring mark, not the brain: it follows the grayscale
+# UI (owner direction, 2026-11-23: no green), so it is pinned by its geometry and its colours, graphite and light.
+APP_ICON = ROOT / "src" / "neuroscifi" / "pocket" / "web" / "icon.svg"
+APP_ICON_SHA256 = "2795dfb2bf81b1a4ac91ea7055f6fc15314e2becd934f2050cc30da8644b5d34"
 MARKED = re.compile(r"<!-- nsf-wordmark:begin.*?-->(.*?)<!-- nsf-wordmark:end -->", re.S)
 
 
@@ -78,6 +81,17 @@ def test_the_brain_icon_is_byte_identical():
     assert hashlib.sha256(icon_group(banner).encode()).hexdigest() == ICON_GROUP_SHA256
     for rel, digest in ICON_FILES_SHA256.items():
         assert hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() == digest, rel
+
+
+def test_the_app_icons_are_grayscale():
+    assert hashlib.sha256(APP_ICON.read_bytes()).hexdigest() == APP_ICON_SHA256
+    favicon = (ROOT / "src" / "neuroscifi" / "console" / "server.py").read_text()
+    for text in (APP_ICON.read_text(), favicon[favicon.index("ICON = "):favicon.index("ASSETS = ")]):
+        colours = re.findall(r"#([0-9a-fA-F]{6})\b", text)
+        assert colours, text
+        for c in colours:
+            r, g, b = (int(c[i:i + 2], 16) for i in (0, 2, 4))
+            assert max(r, g, b) - min(r, g, b) <= 8, f"#{c} is not a neutral gray"
 
 
 def test_the_header_wordmarks_are_inline_named_images_that_follow_the_theme():

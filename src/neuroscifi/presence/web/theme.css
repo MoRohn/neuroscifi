@@ -2,23 +2,27 @@
    One theme system for the console and Pocket: <html data-theme="light|dark"> set by theme-boot.js / theme.mjs.
    Presence colours are custom properties, so a theme switch never touches the SVG geometry or its animation. */
 
-/* ---- presence tokens (any subtree may set data-theme, e.g. the gallery's light and dark panels) ---- */
+/* ---- presence tokens (any subtree may set data-theme, e.g. the gallery's light and dark panels) ----
+   Grayscale: the entity speaks in light, geometry and motion, not hue. The accent tone names are identifiers of the
+   scene contract (contracts.mjs TONES); each renders as a step of luminance between the ink and the background. */
 :root, [data-theme="light"] {
   --pc-bg:#FFFFFF; --pc-ink:#101010; --pc-secondary:#666666;
-  --pc-purple:#B45CFF; --pc-blue:#4A9CFF; --pc-mint:#3DDDB2; --pc-yellow:#FFC928; --pc-pink:#F45CA7;
-  --pc-panel:var(--surface,#FFFFFF); --pc-panel-line:var(--line,#d0d6d3); --pc-panel-text:var(--ink,#101010); --pc-panel-muted:var(--ink-muted,#4f5552);
+  --pc-purple:#3F3F3F; --pc-blue:#525252; --pc-mint:#707070; --pc-yellow:#808080; --pc-pink:#616161;
+  --pc-halo:#E2DDDC;
+  --pc-panel:var(--surface,#FFFFFF); --pc-panel-line:var(--line,#E0DAD9); --pc-panel-text:var(--ink,#101010); --pc-panel-muted:var(--ink-muted,#595155);
 }
 [data-theme="dark"] {
   --pc-bg:#050505; --pc-ink:#F7F7F7; --pc-secondary:#A8A8A8;
-  --pc-purple:#C27DFF; --pc-blue:#6BAFFF; --pc-mint:#52E3BE; --pc-yellow:#FFD24A; --pc-pink:#F77DB9;
-  --pc-panel:var(--surface,#0d0f0e); --pc-panel-line:var(--line,#2e3532); --pc-panel-text:var(--ink,#F7F7F7); --pc-panel-muted:var(--ink-muted,#b9c0bd);
+  --pc-purple:#D6D6D6; --pc-blue:#BDBDBD; --pc-mint:#9E9E9E; --pc-yellow:#EDEDED; --pc-pink:#B0B0B0;
+  --pc-halo:#2C282A;
+  --pc-panel:var(--surface,#1A1719); --pc-panel-line:var(--line,#302A2D); --pc-panel-text:var(--ink,#F7F7F7); --pc-panel-muted:var(--ink-muted,#B5ABAF);
 }
 
 /* ---- the presence element ---- */
 .nsf-presence{position:relative;display:inline-flex;align-items:center;min-width:0;color:var(--pc-panel-text)}
 .pc-toggle{display:inline-flex;align-items:center;gap:8px;min-height:44px;min-width:44px;padding:2px 8px 2px 2px;border:1px solid transparent;border-radius:12px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer}
 .pc-toggle:hover{border-color:var(--pc-panel-line)}
-.pc-toggle:focus-visible{outline:3px solid var(--focus,#0876a5);outline-offset:2px}
+.pc-toggle:focus-visible{outline:3px solid var(--focus,#1D191B);outline-offset:2px}
 .pc-word{font-size:.86rem;white-space:nowrap;max-width:16ch;overflow:hidden;text-overflow:ellipsis}
 .pc-svg{display:block;width:40px;height:40px;overflow:visible;flex:none}
 .pc-svg path{fill:none;stroke-linecap:round;stroke-linejoin:round}
@@ -32,12 +36,16 @@
 .pc-svg path.pc-fill.pc-t-pink{fill:var(--pc-pink)}
 .pc-svg path.pc-off{display:none}
 .pc-svg path.pc-dash{stroke-dasharray:4 5}
-/* idle-like states breathe with a compositor animation (no script per frame); reduced motion and hidden pages stop it */
-.pc-figure{transform-box:fill-box;transform-origin:50% 70%}
-.pc-breathe .pc-figure{animation:pc-breathe 6.5s ease-in-out infinite}
-@keyframes pc-breathe{50%{transform:scale(1.012,.99)}}
-.pc-static .pc-figure,.pc-paused .pc-figure{animation:none}
-@media (prefers-reduced-motion: reduce){.pc-figure{animation:none!important}}
+/* breathing, flow and attention are drawn by the life layer (motion.mjs LIFE), never by CSS animation */
+.pc-figure{animation:none}
+/* the light of the entity: a soft halo behind the figure on an interaction stage (or in the expanded panel), its
+   strength following real activity (renderer.mjs); hidden at header and indicator sizes and in forced colours */
+.pc-halo{display:none;pointer-events:none}
+.presence-stage .pc-halo,.pc-panel .pc-halo{display:inline}
+.pc-halo-0{stop-color:var(--pc-halo);stop-opacity:1}
+.pc-halo-1{stop-color:var(--pc-halo);stop-opacity:.55}
+.pc-halo-2{stop-color:var(--pc-halo);stop-opacity:0}
+@media (forced-colors: active){.pc-halo{display:none!important}}
 
 .pc-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:min(calc(100vw - 24px),360px);padding:14px 16px 16px;border:1px solid var(--pc-panel-line);border-radius:16px;background:var(--pc-panel);color:var(--pc-panel-text);box-shadow:var(--shadow-3,0 10px 30px rgba(0,0,0,.18));text-align:left}
 .pc-panel[hidden]{display:none}

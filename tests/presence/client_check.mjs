@@ -7,7 +7,7 @@ import { CANONICAL_NAMES, SYSTEM_NAMES } from '../../src/neuroscifi/presence/web
 import { TEMPLATES, composeSpec } from '../../src/neuroscifi/presence/web/composer.mjs';
 import { validateSpec, validateScene, paletteContrastErrors } from '../../src/neuroscifi/presence/web/validator.mjs';
 import { interpret, ACTIVITY_CONCEPT } from '../../src/neuroscifi/presence/web/interpreter.mjs';
-import { MotionEngine } from '../../src/neuroscifi/presence/web/motion.mjs';
+import { MotionEngine, LIFE } from '../../src/neuroscifi/presence/web/motion.mjs';
 import { ACTIVITIES, BUDGET, SLOTS, pointsFor, sizeClass } from '../../src/neuroscifi/presence/web/contracts.mjs';
 
 let checks = 0;
@@ -128,6 +128,76 @@ const r = new MotionEngine();
 r.reduced = true;
 r.setScene(plan({ ...base, concept: 'thinking' }), { t: 0, instant: true });
 ok(!r.step(dt, 1), 'reduced motion: static, no frame loop');
+ok(!r.alive && [...r.slots.values()].every((s) => !s.pos || r.view(s) === s.pos), 'reduced motion: no life layer, the physics is drawn');
+
+// ---- life layer: always alive on screen, calm at rest, driven only by real inputs, never jumps
+const offset = (en, name) => {   // largest distance between what is drawn and where the physics is
+  const s = en.slots.get(name), v = en.view(s);
+  let m = 0; for (let k = 0; k < v.length; k++) m = Math.max(m, Math.abs(v[k] - s.pos[k]));
+  return m;
+};
+const meanX = (p) => { let x = 0; for (let k = 0; k < p.length; k += 2) x += p[k]; return x / (p.length / 2); };
+const life = (setup = () => {}, seconds = 4, concept = 'present', h = dt, each = null) => {
+  const en = new MotionEngine();
+  en.setScene(plan({ ...base, concept }), { t: 0, instant: true });
+  en.step(h, 0);
+  setup(en);
+  let tt = 0, maxOff = 0, settledAll = true, maxStep = 0;
+  for (let f = 0; f < seconds / h; f++) {
+    each?.(en, f);
+    const before = Float64Array.from(en.view(en.slots.get('body')));
+    settledAll = !en.step(h, tt += h) && settledAll;
+    const after = en.view(en.slots.get('body'));
+    for (let k = 0; k < after.length; k++) maxStep = Math.max(maxStep, Math.abs(after[k] - before[k]));
+    if (f * h > 2) maxOff = Math.max(maxOff, offset(en, 'body'));
+  }
+  return { en, maxOff, settledAll, maxStep };
+};
+const idle = life();
+const rb = idle.en.env.rb;
+ok(!e.step(dt, t += dt) && e.alive && offset(e, 'body') > 0.02, 'settled physics (resting, after its decay) is still drawn alive');
+ok(idle.maxOff > 0.05, `idle: the entity is never frozen (offset ${idle.maxOff.toFixed(2)})`);
+ok(idle.maxOff < (LIFE.contourIdle + LIFE.breathIdle) * rb * 2.2 + 0.2, `idle: calm, ${idle.maxOff.toFixed(2)} units (body radius ${rb.toFixed(1)})`);
+const seated = life(() => {}, 2, 'evaluating evidence');
+ok(seated.en.slots.get('ground').pos && offset(seated.en, 'ground') === 0 && offset(seated.en, 'm0') > 0, 'the ground stays put; props drift');
+const busy = life((en) => { en.activity = 1; });
+ok(busy.maxOff > idle.maxOff * 1.6, `real activity deepens the motion (${busy.maxOff.toFixed(2)} vs ${idle.maxOff.toFixed(2)})`);
+const loud = life((en) => { en.level = 0.9; }, 4, 'listening');
+const quiet = life(() => {}, 4, 'listening');
+ok(loud.maxOff > quiet.maxOff * 1.5, `the measured audio level morphs the body (${loud.maxOff.toFixed(2)} vs ${quiet.maxOff.toFixed(2)})`);
+const gaze = life((en) => en.look(1, 0), 2);
+const eye = gaze.en.slots.get('eyeL');
+ok(meanX(gaze.en.view(eye)) - meanX(eye.pos) > rb * LIFE.gazeEye * 0.8, 'the eyes follow the pointer');
+for (const [h, label] of [[1 / 60, '60 fps'], [1 / 30, '30 fps']]) {
+  // a storm of input: three scroll events per frame for half a second (both directions), keystrokes, a stage change
+  const storm = (sign) => life((en) => { en.tap(1); en.pulse(); en.look(-1, 1); }, 3, 'present', h,
+    (en, f) => { if (f * h < 0.5) for (let k = 0; k < 3; k++) en.kick(sign * 320); });
+  for (const sign of [1, -1]) {
+    const run = storm(sign);
+    // the physics budget is 260 units/s; input through the life layer stays far below it
+    ok(run.maxStep / h < 40, `${label}, scroll ${sign > 0 ? 'down' : 'up'}: input never snaps (${(run.maxStep / h).toFixed(0)} units/s at most)`);
+    const sw = run.en._sway();
+    ok(sw > -LIFE.swayUp && sw < LIFE.swayDown, `${label}: scroll inertia stays inside its soft limits`);
+  }
+}
+const kicked = life((en) => en.kick(-320), 4);
+ok(Math.abs(kicked.en._sway()) < 0.05, 'scroll inertia settles back to rest, nothing sticks at a limit');
+const off = new MotionEngine();
+off.reduced = true;
+off.setScene(plan({ ...base, concept: 'present' }), { t: 0, instant: true });
+off.kick(-320); off.tap(1); off.pulse(); off.look(1, 1);
+ok(off.env.swayT === 0 && off.env.squashV === 0 && off.env.rippleA === 0 && off.env.tx === 0, 'with the life layer off, input is ignored, not stored');
+const paused = life((en) => { en.kick(-320); en.pulse(); en.rest(); }, 1);
+ok(paused.en.env.swayT === 0 && paused.en.env.rippleA === 0, 'rest() (loop restart) drops impulses from a moment nobody saw');
+const broken = life((en) => { en.activity = NaN; en.vigor = Infinity; en.level = NaN; en.look(NaN, 0); en.kick(NaN); }, 1);
+ok([...broken.en.view(broken.en.slots.get('body'))].every(Number.isFinite), 'a bad input never takes the figure away');
+const dimmed = life((en) => { en.dim = true; en.look(1, 0); }, 4);
+ok(dimmed.maxOff < idle.maxOff && dimmed.en.env.gx === 0 && dimmed.en.glow() < idle.en.glow(),
+  'disconnected or unknown: fainter, no attention, a lower light');
+const away = life((en) => en.focus(false), 6);
+ok(away.maxOff < idle.maxOff, 'a background window calms the entity');
+const still = life((en) => { en.vigor = 0; }, 4);
+ok(still.maxOff < 0.15, 'with no vigour (e.g. motion intensity at zero) the life layer adds nothing');
 const c = plan({ ...base, concept: 'reading' }, { size: 'compact' });
 ok(!c.slots.m3 && c.slots.a2?.visible === false && c.slots.body.visible, 'compact size drops fine detail');
 const ind = plan({ ...base, concept: 'reading' }, { size: 'indicator' });

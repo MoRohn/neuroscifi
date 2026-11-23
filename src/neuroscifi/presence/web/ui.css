@@ -4,8 +4,8 @@
    data: images, no inline styles, so every shape here is a border, a gradient or a system font.
 
    Principle: the Presence Cortex entity is the focal point of every interaction surface. Everything around it is
-   quiet (warm "gray matter" neutrals, one evergreen action colour, generous space) so that its light, geometry and
-   motion read clearly. */
+   quiet (a grayscale of warm "gray matter" neutrals, graphite actions, generous space) so that its light, geometry
+   and motion read clearly. Hue is reserved for the two signals that must never be missed: warning and danger. */
 
 /* ---- 1. tokens: light (default) ------------------------------------------------------------------------------ */
 :root, [data-theme="light"] {
@@ -19,25 +19,24 @@
   --line-strong: #8A8084;   /* control borders: >= 3:1 on every surface */
   --ink: #1D191B;           /* text: 15.9:1 on --bg */
   --ink-muted: #595155;     /* secondary text: >= 6.1:1 on every surface */
-  --primary: #184E42;       /* evergreen: primary actions, current place */
-  --primary-hover: #113A31;
+  --primary: #1D191B;       /* graphite: primary actions, current place (the ink itself) */
+  --primary-hover: #3A3437;
   --on-primary: #FFFFFF;
-  --primary-soft: #E2EEE9;
-  --primary-line: #A9CBBD;
-  --link: #17594A;
-  --accent: #8A4556;        /* gray-matter rose: counts and brand details only */
-  --focus: #0A72A0;
-  --ok: #195C45;      --ok-soft: #E1F0E8;      --ok-line: #A6CDB9;
+  --primary-soft: #ECE8E7;
+  --primary-line: #BDB5B7;
+  --link: #1D191B;          /* links are the ink, always underlined */
+  --accent: #595155;        /* counts and small details */
+  --focus: #1D191B;         /* a 3 px graphite ring with a gap: >= 3:1 against every surface */
+  --ok: #1D191B;      --ok-soft: #ECE8E7;      --ok-line: #9C9497;
   --warn: #8A3A14;    --warn-soft: #FBE9DF;    --warn-line: #E5B8A1;
   --danger: #A3361A;  --danger-soft: #FBE7E0;  --danger-line: #E3AE9C;
-  --info: #0B527A;    --info-soft: #E2EDF7;    --info-line: #A9C8E1;
+  --info: #595155;    --info-soft: #F0EDEC;    --info-line: #CFC8C8;
   --neutral: #4A4246; --neutral-soft: #EEEAE9; --neutral-line: #CFC8C8;
   --scrim: rgba(29, 25, 27, .42);
   --shadow-1: 0 1px 0 rgba(40, 28, 33, .03), 0 1px 2px rgba(40, 28, 33, .05);
   --shadow-2: 0 2px 6px -1px rgba(40, 28, 33, .08), 0 12px 28px -8px rgba(40, 28, 33, .18);
   --shadow-3: 0 4px 10px -2px rgba(40, 28, 33, .1), 0 24px 56px -12px rgba(40, 28, 33, .32);
-  --stage-halo: #EFECEB;
-  --control-accent: #184E42;
+  --control-accent: #1D191B;
   /* aliases kept for older selectors (voice.css fallbacks, console.js-built markup) */
   --paper: var(--bg); --card: var(--surface); --muted: var(--ink-muted); --soft: var(--primary-soft);
   --softline: var(--primary-line); --rust: var(--danger); --rust-soft: var(--danger-soft);
@@ -55,25 +54,24 @@
   --line-strong: #7A7075;
   --ink: #EEE9EA;
   --ink-muted: #B5ABAF;
-  --primary: #25735F;       /* 5.7:1 with white text */
-  --primary-hover: #1F6452;   /* hover darkens in both themes: white text stays >= 4.5:1 */
-  --on-primary: #FFFFFF;
-  --primary-soft: #16302A;
-  --primary-line: #2F5A4E;
-  --link: #86D2BC;
-  --accent: #E3A6B3;
-  --focus: #5BB8E6;
-  --ok: #8DD9B6;      --ok-soft: #132A20;      --ok-line: #2E5B46;
+  --primary: #EEE9EA;       /* the ink: light actions on graphite, 15:1 with --on-primary */
+  --primary-hover: #D6D0D2;   /* hover dims: the dark text stays >= 4.5:1 */
+  --on-primary: #141213;
+  --primary-soft: #2A2628;
+  --primary-line: #554D51;
+  --link: #EEE9EA;
+  --accent: #C9C0C3;
+  --focus: #EEE9EA;
+  --ok: #EEE9EA;      --ok-soft: #242022;      --ok-line: #6A6266;
   --warn: #F2A88A;    --warn-soft: #2E1B13;    --warn-line: #6A3B28;
   --danger: #F59C84;  --danger-soft: #331912;  --danger-line: #7A3A27;
-  --info: #96C9EE;    --info-soft: #112433;    --info-line: #2C5675;
+  --info: #B5ABAF;    --info-soft: #1F1C1E;    --info-line: #474044;
   --neutral: #D0C7CA; --neutral-soft: #262224; --neutral-line: #474044;
   --scrim: rgba(0, 0, 0, .6);
   --shadow-1: 0 1px 0 rgba(255, 255, 255, .02) inset, 0 1px 2px rgba(0, 0, 0, .4);
   --shadow-2: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 14px 32px -8px rgba(0, 0, 0, .7);
   --shadow-3: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 28px 64px -12px rgba(0, 0, 0, .8);
-  --stage-halo: #1C191B;
-  --control-accent: #4FB393;
+  --control-accent: #EEE9EA;
 }
 
 /* ---- type, space, shape, motion (theme independent) ---------------------------------------------------------- */
@@ -109,8 +107,8 @@
 
 /* more contrast when the system asks for it: hairlines become real borders, secondary text darkens */
 @media (prefers-contrast: more) {
-  :root, [data-theme="light"] { --line: #8A8084; --ink-muted: #3E373A; --line-strong: #5F565A; --primary-line: #4F7F70; }
-  [data-theme="dark"] { --line: #8E8489; --ink-muted: #D9D0D3; --line-strong: #A89EA3; --primary-line: #6FA595; }
+  :root, [data-theme="light"] { --line: #8A8084; --ink-muted: #3E373A; --line-strong: #5F565A; --primary-line: #6E6569; --info: #3E373A; }
+  [data-theme="dark"] { --line: #8E8489; --ink-muted: #D9D0D3; --line-strong: #A89EA3; --primary-line: #8E8489; --info: #D9D0D3; }
   a { text-decoration-thickness: 2px; }
 }
 
@@ -249,12 +247,10 @@ dialog::backdrop { background: var(--scrim); }
 
 /* ---- 5. the presence stage: where the entity is the hero of an interaction surface ------------------------------
    presence.mjs moves the one element here ([data-presence-dock]); the figure stays on the stage when its panel
-   opens, and the panel carries the facts and settings. Calm surroundings: no border, a still halo, no motion of its own. */
+   opens, and the panel carries the facts and settings. Calm surroundings: no border and no motion of their own; the
+   entity brings its own light (the live halo drawn behind the figure, theme.css .pc-halo). */
 .presence-stage { position: relative; display: grid; place-items: center; min-width: 0; padding: var(--sp-4) var(--sp-3) var(--sp-3);
   isolation: isolate; }
-.presence-stage::before { content: ""; position: absolute; z-index: -1; left: 50%; top: calc(var(--sp-4) + var(--stage-size) / 2);
-  width: calc(var(--stage-size) * 1.2); aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%;
-  background: radial-gradient(closest-side, var(--stage-halo) 0, var(--stage-halo) 50%, transparent 100%); pointer-events: none; }
 .presence-stage .nsf-presence { display: flex; justify-content: center; }
 .presence-stage .pc-toggle { flex-direction: column; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) var(--sp-2);
   border-radius: var(--r-xl); border-color: transparent; }
@@ -283,5 +279,4 @@ dialog::backdrop { background: var(--scrim); }
   button:disabled { color: GrayText; border-color: GrayText; }
   :focus-visible { outline: 3px solid Highlight; }
   summary::before { border-color: CanvasText; }
-  .presence-stage::before { display: none; }
 }

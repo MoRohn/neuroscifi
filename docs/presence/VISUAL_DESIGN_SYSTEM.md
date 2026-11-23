@@ -49,13 +49,19 @@ finished geometry (`validator.faceErrors`). The orbiting background dot rests at
 | background | #FFFFFF | #050505 |
 | ink (stroke) | #101010 | #F7F7F7 |
 | secondary | #666666 | #A8A8A8 |
-| purple | #B45CFF | #C27DFF |
-| blue | #4A9CFF | #6BAFFF |
-| mint | #3DDDB2 | #52E3BE |
-| yellow | #FFC928 | #FFD24A |
-| pink | #F45CA7 | #F77DB9 |
+| purple | #3F3F3F | #D6D6D6 |
+| blue | #525252 | #BDBDBD |
+| pink | #616161 | #B0B0B0 |
+| mint | #707070 | #9E9E9E |
+| yellow | #808080 | #EDEDED |
+| halo (theme.css `--pc-halo`) | #E2DDDC | #2C282A |
 
-In dark mode the accents are slightly lighter (contrast-adjusted), with no glow. Ink and secondary carry meaning
+The palette is grayscale (owner direction, 2026-11-23): the entity speaks in light, geometry and motion, not hue.
+The accent names are identifiers of the scene contract (`contracts.mjs` `TONES`, `scene_spec.py`), kept so model
+specs and templates stay valid; each renders as a step of luminance between the ink and the background. "Yellow",
+used for sparks and rays, is the lightest step in light mode and the brightest in dark: it reads as light. Every
+accent is at least 3:1 against the white background (yellow 3.9:1) and 6:1 against the dark one. The halo is the
+entity's light on an interaction stage (MOTION_ENGINE.md, Life layer). Ink and secondary carry meaning
 and pass contrast (ink ≥ 4.5:1, secondary ≥ 3:1 in both themes; `validator.paletteContrastErrors()` is checked in
 `client_check.mjs`). Accents are decorative and sparse: at most three accent colours per scene, and never the only
 carrier of a meaning.
@@ -64,7 +70,7 @@ carrier of a meaning.
 
 | Name | Reference | Shapes | Motion |
 |---|---|---|---|
-| present | Idle/Present | four-lobed blob, two eye strokes, three purple strokes | compositor breathing (≈1 %) |
+| present | Idle/Present | four-lobed blob, two eye strokes, three accent strokes | breath and contour flow of the life layer (≈1 %) |
 | thinking | Thinking | circle, tilted orbit ring, closed eyes, blue strokes | orbit swings ±9° over 7.5 s |
 | working | Working | elongated blob with tail, `> <`, mint speed lines | speed lines shift, body bobs |
 | responding | Responding | speech bubble with tail, three dots, yellow strokes | dots bounce with output level, else intensity |
