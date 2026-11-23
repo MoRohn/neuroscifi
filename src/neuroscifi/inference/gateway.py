@@ -27,7 +27,6 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 import http.client
-import os
 import json
 import math
 import re
@@ -194,7 +193,7 @@ class Gateway:
         self.priority = None         # scheduling priority sent with chat calls (None or 0: none); see chat()
         self.db_path = None          # set by from_db: the idle policy (resources.idle) reloads an unloaded vLLM
         self.notices: list[str] = []  # what the user was told while this gateway waited (e.g. a model reload)
-        self.listeners = None        # port -> uids of its listening sockets (resources.monitor.listener_uids)
+        self.listeners = None        # port -> [(address, uid)] of its listening sockets (resources.monitor.listeners)
         self._locality = None
         self._addresses: list[str] = []
         self._model = cfg.model or None
@@ -260,37 +259,28 @@ class Gateway:
                                      "remote endpoint without owner-approved disclosure")
 
     def stranger(self) -> str | None:
-        """Why nothing may be sent to this loopback endpoint, or None. A loopback port belongs to whoever binds it
-        first, and a model server's port is free whenever its container is down (on a schedule with idle unloading
-        on). So before each request the listening socket's owner is read from /proc/net/tcp (self.listeners):
-        root (Docker's port proxy), this user and the owner of the key file are the service; a process of any
-        other account is not, and is sent neither the key nor the request (which may hold private memory).
-        Nothing listening, or /proc unreadable, is no refusal: the call then fails or succeeds on its own. Not
-        covered: a process of this same account or of root, which can read the key file anyway."""
-        if self.locality()[0] != "loopback":
-            return None
-        parts = urlsplit(self.cfg.base_url)
-        port = parts.port or (443 if parts.scheme == "https" else 80)
-        listeners = self.listeners
-        if listeners is None:
-            from ..resources import monitor
-            listeners = monitor.listener_uids
+        """Why nothing may be sent to this endpoint, or None (resources.idle.listener_refusal, the one
+        implementation for every provider). A loopback port belongs to whoever binds it first, and a model
+        server's port is free whenever its container is down (on a schedule with idle unloading on). So, for an
+        endpoint on the port of one of this deployment's own model services, the owner of the socket that would
+        accept this connection (same address as the pinned ones, or a wildcard) is read from /proc/net/tcp
+        (self.listeners: port -> [(address, uid)]): root (Docker's port proxy), this user and the owner of the key
+        file are the service; a process of any other account is not, and is sent neither the key nor the request
+        (which may hold private memory). Never a refusal: any other endpoint on this computer (a server the owner
+        runs on its own port and account is used exactly as before), nothing listening, /proc unreadable, an
+        account that cannot be identified (uid 65534 under PrivateUsers=yes), NSF_LISTENER_CHECK=0. Not covered: a
+        process of this same account or of root, which can read the key file anyway."""
         try:
-            owners = listeners(port)
+            if self.locality()[0] != "loopback":
+                return None
+            parts = urlsplit(self.cfg.base_url)
+            port = parts.port or (443 if parts.scheme == "https" else 80)
+            return idle.listener_refusal(self._addresses, port, iconfig.key_path(self.cfg, self.provider),
+                                         table=self.listeners)
+        except InferenceError:
+            raise
         except Exception:                      # the check must never be the reason a call fails
             return None
-        if not owners:
-            return None
-        trusted = {0, os.getuid()}
-        try:
-            trusted.add(os.stat(iconfig.key_path(self.cfg, self.provider)).st_uid)
-        except (OSError, TypeError, ValueError):
-            pass
-        strangers = sorted(set(owners) - trusted)
-        if not strangers:
-            return None
-        return (f"port {port} on this computer is held by a process of another account (uid "
-                f"{', '.join(map(str, strangers))}), not by the model service: nothing was sent to it")
 
     # ---- HTTP -------------------------------------------------------------------------------------------------
     def _open(self, method, path, payload, remaining):
@@ -312,7 +302,17 @@ class Gateway:
             raise InferenceError("unavailable", f"connect timeout: {exc}", retryable=True) from None
         except OSError as exc:
             conn.close()
-            raise InferenceError("unavailable", f"cannot connect: {exc.strerror or exc}", retryable=True) from None
+            asked = None
+            if isinstance(exc, ConnectionRefusedError):
+                # Nothing listens there. Where this process may not start services itself (NSF_WAKE_DIR), a
+                # refused connection to one of the deployment's own model services leaves a wake request: this
+                # needs nothing of the idle policy's state, which another account may own (review S2).
+                try:
+                    asked = idle.asked_on_refusal(conn.port)
+                except Exception:              # asking must never change how the call fails
+                    asked = None
+            raise InferenceError("unavailable", f"cannot connect: {exc.strerror or exc}"
+                                 + (f" ({asked})" if asked else ""), retryable=True) from None
         conn.sock.settimeout(max(0.05, remaining))
         headers = {"Accept": "application/json, text/event-stream", "User-Agent": USER_AGENT}
         if self.key:

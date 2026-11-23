@@ -96,10 +96,39 @@ def _run(args, timeout=COMMAND_TIMEOUT, *, merge=False) -> str | None:
     return out.stdout if out.returncode == 0 else None
 
 
-def listener_uids(port, folder="/proc/net") -> set[int] | None:
-    """The user ids that own a listening TCP socket on `port` in this network namespace (/proc/net/tcp and tcp6:
-    state 0A, the uid column); an empty set when nothing listens there, None when neither file can be read."""
-    found, read = set(), False
+OVERFLOW_UID = 65534        # what an account outside this user namespace reads as (PrivateUsers=yes): not identifiable
+LISTEN_CACHE_SECONDS = 1.0  # one parse of the socket tables serves every check of that second (review S7)
+_LISTEN_CACHE: dict = {}    # folder -> (monotonic time, {port: [(address, uid)]} or None)
+
+
+def _proc_address(text) -> str | None:
+    """The local-address column of /proc/net/tcp ("0100007F") or tcp6 (32 hex digits) as an address string. The
+    kernel prints each 32-bit word of the address as this machine reads it, so each word is packed back in native
+    byte order. An IPv4-mapped IPv6 address is given as its IPv4 address (a dual-stack socket's IPv4 side)."""
+    import ipaddress
+    import struct
+    try:
+        if len(text) == 8:
+            return str(ipaddress.IPv4Address(struct.pack("=I", int(text, 16))))
+        if len(text) == 32:
+            packed = b"".join(struct.pack("=I", int(text[i:i + 8], 16)) for i in range(0, 32, 8))
+            address = ipaddress.IPv6Address(packed)
+            return str(address.ipv4_mapped) if address.ipv4_mapped is not None else str(address)
+    except (ValueError, struct.error):
+        pass
+    return None
+
+
+def listening(folder="/proc/net", *, fresh=False) -> dict | None:
+    """{port: [(local address, uid), ...]} of every listening TCP socket in this network namespace (/proc/net/tcp
+    and tcp6: state 0A), None when neither table can be read. Kept for LISTEN_CACHE_SECONDS, so the checks of one
+    memory lookup or one model call parse the tables once (`fresh` reads them again)."""
+    folder = str(folder)
+    now = time.monotonic()
+    hit = _LISTEN_CACHE.get(folder)
+    if not fresh and hit is not None and 0 <= now - hit[0] < LISTEN_CACHE_SECONDS:
+        return hit[1]
+    table, read = {}, False
     for name in ("tcp", "tcp6"):
         try:
             with open(f"{folder}/{name}", encoding="ascii", errors="replace") as fh:
@@ -110,11 +139,90 @@ def listener_uids(port, folder="/proc/net") -> set[int] | None:
         for line in lines:
             parts = line.split()
             try:
-                if len(parts) > 7 and parts[3] == "0A" and int(parts[1].rsplit(":", 1)[1], 16) == int(port):
-                    found.add(int(parts[7]))
+                if len(parts) <= 7 or parts[3] != "0A":
+                    continue
+                raw, port = parts[1].rsplit(":", 1)
+                address = _proc_address(raw)
+                if address is not None:
+                    table.setdefault(int(port, 16), []).append((address, int(parts[7])))
             except ValueError:
                 continue
-    return found if read else None
+    result = table if read else None
+    _LISTEN_CACHE[folder] = (now, result)
+    return result
+
+
+def listeners(port, folder="/proc/net") -> list | None:
+    """[(local address, uid), ...] of the sockets listening on `port`; [] when none does, None when unreadable."""
+    table = listening(folder)
+    return None if table is None else list(table.get(int(port), ()))
+
+
+def listener_uids(port, folder="/proc/net") -> set[int] | None:
+    """The user ids that own a listening TCP socket on `port`, on any address; an empty set when nothing listens
+    there, None when neither table can be read. (Who would accept a given connection: accepting().)"""
+    found = listeners(port, folder)
+    return None if found is None else {uid for _, uid in found}
+
+
+def accepting(entries, addresses) -> dict:
+    """{address: {uids}} for each of `addresses` (where a connection will go) that a listener among `entries`
+    ((local address, uid) pairs of one port) would accept. A socket bound to exactly that address takes the
+    connection before a wildcard one; then the wildcard of the address's own family (0.0.0.0, or ::); then, for an
+    IPv4 address, the IPv6 wildcard, which a dual-stack socket also serves. A listener on any other address
+    (127.0.0.53, a bridge address, ::1 while the connection goes to 127.0.0.1) never sees the connection and does
+    not count (review S1: counting it let any account turn the model off by binding its port somewhere else)."""
+    import ipaddress
+    out = {}
+    for target in addresses:
+        try:
+            address = ipaddress.ip_address(str(target).strip("[]"))
+        except ValueError:
+            continue
+        if address.version == 6 and address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
+        for bound in [str(address)] + (["0.0.0.0", "::"] if address.version == 4 else ["::"]):
+            owners = {uid for local, uid in entries if local == bound and type(uid) is int}
+            if owners:
+                out[str(address)] = owners
+                break
+    return out
+
+
+def stranger(addresses, port, *, key_file=None, table=None, environ=None, what="the model service") -> str | None:
+    """Why nothing may be sent to `port` at `addresses` on this computer, or None.
+
+    A loopback port belongs to whoever binds it first, and a model server's port is free whenever its container is
+    down. So the owner of the socket that would accept the connection is read (`table`: port -> [(address, uid)],
+    default listeners()). Root (Docker's port proxy), this user and the owner of the key file are the service; a
+    process of any other account is not, and the reason names its address, port and uid. Never a refusal: nothing
+    listening, unreadable tables, any surprise while reading them, uid 65534 (an account this user namespace
+    cannot identify: neither trusted, even as the key file's owner, nor refused; so under PrivateUsers=yes the
+    check refuses nobody), and NSF_LISTENER_CHECK=0 in the environment (the owner runs the service under another
+    account on purpose)."""
+    try:
+        if (os.environ if environ is None else environ).get("NSF_LISTENER_CHECK", "").strip() == "0":
+            return None
+        entries = (table or listeners)(int(port))
+        if not entries:
+            return None
+        trusted = {0, os.getuid()}
+        try:
+            owner = os.stat(key_file).st_uid if key_file else None
+        except (OSError, TypeError, ValueError):
+            owner = None
+        if owner is not None and owner != OVERFLOW_UID:
+            trusted.add(owner)
+        for address, owners in accepting(entries, addresses).items():
+            strangers = sorted(owners - trusted - {OVERFLOW_UID})
+            if strangers:
+                host = f"[{address}]" if ":" in address else address
+                return (f"{host}:{int(port)} on this computer is held by a process of another account (uid "
+                        f"{', '.join(map(str, strangers))}), not by {what}: nothing was sent to it "
+                        "(NSF_LISTENER_CHECK=0 if that account runs the service on purpose)")
+    except Exception:                          # the check must never be the reason a call fails
+        return None
+    return None
 
 
 def memory(path=MEMINFO, psi_path=PSI_MEMORY) -> dict | None:

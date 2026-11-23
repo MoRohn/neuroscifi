@@ -1050,9 +1050,13 @@ def test_a_failed_reload_is_not_started_again_by_another_process_inside_the_back
 
 @pytest.fixture
 def spool(memory_host, monkeypatch, tmp_path):
-    """The installed shape: NSF_WAKE_DIR is set, and starting a process or a service from here is an error."""
+    """The installed shape: NSF_WAKE_DIR is set, and starting a process or a service from here is an error. The
+    folder exists: it is the serving account's (deploy/install.sh --idle, or `nsf resources wake`, makes it), and a
+    process that only asks never creates it (review S2)."""
     folder = tmp_path / "wake"
+    folder.mkdir()
     monkeypatch.setenv("NSF_WAKE_DIR", str(folder))
+    monkeypatch.setattr(idle, "_ASKED", {})
 
     def forbidden(*args):
         raise AssertionError("with NSF_WAKE_DIR set this process starts nothing itself")
@@ -1090,7 +1094,6 @@ def test_a_lookup_leaves_a_wake_request_and_the_wake_command_reloads_the_service
 
 def test_a_wake_request_is_only_a_service_name_anything_else_is_dropped_and_nothing_is_run(spool, capsys):
     fake = spool
-    fake.spool.mkdir()
     for name in ("nope", "vllm; touch pwned", "$(id)", "--help", "embed.wake"):
         (fake.spool / f"{name}.wake").write_text("resources unload vllm")      # content is never read
     (fake.spool / "link.wake").symlink_to(fake.path)                           # nor followed
@@ -1155,7 +1158,7 @@ def test_memory_settings_are_read_as_run_sh_resolves_them_and_nothing_is_evaluat
         "NSF_MEMORY_DIR=${NSF_MEMORY_DIR:-${HOME}/.config/neuroscifi/memory}\n")
     env = {"NSF_MEMORY_DIR": str(folder), "NSF_MEMORY_EMBED_PORT": "1"}       # the script ignores this port too
     assert idle.memory_settings(env, repo) == {"dir": folder, "key_file": folder / "api_key", "bind": "127.0.0.1",
-                                               "embed_port": 18441, "rerank_port": 18442}
+                                               "embed_port": 18441, "rerank_port": 18442, "ignored": [], "error": None}
     marker = tmp_path / "evaluated"
     (folder / "memory.env").write_text(                                   # the owner's override
         f"NSF_MEMORY_EMBED_PORT=28441\nNSF_MEMORY_RERANK_PORT=$(touch {marker})\n"
@@ -1163,6 +1166,8 @@ def test_memory_settings_are_read_as_run_sh_resolves_them_and_nothing_is_evaluat
     found = idle.memory_settings(env, repo)
     assert (found["embed_port"], found["rerank_port"], found["bind"]) == (28441, 18442, "127.0.0.1")
     assert not marker.exists()
+    override = folder / "memory.env"
+    assert found["ignored"] == [f"{override}:2", f"{override}:3"] and found["error"] is None   # said, not evaluated
 
 
 def test_setup_and_the_policy_look_where_the_script_listens(tmp_path, monkeypatch):
@@ -1173,6 +1178,6 @@ def test_setup_and_the_policy_look_where_the_script_listens(tmp_path, monkeypatc
     monkeypatch.setenv("NSF_MEMORY_DIR", str(folder))
     found = setup_cli.memory_defaults()
     assert found == {"urls": {"embed": "http://127.0.0.1:28441/v1", "rerank": "http://127.0.0.1:28442/v1"},
-                     "key_file": folder / "api_key"}
+                     "key_file": folder / "api_key", "error": None, "ignored": []}
     script = (idle.REPO / "deploy" / "memory" / "memory.env").read_text()
     assert "NSF_MEMORY_DIR=${NSF_MEMORY_DIR:-${HOME}/.config/neuroscifi/memory}" in script   # run.sh honours it too

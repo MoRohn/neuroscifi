@@ -490,8 +490,14 @@ def test_the_human_report_names_the_memory_step_in_plain_words(capsys, home, mem
 
 def test_setup_does_not_send_the_memory_key_to_a_port_held_by_another_account(capsys, home, memory_models, monkeypatch):
     """Review L2: the probe carries the key, so it first asks who listens."""
-    from neuroscifi.resources import monitor
-    monkeypatch.setattr(monitor, "listener_uids", lambda port, folder="/proc/net": {4242})
+    from neuroscifi.resources import idle, monitor
+    ports = {memory_models[kind].server_address[1]: kind for kind in ("embed", "rerank")}
+    monkeypatch.setattr(idle, "managed_service", lambda port, services=None: ports.get(int(port)))   # deploy/memory's
+    monkeypatch.setattr(monitor, "listeners", lambda port, folder="/proc/net": [("127.0.0.1", 4242)])
     step = memory_step(setup(capsys, home, *memory_models["args"])[1])
     assert step["status"] == "skipped" and "held by a process of another account (uid 4242)" in step["detail"]
     assert memory_models["seen"] == [] and not memory_of(home)[1].configured
+    # a listener of that account on another address of this computer never sees the connection: not a refusal (S1)
+    monkeypatch.setattr(monitor, "listeners", lambda port, folder="/proc/net": [("127.0.0.53", 4242)])
+    step = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert step["status"] == "done" and memory_models["seen"] and memory_of(home)[1].configured

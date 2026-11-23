@@ -309,11 +309,8 @@ def rank(db, topic: str, rows: list[dict], lexical: list[float], *, limit: int, 
     if time.monotonic() < vectors.down_until:      # measured: a refused connection cost each lookup 1.5 s
         return None, {"mode": "lexical", "reason": vectors.down_reason,
                       "retry_in_seconds": round(vectors.down_until - time.monotonic(), 1)}
-    for gateway in (embedder, reranker):
-        refused = key_refusal(gateway.cfg.base_url, gateway.cfg.key_file) if gateway is not None else None
-        if refused:
-            vectors.down_reason, vectors.down_until = refused, time.monotonic() + RETRY_AFTER
-            return None, {"mode": "lexical", "reason": refused}
+    # Whose process holds a memory model's port is checked by the gateway before each call (Gateway.stranger): a
+    # refusal ends that call "unavailable" with the reason, the lookup is lexical and backs off like any failure.
     with ExitStack() as held_services:
         # The idle policy (resources/idle.py) may have unloaded a memory model. A lookup never waits for one: it is
         # ranked by its words now, and the reload it started makes a later lookup semantic again.
@@ -328,36 +325,26 @@ def rank(db, topic: str, rows: list[dict], lexical: list[float], *, limit: int, 
 
 
 def key_refusal(base_url, key_file) -> str | None:
-    """Why the API key must not be sent to this endpoint, or None. A loopback port belongs to whoever binds it
-    first, and the memory models' ports are free whenever their containers are down (on a schedule with idle
-    release on). So before a request that carries the key to a loopback endpoint, the listening socket's owner is
-    read from /proc/net/tcp: root (Docker's port proxy), this user, or the owner of the key file are the service;
-    any other account's process is not, and is sent neither the key nor a memory text (review L2). Nothing
-    listening, or /proc unreadable, is no refusal: the call then fails or succeeds on its own."""
-    import os
+    """Why the API key must not be sent to this endpoint, or None: resources.idle.listener_refusal, the check the
+    inference gateway makes before every call (review L2, S1), asked here before a call is attempted so that
+    `nsf web memory` can say "refused" and `nsf setup` contacts nothing. It applies to the memory models' own ports
+    on this computer only; the socket that would accept the connection decides, not any socket on that port."""
     from urllib.parse import urlsplit
-    from ..resources import monitor
+    from ..inference import config as iconfig
+    from ..resources import idle
+    import ipaddress
     try:
         url = urlsplit(base_url)
-        port = url.port or (443 if url.scheme == "https" else 80)
-        if url.hostname not in ("127.0.0.1", "localhost", "::1"):
+        host = url.hostname or ""
+        if host != "localhost":           # a literal address or nothing: no name is looked up for this check
+            if not ipaddress.ip_address(host).is_loopback:
+                return None
+        where, _, addresses = iconfig.resolve(base_url)
+        if where != "loopback":
             return None
-    except ValueError:
+        return idle.listener_refusal(addresses, url.port or (443 if url.scheme == "https" else 80), key_file or None)
+    except Exception:                 # the check must never be the reason a lookup or the setup fails
         return None
-    owners = monitor.listener_uids(port)
-    if not owners:
-        return None
-    trusted = {0, os.getuid()}
-    try:
-        if key_file:
-            trusted.add(os.stat(key_file).st_uid)
-    except OSError:
-        pass
-    strangers = sorted(owners - trusted)
-    if not strangers:
-        return None
-    return (f"port {port} on this computer is held by a process of another account (uid "
-            f"{', '.join(map(str, strangers))}), not by the memory service: the key and the memory text were not sent")
 
 
 def _local_service(gateway, name) -> bool:
@@ -431,7 +418,7 @@ def _rank(db, cfg, topic, rows, lexical, limit, embedder, reranker, vectors, sig
         scores = reranker.rerank(query, documents, purpose="memory_rerank", timeout=cfg.timeout)
     except (InferenceError, OSError, ValueError) as exc:
         code = getattr(exc, "code", type(exc).__name__)
-        vectors.down_reason = f"semantic retrieval failed ({code}): {exc}"[:200]
+        vectors.down_reason = f"semantic retrieval failed ({code}): {exc}"[:300]
         vectors.down_until = time.monotonic() + RETRY_AFTER
         return None, {"mode": "lexical", "reason": vectors.down_reason}
     scored = sorted(zip(scores, chosen), key=lambda pair: (-pair[0], -rows[pair[1]]["id"]))

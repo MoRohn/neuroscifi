@@ -329,12 +329,15 @@ def memory_defaults(a=None) -> dict:
     found = idle.memory_settings()
     host = f"[{found['bind']}]" if ":" in found["bind"] else found["bind"]
     urls = {"embed": f"http://{host}:{found['embed_port']}/v1", "rerank": f"http://{host}:{found['rerank_port']}/v1"}
-    key_file = found["key_file"]
+    key_file, error = found["key_file"], found["error"]
     if a is not None:
+        if getattr(a, "memory_embed_url", None) and getattr(a, "memory_rerank_url", None):
+            error = None                  # both addresses given on the command line: the files' address is not used
         urls["embed"] = getattr(a, "memory_embed_url", None) or urls["embed"]
         urls["rerank"] = getattr(a, "memory_rerank_url", None) or urls["rerank"]
         key_file = getattr(a, "memory_key_file", None) or key_file
-    return {"urls": urls, "key_file": Path(key_file).expanduser().absolute()}
+    return {"urls": urls, "key_file": Path(key_file).expanduser().absolute(), "error": error,
+            "ignored": list(found["ignored"])}
 
 
 def _memory_probe(provider, url, key_file):
@@ -397,13 +400,26 @@ def _memory_touched(db) -> bool:
 
 
 def _memory(report, a, db):
-    from .inference import config as iconfig
-    from .webcortex import semantic
     if a.no_memory:
         _step(report, "memory", "skipped", "--no-memory")
         return
     where = memory_defaults(a)
+    _memory_step(report, a, db, where)
+    last = report["steps"][-1] if report["steps"] else None
+    if where["ignored"] and last is not None and last["step"] == "memory":
+        # said once, with the step: a settings line this command could not read the way run.sh does
+        last["settings_ignored"] = where["ignored"][:8]
+        last["detail"] += (f" (memory.env: {len(where['ignored'])} line(s) in a form this command does not read "
+                           f"were ignored, first {where['ignored'][0]})")
+
+
+def _memory_step(report, a, db, where):
+    from .inference import config as iconfig
+    from .webcortex import semantic
     urls, key_file = where["urls"], where["key_file"]
+    if where["error"]:
+        _step(report, "memory", "skipped", f"memory is ranked by its words: {where['error']}")
+        return
     hint = f"optional: {MEMORY_START}, then nsf setup again"
     written = _memory_written(db) if db is not None else None
     touched = db is not None and _memory_touched(db)

@@ -262,18 +262,55 @@ def test_listener_uids_reads_who_listens_on_a_port(tmp_path):
     assert monitor.listener_uids(18441, tmp_path / "nowhere") is None
 
 
-def test_a_loopback_port_held_by_another_account_gets_neither_the_key_nor_a_memory_text(db, models, monkeypatch):
+def test_a_loopback_port_held_by_another_account_gets_neither_the_key_nor_a_memory_text(db, monkeypatch):
+    """The check is the inference gateway's, made before each call (review S1/S7: one implementation, no second
+    look in the lookup), so this runs a real gateway against a real listener that records what reaches it."""
     import os
-    from neuroscifi.resources import monitor
-    semantic.set_config(db, {"enabled": True}, T0)
-    monkeypatch.setattr(monitor, "listener_uids", lambda port, folder="/proc/net": {4242})
-    out = knowledge.query(db, "which socket does it accept traffic on", T0 + 10)
-    assert out["retrieval"]["mode"] == "lexical" and "held by a process of another account (uid 4242)" in \
-        out["retrieval"]["reason"]
-    assert models[0].calls == 0 and models[1].calls == 0 and models[0].seen == []
-    assert semantic.status(db)["providers"]["embed"]["state"] == "refused"
-    for owners in ({0}, {os.getuid()}, set(), None):               # Docker's proxy, our own server, nobody, unknown
-        monkeypatch.setattr(monitor, "listener_uids", lambda port, folder="/proc/net", owners=owners: owners)
-        assert semantic.key_refusal("http://127.0.0.1:18441/v1", "") is None
-    monkeypatch.setattr(monitor, "listener_uids", lambda port, folder="/proc/net": {4242})
-    assert semantic.key_refusal("http://memory.example:18441/v1", "") is None     # not this computer: the guard's job
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from neuroscifi.inference.gateway import Gateway
+    from neuroscifi.resources import idle, monitor
+    seen = []
+
+    class Model(BaseHTTPRequestHandler):
+        def do_POST(self):
+            seen.append((self.path, self.headers.get("Authorization")))
+            self.send_response(500)
+            self.end_headers()
+        do_GET = do_POST
+
+        def log_message(self, *args):
+            pass
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Model)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_address[1]
+        url = f"http://127.0.0.1:{port}/v1"
+        embedder = Gateway(iconfig.InferenceConfig(base_url=url, model="m", max_retries=0), key="memory-key")
+        embedder.provider = "embed"
+        monkeypatch.setattr(semantic, "_gateways", lambda db: (embedder, None))
+        # the memory model's own port (deploy/memory), held by uid 4242 on the address the gateway connects to
+        monkeypatch.setattr(idle, "managed_service", lambda p, services=None: "embed" if int(p) == port else None)
+        monkeypatch.setattr(monitor, "listeners", lambda p, folder="/proc/net": [("127.0.0.1", 4242)])
+        semantic.set_config(db, {"enabled": True}, T0)
+        out = knowledge.query(db, "which socket does it accept traffic on", T0 + 10)
+        reason = out["retrieval"]["reason"]
+        assert out["retrieval"]["mode"] == "lexical" and "held by a process of another account (uid 4242)" in reason
+        assert f"127.0.0.1:{port}" in reason and "NSF_LISTENER_CHECK=0" in reason
+        assert seen == []                                           # neither the key nor a memory text
+        assert semantic.status(db)["providers"]["embed"]["state"] == "refused"
+        again = knowledge.query(db, "which socket does it accept traffic on", T0 + 11)["retrieval"]
+        assert again["mode"] == "lexical" and again["retry_in_seconds"] > 0 and seen == []      # backed off
+        for entries in ([("127.0.0.1", 0)], [("127.0.0.1", os.getuid())], [], None,       # proxy, ours, nobody, unknown
+                        [("127.0.0.53", 4242)], [("172.17.0.1", 4242)], [("::1", 4242)],    # not where we connect
+                        [("127.0.0.1", 65534)]):                                            # cannot be identified
+            monkeypatch.setattr(monitor, "listeners", lambda p, folder="/proc/net", entries=entries: entries)
+            assert semantic.key_refusal(url, "") is None, entries
+        monkeypatch.setattr(monitor, "listeners", lambda p, folder="/proc/net": [("0.0.0.0", 4242)])
+        assert "uid 4242" in semantic.key_refusal(url, "")                  # a wildcard socket would take it
+        assert semantic.key_refusal("http://memory.example:18441/v1", "") is None     # not this computer: the guard's job
+        monkeypatch.setattr(idle, "managed_service", lambda p, services=None: None)
+        assert semantic.key_refusal(url, "") is None      # a server the owner runs on its own port: as before the check
+    finally:
+        server.shutdown()
+        server.server_close()
