@@ -20,6 +20,9 @@ MIN_ROWS, MAX_ROWS = 8, 200_000
 MIN_COLS, MAX_COLS = 1, 1024
 VALIDATION_STEPS, HELDOUT_STEPS = 256, 512
 WORLDS = ("a", "b")
+# SQLite refuses a blob longer than SQLITE_MAX_LENGTH (1e9 bytes in a default build) with a raw DataError. The npz
+# holds two float64 arrays (16 bytes per cell) plus its zip and npy headers (well under 4 kB).
+MAX_BLOB_BYTES, BLOB_FRAMING_BYTES = 1_000_000_000, 4096
 
 
 def _check_context(context):
@@ -41,6 +44,10 @@ def _check_arrays(states, targets):
         raise ValidationError(f"A dataset needs {MIN_ROWS}..{MAX_ROWS} time steps, got {rows}")
     if not MIN_COLS <= cols <= MAX_COLS:
         raise ValidationError(f"A dataset needs {MIN_COLS}..{MAX_COLS} populations, got {cols}")
+    if 16 * rows * cols + BLOB_FRAMING_BYTES > MAX_BLOB_BYTES:
+        raise ValidationError(f"A dataset of {rows} time steps x {cols} populations is too large to store: at most "
+                              f"{(MAX_BLOB_BYTES - BLOB_FRAMING_BYTES) // (16 * cols)} time steps fit with {cols} "
+                              "populations")
     if not (np.isfinite(states).all() and np.isfinite(targets).all()):
         raise ValidationError("Dataset arrays must be finite")
     return states, targets
