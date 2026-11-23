@@ -1,0 +1,65 @@
+{
+ "benchmark": "memory-answer-check",
+ "version": 1,
+ "label": "memory-answer-check",
+ "model": "qwen3-30b-a3b-instruct-2507-fp8",
+ "generated_at": "2026-11-23T16:50:30Z",
+ "environment": {
+  "host_digest": "382a803dcc0d",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "machine": "aarch64",
+  "cpu_count": 20,
+  "python": "3.12.16",
+  "sqlite": "3.53.1",
+  "packages": {
+   "neuroscifi": "0.5.0",
+   "scrapling": "0.5.1",
+   "trafilatura": "2.3.1",
+   "lxml": "6.1.3",
+   "pypdf": "7.1.1",
+   "markdownify": "1.2.4",
+   "playwright": "1.64.1"
+  },
+  "git_commit": "079af1c",
+  "git_dirty": true
+ },
+ "queries": 96,
+ "facts_per_query": 4,
+ "skipped": 0,
+ "decisions": {
+  "lexical_covers": {
+   "right_fact_accepted": 64,
+   "right_facts": 96,
+   "other_property_accepted": 94,
+   "other_properties": 288
+  },
+  "model_check": {
+   "right_fact_accepted": 94,
+   "right_facts": 96,
+   "other_property_accepted": 1,
+   "other_properties": 288
+  }
+ },
+ "model_check_ms": {
+  "p50": 451.122,
+  "p95": 502.251
+ },
+ "model_check_mistakes": [
+  {
+   "query": "Steepest gradient of the Marrow Valley railway",
+   "fact": "railway.route",
+   "accepted": true
+  },
+  {
+   "query": "Steepest gradient of the Marrow Valley railway",
+   "fact": "railway.gradient",
+   "accepted": false
+  },
+  {
+   "query": "Quillstream interpreter compatibility",
+   "fact": "quill.python",
+   "accepted": false
+  }
+ ],
+ "note": "The model check is applied only to statements the lexical test chose, so in use a statement is accepted when both accept it; the two are shown separately here."
+}

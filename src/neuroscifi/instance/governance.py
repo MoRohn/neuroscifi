@@ -300,8 +300,8 @@ def forget_partner(db, root, now):
 
 
 def forget_dataset(db, dataset_id, now):
-    """Drop a dataset blob, delete the graph effects measured on it, invalidate graphs trained on it and mark
-    every existing checkpoint stale."""
+    """Drop a dataset blob and its note, delete the graph effects measured on it, invalidate graphs trained on it and
+    mark every existing checkpoint stale."""
     from .graphs import invalidate_dependents  # W2-B; imported lazily to keep modules decoupled
     with store.write(db):
         row = db.execute("SELECT deleted_at FROM datasets WHERE id=?", (dataset_id,)).fetchone()
@@ -309,7 +309,8 @@ def forget_dataset(db, dataset_id, now):
             raise NotFound(f"Unknown dataset {dataset_id}")
         if row[0] is not None:
             return {"status": "absent", "effects": {}}
-        db.execute("UPDATE datasets SET blob=NULL, deleted_at=? WHERE id=?", (now, dataset_id))
+        # the note is the owner's free text about the data (as an epoch's note, forget_epoch): it goes with the blob
+        db.execute("UPDATE datasets SET blob=NULL, note=NULL, deleted_at=? WHERE id=?", (now, dataset_id))
         effects_deleted = db.execute("DELETE FROM graph_effects WHERE dataset_id=?", (dataset_id,)).rowcount
         cascade = invalidate_dependents(db, dataset_id, now)
         stale = [r[0] for r in db.execute("SELECT id FROM checkpoints WHERE status='valid' ORDER BY id")]

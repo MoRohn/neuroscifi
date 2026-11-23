@@ -1,0 +1,468 @@
+{
+ "benchmark": "inference-endpoint",
+ "version": 1,
+ "label": "F-spec-ngram",
+ "url": "http://127.0.0.1:8811/v1",
+ "model": "qwen3-30b-a3b-instruct-2507-fp8",
+ "runs": 8,
+ "seed": 20261123,
+ "options": {
+  "background_priority": 10
+ },
+ "generated_at": "2026-11-23T16:02:03Z",
+ "environment": {
+  "machine": "aarch64",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "python": "3.12.16",
+  "git_commit": "be46dba",
+  "git_dirty": false,
+  "server_version": "{\"version\":\"0.33.0rc1.dev910+g4fab5a074\"}",
+  "memory": {
+   "MemTotal_GiB": 121.9,
+   "MemAvailable_GiB": 39.4,
+   "SwapFree_GiB": 103.1
+  },
+  "gpu_compute_processes": [
+   "chromium: 242 MiB",
+   "VLLM::EngineCore: 4156 MiB",
+   "python3: 1936 MiB",
+   "dotnet: 93 MiB",
+   "VLLM::EngineCore: 44596 MiB"
+  ],
+  "note": "Other workloads on the host share the GPU and memory; they are listed above, not controlled."
+ },
+ "scenarios": {
+  "short": {
+   "result": {
+    "calls": 8,
+    "errors": [],
+    "first_token_ms": {
+     "n": 8,
+     "p50": 160.644,
+     "p95": 167.032,
+     "p99": 167.772,
+     "min": 135.034,
+     "max": 167.957
+    },
+    "total_s": {
+     "n": 8,
+     "p50": 2.238,
+     "p95": 2.851,
+     "p99": 2.963,
+     "min": 1.493,
+     "max": 2.991
+    },
+    "decode_tokens_per_s": {
+     "n": 8,
+     "p50": 25.314,
+     "p95": 25.538,
+     "p99": 25.551,
+     "min": 24.94,
+     "max": 25.554
+    },
+    "inter_token_ms": {
+     "n": 8,
+     "p50": 39.504,
+     "p95": 39.997,
+     "p99": 40.076,
+     "min": 39.133,
+     "max": 40.096
+    },
+    "prompt_tokens_p50": 27.5,
+    "completion_tokens_p50": 53.5
+   },
+   "wall_s": 17.82,
+   "server": {
+    "requests": 8,
+    "mean_request_queue_time_ms": 0.08,
+    "mean_request_prefill_time_ms": 126.72,
+    "mean_request_decode_time_ms": 2070.9,
+    "mean_time_to_first_token_ms": 148.92,
+    "mean_e2e_request_latency_ms": 2219.47,
+    "prompt_tokens": 221,
+    "prefix_cache_hit_tokens": 0,
+    "prefix_cache_hit_share": 0.0,
+    "preemptions": 0
+   },
+   "gpu": {
+    "samples": 17,
+    "utilisation_pct": {
+     "n": 17,
+     "p50": 96.0,
+     "p95": 96.0,
+     "p99": 96.0,
+     "min": 88.0,
+     "max": 96.0
+    },
+    "power_w": {
+     "n": 17,
+     "p50": 43.32,
+     "p95": 43.642,
+     "p99": 43.648,
+     "min": 41.74,
+     "max": 43.65
+    },
+    "temperature_c_max": 58.0
+   }
+  },
+  "evidence": {
+   "result": {
+    "calls": 8,
+    "errors": [],
+    "first_token_ms": {
+     "n": 8,
+     "p50": 576.799,
+     "p95": 589.336,
+     "p99": 589.578,
+     "min": 549.839,
+     "max": 589.639
+    },
+    "total_s": {
+     "n": 8,
+     "p50": 2.629,
+     "p95": 2.696,
+     "p99": 2.702,
+     "min": 1.905,
+     "max": 2.704
+    },
+    "decode_tokens_per_s": {
+     "n": 8,
+     "p50": 54.446,
+     "p95": 60.281,
+     "p99": 61.33,
+     "min": 50.483,
+     "max": 61.592
+    },
+    "inter_token_ms": {
+     "n": 8,
+     "p50": 18.371,
+     "p95": 19.598,
+     "p99": 19.767,
+     "min": 16.236,
+     "max": 19.809
+    },
+    "prompt_tokens_p50": 3829.0,
+    "completion_tokens_p50": 113.5
+   },
+   "wall_s": 20.37,
+   "server": {
+    "requests": 8,
+    "mean_request_queue_time_ms": 0.05,
+    "mean_request_prefill_time_ms": 526.51,
+    "mean_request_decode_time_ms": 1978.33,
+    "mean_time_to_first_token_ms": 560.79,
+    "mean_e2e_request_latency_ms": 2538.25,
+    "prompt_tokens": 30646,
+    "prefix_cache_hit_tokens": 448,
+    "prefix_cache_hit_share": 0.015,
+    "preemptions": 0
+   },
+   "gpu": {
+    "samples": 21,
+    "utilisation_pct": {
+     "n": 21,
+     "p50": 96.0,
+     "p95": 96.0,
+     "p99": 96.0,
+     "min": 75.0,
+     "max": 96.0
+    },
+    "power_w": {
+     "n": 21,
+     "p50": 55.17,
+     "p95": 64.34,
+     "p99": 64.644,
+     "min": 42.7,
+     "max": 64.72
+    },
+    "temperature_c_max": 69.0
+   }
+  },
+  "structured": {
+   "result": {
+    "calls": 8,
+    "errors": [],
+    "first_token_ms": {
+     "n": 8,
+     "p50": 614.582,
+     "p95": 952.857,
+     "p99": 1090.561,
+     "min": 575.403,
+     "max": 1124.987
+    },
+    "total_s": {
+     "n": 8,
+     "p50": 4.436,
+     "p95": 4.749,
+     "p99": 4.782,
+     "min": 2.816,
+     "max": 4.79
+    },
+    "decode_tokens_per_s": {
+     "n": 8,
+     "p50": 48.156,
+     "p95": 51.511,
+     "p99": 51.993,
+     "min": 41.504,
+     "max": 52.113
+    },
+    "inter_token_ms": {
+     "n": 8,
+     "p50": 20.766,
+     "p95": 23.267,
+     "p99": 23.929,
+     "min": 19.189,
+     "max": 24.094
+    },
+    "prompt_tokens_p50": 3826.0,
+    "completion_tokens_p50": 185.0,
+    "valid_json": "8/8"
+   },
+   "wall_s": 34.04,
+   "server": {
+    "requests": 8,
+    "mean_request_queue_time_ms": 3.67,
+    "mean_request_prefill_time_ms": 544.62,
+    "mean_request_decode_time_ms": 3584.62,
+    "mean_time_to_first_token_ms": 659.52,
+    "mean_e2e_request_latency_ms": 4245.76,
+    "prompt_tokens": 30641,
+    "prefix_cache_hit_tokens": 512,
+    "prefix_cache_hit_share": 0.017,
+    "preemptions": 0
+   },
+   "gpu": {
+    "samples": 34,
+    "utilisation_pct": {
+     "n": 34,
+     "p50": 96.0,
+     "p95": 96.0,
+     "p99": 96.0,
+     "min": 22.0,
+     "max": 96.0
+    },
+    "power_w": {
+     "n": 34,
+     "p50": 50.125,
+     "p95": 64.32,
+     "p99": 64.674,
+     "min": 32.79,
+     "max": 64.73
+    },
+    "temperature_c_max": 71.0
+   }
+  },
+  "mixed": {
+   "result": {
+    "foreground_alone": {
+     "calls": 8,
+     "errors": [],
+     "first_token_ms": {
+      "n": 8,
+      "p50": 152.682,
+      "p95": 169.06,
+      "p99": 171.048,
+      "min": 145.544,
+      "max": 171.545
+     },
+     "total_s": {
+      "n": 8,
+      "p50": 0.907,
+      "p95": 0.918,
+      "p99": 0.92,
+      "min": 0.89,
+      "max": 0.92
+     },
+     "decode_tokens_per_s": {
+      "n": 8,
+      "p50": 25.291,
+      "p95": 25.63,
+      "p99": 25.67,
+      "min": 24.806,
+      "max": 25.68
+     },
+     "inter_token_ms": {
+      "n": 8,
+      "p50": 39.54,
+      "p95": 40.16,
+      "p99": 40.282,
+      "min": 38.94,
+      "max": 40.313
+     },
+     "prompt_tokens_p50": 28.0,
+     "completion_tokens_p50": 20.0
+    },
+    "foreground_with_4_background": {
+     "calls": 8,
+     "errors": [],
+     "first_token_ms": {
+      "n": 8,
+      "p50": 1140.882,
+      "p95": 1181.615,
+      "p99": 1197.3,
+      "min": 1106.03,
+      "max": 1201.221
+     },
+     "total_s": {
+      "n": 8,
+      "p50": 3.255,
+      "p95": 3.322,
+      "p99": 3.325,
+      "min": 3.037,
+      "max": 3.325
+     },
+     "decode_tokens_per_s": {
+      "n": 8,
+      "p50": 8.944,
+      "p95": 9.679,
+      "p99": 9.87,
+      "min": 8.74,
+      "max": 9.917
+     },
+     "inter_token_ms": {
+      "n": 8,
+      "p50": 111.808,
+      "p95": 113.744,
+      "p99": 114.279,
+      "min": 100.833,
+      "max": 114.412
+     },
+     "prompt_tokens_p50": 28.0,
+     "completion_tokens_p50": 20.0
+    }
+   },
+   "wall_s": 61.29,
+   "server": {
+    "requests": 48,
+    "mean_request_queue_time_ms": 73.76,
+    "mean_request_prefill_time_ms": 961.16,
+    "mean_request_decode_time_ms": 3510.97,
+    "mean_time_to_first_token_ms": 1139.43,
+    "mean_e2e_request_latency_ms": 4650.13,
+    "prompt_tokens": 122751,
+    "prefix_cache_hit_tokens": 2048,
+    "prefix_cache_hit_share": 0.017,
+    "preemptions": 0
+   },
+   "gpu": {
+    "samples": 61,
+    "utilisation_pct": {
+     "n": 61,
+     "p50": 96.0,
+     "p95": 96.0,
+     "p99": 96.0,
+     "min": 71.0,
+     "max": 96.0
+    },
+    "power_w": {
+     "n": 61,
+     "p50": 55.65,
+     "p95": 82.49,
+     "p99": 82.842,
+     "min": 46.58,
+     "max": 82.89
+    },
+    "temperature_c_max": 74.0
+   }
+  },
+  "reasoning": {
+   "result": {
+    "correct": 14,
+    "of": 16,
+    "wrong": [
+     {
+      "question": "Alice is older than Bob. Bob is older than Carol. Dave is younger than Carol. Who is the second youngest of the four?",
+      "expected": "carol",
+      "got": "3"
+     },
+     {
+      "question": "23 November 2026 is a Monday. Which day of the week is 25 December 2026?",
+      "expected": "friday",
+      "got": "5"
+     }
+    ],
+    "total_s": {
+     "n": 16,
+     "p50": 7.007,
+     "p95": 16.555,
+     "p99": 20.602,
+     "min": 5.225,
+     "max": 21.614
+    }
+   },
+   "wall_s": 136.3,
+   "server": {
+    "requests": 16,
+    "mean_request_queue_time_ms": 0.05,
+    "mean_request_prefill_time_ms": 146.48,
+    "mean_request_decode_time_ms": 8341.54,
+    "mean_time_to_first_token_ms": 168.29,
+    "mean_e2e_request_latency_ms": 8509.36,
+    "prompt_tokens": 1069,
+    "prefix_cache_hit_tokens": 0,
+    "prefix_cache_hit_share": 0.0,
+    "preemptions": 0
+   },
+   "gpu": {
+    "samples": 137,
+    "utilisation_pct": {
+     "n": 137,
+     "p50": 96.0,
+     "p95": 96.0,
+     "p99": 96.0,
+     "min": 78.0,
+     "max": 96.0
+    },
+    "power_w": {
+     "n": 137,
+     "p50": 45.98,
+     "p95": 46.52,
+     "p99": 46.735,
+     "min": 45.14,
+     "max": 49.82
+    },
+    "temperature_c_max": 70.0
+   }
+  },
+  "tools": {
+   "result": {
+    "correct": 8,
+    "of": 8,
+    "wrong": []
+   },
+   "wall_s": 5.93,
+   "server": {
+    "requests": 8,
+    "mean_request_queue_time_ms": 0.06,
+    "mean_request_prefill_time_ms": 128.54,
+    "mean_request_decode_time_ms": 582.62,
+    "mean_time_to_first_token_ms": 149.45,
+    "mean_e2e_request_latency_ms": 732.15,
+    "prompt_tokens": 2742,
+    "prefix_cache_hit_tokens": 2240,
+    "prefix_cache_hit_share": 0.817,
+    "preemptions": 0
+   },
+   "gpu": {
+    "samples": 6,
+    "utilisation_pct": {
+     "n": 6,
+     "p50": 96.0,
+     "p95": 96.0,
+     "p99": 96.0,
+     "min": 95.0,
+     "max": 96.0
+    },
+    "power_w": {
+     "n": 6,
+     "p50": 45.665,
+     "p95": 45.948,
+     "p99": 45.95,
+     "min": 41.91,
+     "max": 45.95
+    },
+    "temperature_c_max": 67.0
+   }
+  }
+ }
+}

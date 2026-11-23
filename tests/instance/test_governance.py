@@ -1,5 +1,7 @@
 import json
 
+import sqlite3
+
 import pytest
 
 from neuroscifi.instance import governance, store
@@ -131,6 +133,27 @@ def test_forget_dataset_cascade_with_real_graphs(instance):
     assert governance.forget_dataset(db, ids["train"], T0 + 2)["status"] == "absent"
     with pytest.raises(NotFound):
         governance.forget_dataset(db, 9999, T0)
+
+
+def test_forget_dataset_clears_the_owners_note_also_in_a_restored_copy(instance, tmp_path):
+    """The note is free text about the data ("recorded at Alice's desk"). Forgetting the dataset removed the blob and
+    kept the note, live and in a copy restored from an archive made before the forget (the class of forget_epoch's
+    note)."""
+    import numpy as np
+    from neuroscifi.instance import checkpoints, datasets
+    db, path = instance
+    rng = np.random.default_rng(3)
+    dataset_id = datasets.add(db, "ctx", "train", rng.normal(size=(16, 4)), rng.normal(size=(16, 4)), "observed", T0,
+                              note="recorded at Alice's desk")
+    archive = checkpoints.create(db, path, tmp_path / "cp", T0 + 1)
+    governance.forget_dataset(db, dataset_id, T0 + 2)
+    assert db.execute("SELECT blob, note FROM datasets WHERE id=?", (dataset_id,)).fetchone() == (None, None)
+    checkpoints.restore(db, archive["id"], tmp_path / "restored.sqlite", T0 + 3)
+    copy = sqlite3.connect(tmp_path / "restored.sqlite")
+    try:
+        assert copy.execute("SELECT blob, note FROM datasets WHERE id=?", (dataset_id,)).fetchone() == (None, None)
+    finally:
+        copy.close()
 
 
 def test_forget_dataset_checks_existence_inside_its_transaction(instance, monkeypatch):

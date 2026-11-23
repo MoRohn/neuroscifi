@@ -1,0 +1,5266 @@
+{
+ "benchmark": "memory-retrieval",
+ "version": 1,
+ "label": "embedding",
+ "generated_at": "2026-11-23T17:01:50Z",
+ "environment": {
+  "host_digest": "382a803dcc0d",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "machine": "aarch64",
+  "cpu_count": 20,
+  "python": "3.12.16",
+  "sqlite": "3.53.1",
+  "packages": {
+   "neuroscifi": "0.5.0",
+   "scrapling": "0.5.1",
+   "trafilatura": "2.3.1",
+   "lxml": "6.1.3",
+   "pypdf": "7.1.1",
+   "markdownify": "1.2.4",
+   "playwright": "1.64.1"
+  },
+  "git_commit": "4377403",
+  "git_dirty": true
+ },
+ "facts": 48,
+ "facts_merged_by_the_write_path": [],
+ "semantic_config": {
+  "enabled": true,
+  "candidates": 10,
+  "floor": 0.02,
+  "timeout": 2.0,
+  "rerank_template": "qwen3",
+  "embed_model": "qwen3-embedding-0.6b",
+  "rerank_model": null
+ },
+ "limit": 10,
+ "first_query_ms": 125.2,
+ "summary": {
+  "near": {
+   "queries": 48,
+   "recall_at_1": 0.979,
+   "recall_at_3": 1.0,
+   "mrr": 0.99,
+   "not_found": 0
+  },
+  "para": {
+   "queries": 48,
+   "recall_at_1": 0.938,
+   "recall_at_3": 1.0,
+   "mrr": 0.969,
+   "not_found": 0
+  },
+  "noname": {
+   "queries": 12,
+   "recall_at_1": 1.0,
+   "recall_at_3": 1.0,
+   "mrr": 1.0,
+   "not_found": 0
+  },
+  "topic": {
+   "queries": 12,
+   "all_facts_on_top": 0.917,
+   "recall_of_facts": 0.979,
+   "other_subjects_returned_mean": 6.0
+  },
+  "none": {
+   "queries": 10,
+   "returned_something": 10,
+   "false_positive_rate": 1.0
+  },
+  "all_answerable": {
+   "queries": 108,
+   "recall_at_1": 0.963,
+   "recall_at_3": 1.0,
+   "mrr": 0.981
+  },
+  "query_ms": {
+   "p50": 41.471,
+   "p95": 48.601,
+   "max": 54.048
+  }
+ },
+ "by_half": {
+  "development": {
+   "near": {
+    "queries": 24,
+    "recall_at_1": 1.0,
+    "recall_at_3": 1.0,
+    "mrr": 1.0,
+    "not_found": 0
+   },
+   "para": {
+    "queries": 24,
+    "recall_at_1": 0.958,
+    "recall_at_3": 1.0,
+    "mrr": 0.979,
+    "not_found": 0
+   },
+   "noname": {
+    "queries": 6,
+    "recall_at_1": 1.0,
+    "recall_at_3": 1.0,
+    "mrr": 1.0,
+    "not_found": 0
+   },
+   "topic": {
+    "queries": 6,
+    "all_facts_on_top": 0.833,
+    "recall_of_facts": 0.958,
+    "other_subjects_returned_mean": 6.0
+   },
+   "none": {
+    "queries": 5,
+    "returned_something": 5,
+    "false_positive_rate": 1.0
+   },
+   "all_answerable": {
+    "queries": 54,
+    "recall_at_1": 0.981,
+    "recall_at_3": 1.0,
+    "mrr": 0.991
+   },
+   "query_ms": {
+    "p50": 43.224,
+    "p95": 48.77,
+    "max": 50.37
+   }
+  },
+  "held_out": {
+   "near": {
+    "queries": 24,
+    "recall_at_1": 0.958,
+    "recall_at_3": 1.0,
+    "mrr": 0.979,
+    "not_found": 0
+   },
+   "para": {
+    "queries": 24,
+    "recall_at_1": 0.917,
+    "recall_at_3": 1.0,
+    "mrr": 0.958,
+    "not_found": 0
+   },
+   "noname": {
+    "queries": 6,
+    "recall_at_1": 1.0,
+    "recall_at_3": 1.0,
+    "mrr": 1.0,
+    "not_found": 0
+   },
+   "topic": {
+    "queries": 6,
+    "all_facts_on_top": 1.0,
+    "recall_of_facts": 1.0,
+    "other_subjects_returned_mean": 6.0
+   },
+   "none": {
+    "queries": 5,
+    "returned_something": 5,
+    "false_positive_rate": 1.0
+   },
+   "all_answerable": {
+    "queries": 54,
+    "recall_at_1": 0.944,
+    "recall_at_3": 1.0,
+    "mrr": 0.972
+   },
+   "query_ms": {
+    "p50": 40.5,
+    "p95": 46.683,
+    "max": 54.048
+   }
+  }
+ },
+ "queries": [
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Which ports does Orbix listen on?",
+   "gold": [
+    "orbix.port"
+   ],
+   "ranked": [
+    "orbix.port",
+    "orbix.licence",
+    "orbix.config",
+    "orbix.founder",
+    "kestrel.registry"
+   ],
+   "all": [
+    "orbix.port",
+    "orbix.licence",
+    "orbix.config",
+    "orbix.founder",
+    "kestrel.registry",
+    "fennick.kind",
+    "quill.python",
+    "lumen.imager",
+    "quill.batch",
+    "quill.version"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 20.45,
+   "top_score": 0.869534,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "What TCP socket number does Orbix accept traffic on?",
+   "gold": [
+    "orbix.port"
+   ],
+   "ranked": [
+    "orbix.port",
+    "orbix.licence",
+    "orbix.config",
+    "orbix.founder",
+    "quill.python"
+   ],
+   "all": [
+    "orbix.port",
+    "orbix.licence",
+    "orbix.config",
+    "orbix.founder",
+    "quill.python",
+    "lumen.imager",
+    "quill.batch",
+    "fennick.memory",
+    "fennick.kind",
+    "kestrel.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 22.523,
+   "top_score": 0.775417,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Orbix licence",
+   "gold": [
+    "orbix.licence"
+   ],
+   "ranked": [
+    "orbix.licence",
+    "orbix.port",
+    "orbix.config",
+    "orbix.founder",
+    "kestrel.registry"
+   ],
+   "all": [
+    "orbix.licence",
+    "orbix.port",
+    "orbix.config",
+    "orbix.founder",
+    "kestrel.registry",
+    "fennick.kind",
+    "quill.version",
+    "lumen.imager",
+    "quill.python",
+    "lumen.duration"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 24.994,
+   "top_score": 0.831092,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Under what legal terms can Orbix be redistributed?",
+   "gold": [
+    "orbix.licence"
+   ],
+   "ranked": [
+    "orbix.licence",
+    "orbix.config",
+    "orbix.port",
+    "orbix.founder",
+    "fennick.kind"
+   ],
+   "all": [
+    "orbix.licence",
+    "orbix.config",
+    "orbix.port",
+    "orbix.founder",
+    "fennick.kind",
+    "kestrel.registry",
+    "kestrel.memory",
+    "lumen.imager",
+    "kestrel.backend",
+    "fennick.cadence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 28.985,
+   "top_score": 0.691206,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Who started the Orbix project?",
+   "gold": [
+    "orbix.founder"
+   ],
+   "ranked": [
+    "orbix.founder",
+    "orbix.licence",
+    "orbix.port",
+    "orbix.config",
+    "fennick.kind"
+   ],
+   "all": [
+    "orbix.founder",
+    "orbix.licence",
+    "orbix.port",
+    "orbix.config",
+    "fennick.kind",
+    "lumen.duration",
+    "kestrel.registry",
+    "kestrel.creator",
+    "lumen.launch",
+    "quill.trellis"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 33.068,
+   "top_score": 0.85412,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Who is the original author of Orbix?",
+   "gold": [
+    "orbix.founder"
+   ],
+   "ranked": [
+    "orbix.founder",
+    "orbix.licence",
+    "orbix.config",
+    "orbix.port",
+    "solvang.book"
+   ],
+   "all": [
+    "orbix.founder",
+    "orbix.licence",
+    "orbix.config",
+    "orbix.port",
+    "solvang.book",
+    "fennick.kind",
+    "kestrel.registry",
+    "kestrel.creator",
+    "lumen.altitude",
+    "quill.version"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.059,
+   "top_score": 0.6924,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Orbix configuration file name",
+   "gold": [
+    "orbix.config"
+   ],
+   "ranked": [
+    "orbix.config",
+    "orbix.port",
+    "orbix.licence",
+    "orbix.founder",
+    "fennick.kind"
+   ],
+   "all": [
+    "orbix.config",
+    "orbix.port",
+    "orbix.licence",
+    "orbix.founder",
+    "fennick.kind",
+    "kestrel.registry",
+    "fennick.cache",
+    "quill.version",
+    "fennick.memory",
+    "lumen.duration"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.863,
+   "top_score": 0.798905,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Where does Orbix keep its settings?",
+   "gold": [
+    "orbix.config"
+   ],
+   "ranked": [
+    "orbix.config",
+    "orbix.port",
+    "orbix.licence",
+    "orbix.founder",
+    "fennick.kind"
+   ],
+   "all": [
+    "orbix.config",
+    "orbix.port",
+    "orbix.licence",
+    "orbix.founder",
+    "fennick.kind",
+    "kestrel.memory",
+    "fennick.memory",
+    "kestrel.registry",
+    "quill.version",
+    "quill.batch"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 50.37,
+   "top_score": 0.728898,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "What kind of tool is Fennick?",
+   "gold": [
+    "fennick.kind"
+   ],
+   "ranked": [
+    "fennick.kind",
+    "fennick.cadence",
+    "fennick.cache",
+    "fennick.memory",
+    "kestrel.creator"
+   ],
+   "all": [
+    "fennick.kind",
+    "fennick.cadence",
+    "fennick.cache",
+    "fennick.memory",
+    "kestrel.creator",
+    "quill.version",
+    "quill.python",
+    "kestrel.memory",
+    "kestrel.registry",
+    "kestrel.backend"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 49.268,
+   "top_score": 0.716652,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "What is Fennick used for?",
+   "gold": [
+    "fennick.kind"
+   ],
+   "ranked": [
+    "fennick.kind",
+    "fennick.cadence",
+    "fennick.cache",
+    "fennick.memory",
+    "calder.cause"
+   ],
+   "all": [
+    "fennick.kind",
+    "fennick.cadence",
+    "fennick.cache",
+    "fennick.memory",
+    "calder.cause",
+    "varnel.flood",
+    "quill.python",
+    "varnel.mouth",
+    "quill.version",
+    "calder.diagnosis"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 49.374,
+   "top_score": 0.569541,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "How does Fennick cache builds?",
+   "gold": [
+    "fennick.cache"
+   ],
+   "ranked": [
+    "fennick.cache",
+    "fennick.kind",
+    "fennick.memory",
+    "fennick.cadence",
+    "kestrel.memory"
+   ],
+   "all": [
+    "fennick.cache",
+    "fennick.kind",
+    "fennick.memory",
+    "fennick.cadence",
+    "kestrel.memory",
+    "kestrel.backend",
+    "quill.batch",
+    "orbix.config",
+    "kestrel.registry",
+    "quill.version"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 48.597,
+   "top_score": 0.882639,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Where does Fennick keep the artifacts it has already compiled?",
+   "gold": [
+    "fennick.cache"
+   ],
+   "ranked": [
+    "fennick.kind",
+    "fennick.cache",
+    "fennick.cadence",
+    "fennick.memory",
+    "hollin.hq"
+   ],
+   "all": [
+    "fennick.kind",
+    "fennick.cache",
+    "fennick.cadence",
+    "fennick.memory",
+    "hollin.hq",
+    "kestrel.memory",
+    "varnel.mouth",
+    "lighthouse.steps",
+    "kestrel.backend",
+    "orbix.config"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 2,
+   "ms": 48.275,
+   "top_score": 0.63814,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Fennick release schedule",
+   "gold": [
+    "fennick.cadence"
+   ],
+   "ranked": [
+    "fennick.cadence",
+    "fennick.kind",
+    "fennick.cache",
+    "fennick.memory",
+    "quill.batch"
+   ],
+   "all": [
+    "fennick.cadence",
+    "fennick.kind",
+    "fennick.cache",
+    "fennick.memory",
+    "quill.batch",
+    "quill.python",
+    "lumen.duration",
+    "quill.version",
+    "varnel.flood",
+    "orbix.licence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 48.811,
+   "top_score": 0.736243,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "How often does a new Fennick version come out?",
+   "gold": [
+    "fennick.cadence"
+   ],
+   "ranked": [
+    "fennick.cadence",
+    "fennick.kind",
+    "fennick.cache",
+    "fennick.memory",
+    "quill.version"
+   ],
+   "all": [
+    "fennick.cadence",
+    "fennick.kind",
+    "fennick.cache",
+    "fennick.memory",
+    "quill.version",
+    "quill.python",
+    "varnel.flood",
+    "quill.trellis",
+    "quill.batch",
+    "lumen.duration"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 48.604,
+   "top_score": 0.800303,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Fennick memory requirements",
+   "gold": [
+    "fennick.memory"
+   ],
+   "ranked": [
+    "fennick.memory",
+    "fennick.cache",
+    "fennick.kind",
+    "fennick.cadence",
+    "kestrel.memory"
+   ],
+   "all": [
+    "fennick.memory",
+    "fennick.cache",
+    "fennick.kind",
+    "fennick.cadence",
+    "kestrel.memory",
+    "quill.batch",
+    "quill.python",
+    "lumen.duration",
+    "calder.onset",
+    "quill.version"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 47.455,
+   "top_score": 0.716828,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "How much RAM does Fennick need?",
+   "gold": [
+    "fennick.memory"
+   ],
+   "ranked": [
+    "fennick.memory",
+    "fennick.kind",
+    "fennick.cadence",
+    "fennick.cache",
+    "quill.batch"
+   ],
+   "all": [
+    "fennick.memory",
+    "fennick.kind",
+    "fennick.cadence",
+    "fennick.cache",
+    "quill.batch",
+    "kestrel.memory",
+    "quill.python",
+    "quill.version",
+    "orbix.port",
+    "lumen.duration"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 47.966,
+   "top_score": 0.762482,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Kestrel programming language creator",
+   "gold": [
+    "kestrel.creator"
+   ],
+   "ranked": [
+    "kestrel.creator",
+    "kestrel.backend",
+    "kestrel.registry",
+    "kestrel.memory",
+    "fennick.kind"
+   ],
+   "all": [
+    "kestrel.creator",
+    "kestrel.backend",
+    "kestrel.registry",
+    "kestrel.memory",
+    "fennick.kind",
+    "quill.version",
+    "quill.python",
+    "quill.trellis",
+    "orbix.licence",
+    "orbix.founder"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.312,
+   "top_score": 0.794886,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Who designed Kestrel and when?",
+   "gold": [
+    "kestrel.creator"
+   ],
+   "ranked": [
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.backend",
+    "kestrel.memory",
+    "hollin.founded"
+   ],
+   "all": [
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.backend",
+    "kestrel.memory",
+    "hollin.founded",
+    "dam.completed",
+    "orbix.founder",
+    "quill.trellis",
+    "railway.closed",
+    "quill.version"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 38.346,
+   "top_score": 0.596608,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Does the Kestrel compiler use LLVM?",
+   "gold": [
+    "kestrel.backend"
+   ],
+   "ranked": [
+    "kestrel.backend",
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.memory",
+    "fennick.kind"
+   ],
+   "all": [
+    "kestrel.backend",
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.memory",
+    "fennick.kind",
+    "quill.trellis",
+    "quill.python",
+    "quill.version",
+    "fennick.cache",
+    "orbix.licence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.854,
+   "top_score": 0.881687,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "What does Kestrel source code get translated into?",
+   "gold": [
+    "kestrel.backend"
+   ],
+   "ranked": [
+    "kestrel.backend",
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.memory",
+    "quill.version"
+   ],
+   "all": [
+    "kestrel.backend",
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.memory",
+    "quill.version",
+    "fennick.kind",
+    "quill.trellis",
+    "quill.python",
+    "orbix.licence",
+    "fennick.cache"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.988,
+   "top_score": 0.712363,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Kestrel memory management",
+   "gold": [
+    "kestrel.memory"
+   ],
+   "ranked": [
+    "kestrel.memory",
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.backend",
+    "fennick.memory"
+   ],
+   "all": [
+    "kestrel.memory",
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.backend",
+    "fennick.memory",
+    "quill.batch",
+    "fennick.kind",
+    "quill.version",
+    "fennick.cache",
+    "quill.trellis"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 37.875,
+   "top_score": 0.848363,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Does Kestrel have a GC?",
+   "gold": [
+    "kestrel.memory"
+   ],
+   "ranked": [
+    "kestrel.memory",
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.backend",
+    "quill.trellis"
+   ],
+   "all": [
+    "kestrel.memory",
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.backend",
+    "quill.trellis",
+    "quill.python",
+    "quill.version",
+    "fennick.kind",
+    "calder.diagnosis",
+    "quill.batch"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 39.369,
+   "top_score": 0.686943,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Name of the Kestrel package registry",
+   "gold": [
+    "kestrel.registry"
+   ],
+   "ranked": [
+    "kestrel.registry",
+    "kestrel.creator",
+    "kestrel.backend",
+    "fennick.kind",
+    "kestrel.memory"
+   ],
+   "all": [
+    "kestrel.registry",
+    "kestrel.creator",
+    "kestrel.backend",
+    "fennick.kind",
+    "kestrel.memory",
+    "quill.version",
+    "orbix.config",
+    "quill.trellis",
+    "orbix.licence",
+    "varnel.city"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 36.13,
+   "top_score": 0.750735,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Where are Kestrel libraries published?",
+   "gold": [
+    "kestrel.registry"
+   ],
+   "ranked": [
+    "kestrel.registry",
+    "kestrel.creator",
+    "kestrel.backend",
+    "quill.version",
+    "kestrel.memory"
+   ],
+   "all": [
+    "kestrel.registry",
+    "kestrel.creator",
+    "kestrel.backend",
+    "quill.version",
+    "kestrel.memory",
+    "orbix.licence",
+    "quill.trellis",
+    "quill.python",
+    "fennick.kind",
+    "quill.batch"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.196,
+   "top_score": 0.658883,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "How tall is the Brightwater dam?",
+   "gold": [
+    "dam.height"
+   ],
+   "ranked": [
+    "dam.height",
+    "dam.completed",
+    "dam.power",
+    "dam.reservoir",
+    "varnel.city"
+   ],
+   "all": [
+    "dam.height",
+    "dam.completed",
+    "dam.power",
+    "dam.reservoir",
+    "varnel.city",
+    "lighthouse.steps",
+    "varnel.length",
+    "lighthouse.range",
+    "lumen.altitude",
+    "varnel.flood"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 42.183,
+   "top_score": 0.78204,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Brightwater dam height",
+   "gold": [
+    "dam.height"
+   ],
+   "ranked": [
+    "dam.height",
+    "dam.completed",
+    "dam.reservoir",
+    "dam.power",
+    "varnel.city"
+   ],
+   "all": [
+    "dam.height",
+    "dam.completed",
+    "dam.reservoir",
+    "dam.power",
+    "varnel.city",
+    "varnel.flood",
+    "railway.gradient",
+    "varnel.mouth",
+    "lighthouse.steps",
+    "railway.gauge"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 37.599,
+   "top_score": 0.709127,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "When was construction of the Brightwater dam completed?",
+   "gold": [
+    "dam.completed"
+   ],
+   "ranked": [
+    "dam.completed",
+    "dam.power",
+    "dam.height",
+    "dam.reservoir",
+    "railway.closed"
+   ],
+   "all": [
+    "dam.completed",
+    "dam.power",
+    "dam.height",
+    "dam.reservoir",
+    "railway.closed",
+    "lighthouse.automated",
+    "varnel.flood",
+    "lighthouse.built",
+    "orbix.founder",
+    "varnel.city"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.937,
+   "top_score": 0.845271,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "In what year was the Brightwater dam finished?",
+   "gold": [
+    "dam.completed"
+   ],
+   "ranked": [
+    "dam.completed",
+    "dam.power",
+    "dam.height",
+    "dam.reservoir",
+    "railway.closed"
+   ],
+   "all": [
+    "dam.completed",
+    "dam.power",
+    "dam.height",
+    "dam.reservoir",
+    "railway.closed",
+    "varnel.flood",
+    "lighthouse.automated",
+    "varnel.city",
+    "varnel.mouth",
+    "lighthouse.built"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 46.173,
+   "top_score": 0.857753,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "How much water does the Brightwater dam reservoir hold?",
+   "gold": [
+    "dam.reservoir"
+   ],
+   "ranked": [
+    "dam.reservoir",
+    "dam.power",
+    "dam.completed",
+    "dam.height",
+    "varnel.city"
+   ],
+   "all": [
+    "dam.reservoir",
+    "dam.power",
+    "dam.completed",
+    "dam.height",
+    "varnel.city",
+    "varnel.flood",
+    "quill.batch",
+    "varnel.length",
+    "kestrel.memory",
+    "fennick.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 46.417,
+   "top_score": 0.819371,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "What is the capacity of the lake formed by the Brightwater dam?",
+   "gold": [
+    "dam.reservoir"
+   ],
+   "ranked": [
+    "dam.reservoir",
+    "dam.power",
+    "dam.completed",
+    "dam.height",
+    "varnel.city"
+   ],
+   "all": [
+    "dam.reservoir",
+    "dam.power",
+    "dam.completed",
+    "dam.height",
+    "varnel.city",
+    "varnel.mouth",
+    "lighthouse.range",
+    "varnel.flood",
+    "lighthouse.steps",
+    "varnel.length"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.484,
+   "top_score": 0.777766,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "How much electricity does the Brightwater dam generate?",
+   "gold": [
+    "dam.power"
+   ],
+   "ranked": [
+    "dam.power",
+    "dam.reservoir",
+    "dam.completed",
+    "dam.height",
+    "varnel.city"
+   ],
+   "all": [
+    "dam.power",
+    "dam.reservoir",
+    "dam.completed",
+    "dam.height",
+    "varnel.city",
+    "varnel.flood",
+    "lighthouse.steps",
+    "lighthouse.range",
+    "quill.batch",
+    "railway.gauge"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 39.528,
+   "top_score": 0.850917,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Brightwater dam power output",
+   "gold": [
+    "dam.power"
+   ],
+   "ranked": [
+    "dam.power",
+    "dam.completed",
+    "dam.reservoir",
+    "dam.height",
+    "varnel.city"
+   ],
+   "all": [
+    "dam.power",
+    "dam.completed",
+    "dam.reservoir",
+    "dam.height",
+    "varnel.city",
+    "varnel.flood",
+    "railway.gauge",
+    "quill.batch",
+    "varnel.mouth",
+    "quill.version"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.493,
+   "top_score": 0.727231,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Who built the Tolvane Lighthouse?",
+   "gold": [
+    "lighthouse.built"
+   ],
+   "ranked": [
+    "lighthouse.built",
+    "lighthouse.range",
+    "lighthouse.automated",
+    "lighthouse.steps",
+    "solvang.born"
+   ],
+   "all": [
+    "lighthouse.built",
+    "lighthouse.range",
+    "lighthouse.automated",
+    "lighthouse.steps",
+    "solvang.born",
+    "hollin.founded",
+    "varnel.city",
+    "dam.completed",
+    "solvang.group",
+    "hollin.hq"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.612,
+   "top_score": 0.788328,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "When was the Tolvane Lighthouse constructed?",
+   "gold": [
+    "lighthouse.built"
+   ],
+   "ranked": [
+    "lighthouse.built",
+    "lighthouse.automated",
+    "lighthouse.range",
+    "lighthouse.steps",
+    "dam.completed"
+   ],
+   "all": [
+    "lighthouse.built",
+    "lighthouse.automated",
+    "lighthouse.range",
+    "lighthouse.steps",
+    "dam.completed",
+    "hollin.founded",
+    "solvang.born",
+    "varnel.city",
+    "lumen.launch",
+    "dam.height"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 42.791,
+   "top_score": 0.830752,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "From how many nautical miles is the Tolvane Lighthouse lamp visible?",
+   "gold": [
+    "lighthouse.range"
+   ],
+   "ranked": [
+    "lighthouse.range",
+    "lighthouse.steps",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "lumen.altitude"
+   ],
+   "all": [
+    "lighthouse.range",
+    "lighthouse.steps",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "lumen.altitude",
+    "varnel.city",
+    "lumen.duration",
+    "lumen.imager",
+    "varnel.mouth",
+    "dam.height"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 42.449,
+   "top_score": 0.912933,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "How far out to sea can the Tolvane Lighthouse beam be seen?",
+   "gold": [
+    "lighthouse.range"
+   ],
+   "ranked": [
+    "lighthouse.range",
+    "lighthouse.steps",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "lumen.altitude"
+   ],
+   "all": [
+    "lighthouse.range",
+    "lighthouse.steps",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "lumen.altitude",
+    "lumen.duration",
+    "varnel.city",
+    "varnel.mouth",
+    "lumen.imager",
+    "dam.height"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 35.765,
+   "top_score": 0.833158,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "When was the Tolvane Lighthouse automated?",
+   "gold": [
+    "lighthouse.automated"
+   ],
+   "ranked": [
+    "lighthouse.automated",
+    "lighthouse.built",
+    "lighthouse.range",
+    "lighthouse.steps",
+    "dam.completed"
+   ],
+   "all": [
+    "lighthouse.automated",
+    "lighthouse.built",
+    "lighthouse.range",
+    "lighthouse.steps",
+    "dam.completed",
+    "railway.closed",
+    "hollin.founded",
+    "varnel.city",
+    "lumen.duration",
+    "lumen.launch"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 42.201,
+   "top_score": 0.886313,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Does anyone still staff the Tolvane Lighthouse?",
+   "gold": [
+    "lighthouse.automated"
+   ],
+   "ranked": [
+    "lighthouse.automated",
+    "lighthouse.range",
+    "lighthouse.built",
+    "lighthouse.steps",
+    "solvang.group"
+   ],
+   "all": [
+    "lighthouse.automated",
+    "lighthouse.range",
+    "lighthouse.built",
+    "lighthouse.steps",
+    "solvang.group",
+    "lumen.duration",
+    "hollin.hq",
+    "hollin.staff",
+    "varnel.city",
+    "fennick.cadence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 36.976,
+   "top_score": 0.678959,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "How many steps does the Tolvane Lighthouse have?",
+   "gold": [
+    "lighthouse.steps"
+   ],
+   "ranked": [
+    "lighthouse.steps",
+    "lighthouse.range",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "dam.height"
+   ],
+   "all": [
+    "lighthouse.steps",
+    "lighthouse.range",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "dam.height",
+    "varnel.city",
+    "lumen.altitude",
+    "lumen.duration",
+    "dam.completed",
+    "railway.gradient"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 45.677,
+   "top_score": 0.832876,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "How long is the staircase inside the Tolvane Lighthouse?",
+   "gold": [
+    "lighthouse.steps"
+   ],
+   "ranked": [
+    "lighthouse.steps",
+    "lighthouse.range",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "dam.height"
+   ],
+   "all": [
+    "lighthouse.steps",
+    "lighthouse.range",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "dam.height",
+    "lumen.duration",
+    "dam.completed",
+    "lumen.altitude",
+    "varnel.length",
+    "varnel.city"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 36.596,
+   "top_score": 0.745657,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "How many kilometres does the Marrow Valley railway run?",
+   "gold": [
+    "railway.route"
+   ],
+   "ranked": [
+    "railway.route",
+    "railway.gauge",
+    "railway.gradient",
+    "railway.closed",
+    "varnel.length"
+   ],
+   "all": [
+    "railway.route",
+    "railway.gauge",
+    "railway.gradient",
+    "railway.closed",
+    "varnel.length",
+    "varnel.city",
+    "lighthouse.steps",
+    "lumen.altitude",
+    "varnel.flood",
+    "lighthouse.range"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.824,
+   "top_score": 0.776436,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "Which towns does the Marrow Valley railway connect?",
+   "gold": [
+    "railway.route"
+   ],
+   "ranked": [
+    "railway.route",
+    "railway.gauge",
+    "railway.closed",
+    "railway.gradient",
+    "varnel.city"
+   ],
+   "all": [
+    "railway.route",
+    "railway.gauge",
+    "railway.closed",
+    "railway.gradient",
+    "varnel.city",
+    "varnel.flood",
+    "varnel.mouth",
+    "varnel.length",
+    "lighthouse.steps",
+    "kestrel.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 42.871,
+   "top_score": 0.691818,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "When did passenger services on the Marrow Valley railway end?",
+   "gold": [
+    "railway.closed"
+   ],
+   "ranked": [
+    "railway.closed",
+    "railway.gauge",
+    "railway.route",
+    "railway.gradient",
+    "lighthouse.automated"
+   ],
+   "all": [
+    "railway.closed",
+    "railway.gauge",
+    "railway.route",
+    "railway.gradient",
+    "lighthouse.automated",
+    "dam.completed",
+    "varnel.flood",
+    "hollin.founded",
+    "quill.trellis",
+    "varnel.mouth"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 42.539,
+   "top_score": 0.915929,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "When did the Marrow Valley railway stop carrying travellers?",
+   "gold": [
+    "railway.closed"
+   ],
+   "ranked": [
+    "railway.closed",
+    "railway.gauge",
+    "railway.route",
+    "railway.gradient",
+    "lighthouse.automated"
+   ],
+   "all": [
+    "railway.closed",
+    "railway.gauge",
+    "railway.route",
+    "railway.gradient",
+    "lighthouse.automated",
+    "dam.completed",
+    "varnel.flood",
+    "quill.trellis",
+    "varnel.mouth",
+    "varnel.city"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 42.868,
+   "top_score": 0.850723,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Marrow Valley railway gauge",
+   "gold": [
+    "railway.gauge"
+   ],
+   "ranked": [
+    "railway.gauge",
+    "railway.gradient",
+    "railway.route",
+    "railway.closed",
+    "varnel.city"
+   ],
+   "all": [
+    "railway.gauge",
+    "railway.gradient",
+    "railway.route",
+    "railway.closed",
+    "varnel.city",
+    "varnel.flood",
+    "quill.batch",
+    "kestrel.memory",
+    "dam.completed",
+    "dam.height"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 37.285,
+   "top_score": 0.772203,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "How wide is the track of the Marrow Valley railway?",
+   "gold": [
+    "railway.gauge"
+   ],
+   "ranked": [
+    "railway.gauge",
+    "railway.route",
+    "railway.gradient",
+    "railway.closed",
+    "varnel.length"
+   ],
+   "all": [
+    "railway.gauge",
+    "railway.route",
+    "railway.gradient",
+    "railway.closed",
+    "varnel.length",
+    "varnel.flood",
+    "varnel.city",
+    "dam.height",
+    "lighthouse.range",
+    "varnel.mouth"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 36.815,
+   "top_score": 0.764017,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "development",
+   "query": "Steepest gradient of the Marrow Valley railway",
+   "gold": [
+    "railway.gradient"
+   ],
+   "ranked": [
+    "railway.gradient",
+    "railway.gauge",
+    "railway.route",
+    "railway.closed",
+    "varnel.city"
+   ],
+   "all": [
+    "railway.gradient",
+    "railway.gauge",
+    "railway.route",
+    "railway.closed",
+    "varnel.city",
+    "dam.height",
+    "kestrel.memory",
+    "fennick.kind",
+    "quill.version",
+    "lighthouse.steps"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 31.02,
+   "top_score": 0.825896,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "development",
+   "query": "How sharp is the climb on the Marrow Valley railway?",
+   "gold": [
+    "railway.gradient"
+   ],
+   "ranked": [
+    "railway.gradient",
+    "railway.gauge",
+    "railway.route",
+    "railway.closed",
+    "lighthouse.steps"
+   ],
+   "all": [
+    "railway.gradient",
+    "railway.gauge",
+    "railway.route",
+    "railway.closed",
+    "lighthouse.steps",
+    "dam.height",
+    "varnel.flood",
+    "varnel.city",
+    "lighthouse.range",
+    "lumen.altitude"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 36.537,
+   "top_score": 0.777595,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Which medal did Imre Solvang receive?",
+   "gold": [
+    "solvang.medal"
+   ],
+   "ranked": [
+    "solvang.medal",
+    "solvang.born",
+    "solvang.group",
+    "solvang.book",
+    "calder.cause"
+   ],
+   "all": [
+    "solvang.medal",
+    "solvang.born",
+    "solvang.group",
+    "solvang.book",
+    "calder.cause",
+    "calder.diagnosis",
+    "lighthouse.steps",
+    "varnel.city",
+    "lighthouse.automated",
+    "lighthouse.built"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 48.697,
+   "top_score": 0.734807,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "What prize has Imre Solvang won?",
+   "gold": [
+    "solvang.medal"
+   ],
+   "ranked": [
+    "solvang.medal",
+    "solvang.group",
+    "solvang.born",
+    "solvang.book",
+    "calder.diagnosis"
+   ],
+   "all": [
+    "solvang.medal",
+    "solvang.group",
+    "solvang.born",
+    "solvang.book",
+    "calder.diagnosis",
+    "calder.cause",
+    "varnel.city",
+    "lighthouse.automated",
+    "lumen.imager",
+    "hollin.hq"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 54.048,
+   "top_score": 0.729019,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Where was Imre Solvang born?",
+   "gold": [
+    "solvang.born"
+   ],
+   "ranked": [
+    "solvang.born",
+    "solvang.group",
+    "solvang.medal",
+    "solvang.book",
+    "lighthouse.built"
+   ],
+   "all": [
+    "solvang.born",
+    "solvang.group",
+    "solvang.medal",
+    "solvang.book",
+    "lighthouse.built",
+    "hollin.hq",
+    "calder.cause",
+    "lighthouse.steps",
+    "varnel.city",
+    "lighthouse.range"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.973,
+   "top_score": 0.892388,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "Imre Solvang birthplace",
+   "gold": [
+    "solvang.born"
+   ],
+   "ranked": [
+    "solvang.born",
+    "solvang.group",
+    "solvang.medal",
+    "solvang.book",
+    "varnel.city"
+   ],
+   "all": [
+    "solvang.born",
+    "solvang.group",
+    "solvang.medal",
+    "solvang.book",
+    "varnel.city",
+    "calder.onset",
+    "calder.diagnosis",
+    "calder.cause",
+    "fennick.kind",
+    "varnel.flood"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.764,
+   "top_score": 0.801053,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Which group does Imre Solvang lead?",
+   "gold": [
+    "solvang.group"
+   ],
+   "ranked": [
+    "solvang.group",
+    "solvang.born",
+    "solvang.medal",
+    "solvang.book",
+    "lumen.imager"
+   ],
+   "all": [
+    "solvang.group",
+    "solvang.born",
+    "solvang.medal",
+    "solvang.book",
+    "lumen.imager",
+    "hollin.hq",
+    "orbix.founder",
+    "varnel.city",
+    "calder.cause",
+    "lighthouse.steps"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 30.186,
+   "top_score": 0.810178,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "Where does Imre Solvang work?",
+   "gold": [
+    "solvang.group"
+   ],
+   "ranked": [
+    "solvang.group",
+    "solvang.born",
+    "solvang.medal",
+    "solvang.book",
+    "hollin.hq"
+   ],
+   "all": [
+    "solvang.group",
+    "solvang.born",
+    "solvang.medal",
+    "solvang.book",
+    "hollin.hq",
+    "hollin.staff",
+    "varnel.city",
+    "lumen.imager",
+    "lighthouse.steps",
+    "calder.diagnosis"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 30.237,
+   "top_score": 0.722659,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Which textbook did Imre Solvang write?",
+   "gold": [
+    "solvang.book"
+   ],
+   "ranked": [
+    "solvang.book",
+    "solvang.born",
+    "solvang.group",
+    "solvang.medal",
+    "fennick.kind"
+   ],
+   "all": [
+    "solvang.book",
+    "solvang.born",
+    "solvang.group",
+    "solvang.medal",
+    "fennick.kind",
+    "orbix.config",
+    "lighthouse.built",
+    "orbix.founder",
+    "calder.cause",
+    "lumen.imager"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 29.618,
+   "top_score": 0.771576,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "Books authored by Imre Solvang",
+   "gold": [
+    "solvang.book"
+   ],
+   "ranked": [
+    "solvang.book",
+    "solvang.group",
+    "solvang.medal",
+    "solvang.born",
+    "fennick.kind"
+   ],
+   "all": [
+    "solvang.book",
+    "solvang.group",
+    "solvang.medal",
+    "solvang.born",
+    "fennick.kind",
+    "calder.diagnosis",
+    "lumen.imager",
+    "kestrel.memory",
+    "orbix.config",
+    "orbix.licence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 25.677,
+   "top_score": 0.682695,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "What causes Calder syndrome?",
+   "gold": [
+    "calder.cause"
+   ],
+   "ranked": [
+    "calder.cause",
+    "calder.onset",
+    "calder.diagnosis",
+    "calder.prevalence",
+    "varnel.flood"
+   ],
+   "all": [
+    "calder.cause",
+    "calder.onset",
+    "calder.diagnosis",
+    "calder.prevalence",
+    "varnel.flood",
+    "varnel.city",
+    "lumen.imager",
+    "solvang.group",
+    "dam.height",
+    "kestrel.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 31.882,
+   "top_score": 0.795294,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "Why do people get Calder syndrome?",
+   "gold": [
+    "calder.cause"
+   ],
+   "ranked": [
+    "calder.onset",
+    "calder.cause",
+    "calder.diagnosis",
+    "calder.prevalence",
+    "varnel.flood"
+   ],
+   "all": [
+    "calder.onset",
+    "calder.cause",
+    "calder.diagnosis",
+    "calder.prevalence",
+    "varnel.flood",
+    "lighthouse.steps",
+    "kestrel.memory",
+    "varnel.city",
+    "lumen.imager",
+    "solvang.group"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 2,
+   "ms": 26.596,
+   "top_score": 0.763194,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "How many newborns does Calder syndrome affect?",
+   "gold": [
+    "calder.prevalence"
+   ],
+   "ranked": [
+    "calder.prevalence",
+    "calder.onset",
+    "calder.cause",
+    "calder.diagnosis",
+    "lumen.imager"
+   ],
+   "all": [
+    "calder.prevalence",
+    "calder.onset",
+    "calder.cause",
+    "calder.diagnosis",
+    "lumen.imager",
+    "varnel.city",
+    "lighthouse.steps",
+    "railway.gauge",
+    "varnel.flood",
+    "fennick.kind"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 15.584,
+   "top_score": 0.867311,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "How common is Calder syndrome?",
+   "gold": [
+    "calder.prevalence"
+   ],
+   "ranked": [
+    "calder.onset",
+    "calder.prevalence",
+    "calder.diagnosis",
+    "calder.cause",
+    "varnel.flood"
+   ],
+   "all": [
+    "calder.onset",
+    "calder.prevalence",
+    "calder.diagnosis",
+    "calder.cause",
+    "varnel.flood",
+    "railway.gradient",
+    "railway.gauge",
+    "lumen.imager",
+    "varnel.city",
+    "kestrel.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 2,
+   "ms": 16.369,
+   "top_score": 0.802889,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "When do the symptoms of Calder syndrome appear?",
+   "gold": [
+    "calder.onset"
+   ],
+   "ranked": [
+    "calder.onset",
+    "calder.diagnosis",
+    "calder.prevalence",
+    "calder.cause",
+    "varnel.flood"
+   ],
+   "all": [
+    "calder.onset",
+    "calder.diagnosis",
+    "calder.prevalence",
+    "calder.cause",
+    "varnel.flood",
+    "lumen.imager",
+    "lighthouse.steps",
+    "lumen.duration",
+    "varnel.city",
+    "kestrel.creator"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 18.864,
+   "top_score": 0.890969,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "How early in life does Calder syndrome become noticeable?",
+   "gold": [
+    "calder.onset"
+   ],
+   "ranked": [
+    "calder.onset",
+    "calder.prevalence",
+    "calder.diagnosis",
+    "calder.cause",
+    "varnel.flood"
+   ],
+   "all": [
+    "calder.onset",
+    "calder.prevalence",
+    "calder.diagnosis",
+    "calder.cause",
+    "varnel.flood",
+    "lumen.imager",
+    "dam.completed",
+    "railway.gauge",
+    "kestrel.creator",
+    "railway.gradient"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 18.634,
+   "top_score": 0.898222,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "How is Calder syndrome diagnosed?",
+   "gold": [
+    "calder.diagnosis"
+   ],
+   "ranked": [
+    "calder.diagnosis",
+    "calder.onset",
+    "calder.cause",
+    "calder.prevalence",
+    "lumen.imager"
+   ],
+   "all": [
+    "calder.diagnosis",
+    "calder.onset",
+    "calder.cause",
+    "calder.prevalence",
+    "lumen.imager",
+    "solvang.group",
+    "lighthouse.steps",
+    "railway.gauge",
+    "varnel.city",
+    "kestrel.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 15.947,
+   "top_score": 0.834582,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "How do doctors confirm Calder syndrome?",
+   "gold": [
+    "calder.diagnosis"
+   ],
+   "ranked": [
+    "calder.diagnosis",
+    "calder.onset",
+    "calder.cause",
+    "calder.prevalence",
+    "lumen.imager"
+   ],
+   "all": [
+    "calder.diagnosis",
+    "calder.onset",
+    "calder.cause",
+    "calder.prevalence",
+    "lumen.imager",
+    "solvang.group",
+    "solvang.medal",
+    "lighthouse.steps",
+    "varnel.flood",
+    "kestrel.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 16.932,
+   "top_score": 0.79865,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Lumen-7 launch date",
+   "gold": [
+    "lumen.launch"
+   ],
+   "ranked": [
+    "lumen.duration",
+    "lumen.launch",
+    "lumen.altitude",
+    "lumen.imager",
+    "orbix.licence"
+   ],
+   "all": [
+    "lumen.duration",
+    "lumen.launch",
+    "lumen.altitude",
+    "lumen.imager",
+    "orbix.licence",
+    "quill.python",
+    "quill.version",
+    "lighthouse.range",
+    "fennick.kind",
+    "kestrel.creator"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 2,
+   "ms": 19.263,
+   "top_score": 0.698917,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "When did Lumen-7 lift off?",
+   "gold": [
+    "lumen.launch"
+   ],
+   "ranked": [
+    "lumen.launch",
+    "lumen.altitude",
+    "lumen.duration",
+    "lumen.imager",
+    "lighthouse.automated"
+   ],
+   "all": [
+    "lumen.launch",
+    "lumen.altitude",
+    "lumen.duration",
+    "lumen.imager",
+    "lighthouse.automated",
+    "railway.closed",
+    "dam.completed",
+    "lighthouse.range",
+    "quill.trellis",
+    "orbix.founder"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 21.294,
+   "top_score": 0.718333,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Lumen-7 orbital altitude",
+   "gold": [
+    "lumen.altitude"
+   ],
+   "ranked": [
+    "lumen.altitude",
+    "lumen.duration",
+    "lumen.imager",
+    "lumen.launch",
+    "lighthouse.range"
+   ],
+   "all": [
+    "lumen.altitude",
+    "lumen.duration",
+    "lumen.imager",
+    "lumen.launch",
+    "lighthouse.range",
+    "orbix.licence",
+    "orbix.port",
+    "quill.python",
+    "fennick.kind",
+    "kestrel.registry"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 17.096,
+   "top_score": 0.79447,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "How high above the Earth does Lumen-7 fly?",
+   "gold": [
+    "lumen.altitude"
+   ],
+   "ranked": [
+    "lumen.altitude",
+    "lumen.launch",
+    "lumen.duration",
+    "lumen.imager",
+    "lighthouse.range"
+   ],
+   "all": [
+    "lumen.altitude",
+    "lumen.launch",
+    "lumen.duration",
+    "lumen.imager",
+    "lighthouse.range",
+    "quill.python",
+    "lighthouse.steps",
+    "kestrel.registry",
+    "kestrel.creator",
+    "kestrel.backend"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 22.199,
+   "top_score": 0.813106,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "What imager does Lumen-7 carry?",
+   "gold": [
+    "lumen.imager"
+   ],
+   "ranked": [
+    "lumen.imager",
+    "lumen.duration",
+    "lumen.altitude",
+    "lumen.launch",
+    "fennick.kind"
+   ],
+   "all": [
+    "lumen.imager",
+    "lumen.duration",
+    "lumen.altitude",
+    "lumen.launch",
+    "fennick.kind",
+    "quill.version",
+    "kestrel.backend",
+    "lighthouse.range",
+    "calder.diagnosis",
+    "quill.python"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 28.574,
+   "top_score": 0.794055,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "What instrument is on board Lumen-7?",
+   "gold": [
+    "lumen.imager"
+   ],
+   "ranked": [
+    "lumen.imager",
+    "lumen.duration",
+    "lumen.altitude",
+    "lumen.launch",
+    "lighthouse.range"
+   ],
+   "all": [
+    "lumen.imager",
+    "lumen.duration",
+    "lumen.altitude",
+    "lumen.launch",
+    "lighthouse.range",
+    "orbix.port",
+    "kestrel.registry",
+    "kestrel.backend",
+    "lighthouse.automated",
+    "fennick.kind"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 38.289,
+   "top_score": 0.65893,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "How long is the Lumen-7 mission planned to last?",
+   "gold": [
+    "lumen.duration"
+   ],
+   "ranked": [
+    "lumen.duration",
+    "lumen.altitude",
+    "lumen.imager",
+    "lumen.launch",
+    "lighthouse.range"
+   ],
+   "all": [
+    "lumen.duration",
+    "lumen.altitude",
+    "lumen.imager",
+    "lumen.launch",
+    "lighthouse.range",
+    "fennick.cadence",
+    "lighthouse.automated",
+    "orbix.licence",
+    "orbix.founder",
+    "quill.python"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 37.656,
+   "top_score": 0.904829,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "Lumen-7 expected lifetime",
+   "gold": [
+    "lumen.duration"
+   ],
+   "ranked": [
+    "lumen.duration",
+    "lumen.altitude",
+    "lumen.imager",
+    "lumen.launch",
+    "fennick.kind"
+   ],
+   "all": [
+    "lumen.duration",
+    "lumen.altitude",
+    "lumen.imager",
+    "lumen.launch",
+    "fennick.kind",
+    "fennick.cadence",
+    "lighthouse.range",
+    "quill.python",
+    "kestrel.memory",
+    "quill.version"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.176,
+   "top_score": 0.764593,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "How many people does Hollin & Reeve employ?",
+   "gold": [
+    "hollin.staff"
+   ],
+   "ranked": [
+    "hollin.staff",
+    "hollin.hq",
+    "hollin.revenue",
+    "hollin.founded",
+    "lighthouse.steps"
+   ],
+   "all": [
+    "hollin.staff",
+    "hollin.hq",
+    "hollin.revenue",
+    "hollin.founded",
+    "lighthouse.steps",
+    "fennick.cadence",
+    "quill.batch",
+    "railway.gauge",
+    "fennick.kind",
+    "railway.route"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 36.004,
+   "top_score": 0.873836,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "Hollin & Reeve workforce size",
+   "gold": [
+    "hollin.staff"
+   ],
+   "ranked": [
+    "hollin.staff",
+    "hollin.hq",
+    "hollin.revenue",
+    "hollin.founded",
+    "quill.batch"
+   ],
+   "all": [
+    "hollin.staff",
+    "hollin.hq",
+    "hollin.revenue",
+    "hollin.founded",
+    "quill.batch",
+    "fennick.kind",
+    "fennick.memory",
+    "varnel.city",
+    "fennick.cadence",
+    "railway.gauge"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 23.835,
+   "top_score": 0.74258,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Where are the headquarters of Hollin & Reeve?",
+   "gold": [
+    "hollin.hq"
+   ],
+   "ranked": [
+    "hollin.hq",
+    "hollin.staff",
+    "hollin.founded",
+    "hollin.revenue",
+    "varnel.city"
+   ],
+   "all": [
+    "hollin.hq",
+    "hollin.staff",
+    "hollin.founded",
+    "hollin.revenue",
+    "varnel.city",
+    "lighthouse.steps",
+    "solvang.group",
+    "varnel.mouth",
+    "lighthouse.automated",
+    "lighthouse.range"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 28.398,
+   "top_score": 0.836387,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "In which city is Hollin & Reeve based?",
+   "gold": [
+    "hollin.hq"
+   ],
+   "ranked": [
+    "hollin.hq",
+    "hollin.staff",
+    "hollin.founded",
+    "hollin.revenue",
+    "varnel.city"
+   ],
+   "all": [
+    "hollin.hq",
+    "hollin.staff",
+    "hollin.founded",
+    "hollin.revenue",
+    "varnel.city",
+    "varnel.mouth",
+    "lighthouse.steps",
+    "varnel.flood",
+    "lighthouse.built",
+    "fennick.kind"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 37.662,
+   "top_score": 0.821204,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Hollin & Reeve revenue in 2025",
+   "gold": [
+    "hollin.revenue"
+   ],
+   "ranked": [
+    "hollin.revenue",
+    "hollin.staff",
+    "hollin.hq",
+    "hollin.founded",
+    "fennick.kind"
+   ],
+   "all": [
+    "hollin.revenue",
+    "hollin.staff",
+    "hollin.hq",
+    "hollin.founded",
+    "fennick.kind",
+    "quill.batch",
+    "fennick.cadence",
+    "varnel.flood",
+    "lumen.duration",
+    "fennick.cache"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 38.973,
+   "top_score": 0.812421,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "How much money did Hollin & Reeve take in last year?",
+   "gold": [
+    "hollin.revenue"
+   ],
+   "ranked": [
+    "hollin.revenue",
+    "hollin.staff",
+    "hollin.hq",
+    "hollin.founded",
+    "lighthouse.automated"
+   ],
+   "all": [
+    "hollin.revenue",
+    "hollin.staff",
+    "hollin.hq",
+    "hollin.founded",
+    "lighthouse.automated",
+    "lighthouse.steps",
+    "fennick.cadence",
+    "solvang.medal",
+    "varnel.mouth",
+    "varnel.flood"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.33,
+   "top_score": 0.670568,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "When was Hollin & Reeve founded?",
+   "gold": [
+    "hollin.founded"
+   ],
+   "ranked": [
+    "hollin.founded",
+    "hollin.hq",
+    "hollin.staff",
+    "hollin.revenue",
+    "lighthouse.built"
+   ],
+   "all": [
+    "hollin.founded",
+    "hollin.hq",
+    "hollin.staff",
+    "hollin.revenue",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "railway.closed",
+    "orbix.founder",
+    "lighthouse.steps",
+    "varnel.flood"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.134,
+   "top_score": 0.783732,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "How did Hollin & Reeve begin?",
+   "gold": [
+    "hollin.founded"
+   ],
+   "ranked": [
+    "hollin.founded",
+    "hollin.hq",
+    "hollin.staff",
+    "hollin.revenue",
+    "lighthouse.automated"
+   ],
+   "all": [
+    "hollin.founded",
+    "hollin.hq",
+    "hollin.staff",
+    "hollin.revenue",
+    "lighthouse.automated",
+    "orbix.founder",
+    "lighthouse.built",
+    "quill.trellis",
+    "lighthouse.steps",
+    "railway.closed"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.797,
+   "top_score": 0.693095,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Quillstream latest version",
+   "gold": [
+    "quill.version"
+   ],
+   "ranked": [
+    "quill.version",
+    "quill.python",
+    "quill.trellis",
+    "quill.batch",
+    "fennick.kind"
+   ],
+   "all": [
+    "quill.version",
+    "quill.python",
+    "quill.trellis",
+    "quill.batch",
+    "fennick.kind",
+    "kestrel.registry",
+    "kestrel.creator",
+    "kestrel.backend",
+    "orbix.licence",
+    "kestrel.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.5,
+   "top_score": 0.859445,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "What is the newest Quillstream release?",
+   "gold": [
+    "quill.version"
+   ],
+   "ranked": [
+    "quill.version",
+    "quill.python",
+    "quill.trellis",
+    "quill.batch",
+    "kestrel.registry"
+   ],
+   "all": [
+    "quill.version",
+    "quill.python",
+    "quill.trellis",
+    "quill.batch",
+    "kestrel.registry",
+    "fennick.kind",
+    "kestrel.creator",
+    "fennick.cadence",
+    "kestrel.backend",
+    "orbix.licence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.378,
+   "top_score": 0.800713,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Which Python versions does Quillstream support?",
+   "gold": [
+    "quill.python"
+   ],
+   "ranked": [
+    "quill.python",
+    "quill.version",
+    "quill.trellis",
+    "quill.batch",
+    "fennick.kind"
+   ],
+   "all": [
+    "quill.python",
+    "quill.version",
+    "quill.trellis",
+    "quill.batch",
+    "fennick.kind",
+    "kestrel.creator",
+    "kestrel.backend",
+    "kestrel.registry",
+    "orbix.licence",
+    "lumen.imager"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.536,
+   "top_score": 0.847055,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "Quillstream interpreter compatibility",
+   "gold": [
+    "quill.python"
+   ],
+   "ranked": [
+    "quill.python",
+    "quill.version",
+    "quill.trellis",
+    "quill.batch",
+    "kestrel.backend"
+   ],
+   "all": [
+    "quill.python",
+    "quill.version",
+    "quill.trellis",
+    "quill.batch",
+    "kestrel.backend",
+    "fennick.kind",
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.memory",
+    "lumen.imager"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.548,
+   "top_score": 0.733572,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Does Quillstream depend on Trellis?",
+   "gold": [
+    "quill.trellis"
+   ],
+   "ranked": [
+    "quill.trellis",
+    "quill.python",
+    "quill.version",
+    "quill.batch",
+    "kestrel.registry"
+   ],
+   "all": [
+    "quill.trellis",
+    "quill.python",
+    "quill.version",
+    "quill.batch",
+    "kestrel.registry",
+    "kestrel.backend",
+    "kestrel.memory",
+    "fennick.kind",
+    "kestrel.creator",
+    "orbix.licence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.185,
+   "top_score": 0.751653,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "What did Quillstream stop needing?",
+   "gold": [
+    "quill.trellis"
+   ],
+   "ranked": [
+    "quill.trellis",
+    "quill.version",
+    "quill.python",
+    "quill.batch",
+    "kestrel.memory"
+   ],
+   "all": [
+    "quill.trellis",
+    "quill.version",
+    "quill.python",
+    "quill.batch",
+    "kestrel.memory",
+    "lighthouse.automated",
+    "railway.closed",
+    "kestrel.registry",
+    "dam.completed",
+    "kestrel.backend"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 44.157,
+   "top_score": 0.642943,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Quillstream default batch size",
+   "gold": [
+    "quill.batch"
+   ],
+   "ranked": [
+    "quill.batch",
+    "quill.version",
+    "quill.python",
+    "quill.trellis",
+    "fennick.memory"
+   ],
+   "all": [
+    "quill.batch",
+    "quill.version",
+    "quill.python",
+    "quill.trellis",
+    "fennick.memory",
+    "fennick.kind",
+    "orbix.port",
+    "kestrel.memory",
+    "kestrel.backend",
+    "lumen.imager"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.313,
+   "top_score": 0.831524,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "How many items does Quillstream handle at a time?",
+   "gold": [
+    "quill.batch"
+   ],
+   "ranked": [
+    "quill.batch",
+    "quill.version",
+    "quill.python",
+    "quill.trellis",
+    "kestrel.memory"
+   ],
+   "all": [
+    "quill.batch",
+    "quill.version",
+    "quill.python",
+    "quill.trellis",
+    "kestrel.memory",
+    "kestrel.registry",
+    "fennick.cadence",
+    "fennick.memory",
+    "fennick.kind",
+    "lumen.duration"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 39.496,
+   "top_score": 0.696105,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "How long is the Varnel River?",
+   "gold": [
+    "varnel.length"
+   ],
+   "ranked": [
+    "varnel.length",
+    "varnel.flood",
+    "varnel.mouth",
+    "varnel.city",
+    "dam.completed"
+   ],
+   "all": [
+    "varnel.length",
+    "varnel.flood",
+    "varnel.mouth",
+    "varnel.city",
+    "dam.completed",
+    "railway.route",
+    "railway.gauge",
+    "dam.height",
+    "lighthouse.range",
+    "lumen.duration"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.911,
+   "top_score": 0.791351,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "Varnel River length",
+   "gold": [
+    "varnel.length"
+   ],
+   "ranked": [
+    "varnel.length",
+    "varnel.city",
+    "varnel.mouth",
+    "varnel.flood",
+    "dam.height"
+   ],
+   "all": [
+    "varnel.length",
+    "varnel.city",
+    "varnel.mouth",
+    "varnel.flood",
+    "dam.height",
+    "railway.gauge",
+    "dam.completed",
+    "dam.reservoir",
+    "railway.route",
+    "railway.gradient"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.354,
+   "top_score": 0.729933,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Where does the Varnel River empty?",
+   "gold": [
+    "varnel.mouth"
+   ],
+   "ranked": [
+    "varnel.mouth",
+    "varnel.city",
+    "varnel.flood",
+    "varnel.length",
+    "hollin.hq"
+   ],
+   "all": [
+    "varnel.mouth",
+    "varnel.city",
+    "varnel.flood",
+    "varnel.length",
+    "hollin.hq",
+    "railway.route",
+    "railway.closed",
+    "dam.height",
+    "dam.completed",
+    "lighthouse.range"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.305,
+   "top_score": 0.765865,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "What is the mouth of the Varnel River?",
+   "gold": [
+    "varnel.mouth"
+   ],
+   "ranked": [
+    "varnel.mouth",
+    "varnel.city",
+    "varnel.flood",
+    "varnel.length",
+    "railway.gauge"
+   ],
+   "all": [
+    "varnel.mouth",
+    "varnel.city",
+    "varnel.flood",
+    "varnel.length",
+    "railway.gauge",
+    "railway.route",
+    "hollin.hq",
+    "dam.height",
+    "railway.gradient",
+    "lighthouse.range"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.439,
+   "top_score": 0.73187,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "When does the Varnel River flood?",
+   "gold": [
+    "varnel.flood"
+   ],
+   "ranked": [
+    "varnel.flood",
+    "varnel.mouth",
+    "varnel.length",
+    "varnel.city",
+    "dam.completed"
+   ],
+   "all": [
+    "varnel.flood",
+    "varnel.mouth",
+    "varnel.length",
+    "varnel.city",
+    "dam.completed",
+    "dam.height",
+    "railway.gauge",
+    "railway.route",
+    "railway.closed",
+    "calder.onset"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.126,
+   "top_score": 0.845831,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "In which season is the Varnel River most likely to overflow?",
+   "gold": [
+    "varnel.flood"
+   ],
+   "ranked": [
+    "varnel.flood",
+    "varnel.mouth",
+    "varnel.city",
+    "varnel.length",
+    "dam.completed"
+   ],
+   "all": [
+    "varnel.flood",
+    "varnel.mouth",
+    "varnel.city",
+    "varnel.length",
+    "dam.completed",
+    "dam.height",
+    "dam.reservoir",
+    "railway.gradient",
+    "calder.onset",
+    "fennick.cadence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 40.952,
+   "top_score": 0.858704,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "near",
+   "half": "held_out",
+   "query": "Largest city on the Varnel River",
+   "gold": [
+    "varnel.city"
+   ],
+   "ranked": [
+    "varnel.city",
+    "varnel.flood",
+    "varnel.mouth",
+    "varnel.length",
+    "dam.height"
+   ],
+   "all": [
+    "varnel.city",
+    "varnel.flood",
+    "varnel.mouth",
+    "varnel.length",
+    "dam.height",
+    "dam.reservoir",
+    "hollin.hq",
+    "dam.completed",
+    "railway.gradient",
+    "dam.power"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.057,
+   "top_score": 0.855904,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "para",
+   "half": "held_out",
+   "query": "What is the biggest town along the Varnel River?",
+   "gold": [
+    "varnel.city"
+   ],
+   "ranked": [
+    "varnel.city",
+    "varnel.flood",
+    "varnel.length",
+    "varnel.mouth",
+    "dam.height"
+   ],
+   "all": [
+    "varnel.city",
+    "varnel.flood",
+    "varnel.length",
+    "varnel.mouth",
+    "dam.height",
+    "hollin.hq",
+    "railway.route",
+    "railway.gauge",
+    "railway.gradient",
+    "lighthouse.range"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 41.941,
+   "top_score": 0.838041,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "development",
+   "query": "that build system for codebases written in many languages",
+   "gold": [
+    "fennick.kind"
+   ],
+   "ranked": [
+    "fennick.kind",
+    "kestrel.backend",
+    "fennick.cache",
+    "kestrel.creator",
+    "solvang.book"
+   ],
+   "all": [
+    "fennick.kind",
+    "kestrel.backend",
+    "fennick.cache",
+    "kestrel.creator",
+    "solvang.book",
+    "orbix.licence",
+    "quill.python",
+    "kestrel.memory",
+    "fennick.memory",
+    "kestrel.registry"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 44.706,
+   "top_score": 0.666667,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "development",
+   "query": "the hydroelectric barrier that is the highest building in its area",
+   "gold": [
+    "dam.height"
+   ],
+   "ranked": [
+    "dam.height",
+    "dam.completed",
+    "dam.power",
+    "varnel.city",
+    "dam.reservoir"
+   ],
+   "all": [
+    "dam.height",
+    "dam.completed",
+    "dam.power",
+    "varnel.city",
+    "dam.reservoir",
+    "railway.gradient",
+    "lighthouse.steps",
+    "calder.onset",
+    "varnel.flood",
+    "lighthouse.range"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 44.018,
+   "top_score": 0.687914,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "development",
+   "query": "the language that uses refcounting rather than tracing collection",
+   "gold": [
+    "kestrel.memory"
+   ],
+   "ranked": [
+    "kestrel.memory",
+    "fennick.kind",
+    "fennick.cache",
+    "quill.batch",
+    "quill.version"
+   ],
+   "all": [
+    "kestrel.memory",
+    "fennick.kind",
+    "fennick.cache",
+    "quill.batch",
+    "quill.version",
+    "kestrel.creator",
+    "quill.trellis",
+    "kestrel.backend",
+    "railway.gauge",
+    "orbix.licence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.877,
+   "top_score": 0.71937,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "development",
+   "query": "the narrow-gauge line that stopped taking travellers in the seventies",
+   "gold": [
+    "railway.closed",
+    "railway.gauge"
+   ],
+   "ranked": [
+    "railway.closed",
+    "railway.gauge",
+    "dam.completed",
+    "railway.gradient",
+    "lighthouse.automated"
+   ],
+   "all": [
+    "railway.closed",
+    "railway.gauge",
+    "dam.completed",
+    "railway.gradient",
+    "lighthouse.automated",
+    "calder.onset",
+    "railway.route",
+    "hollin.founded",
+    "varnel.mouth",
+    "quill.python"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.224,
+   "top_score": 0.628894,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "held_out",
+   "query": "the scientist honoured for research into how proteins fold",
+   "gold": [
+    "solvang.medal"
+   ],
+   "ranked": [
+    "solvang.medal",
+    "solvang.book",
+    "calder.diagnosis",
+    "solvang.group",
+    "calder.cause"
+   ],
+   "all": [
+    "solvang.medal",
+    "solvang.book",
+    "calder.diagnosis",
+    "solvang.group",
+    "calder.cause",
+    "fennick.kind",
+    "kestrel.memory",
+    "calder.onset",
+    "kestrel.registry",
+    "kestrel.creator"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 36.288,
+   "top_score": 0.517697,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "held_out",
+   "query": "the rare inherited disease found with a DNA test",
+   "gold": [
+    "calder.diagnosis",
+    "calder.cause"
+   ],
+   "ranked": [
+    "calder.diagnosis",
+    "calder.cause",
+    "calder.onset",
+    "calder.prevalence",
+    "railway.gauge"
+   ],
+   "all": [
+    "calder.diagnosis",
+    "calder.cause",
+    "calder.onset",
+    "calder.prevalence",
+    "railway.gauge",
+    "lumen.imager",
+    "railway.gradient",
+    "fennick.kind",
+    "lumen.duration",
+    "kestrel.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.214,
+   "top_score": 0.697423,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "held_out",
+   "query": "the earth observation spacecraft with a 220-channel camera",
+   "gold": [
+    "lumen.imager"
+   ],
+   "ranked": [
+    "lumen.imager",
+    "lumen.duration",
+    "lumen.launch",
+    "orbix.port",
+    "lumen.altitude"
+   ],
+   "all": [
+    "lumen.imager",
+    "lumen.duration",
+    "lumen.launch",
+    "orbix.port",
+    "lumen.altitude",
+    "orbix.founder",
+    "kestrel.memory",
+    "lighthouse.range",
+    "kestrel.registry",
+    "orbix.licence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.448,
+   "top_score": 0.615446,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "held_out",
+   "query": "the insurance firm with its main office in the Netherlands",
+   "gold": [
+    "hollin.hq",
+    "hollin.founded"
+   ],
+   "ranked": [
+    "hollin.hq",
+    "hollin.founded",
+    "varnel.city",
+    "varnel.mouth",
+    "fennick.kind"
+   ],
+   "all": [
+    "hollin.hq",
+    "hollin.founded",
+    "varnel.city",
+    "varnel.mouth",
+    "fennick.kind",
+    "varnel.flood",
+    "calder.cause",
+    "calder.diagnosis",
+    "kestrel.memory",
+    "orbix.licence"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 45.091,
+   "top_score": 0.540256,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "development",
+   "query": "which service accepts connections on 7420?",
+   "gold": [
+    "orbix.port"
+   ],
+   "ranked": [
+    "orbix.port",
+    "lumen.imager",
+    "orbix.licence",
+    "quill.version",
+    "quill.python"
+   ],
+   "all": [
+    "orbix.port",
+    "lumen.imager",
+    "orbix.licence",
+    "quill.version",
+    "quill.python",
+    "calder.diagnosis",
+    "lumen.duration",
+    "kestrel.memory",
+    "kestrel.registry",
+    "quill.batch"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.25,
+   "top_score": 0.644164,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "development",
+   "query": "the beacon that has been unstaffed since the eighties",
+   "gold": [
+    "lighthouse.automated"
+   ],
+   "ranked": [
+    "lighthouse.automated",
+    "lumen.duration",
+    "kestrel.memory",
+    "dam.completed",
+    "railway.closed"
+   ],
+   "all": [
+    "lighthouse.automated",
+    "lumen.duration",
+    "kestrel.memory",
+    "dam.completed",
+    "railway.closed",
+    "calder.onset",
+    "kestrel.registry",
+    "lighthouse.range",
+    "fennick.cadence",
+    "fennick.kind"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.656,
+   "top_score": 0.643099,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "held_out",
+   "query": "the waterway that drains into the Gulf of Sennet",
+   "gold": [
+    "varnel.mouth"
+   ],
+   "ranked": [
+    "varnel.mouth",
+    "varnel.city",
+    "varnel.flood",
+    "dam.reservoir",
+    "dam.completed"
+   ],
+   "all": [
+    "varnel.mouth",
+    "varnel.city",
+    "varnel.flood",
+    "dam.reservoir",
+    "dam.completed",
+    "varnel.length",
+    "dam.height",
+    "railway.gauge",
+    "lighthouse.range",
+    "calder.cause"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.401,
+   "top_score": 0.758827,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "noname",
+   "half": "held_out",
+   "query": "the package that handles five hundred rows per chunk",
+   "gold": [
+    "quill.batch"
+   ],
+   "ranked": [
+    "quill.batch",
+    "fennick.kind",
+    "fennick.cache",
+    "kestrel.memory",
+    "fennick.memory"
+   ],
+   "all": [
+    "quill.batch",
+    "fennick.kind",
+    "fennick.cache",
+    "kestrel.memory",
+    "fennick.memory",
+    "kestrel.registry",
+    "quill.version",
+    "quill.python",
+    "lumen.imager",
+    "railway.gauge"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 46.718,
+   "top_score": 0.662191,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "development",
+   "query": "Orbix",
+   "gold": [
+    "orbix.port",
+    "orbix.licence",
+    "orbix.founder",
+    "orbix.config"
+   ],
+   "ranked": [
+    "orbix.licence",
+    "orbix.port",
+    "orbix.config",
+    "orbix.founder",
+    "fennick.kind"
+   ],
+   "all": [
+    "orbix.licence",
+    "orbix.port",
+    "orbix.config",
+    "orbix.founder",
+    "fennick.kind",
+    "kestrel.registry",
+    "quill.version",
+    "lumen.imager",
+    "quill.python",
+    "kestrel.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.928,
+   "top_score": 0.703292,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "development",
+   "query": "Fennick",
+   "gold": [
+    "fennick.kind",
+    "fennick.cache",
+    "fennick.cadence",
+    "fennick.memory"
+   ],
+   "ranked": [
+    "fennick.kind",
+    "fennick.cadence",
+    "fennick.cache",
+    "fennick.memory",
+    "varnel.city"
+   ],
+   "all": [
+    "fennick.kind",
+    "fennick.cadence",
+    "fennick.cache",
+    "fennick.memory",
+    "varnel.city",
+    "kestrel.creator",
+    "quill.python",
+    "quill.version",
+    "varnel.mouth",
+    "varnel.flood"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.479,
+   "top_score": 0.615345,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "development",
+   "query": "Kestrel",
+   "gold": [
+    "kestrel.creator",
+    "kestrel.backend",
+    "kestrel.memory",
+    "kestrel.registry"
+   ],
+   "ranked": [
+    "kestrel.registry",
+    "kestrel.creator",
+    "kestrel.memory",
+    "quill.python",
+    "fennick.kind"
+   ],
+   "all": [
+    "kestrel.registry",
+    "kestrel.creator",
+    "kestrel.memory",
+    "quill.python",
+    "fennick.kind",
+    "calder.onset",
+    "kestrel.backend",
+    "quill.batch",
+    "quill.version",
+    "varnel.city"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 46.184,
+   "top_score": 0.539009,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "development",
+   "query": "Brightwater dam",
+   "gold": [
+    "dam.height",
+    "dam.completed",
+    "dam.reservoir",
+    "dam.power"
+   ],
+   "ranked": [
+    "dam.completed",
+    "dam.height",
+    "dam.reservoir",
+    "dam.power",
+    "varnel.city"
+   ],
+   "all": [
+    "dam.completed",
+    "dam.height",
+    "dam.reservoir",
+    "dam.power",
+    "varnel.city",
+    "varnel.mouth",
+    "varnel.flood",
+    "railway.gauge",
+    "quill.version",
+    "fennick.kind"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.412,
+   "top_score": 0.666413,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "development",
+   "query": "Tolvane Lighthouse",
+   "gold": [
+    "lighthouse.built",
+    "lighthouse.range",
+    "lighthouse.automated",
+    "lighthouse.steps"
+   ],
+   "ranked": [
+    "lighthouse.range",
+    "lighthouse.steps",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "varnel.city"
+   ],
+   "all": [
+    "lighthouse.range",
+    "lighthouse.steps",
+    "lighthouse.built",
+    "lighthouse.automated",
+    "varnel.city",
+    "dam.height",
+    "varnel.mouth",
+    "dam.completed",
+    "fennick.kind",
+    "hollin.hq"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.441,
+   "top_score": 0.679327,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "development",
+   "query": "Marrow Valley railway",
+   "gold": [
+    "railway.route",
+    "railway.closed",
+    "railway.gauge",
+    "railway.gradient"
+   ],
+   "ranked": [
+    "railway.gauge",
+    "railway.gradient",
+    "railway.route",
+    "railway.closed",
+    "varnel.city"
+   ],
+   "all": [
+    "railway.gauge",
+    "railway.gradient",
+    "railway.route",
+    "railway.closed",
+    "varnel.city",
+    "varnel.flood",
+    "kestrel.memory",
+    "dam.completed",
+    "dam.height",
+    "varnel.mouth"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 44.331,
+   "top_score": 0.687291,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "held_out",
+   "query": "Imre Solvang",
+   "gold": [
+    "solvang.medal",
+    "solvang.born",
+    "solvang.group",
+    "solvang.book"
+   ],
+   "ranked": [
+    "solvang.group",
+    "solvang.book",
+    "solvang.medal",
+    "solvang.born",
+    "fennick.kind"
+   ],
+   "all": [
+    "solvang.group",
+    "solvang.book",
+    "solvang.medal",
+    "solvang.born",
+    "fennick.kind",
+    "calder.onset",
+    "varnel.city",
+    "lumen.imager",
+    "kestrel.creator",
+    "kestrel.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.985,
+   "top_score": 0.622201,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "held_out",
+   "query": "Calder syndrome",
+   "gold": [
+    "calder.cause",
+    "calder.prevalence",
+    "calder.onset",
+    "calder.diagnosis"
+   ],
+   "ranked": [
+    "calder.cause",
+    "calder.onset",
+    "calder.diagnosis",
+    "calder.prevalence",
+    "varnel.city"
+   ],
+   "all": [
+    "calder.cause",
+    "calder.onset",
+    "calder.diagnosis",
+    "calder.prevalence",
+    "varnel.city",
+    "lumen.imager",
+    "kestrel.memory",
+    "railway.gradient",
+    "varnel.flood",
+    "railway.gauge"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 44.857,
+   "top_score": 0.777678,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "held_out",
+   "query": "Lumen-7",
+   "gold": [
+    "lumen.launch",
+    "lumen.altitude",
+    "lumen.imager",
+    "lumen.duration"
+   ],
+   "ranked": [
+    "lumen.imager",
+    "lumen.duration",
+    "lumen.altitude",
+    "lumen.launch",
+    "fennick.kind"
+   ],
+   "all": [
+    "lumen.imager",
+    "lumen.duration",
+    "lumen.altitude",
+    "lumen.launch",
+    "fennick.kind",
+    "quill.version",
+    "quill.python",
+    "orbix.licence",
+    "orbix.port",
+    "lighthouse.range"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.262,
+   "top_score": 0.673345,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "held_out",
+   "query": "Hollin & Reeve",
+   "gold": [
+    "hollin.staff",
+    "hollin.hq",
+    "hollin.revenue",
+    "hollin.founded"
+   ],
+   "ranked": [
+    "hollin.hq",
+    "hollin.founded",
+    "hollin.staff",
+    "hollin.revenue",
+    "varnel.city"
+   ],
+   "all": [
+    "hollin.hq",
+    "hollin.founded",
+    "hollin.staff",
+    "hollin.revenue",
+    "varnel.city",
+    "fennick.kind",
+    "kestrel.registry",
+    "varnel.mouth",
+    "quill.batch",
+    "varnel.flood"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 42.353,
+   "top_score": 0.627266,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "held_out",
+   "query": "Quillstream",
+   "gold": [
+    "quill.version",
+    "quill.python",
+    "quill.trellis",
+    "quill.batch"
+   ],
+   "ranked": [
+    "quill.version",
+    "quill.batch",
+    "quill.python",
+    "quill.trellis",
+    "fennick.kind"
+   ],
+   "all": [
+    "quill.version",
+    "quill.batch",
+    "quill.python",
+    "quill.trellis",
+    "fennick.kind",
+    "kestrel.creator",
+    "kestrel.registry",
+    "kestrel.memory",
+    "railway.gauge",
+    "calder.onset"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 46.085,
+   "top_score": 0.686739,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "topic",
+   "half": "held_out",
+   "query": "Varnel River",
+   "gold": [
+    "varnel.length",
+    "varnel.mouth",
+    "varnel.flood",
+    "varnel.city"
+   ],
+   "ranked": [
+    "varnel.city",
+    "varnel.mouth",
+    "varnel.flood",
+    "varnel.length",
+    "dam.height"
+   ],
+   "all": [
+    "varnel.city",
+    "varnel.mouth",
+    "varnel.flood",
+    "varnel.length",
+    "dam.height",
+    "dam.completed",
+    "railway.gauge",
+    "dam.reservoir",
+    "railway.gradient",
+    "quill.version"
+   ],
+   "returned": 10,
+   "first_relevant_rank": 1,
+   "ms": 43.5,
+   "top_score": 0.645178,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "none",
+   "half": "development",
+   "query": "What is the default port of PostgreSQL?",
+   "gold": [],
+   "ranked": [
+    "orbix.port",
+    "quill.batch",
+    "quill.python",
+    "quill.version",
+    "fennick.kind"
+   ],
+   "all": [
+    "orbix.port",
+    "quill.batch",
+    "quill.python",
+    "quill.version",
+    "fennick.kind",
+    "varnel.city",
+    "orbix.config",
+    "fennick.memory",
+    "orbix.licence",
+    "kestrel.registry"
+   ],
+   "returned": 10,
+   "first_relevant_rank": null,
+   "ms": 43.814,
+   "top_score": 0.643711,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "none",
+   "half": "held_out",
+   "query": "What is the tallest dam in Switzerland?",
+   "gold": [],
+   "ranked": [
+    "dam.height",
+    "varnel.city",
+    "dam.completed",
+    "dam.power",
+    "dam.reservoir"
+   ],
+   "all": [
+    "dam.height",
+    "varnel.city",
+    "dam.completed",
+    "dam.power",
+    "dam.reservoir",
+    "railway.gradient",
+    "varnel.flood",
+    "lighthouse.steps",
+    "hollin.hq",
+    "calder.onset"
+   ],
+   "returned": 10,
+   "first_relevant_rank": null,
+   "ms": 44.376,
+   "top_score": 0.614394,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "none",
+   "half": "development",
+   "query": "Who created the Rust programming language?",
+   "gold": [],
+   "ranked": [
+    "kestrel.creator",
+    "kestrel.backend",
+    "fennick.kind",
+    "orbix.founder",
+    "varnel.city"
+   ],
+   "all": [
+    "kestrel.creator",
+    "kestrel.backend",
+    "fennick.kind",
+    "orbix.founder",
+    "varnel.city",
+    "kestrel.memory",
+    "calder.cause",
+    "quill.python",
+    "quill.version",
+    "kestrel.registry"
+   ],
+   "returned": 10,
+   "first_relevant_rank": null,
+   "ms": 44.151,
+   "top_score": 0.59849,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "none",
+   "half": "held_out",
+   "query": "How long is the Danube River?",
+   "gold": [],
+   "ranked": [
+    "varnel.length",
+    "varnel.city",
+    "varnel.flood",
+    "varnel.mouth",
+    "dam.completed"
+   ],
+   "all": [
+    "varnel.length",
+    "varnel.city",
+    "varnel.flood",
+    "varnel.mouth",
+    "dam.completed",
+    "dam.height",
+    "lumen.duration",
+    "dam.reservoir",
+    "railway.gauge",
+    "lighthouse.range"
+   ],
+   "returned": 10,
+   "first_relevant_rank": null,
+   "ms": 44.22,
+   "top_score": 0.605225,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "none",
+   "half": "development",
+   "query": "What is the latest version of NumPy?",
+   "gold": [],
+   "ranked": [
+    "quill.python",
+    "quill.version",
+    "fennick.kind",
+    "quill.trellis",
+    "kestrel.creator"
+   ],
+   "all": [
+    "quill.python",
+    "quill.version",
+    "fennick.kind",
+    "quill.trellis",
+    "kestrel.creator",
+    "quill.batch",
+    "lumen.imager",
+    "kestrel.registry",
+    "varnel.city",
+    "fennick.memory"
+   ],
+   "returned": 10,
+   "first_relevant_rank": null,
+   "ms": 45.223,
+   "top_score": 0.604733,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "none",
+   "half": "held_out",
+   "query": "When was the Eddystone Lighthouse built?",
+   "gold": [],
+   "ranked": [
+    "lighthouse.built",
+    "lighthouse.automated",
+    "lighthouse.range",
+    "dam.completed",
+    "lighthouse.steps"
+   ],
+   "all": [
+    "lighthouse.built",
+    "lighthouse.automated",
+    "lighthouse.range",
+    "dam.completed",
+    "lighthouse.steps",
+    "dam.height",
+    "calder.onset",
+    "hollin.founded",
+    "lumen.launch",
+    "kestrel.creator"
+   ],
+   "returned": 10,
+   "first_relevant_rank": null,
+   "ms": 46.542,
+   "top_score": 0.621671,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "none",
+   "half": "development",
+   "query": "What are the symptoms of Marfan syndrome?",
+   "gold": [],
+   "ranked": [
+    "calder.onset",
+    "calder.diagnosis",
+    "calder.cause",
+    "calder.prevalence",
+    "lighthouse.range"
+   ],
+   "all": [
+    "calder.onset",
+    "calder.diagnosis",
+    "calder.cause",
+    "calder.prevalence",
+    "lighthouse.range",
+    "lighthouse.steps",
+    "railway.gauge",
+    "railway.gradient",
+    "lumen.imager",
+    "lumen.altitude"
+   ],
+   "returned": 10,
+   "first_relevant_rank": null,
+   "ms": 44.544,
+   "top_score": 0.632427,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "none",
+   "half": "held_out",
+   "query": "What is the launch date of Sentinel-2?",
+   "gold": [],
+   "ranked": [
+    "lumen.imager",
+    "lumen.launch",
+    "lumen.duration",
+    "lighthouse.range",
+    "lumen.altitude"
+   ],
+   "all": [
+    "lumen.imager",
+    "lumen.launch",
+    "lumen.duration",
+    "lighthouse.range",
+    "lumen.altitude",
+    "kestrel.creator",
+    "calder.onset",
+    "fennick.kind",
+    "dam.completed",
+    "quill.version"
+   ],
+   "returned": 10,
+   "first_relevant_rank": null,
+   "ms": 43.141,
+   "top_score": 0.586392,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "none",
+   "half": "development",
+   "query": "Where are the headquarters of Lloyd's of London?",
+   "gold": [],
+   "ranked": [
+    "hollin.hq",
+    "varnel.city",
+    "lighthouse.range",
+    "lighthouse.steps",
+    "hollin.founded"
+   ],
+   "all": [
+    "hollin.hq",
+    "varnel.city",
+    "lighthouse.range",
+    "lighthouse.steps",
+    "hollin.founded",
+    "lighthouse.built",
+    "varnel.mouth",
+    "dam.height",
+    "lumen.altitude",
+    "solvang.group"
+   ],
+   "returned": 10,
+   "first_relevant_rank": null,
+   "ms": 43.315,
+   "top_score": 0.555584,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  },
+  {
+   "class": "none",
+   "half": "held_out",
+   "query": "How does Bazel cache build outputs?",
+   "gold": [],
+   "ranked": [
+    "fennick.cache",
+    "fennick.kind",
+    "kestrel.backend",
+    "kestrel.memory",
+    "orbix.config"
+   ],
+   "all": [
+    "fennick.cache",
+    "fennick.kind",
+    "kestrel.backend",
+    "kestrel.memory",
+    "orbix.config",
+    "kestrel.registry",
+    "quill.batch",
+    "orbix.licence",
+    "fennick.memory",
+    "quill.version"
+   ],
+   "returned": 10,
+   "first_relevant_rank": null,
+   "ms": 47.809,
+   "top_score": 0.693155,
+   "retrieval": {
+    "mode": "semantic",
+    "ranked_by": "embedding",
+    "candidates": 10,
+    "models": {
+     "embed": "qwen3-embedding-0.6b"
+    }
+   }
+  }
+ ]
+}

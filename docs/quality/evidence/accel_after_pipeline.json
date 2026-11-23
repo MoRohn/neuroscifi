@@ -1,0 +1,4323 @@
+{
+ "benchmark": "pipeline-live-model",
+ "version": 1,
+ "label": "after",
+ "url": "http://127.0.0.1:8811/v1",
+ "model": "qwen3-30b-a3b-instruct-2507-fp8",
+ "generated_at": "2026-11-23T16:54:36Z",
+ "environment": {
+  "host_digest": "382a803dcc0d",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "machine": "aarch64",
+  "cpu_count": 20,
+  "python": "3.12.16",
+  "sqlite": "3.53.1",
+  "packages": {
+   "neuroscifi": "0.5.0",
+   "scrapling": "0.5.1",
+   "trafilatura": "2.3.1",
+   "lxml": "6.1.3",
+   "pypdf": "7.1.1",
+   "markdownify": "1.2.4",
+   "playwright": "1.64.1"
+  },
+  "git_commit": "079af1c",
+  "git_dirty": true
+ },
+ "corpus": "nsf web bench offline corpus (fictional; loopback fixture)",
+ "summary": {
+  "tasks": 51,
+  "task_status": {
+   "completed": 51
+  },
+  "reasoning_status": {
+   "model": 46,
+   "rejected": 5
+  },
+  "model_answers": 46,
+  "kept_sentences_per_model_answer": {
+   "n": 46,
+   "p50": 1.0,
+   "p95": 4.75,
+   "p99": 5.0,
+   "mean": 1.957
+  },
+  "sentences": {
+   "kept": 90,
+   "rejected": 26
+  },
+  "wall_s_tasks_with_model_calls": {
+   "n": 51,
+   "p50": 3.271,
+   "p95": 8.625,
+   "p99": 9.538,
+   "mean": 4.449
+  },
+  "orchestration_s": {
+   "n": 51,
+   "p50": 0.207,
+   "p95": 0.359,
+   "p99": 0.431,
+   "mean": 0.214
+  },
+  "share_of_wall": {
+   "answer_call": 0.527,
+   "critique_call": 0.425,
+   "orchestration": 0.048
+  },
+  "answer_call": {
+   "latency_ms": {
+    "n": 51,
+    "p50": 1396.5,
+    "p95": 4831.0,
+    "p99": 6053.15,
+    "mean": 2343.888
+   },
+   "first_token_ms": {
+    "n": 51,
+    "p50": 280.6,
+    "p95": 363.95,
+    "p99": 781.0,
+    "mean": 297.618
+   },
+   "prompt_tokens": {
+    "n": 51,
+    "p50": 1084.0,
+    "p95": 1661.5,
+    "p99": 1841.0,
+    "mean": 1171.667
+   },
+   "completion_tokens": {
+    "n": 51,
+    "p50": 54.0,
+    "p95": 213.5,
+    "p99": 253.0,
+    "mean": 98.843
+   },
+   "tokens_per_second": {
+    "n": 51,
+    "p50": 48.93,
+    "p95": 49.905,
+    "p99": 50.115,
+    "mean": 48.753
+   }
+  },
+  "critique_call": {
+   "latency_ms": {
+    "n": 46,
+    "p50": 1773.0,
+    "p95": 3732.35,
+    "p99": 3956.98,
+    "mean": 2096.483
+   },
+   "prompt_tokens": {
+    "n": 46,
+    "p50": 703.0,
+    "p95": 1568.25,
+    "p99": 1680.8,
+    "mean": 826.043
+   },
+   "completion_tokens": {
+    "n": 46,
+    "p50": 74.0,
+    "p95": 158.0,
+    "p99": 172.95,
+    "mean": 89.022
+   }
+  },
+  "critique_outcomes": {
+   "ran": 46,
+   "status": {
+    "ok": 46
+   },
+   "sentences_removed": 0,
+   "sentences_flagged": 46
+  },
+  "model_call_errors": {},
+  "abstentions": 2,
+  "prefix_cache": {
+   "research_answer": {
+    "calls": 51,
+    "prompt_tokens": 59755,
+    "cached_tokens": 32064,
+    "cached_share": 0.537
+   },
+   "research_critique": {
+    "calls": 46,
+    "prompt_tokens": 37998,
+    "cached_tokens": 2880,
+    "cached_share": 0.076
+   }
+  },
+  "critique_flags": {
+   "kept_sentences": 90,
+   "restating_their_claims": 79,
+   "flagged": 46,
+   "flagged_restating_their_claims": 35,
+   "flags_by_problem": {
+    "overstated": 19,
+    "missing_hedge": 3,
+    "unsupported": 24
+   },
+   "reading": "a mark on a sentence that restates its cited claims word for word, with the attribution its claim state requires appended by code, is a false alarm"
+  }
+ },
+ "tasks": [
+  {
+   "id": "A01",
+   "category": "authoritative",
+   "mode": "technical",
+   "status": "completed",
+   "wall_s": 10.319,
+   "model_s": 9.884,
+   "orchestration_s": 0.435,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 4,
+   "rejected": 1,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 6033.6,
+     "first_token_ms": 1177.1,
+     "prompt_tokens": 1844,
+     "completion_tokens": 230,
+     "tokens_per_second": 47.36,
+     "attempts": 1,
+     "cached_tokens": 0,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 3850.5,
+     "first_token_ms": null,
+     "prompt_tokens": 1769,
+     "completion_tokens": 155,
+     "tokens_per_second": 40.25,
+     "attempts": 1,
+     "cached_tokens": 0,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library, according to one source, though the sources disagree.",
+     "claims": [
+      "C2"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C2",
+       "state": "conflicting",
+       "text": "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
+      }
+     ],
+     "restates_cited_claims": false
+    },
+    {
+     "text": "Quillstream 4.3 beta opens for testing, according to one source.",
+     "claims": [
+      "C3"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C3",
+       "state": "insufficient",
+       "text": "Quillstream 4.3 beta opens for testing"
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes, according to one source.",
+     "claims": [
+      "C4"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C4",
+       "state": "insufficient",
+       "text": "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C11 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: Version, C11: Version"
+     ],
+     "text": "Version 4.2.0, released 2 October 2026, adds backpressure-aware batching and removes Python 3.9 support."
+    }
+   ]
+  },
+  {
+   "id": "A02",
+   "category": "authoritative",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 2.879,
+   "model_s": 2.8,
+   "orchestration_s": 0.08,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1347.0,
+     "first_token_ms": 306.8,
+     "prompt_tokens": 928,
+     "completion_tokens": 51,
+     "tokens_per_second": 49.03,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1452.7,
+     "first_token_ms": null,
+     "prompt_tokens": 468,
+     "completion_tokens": 61,
+     "tokens_per_second": 41.99,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, according to one source, though the sources disagree.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "conflicting",
+       "text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres."
+      }
+     ],
+     "restates_cited_claims": false
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "A03",
+   "category": "authoritative",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 2.819,
+   "model_s": 2.709,
+   "orchestration_s": 0.11,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1304.6,
+     "first_token_ms": 223.1,
+     "prompt_tokens": 970,
+     "completion_tokens": 54,
+     "tokens_per_second": 49.93,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1404.4,
+     "first_token_ms": null,
+     "prompt_tokens": 508,
+     "completion_tokens": 59,
+     "tokens_per_second": 42.01,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Tessaly now has a population of 251,000, according to figures from the 2025 census, according to one source, possibly out of date.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "temporally_unresolved",
+       "text": "Tessaly now has a population of 251,000, according to figures from the 2025 census."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "A04",
+   "category": "authoritative",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 2.821,
+   "model_s": 2.508,
+   "orchestration_s": 0.313,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1049.5,
+     "first_token_ms": 265.0,
+     "prompt_tokens": 939,
+     "completion_tokens": 38,
+     "tokens_per_second": 48.44,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1458.3,
+     "first_token_ms": null,
+     "prompt_tokens": 470,
+     "completion_tokens": 59,
+     "tokens_per_second": 40.46,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "temporally_unresolved",
+       "text": "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "A05",
+   "category": "authoritative",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 3.005,
+   "model_s": 2.831,
+   "orchestration_s": 0.174,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1302.0,
+     "first_token_ms": 290.0,
+     "prompt_tokens": 1016,
+     "completion_tokens": 50,
+     "tokens_per_second": 49.41,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1528.8,
+     "first_token_ms": null,
+     "prompt_tokens": 563,
+     "completion_tokens": 65,
+     "tokens_per_second": 42.52,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays, according to one source, though the sources disagree.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "conflicting",
+       "text": "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays."
+      }
+     ],
+     "restates_cited_claims": false
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "A06",
+   "category": "authoritative",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 5.887,
+   "model_s": 5.712,
+   "orchestration_s": 0.175,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 2,
+   "rejected": 3,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 3583.8,
+     "first_token_ms": 257.5,
+     "prompt_tokens": 1119,
+     "completion_tokens": 161,
+     "tokens_per_second": 48.4,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 2128.5,
+     "first_token_ms": null,
+     "prompt_tokens": 734,
+     "completion_tokens": 92,
+     "tokens_per_second": 43.22,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "By default, the Orbix server listens on port 7420 for client connections.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "By default, the Orbix server listens on port 7420 for client connections."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The port can be changed with the listen_port setting in orbix.conf, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "missing_hedge"
+     },
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "The port can be changed with the listen_port setting in orbix.conf."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C3 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: must, Replication, C3: must, C3: Replication"
+     ],
+     "text": "Replication traffic uses a separate port, 7421, which must also be open between nodes."
+    },
+    {
+     "reasons": [
+      "states C4 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: you, If, remember port, remember, C4: you, C4: If, C4: remember port, C4: remember"
+     ],
+     "text": "If you run it in a container, remember to publish port 7420."
+    },
+    {
+     "reasons": [
+      "states C5 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: need port, C5: need port"
+     ],
+     "text": "Firewall rules for replication need port 7421 as well."
+    }
+   ]
+  },
+  {
+   "id": "A07",
+   "category": "authoritative",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 2.724,
+   "model_s": 2.615,
+   "orchestration_s": 0.109,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1132.9,
+     "first_token_ms": 264.4,
+     "prompt_tokens": 948,
+     "completion_tokens": 43,
+     "tokens_per_second": 49.51,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1482.2,
+     "first_token_ms": null,
+     "prompt_tokens": 502,
+     "completion_tokens": 63,
+     "tokens_per_second": 42.5,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Ilse Marten created the Kestrel programming language in 2019.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "Kestrel is a statically typed programming language created by Ilse Marten in 2019."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "A08",
+   "category": "authoritative",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 1.86,
+   "model_s": 1.756,
+   "orchestration_s": 0.103,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 979.5,
+     "first_token_ms": 224.3,
+     "prompt_tokens": 998,
+     "completion_tokens": 37,
+     "tokens_per_second": 48.99,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 776.7,
+     "first_token_ms": null,
+     "prompt_tokens": 551,
+     "completion_tokens": 25,
+     "tokens_per_second": 32.19,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Brightwater dam is 186 metres tall.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "A09",
+   "category": "authoritative",
+   "mode": "technical",
+   "status": "completed",
+   "wall_s": 2.652,
+   "model_s": 2.342,
+   "orchestration_s": 0.311,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1352.8,
+     "first_token_ms": 339.2,
+     "prompt_tokens": 906,
+     "completion_tokens": 50,
+     "tokens_per_second": 49.33,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 989.0,
+     "first_token_ms": null,
+     "prompt_tokens": 417,
+     "completion_tokens": 36,
+     "tokens_per_second": 36.4,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops, according to the cited sources.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "not_evaluated",
+       "text": "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "A10",
+   "category": "authoritative",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 3.086,
+   "model_s": 2.914,
+   "orchestration_s": 0.172,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1121.9,
+     "first_token_ms": 214.8,
+     "prompt_tokens": 853,
+     "completion_tokens": 45,
+     "tokens_per_second": 49.61,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1791.9,
+     "first_token_ms": null,
+     "prompt_tokens": 328,
+     "completion_tokens": 79,
+     "tokens_per_second": 44.09,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Orbix supports encryption at rest using AES-256 since version 3.0, according to one source, though the sources disagree.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "conflicting",
+       "text": "Orbix supports encryption at rest using AES-256 since version 3.0."
+      }
+     ],
+     "restates_cited_claims": false
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "A11",
+   "category": "authoritative",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 4.828,
+   "model_s": 4.647,
+   "orchestration_s": 0.181,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 2,
+   "rejected": 2,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 2730.0,
+     "first_token_ms": 357.4,
+     "prompt_tokens": 963,
+     "completion_tokens": 116,
+     "tokens_per_second": 48.89,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1917.4,
+     "first_token_ms": null,
+     "prompt_tokens": 564,
+     "completion_tokens": 82,
+     "tokens_per_second": 42.77,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Brisa compiler was first released in 2021.",
+     "claims": [
+      "C3"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C3",
+       "state": "supported",
+       "text": "The Brisa compiler was first released in 2021."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Brisa was created by Tove Ahlgren, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "Brisa was created by Tove Ahlgren."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C1 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: sensor, C1: sensor"
+     ],
+     "text": "Brisa is a programming language designed for embedded devices and sensor networks."
+    },
+    {
+     "reasons": [
+      "states C4 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: programs compile, C4: programs compile"
+     ],
+     "text": "Brisa programs compile to compact bytecode that runs on microcontrollers."
+    }
+   ]
+  },
+  {
+   "id": "A12",
+   "category": "authoritative",
+   "mode": "scientific",
+   "status": "completed",
+   "wall_s": 3.383,
+   "model_s": 2.956,
+   "orchestration_s": 0.427,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1220.4,
+     "first_token_ms": 358.3,
+     "prompt_tokens": 1453,
+     "completion_tokens": 43,
+     "tokens_per_second": 49.88,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1735.8,
+     "first_token_ms": null,
+     "prompt_tokens": 1302,
+     "completion_tokens": 70,
+     "tokens_per_second": 40.33,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The paper reports that dendritic gating doubles the memory capacity of the Ostra cortex model, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "The paper reports that dendritic gating doubles the memory capacity of the Ostra cortex model."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "T01",
+   "category": "time",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 6.173,
+   "model_s": 5.943,
+   "orchestration_s": 0.23,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 2,
+   "rejected": 2,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 3971.1,
+     "first_token_ms": 240.1,
+     "prompt_tokens": 1120,
+     "completion_tokens": 182,
+     "tokens_per_second": 48.78,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1971.8,
+     "first_token_ms": null,
+     "prompt_tokens": 752,
+     "completion_tokens": 86,
+     "tokens_per_second": 43.61,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026, according to one source.",
+     "claims": [
+      "C1",
+      "C3"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "Quillstream 4.3 beta opens for testing"
+      },
+      {
+       "id": "C3",
+       "state": "insufficient",
+       "text": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook, according to one source.",
+     "claims": [
+      "C5"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C5",
+       "state": "insufficient",
+       "text": "The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "relays an instruction or a non-declarative sentence from weak evidence: asked to report, C2: asked to report"
+     ],
+     "text": "Testers are asked to report regressions on the project's issue tracker."
+    },
+    {
+     "reasons": [
+      "relays an instruction or a non-declarative sentence from weak evidence: term, C4: term"
+     ],
+     "text": "The Quillstream roadmap lists exactly-once delivery, a Rust core and WebAssembly plugins as long-term goals."
+    }
+   ]
+  },
+  {
+   "id": "T02",
+   "category": "time",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 1.359,
+   "model_s": 1.215,
+   "orchestration_s": 0.143,
+   "reasoning_status": "rejected",
+   "reason": "every model sentence failed NeuroSciFi's citation and claim checks",
+   "kept": 0,
+   "rejected": 1,
+   "critique": null,
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1215.3,
+     "first_token_ms": 280.3,
+     "prompt_tokens": 884,
+     "completion_tokens": 47,
+     "tokens_per_second": 50.27,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    }
+   ],
+   "answer": [],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C1 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: raising manoeuvre, raising, C1: raising manoeuvre, C1: raising"
+     ],
+     "text": "Lumen-7 completed its final orbit-raising manoeuvre on 3 November 2026."
+    }
+   ]
+  },
+  {
+   "id": "T03",
+   "category": "time",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 4.427,
+   "model_s": 4.279,
+   "orchestration_s": 0.148,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 2,
+   "rejected": 1,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 2274.1,
+     "first_token_ms": 220.7,
+     "prompt_tokens": 989,
+     "completion_tokens": 101,
+     "tokens_per_second": 49.19,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 2004.8,
+     "first_token_ms": null,
+     "prompt_tokens": 513,
+     "completion_tokens": 87,
+     "tokens_per_second": 43.4,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "A faulty network configuration change caused the outage, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "The company said a faulty network configuration change caused the outage."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Self-hosted Orbix installations were not affected, according to one source.",
+     "claims": [
+      "C3"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C3",
+       "state": "insufficient",
+       "text": "Self-hosted Orbix installations were not affected."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C2 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: lost access, C2: lost access"
+     ],
+     "text": "Orbix Cloud customers in the eu-north region lost access to their databases for about 90 minutes on 20 November 2026."
+    }
+   ]
+  },
+  {
+   "id": "T04",
+   "category": "time",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 0.9,
+   "model_s": 0.693,
+   "orchestration_s": 0.207,
+   "reasoning_status": "rejected",
+   "reason": "the model wrote no sentence from this evidence; it named 1 gap(s): no model sentence was checked or rejected",
+   "kept": 0,
+   "rejected": 0,
+   "critique": null,
+   "abstained": true,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 693.0,
+     "first_token_ms": 212.6,
+     "prompt_tokens": 999,
+     "completion_tokens": 24,
+     "tokens_per_second": 49.96,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    }
+   ],
+   "answer": [],
+   "rejected_sentences": []
+  },
+  {
+   "id": "T05",
+   "category": "time",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 2.99,
+   "model_s": 2.892,
+   "orchestration_s": 0.097,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1337.3,
+     "first_token_ms": 254.3,
+     "prompt_tokens": 888,
+     "completion_tokens": 53,
+     "tokens_per_second": 48.94,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1554.8,
+     "first_token_ms": null,
+     "prompt_tokens": 364,
+     "completion_tokens": 67,
+     "tokens_per_second": 43.09,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Repairs to the Brightwater dam spillway began on 10 November 2026 and are expected to take five months, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "Repairs to the Brightwater dam spillway began on 10 November 2026 and are expected to take five months."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "T06",
+   "category": "time",
+   "mode": "technical",
+   "status": "completed",
+   "wall_s": 6.924,
+   "model_s": 6.806,
+   "orchestration_s": 0.119,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 5,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 3432.4,
+     "first_token_ms": 248.8,
+     "prompt_tokens": 1174,
+     "completion_tokens": 156,
+     "tokens_per_second": 49.0,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 3373.4,
+     "first_token_ms": null,
+     "prompt_tokens": 951,
+     "completion_tokens": 153,
+     "tokens_per_second": 45.35,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler, according to one source.",
+     "claims": [
+      "C3"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C3",
+       "state": "insufficient",
+       "text": "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The release adds pattern matching on records and a package manager called nest, according to one source.",
+     "claims": [
+      "C6"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C6",
+       "state": "insufficient",
+       "text": "The release adds pattern matching on records and a package manager called nest."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Programs written for Kestrel 1.x need minor changes to their import statements, according to one source.",
+     "claims": [
+      "C5"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C5",
+       "state": "insufficient",
+       "text": "Programs written for Kestrel 1.x need minor changes to their import statements."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Kestrel 2.0 was released on 3 November 2026, according to one source.",
+     "claims": [
+      "C3"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C3",
+       "state": "insufficient",
+       "text": "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The release adds pattern matching on records, according to one source.",
+     "claims": [
+      "C6"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C6",
+       "state": "insufficient",
+       "text": "The release adds pattern matching on records and a package manager called nest."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "T07",
+   "category": "time",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 2.923,
+   "model_s": 2.806,
+   "orchestration_s": 0.117,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1396.5,
+     "first_token_ms": 287.1,
+     "prompt_tokens": 891,
+     "completion_tokens": 55,
+     "tokens_per_second": 49.58,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1409.1,
+     "first_token_ms": null,
+     "prompt_tokens": 403,
+     "completion_tokens": 58,
+     "tokens_per_second": 41.16,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "According to the 2025 census, the population of Tessaly is 248,000, according to one source, possibly out of date.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "temporally_unresolved",
+       "text": "According to the 2025 census, the population of Tessaly is 248,000."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "T08",
+   "category": "time",
+   "mode": "quick_lookup",
+   "status": "completed",
+   "wall_s": 3.451,
+   "model_s": 3.28,
+   "orchestration_s": 0.171,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 1,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1585.0,
+     "first_token_ms": 228.4,
+     "prompt_tokens": 870,
+     "completion_tokens": 66,
+     "tokens_per_second": 48.65,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1695.1,
+     "first_token_ms": null,
+     "prompt_tokens": 373,
+     "completion_tokens": 71,
+     "tokens_per_second": 41.89,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "These notes on Corvane connection pooling were copied from an older wiki, according to one source, possibly out of date.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "temporally_unresolved",
+       "text": "These notes on Corvane connection pooling were copied from an older wiki."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C2 (temporally_unresolved) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: Idle, C2: Idle"
+     ],
+     "text": "Idle connections are closed when pool_timeout expires."
+    }
+   ]
+  },
+  {
+   "id": "F01",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 1.825,
+   "model_s": 1.497,
+   "orchestration_s": 0.329,
+   "reasoning_status": "rejected",
+   "reason": "every model sentence failed NeuroSciFi's citation and claim checks",
+   "kept": 0,
+   "rejected": 1,
+   "critique": null,
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1496.6,
+     "first_token_ms": 358.8,
+     "prompt_tokens": 1838,
+     "completion_tokens": 54,
+     "tokens_per_second": 47.46,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    }
+   ],
+   "answer": [],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "relays an instruction or a non-declarative sentence from weak evidence: C7: Version"
+     ],
+     "text": "Quillstream 4.2.0 was released on 2 October 2026, according to the cited sources."
+    }
+   ]
+  },
+  {
+   "id": "F02",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 8.756,
+   "model_s": 8.478,
+   "orchestration_s": 0.277,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 3,
+   "rejected": 0,
+   "critique": {
+    "flagged": 3,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 3,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 6072.7,
+     "first_token_ms": 319.3,
+     "prompt_tokens": 1211,
+     "completion_tokens": 276,
+     "tokens_per_second": 47.97,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 2405.7,
+     "first_token_ms": null,
+     "prompt_tokens": 1016,
+     "completion_tokens": 104,
+     "tokens_per_second": 43.23,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, according to one source, though the sources disagree.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "conflicting",
+       "text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres."
+      }
+     ],
+     "restates_cited_claims": false
+    },
+    {
+     "text": "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, and with a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to the cited sources, though the sources disagree.",
+     "claims": [
+      "C1",
+      "C2"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "conflicting",
+       "text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres."
+      },
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region."
+      }
+     ],
+     "restates_cited_claims": false
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F03",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 5.677,
+   "model_s": 5.386,
+   "orchestration_s": 0.291,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 3,
+   "rejected": 0,
+   "critique": {
+    "flagged": 3,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 3,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 3128.8,
+     "first_token_ms": 301.2,
+     "prompt_tokens": 1019,
+     "completion_tokens": 137,
+     "tokens_per_second": 48.45,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 2257.1,
+     "first_token_ms": null,
+     "prompt_tokens": 636,
+     "completion_tokens": 97,
+     "tokens_per_second": 42.98,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Halvorsen Bridge is a cable-stayed bridge across the Varnel estuary that opened in 1987, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "The Halvorsen Bridge is a cable-stayed bridge across the Varnel estuary that opened in 1987."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day, according to one source, possibly out of date.",
+     "claims": [
+      "C2"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C2",
+       "state": "temporally_unresolved",
+       "text": "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The bridge carries four road lanes and a separate cycle path, according to one source.",
+     "claims": [
+      "C3"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C3",
+       "state": "insufficient",
+       "text": "The bridge carries four road lanes and a separate cycle path."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F04",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.412,
+   "model_s": 3.169,
+   "orchestration_s": 0.243,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1513.4,
+     "first_token_ms": 308.8,
+     "prompt_tokens": 1181,
+     "completion_tokens": 59,
+     "tokens_per_second": 48.98,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1656.0,
+     "first_token_ms": null,
+     "prompt_tokens": 826,
+     "completion_tokens": 69,
+     "tokens_per_second": 41.67,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "At the 2025 census Tessaly had a population of 248,000 residents, according to the cited sources, though the sources disagree.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "conflicting",
+       "text": "At the 2025 census Tessaly had a population of 248,000 residents."
+      }
+     ],
+     "restates_cited_claims": false
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F05",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 7.914,
+   "model_s": 7.558,
+   "orchestration_s": 0.355,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 4,
+   "rejected": 1,
+   "critique": {
+    "flagged": 4,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 4,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 4394.6,
+     "first_token_ms": 384.9,
+     "prompt_tokens": 1466,
+     "completion_tokens": 193,
+     "tokens_per_second": 48.13,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 3163.8,
+     "first_token_ms": null,
+     "prompt_tokens": 1245,
+     "completion_tokens": 139,
+     "tokens_per_second": 43.93,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays, according to one source, though the sources disagree.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "conflicting",
+       "text": "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays."
+      }
+     ],
+     "restates_cited_claims": false
+    },
+    {
+     "text": "Lumen-7 was launched on 14 September 2026 from the Andoya launch site, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "Lumen-7 was launched on 14 September 2026 from the Andoya launch site."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The launch had been delayed twice by high winds, according to one source.",
+     "claims": [
+      "C3"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C3",
+       "state": "insufficient",
+       "text": "The launch had been delayed twice by high winds."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "First calibrated images of the Bay of Ostra were shown on 4 November 2026, according to one source.",
+     "claims": [
+      "C6"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C6",
+       "state": "insufficient",
+       "text": "First calibrated images of the Bay of Ostra were shown on 4 November 2026."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C4 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: raising manoeuvre, raising, C4: raising manoeuvre, C4: raising"
+     ],
+     "text": "Lumen-7 completed its final orbit-raising manoeuvre on 3 November 2026."
+    }
+   ]
+  },
+  {
+   "id": "F06",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.421,
+   "model_s": 3.174,
+   "orchestration_s": 0.247,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1202.9,
+     "first_token_ms": 289.9,
+     "prompt_tokens": 1478,
+     "completion_tokens": 45,
+     "tokens_per_second": 49.29,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1971.2,
+     "first_token_ms": null,
+     "prompt_tokens": 1219,
+     "completion_tokens": 81,
+     "tokens_per_second": 41.09,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Orbix supports encryption at rest using AES-256 since version 3.0, according to one source, though the sources disagree.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "conflicting",
+       "text": "Orbix supports encryption at rest using AES-256 since version 3.0."
+      }
+     ],
+     "restates_cited_claims": false
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F07",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 2.412,
+   "model_s": 2.196,
+   "orchestration_s": 0.216,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1269.9,
+     "first_token_ms": 280.6,
+     "prompt_tokens": 937,
+     "completion_tokens": 49,
+     "tokens_per_second": 49.53,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 926.1,
+     "first_token_ms": null,
+     "prompt_tokens": 423,
+     "completion_tokens": 36,
+     "tokens_per_second": 38.87,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops, according to the cited sources.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "not_evaluated",
+       "text": "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F08",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.119,
+   "model_s": 2.849,
+   "orchestration_s": 0.27,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1177.8,
+     "first_token_ms": 240.2,
+     "prompt_tokens": 1201,
+     "completion_tokens": 46,
+     "tokens_per_second": 49.06,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1670.9,
+     "first_token_ms": null,
+     "prompt_tokens": 826,
+     "completion_tokens": 69,
+     "tokens_per_second": 41.3,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "Kestrel is a statically typed programming language created by Ilse Marten in 2019."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F09",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.076,
+   "model_s": 2.895,
+   "orchestration_s": 0.18,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1215.6,
+     "first_token_ms": 257.0,
+     "prompt_tokens": 1283,
+     "completion_tokens": 47,
+     "tokens_per_second": 49.03,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1679.6,
+     "first_token_ms": null,
+     "prompt_tokens": 945,
+     "completion_tokens": 68,
+     "tokens_per_second": 40.49,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F10",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 6.325,
+   "model_s": 6.077,
+   "orchestration_s": 0.248,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 2,
+   "rejected": 3,
+   "critique": {
+    "flagged": 2,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 2,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 3946.8,
+     "first_token_ms": 332.0,
+     "prompt_tokens": 1334,
+     "completion_tokens": 174,
+     "tokens_per_second": 48.14,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 2130.3,
+     "first_token_ms": null,
+     "prompt_tokens": 1030,
+     "completion_tokens": 91,
+     "tokens_per_second": 42.72,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "By default, the Orbix server listens on port 7420 for client connections.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "By default, the Orbix server listens on port 7420 for client connections."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The port can be changed with the listen_port setting in orbix.conf, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "missing_hedge"
+     },
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "The port can be changed with the listen_port setting in orbix.conf."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C5 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: must, Replication, C5: must, C5: Replication"
+     ],
+     "text": "Replication traffic uses a separate port, 7421, which must also be open between nodes."
+    },
+    {
+     "reasons": [
+      "states C6 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: you, If, remember port, remember, C6: you, C6: If, C6: remember port, C6: remember"
+     ],
+     "text": "If you run it in a container, remember to publish port 7420."
+    },
+    {
+     "reasons": [
+      "states C7 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: need port, C7: need port"
+     ],
+     "text": "Firewall rules for replication need port 7421 as well."
+    }
+   ]
+  },
+  {
+   "id": "F11",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 7.862,
+   "model_s": 7.679,
+   "orchestration_s": 0.183,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 4,
+   "rejected": 0,
+   "critique": {
+    "flagged": 4,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 4,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 4690.3,
+     "first_token_ms": 304.1,
+     "prompt_tokens": 1162,
+     "completion_tokens": 211,
+     "tokens_per_second": 48.11,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 2988.3,
+     "first_token_ms": null,
+     "prompt_tokens": 872,
+     "completion_tokens": 131,
+     "tokens_per_second": 43.84,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
+     "claims": [
+      "C3"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C3",
+       "state": "supported",
+       "text": "Kestrel is a statically typed programming language created by Ilse Marten in 2019."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Kestrel 1.0 was released in 2022 after three years of public previews, according to one source.",
+     "claims": [
+      "C4"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C4",
+       "state": "insufficient",
+       "text": "Kestrel 1.0 was released in 2022 after three years of public previews."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The release adds pattern matching on records and a package manager called nest, according to one source.",
+     "claims": [
+      "C5"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C5",
+       "state": "insufficient",
+       "text": "The release adds pattern matching on records and a package manager called nest."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F12",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 7.255,
+   "model_s": 7.131,
+   "orchestration_s": 0.124,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 3,
+   "rejected": 1,
+   "critique": {
+    "flagged": 2,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 2,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 4171.0,
+     "first_token_ms": 253.3,
+     "prompt_tokens": 1135,
+     "completion_tokens": 189,
+     "tokens_per_second": 48.24,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 2959.7,
+     "first_token_ms": null,
+     "prompt_tokens": 829,
+     "completion_tokens": 131,
+     "tokens_per_second": 44.26,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Corran Spire in Harrowgate has stood on the Weir Field since 1911, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "The Corran Spire in Harrowgate has stood on the Weir Field since 1911."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The tower is the most visited landmark in Harrowgate, according to one source.",
+     "claims": [
+      "C3"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C3",
+       "state": "insufficient",
+       "text": "The tower is the most visited landmark in Harrowgate."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C4 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: In, C4: In"
+     ],
+     "text": "In 2009 the sculptor Mira Voss married the Corran Spire in a symbolic ceremony on the Weir Field in Harrowgate."
+    }
+   ]
+  },
+  {
+   "id": "F13",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 8.52,
+   "model_s": 8.291,
+   "orchestration_s": 0.229,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 5,
+   "rejected": 0,
+   "critique": {
+    "flagged": 5,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 5,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 4531.3,
+     "first_token_ms": 321.8,
+     "prompt_tokens": 1201,
+     "completion_tokens": 201,
+     "tokens_per_second": 47.75,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 3759.5,
+     "first_token_ms": null,
+     "prompt_tokens": 976,
+     "completion_tokens": 168,
+     "tokens_per_second": 44.69,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Corran Spire in Harrowgate has stood on the Weir Field since 1911, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "The Corran Spire in Harrowgate has stood on the Weir Field since 1911."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The sculptor Mira Voss showed a steel model of the Corran Spire in Tessaly last spring, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "The sculptor Mira Voss showed a steel model of the Corran Spire in Tessaly last spring."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire, according to one source.",
+     "claims": [
+      "C3"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C3",
+       "state": "insufficient",
+       "text": "Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Mira Voss is a sculptor from Tessaly, according to one source.",
+     "claims": [
+      "C4"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C4",
+       "state": "insufficient",
+       "text": "Mira Voss is a sculptor from Tessaly."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Voss is known for large models of famous towers, according to one source.",
+     "claims": [
+      "C5"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C5",
+       "state": "insufficient",
+       "text": "Voss is known for large models of famous towers."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F14",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.021,
+   "model_s": 2.706,
+   "orchestration_s": 0.315,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1024.4,
+     "first_token_ms": 229.6,
+     "prompt_tokens": 969,
+     "completion_tokens": 39,
+     "tokens_per_second": 49.07,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1681.3,
+     "first_token_ms": null,
+     "prompt_tokens": 478,
+     "completion_tokens": 72,
+     "tokens_per_second": 42.82,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "temporally_unresolved",
+       "text": "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F15",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.271,
+   "model_s": 2.987,
+   "orchestration_s": 0.284,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1228.5,
+     "first_token_ms": 286.8,
+     "prompt_tokens": 970,
+     "completion_tokens": 46,
+     "tokens_per_second": 48.85,
+     "attempts": 1,
+     "cached_tokens": 704,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1758.5,
+     "first_token_ms": null,
+     "prompt_tokens": 478,
+     "completion_tokens": 74,
+     "tokens_per_second": 42.08,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "temporally_unresolved",
+       "text": "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F16",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.743,
+   "model_s": 3.453,
+   "orchestration_s": 0.29,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1949.8,
+     "first_token_ms": 286.5,
+     "prompt_tokens": 1467,
+     "completion_tokens": 80,
+     "tokens_per_second": 48.1,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1503.4,
+     "first_token_ms": null,
+     "prompt_tokens": 1255,
+     "completion_tokens": 58,
+     "tokens_per_second": 38.58,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Ostra marsh newt brain has roughly 100 million neurons, researchers said, according to one source, though the sources disagree.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "conflicting",
+       "text": "The Ostra marsh newt brain has roughly 100 million neurons, researchers said."
+      }
+     ],
+     "restates_cited_claims": false
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F17",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.262,
+   "model_s": 3.123,
+   "orchestration_s": 0.139,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1182.1,
+     "first_token_ms": 235.4,
+     "prompt_tokens": 1060,
+     "completion_tokens": 46,
+     "tokens_per_second": 48.59,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1941.1,
+     "first_token_ms": null,
+     "prompt_tokens": 652,
+     "completion_tokens": 83,
+     "tokens_per_second": 42.76,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Tolvane Lighthouse is in Varnmouth, on the rocky tip of Skerry Point, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "The Tolvane Lighthouse is in Varnmouth, on the rocky tip of Skerry Point."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F18",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.121,
+   "model_s": 2.889,
+   "orchestration_s": 0.232,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1161.9,
+     "first_token_ms": 236.0,
+     "prompt_tokens": 1027,
+     "completion_tokens": 46,
+     "tokens_per_second": 49.68,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1727.0,
+     "first_token_ms": null,
+     "prompt_tokens": 588,
+     "completion_tokens": 74,
+     "tokens_per_second": 42.85,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Tolvane Lighthouse was built in 1874 by the Ostra Harbour Board.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "The Tolvane Lighthouse was built in 1874 by the Ostra Harbour Board."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F19",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.14,
+   "model_s": 2.865,
+   "orchestration_s": 0.275,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1308.4,
+     "first_token_ms": 238.3,
+     "prompt_tokens": 1084,
+     "completion_tokens": 53,
+     "tokens_per_second": 49.53,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1556.9,
+     "first_token_ms": null,
+     "prompt_tokens": 672,
+     "completion_tokens": 65,
+     "tokens_per_second": 41.75,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Tolvane Lighthouse is open to visitors from May to September, according to one source, possibly out of date.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "missing_hedge"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "temporally_unresolved",
+       "text": "The Tolvane Lighthouse is open to visitors from May to September."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F20",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 2.658,
+   "model_s": 2.562,
+   "orchestration_s": 0.096,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1138.6,
+     "first_token_ms": 268.1,
+     "prompt_tokens": 985,
+     "completion_tokens": 43,
+     "tokens_per_second": 49.4,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1423.6,
+     "first_token_ms": null,
+     "prompt_tokens": 522,
+     "completion_tokens": 59,
+     "tokens_per_second": 41.44,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Fennick was created by Oda Haraldsen, who still leads the project, according to one source, possibly out of date.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "temporally_unresolved",
+       "text": "Fennick was created by Oda Haraldsen, who still leads the project."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F21",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 2.94,
+   "model_s": 2.802,
+   "orchestration_s": 0.138,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1083.4,
+     "first_token_ms": 286.3,
+     "prompt_tokens": 979,
+     "completion_tokens": 39,
+     "tokens_per_second": 48.93,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1718.2,
+     "first_token_ms": null,
+     "prompt_tokens": 511,
+     "completion_tokens": 70,
+     "tokens_per_second": 40.74,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Fennick is written in OCaml, which explains its fast startup, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "unsupported"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "Fennick is written in OCaml, which explains its fast startup."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F22",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 2.043,
+   "model_s": 1.867,
+   "orchestration_s": 0.176,
+   "reasoning_status": "rejected",
+   "reason": "every model sentence failed NeuroSciFi's citation and claim checks",
+   "kept": 0,
+   "rejected": 1,
+   "critique": null,
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1866.7,
+     "first_token_ms": 304.1,
+     "prompt_tokens": 1136,
+     "completion_tokens": 76,
+     "tokens_per_second": 48.64,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    }
+   ],
+   "answer": [],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C1 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: took route, C1: took route"
+     ],
+     "text": "The Marrow Creek ferry is operated by Ostra Lines, the regional transport company, which took over the route this summer."
+    }
+   ]
+  },
+  {
+   "id": "F23",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 3.592,
+   "model_s": 3.415,
+   "orchestration_s": 0.177,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 1519.0,
+     "first_token_ms": 247.1,
+     "prompt_tokens": 1244,
+     "completion_tokens": 62,
+     "tokens_per_second": 48.75,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1895.7,
+     "first_token_ms": null,
+     "prompt_tokens": 887,
+     "completion_tokens": 80,
+     "tokens_per_second": 42.2,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Marrow Creek ferry runs every 45 minutes since 18 November 2026, because one vessel is in dry dock, according to one source, possibly out of date.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "temporally_unresolved",
+       "text": "The Marrow Creek ferry runs every 45 minutes since 18 November 2026, because one vessel is in dry dock."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F24",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 2.637,
+   "model_s": 2.428,
+   "orchestration_s": 0.209,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 0,
+   "critique": {
+    "flagged": 1,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 1,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 978.2,
+     "first_token_ms": 229.6,
+     "prompt_tokens": 1071,
+     "completion_tokens": 37,
+     "tokens_per_second": 49.43,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1450.1,
+     "first_token_ms": null,
+     "prompt_tokens": 658,
+     "completion_tokens": 59,
+     "tokens_per_second": 40.69,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "The Tolvane Lighthouse is 41 metres tall, according to one source, though the sources disagree.",
+     "claims": [
+      "C1"
+     ],
+     "flag": {
+      "confirmed": false,
+      "note": null,
+      "problem": "overstated"
+     },
+     "cited": [
+      {
+       "id": "C1",
+       "state": "conflicting",
+       "text": "The Tolvane Lighthouse is 41 metres tall."
+      }
+     ],
+     "restates_cited_claims": false
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F25",
+   "category": "verification",
+   "mode": "fact_verification",
+   "status": "completed",
+   "wall_s": 0.979,
+   "model_s": 0.875,
+   "orchestration_s": 0.104,
+   "reasoning_status": "rejected",
+   "reason": "the model wrote no sentence from this evidence; it named 2 gap(s): no model sentence was checked or rejected",
+   "kept": 0,
+   "rejected": 0,
+   "critique": null,
+   "abstained": true,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 875.5,
+     "first_token_ms": 270.8,
+     "prompt_tokens": 1075,
+     "completion_tokens": 30,
+     "tokens_per_second": 49.61,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    }
+   ],
+   "answer": [],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F26",
+   "category": "verification",
+   "mode": "technical",
+   "status": "completed",
+   "wall_s": 8.402,
+   "model_s": 8.215,
+   "orchestration_s": 0.187,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 5,
+   "rejected": 0,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 4170.8,
+     "first_token_ms": 369.1,
+     "prompt_tokens": 1525,
+     "completion_tokens": 180,
+     "tokens_per_second": 47.35,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 4044.1,
+     "first_token_ms": null,
+     "prompt_tokens": 1422,
+     "completion_tokens": 177,
+     "tokens_per_second": 43.77,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Corvane 2.5.4 was withdrawn because of a packaging error, according to one source.",
+     "claims": [
+      "C9"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C9",
+       "state": "insufficient",
+       "text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Corvane 2.5.5 is the latest stable release of the Corvane connection library, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "This release adds connection health checks and fixes a race in pool shutdown, according to one source.",
+     "claims": [
+      "C6"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C6",
+       "state": "insufficient",
+       "text": "This release adds connection health checks and fixes a race in pool shutdown."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The release contains no configuration changes, according to one source.",
+     "claims": [
+      "C5"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C5",
+       "state": "insufficient",
+       "text": "The release contains no configuration changes."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": []
+  },
+  {
+   "id": "F27",
+   "category": "verification",
+   "mode": "technical",
+   "status": "completed",
+   "wall_s": 8.731,
+   "model_s": 8.54,
+   "orchestration_s": 0.191,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 4,
+   "rejected": 1,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 4971.7,
+     "first_token_ms": 357.1,
+     "prompt_tokens": 1630,
+     "completion_tokens": 216,
+     "tokens_per_second": 46.81,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 3567.8,
+     "first_token_ms": null,
+     "prompt_tokens": 1573,
+     "completion_tokens": 152,
+     "tokens_per_second": 42.6,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "This release adds connection health checks and fixes a race in pool shutdown, according to one source.",
+     "claims": [
+      "C5"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C5",
+       "state": "insufficient",
+       "text": "This release adds connection health checks and fixes a race in pool shutdown."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Corvane 2.5.4 was withdrawn because of a packaging error, according to one source.",
+     "claims": [
+      "C10"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C10",
+       "state": "insufficient",
+       "text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C3 (temporally_unresolved) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: connect, C3: connect"
+     ],
+     "text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+    }
+   ]
+  },
+  {
+   "id": "F28",
+   "category": "verification",
+   "mode": "technical",
+   "status": "completed",
+   "wall_s": 8.233,
+   "model_s": 7.982,
+   "orchestration_s": 0.251,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 4,
+   "rejected": 1,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 4331.2,
+     "first_token_ms": 284.6,
+     "prompt_tokens": 1524,
+     "completion_tokens": 192,
+     "tokens_per_second": 47.45,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 3650.9,
+     "first_token_ms": null,
+     "prompt_tokens": 1411,
+     "completion_tokens": 159,
+     "tokens_per_second": 43.55,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "This release adds connection health checks and fixes a race in pool shutdown, according to one source.",
+     "claims": [
+      "C5"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C5",
+       "state": "insufficient",
+       "text": "This release adds connection health checks and fixes a race in pool shutdown."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Corvane 2.5.4 was withdrawn because of a packaging error, according to one source.",
+     "claims": [
+      "C9"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C9",
+       "state": "insufficient",
+       "text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C3 (temporally_unresolved) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: connect, C3: connect"
+     ],
+     "text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+    }
+   ]
+  },
+  {
+   "id": "F29",
+   "category": "verification",
+   "mode": "technical",
+   "status": "completed",
+   "wall_s": 7.855,
+   "model_s": 7.631,
+   "orchestration_s": 0.224,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 4,
+   "rejected": 1,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 4326.4,
+     "first_token_ms": 303.6,
+     "prompt_tokens": 1631,
+     "completion_tokens": 192,
+     "tokens_per_second": 47.73,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 3304.4,
+     "first_token_ms": null,
+     "prompt_tokens": 1573,
+     "completion_tokens": 143,
+     "tokens_per_second": 43.28,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "This release adds connection health checks and fixes a race in pool shutdown, according to one source.",
+     "claims": [
+      "C5"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C5",
+       "state": "insufficient",
+       "text": "This release adds connection health checks and fixes a race in pool shutdown."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Corvane 2.5.4 was withdrawn because of a packaging error, according to one source.",
+     "claims": [
+      "C10"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C10",
+       "state": "insufficient",
+       "text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C3 (temporally_unresolved) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: connect, C3: connect"
+     ],
+     "text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+    }
+   ]
+  },
+  {
+   "id": "L01",
+   "category": "latest",
+   "mode": "technical",
+   "status": "completed",
+   "wall_s": 7.489,
+   "model_s": 7.219,
+   "orchestration_s": 0.27,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 4,
+   "rejected": 1,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 3884.8,
+     "first_token_ms": 258.9,
+     "prompt_tokens": 1488,
+     "completion_tokens": 172,
+     "tokens_per_second": 47.44,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 3334.3,
+     "first_token_ms": null,
+     "prompt_tokens": 1389,
+     "completion_tokens": 147,
+     "tokens_per_second": 44.09,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library, according to one source.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "insufficient",
+       "text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "This release adds connection health checks and fixes a race in pool shutdown, according to one source.",
+     "claims": [
+      "C3"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C3",
+       "state": "insufficient",
+       "text": "This release adds connection health checks and fixes a race in pool shutdown."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "Corvane 2.5.4 was withdrawn because of a packaging error, according to one source.",
+     "claims": [
+      "C6"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C6",
+       "state": "insufficient",
+       "text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+      }
+     ],
+     "restates_cited_claims": true
+    },
+    {
+     "text": "The release contains no configuration changes, according to one source.",
+     "claims": [
+      "C2"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C2",
+       "state": "insufficient",
+       "text": "The release contains no configuration changes."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C4 (temporally_unresolved) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: connect, C4: connect"
+     ],
+     "text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+    }
+   ]
+  },
+  {
+   "id": "L02",
+   "category": "latest",
+   "mode": "technical",
+   "status": "completed",
+   "wall_s": 6.814,
+   "model_s": 6.45,
+   "orchestration_s": 0.364,
+   "reasoning_status": "model",
+   "reason": null,
+   "kept": 1,
+   "rejected": 4,
+   "critique": {
+    "flagged": 0,
+    "removed": 0,
+    "status": "ok"
+   },
+   "abstained": false,
+   "flagged": 0,
+   "calls": [
+    {
+     "purpose": "research_answer",
+     "status": "ok",
+     "latency_ms": 4662.5,
+     "first_token_ms": 284.5,
+     "prompt_tokens": 1692,
+     "completion_tokens": 209,
+     "tokens_per_second": 47.74,
+     "attempts": 1,
+     "cached_tokens": 640,
+     "priority": null
+    },
+    {
+     "purpose": "research_critique",
+     "status": "ok",
+     "latency_ms": 1787.5,
+     "first_token_ms": null,
+     "prompt_tokens": 1554,
+     "completion_tokens": 71,
+     "tokens_per_second": 39.72,
+     "attempts": 1,
+     "cached_tokens": 64,
+     "priority": null
+    }
+   ],
+   "answer": [
+    {
+     "text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
+     "claims": [
+      "C1"
+     ],
+     "flag": null,
+     "cited": [
+      {
+       "id": "C1",
+       "state": "supported",
+       "text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+      }
+     ],
+     "restates_cited_claims": true
+    }
+   ],
+   "rejected_sentences": [
+    {
+     "reasons": [
+      "states C2 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: Corvane, C2: Corvane"
+     ],
+     "text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+    },
+    {
+     "reasons": [
+      "states C11 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: Corvane, C11: Corvane"
+     ],
+     "text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+    },
+    {
+     "reasons": [
+      "states C10 (insufficient) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: Corvane, C10: Corvane"
+     ],
+     "text": "Corvane 2.5.3 was released on 4 September 2026 and fixes a connection leak in the pool."
+    },
+    {
+     "reasons": [
+      "states C5 (temporally_unresolved) as fact without hedging",
+      "relays an instruction or a non-declarative sentence from weak evidence: Corvane, connect, C5: Corvane, C5: connect"
+     ],
+     "text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+    }
+   ]
+  }
+ ]
+}

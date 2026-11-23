@@ -247,7 +247,7 @@ def _replay(copy, forgets, now):
     if forgotten:
         from . import graphs  # imported lazily, as governance does, to keep modules decoupled
     for dataset_id in forgotten:
-        blobs += copy.execute("UPDATE datasets SET blob=NULL, deleted_at=? "
+        blobs += copy.execute("UPDATE datasets SET blob=NULL, note=NULL, deleted_at=? "
                               "WHERE id=? AND deleted_at IS NULL", (now, dataset_id)).rowcount
         effects += copy.execute("DELETE FROM graph_effects WHERE dataset_id=?", (dataset_id,)).rowcount
         invalidated += graphs.invalidate_dependents(copy, dataset_id, now)["invalidated"]
