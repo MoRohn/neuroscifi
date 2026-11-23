@@ -114,24 +114,12 @@ def _metrics(url, timeout=2.0) -> dict | None:
             text = resp.read(4 << 20).decode("utf-8", "replace")
     except (OSError, ValueError):
         return None
-    out = {"in_flight": 0.0, "served": 0.0}
-    seen = False
-    for line in text.splitlines():
-        if line.startswith("#"):
-            continue
-        name, _, value = line.rpartition(" ")
-        metric = name.split("{", 1)[0]
-        try:
-            number = float(value)
-        except ValueError:
-            continue
-        if metric in ("vllm:num_requests_running", "vllm:num_requests_waiting"):
-            out["in_flight"] += number
-            seen = True
-        elif metric == "vllm:request_success_total":
-            out["served"] += number
-            seen = True
-    return out if seen else None
+    samples = monitor.prometheus(text)       # the parser `nsf resources` reads the inference server's state with
+    in_flight = samples.get("vllm:num_requests_running", []) + samples.get("vllm:num_requests_waiting", [])
+    served = samples.get("vllm:request_success_total", [])
+    if not in_flight and not served:
+        return None
+    return {"in_flight": sum((v for _, v in in_flight), 0.0), "served": sum((v for _, v in served), 0.0)}
 
 
 _clock, _monotonic = time.time, time.monotonic      # module-level so tests can give every Idle one fake clock
