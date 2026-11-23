@@ -95,6 +95,7 @@ class Turn:
         self.spoken_until = 0
         self.created = time.monotonic()
         self.synth_ms: list[float] = []
+        self.asked = 0          # the session's user turns when this reply started speaking (Session.floor)
 
 
 class Session:
@@ -110,6 +111,13 @@ class Session:
         self.pending: dict | None = None        # guarded by self.lock (request, reply and follow threads)
         self.finalised: deque = deque(maxlen=8)  # utterances whose final segment is queued (no provisional after)
         self.reply_n = 0
+        # Reply generations (guarded by self.lock): every user turn (a final utterance, a typed message) takes the
+        # next `generation`, and its reply carries it. Replies run concurrently and finish in any order, so a reply
+        # speaks only if its generation is at least `floor`, which rises to each delivered reply's generation and,
+        # when the owner interrupts a reply, past every turn asked before that reply started speaking: an older,
+        # slower answer is shown as text but never spoken over a newer one or after the owner cut it short.
+        self.generation = 0
+        self.floor = 0
         self.output_muted = False
         self.active = True
         self.seen = time.monotonic()
@@ -604,6 +612,7 @@ class VoiceHub:
         ttl = cfg["audio_ttl_hours"] if cfg["retain_audio"] else None
         detail = {"asr_ms": round(result["latency"] * 1000, 1), "audio_seconds": round(result["audio_seconds"], 2)}
         replying = self._replies.acquire(blocking=False)
+        gen = self._next_generation(s)
 
         def persist():
             try:
@@ -613,8 +622,8 @@ class VoiceHub:
                 self._emit(s, "transcript", segment=_seg(seg))
             finally:
                 if replying:
-                    threading.Thread(target=self._respond, args=(s, utterance, text, received, True), daemon=True,
-                                     name="nsf-voice-bridge").start()
+                    threading.Thread(target=self._respond, args=(s, utterance, text, received, True, gen),
+                                     daemon=True, name="nsf-voice-bridge").start()
         if not self._write_later(persist):
             if replying:
                 self._replies.release()
@@ -637,8 +646,9 @@ class VoiceHub:
                 seg = tx.upsert(db, s.id, utterance, speaker="user", source="typed", status="final",
                                 text=" ".join(text.split()), now=self.clock(), ended_at=self.clock())
             self._emit(s, "transcript", segment=_seg(seg))
-            threading.Thread(target=self._respond, args=(s, utterance, text, time.monotonic(), True), daemon=True,
-                             name="nsf-voice-bridge").start()
+            threading.Thread(target=self._respond, args=(s, utterance, text, time.monotonic(), True,
+                                                         self._next_generation(s)),
+                             daemon=True, name="nsf-voice-bridge").start()
         except BaseException:
             self._replies.release()
             raise
@@ -672,7 +682,14 @@ class VoiceHub:
             raise Conflict(f"speech output is unavailable ({err.code})") from None
 
     # ---- replies ----------------------------------------------------------------------------------------------------
-    def _respond(self, s: Session, utterance, text, received, slot=False):
+    @staticmethod
+    def _next_generation(s: Session) -> int:
+        """A new user turn: the generation its reply carries (Session.floor)."""
+        with s.lock:
+            s.generation += 1
+            return s.generation
+
+    def _respond(self, s: Session, utterance, text, received, slot=False, gen=None):
         try:
             with s.lock:      # a spoken confirm/deny claims the pending confirmation: it runs at most once
                 pending = s.pending if s.pending and s.pending["expires_at"] > self.clock() else None
@@ -686,15 +703,20 @@ class VoiceHub:
                 reply = vbridge.Reply("error", speech=["Sorry, something went wrong handling that."],
                                       text=f"Error: {type(exc).__name__}")
             self.metrics["reply_ms"].append((time.monotonic() - received) * 1000)
-            self._deliver(s, reply, responding_to=utterance, received=received)
+            self._deliver(s, reply, responding_to=utterance, received=received, gen=gen)
         finally:
             if slot:
                 self._replies.release()
 
-    def _deliver(self, s: Session, reply, *, responding_to=None, received=None):
+    def _deliver(self, s: Session, reply, *, responding_to=None, received=None, gen=None):
+        """Record, show and (mode A) speak a reply. `gen`: the generation of the user turn it answers (None for
+        replies no user turn waits for: research results, progress, confirmations); a stale one is not spoken."""
         with s.lock:
             s.reply_n += 1
             rid = f"r{s.reply_n}-{secrets.token_hex(3)}"
+            stale = gen is not None and gen < s.floor
+            if gen is not None:
+                s.floor = max(s.floor, gen)
         actions_after = []
         for action in reply.actions:
             kind = action["kind"]
@@ -731,7 +753,7 @@ class VoiceHub:
         if reply.confirm:
             with s.lock:
                 s.pending = reply.confirm
-        speak = bool(reply.speech) and s.mode == "voice_text" and not s.output_muted and s.active
+        speak = bool(reply.speech) and s.mode == "voice_text" and not s.output_muted and s.active and not stale
         seg = None
         if s.active or reply.task_id:
             with self.db() as db:
@@ -749,15 +771,20 @@ class VoiceHub:
                 cfg = vconfig.get(db)
             turn = Turn(rid, rid, sentences(reply.speech), cfg["voice"], cfg["speed"])
             with s.lock:
-                s.turns[rid] = turn
-                s.last_turn = turn
-                for old in list(s.turns.values()):
-                    if old is not turn and old.status == "speaking":
-                        self._cancel_turn(old, "superseded")
-                while len(s.turns) > 8:
-                    s.turns.pop(next(iter(s.turns)))
-            threading.Thread(target=self._synthesize, args=(s, turn, received), daemon=True,
-                             name="nsf-voice-tts").start()
+                if gen is not None and gen < s.floor:      # a newer reply or an interruption got here meanwhile
+                    turn = None
+                else:
+                    turn.asked = s.generation
+                    s.turns[rid] = turn
+                    s.last_turn = turn
+                    for old in list(s.turns.values()):
+                        if old is not turn and old.status == "speaking":
+                            self._cancel_turn(old, "superseded")
+                    while len(s.turns) > 8:
+                        s.turns.pop(next(iter(s.turns)))
+            if turn is not None:
+                threading.Thread(target=self._synthesize, args=(s, turn, received), daemon=True,
+                                 name="nsf-voice-tts").start()
         self._emit(s, "reply", reply=reply.public(), segment=_seg(seg) if seg else None,
                    turn={"id": turn.id, "sentences": len(turn.sentences)} if turn else None)
         for action in actions_after:
@@ -869,6 +896,8 @@ class VoiceHub:
         if not isinstance(sentence, int) or not 0 <= sentence <= len(turn.sentences):
             raise ValidationError("sentence out of range")
         self._cancel_turn(turn, "barge_in" if kind == "barge_in" else "stop")
+        with s.lock:      # answers to turns asked before this reply started speaking are stale now (Session.floor)
+            s.floor = max(s.floor, turn.asked + 1)
         turn.spoken_until = sentence
         if kind == "barge_in":
             self.metrics["barge_ins"] += 1
