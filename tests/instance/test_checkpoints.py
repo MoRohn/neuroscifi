@@ -1,3 +1,4 @@
+from contextlib import closing
 import json
 import os
 import sqlite3
@@ -710,3 +711,111 @@ def test_restore_carries_over_recent_node_nonces(instance, tmp_path):
     finally:
         copy.close()
     assert out["node_revocations_applied"] == 0
+
+
+EPOCH_DERIVED = ("evidence", "belief_revisions", "decisions", "pending", "changepoints", "epoch_contexts",
+                 "epoch_streams")
+NOTHING_LEFT = {t: 0 for t in (*EPOCH_DERIVED, "epoch_links")}
+
+
+def _teach_epoch_with_every_derived_row(db, epoch, start, *, note=None):
+    """An epoch holding a row in every table forget_epoch clears: evidence, revisions, three recorded decisions
+    (with the question they open), a changepoint, its graph context, a stream, and a later epoch linked from it."""
+    import numpy as np
+    from neuroscifi.instance import evidence, executive
+    evidence.start_epoch(db, epoch, start, note=note, context="panel")
+    for i in range(4):
+        evidence.observe(db, {"id": f"{epoch}-{start:.0f}-c{i}", "epoch": epoch, "channel": "camera",
+                              "action": i % 2, "bit": i % 2, "root": "cam-room"}, start + i)
+    for i, bit in enumerate((0, 1, 0, 1)):
+        evidence.observe(db, {"id": f"{epoch}-{start:.0f}-w{i}", "epoch": epoch, "channel": "word", "action": 0,
+                              "bit": bit, "root": "Bob-room"}, start + 10 + i)
+    for i in range(3):
+        executive.decide(db, epoch, start + 20 + i, record=True)
+    rng = np.random.default_rng(5)
+    evidence.attach_stream(db, epoch, rng.normal(size=(8, 2)), rng.normal(size=(8, 2)), start + 30)
+    evidence.start_epoch(db, f"{epoch}-next", start + 31)
+    with store.write(db):
+        db.execute("INSERT INTO changepoints(epoch,scope,since_seq,pending_id,created_at,confirmed) "
+                   "VALUES(?,'camera:cam-room',1,NULL,?,1)", (epoch, start + 32))
+        db.execute("INSERT OR REPLACE INTO epoch_links(epoch,source_epoch,segments,pending_id,created_at) "
+                   "VALUES(?,?,?,NULL,?)", (f"{epoch}-next", epoch, json.dumps({"mechanism": "mechanism@0"}),
+                                            start + 33))
+
+
+def _epoch_rows(path, epoch):
+    """Rows naming `epoch` in each table forget_epoch clears, plus the epoch's note."""
+    with closing(sqlite3.connect(path)) as copy:
+        rows = {t: copy.execute(f"SELECT count(*) FROM {t} WHERE epoch=?", (epoch,)).fetchone()[0]
+                for t in EPOCH_DERIVED}
+        rows["epoch_links"] = copy.execute("SELECT count(*) FROM epoch_links WHERE epoch=? OR source_epoch=?",
+                                           (epoch, epoch)).fetchone()[0]
+    return rows
+
+
+def test_restore_never_brings_back_any_row_of_an_epoch_forgotten_after_the_checkpoint(instance, tmp_path):
+    """MEM-08: a restore of an archive written before forget_epoch holds none of the forgotten epoch's evidence,
+    belief revisions, decisions, questions, changepoints, links, graph context, streams or note."""
+    db, path = instance
+    _teach_epoch_with_every_derived_row(db, "room", T0, note="the owner's private note zq")
+    before = _epoch_rows(path, "room")
+    assert all(before[t] for t in (*EPOCH_DERIVED, "epoch_links")), before  # precondition: every table is hit
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 40)
+    out = governance.forget_epoch(db, "room", T0 + 41)
+    assert cp["id"] in out["effects"]["checkpoints_stale"]
+    assert _epoch_rows(path, "room") == NOTHING_LEFT
+    checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 42)
+    assert _epoch_rows(tmp_path / "r.sqlite", "room") == NOTHING_LEFT
+    with closing(sqlite3.connect(tmp_path / "r.sqlite")) as copy:   # the linked epoch itself is kept
+        assert copy.execute("SELECT count(*) FROM epochs WHERE name='room-next'").fetchone()[0] == 1
+
+
+def test_restore_keeps_rows_of_an_epoch_name_reused_after_it_was_forgotten(instance, tmp_path):
+    """The epoch forget is replayed only into archives written before it: an archive of the epoch name used again
+    afterwards keeps the new rows."""
+    db, path = instance
+    _teach_epoch_with_every_derived_row(db, "room", T0)
+    governance.forget_epoch(db, "room", T0 + 41)
+    _teach_epoch_with_every_derived_row(db, "room", T0 + 100)
+    again = _epoch_rows(path, "room")
+    assert again["decisions"] == 3
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 140)
+    checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 141)
+    assert _epoch_rows(tmp_path / "r.sqlite", "room") == again
+
+
+def test_restore_rewrites_revision_causes_naming_an_event_forgotten_after_the_checkpoint(instance, tmp_path):
+    """The live forget turns a revision cause `evidence:<id>` into evidence:#forgotten; a restore does the same."""
+    from neuroscifi.instance import evidence
+    db, path = instance
+    evidence.start_epoch(db, "e", T0)
+    for i, (event, channel) in enumerate((("secret-event-zq", "reference"), ("kept-zq", "camera"))):
+        evidence.observe(db, {"id": event, "epoch": "e", "channel": channel, "action": 0, "bit": 1,
+                              "root": "std"}, T0 + i)
+    assert db.execute("SELECT count(*) FROM belief_revisions WHERE cause='evidence:secret-event-zq'").fetchone()[0]
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 2)
+    governance.forget_evidence(db, "secret-event-zq", T0 + 3)
+    checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 4)
+    with closing(sqlite3.connect(tmp_path / "r.sqlite")) as copy:
+        restored = copy.execute("SELECT id, cause, summary FROM belief_revisions ORDER BY id").fetchall()
+        assert len(restored) == 2
+        assert restored == [db.execute("SELECT id, cause, summary FROM belief_revisions WHERE id=?", (r[0],))
+                            .fetchone() for r in restored]
+        assert copy.execute("SELECT count(*) FROM belief_revisions WHERE cause='evidence:secret-event-zq' "
+                            "OR summary LIKE '%evidence:secret-event-zq%'").fetchone()[0] == 0
+
+
+def test_forget_epoch_whose_evidence_all_expired_marks_archives_holding_its_derived_rows_stale(instance, tmp_path):
+    """Swept evidence leaves the epoch's revisions, decisions and questions behind; an archive written after the
+    sweep holds them, so forgetting the epoch must mark it stale even though no evidence row is removed."""
+    db, path = instance
+    _teach_epoch_with_every_derived_row(db, "room", T0)
+    ttl = store.config(db).evidence_ttl_seconds
+    assert governance.sweep(db, T0 + 40 + ttl)["expired"] == 8
+    assert db.execute("SELECT count(*) FROM decisions WHERE epoch='room'").fetchone()[0] == 3
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 41 + ttl)
+    out = governance.forget_epoch(db, "room", T0 + 42 + ttl)
+    assert out["effects"]["deleted"] == 0 and out["effects"]["checkpoints_stale"] == [cp["id"]]
+    assert checkpoints.listing(db)[0]["status"] == "stale"
+    checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 43 + ttl)
+    assert _epoch_rows(tmp_path / "r.sqlite", "room") == NOTHING_LEFT

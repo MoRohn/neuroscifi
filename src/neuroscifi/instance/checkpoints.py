@@ -3,8 +3,9 @@
 `create` takes a consistent online backup (the writer may stay open) and packs it as an NSFA archive; retained
 voice audio past its TTL is deleted first, so it never enters a new archive.
 A deletion that commits while the archive is being written makes the new checkpoint 'stale' at once.
-`restore` never publishes a partial file and re-applies current tombstones, forgotten datasets (with their
-graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
+`restore` never publishes a partial file and re-applies current tombstones (with the revision causes naming them),
+forgotten epochs (their derived rows, governance.drop_epoch_rows, in copies written before the forget), forgotten
+datasets (with their graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
 the same cascade as the live forget: governance.replay_web_forgets; forgotten voice sessions with their
 transcripts and audio: governance.replay_voice_forgets), research-node revocations and retired node keys, and the
 nonces of signed node requests still inside their replay window, and drops epoch streams and
@@ -195,6 +196,10 @@ def _forgets(db, now):
         "tombstones": db.execute("SELECT id,seq,epoch,deleted_at,reason FROM tombstones").fetchall(),
         "datasets": [r[0] for r in db.execute("SELECT id FROM datasets WHERE deleted_at IS NOT NULL")],
         "roots": db.execute("SELECT digest,kind,forgotten_at FROM forgotten_roots").fetchall(),
+        # Forgotten epochs with the state version their forget committed at: an epoch's derived rows carry no
+        # tombstone (and its evidence may have expired first), so deletion_log is the record that it was forgotten.
+        "epochs": [(name, json.loads(effects).get("state_version", float("inf"))) for name, effects in db.execute(
+            "SELECT target_id, effects FROM deletion_log WHERE target_kind='epoch' ORDER BY id")],
         "web": db.execute("SELECT kind,digest,forgotten_at FROM web_forgotten").fetchall(),
         # Epoch streams leave no tombstone: a stream the live instance no longer holds was forgotten or expired.
         "streams": set(db.execute("SELECT id,sha256 FROM epoch_streams").fetchall()),
@@ -217,13 +222,14 @@ def _replay(copy, forgets, now):
     tombstones = forgets["tombstones"] if forgets else []
     forgotten = forgets["datasets"] if forgets else []
     roots = forgets["roots"] if forgets else []
+    epochs = forgets["epochs"] if forgets else []
     web = forgets["web"] if forgets else []
     live_streams = forgets["streams"] if forgets else None
     live_audio = forgets["audio"] if forgets else None
     revoked = forgets["revoked"] if forgets else []
     retired = forgets["retired"] if forgets else []
     nonces = forgets["nonces"] if forgets else []
-    removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = 0
+    removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = epoch_rows = 0
     web_removed = {"tasks": 0, "knowledge": 0, "sources": 0}
     invalidated = []
     copy.execute("PRAGMA secure_delete=ON")
@@ -233,6 +239,11 @@ def _replay(copy, forgets, now):
     for tomb in tombstones:
         removed += copy.execute("DELETE FROM evidence WHERE id=?", (tomb[0],)).rowcount
         copy.execute("INSERT OR IGNORE INTO tombstones(id,seq,epoch,deleted_at,reason) VALUES(?,?,?,?,?)", tomb)
+    # Revision causes naming a removed event id become evidence:#forgotten, as in the live forget.
+    gone = {tomb[0] for tomb in tombstones}
+    causes = [cause.partition(":")[2] for (cause,) in copy.execute(
+        "SELECT DISTINCT cause FROM belief_revisions WHERE cause LIKE 'evidence:%' OR cause LIKE 'forget:%'")]
+    scrubbed += governance._forget_causes(copy, [i for i in causes if i in gone])
     if forgotten:
         from . import graphs  # imported lazily, as governance does, to keep modules decoupled
     for dataset_id in forgotten:
@@ -241,11 +252,17 @@ def _replay(copy, forgets, now):
         invalidated += graphs.invalidate_dependents(copy, dataset_id, now)["invalidated"]
     if roots:
         copy.executemany("INSERT OR IGNORE INTO forgotten_roots(digest,kind,forgotten_at) VALUES(?,?,?)", roots)
-        scrubbed = _scrub_copy(copy, candidates, {digest for digest, _, _ in roots})
+        scrubbed += _scrub_copy(copy, candidates, {digest for digest, _, _ in roots})
     if live_streams is not None:
         for stream in copy.execute("SELECT id,sha256 FROM epoch_streams").fetchall():
             if stream not in live_streams:
                 streams += copy.execute("DELETE FROM epoch_streams WHERE id=?", (stream[0],)).rowcount
+    # An epoch forgotten after this copy was written (its state version is older than the forget's) loses its
+    # derived rows as in the live forget; a copy written after the forget may hold the same name used again.
+    version = store.state_version(copy)
+    for epoch, forgotten_at_version in epochs:
+        if version < forgotten_at_version:
+            epoch_rows += sum(governance.drop_epoch_rows(copy, epoch).values())
     if web:
         copy.executemany("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", web)
         web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now)
@@ -281,7 +298,8 @@ def _replay(copy, forgets, now):
     copy.execute("COMMIT")
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
-    return {"tombstones_applied": len(tombstones), "evidence_removed": removed, "datasets_blanked": blobs,
+    return {"tombstones_applied": len(tombstones), "evidence_removed": removed, "epoch_rows_removed": epoch_rows,
+            "datasets_blanked": blobs,
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
             "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked}

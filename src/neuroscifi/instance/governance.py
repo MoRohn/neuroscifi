@@ -174,25 +174,32 @@ def _forget_roots(db, rows, now):
     return len(roots), scrub_roots(db, roots)
 
 
+def drop_epoch_rows(db, epoch):
+    """Delete the epoch's derived rows: belief_revisions, decisions, pending, changepoints, every epoch link from
+    or to it, its graph context and its streams. Caller owns the transaction. Returns {table: rows deleted}.
+
+    Shared by forget_epoch and checkpoints._replay, so a restored copy loses exactly what the live forget removed.
+    """
+    derived = {table: db.execute(f"DELETE FROM {table} WHERE epoch=?", (epoch,)).rowcount
+               for table in ("belief_revisions", "decisions", "pending", "changepoints")}
+    derived["epoch_links"] = db.execute("DELETE FROM epoch_links WHERE epoch=? OR source_epoch=?",
+                                        (epoch, epoch)).rowcount
+    for table in ("epoch_contexts", "epoch_streams"):
+        derived[table] = db.execute(f"DELETE FROM {table} WHERE epoch=?", (epoch,)).rowcount
+    return derived
+
+
 def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=None):
     """Caller owns the transaction. Returns the effects dict, or None when nothing matched.
 
-    drop_epoch: also delete that epoch's belief_revisions, decisions, pending and changepoints rows
-    (forget_epoch).
+    drop_epoch: also delete that epoch's derived rows (drop_epoch_rows; forget_epoch).
     """
     rows = db.execute(f"SELECT seq,id,epoch,channel,root FROM evidence WHERE {where} ORDER BY seq", params).fetchall()
     sources = sorted({r[2] for r in rows} | ({drop_epoch} if drop_epoch is not None else set()))
     linked = [e for (e,) in db.execute(f"SELECT epoch FROM epoch_links WHERE source_epoch IN "
                                        f"({','.join('?' * len(sources))}) ORDER BY epoch", sources)
               if e != drop_epoch and e not in sources]
-    derived = {}
-    if drop_epoch is not None:
-        derived = {table: db.execute(f"DELETE FROM {table} WHERE epoch=?", (drop_epoch,)).rowcount
-                   for table in ("belief_revisions", "decisions", "pending", "changepoints")}
-        derived["epoch_links"] = db.execute("DELETE FROM epoch_links WHERE epoch=? OR source_epoch=?",
-                                            (drop_epoch, drop_epoch)).rowcount
-        for table in ("epoch_contexts", "epoch_streams"):
-            derived[table] = db.execute(f"DELETE FROM {table} WHERE epoch=?", (drop_epoch,)).rowcount
+    derived = drop_epoch_rows(db, drop_epoch) if drop_epoch is not None else {}
     if not rows and not any(derived.values()):
         return None
     db.executemany("DELETE FROM evidence WHERE seq=?", [(r[0],) for r in rows])
@@ -204,8 +211,9 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
         stale = [r[0] for r in db.execute(
             "SELECT id FROM checkpoints WHERE status='valid' AND max_evidence_seq>=? ORDER BY id", (first,))]
         db.executemany("UPDATE checkpoints SET status='stale' WHERE id=?", [(i,) for i in stale])
-    if derived.get("epoch_streams"):
-        stale = _stale_all(db, stale)  # a stream carries no evidence seq, so any checkpoint may hold it
+    if any(derived.values()):
+        # A derived row carries no evidence seq (and may outlive its expired evidence), so any checkpoint may hold it.
+        stale = _stale_all(db, stale)
     epochs = sorted({r[2] for r in rows})
     version = store.bump_state_version(db)
     from .beliefs import compute  # lazy: governance must not depend on inference at import time
