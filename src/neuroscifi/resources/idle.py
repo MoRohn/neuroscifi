@@ -722,8 +722,11 @@ def using(db_path, name, *, purpose, notify=None, idle=None, timeout=None):
             stack.callback(idle.touch, name)
         except OSError:      # an unwritable folder must never break a call
             pass
-        yield idle.ensure_loaded(name, purpose=purpose, notify=notify) if timeout is None else \
-            _bounded_load(idle, name, purpose=purpose, notify=notify, timeout=timeout)
+        if wake_dir() is not None:      # this process may not start services itself: ask, and wait (review F5)
+            yield _requested_load(idle, name, purpose=purpose, notify=notify, timeout=timeout)
+        else:
+            yield idle.ensure_loaded(name, purpose=purpose, notify=notify) if timeout is None else \
+                _bounded_load(idle, name, purpose=purpose, notify=notify, timeout=timeout)
 
 
 _DETACHED: dict = {}                # (db_path, service) -> (the reload process this process started, when)
@@ -811,9 +814,102 @@ def _background_reload(idle, name, purpose) -> dict:
     return loading
 
 
+WAKE_SUFFIX = ".wake"
+WAKE_PICKUP = 60.0         # seconds a wake request may wait for neuroscifi-wake.path before it counts as not served
+
+
+def wake_dir() -> Path | None:
+    """The wake-request folder (NSF_WAKE_DIR), None when none is configured.
+
+    Why it exists (review F5). In the installed deployment the console and the worker run as an unprivileged,
+    sandboxed user that can reach neither Docker nor `systemctl start`, so a reload they start themselves cannot
+    work, for the memory models or for the answer model; and a process they spawn dies with their unit. With
+    NSF_WAKE_DIR set they only leave a request: an empty file `<service>.wake` in that folder. A systemd path unit
+    (deploy/systemd/neuroscifi-wake.path) sees it and runs `nsf resources wake` as the user that owns the services
+    (neuroscifi-wake.service), which does the load with the same headroom check, wait and event as any other.
+    Without NSF_WAKE_DIR (one user runs everything: `nsf start`) the reload is started directly, as before."""
+    value = os.environ.get("NSF_WAKE_DIR")
+    return Path(value) if value else None
+
+
+class _Requested:
+    """A wake request left for neuroscifi-wake.path. poll() is None until it has been picked up."""
+
+    def __init__(self, path):
+        self.path = path
+
+    def poll(self):
+        return None if self.path.exists() else 0
+
+
+def _request_wake(idle, name):
+    """Leave the wake request of `name` (created atomically, empty, 0600): the file's name is the whole message.
+    One that has waited longer than WAKE_PICKUP was not picked up: OSError, so the caller reports a failure."""
+    folder = wake_dir()
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = folder / f"{name}{WAKE_SUFFIX}"
+    try:
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+        os.utime(path, (idle.clock(), idle.clock()))
+    except FileExistsError:
+        if idle.clock() - path.stat().st_mtime > WAKE_PICKUP:
+            raise OSError(f"its wake request was not picked up within {WAKE_PICKUP:.0f} s (is neuroscifi-wake.path "
+                          "active?)") from None
+    return _Requested(path)
+
+
+def serve_wake_requests(db_path, folder, *, idle=None) -> list[dict]:
+    """What neuroscifi-wake.service runs (`nsf resources wake`): take every request out of `folder` and reload the
+    service it names, if the idle policy unloaded it. A request is its file name only: it is removed first and
+    never opened, and a name that is not a service of this policy is dropped without any command being run."""
+    idle = idle or Idle(db_path)
+    out = []
+    for path in sorted(Path(folder).glob(f"*{WAKE_SUFFIX}")):
+        name = path.name[: -len(WAKE_SUFFIX)]
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            continue                         # another pass took it
+        except OSError as error:
+            out.append({"request": name[:64], "action": "failed", "why": f"cannot remove the request: {error}"[:200]})
+            continue                         # left in place it would be served again and again
+        if name not in idle.services:
+            out.append({"request": name[:64], "action": "ignored", "why": "not a service of the idle policy"})
+            continue
+        result = idle.ensure_loaded(name, purpose="wake request") or \
+            {"action": "none", "why": "nothing to do: the idle policy has not unloaded it"}
+        out.append({"service": name, "action": result["action"], "why": result.get("why")})
+    return out
+
+
 def _start_reload(idle, name, purpose):
-    """How a background reload is started. One way today: a process of its own."""
-    return _spawn_load(idle, name, purpose)
+    """How a background reload is started: a wake request where NSF_WAKE_DIR names the folder of the path unit
+    that serves them, else a process of its own."""
+    return _request_wake(idle, name) if wake_dir() is not None else _spawn_load(idle, name, purpose)
+
+
+def _requested_load(idle, name, *, purpose, notify, timeout) -> dict | None:
+    """using() where reloads go through wake requests: ask for the reload and wait, no longer than `timeout`, until
+    the state says the service is loaded. The results are those of _bounded_load: None (nothing to do), "load",
+    "loading" (the caller's time ran out; it keeps starting), "refused" or "failed"."""
+    if not idle.unloaded_by_policy(name):
+        return None
+    told = idle.message(name)
+    if notify is not None:
+        _tell(notify, told)
+    deadline = None if timeout is None else time.monotonic() + max(0.0, timeout)
+    asked = False
+    while True:
+        if asked and not idle.unloaded_by_policy(name):      # looked at first: a loaded service is not asked for
+            return {"action": "load", "why": f"on demand: {purpose}", "told": told}
+        state = _background_reload(idle, name, purpose)      # asks once; later rounds find the request or the load
+        asked = True
+        if state["action"] in ("refused", "failed"):
+            return state | {"told": told}
+        if deadline is not None and time.monotonic() >= deadline:
+            return {"action": "loading", "told": told,
+                    "why": f"{told}: not ready within this call's {timeout:.0f} s; it keeps starting in the background"}
+        time.sleep(0.2)
 
 
 @contextmanager
@@ -860,6 +956,13 @@ def wake(db_path, names, *, purpose, notify=None) -> list[threading.Thread]:
         return []
     idle = Idle(db_path)
     threads = []
+    if wake_dir() is not None:          # ask the unit that owns the services; nothing to wait for here
+        for name in names:
+            if idle.unloaded_by_policy(name):
+                state = _background_reload(idle, name, purpose)
+                if notify is not None:
+                    _tell(notify, idle.message(name) if state["action"] == "loading" else state["why"])
+        return threads
     for name in names:
         if idle.unloaded_by_policy(name):
             thread = threading.Thread(target=idle.ensure_loaded, args=(name,),
@@ -899,4 +1002,4 @@ def mark_used(db_path, names) -> None:
 
 
 __all__ = ["CRITICAL_FLOOR", "CRITICAL_SHARE", "Idle", "SERVICES", "Service", "mark_used", "on_demand",
-           "parse_timeout", "service_port", "using", "using_now", "wake"]
+           "parse_timeout", "serve_wake_requests", "service_port", "using", "using_now", "wake", "wake_dir"]

@@ -1,0 +1,11 @@
+# NeuroSciFi wake requests: starts neuroscifi-wake.service whenever a request file exists (see that unit's header for
+# what a request is and how to install both). systemd watches the folder itself, so no process polls it.
+[Unit]
+Description=NeuroSciFi wake requests (watch)
+
+[Path]
+PathExistsGlob=@NSF_WAKE_DIR@/*.wake
+Unit=neuroscifi-wake.service
+
+[Install]
+WantedBy=multi-user.target

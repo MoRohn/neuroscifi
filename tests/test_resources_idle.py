@@ -609,8 +609,10 @@ def memory_host(fake, monkeypatch):
 def _finish_loads(fake):
     fake.gate.set()
     for reload, _ in list(idle._DETACHED.values()):
-        reload.thread.join(10)
-        assert not reload.thread.is_alive()
+        thread = getattr(reload, "thread", None)          # a wake request (review F5) has no thread of ours
+        if thread is not None:
+            thread.join(10)
+            assert not thread.is_alive()
 
 
 def _unload_idle(fake, *names):
@@ -1042,3 +1044,101 @@ def test_a_failed_reload_is_not_started_again_by_another_process_inside_the_back
         assert state["action"] == "loading"
     _finish_loads(fake)
     assert "neuroscifi-memory-embed" in fake.running
+
+
+# ---- review F5: wake requests, for processes that may not start services themselves ---------------------------
+
+@pytest.fixture
+def spool(memory_host, monkeypatch, tmp_path):
+    """The installed shape: NSF_WAKE_DIR is set, and starting a process or a service from here is an error."""
+    folder = tmp_path / "wake"
+    monkeypatch.setenv("NSF_WAKE_DIR", str(folder))
+
+    def forbidden(*args):
+        raise AssertionError("with NSF_WAKE_DIR set this process starts nothing itself")
+    monkeypatch.setattr(idle, "_spawn_load", forbidden)
+    memory_host.spool = folder
+    return memory_host
+
+
+def _serve(fake):
+    from neuroscifi.cli import main
+    return main(["resources", "wake", "--db", str(fake.path), "--dir", str(fake.spool)])
+
+
+def test_a_lookup_leaves_a_wake_request_and_the_wake_command_reloads_the_service(spool, capsys):
+    import stat
+    fake = spool
+    _unload_idle(fake, "embed")
+    with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
+        assert state["action"] == "loading"
+    request = fake.spool / "embed.wake"
+    assert request.read_bytes() == b"" and stat.S_IMODE(request.stat().st_mode) == 0o600
+    assert not [c for c in fake.calls if "start" in c]            # nothing was started from the lookup's process
+    with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
+        assert state["action"] == "loading"                        # the same request, still waiting
+    assert _serve(fake) == 0                                       # what neuroscifi-wake.service runs
+    served = json.loads(capsys.readouterr().out)["served"]
+    assert served == [{"service": "embed", "action": "load", "why": "on demand: wake request"}]
+    assert not request.exists() and "neuroscifi-memory-embed" in fake.running
+    event = fake.make().events()[-1]
+    assert (event["action"], event["by"], event["ok"]) == ("load", "on demand", True) and "headroom" in event
+    with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
+        assert state is None
+    assert _serve(fake) == 0 and json.loads(capsys.readouterr().out) == {"served": []}
+
+
+def test_a_wake_request_is_only_a_service_name_anything_else_is_dropped_and_nothing_is_run(spool, capsys):
+    fake = spool
+    fake.spool.mkdir()
+    for name in ("nope", "vllm; touch pwned", "$(id)", "--help", "embed.wake"):
+        (fake.spool / f"{name}.wake").write_text("resources unload vllm")      # content is never read
+    (fake.spool / "link.wake").symlink_to(fake.path)                           # nor followed
+    (fake.spool / "embed.txt").write_text("")                                   # not a request
+    calls = len(fake.calls)
+    assert _serve(fake) == 0
+    served = json.loads(capsys.readouterr().out)["served"]
+    assert len(served) == 6 and {item["action"] for item in served} == {"ignored"}
+    assert len(fake.calls) == calls and fake.path.exists()                      # no command, and the target stands
+    assert sorted(p.name for p in fake.spool.iterdir()) == ["embed.txt"]
+    # a request for a real service that is loaded, or that the owner unloaded, starts nothing either
+    (fake.spool / "rerank.wake").write_text("")
+    fake.make().unload("embed", reason="owner command")
+    (fake.spool / "embed.wake").write_text("")
+    assert _serve(fake) == 0
+    assert {item["action"] for item in json.loads(capsys.readouterr().out)["served"]} == {"none"}
+    assert "neuroscifi-memory-embed" not in fake.running
+
+
+def test_a_wake_request_nobody_picks_up_is_reported_not_called_starting_forever(spool):
+    fake = spool
+    _unload_idle(fake, "rerank")
+    with idle.using_now(fake.path, "rerank", purpose="memory lookup") as state:
+        assert state["action"] == "loading"
+    idle._DETACHED.clear()                                # another process, a minute later, the request still there
+    fake.now += idle.WAKE_PICKUP + 1
+    with idle.using_now(fake.path, "rerank", purpose="memory lookup") as state:
+        assert state["action"] == "failed" and "was not picked up within 60 s" in state["why"]
+        assert "neuroscifi-wake.path" in state["why"]
+
+
+def test_a_call_that_waits_for_its_service_asks_and_waits_for_the_wake_unit(spool, monkeypatch):
+    """The answer model in the installed shape: using() leaves the request, tells the user, and waits until the
+    unit that may start services has loaded it; a caller out of time gets "loading" and the load goes on."""
+    fake = spool
+    _unload_idle(fake, "vllm")
+    told = []
+    with idle.using(fake.path, "vllm", purpose="chat", notify=told.append, timeout=0.0) as result:
+        assert result["action"] == "loading" and (fake.spool / "vllm.wake").exists()
+    assert told == ["Starting the local model, about 33 s"]
+    server = threading.Timer(0.3, lambda: idle.serve_wake_requests(fake.path, fake.spool))
+    server.start()
+    with idle.using(fake.path, "vllm", purpose="chat", notify=told.append, timeout=20.0) as result:
+        assert result["action"] == "load"
+    server.join(10)
+    assert "neuroscifi-vllm" in fake.running and not (fake.spool / "vllm.wake").exists()
+    fake.make().configure({"asr": 15 * MIN})              # and a voice session's wake() only asks
+    fake.now += 3600
+    fake.make().tick()
+    assert idle.wake(fake.path, ("asr",), purpose="voice session", notify=told.append) == []
+    assert (fake.spool / "asr.wake").exists() and told[-1].startswith("Starting speech recognition")

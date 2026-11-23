@@ -7,7 +7,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 UNITS = sorted((ROOT / "deploy" / "systemd").glob("*.service"))
 DOCKER_USER_UNITS = ("neuroscifi-vllm.service", "neuroscifi-voice-asr.service", "neuroscifi-voice-tts.service",
-                     "neuroscifi-memory-embed.service", "neuroscifi-memory-rerank.service")
+                     "neuroscifi-memory-embed.service", "neuroscifi-memory-rerank.service",
+                     "neuroscifi-wake.service")
 MEMORY_UNITS = {"neuroscifi-memory-embed.service": "embed", "neuroscifi-memory-rerank.service": "rerank"}
 
 
@@ -176,6 +177,17 @@ def test_wait_treats_a_container_that_does_not_exist_yet_as_not_ready_then_as_go
     gone = subprocess.run(["bash", str(ROOT / script[0]), *script[1:]], capture_output=True, text=True, timeout=60,
                           env=env | {"APPEARS_AFTER": "1000000", "NSF_WAIT_GONE_GRACE": "0"})
     assert gone.returncode == 1 and "none after 0s" in gone.stderr
+
+
+def test_the_wake_units_watch_one_folder_run_only_the_wake_command_and_share_the_idle_units_sandbox():
+    path = (ROOT / "deploy" / "systemd" / "neuroscifi-wake.path").read_text()
+    unit = (ROOT / "deploy" / "systemd" / "neuroscifi-wake.service").read_text()
+    assert "PathExistsGlob=@NSF_WAKE_DIR@/*.wake\n" in path and "Unit=neuroscifi-wake.service\n" in path
+    assert 'resources wake --db "${NSF_DB}" --dir "@NSF_WAKE_DIR@"' in unit and "Type=oneshot\n" in unit
+
+    def sandbox(text):
+        return text[text.index("NoNewPrivileges=yes"):]
+    assert sandbox(unit) == sandbox((ROOT / "deploy" / "systemd" / "neuroscifi-idle.service").read_text())
 
 
 def test_memory_status_prints_one_line_per_service_running_or_not(tmp_path):

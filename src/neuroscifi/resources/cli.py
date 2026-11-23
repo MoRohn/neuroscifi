@@ -8,6 +8,8 @@
                                                   embed, rerank)
   nsf resources load SERVICE --on-demand PURPOSE  reload it only if the idle policy unloaded it, recorded as "on
                                                   demand: PURPOSE": what a memory lookup starts in the background
+  nsf resources wake [--dir DIR]                  serve the wake requests in DIR (default $NSF_WAKE_DIR): reload each
+                                                  service a request names (neuroscifi-wake.service runs this)
 """
 from __future__ import annotations
 
@@ -41,6 +43,13 @@ def _status(args):
         return emit(policy.status(monitor.containers()))
     if args.action == "tick":
         return emit(policy.tick())
+    if args.action == "wake":
+        folder = args.dir or idle.wake_dir()
+        if folder is None:
+            raise SystemExit("nsf resources wake: name the request folder (--dir DIR or NSF_WAKE_DIR)")
+        served = idle.serve_wake_requests(path, folder, idle=policy)
+        emit({"served": served})
+        return 1 if any(item["action"] in ("failed", "refused") for item in served) else 0
     if not args.service:
         raise SystemExit(f"nsf resources {args.action}: name the service ({', '.join(idle.SERVICES)})")
     if args.action == "unload":
@@ -61,7 +70,7 @@ def register(sub):
     from ..instance import store
     p = sub.add_parser("resources", help="memory/GPU pressure level, resource-scheduling decisions, idle unloading")
     store.add_db_argument(p)
-    p.add_argument("action", nargs="?", default="status", choices=("status", "idle", "tick", "unload", "load"),
+    p.add_argument("action", nargs="?", default="status", choices=("status", "idle", "tick", "unload", "load", "wake"),
                    help="status (default); idle: show or --set the idle timeouts; tick: one idle-policy pass; "
                         "unload|load SERVICE: the owner's manual command")
     p.add_argument("service", nargs="?", choices=tuple(idle.SERVICES), help="for unload and load")
@@ -70,6 +79,7 @@ def register(sub):
     p.add_argument("--on-demand", metavar="PURPOSE",
                    help="with `load`: reload the service only if the idle policy unloaded it (an owner's unload "
                         "stands), and record it as on demand for PURPOSE")
+    p.add_argument("--dir", metavar="DIR", help="with `wake`: the wake-request folder (default $NSF_WAKE_DIR)")
     p.add_argument("--quick", action="store_true", help="memory only (no nvidia-smi or docker calls)")
     p.add_argument("--cold-start", action="store_true",
                    help="also report each neuroscifi-* container's last measured start-to-ready time")
