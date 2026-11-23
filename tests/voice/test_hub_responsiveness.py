@@ -129,6 +129,8 @@ def test_a_retried_audio_chunk_is_accepted_once_and_a_gap_is_still_refused(hub):
     hub.fake.asr.script = ["show me the evidence"]
     assert hub.audio(s, OWNER, "u0001", 0, False, pcm(0.3))["status"] == "buffered"
     assert hub.audio(s, OWNER, "u0001", 0, False, pcm(0.3))["status"] == "duplicate"
+    with pytest.raises(Conflict, match="other audio"):       # a retry sends the same bytes; other bytes are no retry
+        hub.audio(s, OWNER, "u0001", 0, False, pcm(0.2))
     assert hub.audio(s, OWNER, "u0001", 1, False, pcm(0.1))["status"] == "buffered"
     assert len(hub.sessions[s].utterances["u0001"]["pcm"]) == len(pcm(0.4))      # the repeat was not added
     with pytest.raises(Conflict, match="expected chunk"):

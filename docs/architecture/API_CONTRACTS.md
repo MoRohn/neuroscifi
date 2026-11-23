@@ -102,6 +102,8 @@ Files: `datasets.py`, `graphs.py`, `learner.py`, `recall.py`, `cli_graphs.py`.
 ```python
 datasets.add(db, context, split, states: ndarray[T,N], targets: ndarray[T,N], provenance, now, note=None) -> int
 #   float64 finite, 1 <= N <= 1024, 8 <= T <= 200_000; stored as np.savez bytes (allow_pickle=False); sha256 of blob.
+#   A shape whose two arrays would not fit one SQLite blob (16 bytes per cell, 1e9 bytes less 4 kB of framing) is
+#   refused with ValidationError naming how many time steps fit, before the finite check and the encoding.
 datasets.load(db, dataset_id) -> (states, targets)          # Gone if deleted
 datasets.simulate(db, context, now, *, seed, world: 'a'|'b'='a', steps=1536) -> {"train": id, "validation": id, "heldout": id}
 #   Uses lab.graph_bench.world/stream (24 populations, 3 inputs each), provenance 'simulated'.
@@ -133,7 +135,10 @@ graphs.invalidate_dependents(db, dataset_id, now) -> {"invalidated": [ids], "rea
 #   If the active one was invalidated, re-activate the newest archived revision of that context whose lineage has no
 #   deleted dataset; if none, failure = "no eligible snapshot for context <c>".
 graphs.lesion(db, revision_id, dataset_id, now) -> {"edges":[{"src","dst","delta_mse"}], "permuted_control_mse", "base_mse"}
-#   Zero each retained edge in a copy, re-score, store rows in graph_effects(kind='lesion').
+#   The change in MSE from zeroing each retained edge, stored in graph_effects(kind='lesion'). Zeroing one edge
+#   changes only its receiver's residual, so each delta is taken from its closed form (the mean of the per-step
+#   change); the full MSE is evaluated twice (base, permuted control), not once per edge. A test compares every
+#   edge with the full recomputation.
 graphs.listing(db, context=None) -> list[dict] ; graphs.show(db, revision_id) -> dict (includes the decoded matrix as nested lists)
 graphs.lease(db, context, holder, now, ttl=600) -> context manager   # LeaseHeld if another holder has an unexpired lease
 
@@ -166,8 +171,14 @@ governance.forget_evidence(db, event_id, now, *, reason='forgotten') -> {"status
 #   max_evidence_seq >= seq as 'stale', insert belief_revisions(cause='forget:<id>'), close pending rows of that
 #   epoch whose premise changed (resolution 'superseded by deletion'), write deletion_log. Idempotent.
 governance.forget_epoch(db, epoch, now) -> dict           # every evidence row in the epoch (reason 'epoch_forgotten')
+#   Also deletes the epoch's derived rows (governance.drop_epoch_rows: belief_revisions, decisions, pending,
+#   changepoints, epoch links from or to it, its graph context and streams) and clears the owner's note; the epochs
+#   row stays. An epoch holding only a note is forgotten and logged too. Every checkpoint is marked stale whenever
+#   derived rows were removed, also when the epoch's evidence had already expired.
 governance.forget_partner(db, root, now) -> dict          # every word evidence row from that partner
 governance.forget_dataset(db, dataset_id, now) -> dict    # blob NULL, deleted_at set, graphs.invalidate_dependents, stale checkpoints
+#   Also deletes the graph_effects rows measured on the dataset (lesion, lesion_control, coactivation):
+#   effects["graph_effects_deleted"]. Effects measured on other datasets stay.
 governance.promote(db, event_id, now) -> dict             # retention 'promoted', expires_at NULL
 governance.sweep(db, now) -> {"expired": int}             # expire evidence with expires_at <= now (reason 'expired')
 
@@ -176,6 +187,10 @@ checkpoints.verify(db, checkpoint_id, now) -> dict        # full decode to a tem
 checkpoints.restore(db, checkpoint_id, dest, now, *, apply_tombstones=True) -> dict
 #   archive.convert('unpack'); refuses an existing dest; then deletes from the restored copy every evidence id that is
 #   tombstoned in the current instance, so forgotten ids are never resurrected by a restore.
+#   The replay also applies forgotten epochs (drop_epoch_rows, read from deletion_log with the state version each
+#   forget committed at, and only to copies older than that forget, so an epoch name used again keeps its new rows)
+#   and forgotten datasets with the graph effects measured on them, and rewrites revision causes naming a
+#   tombstoned event id to 'evidence:#forgotten'. Result adds epoch_rows_removed and graph_effects_removed.
 checkpoints.rebuild_stale(db, db_path, out_dir, now) -> dict   # new checkpoint, then unlink stale files ('deleted'); record failures
 checkpoints.listing(db) -> list
 ```
@@ -355,13 +370,44 @@ access is disabled for the individual (ADR-021), except reads of stored memory.
 | POST | /api/web/tasks `{objective, mode?, authorization?}` | orchestrator.submit (queued; the embedded worker runs it) |
 | GET | /api/web/tasks/{id} ; /evidence | orchestrator.get ; orchestrator.evidence |
 | POST | /api/web/tasks/{id}/cancel ; /resume | orchestrator.cancel ; orchestrator.requeue |
-| GET | /api/web/knowledge?topic=&limit= | knowledge.query (no topic: recent items) with knowledge.feedback |
+| GET | /api/web/knowledge?topic=&limit= | knowledge.query (no topic: recent items) with knowledge.feedback. With a topic the result carries `retrieval` (below) |
 | POST | /api/web/knowledge/{id}/review `{accept, note?}` ; /archive ; /reject ; /refresh ; /forget | knowledge.review / archive / reject / refresh / forget |
 | GET / POST | /api/web/monitors ; /api/web/monitors/{id}/pause, /resume, /stop | scheduler.monitor_* |
 
 The console does not run research by default: queued tasks are executed by `neuroscifi-webcortex.service`
 (`nsf web work`). `nsf console --web-worker` starts an embedded worker for a development console that has network
 access (the console's systemd unit allows loopback only). Leases prevent double execution.
+
+**Knowledge query result** (`knowledge.query`; `nsf web knowledge TOPIC`, the route above and the MCP
+`web_knowledge` tool): `{topic, as_of, items, matched, known, retrieval}`. `retrieval` says which ranking produced
+`items` (`docs/web-cortex/MEMORY_INTEGRATION.md` §5.1):
+
+| `retrieval` | When |
+|---|---|
+| `{"mode": "lexical"}` | semantic retrieval is off: the BM25 ranking, as in 0.7.0 |
+| `{"mode": "lexical", "reason": str}` | semantic retrieval is on and could not be used (no embedding endpoint, an unusable key file, a failed or timed-out memory-model call); `items` are the lexical result |
+| `{"mode": "semantic", "ranked_by": "rerank", "candidates": int, "dropped_below_floor": int, "floor": float, "models": {"embed", "rerank"}, "cached"?: true}` | ranked by the reranker; an item's `score` is the reranker's (0 to 1); statements under the floor are not returned |
+| `{"mode": "semantic", "ranked_by": "embedding", "candidates": int, "models": {"embed"}, "cached"?: true}` | no reranker configured: ranked by cosine similarity (the item's `score`), nothing cut |
+
+`nsf web memory [status|config|clear]` prints `{enabled, settings {enabled, candidates, floor, timeout,
+rerank_template}, providers {embed, rerank: {configured, endpoint?, model?, state?, reason?, key_present?}},
+vectors_held_by_this_process, effect, error?}`. There is no console route for it.
+
+**Task events and report.** Two optional fields were added after 0.7.0; a consumer that ignores unknown keys is
+unaffected.
+
+- The `decision` event of the discovering stage (`{needs_web, reasons, knowledge?}`) may carry `memory_check`:
+  `{"status": "checked", "confirmed": [knowledge ids], "refused": [knowledge ids]}` or `{"status": "skipped",
+  "reason": str}`. It is absent when no check was attempted: the task already needed the web, `memory_check` is off,
+  no answer model is configured or model reasoning is off. When the model confirms no statement, the same event has
+  `needs_web: true` (MEMORY_INTEGRATION §5.2).
+- `result.reasoning` (`docs/architecture/COGNITIVE_INFERENCE.md` §3) may carry `abstained: true`, only together
+  with `status: "rejected"`: the model wrote no sentence, so none was checked or rejected, and `reason` says so.
+  `rejected` stays the status of every answer in which no model sentence is shown. `result.reasoning.critique` is
+  `null`, or `{status: "ok", removed, flagged}`, `{status: "skipped", reason}` or `{status: "failed", reason}`.
+
+`POST /api/web/config` accepts only the four switches listed above; `memory_check` is set with
+`nsf web config --memory-check|--no-memory-check`.
 
 **Pocket bridge research actions** (ADR-028). Present only when the bridge runs with `--instance-db` and the
 individual has `enabled` and `pocket_research` on; otherwise 404 like any unknown route. Existing bearer, Origin,
@@ -398,8 +444,40 @@ review or configuration tools.
 
 | Surface | Result |
 |---|---|
-| GET /api/resources[?cold_start=1] (console token rules as §6) | `resources.status`: `level` (`ok` \| `elevated` \| `critical` \| `unknown`), `reasons`, `thresholds`, `memory` (/proc/meminfo bytes, PSI), `gpu` (nvidia-smi; `memory_readable` false where it reports N/A), `containers` (docker stats of neuroscifi-*), `audio_active`, `policy` {`background_research`, `browser_rendering`: {allowed, reason}, `background_model_slots`, `idle_unload` {`automatic` (some timeout set), `services` {vllm, asr, tts, searxng: {`timeout_s` (null: off), `suggested_minutes`, `loaded`, `state`, `state_by`, `last_used_at`, `idle_s`, `reload_estimate_s`}}, `critical_share`, `events` (last 20: {at, service, action, reason, by, ok, seconds, shape, told?, error?}), `how`}}; with `cold_start=1` also `cold_starts` [{name, started_at, ready_at, seconds}] |
-| `nsf resources [--db] [--quick] [--cold-start]` | the same JSON on stdout (`--quick`: memory only, no subprocesses) |
+| GET /api/resources[?cold_start=1] (console token rules as §6) | `resources.status`: `level` (`ok` \| `elevated` \| `critical` \| `unknown`), `reasons`, `thresholds`, `measured_at`, `memory` (/proc/meminfo bytes, PSI), `load` {`available`, `avg1`, `avg5`, `avg15`, `cpus`} (/proc/loadavg; `{available: false, reason}` when unreadable), `gpu` (nvidia-smi: `available`, `memory_used_bytes`, `memory_total_bytes`, `utilization_percent`, `memory_readable` false where it reports N/A, `temperature_c`, `power_draw_w`, `throttle` {`thermal`, `sw_thermal_slowdown`, `hw_thermal_slowdown`, `sw_power_cap`, `hw_slowdown`, `active_mask`} or null on a driver without these fields, `compute_apps` [{pid, name, memory_bytes}]), `containers` (docker stats of neuroscifi-*), `inference` (the vLLM server of the configured loopback endpoint, from its `/metrics`, cached 15 s: `{available: true, url, models, requests_running, requests_waiting, kv_cache_usage, server_started_at, since_start, interval}`; `since_start` and an available `interval` are `{requests_finished, mean_seconds {queue, prefill, decode, first_token, request}, prompt_tokens, prefix_cache_hit_share, generation_tokens, preemptions, finished_by_reason}`, `interval` also has `available` and `seconds` and is `{available: false, reason}` for the first reading of a process or after a server restart; the whole object is `{available: false, reason, url?}` when the endpoint is not configured, not on this host, unreachable or not a vLLM server), `audio_active`, `policy` {`background_research`, `browser_rendering`: {allowed, reason}, `background_model_slots`, `idle_unload` {`automatic` (some timeout set), `services` {vllm, asr, tts, searxng: {`timeout_s` (null: off), `suggested_minutes`, `loaded`, `state`, `state_by`, `last_used_at`, `idle_s`, `reload_estimate_s`}}, `critical_share`, `events` (last 20: {at, service, action, reason, by, ok, seconds, shape, told?, error?, headroom?, took_bytes?, freed_bytes?, refused?, available_bytes?, need_bytes?, floor_bytes?}), `how`}}; with `cold_start=1` also `cold_starts` [{name, started_at, ready_at, seconds}] |
+| `nsf resources [--db] [--quick] [--cold-start]` | the same JSON on stdout (`--quick`: memory only, no subprocesses; `load`, `gpu`, `containers` and `inference` are then null) |
 | `nsf resources idle [--set SERVICE=DURATION ...]` | show or set idle timeouts (`30m`, `900s`, `1h`, `off`; at least 1 min); prints `idle_unload` |
 | `nsf resources tick` | one idle-policy pass: {`enabled`, `level`, `blockers`, `decisions` {service: {action `none` \| `unload` \| `failed`, why, idle_s?, event?}}} |
-| `nsf resources unload\|load SERVICE` | the owner's manual command: {action, why, event; load: seconds, told}; exit 1 when the command failed |
+| `nsf resources unload\|load SERVICE` | the owner's manual command: {action, why, event; load: seconds, told}; exit 1 when the command failed or the load was refused (`action: "refused"`: it would leave less than the critical threshold of memory free) |
+
+## 10. Inference gateway (after 0.7.0)
+
+`docs/architecture/COGNITIVE_INFERENCE.md` §2 and §7. Settings are per individual and per provider (`chat`, `embed`,
+`rerank`); `nsf llm …` and `GET /api/llm/status` act on `chat`, `nsf web memory config` on the other two.
+
+| Surface | Result |
+|---|---|
+| `nsf llm config [flags]` | the `chat` settings without the key: the 0.7.0 fields plus `background_priority` (integer 0–100, default 0: no `priority` is sent) and `critique_voice` (boolean, default true), `key_file_effective`, `key_present`, and `locality` when an endpoint is set. Flags `--critique-voice\|--no-critique-voice`; `--set background_priority=N` |
+| `nsf llm status [--probe]` | `{health, usage_24h, reasoning {enabled, self_critique, critique_voice, background_priority (null when 0), used_for, when_unavailable}}` |
+| `GET /api/llm/status[?probe=1]` (console token rules as §6) | `{health, config (as `nsf llm config`), usage_24h}` |
+| `nsf llm usage [--limit N]` | `{summary, calls}`; `summary` is `null` and `calls` empty while no ledger exists |
+
+`usage_24h` and `summary`: `{calls, ok, prompt_tokens, completion_tokens, avg_latency_ms, avg_first_token_ms,
+avg_tokens_per_second, cached_prompt_tokens, cached_share, by_purpose {purpose: {calls, avg_latency_ms}}}`.
+`cached_prompt_tokens` and `cached_share` are taken only over the calls whose server reported its prefix cache;
+both are `null` when none did.
+
+A ledger call row (`calls[]`, newest first): `{id, at, purpose, model, locality, stream, status, error,
+prompt_tokens, completion_tokens, latency_ms, first_token_ms, attempts, tokens_per_second, task_id, provider,
+priority, cached_tokens}`. `provider` is `chat`, `embed` or `rerank`; `priority` is the value sent with the request
+(`null`: none); `cached_tokens` is the prompt tokens the server took from its prefix cache (`null`: not reported).
+The three last fields are `null` in rows written by 0.7.0. Purposes added: `memory_gate` (the memory-answer check),
+`memory_embed`, `memory_query` and `memory_rerank` (semantic retrieval). No row holds prompt, answer or memory text.
+
+Gateway calls: `Gateway.chat(..., priority=None)` sends `priority` only for a positive integer.
+`Gateway.embed(texts, *, purpose, input_type=None, timeout=None) -> list[list[float]]` (POST `/embeddings`) and
+`Gateway.rerank(query, documents, *, purpose, timeout=None) -> list[float]` (POST `/rerank`) raise `InferenceError`
+with the gateway's codes (`bad_response` for a malformed answer, `private_blocked` for memory text and an endpoint
+off this host without `remote_private_memory`) and `ValueError` for empty input.
+`reasoning.apply(..., background=False, spoken=False)`: `background` sends the configured priority with the task's
+model calls; `spoken` skips the critique pass when `critique_voice` is off.

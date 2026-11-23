@@ -528,3 +528,17 @@ def test_run_sh_wait_fails_when_the_restart_count_grows_between_two_polls(tmp_pa
 def test_run_sh_wait_still_returns_when_the_server_is_healthy(tmp_path):
     done = _wait(_fake_tools(tmp_path, states=["running 0"], healthy=True), "deploy/vllm/run.sh", "wait", "60")
     assert done.returncode == 0 and "healthy after" in done.stdout
+
+
+def test_a_measured_footprint_far_above_the_documented_one_is_not_believed(tmp_path, monkeypatch):
+    """Review: another workload freeing memory while the model unloaded left a "footprint" of 100 GiB, after which
+    every load was refused, the owner's included, and a refused load records nothing that could correct it."""
+    from neuroscifi.resources import idle as idle_mod, monitor
+    policy_ = idle_mod.Idle(tmp_path / "i.sqlite")
+    documented = policy_.services["vllm"].documented_gib
+    events = [{"service": "vllm", "ok": True, "action": "unload", "freed_bytes": 100 * monitor.GIB}]
+    monkeypatch.setattr(idle_mod.Idle, "events", lambda self, limit=20: events)
+    assert policy_.footprint("vllm") == {"bytes": int(documented * monitor.GIB),
+                                         "source": "documented (RESOURCE_SCHEDULING.md §4)"}
+    events.append({"service": "vllm", "ok": True, "action": "load", "took_bytes": int(1.2 * documented * monitor.GIB)})
+    assert policy_.footprint("vllm")["source"].endswith("(measured)")

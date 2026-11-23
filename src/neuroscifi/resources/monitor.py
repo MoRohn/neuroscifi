@@ -43,7 +43,7 @@ import subprocess
 import threading
 import time
 from urllib.error import HTTPError
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 GIB = 1024 ** 3
 ELEVATED_GIB = 16.0            # below this much MemAvailable (or 15 % of MemTotal): elevated
@@ -280,7 +280,9 @@ class _NoRedirect(HTTPRedirectHandler):
         return None          # urllib then raises HTTPError(code): reported as "answered HTTP 302"
 
 
-_NO_REDIRECT = build_opener(_NoRedirect)
+# No proxy either: with http_proxy set and no_proxy not covering the loopback address, urllib would hand the request,
+# key included, to the proxy.
+_NO_REDIRECT = build_opener(ProxyHandler({}), _NoRedirect)
 
 
 def inference(url: str, key: str | None = None, *, timeout: float = METRICS_TIMEOUT, clock=time.time) -> dict:

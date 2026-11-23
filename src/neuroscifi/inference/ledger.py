@@ -32,13 +32,20 @@ def ledger_path(db_path) -> Path:
     return path.with_name(f"{path.stem}.inference.sqlite")
 
 
+_READY: set[str] = set()      # ledger files this process has created or upgraded
+
+
 class Ledger:
     def __init__(self, path):
         self.path = Path(path)
         self.lock = threading.Lock()
+        key = str(self.path.resolve())
         if not self.path.exists():
             fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             os.close(fd)
+            _READY.discard(key)      # a new file at a known path has no table yet
+        if key in _READY:            # a gateway is built per call: the upgrade below runs once per file and process
+            return
         with self._connect() as db:
             db.execute(SCHEMA)
             have = {row[1] for row in db.execute("PRAGMA table_info(calls)")}
@@ -46,9 +53,11 @@ class Ledger:
                 if name not in have:
                     try:
                         db.execute(f"ALTER TABLE calls ADD COLUMN {name} {kind}")
-                    except sqlite3.OperationalError:     # another process added it between the two statements
-                        pass
+                    except sqlite3.OperationalError as error:
+                        if "duplicate column name" not in str(error):   # another process added it meanwhile: fine
+                            raise                                       # a locked file is not: the open must fail
             db.execute("CREATE INDEX IF NOT EXISTS calls_at ON calls(at)")   # Presence reads the newest rows often
+        _READY.add(key)
 
     def _connect(self):
         db = sqlite3.connect(self.path, timeout=5)

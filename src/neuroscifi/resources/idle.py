@@ -40,7 +40,9 @@ import subprocess
 import sys
 import threading
 import time
-from urllib.request import urlopen
+from urllib.request import ProxyHandler, build_opener
+
+_DIRECT = build_opener(ProxyHandler({}))      # a loopback service's /metrics is never read through a proxy
 
 from . import monitor, policy
 
@@ -115,7 +117,7 @@ def parse_timeout(text) -> float | None:
 def _metrics(url, timeout=2.0) -> dict | None:
     """{"in_flight", "served"} from a vLLM server's Prometheus /metrics (no key needed), or None if unreadable."""
     try:
-        with urlopen(url, timeout=timeout) as resp:   # noqa: S310 - a loopback URL from SERVICES
+        with _DIRECT.open(url, timeout=timeout) as resp:   # noqa: S310 - a loopback URL from SERVICES
             text = resp.read(4 << 20).decode("utf-8", "replace")
     except (OSError, ValueError):
         return None
@@ -154,6 +156,9 @@ def _flock(path, mode):
 
 def _minutes(seconds) -> str:
     return f"{seconds / 60:.0f} min" if seconds >= 60 else f"{seconds:.0f} s"
+
+
+MEASURED_CEILING = 1.5     # a measured footprint above this multiple of the documented one is not believed
 
 
 class Idle:
@@ -405,13 +410,18 @@ class Idle:
         (MemAvailable before and after: on unified memory this counts its GPU allocations too), else the documented
         figure; None when neither exists (no headroom check). Another workload changing at the same moment skews a
         measurement; a reading that was not an increase is not recorded."""
+        gib = self.services[name].documented_gib
+        ceiling = None if gib is None else MEASURED_CEILING * gib * monitor.GIB
         for event in reversed(self.events(limit=0)):
             if event.get("service") != name or not event.get("ok"):
                 continue
             for field, how in (("took_bytes", "taken by its last load"), ("freed_bytes", "freed by its last unload")):
-                if isinstance(event.get(field), (int, float)) and event[field] > 0:
+                # On a shared host another workload can free tens of GiB in the same seconds. A reading beyond
+                # MEASURED_CEILING times the documented figure is that, not the service: believing it would refuse
+                # every later load, and a refused load records nothing that could correct it (review).
+                if isinstance(event.get(field), (int, float)) and event[field] > 0 \
+                        and (ceiling is None or event[field] <= ceiling):
                     return {"bytes": int(event[field]), "source": f"{how} (measured)"}
-        gib = self.services[name].documented_gib
         return None if gib is None else {"bytes": int(gib * monitor.GIB),
                                          "source": "documented (RESOURCE_SCHEDULING.md §4)"}
 

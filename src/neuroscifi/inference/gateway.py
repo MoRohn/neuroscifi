@@ -204,7 +204,7 @@ class Gateway:
         ledger."""
         from .ledger import Ledger, ledger_path
         cfg = iconfig.get_config(db, provider)
-        key = iconfig.read_key(cfg) if cfg.configured else None
+        key = iconfig.read_key(cfg, provider) if cfg.configured else None
         ledger = Ledger(ledger_path(db_path)) if db_path is not None and cfg.configured else None
         gateway = cls(cfg, key=key, ledger=ledger, **kwargs)
         gateway.provider = provider

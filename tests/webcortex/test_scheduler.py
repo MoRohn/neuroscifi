@@ -181,10 +181,16 @@ def test_a_question_the_owner_asked_is_claimed_before_queued_autonomous_refreshe
     claims = [scheduler.claim_next(db, f"w{n}", T0 + 20 + n, lease=DAY)[0] for n in range(3)]
     assert claims == [*owner, autonomous[0]]          # then the autonomous ones, oldest first
 
-    later = T0 + scheduler.AUTONOMOUS_DEFER + 1.5     # autonomous[1] has waited longer than that, autonomous[2] not
-    late = orchestrator.submit(db, "Zephyr compiler targets", later, mode="quick_lookup", origin="console")["id"]
-    claims = [scheduler.claim_next(db, f"v{n}", later, lease=DAY)[0] for n in range(2)]
-    assert claims == [autonomous[1], late]
+    # Later both remaining autonomous tasks have waited longer than AUTONOMOUS_DEFER and no autonomous task was
+    # started within it: the oldest passes the owner's newer question, and only that one (review: a backlog of
+    # aged refreshes ran ahead of the owner as a block).
+    later = T0 + 30 + scheduler.AUTONOMOUS_DEFER
+    from neuroscifi.webcortex import autonomy
+    monkeypatch.setattr(autonomy, "full", lambda db, now: False)       # the concurrency cap is not the subject
+    late = [orchestrator.submit(db, q, later, mode="quick_lookup", origin="console")["id"]
+            for q in ("Zephyr compiler targets", "Zephyr compiler licence")]
+    claims = [scheduler.claim_next(db, f"v{n}", later + n, lease=DAY)[0] for n in range(4)]
+    assert claims == [autonomous[1], *late, autonomous[2]]
 
 
 def test_the_claim_order_uses_the_orchestrators_definition_of_autonomous(individual):

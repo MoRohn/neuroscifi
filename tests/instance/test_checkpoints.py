@@ -865,6 +865,7 @@ def test_a_restored_copy_remembers_the_forget_so_an_older_archive_restored_from_
     with closing(store.open_existing(tmp_path / "r1.sqlite")) as first:
         kept = first.execute("SELECT count(*) FROM deletion_log WHERE target_kind='epoch' AND target_id='room'")
         assert kept.fetchone()[0] == 1
+        assert {status for (status,) in first.execute("SELECT status FROM checkpoints")} == {"stale"}
         checkpoints.restore(first, older["id"], tmp_path / "r2.sqlite", T0 + 44)
         assert _epoch_rows(tmp_path / "r2.sqlite", "room") == NOTHING_LEFT
         assert b"private note zq" not in (tmp_path / "r2.sqlite").read_bytes()

@@ -102,7 +102,7 @@ nsfs checkpoint verify ID
 
 `verify` decodes the archive and runs SQLite's integrity check. A `status` of `missing` or `stale` in `list` means the file is gone or predates a forget. Run `nsfs checkpoint verify` on the newest id at least weekly and after any disk incident. A checkpoint that has never been verified is not a backup.
 
-Restore never overwrites. It writes a new file, re-applies current tombstones so forgotten ids stay forgotten, and is performed while the services are stopped:
+Restore never overwrites. It writes a new file and re-applies what the live database has forgotten since the archive was written, and is performed while the services are stopped. The replay covers tombstones (forgotten ids stay forgotten), forgotten epochs (their belief revisions, decisions, open questions, changepoints, links, graph context and the owner's note, in copies written before the forget; an epoch name used again afterwards keeps its new rows) and forgotten datasets (the blob and the lesion and coactivation effects measured on it):
 
 ```sh
 sudo systemctl stop neuroscifi-pocket.service neuroscifi-console.service neuroscifi-checkpoint.timer
@@ -131,6 +131,8 @@ Forgetting removes evidence, leaves a payload-free tombstone, recomputes beliefs
 | Expire everything past its lifetime now | `nsfs sweep` |
 
 Find ids with `nsfs memory evidence --epoch NAME`, `nsfs memory dataset`, and `nsfs memory deletion` (the deletion log).
+
+Forgetting an epoch also clears the free-text note the owner gave it; the epoch's row stays, because tombstones, the deletion log and evidence refer to its name. An epoch that holds only a note is forgotten and logged too. Forgetting a dataset also deletes the lesion and coactivation effects measured on it (`graph_effects_deleted` in the result); effects measured on other datasets stay.
 
 A voice session: `nsfs forget voice SESSION` (or `nsfs voice forget SESSION`); a research task, knowledge item or source: `nsfs forget research|knowledge|source TARGET`.
 
@@ -301,6 +303,62 @@ Each lease records the worker's host digest, pid and process start time. On the 
 Forgetting a knowledge item also forgets its queued or running refresh tasks (their objective is the forgotten statement); the result lists them in `refresh_tasks_forgotten`. Every forget result whose checkpoints became stale carries `next_steps` naming `nsf checkpoint rebuild`.
 
 Each web forget records a payload-free tombstone (`web_forgotten`, an instance-salted digest), marks every checkpoint stale and logs only a digest label for a URL or domain in `deletion_log`. `checkpoint restore` replays those tombstones on the restored copy, so a forgotten task, knowledge version or source never comes back. Then follow the erasure steps of section 6 (`checkpoint rebuild`). Forgetting a partner (`nsfs forget partner NAME`) also replaces the name in research objectives, reports, events, claims and knowledge.
+
+### Memory models (semantic retrieval)
+
+Optional. Without them memory is ranked by its words (the lexical ranking of 0.7.0) and nothing below is needed. They are two small models served by the same digest-pinned vLLM image as the answer model, on loopback only: an embedding model on port 18441 (`neuroscifi-memory-embed`) and a reranker on port 18442 (`neuroscifi-memory-rerank`). What they do and do not do: [MEMORY_INTEGRATION §5.1](../web-cortex/MEMORY_INTEGRATION.md#51-semantic-retrieval-semanticpy-optional). The script runs as the user who owns the weights and Docker access, like `deploy/vllm/run.sh`; there is no systemd unit for these two services, and `deploy/install.sh` does not install them.
+
+Place the weights in `~/.local/share/neuroscifi/models/qwen3-embedding-0.6b` and `~/.local/share/neuroscifi/models/qwen3-reranker-0.6b` (the script refuses to start a model whose `config.json` is missing). Settings: `deploy/memory/memory.env`; override any line in `~/.config/neuroscifi/memory/memory.env`.
+
+```sh
+deploy/memory/run.sh start            # both; or: start embed | start rerank
+deploy/memory/run.sh wait all 600     # until /health answers; fails early when a container keeps restarting
+deploy/memory/run.sh status           # container state and health
+deploy/memory/run.sh print embed      # the docker command, key redacted; changes nothing
+nsf web memory config --enable --embed-url http://127.0.0.1:18441/v1 --rerank-url http://127.0.0.1:18442/v1 \
+    --key-file ~/.config/neuroscifi/memory/api_key
+nsf web memory                        # switch, both endpoints with state and reason, the effect in words
+nsf web knowledge "a question"        # result.retrieval says which ranking produced the items
+deploy/memory/run.sh stop             # both; or: stop embed | stop rerank
+```
+
+The run script generates one API key for both services on first use (`~/.config/neuroscifi/memory/api_key`, 0600) and refuses a non-loopback bind and an image without a digest. `--key-file` takes an absolute path. A worker running as the `neuroscifi` service user cannot read a key in your home folder; give it a copy it can read, as for the answer model's key ([COGNITIVE_INFERENCE §5](../architecture/COGNITIVE_INFERENCE.md#5-run-configure-recover)). The idle policy does not manage these two containers: they stay loaded until `deploy/memory/run.sh stop`.
+
+Stopping the containers does not need a configuration change: the next query falls back to the lexical ranking and `retrieval.reason` says why. To switch semantic retrieval off for the individual, use `nsf web memory config --disable`.
+
+### Faster reading (read-ahead, off by default)
+
+```sh
+nsf web config --set read_ahead=4     # fetch the next pages ahead, one per site; results are identical
+nsf web config --set read_ahead=1     # back to one page at a time (the default)
+```
+
+Before turning it on, read what changes at the edges
+([Search and acquisition](../web-cortex/SEARCH_AND_ACQUISITION.md), "Read-ahead"): a few requests already sent can
+still reach their sites after a cancel or a denial, and unused requests are outside the daily caps.
+
+### Rolling back the inference and memory defaults
+
+Each default below can be reverted on its own. None needs a database change beyond the setting itself.
+
+| Default | Roll back | Check |
+|---|---|---|
+| vLLM serves requests by `priority` (`NSF_VLLM_SCHEDULING=priority`) | Put `NSF_VLLM_SCHEDULING=fcfs` in `~/.config/neuroscifi/inference/vllm.env`, then `deploy/vllm/run.sh start` (it replaces the running container; answers fall back to the extractive summary until `deploy/vllm/run.sh wait` returns). Where `neuroscifi-vllm.service` runs the model, use `sudo systemctl restart neuroscifi-vllm.service` instead | `deploy/vllm/run.sh print` shows `--scheduling-policy fcfs` |
+| vLLM processes up to 4096 tokens per step (`NSF_VLLM_BATCHED_TOKENS=4096`) | Put `NSF_VLLM_BATCHED_TOKENS=` (empty: vLLM's default) in the same file, then `deploy/vllm/run.sh start` | `deploy/vllm/run.sh print` no longer shows `--max-num-batched-tokens` |
+| Background research is sent with `priority` 10 (set by `nsf setup` for a vLLM endpoint) | `nsf llm config --set background_priority=0` | `nsf llm status`: `reasoning.background_priority` is null |
+| The answer model confirms a memory answer before it is given (`memory_check`) | `nsf web config --no-memory-check` | `nsf web config`: `config.memory_check` is false |
+| Semantic memory retrieval, once the owner enabled it | `nsf web memory config --disable` | `nsf web memory`: `effect` starts with "off" |
+| The memory model containers, once started | `deploy/memory/run.sh stop` | `deploy/memory/run.sh status`: both "not running" |
+
+Measurements behind the two vLLM settings and what each change costs: [COGNITIVE_INFERENCE §4 and §7](../architecture/COGNITIVE_INFERENCE.md#4-deployment-on-the-dgx-spark-measured-2026-11-21).
+
+| Symptom | Check | Recovery |
+|---|---|---|
+| `nsf web knowledge TOPIC` shows `retrieval: {"mode": "lexical", "reason": "…"}` | The reason. "no embedding endpoint is set": the switch is on without an endpoint. "semantic retrieval failed (unavailable)": a container is down or still starting (`deploy/memory/run.sh status`). "(unauthorised)": the key file does not match the running containers (`nsf web memory` shows `key_present`). "(timeout)": the call took longer than the `timeout` setting. "semantic retrieval unusable": the key file is readable by every user or otherwise unusable | Set the endpoint (`nsf web memory config --embed-url URL`), start the containers (`deploy/memory/run.sh start && deploy/memory/run.sh wait`), point `--key-file` at `~/.config/neuroscifi/memory/api_key`, or raise the timeout (`nsf web memory config --set timeout=5`). Until then answers use the lexical ranking; nothing is lost |
+| `retrieval` is `{"mode": "lexical"}` without a reason | Semantic retrieval is off for this individual (`nsf web memory`: `enabled` false) | `nsf web memory config --enable` |
+| A question that memory used to answer now goes to the web | The task's `decision` event: `memory_check.refused` lists the statements the answer model did not accept | Expected when the statement is about another property or scope. To restore the earlier behaviour: `nsf web config --no-memory-check` |
+| `deploy/vllm/run.sh wait` ends with "container is restarting" or "container restarted N time(s) while starting" | `docker logs neuroscifi-vllm` | The container is crash-looping, usually for lack of memory; `wait` no longer sits out its limit. Free memory or lower `NSF_VLLM_GPU_UTIL`, then start again |
+| A model call or `nsf resources load vllm` ends with "not enough memory to load the local model: …" | `nsf resources`: MemAvailable and the last `load` event with `refused: true` | The idle policy refuses a reload that would leave less than the critical threshold free. Free memory (stop another workload), then repeat the call or the command |
 
 ### MCP
 

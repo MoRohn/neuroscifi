@@ -516,8 +516,9 @@ def claim_next(db, holder, now, *, lease=None):
     dead (same host: services.holder_alive, so a crash is recovered without waiting for the lease to expire).
     Queued tasks the owner asked for are claimed before autonomous ones (autonomy.AUTONOMOUS_SQL, the same origins
     as orchestrator.is_autonomous), oldest first within each class, so a question does not wait behind refreshes;
-    an autonomous task queued more than AUTONOMOUS_DEFER s ago is ordered by age with the owner's, so a steady
-    stream of questions delays background work by at most that long, never forever. Returns (task_id, resume) or
+    an autonomous task queued more than AUTONOMOUS_DEFER s ago is ordered by age with the owner's, at most one per
+    AUTONOMOUS_DEFER, so a steady stream of questions never stops background work and a backlog of aged
+    refreshes never runs ahead of the owner as a block. Returns (task_id, resume) or
     None."""
     from . import autonomy, orchestrator
     from .services import holder_alive
@@ -532,10 +533,16 @@ def claim_next(db, holder, now, *, lease=None):
             waiting += f" AND {autonomy.AUTONOMOUS_SQL}"
         # Who asked comes first: an owner's task (console, Pocket, voice, CLI, monitor) before autonomous ones,
         # created_at order within each; an autonomous task queued over AUTONOMOUS_DEFER s ago competes by age.
+        # At most one aged autonomous task per AUTONOMOUS_DEFER passes the owner's: with twelve refreshes aged at
+        # once, all twelve would otherwise run before a question asked a moment ago (review).
+        recent = db.execute(f"SELECT 1 FROM web_tasks WHERE {autonomy.AUTONOMOUS_SQL} AND (started_at>? OR "
+                            "(lease_holder IS NOT NULL AND updated_at>?)) LIMIT 1",     # started, or just claimed
+                            (now - AUTONOMOUS_DEFER, now - AUTONOMOUS_DEFER)).fetchone()
+        aged_before = float("-inf") if recent else now - AUTONOMOUS_DEFER
         row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status='queued' AND "
                          "coalesce(stage,'')!='proposed' AND (lease_holder IS NULL OR lease_expires_at<?)"
                          f"{waiting} ORDER BY ({autonomy.AUTONOMOUS_SQL} AND created_at>?), created_at, rowid "
-                         "LIMIT 1", (now, now - AUTONOMOUS_DEFER)).fetchone()
+                         "LIMIT 1", (now, aged_before)).fetchone()
         resume = False
         if row is None:
             row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status IN ('discovering','reading',"

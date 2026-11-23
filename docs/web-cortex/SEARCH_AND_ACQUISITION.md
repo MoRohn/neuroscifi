@@ -170,6 +170,29 @@ Notes that matter:
 - **Coalescing.** Identical concurrent GETs (same URL, purpose, conditional flag, extra headers) share one network call; followers receive a copy of the leader's result or error. Only the leader's budget is charged (`test_identical_concurrent_gets_are_coalesced`).
 - **User agent.** `NeuroSciFi-WebCortex/0.7 (research agent; honours robots.txt)`. No contact address, no browser impersonation, no proxy rotation.
 
+### Read-ahead (`read_ahead`, default 1: off)
+
+Reading is one page at a time by default, as in 0.7.0. With `nsf web config --set read_ahead=N` (N at most
+`budget.max_concurrency`) the reader fetches the next candidates ahead of their turn, on distinct hosts only, so no
+site's interval is raced. A page fetched ahead is *claimed* when the reader reaches it, and only if a fetch made at
+that moment would have done exactly the same (the same policy, backoff state, robots.txt entries, cached copy and
+budget cut-off); otherwise it is fetched again in the normal way. Until it is claimed nothing of it is charged,
+cached or remembered, and its robots.txt and cache writes are held back. The order in which pages are read,
+charged, recorded and cited is the sequential order.
+
+Measured on the offline benchmark (`docs/quality/evidence/accel_after_read_ahead_latency.json`): at 1 and at 4
+every quality metric and every task's usage, sources, answer and events are identical, and the safety invariants
+hold. With 300 ms added to every response, task time is 2.10 s (p95 3.80 s) at 1 and 0.99 s (p95 1.83 s) at 4,
+with 4 requests in 350 sent and not used.
+
+Why it is off by default. Above 1, up to `read_ahead` − 1 fetches already under way go on after the task is
+cancelled, after web access is switched off or after a domain is denied, until the reader's next check (a fetch is
+its page, robots.txt and up to five redirect hops with theirs: about a dozen requests at most, within 15 s; their
+bytes are dropped and never cached), and requests sent and not used are reported in the task's usage
+(`prefetch_unused_requests`, `prefetch_unused_bytes`) but are not counted in the daily caps. "Denied takes effect
+at once" is a property of the security model, so trading it for speed is the owner's decision. At 1 there is no
+prefetch at all and the code path is the sequential one.
+
 ### What is cached
 
 | Cached in `<db stem>.webcache.sqlite` | Not cached |

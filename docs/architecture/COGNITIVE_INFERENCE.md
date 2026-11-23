@@ -389,8 +389,11 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   answer.) Measured on the 51 tasks of the offline corpus with the live model
   (`docs/quality/evidence/accel_baseline_pipeline.json`, `summary`): the critique call ran for the 46 model answers
   and took 42 % of the tasks' wall time (the answer call 53 %, orchestration 5 %); it removed 0 of the 94 kept
-  sentences and flagged 41. The pass is skipped when too little of the time budget is left (below), when
-  `self_critique` is off, and for a spoken answer when `critique_voice` is off (§7).
+  sentences and flagged 41. The same run after the changes of §7 (`accel_after_pipeline.json`): 42 % of wall time,
+  0 of 90 kept sentences removed, 46 flagged, and 35 of those 46 flags are on sentences that restate their cited
+  claims word for word (`critique_flags`; the file reads such a mark as a false alarm). The pass is skipped when
+  too little of the time budget is left (below), when `self_critique` is off, and for a spoken answer when
+  `critique_voice` is off (§7).
 - **Time budget.** `orchestrator._reason` passes what is left of the task's `budget.max_seconds`
   (`time_left`); the answer call, its schema repair and the critique share that one deadline (`Gateway.structured`
   gives the repair only the remaining time; `Gateway._call` never exceeds `read_timeout`). With less than
@@ -486,7 +489,10 @@ were unchanged, and no request was preempted. `--performance-mode interactivity`
 83 s to become healthy against 58 s; it is not adopted. `run.sh` refuses a scheduling value other than `fcfs` or
 `priority` and a step that is not a number or empty. The step matters for long evidence, tool loops and concurrent
 tasks, not for the median task: a typical answer prompt is 1.1k tokens (p95 1.7k, `accel_baseline_pipeline.json`).
-The baseline these runs are compared with is `docs/quality/evidence/accel_baseline_inference.json`. Which NVIDIA
+The baseline these runs are compared with is `docs/quality/evidence/accel_baseline_inference.json`; the shipped
+configuration was measured once more after all changes (`accel_after_inference.json`: evidence-sized first token
+604 ms against 719 ms in the baseline, foreground beside four background requests 1.12 s against 1.72 s, short
+replies 49.4 tokens/s). Which NVIDIA
 serving technologies were assessed for this stack, and why vLLM stays:
 [NVIDIA assessment](../acceleration/NVIDIA_ASSESSMENT.md).
 
@@ -738,7 +744,8 @@ has a default and one command that restores the 0.7.0 behaviour. None of them ch
 vLLM that way (§4; roll back there with `NSF_VLLM_SCHEDULING=fcfs`). Measured on that server
 (`docs/quality/evidence/accel_vllm_flags.json`): a short foreground request beside four background requests saw its
 first token after 1.72 s with the 0.7.0 flags and after 1.13 s with priority scheduling, the 4096-token step and
-`priority` 10 on the background requests; alone it takes 0.14 to 0.18 s. The capped background model slots of
+`priority` 10 on the background requests; alone it takes 0.14 to 0.18 s. The shipped configuration measured again
+afterwards gives 1.12 s (`accel_after_inference.json`). The capped background model slots of
 [resource scheduling](RESOURCE_SCHEDULING.md) §3(a) apply as before: the slot cap bounds how many background calls
 run, the priority orders them behind the owner's inside the server. Tests:
 `tests/inference/test_inference_policy.py` (`test_background_reasoning_sends_the_configured_priority_on_both_calls`,
@@ -746,9 +753,12 @@ run, the priority orders them behind the owner's inside the server. Tests:
 `test_background_reasoning_sends_nothing_when_no_priority_is_configured`) and
 `tests/test_setup_cli.py::test_a_vllm_endpoint_gets_the_background_priority_and_setup_says_so`.
 
-**Critique for voice.** The default keeps the pass because nothing has been measured that justifies dropping the
-flags for spoken answers; the switch exists because the pass is 42 % of a task's wall time on the offline corpus and
-removed no sentence there (§3). With it off the answer is still checked by the guard, sentence by sentence. Tests:
+**Critique for voice.** The default keeps 0.7.0 behaviour. The switch exists because the pass is 42 % of a task's
+wall time on the offline corpus and removed no sentence there (§3), and its flags are never spoken. What skipping
+the pass saves, measured by running the same 51 tasks with `self_critique` off
+(`docs/quality/evidence/accel_after_pipeline_no_critique.json` against `accel_after_pipeline.json`): task wall time
+median 1.37 s against 3.27 s, mean 2.36 s against 4.45 s. With the pass off the answer is still checked by the
+guard, sentence by sentence. Tests:
 `test_a_spoken_answer_keeps_the_critique_pass_by_default`,
 `test_with_critique_voice_off_a_spoken_answer_makes_one_model_call_and_says_why`.
 

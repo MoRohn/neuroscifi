@@ -3,7 +3,7 @@
  "version": 1,
  "label": "memory-answer-check",
  "model": "qwen3-30b-a3b-instruct-2507-fp8",
- "generated_at": "2026-11-23T16:50:30Z",
+ "generated_at": "2026-11-23T18:09:53Z",
  "environment": {
   "host_digest": "382a803dcc0d",
   "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
@@ -20,7 +20,7 @@
    "markdownify": "1.2.4",
    "playwright": "1.64.1"
   },
-  "git_commit": "079af1c",
+  "git_commit": "758bed4",
   "git_dirty": true
  },
  "queries": 96,
@@ -34,32 +34,80 @@
    "other_properties": 288
   },
   "model_check": {
-   "right_fact_accepted": 94,
+   "right_fact_accepted": 86,
    "right_facts": 96,
    "other_property_accepted": 1,
    "other_properties": 288
   }
  },
  "model_check_ms": {
-  "p50": 451.122,
-  "p95": 502.251
+  "p50": 1104.584,
+  "p95": 1181.629
  },
  "model_check_mistakes": [
   {
-   "query": "Steepest gradient of the Marrow Valley railway",
-   "fact": "railway.route",
+   "query": "Orbix licence",
+   "fact": "orbix.licence",
+   "accepted": false
+  },
+  {
+   "query": "What is Fennick used for?",
+   "fact": "fennick.cache",
    "accepted": true
   },
   {
-   "query": "Steepest gradient of the Marrow Valley railway",
-   "fact": "railway.gradient",
+   "query": "Where does Fennick keep the artifacts it has already compiled?",
+   "fact": "fennick.cache",
+   "accepted": false
+  },
+  {
+   "query": "Where are Kestrel libraries published?",
+   "fact": "kestrel.registry",
+   "accepted": false
+  },
+  {
+   "query": "What prize has Imre Solvang won?",
+   "fact": "solvang.medal",
+   "accepted": false
+  },
+  {
+   "query": "Lumen-7 expected lifetime",
+   "fact": "lumen.duration",
+   "accepted": false
+  },
+  {
+   "query": "In which city is Hollin & Reeve based?",
+   "fact": "hollin.hq",
+   "accepted": false
+  },
+  {
+   "query": "How much money did Hollin & Reeve take in last year?",
+   "fact": "hollin.revenue",
    "accepted": false
   },
   {
    "query": "Quillstream interpreter compatibility",
    "fact": "quill.python",
    "accepted": false
+  },
+  {
+   "query": "What is the mouth of the Varnel River?",
+   "fact": "varnel.mouth",
+   "accepted": false
+  },
+  {
+   "query": "What is the biggest town along the Varnel River?",
+   "fact": "varnel.city",
+   "accepted": false
   }
  ],
- "note": "The model check is applied only to statements the lexical test chose, so in use a statement is accepted when both accept it; the two are shown separately here."
+ "note": "The model check is applied only to statements the lexical test chose, so in use a statement is accepted when both accept it; the two are shown separately here. One call per statement: the time above is for the four statements of a query (about 0.28 s each); in use the lexical test usually chooses one or two.",
+ "earlier_design": {
+  "what": "one prompt holding all four statements (replaced after review: the text of one statement could change the verdict on another)",
+  "right_fact_accepted": 94,
+  "right_facts": 96,
+  "other_property_accepted": 1,
+  "other_properties": 288,
+  "model_check_ms_p50": 451
+ }
 }

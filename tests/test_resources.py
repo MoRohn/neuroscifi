@@ -531,3 +531,14 @@ def test_the_metrics_scrape_never_forwards_the_key_through_a_redirect():
             server.server_close()
     assert seen == [] and out["available"] is False and "HTTP 302" in out["reason"]
     assert "SECRET-KEY-1" not in str(out)
+
+
+def test_the_metrics_scrapes_never_go_through_a_proxy():
+    """Review: with http_proxy set and no_proxy not covering the loopback address, urllib handed the request, the
+    bearer key included, to the proxy. Both scrapes use an opener without any proxy."""
+    from urllib.request import ProxyHandler
+    from neuroscifi.resources import idle
+    for opener in (monitor._NO_REDIRECT, idle._DIRECT):
+        proxies = [h for h in opener.handlers if isinstance(h, ProxyHandler)]
+        assert all(not getattr(h, "proxies", None) for h in proxies)
+        assert "http" not in {name.split("_")[0] for h in proxies for name in dir(h) if name.endswith("_open")}

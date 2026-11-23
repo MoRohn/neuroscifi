@@ -23,8 +23,10 @@ With only `embed` the candidates are returned by vector similarity and nothing i
 separate "about this" from "about something similar" (measured), so no floor is applied without the reranker.
 
 What it is not. It is not a second memory: there is no vector store. Vectors live in this process only, keyed by
-the statement's text, and the set is trimmed to the live statements on every query, so a forgotten, superseded or
-archived statement leaves no vector behind and nothing derived from memory is written to disk. It ranks and filters
+the statement's text, and nothing derived from memory is written to disk. The set is trimmed to the live statements
+on every query, and knowledge.forget drops this process's vectors at once. Limit: another long-running process (the
+worker, the console) keeps the text and vector of a statement forgotten elsewhere until its own next memory lookup
+or its exit. It ranks and filters
 what knowledge.query returns; it does not decide whether memory answers a question (intent.assess and the
 orchestrator's memory check do), it does not merge or compare knowledge, and it never changes a statement, a
 confidence or a verification state.
@@ -136,6 +138,7 @@ class _Vectors:
         # statement set is another key, so nothing ranked over forgotten text is ever served.
         self.results: OrderedDict[tuple, tuple] = OrderedDict()
         self.down_until, self.down_reason = 0.0, None     # after a failed call: lexical ranking until this moment
+        self.version = 0                                  # the newest state version a caller synced with
 
     def cached(self, key):
         with self.lock:
@@ -150,20 +153,32 @@ class _Vectors:
             while len(self.results) > RESULT_CACHE:
                 self.results.popitem(last=False)
 
-    def sync(self, texts, embed) -> np.ndarray:
+    def sync(self, texts, embed, version=0) -> np.ndarray:
+        """The vectors of `texts`, embedding what is missing. `version` is the individual's state version when the
+        caller read its statements: a caller that read memory before a newer one did (a forget in between) gets its
+        vectors but leaves none behind. The lock is not held while the model is called, so one slow embedding does
+        not hold every other lookup of the process."""
         with self.lock:
-            wanted = set(texts)
-            gone = [t for t in self.by_text if t not in wanted]
-            for t in gone:
-                del self.by_text[t]
-            if gone:
-                self.results.clear()
-            missing = [t for t in dict.fromkeys(texts) if t not in self.by_text]
-            for start in range(0, len(missing), EMBED_BATCH):
-                part = missing[start:start + EMBED_BATCH]
-                for t, vector in zip(part, embed(part)):
-                    self.by_text[t] = _unit(vector)
-            return np.stack([self.by_text[t] for t in texts])
+            current = version >= self.version
+            if current:
+                self.version = version
+                wanted = set(texts)
+                gone = [t for t in self.by_text if t not in wanted]
+                for t in gone:
+                    del self.by_text[t]
+                if gone:
+                    self.results.clear()
+            have = {t: self.by_text[t] for t in texts if t in self.by_text}
+        missing = [t for t in dict.fromkeys(texts) if t not in have]
+        for start in range(0, len(missing), EMBED_BATCH):
+            part = missing[start:start + EMBED_BATCH]
+            for t, vector in zip(part, embed(part)):
+                have[t] = _unit(vector)
+        with self.lock:
+            if current and version >= self.version:       # nobody read a newer memory while the model worked
+                for t in missing:
+                    self.by_text[t] = have[t]
+        return np.stack([have[t] for t in texts])
 
     def query(self, text, embed) -> np.ndarray:
         with self.lock:
@@ -185,20 +200,32 @@ def _unit(vector) -> np.ndarray:
 
 
 _STORES: dict[str, _Vectors] = {}
+_MODEL_NAMES: dict[str, str] = {}      # endpoint -> the model it serves, for an endpoint configured without a name
 _STORES_LOCK = threading.Lock()
 
 
-def _vectors(db, model) -> _Vectors:
+def _store_key(db, embedder) -> str:
+    """One store per individual, endpoint and model: vectors of another endpoint are never compared with these,
+    even when both serve a model of the same name."""
     path = store.database_path(db) or f"memory:{id(db)}"
-    key = hashlib.sha256(f"{path}\0{model}".encode()).hexdigest()
+    return hashlib.sha256(f"{path}\0{embedder.cfg.base_url}\0{embedder.cfg.model}".encode()).hexdigest()
+
+
+def _vectors(db, embedder) -> _Vectors:
     with _STORES_LOCK:
-        return _STORES.setdefault(key, _Vectors())
+        return _STORES.setdefault(_store_key(db, embedder), _Vectors())
 
 
 def clear() -> None:
     """Drop every vector this process holds (tests; `nsf web memory clear` after changing the embedding model)."""
     with _STORES_LOCK:
+        for held_store in _STORES.values():      # emptied, not only dropped: a lookup in flight may still hold one
+            with held_store.lock:
+                held_store.by_text.clear()
+                held_store.queries.clear()
+                held_store.results.clear()
         _STORES.clear()
+        _MODEL_NAMES.clear()
 
 
 def held(db) -> int:
@@ -206,10 +233,8 @@ def held(db) -> int:
     embedder = _gateways(db)[0]
     if embedder is None:
         return 0
-    path = store.database_path(db) or f"memory:{id(db)}"
-    key = hashlib.sha256(f"{path}\0{embedder.cfg.model}".encode()).hexdigest()
     with _STORES_LOCK:
-        found = _STORES.get(key)
+        found = _STORES.get(_store_key(db, embedder))
     return len(found.by_text) if found else 0
 
 
@@ -226,6 +251,15 @@ def _gateways(db):
             if iconfig.get_config(db, provider).configured else None
         if gateway is not None:
             gateway.cfg.max_retries = 0        # a memory lookup never waits out an outage: lexical ranking instead
+            if not gateway.cfg.model:          # no model named: ask the endpoint once per process, not per lookup
+                name = _MODEL_NAMES.get(gateway.cfg.base_url)
+                if name is None:
+                    try:
+                        name = _MODEL_NAMES[gateway.cfg.base_url] = gateway.model()
+                    except Exception:          # rank() reports the failure of the call it then makes
+                        name = None
+                if name:
+                    gateway.cfg.model = gateway._model = name
         out.append(gateway)
     return out
 
@@ -258,18 +292,19 @@ def rank(db, topic: str, rows: list[dict], lexical: list[float], *, limit: int, 
     if not rows:
         return [], {"mode": "semantic", "ranked_by": "embedding", "candidates": 0}
     statements = [r["statement"] for r in rows]
-    vectors = _vectors(db, embedder.cfg.model)
-    if time.monotonic() < vectors.down_until:      # measured: a refused connection cost each lookup 1.5 s
-        return None, {"mode": "lexical", "reason": vectors.down_reason,
-                      "retry_in_seconds": round(vectors.down_until - time.monotonic(), 1)}
+    vectors = _vectors(db, embedder)
     signature = (topic, limit, json.dumps(cfg.to_json(), sort_keys=True), reranker.cfg.model if reranker else None,
                  hashlib.sha256("\0".join(statements).encode()).hexdigest(), tuple(r["id"] for r in rows))
     hit = vectors.cached(signature)
     if hit is not None:
         return [(score, rows[i]) for score, i in hit[0]], dict(hit[1]) | {"cached": True}
+    if time.monotonic() < vectors.down_until:      # measured: a refused connection cost each lookup 1.5 s
+        return None, {"mode": "lexical", "reason": vectors.down_reason,
+                      "retry_in_seconds": round(vectors.down_until - time.monotonic(), 1)}
     try:
         matrix = vectors.sync(statements, lambda texts: embedder.embed(texts, purpose="memory_embed",
-                                                                       timeout=max(cfg.timeout, 10.0)))
+                                                                       timeout=max(cfg.timeout, 10.0)),
+                              store.state_version(db))
         question = vectors.query(topic, lambda texts: embedder.embed(texts, purpose="memory_query",
                                                                      timeout=cfg.timeout))
         if question.shape != matrix.shape[1:]:
@@ -317,7 +352,7 @@ def status(db) -> dict:
         health = gateway.health()
         out["providers"][name] = {"configured": True, "endpoint": gateway.cfg.base_url, "model": gateway.cfg.model,
                                   "state": health["state"], "reason": health.get("reason"),
-                                  "key_present": iconfig.public(gateway.cfg)["key_present"]}
+                                  "key_present": iconfig.public(gateway.cfg, name)["key_present"]}
     out["vectors_held_by_this_process"] = held(db)
     out["effect"] = ("off: memory is ranked by its words (lexical)" if not cfg.enabled else
                      "on, but no embedding endpoint: lexical ranking" if embedder is None else

@@ -141,6 +141,47 @@ def test_each_provider_has_its_own_settings_and_chat_keeps_the_0_7_0_row(tmp_pat
     assert Gateway.from_db(db, tmp_path / "i.sqlite").db_path == tmp_path / "i.sqlite"
 
 
+def test_a_memory_model_is_never_sent_the_answer_models_key(tmp_path, monkeypatch):
+    """Review: an endpoint configured without a key file fell back to the answer model's key for every provider,
+    so whoever listened on a memory model's port received it. Only `chat` falls back."""
+    key = tmp_path / "chat_key"
+    key.write_text("chat-secret\n")
+    key.chmod(0o600)
+    monkeypatch.setenv("NSF_INFERENCE_KEY_FILE", str(key))
+    cfg = iconfig.InferenceConfig(base_url="http://127.0.0.1:18441/v1", model="m")
+    assert iconfig.read_key(cfg) == "chat-secret" and iconfig.read_key(cfg, "chat") == "chat-secret"
+    assert iconfig.read_key(cfg, "embed") is None and iconfig.read_key(cfg, "rerank") is None
+    assert iconfig.public(cfg, "embed")["key_present"] is False
+    db = store.create(tmp_path / "k.sqlite", T0)
+    iconfig.set_config(db, {"base_url": "http://127.0.0.1:18441/v1", "model": "m"}, T0, provider="embed")
+    assert Gateway.from_db(db, tmp_path / "k.sqlite", provider="embed").key is None
+    own = tmp_path / "memory_key"
+    own.write_text("memory-secret\n")
+    own.chmod(0o600)
+    iconfig.set_config(db, {"key_file": str(own)}, T0, provider="embed")
+    assert Gateway.from_db(db, tmp_path / "k.sqlite", provider="embed").key == "memory-secret"
+
+
+def test_a_locked_ledger_is_an_error_at_open_not_a_ledger_without_its_columns(tmp_path, monkeypatch):
+    """Review: every OperationalError of the column upgrade was ignored, "database is locked" included; the
+    columns then stayed missing and every later record failed in silence."""
+    import neuroscifi.inference.ledger as ledger_mod
+    path = tmp_path / "old.inference.sqlite"
+    db = sqlite3.connect(path)
+    db.execute("CREATE TABLE calls (id INTEGER PRIMARY KEY, at REAL NOT NULL, purpose TEXT NOT NULL, model TEXT, "
+               "locality TEXT, stream INTEGER, status TEXT NOT NULL, error TEXT, prompt_tokens INTEGER, "
+               "completion_tokens INTEGER, latency_ms REAL, first_token_ms REAL, attempts INTEGER, "
+               "tokens_per_second REAL, task_id TEXT)")
+    db.commit()
+    db.execute("BEGIN IMMEDIATE")                          # another process holds the write lock
+    monkeypatch.setattr(ledger_mod.Ledger, "_connect", lambda self: sqlite3.connect(self.path, timeout=0.05))
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        Ledger(path)
+    db.rollback()
+    db.close()
+    assert Ledger(path).recent(1) == []                    # and the next open upgrades it
+
+
 # ---- embeddings ------------------------------------------------------------------------------------------------
 
 def vectors(*rows, order=None):

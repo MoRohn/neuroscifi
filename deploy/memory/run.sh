@@ -10,7 +10,10 @@
 #   deploy/memory/run.sh print embed|rerank         print the docker command (key redacted) and change nothing
 #
 # Then tell the individual where they are (off until configured):
-#   nsf web memory config --embed-url http://127.0.0.1:18441/v1 --rerank-url http://127.0.0.1:18442/v1
+#   nsf web memory config --enable --key-file ~/.config/neuroscifi/memory/api_key \
+#       --embed-url http://127.0.0.1:18441/v1 --embed-model qwen3-embedding-0.6b \
+#       --rerank-url http://127.0.0.1:18442/v1 --rerank-model qwen3-reranker-0.6b
+# (--key-file is required: a memory model is never sent the answer model's key.)
 #
 # Security: as deploy/vllm and deploy/voice. Binds 127.0.0.1 only; one generated API key (0600, outside git);
 # weights mounted read-only; read-only root filesystem; no capabilities; runs as the invoking user; Hugging Face
@@ -43,7 +46,9 @@ ensure_key() {
   chmod 600 "$ENV_FILE"
 }
 
-services() { case "${1:-all}" in embed) echo embed ;; rerank) echo rerank ;; all) echo embed rerank ;; *) die "unknown service: $1" ;; esac; }
+services() { case "${1:-all}" in embed) echo embed ;; rerank) echo rerank ;; all) echo embed rerank ;; esac; }
+known() { case "${1:-all}" in embed|rerank|all) ;; *) die "unknown service: $1 (embed|rerank|all)" ;; esac; }
+restarts() { docker inspect -f '{{.RestartCount}}' "$(container "$1")" 2>/dev/null || echo 0; }
 container() { [ "$1" = embed ] && echo "$NSF_MEMORY_EMBED_CONTAINER" || echo "$NSF_MEMORY_RERANK_CONTAINER"; }
 port() { [ "$1" = embed ] && echo "$NSF_MEMORY_EMBED_PORT" || echo "$NSF_MEMORY_RERANK_PORT"; }
 model_dir() { [ "$1" = embed ] && echo "$NSF_MEMORY_EMBED_MODEL_DIR" || echo "$NSF_MEMORY_RERANK_MODEL_DIR"; }
@@ -86,7 +91,7 @@ docker_args() {   # $1: embed | rerank
 cmd="${1:-status}"
 case "$cmd" in
   start)
-    ensure_key
+    known "${2:-all}"; ensure_key
     for s in $(services "${2:-all}"); do
       docker_args "$s"
       docker rm -f "$(container "$s")" >/dev/null 2>&1 || true
@@ -94,6 +99,7 @@ case "$cmd" in
       echo "started $(container "$s") on http://$NSF_MEMORY_BIND:$(port "$s") (key file $KEY_FILE)"
     done ;;
   stop)
+    known "${2:-all}"
     for s in $(services "${2:-all}"); do
       docker stop -t 20 "$(container "$s")" >/dev/null 2>&1 || true
       docker rm -f "$(container "$s")" >/dev/null 2>&1 || true
@@ -105,13 +111,15 @@ case "$cmd" in
         "$(container "$s")" 2>/dev/null || echo "$(container "$s"): not running"
     done ;;
   wait)
-    limit="${3:-600}"; start=$(date +%s)
+    known "${2:-all}"; limit="${3:-600}"; start=$(date +%s)
     for s in $(services "${2:-all}"); do
+      before="$(restarts "$s")"
       until curl -fsS -m 5 "http://$NSF_MEMORY_BIND:$(port "$s")/health" >/dev/null 2>&1; do
         [ $(( $(date +%s) - start )) -ge "$limit" ] && die "$s not ready after ${limit}s"
-        state="$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$(container "$s")" 2>/dev/null)" \
-          || die "$s container exited; see: docker logs $(container "$s")"
-        [[ "$state" == restarting* || "${state##* }" -gt 2 ]] && die "$s keeps restarting; see: docker logs $(container "$s")"
+        state="$(docker inspect -f '{{.State.Status}}' "$(container "$s")" 2>/dev/null)" \
+          || die "$s container is gone; see: docker logs $(container "$s")"
+        case "$state" in restarting|exited|dead) die "$s container is $state; see: docker logs $(container "$s")" ;; esac
+        [ "$(restarts "$s")" -gt "$before" ] && die "$s restarted while starting; see: docker logs $(container "$s")"
         sleep 3
       done
       echo "$s ready after $(( $(date +%s) - start ))s"

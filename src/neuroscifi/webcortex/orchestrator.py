@@ -711,8 +711,9 @@ class _Run:
         from . import memory_gate
         chosen = set(assessment.get("memory_items") or [])
         items = [k for k in known if k.get("id") in chosen]
-        if not items or not getattr(self.cfg, "memory_check", True):
-            return None
+        arithmetic = any(str(r).startswith("pure arithmetic") for r in assessment.get("reasons") or [])
+        if not items or arithmetic or not getattr(self.cfg, "memory_check", True):
+            return None            # arithmetic is computed locally: no statement is being asked to answer it
         verdict = memory_gate.confirm(self.db, self.services, self.objective, items, task_id=self.id,
                                       timeout=min(memory_gate.TIMEOUT, max(0.0, self.budget.max_seconds - self.elapsed())),
                                       background=is_autonomous(self.origin))
@@ -2072,8 +2073,18 @@ def _execute(db, task_id, services, *, resume):
             from . import knowledge
             assessment = run.checkpoint.get("assessment") or {}
             chosen = set(assessment.get("memory_items") or run.checkpoint.get("known", []))
-            items = [i for i in knowledge.query(db, task["objective"], run.clock())["items"]
-                     if i["id"] in chosen and not i["stale"] and not i["contested"]]
+            found = knowledge.query(db, task["objective"], run.clock())["items"]
+            # The items were chosen (and, with a model, confirmed) at discovery. This second lookup can rank
+            # differently (the memory models failed in between and the ranking is lexical again): an approved item
+            # it does not return is loaded by its id, so the answer never loses the facts it was approved on.
+            missing = chosen - {i["id"] for i in found}
+            if missing:
+                cfg_now, at = state.get_config(db), run.clock()
+                marks = ",".join("?" * len(state.LIVE_KNOWLEDGE))
+                found += [knowledge.describe(db, r, at, cfg_now) | {"score": 0.0}
+                          for r in knowledge.rows(db, f"status IN ({marks})", state.LIVE_KNOWLEDGE)
+                          if r["id"] in missing]
+            items = [i for i in found if i["id"] in chosen and not i["stale"] and not i["contested"]]
             run.documents, run.clusters = _memory_documents(items)
             run.stage("synthesizing")
             run.event("extract", {"from_memory": True, "knowledge_ids": [i["id"] for i in items],

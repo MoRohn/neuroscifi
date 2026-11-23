@@ -31,7 +31,7 @@ temperature 0.1; they are reported as ranges where that matters. Reproduce with 
 | Research task, median, self-critique off (owner's choice) | — | 1.37 s | −56 % against the default; see the caveat in §3 |
 | Memory: paraphrased question finds its fact first | 27 % | 98 % | **+71 points** (with the memory models) |
 | Memory: unrelated memory returned for a question memory cannot answer | 10 of 10 | 3 of 10 | **Improved** |
-| Memory answers from a wrong-property fact (decision test, 288 cases) | 94 | 1 | **Fixed** (model check) |
+| Memory answers from a wrong-property fact (decision test, 288 cases) | 94 | 1 | **Fixed** (model check; it also refuses 10 of 96 right facts, which then go to the web) |
 | Memory lookup time | 0.7 ms | 107 ms with the memory models | **Slower** (§4): quality bought with latency |
 | Unified memory | — | unchanged by default; +8.7 GiB when the optional memory models run | **Cost** when enabled |
 | Regression suite | 3337 passed | see [REGRESSION_REPORT.md](REGRESSION_REPORT.md) | — |
@@ -134,11 +134,14 @@ four facts of its subject.
 | | Right fact accepted | Wrong-property fact accepted |
 |---|---|---|
 | Lexical test (0.7.0) | 64 of 96 | 94 of 288 |
-| Answer model's check | 94 of 96 | 1 of 288 |
+| Answer model's check, one call per statement | 86 of 96 | 1 of 288 |
+| — an earlier design, all statements in one prompt (replaced after review) | 94 of 96 | 1 of 288 |
 | 0.6B reranker at threshold 0.9 | 93 of 96 | 11 of 288, and both reproduced wrong answers |
 
 In use a statement must pass both the lexical test and the model's check, so the check can only send a question to
-the web. It costs one call of 0.45 s (p95 0.50 s) on the path where memory would otherwise have answered alone.
+the web. It costs about 0.3 s per statement checked (1.1 s for four) on the path where memory would otherwise have
+answered alone. The one-prompt design accepted more right facts, but one statement's text could sway the verdict on
+the others; each statement is now judged in a call of its own, and the ten right facts it refuses go to web research.
 
 ## 5. Responsiveness outside the model
 
@@ -162,7 +165,7 @@ and sent 4 unused requests over 51 tasks. It is off by default because of what i
 |---|---|---|
 | Memory lookup with the memory models | 0.7 ms → 107 ms | Optional; cached within a task; buys the recall of §4 |
 | Unified memory with the memory models | +8.7 GiB (4.3 GiB each) | Optional; the host keeps about 31 GiB available, above the 18.3 GiB "elevated" threshold. Each can be run alone: the embedding alone gives the recall without the floor |
-| One model call before memory answers alone | +0.45 s on that path | It replaces a wrong answer with web research; `nsf web config --no-memory-check` restores 0.7.0 |
+| One model call per chosen statement before memory answers alone | +0.3 s per statement on that path | It replaces a wrong answer with web research; `nsf web config --no-memory-check` restores 0.7.0 |
 | Worker idle CPU | 1 → 10 ms per 5 s | The price of the wake-up check |
 | Same prompt repeated: first token | 202 → 250 ms | Within the noise of an 8-call scenario; the cached path does one decode step either way. Listed because it moved in the wrong direction |
 | Background research under priority scheduling | Waits behind the owner by design | The owner is waiting; background work is not. No preemption was observed |

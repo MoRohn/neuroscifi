@@ -46,8 +46,8 @@ The cognitive prototype needs no pretrained model and no cloud service. Text res
 | ✳️ **Presence Cortex** | A minimal, abstract, physics-driven entity at the centre of every interaction view, alive in real time: its light, geometry and motion follow what the individual is really doing (reading, reasoning, listening, speaking) and its surroundings (your pointer, typing, scrolling, the voice level), never invented activity. |
 | 📱 **Pocket** | A mobile-first web app for phones and tablets, served over HTTPS with a private CA. Devices pair with one-use codes into families, and linked devices share research. Opt-in **push** sends an empty notification through the browser vendor's push service when research finishes (ADR-040). |
 | 🔏 **Signed research nodes** | The owner enrols a paired device after comparing key fingerprints. A node signs its requests and can take and hand off research sessions. Pocket checks the Spark's signature on every research reply (ADR-042). The Spark stays the only executing node. |
-| ⚖️ **Resource scheduling** | One pressure level from memory and GPU data, with audio first. Opt-in **idle unloading** per service (vLLM, ASR, TTS, SearXNG) reloads on demand and logs every load and unload. |
-| 🧾 **Governed forgetting** | `nsf forget` cascades through derived records, and tombstones keep a checkpoint restore from bringing records back. A voice or web forget rewrites older checkpoint archives in place, crash-safe. Other forgets mark them stale until `nsf checkpoint rebuild`. |
+| ⚖️ **Resource scheduling** | One pressure level from memory and GPU data, with audio first. Opt-in **idle unloading** per service (vLLM, ASR, TTS, SearXNG) reloads on demand and logs every load and unload. A reload that would not fit in free memory is refused with the reason, and a call never waits for one past its own timeout. |
+| 🧾 **Governed forgetting** | `nsf forget` cascades through derived records, and a checkpoint restore replays every forget (tombstones, forgotten epochs and datasets), so forgotten records do not come back. A voice or web forget rewrites older checkpoint archives in place, crash-safe. Other forgets mark them stale until `nsf checkpoint rebuild`. |
 | 🩺 **Health checks** | `nsf doctor` checks Python and pinned dependencies, file modes, WAL mode, schema version, integrity and free space. It also reports whether the database (and any `--path`, such as the model cache) sits on an encrypted device, and what the swap is. |
 
 The **[34-page architecture brief](NeuroSciFi_Architecture.pdf)** is also available as editable [`Architecture.md`](Architecture.md). It covers reanalyses of human brain and behavioural data, controlled simulations, CPU benchmark runs, the TufaZip evaluation, the DGX Spark implementation plan and the mobile field runtime.
@@ -462,6 +462,23 @@ nsf llm usage                                                # token ledger
 
 The run script refuses a non-loopback bind and an image without a digest. Its API key lives at `~/.config/neuroscifi/inference/api_key` (0600). For systemd, use `sudo bash deploy/install.sh --llm --llm-user USER`. Endpoints off this host are refused unless you pass `nsf llm config --remote-allowed` (see [Privacy, security and trust](#privacy-security-and-trust)). How the model may speak: [Cognitive inference](docs/architecture/COGNITIVE_INFERENCE.md).
 
+The server schedules by request priority and processes up to 4096 tokens per step (`deploy/vllm/vllm.env`, each reversible). `nsf setup` sends background research with priority 10 for a vLLM endpoint, so the owner's question is served first: beside four background requests its first token came after 1.13 s instead of 1.72 s ([evidence](docs/quality/evidence/accel_vllm_flags.json)). With a model configured, it also confirms that a stored statement states the answer to exactly what is asked before memory answers without the web (`nsf web config --no-memory-check` turns that off). Defaults and rollbacks: [Cognitive inference §7](docs/architecture/COGNITIVE_INFERENCE.md#7-adaptive-inference-policy). Why the serving stack is vLLM: [NVIDIA assessment](docs/acceleration/NVIDIA_ASSESSMENT.md).
+
+### Memory models (embedding and reranker)
+
+Without them, stored knowledge is found by its words. Place the weights in `~/.local/share/neuroscifi/models/qwen3-embedding-0.6b` and `~/.local/share/neuroscifi/models/qwen3-reranker-0.6b`.
+
+```sh
+deploy/memory/run.sh start && deploy/memory/run.sh wait      # two small models from the pinned vLLM image, loopback 18441 and 18442
+nsf web memory config --enable --embed-url http://127.0.0.1:18441/v1 --rerank-url http://127.0.0.1:18442/v1 \
+    --key-file ~/.config/neuroscifi/memory/api_key
+nsf web memory                                               # the switch, endpoint health and the effect in words
+nsf web memory config --disable                              # back to the lexical ranking
+deploy/memory/run.sh stop
+```
+
+With them, `nsf web knowledge TOPIC` and every research task rank stored statements by meaning, and a statement the reranker scores under its floor is not returned. No vector is written to disk, memory text is never sent off this host without the owner's authorisation, and any failure falls back to the lexical ranking and says why. Details: [Memory integration §5.1](docs/web-cortex/MEMORY_INTEGRATION.md#51-semantic-retrieval-semanticpy-optional).
+
 ### Voice (Whisper ASR and Kokoro TTS)
 
 Place the weights in `~/.local/share/neuroscifi/models/whisper-large-v3-turbo` and `~/.local/share/neuroscifi/models/kokoro-82m`.
@@ -489,7 +506,7 @@ nsf resources idle --set vllm=30m --set asr=15m --set tts=15m   # opt-in idle un
 nsf resources tick               # one idle-policy pass; deploy/systemd/neuroscifi-idle.timer runs it every minute
 ```
 
-Idle unloading never stops a service during a voice session, a running task or an in-flight request. A service it unloaded reloads on its next use, and the caller is told the expected wait. Details: [Resource scheduling](docs/architecture/RESOURCE_SCHEDULING.md) and [Research policy](docs/autonomy/RESEARCH_POLICY.md).
+Idle unloading never stops a service during a voice session, a running task or an in-flight request. A service it unloaded reloads on its next use, and the caller is told the expected wait. A call waits for the reload no longer than its own timeout, and a reload that would leave too little memory free is refused with the reason. `nsf resources` also reports GPU temperature, power and throttling, the host load and the vLLM server's queue, prefill, decode and prefix-cache figures. Details: [Resource scheduling](docs/architecture/RESOURCE_SCHEDULING.md) and [Research policy](docs/autonomy/RESEARCH_POLICY.md).
 
 ## Run a persistent instance
 
@@ -536,7 +553,7 @@ flowchart LR
 | `nsf graph simulate CTX --seed N` | Generate labelled synthetic trajectories. `learn`, `evaluate` and `promote` run the immutable-rule gate. Also `recall`, `coactivation`, `lesion` and `rollback` |
 | `nsf console` | Owner web console on loopback only |
 | `nsf pocket serve\|invite\|list-pairings\|erase-pairing\|tls` | Pocket bridge, pairing codes, paired devices and the private CA |
-| `nsf web …` | Web Cortex: `config`, `ask`, `tasks`, `show`, `status`, `evidence`, `searxng`, `provider`, `autonomy`, `node`, `work`, `deps`, `mcp` and more |
+| `nsf web …` | Web Cortex: `config`, `ask`, `tasks`, `show`, `status`, `evidence`, `searxng`, `provider`, `autonomy`, `node`, `work`, `deps`, `memory`, `mcp` and more |
 | `nsf knowledge …` | `evolution`, `changes`, `hypotheses`, `hypothesize`, `calibration`, `graph`, `learning`, `assert`, `adapt` |
 | `nsf llm config\|status\|models\|ask\|usage` | Inference gateway (off until configured). `nsf llm ask` is labelled "not checked against evidence" |
 | `nsf voice health\|settings\|transcripts\|forget\|sweep\|selftest` | Voice Cortex services, settings, transcripts and the Voice check |
@@ -572,13 +589,13 @@ Read the [architecture](docs/web-cortex/ARCHITECTURE.md), the [claim verificatio
 
 | Principle | How it holds |
 |---|---|
-| **Loopback by default** | The console listens on 127.0.0.1 with a one-time session token and Host and Origin checks. SearXNG (8888), vLLM (8811), ASR (18431) and TTS (18432) are published on 127.0.0.1 only, and the run scripts refuse any other bind. The containers run read-only, without capabilities, from digest-pinned images. API keys are generated outside git with mode 0600. |
+| **Loopback by default** | The console listens on 127.0.0.1 with a one-time session token and Host and Origin checks. SearXNG (8888), vLLM (8811), ASR (18431), TTS (18432) and the memory models (18441, 18442) are published on 127.0.0.1 only, and the run scripts refuse any other bind. The containers run read-only, without capabilities, from digest-pinned images. API keys are generated outside git with mode 0600. |
 | **Off until the owner says so** | Web access, autonomy, Pocket research, push, JavaScript rendering, remote inference, model-proposed Presence doodles, idle unloading and audio retention all default to off. News rendering for a person's news question is on once web access is on (`--no-news-render` turns it off). |
 | **Paired devices are checked both ways** | Pocket serves HTTPS from a private CA that is limited to the names given at its creation. Each device pins the Spark's key when it pairs and refuses any research reply without a valid Spark signature. A research node signs its requests with a key the owner enrolled after comparing fingerprints. |
 | **Consent before capture** | The microphone needs recorded consent on each device, a visible capture indicator and the single capture lease. Mic off stops every track. The server refuses audio from any device without consent or the lease. |
 | **No raw audio by default** | Audio stays in memory for each utterance (at most 30 s) and is then dropped. Retention is an owner-only setting with a 1–168 h TTL. Expired clips are swept every minute. |
 | **Evidence over generation** | Model text never changes a claim's state or becomes knowledge. Web text never edits a belief, graph or weight. Sensitive voice commands (forget, enabling autonomy, accepting conclusions, microphone hand-off) need a same-session confirmation within 60 s. |
-| **Forgetting with tombstones** | `nsf forget`, `nsf web forget` and `nsf voice forget` delete with a full cascade and leave payload-free tombstones. `checkpoint restore` replays the tombstones, so forgotten records do not come back. |
+| **Forgetting with tombstones** | `nsf forget`, `nsf web forget` and `nsf voice forget` delete with a full cascade and leave payload-free tombstones. `checkpoint restore` replays the tombstones and the forgotten epochs and datasets, so forgotten records do not come back. |
 
 ### What leaves the host
 
@@ -735,6 +752,7 @@ neuroscifi/
 - **PersonaPlex is not real-time and stays opt-in.** On GB10 upstream it measured 99–152 ms per 80 ms frame. It cannot speak external text through its shipped server, is not deployed, and never answers a question.
 - **News rendering.** A page that needs more than 100 sub-requests renders incomplete. Answers about current events are usually single-source. Once web access is on, news rendering runs Chromium on news-site JavaScript by default; turn it off with `nsf web config --no-news-render` ([evidence](docs/quality/evidence/news_render_live_v2.json)).
 - **General discovery is thin without a key, and Brave is untested live.** An honest User-Agent and robots.txt compliance leave two key-free general engines: DuckDuckGo often answers with a CAPTCHA, and Mwmbl is a small index without dates. Brave has offline tests only; no valid key has been available to run it live. Browser impersonation will not be enabled.
+- **Memory is searched by its words unless the memory models run.** The lexical ranking finds the right fact first for 27 % of paraphrased questions and still returns an unrelated fact for a question nothing in memory answers ([baseline](docs/quality/evidence/accel_baseline_memory.json)). With the optional [memory models](#memory-models-embedding-and-reranker) the same benchmark gives 98 % and 3 of 10 such questions still return something, at about 0.1 s per query instead of under a millisecond ([measured](docs/quality/evidence/accel_after_memory_semantic.json), 48 facts).
 - **DOI records count as one source.** Independence groups join every claim from one host, and DOI records all resolve through doi.org, so distinct papers fetched that way count as one source group ([claim verification](docs/knowledge/CLAIM_VERIFICATION.md#6-independent-sources-and-syndication)).
 - **No worker federation.** Nodes submit, read, own and hand off research sessions, but the Spark that runs `nsf web work` is the only executing node. Voice and field replies are not signed ([research policy §6](docs/autonomy/RESEARCH_POLICY.md#6-pocket-research-and-nodes)).
 - **Owner-side checks.** These need root, handsets or time, and were not run on the reference host:

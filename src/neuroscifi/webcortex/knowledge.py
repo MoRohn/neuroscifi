@@ -607,7 +607,11 @@ def assert_fact(db, statement, now, *, note="") -> dict:
 def forget(db, knowledge_id, now) -> dict:
     """Forget the item and every version in its chain (governance.forget_knowledge)."""
     from ..instance import governance
-    return governance.forget_knowledge(db, knowledge_id, now)
+    from . import semantic
+    try:
+        return governance.forget_knowledge(db, knowledge_id, now)
+    finally:
+        semantic.clear()      # no vector or text of a forgotten statement stays in this process (semantic.py)
 
 
 OWNER_REFRESH = "refresh-owner:"

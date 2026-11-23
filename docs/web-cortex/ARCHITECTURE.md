@@ -204,6 +204,8 @@ orchestrator.get(db, task_id, *, family=None) -> dict ; orchestrator.listing(db,
 orchestrator.evidence(db, task_id, *, family=None) -> dict    # sources, claims, links ("show your evidence")
 consolidate.run(db, task_id, now, *, holder=None, set_aside=None) -> dict   # candidates -> knowledge (provisional|pending owner) with versions; set_aside = the report's
 knowledge.query(db, topic, now, *, limit=10) -> dict   # what is known, from where, verified when, stale, provisional, contested
+#   "retrieval": {"mode": "lexical"|"semantic", ...} says which ranking produced the items, and why the semantic one
+#   could not be used when it was asked for (semantic.py, optional; MEMORY_INTEGRATION §5.1)
 knowledge.staleness(item, now, cfg=None, db=None) -> (bool, str)   # with db: newer_release_seen / revision_seen
 knowledge.feedback(db, subject: int|str, *, limit=5) -> list[dict]   # newest web_feedback rows for a knowledge id or key
 knowledge.review(db, knowledge_id, accept: bool, now, *, note="") -> dict   # also reachable via nsf resolve

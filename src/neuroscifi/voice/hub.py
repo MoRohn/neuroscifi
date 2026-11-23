@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from collections import deque
 from contextlib import contextmanager
+import hashlib
 import queue
 import re
 import secrets
@@ -536,6 +537,8 @@ class VoiceHub:
             u = s.utterances.get(utterance)
             # A client retries a chunk whose response it lost: a repeat of the last chunk (or of the final chunk of
             # an utterance already closed) is acknowledged and not added twice; any other gap is still refused.
+            if u is not None and seq == u["seq"] >= 0 and hashlib.sha256(pcm).digest() != u.get("last"):
+                raise Conflict(f"chunk {seq} was already received with other audio")     # a retry sends the same bytes
             if (u is None and (utterance, seq) in s.closed) or (u is not None and seq == u["seq"] >= 0):
                 return {"status": "duplicate", "seq": seq}
             if u is None:
@@ -548,6 +551,7 @@ class VoiceHub:
             if len(u["pcm"]) + len(pcm) > MAX_UTTERANCE:
                 final = True                     # bounded: an utterance longer than 30 s is closed here
                 pcm = pcm[:max(0, MAX_UTTERANCE - len(u["pcm"]))]
+            u["last"] = hashlib.sha256(pcm).digest()      # of the chunk as sent, to recognise its retry
             u["pcm"] += pcm
             u["seq"] = seq
             buf = bytes(u["pcm"])
@@ -956,6 +960,12 @@ class VoiceHub:
             with self.db() as db:
                 if s.mode == "text_only" or not tx.holds(db, s.device, self.clock()):
                     raise Conflict("this device does not hold the microphone")
+        if changes.get("user_speaking"):
+            # Only the device that holds the microphone can hear the user. Since Pocket sessions reach the audio
+            # beacon, a text-only session reporting "user speaking" would keep background research deferred.
+            with self.db() as db:
+                if s.mode == "text_only" or not tx.holds(db, s.device, self.clock()):
+                    changes["user_speaking"] = False
         if "output_muted" in changes:
             s.output_muted = changes["output_muted"]
             if s.output_muted:

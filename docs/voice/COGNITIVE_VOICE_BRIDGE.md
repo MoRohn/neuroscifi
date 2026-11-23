@@ -129,7 +129,8 @@ Speech is concise (≤ 2 sentences, ≤ 70 words, citation markers removed, plus
 screen."); the transcript keeps the full text with `[n]` citations and the source list. Template replies (help,
 confirmations, refusals) are labelled "NeuroSciFi template reply (no model involved)".
 
-**Long tasks.** The acknowledgement is spoken at once; a follower thread reads the task every second, emits
+**Long tasks.** The acknowledgement is spoken at once; a follower thread reads the task after 0.1 s and then at
+doubling intervals up to once a second (so an answer from knowledge or a quick lookup is not held a whole second), emits
 truthful stage progress ("Research: reading sources") and speaks "Still working: …" at most every 30 s when idle.
 The task belongs to the research system: ending the voice session, switching mode or barge-in never cancels it; its
 answer is still written to the transcript when the session has ended.

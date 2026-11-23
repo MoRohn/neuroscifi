@@ -148,6 +148,32 @@ def test_memory_model_gateways_never_retry(tmp_path):
     assert iconfig.get_config(db, "embed").max_retries == 2                  # the stored setting is not changed
 
 
+def test_a_lookup_that_read_memory_before_a_forget_leaves_no_vector_of_the_forgotten_statement(db, models):
+    """Review: a lookup that started before a forget could finish after it and put the forgotten statement's vector
+    back. A caller synced with an older state version gets its vectors and stores none."""
+    held = semantic._vectors(db, models[0])
+    embed = lambda texts: [[1.0, 0.0, 0.0, 0.0] for _ in texts]      # noqa: E731
+    held.sync(list(FACTS[:3]), embed, version=7)                       # after the forget of FACTS[3]
+    held.sync(list(FACTS), embed, version=5)                           # an older reader finishing late
+    assert set(held.by_text) == set(FACTS[:3])
+
+
+def test_vectors_of_another_endpoint_are_never_reused_even_under_the_same_model_name(db, models):
+    other = Models("embedder")
+    other.cfg.base_url = "http://127.0.0.1:2/v1"
+    assert semantic._vectors(db, models[0]) is not semantic._vectors(db, other)
+    assert semantic._vectors(db, models[0]) is semantic._vectors(db, models[0])
+
+
+def test_forgetting_a_statement_drops_this_processes_vectors_at_once(db, models):
+    semantic.set_config(db, {"enabled": True}, T0)
+    knowledge.query(db, "which beacon is it", T0 + 10)
+    assert semantic._vectors(db, models[0]).by_text
+    target = next(r["id"] for r in knowledge.rows(db, "1") if "Lighthouse" in r["statement"])
+    knowledge.forget(db, target, T0 + 20)
+    assert not semantic._vectors(db, models[0]).by_text and not semantic._vectors(db, models[0]).queries
+
+
 def test_on_without_an_embedding_endpoint_is_lexical_with_the_command_that_sets_one(db):
     semantic.set_config(db, {"enabled": True}, T0)
     out = knowledge.query(db, "Orbix port", T0 + 10)
@@ -157,14 +183,16 @@ def test_on_without_an_embedding_endpoint_is_lexical_with_the_command_that_sets_
 def test_a_forgotten_statement_leaves_no_vector_and_is_never_shown_to_a_model_again(db, models):
     semantic.set_config(db, {"enabled": True}, T0)
     knowledge.query(db, "which beacon is it", T0 + 10)
-    held = semantic._vectors(db, "embedder")
+    held = semantic._vectors(db, models[0])
     assert set(held.by_text) == set(FACTS)
     target = next(r["id"] for r in knowledge.rows(db, "1") if "Lighthouse" in r["statement"])
     knowledge.forget(db, target, T0 + 20)
     for m in models:
         m.seen.clear()
+    assert held.by_text == {} and held.queries == {}          # emptied at the forget, before any further lookup
     out = knowledge.query(db, "which beacon is it", T0 + 30)
-    assert FACTS[2] not in held.by_text and len(held.by_text) == 3 and out["items"] == []
+    now_held = semantic._vectors(db, models[0])
+    assert FACTS[2] not in now_held.by_text and len(now_held.by_text) == 3 and out["items"] == []
     assert not any("Tolvane" in t for m in models for t in m.seen)
 
 

@@ -145,27 +145,32 @@ def set_config(db, changes: dict, now=None, provider: str = "chat") -> Inference
     return get_config(db, provider)
 
 
-def public(cfg: InferenceConfig) -> dict:
+def public(cfg: InferenceConfig, provider: str = "chat") -> dict:
     """The configuration as shown to the owner (no key, only whether a key file is present)."""
     out = cfg.to_json()
-    path = key_path(cfg)
+    path = key_path(cfg, provider)
     out["key_file_effective"] = str(path) if path else None
     out["key_present"] = bool(path and path.is_file())
     return out
 
 
-def key_path(cfg: InferenceConfig) -> Path | None:
+def key_path(cfg: InferenceConfig, provider: str = "chat") -> Path | None:
+    """The key file of an endpoint. Only the answer model (`chat`) falls back to NSF_INFERENCE_KEY_FILE and the
+    default file: a memory model must name its own key_file, or it would be sent the answer model's key (review:
+    whoever listens on a memory model's port while its container is down would receive that key)."""
     if cfg.key_file:
         return Path(cfg.key_file)
+    if provider != "chat":
+        return None
     env = os.environ.get("NSF_INFERENCE_KEY_FILE")
     if env:
         return Path(env)
     return DEFAULT_KEY_FILE if DEFAULT_KEY_FILE.is_file() else None
 
 
-def read_key(cfg: InferenceConfig) -> str | None:
+def read_key(cfg: InferenceConfig, provider: str = "chat") -> str | None:
     """The API key from the key file, or None. A key file readable by everyone is refused (it would leak)."""
-    path = key_path(cfg)
+    path = key_path(cfg, provider)
     if path is None or not path.is_file():
         return None
     if path.stat().st_mode & 0o004:

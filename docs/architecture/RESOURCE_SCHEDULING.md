@@ -12,12 +12,36 @@ refusal or unload says why. Code: `src/neuroscifi/resources/` (`monitor.py` meas
 | MemTotal, MemAvailable, swap | `/proc/meminfo` | GPU allocations come out of the same memory, so MemAvailable is the deciding number |
 | Memory stall (PSI) `some`/`full` avg10 | `/proc/pressure/memory` | reported only; no threshold |
 | GPU memory used/total, utilisation | `nvidia-smi --query-gpu` | memory reads `[N/A]`: recorded as `memory_readable: false`, never guessed |
+| GPU temperature (°C), power draw (W), clock throttle reasons | the same `nvidia-smi --query-gpu` call | a field nvidia-smi cannot read stays null; a driver that refuses these fields is asked for the first three alone |
 | Per-process GPU memory | `nvidia-smi --query-compute-apps` | readable on GB10 |
+| Host load averages (1, 5, 15 min) and the CPU count | `/proc/loadavg` | reported only; no threshold |
+| Inference server state | vLLM's `/metrics` on the configured loopback endpoint | read with the gateway's key file; never read for an endpoint off this host |
 | Container memory and CPU | `docker stats --no-stream` (neuroscifi-* only) | cgroup memory: a container's CUDA allocations are **not** in it |
 | Container cold start | `docker inspect` StartedAt to the first readiness log line | measures the last start that actually happened |
 
 `sample()` caches the `/proc/meminfo` read for 2 s. It caches the subprocess readings (nvidia-smi, docker) for 15 s.
-The gates on the worker's hot path therefore cost at most one small file read. They never start a subprocess.
+The gates on the worker's hot path therefore cost at most one small file read. They never start a subprocess. The
+`/metrics` scrape is cached for 15 s as well, and only a full reading (`nsf resources`, `GET /api/resources`) makes
+it; the hot path never does (`test_the_scrape_is_cached_and_the_hot_path_sample_never_makes_it`).
+
+**What `nsf resources` shows beyond memory.** A full reading (without `--quick`) adds:
+
+- `load`: `avg1`, `avg5`, `avg15` and `cpus`, or `available: false` with the reason.
+- `gpu`: `temperature_c`, `power_draw_w` and `throttle` {`thermal`, `sw_thermal_slowdown`, `hw_thermal_slowdown`,
+  `sw_power_cap`, `hw_slowdown`, `active_mask`} beside the memory and utilisation fields. `throttle.thermal` is true
+  while a software or hardware thermal slowdown holds the clocks down; `active_mask` is the raw bitmask of every
+  active clock event reason.
+- `inference`: the vLLM server's state. Now: `requests_running`, `requests_waiting`, `kv_cache_usage`, `models`,
+  `server_started_at`. Since the server started (`since_start`) and over the time since the previous reading in the
+  same process (`interval`, with its `seconds`): `requests_finished`, `mean_seconds` {`queue`, `prefill`, `decode`,
+  `first_token`, `request`}, `prompt_tokens`, `prefix_cache_hit_share`, `generation_tokens`, `preemptions` and
+  `finished_by_reason`. The interval is there because lifetime means hide a current problem; the first reading of a
+  process has none and says so, and a server restart between two readings is reported instead of a negative number.
+  An endpoint that is not configured, not on this host, unreachable or not a vLLM server is `available: false` with
+  the reason. The idle policy (§3(c)) reads in-flight and served requests with the same parser.
+
+None of these readings changes the pressure level (§2) or a policy decision; they are reported so that a slow answer
+can be attributed to a queue, a prefill, a thermal slowdown or a busy host.
 
 ## 2. Pressure level
 
@@ -45,10 +69,20 @@ and one of `mic_capturing`, `speaking` or `user_speaking` in `voice.state.snapsh
   `<db>.resources/`. Without audio the cap is 2 at a time; with audio it is 1. A call that finds no free slot before
   its deadline (at most 30 s) is not made. The report keeps its extractive answer and gives the reason. Foreground
   model calls never take a slot.
-- Cross-process: the console hosts the voice hub. `AudioBeacon` writes `<db>.resources/audio.json` when the audio
-  state changes, and every 3 s while audio is active. A worker in another process (`neuroscifi-webcortex.service`)
-  reads the beacon and ignores it once it is older than 10 s. The beacon writes nothing before the first voice
-  activity.
+- Cross-process: every process that hosts a voice hub publishes an audio beacon, the console when it starts and the
+  Pocket bridge with its first voice hub (`voice/beacon.py`, `SharedAudioBeacon`). Both write the one file
+  `<db>.resources/audio.json` under a lock (`audio.lock`): each process keeps its own entry under `writers`, and the
+  top-level `active`, `session` and `at` are the OR of the entries of live processes, so neither hub overwrites the
+  other and the readers are unchanged. The audio state comes from every voice session of the process, a Pocket
+  device's included, not from the owner-only Presence snapshot. A beacon is written when the state changes and every
+  3 s while audio is active or a session is open. A worker in another process (`neuroscifi-webcortex.service`) reads
+  the beacon and ignores it once it is older than 10 s; an entry whose process is gone no longer counts. The beacon
+  writes nothing before the first voice activity.
+- Queue order: `scheduler.claim_next` claims a queued task the owner asked for before a queued autonomous one, oldest
+  first within each class. An autonomous task queued more than 10 minutes ago (`AUTONOMOUS_DEFER`) is ordered by age
+  with the owner's, so a steady stream of questions delays background work by at most that long and never starves
+  it. A waiting worker is woken by a submission from any process (it watches SQLite's `data_version` and the queue
+  between polls) and claims the task within about 0.1 s; the 5 s poll remains as the fallback.
 
 **(b) Memory pressure.** At `critical`, background autonomy is refused as in (a), with reason
 `memory pressure critical (memory available X GiB of Y GiB is below the critical threshold Z GiB)`. The optional
@@ -70,7 +104,7 @@ nsf resources                  # policy.idle_unload: timeouts, state, last use, 
 A pass unloads a service only when all of these hold:
 1. Its timeout is set and its container runs.
 2. No voice session is open and no research task is running. A voice session counts from start to end, whether it
-   is capturing or not, the owner's or a Pocket device's. The console that hosts the voice hub publishes open
+   is capturing or not, the owner's or a Pocket device's. The console and the Pocket bridge each publish their open
    sessions in the audio beacon (`session`, §3(a)), so the pass in the timer's process sees them. A running task is a
    `web_tasks` row in a running stage with a live lease.
 3. Nothing is in flight. Every model call through the gateway, every SearXNG search and every voice session start
@@ -94,7 +128,34 @@ event. Presence shows it as the `waiting` activity in every process, because the
 `<db>.resources/idle.json` carries it. The gateway keeps it in `Gateway.notices`, and `nsf resources load` prints it.
 The reload runs the deploy's start command and then its wait command, under a per-service lock so two callers start
 it once. The measured start-to-ready time is recorded in the event. A failed reload is recorded with the command's
-output; the next use tries again. A service the owner unloaded is not reloaded on demand. While the policy has vLLM
+output; the next use tries again. A service the owner unloaded is not reloaded on demand.
+
+Two bounds apply to every load, on demand or by `nsf resources load`:
+
+- **Free memory first.** Before a load the policy compares MemAvailable with the service's footprint: what its last
+  load took or its last unload freed (MemAvailable before and after, so GPU allocations count on unified memory),
+  else the documented figure of §4 (vLLM 44.1 GiB, ASR 4.1 GiB, TTS 1.5 GiB; SearXNG has none and is checked only
+  once a load or unload has measured it).
+  A load that would leave less than the critical threshold (§2) free is refused: no container is started, the
+  refusal is a `load` event with `ok: false`, `refused: true` and the three numbers, and the call or
+  `nsf resources load` (exit 1) ends with the reason, for example "not enough memory to load the local model: …".
+  On a shared host another workload may have taken the memory the unload freed, and a model loaded into too little
+  memory crash-loops. When `/proc/meminfo` cannot be read the check is skipped and says so.
+- **The caller's deadline.** A call waits for a reload no longer than it may take itself. The gateway passes its
+  call's timeout, capped by `read_timeout`; the reload runs in a background thread that the callers of the process
+  share. A call whose time runs out ends `unavailable` at once with "Starting the local model, about N s: not ready
+  within this call's T s; it keeps starting in the background", and the next call finds the model loaded or still
+  loading. Before this bound a 0.5 s call waited out the whole wait command (up to 1200 s for vLLM).
+
+The wait commands fail early instead of sitting out their limit. `deploy/vllm/run.sh wait` ends on the first poll
+that finds the container `restarting`, `exited` or `dead`, or with a restart count higher than when the wait began;
+with `--restart unless-stopped` a crash-looping container keeps existing, so its presence alone proves nothing.
+Tested with a fake docker (`test_run_sh_wait_fails_at_once_when_the_container_is_restarting`,
+`test_run_sh_wait_fails_when_the_restart_count_grows_between_two_polls`,
+`test_a_reload_that_would_not_fit_in_free_memory_is_refused_recorded_and_starts_nothing`,
+`test_callers_that_run_out_of_time_share_one_background_reload_and_each_is_told_once`).
+
+While the policy has vLLM
 unloaded, the inference health check (`Gateway.health`) reports `unavailable` with `idle_unloaded: true` and the
 reason "the local model is unloaded while idle; the next request starts it again (about 33 s)", not an outage. The
 voice engine health reports ASR and TTS unavailable until a voice session starts them.
@@ -108,14 +169,18 @@ Install the timer by hand (`deploy/systemd/neuroscifi-idle.{service,timer}`, hea
 
 **Events.** Every load, unload and timeout change is one line in `<db>.resources/idle-events.jsonl`: time, service,
 action, reason, who (`idle policy`, `on demand`, `owner`), success, seconds, shape (`docker` or `systemd`) and, for
-a load, what the user was told. The file is capped at the last 500 to 1000 lines. `nsf resources` and
-`GET /api/resources` show the last 20.
+a load, what the user was told, the wording of the free-memory check (`headroom`) and the memory the load took
+(`took_bytes`, when MemAvailable fell); an unload records what it freed (`freed_bytes`), and a refused load carries
+`refused: true` with `available_bytes`, `need_bytes` and `floor_bytes`. The file is capped at the last 500 to 1000
+lines. `nsf resources` and `GET /api/resources` show the last 20.
 
 **What it saves, and what a reload costs.** These are the §4 figures. vLLM holds 43.1 GiB of GPU memory and 7.4 GiB of
 container memory. ASR holds 4.1 + 3.1 GiB and TTS 1.5 + 2.5 GiB; on unified memory the two accountings may overlap.
 The last measured start-to-ready times, read from the container logs on 2026-11-21 (`nsf resources --cold-start`),
 are vLLM 32.5 s, ASR 17.2 s and TTS 5.8 s. A reload through the policy adds the time to create the container and the
-wait command's poll interval (5 s for vLLM, 3 s for voice). The live reload time of vLLM through the idle policy
+wait command's poll interval (5 s for vLLM, 3 s for voice). Restarts of the shared vLLM through `deploy/vllm/run.sh`
+for the flag measurements of 2026-11-23 took 30 to 83 s to healthy (`docs/quality/evidence/accel_vllm_flags.json`,
+`restart_seconds_to_healthy`). The live reload time of vLLM through the idle policy
 remains to be measured by the owner: the first reload records it in the event log, and later messages use it. The
 lane that built this policy did not restart the shared vLLM, ASR, TTS or SearXNG containers. It verified the stop,
 reload and measurement path against a disposable container (§4).
@@ -193,5 +258,16 @@ forward) ran `docker rm -f` and logged `idle 2 min (timeout 1 min)`. The next re
 - Idle unload sees in-flight work from NeuroSciFi's own calls (the in-use lock) and, for vLLM and ASR, from any client
   (`/metrics`). A client outside NeuroSciFi that calls TTS or SearXNG directly is not seen. Such a request that starts
   in the moment between the pass's check and the stop fails.
-- The reload is on demand and blocks the call that needs it for the reload time. Nothing preloads a service ahead of
-  use.
+- The reload is on demand. Nothing preloads a service ahead of use. A call waits for the reload at most as long as
+  its own timeout and then ends `unavailable` (§3(c)); a call whose model becomes ready just inside that wait then has
+  its full timeout again for the request, so a call that needed a reload can take up to twice its timeout.
+- The free-memory check uses one reading of MemAvailable and one footprint. Another workload that changes memory
+  at the same moment skews both the check and the next measured footprint.
+- The memory models of `deploy/memory` (embedding and reranker) are not managed by the idle policy: they have no
+  idle timeout, are never unloaded or reloaded on demand, and their gateway takes no in-use lock. Stop them with
+  `deploy/memory/run.sh stop`; memory retrieval then falls back to the lexical ranking with the reason.
+- Queue order is by who asked, not by how long a task takes. One worker runs one task at a time, so a question
+  queued while a task is running waits for that task to finish; and an autonomous task queued more than 10 minutes
+  ago is claimed in age order with the owner's questions (§3(a)).
+- The inference server's state is read for a vLLM server on this host only. Its interval figures are per process:
+  two processes reading the same server each keep their own previous reading.

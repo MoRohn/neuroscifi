@@ -273,9 +273,12 @@ def _replay(copy, forgets, now):
             # same name created in the copy later is newer than the record and is kept.
             if not copy.execute("SELECT 1 FROM deletion_log WHERE target_kind='epoch' AND target_id=? AND "
                                 "requested_at=?", (epoch, requested_at)).fetchone():
-                carried = json.loads(effects_json) | {"state_version": version + 1, "replayed": True}
+                carried = {k: v for k, v in json.loads(effects_json).items() if k != "checkpoints_stale"} \
+                    | {"state_version": version + 1, "replayed": True}     # the archive ids were the live file's
                 copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) "
                              "VALUES('epoch',?,?,?)", (epoch, requested_at, json.dumps(carried, sort_keys=True)))
+                # as the live forget does: the archives the copy lists were written before the forget
+                copy.execute("UPDATE checkpoints SET status='stale' WHERE status='valid'")
     if web:
         copy.executemany("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", web)
         web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now)

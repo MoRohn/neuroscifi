@@ -15,7 +15,10 @@ Code: `src/neuroscifi/voice/web/{capture-worklet,voice-client,voice-ui,pocket-vo
    while NeuroSciFi is speaking the threshold is max(5 × floor, 0.03). 300 ms pre-roll. An utterance is
    **confirmed** after 250 ms voiced (300 ms while speaking); nothing is uploaded before that. Chunks go every
    500 ms (`final=0`), serialised per utterance (`X-NSF-Seq` must increase by one), and the rest at end-of-utterance
-   = 700 ms silence (`final=1`).
+   = 700 ms silence (`final=1`). A chunk whose upload failed without a refusal (a dropped connection, a server
+   error) is sent once more with the same sequence number; the hub answers a repeat of the last chunk, or of a
+   closed utterance's final chunk, with `status: duplicate` and does not add it twice, so one lost response no
+   longer ends the utterance.
 4. Mic off: every `MediaStreamTrack` is stopped (`tracksLive() == 0`, the browser indicator goes out), the worklet
    and source are disconnected, frames still in flight are dropped, queued non-final uploads are skipped, and the
    lease is released. The server refuses audio from a device that does not hold the lease, has no consent, or is in
@@ -47,6 +50,10 @@ Code: `src/neuroscifi/voice/web/{capture-worklet,voice-client,voice-ui,pocket-vo
   interrupt; it is counted (`interrupt {kind: overlap}`) and nothing is uploaded.
 - **Recovery**: "go on" re-speaks the interrupted reply from `spoken_until`; a new question supersedes it. Research
   is never cancelled by barge-in.
+- **Reply order**: replies of one session run concurrently and may finish in any order. Every user turn takes a
+  generation and its reply carries it. A reply is spoken only if its generation is not older than one already
+  delivered; an interruption also makes stale the answers to turns asked before the interrupted reply started
+  speaking. A stale reply is still shown as text.
 - Events reach the client by long-poll (`events?since=n&wait≤20 s`; Pocket ≤ 7 s, its connection deadline), at most
   500 per session in memory.
 
