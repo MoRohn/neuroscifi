@@ -84,6 +84,11 @@ docker_args() {
 
 url() { echo "http://$NSF_VLLM_BIND:$NSF_VLLM_PORT"; }
 
+# A container that does not exist yet is "not ready", not "gone", for the first seconds of a wait: a systemd unit
+# (Type=simple) returns from `systemctl start` before its wrapper has created the container (review F2: the idle
+# policy's reload of a stopped unit failed its own wait in 0.04 s while the model came up seconds later).
+GONE_GRACE="${NSF_WAIT_GONE_GRACE:-60}"
+
 cmd="${1:-status}"
 case "$cmd" in
   start)
@@ -113,8 +118,10 @@ case "$cmd" in
     restarts="$(docker inspect -f '{{.RestartCount}}' "$NSF_VLLM_CONTAINER" 2>/dev/null || echo 0)"
     until curl -fsS -m 5 "$(url)/health" >/dev/null 2>&1; do
       [ $(( $(date +%s) - start )) -ge "$limit" ] && die "not healthy after ${limit}s"
-      state="$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$NSF_VLLM_CONTAINER" 2>/dev/null)" \
-        || die "container exited; see: docker logs $NSF_VLLM_CONTAINER"
+      if ! state="$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$NSF_VLLM_CONTAINER" 2>/dev/null)"; then
+        [ $(( $(date +%s) - start )) -lt "$GONE_GRACE" ] || die "container exited (none after ${GONE_GRACE}s); see: docker logs $NSF_VLLM_CONTAINER"
+        sleep 1; continue
+      fi
       case "${state% *}" in
         restarting|exited|dead) die "container is ${state% *} (it stopped while starting); see: docker logs $NSF_VLLM_CONTAINER" ;;
       esac

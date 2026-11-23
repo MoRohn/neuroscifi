@@ -135,6 +135,46 @@ def test_memory_wait_fails_at_once_on_a_container_that_stopped_or_keeps_restarti
     assert not (two / "curl.stdin").exists()                       # and no warm-up request was sent to it
 
 
+@pytest.mark.parametrize("script,ready", [(("deploy/memory/run.sh", "wait", "embed", "60"), "embed ready after"),
+                                          (("deploy/voice/run.sh", "wait", "asr", "60"), "asr ready after"),
+                                          (("deploy/vllm/run.sh", "wait", "60"), "healthy after")])
+def test_wait_treats_a_container_that_does_not_exist_yet_as_not_ready_then_as_gone(tmp_path, script, ready):
+    """Review F2: `systemctl start` of a Type=simple unit returns before the wrapper has created the container, and
+    the wait that the idle policy runs next died at once with "container is gone", so every reload of a stopped
+    unit was recorded as failed. A missing container is now waited for (60 s), then it is gone."""
+    import os
+    import subprocess
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "n").write_text("0")
+    (bin_dir / "docker").write_text(                      # no such container for the first three looks, then running
+        '#!/usr/bin/env bash\n'
+        f'N="{tmp_path}/n"\n'
+        'case "$*" in\n'
+        '  *"{{.State.Status}}"*) c=$(cat "$N"); echo $((c+1)) > "$N"; [ "$c" -lt "${APPEARS_AFTER:-3}" ] && exit 1\n'
+        '     case "$*" in *RestartCount*) echo "running 0" ;; *) echo running ;; esac ;;\n'
+        '  *RestartCount*) echo 0 ;;\n'
+        '  port*) echo "127.0.0.1:18441" ;;\n'
+        '  *) echo true ;;\n'
+        'esac\n')
+    (bin_dir / "curl").write_text(                         # /health answers once the container has been seen twice
+        '#!/usr/bin/env bash\n'
+        f'case "$*" in *"-K -"*) cat > /dev/null; exit 0 ;; esac\n'
+        f'[ "$(cat "{tmp_path}/n")" -ge 5 ]\n')
+    (bin_dir / "sleep").write_text(f'#!/usr/bin/env bash\necho x >> "{tmp_path}/polls"\n')
+    for tool in ("docker", "curl", "sleep"):
+        (bin_dir / tool).chmod(0o755)
+    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path)}
+    done = subprocess.run(["bash", str(ROOT / script[0]), *script[1:]], env=env, capture_output=True, text=True,
+                          timeout=60)
+    assert done.returncode == 0 and ready in done.stdout, done.stderr
+    assert (tmp_path / "polls").read_text().count("x") >= 3            # it kept looking while there was none
+    (tmp_path / "n").write_text("0")
+    gone = subprocess.run(["bash", str(ROOT / script[0]), *script[1:]], capture_output=True, text=True, timeout=60,
+                          env=env | {"APPEARS_AFTER": "1000000", "NSF_WAIT_GONE_GRACE": "0"})
+    assert gone.returncode == 1 and "none after 0s" in gone.stderr
+
+
 def test_memory_status_prints_one_line_per_service_running_or_not(tmp_path):
     import os
     import subprocess

@@ -108,6 +108,11 @@ container() { [ "$1" = asr ] && echo "$NSF_VOICE_ASR_CONTAINER" || echo "$NSF_VO
 port() { [ "$1" = asr ] && echo "$NSF_VOICE_ASR_PORT" || echo "$NSF_VOICE_TTS_PORT"; }
 image() { [ "$1" = asr ] && echo "$NSF_VOICE_ASR_IMAGE" || echo "$NSF_VOICE_TTS_IMAGE"; }
 
+# A container that does not exist yet is "not ready", not "gone", for the first seconds of a wait: a systemd unit
+# (Type=simple) returns from `systemctl start` before its wrapper has created the container (review F2: the idle
+# policy's reload of a stopped unit failed its own wait in 0.04 s while the model came up seconds later).
+GONE_GRACE="${NSF_WAIT_GONE_GRACE:-60}"
+
 cmd="${1:-status}"
 case "$cmd" in
   build)
@@ -147,8 +152,10 @@ case "$cmd" in
       restarts="$(docker inspect -f '{{.RestartCount}}' "$(container "$s")" 2>/dev/null || echo 0)"
       until curl -fsS -m 5 "http://$NSF_VOICE_BIND:$(port "$s")/health" >/dev/null 2>&1; do
         [ $(( $(date +%s) - start )) -ge "$limit" ] && die "$s not ready after ${limit}s"
-        state="$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$(container "$s")" 2>/dev/null)" \
-          || die "$s container exited; see: docker logs $(container "$s")"
+        if ! state="$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$(container "$s")" 2>/dev/null)"; then
+          [ $(( $(date +%s) - start )) -lt "$GONE_GRACE" ] || die "$s container exited (none after ${GONE_GRACE}s); see: docker logs $(container "$s")"
+          sleep 1; continue
+        fi
         case "${state% *}" in
           restarting|exited|dead) die "$s container is ${state% *} (it stopped while starting); see: docker logs $(container "$s")" ;;
         esac
