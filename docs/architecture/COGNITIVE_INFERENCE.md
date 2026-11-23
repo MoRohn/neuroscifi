@@ -402,15 +402,31 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   critique's scope is what it is now (§7, "What the critique judges"). The pass is skipped when
   too little of the time budget is left (below), when `self_critique` is off, for a spoken answer when
   `critique_voice` is off, and when every accepted sentence is a restatement (§7).
-- **Restatements (`reasoning.restates`).** An accepted sentence is a restatement when its text is exactly what
-  `compose()` makes of its cited claims' own words: one claim's text, or every cited claim's text once, in any order,
-  joined by `, and`, ` and`, `; ` or `; and`, followed by the attribution `attribution()` appends for those claims'
-  states and number of sources (nothing when all are supported), or led by the guard's own "According to one
-  source, …" (items with `attributed`). The comparison ignores case, spacing, unicode punctuation variants and the
-  final full stop, and nothing else: a shortened, reordered or reworded claim, a changed number or unit, a dropped
-  "not", an added clause, a claim cited but not restated, citations other than the cited claims' own sources, or an
-  unknown claim id is no restatement and is judged. The code never changes a sentence because of this test; it only
-  decides whether the critic is asked about it. Tests: `tests/inference/test_inference_critique_scope.py`.
+- **Restatements (`reasoning.restates`).** An accepted sentence is a restatement when its text is, character for
+  character, its cited claims' own text as extracted: one claim, or every cited claim once, in any order, joined by
+  `, and`, ` and`, `; ` or `; and`, followed by the attribution `compose()` appends for those claims' states and
+  number of sources (nothing when all are supported), or led by the guard's own "According to one source, …" (items
+  with `attributed`). Two differences are allowed and no other: runs of white space count as one space, and one
+  final full stop may be present or absent. Case counts, with one exception: a claim that follows a join may begin
+  in lower case when it begins with an ordinary capital ("…, and with a length of 412 km, …"; never "CO" as "cO").
+  Always judged, whatever the sentence says: a shortened, reordered or reworded claim; a changed number, unit or
+  letter case ("CO" and "Co"); a dropped "not"; an added clause; a claim cited but not restated; more than three
+  cited claims (the guard also reads citation markup inside the text, so an accepted sentence can carry more than
+  the schema's three); citations other than the cited claims' own sources; an unknown claim id; a claim whose own
+  text holds "according to <source>" (the code may have replaced it, see below); and any sentence or claim holding a
+  character a reader does not see (bidirectional controls, zero-width and other format characters, variation
+  selectors, fillers) or that the guard reads differently from how it is written (a superscript, a ligature, the
+  one-character ellipsis). The cost is bounded: at most three parts, each tried only where it stands in the text, and
+  no ordering of the claims is enumerated. The code never changes a sentence because of this test; it only decides
+  whether the critic is asked about it. Tests: `tests/inference/test_inference_critique_scope.py`.
+- **The model's own attribution and the claim's.** `compose()` replaces a leading or trailing "according to
+  <source word>" the model wrote by the code's attribution. The trailing form reaches up to 40 characters past the
+  source word, for a source the model names further ("according to a report by Reuters"). When those further words
+  are words of the cited claims they are the claim's content and the phrase stays: the claim "The bridge is open
+  according to the official records except on Sundays", copied word for word, is shown as "The bridge is open
+  according to the official records except on Sundays, according to one source." (0.7.0 showed "The bridge is open,
+  according to one source."). A shortened sentence that drops such an exception still passes the lexical guard, as
+  any shortening does; it is not a restatement, so the critique reads it.
 - **Time budget.** `orchestrator._reason` passes what is left of the task's `budget.max_seconds`
   (`time_left`); the answer call, its schema repair and the critique share that one deadline (`Gateway.structured`
   gives the repair only the remaining time; `Gateway._call` never exceeds `read_timeout`). With less than
@@ -787,26 +803,31 @@ by the guard, sentence by sentence. Tests:
 **What the critique judges.** In a restatement the words are the claim's and the attribution is the one the code
 chose from the claim's state, so a mark of "unsupported", "overstated" or "missing_hedge" on it is a statement about
 the code's own hedge, and the critique cannot remove a sentence the guard accepted (§3). Measured with the live model
-on the 51 tasks of the offline corpus, five runs one after another
-(`docs/quality/evidence/accel_decisions_critique_scope.json`; times are indicative, the GPU was shared):
+on the 51 tasks of the offline corpus, seven runs
+(`docs/quality/evidence/accel_decisions_critique_scope.json`; times are indicative, the GPU was shared). The default
+column is the shipped, character-for-character test (`runs_strict_test`, two runs); the first version of the test,
+which ignored case and compatibility forms, gave 9 and 11 calls, 10 of 91 and 12 of 89 sentences judged and 4 marks
+in its two runs (`runs`), and every sentence of those runs is classed the same by both versions
+(`earlier_runs_reread_with_the_strict_test`).
 
 | | every sentence (`critique_restatements`, two runs) | default (two runs) | `self_critique` off |
 |---|---|---|---|
-| Critique calls | 44, 44 | 9, 11 | 0 |
-| Sentences judged, of those kept | 86 of 86, 86 of 86 | 10 of 91, 12 of 89 | none |
+| Critique calls | 44, 44 | 10, 10 | 0 |
+| Sentences judged, of those kept | 86 of 86, 86 of 86 | 11 of 86, 11 of 86 | none |
 | Marks | 42, 42 | 4, 4 | none |
 | Marks on restatements | 38, 38 | 0, 0 | none |
 | Sentences the critique removed | 0, 0 | 0, 0 | none |
-| Critique tokens (prompt + completion) | 40,626, 40,671 | 6,425, 9,336 | 0 |
-| Task wall time, mean / median | 4.13 / 3.03 s, 4.16 / 2.96 s | 2.80 / 1.77 s, 2.79 / 1.81 s | 2.33 / 1.38 s |
-| Model answers of 51 | 44, 44 | 46, 45 | 44 |
+| Critique tokens (prompt + completion) | 40,626, 40,671 | 7,705, 7,705 | 0 |
+| Task wall time, mean / median | 4.13 / 3.03 s, 4.16 / 2.96 s | 2.64 / 1.80 s, 2.65 / 1.77 s | 2.33 / 1.38 s |
+| Model answers of 51 | 44, 44 | 44, 44 | 44 |
 
 The answer call is made before the critique and is the same request in every column, so the number of model answers
-and the kept sentences vary with the run, not with the setting (temperature 0.1, no seed): the two default runs
-differ from each other in 8 tasks, and the second default run differs from the every-sentence runs in 1. The
+and the kept sentences vary with the run, not with the setting (temperature 0.1, no seed). The five runs of this
+table keep the same sentences in all 51 tasks; the two runs of the first version kept 46 and 45 answers and differ
+from these in 7 tasks and in 1. The
 sentences still judged are the ones the model shortened or rewrote ("The Halvorsen Bridge opened in 1987, …" from a
-claim that goes on "and now carries about 42,000 vehicles a day"; "A faulty network configuration change caused the
-outage, according to one source." from "The company said a faulty network configuration change caused the outage.")
+claim that goes on "and now carries about 42,000 vehicles a day"; "Tessaly had a population of 248,000 residents at
+the 2025 census, …" from "At the 2025 census Tessaly had a population of 248,000 residents.")
 and one that cites two claims and restates one. The four remaining marks are a model's judgement as before, shown
 and never acted on. Tests: `tests/inference/test_inference_critique_scope.py`; in the browser,
 `tests/e2e/test_reasoning_console.py::test_a_word_for_word_answer_is_shown_without_a_critique_call_by_default`.

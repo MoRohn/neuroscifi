@@ -69,14 +69,14 @@ def test_a_state_the_table_does_not_know_is_attributed_and_recognised():
 
 
 @pytest.mark.parametrize("written", [
-    CLAIM, CLAIM[:-1], "  the build   times dropped by 30 percent in our tests. ",
+    CLAIM, CLAIM[:-1], "  The build   times dropped by 30 percent in our tests. ",
     "Yes, the build times dropped by 30 percent in our tests.",
     "According to one source, the build times dropped by 30 percent in our tests.",
     "The build times dropped by 30 percent in our tests, according to a report.",
 ])
 def test_what_compose_normalises_away_does_not_make_a_sentence_the_models_own(written):
-    """Case, spacing, the final stop, a leading answer word and the model's own attribution are replaced by code:
-    the composed sentence is the same one, so it is a restatement."""
+    """Spacing, the final stop, a leading answer word and the model's own attribution are replaced by code: the
+    composed sentence is the same one, so it is a restatement."""
     b = one_claim("insufficient", (3,))
     ok = kept(b, (written, ["C1"]))
     assert reasoning._restate_key(ok[0]["text"]) == reasoning._restate_key(C2_SHOWN) and reasoning.restates(ok[0], b)
@@ -186,6 +186,180 @@ def test_three_claims_and_the_same_words_from_two_claims():
     assert not reasoning.restates(item(f"{a}, {d} and {c}.", b, ("C1", "C2", "C3")), b)   # a join not in the list
     b["claims"][1]["text"] = b["claims"][0]["text"]                # two sources carrying the same words
     assert reasoning.restates(item(f"{a}.", b, ("C1", "C2")), b)
+
+
+# ---- review round: bounded cost, qualifiers after a source phrase, differences a reader sees -------------------------
+
+def many_claims(n):
+    return {"question": "How long is the Varnel River?", "verdict": None,
+            "claims": [{"id": f"C{i}", "state": "supported", "sources": [i], "published": None, "event": None,
+                        "text": "The Varnel River is 412 kilometres long." if i == 1 else
+                                f"The Varnel River is 412 kilometres long and item {i} holds."}
+                       for i in range(1, n + 1)],
+            "sources": [{"id": i, "title": f"Source {i}", "published": "undated"} for i in range(1, n + 1)]}
+
+
+@pytest.mark.parametrize("n", [4, 9, 12])
+def test_a_sentence_citing_more_claims_than_the_schema_allows_is_judged_without_a_search(monkeypatch, n):
+    """Review F1: the guard also reads citation markup in the text ("[C1-C9; 2; 3; ...]"), so an accepted item can
+    carry up to MAX_CLAIMS claims although the schema allows three. The first version tried every ordering of them:
+    9 claims took 68.7 s, 12 would take a day, outside the task's time budget and steerable by a page. No ordering is
+    enumerated any more, and above MAX_SENTENCE_CLAIMS the sentence is judged."""
+    def no_search(*args, **kwargs):
+        raise AssertionError("restates() must not enumerate orderings of the cited claims")
+    monkeypatch.setattr(itertools, "permutations", no_search)
+    b = many_claims(n)
+    refs = "; ".join(str(i) for i in range(2, n + 1))
+    ok, bad = reasoning.guard([{"text": f"The Varnel River is 412 kilometres long [C1-C{n}; {refs}].", "sources": [1],
+                                "claims": ["C1"]}], b)
+    assert bad == [] and len(ok[0]["claims"]) == n > reasoning.MAX_SENTENCE_CLAIMS
+    assert reasoning.restates(ok[0], b) is False
+    # also when the text really is all of them, joined: more than the schema allows is never excused
+    joined = "; ".join(c["text"][:-1] for c in b["claims"]) + "."
+    assert reasoning.restates(item(joined, b, tuple(c["id"] for c in b["claims"])), b) is False
+
+
+def test_the_join_matcher_tries_a_part_only_where_it_stands(monkeypatch):
+    """Timing-independent: twelve parts in the reverse of their listed order match after at most n(n+1)/2 tries
+    (78), where one try per ordering would be 479,001,600. restates() itself never passes more than three."""
+    parts = [f"Part number {i} of the river report is here" for i in range(12)]
+    tries = []
+    real = reasoning._part_at
+
+    def counted(*args):
+        tries.append(args[2])
+        return real(*args)
+    monkeypatch.setattr(reasoning, "_part_at", counted)
+    assert reasoning._joined("; ".join(reversed(parts)), parts) and len(tries) <= 78
+    tries.clear()
+    assert not reasoning._joined("; ".join(reversed(parts)) + " and more", parts) and len(tries) <= 78
+    tries.clear()
+    assert not reasoning._joined(", ".join(parts), parts) and len(tries) <= 12        # a join outside the list
+    assert reasoning._joined("B and A; and C", ["A", "B", "C"]) and not reasoning._joined("A and A", ["A", "B"])
+    assert not reasoning._joined("A and B and A", ["A", "B"]) and not reasoning._joined("", ["A"])
+
+
+QUALIFIED = "The bridge is open according to the official records except on Sundays."
+
+
+def test_a_claim_that_holds_an_attribution_phrase_is_always_judged():
+    """Review F3: the claim "The flaw is fixed according to the release notes except in versions 2 and 3" was taken
+    for restated by "The flaw is fixed, according to one source.", because the comparison ran the claim through the
+    same attribution replacement as the sentence. The claim is compared as extracted, and a claim with its own
+    "according to <source>" is judged whatever the sentence says."""
+    for claim in (QUALIFIED, "The flaw is fixed according to the release notes except in versions 2 and 3.",
+                  "Drug Z is safe according to the official advisory for adults over 65 only.",
+                  "The bridge is open according to the official records."):
+        b = one_claim("insufficient", (3,), text=claim)
+        short = claim.split(" according to ")[0]
+        for text in (f"{short}, according to one source.", f"{claim[:-1]}, according to one source.", claim):
+            assert not reasoning.restates(item(text, b), b), (claim, text)
+    b = one_claim("insufficient", (3,), text=QUALIFIED)
+    for written in ("The bridge is open.", "The bridge is open according to the official records.", QUALIFIED):
+        ok = kept(b, (written, ["C1"]))
+        assert not reasoning.restates(ok[0], b), ok[0]["text"]        # each reaches the critic
+
+
+def test_compose_keeps_what_follows_a_source_phrase_when_the_claim_says_it():
+    """Review F3, the answer path (older than the critique scope): compose() replaced "according to the official
+    records except on Sundays" by "according to one source", so a claim copied word for word was shown without its
+    exception. Words after the source word that the cited claim holds are the claim's content and stay; a source the
+    model names on its own is still replaced."""
+    b = one_claim("insufficient", (3,), text=QUALIFIED)
+    items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": QUALIFIED}]}, b)
+    assert items[0]["text"] == QUALIFIED[:-1] + ", according to one source."
+    ok, bad = reasoning.guard(items, b)
+    assert bad == [] and "except on Sundays" in ok[0]["text"]
+    for claim in ("The flaw is fixed according to the release notes for the Linux builds.",
+                  "Drug Z is safe according to the official advisory for adults over 65 only."):
+        b = one_claim("insufficient", (3,), text=claim)
+        shown = reasoning.compose({"sentences": [{"claims": ["C1"], "text": claim}]}, b)[0]["text"]
+        assert claim[:-1] in shown, shown
+    b = one_claim("insufficient", (3,), text="The bridge is open.")
+    for written in ("The bridge is open according to a report by Reuters.",
+                    "The bridge is open, according to the benchmark.",
+                    "The bridge is open according to the notes of the release.",
+                    "According to the cited sources, the bridge is open."):
+        items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": written}]}, b)
+        assert items[0]["text"] == "The bridge is open, according to one source.", written
+    # the source's name is the claim's own: it stays, with the code's attribution after it
+    b = one_claim("insufficient", (3,), text="The bridge is open, Reuters reported.")
+    items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": "The bridge is open according to a report "
+                                                                        "by Reuters."}]}, b)
+    assert items[0]["text"] == "The bridge is open according to a report by Reuters, according to one source."
+    assert reasoning.attribution("The bridge is open according to a report by Reuters.", ["insufficient"], 1) == \
+        "The bridge is open, according to one source."                # no claim text given: as before
+
+
+@pytest.mark.parametrize("claim, text, why", [
+    ("The sample contained CO at 5 ppm.", "The sample contained Co at 5 ppm, according to one source.",
+     "carbon monoxide and cobalt differ by case"),
+    ("The US approved it in May.", "the us approved it in may, according to one source.", "case"),
+    ("The US approved it in May.", "The Us approved it in May, according to one source.", "case inside a word"),
+    ("The package includes A, B, C…", "The package includes A, B, C, according to one source.",
+     "a marked truncation dropped"),
+    ("The package includes A, B, C...", "The package includes A, B, C, according to one source.",
+     "a marked truncation dropped"),
+    ("The package includes A, B, C…", "The package includes A, B, C..., according to one source.",
+     "the guard reads the claim differently from how it is written"),
+    ("The vote passed ‮7 to 2.", "The vote passed 7 to 2, according to one source.",
+     "a right-to-left override in the claim shows 72 as 27"),
+    ("The vote pas​sed 7 to 2.", "The vote passed 7 to 2, according to one source.", "a zero-width space"),
+    ("The vote passed 7 to 2.", "The vote passed ‮7 to 2, according to one source.", "an override in the text"),
+    ("The vote passed 7 to 2.", "The vote passed­ 7 to 2, according to one source.", "a soft hyphen"),
+    ("The vote passed 7 to 2️.", "The vote passed 7 to 2, according to one source.", "a variation selector"),
+    ("The vote passed 7 to 2ㅤ.", "The vote passed 7 to 2, according to one source.", "a filler"),
+    ("The safe dose is 10⁶ units per day.", "The safe dose is 106 units per day, according to one source.",
+     "a superscript"),
+    ("The ofﬁce opened in 2019.", "The office opened in 2019, according to one source.", "a ligature"),
+    ("The report calls it “safe”.", 'The report calls it "safe", according to one source.',
+     "other quotation marks"),
+    ("The range is 2–3 km.", "The range is 2-3 km, according to one source.", "another dash"),
+    ("The bridge is open!", "The bridge is open, according to one source.", "a dropped exclamation mark"),
+])
+def test_differences_a_reader_sees_are_not_restatements(claim, text, why):
+    """Review F7 / L4: the first version compared after NFKC, punctuation folding and lower-casing, without format
+    characters. The comparison is character for character now, and a sentence or claim with a character a reader
+    does not see is always judged."""
+    b = one_claim("insufficient", (3,), text=claim)
+    assert not reasoning.restates(item(text, b), b), why
+
+
+def test_spacing_and_the_final_stop_are_the_only_differences_allowed():
+    b = one_claim("insufficient", (3,), text="The bridge carries 42 000 vehicles a day.")
+    assert reasoning.restates(item("The bridge carries 42 000 vehicles a day, according to one source.", b), b)
+    assert reasoning.restates(item("The bridge  carries 42 000 vehicles a day, according to one source", b), b)
+    b = one_claim("supported", (3,), text="The plant was built in the U.S.")
+    assert reasoning.restates(item("The plant was built in the U.S.", b), b)
+    assert reasoning.restates(item("The plant was built in the U.S", b), b)
+    assert not reasoning.restates(item("The plant was built in the US.", b), b)
+    assert reasoning._restate_key("  A  b. ") == "A b" and reasoning._restate_key("A b..") == "A b.."
+    assert reasoning._restate_key("") is None and reasoning._restate_key("a​b") is None
+
+
+def test_only_an_ordinary_capital_after_a_join_may_be_lowered():
+    """The one case difference allowed: the first letter of a claim that follows a join, as the model wrote it in
+    benchmark task F02 ("..., and with a length of 412 km, ..."). Never the first claim, never an acronym."""
+    b = two_claims("supported", "supported")
+    a, c = (x["text"][:-1] for x in b["claims"])
+    assert reasoning.restates(item(f"{a}, and {c[0].lower()}{c[1:]}.", b, ("C1", "C2")), b)
+    assert reasoning.restates(item(f"{c}; {a[0].lower()}{a[1:]}.", b, ("C1", "C2")), b)
+    assert not reasoning.restates(item(f"{a[0].lower()}{a[1:]}, and {c}.", b, ("C1", "C2")), b)      # the first claim
+    assert not reasoning.restates(item(f"{a}, and {c.lower()}.", b, ("C1", "C2")), b)                # more than a letter
+    b["claims"][1]["text"] = "CO levels rose in the Varnel valley."
+    assert reasoning.restates(item(f"{a}, and CO levels rose in the Varnel valley.", b, ("C1", "C2")), b)
+    assert not reasoning.restates(item(f"{a}, and cO levels rose in the Varnel valley.", b, ("C1", "C2")), b)
+    assert not reasoning.restates(item(f"{a}, and co levels rose in the Varnel valley.", b, ("C1", "C2")), b)
+
+
+def test_the_guards_own_lead_lowers_exactly_what_the_guard_lowers():
+    claim = "Rust 1.0 was published in May 2015."                     # no word of _LOWER_LEAD: the guard keeps "Rust"
+    b = one_claim("insufficient", (1,), text=claim, question="When was the Rust programming language first released?")
+    ok, bad = reasoning.guard([{"text": claim, "sources": [1], "claims": ["C1"]}], b)
+    assert bad == [] and ok[0]["text"] == "According to one source, Rust 1.0 was published in May 2015."
+    assert reasoning.restates(ok[0], b)
+    assert not reasoning.restates(dict(ok[0], text="According to one source, rust 1.0 was published in May 2015."), b)
+    assert not reasoning.restates(dict(ok[0], text="according to one source, Rust 1.0 was published in May 2015."), b)
 
 
 # ---- apply: what the critic is shown -------------------------------------------------------------------------------

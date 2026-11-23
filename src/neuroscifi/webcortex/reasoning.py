@@ -89,7 +89,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import functools
-import itertools
 import json
 from pathlib import Path
 import re
@@ -161,27 +160,54 @@ _SOURCE_PHRASE = (r"according to (?:(?:one|a|an|another|the|two|three|several|mu
                   r"official|other|release)\s+)*(?:sources?|reports?|records?|accounts?|articles?|stud(?:y|ies)|"
                   r"papers?|claims?|evidence|websites?|sites?|pages?|documents?|documentation|announcements?|notes|"
                   r"advisor(?:y|ies)|benchmarks?|surveys?|analys[ie]s|reviews?|data)")
-_OWN_ATTRIBUTION = re.compile(rf"^\s*{_SOURCE_PHRASE},\s*|,?\s*\b{_SOURCE_PHRASE}[^,.;:!?]{{0,40}}[.!?]?\s*$",
-                              re.IGNORECASE)
+_OWN_ATTRIBUTION = re.compile(rf"^\s*{_SOURCE_PHRASE},\s*|"
+                              rf",?\s*\b{_SOURCE_PHRASE}(?P<after>[^,.;:!?]{{0,40}})[.!?]?\s*$", re.IGNORECASE)
+# Words after the source word that only name the source further ("a report by Reuters", "the notes of the release")
+_SOURCE_GLUE = frozenset({"by", "from", "of", "in", "on", "at", "the", "a", "an", "its", "their"})
 # "Yes, ..." / "No, ...": the model answering the question in a word no cited claim holds (the entailment check
 # reads "yes" as hedge vocabulary); compose() removes it, so the sentence says only its restatement.
 _ANSWER_WORD = re.compile(r"^\s*(?:yes|no)\b(?!-)\s*[,;:!\u2014\u2013-]+\s*", re.IGNORECASE)   # never "No-one"
 
 
-def attribution(text: str, states, sources: int) -> str:
-    """`text` with the attribution of HEDGES for the weakest of `states` appended ("Python was first released in 1991,
-    according to one source."); a leading or trailing "according to ..." the model wrote is replaced. Unchanged when
-    every state is supported. `sources`: how many distinct sources the sentence cites."""
+def _hedge(states, sources: int) -> str | None:
+    """The attribution of HEDGES for the weakest of `states` ("according to one source, though the sources disagree"),
+    or None when every state is supported. `sources`: how many distinct sources the sentence cites."""
     states = set(states)
     weakest = next((h for h in HEDGES if h in states), None)
     if weakest is None and states - SUPPORTED_STATES:
         weakest = "insufficient"                    # a state this table does not know is never stated plainly
-    body = _OWN_ATTRIBUTION.sub("", text or "").strip().rstrip(".!?;:, ").strip()
-    if weakest is None or not body:
+    if weakest is None:
+        return None
+    return HEDGES[weakest].format(who="one source" if sources == 1 else "the cited sources")
+
+
+def _without_own_attribution(text: str, held: str | None) -> str:
+    """`text` without a leading or trailing "according to <source word>" (_OWN_ATTRIBUTION). The trailing form reaches
+    up to 40 characters past the source word, for a source the model names further ("according to a report by
+    Reuters"). When those further words are words of the cited claims (`held`: their text), they are the claim's own
+    content, not the model's attribution ("The flaw is fixed according to the release notes except in versions 2 and
+    3": removing the phrase would drop the exception), and the phrase stays. held=None: no claim text is known and
+    the phrase is removed as before (the prompt's worked example)."""
+    known = set(T.tokens(held)) if held else set()
+
+    def drop(m):
+        after = set(T.tokens(m.group("after") or "")) - _SOURCE_GLUE
+        return m.group(0) if after & known else ""
+    return _OWN_ATTRIBUTION.sub(drop, text or "")
+
+
+def attribution(text: str, states, sources: int, held: str | None = None) -> str:
+    """`text` with the attribution of HEDGES for the weakest of `states` appended ("Python was first released in 1991,
+    according to one source."); a leading or trailing "according to ..." the model wrote is replaced, unless what
+    follows its source word is content of the cited claims (`held`, _without_own_attribution). Unchanged when
+    every state is supported. `sources`: how many distinct sources the sentence cites."""
+    tail = _hedge(states, sources)
+    body = _without_own_attribution(text, held).strip().rstrip(".!?;:, ").strip()
+    if tail is None or not body:
         return text
     if body[:1].islower() and body != (text or "").strip().rstrip(".!?;:, ").strip():
         body = body[0].upper() + body[1:]           # "According to X, the first ..." -> "The first ..."
-    return f"{body}, {HEDGES[weakest].format(who='one source' if sources == 1 else 'the cited sources')}."
+    return f"{body}, {tail}."
 
 
 # The prompt's worked example, as data: tests check that the good sentence passes the guard against the example claim
@@ -1445,7 +1471,7 @@ def compose(value, b: dict) -> list[dict]:
         seen.add(key)
         if used and text and not text.rstrip().endswith("?") and not insufficiency(text, question) and \
                 not _relays_instruction(text, b, used):
-            text = attribution(text, [c["state"] for c in used], len(sources))
+            text = attribution(text, [c["state"] for c in used], len(sources), " ".join(c["text"] for c in used))
         out.append({"text": text, "sources": sources, "claims": ids})
     return out
 
@@ -2398,11 +2424,14 @@ def _restates(text: str, used) -> bool:
                for c in used)
 
 
+def _attributed_lead(cites) -> str:
+    return "According to one source, " if len(set(cites)) == 1 else "According to the cited sources, "
+
+
 def _attributed(text: str, cites) -> str:
     """`text` attributed to its cited source(s): "According to one source, the first stable release ..." (R1-04)."""
-    lead = "According to one source, " if len(set(cites)) == 1 else "According to the cited sources, "
     m = _LOWER_LEAD.match(text)
-    return lead + (text[0].lower() + text[1:] if m else text)
+    return _attributed_lead(cites) + (text[0].lower() + text[1:] if m else text)
 
 
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
@@ -2443,49 +2472,106 @@ def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
 
 # How a model joins the claims it restates in one sentence ("A, and b"); a closed list, compared exactly.
 _RESTATE_JOINS = (", and ", " and ", "; ", "; and ")
+# Characters a reader does not see, or that change how the characters around them are shown: format characters
+# (bidirectional controls, zero-width spaces and joiners, soft hyphen, tags), controls, private use, unassigned,
+# surrogates, line and paragraph separators, and the invisible ones Unicode files elsewhere (combining grapheme
+# joiner, Hangul and Khmer fillers, Mongolian and other variation selectors, the Braille blank).
+_UNSEEN_CATEGORIES = frozenset({"Cf", "Cc", "Co", "Cn", "Cs", "Zl", "Zp"})
+_UNSEEN = re.compile("[͏ᅟᅠ឴឵᠋-᠏⠀ㅤﾠ︀-️\U000e0100-\U000e01ef]")
 
 
-def _restate_key(text) -> str:
-    """A sentence or claim as restates() compares it: what the grammar reads (_canon: NFKC, ASCII punctuation, lower
-    case, single spaces) without its final full stop. Every word, number and other punctuation mark counts."""
-    return _canon(text).rstrip(" .")
+def _restate_key(text) -> str | None:
+    """A sentence or claim as restates() compares it: its characters as written, with runs of white space as one
+    space and without one final full stop. Case, every word, number and punctuation mark count. None when the text
+    cannot be compared character for character: it is empty, it holds a character a reader does not see (_UNSEEN:
+    a right-to-left override shows "72" as "27"), or the guard reads it differently from how it is written (_norm:
+    a superscript, a ligature, a fullwidth letter, the one-character ellipsis)."""
+    text = _SPACE.sub(" ", str(text or "")).strip()
+    if not text or _UNSEEN.search(text) or any(unicodedata.category(ch) in _UNSEEN_CATEGORIES for ch in text) \
+            or _SPACE.sub(" ", _norm(text)).strip() != text:
+        return None
+    return text[:-1].rstrip() if text.endswith(".") and not text.endswith("..") else text
+
+
+def _part_at(body: str, at: int, part: str, first: bool, guard_led: bool) -> int | None:
+    """Where `part` (a claim's key) ends when it stands in `body` at `at`, else None. Character for character, with
+    one exception each for what code or a join does to a first letter: the guard's attribution lowers the first
+    letter of the sentence it leads (_attributed, _LOWER_LEAD), and a claim after a join may start in lower case when
+    it starts with an ordinary capital ("With a length ..." as "..., and with a length ..."; never "CO" as "cO")."""
+    lowered = part[:1].lower() + part[1:]
+    if first:
+        forms = (lowered,) if guard_led and _LOWER_LEAD.match(part) else (part,)
+    else:
+        forms = (part, lowered) if part[:1].isupper() and not part[1:2].isupper() else (part,)
+    for form in forms:
+        if body.startswith(form, at):
+            return at + len(form)
+    return None
+
+
+def _joined(body: str, parts: list[str], guard_led: bool = False, at: int = 0, left: tuple | None = None) -> bool:
+    """Whether `body` from `at` is every one of `parts` (those at the indexes `left`) exactly once, in any order, with
+    one of _RESTATE_JOINS between two of them and nothing else. It walks the body once per way the parts can follow
+    each other in it, not once per ordering of the parts: a part is tried only where it stands."""
+    left = tuple(range(len(parts))) if left is None else left
+    for i in left:
+        end = _part_at(body, at, parts[i], len(left) == len(parts), guard_led)
+        if end is None:
+            continue
+        rest = tuple(j for j in left if j != i)
+        if not rest:
+            if end == len(body):
+                return True
+        elif any(body.startswith(join, end) and _joined(body, parts, guard_led, end + len(join), rest)
+                 for join in _RESTATE_JOINS):
+            return True
+    return False
 
 
 def restates(item: dict, b: dict) -> bool:
     """Whether an accepted sentence (a guard() item) says exactly its cited claims and nothing of the model's own.
 
-    True only when its text is, compared by _restate_key, what compose() makes of the cited claims' own words: one
-    claim's text, or every cited claim's text once, in any order, joined by one of _RESTATE_JOINS, with the
-    attribution `attribution()` appends for those claims' states and number of sources (nothing when all are
-    supported). The attribution the guard itself adds ("According to one source, ...", items with "attributed") is
-    recognised the same way. The comparison is exact: a shortened, reordered or reworded claim, a changed number, a
-    dropped "not", an added clause, a claim cited but not restated, sources other than the cited claims' own, or an
-    unknown claim id is no restatement.
+    True only when its text is, character for character (_restate_key: white space and one final full stop aside),
+    its cited claims' own text as extracted: one claim, or every cited claim once, in any order, joined by one of
+    _RESTATE_JOINS, followed by the attribution compose() appends for those claims' states and number of sources
+    (_hedge; nothing when all are supported), or led by the guard's own "According to one source, " (items with
+    "attributed"). Always False, so that the sentence is judged, for: a shortened, reordered or reworded claim; a
+    changed number, unit or letter case; a dropped "not"; an added clause; a claim cited but not restated; more than
+    MAX_SENTENCE_CLAIMS cited claims (the guard also reads citation markup in the text, so an item can carry more
+    than the schema allows); sources other than the cited claims' own; an unknown claim id; a claim whose own text
+    holds an attribution phrase (_SOURCE_PHRASE: compose() may have replaced it); and a sentence or claim that
+    _restate_key cannot compare (unseen characters, compatibility forms).
 
     Used by apply(): the self-critique judges only sentences that are not restatements. In a restatement the words
     are the claim's and the hedge is the code's, so "unsupported", "overstated" or "missing_hedge" there can only be
-    a false alarm (measured on the pipeline benchmark: 43 of 46 marks sat on such sentences)."""
+    a false alarm (measured on the pipeline benchmark: 43 of 46 marks sat on such sentences). The cost is bounded:
+    at most MAX_SENTENCE_CLAIMS parts, each tried only where it stands in the text."""
     claims = {c["id"]: c for c in b.get("claims") or []}
     ids = list(dict.fromkeys(str(c).strip() for c in item.get("claims") or []))
-    if not ids or any(i not in claims for i in ids):
+    if not ids or len(ids) > MAX_SENTENCE_CLAIMS or any(i not in claims for i in ids):
         return False
     used = [claims[i] for i in ids]
     sources = list(dict.fromkeys(n for c in used for n in c.get("sources") or []))
     if sorted(set(item.get("citations") or [])) != sorted(set(sources)):
         return False                        # not the sources compose() gives these claims: judge it
-    states = [c["state"] for c in used]
-    want = _restate_key(item.get("text"))
-    parts = list(dict.fromkeys(_clean(c["text"]).rstrip(" .") for c in used))     # the same words twice count once
-    if not want or not all(parts):
+    text = _restate_key(item.get("text"))
+    if text is None:
         return False
-    bodies = parts if len(parts) == 1 else [join.join(order) for order in itertools.permutations(parts)
-                                            for join in _RESTATE_JOINS]
-    for body in bodies:
-        if _restate_key(attribution(body + ".", states, len(sources))) == want:
+    parts = []
+    for c in used:
+        key = _restate_key(c.get("text"))
+        if key is None or re.search(_SOURCE_PHRASE, key, re.IGNORECASE):
+            return False                    # not comparable, or compose() may have taken its own attribution out
+        if key not in parts:                # the same words from two claims count once
+            parts.append(key)
+    tail = _hedge([c["state"] for c in used], len(sources))
+    if tail is None:
+        if _joined(text, parts):
             return True
-        if item.get("attributed") and _restate_key(_attributed(body + ".", sources)) == want:
-            return True
-    return False
+    elif text.endswith(f", {tail}") and _joined(text[:-len(f", {tail}")], parts):
+        return True
+    lead = _attributed_lead(sources)
+    return bool(item.get("attributed")) and text.startswith(lead) and _joined(text[len(lead):], parts, guard_led=True)
 
 
 def _gap_text(text) -> str | None:
