@@ -682,7 +682,7 @@ CI runs three jobs on every push and pull request: the quality gate, the simulat
 - Pocket served a chain from `nsf pocket tls`, verified by OpenSSL and by Chromium with negative controls ([TLS](docs/operations/TLS.md#3-verified-on-the-reference-host-2026-11-22)).
 - The instance, checkpoints, model cache and Docker data sit on LUKS2, swap is zram, and `nsf doctor` reports both.
 - A 7-day accelerated autonomy soak with injected faults stayed inside its budgets ([soak](docs/autonomy/RESEARCH_POLICY.md#9-soak-results)).
-- The remote-provider path of the inference gateway passed a live contract against vLLM behind TLS ([remote inference](docs/architecture/COGNITIVE_INFERENCE.md#7-remote-providers-live-contract-2026-11-22)).
+- The remote-provider path of the inference gateway passed a live contract against vLLM behind TLS ([remote inference](docs/architecture/COGNITIVE_INFERENCE.md#8-remote-providers-live-contract-2026-11-22)).
 - Push reached headless Chromium through Google's FCM.
 
 ## Repository layout

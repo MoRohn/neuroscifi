@@ -272,7 +272,7 @@ Other T3 findings: T3-02 (no `nsf --version`), T3-05 (e2e rewrites a tracked fil
 | PersonaPlex real-time duplex speech | BLOCKED; owner decision: leave as it is | Not real-time upstream on this host (`DEFECT_RESOLUTION_LOG.md` O-02) |
 | $1 spend cap, tight caps with several workers, days-long wall-clock autonomy | NOT TESTED / owner-side | Zero prices; R3 ran 3 workers without reaching a tight cap; a 7-day accelerated soak and the first wall-clock day ran (§9.2) |
 | T5-05 Pocket voice-on path, T5-M06 breaker state, T5-07 multi-worker search charging | UNVERIFIED (R3) | Pocket bridge had voice off; breaker state not read; the fake SearXNG expired mid-run |
-| Real external inference provider | Owner-side | The remote path ran live against the local vLLM as a stand-in (`COGNITIVE_INFERENCE.md` §7) |
+| Real external inference provider | Owner-side | The remote path ran live against the local vLLM as a stand-in (`COGNITIVE_INFERENCE.md` §8) |
 | Real screen reader used by a person, 200 % zoom | NOT TESTED (owner-side) | The e2e suite checks the accessibility tree of the console and Pocket flows (`3a4cb14`) |
 | Notifications while Pocket is closed on a real phone; root-only systemd hardening; Brave live | Owner-side | Push ran live through real FCM in headless Chromium; units ran as transient user units; Brave has no key on the host (§9.2) |
 | Pocket hand-off and continue as an enrolled node | NOT TESTED by T4 | Covered by the repository e2e suite only |
@@ -488,7 +488,7 @@ Defects D1 to D11, eight setup rough edges and three minor observations were fix
 | Trusted TLS chain | `nsf pocket tls init/export-ca/status` | Private CA with name constraints; R6 trusted it in Chromium | `TLS.md` |
 | Autonomy soak | 7 simulated days on the real scheduler; the wall-clock `nsf-soak` session | All six checks passed; 20 of 20 searches every simulated day; wall clock: 20 of 20 on its first day | `RESEARCH_POLICY.md` §9 |
 | Wall-clock soak snapshot | The `nsf-soak` units under the services' sandbox, frozen code at `94ccb09`, live SearXNG | wall-clock soak (`soak_wallclock_v070.json`): about 4 h from 01:23 to 05:18 UTC on 2026-11-22, 0 restarts, RSS 138–141 MB, exactly 20 of 20 autonomous searches that UTC day, then one "refused" decision every 5 min (about 12 an hour); budget, leases, ledger and decisions checks ok | `soak_wallclock_v070.json` |
-| Remote inference provider | Live contract gated on `NSF_LIVE_REMOTE=1`, run against the local vLLM as a stand-in | 8 passed, 1 skipped (the CLI test needs a really remote address); a real external provider is owner-side | `COGNITIVE_INFERENCE.md` §7 |
+| Remote inference provider | Live contract gated on `NSF_LIVE_REMOTE=1`, run against the local vLLM as a stand-in | 8 passed, 1 skipped (the CLI test needs a really remote address); a real external provider is owner-side | `COGNITIVE_INFERENCE.md` §8 |
 | Idle unloading | A throwaway container (`nsf-test-idle-*`) | Unloaded after its 1 min timeout and reloaded on the next request (0.6 s) | `RESOURCE_SCHEDULING.md` |
 | Accessibility tree | e2e checks of the console and Pocket flows | Empty live regions kept in the tree | `3a4cb14` |
 
