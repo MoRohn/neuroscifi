@@ -255,13 +255,6 @@ def test_voice_events_listening_level_interrupt_and_mute(idle_spark, new_page):
     voice(page, mic_capturing=False, speaking=False, output_muted=False, mode="voice_text", level=0.0)
     expect(root).to_have_attribute("data-activity", re.compile("idle|resting"), timeout=2000)
     assert stats(page)["level"] is None
-    # B: after the utterance a real research task is what the presence shows (no invented "reasoning")
-    voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.4)
-    expect(root).to_have_attribute("data-activity", "listening", timeout=2000)
-    idle_spark.submit()
-    voice(page, mic_capturing=False, speaking=False, output_muted=False, mode="voice_text", level=0.0)
-    expect(root).to_have_attribute("data-activity", re.compile("waiting|searching|reading|verifying|generating|consolidating|responding"),
-                                   timeout=5000)
     # E (voice): speaking follows the output level; F: interruption -> listening without snapping
     voice(page, mic_capturing=True, speaking=True, output_muted=False, mode="voice_text", level=0.7)
     expect(root).to_have_attribute("data-activity", "responding", timeout=2000)
@@ -292,6 +285,17 @@ def test_voice_events_listening_level_interrupt_and_mute(idle_spark, new_page):
     page.wait_for_timeout(500)
     i = page.evaluate("window.__nsfPresence.intent()")
     assert i["activity"] not in ("listening", "responding") and stats(page)["level"] is None
+    # B: after the utterance a real research task is what the presence shows (no invented "reasoning"). It runs
+    # last: the worker now claims a submitted task at once, and on this instant fixture the task ends in a fraction
+    # of a second with a review question for the owner, which by the state mapping (user_critical "asking")
+    # outranks "responding". The speaking checks above used to pass only while the task sat unclaimed for the
+    # worker's 5 s poll.
+    voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.4)
+    expect(root).to_have_attribute("data-activity", "listening", timeout=2000)
+    idle_spark.submit()
+    voice(page, mic_capturing=False, speaking=False, output_muted=False, mode="voice_text", level=0.0)
+    expect(root).to_have_attribute("data-activity", re.compile("waiting|searching|reading|verifying|generating|consolidating|responding"),
+                                   timeout=5000)
     assert page.problems == []
 
 
