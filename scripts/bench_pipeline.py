@@ -113,8 +113,9 @@ def task_row(q, rec, calls, texts):
            "kept": len(reasoning.get("answer") or []), "rejected": len(reasoning.get("rejected") or []),
            "critique": reasoning.get("critique"), "abstained": bool(reasoning.get("abstained")),
            "flagged": sum(1 for s in reasoning.get("answer") or [] if s.get("flag")),
-           "calls": [{k: c[k] for k in ("purpose", "status", "latency_ms", "first_token_ms", "prompt_tokens",
-                                         "completion_tokens", "tokens_per_second", "attempts")} for c in calls]}
+           "calls": [{k: c.get(k) for k in ("purpose", "status", "latency_ms", "first_token_ms", "prompt_tokens",
+                                             "completion_tokens", "tokens_per_second", "attempts", "cached_tokens",
+                                             "priority")} for c in calls]}
     if texts:
         row["answer"] = [{"text": s["text"], "claims": s["claims"], "flag": s.get("flag")}
                          for s in reasoning.get("answer") or []]
@@ -155,7 +156,23 @@ def summarise(tasks):
                               "sentences_flagged": sum(c.get("flagged") or 0 for c in critiques)},
         "model_call_errors": dict(Counter(c["status"] for t in tasks for c in t["calls"] if c["status"] != "ok")),
         "abstentions": sum(1 for t in tasks if t.get("abstained")),
+        "prefix_cache": prefix_cache(tasks),
     } | flag_summary(tasks)
+
+
+def prefix_cache(tasks) -> dict | None:
+    """Prompt tokens the server took from its prefix cache, per purpose, over the calls where it reported them."""
+    out = {}
+    for t in tasks:
+        for c in t["calls"]:
+            if c.get("cached_tokens") is not None and c.get("prompt_tokens"):
+                row = out.setdefault(c["purpose"], {"calls": 0, "prompt_tokens": 0, "cached_tokens": 0})
+                row["calls"] += 1
+                row["prompt_tokens"] += c["prompt_tokens"]
+                row["cached_tokens"] += c["cached_tokens"]
+    for row in out.values():
+        row["cached_share"] = round(row["cached_tokens"] / row["prompt_tokens"], 3)
+    return out or None
 
 
 def flag_summary(tasks) -> dict:

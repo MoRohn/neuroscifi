@@ -73,6 +73,7 @@ docker_args() {
     --max-model-len "$NSF_VLLM_MAX_LEN"
     --max-num-seqs "$NSF_VLLM_MAX_SEQS"
     --enable-auto-tool-choice --tool-call-parser "$NSF_VLLM_TOOL_PARSER"
+    --enable-prompt-tokens-details
     --disable-uvicorn-access-log)
   [ -n "${NSF_VLLM_SCHEDULING:-}" ] && ARGS+=(--scheduling-policy "$NSF_VLLM_SCHEDULING")
   [ -n "${NSF_VLLM_BATCHED_TOKENS:-}" ] && ARGS+=(--max-num-batched-tokens "$NSF_VLLM_BATCHED_TOKENS")

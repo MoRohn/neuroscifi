@@ -108,6 +108,51 @@ def run(args) -> dict:
             "queries": rows}
 
 
+def gate(args) -> dict:
+    """The memory-answer decision on every near and para query against the four facts of its subject: the lexical
+    test (intent.covers, what 0.7.0 decides with) and the answer model's check (memory_gate.confirm). A right
+    decision accepts the fact that answers the question and refuses the subject's three other facts."""
+    from neuroscifi.inference import config as iconfig
+    from neuroscifi.inference.gateway import Gateway
+    from neuroscifi.webcortex import intent, memory_gate
+    data = json.loads(DATA.read_text())
+    cfg = iconfig.InferenceConfig(base_url=args.llm_url, model=args.llm_model,
+                                  key_file=os.path.expanduser(args.llm_key_file or ""))
+    gateway = Gateway(cfg, key=iconfig.read_key(cfg))
+    ids = list(data["facts"])
+    counts = {name: {"right_fact_accepted": 0, "right_facts": 0, "other_property_accepted": 0, "other_properties": 0}
+              for name in ("lexical_covers", "model_check")}
+    latency, skipped, mistakes = [], 0, []
+    for q in data["queries"]:
+        if q["class"] not in ("near", "para"):
+            continue
+        subject = q["gold"][0].split(".")[0]
+        items = [{"id": n, "fact": f, "statement": data["facts"][f]} for n, f in enumerate(ids)
+                 if f.startswith(subject + ".")]
+        started = time.perf_counter()
+        verdict = memory_gate.confirm(None, None, q["query"], items, gateway=gateway)
+        latency.append((time.perf_counter() - started) * 1000)
+        if verdict["status"] != "checked":
+            skipped += 1
+            continue
+        for item in items:
+            right = item["fact"] in q["gold"]
+            for name, accepted in (("lexical_covers", intent.covers(item, q["query"])),
+                                   ("model_check", item["id"] in verdict["confirmed"])):
+                c = counts[name]
+                c["right_facts" if right else "other_properties"] += 1
+                c["right_fact_accepted" if right else "other_property_accepted"] += accepted
+                if name == "model_check" and accepted != right:
+                    mistakes.append({"query": q["query"], "fact": item["fact"], "accepted": accepted})
+    return {"benchmark": "memory-answer-check", "version": 1, "label": args.label, "model": args.llm_model,
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "environment": environment(),
+            "queries": len(latency), "facts_per_query": 4, "skipped": skipped, "decisions": counts,
+            "model_check_ms": {"p50": percentile(latency, 0.5), "p95": percentile(latency, 0.95)},
+            "model_check_mistakes": mistakes,
+            "note": "The model check is applied only to statements the lexical test chose, so in use a statement "
+                    "is accepted when both accept it; the two are shown separately here."}
+
+
 def summarise(rows) -> dict:
     by_class = defaultdict(list)
     for r in rows:
@@ -155,8 +200,22 @@ def main(argv=None):
     ap.add_argument("--rerank-model", default="qwen3-reranker-0.6b")
     ap.add_argument("--key-file", help="API key file of the memory endpoints")
     ap.add_argument("--config", help="JSON of semantic-retrieval settings, e.g. '{\"floor\": 0.05}'")
+    ap.add_argument("--gate", action="store_true", help="measure the memory-answer check instead (needs --llm-url)")
+    ap.add_argument("--llm-url", help="--gate: the answer model's OpenAI-compatible base")
+    ap.add_argument("--llm-model", default="qwen3-30b-a3b-instruct-2507-fp8")
+    ap.add_argument("--llm-key-file")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
+    if args.gate:
+        if not args.llm_url:
+            ap.error("--gate needs --llm-url")
+        result = gate(args)
+        text = json.dumps(result, indent=1, default=str)
+        if args.out:
+            Path(args.out).write_text(text + "\n")
+        print(json.dumps({k: result[k] for k in ("decisions", "model_check_ms", "skipped", "model_check_mistakes")},
+                         indent=1), file=sys.stderr)
+        return 0
     result = run(args)
     text = json.dumps(result, indent=1, default=str)
     if args.out:

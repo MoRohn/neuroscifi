@@ -34,12 +34,12 @@ intent ─▶ memory ─▶ discovery/reading ─▶ claims + verification ─�
 
 | Module | Role |
 |---|---|
-| `config.py` | Per-individual settings in the instance `meta` table (key `inference`); default not configured. Endpoint locality (loopback / private = RFC 1918, ULA, link-local / remote, CGNAT 100.64.0.0/10 included); only loopback is used without `remote_allowed`. The host is resolved once per gateway and the connection goes to that address (pinned; Host header, SNI and certificate check keep the configured name), so DNS rebinding cannot move it between check and connect. API key read from a file (`key_file`, else `NSF_INFERENCE_KEY_FILE`, else `~/.config/neuroscifi/inference/api_key`); a world-readable key file is refused. |
-| `gateway.py` | `Gateway.models()`, `health(probe=)`, `chat(stream=, tools=, response_format=)`, `structured(schema)`. Stdlib `http.client`; no SDK. |
+| `config.py` | Per-individual settings in the instance `meta` table (key `inference`); default not configured. Endpoint locality (loopback / private = RFC 1918, ULA, link-local / remote, CGNAT 100.64.0.0/10 included); only loopback is used without `remote_allowed`. The host is resolved once per gateway and the connection goes to that address (pinned; Host header, SNI and certificate check keep the configured name), so DNS rebinding cannot move it between check and connect. API key read from a file (`key_file`, else `NSF_INFERENCE_KEY_FILE`, else `~/.config/neuroscifi/inference/api_key`); a world-readable key file is refused. One settings row per provider (`PROVIDERS`): `chat`, the answer model (meta key `inference`, as in 0.7.0), and the memory models `embed` and `rerank` (meta keys `inference:embed`, `inference:rerank`; set with `nsf web memory config`). Every row has the same fields, guard and key rule. |
+| `gateway.py` | `Gateway.from_db(db, db_path, provider=)`, `models()`, `health(probe=)`, `chat(stream=, tools=, response_format=, priority=)`, `structured(schema)`, `embed(texts, input_type=)` (POST `/embeddings`), `rerank(query, documents)` (POST `/rerank`). Stdlib `http.client`; no SDK. |
 | `jsonschema.py` | The schema subset used for structured output and tool arguments, validated locally. |
 | `tools.py` | Allow-listed tools; the model suggests, NeuroSciFi decides and executes. |
-| `ledger.py` | One row per call in `<db stem>.inference.sqlite` (0600): purpose, model, locality, status, prompt/completion tokens, latency, first-token latency, attempts, tokens/s. No prompt or answer text. |
-| `cli.py` | `nsf llm config|status|models|ask|usage`. |
+| `ledger.py` | One row per call in `<db stem>.inference.sqlite` (0600): purpose, provider (`chat`, `embed`, `rerank`), model, locality, status, prompt/completion tokens, `cached_tokens` (prompt tokens the server took from its prefix cache; NULL when the server did not say), `priority` (NULL: none sent), latency, first-token latency, attempts, tokens/s. No prompt or answer text. A ledger written by 0.7.0 gains `provider`, `priority` and `cached_tokens` when it is opened and keeps its rows. |
+| `cli.py` | `nsf llm config|status|models|ask|usage` (the `chat` provider). `status` prints `health`, `usage_24h` (with `cached_prompt_tokens` and `cached_share`, taken only over the calls whose server reported the cache) and `reasoning` {`enabled`, `self_critique`, `critique_voice`, `background_priority` (null when 0)}. |
 
 **Health states** (never guessed; the console and CLI show exactly these):
 
@@ -59,6 +59,28 @@ stream is never retried after it started; 400/401/403/404 and timeouts are not r
 `<think>…</think>` is stripped. `thinking` (`default|on|off`) maps to Qwen3's `chat_template_kwargs.enable_thinking`
 (the Instruct-2507 model does not think, so `default` is used).
 
+**Priority.** `chat(priority=N)` sends the request field `priority` when N is a positive integer. For `None` or 0
+nothing is sent, so an endpoint that does not know the field never sees it
+(`test_a_call_carries_no_priority_field_unless_one_is_set`). A vLLM server started with `--scheduling-policy
+priority` serves a request with a higher value after the others. The callers pass the `background_priority` setting
+for the model calls of autonomous tasks and nothing for the owner's (§7).
+
+**Prefix-cache reporting.** `deploy/vllm/run.sh` starts vLLM with `--enable-prompt-tokens-details`, so each reply's
+usage says how many prompt tokens came from the prefix cache. The gateway records the number per call
+(`cached_tokens`; `nsf llm usage`). A count that is negative or larger than the prompt is recorded as unknown, and a
+server that does not report it leaves the column NULL.
+
+**Memory models.** `embed()` returns one vector per text in the order asked and checks every vector (finite numbers,
+one length for all). `input_type` is sent only when given. `rerank()` returns one relevance score per document in
+the documents' order. A malformed answer raises `bad_response` and is recorded as such. Each call writes one ledger
+row with tokens and latency and no text. Both calls mark every text private before the off-host screen: a memory
+statement goes to an endpoint off this host only when that provider's row carries `remote_allowed` and
+`remote_private_memory` (`test_memory_text_is_never_sent_off_this_host_without_the_private_memory_authorisation`).
+`nsf web memory config` sets the URL, model and key file of the two rows and neither authorisation, so memory models
+configured through the CLI are loopback only. The idle policy manages the answer model's server only: a memory
+model's gateway takes no in-use lock and is never reloaded on demand. Use:
+[MEMORY_INTEGRATION §5.1](../web-cortex/MEMORY_INTEGRATION.md#51-semantic-retrieval-semanticpy-optional).
+
 **Structured output.** `response_format: json_schema` is sent (vLLM guided decoding), but the reply is parsed and
 validated locally; on a violation the model is re-asked once with the error list; a second failure raises
 `schema_invalid`.
@@ -73,7 +95,9 @@ accepts knowledge or resolves questions.
 ## 3. Reasoning over evidence (`src/neuroscifi/webcortex/reasoning.py`)
 
 `orchestrator._reason` calls `reasoning.apply` after synthesis for completed and partial runs (memory answers
-included); failed and cancelled runs keep the extractive report only.
+included); failed and cancelled runs keep the extractive report only. It passes two facts about the task:
+`background` (the task is autonomous, `orchestrator.is_autonomous`) and `spoken` (the origin is `voice` or
+`pocket-voice`, `orchestrator.SPOKEN_ORIGINS`). §7 says what each changes.
 
 - **Bundle.** Up to 12 findings: id `C<n>`, ADR-035 state and category (`finding.verification`, computed by
   `synthesis.claim_state` before reasoning with the same rule as consolidation, `synthesis.decide`), confidence, quoted text (≤ 420 chars), source ids
@@ -353,13 +377,20 @@ included); failed and cancelled runs keep the extractive report only.
   establish."): the CLI (the model's own `web_research` tool in `nsf llm ask` also submits as "cli", so the two
   cannot be told apart), MCP clients, refresh-owner, monitors, the bench, and an autonomous task (curiosity,
   refresh) the owner authorised. An autonomous task without that authorisation gets no note.
-- **Self-critique.** One call (≤ 400 tokens): each accepted sentence is marked `fine`, `unsupported`, `overstated` or
-  `missing_hedge`. A mark removes a sentence only when `check_sentence` confirms an objective failure (unknown
-  source or claim, a claim state that is not supported stated without a hedge, a number or unit not in the cited
-  evidence); otherwise the sentence stays with `flag: {problem, note, confirmed: false}`, shown in the console as
-  "self-check flagged". The model's judgement alone never removes a sentence, and it can never add one. `critique`
-  reports `removed` and `flagged`. (Before v0.7.0 Lane G any mark removed the sentence; live, that dropped correct
-  sentences and once a whole answer.)
+- **Self-critique.** One call (≤ 400 tokens) that produces marks and gaps, nothing else. Each accepted sentence is
+  marked `fine`, `unsupported`, `overstated` or `missing_hedge`, and the model may name further gaps. A mark removes
+  a sentence only when `check_sentence` reports an objective failure for it (unknown source or claim, a claim state
+  that is not supported stated without a hedge, a number or unit not in the cited evidence). The guard has already
+  run `check_sentence` on every accepted sentence against the same bundle, so in practice the re-check fails for
+  none and a mark removes nothing: the sentence stays with `flag: {problem, note, confirmed: false}`, shown in the
+  console as "self-check flagged". The model's judgement alone never removes a sentence, and it can never add one.
+  `critique` reports `status` (`ok`, `skipped` with a reason, `failed` with a reason), `removed` and `flagged`.
+  (Before v0.7.0 Lane G any mark removed the sentence; live, that dropped correct sentences and once a whole
+  answer.) Measured on the 51 tasks of the offline corpus with the live model
+  (`docs/quality/evidence/accel_baseline_pipeline.json`, `summary`): the critique call ran for the 46 model answers
+  and took 42 % of the tasks' wall time (the answer call 53 %, orchestration 5 %); it removed 0 of the 94 kept
+  sentences and flagged 41. The pass is skipped when too little of the time budget is left (below), when
+  `self_critique` is off, and for a spoken answer when `critique_voice` is off (§7).
 - **Time budget.** `orchestrator._reason` passes what is left of the task's `budget.max_seconds`
   (`time_left`); the answer call, its schema repair and the critique share that one deadline (`Gateway.structured`
   gives the repair only the remaining time; `Gateway._call` never exceeds `read_timeout`). With less than
@@ -369,11 +400,18 @@ included); failed and cancelled runs keep the extractive report only.
 - **Gaps.** Model-identified gaps (injection-scanned, ≤ 300 chars) plus rule gaps from the evidence (single-source
   findings, contested findings, unmet freshness, no claims), each labelled by origin.
 - **Output.** `report.reasoning = {generated_by, status, label, answer[{text, citations, claims, states, hedged}],
-  rejected[{text, reasons}], gaps[{text, by}], critique, usage, reason, note?}`, `report.generated_by`, a limitation line
-  saying how many sentences passed and were rejected, and one `decision` event (when an endpoint is configured).
-  `status` is `model`, `not_configured`, `disabled`, `no_evidence`, `unavailable`, `unauthorised`, `degraded`
-  (e.g. schema failure, timeout, time budget), `rejected` (nothing passed) or `error`. Undated sources that a search
-  engine dated carry `search_engine_reported_date` in the bundle, labelled lower trust.
+  rejected[{text, reasons}], gaps[{text, by}], critique, usage, reason, abstained?, note?}`, `report.generated_by`, a
+  limitation line saying how many sentences passed and were rejected, and one `decision` event (when an endpoint is
+  configured). `status` is `model`, `not_configured`, `disabled`, `no_evidence`, `unavailable`, `unauthorised`,
+  `degraded` (e.g. schema failure, timeout, time budget), `rejected` (nothing passed) or `error`. A `rejected` status
+  has three causes, and `reason` names the one that applies. When the model wrote no sentence at all (the evidence
+  does not answer the question), it abstained: `abstained: true`, and `reason` is "the model wrote no sentence from
+  this evidence: no model sentence was checked or rejected", with "; it named N gap(s)" after "evidence" when the
+  model named gaps. The status stays `rejected` because that is the contract; `abstained` is absent in the other two
+  cases ("every model sentence failed NeuroSciFi's citation and claim checks", or the critique removed every
+  sentence). No critique call is made after an abstention
+  (`test_a_model_that_writes_no_sentence_abstained_and_the_reason_says_so`). Undated sources that a search engine
+  dated carry `search_engine_reported_date` in the bundle, labelled lower trust.
 
 **Interfaces.** CLI: `nsf web ask` prints the task JSON with `result.generated_by` and `result.reasoning.label`;
 `nsf llm ask` replies directly and is labelled "Model output, not checked against evidence". Console: Research view
@@ -403,7 +441,8 @@ docker run -d --restart unless-stopped --name neuroscifi-vllm --device nvidia.co
   /models/qwen3-30b-a3b-instruct-2507-fp8 --served-model-name qwen3-30b-a3b-instruct-2507-fp8 \
   --host 0.0.0.0 --port 8000 --gpu-memory-utilization 0.45 --kv-cache-memory-bytes 13958643712 \
   --max-model-len 32768 --max-num-seqs 8 \
-  --enable-auto-tool-choice --tool-call-parser hermes --disable-uvicorn-access-log
+  --enable-auto-tool-choice --tool-call-parser hermes --enable-prompt-tokens-details --disable-uvicorn-access-log \
+  --scheduling-policy priority --max-num-batched-tokens 4096
 ```
 
 (`deploy/vllm/run.sh print` prints the exact command.) The image is vLLM 0.33.0rc1.dev910+g4fab5a074, CUDA 13.0.2,
@@ -430,6 +469,26 @@ held 77 760 MiB instead of ~44 GiB. `vllm.env` therefore fixes the KV cache (`NS
 brought it back to 44 028 MiB. (2) CUDA allocations count against the container's memory cgroup (`docker stats` showed
 44.5 GiB on the cold start), so `--memory` (96g) must stay above the engine's footprint. About 44 GiB leaves room for
 the 7B speech model planned in area 6; measure co-residency before raising the KV cache.
+
+Scheduling flags (measured 2026-11-23, `docs/quality/evidence/accel_vllm_flags.json`; `scripts/bench_inference.py`,
+8 runs per scenario, the server restarted for each configuration, other tenants' containers resident). `vllm.env`
+sets three things beyond the 0.7.0 command, each reversible in the owner override file followed by
+`deploy/vllm/run.sh start`:
+
+| Setting | Flag | Measured against the 0.7.0 flags (two runs each) | Roll back |
+|---|---|---|---|
+| `NSF_VLLM_SCHEDULING=priority` | `--scheduling-policy priority` | A foreground first token beside four background requests that carry `priority` 10: 1.72 s → 1.13 s (with the 4096-token step; 1.16 s with priority alone). Without the field every request is equal, which is `fcfs` | `NSF_VLLM_SCHEDULING=fcfs` |
+| `NSF_VLLM_BATCHED_TOKENS=4096` | `--max-num-batched-tokens 4096` | Evidence-sized first token 706 → 550 ms; 24k-token prefill 7.54 → 6.80 s; 8-way aggregate throughput 63.8 → 69.4 tokens/s. 2048 equals vLLM's default behaviour here; 8192 measured no better on the evidence prompt and doubles the longest step a new request can wait behind | `NSF_VLLM_BATCHED_TOKENS=` (empty: vLLM's default) |
+| (always passed) | `--enable-prompt-tokens-details` | Not a performance flag: each reply's usage reports the prompt tokens taken from the prefix cache (§2) | none: `run.sh` always passes it |
+
+Single-stream decode (49.8 → 50.4 tokens/s on short replies) and long-context recall (3 of 3 at 8k and at 24k tokens)
+were unchanged, and no request was preempted. `--performance-mode interactivity` changed nothing measurable and took
+83 s to become healthy against 58 s; it is not adopted. `run.sh` refuses a scheduling value other than `fcfs` or
+`priority` and a step that is not a number or empty. The step matters for long evidence, tool loops and concurrent
+tasks, not for the median task: a typical answer prompt is 1.1k tokens (p95 1.7k, `accel_baseline_pipeline.json`).
+The baseline these runs are compared with is `docs/quality/evidence/accel_baseline_inference.json`. Which NVIDIA
+serving technologies were assessed for this stack, and why vLLM stays:
+[NVIDIA assessment](../acceleration/NVIDIA_ASSESSMENT.md).
 
 ## 5. Run, configure, recover
 
@@ -648,17 +707,59 @@ nsf llm usage                                                 # token ledger
 - Claim states are the ADR-035 states of `synthesis.decide`, written on each finding before reasoning; a stored
   report without them is read as `not_evaluated` (never upgraded from the legacy label). The model
   sees at most 12 findings; it cannot see evidence the extractive pipeline did not extract.
-- A model answer costs ≈ 4–5 s and ≈ 2–4 k tokens per research task, inside the task's `max_seconds` budget.
+- A model answer costs ≈ 4–5 s and ≈ 2–4 k tokens per research task, inside the task's `max_seconds` budget. On the
+  offline corpus the critique call is 42 % of that time and removed no sentence (§3, `accel_baseline_pipeline.json`);
+  it still runs by default, because its flags and gaps are shown to the owner.
+- Background priority orders waiting requests inside the vLLM server only. It has no effect on a server without
+  priority scheduling, and it does not remove the cost of sharing the GPU: beside four background requests the
+  owner's first token still took 1.13 s against 0.14 to 0.18 s alone, and no running request was preempted
+  (`accel_vllm_flags.json`).
 - Token counts in the ledger are the server's; the context budget before sending is an estimate (3.5 characters per
   token).
 - `deploy/install.sh --llm` installs the vLLM unit but neither enables it nor provides Docker or the weights (host
   choices, §5).
 - Remote providers: the remote code path is verified live against the local vLLM rehearsed as a remote provider
-  (§7). A real external provider is owner-side: `tests/inference/test_inference_remote_live.py` runs against one.
+  (§8). A real external provider is owner-side: `tests/inference/test_inference_remote_live.py` runs against one.
 - Not done in this release: no per-sentence semantic entailment check (the SEC-G-E1 check is lexical coverage, above);
   voice/PersonaPlex integration is area 6.
 
-## 7. Remote providers: live contract (2026-11-22)
+## 7. Adaptive inference policy
+
+Three settings decide how much model work a call gets and when, by who is waiting for it. Each is per individual,
+has a default and one command that restores the 0.7.0 behaviour. None of them changes the guard (§3).
+
+| Setting | Default | What it does | Restore 0.7.0 behaviour |
+|---|---|---|---|
+| `background_priority` (inference setting, 0–100) | 0: no `priority` field is sent. `nsf setup` sets 10 when the endpoint's `/models` answer says `owned_by: vllm`; `nsf llm config --url` alone leaves it at 0 | The model calls of an autonomous task (origin `curiosity` or `refresh:<id>`, `orchestrator.is_autonomous`) carry `priority: N`: the answer call, its schema repair, the critique and the memory-answer check. The owner's calls never carry it (console, CLI, Pocket, voice, monitors, owner refreshes) | `nsf llm config --set background_priority=0` |
+| `critique_voice` (inference setting) | on: a spoken answer gets the critique pass like any other | Off: for a task whose origin is `voice` or `pocket-voice` the critique call is not made, so a spoken answer costs one model call. `critique` is then `{status: skipped, reason: "spoken answer: the critique pass is off for voice (nsf llm config --critique-voice turns it on)"}`. The critique's marks are shown by the console and Pocket and are never spoken | `nsf llm config --critique-voice` (off: `--no-critique-voice`) |
+| `memory_check` (web setting) | on; it does nothing without a configured answer model or with `reasoning` off | Before memory answers a question without the web, the answer model confirms that a chosen statement states the answer to exactly what is asked. It can only send a question to the web, never the reverse ([MEMORY_INTEGRATION §5.2](../web-cortex/MEMORY_INTEGRATION.md#52-the-memory-answer-check-memory_gatepy)) | `nsf web config --no-memory-check` |
+
+**Background priority.** The value only has an effect on a server that schedules by priority; `deploy/vllm` starts
+vLLM that way (§4; roll back there with `NSF_VLLM_SCHEDULING=fcfs`). Measured on that server
+(`docs/quality/evidence/accel_vllm_flags.json`): a short foreground request beside four background requests saw its
+first token after 1.72 s with the 0.7.0 flags and after 1.13 s with priority scheduling, the 4096-token step and
+`priority` 10 on the background requests; alone it takes 0.14 to 0.18 s. The capped background model slots of
+[resource scheduling](RESOURCE_SCHEDULING.md) §3(a) apply as before: the slot cap bounds how many background calls
+run, the priority orders them behind the owner's inside the server. Tests:
+`tests/inference/test_inference_policy.py` (`test_background_reasoning_sends_the_configured_priority_on_both_calls`,
+`test_the_owners_reasoning_never_carries_the_background_priority`,
+`test_background_reasoning_sends_nothing_when_no_priority_is_configured`) and
+`tests/test_setup_cli.py::test_a_vllm_endpoint_gets_the_background_priority_and_setup_says_so`.
+
+**Critique for voice.** The default keeps the pass because nothing has been measured that justifies dropping the
+flags for spoken answers; the switch exists because the pass is 42 % of a task's wall time on the offline corpus and
+removed no sentence there (§3). With it off the answer is still checked by the guard, sentence by sentence. Tests:
+`test_a_spoken_answer_keeps_the_critique_pass_by_default`,
+`test_with_critique_voice_off_a_spoken_answer_makes_one_model_call_and_says_why`.
+
+**Memory-answer check.** One structured call of at most 8 s (`memory_gate.TIMEOUT`, and never more than the task's
+remaining time budget), purpose `memory_gate` in the ledger, with the background priority for an autonomous task.
+Any failure, a missing model or less than 1 s of budget leaves the lexical decision as it was, and the task's
+`decision` event records the outcome as `memory_check`.
+
+`nsf llm status` shows the two inference settings under `reasoning`; `nsf web config` shows `memory_check`.
+
+## 8. Remote providers: live contract (2026-11-22)
 
 `tests/inference/test_inference_remote_live.py` exercises the gateway's remote path against a real OpenAI-compatible endpoint. It is skipped unless `NSF_LIVE_REMOTE=1`.
 
@@ -691,4 +792,4 @@ NSF_LIVE_REMOTE=1 NSF_REMOTE_UPSTREAM=127.0.0.1:8811 NSF_REMOTE_KEY_FILE=~/.conf
 | Timeouts | `read_timeout` 1.0 s on a 2000-token request: `timeout` raised at the deadline and recorded in the ledger; the same for a stream |
 | Consent and privacy gate | a message marked `private` without `remote_private_memory`: `private_blocked`. E-mail, phone and API-key text: `private_blocked`. In every blocked case no connection was opened (gateway spy and proxy connection count unchanged) and no ledger row written. Owner-approved disclosure sends the screened text; `remote_private_memory` sends private memory but does not switch off the identifier screen |
 
-Only the gateway marks and gates private messages: no current caller sends memory marked `private`. Research synthesis sends the question and public web evidence, both of which pass the screen.
+Only the gateway marks and gates private messages. `Gateway.embed` and `Gateway.rerank` mark every text `private` (§2), so memory text sent to a memory model needs `remote_private_memory` on an endpoint off this host. No chat caller marks a message `private`: research synthesis and the memory-answer check (§7) send the question and stored or public evidence as ordinary messages, which pass the identifier screen.

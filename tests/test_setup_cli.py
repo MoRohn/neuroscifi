@@ -154,8 +154,11 @@ def test_brave_key_from_stdin_is_stored_and_never_in_output_or_logs(capsys, capl
 
 
 class Models(BaseHTTPRequestHandler):
+    owned_by = None
+
     def do_GET(self):
-        body = json.dumps({"data": [{"id": "test-model", "object": "model"}]}).encode()
+        item = {"id": "test-model", "object": "model"} | ({"owned_by": self.owned_by} if self.owned_by else {})
+        body = json.dumps({"data": [item]}).encode()
         self.send_response(200 if self.path == "/v1/models" else 404)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -180,6 +183,7 @@ def test_a_model_is_configured_only_when_one_answers(capsys, home):
         try:
             cfg = iconfig.get_config(db)
             assert (cfg.base_url, cfg.model) == (url, "test-model")
+            assert cfg.background_priority == 0       # a server that is not vLLM is never sent a `priority`
         finally:
             db.close()
         assert statuses(setup(capsys, home, model=url)[1])["model"] == "already done"
@@ -229,3 +233,23 @@ def test_a_file_that_is_not_an_individual_is_refused_with_its_step(capsys, home)
     code, report, err = setup(capsys, home, "--no-model")
     assert code == 2 and not report["ok"] and err.startswith("nsf setup: individual:")
     assert (home / "ind.sqlite").read_text() == "not a database"
+
+
+def test_a_vllm_endpoint_gets_the_background_priority_and_setup_says_so(capsys, home):
+    """deploy/vllm runs the model with priority scheduling: setup sends background research behind the owner's
+    questions when the endpoint names itself vLLM (owned_by in /models), and tells the owner."""
+    handler = type("VllmModels", (Models,), {"owned_by": "vllm"})
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}/v1"
+    try:
+        code, report, _ = setup(capsys, home, model=url)
+        assert code == 0 and "priority 10, behind your questions" in report["steps"][2]["detail"]
+        db = store.open_existing(home / "ind.sqlite")
+        try:
+            assert iconfig.get_config(db).background_priority == 10
+        finally:
+            db.close()
+    finally:
+        server.shutdown()
+        server.server_close()

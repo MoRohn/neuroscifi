@@ -32,6 +32,7 @@ from .instance.errors import InstanceError
 DEFAULT_MODEL_URL = "http://127.0.0.1:8811/v1"
 DEFAULT_PORT = 8765
 MODEL_PROBE_SECONDS = 2.0
+BACKGROUND_PRIORITY = 10       # the `priority` of autonomous model calls on a vLLM server (lower is served first)
 RENEW_DAYS = 30
 
 
@@ -154,8 +155,17 @@ def _model(report, a, db):
     if a.dry_run:
         _step(report, "model", "would do", f"configure {cfg.base_url} with model {model}", model=model)
         return
-    iconfig.set_config(db, {"base_url": cfg.base_url, "model": model}, time.time())
-    _step(report, "model", "done", f"configured {cfg.base_url} with model {model}", model=model)
+    changes = {"base_url": cfg.base_url, "model": model}
+    # A vLLM server says so in /models. deploy/vllm runs it with priority scheduling, and vLLM accepts the request's
+    # `priority` under either policy, so background research is sent behind the owner's questions. Any other
+    # server is sent nothing it may not know (nsf llm config --set background_priority=N to change either way).
+    vllm = str(served[0].get("owned_by") or "").lower() == "vllm"
+    if vllm:
+        changes["background_priority"] = BACKGROUND_PRIORITY
+    iconfig.set_config(db, changes, time.time())
+    _step(report, "model", "done", f"configured {cfg.base_url} with model {model}"
+          + (f"; background research is sent with priority {BACKGROUND_PRIORITY}, behind your questions" if vllm else ""),
+          model=model)
 
 
 def _names(a):
