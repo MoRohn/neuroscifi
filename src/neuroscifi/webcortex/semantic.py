@@ -16,6 +16,9 @@ optional:
   rerank   a cross-encoder reads the question with each candidate and scores it; the candidates are returned in
            that order, and one scoring under `floor` is not returned at all (nothing in memory is about this)
 
+A failed call falls back at once (no retry) and the models are left alone for RETRY_AFTER seconds, so an endpoint
+that is down costs one failed connection per half minute, not a wait on every lookup.
+
 With only `embed` the candidates are returned by vector similarity and nothing is cut: similarity alone does not
 separate "about this" from "about something similar" (measured), so no floor is applied without the reranker.
 
@@ -37,6 +40,7 @@ import hashlib
 import json
 import math
 import threading
+import time
 
 import numpy as np
 
@@ -55,6 +59,7 @@ EMBED_BATCH = 64
 LEXICAL_KEEP = 5            # best lexical hits always among the candidates
 QUERY_CACHE = 256
 RESULT_CACHE = 64
+RETRY_AFTER = 30.0          # seconds a failed memory model is left alone before the next lookup tries it again
 
 
 @dataclass
@@ -130,6 +135,7 @@ class _Vectors:
         # task asks memory the same question up to three times; the second and third cost nothing. A changed
         # statement set is another key, so nothing ranked over forgotten text is ever served.
         self.results: OrderedDict[tuple, tuple] = OrderedDict()
+        self.down_until, self.down_reason = 0.0, None     # after a failed call: lexical ranking until this moment
 
     def cached(self, key):
         with self.lock:
@@ -216,8 +222,11 @@ def _gateways(db):
     path = store.database_path(db)
     out = []
     for provider in ("embed", "rerank"):
-        out.append(Gateway.from_db(db, path, provider=provider)
-                   if iconfig.get_config(db, provider).configured else None)
+        gateway = Gateway.from_db(db, path, provider=provider) \
+            if iconfig.get_config(db, provider).configured else None
+        if gateway is not None:
+            gateway.cfg.max_retries = 0        # a memory lookup never waits out an outage: lexical ranking instead
+        out.append(gateway)
     return out
 
 
@@ -250,6 +259,9 @@ def rank(db, topic: str, rows: list[dict], lexical: list[float], *, limit: int, 
         return [], {"mode": "semantic", "ranked_by": "embedding", "candidates": 0}
     statements = [r["statement"] for r in rows]
     vectors = _vectors(db, embedder.cfg.model)
+    if time.monotonic() < vectors.down_until:      # measured: a refused connection cost each lookup 1.5 s
+        return None, {"mode": "lexical", "reason": vectors.down_reason,
+                      "retry_in_seconds": round(vectors.down_until - time.monotonic(), 1)}
     signature = (topic, limit, json.dumps(cfg.to_json(), sort_keys=True), reranker.cfg.model if reranker else None,
                  hashlib.sha256("\0".join(statements).encode()).hexdigest(), tuple(r["id"] for r in rows))
     hit = vectors.cached(signature)
@@ -277,7 +289,9 @@ def rank(db, topic: str, rows: list[dict], lexical: list[float], *, limit: int, 
         scores = reranker.rerank(query, documents, purpose="memory_rerank", timeout=cfg.timeout)
     except (InferenceError, OSError, ValueError) as exc:
         code = getattr(exc, "code", type(exc).__name__)
-        return None, {"mode": "lexical", "reason": f"semantic retrieval failed ({code}): {exc}"[:200]}
+        vectors.down_reason = f"semantic retrieval failed ({code}): {exc}"[:200]
+        vectors.down_until = time.monotonic() + RETRY_AFTER
+        return None, {"mode": "lexical", "reason": vectors.down_reason}
     scored = sorted(zip(scores, chosen), key=lambda pair: (-pair[0], -rows[pair[1]]["id"]))
     kept = [(score, i) for score, i in scored if score >= cfg.floor][:limit]
     info = {"mode": "semantic", "ranked_by": "rerank", "candidates": len(chosen),

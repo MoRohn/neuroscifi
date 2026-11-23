@@ -122,6 +122,32 @@ def test_a_failing_memory_model_falls_back_to_the_lexical_ranking_and_says_why(d
     assert out["retrieval"]["mode"] == "lexical" and "unavailable" in out["retrieval"]["reason"]
 
 
+def test_a_failed_model_is_left_alone_for_a_while_then_tried_again(db, models, monkeypatch):
+    """Live: with the reranker's port closed every lookup waited 1.5 s on connection retries. A failure now costs
+    one call; lookups in the next RETRY_AFTER seconds are lexical without asking; then the models are tried again."""
+    semantic.set_config(db, {"enabled": True}, T0)
+    clock = [1000.0]
+    monkeypatch.setattr(semantic.time, "monotonic", lambda: clock[0])
+    models[1].fail = InferenceError("unavailable", "cannot connect: Connection refused")
+    knowledge.query(db, "Orbix port", T0 + 10)
+    calls = (models[0].calls, models[1].calls)
+    out = knowledge.query(db, "Orbix licence", T0 + 11)
+    assert (models[0].calls, models[1].calls) == calls                       # not asked again
+    assert out["retrieval"]["mode"] == "lexical" and out["retrieval"]["retry_in_seconds"] == semantic.RETRY_AFTER
+    models[1].fail = None
+    clock[0] += semantic.RETRY_AFTER + 1
+    out = knowledge.query(db, "which socket does it accept traffic on", T0 + 12)
+    assert out["retrieval"]["mode"] == "semantic" and statements(out) == [FACTS[0]]
+
+
+def test_memory_model_gateways_never_retry(tmp_path):
+    db = store.create(tmp_path / "g.sqlite", T0)
+    iconfig.set_config(db, {"base_url": "http://127.0.0.1:1/v1", "model": "e"}, T0, provider="embed")
+    embedder, reranker = semantic._gateways(db)
+    assert embedder.cfg.max_retries == 0 and reranker is None
+    assert iconfig.get_config(db, "embed").max_retries == 2                  # the stored setting is not changed
+
+
 def test_on_without_an_embedding_endpoint_is_lexical_with_the_command_that_sets_one(db):
     semantic.set_config(db, {"enabled": True}, T0)
     out = knowledge.query(db, "Orbix port", T0 + 10)
