@@ -40,6 +40,7 @@ class FakeHost:
         self.calls = []
         self.units = set()                                             # active systemd units
         self.fail = set()
+        self.fail_wait = set()                                         # containers that start and never answer
 
     def clock(self):
         return self.now
@@ -76,6 +77,8 @@ class FakeHost:
         verb = next(v for v in ("start", "stop", "wait") if v in argv)
         if container in self.fail and verb != "stop":
             return subprocess.CompletedProcess(argv, 1, "run.sh: container exited")
+        if container in self.fail_wait and verb == "wait":
+            return subprocess.CompletedProcess(argv, 1, "run.sh: not ready after 600s")
         self._act(verb, container)
         return ok
 
@@ -971,3 +974,44 @@ def test_the_on_demand_load_command_reloads_only_what_the_idle_policy_unloaded(m
     fake.fail.add("neuroscifi-memory-embed")
     assert main(argv) == 1                                # the caller's process sees the failure in the exit code
     assert json.loads(capsys.readouterr().out)["action"] == "failed"
+
+
+# ---- review F4: running is not answering ----------------------------------------------------------------------
+
+def test_a_start_that_never_answers_is_stopped_so_unloaded_stays_true(memory_host):
+    """Review F4: `run.sh start` leaves a container with --restart unless-stopped. When the wait then failed, it
+    stayed (or kept restarting) with its memory while the state said "unloaded"."""
+    fake = memory_host
+    p = _unload_idle(fake, "embed")
+    fake.fail_wait.add("neuroscifi-memory-embed")
+    out = p.ensure_loaded("embed", purpose="memory lookup")
+    assert out["action"] == "failed" and out["event"]["stopped"] is True
+    assert "neuroscifi-memory-embed" not in fake.running and p.unloaded_by_policy("embed")
+    assert stops(fake)[-1][-2:] == ["stop", "embed"]
+
+
+def test_a_container_found_running_counts_as_loaded_only_once_it_answers(memory_host):
+    """Review F4: the reload of a service whose container already ran marked it "loaded" at once, although a
+    container left by a killed or failed reload may still be starting or crash-looping; lookups then called a
+    model that did not answer."""
+    fake = memory_host
+    p = _unload_idle(fake, "embed")
+    fake.running["neuroscifi-memory-embed"] = fake.now       # left behind by a reload that was killed mid-way
+    answering = fake.metrics.pop("embed")                    # it runs, and does not answer yet
+    waits = sum("wait" in c for c in fake.calls)
+    out = p.ensure_loaded("embed", purpose="memory lookup")
+    assert out == {"action": "none", "why": "already running"} and not p.unloaded_by_policy("embed")
+    assert sum("wait" in c for c in fake.calls) == waits + 1  # it was waited for first
+    # ... and one that never answers is stopped, recorded, and stays unloaded
+    p = _unload_idle(fake, "rerank")
+    fake.running["neuroscifi-memory-rerank"] = fake.now
+    del fake.metrics["rerank"]
+    fake.fail_wait.add("neuroscifi-memory-rerank")
+    out = p.ensure_loaded("rerank", purpose="memory lookup")
+    assert out["action"] == "failed" and out["why"] == "it was running but did not answer"
+    assert out["event"]["found_running"] is True and out["event"]["stopped"] is True
+    assert "neuroscifi-memory-rerank" not in fake.running and p.unloaded_by_policy("rerank")
+    fake.metrics["embed"] = answering
+    waits = sum("wait" in c for c in fake.calls)
+    assert p.load("embed", reason="owner command") == {"action": "none", "why": "already running"}
+    assert sum("wait" in c for c in fake.calls) == waits      # one that answers is not waited for again

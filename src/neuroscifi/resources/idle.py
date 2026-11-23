@@ -498,6 +498,22 @@ class Idle:
         with _flock(self._file(f"idle-load-{name}.lock"), fcntl.LOCK_EX):      # one start at a time, any process
             box = self.container(svc)
             if box and box["running"]:          # never restart a running service (run.sh start replaces it)
+                # Running is not answering (review F4): a container left behind by a reload that failed or was
+                # killed may still be starting, or crash-looping. It counts as loaded once it answers; one that
+                # does not is stopped, so that "unloaded" stays true and the next attempt starts from nothing.
+                if svc.wait and svc.metrics and self.read_metrics(svc.metrics) is None:
+                    started = self.monotonic()
+                    done = self.runner(self._cmd(svc.wait), 1500)
+                    if getattr(done, "returncode", 1) != 0:
+                        stopped = self._stop_after_failure(svc, self._systemd(svc))
+                        event = self._event(name, "load", reason, by=by, ok=False, found_running=True,
+                                            seconds=round(self.monotonic() - started, 1), stopped=stopped,
+                                            error=(getattr(done, "stdout", "") or "")[-400:])
+                        with self._state() as data:
+                            entry = data["services"].setdefault(name, {})
+                            entry.update(state="unloaded" if entry.get("state") == "unloaded" else "unknown",
+                                         failed_at=event["at"])
+                        return {"action": "failed", "why": "it was running but did not answer", "event": event}
                 with self._state() as data:
                     data["services"].setdefault(name, {}).update(state="loaded", by="already running",
                                                                  at=self.clock())
@@ -538,10 +554,14 @@ class Idle:
             seconds = round(self.monotonic() - started, 1)
             after = self._available() if ok and before is not None else None
             took = None if after is None else before - after
+            # A start that did not become ready is stopped (review F4): with --restart unless-stopped the container
+            # would stay, or keep restarting, holding its memory while the state says "unloaded".
+            stopped = None if ok else self._stop_after_failure(svc, systemd)
             event = self._event(name, "load", reason, by=by, ok=ok, seconds=seconds, told=text,
                                 shape="systemd" if systemd else "docker", headroom=room["why"],
                                 **({"took_bytes": took} if took and took > 0 else {}),
-                                **({} if ok else {"error": (getattr(done, "stdout", "") or "")[-400:]}))
+                                **({} if ok else {"error": (getattr(done, "stdout", "") or "")[-400:],
+                                                  "stopped": stopped}))
             with self._state() as data:
                 entry = data["services"].setdefault(name, {})
                 entry.pop("loading", None)
@@ -552,6 +572,11 @@ class Idle:
                                  failed_at=event["at"])
             return {"action": "load" if ok else "failed", "why": reason, "seconds": seconds, "told": text,
                     "event": event}
+
+    def _stop_after_failure(self, svc, systemd) -> bool:
+        """Stop what a failed load left running, with the shape's own command. True when the stop succeeded."""
+        argv = ["systemctl", "--no-ask-password", "stop", svc.unit] if systemd and svc.unit else self._cmd(svc.stop)
+        return getattr(self.runner(argv, COMMAND_TIMEOUT), "returncode", 1) == 0
 
     def ensure_loaded(self, name, *, purpose, notify=None) -> dict | None:
         """Reload a service the idle policy unloaded (on demand); None when there was nothing to do."""
