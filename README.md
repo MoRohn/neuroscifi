@@ -155,56 +155,36 @@ The reference host is an **NVIDIA DGX Spark GB10** (aarch64, Blackwell sm_121, 1
 
 ## Quick start
 
-**What you'll have at the end:** your Spark (the host) runs the individual, a research worker, the owner console and the Pocket bridge. A phone and a tablet are paired over HTTPS, and a question asked on one continues on the other. Brave Search is optional.
+**What you'll have at the end:** NeuroSciFi running on your Spark (the host), your phone and tablet paired with it, and a question asked on one continuing on the other. Four steps, about ten minutes.
 
-**What you need:** a Linux host with Python 3.12 and [`uv`](https://docs.astral.sh/uv/), and a phone (and a tablet) on the same LAN as the host. Optional: the Docker services for SearXNG, the local model and voice ([Optional services](#optional-services)).
+**What you need:** a Linux host with Python 3.12 and [`uv`](https://docs.astral.sh/uv/), and a phone (and a tablet) on the same Wi-Fi or LAN as the host. Optional: the Docker services for SearXNG, the local model and voice ([Optional services](#optional-services)).
 
-| Step | What happens |
+| Step | What you do |
 |---|---|
-| [1](#step-1-install) | Install |
-| [2](#step-2-run-nsf-setup) | `nsf setup` does every one-time step and prints the start commands |
-| [3](#step-3-start-neuroscifi) | Start the research worker, the console and the Pocket bridge |
-| [4](#step-4-pair-your-phone) | Install the CA on the phone and pair it |
-| [5](#step-5-add-a-tablet-or-another-family-member) | Add a tablet, or another family member |
+| [1](#step-1-install) | Install (three commands) |
+| [2](#step-2-set-up-once-nsf-setup) | `nsf setup`, once |
+| [3](#step-3-start-nsf-start) | `nsf start` |
+| [4](#step-4-add-your-phone-scan-two-codes) | Add your phone: scan two codes with its camera |
+| [5](#step-5-add-a-tablet-or-another-person) | Add a tablet, or another person |
 | [6](#step-6-ask-across-devices) | Ask on the phone, continue on the tablet |
 
 ### Step 1: Install
 
 ```sh
 git clone https://github.com/MoRohn/neuroscifi.git && cd neuroscifi
-uv venv .venv -p 3.12
-uv pip install -e '.[web,crypto]'      # add dev for the test suite; the other extras are in Requirements
+uv venv .venv -p 3.12 && uv pip install -e '.[web,crypto]'   # add dev for the test suite; other extras: Requirements
 . .venv/bin/activate
 ```
 
-`crypto` is needed for Pocket: the private CA, the Spark's signed research replies and push.
+`crypto` is needed for Pocket: the private certificate, the Spark's signed research replies and push.
 
-### Step 2: Run `nsf setup`
+### Step 2: Set up once (`nsf setup`)
 
 ```sh
 nsf setup --db /secure/nsf/individual.sqlite
 ```
 
-`--db` (or `NSF_DB`) names the individual's file. For real use, put it on an encrypted volume; `nsf doctor --db PATH` checks that. `nsf setup` then does each one-time step in order and says `done`, `already done` or `skipped`, so you can run it again at any time:
-
-1. creates the individual (never overwrites one);
-2. turns on web access and Pocket research;
-3. configures the local model if one answers at `http://127.0.0.1:8811/v1`, and skips it otherwise;
-4. creates the private CA and a server certificate for this host's name, `NAME.local`, `localhost`, `127.0.0.1` and every LAN address it finds;
-5. exports the CA for phones and prints its SHA-256 fingerprint;
-6. stores a [Brave Search API key](#brave-search-api-key) and creates the push key, only when you ask.
-
-| Option | Use it to |
-|---|---|
-| `--brave-key-stdin` or `--brave-key-file PATH` | store a Brave Search API key: [Brave Search API key](#brave-search-api-key) |
-| `--brave-daily-cap N` | set Brave queries per UTC day (default 30; 0 turns Brave off) |
-| `--push` | create the push (VAPID) key; the printed bridge command then has `--push-key` |
-| `--no-model`, `--model-url URL` | skip the model step, or probe another loopback endpoint |
-| `--name HOST`, `--ip ADDR` | put these names or addresses on the certificate instead of the detected ones (repeatable) |
-| `--bind ADDR`, `--port N` | choose the bridge's address (default: the first LAN address) and port (default 8765) |
-| `--dry-run`, `--json` | show what would change without changing anything; print the report as JSON |
-
-**Expect** (from a real run; paths shortened):
+`--db` names the file that holds the individual; for real use, put it on an encrypted volume (`nsf doctor --db PATH` checks that). Run `nsf setup` while the Spark is on the network your phone will use. It does every one-time step, says `done`, `already done` or `skipped` for each, and is safe to run again:
 
 ```text
 nsf setup: /secure/nsf/individual.sqlite
@@ -212,19 +192,32 @@ nsf setup: /secure/nsf/individual.sqlite
   2. web         done          web access and Pocket research are on
   3. model       skipped       no model answered at http://127.0.0.1:8811/v1 (unavailable); answers stay extractive until `nsf llm config --url URL`
   4. pocket_tls  done          created the CA and issued a certificate for spark, spark.local, localhost, 192.168.1.20, 127.0.0.1 (valid until 2027-12-24)
-  5. ca_export   done          CA for phones: ~/.config/neuroscifi/pocket/neuroscifi-ca.crt (Android) and ~/.config/neuroscifi/pocket/neuroscifi-ca.pem; SHA-256 3B:F4:D4:…:03:B2
+  5. ca_export   done          CA for phones: ~/.config/neuroscifi/pocket/neuroscifi-ca.crt (Android) and …-ca.pem; SHA-256 3B:F4:D4:…:03:B2
   6. brave       skipped       key missing (optional: nsf setup --brave-key-stdin, or nsf web provider set-key brave --stdin)
   7. push        skipped       optional: nsf setup --push
 
-Next: start NeuroSciFi, one terminal each (Ctrl-C stops a service):
-  1. research worker:
-     nsf web work --db /secure/nsf/individual.sqlite
-  2. owner console (open the URL written to the file, on this computer):
-     nsf console --db /secure/nsf/individual.sqlite --url-file /secure/nsf/individual.console.url
-  3. Pocket bridge:
-     nsf pocket serve --bind 192.168.1.20 --port 8765 --cert ~/.config/neuroscifi/pocket/tls/fullchain.pem --key ~/.config/neuroscifi/pocket/tls/privkey.pem --db /secure/nsf/individual.pocket.sqlite --instance-db /secure/nsf/individual.sqlite
-  4. On your phone: install the CA first (file ~/.config/neuroscifi/pocket/neuroscifi-ca.crt, SHA-256 fingerprint 3B:F4:D4:…:03:B2), then open https://spark.local:8765 or https://192.168.1.20:8765 and enter the one-use code the bridge prints.
+NeuroSciFi is set up. Next:
+  1. Start it:     nsf start
+                   (runs the research worker, the owner console and Pocket, and opens the console)
+  2. Add a phone:  in the console choose "Add a phone" (or run: nsf add-phone) and scan its two codes
+                   with the phone's camera. Code 1 makes the phone trust your Spark, once per phone;
+                   code 2 pairs it. No typing, no files to copy.
 ```
+
+<details>
+<summary><b>What it does, its options, and where files go</b></summary>
+
+In order: creates the individual (never overwrites one); turns on web access and Pocket research; configures the local model if one answers at `http://127.0.0.1:8811/v1`; creates a private certificate authority (CA) and a server certificate for this host's name, `NAME.local`, `localhost`, `127.0.0.1` and every LAN address; exports the CA for phones; stores a [Brave Search API key](#brave-search-api-key) and creates the push key, only when you ask. It records its choices in `~/.config/neuroscifi/setup.json` (0600) for `nsf start` and `nsf add-phone`, and ends with the exact command of each service, for running them separately (for example as system services).
+
+| Option | Use it to |
+|---|---|
+| `--brave-key-stdin` or `--brave-key-file PATH` | store a Brave Search API key: [Brave Search API key](#brave-search-api-key) |
+| `--brave-daily-cap N` | set Brave queries per UTC day (default 30; 0 turns Brave off) |
+| `--push` | create the push (VAPID) key for notifications while Pocket is closed |
+| `--no-model`, `--model-url URL` | skip the model step, or probe another loopback endpoint |
+| `--name HOST`, `--ip ADDR` | put these names or addresses on the certificate instead of the detected ones (repeatable) |
+| `--bind ADDR`, `--port N`, `--setup-port N` | the bridge's address (default: the first LAN address), port (8765) and phone setup page port (8764; 0 turns it off) |
+| `--dry-run`, `--json` | show what would change without changing anything; print the report as JSON |
 
 | File | Where `nsf setup` puts it |
 |---|---|
@@ -232,64 +225,87 @@ Next: start NeuroSciFi, one terminal each (Ctrl-C stops a service):
 | Pocket pairings, console URL (0600, removed when the console stops) | next to it: `NAME.pocket.sqlite`, `NAME.console.url` |
 | CA key (0600, never read by a service) | `~/.config/neuroscifi/pocket-ca` (`--ca-dir`) |
 | Server certificate, exported CA, push key | `~/.config/neuroscifi/pocket` (`--pocket-dir`) |
+| Setup record (0600) | `~/.config/neuroscifi/setup.json` |
 | Brave key (0600) | `~/.config/neuroscifi/search/brave.key` |
 
-> [!IMPORTANT]
-> The CA is limited to the names it was created for. Run `nsf setup` while the Spark is on the LAN your devices will use, so its address is detected. If an address appears later, `nsf setup` keeps the CA and warns; adding the address needs a new CA that every device installs again (the warning prints the command).
+The CA can only vouch for the names and addresses it was created for. If the Spark gets a new LAN address later, `nsf setup` keeps the CA and warns; covering the new address needs a new CA that every device installs again (the warning prints the command).
 
-### Step 3: Start NeuroSciFi
+</details>
 
-Run the commands `nsf setup` printed, one terminal each:
+### Step 3: Start (`nsf start`)
 
 ```sh
-nsf web work --db /secure/nsf/individual.sqlite                    # terminal 1: the research worker
-nsf console --db /secure/nsf/individual.sqlite \
-  --url-file /secure/nsf/individual.console.url                    # terminal 2: the owner console
-nsf pocket serve --bind 192.168.1.20 --port 8765 \
-  --cert ~/.config/neuroscifi/pocket/tls/fullchain.pem --key ~/.config/neuroscifi/pocket/tls/privkey.pem \
-  --db /secure/nsf/individual.pocket.sqlite --instance-db /secure/nsf/individual.sqlite   # terminal 3: Pocket
+nsf start
 ```
 
-**Expect:**
-- The worker prints nothing while it waits; `nsf web status` shows `"worker": {"running": true, …}`.
-- The console writes its URL with a one-time session token to the URL file. Open that URL on the Spark (from another machine, `ssh -L 8766:127.0.0.1:8766 HOST`). `nsf console --web-worker` runs the worker inside the console instead, for development.
-- The bridge prints:
+One terminal runs everything and opens the owner console in your browser:
 
-  ```text
-  Spark key fingerprint: XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
-  One-use pairing code (5 minutes): <code>
-  Listening on https://192.168.1.20:8765
-  Open on your phone or tablet (names on the certificate): https://spark:8765, https://spark.local:8765, https://192.168.1.20:8765
-  Pair another family later without a restart: nsf pocket invite --db /secure/nsf/individual.pocket.sqlite
-  ```
+```text
+[pocket] Listening on https://192.168.1.20:8765
+[pocket] Phone setup page (plain HTTP, the CA certificate only): http://192.168.1.20:8764/
+[console] Console URL (with its one-time session token) written to /secure/nsf/individual.console.url
 
-Ctrl-C stops each service cleanly. A restarted bridge prints a new code, and paired devices stay paired. For a service install, `sudo bash deploy/install.sh` installs systemd units, disabled (`--dry-run` shows the plan without root); see the [Runbook](docs/operations/RUNBOOK.md).
+NeuroSciFi is running.
+  Owner console:  opened in your browser. Its link (with the session token) is in /secure/nsf/individual.console.url
+  Add a phone:    in the console choose "Add a phone", or run: nsf add-phone
+  Stop:           press Ctrl-C here
+```
 
-### Step 4: Pair your phone
+Ctrl-C stops all of it; paired devices stay paired. The console listens on this computer only: from another machine, use `ssh -L 8766:127.0.0.1:8766 HOST` and open the link from the URL file. To run the services separately, use the commands `nsf setup` printed; for a service install, `sudo bash deploy/install.sh` installs systemd units, disabled (`--dry-run` shows the plan); see the [Runbook](docs/operations/RUNBOOK.md).
 
-1. **Copy the CA** `neuroscifi-ca.crt` to the phone over a channel you trust (USB, AirDrop, a message to yourself), never a public link.
-2. **Install it:**
+### Step 4: Add your phone (scan two codes)
 
-   | Device | Install the CA | Check |
-   |---|---|---|
-   | **Android 13–15** (wording varies) | Settings → Security & privacy → More security settings → Encryption & credentials → Install a certificate → **CA certificate** → Install anyway → `neuroscifi-ca.crt` | Trusted credentials → **User** → "NeuroSciFi Pocket CA (…)". A "network may be monitored" notice is expected |
-   | **iPhone and iPad (iOS 16–18)** | Open the file (AirDrop, Files or Mail) → Settings → General → VPN & Device Management → the profile → Install. Then **Settings → General → About → Certificate Trust Settings** → full trust for "NeuroSciFi Pocket CA". Without this second step Safari still refuses the site | The profile → More Details |
+In the console, choose **Add a phone** (or run `nsf add-phone` in a terminal: it prints the same two codes and waits). Then, on the phone:
 
-3. **Compare the fingerprint:** the SHA-256 fingerprint the phone shows must equal the one `nsf setup` printed.
-4. **Open** a URL the bridge printed, such as `https://spark.local:8765`. A lock and no warning means the CA is trusted. If the phone cannot resolve `spark.local`, use the address URL. On an iPhone or iPad that will use push, first add Pocket to the Home Screen (Share → Add to Home Screen) and pair from that icon.
-5. **Pair:** under **Your Spark**, enter the one-use code within 5 minutes and press **Pair**. Expect **Paired with Spark**. "Your Spark's key fingerprint, pinned when this device paired" must equal the bridge's `Spark key fingerprint` line.
-6. **Keep the pairing across a reload:** Pocket holds it in tab memory only. **Keep episodes on this device** → a passphrase of at least 12 characters → **Open or create vault** → **Keep pairing in this vault for 24 hours**.
+<table>
+<tr>
+<td width="64%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/setup-console-dark.png">
+  <img src="docs/assets/screenshots/setup-console-light.png" alt="Console, Add a phone: code 1 Trust your Spark and code 2 Pair this phone, side by side, waiting for the phone">
+</picture>
+<br><sub><b>Console · Add a phone.</b> Two codes; the page says by itself when the phone has paired.</sub>
+</td>
+<td width="36%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/setup-phone-dark.png">
+  <img src="docs/assets/screenshots/setup-phone-light.png" alt="Phone setup page on an iPhone: download the certificate, install it, switch on trust, then pair">
+</picture>
+<br><sub><b>Code 1 on an iPhone.</b> The steps for this phone; it notices by itself when trust is on.</sub>
+</td>
+</tr>
+</table>
 
-To remove the CA later: Android, Trusted credentials → User → the CA → Remove; iOS, the profile → Remove Profile. [TLS for Pocket](docs/operations/TLS.md) has the details and the Tailscale and Let's Encrypt alternatives.
+1. **Scan code 1** with the camera. A setup page opens with the steps for your phone. This is once per phone and takes about a minute:
+   - **iPhone or iPad:** tap **Download certificate** → **Allow**. Open **Settings** → **Profile Downloaded** → **Install**. Then **Settings → General → About → Certificate Trust Settings** → switch on **NeuroSciFi**.
+   - **Android:** tap **Download certificate**. Open **Settings**, search for **CA certificate** → **Install a certificate → CA certificate → Install anyway** → pick `neuroscifi-ca.crt`.
 
-### Step 5: Add a tablet or another family member
+   Come back to the page: it says **This phone trusts your Spark** by itself when it works.
+2. **Scan code 2.** Pocket opens with the pairing filled in. Tap **Pair**. The phone shows **Paired with Spark**, and the console says **Your phone is paired**.
 
-Every new device installs the CA first (Step 4, steps 1–3).
+That's it. Two optional extras:
+- **Open it like an app:** add Pocket to the home screen (iPhone: Share → Add to Home Screen; Android: menu → Add to Home screen). On an iPhone that will use push notifications, pair from that icon.
+- **Stay paired after closing the tab:** Pocket keeps the pairing in tab memory. To keep it, use **Keep episodes on this device** → a passphrase of at least 12 characters → **Open or create vault** → **Keep pairing in this vault for 24 hours**.
 
-| To add | Get a code | Then |
-|---|---|---|
-| **Your own tablet** (same family: it sees, follows and cancels the same questions) | On the paired phone: Your Spark → **Link my phone or tablet** → confirm. The phone shows a code for 5 minutes | Open the same URL on the tablet, enter the code under Your Spark → **Pair** |
-| **Another person** (a new family: sees none of your questions) | On the Spark: `nsf pocket invite --db /secure/nsf/individual.pocket.sqlite` (as the bridge's user, no restart) | Open the URL on their device and pair with that code |
+<details>
+<summary><b>Why the certificate, what the codes contain, and if you can't scan</b></summary>
+
+- **Why:** Pocket talks to your Spark over an encrypted connection with your own certificate authority, so nothing between them is readable by anyone else and no outside service is involved. A phone has to be told once to trust that authority; code 1 does exactly that. The certificate is public data (never a key) and can only vouch for your Spark's names and addresses.
+- **Code 1** opens a plain-HTTP page on your Spark that only offers that certificate and the instructions, for 15 minutes after you choose Add a phone. **Code 2** is Pocket's HTTPS address with a one-use pairing code (5 minutes) in the part of the link that a browser never sends anywhere; Pocket removes it from the address bar at once, and a link can only carry your Spark's own invitation.
+- **Do it on a home network you trust.** Plain HTTP cannot prove where the certificate came from: someone actively attacking your network during setup could offer their own, and a phone that trusted it could have its connections read. To check (optional), open **Check it is really your Spark** under code 1 in the console and compare its fingerprint with the installed certificate's details on the phone (the steps are there). On a shared network (office, dorm, café), copy `neuroscifi-ca.crt` to the phone over a channel you trust instead of code 1, compare the fingerprint, then scan only code 2 ([TLS for Pocket](docs/operations/TLS.md)).
+- **Can't scan:** "Can't scan the codes?" in the console lists both addresses and the pairing code to type (spaces are fine).
+- **Remove the certificate later:** Android, Settings → Trusted credentials → User → the CA → Remove; iPhone, Settings → General → VPN & Device Management → the profile → Remove Profile. Design and security analysis: ADR-043 in [Architectural decisions](docs/architecture/ARCHITECTURAL_DECISIONS.md).
+
+</details>
+
+### Step 5: Add a tablet or another person
+
+Every new device does code 1 once (Step 4, step 1). Then:
+
+| To add | How |
+|---|---|
+| **Your own tablet** (same family: it sees, follows and cancels the same questions) | On the paired phone: Your Spark → **Link my phone or tablet** → confirm. Enter the code it shows on the tablet, under Your Spark → **Pair** (it works for 5 minutes) |
+| **Another person** (their own family: they see none of your questions) | Console → **Add a phone** again, and they scan both codes. Each phone added from the console is its own family |
 
 A family holds at most 6 devices. To check and remove devices:
 
@@ -298,8 +314,6 @@ nsf pocket list-pairings --db /secure/nsf/individual.pocket.sqlite --instance-db
 nsf pocket erase-pairing LABEL --db /secure/nsf/individual.pocket.sqlite            # one device
 nsf pocket erase-pairing LABEL --family --db /secure/nsf/individual.pocket.sqlite   # it and every linked device
 ```
-
-`list-pairings` prints one line per device with its `family=`, `sponsor=` and `created=` (UTC); a linked tablet shares the phone's `family=` tag.
 
 ### Step 6: Ask across devices
 
@@ -386,7 +400,7 @@ nsf pocket tls status --out $P/tls            # "verifies_against_ca": true, exp
 nsf web provider set-key brave --stdin        # optional: Brave Search API key
 ```
 
-Then start the services as in [Step 3](#step-3-start-neuroscifi), with `--db "$NSF_DB"` and the `--cert`, `--key` and `--db` paths above. For push, add `--push-key ~/.config/neuroscifi/pocket/vapid.pem` to `nsf pocket serve`; the key is created as a 0600 file on first start. The server certificate lasts 397 days: run `nsf pocket tls init` again with the same names (or `nsf setup`) to renew it.
+Then start the three services (`nsf web work`, `nsf console`, `nsf pocket serve`; `nsf setup --json` lists them) with `--db "$NSF_DB"` and the `--cert`, `--key` and `--db` paths above. For push, add `--push-key ~/.config/neuroscifi/pocket/vapid.pem` to `nsf pocket serve`; the key is created as a 0600 file on first start. The server certificate lasts 397 days: run `nsf pocket tls init` again with the same names (or `nsf setup`) to renew it.
 
 </details>
 

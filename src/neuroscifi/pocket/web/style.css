@@ -181,3 +181,7 @@ blockquote small { font-family: var(--font-sans); font-size: var(--fs-sm); margi
   .dot, .rstage::before { forced-color-adjust: none; background: CanvasText; }
   #sensor[data-live="yes"] .dot { background: Highlight; }
 }
+/* unpaired: where pairing starts (ADR-043), and the pairing card when a QR invitation opened this page */
+.nudge { margin: 0 0 var(--sp-4); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--line-strong); border-radius: var(--r-md);
+  background: var(--surface); max-width: var(--measure); }
+#spark.invited { outline: 2px solid var(--ink); outline-offset: 4px; border-radius: var(--r-md); }

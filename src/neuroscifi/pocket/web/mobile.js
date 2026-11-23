@@ -3,6 +3,19 @@ const el = id => document.getElementById(id);
 let key = "", draft = null, selected = null, generation = 0, sharing = false, lastActive = 0;
 let reach = "", refused = false, muting = false, pairingNow = false, messageTimer = 0;
 let probeTimer = 0, probeDelay = 0, restoring = false;
+// A pairing invitation from a QR code (ADR-043): https://<spark>/#pair=<code> from the Spark's "Add a phone" screen.
+// The fragment never reaches a server. It is read once and removed from the address bar and this tab's history at
+// once (the browser's own history may still list the visited link; the code works once, for 5 minutes), and used only
+// when the person taps Pair, with "via": "invitation" so the Spark accepts only its own invitation from a link, never
+// a linked device's handoff code (a link cannot put this device into someone else's family).
+const INVITED = "This device was invited to pair with your Spark. Tap Pair to finish.";
+let invited = (() => {
+  const hash = globalThis.location?.hash ?? "";
+  if (!/^#pair=/.test(hash)) return null;
+  const m = /^#pair=([A-Za-z0-9_-]{16,64})$/.exec(hash);
+  globalThis.history?.replaceState?.(null, "", location.pathname + location.search);
+  return m ? m[1] : null;
+})();
 // The Spark's signing key as pinned at pairing (ADR-042 draft): kept with the credential, in tab memory or the vault.
 // research-ui.mjs checks every research reply against it before showing anything as from your Spark.
 let spark = null;
@@ -109,6 +122,8 @@ function buttons() {
   el("stop").disabled = !selected;
   el("evenbridge").hidden = !key;
   el("evenpair").hidden = !!key;
+  const nudge = el("pairnudge");                  // unpaired: say where pairing starts, at the top of the page
+  if (nudge) nudge.hidden = !!key || !!invited;
 }
 function sensorTime() {
   el("lastactive").textContent = el("sensor").dataset.live === "yes" ? "active now"
@@ -351,9 +366,11 @@ el("pairform").onsubmit=async e=>{
   pairingNow=true;
   try {
     let reply;
-    try { reply=await api("pair",{code:el("code").value.trim()}); }
-    catch (err) { statusText(pairFailure(err)); el("code").focus?.(); return; }
+    const code=el("code").value.replace(/\s+/g,"");   // codes have no spaces; typed groups may
+    try { reply=await api("pair",invited&&code===invited?{code,via:"invitation"}:{code}); }
+    catch (err) { statusText(pairFailure(err)); if (invited) { invited=null; el("code").value=""; el("spark").classList?.remove("invited"); el("pairhelp").textContent="That invitation did not work. Scan the newest code on your Spark's screen, or enter a code."; } el("code").focus?.(); return; }
     key=reply.key; spark=reply.spark||null; refused=false; reach="ok"; stopProbing(); shared.clear(); el("code").value=""; el("pairform").hidden=true; el("paired").hidden=false; showPin();
+    invited=null; el("spark").classList?.remove("invited");
     el("pairhelp").textContent="This tab is paired. Shared observations expire after 24 hours.";
     linkText(); buttons(); el("refresh").focus();
     try { await historyView(); statusText("Paired.", true); }
@@ -417,7 +434,7 @@ window.pocketSetPair=(token,pin=null)=>{
  key=token; spark=key&&pin?.alg?pin:null; shared.clear(); refused=false; reach=key?"checking":""; stopProbing(); showPin();
  el("pairform").hidden=!!key;el("paired").hidden=!key;
  linkText();
- el("pairhelp").textContent=key?"Checking the pairing kept in your vault with your Spark…":"Enter your Spark or linked-device code.";
+ el("pairhelp").textContent=key?"Checking the pairing kept in your vault with your Spark…":invited?INVITED:"Enter your Spark or linked-device code.";
  if(!key){el("history").replaceChildren();el("forecast").textContent="";el("handoff").textContent="";}
  pairing(false);
  buttons();
@@ -425,3 +442,12 @@ window.pocketSetPair=(token,pin=null)=>{
  return historyView().then(()=>{el("pairhelp").textContent="This tab is paired from your vault. Shared observations expire after 24 hours.";return true;},
    e=>{if(e.revoked)return false;el("pairhelp").textContent="Your Spark did not answer, so this pairing is not confirmed yet. Use Refresh history when it is reachable.";return null;});
 };
+// The invitation (see INVITED): fill the code, bring the pairing card into view and wait for a tap.
+if (invited && !key) {
+  el("code").value = invited;
+  el("pairhelp").textContent = INVITED;
+  el("spark").classList?.add("invited");
+  el("spark").scrollIntoView?.({block: "center"});
+  el("pairform").querySelector?.("button")?.focus?.({preventScroll: true});
+}
+buttons();

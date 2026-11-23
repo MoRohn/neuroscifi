@@ -27,6 +27,12 @@ def register(sub):
                             "the crypto extra)")
     serve.add_argument("--push-contact", metavar="URI",
                        help="the VAPID contact (mailto: or https:) the push service sees")
+    serve.add_argument("--setup-port", type=int, metavar="PORT",
+                       help="also serve the phone setup page (ADR-043) on this plain-HTTP port: the CA certificate "
+                            "and step-by-step instructions only, for 15 minutes after each new invitation (needs "
+                            "--cert and --ca-file)")
+    serve.add_argument("--ca-file", metavar="PATH",
+                       help="the CA certificate (DER or PEM, never a key) the setup page offers to phones")
     serve.set_defaults(handler=_serve)
     listing = ops.add_parser("list-pairings", help="print paired devices: label, family, sponsor, created (UTC)")
     listing.add_argument("--db", default="mobile-private.sqlite")
@@ -63,6 +69,10 @@ def _serve(a):
         argv += ["--push-key", a.push_key]
     if a.push_contact:
         argv += ["--push-contact", a.push_contact]
+    if a.setup_port is not None:
+        argv += ["--setup-port", str(a.setup_port)]
+    if a.ca_file:
+        argv += ["--ca-file", a.ca_file]
     server.main(argv)
 
 

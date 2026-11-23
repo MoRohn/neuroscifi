@@ -60,7 +60,8 @@ def _remove_url_file(path):
 
 def _serve(args):
     try:
-        console = server.ConsoleServer(store.resolve_db(args), args.port, web_worker=args.web_worker)
+        console = server.ConsoleServer(store.resolve_db(args), args.port, web_worker=args.web_worker,
+                                       pocket_db=args.pocket_db)
     except InstanceError as error:
         print(f"nsf: {error}", file=sys.stderr)
         return 2
@@ -104,6 +105,9 @@ def register(sub):
     p.add_argument("--url-file", type=Path, default=None,
                    help="write the URL with its session token to this file (mode 0600) instead of stdout; removed at shutdown; "
                         "only a stale console URL file is replaced")
+    p.add_argument("--pocket-db", type=Path, default=None,
+                   help="the Pocket pairing database the bridge serves, for Add a phone (default: <db name>.pocket.sqlite "
+                        "next to the individual, as `nsf setup` creates it)")
     worker = p.add_mutually_exclusive_group()
     worker.add_argument("--web-worker", action="store_true",
                         help="also run queued research tasks in the console process (a development console with "

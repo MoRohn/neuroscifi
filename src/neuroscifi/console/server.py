@@ -612,6 +612,22 @@ def _presence_scene(c, p, q, b):
     return routes.console_scene(c, b)
 
 
+def _phones_invite(c, p, q, b):
+    """Add a phone (ADR-043): a new one-use invitation from the running Pocket bridge, with its two QR codes.
+    {"renew": true}: the view's automatic renewal, which does not reopen the setup page's certificate window."""
+    _fields(b, (), ("renew",))
+    if not isinstance(b.get("renew", False), bool):
+        raise ValidationError("renew must be true or false")
+    from . import phones
+    return phones.invite(c.server, renew=b.get("renew", False))
+
+
+def _phones_status(c, p, q, b):
+    """Whether the invitation ?id= was used yet: used, pending, expired, unknown, or stopped (no bridge)."""
+    from . import phones
+    return phones.status(c.server, (q.get("id") or [""])[0])
+
+
 SEGMENT = r"([^/]+)"
 ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern, handler in (
     ("GET", "inventory", _inventory),
@@ -646,6 +662,8 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("GET", "memory", _memory),
     ("GET", "llm/status", _llm_status),
     ("GET", "resources", _resources),
+    ("POST", "phones/invite", _phones_invite),
+    ("GET", "phones/invite", _phones_status),
     ("GET", "presence", _presence),
     ("POST", "presence/scene", _presence_scene),
     ("GET", "web/status", _web_status),
@@ -857,7 +875,7 @@ class ConsoleServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, db_path, port=DEFAULT_PORT, *, token=None, clock=time.time, web_worker=False,
-                 worker_options=None):
+                 worker_options=None, pocket_db=None):
         """web_worker (opt-in, `nsf console --web-worker`): run queued research tasks in a background thread
         (scheduler.work with its own connection; it idles while web access is disabled). Off by default: the
         console service is confined to loopback, so research runs in the neuroscifi-webcortex service (`nsf web
@@ -865,6 +883,7 @@ class ConsoleServer(ThreadingHTTPServer):
         Task leases keep two workers from running one task. worker_options: extra scheduler.work arguments, e.g.
         {"fixture": FixtureWeb, "providers": [...]} for offline tests."""
         self.db_path = Path(db_path).resolve()
+        self.pocket_db = Path(pocket_db).expanduser().resolve() if pocket_db else None   # "Add a phone" (phones.py)
         db = store.open_existing(self.db_path)  # refuse to start without an instance
         try:
             checkpoints.sweep(db, self.db_path)   # working copies a killed checkpoint/restore left (T5-03)

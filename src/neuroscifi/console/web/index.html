@@ -24,6 +24,7 @@
   <li><a href="#checkpoints" data-view="checkpoints">Checkpoints</a></li>
   <li><a href="#memory" data-view="memory">Memory log</a></li>
   <li><a href="#voice" data-view="voice">Voice</a></li>
+  <li><a href="#phones" data-view="phones">Add a phone</a></li>
 </ul></nav>
 <main id="main" tabindex="-1">
 <p id="offline" class="banner" role="alert" hidden>Server stopped. Restart <code>nsf console</code> and open the new URL it prints. Buttons that change anything are off until the server answers again; Refresh tries again.</p>
@@ -365,6 +366,54 @@
     <div class="presence-stage" data-presence-dock></div>
     <div class="dialogue"><div id="voiceMount" class="card"></div></div>
   </div>
+</section>
+
+<section id="phones" class="view" aria-labelledby="h-phones" hidden>
+  <div class="viewhead"><h1 id="h-phones" tabindex="-1">Add a phone or tablet</h1></div>
+  <p class="lede">Point the phone's camera at the codes below. Nothing to install from a store and nothing to type. Each phone added here gets its own private history; to put your tablet in the same family as your phone, see the last section.</p>
+  <p id="phoneStatus" class="phonestatus" role="status" aria-live="polite"></p>
+  <div id="phoneStopped" class="card" hidden>
+    <h2>Pocket is not running</h2>
+    <p>Start NeuroSciFi with <code>nsf start</code> (it runs Pocket for you), then try again.</p>
+    <div class="buttons"><button type="button" id="phoneRetry" class="primary">Try again</button></div>
+  </div>
+  <div id="phoneDone" class="card phonedone" hidden>
+    <h2>Your phone is paired</h2>
+    <p>Open Pocket on it to ask your first question. Add it to the home screen from the browser's share or menu button to open it like an app.</p>
+    <div class="buttons"><button type="button" id="phoneAnother">Add another phone</button></div>
+  </div>
+  <ol id="phoneCodes" class="phonecodes" hidden>
+    <li class="card qrcard" id="qrSetupCard">
+      <h2><span class="stepno" aria-hidden="true">1</span>Trust your Spark</h2>
+      <p>Once per phone. Scan it, then follow the steps on the phone; about a minute.</p>
+      <div id="qrSetup" class="qrbox"></div>
+      <p id="setupClosed" class="counter" hidden>Closed for safety after 15 minutes. Choose <b>Show new codes</b> to open it again.</p>
+      <p class="counter">Already done on this phone? Go straight to 2.</p>
+      <details class="check"><summary>Check it is really your Spark (optional)</summary>
+        <p class="counter">After installing, the certificate's details on the phone show a SHA-256 fingerprint (iPhone: Settings › General › VPN &amp; Device Management › NeuroSciFi › More Details; Android: Settings › Trusted credentials › User). It must equal this one:</p>
+        <p><code id="caCheck">…</code></p>
+      </details>
+    </li>
+    <li class="card qrcard">
+      <h2><span class="stepno" aria-hidden="true">2</span>Pair this phone</h2>
+      <p>Scan it, then tap <b>Pair</b> on the phone.</p>
+      <div id="qrPair" class="qrbox"></div>
+      <p id="pairExpiry" class="counter">Works once, for 5 minutes. New codes appear by themselves while this page is open.</p>
+    </li>
+  </ol>
+  <div class="buttons"><button type="button" id="phoneNew">Show new codes</button></div>
+  <details class="card manual">
+    <summary>Can't scan the codes?</summary>
+    <ol>
+      <li>On the phone, open <code id="setupUrl">…</code> and follow the steps there.</li>
+      <li>Then open <code id="appUrl">…</code> and enter the pairing code <code id="pairCode">…</code></li>
+    </ol>
+    <p class="counter">To check you are talking to your own Spark, compare this fingerprint with the certificate details on the phone: <code id="caPrint">…</code></p>
+  </details>
+  <details class="card manual">
+    <summary>Adding a tablet or a second phone to the same family?</summary>
+    <p>Do step 1 on the new device. Then, on a device that is already paired, open Pocket and choose <b>Link my phone or tablet</b>, and enter the code it shows on the new device. Linked devices share their questions and answers.</p>
+  </details>
 </section>
 
 </main>

@@ -671,13 +671,23 @@ class Handler(BaseHTTPRequestHandler):
             if route == "pair":
                 with self.server.pair_lock:
                     code = data.get("code")
-                    if set(data)!={"code"} or not isinstance(code,str) or not code.isascii():
+                    # "via": "invitation" (ADR-043): a code that arrived in a link (a QR code's #pair=) may only be
+                    # the Spark's own invitation, never a linked device's handoff code, so a link cannot put this
+                    # device into someone else's family
+                    via = data.get("via")
+                    if set(data)-{"via"}!={"code"} or via not in (None,"invitation") or not isinstance(code,str) or not code.isascii():
                         return self.reply(403)
                     now=time.monotonic()
                     if self.server.invitation and now<self.server.invitation_deadline and hmac.compare_digest(self.server.invitation,code):
                         key=self.server.store.pair()
+                        used=getattr(self.server,"invitations_used",None)
+                        if used is not None and getattr(self.server,"invitation_id",None):
+                            used[self.server.invitation_id]=time.time()   # before the code is cleared: no "expired" gap
+                            while len(used)>32: used.pop(next(iter(used)))
                         self.server.invitation=None
                         remove_invitation_file(self.server)
+                    elif via=="invitation":
+                        return self.reply(403)
                     else:
                         link=getattr(self.server,"handoffs",{}).pop(fingerprint(code),None)
                         if not link or now>=link[1]: return self.reply(403)
@@ -924,11 +934,74 @@ def _private_folder(folder: Path):
         raise OSError(errno.EPERM, "not a private folder of this user (0700)", str(folder))
 
 
-def issue_invitation(server) -> str:
+def new_invitation(server, open_setup=False) -> str:
+    """Set a new one-use code on `server` (valid INVITATION_SECONDS, replacing any earlier one) with an id the owner's
+    tools can ask about (`status`). `open_setup`: the owner asked for codes, so the phone setup page offers the CA for
+    setup_page.SETUP_WINDOW; start-up and the console's automatic renewals do not reopen it."""
+    from .setup_page import SETUP_WINDOW
+    earlier = getattr(server, "invitation_id", None)
+    if earlier:
+        replaced = server.__dict__.setdefault("invitations_replaced", {})
+        replaced[earlier] = True
+        while len(replaced) > 32:
+            replaced.pop(next(iter(replaced)))
+    server.invitation = secrets.token_urlsafe(24)
+    server.invitation_deadline = time.monotonic() + INVITATION_SECONDS
+    server.invitation_id = secrets.token_hex(8)
+    if open_setup:
+        server.setup_until = time.monotonic() + SETUP_WINDOW
+    return server.invitation
+
+
+def invitation_state(server, ident) -> str:
+    """'used', 'pending', 'expired', 'replaced' (a newer code was issued) or 'unknown' for an invitation id handed out
+    by the control socket. Call under server.pair_lock (the pair route records 'used' under it)."""
+    if ident in getattr(server, "invitations_used", {}):
+        return "used"
+    if ident == getattr(server, "invitation_id", None):
+        return "pending" if server.invitation and time.monotonic() < server.invitation_deadline else "expired"
+    return "replaced" if ident in getattr(server, "invitations_replaced", {}) else "unknown"
+
+
+def public_host(server) -> str:
+    """The address phones on the LAN use in a QR code: the bound address when it is a LAN address, else the first
+    LAN IP address on the certificate, else this host's name. IP addresses, not .local names: Android resolves
+    .local unreliably, and browsers never apply HSTS to an IP address (the setup page is plain HTTP)."""
+    import ipaddress
+    bind = server.server_address[0]
+
+    def lan(text):
+        try:
+            ip = ipaddress.ip_address(text.strip("[]"))
+        except ValueError:
+            return False
+        return not (ip.is_loopback or ip.is_unspecified or ip.is_multicast or ip.is_link_local)
+    if lan(bind):
+        return f"[{bind}]" if ":" in bind else bind
+    names = getattr(server, "certificate_names", []) or []
+    ip = next((n for n in names if lan(n) and ":" not in n), None) or next((n for n in names if lan(n)), None)
+    if ip:
+        return f"[{ip}]" if ":" in ip else ip
+    return next((n for n in names if n not in ("localhost",) and not lan(n) and "." in n), socket.gethostname())
+
+
+def invitation_reply(server, code) -> dict:
+    """What the owner's tools need for the two QR codes: the pairing URL (code in the fragment, which browsers never
+    send) and the setup page URL; the CA fingerprint for an optional check."""
+    host = public_host(server)
+    setup = getattr(server, "setup_httpd", None)
+    return {"code": code, "expires_in": INVITATION_SECONDS, "id": server.invitation_id,
+            "pair_url": f"https://{host}:{server.server_port}/#pair={code}",
+            "app_url": f"https://{host}:{server.server_port}/",
+            "setup_url": f"http://{host}:{setup.server_port}/" if setup is not None else None,
+            "setup_seconds": int(max(0.0, getattr(server, "setup_until", 0.0) - time.monotonic())),
+            "ca_sha256": getattr(server, "ca_sha256", None)}
+
+
+def issue_invitation(server, open_setup=True) -> str:
     """A new one-use terminal pairing code for `server`, valid INVITATION_SECONDS; it replaces any earlier one."""
     with server.pair_lock:
-        server.invitation = secrets.token_urlsafe(24)
-        server.invitation_deadline = time.monotonic() + INVITATION_SECONDS
+        new_invitation(server, open_setup)
         remove_invitation_file(server)       # the file's earlier code is no longer valid
         return server.invitation
 
@@ -972,11 +1045,16 @@ def open_control(server, db):
                     creds = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
                     if int.from_bytes(creds[4:8], sys.byteorder) != os.getuid():
                         continue              # only the bridge's own user
-                    if conn.recv(64).strip() != b"invite":
+                    request = conn.recv(64).strip()
+                    if request in (b"invite", b"renew"):   # renew: a new code, the setup window left as it is
+                        code = issue_invitation(server, open_setup=request == b"invite")
+                        conn.sendall(json.dumps(invitation_reply(server, code)).encode() + b"\n")
+                    elif re.fullmatch(rb"status [0-9a-f]{16}", request):
+                        with server.pair_lock:
+                            state = invitation_state(server, request[7:].decode())
+                        conn.sendall(json.dumps({"state": state}).encode() + b"\n")
+                    else:
                         conn.sendall(b'{"error": "unknown request"}\n')
-                        continue
-                    code = issue_invitation(server)
-                    conn.sendall(json.dumps({"code": code, "expires_in": INVITATION_SECONDS}).encode() + b"\n")
                 except OSError:
                     pass
     threading.Thread(target=serve, daemon=True).start()
@@ -993,23 +1071,44 @@ def close_control(control):
             pass
 
 
-def request_invitation(db, timeout=5.0) -> dict:
-    """Ask the running bridge for `db` for a new code ({"code", "expires_in"}); OSError when none answers."""
+def _control(db, request: bytes, timeout=5.0) -> dict:
     path = control_path(db)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.settimeout(timeout)
         sock.connect(str(path))
-        sock.sendall(b"invite\n")
+        sock.sendall(request + b"\n")
         data = b""
         while not data.endswith(b"\n"):
             chunk = sock.recv(4096)
             if not chunk:
                 break
             data += chunk
-    reply = json.loads(data or b"{}")
-    if not isinstance(reply, dict) or not isinstance(reply.get("code"), str):
+    try:
+        reply = json.loads(data or b"{}")
+    except ValueError:
+        reply = None
+    if not isinstance(reply, dict) or "error" in reply:
         raise OSError(errno.EPROTO, "the bridge refused the request", str(path))
     return reply
+
+
+def request_invitation(db, timeout=5.0, renew=False) -> dict:
+    """Ask the running bridge for `db` for a new code: {"code", "expires_in", "id", "pair_url", "app_url",
+    "setup_url" (None without a setup page), "setup_seconds", "ca_sha256"}; OSError when none answers. `renew`: an
+    automatic renewal, which does not reopen the phone setup page's certificate window."""
+    reply = _control(db, b"renew" if renew else b"invite", timeout)
+    if not isinstance(reply.get("code"), str):
+        raise OSError(errno.EPROTO, "the bridge refused the request", str(control_path(db)))
+    return reply
+
+
+def invitation_status(db, ident: str, timeout=5.0) -> str:
+    """'used', 'pending', 'expired', 'replaced' or 'unknown' for an id from request_invitation; OSError when no
+    bridge answers."""
+    if not re.fullmatch(r"[0-9a-f]{16}", ident or ""):
+        return "unknown"
+    state = _control(db, b"status " + ident.encode(), timeout).get("state")
+    return state if state in ("used", "pending", "expired", "replaced", "unknown") else "unknown"
 
 
 def certificate_names(cert_path) -> list[str]:
@@ -1054,6 +1153,12 @@ def main(argv=None):
     p.add_argument("--push-key", metavar="PATH",
                    help="offer Web Push to paired devices (ADR-040): the Spark's VAPID private key, created as a new "
                         "0600 file on first start; keep it outside git. Needs --instance-db and the crypto extra")
+    p.add_argument("--setup-port", type=int, metavar="PORT",
+                   help="also serve the phone setup page (ADR-043) on this plain-HTTP port: the CA certificate and "
+                        "step-by-step instructions, offered for 15 minutes after each new invitation; never the app, "
+                        "the API or a pairing code. Needs --ca-file")
+    p.add_argument("--ca-file", metavar="PATH",
+                   help="the CA certificate (DER or PEM, never a key) the setup page offers to phones")
     p.add_argument("--push-contact", metavar="URI", default=None,
                    help="the VAPID contact (mailto: or https:) the push service sees; default "
                         "mailto:pocket@neuroscifi.invalid")
@@ -1147,8 +1252,28 @@ def main(argv=None):
     if vapid is not None:
         server.push = push.Push(server, vapid, **({"subject": a.push_contact} if a.push_contact else {}))
     server.spark_key_path, server._spark_key = holder.spark_key_path, getattr(holder, "_spark_key", None)
-    server.invitation = secrets.token_urlsafe(24)
-    server.invitation_deadline = time.monotonic() + INVITATION_SECONDS
+    server.certificate_names = certificate_names(a.cert) if a.cert else []
+    server.invitations_used = {}
+    server.setup_httpd = None
+    if a.ca_file:
+        from . import setup_page
+        try:
+            server.ca_der, server.ca_sha256 = setup_page.load_ca(a.ca_file)
+        except (OSError, ValueError) as error:
+            server.server_close()
+            p.error(f"cannot use CA certificate {a.ca_file}: {getattr(error, 'strerror', None) or error}")
+    if a.setup_port is not None:
+        from . import setup_page
+        if not a.ca_file or not a.cert:
+            server.server_close()
+            p.error("--setup-port needs --cert and --ca-file (the page offers that CA to phones)")
+        try:
+            server.setup_httpd = setup_page.start(server, a.bind, a.setup_port)
+        except OSError as error:
+            server.server_close()
+            print(f"nsf: cannot listen on {a.bind}:{a.setup_port}: {error.strerror or error}", file=sys.stderr)
+            raise SystemExit(2)
+    new_invitation(server)
     server.invitation_file = a.invitation_file
     held = None
     if a.invitation_file:
@@ -1185,8 +1310,13 @@ def main(argv=None):
         print(announcement, flush=True)  # inside the try: a stop signal right after this line still cleans up
         for line in listen_lines(a.bind, server.server_port, a.cert):
             print(line, flush=True)
+        if server.setup_httpd is not None:
+            print(f"Phone setup page (plain HTTP, the CA certificate only): http://{public_host(server)}:"
+                  f"{server.setup_httpd.server_port}/", flush=True)
         if control is not None:
             print(f"Pair another family later without a restart: nsf pocket invite --db {a.db}", flush=True)
+            print(f"Add a phone with QR codes: nsf add-phone --pocket-db {a.db}  (or the console's Add a phone)",
+                  flush=True)
         server.serve_forever()
     except KeyboardInterrupt:
         pass
@@ -1195,6 +1325,9 @@ def main(argv=None):
         if server.push is not None:
             server.push.wake.set()
         server.server_close()
+        if server.setup_httpd is not None:
+            server.setup_httpd.shutdown()
+            server.setup_httpd.server_close()
         close_control(control)
         remove_invitation_file(server)
         if held is not None:

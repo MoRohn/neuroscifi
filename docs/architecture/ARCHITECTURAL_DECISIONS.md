@@ -956,3 +956,119 @@ as "from your Spark" was authenticated beyond TLS.
 - A security review of signed nodes and push found A-1 (voice bypassed node signatures and session ownership) and
   A-2 to A-6, B-0 and B-1. Each is fixed as described here and in ADR-040, and each has a regression test that
   fails before its fix.
+
+# ADR-043 (draft) Guided phone setup: QR codes, a plain-HTTP page that offers the CA, and `nsf start`. R
+
+## Context
+
+The owner found the Quick start's phone step unusable for people who are not technical (2026-11-23). It asked them to
+find a certificate file by its path, compare a long fingerprint, choose a URL and type a 32-character pairing code;
+starting NeuroSciFi also took three terminals with long commands. A phone must trust the Spark's private CA, because
+Pocket needs a secure context for its service worker, WebCrypto keys and the microphone. Only an outside service (a
+publicly trusted certificate through a relay, Tailscale or a domain the owner controls) removes the certificate
+install. The owner chose to stay fully local, with the install guided step by step.
+
+## Decision
+
+1. **One command to run it.** `nsf setup` records its choices in `~/.config/neuroscifi/setup.json` (0600; rewritten
+   only when they change). `nsf start` runs the research worker, the owner console and the Pocket bridge from that
+   record in one terminal, prefixing each line with the service's name. It opens the console through a 0600
+   forwarding page next to the console URL file, so the browser's command line holds a file path, never the
+   session token (other local users can read command lines). Ctrl-C, SIGTERM and SIGHUP stop every service; when
+   one service stops, the others are stopped and the exit code is 1. In this terminal the bridge's start-up code
+   line is replaced by a pointer to Add a phone.
+2. **Add a phone.** The console's *Add a phone* view, and `nsf add-phone` in a terminal, ask the running bridge for a
+   new invitation over its owner-only control socket (0600, peer uid checked, unchanged). An invitation now carries
+   an id, the setup page URL and the pairing URL. The console page draws two QR codes from module matrices
+   (segno), so no image or markup crosses from the bridge into the page. It asks `status <id>` every 2 s (`used`,
+   `pending`, `expired`, `unknown`), says when the phone has paired, and renews expired codes while the view is open,
+   at most 6 times without a click.
+3. **Code 1: the setup page.** `nsf pocket serve --setup-port` (`nsf setup` uses the Pocket port minus one) serves
+   plain HTTP on the LAN: a few static files, `setup.json` and the CA certificate in DER. The certificate is offered
+   for 15 minutes after the owner asks for codes (**Add a phone**, `nsf add-phone`); bridge start-up and the
+   console's automatic renewals do not open it. The page never serves the app, the API, a pairing code or a
+   fingerprint. Its CSP allows scripts and styles from itself only, and `connect-src` adds exactly the Spark's
+   HTTPS origin, which is used for a trust probe: a `no-cors` request for `/icon.svg` succeeds only once the phone
+   trusts the CA. The page then says so by itself. The listener is a `PocketServer` (the bridge's per-address and
+   total connection caps and request deadline), and http.server's own error pages carry the same headers. The
+   steps shown depend on the phone: iPhone and iPad, Android, or other.
+4. **Code 2: pairing.** `https://<LAN address>:<port>/#pair=<code>`. A browser never sends the fragment to any
+   server. Pocket reads it, removes any `#pair=` fragment from the address bar and the tab's history at once, fills
+   the pairing form, brings the card into view and waits for a tap on **Pair**. It then sends
+   `"via": "invitation"`, so the bridge accepts only its own invitation from a link, never a linked device's handoff
+   code: a link cannot put a device into someone else's family. A refused invitation is cleared from the form.
+   Typed codes may contain spaces (the console shows them in groups of four).
+5. **Status.** `status <id>` answers `used`, `pending`, `expired`, `replaced` (a newer code was issued, for example
+   by another console tab or `nsf add-phone`) or `unknown`. It is read under the pairing lock, and "used" is recorded
+   before the code is cleared, so the console never sees a just-used code as expired. The console renews only
+   expired codes, and it stops on `replaced` and says why.
+6. **IP addresses in the codes**, not `.local` names. Android resolves `.local` unreliably, and browsers never apply
+   HSTS to an IP address, so the plain-HTTP page stays reachable after the HTTPS app has set HSTS for the host.
+   `nsf setup` passes `--allowed-host` for every name and address on the certificate, so the bridge and its setup
+   page answer 421 to any other Host. This closes DNS rebinding from a web page opened on another LAN device.
+7. **Unpaired Pocket** shows where pairing starts, at the top of the page.
+
+## Security analysis
+
+- **What the plain-HTTP port gives away:** a public certificate and static instructions. Nothing on it changes
+  state.
+- **A substituted certificate (the main risk).** An active attacker on the LAN who answers for the Spark's address
+  during setup (ARP or IP spoofing) can serve their own page and certificate. A phone that installs that
+  certificate trusts a root CA without name limits; on iOS with full trust, the attacker can then intercept all of
+  that phone's HTTPS, not only Pocket's. Plain HTTP cannot prevent this, and the 15-minute window limits only when
+  the real Spark offers the file, not what an impostor serves.
+
+  What the design does about it:
+  - The page shows no fingerprint, because an impostor would show its own.
+  - The owner's console, which is trusted (loopback with a session token), shows the CA's full SHA-256 next to
+    code 1, with the exact place on the phone where the installed certificate's fingerprint appears.
+  - The page, the console and the README say to do this on a home network you trust.
+  - For shared networks the manual path stays: copy the certificate over a channel you trust, compare the
+    fingerprint, then scan only code 2 (TLS.md §2).
+
+  Before this change the owner chose the channel and could choose a trusted one; now unauthenticated HTTP is the
+  default path, so this risk is new and is the price of the simpler setup. The owner accepted it for a home
+  network, with the manual path documented.
+- **The pairing code.** Code 2's link is recorded in the browser's own history before any script runs (and may be
+  synced by the browser vendor). Pocket clears only the tab's history. The code works once, for 5 minutes, so a
+  recorded link is useless once the phone has paired. Anyone who sees the owner's screen within those 5 minutes
+  could pair, as with the printed code before. The console says when the code was used.
+- **Denial of service on the setup port:** the bridge's connection caps apply.
+- **`nsf start`:**
+  - It starts services with `python -P`, so nothing is imported from the current folder.
+  - It accepts a setup record only when it belongs to this user and no one else can write it.
+  - It opens the console through a 0600 file with a random name in a new 0700 folder.
+  - It reads the console URL only from a file of this user written after the start.
+  - Its services receive SIGTERM when the supervisor dies, even by SIGKILL (Linux `PR_SET_PDEATHSIG`).
+- **Console API** (`POST/GET /api/phones/invite`): session token required, loopback only, `no-store`. The status
+  request returns a single state word.
+
+## Alternatives rejected
+
+- **Publicly trusted certificates** (relay, Tailscale, a domain): these need an outside service; the owner chose
+  fully local. TLS.md keeps documenting them for owners who want them.
+- **The CA from the HTTPS port:** the phone would show a certificate warning first, which teaches people to click
+  through warnings.
+- **The pairing code on the setup page:** it would cross plain HTTP.
+- **A `.mobileconfig` profile:** it shows "Unsigned" unless signed, and a plain certificate installs the same way.
+- **Short numeric codes:** weaker, and the QR code removes the typing anyway.
+- **Pairing without a tap:** the tap confirms intent.
+- **A hand-written QR encoder:** instead, one small pinned dependency, `segno==1.6.6` (BSD-3, pure Python, no
+  dependencies of its own).
+
+## Consequences
+
+- Setup becomes: `nsf setup` once; `nsf start`; **Add a phone**; scan code 1 and follow the phone's steps (once per
+  phone); scan code 2 and tap **Pair**.
+- New options:
+  - the bridge: `--setup-port`, `--ca-file`;
+  - the console: `--pocket-db`;
+  - `nsf setup`: `--setup-port`.
+- New commands: `nsf start` and `nsf add-phone`.
+- Each phone added from the console is its own family. A tablet joins the phone's family through **Link my phone or
+  tablet**, as before.
+- Not verified on real hardware (owner checklist):
+  - the exact Settings wording on current iOS and on several Android makers;
+  - camera scanning of a laptop screen.
+- Tests: `tests/test_phone_setup.py`, `tests/e2e/test_phone_setup_e2e.py` (iPhone and Android user agents; trust
+  emulated with `ignore_https_errors`), and `tests/test_setup_cli.py`.

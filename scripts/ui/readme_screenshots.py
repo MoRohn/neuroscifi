@@ -373,6 +373,53 @@ def encode_clip(clip, out_dir, name, width):
     return [out]
 
 
+# ---- Add a phone (ADR-043): the console's two codes and the phone setup page ---------------------------------------
+IPHONE_UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) "
+             "Version/18.1 Mobile/15E148 Safari/604.1")
+
+
+class _Env:
+    """The setenv half of pytest's monkeypatch, for the e2e Spark helper (it points the control socket somewhere short)."""
+    def setenv(self, name, value):
+        os.environ[name] = value
+
+
+def add_a_phone(browser, tmp, raw):
+    """A real bridge with its CA, setup page and control socket, and a console pointed at it (the helper of
+    tests/e2e/test_phone_setup_e2e.py). The QR codes encode this scratch instance's addresses and a one-use code."""
+    import test_phone_setup_e2e as tps
+    folder = tmp / "phones"
+    folder.mkdir()
+    spark = tps.Spark(folder, _Env())
+    shots = {}
+    try:
+        for theme in THEMES:
+            ctx = context(browser, 1280, 860, theme)
+            page = ctx.new_page()
+            page.goto(spark.console.url)
+            page.locator("#nav a[data-view=phones]").click()
+            expect(page.locator("#qrPair svg.qr")).to_have_count(1)
+            mask(page, [["#instanceId", "demo"]])
+            settle(page, 400)
+            path = raw / f"setup-console-{theme}.png"
+            snap(page, path, path.stem)
+            shots[("console", theme)] = path
+            ctx.close()
+            ctx = context(browser, 390, 844, theme, touch=True, user_agent=IPHONE_UA)
+            page = ctx.new_page()
+            page.goto(f"http://127.0.0.1:{spark.setup_port}/")
+            expect(page.locator("#trust")).to_have_text(re.compile("Not yet trusted"))
+            path = raw / f"setup-phone-{theme}.png"
+            leak_check(page, path.stem)
+            page.screenshot(path=str(path), full_page=True, animations="allow", caret="hide")
+            print(f"  captured {path.name}")
+            shots[("phone", theme)] = path
+            ctx.close()
+    finally:
+        spark.close()
+    return shots
+
+
 # ---- Pocket: a phone and a linked tablet of one family -------------------------------------------------------------
 POCKET_MASK = [["#handoff", "Enter on your other device: \u2022\u2022\u2022\u2022"]]   # key fingerprints: MASK_JS
 
@@ -596,7 +643,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--only", default="",
-                    help="comma-separated subset of console,pocket,hero,voice,entity (hero also captures console and pocket)")
+                    help="comma-separated subset of console,pocket,hero,voice,entity,setup (hero also captures console "
+                         "and pocket)")
     ap.add_argument("--keep-raw", type=Path, help="also keep the device-scale-2 PNG captures here")
     a = ap.parse_args()
     only = set(filter(None, a.only.split(",")))
@@ -628,6 +676,9 @@ def main():
                 if want("voice"):
                     for theme, path in voice(browser, tmp, raw).items():
                         written += encode(path, a.out, f"voice-{theme}", 1600)
+                if want("setup"):
+                    for (which, theme), path in add_a_phone(browser, tmp, raw).items():
+                        written += encode(path, a.out, f"setup-{which}-{theme}", 1280 if which == "console" else 640)
                 if want("entity"):
                     for theme in THEMES:
                         written += encode_clip(entity_clip(browser, tmp, raw, theme), a.out, f"entity-alive-{theme}", 480)

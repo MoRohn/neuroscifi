@@ -2,7 +2,7 @@
 // The session token arrives in the URL fragment, is kept in this module only and removed from the address bar.
 
 const VIEWS = ['overview', 'teach', 'evidence', 'questions', 'research', 'autonomy', 'knowledge', 'graphs', 'checkpoints',
-               'memory', 'voice'];
+               'memory', 'voice', 'phones'];
 const CHANNEL_ROOT = { camera: 'Camera root', word: 'Partner (word root)', reference: 'Reference root' };
 const MAP_TEXT = { 0: 'as declared', 1: 'inverted', null: 'tied' };
 const CHECK_LABELS = {
@@ -2517,6 +2517,9 @@ function trapFocus(ev) {
 }
 
 function wire() {
+  $('phoneRetry').addEventListener('click', () => loadPhones());
+  $('phoneAnother').addEventListener('click', () => loadPhones());
+  $('phoneNew').addEventListener('click', () => loadPhones());
   $('confirmDialog').addEventListener('keydown', trapFocus);
   $('memKind').replaceChildren(...MEMORY_KINDS.map((k) => option(k, k)));
   $('memKind').value = 'research';
@@ -2939,7 +2942,99 @@ window.nsfConsoleToken = () => state.token;
 
 const LOADERS = { overview: loadOverview, teach: loadTeach, evidence: loadEvidence, questions: loadQuestions,
                   research: loadResearch, autonomy: loadAutonomy, knowledge: loadKnowledge, graphs: loadGraphs, checkpoints: loadCheckpoints,
-                  memory: loadMemory, voice: loadVoice };
+                  memory: loadMemory, voice: loadVoice, phones: () => loadPhones() };
+
+// ---- Add a phone (ADR-043) -------------------------------------------------------------------------------------
+// Two QR codes from the running Pocket bridge (console/phones.py): 1 opens the phone setup page (the CA certificate
+// and the steps), 2 is the Pocket app with a one-use pairing code in the URL fragment. While this view is open the
+// invitation is checked every 2 s; expired codes are renewed by themselves (at most PHONE_RENEWALS times without a
+// click, about half an hour), and the view says so when the phone has paired.
+const PHONE_RENEWALS = 6;
+const phone = { id: null, timer: 0, renewals: 0, busy: false, deadline: 0, setupDeadline: 0 };
+
+function qrSvg(rows, label) {
+  const quiet = 4, size = rows.length + 2 * quiet;
+  let d = '';
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) if (row[x] === '1') d += `M${x + quiet} ${y + quiet}h1v1h-1z`;
+  });
+  return s('svg', { class: 'qr', viewBox: `0 0 ${size} ${size}`, role: 'img', 'aria-label': label, 'shape-rendering': 'crispEdges' },
+    s('rect', { class: 'qr-bg', width: size, height: size }), s('path', { class: 'qr-fg', d }));
+}
+
+function phoneView(which) {
+  $('phoneStopped').hidden = which !== 'stopped';
+  $('phoneDone').hidden = which !== 'done';
+  $('phoneCodes').hidden = which !== 'codes';
+}
+
+async function loadPhones(renewal = false) {
+  if (phone.busy) return;
+  phone.busy = true;
+  clearTimeout(phone.timer);
+  if (!renewal) phone.renewals = 0;
+  try {
+    const r = await api('POST', '/api/phones/invite', renewal ? { renew: true } : {});
+    if (state.view !== 'phones') return;
+    if (!r.running) {
+      phoneView('stopped');
+      $('phoneStatus').textContent = '';
+      return;
+    }
+    phone.id = r.id;
+    phone.deadline = Date.now() + (r.expires_in ?? 300) * 1000;
+    phone.setupDeadline = Date.now() + (r.setup_seconds ?? 0) * 1000;
+    const missing = (what) => h('p', { class: 'empty', text: `${what} Use the links under "Can't scan the codes?".` });
+    fill($('qrSetup'), r.qr?.setup ? qrSvg(r.qr.setup, 'Code 1: opens the phone setup page')
+      : missing(r.setup_url ? 'This code needs the segno package.' : 'Pocket runs without its setup page.'));
+    fill($('qrPair'), r.qr?.pair ? qrSvg(r.qr.pair, 'Code 2: pairs the phone') : missing('This code needs the segno package.'));
+    $('setupUrl').textContent = r.setup_url ?? 'not available (start Pocket with nsf start)';
+    $('appUrl').textContent = r.app_url;
+    $('pairCode').textContent = r.code;
+    $('caPrint').textContent = $('caCheck').textContent = r.fingerprint ?? 'not available';
+    phoneView('codes');
+    $('phoneCodes').classList.remove('expired');
+    $('qrSetupCard').classList.toggle('expired', !r.setup_seconds);
+    $('setupClosed').hidden = !!r.setup_seconds;
+    $('phoneStatus').textContent = renewal ? 'New codes: the earlier ones expired.' : 'Waiting for your phone…';
+    pollPhone();
+  } catch (error) {
+    $('phoneStatus').textContent = `Could not ask Pocket for codes: ${errorText(error)}`;
+  } finally {
+    phone.busy = false;
+  }
+}
+
+function pollPhone() {
+  clearTimeout(phone.timer);
+  phone.timer = setTimeout(async () => {
+    if (state.view !== 'phones' || !phone.id) return;
+    const left = Math.max(0, Math.round((phone.deadline - Date.now()) / 1000));
+    $('pairExpiry').textContent = `Works once, for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} more. New codes appear by themselves while this page is open.`;
+    if (Date.now() > phone.setupDeadline) { $('qrSetupCard').classList.add('expired'); $('setupClosed').hidden = false; }
+    let st;
+    try { st = (await request('GET', `/api/phones/invite?id=${encodeURIComponent(phone.id)}`)).state; } catch { st = 'error'; }
+    if (state.view !== 'phones') return;
+    if (st === 'used') {
+      phone.id = null;
+      phoneView('done');
+      $('phoneStatus').textContent = 'Paired.';
+      $('phoneAnother').focus();
+    } else if (st === 'stopped') {
+      phoneView('stopped');
+      $('phoneStatus').textContent = '';
+    } else if (st === 'replaced') {
+      phone.id = null;
+      $('phoneCodes').classList.add('expired');
+      $('phoneStatus').textContent = 'Newer codes were made elsewhere (another console tab, or nsf add-phone). Choose Show new codes to use this page.';
+    } else if (st === 'expired' || st === 'unknown') {
+      if (phone.renewals++ < PHONE_RENEWALS) loadPhones(true);
+      else { $('phoneStatus').textContent = 'These codes expired. Choose Show new codes when the phone is ready.'; $('phoneCodes').classList.add('expired'); }
+    } else {
+      pollPhone();
+    }
+  }, 2000);
+}
 
 // Voice Cortex panel (src/neuroscifi/voice/web): loaded on first visit; it keeps its own session and event stream.
 function loadVoice() {

@@ -361,3 +361,26 @@ code.fp { font-weight: 700; letter-spacing: .02em; overflow-wrap: anywhere; }
   #nav { -webkit-backdrop-filter: none; backdrop-filter: none; }
   nav ul { -webkit-mask-image: none; mask-image: none; }
 }
+
+/* ---- Add a phone (ADR-043): two QR codes side by side from 720 px, stacked on narrow screens ------------------- */
+.phonestatus { min-height: 1.5em; margin: 0 0 var(--sp-3); font-weight: 600; }
+.phonecodes { list-style: none; margin: 0 0 var(--sp-4); padding: 0; display: grid; gap: var(--sp-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); max-width: 760px; }
+.qrcard { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.qrcard h2 { display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-2); }
+.qrcard p { margin: 0 0 var(--sp-3); max-width: 32ch; }
+.stepno { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--primary);
+  color: var(--on-primary); font-size: var(--fs-sm); font-weight: 700; font-variant-numeric: tabular-nums; }
+.qrbox { display: grid; place-items: center; width: 100%; margin: 0 0 var(--sp-3); }
+/* dark modules on white in both themes: phone cameras read that reliably; the quiet zone is part of the image */
+svg.qr { width: min(240px, 72vw); height: auto; border-radius: var(--r-sm); box-shadow: 0 0 0 1px var(--line); }
+svg.qr { forced-color-adjust: none; }
+svg.qr .qr-bg { fill: var(--qr-light); }
+svg.qr .qr-fg { fill: var(--qr-dark); }
+.phonecodes.expired svg.qr, .qrcard.expired svg.qr { opacity: .25; }
+.qrcard .check { width: 100%; text-align: start; margin-top: var(--sp-2); }
+.qrcard .check summary { justify-content: center; font-weight: 600; font-size: var(--fs-sm); }
+.qrcard .check code { overflow-wrap: anywhere; font-size: var(--fs-sm); }
+.phonedone { max-width: 760px; margin-bottom: var(--sp-4); }
+.manual { max-width: 760px; margin-top: var(--sp-3); }
+.manual code { overflow-wrap: anywhere; }

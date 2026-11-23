@@ -219,7 +219,9 @@ def test_the_printed_commands_parse_with_the_real_nsf_parser(capsys, home):
     human = setup(capsys, home, "--push", "--port", "9443", json_out=False)[1]
     for item in report["next"]["commands"]:
         assert item["command"] in human
-    assert "install the CA first" in human and report["next"]["phone"]["ca_sha256"] in human
+    assert "nsf start" in human and 'choose "Add a phone"' in human and "nsf add-phone" in human   # ADR-043
+    assert (console.pocket_db is not None and str(console.pocket_db) == paths["pocket_db"])
+    assert (serve.setup_port, serve.ca_file) == (9442, paths["ca_der"])
 
 
 def test_a_file_that_is_not_an_individual_is_refused_with_its_step(capsys, home):

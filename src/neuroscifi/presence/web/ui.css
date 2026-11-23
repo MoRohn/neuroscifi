@@ -98,6 +98,8 @@
   --safe-t: env(safe-area-inset-top, 0px); --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px); --safe-l: env(safe-area-inset-left, 0px);
   --gutter: 16px;
+  /* QR codes (console Add a phone): dark modules on white in every theme and in forced colours, as cameras expect */
+  --qr-light: #FFFFFF; --qr-dark: #000000;
   /* the presence entity on an interaction stage: scales with the viewport, never below the "expanded" detail level */
   --stage-size: clamp(148px, 42vw, 212px);
 }

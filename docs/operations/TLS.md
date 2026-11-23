@@ -30,7 +30,15 @@ Then set `NSF_POCKET_BIND` and `NSF_POCKET_TLS_ARGS=--cert /etc/neuroscifi/tls/f
 
 ## 2. Install the CA on a phone
 
-Export the CA certificate (never a key) and note its SHA-256 fingerprint. Copy the file to the phone over a channel you trust (USB, AirDrop, a paired messenger to yourself), not a public link.
+**Guided (recommended, ADR-043).** In the console choose **Add a phone** (or run `nsf add-phone`). Code 1 opens the
+bridge's phone setup page (`--setup-port`, plain HTTP, the CA certificate and the steps only, for 15 minutes after
+each invitation), which shows the steps for the phone and says by itself when the phone trusts the CA. Code 2 pairs.
+The setup page is plain HTTP, so it cannot prove where the certificate came from: use it on a home network you
+trust. The console (trusted) shows the CA's SHA-256 under code 1 ("Check it is really your Spark"), with where the
+phone shows the installed certificate's fingerprint. On a shared network use the manual path below (a channel you
+choose, then the fingerprint), after which only code 2 is needed. ADR-043 has the security analysis.
+
+**Manual.** Export the CA certificate (never a key) and note its SHA-256 fingerprint. Copy the file to the phone over a channel you trust (USB, AirDrop, a paired messenger to yourself), not a public link.
 
 ```sh
 nsf pocket tls export-ca --file neuroscifi-ca.crt --der     # Android

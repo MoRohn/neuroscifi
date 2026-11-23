@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#F6F4F3"><script src="/theme-boot.js"></script><meta name="referrer" content="no-referrer"><title>Set up Pocket · NeuroSciFi</title><link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/ui.css"><link rel="stylesheet" href="/setup.css"><script type="module" src="/setup.mjs"></script></head>
+<body>
+<main class="setup" id="main">
+  <header class="intro">
+    <img src="/icon.svg" alt="" width="48" height="48">
+    <h1>Set up Pocket on this phone</h1>
+    <p class="lead">About two minutes, once per phone. Your phone learns to trust your Spark, so everything between them stays private.</p>
+  </header>
+
+  <section id="closed" class="card notice" hidden>
+    <h2>This setup page is resting</h2>
+    <p>For safety it only offers the certificate for 15 minutes after you choose <b>Add a phone</b>. On your Spark, open the console and choose <b>Add a phone</b> again (or run <code>nsf add-phone</code>), then scan the first code once more.</p>
+  </section>
+
+  <ol id="steps" class="steps">
+    <li class="step" id="step-download">
+      <h2>Download the certificate</h2>
+      <p>It is a small file that tells this phone your Spark is genuine. It is not an app and holds no secrets.</p>
+      <a class="button primary" id="download" href="/neuroscifi-ca.crt" download="neuroscifi-ca.crt">Download certificate</a>
+      <p class="hint" data-os="ios">Tap <b>Allow</b> when your iPhone asks, then <b>Close</b>.</p>
+      <p class="hint" data-os="android">If your phone asks what the file is for, choose <b>VPN and apps</b> and name it <b>NeuroSciFi</b>.</p>
+    </li>
+    <li class="step" data-os="ios">
+      <h2>Install it</h2>
+      <p>Open <b>Settings</b>. Tap <b>Profile Downloaded</b> near the top, then <b>Install</b> in the corner. Enter your passcode and tap <b>Install</b> once more.</p>
+    </li>
+    <li class="step" data-os="ios">
+      <h2>Switch on trust</h2>
+      <p>Still in Settings, go to <b>General</b> › <b>About</b> › <b>Certificate Trust Settings</b> and switch on <b>NeuroSciFi</b>. Then come back to this page.</p>
+    </li>
+    <li class="step" data-os="android">
+      <h2>Install it</h2>
+      <p>Open <b>Settings</b> and search for <b>CA certificate</b>. Choose <b>Install a certificate</b> › <b>CA certificate</b> › <b>Install anyway</b>, and pick <b>neuroscifi-ca.crt</b> from your downloads. Then come back to this page.</p>
+      <p class="hint">Menu names differ a little between phone makers. On Samsung: Settings › Security and privacy › More security settings › Install from device storage › CA certificate.</p>
+    </li>
+    <li class="step" data-os="other">
+      <h2>Install it</h2>
+      <p>Open the downloaded file and add it to this device's trusted certificates (for websites). Then come back to this page.</p>
+    </li>
+    <li class="step final" id="step-check">
+      <h2>Pair with your Spark</h2>
+      <p id="trust" class="trust" role="status" aria-live="polite">Checking whether this phone trusts your Spark…</p>
+      <p id="next" hidden>Now scan the <b>second code</b> on your Spark's screen with your camera, and tap <b>Pair</b>.</p>
+    </li>
+  </ol>
+
+  <details class="verify">
+    <summary>Check it is really your Spark</summary>
+    <p>Your Spark's screen shows a fingerprint next to the codes. After installing, open the certificate's details on this phone and compare its <b>SHA-256</b> fingerprint with that one. If they differ, remove the certificate and ask the owner of your Spark.</p>
+    <p data-os="ios">iPhone: Settings › General › VPN &amp; Device Management › NeuroSciFi › More Details.</p>
+    <p data-os="android">Android: Settings › search for <b>Trusted credentials</b> › User › NeuroSciFi.</p>
+    <p class="hint">This page cannot show the fingerprint itself: anything on it could come from an impostor on your network. Do this on a home network you trust.</p>
+  </details>
+</main>
+</body></html>

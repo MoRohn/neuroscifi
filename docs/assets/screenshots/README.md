@@ -11,6 +11,8 @@ colour scheme the app was given.
 | `pocket-phone-light`, `pocket-phone-dark` | 390 × 844, touch → 780 × 1688 | Pocket on a paired phone: the entity on its stage above the research form while the Spark reads sources for the phone's question. |
 | `pocket-tablet-light`, `pocket-tablet-dark` | 820 × 1180, touch → 1100 × 1583 | Pocket on a second device linked with the phone's hand-off code: the phone's question continued here, with its finished, cited report. |
 | `voice-light`, `voice-dark` | 1280 × 900 → 1600 × 1125 | Console Voice view: a text-only voice session with an answered research question and a second question in progress, and the Voice check panel open. |
+| `setup-console-light`, `setup-console-dark` | 1280 × 860 → 1280 × 860 | The console's Add a phone (ADR-043): code 1 (trust your Spark) and code 2 (pair this phone), waiting for the phone. |
+| `setup-phone-light`, `setup-phone-dark` | 390 × 844, touch, iPhone user agent, full page → 640 px wide | The phone setup page that code 1 opens, with the iPhone steps, before the phone trusts the Spark. |
 | `entity-alive-light`, `entity-alive-dark` (`.webp`, animated) | 1440 × 900, stage region → 480 px wide, 20 fps, about 14 s | The entity alive on the console's research stage: at rest it follows the pointer round it, answers each typed keystroke, then morphs through the real stages of the question it was asked. |
 
 ## How they are made
@@ -31,6 +33,9 @@ directory, from the end-to-end test helpers in `tests/e2e`:
   engines' "ready" health line comes from the scripted engines.
 - **Hero**: a small local HTML page lays the three captures out in plain rounded frames on the theme's page colour
   (`#F6F4F3` light, `#121011` dark) and is captured at 2400 × 1300 pixels.
+- **Add a phone**: the helper of `tests/e2e/test_phone_setup_e2e.py`: a bridge with a scratch CA, its setup page and
+  control socket, and a console pointed at it. The codes encode that scratch instance's addresses and a one-use code
+  that expires with it.
 - **Entity clip**: the console setup without the model stand-in, motion ON. The real pointer circles the figure for
   four seconds, the question is typed (55 ms per key) and asked, and seven seconds of the run follow. Frames come
   from Chromium's screencast (`Page.startScreencast`, device pixels) as they are painted, each with its real
@@ -53,7 +58,7 @@ PYTHONPATH=src python scripts/ui/readme_screenshots.py            # writes into 
 PYTHONPATH=src python scripts/ui/readme_screenshots.py --out DIR --only console,voice --keep-raw RAWDIR
 ```
 
-`--only` takes any of `console`, `pocket`, `hero`, `voice` and `entity`. `hero` also captures `console` and
+`--only` takes any of `console`, `pocket`, `hero`, `voice`, `setup` and `entity`. `hero` also captures `console` and
 `pocket`. A full run takes about four minutes.
 
 Requirements:

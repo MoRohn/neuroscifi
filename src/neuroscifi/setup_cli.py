@@ -9,9 +9,11 @@
                printed); --brave-daily-cap sets daily_provider_queries
 6 push         create the Pocket VAPID key, only with --push
 
-Each step reports "done", "already done" or "skipped" (with --dry-run: "would do"). The run ends with the exact
-commands that start the services, using the paths it chose. Every step reuses the function the matching `nsf`
-command runs, so the rules (file modes, name constraints, key checks) are the same.
+Each step reports "done", "already done" or "skipped" (with --dry-run: "would do"). The run records what it chose
+in ~/.config/neuroscifi/setup.json (0600), so `nsf start` runs everything with one command and `nsf add-phone` finds
+the Pocket bridge; `--json` also lists the exact command of each service, for running them separately. Every step
+reuses the function the matching `nsf` command runs, so the rules (file modes, name constraints, key checks) are the
+same.
 """
 from __future__ import annotations
 
@@ -64,6 +66,9 @@ def register(sub):
     p.add_argument("--bind", metavar="ADDR", help="address the Pocket bridge listens on (default: the first LAN "
                                                   "address on the certificate)")
     p.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Pocket bridge port (default {DEFAULT_PORT})")
+    p.add_argument("--setup-port", type=int, metavar="PORT",
+                   help="plain-HTTP port of the phone setup page, which offers the CA certificate to phones being "
+                        "added (default: the Pocket port minus one; 0 turns the page off)")
     p.add_argument("--ca-dir", type=Path, help="CA key folder (default as `nsf pocket tls`: $NSF_POCKET_CA_DIR or "
                                                "~/.config/neuroscifi/pocket-ca)")
     p.add_argument("--pocket-dir", type=Path, help="folder for the server certificate, the exported CA and the push "
@@ -297,27 +302,74 @@ def _q(path) -> str:
     return shlex.quote(str(path))
 
 
+def setup_record_path() -> Path:
+    """Where `nsf setup` records its choices for `nsf start` and `nsf add-phone`."""
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    return config_home / "neuroscifi" / "setup.json"
+
+
 def _next(report, a, paths, cert_names, fingerprint):
     ips = [n for n in cert_names if _is_ip(n) and n not in ("127.0.0.1", "::1")]
     bind = a.bind or next((n for n in ips if ":" not in n), ips[0] if ips else "127.0.0.1")
-    db = _q(paths["db"])
-    serve = (f"nsf pocket serve --bind {bind} --port {a.port} --cert {_q(paths['tls'] / 'fullchain.pem')} "
-             f"--key {_q(paths['tls'] / 'privkey.pem')} --db {_q(paths['pocket_db'])} --instance-db {db}"
-             + (f" --push-key {_q(paths['push_key'])}" if a.push else ""))
-    commands = [{"what": "research worker", "command": f"nsf web work --db {db}"},
-                {"what": "owner console (open the URL written to the file, on this computer)",
-                 "command": f"nsf console --db {db} --url-file {_q(paths['console_url'])}"},
-                {"what": "Pocket bridge", "command": serve}]
+    setup_port = a.port - 1 if a.setup_port is None else a.setup_port
+    db = str(paths["db"])
+    serve = ["pocket", "serve", "--bind", bind, "--port", str(a.port), "--cert", str(paths["tls"] / "fullchain.pem"),
+             "--key", str(paths["tls"] / "privkey.pem"), "--db", str(paths["pocket_db"]), "--instance-db", db]
+    serve += ["--push-key", str(paths["push_key"])] if a.push else []
+    # only the certificate's names and addresses in Host (421 otherwise): a page elsewhere cannot reach the bridge or
+    # its setup page through DNS rebinding
+    for name in cert_names:
+        serve += ["--allowed-host", f"[{name}]" if ":" in name else name]
+    serve += ["--setup-port", str(setup_port), "--ca-file", str(paths["ca_der"])] if setup_port else []
+    services = [{"name": "research", "what": "research worker", "argv": ["web", "work", "--db", db]},
+                {"name": "console", "what": "owner console (open the URL written to the file, on this computer)",
+                 "argv": ["console", "--db", db, "--url-file", str(paths["console_url"]),
+                          "--pocket-db", str(paths["pocket_db"])]},
+                {"name": "pocket", "what": "Pocket bridge", "argv": serve}]
+    commands = [{"what": s["what"], "command": "nsf " + shlex.join(s["argv"])} for s in services]
     hosts = [n for n in cert_names if not _is_ip(n) and n != "localhost"]
     host = next((n for n in hosts if n.endswith(".local")), hosts[0] if hosts else bind)
     urls = [f"https://{host}:{a.port}"] + ([f"https://{bind}:{a.port}"] if bind not in (host, "127.0.0.1") else [])
-    report["next"] = {"commands": commands, "phone": {
-        "urls": urls, "ca_file": str(paths["ca_der"]), "ca_file_pem": str(paths["ca_pem"]), "ca_sha256": fingerprint,
-        "text": f"install the CA first (file {paths['ca_der']}, SHA-256 fingerprint {fingerprint or '(after setup)'}), "
-                f"then open {' or '.join(urls)} and enter the one-use code the bridge prints"}}
+    report["next"] = {"start": "nsf start", "add_phone": "nsf add-phone", "commands": commands, "phone": {
+        "urls": urls, "setup_url": f"http://{bind}:{setup_port}/" if setup_port else None,
+        "ca_file": str(paths["ca_der"]), "ca_file_pem": str(paths["ca_pem"]), "ca_sha256": fingerprint,
+        "text": "in the console choose Add a phone (or run nsf add-phone) and scan its two codes with the phone's "
+                "camera: the first installs trust in your Spark once per phone, the second pairs it"}}
     if bind == "127.0.0.1" and not a.bind:
         report["next"]["note"] = ("no LAN address was found, so the bridge listens on this computer only; give the "
                                   "address phones use with --ip ADDR")
+    record = {"version": 1, "db": db, "pocket_db": str(paths["pocket_db"]),
+              "console_url_file": str(paths["console_url"]), "services": services}
+    report["record"] = str(setup_record_path())
+    if not a.dry_run:
+        _write_record(setup_record_path(), record)
+
+
+def _write_record(path: Path, record: dict):
+    """Write the setup record (0600, atomically, through a new temporary file of our own); an identical record is left
+    untouched. `nsf start` runs the commands in it, so its folder must be ours and closed to others."""
+    import stat
+    import tempfile
+    data = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
+    try:
+        if path.read_bytes() == data:
+            return
+    except OSError:
+        pass
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = os.lstat(path.parent)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o022:
+        raise OSError(f"{path.parent} must be a folder of this user that others cannot write")
+    fd, temp = tempfile.mkstemp(dir=path.parent, prefix=".setup.", suffix=".tmp")   # O_EXCL, 0600
+    try:
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
+        os.replace(temp, path)
+    finally:
+        try:
+            os.unlink(temp)
+        except FileNotFoundError:
+            pass
 
 
 def _is_ip(text) -> bool:
@@ -382,12 +434,17 @@ def _print_human(report):
     nxt = report.get("next")
     if not nxt:
         return
-    print("\nNext: start NeuroSciFi, one terminal each (Ctrl-C stops a service):")
-    for i, item in enumerate(nxt["commands"], 1):
-        print(f"  {i}. {item['what']}:\n     {item['command']}")
-    print(f"  {len(nxt['commands']) + 1}. On your phone: {nxt['phone']['text']}.")
+    print("\nNeuroSciFi is set up. Next:")
+    print("  1. Start it:     nsf start")
+    print("                   (runs the research worker, the owner console and Pocket, and opens the console)")
+    print("  2. Add a phone:  in the console choose \"Add a phone\" (or run: nsf add-phone) and scan its two codes")
+    print("                   with the phone's camera. Code 1 makes the phone trust your Spark, once per phone;")
+    print("                   code 2 pairs it. No typing, no files to copy.")
     if nxt.get("note"):
         print(f"  Note: {nxt['note']}.")
+    print("\nTo run the services separately (for example as system services), use these commands:")
+    for item in nxt["commands"]:
+        print(f"  {item['what']}:\n    {item['command']}")
 
 
 def _main(a):

@@ -17,6 +17,7 @@ COMMAND_MODULES = [
     "neuroscifi.voice.cli",
     "neuroscifi.resources.cli",
     "neuroscifi.setup_cli",
+    "neuroscifi.start_cli",
 ]
 
 
