@@ -624,6 +624,17 @@ def test_rule_format_gate_v1_is_unchanged_and_the_new_parts_are_validated():
             rules.validate(bad)
 
 
+def test_rule_bit_widths_and_degrees_must_be_integers():
+    # 4.0 == 4 inside a set and True == 1: both validated before and then broke or bent learner.pack
+    # (struct.error for a float bit width; degree True packed as degree 1).
+    candidates = store.GATE_V1["pack_candidates"]
+    for bad in (dict(candidates, bits=[4.0]), dict(candidates, bits=[True]), dict(candidates, bits=[4, 8.0]),
+                dict(candidates, degrees=[True]), dict(candidates, degrees=[3.0])):
+        with pytest.raises(ValidationError):
+            rules.validate(dict(store.GATE_V1, version="x", pack_candidates=bad))
+    rules.validate(dict(store.GATE_V1, version="x", pack_candidates=dict(candidates, bits=[8, 4])))
+
+
 def test_an_individual_born_under_gate_v1_alone_packs_the_dense_fit_as_before(gate_v1_instance):
     db, _ = gate_v1_instance
     assert [(r["version"], r["created_by"]) for r in rules.listing(db)] == [("gate-v1", "birth")]
