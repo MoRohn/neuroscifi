@@ -110,6 +110,7 @@ class Session:
         self.last_turn: Turn | None = None
         self.pending: dict | None = None        # guarded by self.lock (request, reply and follow threads)
         self.finalised: deque = deque(maxlen=8)  # utterances whose final segment is queued (no provisional after)
+        self.closed: deque = deque(maxlen=8)     # (utterance, seq) of final chunks received: a retry is a repeat
         self.reply_n = 0
         # Reply generations (guarded by self.lock): every user turn (a final utterance, a typed message) takes the
         # next `generation`, and its reply carries it. Replies run concurrently and finish in any order, so a reply
@@ -533,6 +534,10 @@ class VoiceHub:
                                "released)")
         with s.lock:
             u = s.utterances.get(utterance)
+            # A client retries a chunk whose response it lost: a repeat of the last chunk (or of the final chunk of
+            # an utterance already closed) is acknowledged and not added twice; any other gap is still refused.
+            if (u is None and (utterance, seq) in s.closed) or (u is not None and seq == u["seq"] >= 0):
+                return {"status": "duplicate", "seq": seq}
             if u is None:
                 if len(s.utterances) >= 2:       # at most one open utterance plus one being finalised
                     s.utterances.pop(next(iter(s.utterances)))
@@ -550,6 +555,7 @@ class VoiceHub:
                    len(buf) >= MIN_PROVISIONAL_SECONDS * RATE * 2)
             if final:
                 s.utterances.pop(utterance, None)
+                s.closed.append((utterance, seq))
             elif due:
                 u["last_prov"] = time.monotonic()
         if not final:

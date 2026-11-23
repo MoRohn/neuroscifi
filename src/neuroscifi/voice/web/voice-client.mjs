@@ -19,6 +19,7 @@ export const MODES = ["voice_text", "voice_in_text_out", "text_only"];
 export const CAPTURE = Object.freeze({ echoCancellation: true, noiseSuppression: true, autoGainControl: true,
                                        channelCount: 1 });
 const CHUNK_MS = 500;
+const CHUNK_RETRY_MS = 200;   // pause before the one retry of an audio chunk whose upload failed
 const { END_SILENCE_MS, PREROLL_MS, FRAME_MS } = VAD;   // VAD thresholds and timings: vad.mjs
 const LEVEL_HZ = 15;
 const RENEW_MS = 5000;
@@ -132,7 +133,7 @@ export class VoiceClient extends EventTarget {
     this.userSpeaking = false;
     this.since = 0;
     this.pending = null;
-    this.stats = { audioRequests: 0, audioBytes: 0, utterances: 0, bargeIns: 0, overlaps: 0 };
+    this.stats = { audioRequests: 0, audioBytes: 0, audioRetries: 0, utterances: 0, bargeIns: 0, overlaps: 0 };
     this.metrics = { turns: [], bargeIns: [], replies: [] };   // measured timings (performance.now() ms), read by tests and the UI
     this.vad = { floor: VAD.FLOOR_INIT, voiced: 0, silent: 0, active: false, confirmed: false, frames: [], pre: [],
                  utt: null, seq: 0, sent: 0, startedAt: 0, lastSend: 0, barge: false, onset: 0 };
@@ -435,7 +436,17 @@ export class VoiceClient extends EventTarget {
       this.stats.audioRequests++;
       this.stats.audioBytes += pcm.byteLength;
       try {
-        const r = await this.t.audio(headers, pcm.buffer);
+        let r;
+        try {
+          r = await this.t.audio(headers, pcm.buffer);
+        } catch (err) {
+          // A dropped connection or a server error may have lost only the response: send the same chunk once more
+          // (same sequence number; the hub acknowledges a repeat without adding it twice). A refusal is final.
+          if (err.status && err.status < 500) throw err;
+          this.stats.audioRetries++;
+          await new Promise((ok) => setTimeout(ok, CHUNK_RETRY_MS));
+          r = await this.t.audio(headers, pcm.buffer);
+        }
         if (final) {
           const m = this.metrics.turns.find((x) => x.utterance === utt);
           if (m) { m.final_ack = performance.now(); m.transcript = r.text || ""; m.asr_ms = r.asr_ms; }

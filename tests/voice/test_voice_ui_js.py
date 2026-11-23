@@ -47,3 +47,28 @@ def test_refused_handoff_stops_waiting_at_once():
     got = json.loads(out.stdout.strip().splitlines()[-1])
     assert got["ms"] < 10_000
     assert not any("did not hand over" in n for n in got["notices"])
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_an_audio_chunk_whose_upload_failed_is_sent_once_more_with_the_same_sequence_number():
+    """Defect 6: one lost response (a dropped connection, a 5xx) killed the utterance, because the client never
+    retried and the next chunk was refused as a gap. It now sends the failed chunk once more (same X-NSF-Seq; the
+    hub acknowledges a repeat without adding it twice); a refusal (4xx) is not retried, and a second failure is."""
+    script = (f"import {{ VoiceClient }} from {json.dumps(CLIENT.as_uri())};\n"
+              "const sent = []; const fails = { 1: [new Error('network down')], 3: [\n"
+              "  Object.assign(new Error('HTTP 502'), { status: 502 }), Object.assign(new Error('HTTP 502'), { status: 502 })],\n"
+              "  4: [Object.assign(new Error('expected chunk 9, got 4'), { status: 409 })] };\n"
+              "const t = { audio: async (h) => { sent.push(h['X-NSF-Seq']); const f = (fails[h['X-NSF-Seq']] || []).shift();\n"
+              "                                  if (f) throw f; return { status: 'buffered' }; } };\n"
+              "const c = new VoiceClient(t, { deviceId: 'dev1' }); c.session = 's1'; c.micOn = true;\n"
+              "const notices = []; c.addEventListener('notice', (e) => notices.push(e.detail));\n"
+              "c.vad.utt = 'u1'; c.vad.seq = 0; c.vad.sent = 0; c.vad.frames = [];\n"
+              "for (let i = 0; i < 6; i++) { c.vad.frames.push(new Int16Array(160)); c._send(false); }\n"
+              "await c.queue;\n"
+              "console.log(JSON.stringify({ sent, notices, retries: c.stats.audioRetries }));\n"
+              "process.exit(0);")
+    out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, timeout=90)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout.strip().splitlines()[-1])
+    assert got["sent"] == ["0", "1", "1", "2", "3", "3", "4", "5"]
+    assert got["retries"] == 2 and len(got["notices"]) == 2        # chunk 3 failed twice, chunk 4 was refused

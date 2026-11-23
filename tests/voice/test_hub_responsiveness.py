@@ -7,10 +7,11 @@ import time
 import pytest
 
 from neuroscifi.instance import store
+from neuroscifi.instance.errors import Conflict
 from neuroscifi.voice import bridge as vbridge, hub as vhub
 from neuroscifi.webcortex import orchestrator
 
-from .conftest import OWNER, wait_for
+from .conftest import OWNER, pcm, wait_for
 from .test_hub_transcripts import events, start
 
 
@@ -118,3 +119,24 @@ def test_a_reply_to_a_question_asked_before_the_interrupted_speech_is_not_spoken
     assert wait_for(lambda: _replies(hub, s).get("Answer to older."))["turn"] is None
     gated.release("newer")
     assert wait_for(lambda: _replies(hub, s).get("Answer to newer."))["turn"] is not None
+
+
+def test_a_retried_audio_chunk_is_accepted_once_and_a_gap_is_still_refused(hub):
+    """Defect 6: one lost response killed the utterance (seq had to be last+1, and the client never retried). A
+    repeat of the last chunk is now acknowledged without being added twice, and so is a retried final chunk of an
+    utterance already closed; a gap is still refused."""
+    s = start(hub)
+    hub.fake.asr.script = ["show me the evidence"]
+    assert hub.audio(s, OWNER, "u0001", 0, False, pcm(0.3))["status"] == "buffered"
+    assert hub.audio(s, OWNER, "u0001", 0, False, pcm(0.3))["status"] == "duplicate"
+    assert hub.audio(s, OWNER, "u0001", 1, False, pcm(0.1))["status"] == "buffered"
+    assert len(hub.sessions[s].utterances["u0001"]["pcm"]) == len(pcm(0.4))      # the repeat was not added
+    with pytest.raises(Conflict, match="expected chunk"):
+        hub.audio(s, OWNER, "u0001", 3, False, pcm(0.1))
+    assert hub.audio(s, OWNER, "u0001", 2, True, pcm(0.2))["status"] == "final"
+    assert hub.audio(s, OWNER, "u0001", 2, True, pcm(0.2))["status"] == "duplicate"
+    hub.drain()
+    wait_for(lambda: events(hub, s, kind="reply"))
+    assert hub.metrics["utterances"] == 1                                         # transcribed and answered once
+    with pytest.raises(Conflict, match="expected chunk"):
+        hub.audio(s, OWNER, "u0001", 1, False, pcm(0.1))     # an older chunk of the closed utterance is no repeat
