@@ -510,5 +510,43 @@
    "the wait grace against a real system unit of the answer model or the speech services (same code path, exercised live for the memory script only)",
    "the listener-owner check against a real second account"
   ]
+ },
+ "second_review": {
+  "what": "fixes for the second-pass review findings S1, S2, S3, S6, S7, S8 (review of 2275a15..465e7c1); measured on the reference host with nothing installed and no container touched",
+  "listener_check": {
+   "socket_table_lines_on_the_host": 421,
+   "before_ms_per_check": 4.012,
+   "before_checks_per_memory_lookup": 4,
+   "after_ms_per_parse_of_both_tables": 4.193,
+   "after_parses_per_second_at_most": 1,
+   "after_ms_per_check_from_the_parse": 0.0059,
+   "reviewers_case_on_this_host": {
+    "listeners_on_port_53": [["172.17.0.1", 973], ["127.0.0.53", 973], ["127.0.0.54", 973]],
+    "before": "127.0.0.1:53 refused: held by a process of another account (uid 973)",
+    "after": "no refusal: none of them would accept a connection to 127.0.0.1"
+   },
+   "answer_model_port_8811": {"listeners": [["127.0.0.1", 0]], "refusal": null},
+   "scope": "only the ports of the deployment's own services (answer model, speech recognition, the two memory models); any other loopback endpoint is not inspected",
+   "uid_65534": "never refused and never trusted through the key file; under PrivateUsers=yes the check therefore refuses nobody"
+  },
+  "wake_unit_with_an_entry_that_is_not_a_request": {
+   "how": "systemd-run --user --path-property=PathExistsGlob=<folder>/*.wake -p StartLimitIntervalSec=10min -p StartLimitBurst=30, running nsf resources wake against an individual with no idle state (every real request ends 'nothing to do'); systemd 262",
+   "a_plain_request": {"before": "1 start, removed", "after": "1 start, removed"},
+   "a_non_empty_folder_named_rerank.wake_12_s": {
+    "before": {"starts": 29, "path_unit": "failed", "service_result": "start-limit-hit", "entry": "left in place", "a_request_left_afterwards": "not served"},
+    "after": {"starts": 1, "path_unit": "active", "service_result": "success", "entry": "renamed to .stuck-rerank.wake.<pid>.<ns>", "a_request_left_afterwards": "served by 1 start"}
+   },
+   "an_entry_in_a_read_only_folder_70_s": {
+    "after": {"starts": 3, "path_unit": "active", "note": "the command stays 30 s when it can neither remove nor rename the entry; once the folder was writable again the entry was moved aside"}
+   },
+   "transient_units_left_afterwards": 0
+  },
+  "installer": "deploy/install.sh --dry-run --idle --idle-user USER: install -d -m 2770 -o USER -g neuroscifi /var/lib/neuroscifi-wake; the idle and wake units rendered with their placeholders; ReadWritePaths of the console, worker and Pocket units extended. Not run for real (root).",
+  "unverified": [
+   "deploy/install.sh --idle run as root, and the four units as installed system units",
+   "a real second account: the request folder's group write from the service user, and the idle account's access to the instance database and <db>.resources (the installer does not arrange the latter)",
+   "writing the request folder from inside a unit with PrivateUsers=yes and ProtectSystem=strict (the ReadWritePaths line is rendered, not exercised)",
+   "the listener check against a listener of a different account (unit tests use the kernel's table format with other uids, and this process's own real sockets)"
+  ]
  }
 }

@@ -159,7 +159,35 @@ service list: any other name is dropped and no command is run
 model call waits until the state says "loaded", no longer than its own timeout, and then ends `unavailable` with
 "… it keeps starting in the background" as before; a voice session's start only asks. A request that nobody picked
 up within 60 s is reported: "its wake request was not picked up within 60 s (is neuroscifi-wake.path active?)".
-Install: the header of `deploy/systemd/neuroscifi-wake.service` (by hand, like the idle timer).
+Install: `deploy/install.sh --idle [--idle-user USER]` installs the idle timer and the wake units (disabled) and
+creates the request folder.
+
+*Who needs what* (second review, S2). The process that asks needs nothing of the idle policy's state. In the
+installed deployment that state (`<NSF_DB>.resources/idle.json`, its locks and events, all 0700/0600) belongs to
+the account that runs the services, and the console and the worker may be unable to read it; they then see "policy
+off" and make their call. A **refused connection** to one of the deployment's own service ports is the signal: the
+inference gateway leaves the request then (`idle.asked_on_refusal`; at most one per service every 30 s from one
+process) and the call ends `unavailable` with "its start was asked for (wake request)"; a memory lookup is ranked
+by its words meanwhile. Where the state can be read, the lookup or the call leaves the request before trying, as
+above; in neither case does the asking process write anything in the policy's folder. The serving side decides
+from its own state: unloaded by the policy (an owner's unload stands), enough free memory, and not within 30 s of
+its last failed or refused reload (`skipped`, with the reason).
+
+*The request folder* is the serving account's. It is created by `deploy/install.sh --idle`
+(`install -d -m 2770 -o <idle user> -g neuroscifi /var/lib/neuroscifi-wake`: the owner removes requests, the
+service user's group may create them, setgid, nobody else enters) or, when missing, by `nsf resources wake`
+(mode 2770). A process that asks never creates it and never changes its mode; a missing folder is an error it
+reports. A request is an empty file whose name is the whole message, so its own mode does not matter. The
+installer also adds the folder to `ReadWritePaths=` of the console, worker and Pocket units (they run under
+`ProtectSystem=strict`).
+
+*What is not a request* (S3). `PathExistsGlob=` starts the service again each time it ends while a matching entry
+exists; that is what serves a request left during a reload, and it would loop on an entry that never goes away.
+`nsf resources wake` therefore serves regular files only (a symbolic link is removed, not followed), removes an
+empty folder or a special file, and renames anything else to a hidden `.stuck-…` name that no pattern matches. If
+an entry can be neither removed nor renamed (a read-only or sticky folder), the command stays for 30 s, serving
+the requests that arrive, before it ends: the unit is started twice a minute at most and never reaches its start
+limit (30 in 10 minutes). Measured with a transient user unit: §4.
 
 Rules of every reload, found in review and fixed on 2026-11-23:
 
@@ -172,17 +200,36 @@ Rules of every reload, found in review and fixed on 2026-11-23:
   own command and the event says `stopped: true`: the state "unloaded" must stay true for the free-memory check,
   and a crash-looping container holds memory.
 - *One reload, one retry limit, for all processes.* The 30 s limit after a failure is the failure time in
-  `idle.json`, and the decision to start, the start and its marker happen under one short lock.
+  `idle.json`, and the decision to start, the start and its marker happen under one short lock. That lock is never
+  waited for: a lookup that finds it held answers "loading" (whoever holds it is starting the reload), so a
+  process stopped while holding it cannot block memory lookups. Where reloads go through wake requests no lock is
+  taken at all; the request file, created exclusively, is the "one at a time".
 - *The key goes to the service only.* `deploy/memory/run.sh wait` sends its warm-up request, which carries the key,
   only when Docker reports that container running and publishing that port on the loopback address; a port that
-  answers without that fails the wait. `nsf setup` and every memory lookup first read who owns the listening
-  socket (`/proc/net/tcp`): root (Docker's port proxy), the same user, or the owner of the key file is the
-  service; a listener of another account gets neither the key nor a memory text, and the lookup is lexical with
-  the reason. The inference gateway makes the same check before every request to any loopback endpoint
-  (`Gateway.stranger`), so the answer model's key and prompts are covered when its container is down (unloaded
-  while idle, stopped, crashed): the call fails as `unavailable` with the reason and nothing is sent. Not covered
-  anywhere: a process of the same account or of root, which can read the key file itself, and a network
-  namespace whose `/proc/net/tcp` cannot be read (the check then allows the call).
+  answers without that fails the wait. In Python there is one check, made by the inference gateway before every
+  request of every provider (`Gateway.stranger` → `idle.listener_refusal` → `monitor.stranger`); `nsf web memory`
+  and `nsf setup` ask the same function before they try. It reads who owns the socket that would **accept this
+  connection** (`/proc/net/tcp`, `tcp6`): a socket bound to the address the gateway connects to, else the
+  wildcard of that family, else for IPv4 the IPv6 wildcard (a dual-stack socket). Root (Docker's port proxy), the
+  same user and the owner of the key file are the service; a process of any other account gets neither the key
+  nor a request, the call ends `unavailable` with the address, port and uid, and a memory lookup is lexical with
+  that reason. The tables are parsed once a second at most (4.0 ms a parse on the reference host, 0.006 ms a
+  check from the parse; before, 4.0 ms on every request and four times per memory lookup).
+
+  What the check deliberately does not do (second review, S1; each was a wrong refusal before):
+  - It applies only to the ports of this deployment's own services (the answer model, speech recognition, the two
+    memory models: `idle.managed_service`). An endpoint the owner points elsewhere on this computer, such as
+    Ollama or any server under its own account and port, is not inspected, as before the check existed.
+  - A listener on another address of this computer does not count (a resolver on `127.0.0.53:53` does not hold
+    `127.0.0.1:53`; binding the model's port on a bridge address does not turn the model off).
+  - Uid 65534 is an account that cannot be identified, not a stranger: it is never refused, and a key file that
+    reads as owned by 65534 trusts nobody. This is what every other account looks like under `PrivateUsers=yes`,
+    **so in the hardened console, worker and Pocket units the check refuses nobody**; it protects the processes
+    that see real uids (`nsf start` under one account, the CLI, the idle and wake units).
+  - `NSF_LISTENER_CHECK=0` turns it off, for an owner who runs one of the services under another account on its
+    usual port.
+  - Never a refusal: nothing listening, unreadable tables, any surprise while reading them.
+  - Not covered by any check: a process of the same account or of root, which can read the key file itself.
 
 Three consequences, each tested (`tests/test_resources_idle.py`, "the memory models"):
 
@@ -353,6 +400,9 @@ four runs, the last two with the reload as a process of its own):
 | The same wait after the fix | "embed ready after 35s", exit 0; `docker port` reports `127.0.0.1:18441` |
 | Unloaded by the policy, then a lookup with `NSF_WAKE_DIR` set (starting anything itself forbidden) | "loading" in 0.4 ms; `embed.wake` left in the folder |
 | A transient path unit (`PathExistsGlob=…/*.wake`) running `nsf resources wake` | started by the request; the model answered again 36.0 s after the lookup; event `on demand: wake request`, 35.5 s; the request file gone; unit result `success` |
+| The same unit (start limit 30 in 10 min) with a non-empty folder named `rerank.wake` in the request folder, 12 s | before the fix: 29 starts, then `start-limit-hit`, the watch failed and a later request stayed unserved. Now: 1 start, the folder renamed to `.stuck-rerank.wake.…`, the watch active, the next request served by 1 start |
+| The same, with an entry that can be neither removed nor renamed (the folder read-only), 70 s | 3 starts (one, then one each 30 s), the watch active throughout |
+| The listener check, per call (421 socket lines on the host) | 4.0 ms before (every request parsed both tables); now one parse a second (4.2 ms) and 0.006 ms a check from it |
 | Another process answering `/health` on the freed port 18441 | `run.sh wait` exits 1: "another process holds the port. The key was not sent"; that process received no request carrying the key |
 
 One model stopped by hand (no idle policy involved): the lookup was lexical in 30 to 40 ms with "semantic retrieval
@@ -386,10 +436,15 @@ and tried nothing, and the first lookup after the back-off with the model runnin
   Docker access and may not start units: there reloads go through **wake requests** (§3(c)), which need
   `neuroscifi-wake.path` and `neuroscifi-wake.service` installed and `NSF_WAKE_DIR` set for the console and the
   worker. Without them a reload on demand fails there and says so; `nsf resources load SERVICE` by the Docker user
-  brings the service back. The wake unit, like the idle unit, runs as the Docker user and needs read-write access
-  to `<NSF_DB>.resources/` and to the request folder: with two separate accounts that means a shared group on
-  both, which `deploy/install.sh` does not set up. Exercised here with transient user units and one account
-  (§4); **not exercised**: the two units installed as system units, and the two-account arrangement.
+  brings the service back. `deploy/install.sh --idle` installs the idle timer and the wake units and creates the
+  request folder with the modes the two accounts need (§3(c)). What it does **not** arrange: the idle and wake
+  units run as the Docker user and must read the instance database and write `<NSF_DB>.resources/`, and the
+  installed state folder is the service user's alone (0700). The asking side no longer depends on that (it needs
+  the request folder only), but the policy's own passes do; until the owner grants that access (a group or an
+  ACL on the database and on the `.resources` folder) the idle policy unloads nothing there and there is nothing
+  to wake. Exercised here with transient user units and one account (§4), and with file modes standing in for
+  the second account in the tests (`tests/test_resources_wake.py`); **not exercised**: the units installed as
+  system units, a real second account, and the request folder as seen from inside `PrivateUsers=yes`.
 - A lookup's use of a memory model is seen by the idle policy only when it goes through `knowledge.query` in a
   process that knows the individual's file. A result served from the per-process cache uses no model and marks no
   use.
