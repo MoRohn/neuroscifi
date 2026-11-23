@@ -245,3 +245,35 @@ def test_status_names_the_effect_and_the_unset_endpoints(db):
     assert out["providers"] == {"embed": {"configured": False}, "rerank": {"configured": False}}
     semantic.set_config(db, {"enabled": True}, T0)
     assert semantic.status(db)["effect"] == "on, but no embedding endpoint: lexical ranking"
+
+
+# ---- review L2: the key and the memory text go only to the service's own listener -------------------------------
+
+def test_listener_uids_reads_who_listens_on_a_port(tmp_path):
+    from neuroscifi.resources import monitor
+    (tmp_path / "tcp").write_text(
+        "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+        "   0: 0100007F:4809 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 11 1 0 100 0 0 10 0\n"
+        "   1: 0100007F:480A 00000000:0000 0A 00000000:00000000 00:00000000 00000000  4242        0 12 1 0 100 0 0 10 0\n"
+        "   2: 0100007F:C350 0100007F:4809 01 00000000:00000000 00:00000000 00000000  1000        0 13 1 0 100 0 0 10 0\n")
+    assert monitor.listener_uids(18441, tmp_path) == {0}          # 0x4809, listening, root (Docker's port proxy)
+    assert monitor.listener_uids(18442, tmp_path) == {4242}
+    assert monitor.listener_uids(50000, tmp_path) == set()        # a connection, not a listener
+    assert monitor.listener_uids(18441, tmp_path / "nowhere") is None
+
+
+def test_a_loopback_port_held_by_another_account_gets_neither_the_key_nor_a_memory_text(db, models, monkeypatch):
+    import os
+    from neuroscifi.resources import monitor
+    semantic.set_config(db, {"enabled": True}, T0)
+    monkeypatch.setattr(monitor, "listener_uids", lambda port, folder="/proc/net": {4242})
+    out = knowledge.query(db, "which socket does it accept traffic on", T0 + 10)
+    assert out["retrieval"]["mode"] == "lexical" and "held by a process of another account (uid 4242)" in \
+        out["retrieval"]["reason"]
+    assert models[0].calls == 0 and models[1].calls == 0 and models[0].seen == []
+    assert semantic.status(db)["providers"]["embed"]["state"] == "refused"
+    for owners in ({0}, {os.getuid()}, set(), None):               # Docker's proxy, our own server, nobody, unknown
+        monkeypatch.setattr(monitor, "listener_uids", lambda port, folder="/proc/net", owners=owners: owners)
+        assert semantic.key_refusal("http://127.0.0.1:18441/v1", "") is None
+    monkeypatch.setattr(monitor, "listener_uids", lambda port, folder="/proc/net": {4242})
+    assert semantic.key_refusal("http://memory.example:18441/v1", "") is None     # not this computer: the guard's job

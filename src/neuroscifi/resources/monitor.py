@@ -96,6 +96,27 @@ def _run(args, timeout=COMMAND_TIMEOUT, *, merge=False) -> str | None:
     return out.stdout if out.returncode == 0 else None
 
 
+def listener_uids(port, folder="/proc/net") -> set[int] | None:
+    """The user ids that own a listening TCP socket on `port` in this network namespace (/proc/net/tcp and tcp6:
+    state 0A, the uid column); an empty set when nothing listens there, None when neither file can be read."""
+    found, read = set(), False
+    for name in ("tcp", "tcp6"):
+        try:
+            with open(f"{folder}/{name}", encoding="ascii", errors="replace") as fh:
+                lines = fh.read().splitlines()[1:]
+        except OSError:
+            continue
+        read = True
+        for line in lines:
+            parts = line.split()
+            try:
+                if len(parts) > 7 and parts[3] == "0A" and int(parts[1].rsplit(":", 1)[1], 16) == int(port):
+                    found.add(int(parts[7]))
+            except ValueError:
+                continue
+    return found if read else None
+
+
 def memory(path=MEMINFO, psi_path=PSI_MEMORY) -> dict | None:
     try:
         with open(path, encoding="ascii") as fh:

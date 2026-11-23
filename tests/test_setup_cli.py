@@ -486,3 +486,12 @@ def test_the_human_report_names_the_memory_step_in_plain_words(capsys, home, mem
     import re
     assert code == 0 and re.search(r"^  8\. memory +done +memory now finds a fact asked in other words", text, re.M)
     assert MEMORY_KEY not in text
+
+
+def test_setup_does_not_send_the_memory_key_to_a_port_held_by_another_account(capsys, home, memory_models, monkeypatch):
+    """Review L2: the probe carries the key, so it first asks who listens."""
+    from neuroscifi.resources import monitor
+    monkeypatch.setattr(monitor, "listener_uids", lambda port, folder="/proc/net": {4242})
+    step = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert step["status"] == "skipped" and "held by a process of another account (uid 4242)" in step["detail"]
+    assert memory_models["seen"] == [] and not memory_of(home)[1].configured

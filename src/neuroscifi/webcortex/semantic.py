@@ -309,6 +309,11 @@ def rank(db, topic: str, rows: list[dict], lexical: list[float], *, limit: int, 
     if time.monotonic() < vectors.down_until:      # measured: a refused connection cost each lookup 1.5 s
         return None, {"mode": "lexical", "reason": vectors.down_reason,
                       "retry_in_seconds": round(vectors.down_until - time.monotonic(), 1)}
+    for gateway in (embedder, reranker):
+        refused = key_refusal(gateway.cfg.base_url, gateway.cfg.key_file) if gateway is not None else None
+        if refused:
+            vectors.down_reason, vectors.down_until = refused, time.monotonic() + RETRY_AFTER
+            return None, {"mode": "lexical", "reason": refused}
     with ExitStack() as held_services:
         # The idle policy (resources/idle.py) may have unloaded a memory model. A lookup never waits for one: it is
         # ranked by its words now, and the reload it started makes a later lookup semantic again.
@@ -320,6 +325,39 @@ def rank(db, topic: str, rows: list[dict], lexical: list[float], *, limit: int, 
             waking = [a["service"] for a in asleep if a["action"] == "loading"]
             return None, {"mode": "lexical", "reason": reason[:300]} | ({"waking": waking} if waking else {})
         return _rank(db, cfg, topic, rows, lexical, limit, embedder, reranker, vectors, signature)
+
+
+def key_refusal(base_url, key_file) -> str | None:
+    """Why the API key must not be sent to this endpoint, or None. A loopback port belongs to whoever binds it
+    first, and the memory models' ports are free whenever their containers are down (on a schedule with idle
+    release on). So before a request that carries the key to a loopback endpoint, the listening socket's owner is
+    read from /proc/net/tcp: root (Docker's port proxy), this user, or the owner of the key file are the service;
+    any other account's process is not, and is sent neither the key nor a memory text (review L2). Nothing
+    listening, or /proc unreadable, is no refusal: the call then fails or succeeds on its own."""
+    import os
+    from urllib.parse import urlsplit
+    from ..resources import monitor
+    try:
+        url = urlsplit(base_url)
+        port = url.port or (443 if url.scheme == "https" else 80)
+        if url.hostname not in ("127.0.0.1", "localhost", "::1"):
+            return None
+    except ValueError:
+        return None
+    owners = monitor.listener_uids(port)
+    if not owners:
+        return None
+    trusted = {0, os.getuid()}
+    try:
+        if key_file:
+            trusted.add(os.stat(key_file).st_uid)
+    except OSError:
+        pass
+    strangers = sorted(owners - trusted)
+    if not strangers:
+        return None
+    return (f"port {port} on this computer is held by a process of another account (uid "
+            f"{', '.join(map(str, strangers))}), not by the memory service: the key and the memory text were not sent")
 
 
 def _local_service(gateway, name) -> bool:
@@ -418,7 +456,8 @@ def status(db) -> dict:
         if gateway is None:
             out["providers"][name] = {"configured": False}
             continue
-        health = gateway.health()
+        refused = key_refusal(gateway.cfg.base_url, gateway.cfg.key_file)
+        health = {"state": "refused", "reason": refused} if refused else gateway.health()
         out["providers"][name] = {"configured": True, "endpoint": gateway.cfg.base_url, "model": gateway.cfg.model,
                                   "state": health["state"], "reason": health.get("reason"),
                                   "key_present": iconfig.public(gateway.cfg, name)["key_present"]}

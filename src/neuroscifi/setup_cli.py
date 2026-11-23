@@ -347,6 +347,10 @@ def _memory_probe(provider, url, key_file):
         cfg = iconfig.InferenceConfig(base_url=iconfig._validate("base_url", url), key_file=str(key_file),
                                       max_retries=0, connect_timeout=MODEL_PROBE_SECONDS,
                                       read_timeout=MEMORY_PROBE_SECONDS)
+        from .webcortex import semantic
+        refused = semantic.key_refusal(cfg.base_url, str(key_file))       # before anything carries the key
+        if refused:
+            return None, refused
         gateway = Gateway(cfg, key=iconfig.read_key(cfg, provider))
         gateway.provider = provider
         served = gateway.models(retries=0)

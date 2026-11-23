@@ -97,6 +97,17 @@ docker_args() {   # $1: embed | rerank
 # slowest (measured: embedding 1.5 s, reranker 1.05 s, then about 20 ms), and a memory lookup allows each call 2 s.
 # The key goes to curl on standard input (-K -), never on a command line that `ps` shows. A failure here does not
 # fail the wait: the service is up, and the first lookup falls back to the lexical ranking if it must.
+# Whether Docker reports this service's container running and publishing its port on the loopback address. While
+# it does, no other process can hold that port, so what answers there is the container. Checked before any request
+# that carries the key (review L2: with idle release on, the port is free on a schedule; a process of another
+# local account that took it and answered /health was sent the Bearer key by the warm-up request).
+owns_port() {   # $1: embed | rerank
+  local s="$1" c want
+  c="$(container "$s")"; want="$NSF_MEMORY_BIND:$(port "$s")"
+  [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ] || return 1
+  docker port "$c" 8000/tcp 2>/dev/null | grep -qxF -e "$want" -e "[$NSF_MEMORY_BIND]:$(port "$s")"
+}
+
 warm() {   # $1: embed | rerank
   local s="$1" base body path
   base="http://$NSF_MEMORY_BIND:$(port "$s")/v1"
@@ -157,6 +168,7 @@ case "$cmd" in
         [ "$(restarts "$s")" -gt "$before" ] && die "$s restarted while starting; see: docker logs $(container "$s")"
         sleep 3
       done
+      owns_port "$s" || die "$s: $NSF_MEMORY_BIND:$(port "$s") answers, but Docker does not report $(container "$s") running and publishing it: another process holds the port. The key was not sent"
       if warm "$s"; then echo "$s ready after $(( $(date +%s) - start ))s"
       else echo "$s ready after $(( $(date +%s) - start ))s (its warm-up request failed; the first lookup will be slower)"; fi
     done ;;

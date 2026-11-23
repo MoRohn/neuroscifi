@@ -92,6 +92,9 @@ def _memory_wait(tmp_path, warm_exit=0, health_exit=0, status="running", restart
         f'R="{tmp_path}/restarts"\n'
         'case "$*" in\n'
         '  *RestartCount*) head -n1 "$R"; [ "$(wc -l < "$R")" -gt 1 ] && sed -i 1d "$R"; exit 0 ;;\n'
+        '  *State.Running*) echo true ;;\n'
+        f'  port*) [ -e "{tmp_path}/squatted" ] && exit 0\n'
+        '     case "$*" in *embed*) echo 127.0.0.1:18441 ;; *) echo 127.0.0.1:18442 ;; esac ;;\n'
         f'  *) echo {status} ;;\n'
         'esac\n')
     (bin_dir / "curl").write_text(
@@ -189,6 +192,16 @@ def test_memory_status_prints_one_line_per_service_running_or_not(tmp_path):
                           env={"PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path)}, timeout=60)
     assert done.returncode == 0 and done.stdout.splitlines() == [
         "/neuroscifi-memory-embed running health=healthy started=T", "neuroscifi-memory-rerank: not running"]
+
+
+def test_memory_wait_never_sends_the_key_to_a_port_the_container_does_not_publish(tmp_path):
+    """Review L2: something answers /health on the port, and Docker does not report the container publishing it
+    (another account's process took the free port). The wait fails and no request carried the key."""
+    tmp_path.joinpath("squatted").write_text("")
+    done = _memory_wait(tmp_path)
+    assert done.returncode == 1 and "another process holds the port. The key was not sent" in done.stderr
+    assert not (tmp_path / "curl.stdin").exists()
+    assert "nsfm-wait-test-key" not in (tmp_path / "curl.args").read_text() + done.stdout + done.stderr
 
 
 def test_memory_wait_does_not_fail_when_only_the_warm_up_request_fails(tmp_path):
