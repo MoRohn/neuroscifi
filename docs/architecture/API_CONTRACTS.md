@@ -427,6 +427,11 @@ unaffected.
   with `status: "rejected"`: the model wrote no sentence, so none was checked or rejected, and `reason` says so.
   `rejected` stays the status of every answer in which no model sentence is shown. `result.reasoning.critique` is
   `null`, or `{status: "ok", removed, flagged}`, `{status: "skipped", reason}` or `{status: "failed", reason}`.
+  With the default critique scope the record also carries `judged` and `restatements` (integers: accepted sentences
+  shown to the critic, and accepted sentences left out because they restate their cited claims word for word); they
+  are absent for the voice and time-budget skips and when `critique_restatements` is on. When every accepted
+  sentence is a restatement the record is `{status: "skipped", reason: "nothing to judge: …", judged: 0,
+  restatements: N}` and no critique call was made.
 
 `POST /api/web/config` accepts only the four switches listed above; `memory_check` is set with
 `nsf web config --memory-check|--no-memory-check`.
@@ -479,8 +484,8 @@ review or configuration tools.
 
 | Surface | Result |
 |---|---|
-| `nsf llm config [flags]` | the `chat` settings without the key: the 0.7.0 fields plus `background_priority` (integer 0–100, default 0: no `priority` is sent) and `critique_voice` (boolean, default true), `key_file_effective`, `key_present`, and `locality` when an endpoint is set. Flags `--critique-voice\|--no-critique-voice`; `--set background_priority=N` |
-| `nsf llm status [--probe]` | `{health, usage_24h, reasoning {enabled, self_critique, critique_voice, background_priority (null when 0), used_for, when_unavailable}}` |
+| `nsf llm config [flags]` | the `chat` settings without the key: the 0.7.0 fields plus `background_priority` (integer 0–100, default 0: no `priority` is sent) and `critique_voice` (boolean, default true) and `critique_restatements` (boolean, default false), `key_file_effective`, `key_present`, and `locality` when an endpoint is set. Flags `--critique-voice\|--no-critique-voice`, `--critique-restatements\|--no-critique-restatements`; `--set background_priority=N` |
+| `nsf llm status [--probe]` | `{health, usage_24h, reasoning {enabled, self_critique, critique_voice, critique_restatements, background_priority (null when 0), used_for, when_unavailable}}` |
 | `GET /api/llm/status[?probe=1]` (console token rules as §6) | `{health, config (as `nsf llm config`), usage_24h}` |
 | `nsf llm usage [--limit N]` | `{summary, calls}`; `summary` is `null` and `calls` empty while no ledger exists |
 
@@ -503,3 +508,5 @@ with the gateway's codes (`bad_response` for a malformed answer, `private_blocke
 off this host without `remote_private_memory`) and `ValueError` for empty input.
 `reasoning.apply(..., background=False, spoken=False)`: `background` sends the configured priority with the task's
 model calls; `spoken` skips the critique pass when `critique_voice` is off.
+`reasoning.restates(item, bundle) -> bool`: whether an accepted sentence is its cited claims word for word with the
+attribution the code appended; the critique judges only the sentences for which it is false.

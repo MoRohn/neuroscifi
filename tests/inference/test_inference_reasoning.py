@@ -1067,7 +1067,7 @@ def test_self_critique_flags_but_cannot_remove_a_sentence_that_passes_the_object
                                              "gaps": ["independent benchmarks"]})}]
     out = reasoning.apply(None, report(), None, question=Q, now=T0, gateway=gateway)
     assert [s["claims"] for s in out["answer"]] == [["C1"], ["C2"]] and out["status"] == "model"
-    assert out["critique"] == {"status": "ok", "removed": 0, "flagged": 2}
+    assert out["critique"] == {"status": "ok", "removed": 0, "flagged": 2, "judged": 2, "restatements": 0}
     assert out["answer"][1]["flag"] == {"problem": "overstated", "note": "lab", "confirmed": False}
     assert out["rejected"] == [] and {"text": "independent benchmarks", "by": "model"} in out["gaps"]
 

@@ -68,8 +68,10 @@ def research(tmp_path, model):
     r = Research(tmp_path)
     db = store.open_existing(r.path)
     try:
+        # critique_restatements: the fake model restates the claim word for word, which the critique no longer reads
+        # by default (reasoning.restates); the flag test below needs it judged, as 0.7.0 did
         iconfig.set_config(db, {"base_url": model.url, "key_file": str(key), "model": "fake-model",
-                                "max_retries": 0, "read_timeout": 10.0}, NOW)
+                                "max_retries": 0, "read_timeout": 10.0, "critique_restatements": True}, NOW)
     finally:
         db.close()
     yield r
@@ -114,6 +116,25 @@ def test_model_answer_label_flag_and_verdict_fields(research, model, new_page):
     # the model saw the evidence as untrusted data; both calls were made against the fake endpoint only
     assert len(model.requests) == 2 and '"untrusted": true' in model.requests[0]["messages"][1]["content"]
     assert page.evaluate("window.__pwned") is None
+    assert not page.problems, page.problems
+
+
+def test_a_word_for_word_answer_is_shown_without_a_critique_call_by_default(research, model, new_page):
+    """The default: a sentence that is its cited claim word for word is not sent to the critic, so the page shows it
+    with no self-check flag, and one model call was made."""
+    db = store.open_existing(research.path)
+    try:
+        iconfig.set_config(db, {"critique_restatements": False}, NOW)
+    finally:
+        db.close()
+    page = new_page(1280, 900)
+    report = run(page, research)
+    expect(report.locator("#reasoningLabel")).to_have_attribute("data-generated-by", "model:fake-model")
+    answer = report.locator("#modelAnswer li")
+    expect(answer).to_have_count(1)
+    expect(answer.first.locator("p.generated")).to_contain_text("4.2.0")
+    expect(answer.first).not_to_contain_text("self-check flagged")
+    assert len(model.requests) == 1
     assert not page.problems, page.problems
 
 

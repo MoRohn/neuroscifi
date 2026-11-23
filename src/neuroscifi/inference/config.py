@@ -47,12 +47,16 @@ class InferenceConfig:
     max_output_tokens: int = 1200
     temperature: float = 0.2
     thinking: str = "default"          # Qwen3-style chat_template_kwargs.enable_thinking: default / on / off
-    # Adaptive inference policy (docs/architecture/COGNITIVE_INFERENCE.md §7). Both defaults keep 0.7.0 behaviour.
+    # Adaptive inference policy (docs/architecture/COGNITIVE_INFERENCE.md §7). The first two defaults keep 0.7.0
+    # behaviour; critique_restatements = True restores it.
     background_priority: int = 0       # `priority` sent with background (autonomous) model calls; 0 = not sent.
     #                                    With vLLM --scheduling-policy priority a higher value waits behind the
     #                                    owner's calls (deploy/vllm sets the policy; `nsf setup` sets 10)
     critique_voice: bool = True        # run the self-critique pass for spoken questions too. Its marks are shown
     #                                    by the console and Pocket and never spoken: off answers by voice sooner
+    critique_restatements: bool = False   # False: the critique judges only sentences that do more than restate
+    #                                    their cited claims word for word (reasoning.restates), and makes no call
+    #                                    when there is none. True: every accepted sentence is judged, as in 0.7.0
 
     @classmethod
     def from_json(cls, text: str | None) -> "InferenceConfig":
@@ -68,7 +72,8 @@ class InferenceConfig:
         return bool(self.base_url)
 
 
-_BOOLS = {"reasoning", "self_critique", "tools", "remote_allowed", "remote_private_memory", "critique_voice"}
+_BOOLS = {"reasoning", "self_critique", "tools", "remote_allowed", "remote_private_memory", "critique_voice",
+          "critique_restatements"}
 _RANGES = {"connect_timeout": (0.1, 60.0), "read_timeout": (1.0, 3600.0), "backoff": (0.0, 30.0),
            "temperature": (0.0, 2.0)}
 _INTS = {"max_retries": (0, 5), "max_context_tokens": (512, 1_000_000), "max_output_tokens": (16, 32768),

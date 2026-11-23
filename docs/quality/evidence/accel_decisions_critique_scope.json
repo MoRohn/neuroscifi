@@ -1,0 +1,4890 @@
+{
+ "benchmark": "pipeline-live-model: what the self-critique judges",
+ "generated_at": "2026-11-23T21:20:56Z",
+ "url": "http://127.0.0.1:8811/v1",
+ "model": "qwen3-30b-a3b-instruct-2507-fp8",
+ "environment": {
+  "host_digest": "382a803dcc0d",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "machine": "aarch64",
+  "cpu_count": 20,
+  "python": "3.12.16",
+  "sqlite": "3.53.1",
+  "packages": {
+   "neuroscifi": "0.5.0",
+   "scrapling": "0.5.1",
+   "trafilatura": "2.3.1",
+   "lxml": "6.1.3",
+   "pypdf": "7.1.1",
+   "markdownify": "1.2.4",
+   "playwright": "1.64.1"
+  },
+  "git_commit": "307b907",
+  "git_dirty": true
+ },
+ "command": "scripts/bench_pipeline.py --url \u2026 --model \u2026 --key-file \u2026 --texts [--config JSON]; the three runs were made one after another on a host whose GPU other work may have shared, so call and token counts are the primary numbers and times are indicative",
+ "runs": {
+  "targeted_default": {
+   "tasks": 51,
+   "model_answers": 46,
+   "reasoning_status": {
+    "model": 46,
+    "rejected": 5
+   },
+   "abstentions": 2,
+   "sentences_kept": 91,
+   "sentences_rejected_by_the_guard": 27,
+   "kept_restating_their_claims": 81,
+   "tasks_with_a_sentence_of_the_models_own": 9,
+   "critique_calls": 9,
+   "critique_status": {
+    "skipped": 37,
+    "ok": 9
+   },
+   "critique_skipped_why": {
+    "restatements_only": 37
+   },
+   "sentences_judged": 10,
+   "sentences_removed": 0,
+   "marks": 4,
+   "marks_on_restatements": 0,
+   "marks_by_problem": {
+    "overstated": 2,
+    "unsupported": 2
+   },
+   "critique_prompt_tokens_total": 5822,
+   "critique_completion_tokens_total": 603,
+   "answer_prompt_tokens_total": 59755,
+   "answer_completion_tokens_total": 5067,
+   "task_wall_s": {
+    "mean": 2.796,
+    "p50": 1.769,
+    "p95": 5.842
+   },
+   "share_of_wall": {
+    "answer_call": 0.846,
+    "critique_call": 0.103,
+    "orchestration": 0.05
+   }
+  },
+  "critique_restatements_on": {
+   "tasks": 51,
+   "model_answers": 44,
+   "reasoning_status": {
+    "model": 44,
+    "rejected": 7
+   },
+   "abstentions": 4,
+   "sentences_kept": 86,
+   "sentences_rejected_by_the_guard": 23,
+   "kept_restating_their_claims": 75,
+   "tasks_with_a_sentence_of_the_models_own": 10,
+   "critique_calls": 44,
+   "critique_status": {
+    "ok": 44
+   },
+   "critique_skipped_why": {},
+   "sentences_judged": 86,
+   "sentences_removed": 0,
+   "marks": 42,
+   "marks_on_restatements": 38,
+   "marks_by_problem": {
+    "overstated": 18,
+    "unsupported": 21,
+    "missing_hedge": 3
+   },
+   "critique_prompt_tokens_total": 36762,
+   "critique_completion_tokens_total": 3864,
+   "answer_prompt_tokens_total": 59755,
+   "answer_completion_tokens_total": 4952,
+   "task_wall_s": {
+    "mean": 4.127,
+    "p50": 3.033,
+    "p95": 8.309
+   },
+   "share_of_wall": {
+    "answer_call": 0.526,
+    "critique_call": 0.426,
+    "orchestration": 0.048
+   }
+  },
+  "self_critique_off": {
+   "tasks": 51,
+   "model_answers": 44,
+   "reasoning_status": {
+    "model": 44,
+    "rejected": 7
+   },
+   "abstentions": 4,
+   "sentences_kept": 86,
+   "sentences_rejected_by_the_guard": 22,
+   "kept_restating_their_claims": 75,
+   "tasks_with_a_sentence_of_the_models_own": 10,
+   "critique_calls": 0,
+   "critique_status": {},
+   "critique_skipped_why": {},
+   "sentences_judged": 0,
+   "sentences_removed": 0,
+   "marks": 0,
+   "marks_on_restatements": 0,
+   "marks_by_problem": {},
+   "critique_prompt_tokens_total": 0,
+   "critique_completion_tokens_total": 0,
+   "answer_prompt_tokens_total": 59755,
+   "answer_completion_tokens_total": 4896,
+   "task_wall_s": {
+    "mean": 2.328,
+    "p50": 1.38,
+    "p95": 4.817
+   },
+   "share_of_wall": {
+    "answer_call": 0.933,
+    "critique_call": 0.0,
+    "orchestration": 0.067
+   }
+  },
+  "targeted_default_repeat": {
+   "tasks": 51,
+   "model_answers": 45,
+   "reasoning_status": {
+    "model": 45,
+    "rejected": 6
+   },
+   "abstentions": 4,
+   "sentences_kept": 89,
+   "sentences_rejected_by_the_guard": 23,
+   "kept_restating_their_claims": 77,
+   "tasks_with_a_sentence_of_the_models_own": 11,
+   "critique_calls": 11,
+   "critique_status": {
+    "skipped": 34,
+    "ok": 11
+   },
+   "critique_skipped_why": {
+    "restatements_only": 34
+   },
+   "sentences_judged": 12,
+   "sentences_removed": 0,
+   "marks": 4,
+   "marks_on_restatements": 0,
+   "marks_by_problem": {
+    "overstated": 1,
+    "unsupported": 3
+   },
+   "critique_prompt_tokens_total": 8607,
+   "critique_completion_tokens_total": 729,
+   "answer_prompt_tokens_total": 59755,
+   "answer_completion_tokens_total": 5099,
+   "task_wall_s": {
+    "mean": 2.787,
+    "p50": 1.811,
+    "p95": 6.091
+   },
+   "share_of_wall": {
+    "answer_call": 0.827,
+    "critique_call": 0.118,
+    "orchestration": 0.055
+   }
+  },
+  "critique_restatements_on_repeat": {
+   "tasks": 51,
+   "model_answers": 44,
+   "reasoning_status": {
+    "model": 44,
+    "rejected": 7
+   },
+   "abstentions": 4,
+   "sentences_kept": 86,
+   "sentences_rejected_by_the_guard": 22,
+   "kept_restating_their_claims": 75,
+   "tasks_with_a_sentence_of_the_models_own": 10,
+   "critique_calls": 44,
+   "critique_status": {
+    "ok": 44
+   },
+   "critique_skipped_why": {},
+   "sentences_judged": 86,
+   "sentences_removed": 0,
+   "marks": 42,
+   "marks_on_restatements": 38,
+   "marks_by_problem": {
+    "overstated": 19,
+    "unsupported": 19,
+    "missing_hedge": 4
+   },
+   "critique_prompt_tokens_total": 36762,
+   "critique_completion_tokens_total": 3909,
+   "answer_prompt_tokens_total": 59755,
+   "answer_completion_tokens_total": 4936,
+   "task_wall_s": {
+    "mean": 4.156,
+    "p50": 2.956,
+    "p95": 8.582
+   },
+   "share_of_wall": {
+    "answer_call": 0.547,
+    "critique_call": 0.425,
+    "orchestration": 0.028
+   }
+  }
+ },
+ "configs": {
+  "targeted_default": {},
+  "critique_restatements_on": {
+   "critique_restatements": true
+  },
+  "self_critique_off": {
+   "self_critique": false
+  },
+  "targeted_default_repeat": {},
+  "critique_restatements_on_repeat": {
+   "critique_restatements": true
+  }
+ },
+ "order_of_runs": [
+  "targeted_default",
+  "critique_restatements_on",
+  "self_critique_off",
+  "targeted_default_repeat",
+  "critique_restatements_on_repeat"
+ ],
+ "tasks_whose_kept_sentences_differ_between_two_runs": {
+  "targeted_default / critique_restatements_on": [
+   "A06",
+   "F02",
+   "F04",
+   "F11",
+   "T01",
+   "T03",
+   "T08"
+  ],
+  "targeted_default / self_critique_off": [
+   "A06",
+   "F02",
+   "F04",
+   "F11",
+   "T01",
+   "T03",
+   "T08"
+  ],
+  "targeted_default / targeted_default_repeat": [
+   "A06",
+   "F01",
+   "F02",
+   "F04",
+   "F11",
+   "T01",
+   "T03",
+   "T08"
+  ],
+  "targeted_default / critique_restatements_on_repeat": [
+   "A06",
+   "F02",
+   "F04",
+   "F11",
+   "T01",
+   "T03",
+   "T08"
+  ],
+  "critique_restatements_on / self_critique_off": [],
+  "critique_restatements_on / targeted_default_repeat": [
+   "F01"
+  ],
+  "critique_restatements_on / critique_restatements_on_repeat": [],
+  "self_critique_off / targeted_default_repeat": [
+   "F01"
+  ],
+  "self_critique_off / critique_restatements_on_repeat": [],
+  "targeted_default_repeat / critique_restatements_on_repeat": [
+   "F01"
+  ]
+ },
+ "reading_of_the_differences": "The answer call is made before the critique and is the same request in every configuration (answer_prompt_tokens_total is identical), and no run removed a sentence in the critique, so a difference in kept sentences is the answer model writing differently on another run (temperature 0.1, no seed). It follows the run, not the configuration: the two targeted runs differ from each other in 8 tasks, the second targeted run differs from every other later run in 1.",
+ "accel_after_pipeline_reread_with_the_exact_test": {
+  "kept_sentences": 90,
+  "restating_their_claims": 80,
+  "marks": 46,
+  "marks_on_restatements": 43,
+  "note": "accel_after_pipeline.json counted 79 of 90 and 35 of 46 with a content-word subset test that missed the attribution '\u2026, according to one source, though the sources disagree.' and accepted shortened claims; reasoning.restates is exact (word for word)"
+ },
+ "sentences_the_targeted_critique_judged": {
+  "targeted_default": [
+   {
+    "task": "A04",
+    "sentence": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date.",
+    "cited_claims": [
+     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+    ],
+    "claim_states": [
+     "temporally_unresolved"
+    ],
+    "mark": {
+     "confirmed": false,
+     "note": null,
+     "problem": "overstated"
+    }
+   },
+   {
+    "task": "A07",
+    "sentence": "Ilse Marten created the Kestrel programming language in 2019.",
+    "cited_claims": [
+     "Kestrel is a statically typed programming language created by Ilse Marten in 2019."
+    ],
+    "claim_states": [
+     "supported"
+    ],
+    "mark": null
+   },
+   {
+    "task": "A08",
+    "sentence": "The Brightwater dam is 186 metres tall.",
+    "cited_claims": [
+     "Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region."
+    ],
+    "claim_states": [
+     "supported"
+    ],
+    "mark": null
+   },
+   {
+    "task": "T01",
+    "sentence": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026, according to one source.",
+    "cited_claims": [
+     "Quillstream 4.3 beta opens for testing",
+     "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+    ],
+    "claim_states": [
+     "insufficient",
+     "insufficient"
+    ],
+    "mark": null
+   },
+   {
+    "task": "T03",
+    "sentence": "A faulty network configuration change caused the outage, according to one source.",
+    "cited_claims": [
+     "The company said a faulty network configuration change caused the outage."
+    ],
+    "claim_states": [
+     "insufficient"
+    ],
+    "mark": {
+     "confirmed": false,
+     "note": null,
+     "problem": "unsupported"
+    }
+   },
+   {
+    "task": "T06",
+    "sentence": "Kestrel 2.0 was released on 3 November 2026, according to one source.",
+    "cited_claims": [
+     "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+    ],
+    "claim_states": [
+     "insufficient"
+    ],
+    "mark": null
+   },
+   {
+    "task": "T06",
+    "sentence": "The release adds pattern matching on records, according to one source.",
+    "cited_claims": [
+     "The release adds pattern matching on records and a package manager called nest."
+    ],
+    "claim_states": [
+     "insufficient"
+    ],
+    "mark": null
+   },
+   {
+    "task": "F14",
+    "sentence": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date.",
+    "cited_claims": [
+     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+    ],
+    "claim_states": [
+     "temporally_unresolved"
+    ],
+    "mark": {
+     "confirmed": false,
+     "note": null,
+     "problem": "overstated"
+    }
+   },
+   {
+    "task": "F15",
+    "sentence": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date.",
+    "cited_claims": [
+     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+    ],
+    "claim_states": [
+     "temporally_unresolved"
+    ],
+    "mark": {
+     "confirmed": false,
+     "note": null,
+     "problem": "unsupported"
+    }
+   },
+   {
+    "task": "F26",
+    "sentence": "Corvane 2.5.5 is the latest stable release of the Corvane connection library, according to one source.",
+    "cited_claims": [
+     "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+    ],
+    "claim_states": [
+     "insufficient"
+    ],
+    "mark": null
+   }
+  ],
+  "targeted_default_repeat": [
+   {
+    "task": "A04",
+    "sentence": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date.",
+    "cited_claims": [
+     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+    ],
+    "claim_states": [
+     "temporally_unresolved"
+    ],
+    "mark": {
+     "confirmed": false,
+     "note": null,
+     "problem": "overstated"
+    }
+   },
+   {
+    "task": "A07",
+    "sentence": "Ilse Marten created the Kestrel programming language in 2019.",
+    "cited_claims": [
+     "Kestrel is a statically typed programming language created by Ilse Marten in 2019."
+    ],
+    "claim_states": [
+     "supported"
+    ],
+    "mark": null
+   },
+   {
+    "task": "A08",
+    "sentence": "The Brightwater dam is 186 metres tall.",
+    "cited_claims": [
+     "Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region."
+    ],
+    "claim_states": [
+     "supported"
+    ],
+    "mark": null
+   },
+   {
+    "task": "T01",
+    "sentence": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026, according to one source.",
+    "cited_claims": [
+     "Quillstream 4.3 beta opens for testing",
+     "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+    ],
+    "claim_states": [
+     "insufficient",
+     "insufficient"
+    ],
+    "mark": null
+   },
+   {
+    "task": "T06",
+    "sentence": "Kestrel 2.0 was released on 3 November 2026, according to one source.",
+    "cited_claims": [
+     "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+    ],
+    "claim_states": [
+     "insufficient"
+    ],
+    "mark": null
+   },
+   {
+    "task": "T06",
+    "sentence": "The release adds pattern matching on records, according to one source.",
+    "cited_claims": [
+     "The release adds pattern matching on records and a package manager called nest."
+    ],
+    "claim_states": [
+     "insufficient"
+    ],
+    "mark": null
+   },
+   {
+    "task": "F01",
+    "sentence": "Quillstream 4.2.0 shipped on October 2, 2026, according to one source.",
+    "cited_claims": [
+     "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."
+    ],
+    "claim_states": [
+     "insufficient"
+    ],
+    "mark": null
+   },
+   {
+    "task": "F02",
+    "sentence": "The Varnel River is 412 kilometres long, according to one source, though the sources disagree.",
+    "cited_claims": [
+     "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres."
+    ],
+    "claim_states": [
+     "conflicting"
+    ],
+    "mark": null
+   },
+   {
+    "task": "F04",
+    "sentence": "Tessaly had a population of 248,000 residents at the 2025 census, according to the cited sources, though the sources disagree.",
+    "cited_claims": [
+     "At the 2025 census Tessaly had a population of 248,000 residents."
+    ],
+    "claim_states": [
+     "conflicting"
+    ],
+    "mark": {
+     "confirmed": false,
+     "note": null,
+     "problem": "unsupported"
+    }
+   },
+   {
+    "task": "F14",
+    "sentence": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date.",
+    "cited_claims": [
+     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+    ],
+    "claim_states": [
+     "temporally_unresolved"
+    ],
+    "mark": {
+     "confirmed": false,
+     "note": null,
+     "problem": "unsupported"
+    }
+   },
+   {
+    "task": "F15",
+    "sentence": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date.",
+    "cited_claims": [
+     "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+    ],
+    "claim_states": [
+     "temporally_unresolved"
+    ],
+    "mark": {
+     "confirmed": false,
+     "note": null,
+     "problem": "unsupported"
+    }
+   },
+   {
+    "task": "F26",
+    "sentence": "Corvane 2.5.5 is the latest stable release of the Corvane connection library, according to one source.",
+    "cited_claims": [
+     "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+    ],
+    "claim_states": [
+     "insufficient"
+    ],
+    "mark": null
+   }
+  ]
+ },
+ "kept_sentences_that_differ_between_runs": {
+  "targeted_default": {
+   "A06": {
+    "this_run": [
+     "By default, the Orbix server listens on port 7420 for client connections.",
+     "The port can be changed with the listen_port setting in orbix.conf, according to one source."
+    ],
+    "critique_restatements_on": [
+     "By default, the Orbix server listens on port 7420 for client connections."
+    ]
+   },
+   "T01": {
+    "this_run": [
+     "Quillstream 4.3 beta opens for testing, according to one source.",
+     "The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook, according to one source.",
+     "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026, according to one source."
+    ],
+    "critique_restatements_on": [
+     "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026, according to one source.",
+     "The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook, according to one source."
+    ]
+   },
+   "T03": {
+    "this_run": [
+     "A faulty network configuration change caused the outage, according to one source.",
+     "Self-hosted Orbix installations were not affected, according to one source."
+    ],
+    "critique_restatements_on": [
+     "The company said a faulty network configuration change caused the outage, according to one source.",
+     "Self-hosted Orbix installations were not affected, according to one source."
+    ]
+   },
+   "T08": {
+    "this_run": [
+     "These notes on Corvane connection pooling were copied from an older wiki, according to one source, possibly out of date."
+    ],
+    "critique_restatements_on": []
+   },
+   "F02": {
+    "this_run": [
+     "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, according to one source, though the sources disagree.",
+     "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to one source.",
+     "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, and with a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to the cited sources, though the sources disagree."
+    ],
+    "critique_restatements_on": [
+     "The Varnel River is 412 kilometres long, according to one source, though the sources disagree.",
+     "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to one source.",
+     "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, according to one source, though the sources disagree."
+    ]
+   },
+   "F04": {
+    "this_run": [
+     "At the 2025 census Tessaly had a population of 248,000 residents, according to the cited sources, though the sources disagree."
+    ],
+    "critique_restatements_on": [
+     "At the 2025 census Tessaly had a population of 248,000 residents, according to the cited sources, though the sources disagree.",
+     "The population grew by 7.4 percent compared with the 2015 census, according to one source.",
+     "Tessaly had a population of 248,000 residents at the 2025 census, according to the cited sources, though the sources disagree."
+    ]
+   },
+   "F11": {
+    "this_run": [
+     "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler, according to one source.",
+     "Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
+     "Kestrel 1.0 was released in 2022 after three years of public previews, according to one source.",
+     "The release adds pattern matching on records and a package manager called nest, according to one source."
+    ],
+    "critique_restatements_on": []
+   }
+  },
+  "critique_restatements_on": {},
+  "self_critique_off": {},
+  "targeted_default_repeat": {
+   "F01": {
+    "this_run": [
+     "Quillstream 4.2.0 shipped on October 2, 2026, according to one source.",
+     "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library, according to one source.",
+     "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes, according to one source."
+    ],
+    "critique_restatements_on": []
+   }
+  },
+  "critique_restatements_on_repeat": {},
+  "accel_after_pipeline.json_against_critique_restatements_on": {
+   "A06": {
+    "accel_after_pipeline": [
+     "By default, the Orbix server listens on port 7420 for client connections.",
+     "The port can be changed with the listen_port setting in orbix.conf, according to one source."
+    ],
+    "critique_restatements_on": [
+     "By default, the Orbix server listens on port 7420 for client connections."
+    ]
+   },
+   "T03": {
+    "accel_after_pipeline": [
+     "A faulty network configuration change caused the outage, according to one source.",
+     "Self-hosted Orbix installations were not affected, according to one source."
+    ],
+    "critique_restatements_on": [
+     "The company said a faulty network configuration change caused the outage, according to one source.",
+     "Self-hosted Orbix installations were not affected, according to one source."
+    ]
+   },
+   "T08": {
+    "accel_after_pipeline": [
+     "These notes on Corvane connection pooling were copied from an older wiki, according to one source, possibly out of date."
+    ],
+    "critique_restatements_on": []
+   },
+   "F02": {
+    "accel_after_pipeline": [
+     "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, according to one source, though the sources disagree.",
+     "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to one source.",
+     "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, and with a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to the cited sources, though the sources disagree."
+    ],
+    "critique_restatements_on": [
+     "The Varnel River is 412 kilometres long, according to one source, though the sources disagree.",
+     "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to one source.",
+     "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, according to one source, though the sources disagree."
+    ]
+   },
+   "F04": {
+    "accel_after_pipeline": [
+     "At the 2025 census Tessaly had a population of 248,000 residents, according to the cited sources, though the sources disagree."
+    ],
+    "critique_restatements_on": [
+     "At the 2025 census Tessaly had a population of 248,000 residents, according to the cited sources, though the sources disagree.",
+     "The population grew by 7.4 percent compared with the 2015 census, according to one source.",
+     "Tessaly had a population of 248,000 residents at the 2025 census, according to the cited sources, though the sources disagree."
+    ]
+   },
+   "F11": {
+    "accel_after_pipeline": [
+     "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler, according to one source.",
+     "Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
+     "Kestrel 1.0 was released in 2022 after three years of public previews, according to one source.",
+     "The release adds pattern matching on records and a package manager called nest, according to one source."
+    ],
+    "critique_restatements_on": []
+   }
+  }
+ },
+ "per_task": {
+  "targeted_default": [
+   {
+    "id": "A01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.597,
+    "model_s": 5.204,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.416,
+    "model_s": 1.372,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.399,
+    "model_s": 1.35,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A04",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.884,
+    "model_s": 2.708,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.404,
+    "model_s": 1.353,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.092,
+    "model_s": 4.017,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 3,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 2 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 2,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.782,
+    "model_s": 2.728,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.769,
+    "model_s": 1.705,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A09",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.417,
+    "model_s": 1.304,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A10",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.167,
+    "model_s": 1.119,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A11",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.631,
+    "model_s": 3.563,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 3,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 2 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 2,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A12",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.288,
+    "model_s": 1.153,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "T01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.869,
+    "model_s": 5.796,
+    "kept": 3,
+    "kept_restating": 2,
+    "rejected": 2,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 2,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T02",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.252,
+    "model_s": 1.208,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.988,
+    "model_s": 3.955,
+    "kept": 2,
+    "kept_restating": 1,
+    "rejected": 1,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 1,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T04",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.013,
+    "model_s": 0.717,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.376,
+    "model_s": 1.342,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "T06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.816,
+    "model_s": 5.725,
+    "kept": 5,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 2,
+     "removed": 0,
+     "restatements": 3,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.385,
+    "model_s": 1.329,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "T08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.602,
+    "model_s": 1.553,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F01",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.534,
+    "model_s": 1.438,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.089,
+    "model_s": 5.931,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 3 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 3,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.31,
+    "model_s": 3.105,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 3 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 3,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F04",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.597,
+    "model_s": 1.477,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.455,
+    "model_s": 4.261,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.327,
+    "model_s": 1.213,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.393,
+    "model_s": 1.205,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.283,
+    "model_s": 1.164,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F09",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.398,
+    "model_s": 1.253,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F10",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.087,
+    "model_s": 3.864,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 3,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 2 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 2,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F11",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.962,
+    "model_s": 4.63,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F12",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.386,
+    "model_s": 4.186,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 3 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 3,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F13",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.667,
+    "model_s": 4.435,
+    "kept": 5,
+    "kept_restating": 5,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 5 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 5,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F14",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.912,
+    "model_s": 2.638,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F15",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.387,
+    "model_s": 3.099,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F16",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.081,
+    "model_s": 1.964,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F17",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.302,
+    "model_s": 1.16,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F18",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.377,
+    "model_s": 1.149,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F19",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.696,
+    "model_s": 1.302,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F20",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.222,
+    "model_s": 1.081,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F21",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.184,
+    "model_s": 1.045,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F22",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.868,
+    "model_s": 1.787,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F23",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.682,
+    "model_s": 1.607,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F24",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.066,
+    "model_s": 1.009,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F25",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.914,
+    "model_s": 0.865,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F26",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.446,
+    "model_s": 6.331,
+    "kept": 5,
+    "kept_restating": 4,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 4,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F27",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.104,
+    "model_s": 4.973,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F28",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.652,
+    "model_s": 4.458,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F29",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.703,
+    "model_s": 4.533,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "L01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.128,
+    "model_s": 4.014,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "L02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.217,
+    "model_s": 5.057,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 4,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   }
+  ],
+  "critique_restatements_on": [
+   {
+    "id": "A01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 9.276,
+    "model_s": 8.846,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.704,
+    "model_s": 2.655,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.642,
+    "model_s": 2.59,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A04",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.549,
+    "model_s": 2.275,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.003,
+    "model_s": 2.804,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.027,
+    "model_s": 1.926,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.405,
+    "model_s": 2.328,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.078,
+    "model_s": 1.928,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A09",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.292,
+    "model_s": 2.079,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A10",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.015,
+    "model_s": 2.901,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A11",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.352,
+    "model_s": 5.182,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 3,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A12",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.11,
+    "model_s": 2.844,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.981,
+    "model_s": 5.762,
+    "kept": 2,
+    "kept_restating": 1,
+    "rejected": 2,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T02",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.115,
+    "model_s": 1.076,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.157,
+    "model_s": 4.052,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 1,
+    "flagged": 2,
+    "flagged_restating": 2,
+    "critique": {
+     "flagged": 2,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T04",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.838,
+    "model_s": 0.625,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.831,
+    "model_s": 2.78,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.823,
+    "model_s": 6.62,
+    "kept": 5,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 2,
+    "flagged_restating": 2,
+    "critique": {
+     "flagged": 2,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.033,
+    "model_s": 2.89,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T08",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.671,
+    "model_s": 0.586,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F01",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.872,
+    "model_s": 1.629,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.313,
+    "model_s": 7.138,
+    "kept": 3,
+    "kept_restating": 2,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.572,
+    "model_s": 5.261,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 3,
+    "flagged_restating": 3,
+    "critique": {
+     "flagged": 3,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F04",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.266,
+    "model_s": 7.04,
+    "kept": 3,
+    "kept_restating": 2,
+    "rejected": 0,
+    "flagged": 3,
+    "flagged_restating": 2,
+    "critique": {
+     "flagged": 3,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.511,
+    "model_s": 7.332,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 4,
+    "flagged_restating": 4,
+    "critique": {
+     "flagged": 4,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.179,
+    "model_s": 2.944,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.433,
+    "model_s": 2.16,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.939,
+    "model_s": 2.793,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F09",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.846,
+    "model_s": 2.682,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F10",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.285,
+    "model_s": 6.008,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 3,
+    "flagged": 2,
+    "flagged_restating": 2,
+    "critique": {
+     "flagged": 2,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F11",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.869,
+    "model_s": 0.732,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F12",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.264,
+    "model_s": 7.074,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 1,
+    "flagged": 2,
+    "flagged_restating": 2,
+    "critique": {
+     "flagged": 2,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F13",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 8.017,
+    "model_s": 7.837,
+    "kept": 5,
+    "kept_restating": 5,
+    "rejected": 0,
+    "flagged": 5,
+    "flagged_restating": 5,
+    "critique": {
+     "flagged": 5,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F14",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.221,
+    "model_s": 2.722,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F15",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.934,
+    "model_s": 2.743,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F16",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.302,
+    "model_s": 3.105,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F17",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.064,
+    "model_s": 2.982,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F18",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.863,
+    "model_s": 2.708,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F19",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.185,
+    "model_s": 2.836,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F20",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.569,
+    "model_s": 2.486,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F21",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.676,
+    "model_s": 2.608,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F22",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 2.005,
+    "model_s": 1.756,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F23",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.66,
+    "model_s": 3.382,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F24",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.588,
+    "model_s": 2.384,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F25",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.072,
+    "model_s": 0.986,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F26",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.663,
+    "model_s": 7.447,
+    "kept": 5,
+    "kept_restating": 4,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F27",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 8.492,
+    "model_s": 8.101,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F28",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 8.125,
+    "model_s": 7.76,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F29",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.762,
+    "model_s": 7.489,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "L01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 9.472,
+    "model_s": 9.207,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "L02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.566,
+    "model_s": 6.343,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 4,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   }
+  ],
+  "self_critique_off": [
+   {
+    "id": "A01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.61,
+    "model_s": 5.232,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.282,
+    "model_s": 1.192,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.267,
+    "model_s": 1.198,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A04",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.118,
+    "model_s": 0.932,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.242,
+    "model_s": 1.175,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.121,
+    "model_s": 1.049,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.139,
+    "model_s": 1.024,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 0.983,
+    "model_s": 0.879,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A09",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.268,
+    "model_s": 1.085,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A10",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.093,
+    "model_s": 1.023,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A11",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.552,
+    "model_s": 2.429,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 2,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "A12",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.25,
+    "model_s": 1.118,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.933,
+    "model_s": 3.881,
+    "kept": 2,
+    "kept_restating": 1,
+    "rejected": 2,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T02",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.16,
+    "model_s": 1.095,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.506,
+    "model_s": 2.378,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T04",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.91,
+    "model_s": 0.697,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.356,
+    "model_s": 1.304,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.464,
+    "model_s": 3.304,
+    "kept": 5,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.605,
+    "model_s": 1.48,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T08",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.819,
+    "model_s": 0.66,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F01",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.654,
+    "model_s": 1.264,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.443,
+    "model_s": 4.179,
+    "kept": 3,
+    "kept_restating": 2,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.313,
+    "model_s": 3.02,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F04",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.71,
+    "model_s": 4.558,
+    "kept": 3,
+    "kept_restating": 2,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.713,
+    "model_s": 4.565,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.121,
+    "model_s": 1.041,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.225,
+    "model_s": 1.142,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.477,
+    "model_s": 1.359,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F09",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.156,
+    "model_s": 1.086,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F10",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.399,
+    "model_s": 4.28,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 3,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F11",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.824,
+    "model_s": 0.757,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F12",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.229,
+    "model_s": 4.139,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F13",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.304,
+    "model_s": 4.139,
+    "kept": 5,
+    "kept_restating": 5,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F14",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.294,
+    "model_s": 1.021,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F15",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.38,
+    "model_s": 1.082,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F16",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.847,
+    "model_s": 1.718,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F17",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.201,
+    "model_s": 1.148,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F18",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.086,
+    "model_s": 1.002,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F19",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.506,
+    "model_s": 1.238,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F20",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.167,
+    "model_s": 1.098,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F21",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 0.947,
+    "model_s": 0.909,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F22",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 2.141,
+    "model_s": 2.038,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F23",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.668,
+    "model_s": 1.547,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F24",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.119,
+    "model_s": 0.996,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F25",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.088,
+    "model_s": 0.924,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F26",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.3,
+    "model_s": 3.952,
+    "kept": 5,
+    "kept_restating": 4,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F27",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.909,
+    "model_s": 4.68,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F28",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.498,
+    "model_s": 4.23,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F29",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.465,
+    "model_s": 4.123,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "L01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.115,
+    "model_s": 5.825,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "L02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.726,
+    "model_s": 4.51,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 4,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   }
+  ],
+  "targeted_default_repeat": [
+   {
+    "id": "A01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.498,
+    "model_s": 5.196,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.304,
+    "model_s": 1.188,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.285,
+    "model_s": 1.176,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A04",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.588,
+    "model_s": 2.342,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.299,
+    "model_s": 1.196,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.277,
+    "model_s": 1.115,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.528,
+    "model_s": 2.458,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.968,
+    "model_s": 1.889,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A09",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.274,
+    "model_s": 1.132,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A10",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.198,
+    "model_s": 1.102,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A11",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.556,
+    "model_s": 3.308,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 3,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 2 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 2,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "A12",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.472,
+    "model_s": 1.062,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "T01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.621,
+    "model_s": 5.474,
+    "kept": 2,
+    "kept_restating": 1,
+    "rejected": 2,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 1,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T02",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.216,
+    "model_s": 1.165,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.439,
+    "model_s": 2.322,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 2 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 2,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "T04",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.847,
+    "model_s": 0.626,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.41,
+    "model_s": 1.32,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "T06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.499,
+    "model_s": 5.347,
+    "kept": 5,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 2,
+     "removed": 0,
+     "restatements": 3,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.594,
+    "model_s": 1.534,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "T08",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.755,
+    "model_s": 0.711,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.157,
+    "model_s": 7.053,
+    "kept": 3,
+    "kept_restating": 2,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 2,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.986,
+    "model_s": 5.881,
+    "kept": 3,
+    "kept_restating": 2,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 2,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.284,
+    "model_s": 2.986,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 3 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 3,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F04",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.595,
+    "model_s": 6.412,
+    "kept": 3,
+    "kept_restating": 2,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 2,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.048,
+    "model_s": 4.92,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.212,
+    "model_s": 1.129,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.223,
+    "model_s": 1.145,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.331,
+    "model_s": 1.243,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F09",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.328,
+    "model_s": 1.26,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F10",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.341,
+    "model_s": 4.21,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 3,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 2 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 2,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F11",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.771,
+    "model_s": 0.698,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F12",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.265,
+    "model_s": 4.157,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 3 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 3,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F13",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.497,
+    "model_s": 4.38,
+    "kept": 5,
+    "kept_restating": 5,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 5 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 5,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F14",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.753,
+    "model_s": 2.483,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F15",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.164,
+    "model_s": 2.772,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F16",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.811,
+    "model_s": 1.5,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F17",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.257,
+    "model_s": 1.139,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F18",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.144,
+    "model_s": 0.994,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F19",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.598,
+    "model_s": 1.318,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F20",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.096,
+    "model_s": 1.009,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F21",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.057,
+    "model_s": 0.996,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F22",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.836,
+    "model_s": 1.726,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F23",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.651,
+    "model_s": 1.551,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F24",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 1.006,
+    "model_s": 0.904,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F25",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.03,
+    "model_s": 0.916,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F26",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 5.94,
+    "model_s": 5.603,
+    "kept": 5,
+    "kept_restating": 4,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "judged": 1,
+     "removed": 0,
+     "restatements": 4,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F27",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.976,
+    "model_s": 4.8,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F28",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.428,
+    "model_s": 4.288,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "F29",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.591,
+    "model_s": 4.4,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "L01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.196,
+    "model_s": 6.061,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 4 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 4,
+     "status": "skipped"
+    }
+   },
+   {
+    "id": "L02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.913,
+    "model_s": 4.739,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 4,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "judged": 0,
+     "reason": "nothing to judge: all 1 sentence(s) restate their cited claims word for word, with the attribution chosen by code from the claims' states (nsf llm config --critique-restatements has the critique read those too)",
+     "restatements": 1,
+     "status": "skipped"
+    }
+   }
+  ],
+  "critique_restatements_on_repeat": [
+   {
+    "id": "A01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 9.466,
+    "model_s": 8.996,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.733,
+    "model_s": 2.689,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.801,
+    "model_s": 2.752,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A04",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.634,
+    "model_s": 2.451,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.684,
+    "model_s": 2.613,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.606,
+    "model_s": 2.55,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.598,
+    "model_s": 2.55,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.124,
+    "model_s": 2.061,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A09",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.276,
+    "model_s": 2.191,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A10",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.956,
+    "model_s": 2.921,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A11",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 4.749,
+    "model_s": 4.691,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 2,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "A12",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.808,
+    "model_s": 2.643,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.038,
+    "model_s": 5.992,
+    "kept": 2,
+    "kept_restating": 1,
+    "rejected": 2,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T02",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.259,
+    "model_s": 1.226,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.975,
+    "model_s": 3.937,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 1,
+    "flagged": 2,
+    "flagged_restating": 2,
+    "critique": {
+     "flagged": 2,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T04",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.856,
+    "model_s": 0.683,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "T05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.23,
+    "model_s": 3.184,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.9,
+    "model_s": 6.78,
+    "kept": 5,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 2,
+    "flagged_restating": 2,
+    "critique": {
+     "flagged": 2,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.072,
+    "model_s": 3.035,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "T08",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.689,
+    "model_s": 0.655,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F01",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.785,
+    "model_s": 1.661,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.19,
+    "model_s": 7.037,
+    "kept": 3,
+    "kept_restating": 2,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F03",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.385,
+    "model_s": 5.988,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 0,
+    "flagged": 3,
+    "flagged_restating": 3,
+    "critique": {
+     "flagged": 3,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F04",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.58,
+    "model_s": 7.423,
+    "kept": 3,
+    "kept_restating": 2,
+    "rejected": 0,
+    "flagged": 3,
+    "flagged_restating": 2,
+    "critique": {
+     "flagged": 3,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F05",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.459,
+    "model_s": 7.35,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 4,
+    "flagged_restating": 4,
+    "critique": {
+     "flagged": 4,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F06",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.936,
+    "model_s": 2.851,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F07",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.628,
+    "model_s": 2.543,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F08",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.534,
+    "model_s": 3.451,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F09",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.952,
+    "model_s": 2.856,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F10",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.222,
+    "model_s": 6.121,
+    "kept": 2,
+    "kept_restating": 2,
+    "rejected": 3,
+    "flagged": 2,
+    "flagged_restating": 2,
+    "critique": {
+     "flagged": 2,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F11",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 0.819,
+    "model_s": 0.708,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F12",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.434,
+    "model_s": 7.334,
+    "kept": 3,
+    "kept_restating": 3,
+    "rejected": 1,
+    "flagged": 2,
+    "flagged_restating": 2,
+    "critique": {
+     "flagged": 2,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F13",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 8.317,
+    "model_s": 8.232,
+    "kept": 5,
+    "kept_restating": 5,
+    "rejected": 0,
+    "flagged": 5,
+    "flagged_restating": 5,
+    "critique": {
+     "flagged": 5,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F14",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.622,
+    "model_s": 2.439,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F15",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.064,
+    "model_s": 2.894,
+    "kept": 1,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F16",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.147,
+    "model_s": 3.018,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F17",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.589,
+    "model_s": 2.54,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F18",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.956,
+    "model_s": 2.877,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F19",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.979,
+    "model_s": 2.65,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F20",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.748,
+    "model_s": 2.698,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F21",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.536,
+    "model_s": 2.486,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F22",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.834,
+    "model_s": 1.733,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F23",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 3.642,
+    "model_s": 3.525,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F24",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 2.375,
+    "model_s": 2.319,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 0,
+    "flagged": 1,
+    "flagged_restating": 1,
+    "critique": {
+     "flagged": 1,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F25",
+    "status": "completed",
+    "reasoning_status": "rejected",
+    "wall_s": 1.003,
+    "model_s": 0.957,
+    "kept": 0,
+    "kept_restating": 0,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": null
+   },
+   {
+    "id": "F26",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 8.595,
+    "model_s": 8.445,
+    "kept": 5,
+    "kept_restating": 4,
+    "rejected": 0,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F27",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 8.568,
+    "model_s": 8.437,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F28",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 8.081,
+    "model_s": 7.901,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "F29",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 7.584,
+    "model_s": 7.402,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "L01",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 9.461,
+    "model_s": 9.274,
+    "kept": 4,
+    "kept_restating": 4,
+    "rejected": 1,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   },
+   {
+    "id": "L02",
+    "status": "completed",
+    "reasoning_status": "model",
+    "wall_s": 6.47,
+    "model_s": 6.3,
+    "kept": 1,
+    "kept_restating": 1,
+    "rejected": 4,
+    "flagged": 0,
+    "flagged_restating": 0,
+    "critique": {
+     "flagged": 0,
+     "removed": 0,
+     "status": "ok"
+    }
+   }
+  ]
+ }
+}

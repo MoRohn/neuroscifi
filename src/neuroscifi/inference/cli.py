@@ -35,7 +35,8 @@ def _config(db, a, now):
         value = getattr(a, flag)
         if value is not None:
             changes[key] = value
-    for key in ("reasoning", "self_critique", "critique_voice", "tools", "remote_allowed", "remote_private_memory"):
+    for key in ("reasoning", "self_critique", "critique_voice", "critique_restatements", "tools", "remote_allowed",
+                "remote_private_memory"):
         value = getattr(a, key)
         if value is not None:
             changes[key] = value
@@ -65,6 +66,7 @@ def _status(db, a, now):
     out["usage_24h"] = Ledger(path).summary(since=now - 86400) if path.exists() else None
     out["reasoning"] = {"enabled": gw.cfg.reasoning, "self_critique": gw.cfg.self_critique,
                         "critique_voice": gw.cfg.critique_voice,
+                        "critique_restatements": gw.cfg.critique_restatements,
                         "background_priority": gw.cfg.background_priority or None,
                         "used_for": "nsf web ask / console research answers, from verified evidence only",
                         "when_unavailable": "the extractive summary, labelled 'template'"}
@@ -159,6 +161,10 @@ def register(sub):
     _switch(p, "self-critique", "self_critique", "one bounded critique pass", "no critique pass")
     _switch(p, "critique-voice", "critique_voice", "the critique pass also for spoken questions (default)",
             "skip it for spoken questions: its marks are never spoken, and the answer comes sooner")
+    _switch(p, "critique-restatements", "critique_restatements",
+            "the critique also judges sentences that restate their cited claims word for word (as 0.7.0 did)",
+            "it judges only sentences that say more than a restatement, and makes no call when there is none "
+            "(default)")
     _switch(p, "tools", "tools", "allow read-only tools in `nsf llm ask`", "no tools")
     _switch(p, "remote-allowed", "remote_allowed", "authorise an endpoint off this host (LAN included; privacy-screened)",
             "loopback endpoints only (default)")

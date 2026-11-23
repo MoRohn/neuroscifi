@@ -10,7 +10,10 @@ into orchestration and model time, and the answer quality the guard lets through
 
 Per task: status, wall seconds, every model call from the inference ledger (purpose, latency, first token, tokens),
 the reasoning status (model answer or the extractive template, and why), sentences kept and rejected by the guard,
-and what the self-critique did. The individual is temporary and removed afterwards. The corpus is fictional, so
+how many kept sentences restate their cited claims word for word (reasoning.restates, the product's own test), and
+what the self-critique did: calls made, calls skipped and why, sentences judged, marks, and marks on restatements.
+`--config '{"critique_restatements": true}'` has the critique judge every sentence (0.7.0), `'{"self_critique":
+false}'` turns it off. The individual is temporary and removed afterwards. The corpus is fictional, so
 `--texts` may keep the answer sentences for a side-by-side comparison of two runs.
 """
 from __future__ import annotations
@@ -28,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from neuroscifi.inference import config as iconfig                     # noqa: E402
 from neuroscifi.inference.ledger import Ledger, ledger_path           # noqa: E402
-from neuroscifi.webcortex import reasoning, text                      # noqa: E402
+from neuroscifi.webcortex import reasoning                            # noqa: E402
 from neuroscifi.webcortex.bench import corpus as C, environment       # noqa: E402
 from neuroscifi.webcortex.bench.offline import _Bench                 # noqa: E402
 
@@ -46,23 +49,6 @@ def summary(values):
     data = [v for v in values if v is not None]
     return {"n": len(data), "p50": percentile(data, 0.5), "p95": percentile(data, 0.95),
             "p99": percentile(data, 0.99), "mean": round(sum(data) / len(data), 3) if data else None}
-
-
-_ATTRIBUTION = (", according to one source, possibly out of date.", ", according to the cited sources, possibly out "
-                "of date.", ", according to one source.", ", according to the cited sources.",
-                ", though the sources disagree.", ", though the claim is disputed.")
-
-
-def restates(sentence: str, claims: list[str]) -> bool:
-    """True when every content word of the sentence (the attribution the code appended set aside) is a word of the
-    claims it cites: the sentence adds nothing of its own, so a 'unsupported' or 'overstated' mark on it is wrong."""
-    body, cut = sentence, True
-    while cut:
-        cut = False
-        for tail in _ATTRIBUTION:
-            if body.endswith(tail):
-                body, cut = body[:-len(tail)], True
-    return set(text.content_tokens(body)) <= set(text.content_tokens(" ".join(claims)))
 
 
 def run(args) -> dict:
@@ -85,12 +71,6 @@ def run(args) -> dict:
                     rec = bench.run_task(q["id"], q["question"])
                     calls = [r for r in reversed(ledger.recent(10000)) if r["id"] not in seen]
                     tasks.append(task_row(q, rec, calls, args.texts))
-                    if args.texts:          # the claims each kept sentence cites, to judge what a flag is worth
-                        held = {c["id"]: c for c in reasoning.bundle(rec["report"] or {}, q["question"])["claims"]}
-                        for s in tasks[-1]["answer"]:
-                            s["cited"] = [{"id": c, "state": held[c]["state"], "text": held[c]["text"]}
-                                          for c in s["claims"] if c in held]
-                            s["restates_cited_claims"] = restates(s["text"], [c["text"] for c in s["cited"]])
                     print(f"{n:3d} {q['id']} {rec['status']:9s} {rec['wall_seconds']:6.2f}s "
                           f"{tasks[-1]['reasoning_status']}", file=sys.stderr, flush=True)
             finally:
@@ -104,23 +84,41 @@ def run(args) -> dict:
 
 
 def task_row(q, rec, calls, texts):
-    reasoning = (rec["report"] or {}).get("reasoning") or {}
+    report = rec["report"] or {}
+    reasoned = report.get("reasoning") or {}
+    kept = reasoned.get("answer") or []
+    b = reasoning.bundle(report, q["question"]) if kept else {"claims": []}
+    restating = [reasoning.restates(s, b) for s in kept]        # the product's own test, not a copy of it
     model_ms = sum(c["latency_ms"] or 0.0 for c in calls)
     row = {"id": q["id"], "category": q.get("category"), "mode": rec["mode"], "status": rec["status"],
            "wall_s": round(rec["wall_seconds"], 3), "model_s": round(model_ms / 1000, 3),
            "orchestration_s": round(rec["wall_seconds"] - model_ms / 1000, 3),
-           "reasoning_status": reasoning.get("status") or "none", "reason": reasoning.get("reason"),
-           "kept": len(reasoning.get("answer") or []), "rejected": len(reasoning.get("rejected") or []),
-           "critique": reasoning.get("critique"), "abstained": bool(reasoning.get("abstained")),
-           "flagged": sum(1 for s in reasoning.get("answer") or [] if s.get("flag")),
+           "reasoning_status": reasoned.get("status") or "none", "reason": reasoned.get("reason"),
+           "kept": len(kept), "rejected": len(reasoned.get("rejected") or []),
+           "kept_restating": sum(restating),
+           "critique": reasoned.get("critique"), "abstained": bool(reasoned.get("abstained")),
+           "flagged": sum(1 for s in kept if s.get("flag")),
+           "flagged_restating": sum(1 for s, r in zip(kept, restating) if r and s.get("flag")),
+           "flags_by_problem": dict(Counter(s["flag"]["problem"] for s in kept if s.get("flag"))),
            "calls": [{k: c.get(k) for k in ("purpose", "status", "latency_ms", "first_token_ms", "prompt_tokens",
                                              "completion_tokens", "tokens_per_second", "attempts", "cached_tokens",
                                              "priority")} for c in calls]}
-    if texts:
-        row["answer"] = [{"text": s["text"], "claims": s["claims"], "flag": s.get("flag")}
-                         for s in reasoning.get("answer") or []]
-        row["rejected_sentences"] = reasoning.get("rejected") or []
+    if texts:           # the corpus is fictional: the sentences and the claims each cites, to judge what a flag is worth
+        held = {c["id"]: c for c in b["claims"]}
+        row["answer"] = [{"text": s["text"], "claims": s["claims"], "flag": s.get("flag"),
+                          "cited": [{"id": c, "state": held[c]["state"], "text": held[c]["text"]}
+                                    for c in s["claims"] if c in held],
+                          "restates_cited_claims": r} for s, r in zip(kept, restating)]
+        row["rejected_sentences"] = reasoned.get("rejected") or []
     return row
+
+
+def skip_reason(critique) -> str:
+    """A skipped critique's reason as a short key for the summary."""
+    reason = critique.get("reason") or ""
+    return ("restatements_only" if reason.startswith("nothing to judge") else
+            "spoken_answer" if reason.startswith("spoken answer") else
+            "time_budget" if reason.startswith("time_budget") else reason[:40])
 
 
 def summarise(tasks):
@@ -151,7 +149,14 @@ def summarise(tasks):
                           "prompt_tokens": summary(calls("research_critique", "prompt_tokens")),
                           "completion_tokens": summary(calls("research_critique", "completion_tokens"))},
         "critique_outcomes": {"ran": sum(1 for c in critiques if c.get("status") == "ok"),
+                              "calls_made": len([c for t in tasks for c in t["calls"]
+                                                 if c["purpose"] == "research_critique"]),
                               "status": dict(Counter(c.get("status") for c in critiques)),
+                              "skipped_why": dict(Counter(skip_reason(c) for c in critiques
+                                                          if c.get("status") == "skipped")),
+                              "sentences_judged": sum(c.get("judged", t["kept"] + (c.get("removed") or 0))
+                                                      for t in tasks for c in [t["critique"]]
+                                                      if c and c.get("status") == "ok"),
                               "sentences_removed": sum(c.get("removed") or 0 for c in critiques),
                               "sentences_flagged": sum(c.get("flagged") or 0 for c in critiques)},
         "model_call_errors": dict(Counter(c["status"] for t in tasks for c in t["calls"] if c["status"] != "ok")),
@@ -176,17 +181,21 @@ def prefix_cache(tasks) -> dict | None:
 
 
 def flag_summary(tasks) -> dict:
-    """With --texts: how many self-critique marks sit on a sentence that only restates its cited claims."""
-    kept = [s for t in tasks for s in t.get("answer") or [] if "restates_cited_claims" in s]
+    """How many self-critique marks sit on a sentence that restates its cited claims word for word."""
+    kept = sum(t["kept"] for t in tasks)
     if not kept:
         return {}
-    flagged = [s for s in kept if s.get("flag")]
+    problems = Counter()
+    for t in tasks:
+        problems.update(t["flags_by_problem"])
     return {"critique_flags": {
-        "kept_sentences": len(kept), "restating_their_claims": sum(1 for s in kept if s["restates_cited_claims"]),
-        "flagged": len(flagged), "flagged_restating_their_claims": sum(1 for s in flagged if s["restates_cited_claims"]),
-        "flags_by_problem": dict(Counter(s["flag"]["problem"] for s in flagged)),
-        "reading": "a mark on a sentence that restates its cited claims word for word, with the attribution its "
-                   "claim state requires appended by code, is a false alarm"}}
+        "kept_sentences": kept, "restating_their_claims": sum(t["kept_restating"] for t in tasks),
+        "tasks_with_a_sentence_of_the_models_own": sum(1 for t in tasks if t["kept"] > t["kept_restating"]),
+        "flagged": sum(t["flagged"] for t in tasks),
+        "flagged_restating_their_claims": sum(t["flagged_restating"] for t in tasks),
+        "flags_by_problem": dict(problems),
+        "reading": "restating = reasoning.restates: the cited claims word for word with the attribution the code "
+                   "appended for their states. A mark on such a sentence is a false alarm"}}
 
 
 def main(argv=None):

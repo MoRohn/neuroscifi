@@ -75,6 +75,12 @@ A bounded self-critique (one call, cfg.self_critique) may FLAG accepted sentence
 sentence only when an objective check confirms it (unknown source or claim, an unsupported claim state without a
 hedge, a number or unit not in the cited evidence: the same checks as the guard); otherwise the sentence stays,
 carrying the flag ({"problem", "note"}) for the reader. The model's judgement alone never removes a sentence.
+The critique judges only what the model wrote of its own: an accepted sentence that is its cited claims word for word
+with the attribution compose() appended (restates(): an exact comparison) is not shown to it, and when every accepted
+sentence is such a restatement no call is made (critique {"status": "skipped", "reason", "judged": 0,
+"restatements"}). Otherwise critique is {"status": "ok", "removed", "flagged", "judged", "restatements"}; the critic
+numbers the judged sentences only. cfg.critique_restatements has every sentence judged, as 0.7.0 did (then
+"judged" and "restatements" are absent).
 `time_left` (seconds, from the task's budget) bounds both calls; too little time or a timeout degrades the label.
 Any model failure (not configured, unavailable, unauthorised, invalid JSON after one repair, every sentence
 rejected) leaves generated_by "template" with LABEL_DEGRADED and the reason; the extractive report is unchanged.
@@ -83,6 +89,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import functools
+import itertools
 import json
 from pathlib import Path
 import re
@@ -108,6 +115,10 @@ CRITIQUE_TOKENS = 400
 MIN_MODEL_SECONDS = 5.0   # less of the task's time budget left than this: no model call (the label says so)
 # reasoning.reason when the model answered with no sentence (reasoning.abstained = True; status stays "rejected")
 ABSTAINED = "the model wrote no sentence from this evidence{gaps}: no model sentence was checked or rejected"
+# critique.reason when every accepted sentence is a restatement (restates) and no critique call is made
+RESTATEMENTS_ONLY = ("nothing to judge: all {n} sentence(s) restate their cited claims word for word, with the "
+                     "attribution chosen by code from the claims' states (nsf llm config --critique-restatements has "
+                     "the critique read those too)")
 
 # The model's answer (v0.7.0 prompt lane): per sentence the claim ids it restates, then the restatement. The claim ids
 # come first so the model picks what it restates before writing it; answer_schema(b) narrows them to the bundle's ids
@@ -2428,6 +2439,55 @@ def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
     return accepted, rejected
 
 
+# ---- restatements: what the self-critique has nothing to judge in -------------------------------------------------
+
+# How a model joins the claims it restates in one sentence ("A, and b"); a closed list, compared exactly.
+_RESTATE_JOINS = (", and ", " and ", "; ", "; and ")
+
+
+def _restate_key(text) -> str:
+    """A sentence or claim as restates() compares it: what the grammar reads (_canon: NFKC, ASCII punctuation, lower
+    case, single spaces) without its final full stop. Every word, number and other punctuation mark counts."""
+    return _canon(text).rstrip(" .")
+
+
+def restates(item: dict, b: dict) -> bool:
+    """Whether an accepted sentence (a guard() item) says exactly its cited claims and nothing of the model's own.
+
+    True only when its text is, compared by _restate_key, what compose() makes of the cited claims' own words: one
+    claim's text, or every cited claim's text once, in any order, joined by one of _RESTATE_JOINS, with the
+    attribution `attribution()` appends for those claims' states and number of sources (nothing when all are
+    supported). The attribution the guard itself adds ("According to one source, ...", items with "attributed") is
+    recognised the same way. The comparison is exact: a shortened, reordered or reworded claim, a changed number, a
+    dropped "not", an added clause, a claim cited but not restated, sources other than the cited claims' own, or an
+    unknown claim id is no restatement.
+
+    Used by apply(): the self-critique judges only sentences that are not restatements. In a restatement the words
+    are the claim's and the hedge is the code's, so "unsupported", "overstated" or "missing_hedge" there can only be
+    a false alarm (measured on the pipeline benchmark: 43 of 46 marks sat on such sentences)."""
+    claims = {c["id"]: c for c in b.get("claims") or []}
+    ids = list(dict.fromkeys(str(c).strip() for c in item.get("claims") or []))
+    if not ids or any(i not in claims for i in ids):
+        return False
+    used = [claims[i] for i in ids]
+    sources = list(dict.fromkeys(n for c in used for n in c.get("sources") or []))
+    if sorted(set(item.get("citations") or [])) != sorted(set(sources)):
+        return False                        # not the sources compose() gives these claims: judge it
+    states = [c["state"] for c in used]
+    want = _restate_key(item.get("text"))
+    parts = list(dict.fromkeys(_clean(c["text"]).rstrip(" .") for c in used))     # the same words twice count once
+    if not want or not all(parts):
+        return False
+    bodies = parts if len(parts) == 1 else [join.join(order) for order in itertools.permutations(parts)
+                                            for join in _RESTATE_JOINS]
+    for body in bodies:
+        if _restate_key(attribution(body + ".", states, len(sources))) == want:
+            return True
+        if item.get("attributed") and _restate_key(_attributed(body + ".", sources)) == want:
+            return True
+    return False
+
+
 def _gap_text(text) -> str | None:
     text = _clean(text, 300)
     if not text or safety.scan_injection(text):
@@ -2630,33 +2690,43 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
         critique = {"status": "skipped", "reason": "spoken answer: the critique pass is off for voice "
                                                    "(nsf llm config --critique-voice turns it on)"}
     elif accepted and gw.cfg.self_critique:
-        try:
-            verdicts, more = _critique(gw, b, accepted, timeout=remaining(), **urgency)
-            results += more
-            dropped, flagged = set(), 0
-            for issue in verdicts.get("issues") or []:
-                i = issue.get("sentence")
-                if issue.get("problem") == "fine" or not isinstance(i, int) or not 1 <= i <= len(accepted) \
-                        or i - 1 in dropped:
-                    continue
-                item = accepted[i - 1]
-                flag = {"problem": issue["problem"], "note": _clean(issue.get("note"), 200) or None}
-                # the model's judgement alone never removes a sentence: an objective check must confirm it
-                failed = check_sentence({"text": item["text"], "sources": item["citations"], "claims": item["claims"]},
-                                        b)[5]
-                if failed:
-                    dropped.add(i - 1)
-                    rejected.append({"text": item["text"], "reasons": [
-                        f"self-critique: {issue['problem']}" + (f" ({flag['note']})" if flag["note"] else ""),
-                        *(f"confirmed: {r}" for r in failed)]})
-                else:
-                    item["flag"] = flag | {"confirmed": False}
-                    flagged += 1
-            accepted = [s for i, s in enumerate(accepted) if i not in dropped]
-            gaps += [{"text": g, "by": "model"} for g in map(_gap_text, verdicts.get("gaps") or []) if g]
-            critique = {"status": "ok", "removed": len(dropped), "flagged": flagged}
-        except InferenceError as err:
-            critique = {"status": "failed", "reason": f"{err.code}: {err}"}
+        # The critique judges what the model wrote of its own. A sentence that is its cited claims word for word with
+        # the attribution the code appended (restates) gives a second reading nothing to judge, and is left out of
+        # the critic's numbered list; cfg.critique_restatements has every accepted sentence judged, as 0.7.0 did.
+        every = bool(getattr(gw.cfg, "critique_restatements", False))
+        judged = [i for i, s in enumerate(accepted) if every or not restates(s, b)]
+        counts = {} if every else {"judged": len(judged), "restatements": len(accepted) - len(judged)}
+        if not judged:
+            critique = {"status": "skipped", "reason": RESTATEMENTS_ONLY.format(n=len(accepted))} | counts
+        else:
+            try:
+                verdicts, more = _critique(gw, b, [accepted[i] for i in judged], timeout=remaining(), **urgency)
+                results += more
+                dropped, flagged = set(), 0
+                for issue in verdicts.get("issues") or []:
+                    n = issue.get("sentence")       # the critic numbers only the sentences it was shown
+                    if issue.get("problem") == "fine" or not isinstance(n, int) or not 1 <= n <= len(judged) \
+                            or judged[n - 1] in dropped:
+                        continue
+                    i = judged[n - 1]
+                    item = accepted[i]
+                    flag = {"problem": issue["problem"], "note": _clean(issue.get("note"), 200) or None}
+                    # the model's judgement alone never removes a sentence: an objective check must confirm it
+                    failed = check_sentence({"text": item["text"], "sources": item["citations"],
+                                             "claims": item["claims"]}, b)[5]
+                    if failed:
+                        dropped.add(i)
+                        rejected.append({"text": item["text"], "reasons": [
+                            f"self-critique: {issue['problem']}" + (f" ({flag['note']})" if flag["note"] else ""),
+                            *(f"confirmed: {r}" for r in failed)]})
+                    else:
+                        item["flag"] = flag | {"confirmed": False}
+                        flagged += 1
+                accepted = [s for i, s in enumerate(accepted) if i not in dropped]
+                gaps += [{"text": g, "by": "model"} for g in map(_gap_text, verdicts.get("gaps") or []) if g]
+                critique = {"status": "ok", "removed": len(dropped), "flagged": flagged} | counts
+            except InferenceError as err:
+                critique = {"status": "failed", "reason": f"{err.code}: {err}"} | counts
     seen, merged = set(), []
     for g in gaps + [{"text": g, "by": "rules"} for g in rule_gaps(report)]:
         if g["text"].lower() not in seen:
@@ -2695,5 +2765,5 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
 
 __all__ = ["ANSWER_SCHEMA", "HEDGES", "LABEL_DEGRADED", "LABEL_MODEL", "MIN_MODEL_SECONDS", "PROMPT_EXAMPLE",
            "SUPPORTED_STATES", "answer_schema", "apply", "attribution", "bundle", "check_sentence", "claim_state",
-           "compose", "gateway_for", "guard", "hedged", "insufficiency", "messages", "rule_gaps", "unanswered",
-           "verdict_note"]
+           "compose", "gateway_for", "guard", "hedged", "insufficiency", "messages", "restates", "rule_gaps",
+           "unanswered", "verdict_note"]

@@ -39,7 +39,7 @@ intent ─▶ memory ─▶ discovery/reading ─▶ claims + verification ─�
 | `jsonschema.py` | The schema subset used for structured output and tool arguments, validated locally. |
 | `tools.py` | Allow-listed tools; the model suggests, NeuroSciFi decides and executes. |
 | `ledger.py` | One row per call in `<db stem>.inference.sqlite` (0600): purpose, provider (`chat`, `embed`, `rerank`), model, locality, status, prompt/completion tokens, `cached_tokens` (prompt tokens the server took from its prefix cache; NULL when the server did not say), `priority` (NULL: none sent), latency, first-token latency, attempts, tokens/s. No prompt or answer text. A ledger written by 0.7.0 gains `provider`, `priority` and `cached_tokens` when it is opened and keeps its rows. |
-| `cli.py` | `nsf llm config|status|models|ask|usage` (the `chat` provider). `status` prints `health`, `usage_24h` (with `cached_prompt_tokens` and `cached_share`, taken only over the calls whose server reported the cache) and `reasoning` {`enabled`, `self_critique`, `critique_voice`, `background_priority` (null when 0)}. |
+| `cli.py` | `nsf llm config|status|models|ask|usage` (the `chat` provider). `status` prints `health`, `usage_24h` (with `cached_prompt_tokens` and `cached_share`, taken only over the calls whose server reported the cache) and `reasoning` {`enabled`, `self_critique`, `critique_voice`, `critique_restatements`, `background_priority` (null when 0)}. |
 
 **Health states** (never guessed; the console and CLI show exactly these):
 
@@ -377,23 +377,38 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   establish."): the CLI (the model's own `web_research` tool in `nsf llm ask` also submits as "cli", so the two
   cannot be told apart), MCP clients, refresh-owner, monitors, the bench, and an autonomous task (curiosity,
   refresh) the owner authorised. An autonomous task without that authorisation gets no note.
-- **Self-critique.** One call (≤ 400 tokens) that produces marks and gaps, nothing else. Each accepted sentence is
+- **Self-critique.** At most one call (≤ 400 tokens) that produces marks and gaps, nothing else. It judges what
+  the model wrote of its own: an accepted sentence that is its cited claims word for word with the attribution
+  `compose()` appended (`reasoning.restates`, below) is not shown to the critic, and when every accepted sentence is
+  such a restatement no call is made. Each judged sentence is
   marked `fine`, `unsupported`, `overstated` or `missing_hedge`, and the model may name further gaps. A mark removes
   a sentence only when `check_sentence` reports an objective failure for it (unknown source or claim, a claim state
   that is not supported stated without a hedge, a number or unit not in the cited evidence). The guard has already
   run `check_sentence` on every accepted sentence against the same bundle, so in practice the re-check fails for
   none and a mark removes nothing: the sentence stays with `flag: {problem, note, confirmed: false}`, shown in the
   console as "self-check flagged". The model's judgement alone never removes a sentence, and it can never add one.
-  `critique` reports `status` (`ok`, `skipped` with a reason, `failed` with a reason), `removed` and `flagged`.
+  `critique` reports `status` (`ok`, `skipped` with a reason, `failed` with a reason), `removed` and `flagged`, and
+  with the default scope `judged` and `restatements` (sentences shown to the critic, sentences left out).
   (Before v0.7.0 Lane G any mark removed the sentence; live, that dropped correct sentences and once a whole
   answer.) Measured on the 51 tasks of the offline corpus with the live model
   (`docs/quality/evidence/accel_baseline_pipeline.json`, `summary`): the critique call ran for the 46 model answers
   and took 42 % of the tasks' wall time (the answer call 53 %, orchestration 5 %); it removed 0 of the 94 kept
   sentences and flagged 41. The same run after the changes of §7 (`accel_after_pipeline.json`): 42 % of wall time,
-  0 of 90 kept sentences removed, 46 flagged, and 35 of those 46 flags are on sentences that restate their cited
-  claims word for word (`critique_flags`; the file reads such a mark as a false alarm). The pass is skipped when
-  too little of the time budget is left (below), when `self_critique` is off, and for a spoken answer when
-  `critique_voice` is off (§7).
+  0 of 90 kept sentences removed, 46 flagged. Read with the exact test below, 80 of those 90 sentences are their
+  cited claims word for word and 43 of the 46 flags sit on them (the file's own `critique_flags` says 79 and 35: it
+  used a looser content-word test that did not know one attribution and accepted shortened claims). That is why the
+  critique's scope is what it is now (§7, "What the critique judges"). The pass is skipped when
+  too little of the time budget is left (below), when `self_critique` is off, for a spoken answer when
+  `critique_voice` is off, and when every accepted sentence is a restatement (§7).
+- **Restatements (`reasoning.restates`).** An accepted sentence is a restatement when its text is exactly what
+  `compose()` makes of its cited claims' own words: one claim's text, or every cited claim's text once, in any order,
+  joined by `, and`, ` and`, `; ` or `; and`, followed by the attribution `attribution()` appends for those claims'
+  states and number of sources (nothing when all are supported), or led by the guard's own "According to one
+  source, …" (items with `attributed`). The comparison ignores case, spacing, unicode punctuation variants and the
+  final full stop, and nothing else: a shortened, reordered or reworded claim, a changed number or unit, a dropped
+  "not", an added clause, a claim cited but not restated, citations other than the cited claims' own sources, or an
+  unknown claim id is no restatement and is judged. The code never changes a sentence because of this test; it only
+  decides whether the critic is asked about it. Tests: `tests/inference/test_inference_critique_scope.py`.
 - **Time budget.** `orchestrator._reason` passes what is left of the task's `budget.max_seconds`
   (`time_left`); the answer call, its schema repair and the critique share that one deadline (`Gateway.structured`
   gives the repair only the remaining time; `Gateway._call` never exceeds `read_timeout`). With less than
@@ -731,13 +746,15 @@ nsf llm usage                                                 # token ledger
 
 ## 7. Adaptive inference policy
 
-Three settings decide how much model work a call gets and when, by who is waiting for it. Each is per individual,
+Four settings decide how much model work a call gets and when, by who is waiting for it and by what there is to
+judge. Each is per individual,
 has a default and one command that restores the 0.7.0 behaviour. None of them changes the guard (§3).
 
 | Setting | Default | What it does | Restore 0.7.0 behaviour |
 |---|---|---|---|
 | `background_priority` (inference setting, 0–100) | 0: no `priority` field is sent. `nsf setup` sets 10 when the endpoint's `/models` answer says `owned_by: vllm`; `nsf llm config --url` alone leaves it at 0 | The model calls of an autonomous task (origin `curiosity` or `refresh:<id>`, `orchestrator.is_autonomous`) carry `priority: N`: the answer call, its schema repair, the critique and the memory-answer check. The owner's calls never carry it (console, CLI, Pocket, voice, monitors, owner refreshes) | `nsf llm config --set background_priority=0` |
 | `critique_voice` (inference setting) | on: a spoken answer gets the critique pass like any other | Off: for a task whose origin is `voice` or `pocket-voice` the critique call is not made, so a spoken answer costs one model call. `critique` is then `{status: skipped, reason: "spoken answer: the critique pass is off for voice (nsf llm config --critique-voice turns it on)"}`. The critique's marks are shown by the console and Pocket and are never spoken | `nsf llm config --critique-voice` (off: `--no-critique-voice`) |
+| `critique_restatements` (inference setting) | off: the critique judges only accepted sentences that are not restatements (§3), and makes no call when there is none | On: every accepted sentence is numbered and judged, as in 0.7.0. Off, `critique` carries `judged` and `restatements`; an answer made only of restatements gets `{status: skipped, reason: "nothing to judge: all N sentence(s) restate their cited claims word for word, …", judged: 0, restatements: N}` and one model call. The answer call, the guard and the gaps the answer call names are the same in both settings | `nsf llm config --critique-restatements` (default: `--no-critique-restatements`) |
 | `memory_check` (web setting) | on; it does nothing without a configured answer model or with `reasoning` off | Before memory answers a question without the web, the answer model confirms that a chosen statement states the answer to exactly what is asked. It can only send a question to the web, never the reverse ([MEMORY_INTEGRATION §5.2](../web-cortex/MEMORY_INTEGRATION.md#52-the-memory-answer-check-memory_gatepy)) | `nsf web config --no-memory-check` |
 
 **Background priority.** The value only has an effect on a server that schedules by priority; `deploy/vllm` starts
@@ -753,14 +770,44 @@ run, the priority orders them behind the owner's inside the server. Tests:
 `test_background_reasoning_sends_nothing_when_no_priority_is_configured`) and
 `tests/test_setup_cli.py::test_a_vllm_endpoint_gets_the_background_priority_and_setup_says_so`.
 
-**Critique for voice.** The default keeps 0.7.0 behaviour. The switch exists because the pass is 42 % of a task's
+**Critique for voice.** The default keeps 0.7.0 behaviour: a spoken answer gets the same critique as a shown one
+(with the default scope below, only when it holds a sentence of the model's own). The switch exists because the
+pass, judging every sentence, was 42 % of a task's
 wall time on the offline corpus and removed no sentence there (§3), and its flags are never spoken. What skipping
-the pass saves, measured by running the same 51 tasks with `self_critique` off
+the pass saved then, measured by running the same 51 tasks with `self_critique` off
 (`docs/quality/evidence/accel_after_pipeline_no_critique.json` against `accel_after_pipeline.json`): task wall time
-median 1.37 s against 3.27 s, mean 2.36 s against 4.45 s. With the pass off the answer is still checked by the
-guard, sentence by sentence. Tests:
+median 1.37 s against 3.27 s, mean 2.36 s against 4.45 s. With the default scope most of that is already saved
+(table below), and the switch saves what is left for spoken answers. With the pass off the answer is still checked
+by the guard, sentence by sentence. Tests:
 `test_a_spoken_answer_keeps_the_critique_pass_by_default`,
 `test_with_critique_voice_off_a_spoken_answer_makes_one_model_call_and_says_why`.
+
+**What the critique judges.** In a restatement the words are the claim's and the attribution is the one the code
+chose from the claim's state, so a mark of "unsupported", "overstated" or "missing_hedge" on it is a statement about
+the code's own hedge, and the critique cannot remove a sentence the guard accepted (§3). Measured with the live model
+on the 51 tasks of the offline corpus, five runs one after another
+(`docs/quality/evidence/accel_decisions_critique_scope.json`; times are indicative, the GPU was shared):
+
+| | every sentence (`critique_restatements`, two runs) | default (two runs) | `self_critique` off |
+|---|---|---|---|
+| Critique calls | 44, 44 | 9, 11 | 0 |
+| Sentences judged, of those kept | 86 of 86, 86 of 86 | 10 of 91, 12 of 89 | none |
+| Marks | 42, 42 | 4, 4 | none |
+| Marks on restatements | 38, 38 | 0, 0 | none |
+| Sentences the critique removed | 0, 0 | 0, 0 | none |
+| Critique tokens (prompt + completion) | 40,626, 40,671 | 6,425, 9,336 | 0 |
+| Task wall time, mean / median | 4.13 / 3.03 s, 4.16 / 2.96 s | 2.80 / 1.77 s, 2.79 / 1.81 s | 2.33 / 1.38 s |
+| Model answers of 51 | 44, 44 | 46, 45 | 44 |
+
+The answer call is made before the critique and is the same request in every column, so the number of model answers
+and the kept sentences vary with the run, not with the setting (temperature 0.1, no seed): the two default runs
+differ from each other in 8 tasks, and the second default run differs from the every-sentence runs in 1. The
+sentences still judged are the ones the model shortened or rewrote ("The Halvorsen Bridge opened in 1987, …" from a
+claim that goes on "and now carries about 42,000 vehicles a day"; "A faulty network configuration change caused the
+outage, according to one source." from "The company said a faulty network configuration change caused the outage.")
+and one that cites two claims and restates one. The four remaining marks are a model's judgement as before, shown
+and never acted on. Tests: `tests/inference/test_inference_critique_scope.py`; in the browser,
+`tests/e2e/test_reasoning_console.py::test_a_word_for_word_answer_is_shown_without_a_critique_call_by_default`.
 
 **Memory-answer check.** One structured call of at most 8 s (`memory_gate.TIMEOUT`, and never more than the task's
 remaining time budget), purpose `memory_gate` in the ledger, with the background priority for an autonomous task.
