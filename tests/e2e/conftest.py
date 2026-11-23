@@ -17,6 +17,21 @@ FAKE_MEDIA = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-str
 expect.set_options(timeout=10_000)
 
 
+def paced(per_page: float, pages: int) -> float:
+    """The delay to give each of `pages` fixture pages (on distinct sites) so that a research task's reading stage
+    lasts what the tests that watch it go by were written for: `pages` pages at `per_page` seconds each, one after
+    the other. The individuals under test keep the default `read_ahead`, so pages are fetched several at once, in
+    rounds of at most that many, and a round lasts one delay; with the same delay per page the stage would be that
+    many times shorter, and a phone polling for progress, or a test that needs the stage to last a second, would
+    miss it. Scaling the delay keeps the stage as long as it was while the browser suite exercises the default
+    path."""
+    import math
+
+    from neuroscifi.webcortex.config import WebConfig
+    at_once = max(1, min(WebConfig().read_ahead, pages))
+    return per_page * pages / math.ceil(pages / at_once)
+
+
 class Bridge:
     def __init__(self, folder):
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)

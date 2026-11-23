@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import expect
 
-from conftest import AXE, SHOTS, pair
+from conftest import AXE, SHOTS, paced, pair
 from neuroscifi.console.server import ConsoleServer
 from neuroscifi.instance import store
 from neuroscifi.webcortex import orchestrator, state
@@ -52,7 +52,12 @@ def html(title, paragraphs):
 class Spark:
     def __init__(self, folder, delay=1.5):
         self.web = FixtureWeb().start()
-        for (host, path), page in {**PAGES, **OKAPI}.items():
+        # `delay`: what a page read takes one after the other. The three Zephyr pages are read together under the
+        # default read-ahead, so each waits longer and the reading stage lasts as long as it did (conftest.paced);
+        # the okapi page is read alone
+        for (host, path), page in PAGES.items():
+            self.web.add(host, path, html(*page), delay=paced(delay, len(PAGES)))
+        for (host, path), page in OKAPI.items():
             self.web.add(host, path, html(*page), delay=delay)
         results = [{"url": f"http://{h}{p}", "title": t, "snippet": " ".join(x)[:160]} for (h, p), (t, x) in
                    {**PAGES, **OKAPI}.items()]

@@ -10,7 +10,7 @@ import time
 import pytest
 from playwright.sync_api import expect
 
-from conftest import AXE, SHOTS, Bridge, pair
+from conftest import AXE, SHOTS, Bridge, paced, pair
 from neuroscifi.instance import store
 from neuroscifi.webcortex import orchestrator, scheduler, state
 from neuroscifi.webcortex.fixtureweb import FixtureWeb
@@ -32,9 +32,12 @@ PAGES = {
 
 
 class Spark:
-    """The e2e bridge plus an individual with Pocket research on, and an offline public web for its worker."""
+    """The e2e bridge plus an individual with Pocket research on, and an offline public web for its worker.
+    `delay`: seconds a page read takes when pages are read one after the other; the reading stage lasts that for
+    each page whatever the read-ahead window is (conftest.paced)."""
 
     def __init__(self, folder, delay):
+        delay = paced(delay, len(PAGES))
         self.bridge = Bridge(folder)
         self.url = self.bridge.url
         self.instance = folder / "individual.sqlite"
@@ -84,7 +87,7 @@ def spark(tmp_path):
 
 @pytest.fixture
 def slow_spark(tmp_path):
-    s = Spark(tmp_path, delay=2.0)   # each page read takes 2 s, so the phone sees the stages go by
+    s = Spark(tmp_path, delay=2.0)   # the three page reads take 6 s together, so the phone sees the stages go by
     yield s
     s.close()
 

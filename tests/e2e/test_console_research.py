@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import expect
 
-from conftest import AXE, SHOTS
+from conftest import AXE, SHOTS, paced
 from neuroscifi.console.server import ConsoleServer
 from neuroscifi.instance import store
 from neuroscifi.webcortex import state
@@ -68,7 +68,9 @@ class Research:
         for (host, path), page in PAGES.items():
             self.web.add(host, path, html(*page))
         for (host, path), page in SLOW.items():
-            self.web.add(host, path, html(*page), delay=2.0)
+            # 2 s a page read one after the other: the reading stage lasts 6 s, long enough to cancel it in, also
+            # with the pages fetched together under the default read-ahead (conftest.paced)
+            self.web.add(host, path, html(*page), delay=paced(2.0, len(SLOW)))
         results = [{"url": f"http://{host}{path}", "title": title.replace(PWN, ""), "snippet": " ".join(paras)[:160]}
                    for (host, path), (title, _, paras) in {**PAGES, **SLOW}.items()]
         self.path = Path(folder) / "owner.sqlite"
