@@ -290,6 +290,33 @@ def test_restore_invalidates_graphs_built_on_forgotten_datasets(instance, tmp_pa
     assert out["datasets_blanked"] == 1 and out["graphs_invalidated"] == [rev]
 
 
+def test_forget_dataset_deletes_the_lesion_and_coactivation_effects_measured_on_it_also_in_a_restore(instance,
+                                                                                                      tmp_path):
+    """graph_effects rows are measurements on one dataset: forgetting the dataset deletes them, live and in a
+    restored copy of an older archive, while effects measured on other datasets stay."""
+    db, path = instance
+    from neuroscifi.instance import datasets, graphs
+    ids = datasets.simulate(db, "desk", T0, seed=3, steps=256)
+    rev = graphs.learn(db, "desk", T0 + 1, train=ids["train"], validation=ids["validation"], holder="t")
+    assert graphs.promote(db, rev, T0 + 2)["promoted"]
+    graphs.lesion(db, rev, ids["heldout"], T0 + 3)
+    graphs.functional_map(db, ids["heldout"], T0 + 4)
+    graphs.functional_map(db, ids["train"], T0 + 5)
+    count = "SELECT count(*) FROM graph_effects WHERE dataset_id=?"
+    kept = db.execute(count, (ids["train"],)).fetchone()[0]
+    assert db.execute(count, (ids["heldout"],)).fetchone()[0] > 0 and kept > 0
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 6)
+    out = governance.forget_dataset(db, ids["heldout"], T0 + 7)
+    assert db.execute(count, (ids["heldout"],)).fetchone()[0] == 0
+    assert out["effects"]["graph_effects_deleted"] > 0
+    assert db.execute(count, (ids["train"],)).fetchone()[0] == kept
+    restored = checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 8)
+    assert restored["graph_effects_removed"] == out["effects"]["graph_effects_deleted"]
+    with closing(sqlite3.connect(tmp_path / "r.sqlite")) as copy:
+        assert copy.execute(count, (ids["heldout"],)).fetchone()[0] == 0
+        assert copy.execute(count, (ids["train"],)).fetchone()[0] == kept
+
+
 def test_restore_scrubs_roots_forgotten_after_the_checkpoint(instance, tmp_path):
     db, path = instance
     from neuroscifi.instance import evidence

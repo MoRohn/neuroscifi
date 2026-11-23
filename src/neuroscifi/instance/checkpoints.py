@@ -5,7 +5,7 @@ voice audio past its TTL is deleted first, so it never enters a new archive.
 A deletion that commits while the archive is being written makes the new checkpoint 'stale' at once.
 `restore` never publishes a partial file and re-applies current tombstones (with the revision causes naming them),
 forgotten epochs (their derived rows, governance.drop_epoch_rows, in copies written before the forget), forgotten
-datasets (with their graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
+datasets (with the graph effects measured on them and their graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
 the same cascade as the live forget: governance.replay_web_forgets; forgotten voice sessions with their
 transcripts and audio: governance.replay_voice_forgets), research-node revocations and retired node keys, and the
 nonces of signed node requests still inside their replay window, and drops epoch streams and
@@ -229,7 +229,7 @@ def _replay(copy, forgets, now):
     revoked = forgets["revoked"] if forgets else []
     retired = forgets["retired"] if forgets else []
     nonces = forgets["nonces"] if forgets else []
-    removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = epoch_rows = 0
+    removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = epoch_rows = effects = 0
     web_removed = {"tasks": 0, "knowledge": 0, "sources": 0}
     invalidated = []
     copy.execute("PRAGMA secure_delete=ON")
@@ -249,6 +249,7 @@ def _replay(copy, forgets, now):
     for dataset_id in forgotten:
         blobs += copy.execute("UPDATE datasets SET blob=NULL, deleted_at=? "
                               "WHERE id=? AND deleted_at IS NULL", (now, dataset_id)).rowcount
+        effects += copy.execute("DELETE FROM graph_effects WHERE dataset_id=?", (dataset_id,)).rowcount
         invalidated += graphs.invalidate_dependents(copy, dataset_id, now)["invalidated"]
     if roots:
         copy.executemany("INSERT OR IGNORE INTO forgotten_roots(digest,kind,forgotten_at) VALUES(?,?,?)", roots)
@@ -299,7 +300,7 @@ def _replay(copy, forgets, now):
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
     return {"tombstones_applied": len(tombstones), "evidence_removed": removed, "epoch_rows_removed": epoch_rows,
-            "datasets_blanked": blobs,
+            "datasets_blanked": blobs, "graph_effects_removed": effects,
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
             "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked}
