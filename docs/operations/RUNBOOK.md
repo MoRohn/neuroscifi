@@ -290,7 +290,7 @@ nsfs web status                                                # switches, provi
 - Web questions have their own budget: at most `max_open_web_questions` (default 10) open, and at most `max_web_questions_per_task` (default 3) new per task. Beyond that, candidates stay provisional and one aggregate question per task (scope `web:review:<task>`) says how many await review. Review them in the console (Research) or with `nsfs web knowledge --status provisional` and `nsfs web review ID --accept|--reject`. `nsfs regulation` reports `open_web_questions` separately.
 - A monitor's meaningful change is a `finding` event and an informational question `web:finding:<monitor>:<task>`; the console's monitors table lists recent findings.
 - While regulation pauses writes (section 7), nothing web-related is written: submissions, consolidation, monitors and proposals return "writes paused", the worker claims nothing (one decision event), and a running task stops at its next step as `partial` without consolidating.
-- Turning web access off (`nsfs web config --disable`) or adding a domain to `deny_domains` takes effect in a running task within a few seconds: it stops as `partial` ("Web access was turned off during the run"), or skips the denied hosts.
+- Turning web access off (`nsfs web config --disable`), adding a domain to `deny_domains` or cancelling a task takes effect in a running task before its next request while it reads pages (every page fetch asks before each request; a request already on the wire finishes, one made ahead of its turn is cut), and within about 2 s while it searches. It stops as `partial` ("Web access was turned off during the run"), ends `cancelled`, or skips the denied hosts and says so ([Search and acquisition](../web-cortex/SEARCH_AND_ACQUISITION.md), "Stops").
 - A task that could read nothing because every provider or page failed (network down, all circuits open) ends `failed` with a limitation naming the failures. `nsfs web requeue TASK_ID` searches again once the network is back.
 - An identical submission (same objective, mode and origin) while one is queued or running returns that task (`deduplicated: true`). `requeue` of a partial or cancelled task returns the child already queued instead of creating another.
 - Curiosity proposals are sized to the daily autonomous allowance left when they are made, and are checked again when you confirm them and when the worker starts them.
@@ -333,16 +333,20 @@ The run script generates one API key for both services on first use (`~/.config/
 
 Stopping the containers does not need a configuration change: the next query falls back to the lexical ranking and `retrieval.reason` says why. To switch semantic retrieval off for the individual, use `nsf web memory config --disable`.
 
-### Faster reading (read-ahead, off by default)
+### Reading several pages at once (read-ahead, on by default)
 
 ```sh
-nsf web config --set read_ahead=4     # fetch the next pages ahead, one per site; results are identical
-nsf web config --set read_ahead=1     # back to one page at a time (the default)
+nsf web config                        # shows read_ahead (default 4)
+nsf web config --set read_ahead=1     # one page at a time for every task, as 0.7.0
+nsf web config --set read_ahead=4     # back to the default
 ```
 
-Before turning it on, read what changes at the edges
-([Search and acquisition](../web-cortex/SEARCH_AND_ACQUISITION.md), "Read-ahead"): a few requests already sent can
-still reach their sites after a cancel or a denial, and unused requests are outside the daily caps.
+A task's report, usage and events are the same at any value; only the time spent waiting for sites changes (about
+half at 4). Curiosity, refresh and MCP tasks always read one page at a time, so the daily allowances are exact. After
+a cancel, a denial or switching web access off no new request is sent; at most `read_ahead` requests that were
+already on the wire reach their sites. What a task sent ahead and did not use is in its usage
+(`prefetch_unused_requests`, `prefetch_unused_bytes`). Details:
+[Search and acquisition](../web-cortex/SEARCH_AND_ACQUISITION.md), "Stops" and "Read-ahead".
 
 ### Rolling back the inference and memory defaults
 
