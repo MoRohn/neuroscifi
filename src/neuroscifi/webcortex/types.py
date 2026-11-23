@@ -233,6 +233,26 @@ class Usage(JsonMixin):
     browser_sessions: int = 0
     tokens: int = 0
     render_requests: int = 0          # sub-requests of all renders (each within budget.max_render_requests)
+    # Requests sent and bytes received for pages fetched ahead of their turn (config.read_ahead) that the task then
+    # did not use: real traffic to the sites, counted apart from requests/bytes (what the task used and was charged).
+    prefetch_unused_requests: int = 0
+    prefetch_unused_bytes: int = 0
+
+    def charge_unused(self, *, requests=0, bytes=0):
+        """Count what an unused read-ahead fetch sent and received (net.SafeFetcher.speculate). Never checked
+        against the budget: the traffic already happened, and the task never used it."""
+        with _CHARGE_LOCK:
+            self.prefetch_unused_requests += requests
+            self.prefetch_unused_bytes += bytes
+
+    def to_json(self) -> dict:
+        """As JsonMixin, without the unused-prefetch counters while they are 0, so a task that fetched nothing ahead
+        (read_ahead 1) records exactly the usage it always did."""
+        out = super().to_json()
+        for name in ("prefetch_unused_requests", "prefetch_unused_bytes"):
+            if not out.get(name):
+                out.pop(name, None)
+        return out
 
     def charge(self, budget: Budget, *, queries=0, requests=0, pages=0, bytes=0, browser_sessions=0):
         """Check then add, atomically. Raises BudgetExceeded before the limit would be passed (pre-flight)."""

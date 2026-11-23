@@ -41,6 +41,13 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
   charged after reading, and reading stops before the byte budget could be exceeded (BudgetExceeded propagates).
   Identical concurrent GETs are coalesced: a follower is charged its own request(s) and the body length on its own
   budget, and when the leader fails with BudgetExceeded (the leader's budget) the follower fetches for itself.
+- Read-ahead (speculate): a page may be fetched on its own thread before the caller asks for it, under every rule
+  above (address, robots, throttle, backoff, size, time). Its charges are recorded, not applied, and its public-cache
+  and robots.txt writes are held back; the fetch() that claims it applies them in order only when a fetch made at
+  that moment would have sent the same requests and seen the same answers (same policy, backoff, robots entries
+  and cached validators; the budget stopping it at the same point), else it fetches again. An unused one (abandon)
+  is never charged, cached or remembered; what it sent counts in Usage.prefetch_unused_*. Throttle slots and
+  Retry-After backoff it caused apply at once, and once the policy changes it sends nothing more.
 - Numeric headers (Retry-After, Content-Length) accept ASCII digits only.
 - Privacy: bodies and full query strings are never logged; purpose='api' responses are never cached (API URLs
   carry search queries, ADR-023).
@@ -66,7 +73,7 @@ import weakref
 import zlib
 
 from .config import USER_AGENT
-from .types import BudgetExceeded, FetchError, FetchResult
+from .types import Budget, BudgetExceeded, FetchError, FetchResult
 
 CONTENT_TYPES = ("text/html", "application/xhtml+xml", "text/plain", "application/json", "application/*+json",
                  "application/xml", "text/xml", "application/atom+xml", "application/rss+xml", "application/pdf")
@@ -98,6 +105,9 @@ _FORBIDDEN_HEADERS = {"host", "accept-encoding", "connection", "content-length",
 _CREDENTIAL_HEADERS = {"authorization", "cookie", "x-subscription-token"}   # the last: Brave Search API key
 _DIGITS = re.compile(r"[0-9]+")         # ASCII only: str.isdigit() accepts '²' and other Unicode digits
 _CHARGE_LOCK = threading.Lock()
+# a read-ahead fetch reads its body unbounded by the task's byte budget (its own page cap still applies); the budget
+# is applied when the reader claims it (SafeFetcher._commit), exactly where a fetch made then would have stopped
+_UNBOUNDED = Budget(max_requests=1 << 62, max_bytes=1 << 62)
 
 
 @dataclass(frozen=True)
@@ -390,6 +400,92 @@ class _Flight:
         self.error = None
 
 
+class _Abandoned(BudgetExceeded):
+    """Raised inside an abandoned read-ahead fetch at its next charge, so it sends no further request."""
+
+    def __init__(self):
+        super().__init__("read-ahead", "abandoned", "unused")
+
+
+class _Speculation:
+    """A page fetch made ahead of its turn (SafeFetcher.speculate), on its own thread.
+
+    It stands in for the task's Usage during the fetch: every charge is recorded in order and none is applied, and
+    the fetch's writes to shared state (the public-cache body, robots.txt entries) are held back as events. What it
+    saw of shared state (the cached validators of its URL, the robots entries it used, host backoff) is kept so the
+    claim (SafeFetcher._claim) can tell whether a fetch made at that moment would have sent the same requests;
+    only then are the recorded charges applied to the task's Usage, in order, and the held writes made. Hosts it
+    contacted keep their throttle slots and any Retry-After backoff at once: politeness never waits for a claim."""
+    bytes = 0       # _read_body bounds a read by budget.max_bytes - usage.bytes: unbounded here (_UNBOUNDED)
+
+    def __init__(self, url, usage, fetcher):
+        self.url, self.usage, self.fetcher, self.policy = url, usage, fetcher, fetcher.policy
+        self.lock = threading.Lock()
+        self.finished = threading.Event()
+        self.abandoned = False
+        # in order: ("request",) | ("bytes", wire, identity-encoded) | ("robots", key, entry, (text, at) | None)
+        # | ("cache", FetchResult)
+        self.events: list[tuple] = []
+        self.robots: dict = {}            # robots key -> entry this fetch fetched (held back)
+        self.robots_text: dict = {}       # robots key -> (text, fetched_at) for the public cache (held back)
+        self.robots_seen: dict = {}       # robots key -> committed entry this fetch used
+        self.backoff_seen: dict = {}      # host -> backoff time the check saw (None: none)
+        self.backoff_set: dict = {}       # host -> backoff time this fetch's own 429/503 set
+        self.validators = None            # the cached response a conditional GET revalidated (_validators)
+        self.result = self.error = None
+
+    def hold(self, event):
+        with self.lock:
+            self.events.append(event)
+
+    def charge(self, _budget, *, requests=0, bytes=0, identity=True, **_others):
+        """Record a charge in order. Once abandoned, or once the fetcher's policy changed (the run applied a new deny
+        list: no read-ahead request goes out under the old one), refuse it so no further request is sent; bytes that
+        already arrived then count as unused."""
+        with self.lock:
+            if self.abandoned or (requests and self.fetcher.policy is not self.policy):
+                if bytes:
+                    self.usage.charge_unused(bytes=bytes)
+                raise _Abandoned()
+            self.events.extend([("request",)] * requests)
+            if bytes:
+                self.events.append(("bytes", bytes, identity))
+
+    def abandon(self, events=None):
+        """Drop the fetch: what it sent and received (or only `events`, the part a claim did not use) counts as
+        unused prefetch on the task's Usage, and a fetch still running sends nothing more."""
+        with self.lock:
+            if self.abandoned:
+                return
+            self.abandoned = True
+            spent = list(self.events if events is None else events)
+        self.usage.charge_unused(requests=sum(1 for e in spent if e[0] == "request"),
+                                 bytes=sum(e[1] for e in spent if e[0] == "bytes"))
+
+
+def _fits(spec: _Speculation, budget, usage) -> bool:
+    """Whether replaying the speculation's charges on `usage` reproduces exactly what a fetch made now would do: it
+    either fits, or stops at a request or at an uncompressed body exactly where _read_body would. A compressed
+    body near the byte limit does not qualify (where its read stops depends on the chunk sizes the limit sets)."""
+    if budget is None or usage is None:
+        return True
+    requests, used = usage.requests, usage.bytes
+    for event in spec.events:
+        if event[0] == "request":
+            if requests + 1 > budget.max_requests:
+                return True
+            requests += 1
+        elif event[0] == "bytes":
+            wire, identity = event[1], event[2]
+            left = budget.max_bytes - used
+            if identity and wire > left:
+                return True
+            if not identity and wire + CHUNK > left:
+                return False
+            used += wire
+    return True
+
+
 class _Watchdog:
     """Shuts a connection down at the fetch deadline. Socket timeouts bound each read, not the exchange: a server
     that trickles one byte per gap shorter than the timeout would otherwise keep a fetch alive indefinitely. The
@@ -636,6 +732,7 @@ class SafeFetcher:
         self._robots_locks: dict[str, threading.Lock] = {}
         self._stats: dict[str, dict] = {}
         self._semaphores = weakref.WeakKeyDictionary()
+        self._speculations: dict = {}      # (url, purpose, id(usage)) -> _Speculation not yet claimed or abandoned
 
     # ---- public API -----------------------------------------------------------------------------------------
     def fetch(self, url, *, method="GET", body=None, headers=None, purpose="page", conditional=True, budget=None,
@@ -645,6 +742,11 @@ class SafeFetcher:
             raise FetchError("blocked_policy", _redact(str(url)), f"unknown purpose {purpose!r}")
         if method not in ("GET", "HEAD", "POST") or (method == "POST" and purpose != "api"):
             raise FetchError("blocked_policy", _redact(str(url)), f"method {method} not allowed for {purpose}")
+        if self._speculations and method == "GET" and body is None and not headers and conditional \
+                and usage is not None:
+            spec = self._claim(url, purpose, budget, usage)
+            if spec is not None:
+                return self._commit(spec, budget, usage)
         if method != "GET" or body is not None:
             return self._fetch(url, method, body, headers, purpose, conditional, budget, usage)
         key = (url, purpose, bool(conditional), tuple(sorted((str(k).lower(), str(v))
@@ -677,6 +779,40 @@ class SafeFetcher:
             with self._lock:
                 self._inflight.pop(key, None)
             flight.event.set()
+
+    def speculate(self, url, *, purpose="page", usage=None) -> bool:
+        """Start fetching `url` now, on its own thread, for a fetch(url, purpose=purpose, usage=usage) the caller
+        expects to make soon (the reader's read-ahead, orchestrator._Run.prefetch). Nothing of it is charged,
+        cached or remembered until that fetch claims it, and it is used only when a fetch made at that moment would
+        have sent the same requests and seen the same answers; otherwise the claim fetches again and this one
+        counts as unused. abandon() drops it. Every policy, robots, throttle, backoff and size rule applies to it as
+        to any fetch. Returns whether a fetch was started (not for purposes that are never cached, nor twice)."""
+        if purpose not in CACHED_PURPOSES or usage is None:
+            return False
+        key = (url, purpose, id(usage))
+        spec = _Speculation(url, usage, self)
+        with self._lock:
+            if key in self._speculations:
+                return False
+            self._speculations[key] = spec
+
+        def run():
+            try:
+                spec.result = self._fetch(url, "GET", None, None, purpose, True, _UNBOUNDED, spec)
+            except Exception as error:     # kept for the claim, which raises it on the reader's thread
+                spec.error = error
+            finally:
+                spec.finished.set()
+        threading.Thread(target=run, name="nsf-read-ahead", daemon=True).start()
+        return True
+
+    def abandon(self, url, *, purpose="page", usage=None) -> None:
+        """Drop a read-ahead fetch the caller will not claim; what it sent counts as unused (Usage.charge_unused).
+        Nothing when it was already claimed or never started."""
+        with self._lock:
+            spec = self._speculations.pop((url, purpose, id(usage)), None)
+        if spec is not None:
+            spec.abandon()
 
     async def afetch(self, url, **kwargs) -> FetchResult:
         budget = kwargs.get("budget")
@@ -729,6 +865,97 @@ class SafeFetcher:
                                                 "robots_blocked": 0, "coalesced": 0, "cache_hits": 0})
             row[name] += amount
 
+    # ---- read-ahead (speculate) ------------------------------------------------------------------------------
+    def _claim(self, url, purpose, budget, usage):
+        """The finished read-ahead fetch of (url, purpose) for `usage` when a fetch made now would do exactly what it
+        did (_unchanged, _fits), else None after abandoning it (the caller then fetches as usual)."""
+        with self._lock:
+            spec = self._speculations.pop((url, purpose, id(usage)), None)
+        if spec is None:
+            return None
+        bound = self.policy.timeout * 4 * (self.policy.max_redirects + 1) + 5   # robots + page, waits, every hop
+        if not spec.finished.wait(bound) or not self._unchanged(spec) or not _fits(spec, budget, usage):
+            spec.abandon()
+            return None
+        return spec
+
+    def _unchanged(self, spec) -> bool:
+        """Whether a fetch of spec.url made now would see what the read-ahead fetch saw: the same policy, the same
+        host backoff (or the one its own 429/503 set), the same committed robots entries and still none for the
+        origins whose robots.txt it fetched, the same cached validators. An outcome decided locally by when it was
+        asked (a throttle slot beyond the timeout, a backoff in force) or an internal error never qualifies."""
+        if spec.policy is not self.policy:
+            return False
+        error = spec.error
+        if error is not None and not isinstance(error, FetchError):
+            return False
+        if isinstance(error, FetchError) and error.code == "rate_limited" and error.status is None:
+            return False
+        for host, seen in spec.backoff_seen.items():
+            if self._backoff_until(host) not in (seen, spec.backoff_set.get(host)):
+                return False
+        now = self._clock()
+        for key, entry in spec.robots_seen.items():
+            with self._lock:
+                current = self._robots.get(key)
+            if current is not entry or now - entry.fetched_at >= ROBOTS_TTL:
+                return False
+        for key in spec.robots:
+            with self._lock:
+                current = self._robots.get(key)
+            if current is not None and now - current.fetched_at < ROBOTS_TTL:
+                return False
+            stored = self.cache.robots(key) if self.cache is not None else None
+            if stored is not None and now - stored[1] < ROBOTS_TTL:
+                return False
+        if self.cache is not None and spec.validators != self._validators(spec.url):
+            return False
+        return True
+
+    def _commit(self, spec, budget, usage) -> FetchResult:
+        """Apply a claimed read-ahead fetch as if it were made now: its charges on `usage` in order (raising
+        BudgetExceeded exactly where a fetch made now would have stopped, the rest counted as unused), the held
+        robots entries and cache body written in order; then its result is returned or its FetchError raised."""
+        events = spec.events
+        for i, event in enumerate(events):
+            try:
+                if event[0] == "request":
+                    _charge(budget, usage, requests=1)
+                elif event[0] == "bytes":
+                    if budget is not None and event[2] and usage.bytes + event[1] > budget.max_bytes:
+                        # _read_body reads one byte past what is left and stops there, before charging
+                        raise BudgetExceeded("bytes", budget.max_bytes + 1, budget.max_bytes)
+                    _charge(budget, usage, bytes=event[1])
+                elif event[0] == "robots":
+                    _, key, entry, text = event
+                    with self._lock:
+                        self._robots[key] = entry
+                    if text is not None and self.cache is not None:
+                        self.cache.put_robots(key, *text)
+                elif self.cache is not None:
+                    self.cache.put(event[1])
+            except BudgetExceeded:
+                spec.abandon(events[i:])
+                raise
+        if spec.error is not None:
+            raise spec.error
+        return spec.result
+
+    def _validators(self, url):
+        """The cached response of `url` a conditional GET revalidates (an ETag or Last-Modified and its body still
+        stored), else None."""
+        cached = self.cache.lookup(url)
+        if cached and (cached["etag"] or cached["last_modified"]) and self.cache.body(cached["sha256"]):
+            return cached
+        return None
+
+    def _store(self, result, usage):
+        """Keep a fetched body in the public cache; a read-ahead fetch holds it until claimed (never if unused)."""
+        if isinstance(usage, _Speculation):
+            usage.hold(("cache", result))
+        else:
+            self.cache.put(result)
+
     def _fetch(self, url, method, body, headers, purpose, conditional, budget, usage) -> FetchResult:
         started = time.monotonic()
         deadline = started + self.policy.timeout
@@ -744,14 +971,14 @@ class SafeFetcher:
                     request_headers[str(name)] = str(value)
             cached = None
             if conditional and self.cache is not None and method == "GET" and purpose in CACHED_PURPOSES:
-                cached = self.cache.lookup(url)
-                if cached and (cached["etag"] or cached["last_modified"]) and self.cache.body(cached["sha256"]):
+                cached = self._validators(url)
+                if cached:
                     if cached["etag"]:
                         request_headers["If-None-Match"] = cached["etag"]
                     if cached["last_modified"]:
                         request_headers["If-Modified-Since"] = cached["last_modified"]
-                else:
-                    cached = None
+                if isinstance(usage, _Speculation):
+                    usage.validators = cached
             response, final, redirects = self._request(parts, method, body, request_headers, purpose, budget, usage,
                                                        {}, deadline)
             now = self._clock()
@@ -772,7 +999,7 @@ class SafeFetcher:
                                      headers=result_headers, content_type=cached["content_type"], body=stored,
                                      retrieved_at=now, retrieval_mode="live", redirects=redirects, elapsed=elapsed,
                                      remote_ip=response.remote_ip)
-                self.cache.put(result)
+                self._store(result, usage)
                 self._count(final.hostname, "cache_hits")
                 return result
             if not 200 <= response.status < 300:
@@ -784,7 +1011,7 @@ class SafeFetcher:
                                  truncated=response.truncated, elapsed=elapsed, remote_ip=response.remote_ip)
             if (self.cache is not None and method == "GET" and purpose in CACHED_PURPOSES
                     and not response.truncated):
-                self.cache.put(result)
+                self._store(result, usage)
             return result
         except FetchError:
             self._count(host, "errors")
@@ -797,7 +1024,7 @@ class SafeFetcher:
         origin = (parts.scheme, parts.hostname, parts.port)
         while True:
             host = current.hostname
-            self._check_backoff(host, current.geturl())
+            self._check_backoff(host, current.geturl(), usage)
             addresses = self._resolve(current, resolved)      # policy refusal precedes any robots request
             crawl_delay = 0.0
             if purpose in ROBOTS_PURPOSES:
@@ -846,8 +1073,10 @@ class SafeFetcher:
             return max(self.policy.subresource_interval, host_interval)
         return max(self.policy.min_domain_interval, host_interval, crawl_delay)
 
-    def _check_backoff(self, host, url):
-        now = self._clock()
+    def _backoff_until(self, host, now=None):
+        """The backoff time the check compares with `now` for host (None: none): this fetcher's, else the one
+        another fetcher or process sharing the cache set."""
+        now = self._clock() if now is None else now
         with self._lock:
             until = self._backoff.get(host)
         if self.cache is not None and (until is None or now >= until):
@@ -855,16 +1084,25 @@ class SafeFetcher:
             if until is not None and now < until:
                 with self._lock:
                     self._backoff[host] = max(until, self._backoff.get(host, 0.0))
+        return until
+
+    def _check_backoff(self, host, url, usage=None):
+        now = self._clock()
+        until = self._backoff_until(host, now)
+        if isinstance(usage, _Speculation):
+            usage.backoff_seen.setdefault(host, until)
         if until is not None and now < until:
             raise FetchError("rate_limited", _redact(url), "host backoff in force", retry_after=until - now)
 
     def _set_backoff(self, host, seconds):
+        """Back the host off for `seconds`; returns the backoff time now in force for it."""
         until = self._clock() + seconds
         with self._lock:
-            self._backoff[host] = max(until, self._backoff.get(host, 0.0))
+            self._backoff[host] = in_force = max(until, self._backoff.get(host, 0.0))
         if self.cache is not None:
             self.cache.put_backoff(host, until)
         self._count(host, "backoffs")
+        return in_force
 
     def _throttle(self, host, interval, url="") -> float:
         """Reserve the next request slot for host: at least `interval` seconds after the previous one; sleeps until
@@ -959,7 +1197,9 @@ class SafeFetcher:
                     if status == 503:
                         return response
                     wait = DEFAULT_BACKOFF
-                self._set_backoff(host, wait)
+                in_force = self._set_backoff(host, wait)
+                if isinstance(usage, _Speculation):
+                    usage.backoff_set[host] = in_force
                 raise FetchError("rate_limited", _redact(url), f"HTTP {status}", retry_after=wait, status=status)
             if 200 <= status < 300 and method != "HEAD":
                 if purpose != "robots":
@@ -1046,7 +1286,10 @@ class SafeFetcher:
             except zlib.error:
                 raise FetchError("decode_error", _redact(url), "corrupt compressed body") from None
             over = len(out) > limit
-        _charge(budget, usage, bytes=wire)
+        if isinstance(usage, _Speculation):     # where a read stops at the byte limit depends on the encoding (_fits)
+            usage.charge(budget, bytes=wire, identity=decoder is False)
+        else:
+            _charge(budget, usage, bytes=wire)
         self._count(_host(url), "bytes", wire)
         if over:
             if not may_truncate:
@@ -1057,26 +1300,41 @@ class SafeFetcher:
         response.wire = wire
 
     def _robots_entry(self, parts, budget, usage, resolved, deadline) -> _Robots:
+        """The robots.txt entry of parts' origin: remembered, from the public cache, or fetched. A read-ahead fetch
+        (usage a _Speculation) records the entries it used and holds back the one it fetched (_commit writes it)."""
         key = _robots_key(parts)
+        spec = usage if isinstance(usage, _Speculation) else None
+        if spec is not None and key in spec.robots:       # fetched earlier in this read-ahead fetch (a redirect hop)
+            return spec.robots[key]
         now = self._clock()
         with self._lock:
             entry = self._robots.get(key)
             host_lock = self._robots_locks.setdefault(key, threading.Lock())
         if entry is not None and (now - entry.fetched_at < ROBOTS_TTL):
+            if spec is not None:
+                spec.robots_seen.setdefault(key, entry)
             return entry
         with host_lock:
             now = self._clock()
             with self._lock:
                 entry = self._robots.get(key)
             if entry is not None and (now - entry.fetched_at < ROBOTS_TTL):
+                if spec is not None:
+                    spec.robots_seen.setdefault(key, entry)
                 return entry
             stored = self.cache.robots(key) if self.cache is not None else None
             if stored is not None and now - stored[1] < ROBOTS_TTL:
                 entry = _robots_from_text(stored[0], stored[1], user_agent=self.policy.user_agent)
             else:
                 entry = self._fetch_robots(parts, budget, usage, resolved, deadline)
+                if spec is not None:
+                    spec.robots[key] = entry
+                    spec.hold(("robots", key, entry, spec.robots_text.pop(key, None)))
+                    return entry
             with self._lock:
                 self._robots[key] = entry
+            if spec is not None:
+                spec.robots_seen.setdefault(key, entry)
             return entry
 
     def _fetch_robots(self, parts, budget, usage, resolved, deadline) -> _Robots:
@@ -1094,12 +1352,16 @@ class SafeFetcher:
         now = self._clock()
         if 200 <= response.status < 300:
             text = response.body.decode("utf-8", "replace")
-            if self.cache is not None:
-                self.cache.put_robots(key, text, now)
+            self._store_robots(key, text, now, usage)
             return _robots_from_text(text, now, user_agent=self.policy.user_agent)
         if 400 <= response.status < 500:
-            if self.cache is not None:
-                self.cache.put_robots(key, "", now)
+            self._store_robots(key, "", now, usage)
             return _robots_from_text("", now, user_agent=self.policy.user_agent)
         return _robots_disallow_all(now, f"robots.txt answered HTTP {response.status}")
 
+    def _store_robots(self, key, text, at, usage):
+        """Keep a fetched robots.txt in the public cache; a read-ahead fetch holds it until claimed."""
+        if isinstance(usage, _Speculation):
+            usage.robots_text[key] = (text, at)
+        elif self.cache is not None:
+            self.cache.put_robots(key, text, at)
