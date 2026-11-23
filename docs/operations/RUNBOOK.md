@@ -295,7 +295,7 @@ nsfs web status                                                # switches, provi
 - Web questions have their own budget: at most `max_open_web_questions` (default 10) open, and at most `max_web_questions_per_task` (default 3) new per task. Beyond that, candidates stay provisional and one aggregate question per task (scope `web:review:<task>`) says how many await review. Review them in the console (Research) or with `nsfs web knowledge --status provisional` and `nsfs web review ID --accept|--reject`. `nsfs regulation` reports `open_web_questions` separately.
 - A monitor's meaningful change is a `finding` event and an informational question `web:finding:<monitor>:<task>`; the console's monitors table lists recent findings.
 - While regulation pauses writes (section 7), nothing web-related is written: submissions, consolidation, monitors and proposals return "writes paused", the worker claims nothing (one decision event), and a running task stops at its next step as `partial` without consolidating.
-- Turning web access off (`nsfs web config --disable`), adding a domain to `deny_domains` or cancelling a task takes effect in a running task before its next request while it reads pages (every page fetch asks before each request; a request already on the wire finishes, one made ahead of its turn is cut), and within about 2 s while it searches. It stops as `partial` ("Web access was turned off during the run"), ends `cancelled`, or skips the denied hosts and says so ([Search and acquisition](../web-cortex/SEARCH_AND_ACQUISITION.md), "Stops").
+- Turning web access off (`nsfs web config --disable`), adding a domain to `deny_domains` or cancelling a task takes effect in a running task at once while it reads pages: no request is sent afterwards (every page fetch asks before each lookup, each connection and each request) and requests already on the wire are cut within about a quarter of a second. While it searches it takes effect at the next step, within about 2 s. The task stops as `partial` ("Web access was turned off during the run"), ends `cancelled`, or skips the denied hosts and says so ([Search and acquisition](../web-cortex/SEARCH_AND_ACQUISITION.md), "Stops").
 - A task that could read nothing because every provider or page failed (network down, all circuits open) ends `failed` with a limitation naming the failures. `nsfs web requeue TASK_ID` searches again once the network is back.
 - An identical submission (same objective, mode and origin) while one is queued or running returns that task (`deduplicated: true`). `requeue` of a partial or cancelled task returns the child already queued instead of creating another.
 - Curiosity proposals are sized to the daily autonomous allowance left when they are made, and are checked again when you confirm them and when the worker starts them.
@@ -384,12 +384,13 @@ nsf web config --set read_ahead=1     # one page at a time for every task, as 0.
 nsf web config --set read_ahead=4     # back to the default
 ```
 
-A task's report, usage and events are the same at any value; only the time spent waiting for sites changes (about
-half at 4). Curiosity, refresh and MCP tasks always read one page at a time, so the daily allowances are exact. After
-a cancel, a denial or switching web access off no new request is sent; at most `read_ahead` requests that were
-already on the wire reach their sites. What a task sent ahead and did not use is in its usage
-(`prefetch_unused_requests`, `prefetch_unused_bytes`). Details:
-[Search and acquisition](../web-cortex/SEARCH_AND_ACQUISITION.md), "Stops" and "Read-ahead".
+A task's report, events and charged usage are the same at any value; only the time spent waiting for sites changes
+(about half at 4). One exception: when a site answers 429 to a page fetched ahead, it is left alone from that moment,
+and a source an earlier page would have redirected to there is not read; the report says so. Curiosity, refresh and
+MCP tasks always read one page at a time, so the daily allowances are exact. After a cancel, a denial or switching
+web access off no request is sent and the ones on the wire are cut. Pages fetched ahead share the task's budget, and
+what a task sent ahead and did not use is in its usage (`prefetch_unused_requests`, `prefetch_unused_bytes`).
+Details: [Search and acquisition](../web-cortex/SEARCH_AND_ACQUISITION.md), "Stops" and "Read-ahead".
 
 ### Rolling back the inference and memory defaults
 

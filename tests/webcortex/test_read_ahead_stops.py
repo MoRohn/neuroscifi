@@ -575,7 +575,10 @@ def test_a_site_denied_mid_run_gets_nothing_more_and_the_others_are_still_read(t
     denied = []
 
     def deny_those_ahead(connection, _task_id, web):
-        denied.extend(r["host"] for r in web.log[1:])        # the first request is the reader's own site
+        # the candidates are read in the order given: the reader is on the first site, the next three are ahead
+        # (which request arrived first says nothing: the four are sent at the same moment)
+        assert {r["host"] for r in web.log} == set(HOSTS[:4])
+        denied.extend(HOSTS[1:4])
         state.set_config(connection, {"deny_domains": list(denied)}, T0 + 1)
 
     at_stop, final, done = run_until_held(tmp_path, 4, 4, deny_those_ahead)

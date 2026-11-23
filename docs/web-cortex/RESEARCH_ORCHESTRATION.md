@@ -154,7 +154,7 @@ Final status:
 **Cancellation** (`orchestrator.cancel`, any connection):
 
 - A queued task, or one whose lease is not live, becomes `cancelled` at once (`test_cancel_of_a_queued_task_is_immediate`).
-- A running task gets `cancel_requested = 1` and a `cancel_requested` event. The run checks the flag before every network step (inside a page fetch too: before each name lookup and each request, redirect hops included, and so does every fetch made ahead of its turn; SEARCH_AND_ACQUISITION, "Stops"), stops, builds a **partial report** from what it has (limitation `cancelled by request: partial report`), and ends `cancelled`. No consolidation happens, so nothing reaches knowledge (`test_cancel_from_another_connection_stops_before_the_next_fetch`).
+- A running task gets `cancel_requested = 1` and a `cancel_requested` event. The run checks the flag before every network step (inside a page fetch too: before each name lookup, each connection and each request, redirect hops included, and so does every fetch made ahead of its turn; requests on the wire are cut within a quarter of a second; SEARCH_AND_ACQUISITION, "Stops"), stops, builds a **partial report** from what it has (limitation `cancelled by request: partial report`), and ends `cancelled`. No consolidation happens, so nothing reaches knowledge (`test_cancel_from_another_connection_stops_before_the_next_fetch`).
 
 **Partial results.** Reports from `partial` and `cancelled` tasks have the same shape as completed ones. Their `limitations` list says what was cut.
 
