@@ -11,7 +11,8 @@ Copied from `--help`.
 | `nsf pocket serve` | `--db DB` (default `mobile-private.sqlite`), `--bind BIND` (default `127.0.0.1`), `--port PORT` (default 8765), `--cert CERT`, `--key KEY`, `--allowed-host NAME` (repeatable), `--invitation-file PATH` |
 | `nsf pocket list-pairings` | `--db DB`, `--instance-db PATH` (default `$NSF_DB`) |
 | `nsf pocket erase-pairing LABEL` | `--db DB`, `--family` (also erase every device of the label's pairing family: linked phones and tablets) |
-| `nsf init` | `--db DB`, `--action-semantics JSON`, `--founding-graph FILE`, `--ttl-days N` (default 7), `--ask-budget N` (default 3), `--note TEXT` |
+| `nsf init` | `--db DB`, `--action-semantics JSON`, `--founding-graph FILE`, `--ttl-days N` (default 7), `--ask-budget N` (default 3), `--ask-window-days D` (default 7; 0 = the whole epoch), `--note TEXT` |
+| `nsf config` | `--db DB`; without other flags it prints the instance settings. `--ask-budget N`, `--ask-window-days D` change the ask budget and its window (the other settings are fixed at `nsf init`) |
 | `nsf checkpoint create` / `rebuild` | `--db DB`, `--dir DIR` (default: `checkpoints` next to the database), `--policy {cold,experimental,fast}` (default `cold`) |
 | `nsf checkpoint list` / `verify ID` / `restore ID DEST` | `--db DB` |
 | Other instance commands (`birth`, `regulation`, `sweep`, `memory`, `forget`, `promote`, `observe`, `status`, `decide`, `explain`, `pending`, `resolve`, `import-legacy`, `epoch start`, `graph ...`) | `--db DB` |

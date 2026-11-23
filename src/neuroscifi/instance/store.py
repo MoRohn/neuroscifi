@@ -5,13 +5,14 @@ Contract shared by every instance module:
 - Writers wrap mutations in `with write(db):` (BEGIN IMMEDIATE ... COMMIT) and call
   `bump_state_version(db)` exactly once per committed logical change.
 - Time is always passed in explicitly (`now`, seconds since the epoch) so tests control the clock.
-- Configuration and the birth record are written once at creation and read through `config(db)`
-  and `birth(db)`.
+- Configuration and the birth record are written at creation and read through `config(db)` and `birth(db)`.
+  The birth record never changes; `set_config(db, changes)` changes the few settings the owner may change later.
 """
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
 import glob
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -51,6 +52,9 @@ class InstanceConfig:
     max_evidence_rows: int = 1_000_000      # regulation: pause new writes beyond this
     min_free_bytes: int = 64 * 1024 * 1024  # regulation: pause new writes below this free space
     ask_budget_per_epoch: int = 3           # executive interruption budget
+    # The budget's rolling window: questions asked in an epoch longer ago than this no longer count, so a long-lived
+    # epoch can ask again. 0 = the whole epoch (the rule before the window existed: the budget never refills).
+    ask_budget_window_seconds: float = 7 * 86400
     max_thermal_celsius: float | None = None  # regulation: pause new writes above this temperature (None = off)
 
     @classmethod
@@ -152,6 +156,40 @@ def _meta(db, key):
 
 def config(db):
     return InstanceConfig.from_json(_meta(db, "config"))
+
+
+# Settings the owner may change after birth (`nsf config`), each with its check. The others are fixed at `nsf init`.
+_SETTABLE = {
+    "ask_budget_per_epoch": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 1000,
+    "ask_budget_window_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool)
+                                            and math.isfinite(v) and 0 <= v <= 36500 * 86400),
+}
+
+
+def set_config(db, changes):
+    """Change owner-settable instance settings. Returns {"config": the settings now, "changed": [names]}.
+
+    ValidationError for an unknown or fixed setting or a value out of range; nothing is written then. A real change
+    bumps the state version. Settings saved by older software keep every field they have; a field they lack reads
+    as its default (InstanceConfig.from_json).
+    """
+    if not isinstance(changes, dict):
+        raise ValidationError("settings must be a JSON object")
+    for name, value in changes.items():
+        check = _SETTABLE.get(name)
+        if check is None:
+            raise ValidationError(f"{name!r} cannot be changed (changeable: {', '.join(sorted(_SETTABLE))})")
+        if not check(value):
+            raise ValidationError(f"{name}: value {value!r} is out of range")
+    with write(db):
+        raw = json.loads(_meta(db, "config"))
+        current = asdict(InstanceConfig.from_json(json.dumps(raw)))
+        changed = sorted(name for name, value in changes.items() if current[name] != value)
+        if changed:
+            raw.update({name: changes[name] for name in changed})
+            db.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(raw, sort_keys=True),))
+            bump_state_version(db)
+    return {"config": asdict(config(db)), "changed": changed}
 
 
 def birth(db):

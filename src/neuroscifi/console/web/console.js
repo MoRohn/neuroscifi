@@ -366,7 +366,9 @@ async function loadOverview() {
     ['Evidence written', r.write_volume],
     ['Evidence lifetime', `${(r.config.evidence_ttl_seconds / 86400).toFixed(1)} days unless promoted`],
     ['Free-space reserve', fmtBytes(r.config.min_free_bytes)],
-    ['Ask budget per epoch', r.config.ask_budget_per_epoch],
+    ['Ask budget per epoch', r.config.ask_budget_window_seconds
+      ? `${r.config.ask_budget_per_epoch} per ${(r.config.ask_budget_window_seconds / 86400).toFixed(1)} days`
+      : `${r.config.ask_budget_per_epoch}, for the whole epoch`],
   ]));
   const mem = inv.memory;
   fill($('inventory'), table('Memory inventory', ['Record', { label: 'Count', num: true }],
@@ -563,7 +565,8 @@ function renderChange(c, events) {
 function renderDecision(d, recorded = false) {
   fill($('decision'),
     h('p', { class: 'verdict', id: 'decisionValue', text: d.decision.replace('_', ' ') }),
-    kv([['Scope', d.scope ?? '—'], ['Reason', d.reason], ['Questions asked', `${d.asks_used} of ${d.ask_budget} in this epoch`],
+    kv([['Scope', d.scope ?? '—'], ['Reason', d.reason], ['Questions asked', `${d.asks_used} of ${d.ask_budget} in this epoch` +
+      (d.ask_budget_window_seconds ? ` in the last ${+(d.ask_budget_window_seconds / 86400).toFixed(1)} days` : '')],
       ['Open question', d.pending_id ? `#${d.pending_id}` : 'none'],
       d.closed_pending?.length ? ['Closed by evidence', d.closed_pending.map((i) => `#${i}`).join(', ')] : null,
       ['Status', recorded ? 'recorded in the decision log' : 'preview; not yet recorded']]));

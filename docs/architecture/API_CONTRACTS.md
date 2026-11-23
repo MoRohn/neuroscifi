@@ -23,7 +23,10 @@ store.connect(path) -> Connection
 store.write(db) -> context manager                  # BEGIN IMMEDIATE / COMMIT / ROLLBACK
 store.bump_state_version(db) -> int ; store.state_version(db) -> int
 store.bump(db, name, amount=1) ; store.counter(db, name) -> int
-store.config(db) -> InstanceConfig(evidence_ttl_seconds, max_evidence_rows, min_free_bytes, ask_budget_per_epoch)
+store.config(db) -> InstanceConfig(evidence_ttl_seconds, max_evidence_rows, min_free_bytes, ask_budget_per_epoch,
+                                   ask_budget_window_seconds, max_thermal_celsius)
+store.set_config(db, changes: dict) -> {"config": dict, "changed": [names]}   # owner-settable settings only
+#   (ask_budget_per_epoch, ask_budget_window_seconds); ValidationError otherwise. `nsf config` is its CLI.
 store.birth(db) -> dict ; store.inventory(db) -> dict ; store.regulation(db, path=None) -> dict
 store.require_write_allowed(db, path=None)          # raises WritesPaused
 rules.register(db, definition, now, *, created_by)   # caller owns txn; idempotent on identical content
@@ -74,7 +77,8 @@ beliefs.explain(db, epoch) -> {"beliefs": compute(), "factors": [{"scope","p_inv
 
 executive.decide(db, epoch, now, *, record=False, path=None) -> {"decision": "act"|"observe"|"ask"|"test_reference"|"defer",
                                                  "scope": str|None, "reason": str, "pending_id": int|None,
-                                                 "asks_used": int, "ask_budget": int}
+                                                 "asks_used": int, "ask_budget": int,
+                                                 "ask_budget_window_seconds": float}
 #   Policy, first match wins:
 #   1 writes paused -> defer
 #   2 change suspected and not ambiguous -> ask (kind 'calibrate', scope = changed scope)
@@ -83,8 +87,10 @@ executive.decide(db, epoch, now, *, record=False, path=None) -> {"decision": "ac
 #   5 mechanism not identifiable (|p-.5| < .37) -> test_reference
 #   6 a partner with >= 4 learning words still has |p-.5| < .37 -> ask (meaning still ambiguous for that partner)
 #   7 otherwise -> act
-#   An 'ask' beyond config.ask_budget_per_epoch (count of ask/calibrate pending rows created in the epoch) becomes
-#   'defer'. With record=True: insert into decisions; for ask/test_reference/calibrate create a pending row unless
+#   An 'ask' beyond config.ask_budget_per_epoch becomes 'defer'. asks_used counts the ask/calibrate pending rows
+#   created in the epoch within the last config.ask_budget_window_seconds (default 7 days), answered or not; with a
+#   window of 0 it counts every such row of the epoch (the rule up to 0.7.0: the budget never refills).
+#   With record=True: insert into decisions; for ask/test_reference/calibrate create a pending row unless
 #   an identical unresolved one (same epoch, kind, scope) exists.
 #   Also with record=True: unresolved ask/test_reference/calibrate rows of the epoch whose (kind, scope) differs from
 #   the policy's current recommendation are closed ('resolved by evidence: ...'); ids returned as "closed_pending".
