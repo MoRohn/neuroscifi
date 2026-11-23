@@ -81,6 +81,17 @@ def any_session() -> bool:
         return any(s.get("session_active") for s in _SESSIONS.values())
 
 
+def any_audio() -> bool:
+    """Some voice session of this process, the owner's or a Pocket principal's, is capturing or speaking (as its
+    client last reported within STALE_SECONDS). snapshot() shows the owner's sessions only, which is right for the
+    Presence but would hide a Pocket session from the resource policy; the audio beacon publishes this instead
+    (voice/beacon.py)."""
+    with _LOCK:
+        now = time.monotonic()
+        return any(s.get("session_active") and now - s.get("_seen", now) <= STALE_SECONDS and
+                   (s.get("mic_capturing") or s.get("speaking") or s.get("user_speaking")) for s in _SESSIONS.values())
+
+
 def set_engines(health: dict) -> None:
     """Record the speech engines' measured states (the hub's health result)."""
     if not isinstance(health, dict):

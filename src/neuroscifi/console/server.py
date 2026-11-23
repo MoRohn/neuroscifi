@@ -897,8 +897,8 @@ class ConsoleServer(ThreadingHTTPServer):
         self.worker_stop, self.worker = threading.Event(), None
         super().__init__((BIND, port), Handler)
         self.worker_options = {"clock": clock, **(worker_options or {})}
-        from ..resources.policy import AudioBeacon     # the voice hub lives here: publish its audio state (RD-46)
-        self.audio_beacon = AudioBeacon(self.db_path).start()
+        from ..voice.beacon import SharedAudioBeacon   # the voice hub lives here: publish its audio state (RD-46)
+        self.audio_beacon = SharedAudioBeacon(self.db_path).start()   # merged with the Pocket bridge's
         if web_worker:
             self.worker = threading.Thread(target=self._work, name="nsf-console-web-worker", daemon=True)
             self.worker.start()
