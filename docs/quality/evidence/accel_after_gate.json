@@ -19,7 +19,8 @@
  "browser_suite": {
   "command": "bash scripts/e2e.sh",
   "final_tree": "194 passed, 1 skipped, 1 failed (net::ERR_NETWORK_CHANGED in tests/e2e/test_phone_setup_e2e.py while another tenant's container changed the host's network interfaces); that file rerun 3 times: 3 passed each",
-  "before_the_last_review_fixes": "195 passed, 1 skipped"
+  "before_the_last_review_fixes": "195 passed, 1 skipped",
+  "final_tree_second_run": "195 passed, 1 skipped, exit 0"
  },
  "acceptance": {
   "command": "nsf acceptance --all",
