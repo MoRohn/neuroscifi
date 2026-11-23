@@ -1,0 +1,506 @@
+{
+ "what": "Read-ahead as the default (decision B): the offline corpus benchmark at read_ahead 1, at 4 and at the configuration default, every key under 'metrics' compared; and task wall time with every fixture response delayed 300 ms, per window",
+ "generated_at": "2026-11-23T21:48:57Z",
+ "git_commit": "7152d2c",
+ "git_dirty": false,
+ "environment": {
+  "host_digest": "382a803dcc0d",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "machine": "aarch64",
+  "cpu_count": 20,
+  "python": "3.12.16",
+  "sqlite": "3.53.1",
+  "packages": {
+   "neuroscifi": "0.5.0",
+   "scrapling": "0.5.1",
+   "trafilatura": "2.3.1",
+   "lxml": "6.1.3",
+   "pypdf": "7.1.1",
+   "markdownify": "1.2.4",
+   "playwright": "1.64.1"
+  },
+  "git_commit": "307b907",
+  "git_dirty": true
+ },
+ "configuration_default_read_ahead": 4,
+ "offline": {
+  "corpus": {
+   "pages": 78,
+   "article_pages": 61,
+   "special_pages": 17,
+   "hosts": 47,
+   "questions": {
+    "authoritative": 12,
+    "latest": 2,
+    "time": 8,
+    "verification": 29
+   },
+   "uat_classes": {
+    "fact_pairs": 2,
+    "number_checks": 1,
+    "latest_version_questions": 2,
+    "subjects": 23,
+    "wiki_snippets": 1,
+    "fixture_registries": [
+     "pypi",
+     "npm"
+    ]
+   },
+   "contradiction_pairs": {
+    "conflicts": 7,
+    "controls": 5
+   },
+   "injection_pages": 6,
+   "probes": 18,
+   "memory_queries": 11,
+   "search_results": 74,
+   "fictional": true,
+   "language": "en"
+  },
+  "metrics_4_against_1": {
+   "identical": true,
+   "differences": []
+  },
+  "metrics_default_against_1": {
+   "identical": true,
+   "differences": []
+  },
+  "two_runs_at_4_identical": true,
+  "safety": {
+   "1": {
+    "ssrf_all_blocked": true,
+    "robots_respected": true,
+    "limits_enforced": true,
+    "backoff_kept_off_network": true,
+    "injection_contained": true,
+    "budgets_respected": true,
+    "live_flag_honest": true,
+    "cancel_queued": true,
+    "cancel_running": true,
+    "crash_resume": true,
+    "all_hold": true
+   },
+   "4": {
+    "ssrf_all_blocked": true,
+    "robots_respected": true,
+    "limits_enforced": true,
+    "backoff_kept_off_network": true,
+    "injection_contained": true,
+    "budgets_respected": true,
+    "live_flag_honest": true,
+    "cancel_queued": true,
+    "cancel_running": true,
+    "crash_resume": true,
+    "all_hold": true
+   },
+   "default": {
+    "ssrf_all_blocked": true,
+    "robots_respected": true,
+    "limits_enforced": true,
+    "backoff_kept_off_network": true,
+    "injection_contained": true,
+    "budgets_respected": true,
+    "live_flag_honest": true,
+    "cancel_queued": true,
+    "cancel_running": true,
+    "crash_resume": true,
+    "all_hold": true
+   }
+  },
+  "timing": {
+   "1": [
+    {
+     "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
+     "per_mode_seconds": {
+      "fact_verification": {
+       "n": 25,
+       "p50": 0.0565,
+       "p95": 0.1612,
+       "mean": 0.0673,
+       "max": 0.1696
+      },
+      "quick_lookup": {
+       "n": 16,
+       "p50": 0.0258,
+       "p95": 0.1534,
+       "mean": 0.042,
+       "max": 0.1539
+      },
+      "scientific": {
+       "n": 1,
+       "p50": 0.0656,
+       "p95": 0.0656,
+       "mean": 0.0656,
+       "max": 0.0656
+      },
+      "technical": {
+       "n": 9,
+       "p50": 0.0788,
+       "p95": 0.2064,
+       "mean": 0.0986,
+       "max": 0.287
+      }
+     },
+     "all_tasks_seconds": {
+      "n": 51,
+      "p50": 0.0564,
+      "p95": 0.1599,
+      "mean": 0.0648,
+      "max": 0.287
+     },
+     "extraction_ms": {
+      "scrapling": {
+       "n": 61,
+       "p50": 0.6832,
+       "p95": 1.1901,
+       "mean": 0.7374,
+       "max": 1.6761
+      },
+      "trafilatura": {
+       "n": 61,
+       "p50": 1.8707,
+       "p95": 3.85,
+       "mean": 2.1218,
+       "max": 4.3209
+      },
+      "auto": {
+       "n": 61,
+       "p50": 0.8314,
+       "p95": 3.673,
+       "mean": 1.2572,
+       "max": 3.9756
+      }
+     },
+     "probe_seconds": {
+      "html_bomb_extract": 0.139,
+      "js_render": 1.136
+     },
+     "run_seconds": 8.762
+    }
+   ],
+   "4": [
+    {
+     "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
+     "per_mode_seconds": {
+      "fact_verification": {
+       "n": 25,
+       "p50": 0.0715,
+       "p95": 0.1683,
+       "mean": 0.0786,
+       "max": 0.1763
+      },
+      "quick_lookup": {
+       "n": 16,
+       "p50": 0.036,
+       "p95": 0.1503,
+       "mean": 0.0483,
+       "max": 0.1622
+      },
+      "scientific": {
+       "n": 1,
+       "p50": 0.0848,
+       "p95": 0.0848,
+       "mean": 0.0848,
+       "max": 0.0848
+      },
+      "technical": {
+       "n": 9,
+       "p50": 0.1003,
+       "p95": 0.1452,
+       "mean": 0.1065,
+       "max": 0.1671
+      }
+     },
+     "all_tasks_seconds": {
+      "n": 51,
+      "p50": 0.0666,
+      "p95": 0.1647,
+      "mean": 0.0741,
+      "max": 0.1763
+     },
+     "extraction_ms": {
+      "scrapling": {
+       "n": 61,
+       "p50": 0.6047,
+       "p95": 2.1754,
+       "mean": 0.8533,
+       "max": 2.7218
+      },
+      "trafilatura": {
+       "n": 61,
+       "p50": 1.669,
+       "p95": 4.2149,
+       "mean": 2.0778,
+       "max": 5.2251
+      },
+      "auto": {
+       "n": 61,
+       "p50": 0.8297,
+       "p95": 2.9891,
+       "mean": 1.219,
+       "max": 3.2271
+      }
+     },
+     "probe_seconds": {
+      "html_bomb_extract": 0.176,
+      "js_render": 1.188
+     },
+     "run_seconds": 9.938
+    },
+    {
+     "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
+     "per_mode_seconds": {
+      "fact_verification": {
+       "n": 25,
+       "p50": 0.0658,
+       "p95": 0.1679,
+       "mean": 0.0764,
+       "max": 0.1815
+      },
+      "quick_lookup": {
+       "n": 16,
+       "p50": 0.0318,
+       "p95": 0.1585,
+       "mean": 0.0472,
+       "max": 0.1619
+      },
+      "scientific": {
+       "n": 1,
+       "p50": 0.0864,
+       "p95": 0.0864,
+       "mean": 0.0864,
+       "max": 0.0864
+      },
+      "technical": {
+       "n": 9,
+       "p50": 0.1004,
+       "p95": 0.1156,
+       "mean": 0.0985,
+       "max": 0.1176
+      }
+     },
+     "all_tasks_seconds": {
+      "n": 51,
+      "p50": 0.0651,
+      "p95": 0.1596,
+      "mean": 0.0713,
+      "max": 0.1815
+     },
+     "extraction_ms": {
+      "scrapling": {
+       "n": 61,
+       "p50": 0.628,
+       "p95": 1.5336,
+       "mean": 0.7894,
+       "max": 1.885
+      },
+      "trafilatura": {
+       "n": 61,
+       "p50": 1.8949,
+       "p95": 3.3792,
+       "mean": 1.9825,
+       "max": 4.3494
+      },
+      "auto": {
+       "n": 61,
+       "p50": 0.9427,
+       "p95": 2.902,
+       "mean": 1.1741,
+       "max": 3.371
+      }
+     },
+     "probe_seconds": {
+      "html_bomb_extract": 0.187,
+      "js_render": 1.268
+     },
+     "run_seconds": 9.983
+    }
+   ],
+   "default": [
+    {
+     "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
+     "per_mode_seconds": {
+      "fact_verification": {
+       "n": 25,
+       "p50": 0.0658,
+       "p95": 0.1663,
+       "mean": 0.0752,
+       "max": 0.1739
+      },
+      "quick_lookup": {
+       "n": 16,
+       "p50": 0.0416,
+       "p95": 0.1581,
+       "mean": 0.0533,
+       "max": 0.1768
+      },
+      "scientific": {
+       "n": 1,
+       "p50": 0.111,
+       "p95": 0.111,
+       "mean": 0.111,
+       "max": 0.111
+      },
+      "technical": {
+       "n": 9,
+       "p50": 0.0986,
+       "p95": 0.1324,
+       "mean": 0.1008,
+       "max": 0.1397
+      }
+     },
+     "all_tasks_seconds": {
+      "n": 51,
+      "p50": 0.0645,
+      "p95": 0.1617,
+      "mean": 0.0736,
+      "max": 0.1768
+     },
+     "extraction_ms": {
+      "scrapling": {
+       "n": 61,
+       "p50": 0.6164,
+       "p95": 0.9764,
+       "mean": 0.6487,
+       "max": 1.0267
+      },
+      "trafilatura": {
+       "n": 61,
+       "p50": 1.4035,
+       "p95": 3.7876,
+       "mean": 1.8585,
+       "max": 4.1391
+      },
+      "auto": {
+       "n": 61,
+       "p50": 0.6881,
+       "p95": 3.6944,
+       "mean": 1.1577,
+       "max": 3.8646
+      }
+     },
+     "probe_seconds": {
+      "html_bomb_extract": 0.138,
+      "js_render": 1.25
+     },
+     "run_seconds": 9.826
+    }
+   ]
+  },
+  "note": "'metrics' is everything the offline benchmark compares between runs (quality metrics and per-item outcomes); it leaves out the unused-prefetch counters, which the latency measurement reports per window"
+ },
+ "latency": {
+  "label": "wall-clock seconds per task on this host, every fixture response delayed 0.3 s; not comparable to live",
+  "delay_seconds": 0.3,
+  "windows": {
+   "1": {
+    "task_seconds": {
+     "n": 51,
+     "p50": 1.933,
+     "p95": 3.719,
+     "mean": 2.22,
+     "max": 6.073
+    },
+    "requests_used": 350,
+    "pages_read": 287,
+    "prefetch_unused_requests": 0,
+    "prefetch_unused_bytes": 0,
+    "requests_reaching_fixture": 350
+   },
+   "2": {
+    "task_seconds": {
+     "n": 51,
+     "p50": 1.294,
+     "p95": 2.228,
+     "mean": 1.387,
+     "max": 3.479
+    },
+    "requests_used": 350,
+    "pages_read": 287,
+    "prefetch_unused_requests": 2,
+    "prefetch_unused_bytes": 0,
+    "requests_reaching_fixture": 352
+   },
+   "3": {
+    "task_seconds": {
+     "n": 51,
+     "p50": 1.06,
+     "p95": 2.043,
+     "mean": 1.125,
+     "max": 2.545
+    },
+    "requests_used": 350,
+    "pages_read": 287,
+    "prefetch_unused_requests": 4,
+    "prefetch_unused_bytes": 2780,
+    "requests_reaching_fixture": 354
+   },
+   "4": {
+    "task_seconds": {
+     "n": 51,
+     "p50": 0.97,
+     "p95": 1.753,
+     "mean": 1.0,
+     "max": 2.349
+    },
+    "requests_used": 350,
+    "pages_read": 287,
+    "prefetch_unused_requests": 4,
+    "prefetch_unused_bytes": 2780,
+    "requests_reaching_fixture": 354
+   }
+  },
+  "identical_outcomes": true,
+  "differences": []
+ },
+ "wall_seconds": 332.5,
+ "stops": {
+  "what": "tests/webcortex/test_read_ahead_stops.py::test_no_request_starts_after_a_stop: a research run whose fetches (the reader's and read_ahead - 1 ahead) all wait for their site's robots.txt answer when the owner stops it on another connection; the answers are then released. Counted: requests that reach the fixture sites after the stop was committed",
+  "requests_after_the_stop": {
+   "before (307b907, the same test run against that commit's source)": {
+    "read_ahead_1": {
+     "cancel": 1,
+     "web_off": 11,
+     "deny": 11
+    },
+    "read_ahead_4": {
+     "cancel": 4,
+     "web_off": 8,
+     "deny": 8
+    }
+   },
+   "after (this commit)": {
+    "read_ahead_1": {
+     "cancel": 0,
+     "web_off": 0,
+     "deny": 0
+    },
+    "read_ahead_4": {
+     "cancel": 0,
+     "web_off": 0,
+     "deny": 0
+    }
+   }
+  },
+  "reading": "before, a cancel was seen at the reader's next page and a configuration change at most 2 s later (CONFIG_RECHECK), so a run that finishes inside 2 s read every page after web access was turned off; after, both are read before every name lookup and request of a page fetch",
+  "tests": {
+   "file": "tests/webcortex/test_read_ahead_stops.py",
+   "tests": 44,
+   "failing_on_307b907": "42 of the 43 written at that point fail there: the six run-level stop tests on the requests counted above, the daily sums on the unused traffic they leave out, the rest on the gate, the budget bound and the default that did not exist. The 44th, a direct test of the gate, was added afterwards",
+   "repeated_runs": {
+    "test_read_ahead_stops.py": "30 of 30 runs passed (44 tests each)",
+    "test_read_ahead.py": "15 of 15 runs passed (16 tests each)"
+   }
+  }
+ },
+ "default": {
+  "read_ahead": 4,
+  "rollback": "nsf web config --set read_ahead=1",
+  "one_page_at_a_time_whatever_the_setting": [
+   "curiosity",
+   "refresh:*",
+   "mcp",
+   "services without an individual file"
+  ]
+ }
+}

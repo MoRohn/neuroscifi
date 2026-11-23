@@ -210,10 +210,12 @@ cut-off); otherwise it is fetched again in the normal way. Until it is claimed n
 remembered, and its robots.txt and cache writes are held back. The order in which pages are read, charged, recorded
 and cited is the sequential order, so a task's report, usage and events are the ones `read_ahead=1` produces.
 
-Measured on the offline benchmark (`docs/quality/evidence/accel_decisions_read_ahead.json`): at 1 and at 4 every
-quality metric and every task's usage, sources, answer and events are identical, and the safety invariants hold.
-With 300 ms added to every response, task time is 2.10 s (p95 3.80 s) at 1 and 0.99 s (p95 1.83 s) at 4, with 4
-requests in 350 sent and not used.
+Measured on the offline benchmark (`docs/quality/evidence/accel_decisions_read_ahead.json`): at 1, at 4 and at the
+default every quality metric and every task's usage, sources, answer and events are identical, and the safety
+invariants hold. With 300 ms added to every response, the median task takes 1.93 s (p95 3.72 s) at 1 and 0.97 s
+(p95 1.75 s) at 4, with 4 requests sent and not used beside the 350 the tasks used. The same file records the stop
+test: requests reaching the sites after a cancel, after web access was turned off and after a denial were 1, 11
+and 11 at `read_ahead` 1 before this change (4, 8 and 8 at 4), and are 0 in all six cases now.
 
 What bounds it:
 
