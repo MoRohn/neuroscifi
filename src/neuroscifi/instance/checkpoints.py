@@ -198,8 +198,10 @@ def _forgets(db, now):
         "roots": db.execute("SELECT digest,kind,forgotten_at FROM forgotten_roots").fetchall(),
         # Forgotten epochs with the state version their forget committed at: an epoch's derived rows carry no
         # tombstone (and its evidence may have expired first), so deletion_log is the record that it was forgotten.
-        "epochs": [(name, json.loads(effects).get("state_version", float("inf"))) for name, effects in db.execute(
-            "SELECT target_id, effects FROM deletion_log WHERE target_kind='epoch' ORDER BY id")],
+        "epochs": [(name, json.loads(effects).get("state_version", float("inf")), requested_at, effects)
+                   for name, requested_at, effects in db.execute(
+                       "SELECT target_id, requested_at, effects FROM deletion_log WHERE target_kind='epoch' "
+                       "ORDER BY id")],
         "web": db.execute("SELECT kind,digest,forgotten_at FROM web_forgotten").fetchall(),
         # Epoch streams leave no tombstone: a stream the live instance no longer holds was forgotten or expired.
         "streams": set(db.execute("SELECT id,sha256 FROM epoch_streams").fetchall()),
@@ -261,9 +263,19 @@ def _replay(copy, forgets, now):
     # An epoch forgotten after this copy was written (its state version is older than the forget's) loses its
     # derived rows as in the live forget; a copy written after the forget may hold the same name used again.
     version = store.state_version(copy)
-    for epoch, forgotten_at_version in epochs:
+    for epoch, forgotten_at_version, requested_at, effects_json in epochs:
         if version < forgotten_at_version:
             epoch_rows += sum(governance.drop_epoch_rows(copy, epoch).values())
+            # The copy must remember the forget, as it keeps the tombstones above: it can become the individual, and
+            # an older archive restored FROM it must lose the epoch too (review: a second restore brought the
+            # revisions, decisions, questions and the note back, because the copy's deletion log held no record).
+            # In the copy's own history the forget happens now, after its current state version, so an epoch of the
+            # same name created in the copy later is newer than the record and is kept.
+            if not copy.execute("SELECT 1 FROM deletion_log WHERE target_kind='epoch' AND target_id=? AND "
+                                "requested_at=?", (epoch, requested_at)).fetchone():
+                carried = json.loads(effects_json) | {"state_version": version + 1, "replayed": True}
+                copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) "
+                             "VALUES('epoch',?,?,?)", (epoch, requested_at, json.dumps(carried, sort_keys=True)))
     if web:
         copy.executemany("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", web)
         web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now)

@@ -43,7 +43,7 @@ import subprocess
 import threading
 import time
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 GIB = 1024 ** 3
 ELEVATED_GIB = 16.0            # below this much MemAvailable (or 15 % of MemTotal): elevated
@@ -275,13 +275,23 @@ def _difference(now: dict, before: dict) -> dict:
     return {"available": True, "seconds": seconds, **_vllm_figures(counters, stages, finished)}
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None          # urllib then raises HTTPError(code): reported as "answered HTTP 302"
+
+
+_NO_REDIRECT = build_opener(_NoRedirect)
+
+
 def inference(url: str, key: str | None = None, *, timeout: float = METRICS_TIMEOUT, clock=time.time) -> dict:
     """The inference server's state from its /metrics (see the module doc); {"available": False, "reason"} when it
     cannot be read or is not a vLLM server. `key` is sent as a bearer token and never logged or returned. Every
     reading becomes the start of the next one's interval (in this process)."""
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     try:
-        with urlopen(Request(url, headers=headers), timeout=timeout) as resp:  # noqa: S310 - a loopback URL
+        # no redirect is followed: urllib would resend the bearer key to wherever a 3xx points (review: a process
+        # on the endpoint's port answered 302 to another address and received the key there). A 3xx is an error.
+        with _NO_REDIRECT.open(Request(url, headers=headers), timeout=timeout) as resp:  # noqa: S310 - loopback URL
             text = resp.read(METRICS_LIMIT).decode("utf-8", "replace")
     except HTTPError as error:
         return {"available": False, "url": url, "reason": f"{url} answered HTTP {error.code}"}

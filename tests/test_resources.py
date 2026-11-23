@@ -491,3 +491,43 @@ def test_status_cli_and_console_route(individual, host, voice, tmp_path, capsys)
         srv.shutdown()
         srv.server_close()
     assert body["level"] == "critical" and set(body["policy"]) >= {"background_research", "browser_rendering"}
+
+
+def test_the_metrics_scrape_never_forwards_the_key_through_a_redirect():
+    """Found in review: urllib follows a 3xx and resends the Authorization header. A process answering on the
+    endpoint's port with 302 to another address received the model server's API key there. A redirect is now an
+    error ("answered HTTP 302") and nothing is sent to its target."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    seen = []
+
+    class Sink(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"vllm:num_requests_running 0\n")
+
+        def log_message(self, *args):
+            pass
+
+    class Redirector(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{sink.server_port}/elsewhere")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    sink, redirector = HTTPServer(("127.0.0.1", 0), Sink), HTTPServer(("127.0.0.1", 0), Redirector)
+    for server in (sink, redirector):
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        out = monitor.inference(f"http://127.0.0.1:{redirector.server_port}/metrics", "SECRET-KEY-1")
+    finally:
+        for server in (sink, redirector):
+            server.shutdown()
+            server.server_close()
+    assert seen == [] and out["available"] is False and "HTTP 302" in out["reason"]
+    assert "SECRET-KEY-1" not in str(out)

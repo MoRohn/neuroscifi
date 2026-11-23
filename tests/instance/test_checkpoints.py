@@ -848,3 +848,47 @@ def test_forget_epoch_whose_evidence_all_expired_marks_archives_holding_its_deri
     assert checkpoints.listing(db)[0]["status"] == "stale"
     checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 43 + ttl)
     assert _epoch_rows(tmp_path / "r.sqlite", "room") == NOTHING_LEFT
+
+
+def test_a_restored_copy_remembers_the_forget_so_an_older_archive_restored_from_it_stays_clean(instance, tmp_path):
+    """Found in review: a restore replayed the epoch forget into the copy but left no record of it there. The copy
+    is a whole individual; restoring an OLDER archive from it brought back the revisions, three decisions, the
+    question, the context, the link and the owner's note. The copy now carries the forget, as it carries
+    tombstones."""
+    db, path = instance
+    _teach_epoch_with_every_derived_row(db, "room", T0, note="private note zq")
+    older = checkpoints.create(db, path, tmp_path / "cps", T0 + 40)
+    newer = checkpoints.create(db, path, tmp_path / "cps", T0 + 41)
+    governance.forget_epoch(db, "room", T0 + 42)
+    checkpoints.restore(db, newer["id"], tmp_path / "r1.sqlite", T0 + 43)
+    assert _epoch_rows(tmp_path / "r1.sqlite", "room") == NOTHING_LEFT
+    with closing(store.open_existing(tmp_path / "r1.sqlite")) as first:
+        kept = first.execute("SELECT count(*) FROM deletion_log WHERE target_kind='epoch' AND target_id='room'")
+        assert kept.fetchone()[0] == 1
+        checkpoints.restore(first, older["id"], tmp_path / "r2.sqlite", T0 + 44)
+        assert _epoch_rows(tmp_path / "r2.sqlite", "room") == NOTHING_LEFT
+        assert b"private note zq" not in (tmp_path / "r2.sqlite").read_bytes()
+        # the second copy carries the record too (once), so the chain can go on
+        with closing(store.open_existing(tmp_path / "r2.sqlite")) as second:
+            assert second.execute("SELECT count(*) FROM deletion_log WHERE target_kind='epoch'").fetchone()[0] == 1
+        checkpoints.restore(first, older["id"], tmp_path / "r2b.sqlite", T0 + 45)      # again: still one record
+        with closing(store.open_existing(tmp_path / "r2b.sqlite")) as second:
+            assert second.execute("SELECT count(*) FROM deletion_log WHERE target_kind='epoch'").fetchone()[0] == 1
+
+
+def test_an_epoch_of_the_same_name_created_in_a_restored_copy_survives_that_copys_own_restores(instance, tmp_path):
+    """The carried forget is dated in the copy's own history (after its state version at the restore), so a new
+    epoch named like the forgotten one, created and archived in the copy afterwards, is not mistaken for it."""
+    db, path = instance
+    _teach_epoch_with_every_derived_row(db, "room", T0)
+    archive = checkpoints.create(db, path, tmp_path / "cps", T0 + 40)
+    governance.forget_epoch(db, "room", T0 + 41)
+    copy_path = tmp_path / "r1.sqlite"
+    checkpoints.restore(db, archive["id"], copy_path, T0 + 42)
+    with closing(store.open_existing(copy_path)) as first:
+        _teach_epoch_with_every_derived_row(first, "room", T0 + 100)
+        again = checkpoints.create(first, copy_path, tmp_path / "cps2", T0 + 150)
+        checkpoints.restore(first, again["id"], tmp_path / "r2.sqlite", T0 + 151)
+    rows = _epoch_rows(tmp_path / "r2.sqlite", "room")
+    assert rows["evidence"] == 8 and rows["decisions"] == 3 and rows["belief_revisions"] > 0, rows
+    assert rows["epoch_contexts"] == 1 and rows["epoch_links"] == 1, rows
