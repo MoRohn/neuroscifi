@@ -605,11 +605,54 @@ def worker_status(db_path, now=None) -> dict:
                                          "console --web-worker`)"}
 
 
-def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=time.time, fixture=None,
+WAKE_CHECK = 0.1    # how often a waiting worker looks whether another connection queued a task (seconds)
+
+
+def _queue_mark(db):
+    """What changes when a task becomes claimable: how many tasks wait (proposals excluded) and the newest one."""
+    return db.execute("SELECT count(*), coalesce(max(rowid), 0) FROM web_tasks WHERE status='queued' AND "
+                      "coalesce(stage,'')!='proposed'").fetchone()
+
+
+def wait_for_queue(db, seconds, stop=None, *, check=WAKE_CHECK) -> bool:
+    """Wait up to `seconds`; return True early when another connection (the console, Pocket, the voice hub, the
+    CLI, in this process or another) queued or requeued a task, or when `stop` is set. False: the time ran out.
+
+    Without it a question waited for the worker's next poll (2.5 s on average at the 5 s default). SQLite's
+    PRAGMA data_version changes only when another connection commits, and reading it touches only the shared WAL
+    index, so the check every `check` s costs microseconds; the queue is read only after such a commit, and only a
+    change in the queued tasks wakes the worker (other writes do not). Every submitter is covered without telling
+    the worker anything. A missed or failed check loses nothing: the caller polls again after `seconds`."""
+    deadline = time.monotonic() + seconds
+    try:
+        version, mark = db.execute("PRAGMA data_version").fetchone()[0], _queue_mark(db)
+    except sqlite3.Error:
+        version = mark = None
+    while (left := deadline - time.monotonic()) > 0:
+        nap = left if version is None else min(check, left)
+        if stop.wait(nap) if stop is not None else time.sleep(nap):
+            return True
+        if version is None:
+            continue
+        try:
+            now_version = db.execute("PRAGMA data_version").fetchone()[0]
+            if now_version != version:
+                version = now_version
+                if _queue_mark(db) != mark:
+                    return True
+        except sqlite3.Error:
+            version = None          # degrade to the plain poll
+    return False
+
+
+def work(db_path, *, once=False, stop=None, poll=5.0, sleep=None, clock=time.time, fixture=None,
          providers=None, max_tasks=None, idle=True) -> dict:
     """Drain queued tasks with its own connection. once=True returns when nothing is runnable; otherwise polls
     every `poll` seconds until `stop` (a threading.Event) is set. With nothing claimable and `idle`, the worker asks
     autonomy.idle for one autonomous investigation (only when the owner enabled autonomy; D4 budgets apply).
+    `sleep` None or `stop.wait` (how `nsf web work` and the console run it): between polls the worker waits with
+    wait_for_queue, so a task queued by any process starts within WAKE_CHECK s instead of at the next poll; any
+    other callable (tests) is called with `poll` instead.
 
     The services (fetcher, public cache, provider registry) are built once and reused across tasks, so per-host
     request spacing and Retry-After backoffs carry over from one task to the next; they are rebuilt when the
@@ -621,6 +664,9 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=ti
     db = store.open_existing(db_path)
     done, svc, built_for, paused, deferred = [], None, None, None, None
     holder, beating = service_builder.holder_id(), threading.Event()
+    if sleep is None or (stop is not None and getattr(sleep, "__self__", None) is stop):
+        def sleep(seconds):
+            wait_for_queue(db, seconds, stop)
 
     def beat():
         while not beating.is_set():

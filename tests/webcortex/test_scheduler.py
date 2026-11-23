@@ -1,6 +1,7 @@
 """Monitors, the timer tick (fake clock, offline fixture web) and the worker's lease handling."""
 import json
 import threading
+import time
 
 import pytest
 
@@ -163,6 +164,67 @@ def test_worker_polls_until_stopped(individual):
 
     assert scheduler.work(path, stop=stop, sleep=sleep, poll=7.0, providers=[corpus()]) == {"processed": []}
     assert naps == [7.0, 7.0]
+
+
+def _worker_waiting(path, monkeypatch, **options):
+    """A worker thread (sleep=stop.wait, as `nsf web work` and the console run it) that has found the queue empty
+    and gone to wait for its next poll. orchestrator.run only records when a task reached it."""
+    stop, idle, ran = threading.Event(), threading.Event(), {}
+    real_claim = scheduler.claim_next
+
+    def claim(*a, **k):
+        got = real_claim(*a, **k)
+        if got is None:
+            idle.set()
+        return got
+    monkeypatch.setattr(scheduler, "claim_next", claim)
+    monkeypatch.setattr(orchestrator, "run", lambda db, task_id, svc: ran.setdefault(task_id, time.monotonic())
+                        and {"id": task_id, "status": "completed"})
+    worker = threading.Thread(target=scheduler.work, args=(path,), daemon=True,
+                              kwargs={"stop": stop, "sleep": stop.wait, "providers": [corpus()], "idle": False,
+                                      **options})
+    worker.start()
+    assert idle.wait(10)
+    return stop, worker, ran
+
+
+def test_a_task_queued_while_the_worker_waits_is_claimed_at_once_not_at_the_next_poll(individual, monkeypatch):
+    """Defect 1: the worker polled every 5 s and nothing woke it, so a question from the console, Pocket or voice
+    waited up to a whole poll before work started. Another connection's commit that queues a task now wakes it."""
+    db, path = individual
+    stop, worker, ran = _worker_waiting(path, monkeypatch, poll=30.0)
+    try:
+        time.sleep(0.3)
+        submitted = time.monotonic()
+        task = orchestrator.submit(db, "What is the latest version of the Zephyr compiler?", T0, mode="quick_lookup")
+        deadline = submitted + 3.0
+        while task["id"] not in ran and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert task["id"] in ran, "the queued task waited for the 30 s poll"
+        assert ran[task["id"]] - submitted < 1.0
+    finally:
+        stop.set()
+        worker.join(10)
+    assert not worker.is_alive()
+
+
+def test_the_waiting_worker_does_not_wake_for_writes_that_queue_nothing(individual, monkeypatch):
+    """The wake-up is not a spin: other commits (configuration, knowledge, presence) leave the queue unchanged and
+    the worker stays asleep until its poll; the poll stays as the fallback for anything a wake-up misses."""
+    db, path = individual
+    calls = []
+    real_claim = scheduler.claim_next
+    stop, worker, _ = _worker_waiting(path, monkeypatch, poll=30.0)
+    monkeypatch.setattr(scheduler, "claim_next", lambda *a, **k: calls.append(1) or real_claim(*a, **k))
+    try:
+        for i in range(5):
+            state.set_config(db, {"min_domain_interval": float(i)}, T0)
+            time.sleep(0.15)
+        assert calls == []
+    finally:
+        stop.set()
+        worker.join(10)
+    assert scheduler.wait_for_queue(db, 0.2) is False       # nothing queued: it waits the whole poll
 
 
 def test_prediction_check_outcomes(individual):
