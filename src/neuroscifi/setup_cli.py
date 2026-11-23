@@ -8,6 +8,9 @@
 5 brave        store a Brave Search API key, only with --brave-key-file or --brave-key-stdin (never on argv, never
                printed); --brave-daily-cap sets daily_provider_queries
 6 push         create the Pocket VAPID key, only with --push
+7 memory       let memory find a fact asked in other words, when the memory models of deploy/memory answer on this
+               computer (their key file exists and both, or the embedding model alone, pass a real request); skipped
+               otherwise, or with --no-memory. A memory setting the owner made by hand is never changed
 
 Each step reports "done", "already done" or "skipped" (with --dry-run: "would do"). The run records what it chose
 in ~/.config/neuroscifi/setup.json (0600), so `nsf start` runs everything with one command and `nsf add-phone` finds
@@ -33,6 +36,9 @@ DEFAULT_MODEL_URL = "http://127.0.0.1:8811/v1"
 DEFAULT_PORT = 8765
 MODEL_PROBE_SECONDS = 2.0
 BACKGROUND_PRIORITY = 10       # the `priority` of autonomous model calls on a vLLM server (lower is served first)
+MEMORY_PROBE_SECONDS = 5.0     # one real request per memory model (its first one after a start is the slowest)
+MEMORY_SETUP_KEY = "semantic_setup"     # meta: what this command wrote, so a later run can tell the owner's edits
+MEMORY_START = "bash deploy/memory/run.sh start"
 RENEW_DAYS = 30
 
 
@@ -76,6 +82,14 @@ def register(sub):
                                                    "key (default ~/.config/neuroscifi/pocket)")
     p.add_argument("--pocket-db", type=Path, help="the Pocket pairing database (default: next to the individual, "
                                                   "DB_NAME.pocket.sqlite)")
+    p.add_argument("--no-memory", action="store_true", help="skip the memory step")
+    p.add_argument("--memory-embed-url", metavar="URL", help="the embedding model's endpoint (default: deploy/memory "
+                                                             "on this computer, http://127.0.0.1:18441/v1)")
+    p.add_argument("--memory-rerank-url", metavar="URL", help="the reranker's endpoint (default: deploy/memory on "
+                                                              "this computer, http://127.0.0.1:18442/v1)")
+    p.add_argument("--memory-key-file", type=Path, metavar="PATH",
+                   help="the memory models' API key file (default: ~/.config/neuroscifi/memory/api_key, written by "
+                        "deploy/memory/run.sh)")
     brave = p.add_mutually_exclusive_group()
     brave.add_argument("--brave-key-file", metavar="PATH", help="store the Brave Search API key from this file "
                                                                 "(0600, owned by you; others are refused)")
@@ -306,6 +320,154 @@ def _push(report, a, path):
     _step(report, "push", status, f"VAPID key {path} (0600)")
 
 
+# ---- memory by meaning (webcortex/semantic.py; deploy/memory) -----------------------------------------------------
+
+def memory_defaults(a=None) -> dict:
+    """Where deploy/memory puts the two memory models and their key: the same environment names as its memory.env."""
+    folder = Path(os.environ.get("NSF_MEMORY_DIR") or Path.home() / ".config" / "neuroscifi" / "memory")
+    bind = os.environ.get("NSF_MEMORY_BIND") or "127.0.0.1"
+    host = f"[{bind}]" if ":" in bind else bind
+    urls = {"embed": f"http://{host}:{os.environ.get('NSF_MEMORY_EMBED_PORT') or '18441'}/v1",
+            "rerank": f"http://{host}:{os.environ.get('NSF_MEMORY_RERANK_PORT') or '18442'}/v1"}
+    key_file = folder / "api_key"
+    if a is not None:
+        urls["embed"] = getattr(a, "memory_embed_url", None) or urls["embed"]
+        urls["rerank"] = getattr(a, "memory_rerank_url", None) or urls["rerank"]
+        key_file = getattr(a, "memory_key_file", None) or key_file
+    return {"urls": urls, "key_file": Path(key_file).expanduser().absolute()}
+
+
+def _memory_probe(provider, url, key_file):
+    """(served model name, None) when the endpoint answers a real request of its kind, else (None, why). One
+    request with a fixed, meaningless text: nothing of the individual is sent."""
+    from .inference import config as iconfig
+    from .inference.gateway import Gateway, InferenceError
+    from .instance.errors import ValidationError
+    try:
+        cfg = iconfig.InferenceConfig(base_url=iconfig._validate("base_url", url), key_file=str(key_file),
+                                      max_retries=0, connect_timeout=MODEL_PROBE_SECONDS,
+                                      read_timeout=MEMORY_PROBE_SECONDS)
+        gateway = Gateway(cfg, key=iconfig.read_key(cfg, provider))
+        gateway.provider = provider
+        served = gateway.models(retries=0)
+        if not served:
+            return None, "it serves no model"
+        cfg.model = gateway._model = served[0]["id"]
+        if provider == "embed":
+            gateway.embed(["memory check"], purpose="setup_probe", timeout=MEMORY_PROBE_SECONDS)
+        else:
+            gateway.rerank("memory check", ["memory check"], purpose="setup_probe", timeout=MEMORY_PROBE_SECONDS)
+    except InferenceError as err:
+        return None, err.code
+    except (ValidationError, OSError, ValueError) as err:
+        return None, str(err)[:120]
+    return cfg.model, None
+
+
+def _memory_written(db) -> dict | None:
+    row = db.execute("SELECT value FROM meta WHERE key=?", (MEMORY_SETUP_KEY,)).fetchone()
+    try:
+        return json.loads(row[0]) if row else None
+    except ValueError:
+        return None
+
+
+def _memory_now(db) -> dict:
+    """The individual's memory settings in the shape this command records them."""
+    from .inference import config as iconfig
+    from .webcortex import semantic
+    out = {"settings": semantic.get_config(db).to_json()}
+    for provider in ("embed", "rerank"):
+        cfg = iconfig.get_config(db, provider)
+        out[provider] = {"base_url": cfg.base_url, "model": cfg.model, "key_file": cfg.key_file} \
+            if cfg.configured else None
+    return out
+
+
+def _memory_touched(db) -> bool:
+    """Whether the individual has any memory-retrieval setting at all (its own switch or an endpoint)."""
+    from .inference import config as iconfig
+    from .webcortex import semantic
+    keys = (semantic.META_KEY, iconfig.meta_key("embed"), iconfig.meta_key("rerank"))
+    return db.execute(f"SELECT 1 FROM meta WHERE key IN ({','.join('?' * len(keys))})", keys).fetchone() is not None
+
+
+def _memory(report, a, db):
+    from .inference import config as iconfig
+    from .webcortex import semantic
+    if a.no_memory:
+        _step(report, "memory", "skipped", "--no-memory")
+        return
+    where = memory_defaults(a)
+    urls, key_file = where["urls"], where["key_file"]
+    hint = f"optional: {MEMORY_START}, then nsf setup again"
+    written = _memory_written(db) if db is not None else None
+    touched = db is not None and _memory_touched(db)
+    ours = touched and written is not None and written == _memory_now(db)
+    if touched and not ours:
+        # the owner changed it by hand (nsf web memory config), or set it up before this command could: kept
+        now = semantic.get_config(db)
+        _step(report, "memory", "already done", "kept as you set it (memory by meaning is "
+              f"{'on' if now.enabled else 'off'}); see nsf web memory, change it with nsf web memory config",
+              enabled=now.enabled)
+        return
+    if ours and written["rerank"] is not None:
+        _step(report, "memory", "already done", "memory finds a fact asked in other words (embedding model and "
+              "reranker on this computer)", models={k: written[k]["model"] for k in ("embed", "rerank")})
+        return
+    if not key_file.is_file():
+        if ours:
+            _step(report, "memory", "already done", "memory is ranked by the embedding model alone")
+        else:
+            _step(report, "memory", "skipped", "memory is ranked by its words: the memory models are not installed "
+                                               f"here ({hint})")
+        return
+    found = {}
+    for provider in (("rerank",) if ours else ("embed", "rerank")):
+        found[provider] = _memory_probe(provider, urls[provider], key_file)
+    if ours:                       # embedding alone so far: add the reranker once it answers
+        model, why = found["rerank"]
+        if model is None:
+            _step(report, "memory", "already done", "memory is ranked by the embedding model alone; the reranker "
+                  f"does not answer at {urls['rerank']} ({why}). With it, memory also leaves out what is not about "
+                  f"the question: {MEMORY_START} rerank, then nsf setup again")
+            return
+        todo = {"rerank": model}
+    elif found["embed"][0] is None:
+        other = "; the reranker answers, but it needs the embedding model" if found["rerank"][0] else ""
+        _step(report, "memory", "skipped", f"memory is ranked by its words: no embedding model answered at "
+              f"{urls['embed']} ({found['embed'][1]}){other} ({hint})")
+        return
+    else:
+        todo = {provider: model for provider, (model, _) in found.items() if model is not None}
+    if ours or "rerank" in todo:
+        did = ("memory now finds a fact asked in other words, and leaves out what is not about the question "
+               "(embedding model and reranker on this computer)")
+        would = ("let memory find a fact asked in other words, and leave out what is not about the question "
+                 "(embedding model and reranker on this computer)")
+    else:
+        missing = (f"The reranker did not answer at {urls['rerank']} ({found['rerank'][1]}), so nothing unrelated is "
+                   f"left out yet: {MEMORY_START} rerank, then nsf setup again")
+        did = f"memory now finds a fact asked in other words (embedding model on this computer). {missing}"
+        would = f"let memory find a fact asked in other words (embedding model on this computer). {missing}"
+    if a.dry_run:
+        _step(report, "memory", "would do", would, models=todo)
+        return
+    stamp = time.time()
+    for provider, model in todo.items():
+        iconfig.set_config(db, {"base_url": urls[provider].rstrip("/"), "model": model, "key_file": str(key_file)},
+                           stamp, provider=provider)
+    changes = {"enabled": True}
+    if "rerank" in todo and "qwen3" not in todo["rerank"].lower():
+        changes["rerank_template"] = "plain"       # the built-in prompt form is Qwen3-Reranker's own
+    semantic.set_config(db, changes, stamp)
+    from .instance import store
+    with store.write(db):
+        db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                   (MEMORY_SETUP_KEY, json.dumps(_memory_now(db), sort_keys=True)))
+    _step(report, "memory", "done", did, models=todo, key_file=str(key_file))
+
+
 # ---- the run ---------------------------------------------------------------------------------------------------
 
 def _q(path) -> str:
@@ -427,6 +589,8 @@ def _run(a, report):
             _brave(report, a, db)
             current = "push"
             _push(report, a, paths["push_key"])
+            current = "memory"
+            _memory(report, a, db)
         finally:
             if db is not None:
                 db.close()

@@ -6,7 +6,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 UNITS = sorted((ROOT / "deploy" / "systemd").glob("*.service"))
-DOCKER_USER_UNITS = ("neuroscifi-vllm.service", "neuroscifi-voice-asr.service", "neuroscifi-voice-tts.service")
+DOCKER_USER_UNITS = ("neuroscifi-vllm.service", "neuroscifi-voice-asr.service", "neuroscifi-voice-tts.service",
+                     "neuroscifi-memory-embed.service", "neuroscifi-memory-rerank.service")
+MEMORY_UNITS = {"neuroscifi-memory-embed.service": "embed", "neuroscifi-memory-rerank.service": "rerank"}
 
 
 @pytest.mark.parametrize("unit", UNITS, ids=lambda p: p.name)
@@ -27,6 +29,133 @@ def test_docker_user_units_are_templates(name):
 def test_install_sh_renders_the_vllm_placeholders():
     text = (ROOT / "deploy" / "install.sh").read_text()
     assert "s#^User=.*#User=$LLM_USER#" in text and "s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=$SOURCE#" in text
+
+
+@pytest.mark.parametrize("name,service", sorted(MEMORY_UNITS.items()))
+def test_memory_units_run_the_deploy_script_in_the_foreground_under_the_voice_units_sandbox(name, service):
+    """systemd supervises the wrapper, so it must run attached (`foreground`, a command run.sh has) and stop with
+    the script's own stop; the wrapper sandbox is the one verified for the speech units, line for line."""
+    text = (ROOT / "deploy" / "systemd" / name).read_text()
+    assert f"ExecStart=/usr/bin/env bash ${{NSF_REPO}}/deploy/memory/run.sh foreground {service}\n" in text
+    assert f"ExecStop=/usr/bin/env bash ${{NSF_REPO}}/deploy/memory/run.sh stop {service}\n" in text
+    script = (ROOT / "deploy" / "memory" / "run.sh").read_text()
+    assert re.search(r"^  foreground\)$", script, re.M) and 'exec docker run --rm --init "${ARGS[@]}"' in script
+
+    def sandbox(unit):
+        lines = (ROOT / "deploy" / "systemd" / unit).read_text().splitlines()
+        return [line for line in lines[lines.index("[Service]"):] if line and not line.startswith("#")
+                and not line.startswith(("ExecStart=", "ExecStop=", "TimeoutStartSec="))]
+    assert sandbox(name) == sandbox("neuroscifi-voice-asr.service")
+
+
+def test_install_sh_installs_the_memory_units_only_when_asked_and_renders_their_placeholders(tmp_path):
+    import subprocess
+    script = str(ROOT / "deploy" / "install.sh")
+    plain = subprocess.run(["bash", script, "--dry-run", "--unit-dir", str(tmp_path)], capture_output=True, text=True)
+    assert plain.returncode == 0 and "neuroscifi-memory-" not in plain.stdout
+    asked = subprocess.run(["bash", script, "--dry-run", "--unit-dir", str(tmp_path), "--memory", "--memory-user",
+                            "nsfmodels"], capture_output=True, text=True)
+    assert asked.returncode == 0
+    for name in MEMORY_UNITS:
+        line = next(row for row in asked.stdout.splitlines() if row.startswith("+ sed") and f"/{name} >" in row)
+        assert "'s#^User=.*#User=nsfmodels#'" in line and "'s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=" in line
+    assert "installed disabled" in asked.stdout and not list(tmp_path.iterdir())      # a dry run writes nothing
+    for user in ("root", "two words", ""):
+        refused = subprocess.run(["bash", script, "--dry-run", "--memory", "--memory-user", user], capture_output=True,
+                                 text=True, env={"PATH": "/usr/bin:/bin"})
+        assert refused.returncode == 1 and "--memory" in refused.stderr
+
+
+def test_the_memory_script_knows_its_services_and_refuses_any_other(tmp_path):
+    """`foreground` is what the units run: a wrong service name must fail before docker is touched."""
+    import subprocess
+    script = str(ROOT / "deploy" / "memory" / "run.sh")
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
+    assert subprocess.run(["bash", "-n", script]).returncode == 0
+    for argv in (["foreground"], ["foreground", "all"], ["foreground", "vllm"], ["start", "vllm"], ["nonsense"]):
+        done = subprocess.run(["bash", script, *argv], capture_output=True, text=True, env=env)
+        assert done.returncode == 1 and done.stderr.startswith("run.sh: "), argv
+    assert not (tmp_path / ".config").exists()             # refused before a key or a folder was created
+
+
+def _memory_wait(tmp_path, warm_exit=0, health_exit=0, status="running", restarts=("0",)):
+    """`deploy/memory/run.sh wait all 30` with a docker that reports the given container status and restart counts
+    (in turn; the last repeats), a curl that answers /health with `health_exit`, records every command line it was
+    given and what it was fed on standard input, and a sleep that returns at once."""
+    import os
+    import subprocess
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(parents=True)
+    (tmp_path / "restarts").write_text("\n".join(restarts) + "\n")
+    (bin_dir / "docker").write_text(
+        '#!/usr/bin/env bash\n'
+        f'R="{tmp_path}/restarts"\n'
+        'case "$*" in\n'
+        '  *RestartCount*) head -n1 "$R"; [ "$(wc -l < "$R")" -gt 1 ] && sed -i 1d "$R"; exit 0 ;;\n'
+        f'  *) echo {status} ;;\n'
+        'esac\n')
+    (bin_dir / "curl").write_text(
+        '#!/usr/bin/env bash\n'
+        f'echo "$*" >> "{tmp_path}/curl.args"\n'
+        f'case "$*" in *"-K -"*) cat >> "{tmp_path}/curl.stdin"; exit {warm_exit} ;; esac\n'
+        f'exit {health_exit}\n')
+    (bin_dir / "sleep").write_text(f'#!/usr/bin/env bash\necho x >> "{tmp_path}/polls"\n')
+    for tool in ("docker", "curl", "sleep"):
+        (bin_dir / tool).chmod(0o755)
+    key_dir = tmp_path / ".config" / "neuroscifi" / "memory"
+    key_dir.mkdir(parents=True)
+    (key_dir / "api_key").write_text("nsfm-wait-test-key\n")
+    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path)}
+    return subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "wait", "all", "30"], env=env,
+                          capture_output=True, text=True, timeout=60)
+
+
+def test_memory_wait_sends_one_real_request_per_model_and_never_puts_the_key_on_a_command_line(tmp_path):
+    """Ready means "answered a real request": a model's first request after a start took 1.0 to 1.5 s on the
+    reference host and a lookup allows 2 s. The key reaches curl on standard input, not in argv (`ps` shows argv)."""
+    done = _memory_wait(tmp_path)
+    assert done.returncode == 0 and re.fullmatch(r"embed ready after \ds\nrerank ready after \ds\n", done.stdout)
+    args = (tmp_path / "curl.args").read_text()
+    assert "http://127.0.0.1:18441/v1/embeddings" in args and "http://127.0.0.1:18442/v1/rerank" in args
+    assert '"input":["warm up"]' in args and '"query":"warm up","documents":["warm up"]' in args
+    assert "nsfm-wait-test-key" not in args and "Bearer" not in args
+    assert (tmp_path / "curl.stdin").read_text().count('header = "Authorization: Bearer nsfm-wait-test-key"') == 2
+    assert "nsfm-wait-test-key" not in done.stdout + done.stderr
+
+
+def test_memory_wait_fails_at_once_on_a_container_that_stopped_or_keeps_restarting(tmp_path):
+    """With --restart unless-stopped a crash-looping container keeps existing: only its state or a growing restart
+    count shows that it will never answer. The wait must not sit out its limit (the idle policy's reload calls it)."""
+    one, two = tmp_path / "one", tmp_path / "two"
+    done = _memory_wait(one, health_exit=7, status="restarting")
+    assert done.returncode == 1 and "embed container is restarting" in done.stderr
+    assert not (one / "polls").exists()                            # on the first look
+    done = _memory_wait(two, health_exit=7, restarts=("2", "3"))
+    assert done.returncode == 1 and "embed restarted while starting" in done.stderr
+    assert not (two / "curl.stdin").exists()                       # and no warm-up request was sent to it
+
+
+def test_memory_status_prints_one_line_per_service_running_or_not(tmp_path):
+    import os
+    import subprocess
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text(                      # embed runs; for rerank docker prints an empty line and fails
+        '#!/usr/bin/env bash\n'
+        'case "$*" in *neuroscifi-memory-embed*) echo "/neuroscifi-memory-embed running health=healthy started=T" ;;\n'
+        '  *) echo; exit 1 ;; esac\n')
+    (bin_dir / "docker").chmod(0o755)
+    done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "status"], capture_output=True, text=True,
+                          env={"PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path)}, timeout=60)
+    assert done.returncode == 0 and done.stdout.splitlines() == [
+        "/neuroscifi-memory-embed running health=healthy started=T", "neuroscifi-memory-rerank: not running"]
+
+
+def test_memory_wait_does_not_fail_when_only_the_warm_up_request_fails(tmp_path):
+    done = _memory_wait(tmp_path, warm_exit=22)
+    assert done.returncode == 0
+    assert len(re.findall(r"ready after \ds \(its warm-up request failed; the first lookup will be slower\)",
+                          done.stdout)) == 2
 
 
 def test_tts_image_pins_every_package():

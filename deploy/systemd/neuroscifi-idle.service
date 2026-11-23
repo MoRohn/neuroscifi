@@ -1,9 +1,10 @@
 # NeuroSciFi idle-unload pass (RD-46; docs/architecture/RESOURCE_SCHEDULING.md §3c): `nsf resources tick` unloads a
-# local model service (vLLM, speech recognition, speech synthesis, SearXNG) only when the owner set its idle timeout
-# (`nsf resources idle --set vllm=30m ...`; all off by default), nothing is in flight, no voice session is open, no
-# research task runs and nothing used it within the timeout. With every timeout off it does nothing and exits 0.
-# It stops and starts the services with deploy/vllm/run.sh and deploy/voice/run.sh (or systemctl for an active unit),
-# so it runs as the docker user that owns them. Not installed by deploy/install.sh. Install by hand:
+# local model service (vLLM, speech recognition, speech synthesis, the two memory models, SearXNG) only when the owner
+# set its idle timeout (`nsf resources idle --set vllm=30m ...`; all off by default), nothing is in flight, no voice
+# session is open, no research task runs and nothing used it within the timeout. With every timeout off it does
+# nothing and exits 0. It stops and starts the services with deploy/vllm/run.sh, deploy/voice/run.sh and
+# deploy/memory/run.sh (or systemctl for an active unit), so it runs as the docker user that owns them. Not installed
+# by deploy/install.sh. Install by hand:
 #   sed -e "s#@NSF_USER@#$USER#" -e "s#@NSF_REPO@#$PWD#" deploy/systemd/neuroscifi-idle.service \
 #     | sudo install -m 0644 /dev/stdin /etc/systemd/system/neuroscifi-idle.service
 #   sudo install -m 0644 deploy/systemd/neuroscifi-idle.timer /etc/systemd/system/

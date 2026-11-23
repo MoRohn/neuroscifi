@@ -1,8 +1,9 @@
 """Opt-in idle unloading of the local model services (RD-46 policy (c); docs/architecture/RESOURCE_SCHEDULING.md §3).
 
-Services: vllm (the reasoning model), asr (Whisper), tts (Kokoro) and searxng. Each has an idle timeout, OFF by default
-(`nsf resources idle --set vllm=30m --set asr=15m --set tts=15m`). `Idle.tick()` (`nsf resources tick`, run by
-neuroscifi-idle.timer) unloads a service only when every condition holds:
+Services: vllm (the reasoning model), asr (Whisper), tts (Kokoro), searxng, and the two memory models embed and
+rerank (deploy/memory). Each has an idle timeout, OFF by default
+(`nsf resources idle --set vllm=30m --set asr=15m --set tts=15m --set embed=15m --set rerank=15m`).
+`Idle.tick()` (`nsf resources tick`, run by neuroscifi-idle.timer) unloads a service only when every condition holds:
   - its timeout is set and its container runs;
   - no voice session is open (this process's voice hub, or the beacon of the console that hosts it) and no research
     task is running (web_tasks in a running stage with a live lease);
@@ -23,8 +24,14 @@ refused and recorded, rather than starting a container that crash-loops. `using(
 its call's time) waits for a reload no longer than the caller may; the reload then finishes in the background.
 Every load and unload is an event in <db>.resources/idle-events.jsonl with its reason; `nsf resources` shows them.
 
-Stop and start use the deploy's own commands: deploy/vllm/run.sh and deploy/voice/run.sh (docker shape), or systemctl
-when the service's unit is active (so the policy never fights the unit), and `nsf web searxng stop|start`.
+Stop and start use the deploy's own commands: deploy/vllm/run.sh, deploy/voice/run.sh and deploy/memory/run.sh
+(docker shape), or systemctl when the service's unit is active (so the policy never fights the unit), and
+`nsf web searxng stop|start`.
+
+The memory models differ in one way: nobody waits for them. A memory lookup that finds one unloaded is answered at
+once from the lexical ranking and starts the reload in the background (`using_now()`, which never blocks;
+webcortex/semantic.py), so a later lookup is ranked by meaning again. Their reload is therefore not announced
+(`Service.background`): Presence shows "starting" only for a service somebody is waiting for.
 """
 from __future__ import annotations
 
@@ -67,6 +74,7 @@ class Service:
     documented_seconds: float | None = None   # measured cold start (RESOURCE_SCHEDULING.md §4)
     suggested_minutes: int | None = None
     documented_gib: float | None = None       # memory it takes when loaded (§4), until a load or unload measures it
+    background: bool = False         # nobody waits for its reload (the memory models): not announced as "starting"
 
 
 def _port(env, default):
@@ -89,7 +97,33 @@ SERVICES = {
     "searxng": Service("searxng", "the search engine", "neuroscifi-searxng",
                        ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "start", "--db", "{db}"),
                        ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "stop", "--db", "{db}")),
+    # The memory models (deploy/memory; webcortex/semantic.py). Measured on the reference host, each: 18 to 31 s from
+    # start to ready with warm files, 4.4 GiB (docs/quality/evidence/accel_decisions_memory_service.json).
+    "embed": Service("embed", "memory search (the embedding model)", "neuroscifi-memory-embed",
+                     ("bash", "{repo}/deploy/memory/run.sh", "start", "embed"),
+                     ("bash", "{repo}/deploy/memory/run.sh", "stop", "embed"),
+                     ("bash", "{repo}/deploy/memory/run.sh", "wait", "embed", "600"), "neuroscifi-memory-embed.service",
+                     f"http://127.0.0.1:{_port('NSF_MEMORY_EMBED_PORT', '18441')}/metrics", 20.0, 15, 4.4,
+                     background=True),
+    "rerank": Service("rerank", "memory search (the reranker)", "neuroscifi-memory-rerank",
+                      ("bash", "{repo}/deploy/memory/run.sh", "start", "rerank"),
+                      ("bash", "{repo}/deploy/memory/run.sh", "stop", "rerank"),
+                      ("bash", "{repo}/deploy/memory/run.sh", "wait", "rerank", "600"),
+                      "neuroscifi-memory-rerank.service",
+                      f"http://127.0.0.1:{_port('NSF_MEMORY_RERANK_PORT', '18442')}/metrics", 20.0, 15, 4.4,
+                      background=True),
 }
+
+
+def service_port(name, services=None) -> int | None:
+    """The loopback port of a service's own server (from its /metrics address), None when it has none."""
+    svc = (services or SERVICES).get(name)
+    if svc is None or not svc.metrics:
+        return None
+    try:
+        return int(svc.metrics.split("://", 1)[1].split("/", 1)[0].rsplit(":", 1)[1])
+    except (IndexError, ValueError):
+        return None
 
 
 def parse_timeout(text) -> float | None:
@@ -159,6 +193,7 @@ def _minutes(seconds) -> str:
 
 
 MEASURED_CEILING = 1.5     # a measured footprint above this multiple of the documented one is not believed
+BACKGROUND_RETRY = 30.0    # seconds before using_now() starts again a reload that was refused or failed
 
 
 class Idle:
@@ -383,7 +418,8 @@ class Idle:
                             **({} if ok else {"error": (getattr(done, "stdout", "") or "")[-400:]}))
         if ok:
             with self._state() as data:
-                data["services"].setdefault(name, {}).update(state="unloaded", by=by, at=event["at"])
+                data["services"].setdefault(name, {}).update(state="unloaded", by=by, at=event["at"],
+                                                             shape="systemd" if systemd else "docker")
         return {"action": "unload" if ok else "failed", "why": reason, "event": event}
 
     def unloaded_by_policy(self, name) -> bool:
@@ -474,14 +510,20 @@ class Idle:
                     data["services"].setdefault(name, {}).update(refused_at=event["at"])
                 return {"action": "refused", "why": room["why"], "event": event}
             text = self.message(name)
-            with self._state() as data:     # Presence shows this while the service starts (any process)
-                data["services"].setdefault(name, {}).update(loading={"told": text, "since": self.clock()})
+            if not svc.background:          # a reload nobody waits for is not shown as "starting"
+                with self._state() as data:     # Presence shows this while the service starts (any process)
+                    data["services"].setdefault(name, {}).update(loading={"told": text, "since": self.clock()})
             if notify is not None:
                 try:
                     notify(text)
                 except Exception:   # a closed client must not stop the load
                     pass
             systemd = self._systemd(svc)
+            if not systemd and svc.unit:
+                # A unit this policy stopped is no longer active. It is started as the unit it is, not as a second,
+                # unsupervised container beside it (found in review: the reload went through run.sh).
+                was = self.read()["services"].get(name) or {}
+                systemd = was.get("state") == "unloaded" and was.get("shape") == "systemd"
             steps = [["systemctl", "--no-ask-password", "start", svc.unit]] if systemd else [self._cmd(svc.start)]
             if svc.wait:
                 steps.append(self._cmd(svc.wait))
@@ -548,8 +590,8 @@ class Idle:
                 "reload_estimate_s": self.estimate(name)}
         return {"automatic": any(v is not None for v in timeouts.values()), "services": services,
                 "critical_share": CRITICAL_SHARE, "events": self.events(limit=20),
-                "how": "nsf resources idle --set vllm=30m --set asr=15m --set tts=15m; nsf resources tick "
-                       "(neuroscifi-idle.timer); nsf resources unload|load SERVICE"}
+                "how": "nsf resources idle --set vllm=30m --set asr=15m --set tts=15m --set embed=15m --set "
+                       "rerank=15m; nsf resources tick (neuroscifi-idle.timer); nsf resources unload|load SERVICE"}
 
 
 _LOADS: dict = {}                   # (db_path, service) -> the _Load running in this process
@@ -659,6 +701,123 @@ def using(db_path, name, *, purpose, notify=None, idle=None, timeout=None):
             _bounded_load(idle, name, purpose=purpose, notify=notify, timeout=timeout)
 
 
+_DETACHED: dict = {}                # (db_path, service) -> (the reload process this process started, when)
+
+
+def _spawn_load(idle, name, purpose):
+    """Start the reload of `name` as a process of its own: `nsf resources load NAME --on-demand PURPOSE`, in its own
+    session, with nothing inherited but the environment. It outlives the process whose lookup asked for it (a
+    one-shot `nsf web knowledge` ends at once), so the service is really started, waited for, measured and
+    recorded. Returns the process (only `poll()` is used)."""
+    argv = [sys.executable, "-P", "-m", "neuroscifi.cli", "resources", "load", name, "--db", str(idle.db_path),
+            "--on-demand", purpose]
+    return subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            start_new_session=True, close_fds=True)
+
+
+def _load_in_progress(idle, name) -> bool:
+    """Whether some process holds the service's load lock right now (Idle.load keeps it while it starts)."""
+    try:
+        with _flock(idle._file(f"idle-load-{name}.lock"), fcntl.LOCK_EX | fcntl.LOCK_NB):
+            return False
+    except BlockingIOError:
+        return True
+    except OSError:
+        return False
+
+
+SPAWN_GRACE = 15.0         # seconds a just-started reload process may need before it holds the load lock
+
+
+def _just_spawned(idle, name, *, mark=False) -> bool:
+    """Whether some process started this service's reload process less than SPAWN_GRACE seconds ago (a new Python
+    takes a moment to reach Idle.load and its lock; measured: a lookup 0.2 s later started a second one, which
+    then only waited). `mark` records that this process just did."""
+    path = idle._file(f"idle-spawned-{name}")
+    try:
+        if mark:
+            idle.folder.mkdir(mode=0o700, exist_ok=True)
+            with open(path, "a"):
+                pass
+            os.utime(path, (idle.clock(), idle.clock()))
+            return True
+        return 0 <= idle.clock() - path.stat().st_mtime < SPAWN_GRACE
+    except OSError:
+        return False
+
+
+def _background_reload(idle, name, purpose) -> dict:
+    """{"action": "loading" | "refused" | "failed", "why"} for a service the idle policy unloaded, without waiting:
+    its reload runs in a process of its own, started here unless one already runs (this process's, or another's:
+    one holding the load lock or started a moment ago). A reload that ended refused or failed is reported as such, and the next one starts no
+    sooner than BACKGROUND_RETRY seconds after it did, so lookups do not start a hopeless load on every call."""
+    svc = idle.services[name]
+    key = (str(idle.db_path), name)
+    n = idle.estimate(name)
+    loading = {"action": "loading", "why": f"{svc.label} is unloaded while idle and is starting again"
+                                           + (f" (about {math.ceil(n)} s)" if n else "")}
+    with _LOADS_LOCK:
+        entry = _DETACHED.get(key)
+        if entry is not None:
+            process, started = entry
+            code = process.poll()
+            if code is None:
+                return loading
+            if code != 0 and 0 <= idle.monotonic() - started < BACKGROUND_RETRY:
+                last = next((e for e in reversed(idle.events(limit=50))
+                             if e.get("service") == name and e.get("action") == "load"), None) or {}
+                if last.get("refused"):
+                    return {"action": "refused",
+                            "why": last.get("error") or f"not enough memory to load {svc.label}"}
+                detail = " ".join(str(last.get("error") or "see nsf resources").split())[:160]
+                return {"action": "failed", "why": f"{svc.label} did not start: {detail}"}
+        if _load_in_progress(idle, name) or _just_spawned(idle, name):
+            return loading
+        try:
+            _DETACHED[key] = (_spawn_load(idle, name, purpose), idle.monotonic())
+            _just_spawned(idle, name, mark=True)
+        except OSError as error:
+            return {"action": "failed", "why": f"{svc.label} did not start: {type(error).__name__}: {error}"[:200]}
+    return loading
+
+
+@contextmanager
+def using_now(db_path, name, *, purpose, idle=None):
+    """using() for a caller that must not wait (a memory lookup): it never blocks and never waits for a reload.
+    Yields None when the call may be made: the policy is off for the service, or its in-use lock is held (shared)
+    for the block and the use is marked. Otherwise yields {"action", "why"} and the caller must not call the service:
+
+      "loading"    the idle policy unloaded it; its reload runs in the background, in a process of its own
+                   (_background_reload), so a later call finds it loaded
+      "refused"    that reload was refused for lack of free memory (headroom)
+      "failed"     that reload failed (the event says why)
+      "unloading"  the idle policy is stopping it at this moment
+    """
+    idle = idle or (Idle(db_path) if db_path else None)
+    data = idle.read() if idle is not None else {}
+    if idle is None or (data["timeouts"].get(name) is None and
+                        (data["services"].get(name) or {}).get("state") != "unloaded"):
+        yield None           # the policy is off for this service: no lock, no marker, no file
+        return
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(_flock(idle._file(f"idle-inuse-{name}.lock"), fcntl.LOCK_SH | fcntl.LOCK_NB))
+        except BlockingIOError:
+            yield {"action": "unloading", "why": f"{idle.services[name].label} is being unloaded while idle"}
+            return
+        except OSError:      # an unwritable folder must never break a lookup
+            pass
+        if idle.unloaded_by_policy(name):
+            yield _background_reload(idle, name, purpose)
+            return
+        try:
+            idle.touch(name)
+            stack.callback(idle.touch, name)
+        except OSError:
+            pass
+        yield None
+
+
 def wake(db_path, names, *, purpose, notify=None) -> list[threading.Thread]:
     """Reload, each in a background thread, the services in `names` that the idle policy unloaded (a voice session
     starting needs speech recognition and synthesis); `notify` tells the user. Returns the threads started."""
@@ -705,4 +864,4 @@ def mark_used(db_path, names) -> None:
 
 
 __all__ = ["CRITICAL_FLOOR", "CRITICAL_SHARE", "Idle", "SERVICES", "Service", "mark_used", "on_demand",
-           "parse_timeout", "using", "wake"]
+           "parse_timeout", "service_port", "using", "using_now", "wake"]

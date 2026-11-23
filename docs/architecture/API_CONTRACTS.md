@@ -428,12 +428,17 @@ access (the console's systemd unit allows loopback only). Leases prevent double 
 |---|---|
 | `{"mode": "lexical"}` | semantic retrieval is off: the BM25 ranking, as in 0.7.0 |
 | `{"mode": "lexical", "reason": str}` | semantic retrieval is on and could not be used (no embedding endpoint, an unusable key file, a failed or timed-out memory-model call); `items` are the lexical result |
+| `{"mode": "lexical", "reason": str, "retry_in_seconds": float}` | a memory model failed, or could not be started again, less than 30 s ago and is left alone until then |
+| `{"mode": "lexical", "reason": str, "waking": ["embed" \| "rerank", ...]}` | a local memory model is unloaded while idle (or is being unloaded): this lookup is not held up, and the models named in `waking` are starting again in the background |
 | `{"mode": "semantic", "ranked_by": "rerank", "candidates": int, "dropped_below_floor": int, "floor": float, "models": {"embed", "rerank"}, "cached"?: true}` | ranked by the reranker; an item's `score` is the reranker's (0 to 1); statements under the floor are not returned |
 | `{"mode": "semantic", "ranked_by": "embedding", "candidates": int, "models": {"embed"}, "cached"?: true}` | no reranker configured: ranked by cosine similarity (the item's `score`), nothing cut |
 
 `nsf web memory [status|config|clear]` prints `{enabled, settings {enabled, candidates, floor, timeout,
 rerank_template}, providers {embed, rerank: {configured, endpoint?, model?, state?, reason?, key_present?}},
-vectors_held_by_this_process, effect, error?}`. There is no console route for it.
+vectors_held_by_this_process, effect, error?}`. A provider's `state` is the gateway's health state, or `"asleep"`
+when the idle policy unloaded the local service (not an outage: the next lookup starts it). There is no console
+route for it. `nsf setup --json` reports a `memory` step (`done`, `already done`, `skipped` or `would do`) with
+`models {embed?, rerank?}` when it configured them.
 
 **Task events and report.** Two optional fields were added after 0.7.0; a consumer that ignores unknown keys is
 unaffected.

@@ -4,7 +4,10 @@
   nsf resources [--quick] [--cold-start]          the status (the idle policy's timeouts, state and events included)
   nsf resources idle [--set vllm=30m ...]         show or set the idle timeouts (off by default; `off` turns one off)
   nsf resources tick                              one idle-policy pass (neuroscifi-idle.timer runs it every minute)
-  nsf resources unload|load SERVICE               the owner unloads or loads a service now (vllm, asr, tts, searxng)
+  nsf resources unload|load SERVICE               the owner unloads or loads a service now (vllm, asr, tts, searxng,
+                                                  embed, rerank)
+  nsf resources load SERVICE --on-demand PURPOSE  reload it only if the idle policy unloaded it, recorded as "on
+                                                  demand: PURPOSE": what a memory lookup starts in the background
 """
 from __future__ import annotations
 
@@ -42,6 +45,10 @@ def _status(args):
         raise SystemExit(f"nsf resources {args.action}: name the service ({', '.join(idle.SERVICES)})")
     if args.action == "unload":
         out = policy.unload(args.service, reason="owner command", by="owner")
+    elif args.on_demand:
+        # The background reload of resources.idle.using_now: a process of its own, so it outlives the lookup's.
+        out = policy.ensure_loaded(args.service, purpose=args.on_demand) or \
+            {"action": "none", "why": "nothing to do: the idle policy has not unloaded it"}
     else:
         out = policy.load(args.service, reason="owner command", by="owner",
                           notify=lambda text: print(text, file=sys.stderr, flush=True))
@@ -59,7 +66,10 @@ def register(sub):
                         "unload|load SERVICE: the owner's manual command")
     p.add_argument("service", nargs="?", choices=tuple(idle.SERVICES), help="for unload and load")
     p.add_argument("--set", action="append", metavar="SERVICE=DURATION",
-                   help="idle timeout, e.g. vllm=30m, asr=15m, searxng=off (repeatable; with `idle`)")
+                   help="idle timeout, e.g. vllm=30m, asr=15m, embed=15m, searxng=off (repeatable; with `idle`)")
+    p.add_argument("--on-demand", metavar="PURPOSE",
+                   help="with `load`: reload the service only if the idle policy unloaded it (an owner's unload "
+                        "stands), and record it as on demand for PURPOSE")
     p.add_argument("--quick", action="store_true", help="memory only (no nvidia-smi or docker calls)")
     p.add_argument("--cold-start", action="store_true",
                    help="also report each neuroscifi-* container's last measured start-to-ready time")

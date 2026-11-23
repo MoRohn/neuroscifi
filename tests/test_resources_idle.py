@@ -32,7 +32,7 @@ class FakeHost:
     advances the clock by the service's reload time, so the measured reload is known in advance."""
 
     RELOAD = {"neuroscifi-vllm": 41.0, "neuroscifi-voice-asr": 18.0, "neuroscifi-voice-tts": 5.0,
-              "neuroscifi-searxng": 3.0}
+              "neuroscifi-searxng": 3.0, "neuroscifi-memory-embed": 19.0, "neuroscifi-memory-rerank": 21.0}
 
     def __init__(self):
         self.now = T0
@@ -58,14 +58,20 @@ class FakeHost:
             if argv[1] == "is-active":
                 return subprocess.CompletedProcess(argv, 0 if unit in self.units else 3, "")
             name = idle.SERVICES[{"neuroscifi-vllm.service": "vllm", "neuroscifi-voice-asr.service": "asr",
-                                  "neuroscifi-voice-tts.service": "tts"}[unit]].container
+                                  "neuroscifi-voice-tts.service": "tts", "neuroscifi-memory-embed.service": "embed",
+                                  "neuroscifi-memory-rerank.service": "rerank"}[unit]].container
             self._act(argv[2], name)
+            if argv[2] == "stop":                     # as systemd does: a stopped unit is no longer active
+                self.units.discard(unit)
+            elif argv[2] == "start":
+                self.units.add(unit)
             return ok
         joined = " ".join(argv)
         container = next(svc.container for svc in idle.SERVICES.values()
                          if (svc.name == "vllm" and "deploy/vllm/run.sh" in joined) or
                          (svc.name in ("asr", "tts") and "deploy/voice/run.sh" in joined and argv[-1] == svc.name) or
                          (svc.name in ("asr", "tts") and "wait" in argv and argv[-2] == svc.name) or
+                         (svc.name in ("embed", "rerank") and "deploy/memory/run.sh" in joined and svc.name in argv) or
                          (svc.name == "searxng" and "searxng" in argv))
         verb = next(v for v in ("start", "stop", "wait") if v in argv)
         if container in self.fail and verb != "stop":
@@ -91,7 +97,7 @@ def fake(tmp_path, monkeypatch):
     db = store.create(path, T0 - 7 * 3600)
 
     def metrics(url):
-        name = "vllm" if ":8811/" in url else "asr"
+        name = "vllm" if ":8811/" in url else "embed" if ":18441/" in url else "rerank" if ":18442/" in url else "asr"
         value = host.metrics.get(name)
         return dict(value) if value is not None else None
 
@@ -317,6 +323,9 @@ def test_an_active_systemd_unit_is_stopped_and_started_with_systemctl(fake):
     with idle.using(fake.path, "vllm", purpose="chat"):
         pass
     assert ["systemctl", "--no-ask-password", "start", "neuroscifi-vllm.service"] in fake.calls
+    # The unit this policy stopped is started as the unit, not as a second container through run.sh (the fake host
+    # now reports a stopped unit as inactive, as systemd does: with that, the earlier code ran `run.sh start`).
+    assert not [c for c in fake.calls if "deploy/vllm/run.sh" in " ".join(c) and "start" in c]
 
 
 def test_presence_shows_what_the_user_is_told_while_a_service_starts(fake):
@@ -373,7 +382,8 @@ def test_resources_idle_shows_loaded_as_resources_does(fake, capsys, monkeypatch
     assert main(["resources", "--db", str(fake.path)]) == 0
     status_view = {k: v["loaded"] for k, v in
                    json.loads(capsys.readouterr().out)["policy"]["idle_unload"]["services"].items()}
-    assert idle_view == status_view == {"vllm": True, "asr": False, "tts": False, "searxng": True}
+    assert idle_view == status_view == {"vllm": True, "asr": False, "tts": False, "searxng": True,
+                                        "embed": False, "rerank": False}
     monitor.clear_cache()
 
 
@@ -542,3 +552,422 @@ def test_a_measured_footprint_far_above_the_documented_one_is_not_believed(tmp_p
                                          "source": "documented (RESOURCE_SCHEDULING.md §4)"}
     events.append({"service": "vllm", "ok": True, "action": "load", "took_bytes": int(1.2 * documented * monitor.GIB)})
     assert policy_.footprint("vllm")["source"].endswith("(measured)")
+
+
+# ---- the memory models (embed, rerank): unloaded when idle, never waited for -----------------------------------
+
+MEMORY = ("embed", "rerank")
+
+
+_REAL_SPAWN_LOAD = idle._spawn_load
+
+
+class _Reload:
+    """Stands in for the reload process of using_now (`nsf resources load NAME --on-demand PURPOSE`, started by
+    idle._spawn_load): the same call against the fake host, in a thread. poll() is the process's exit code."""
+
+    def __init__(self, path, name, purpose):
+        self.code = None
+        self.thread = threading.Thread(target=self._run, args=(path, name, purpose), daemon=True)
+        self.thread.start()
+
+    def _run(self, path, name, purpose):
+        out = idle.Idle(path).ensure_loaded(name, purpose=purpose) or {}
+        self.code = 1 if out.get("action") in ("failed", "refused") else 0
+
+    def poll(self):
+        return None if self.thread.is_alive() else self.code
+
+
+@pytest.fixture
+def memory_host(fake, monkeypatch):
+    """The fake host with both memory services answering /metrics, plenty of free memory, and a gate: with
+    `fake.gate` cleared the deploy's `wait` blocks, so a test decides when a background reload ends."""
+    from neuroscifi.resources import monitor
+    fake.metrics.update(embed={"in_flight": 0.0, "served": 11.0}, rerank={"in_flight": 0.0, "served": 5.0})
+    monkeypatch.setattr(monitor, "memory", lambda *a, **k: _memory(64)())
+    fake.gate = threading.Event()
+    fake.gate.set()
+    fake.shown_while_starting = []
+
+    def gated(argv, timeout):
+        if "wait" in [str(a) for a in argv]:
+            fake.shown_while_starting.append(fake.make().loading())     # what Presence would show meanwhile
+            assert fake.gate.wait(10)
+        return fake(argv, timeout)
+    monkeypatch.setattr(idle, "_run", gated)
+    monkeypatch.setattr(idle, "_spawn_load", lambda policy_, name, purpose: _Reload(policy_.db_path, name, purpose))
+    idle._DETACHED.clear()
+    yield fake
+    _finish_loads(fake)
+    idle._DETACHED.clear()
+
+
+def _finish_loads(fake):
+    fake.gate.set()
+    for reload, _ in list(idle._DETACHED.values()):
+        reload.thread.join(10)
+        assert not reload.thread.is_alive()
+
+
+def _unload_idle(fake, *names):
+    p = fake.make()
+    p.configure(dict.fromkeys(names, 15 * MIN))
+    fake.now += 16 * MIN
+    out = p.tick()["decisions"]
+    assert all(out[name]["action"] == "unload" for name in names)
+    return p
+
+
+def test_the_memory_models_are_services_of_the_policy_off_by_default(memory_host):
+    fake = memory_host
+    p = fake.make()
+    assert set(MEMORY) <= set(idle.SERVICES) and all(idle.SERVICES[n].background for n in MEMORY)
+    assert not any(idle.SERVICES[n].background for n in ("vllm", "asr", "tts", "searxng"))
+    assert (idle.service_port("embed"), idle.service_port("rerank"), idle.service_port("tts")) == (18441, 18442, None)
+    assert p.timeouts()["embed"] is None and p.timeouts()["rerank"] is None
+    fake.now += 24 * 3600
+    assert p.tick() == {"enabled": False, "decisions": {}}
+    for name in MEMORY:                                   # off: no lock, no marker, no file, nothing to wait for
+        with idle.using_now(fake.path, name, purpose="memory lookup") as state:
+            assert state is None
+    assert not p.folder.exists() and stops(fake) == []
+
+
+def test_an_idle_memory_model_is_unloaded_with_the_deploys_own_command_and_the_other_stays(memory_host):
+    fake = memory_host
+    p = fake.make()
+    p.configure({"embed": 15 * MIN})
+    with idle.using_now(fake.path, "embed", purpose="memory lookup"):      # a lookup uses it now
+        pass
+    fake.now += 10 * MIN
+    assert p.tick()["decisions"]["embed"]["action"] == "none"
+    fake.now += 6 * MIN
+    out = p.tick()["decisions"]
+    assert out["embed"]["action"] == "unload" and "rerank" not in out
+    assert stops(fake)[-1][-3:] == [str(idle.REPO / "deploy/memory/run.sh"), "stop", "embed"]
+    assert "neuroscifi-memory-embed" not in fake.running and "neuroscifi-memory-rerank" in fake.running
+    assert p.unloaded_by_policy("embed") and not p.unloaded_by_policy("rerank")
+
+
+def test_a_use_keeps_a_memory_model_loaded_and_a_request_in_flight_blocks_the_unload(memory_host):
+    fake = memory_host
+    p = fake.make()
+    p.configure({"embed": 15 * MIN, "rerank": 15 * MIN})
+    fake.now += 14 * MIN
+    with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
+        assert state is None
+        fake.now += 30 * MIN                              # a lookup in flight holds the in-use lock
+        out = p.tick()["decisions"]
+        assert out["embed"] == {"action": "none", "why": "a request is in flight"}
+        assert out["rerank"]["action"] == "unload"        # the other one was idle all along
+    assert p.tick()["decisions"]["embed"]["action"] == "none"       # just used
+    assert "neuroscifi-memory-embed" in fake.running and "neuroscifi-memory-rerank" not in fake.running
+    fake.metrics["embed"]["in_flight"] = 1.0              # the server itself says a request runs
+    fake.now += 3600
+    assert p.tick()["decisions"]["embed"]["action"] == "none"
+
+
+def test_a_lookup_never_waits_for_an_unloaded_memory_model_it_starts_the_reload_in_the_background(memory_host):
+    fake = memory_host
+    p = _unload_idle(fake, "embed")
+    fake.gate.clear()                                     # the reload will take until the test says so
+    with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
+        assert state == {"action": "loading", "why": "memory search (the embedding model) is unloaded while idle "
+                                                     "and is starting again (about 20 s)"}
+    with idle.using_now(fake.path, "embed", purpose="memory lookup") as again:
+        assert again["action"] == "loading"               # the same reload, not a second start
+    _finish_loads(fake)
+    assert sum("start" in c for c in fake.calls) == 1 and "neuroscifi-memory-embed" in fake.running
+    assert fake.shown_while_starting == [[]]              # nobody waits for it: nothing is shown as starting
+    with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
+        assert state is None
+    event = p.events()[-1]
+    assert (event["action"], event["by"], event["reason"], event["seconds"]) == \
+        ("load", "on demand", "on demand: memory lookup", 19.0)
+    assert p.estimate("embed") == 19.0
+
+
+def test_a_model_somebody_waits_for_is_still_shown_as_starting(memory_host):
+    """The change above is for the memory models only: the answer model's reload is announced as before."""
+    fake = memory_host
+    _unload_idle(fake, "vllm")
+    with idle.using(fake.path, "vllm", purpose="chat") as loaded:
+        assert loaded["action"] == "load"
+    assert [entry["service"] for entry in fake.shown_while_starting[-1]] == ["vllm"]
+
+
+def test_a_memory_model_being_unloaded_right_now_is_not_waited_for(memory_host):
+    import fcntl
+    import os
+    fake = memory_host
+    p = fake.make()
+    p.configure({"rerank": 15 * MIN})
+    fd = os.open(p._file("idle-inuse-rerank.lock"), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)                    # the policy holds this while the service stops
+        with idle.using_now(fake.path, "rerank", purpose="memory lookup") as state:
+            assert state == {"action": "unloading", "why": "memory search (the reranker) is being unloaded while idle"}
+    finally:
+        os.close(fd)
+
+
+def test_a_memory_model_that_does_not_fit_is_refused_once_per_back_off_not_on_every_lookup(memory_host, monkeypatch):
+    from neuroscifi.resources import monitor
+    fake = memory_host
+    p = _unload_idle(fake, "rerank")
+    monkeypatch.setattr(monitor, "memory", lambda *a, **k: _memory(9)())      # 9 GiB free, 7.7 must stay free
+    with idle.using_now(fake.path, "rerank", purpose="memory lookup") as state:
+        assert state["action"] == "loading"               # the refusal comes from the reload, in the background
+    _finish_loads(fake)
+    for _ in range(5):
+        with idle.using_now(fake.path, "rerank", purpose="memory lookup") as state:
+            assert state["action"] == "refused"
+        _finish_loads(fake)
+    assert "not enough memory to load memory search (the reranker)" in state["why"] and "4.4 GiB" in state["why"]
+    refusals = [e for e in p.events() if e.get("refused")]
+    assert len(refusals) == 1 and not [c for c in fake.calls if "start" in c]
+    fake.now += idle.BACKGROUND_RETRY + 1                 # after the back-off the next lookup tries again
+    with idle.using_now(fake.path, "rerank", purpose="memory lookup"):
+        pass
+    _finish_loads(fake)
+    assert len([e for e in p.events() if e.get("refused")]) == 2
+    monkeypatch.setattr(monitor, "memory", lambda *a, **k: _memory(64)())     # memory is back
+    fake.now += idle.BACKGROUND_RETRY + 1
+    with idle.using_now(fake.path, "rerank", purpose="memory lookup"):
+        pass
+    _finish_loads(fake)
+    assert "neuroscifi-memory-rerank" in fake.running
+    with idle.using_now(fake.path, "rerank", purpose="memory lookup") as state:
+        assert state is None
+
+
+def test_the_memory_units_are_stopped_and_started_through_systemd_when_active(memory_host):
+    fake = memory_host
+    fake.units.add("neuroscifi-memory-embed.service")
+    p = fake.make()
+    p.configure({"embed": 15 * MIN})
+    fake.now += 16 * MIN
+    assert p.tick()["decisions"]["embed"]["event"]["shape"] == "systemd"
+    assert ["systemctl", "--no-ask-password", "stop", "neuroscifi-memory-embed.service"] in fake.calls
+    assert "neuroscifi-memory-embed.service" not in fake.units       # stopped: `systemctl is-active` now says no
+    out = p.ensure_loaded("embed", purpose="memory lookup")
+    assert out["action"] == "load" and out["event"]["shape"] == "systemd"
+    assert ["systemctl", "--no-ask-password", "start", "neuroscifi-memory-embed.service"] in fake.calls
+    assert not [c for c in fake.calls if "deploy/memory/run.sh" in " ".join(c) and "start" in c]   # no second container
+    assert "neuroscifi-memory-embed.service" in fake.units
+
+
+class _MemoryModel:
+    """A stand-in memory model at the local service's own address."""
+
+    def __init__(self, port, model):
+        from neuroscifi.inference import config as iconfig
+        self.cfg = iconfig.InferenceConfig(base_url=f"http://127.0.0.1:{port}/v1", model=model)
+        self.calls = 0
+
+    def embed(self, texts, *, purpose, timeout=None, input_type=None):
+        self.calls += 1
+        return [[1.0, 0.0] if "harbour" in t.lower() or "port" in t.lower() else [0.0, 1.0] for t in texts]
+
+    def rerank(self, query, documents, *, purpose, timeout=None):
+        self.calls += 1
+        return [0.9 if "port" in d.lower() else 0.001 for d in documents]
+
+    def health(self):
+        return {"state": "unavailable", "reason": "connection refused"}
+
+
+QUESTION = "which harbour does it accept traffic on"      # no word of the stored fact: only meaning finds it
+
+
+@pytest.fixture
+def remembering(memory_host, monkeypatch):
+    """An individual with two facts and semantic retrieval on, its memory models at the local services' ports."""
+    from neuroscifi.webcortex import knowledge, semantic, state as wstate
+    fake = memory_host
+    wstate.set_config(fake.db, {"enabled": True}, T0)
+    knowledge.assert_fact(fake.db, "By default, the Orbix server listens on port 7420 for client connections.", T0)
+    knowledge.assert_fact(fake.db, "The Tolvane Lighthouse was built in 1874.", T0 + 1)
+    semantic.set_config(fake.db, {"enabled": True}, T0)
+    fake.models = [_MemoryModel(18441, "embedder"), _MemoryModel(18442, "reranker")]
+    monkeypatch.setattr(semantic, "_gateways", lambda db: tuple(fake.models))
+    semantic.clear()
+    yield fake
+    semantic.clear()
+
+
+def test_a_memory_lookup_is_lexical_at_once_while_its_models_sleep_and_semantic_again_once_they_are_back(remembering):
+    from neuroscifi.webcortex import knowledge
+    fake = remembering
+    first = knowledge.query(fake.db, QUESTION, T0 + 10)
+    assert first["retrieval"]["mode"] == "semantic" and len(first["items"]) == 1
+    _unload_idle(fake, "embed", "rerank")
+    calls = [m.calls for m in fake.models]
+    knowledge.assert_fact(fake.db, "Quillstream 4.2.0 was released on 2 October 2026.", T0 + 20)   # new memory state
+    fake.gate.clear()
+    asleep = knowledge.query(fake.db, QUESTION, T0 + 30)
+    assert asleep["items"] == [] and asleep["retrieval"]["mode"] == "lexical"
+    assert asleep["retrieval"]["waking"] == ["embed", "rerank"]
+    assert asleep["retrieval"]["reason"] == (
+        "memory search (the embedding model) is unloaded while idle and is starting again (about 20 s); "
+        "memory search (the reranker) is unloaded while idle and is starting again (about 20 s)")
+    assert [m.calls for m in fake.models] == calls        # a sleeping model is never called
+    _finish_loads(fake)
+    assert {"neuroscifi-memory-embed", "neuroscifi-memory-rerank"} <= set(fake.running)
+    back = knowledge.query(fake.db, QUESTION, T0 + 40)
+    assert back["retrieval"]["mode"] == "semantic" and len(back["items"]) == 1
+    assert fake.shown_while_starting == [[], []]          # Presence never showed a service as starting
+
+
+def test_with_one_memory_model_asleep_the_lookup_is_lexical_not_half_semantic(remembering):
+    from neuroscifi.webcortex import knowledge
+    fake = remembering
+    _unload_idle(fake, "rerank")
+    fake.gate.clear()
+    out = knowledge.query(fake.db, QUESTION, T0 + 30)
+    assert out["retrieval"]["mode"] == "lexical" and out["retrieval"]["waking"] == ["rerank"]
+    assert [m.calls for m in fake.models] == [0, 0]       # the embedding model was awake and still not asked
+
+
+def test_a_memory_model_that_cannot_start_is_tried_once_per_back_off_not_on_every_lookup(remembering, monkeypatch):
+    from neuroscifi.webcortex import knowledge, semantic
+    fake = remembering
+    _unload_idle(fake, "embed")
+    fake.fail.add("neuroscifi-memory-embed")
+    clock = [1000.0]
+    monkeypatch.setattr(semantic.time, "monotonic", lambda: clock[0])
+    knowledge.query(fake.db, QUESTION, T0 + 30)           # starts the reload, which fails in the background
+    _finish_loads(fake)
+    told = knowledge.query(fake.db, QUESTION + " now", T0 + 31)["retrieval"]
+    assert told["mode"] == "lexical" and "memory search (the embedding model) did not start" in told["reason"]
+    assert "run.sh: container exited" in told["reason"] and "waking" not in told     # nothing is starting now
+    starts = sum("start" in c for c in fake.calls)
+    assert starts == 1
+    later = knowledge.query(fake.db, QUESTION + " later", T0 + 32)["retrieval"]
+    assert later["mode"] == "lexical" and later["retry_in_seconds"] > 0
+    assert sum("start" in c for c in fake.calls) == starts           # left alone during the back-off
+    fake.fail.clear()
+    clock[0] += semantic.RETRY_AFTER + 1
+    fake.now += idle.BACKGROUND_RETRY + 1
+    knowledge.query(fake.db, QUESTION + " again", T0 + 33)
+    _finish_loads(fake)
+    assert knowledge.query(fake.db, QUESTION, T0 + 34)["retrieval"]["mode"] == "semantic"
+
+
+def test_a_memory_endpoint_elsewhere_is_never_touched_by_the_idle_policy(remembering):
+    from neuroscifi.webcortex import knowledge
+    fake = remembering
+    fake.models[0].cfg.base_url = "http://127.0.0.1:9000/v1"         # the owner's own embedding server
+    fake.models[1].cfg.base_url = "http://memory.example:18442/v1"   # and a reranker on another host
+    p = _unload_idle(fake, "embed", "rerank")                        # the local containers are unloaded ...
+    assert p.unloaded_by_policy("embed") and p.unloaded_by_policy("rerank")
+    starts = sum("start" in c for c in fake.calls)
+    out = knowledge.query(fake.db, QUESTION, T0 + 30)
+    assert out["retrieval"]["mode"] == "semantic"                    # ... and these endpoints are simply called
+    assert sum("start" in c for c in fake.calls) == starts and idle._DETACHED == {}
+
+
+def test_memory_status_says_asleep_not_unavailable_for_a_model_unloaded_while_idle(remembering):
+    from neuroscifi.webcortex import semantic
+    fake = remembering
+    _unload_idle(fake, "embed")
+    shown = semantic.status(fake.db)["providers"]
+    assert shown["embed"]["state"] == "asleep" and "starts it again" in shown["embed"]["reason"]
+    assert shown["rerank"]["state"] == "unavailable" and shown["rerank"]["reason"] == "connection refused"
+
+
+def test_the_background_reload_is_a_process_of_its_own_that_outlives_the_lookup(memory_host, monkeypatch):
+    """A one-shot command (`nsf web knowledge TOPIC`) ends right after its lookup. A reload in one of its threads
+    would die with it and the model would never start, whatever the lookup said: so the reload is
+    `nsf resources load NAME --on-demand PURPOSE` in its own session, with no pipe back to the caller."""
+    import sys
+    fake = memory_host
+    _unload_idle(fake, "embed")
+    started = []
+
+    class Process:
+        def poll(self):
+            return None
+
+    def popen(argv, **options):
+        started.append((argv, options))
+        return Process()
+    monkeypatch.setattr(idle, "_spawn_load", _REAL_SPAWN_LOAD)       # the real one ...
+    monkeypatch.setattr(idle.subprocess, "Popen", popen)             # ... which must start exactly this
+    idle._DETACHED.clear()
+    with idle.using_now(fake.path, "embed", purpose="memory lookup", idle=fake.make()) as state:
+        assert state["action"] == "loading"
+    with idle.using_now(fake.path, "embed", purpose="memory lookup", idle=fake.make()) as state:
+        assert state["action"] == "loading"               # one process, not one per lookup
+    idle._DETACHED.clear()
+    assert len(started) == 1
+    argv, options = started[0]
+    assert argv == [sys.executable, "-P", "-m", "neuroscifi.cli", "resources", "load", "embed", "--db", str(fake.path),
+                    "--on-demand", "memory lookup"]
+    assert options["start_new_session"] is True and options["close_fds"] is True
+    assert options["stdin"] == options["stdout"] == options["stderr"] == subprocess.DEVNULL
+
+
+def test_a_reload_another_process_is_running_is_not_started_twice(memory_host):
+    import fcntl
+    import os
+    fake = memory_host
+    p = _unload_idle(fake, "embed")
+    fd = os.open(p._file("idle-load-embed.lock"), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)                    # another process is inside Idle.load
+        with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
+            assert state["action"] == "loading"
+        assert idle._DETACHED == {} and not [c for c in fake.calls if "start" in c]
+    finally:
+        os.close(fd)
+
+
+def test_a_reload_process_started_a_moment_ago_by_another_process_is_not_started_again(memory_host, monkeypatch):
+    """Measured live: a lookup 0.2 s after a one-shot command's lookup found no load lock held yet (the reload
+    process was still starting Python) and started a second process, which then only waited for the first."""
+    fake = memory_host
+    _unload_idle(fake, "rerank")
+    spawned = []
+
+    class StillStarting:                                  # a process that has not reached Idle.load yet
+        def poll(self):
+            return None
+    monkeypatch.setattr(idle, "_spawn_load", lambda *a: spawned.append(a[1]) or StillStarting())
+    with idle.using_now(fake.path, "rerank", purpose="memory lookup") as state:
+        assert state["action"] == "loading"
+    idle._DETACHED.clear()                                # what any other process knows: nothing
+    fake.now += 1
+    with idle.using_now(fake.path, "rerank", purpose="memory lookup") as state:
+        assert state["action"] == "loading"
+    assert spawned == ["rerank"]
+    idle._DETACHED.clear()
+    fake.now += idle.SPAWN_GRACE                          # it never took the lock: it died; start again
+    with idle.using_now(fake.path, "rerank", purpose="memory lookup") as state:
+        assert state["action"] == "loading"
+    assert spawned == ["rerank", "rerank"]
+    idle._DETACHED.clear()
+
+
+def test_the_on_demand_load_command_reloads_only_what_the_idle_policy_unloaded(memory_host, capsys):
+    from neuroscifi.cli import main
+    fake = memory_host
+    p = fake.make()
+    argv = ["resources", "load", "embed", "--db", str(fake.path), "--on-demand", "memory lookup"]
+    assert main(argv) == 0                                # loaded: nothing to do
+    assert json.loads(capsys.readouterr().out)["action"] == "none" and not [c for c in fake.calls if "start" in c]
+    p.unload("embed", reason="owner command")             # the owner's unload stands
+    assert main(argv) == 0 and "neuroscifi-memory-embed" not in fake.running
+    capsys.readouterr()
+    p.load("embed", reason="owner command")
+    _unload_idle(fake, "embed")
+    assert main(argv) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["action"] == "load" and out["event"]["by"] == "on demand" and \
+        out["event"]["reason"] == "on demand: memory lookup"
+    assert "neuroscifi-memory-embed" in fake.running and fake.make().loading() == []
+    _unload_idle(fake, "embed")
+    fake.fail.add("neuroscifi-memory-embed")
+    assert main(argv) == 1                                # the caller's process sees the failure in the exit code
+    assert json.loads(capsys.readouterr().out)["action"] == "failed"

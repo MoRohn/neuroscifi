@@ -1,0 +1,473 @@
+{
+ "evidence": "Decision C: the memory models as a managed service (setup, supervision, idle release, footprint)",
+ "recorded": "2026-11-23",
+ "host": "DGX Spark GB10, aarch64, 121.9 GiB unified memory, shared with other tenants; vllm/vllm-openai@sha256:48c0a41e... (the answer model's pinned image); Qwen3-Embedding-0.6B and Qwen3-Reranker-0.6B",
+ "code": "decision C lane, based on 307b907",
+ "footprint": {
+  "what": "both services loaded and used once (scripts/bench_memory.py), read from the container's cgroup (memory.stat), /proc/PID/status of its processes and nvidia-smi --query-compute-apps",
+  "per_service": {
+   "embed": {
+    "cgroup_anon_gib": 2.64,
+    "cgroup_file_gib": 0.38,
+    "device_memory_mib": 1979,
+    "anon_plus_device_gib": 4.57,
+    "processes_rss_anon_gib": {
+     "api_server (vllm serve, pid 1)": 1.02,
+     "engine (VLLM::EngineCore)": 1.46
+    }
+   },
+   "rerank": {
+    "cgroup_anon_gib": 2.62,
+    "cgroup_file_gib": 1.41,
+    "device_memory_mib": 1977,
+    "anon_plus_device_gib": 4.55,
+    "processes_rss_anon_gib": {
+     "api_server (vllm serve, pid 1)": 1.03,
+     "engine (VLLM::EngineCore)": 1.58
+    }
+   }
+  },
+  "device_memory_composition_gib": {
+   "weights (engine log: Model loading took)": 1.12,
+   "kv_cache (NSF_MEMORY_KV_CACHE_BYTES)": 0.25,
+   "cuda_context_and_rest": 0.56
+  },
+  "mem_available_gib": {
+   "before_start": 39.48,
+   "both_running": 31.34,
+   "difference": 8.14
+  },
+  "reading": "About 60 % of each service is process overhead of a full vLLM server (two Python processes with the libraries imported), not the model. The cgroup's file pages are the mounted weights' page cache and are reclaimable."
+ },
+ "settings_tried_to_lower_it": [
+  {
+   "setting": "NSF_MEMORY_KV_CACHE_BYTES=67108864 (64 MiB instead of 256 MiB), max length 2048",
+   "result": "refused by vLLM at start: 'To serve at least one request with the model's max seq len (2048), (0.22 GiB KV cache is needed, which is larger than the available KV cache memory (0.06 GiB)'. 256 MiB is the minimum for a 2,048-token input; a shorter limit would save at most 0.13 GiB per service and reject long statements, so it was not adopted. `run.sh wait` failed at once on the crash loop ('embed restarted while starting')."
+  },
+  {
+   "setting": "MALLOC_ARENA_MAX=2 in the embedding container",
+   "cgroup_anon_gib": {
+    "before": 2.64,
+    "after": 2.69
+   },
+   "result": "no change; not adopted"
+  },
+  {
+   "setting": "NSF_MEMORY_GPU_UTIL",
+   "result": "has no effect while --kv-cache-memory-bytes is set (the engine log says memory profiling is skipped)"
+  }
+ ],
+ "footprint_decision": "unchanged settings; released while idle instead (below). No setting of the pinned image lowers the footprint materially.",
+ "benchmark_recheck": {
+  "what": "scripts/bench_memory.py with the committed settings, same 130 queries as accel_after_memory_semantic.json, run while another lane was using the answer model",
+  "recall_at_1": {
+   "near": 1.0,
+   "para": 0.979,
+   "noname": 0.917,
+   "all_answerable": 0.981
+  },
+  "none_returned_something": "3 of 10",
+  "query_ms": {
+   "p50": 110.944,
+   "p95": 133.068,
+   "max": 225.291
+  },
+  "first_query_ms": 985.7,
+  "reading": "recall identical to accel_after_memory_semantic.json (1.0 / 0.979 / 0.917 / 0.981, 3 of 10); p50 111 ms against 107 ms"
+ },
+ "first_request_after_a_start_ms": {
+  "what": "four requests to each model right after `run.sh start` and `run.sh wait`, through Gateway.embed / Gateway.rerank",
+  "wait_checks_health_only": {
+   "embed": [
+    1539.2,
+    16.8,
+    27.6,
+    21.4
+   ],
+   "rerank": [
+    1051.2,
+    24.6,
+    19.5,
+    20.9
+   ]
+  },
+  "wait_sends_one_real_request": {
+   "embed": [
+    31.8,
+    14.1,
+    21.6,
+    17.9
+   ],
+   "rerank": [
+    38.9,
+    26.0,
+    23.0,
+    17.0
+   ]
+  },
+  "reading": "a lookup allows each model call 2 s; `wait` now counts a model as ready only after one real request, so the first lookup after a start or an idle reload is not the model's first pass"
+ },
+ "start_to_ready_seconds": {
+  "observed_this_review": [
+   18,
+   18,
+   19,
+   19,
+   24,
+   26,
+   27,
+   28,
+   31,
+   41
+  ],
+  "note": "docker start to `wait` returning, warm files; the 41 s was with three other model loads on the host"
+ },
+ "units": {
+  "files": [
+   "deploy/systemd/neuroscifi-memory-embed.service",
+   "deploy/systemd/neuroscifi-memory-rerank.service"
+  ],
+  "systemd_analyze_security_offline": {
+   "neuroscifi-memory-embed.service": 1.6,
+   "neuroscifi-memory-rerank.service": 1.6,
+   "neuroscifi-voice-asr.service (the model for both)": 1.6
+  },
+  "sandbox_exercised": "scripts/hardened_run.py UNIT --user --wait as a transient user unit under the unit's sandbox: `deploy/memory/run.sh status` (both containers healthy) and `deploy/memory/run.sh wait all 30` (both ready, warm-up request included) exited 0",
+  "not_exercised": "the units were not installed, enabled or started on this host (system manager, root); the IP firewall and ProtectProc of a system unit need the system manager (HARDENING_VERIFICATION.md section 5)"
+ },
+ "live_check": {
+  "what": "a temporary individual on this host; `nsf setup`, `nsf web memory`, knowledge.query, deploy/memory/run.sh and the idle policy by direct calls (no timer installed); the containers were stopped and removed afterwards",
+  "runs": "four; the first two with the reload in a thread of the looking-up process (replaced: a one-shot command would end before the thread had started anything), the last two with the reload as a process of its own. `result` is the last run. Across the four: unload 1.0 to 1.8 s per model, freed 3.62 to 3.80 GiB (embedding) and 4.59 to 4.73 GiB (reranker), both answering again 20.2 to 28.7 s after the lookup that found them unloaded, first lookup after the reload 1862 ms before `wait` sent a warm-up request and 65 to 74 ms after",
+  "result": {
+   "background_reload_seconds_wall": 20.2,
+   "containers_after_unload": [
+    "",
+    "neuroscifi-memory-embed: not running",
+    "",
+    "neuroscifi-memory-rerank: not running"
+   ],
+   "host_state_before": [
+    "/neuroscifi-memory-embed running health=healthy started=2026-11-23T21:46:54.335364065Z",
+    "/neuroscifi-memory-rerank running health=healthy started=2026-11-23T21:46:54.327632591Z"
+   ],
+   "idle_status": {
+    "embed": {
+     "reload_estimate_s": 16.4,
+     "state": "loaded",
+     "state_by": "on demand",
+     "timeout_s": 60.0
+    },
+    "rerank": {
+     "reload_estimate_s": 19.4,
+     "state": "loaded",
+     "state_by": "on demand",
+     "timeout_s": 60.0
+    }
+   },
+   "idle_tick_after_66_s": {
+    "blockers": [],
+    "decisions": {
+     "embed": {
+      "action": "unload",
+      "freed_bytes": 4060803072,
+      "seconds": 1.1,
+      "why": "idle 1 min (timeout 1 min)"
+     },
+     "rerank": {
+      "action": "unload",
+      "freed_bytes": 4964597760,
+      "seconds": 1.2,
+      "why": "idle 1 min (timeout 1 min)"
+     }
+    },
+    "level": "ok"
+   },
+   "idle_tick_just_used": {
+    "embed": {
+     "action": "none",
+     "why": "used 0 s ago (unloads after 1 min idle)"
+    },
+    "rerank": {
+     "action": "none",
+     "why": "used 0 s ago (unloads after 1 min idle)"
+    }
+   },
+   "lookup_after_reload": {
+    "ms": 65.4,
+    "question": "which socket does the Orbix daemon accept traffic on",
+    "retrieval": {
+     "candidates": 6,
+     "dropped_below_floor": 4,
+     "floor": 0.02,
+     "mode": "semantic",
+     "models": {
+      "embed": "qwen3-embedding-0.6b",
+      "rerank": "qwen3-reranker-0.6b"
+     },
+     "ranked_by": "rerank"
+    },
+    "statements": [
+     "By default, the Orbix server listens on port 7420 for client connections.",
+     "Orbix is distributed under the Mozilla Public License 2.0."
+    ]
+   },
+   "lookup_while_starting": {
+    "ms": 1.9,
+    "question": "who built the beacon at Tolvane",
+    "retrieval": {
+     "mode": "lexical",
+     "reason": "memory search (the embedding model) is unloaded while idle and is starting again (about 20 s); memory search (the reranker) is unloaded while idle and is starting again (about 20 s)",
+     "waking": [
+      "embed",
+      "rerank"
+     ]
+    },
+    "statements": [
+     "The Tolvane Lighthouse was built in 1874 by the Ostra Harbour Board."
+    ]
+   },
+   "lookup_with_the_policy_on": {
+    "ms": 93.9,
+    "question": "what licence is Orbix under",
+    "retrieval": {
+     "candidates": 5,
+     "dropped_below_floor": 4,
+     "floor": 0.02,
+     "mode": "semantic",
+     "models": {
+      "embed": "qwen3-embedding-0.6b",
+      "rerank": "qwen3-reranker-0.6b"
+     },
+     "ranked_by": "rerank"
+    },
+    "statements": [
+     "Orbix is distributed under the Mozilla Public License 2.0."
+    ]
+   },
+   "memory_available_gib": {
+    "both_loaded": 30.01,
+    "both_reloaded_and_used": 30.0,
+    "both_unloaded": 38.77
+   },
+   "nsf_web_memory_status": {
+    "effect": "memory is ranked by the reranker; statements under the floor are not returned",
+    "enabled": true,
+    "providers": {
+     "embed": {
+      "configured": true,
+      "endpoint": "http://127.0.0.1:18441/v1",
+      "key_present": true,
+      "model": "qwen3-embedding-0.6b",
+      "reason": null,
+      "state": "ready"
+     },
+     "rerank": {
+      "configured": true,
+      "endpoint": "http://127.0.0.1:18442/v1",
+      "key_present": true,
+      "model": "qwen3-reranker-0.6b",
+      "reason": null,
+      "state": "ready"
+     }
+    },
+    "settings": {
+     "candidates": 10,
+     "enabled": true,
+     "floor": 0.02,
+     "rerank_template": "qwen3",
+     "timeout": 2.0
+    },
+    "vectors_held_by_this_process": 0
+   },
+   "one_shot_lookup_while_asleep": {
+    "command_seconds": 0.15,
+    "exit": 0,
+    "retrieval": {
+     "mode": "lexical",
+     "reason": "memory search (the embedding model) is unloaded while idle and is starting again (about 20 s); memory search (the reranker) is unloaded while idle and is starting again (about 20 s)",
+     "waking": [
+      "embed",
+      "rerank"
+     ]
+    },
+    "statements": [
+     "Orbix is distributed under the Mozilla Public License 2.0.",
+     "By default, the Orbix server listens on port 7420 for client connections."
+    ]
+   },
+   "paraphrase_semantic": {
+    "ms": 110.8,
+    "question": "which socket does the Orbix daemon accept traffic on",
+    "retrieval": {
+     "candidates": 4,
+     "dropped_below_floor": 2,
+     "floor": 0.02,
+     "mode": "semantic",
+     "models": {
+      "embed": "qwen3-embedding-0.6b",
+      "rerank": "qwen3-reranker-0.6b"
+     },
+     "ranked_by": "rerank"
+    },
+    "statements": [
+     "By default, the Orbix server listens on port 7420 for client connections.",
+     "Orbix is distributed under the Mozilla Public License 2.0."
+    ]
+   },
+   "presence_loading_entries": [],
+   "reload_events": [
+    {
+     "action": "load",
+     "by": "on demand",
+     "headroom": "38.6 GiB available, memory search (the embedding model) needs about 3.8 GiB (freed by its last unload (measured)) and 7.3 GiB must stay free (the critical threshold)",
+     "ok": true,
+     "reason": "on demand: memory lookup",
+     "seconds": 16.4,
+     "service": "embed",
+     "shape": "docker",
+     "took_bytes": 9473921024
+    },
+    {
+     "action": "load",
+     "by": "on demand",
+     "headroom": "38.6 GiB available, memory search (the reranker) needs about 4.6 GiB (freed by its last unload (measured)) and 7.3 GiB must stay free (the critical threshold)",
+     "ok": true,
+     "reason": "on demand: memory lookup",
+     "seconds": 19.4,
+     "service": "rerank",
+     "shape": "docker",
+     "took_bytes": 9336066048
+    }
+   ],
+   "reload_processes_started_by_this_process": 0,
+   "reranker_back_after_back_off": {
+    "ms": 56.2,
+    "question": "who built the beacon at Tolvane",
+    "retrieval": {
+     "candidates": 5,
+     "dropped_below_floor": 4,
+     "floor": 0.02,
+     "mode": "semantic",
+     "models": {
+      "embed": "qwen3-embedding-0.6b",
+      "rerank": "qwen3-reranker-0.6b"
+     },
+     "ranked_by": "rerank"
+    },
+    "statements": [
+     "The Tolvane Lighthouse was built in 1874 by the Ostra Harbour Board."
+    ],
+    "waited_for_back_off_s": 11.5
+   },
+   "reranker_down": {
+    "ms": 30.4,
+    "question": "which socket does the Orbix daemon accept traffic on",
+    "retrieval": {
+     "mode": "lexical",
+     "reason": "semantic retrieval failed (unavailable): cannot connect: Connection refused"
+    },
+    "statements": [
+     "Orbix is distributed under the Mozilla Public License 2.0.",
+     "By default, the Orbix server listens on port 7420 for client connections."
+    ]
+   },
+   "reranker_down_again": {
+    "ms": 1.0,
+    "question": "who built the beacon at Tolvane",
+    "retrieval": {
+     "mode": "lexical",
+     "reason": "semantic retrieval failed (unavailable): cannot connect: Connection refused",
+     "retry_in_seconds": 30.0
+    },
+    "statements": [
+     "The Tolvane Lighthouse was built in 1874 by the Ostra Harbour Board."
+    ]
+   },
+   "reranker_restart": {
+    "seconds": 19.5,
+    "wait": "rerank ready after 19s"
+   },
+   "setup_first_run": {
+    "exit": 0,
+    "memory_step": {
+     "detail": "memory now finds a fact asked in other words, and leaves out what is not about the question (embedding model and reranker on this computer)",
+     "key_file": "~/.config/neuroscifi/memory/api_key",
+     "models": {
+      "embed": "qwen3-embedding-0.6b",
+      "rerank": "qwen3-reranker-0.6b"
+     },
+     "status": "done",
+     "step": "memory"
+    }
+   },
+   "setup_second_run": {
+    "exit": 0,
+    "memory_step": {
+     "detail": "memory finds a fact asked in other words (embedding model and reranker on this computer)",
+     "models": {
+      "embed": "qwen3-embedding-0.6b",
+      "rerank": "qwen3-reranker-0.6b"
+     },
+     "status": "already done",
+     "step": "memory"
+    }
+   },
+   "status_while_asleep": {
+    "embed": {
+     "reason": "unloaded while idle; the next memory lookup is ranked by its words and starts it again",
+     "state": "asleep"
+    },
+    "rerank": {
+     "reason": "unloaded while idle; the next memory lookup is ranked by its words and starts it again",
+     "state": "asleep"
+    }
+   },
+   "unrelated_semantic": {
+    "ms": 67.1,
+    "question": "the default settings of PostgreSQL",
+    "retrieval": {
+     "candidates": 4,
+     "dropped_below_floor": 4,
+     "floor": 0.02,
+     "mode": "semantic",
+     "models": {
+      "embed": "qwen3-embedding-0.6b",
+      "rerank": "qwen3-reranker-0.6b"
+     },
+     "ranked_by": "rerank"
+    },
+    "statements": []
+   }
+  }
+ },
+ "lighter_server_candidates_not_adopted": {
+  "text-embeddings-inference": {
+   "registry_manifests": {
+    "cuda-latest": [
+     "amd64"
+    ],
+    "cpu-latest": [
+     "amd64"
+    ],
+    "cpu-arm64-latest": [
+     "arm64"
+    ]
+   },
+   "reading": "no arm64 CUDA image: a CPU-only server on this host; rejected for the reranker's latency"
+  },
+  "llama.cpp server": {
+   "image": "ghcr.io/ggml-org/llama.cpp:server-cuda",
+   "arm64_manifest": "sha256:db9a58a154741e6a122ecbdb006303a6d7a9abbb5ec61b29a7e2e4d4e75137a6",
+   "compressed_gib": 2.4,
+   "licence": "MIT",
+   "status": "candidate only. The manifest lists linux/arm64; the image was NOT pulled or run here, GGUF weights were not fetched, and neither its CUDA build on GB10 nor the benchmark with it is verified"
+  }
+ },
+ "unverified": [
+  "the systemd units as installed system units (not installed on this host)",
+  "deploy/install.sh --memory beyond --dry-run",
+  "reload on demand from the hardened worker and console units (their user has no Docker access)",
+  "the idle timer running the pass (the pass itself was run by direct call)",
+  "any lighter server"
+ ]
+}

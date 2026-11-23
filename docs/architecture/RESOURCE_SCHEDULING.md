@@ -95,6 +95,7 @@ default, so nothing is unloaded until the owner sets one:
 
 ```sh
 nsf resources idle --set vllm=30m --set asr=15m --set tts=15m   # suggested; searxng too; `=off` turns one off
+nsf resources idle --set embed=15m --set rerank=15m             # the two memory models (deploy/memory), if they run
 nsf resources tick                                               # one pass; neuroscifi-idle.timer runs it every minute
 nsf resources unload vllm      # the owner unloads now (never reloaded on demand: `nsf resources load vllm` brings it back)
 nsf resources load vllm        # the owner loads now; prints "Starting the local model, about N s" while it starts
@@ -130,6 +131,40 @@ The reload runs the deploy's start command and then its wait command, under a pe
 it once. The measured start-to-ready time is recorded in the event. A failed reload is recorded with the command's
 output; the next use tries again. A service the owner unloaded is not reloaded on demand.
 
+**The memory models are never waited for.** The embedding model and the reranker (`embed`, `rerank`;
+`deploy/memory`) are services of this policy like the others, with one difference in how they come back. A model
+call or a voice session waits for its service; a memory lookup does not, because it has an answer without the
+model: the lexical ranking. So a lookup takes the in-use lock without blocking (`idle.using_now`), and when it finds
+a model unloaded it is ranked by its words at once, with `retrieval.reason` "memory search (the embedding model) is
+unloaded while idle and is starting again (about N s)" and `retrieval.waking` naming the models, while the reload
+runs in the background. A lookup after the reload is ranked by meaning again.
+
+The reload is a process of its own, `nsf resources load SERVICE --on-demand "memory lookup"`, started in its own
+session with no pipe back to the caller. A thread would not do: a one-shot command such as `nsf web knowledge TOPIC`
+ends right after its lookup, a reload in one of its threads would die with it, and the model would never start,
+whatever the lookup had said. The process is started once per service: a lookup that finds this process's reload
+still running, or another process holding the service's load lock, starts nothing
+(`test_the_background_reload_is_a_process_of_its_own_that_outlives_the_lookup`,
+`test_a_reload_another_process_is_running_is_not_started_twice`). The same headroom check, wait command,
+measurement and event as every other reload apply, because it is the same `Idle.load`.
+
+Three consequences, each tested (`tests/test_resources_idle.py`, "the memory models"):
+
+- Nothing announces this reload. Presence shows `waiting` only for a service somebody is waiting for
+  (`Service.background`; `test_a_lookup_never_waits_for_an_unloaded_memory_model_it_starts_the_reload_in_the_background`,
+  and `test_a_model_somebody_waits_for_is_still_shown_as_starting` for the others).
+- With one of the two models unloaded the lookup is lexical, not ranked by the embedding alone: a result must not
+  change its meaning (with or without the cut of unrelated statements) from one lookup to the next because of the
+  idle policy.
+- A reload that was refused for lack of memory, or that failed, is not started again by every lookup: the next
+  attempt starts at least 30 s after the last one did (`BACKGROUND_RETRY`; the lookups in between are lexical and
+  say why: "not enough memory to load memory search (…): …" or "… did not start: …").
+
+The policy manages only this host's own two containers, recognised by their loopback ports (18441 and 18442, or
+`NSF_MEMORY_EMBED_PORT` / `NSF_MEMORY_RERANK_PORT`). A memory endpoint the owner configured elsewhere is called as it
+is and never stopped or started (`test_a_memory_endpoint_elsewhere_is_never_touched_by_the_idle_policy`).
+`nsf web memory` reports an unloaded model as `asleep`, not `unavailable`.
+
 Two bounds apply to every load, on demand or by `nsf resources load`:
 
 - **Free memory first.** Before a load the policy compares MemAvailable with the service's footprint: what its last
@@ -161,10 +196,15 @@ reason "the local model is unloaded while idle; the next request starts it again
 voice engine health reports ASR and TTS unavailable until a voice session starts them.
 
 **How stop and start run.** The policy uses the deploy's own commands. vLLM uses `deploy/vllm/run.sh
-stop|start|wait`, ASR and TTS use `deploy/voice/run.sh stop|start|wait asr|tts`, and SearXNG uses `nsf web searxng
-stop|start`. When the service's systemd unit is active, the policy runs `systemctl --no-ask-password stop|start
+stop|start|wait`, ASR and TTS use `deploy/voice/run.sh stop|start|wait asr|tts`, the memory models use
+`deploy/memory/run.sh stop|start|wait embed|rerank`, and SearXNG uses `nsf web searxng stop|start`. When the service's systemd unit is active, the policy runs `systemctl --no-ask-password stop|start
 <unit>` instead, so it never fights the unit (an earlier reason this policy was manual). The user running the pass
 then needs permission to manage that unit; without it the event records the refusal and the service stays loaded.
+A unit the policy stopped is no longer active, so the unload records its shape and the reload starts that unit
+again. Before 2026-11-23 the reload looked only at whether the unit was active, found it stopped and ran
+`run.sh start`: a second, unsupervised container beside the unit
+(`test_an_active_systemd_unit_is_stopped_and_started_with_systemctl`, whose fake systemd now reports a stopped unit
+as inactive).
 Install the timer by hand (`deploy/systemd/neuroscifi-idle.{service,timer}`, header comments).
 
 **Events.** Every load, unload and timeout change is one line in `<db>.resources/idle-events.jsonl`: time, service,
@@ -184,6 +224,12 @@ for the flag measurements of 2026-11-23 took 30 to 83 s to healthy (`docs/qualit
 remains to be measured by the owner: the first reload records it in the event log, and later messages use it. The
 lane that built this policy did not restart the shared vLLM, ASR, TTS or SearXNG containers. It verified the stop,
 reload and measurement path against a disposable container (§4).
+
+The two memory models hold 4.6 GiB each when loaded and used: 1.9 GiB of device memory (1.1 GiB of weights, the
+0.25 GiB key-value cache vLLM requires for a 2,048-token input, the rest the CUDA context) and 2.6 GiB in the
+container's two processes, most of it libraries a full vLLM server imports. An unload frees 3.6 to 4.7 GiB by its
+own measurement, and both together returned 7.9 to 9.4 GiB of MemAvailable. They were unloaded and reloaded live
+through this policy (§4): 1 to 2 s to unload each, 20 to 29 s until both answer again.
 
 ## 4. Measurements (2026-11-21, DGX Spark GB10, all services resident)
 
@@ -246,6 +292,27 @@ forward) ran `docker rm -f` and logged `idle 2 min (timeout 1 min)`. The next re
 0.6 s. The offline tests (`tests/test_resources_idle.py`, a fake docker host) cover each unload condition, the
 `critical` timeout, the systemd shape, the owner's commands, failed reloads and Presence.
 
+**Idle unload of the memory models, live** (2026-11-23; the real `neuroscifi-memory-embed` and
+`neuroscifi-memory-rerank` containers, a temporary individual set up by `nsf setup`, the policy run by direct
+calls with a 1 min timeout, no timer installed; `docs/quality/evidence/accel_decisions_memory_service.json`,
+four runs, the last two with the reload as a process of its own):
+
+| Observation | Value |
+|---|---|
+| A pass right after a lookup | both kept: `used 0 s ago (unloads after 1 min idle)` |
+| A pass 66 s later | both unloaded (`idle 1 min (timeout 1 min)`), 1.0 to 1.8 s each; `/metrics` of both read for requests in flight |
+| Memory freed, by each unload's own measurement | 3.6 to 3.8 GiB (embedding) and 4.6 to 4.7 GiB (reranker); MemAvailable 30.0 to 30.4 GiB with both loaded, 38.3 to 39.3 GiB without |
+| `nsf web memory` meanwhile | both `asleep`: "unloaded while idle; the next memory lookup is ranked by its words and starts it again" |
+| A lookup that finds both unloaded | lexical in 2 to 4 ms, `waking: ["embed", "rerank"]`; as the one-shot command `nsf web knowledge TOPIC`: 0.15 to 0.18 s for the whole command, which then exits |
+| Both models answering again | 20 to 29 s after that lookup (each reload records 16.4 to 28.7 s), although the command that asked had long exited; a lookup by another process 0.2 s after it started no second reload |
+| The first lookup after the reload | semantic in 65 to 74 ms. Before `run.sh wait` sent a warm-up request it took 1.86 s: a model's first request after a start is 1.0 to 1.5 s, the next ones about 20 ms |
+| Presence during the reload | no `waiting` entry (`loading()` empty) |
+| Footprint recorded by the two reloads | 7.7 to 8.8 GiB each, because they ran at the same time; above the ceiling of 1.5 times the documented 4.4 GiB, so not believed, and the next free-memory check used each unload's figure |
+
+One model stopped by hand (no idle policy involved): the lookup was lexical in 30 to 40 ms with "semantic retrieval
+failed (unavailable): cannot connect: Connection refused", the next lookup inside the 30 s back-off cost 0.9 ms
+and tried nothing, and the first lookup after the back-off with the model running again was semantic.
+
 ## 5. Limits
 
 - The audio state is what the voice client reported. A client that goes silent for 30 s is no longer counted
@@ -263,9 +330,21 @@ forward) ran `docker rm -f` and logged `idle 2 min (timeout 1 min)`. The next re
   its full timeout again for the request, so a call that needed a reload can take up to twice its timeout.
 - The free-memory check uses one reading of MemAvailable and one footprint. Another workload that changes memory
   at the same moment skews both the check and the next measured footprint.
-- The memory models of `deploy/memory` (embedding and reranker) are not managed by the idle policy: they have no
-  idle timeout, are never unloaded or reloaded on demand, and their gateway takes no in-use lock. Stop them with
-  `deploy/memory/run.sh stop`; memory retrieval then falls back to the lexical ranking with the reason.
+- The memory models are released while idle only when the owner sets their timeouts, like every other service. The
+  first lookups after an unload are lexical: about half a minute on the reference host, until both models answer
+  again. The two reloads then run at the same time, so each one's measured footprint includes the other's and is
+  discarded by the ceiling rule (a reading above 1.5 times the documented 4.4 GiB is not believed); the footprint
+  used for the next free-memory check is then the one its last unload measured, else the documented one.
+- A reload on demand runs as the user of the process that needed the service, for every service of this policy.
+  Under the units of `deploy/install.sh` the worker and the console run as `neuroscifi`, which has no Docker access
+  and may not start units: there a reload on demand fails and is recorded, a model call ends `unavailable`, a memory
+  lookup stays lexical and says "… did not start", and `nsf resources load SERVICE` by the Docker user brings the
+  service back. Set idle timeouts where the processes that use the services may also start them (the `nsf start`
+  shape: one user), or let the service user manage those units. Not exercised in this review: the units are not
+  installed on the reference host.
+- A lookup's use of a memory model is seen by the idle policy only when it goes through `knowledge.query` in a
+  process that knows the individual's file. A result served from the per-process cache uses no model and marks no
+  use.
 - Queue order is by who asked, not by how long a task takes. One worker runs one task at a time, so a question
   queued while a task is running waits for that task to finish; and an autonomous task queued more than 10 minutes
   ago is claimed in age order with the owner's questions (§3(a)).

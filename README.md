@@ -195,6 +195,7 @@ nsf setup: /secure/nsf/individual.sqlite
   5. ca_export   done          CA for phones: ~/.config/neuroscifi/pocket/neuroscifi-ca.crt (Android) and …-ca.pem; SHA-256 3B:F4:D4:…:03:B2
   6. brave       skipped       key missing (optional: nsf setup --brave-key-stdin, or nsf web provider set-key brave --stdin)
   7. push        skipped       optional: nsf setup --push
+  8. memory      skipped       memory is ranked by its words: the memory models are not installed here (optional: bash deploy/memory/run.sh start, then nsf setup again)
 
 NeuroSciFi is set up. Next:
   1. Start it:     nsf start
@@ -377,7 +378,8 @@ nsf web health --probe --db /secure/nsf/individual.sqlite      # one real Brave 
 - **Push notifications.** Run `nsf setup --push` and start the bridge with the `--push-key` it prints. On the device: Research → **Notify me even when Pocket is closed (push)**, then **Send a test push**. The push carries no content ([What leaves the host](#what-leaves-the-host)); iPhone and iPad need Pocket on the Home Screen ([Pocket guide](mobile/README.md#push-notifications-while-pocket-is-closed)).
 - **Voice and the Voice check.** Start the [voice services](#voice-whisper-asr-and-kokoro-tts), then run **Voice** → **Voice check** in the console or in Pocket on the hardware you will talk to. It measures microphone, speaker, interruptions and echo ([Voice validation §6](docs/voice/VOICE_VALIDATION.md#6-owner-device-self-test-voice-check)).
 - **Local model.** Start it as in [Local reasoning model](#local-reasoning-model-vllm), then run `nsf setup` again: it configures the model it finds. `nsf llm status --probe` checks it.
-- **Idle unloading.** `nsf resources idle --set vllm=30m --set asr=15m --set tts=15m` unloads idle services and reloads them on demand ([Resource scheduling](docs/architecture/RESOURCE_SCHEDULING.md)).
+- **Memory that finds a fact asked in other words.** Start the [memory models](#memory-models-embedding-and-reranker), then run `nsf setup` again: it switches them on for the individual. `nsf web memory` shows them.
+- **Idle unloading.** `nsf resources idle --set vllm=30m --set asr=15m --set tts=15m` unloads idle services and reloads them on demand; `--set embed=15m --set rerank=15m` does the same for the memory models, which are never waited for ([Resource scheduling](docs/architecture/RESOURCE_SCHEDULING.md)).
 
 <details>
 <summary><b>Manual setup (what <code>nsf setup</code> does)</b></summary>
@@ -470,14 +472,13 @@ Without them, stored knowledge is found by its words. Place the weights in `~/.l
 
 ```sh
 deploy/memory/run.sh start && deploy/memory/run.sh wait      # two small models from the pinned vLLM image, loopback 18441 and 18442
-nsf web memory config --enable --embed-url http://127.0.0.1:18441/v1 --rerank-url http://127.0.0.1:18442/v1 \
-    --key-file ~/.config/neuroscifi/memory/api_key
+nsf setup --db /secure/nsf/individual.sqlite                 # step "memory": done (it finds them and switches them on)
 nsf web memory                                               # the switch, endpoint health and the effect in words
 nsf web memory config --disable                              # back to the lexical ranking
 deploy/memory/run.sh stop
 ```
 
-With them, `nsf web knowledge TOPIC` and every research task rank stored statements by meaning, and a statement the reranker scores under its floor is not returned. No vector is written to disk, memory text is never sent off this host without the owner's authorisation, and any failure falls back to the lexical ranking and says why. Details: [Memory integration §5.1](docs/web-cortex/MEMORY_INTEGRATION.md#51-semantic-retrieval-semanticpy-optional).
+With them, `nsf web knowledge TOPIC` and every research task rank stored statements by meaning, and a statement the reranker scores under its floor is not returned. No vector is written to disk, memory text is never sent off this host without the owner's authorisation, and any failure falls back to the lexical ranking and says why. `nsf setup` never changes a memory setting you made by hand (`nsf web memory config`). They hold about 8.7 GiB together; `nsf resources idle --set embed=15m --set rerank=15m` releases that while they are idle, and a lookup that finds them unloaded is answered from the lexical ranking at once while they start again. As system services: `sudo bash deploy/install.sh --memory`. Details: [Memory integration §5.1](docs/web-cortex/MEMORY_INTEGRATION.md#51-semantic-retrieval-semanticpy-optional) and the [Runbook](docs/operations/RUNBOOK.md) ("Memory models").
 
 ### Voice (Whisper ASR and Kokoro TTS)
 

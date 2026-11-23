@@ -77,8 +77,10 @@ row with tokens and latency and no text. Both calls mark every text private befo
 statement goes to an endpoint off this host only when that provider's row carries `remote_allowed` and
 `remote_private_memory` (`test_memory_text_is_never_sent_off_this_host_without_the_private_memory_authorisation`).
 `nsf web memory config` sets the URL, model and key file of the two rows and neither authorisation, so memory models
-configured through the CLI are loopback only. The idle policy manages the answer model's server only: a memory
-model's gateway takes no in-use lock and is never reloaded on demand. Use:
+configured through the CLI are loopback only. A memory model's gateway itself takes no in-use lock and never waits
+for a reload, unlike the answer model's: when the owner lets the idle policy release the local memory models, the
+caller (`semantic.rank`) takes the lock without blocking and answers from the lexical ranking while a model is
+unloaded ([RESOURCE_SCHEDULING §3(c)](RESOURCE_SCHEDULING.md)). Use:
 [MEMORY_INTEGRATION §5.1](../web-cortex/MEMORY_INTEGRATION.md#51-semantic-retrieval-semanticpy-optional).
 
 **Structured output.** `response_format: json_schema` is sent (vLLM guided decoding), but the reply is parsed and

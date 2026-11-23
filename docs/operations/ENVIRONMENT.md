@@ -44,8 +44,25 @@ Copied from `--help`.
 | `NSF_DB` | every instance command | Instance database path when `--db` is absent. Default `./neuroscifi.sqlite` in the current folder. The `--db` flag wins over it. |
 | `NSF_CHROMIUM` | `scripts/e2e.sh` tests only | Path of a system Chromium for the browser tests. |
 | `PYTHON` | `scripts/check.sh`, `scripts/e2e.sh` | Interpreter for the checks (default `.venv/bin/python`). |
+| `NSF_INFERENCE_KEY_FILE` | the inference gateway (`nsf llm`, the research worker, `nsf setup`) | The answer model's API key file when `nsf llm config --key-file` names none. Then the default `~/.config/neuroscifi/inference/api_key`. A memory model never falls back to either: it uses only the key file set for it. |
+| `NSF_INFERENCE_DIR` | the inference gateway; `deploy/vllm/run.sh` | The folder of that default key file (default `~/.config/neuroscifi/inference`). |
+| `NSF_VOICE_KEY_FILE` | Voice Cortex | The speech services' API key file when the voice settings name none (default `~/.config/neuroscifi/voice/api_key`). |
+| `NSF_MEMORY_DIR` | `nsf setup`; `deploy/memory/run.sh` | The folder of the memory models' key file `api_key` (default `~/.config/neuroscifi/memory`). `nsf setup` configures memory search only when that file exists. |
+| `NSF_MEMORY_BIND`, `NSF_MEMORY_EMBED_PORT`, `NSF_MEMORY_RERANK_PORT` | `nsf setup`, the idle policy; `deploy/memory/run.sh` | Where the two memory models listen (defaults `127.0.0.1`, `18441`, `18442`). Set them for the commands too when `memory.env` was changed, or setup and the idle policy look at the default ports. |
+| `NSF_VLLM_PORT`, `NSF_VOICE_ASR_PORT` | the idle policy; `deploy/vllm/run.sh`, `deploy/voice/run.sh` | The ports whose `/metrics` the idle policy reads for requests in flight (defaults `8811`, `18431`). |
+| `NSF_RESOURCE_ELEVATED_GIB`, `NSF_RESOURCE_CRITICAL_GIB` | every command that reads the pressure level (`nsf resources`, the worker, the console) | Replace the absolute floors of free memory under which the level is `elevated` or `critical` (GiB, positive numbers; defaults and the relative floors: [RESOURCE_SCHEDULING §2](../architecture/RESOURCE_SCHEDULING.md)). |
+| `NSF_REPO` | the idle policy (`nsf resources tick`, on-demand reloads) | The source folder whose `deploy/*/run.sh` stop and start the model services (default: the folder the package was imported from). The idle unit sets it. |
+| `NSF_SEARCH_KEY_DIR` | `nsf web provider`, the research worker, `nsf setup` | The folder of search-provider API keys (default `$XDG_CONFIG_HOME/neuroscifi/search`, then `~/.config/neuroscifi/search`). |
+| `NSF_SEARXNG_SETTINGS` | `nsf web searxng` | The SearXNG settings template when the package was installed without the source tree. |
+| `NSF_POCKET_CA_DIR` | `nsf pocket tls`, `nsf setup` | The private CA's key folder (default `~/.config/neuroscifi/pocket-ca`). |
+| `NSF_POCKET_CONTROL_DIR` | `nsf pocket serve`, `nsf pocket invite`, `nsf add-phone` | The folder of the bridge's control socket (the unit sets `/run/neuroscifi`; else `$XDG_RUNTIME_DIR/neuroscifi`). |
+| `XDG_CONFIG_HOME` | `nsf setup`, `nsf start`, `nsf add-phone` | Where the setup record `neuroscifi/setup.json` and the Pocket files are kept (default `~/.config`). |
 
 Pocket does not read `NSF_DB`; it has its own `--db`. The two databases are separate on purpose (ADR-005).
+
+The deploy scripts read their own settings files (`deploy/vllm/vllm.env`, `deploy/voice/voice.env`,
+`deploy/memory/memory.env`, each with an owner override under `~/.config/neuroscifi/`); every line there is an
+`NSF_*` variable of that script only, documented in the file itself.
 
 ## 3. The systemd environment file
 
@@ -88,6 +105,14 @@ Use a private LAN or a VPN between the phone and the host. Do not forward the po
 |---|---|---|---|
 | 8765/tcp | Pocket | `NSF_POCKET_BIND` (default loopback) | The only network-facing service. Allow it on the private interface only. |
 | 8766/tcp | Console *(available from 0.5.0)* | 127.0.0.1 only | Reached through an SSH tunnel. The unit also sets `IPAddressDeny=any` and `IPAddressAllow=localhost`. |
+| 8764/tcp | Phone setup page (plain HTTP; `nsf setup`, `nsf start`) | the Pocket bind | The Pocket port minus one by default; offers the CA certificate to a phone being added and nothing else. `--setup-port 0` turns it off. |
+| 8811/tcp | Answer model (vLLM, `deploy/vllm`) | loopback only (the script refuses any other `NSF_VLLM_BIND`) | API key required. `/metrics` and `/health` need no key. |
+| 8888/tcp | SearXNG (`nsf web searxng`) | 127.0.0.1 only | The local metasearch engine of the research worker. |
+| 18431/tcp, 18432/tcp | Speech recognition and speech synthesis (`deploy/voice`) | 127.0.0.1 only | One API key for both. |
+| 18441/tcp, 18442/tcp | Memory models: embedding and reranker (`deploy/memory`) | loopback only (the script refuses any other `NSF_MEMORY_BIND`) | One API key for both, separate from the answer model's. Optional. |
+
+Every model and search service listens on loopback and is used only by NeuroSciFi's own processes on the same
+host. None of these ports belongs in a firewall rule.
 
 ## 6. Filesystem layout and permissions
 

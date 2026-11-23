@@ -313,25 +313,59 @@ Each web forget records a payload-free tombstone (`web_forgotten`, an instance-s
 
 ### Memory models (semantic retrieval)
 
-Optional. Without them memory is ranked by its words (the lexical ranking of 0.7.0) and nothing below is needed. They are two small models served by the same digest-pinned vLLM image as the answer model, on loopback only: an embedding model on port 18441 (`neuroscifi-memory-embed`) and a reranker on port 18442 (`neuroscifi-memory-rerank`). What they do and do not do: [MEMORY_INTEGRATION §5.1](../web-cortex/MEMORY_INTEGRATION.md#51-semantic-retrieval-semanticpy-optional). The script runs as the user who owns the weights and Docker access, like `deploy/vllm/run.sh`; there is no systemd unit for these two services, and `deploy/install.sh` does not install them.
+Optional. Without them memory is ranked by its words (the lexical ranking of 0.7.0) and nothing below is needed. They are two small models served by the same digest-pinned vLLM image as the answer model, on loopback only: an embedding model on port 18441 (`neuroscifi-memory-embed`) and a reranker on port 18442 (`neuroscifi-memory-rerank`). What they do and do not do: [MEMORY_INTEGRATION §5.1](../web-cortex/MEMORY_INTEGRATION.md#51-semantic-retrieval-semanticpy-optional).
 
-Place the weights in `~/.local/share/neuroscifi/models/qwen3-embedding-0.6b` and `~/.local/share/neuroscifi/models/qwen3-reranker-0.6b` (the script refuses to start a model whose `config.json` is missing). Settings: `deploy/memory/memory.env`; override any line in `~/.config/neuroscifi/memory/memory.env`.
+**Install.** Place the weights in `~/.local/share/neuroscifi/models/qwen3-embedding-0.6b` and `~/.local/share/neuroscifi/models/qwen3-reranker-0.6b` (the script refuses to start a model whose `config.json` is missing). Settings: `deploy/memory/memory.env`; override any line in `~/.config/neuroscifi/memory/memory.env`. The script runs as the user who owns the weights and Docker access, like `deploy/vllm/run.sh`. It generates one API key for both services on first use (`~/.config/neuroscifi/memory/api_key`, 0600), separate from the answer model's key, and refuses a non-loopback bind and an image without a digest.
+
+**Start, and tell the individual.** Two commands; the second is the same `nsf setup` that set up everything else, and it can be run again at any time:
 
 ```sh
-deploy/memory/run.sh start            # both; or: start embed | start rerank
-deploy/memory/run.sh wait all 600     # until /health answers; fails early when a container keeps restarting
-deploy/memory/run.sh status           # container state and health
-deploy/memory/run.sh print embed      # the docker command, key redacted; changes nothing
-nsf web memory config --enable --embed-url http://127.0.0.1:18441/v1 --rerank-url http://127.0.0.1:18442/v1 \
-    --key-file ~/.config/neuroscifi/memory/api_key
-nsf web memory                        # switch, both endpoints with state and reason, the effect in words
-nsf web knowledge "a question"        # result.retrieval says which ranking produced the items
-deploy/memory/run.sh stop             # both; or: stop embed | stop rerank
+deploy/memory/run.sh start && deploy/memory/run.sh wait   # both models; `wait` ends when each answered a real request
+nsf setup --db PATH                                        # step "memory": done
 ```
 
-The run script generates one API key for both services on first use (`~/.config/neuroscifi/memory/api_key`, 0600) and refuses a non-loopback bind and an image without a digest. `--key-file` takes an absolute path. A worker running as the `neuroscifi` service user cannot read a key in your home folder; give it a copy it can read, as for the answer model's key ([COGNITIVE_INFERENCE §5](../architecture/COGNITIVE_INFERENCE.md#5-run-configure-recover)). The idle policy does not manage these two containers: they stay loaded until `deploy/memory/run.sh stop`.
+`nsf setup` looks for the key file and sends each model one request with a fixed, meaningless text. When both answer it configures them for the individual and switches memory by meaning on. With the embedding model alone it switches on the ranking without the cut and says what is missing; a later run adds the reranker. Without the key file it contacts nothing and says in one line how to add the models. A memory setting you made by hand (`nsf web memory config`) is never changed: the step then reports "kept as you set it". `--no-memory` skips the step; `--memory-embed-url`, `--memory-rerank-url` and `--memory-key-file` name other places. By hand, the same result:
 
-Stopping the containers does not need a configuration change: the next query falls back to the lexical ranking and `retrieval.reason` says why. To switch semantic retrieval off for the individual, use `nsf web memory config --disable`.
+```sh
+nsf web memory config --enable --embed-url http://127.0.0.1:18441/v1 --rerank-url http://127.0.0.1:18442/v1 \
+    --key-file ~/.config/neuroscifi/memory/api_key
+```
+
+`--key-file` takes an absolute path. A worker running as the `neuroscifi` service user cannot read a key in your home folder; give it a copy it can read, as for the answer model's key ([COGNITIVE_INFERENCE §5](../architecture/COGNITIVE_INFERENCE.md#5-run-configure-recover)).
+
+**As system services.** `sudo bash deploy/install.sh --memory --memory-user USER` installs `neuroscifi-memory-embed.service` and `neuroscifi-memory-rerank.service`, disabled like every other unit (USER is in the docker group and owns the weights and the key; the default is `--llm-user`, then the invoking user). Each runs `deploy/memory/run.sh foreground embed|rerank` under the wrapper sandbox of the speech units, and systemd restarts it on failure. Enable them once the weights are in place: `sudo systemctl enable --now neuroscifi-memory-embed.service neuroscifi-memory-rerank.service`. Do not also start the same service with `run.sh start`: the two would replace each other's container.
+
+**Status.**
+
+```sh
+nsf web memory                        # switch, both endpoints with state and reason, the effect in words
+nsf web knowledge "a question"        # result.retrieval says which ranking produced the items
+nsf resources                         # the containers' memory; policy.idle_unload.services.embed / .rerank
+deploy/memory/run.sh status           # container state and health
+deploy/memory/run.sh print embed      # the docker command, key redacted; changes nothing
+```
+
+In `nsf web memory` a model's `state` is `ready`, `degraded`, `unavailable` or `unauthorised` (each with its reason), or `asleep`: unloaded by the idle policy, not an outage.
+
+**Release the memory while idle (off by default).** The two models hold about 8.7 GiB together (below). The idle policy can release each after a time without use, like the answer model and the speech services ([RESOURCE_SCHEDULING §3(c)](../architecture/RESOURCE_SCHEDULING.md)):
+
+```sh
+nsf resources idle --set embed=15m --set rerank=15m     # `off` turns one off again; needs the idle timer (below)
+nsf resources unload embed                              # by hand, now; `nsf resources load embed` brings it back
+```
+
+A memory lookup never waits for a model. A lookup that finds one unloaded is ranked by its words at once (`retrieval.reason` says "… is unloaded while idle and is starting again", `retrieval.waking` names the models) and starts the reload in the background; a lookup after that is ranked by meaning again. Measured on the reference host: unloading takes 1 to 2 s per model, both answer again 20 to 29 s after the lookup that found them unloaded, and that lookup took 2 to 4 ms (0.15 s as the whole command `nsf web knowledge TOPIC`, which may exit at once: the reload is a process of its own). A reload that would leave less free memory than the critical threshold is refused and recorded, and tried again by a lookup 30 s later at the earliest. The pass that unloads is `nsf resources tick`, run every minute by `neuroscifi-idle.timer` (installed by hand: the header of `deploy/systemd/neuroscifi-idle.service`); it stops and starts an active systemd unit through `systemctl` and a hand-started container through `run.sh`. Only this host's own two services are managed: a memory endpoint you configured elsewhere is never stopped or started.
+
+**Footprint.** Measured per model with both loaded and used (`docs/quality/evidence/accel_decisions_memory_service.json`): 1.9 GiB of device memory (1.1 GiB of weights, the 0.25 GiB key-value cache that vLLM requires for a 2,048-token input, the rest the CUDA context) and 2.6 GiB of process memory in two processes (1.0 GiB the API server, 1.5 GiB the engine, mostly imported libraries). No setting of the pinned image lowers it: a smaller key-value cache is refused at this input length, and limiting the allocator's arenas changed nothing. The cost is two full vLLM processes for two small models; a lighter server is listed under next priorities in `docs/acceleration/ENGINEERING_PLAN.md`. To hold half of it, run the embedding model alone (`deploy/memory/run.sh start embed`): the recall gain stays, the cut of unrelated statements goes.
+
+**Stop and roll back.**
+
+```sh
+deploy/memory/run.sh stop             # both; or: stop embed | stop rerank   (systemd: systemctl disable --now …)
+nsf web memory config --disable       # the individual: back to the lexical ranking
+```
+
+Stopping the containers does not need a configuration change: the next query falls back to the lexical ranking, `retrieval.reason` says why, and the models are left alone for 30 s before the next lookup tries them again.
 
 ### Reading several pages at once (read-ahead, on by default)
 
@@ -359,8 +393,11 @@ Each default below can be reverted on its own. None needs a database change beyo
 | Background research is sent with `priority` 10 (set by `nsf setup` for a vLLM endpoint) | `nsf llm config --set background_priority=0` | `nsf llm status`: `reasoning.background_priority` is null |
 | The answer model confirms a memory answer before it is given (`memory_check`) | `nsf web config --no-memory-check` | `nsf web config`: `config.memory_check` is false |
 | The self-critique reads only sentences that say more than a word-for-word restatement of their cited claims, and makes no call when there is none | `nsf llm config --critique-restatements` (every accepted sentence is judged again, as in 0.7.0) | `nsf llm status`: `reasoning.critique_restatements` is true |
-| Semantic memory retrieval, once the owner enabled it | `nsf web memory config --disable` | `nsf web memory`: `effect` starts with "off" |
+| Semantic memory retrieval, once the owner or `nsf setup` enabled it | `nsf web memory config --disable` | `nsf web memory`: `effect` starts with "off" |
 | The memory model containers, once started | `deploy/memory/run.sh stop` | `deploy/memory/run.sh status`: both "not running" |
+| The memory step of `nsf setup` | `nsf setup --no-memory` skips it; what it set is undone with `nsf web memory config --disable` | `nsf web memory`: `effect` starts with "off"; a later `nsf setup` reports "kept as you set it" |
+| Idle unloading of the memory models, once the owner set a timeout | `nsf resources idle --set embed=off --set rerank=off` | `nsf resources idle`: both `timeout_s` null |
+| The memory units, once installed | `sudo systemctl disable --now neuroscifi-memory-embed.service neuroscifi-memory-rerank.service` | `systemctl is-active` says inactive |
 
 Measurements behind the two vLLM settings and what each change costs: [COGNITIVE_INFERENCE §4 and §7](../architecture/COGNITIVE_INFERENCE.md#4-deployment-on-the-dgx-spark-measured-2026-11-21).
 
@@ -368,6 +405,8 @@ Measurements behind the two vLLM settings and what each change costs: [COGNITIVE
 |---|---|---|
 | `nsf web knowledge TOPIC` shows `retrieval: {"mode": "lexical", "reason": "…"}` | The reason. "no embedding endpoint is set": the switch is on without an endpoint. "semantic retrieval failed (unavailable)": a container is down or still starting (`deploy/memory/run.sh status`). "(unauthorised)": the key file does not match the running containers (`nsf web memory` shows `key_present`). "(timeout)": the call took longer than the `timeout` setting. "semantic retrieval unusable": the key file is readable by every user or otherwise unusable | Set the endpoint (`nsf web memory config --embed-url URL`), start the containers (`deploy/memory/run.sh start && deploy/memory/run.sh wait`), point `--key-file` at `~/.config/neuroscifi/memory/api_key`, or raise the timeout (`nsf web memory config --set timeout=5`). Until then answers use the lexical ranking; nothing is lost |
 | `retrieval` is `{"mode": "lexical"}` without a reason | Semantic retrieval is off for this individual (`nsf web memory`: `enabled` false) | `nsf web memory config --enable` |
+| `retrieval` is lexical with `waking: ["embed", "rerank"]` | `nsf resources`: `policy.idle_unload.services.embed.state` is `unloaded` by the `idle policy`; the last events show the unload and the `load` that is running | Nothing to do: the idle policy released the models and this lookup started them again; a lookup about half a minute later is ranked by meaning. To keep them loaded: `nsf resources idle --set embed=off --set rerank=off` |
+| `retrieval.reason` says "not enough memory to load memory search (…)" or "… did not start" | `nsf resources`: MemAvailable, and the last `load` event of `embed` or `rerank` (`refused: true`, or `error` with the script's output); `docker logs neuroscifi-memory-embed` | Free memory, or fix what the log names; the next lookup after 30 s tries again by itself, or `nsf resources load embed` now |
 | A question that memory used to answer now goes to the web | The task's `decision` event: `memory_check.refused` lists the statements the answer model did not accept | Expected when the statement is about another property or scope. To restore the earlier behaviour: `nsf web config --no-memory-check` |
 | A research answer shows no "self-check flagged" mark and its report has `reasoning.critique.status: "skipped"` | The `reason`. "nothing to judge: all N sentence(s) restate their cited claims word for word…": every sentence is a cited claim's own words with the attribution the code chose, so no critique call was made (`restatements: N`). "spoken answer…": `critique_voice` is off. "time_budget…": too little of the task's time was left | Expected. To have the critic read restatements too: `nsf llm config --critique-restatements` |
 | `deploy/vllm/run.sh wait` ends with "container is restarting" or "container restarted N time(s) while starting" | `docker logs neuroscifi-vllm` | The container is crash-looping, usually for lack of memory; `wait` no longer sits out its limit. Free memory or lower `NSF_VLLM_GPU_UTIL`, then start again |

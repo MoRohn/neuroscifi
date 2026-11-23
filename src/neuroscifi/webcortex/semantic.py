@@ -19,6 +19,12 @@ optional:
 A failed call falls back at once (no retry) and the models are left alone for RETRY_AFTER seconds, so an endpoint
 that is down costs one failed connection per half minute, not a wait on every lookup.
 
+A lookup never waits for a model. When the owner lets the idle policy release the local memory models
+(resources/idle.py: `nsf resources idle --set embed=15m --set rerank=15m`, off by default) and a lookup finds one
+unloaded, it is ranked by its words at once (`retrieval.waking` names what is starting) and the reload runs in the
+background, so a later lookup is ranked by meaning again. Only this host's own services (deploy/memory, by their
+loopback ports) are the policy's: an endpoint elsewhere is called as it is.
+
 With only `embed` the candidates are returned by vector similarity and nothing is cut: similarity alone does not
 separate "about this" from "about something similar" (measured), so no floor is applied without the reranker.
 
@@ -37,6 +43,7 @@ every text private: an endpoint off this host is refused unless the owner author
 from __future__ import annotations
 
 from collections import OrderedDict
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass, fields
 import hashlib
 import json
@@ -277,8 +284,9 @@ def rank(db, topic: str, rows: list[dict], lexical: list[float], *, limit: int, 
 
     `rows` are the live knowledge rows and `lexical` their BM25 scores for the same topic. info: {"mode":
     "semantic", "ranked_by": "rerank" | "embedding", "candidates", "dropped_below_floor", "floor", "models"} or
-    {"mode": "lexical", "reason"}. A returned score is the reranker's (0..1) or, without a reranker, the cosine."""
-    from ..inference.gateway import InferenceError
+    {"mode": "lexical", "reason"}. A returned score is the reranker's (0..1) or, without a reranker, the cosine.
+    A local memory model the idle policy unloaded is not waited for: {"mode": "lexical", "reason", "waking":
+    [service, ...]} now, and its reload runs in the background."""
     cfg = get_config(db)
     if not cfg.enabled:
         return None, {"mode": "lexical"}
@@ -301,6 +309,67 @@ def rank(db, topic: str, rows: list[dict], lexical: list[float], *, limit: int, 
     if time.monotonic() < vectors.down_until:      # measured: a refused connection cost each lookup 1.5 s
         return None, {"mode": "lexical", "reason": vectors.down_reason,
                       "retry_in_seconds": round(vectors.down_until - time.monotonic(), 1)}
+    with ExitStack() as held_services:
+        # The idle policy (resources/idle.py) may have unloaded a memory model. A lookup never waits for one: it is
+        # ranked by its words now, and the reload it started makes a later lookup semantic again.
+        asleep = _asleep(db, embedder, reranker, held_services)
+        if asleep:
+            reason = "; ".join(a["why"] for a in asleep)
+            if any(a["action"] in ("refused", "failed") for a in asleep):      # not retried on every lookup
+                vectors.down_reason, vectors.down_until = reason[:300], time.monotonic() + RETRY_AFTER
+            waking = [a["service"] for a in asleep if a["action"] == "loading"]
+            return None, {"mode": "lexical", "reason": reason[:300]} | ({"waking": waking} if waking else {})
+        return _rank(db, cfg, topic, rows, lexical, limit, embedder, reranker, vectors, signature)
+
+
+def _local_service(gateway, name) -> bool:
+    """Whether the gateway's endpoint is this host's own memory service `name` (deploy/memory): only that one is
+    the idle policy's to unload and reload. An endpoint elsewhere is never touched."""
+    from urllib.parse import urlsplit
+    from ..resources import idle
+    try:
+        url = urlsplit(gateway.cfg.base_url)
+        return url.hostname in ("127.0.0.1", "localhost", "::1") and url.port == idle.service_port(name)
+    except ValueError:
+        return False
+
+
+def _unloaded_while_idle(db, gateway, name) -> bool:
+    path = store.database_path(db)
+    if not path or not _local_service(gateway, name):
+        return False
+    try:
+        from ..resources import idle
+        return idle.Idle(path).unloaded_by_policy(name)
+    except Exception:
+        return False
+
+
+def _asleep(db, embedder, reranker, stack) -> list[dict]:
+    """[{"service", "action", "why"}] for each local memory model that cannot be called right now because the idle
+    policy unloaded it (its reload was started), is unloading it, or could not reload it. For every other one the
+    in-use lock is held on `stack` until the lookup's calls are done. Empty: call them. Never blocks, never raises."""
+    path = store.database_path(db)
+    if not path:
+        return []
+    from ..resources import idle
+    out = []
+    for name, gateway in (("embed", embedder), ("rerank", reranker)):
+        if gateway is None or not _local_service(gateway, name):
+            continue
+        try:
+            state = stack.enter_context(idle.using_now(path, name, purpose="memory lookup"))
+        except Exception:         # the policy's files are unreadable: the call itself will say what is wrong
+            continue
+        if state:
+            out.append({"service": name, **state})
+    return out
+
+
+def _rank(db, cfg, topic, rows, lexical, limit, embedder, reranker, vectors, signature):
+    """rank() once the models may be called: embed, choose candidates, rerank, cut at the floor."""
+    from ..inference.gateway import InferenceError
+    statements = [r["statement"] for r in rows]
     try:
         matrix = vectors.sync(statements, lambda texts: embedder.embed(texts, purpose="memory_embed",
                                                                        timeout=max(cfg.timeout, 10.0)),
@@ -353,6 +422,10 @@ def status(db) -> dict:
         out["providers"][name] = {"configured": True, "endpoint": gateway.cfg.base_url, "model": gateway.cfg.model,
                                   "state": health["state"], "reason": health.get("reason"),
                                   "key_present": iconfig.public(gateway.cfg, name)["key_present"]}
+        if health["state"] == "unavailable" and _unloaded_while_idle(db, gateway, name):
+            # not an outage: say so, and what the next lookup does
+            out["providers"][name].update(state="asleep", reason="unloaded while idle; the next memory lookup is "
+                                          "ranked by its words and starts it again")
     out["vectors_held_by_this_process"] = held(db)
     out["effect"] = ("off: memory is ranked by its words (lexical)" if not cfg.enabled else
                      "on, but no embedding endpoint: lexical ranking" if embedder is None else

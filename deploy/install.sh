@@ -8,7 +8,7 @@
 #
 #   sudo bash deploy/install.sh [--dry-run] [--source DIR | --wheel FILE] [--wheelhouse DIR]
 #                               [--prefix DIR] [--python PYTHON] [--unit-dir DIR] [--web] [--websearch]
-#                               [--searxng] [--llm [--llm-user USER]]
+#                               [--searxng] [--llm [--llm-user USER]] [--memory [--memory-user USER]]
 #
 # --dry-run     print every action and change nothing; allowed without root so the plan can be reviewed
 # --source DIR  project folder to install from (default: the folder above this script)
@@ -26,12 +26,16 @@
 #               deploy/vllm/run.sh in the source folder (NSF_REPO); needs docker and the weights (COGNITIVE_INFERENCE §4)
 # --llm-user U  the account the vLLM unit runs as (default: $SUDO_USER); it must be in the docker group and own the
 #               weights and key under its home
+# --memory      also install neuroscifi-memory-embed.service and neuroscifi-memory-rerank.service: the two memory
+#               models (memory search by meaning; MEMORY_INTEGRATION.md §5.1) in docker on 127.0.0.1:18441 and :18442
+#               through deploy/memory/run.sh in the source folder (NSF_REPO); needs docker and the weights
+# --memory-user U  the account the memory units run as (default: --llm-user, then $SUDO_USER); same conditions
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$(cd "$HERE/.." && pwd)"
 WHEEL="" WHEELHOUSE="" PREFIX=/opt/neuroscifi PYTHON="" UNIT_DIR=/etc/systemd/system DRY=0 WEB=0 WEBSEARCH=0
-SEARXNG=0 LLM=0 LLM_USER="${SUDO_USER:-}"
+SEARXNG=0 LLM=0 LLM_USER="${SUDO_USER:-}" MEMORY=0 MEMORY_USER=""
 SVC_USER=neuroscifi
 STATE_DIR=/var/lib/neuroscifi
 CONF_DIR=/etc/neuroscifi
@@ -53,6 +57,8 @@ while [ $# -gt 0 ]; do
     --searxng) SEARXNG=1 ;;
     --llm) LLM=1 ;;
     --llm-user) [ $# -ge 2 ] || die "--llm-user needs a value"; LLM_USER="$2"; shift ;;
+    --memory) MEMORY=1 ;;
+    --memory-user) [ $# -ge 2 ] || die "--memory-user needs a value"; MEMORY_USER="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
@@ -67,6 +73,14 @@ if [ "$LLM" -eq 1 ]; then
   [[ "$LLM_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "--llm needs --llm-user USER (a plain account name; got: '$LLM_USER')"
   [ "$LLM_USER" != root ] || die "--llm-user must not be root"
   [[ "$SOURCE" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--llm: the source folder path has unexpected characters: $SOURCE"
+fi
+
+if [ "$MEMORY" -eq 1 ]; then
+  # MEMORY_USER and SOURCE are spliced into the memory units with sed, like PREFIX.
+  MEMORY_USER="${MEMORY_USER:-$LLM_USER}"
+  [[ "$MEMORY_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "--memory needs --memory-user USER (a plain account name; got: '$MEMORY_USER')"
+  [ "$MEMORY_USER" != root ] || die "--memory-user must not be root"
+  [[ "$SOURCE" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--memory: the source folder path has unexpected characters: $SOURCE"
 fi
 
 if [ "$DRY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
@@ -188,8 +202,8 @@ for unit in neuroscifi-pocket.service neuroscifi-console.service neuroscifi-chec
             neuroscifi-websearch.service; do
   install_unit "$unit" "$NODE_SED"
 done
-if [ "$SEARXNG" -eq 1 ] || [ "$LLM" -eq 1 ]; then
-  command -v docker >/dev/null 2>&1 || echo "# warning: docker not found on this host; --searxng/--llm units need it"
+if [ "$SEARXNG" -eq 1 ] || [ "$LLM" -eq 1 ] || [ "$MEMORY" -eq 1 ]; then
+  command -v docker >/dev/null 2>&1 || echo "# warning: docker not found on this host; --searxng/--llm/--memory units need it"
 fi
 if [ "$SEARXNG" -eq 1 ]; then
   note "SearXNG (ADR-034): settings template into $PREFIX/searxng, unit neuroscifi-searxng.service"
@@ -208,6 +222,18 @@ if [ "$LLM" -eq 1 ]; then
     || echo "# warning: $LLM_USER is not in the docker group; the unit's docker run would fail"
   install_unit neuroscifi-vllm.service "s#^User=.*#User=$LLM_USER#" "s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=$SOURCE#"
 fi
+if [ "$MEMORY" -eq 1 ]; then
+  note "memory models (MEMORY_INTEGRATION.md §5.1): units neuroscifi-memory-embed.service and neuroscifi-memory-rerank.service run $SOURCE/deploy/memory/run.sh as $MEMORY_USER"
+  if [ "$DRY" -eq 0 ]; then
+    getent passwd "$MEMORY_USER" >/dev/null || die "--memory-user $MEMORY_USER does not exist"
+    [ -f "$SOURCE/deploy/memory/run.sh" ] || die "no deploy/memory/run.sh in $SOURCE"
+  fi
+  id -nG "$MEMORY_USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker \
+    || echo "# warning: $MEMORY_USER is not in the docker group; the units' docker run would fail"
+  for unit in neuroscifi-memory-embed.service neuroscifi-memory-rerank.service; do
+    install_unit "$unit" "s#^User=.*#User=$MEMORY_USER#" "s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=$SOURCE#"
+  done
+fi
 if [ "$UNIT_DIR" = /etc/systemd/system ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   act systemctl daemon-reload
 fi
@@ -223,3 +249,4 @@ neuroscifi-webcortex-tick.timer, neuroscifi-websearch.service) are installed dis
 MSG
 [ "$SEARXNG" -eq 0 ] || echo "neuroscifi-searxng.service is installed disabled: set User= and NSF_DB (systemctl edit), then enable it."
 [ "$LLM" -eq 0 ] || echo "neuroscifi-vllm.service is installed disabled: enable it after the weights are in place (COGNITIVE_INFERENCE.md §5)."
+[ "$MEMORY" -eq 0 ] || echo "neuroscifi-memory-embed.service and neuroscifi-memory-rerank.service are installed disabled: enable them after the weights are in place (RUNBOOK.md, memory search), then run \`nsf setup\` once so the individual uses them."

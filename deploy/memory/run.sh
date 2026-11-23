@@ -2,18 +2,23 @@
 # NeuroSciFi memory models: a text-embedding model and a reranker (vLLM pooling runner), Docker, loopback only.
 #
 #   deploy/memory/run.sh start [embed|rerank|all]   start detached (restart policy unless-stopped)
+#   deploy/memory/run.sh foreground embed|rerank    run attached (used by the systemd units; systemd restarts it)
 #   deploy/memory/run.sh stop [embed|rerank|all]    stop and remove
 #   deploy/memory/run.sh status                     container state and health
-#   deploy/memory/run.sh wait [embed|rerank|all] [SECS]   wait until /health answers (default 600 s)
+#   deploy/memory/run.sh wait [embed|rerank|all] [SECS]   wait until /health answers (default 600 s), then send one
+#                                                   real request so the first lookup does not pay the model's
+#                                                   first pass (measured: 1.0 to 1.5 s, then about 20 ms)
 #   deploy/memory/run.sh logs embed|rerank          follow a container log
 #   deploy/memory/run.sh key                        print the key file path (creating the key if missing)
 #   deploy/memory/run.sh print embed|rerank         print the docker command (key redacted) and change nothing
 #
-# Then tell the individual where they are (off until configured):
+# Then tell the individual where they are (off until configured). `nsf setup` does it when both answer; by hand:
 #   nsf web memory config --enable --key-file ~/.config/neuroscifi/memory/api_key \
 #       --embed-url http://127.0.0.1:18441/v1 --embed-model qwen3-embedding-0.6b \
 #       --rerank-url http://127.0.0.1:18442/v1 --rerank-model qwen3-reranker-0.6b
 # (--key-file is required: a memory model is never sent the answer model's key.)
+# As system services: deploy/systemd/neuroscifi-memory-embed.service and -rerank.service (deploy/install.sh --memory).
+# Released when idle, if the owner sets a timeout: nsf resources idle --set embed=15m --set rerank=15m.
 #
 # Security: as deploy/vllm and deploy/voice. Binds 127.0.0.1 only; one generated API key (0600, outside git);
 # weights mounted read-only; read-only root filesystem; no capabilities; runs as the invoking user; Hugging Face
@@ -88,6 +93,23 @@ docker_args() {   # $1: embed | rerank
   fi
 }
 
+# One real request to a service that already answers /health. A model's first request after a start is its
+# slowest (measured: embedding 1.5 s, reranker 1.05 s, then about 20 ms), and a memory lookup allows each call 2 s.
+# The key goes to curl on standard input (-K -), never on a command line that `ps` shows. A failure here does not
+# fail the wait: the service is up, and the first lookup falls back to the lexical ranking if it must.
+warm() {   # $1: embed | rerank
+  local s="$1" base body path
+  base="http://$NSF_MEMORY_BIND:$(port "$s")/v1"
+  if [ "$s" = embed ]; then
+    path=embeddings; body="{\"model\":\"$(served "$s")\",\"input\":[\"warm up\"]}"
+  else
+    path=rerank; body="{\"model\":\"$(served "$s")\",\"query\":\"warm up\",\"documents\":[\"warm up\"]}"
+  fi
+  [ -s "$KEY_FILE" ] || return 1
+  printf 'header = "Authorization: Bearer %s"\n' "$(tr -d '\n' < "$KEY_FILE")" \
+    | curl -fsS -m 30 -K - -H 'Content-Type: application/json' -d "$body" "$base/$path" >/dev/null 2>&1
+}
+
 cmd="${1:-status}"
 case "$cmd" in
   start)
@@ -98,6 +120,11 @@ case "$cmd" in
       docker run -d --restart unless-stopped "${ARGS[@]}" >/dev/null
       echo "started $(container "$s") on http://$NSF_MEMORY_BIND:$(port "$s") (key file $KEY_FILE)"
     done ;;
+  foreground)
+    s="${2:-}"; [ "$s" = embed ] || [ "$s" = rerank ] || die "foreground needs embed or rerank"
+    ensure_key; docker_args "$s"
+    docker rm -f "$(container "$s")" >/dev/null 2>&1 || true
+    exec docker run --rm --init "${ARGS[@]}" ;;
   stop)
     known "${2:-all}"
     for s in $(services "${2:-all}"); do
@@ -107,8 +134,9 @@ case "$cmd" in
     done ;;
   status)
     for s in embed rerank; do
-      docker inspect -f '{{.Name}} {{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} started={{.State.StartedAt}}' \
-        "$(container "$s")" 2>/dev/null || echo "$(container "$s"): not running"
+      # captured first: for a missing container docker prints an empty line before it fails
+      if line="$(docker inspect -f '{{.Name}} {{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} started={{.State.StartedAt}}' \
+        "$(container "$s")" 2>/dev/null)"; then echo "$line"; else echo "$(container "$s"): not running"; fi
     done ;;
   wait)
     known "${2:-all}"; limit="${3:-600}"; start=$(date +%s)
@@ -122,7 +150,8 @@ case "$cmd" in
         [ "$(restarts "$s")" -gt "$before" ] && die "$s restarted while starting; see: docker logs $(container "$s")"
         sleep 3
       done
-      echo "$s ready after $(( $(date +%s) - start ))s"
+      if warm "$s"; then echo "$s ready after $(( $(date +%s) - start ))s"
+      else echo "$s ready after $(( $(date +%s) - start ))s (its warm-up request failed; the first lookup will be slower)"; fi
     done ;;
   logs)
     s="${2:-}"; [ "$s" = embed ] || [ "$s" = rerank ] || die "logs needs embed or rerank"
@@ -132,5 +161,5 @@ case "$cmd" in
     s="${2:-}"; [ "$s" = embed ] || [ "$s" = rerank ] || die "print needs embed or rerank"
     ENV_FILE="<NSF_MEMORY_DIR>/memory.secret.env"; docker_args "$s"
     printf 'docker run -d --restart unless-stopped'; printf ' %q' "${ARGS[@]}"; printf '\n' ;;
-  *) die "unknown command: $cmd (start|stop|status|wait|logs|key|print)" ;;
+  *) die "unknown command: $cmd (start|foreground|stop|status|wait|logs|key|print)" ;;
 esac
