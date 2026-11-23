@@ -41,7 +41,8 @@ def validate(definition):
         if not isinstance(value, kind) or isinstance(value, bool):
             raise ValidationError(f"Rule field {key} must be {kind.__name__}")
     pack = definition["pack_candidates"]
-    if not {"degrees", "bits"} <= set(pack) <= {"degrees", "bits", "learned_sparse"} or not pack["degrees"] \
+    if not isinstance(pack, dict) or not {"degrees", "bits"} <= set(pack) <= {"degrees", "bits", "learned_sparse"} \
+            or not isinstance(pack["degrees"], list) or not isinstance(pack["bits"], list) or not pack["degrees"] \
             or not all(type(b) is int and b in (4, 8) for b in pack["bits"]) \
             or not all(type(d) is int and d > 0 for d in pack["degrees"]):
         raise ValidationError("pack_candidates needs positive degrees and bits from {4, 8}")

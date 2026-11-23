@@ -629,7 +629,10 @@ def test_rule_bit_widths_and_degrees_must_be_integers():
     # (struct.error for a float bit width; degree True packed as degree 1).
     candidates = store.GATE_V1["pack_candidates"]
     for bad in (dict(candidates, bits=[4.0]), dict(candidates, bits=[True]), dict(candidates, bits=[4, 8.0]),
-                dict(candidates, degrees=[True]), dict(candidates, degrees=[3.0])):
+                dict(candidates, degrees=[True]), dict(candidates, degrees=[3.0]),
+                # not a list at all: these raised TypeError ("'int' object is not iterable"), not ValidationError
+                dict(candidates, bits=4), dict(candidates, bits=None), dict(candidates, degrees=3),
+                dict(candidates, degrees=None), dict(candidates, bits="48"), dict(candidates, degrees={"3": 1})):
         with pytest.raises(ValidationError):
             rules.validate(dict(store.GATE_V1, version="x", pack_candidates=bad))
     rules.validate(dict(store.GATE_V1, version="x", pack_candidates=dict(candidates, bits=[8, 4])))
