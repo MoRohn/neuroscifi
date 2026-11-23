@@ -25,6 +25,10 @@ from .errors import Gone, NotFound, ValidationError
 from .schema import has_consolidated
 
 REASONS = ("forgotten", "expired", "epoch_forgotten", "partner_forgotten")
+MAX_ROWID = 2 ** 63 - 1       # SQLite's largest integer: a larger id cannot be bound, let alone exist
+# Forgets whose deletion_log row names a scope by its digest label and which delete that scope's changepoints in
+# every epoch; checkpoints._replay deletes them in an older copy too (replay_scope_forgets).
+SCOPE_KINDS = ("camera", "partner")
 FORGOTTEN_CAUSE = "evidence:#forgotten"
 _KIND = {"camera": "camera", "word": "partner"}  # evidence channel -> label kind
 _LABEL = r"(?:camera|partner):#[0-9a-f]{16}"
@@ -181,7 +185,7 @@ def held_roots(db):
             "WITH RECURSIVE r(root) AS (SELECT min(root) FROM evidence_consolidated UNION ALL "
             "SELECT (SELECT min(c.root) FROM evidence_consolidated c WHERE c.root>r.root) FROM r "
             "WHERE r.root IS NOT NULL) SELECT root FROM r WHERE root IS NOT NULL AND EXISTS (SELECT 1 FROM "
-            "evidence_consolidated c INDEXED BY evidence_consolidated_root WHERE c.root=r.root "
+            "evidence_consolidated c WHERE c.root=r.root "
             "AND c.channel IN ('camera','word'))")]
     return list(dict.fromkeys(roots))
 
@@ -391,8 +395,44 @@ def forget_partner(db, root, now):
         label = "partner:#" + root_digest(store.birth(db)["instance_id"], root)
         effects = _remove(db, "channel='word' AND root=?", (root,), now, reason="partner_forgotten",
                           cause=f"forget:{label}", kind="partner", target=label,
-                          consolidated=("channel='word' AND root=?", (root,)))
+                          consolidated=("channel='word' AND root=?", (root,)), scopes=(f"partner:{root}",))
     return _result(db, effects)
+
+
+def replay_scope_forgets(copy, forgets, version):
+    """In a restore's staged copy: delete the changepoints of every camera or partner the live file forgot after the
+    copy was written. Caller owns the transaction. Returns the number of changepoints deleted.
+
+    forgets: [(kind, label, state version of the forget, requested_at, effects JSON)] from the live deletion_log,
+    kind in SCOPE_KINDS and label '<kind>:#<digest>'. The log holds no name, so the copy's own changepoint scopes are
+    matched by their instance-salted digest. Only a copy older than the forget (state version) is touched: in a newer
+    one a scope of that name is a later camera or partner. The copy takes the record over, dated after its own state
+    version as a replayed epoch forget is, so an older archive restored FROM the copy loses the changepoints too.
+    Without this, forget_camera (or forget_partner) of a root that a partner (or camera) of the same name still
+    holds left the forgotten scope in a restored copy as an empty segment: listed as a sensor, counted by the
+    executive, and a new camera of that name landed in the old segment (second-pass review S2).
+    """
+    pending = [f for f in forgets if version < f[2]]
+    if not pending:
+        return 0
+    instance_id = store.birth(copy)["instance_id"]
+    scopes = {}
+    for (scope,) in copy.execute("SELECT DISTINCT scope FROM changepoints").fetchall():
+        kind, _, root = scope.partition(":")
+        if kind in SCOPE_KINDS and root:
+            scopes[f"{kind}:#{root_digest(instance_id, root)}"] = scope
+    removed = 0
+    for kind, label, _, requested_at, effects_json in pending:
+        if label in scopes:
+            removed += copy.execute("DELETE FROM changepoints WHERE scope=?", (scopes[label],)).rowcount
+        if not copy.execute("SELECT 1 FROM deletion_log WHERE target_kind=? AND target_id=? AND requested_at=?",
+                            (kind, label, requested_at)).fetchone():
+            carried = {k: v for k, v in json.loads(effects_json).items() if k != "checkpoints_stale"} \
+                | {"state_version": version + 1, "replayed": True}
+            copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                         (kind, label, requested_at, json.dumps(carried, sort_keys=True)))
+            copy.execute("UPDATE checkpoints SET status='stale' WHERE status='valid'")
+    return removed
 
 
 def forget_camera(db, root, now):
@@ -419,8 +459,8 @@ def forget_consolidated(db, seq, now):
     deletion_log row are written, every checkpoint is stale, and a restore removes the reading from any copy.
     A seq that names no consolidated reading (an event still in the journal is forgotten by its id) is 'absent'.
     """
-    if isinstance(seq, bool) or not isinstance(seq, int) or seq < 1:
-        raise ValidationError("the reading's seq must be a positive integer")
+    if isinstance(seq, bool) or not isinstance(seq, int) or not 1 <= seq <= MAX_ROWID:
+        raise ValidationError(f"the reading's seq must be an integer from 1 to {MAX_ROWID}")
     with store.write(db):
         effects = _remove(db, "0", (), now, reason="forgotten", cause=FORGOTTEN_CAUSE, kind="consolidated",
                           target=str(seq), consolidated=("seq=?", (seq,)))
@@ -431,6 +471,8 @@ def forget_dataset(db, dataset_id, now):
     """Drop a dataset blob and its note, delete the graph effects measured on it, invalidate graphs trained on it and
     mark every existing checkpoint stale."""
     from .graphs import invalidate_dependents  # W2-B; imported lazily to keep modules decoupled
+    if isinstance(dataset_id, bool) or not isinstance(dataset_id, int) or not -MAX_ROWID - 1 <= dataset_id <= MAX_ROWID:
+        raise ValidationError("the dataset id must be an integer SQLite can hold")
     with store.write(db):
         row = db.execute("SELECT deleted_at FROM datasets WHERE id=?", (dataset_id,)).fetchone()
         if row is None:
@@ -499,6 +541,9 @@ def sweep(db, now):
            "checkpoints_stale": stale, "streams_expired": streams}
     if effects and effects.get("consolidated"):
         out["consolidated"] = effects["consolidated"]       # absent while zero
+    problems = [p for p in store.setting_problems(db) if "consolidation" in p or "settings" in p]
+    if problems:
+        out["warnings"] = problems                          # absent for sound settings
     if effects or streams:
         out["wal_checkpoint"] = store.truncate_wal(db)
     return out

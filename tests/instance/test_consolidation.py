@@ -26,6 +26,15 @@ BELIEF = ("mechanism", "sensors", "partners", "reference_roots", "unidentifiable
           "linked_from", "change")
 
 
+@pytest.fixture(autouse=True, params=["copied_samples_looked_up", "copied_samples_in_one_pass"])
+def copy_rule_path(request, monkeypatch):
+    """Every test of this file runs twice. The readings that do not count (later copies of a sample) are found one
+    sample at a time while few samples have several readings, and in one grouped pass over the index beyond
+    beliefs._FEW_COPIED_SAMPLES; the second run forces the grouped pass, which small test data would never reach."""
+    if request.param == "copied_samples_in_one_pass":
+        monkeypatch.setattr(beliefs, "_FEW_COPIED_SAMPLES", -1)
+
+
 def obs(db, event_id, epoch, channel, root, corrected, now, *, action=1, sample=None, consent="learn"):
     record = {"id": event_id, "epoch": epoch, "channel": channel, "action": action, "bit": corrected ^ action,
               "root": root, "consent": consent}
@@ -37,6 +46,21 @@ def obs(db, event_id, epoch, channel, root, corrected, now, *, action=1, sample=
 def held(db, epoch):
     result = beliefs.compute(db, epoch)
     return {key: result[key] for key in BELIEF}
+
+
+def uncounted(db, epoch):
+    """An oracle in plain Python for the copy rule: the epoch's consolidated readings that are NOT the earliest copy
+    of their sample among the journal's learning copies and the consolidated readings, as (channel, root, value,
+    seq), sorted. The code under test never builds this list; it counts in SQL."""
+    first = {}
+    for channel, root, sample, seq in db.execute(
+            "SELECT channel, root, sample_id, seq FROM evidence WHERE epoch=? AND consent='learn' "
+            "AND sample_id IS NOT NULL UNION ALL SELECT channel, root, sample_id, seq FROM evidence_consolidated "
+            "WHERE epoch=? AND sample_id IS NOT NULL", (epoch, epoch)):
+        first[(channel, root, sample)] = min(seq, first.get((channel, root, sample), seq))
+    return sorted((channel, root, value, seq) for channel, root, value, sample, seq in db.execute(
+        "SELECT channel, root, value, sample_id, seq FROM evidence_consolidated WHERE epoch=? "
+        "AND sample_id IS NOT NULL", (epoch,)) if first[(channel, root, sample)] != seq)
 
 
 def folded(db, where="1", params=()):
@@ -188,13 +212,38 @@ def test_posteriors_are_the_same_numbers_before_and_after_expiry(instance, seed)
     assert count(db, "evidence", "retention!='promoted'") == 0
     # (a reading that does not count is a later copy of a sample: kept, so that it can count if the first is forgotten)
     promoted_learning = count(db, "evidence", beliefs.learning_sql(db))
-    later_copies = len(beliefs._uncounted(db, "a")) + len(beliefs._uncounted(db, "b"))
+    later_copies = len(uncounted(db, "a")) + len(uncounted(db, "b"))
     assert count(db, "evidence_consolidated") - later_copies + promoted_learning == learning
     assert count(db, "evidence_consolidated") > 60 and later_copies > 0
     # every reading has the tombstone of its event (the id-to-seq map a forget by id needs)
     assert count(db, "evidence_consolidated") == count(
         db, "tombstones", "reason='expired' AND seq IN (SELECT seq FROM evidence_consolidated)")
     assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_the_readings_that_do_not_count_are_counted_as_a_plain_python_oracle_lists_them(instance, seed):
+    """Second-pass review S1: the count is made in SQL passes (no list of readings is built), on either path. Here
+    against the oracle, per root and corrected reading, under two predicates on the seq, while some copies are
+    still in the journal and others are consolidated."""
+    db, _ = instance
+    _random_life(db, seed)
+    for days in (7.2, 8.5, 11, 400):
+        governance.sweep(db, T0 + days * DAY)
+        for epoch in ("a", "b"):
+            listed = uncounted(db, epoch)
+            middle = db.execute("SELECT coalesce(max(seq), 0) / 2 FROM evidence_consolidated").fetchone()[0]
+            expected = {}
+            for channel, root, value, seq in listed:
+                entry = expected.setdefault((channel, root), [[0, 0], [0, 0]])
+                entry[0][value] += 1
+                entry[1][value] += seq >= middle
+            counted = beliefs._not_counted(db, epoch, [("1", []), ("{s}>=?", [middle])], beliefs._preceded(db, epoch))
+            assert {k: v for k, v in counted.items() if v != [[0, 0], [0, 0]]} == expected, (days, epoch)
+            tallies, lost = beliefs._consolidated_tallies(db, epoch, [middle])
+            assert lost == len(listed)
+            assert sum(row[5] for row in tallies) == count(db, "evidence_consolidated", "epoch=?", (epoch,)) - lost
+    assert len(uncounted(db, "a")) > 3
 
 
 def test_a_change_confirmed_after_the_events_expired_cuts_the_consolidated_readings_at_the_same_place(tmp_path):
@@ -254,7 +303,7 @@ def test_a_sample_counts_once_however_its_copies_expire(instance):
     assert after["sensors"] == before["sensors"]                    # the sample still counts once
     assert after["evidence"] == {"total": 3, "learning": 2, "memory_only": 0, "duplicates_ignored": 1,
                                  "consolidated": 2}
-    assert beliefs._uncounted(db, "desk") == [("camera", "cam-a", 1, 2)]
+    assert uncounted(db, "desk") == [("camera", "cam-a", 1, 2)]
     # a copy of a consolidated sample arriving later is a duplicate, not a second reading
     obs(db, "third", "desk", "camera", "cam-a", 1, T0 + 9 * DAY, sample="frame-1")
     obs(db, "other-root", "desk", "camera", "cam-b", 1, T0 + 9 * DAY, sample="frame-1")  # another root: its own
@@ -267,7 +316,7 @@ def test_a_sample_counts_once_however_its_copies_expire(instance):
     assert again["expired"] == 2 and again["consolidated"] == 2
     assert count(db, "evidence_consolidated") == 5
     assert beliefs.compute(db, "desk")["sensors"] == now["sensors"]
-    assert sorted(beliefs._uncounted(db, "desk")) == [("camera", "cam-a", 1, 2), ("camera", "cam-a", 1, 5)]
+    assert sorted(uncounted(db, "desk")) == [("camera", "cam-a", 1, 2), ("camera", "cam-a", 1, 5)]
 
 
 def test_a_promoted_first_copy_counts_and_the_expired_later_copy_waits_behind_it(instance):
@@ -284,7 +333,7 @@ def test_a_promoted_first_copy_counts_and_the_expired_later_copy_waits_behind_it
     after = beliefs.compute(db, "desk")
     assert after["partners"] == before and after["partners"]["ana"]["n"] == 1
     assert after["evidence"] == {"total": 2, "learning": 1, "memory_only": 0, "duplicates_ignored": 1}
-    assert beliefs._uncounted(db, "desk") == [("word", "ana", 1, 2)]
+    assert uncounted(db, "desk") == [("word", "ana", 1, 2)]
     readings = lambda: [(e["seq"], e["bit"] ^ e["action"]) for e in beliefs._window(db, "desk", 5)]  # noqa: E731
     assert readings() == [(1, 0)]
     governance.forget_evidence(db, "kept", T0 + 8 * DAY + 1)
@@ -747,7 +796,7 @@ def test_a_version_13_file_gains_the_table_and_keeps_every_row(tmp_path):
         assert count(db, "evidence_consolidated") == 0
         assert {name for (name,) in db.execute("SELECT name FROM sqlite_master WHERE tbl_name='evidence_consolidated' "
                                                "AND type='index' AND name NOT LIKE 'sqlite_%'")} == \
-            {"evidence_consolidated_epoch", "evidence_consolidated_sample", "evidence_consolidated_tally",
+            {"evidence_consolidated_epoch", "evidence_consolidated_copies", "evidence_consolidated_tally",
              "evidence_consolidated_root"}
         assert db.execute("SELECT tbl_name FROM sqlite_master WHERE name='tombstones_epoch_seq'").fetchone() == \
             ("tombstones",)
@@ -1144,3 +1193,265 @@ def test_cli_forgets_a_reading_by_seq_and_a_camera_by_name(tmp_path, capsys):
         cli.main(["init", "--db", str(tmp_path / "bad.sqlite"), "--ask-budget", "-5"])
     capsys.readouterr()
     assert not (tmp_path / "bad.sqlite").exists()
+
+
+# ---- second-pass review: scope forgets replayed, first-build files, damaged settings, bounds -----------------------
+
+def _same_named_camera_and_partner(db, path, tmp_path):
+    """desk: a camera and a partner both called "ana", another camera, references; a confirmed change of camera ana
+    and one of partner ana. Returns (archive of raw events, archive of readings)."""
+    evidence.start_epoch(db, "desk", T0)
+    n = 0
+    for k in range(6):
+        for channel, root, corrected in (("reference", f"ref-{k % 3}", 0), ("camera", "ana", 1), ("word", "ana", 0),
+                                         ("camera", "c9", 0)):
+            n += 1
+            obs(db, f"e{n}", "desk", channel, root, corrected, T0 + n)
+    with store.write(db):
+        db.executemany("INSERT INTO changepoints(epoch,scope,since_seq,pending_id,created_at,confirmed) "
+                       "VALUES('desk',?,?,NULL,?,1)", [("camera:ana", 14, T0), ("partner:ana", 15, T0)])
+        store.bump_state_version(db)
+    raw_archive = checkpoints.create(db, path, tmp_path / "cps", T0 + 100)
+    governance.sweep(db, T0 + 8 * DAY)
+    return raw_archive, checkpoints.create(db, path, tmp_path / "cps", T0 + 8 * DAY + 1)
+
+
+@pytest.mark.parametrize("forget, scope, gone, stays", [
+    ("forget_camera", "camera:ana", "sensors", "partners"), ("forget_partner", "partner:ana", "partners", "sensors")])
+def test_a_forgotten_camera_or_partner_is_no_phantom_in_a_restored_copy(instance, tmp_path, forget, scope, gone, stays):
+    """Second-pass review S2. A camera and a partner share a name, so the name stays held when one of them is
+    forgotten and no root is scrubbed. The live file dropped the forgotten scope's changepoints; a restored copy kept
+    them: the forgotten camera was listed as a sensor with n 0 and its old segment, counted by the executive, and a
+    new camera of that name landed in the old segment. forget_partner had the same residue (in the live file too,
+    since 0.7.0). The restore now replays the forget by the digest label of the deletion log, through a second
+    generation."""
+    db, path = instance
+    archives = _same_named_camera_and_partner(db, path, tmp_path)
+    assert set(beliefs.compute(db, "desk")["segments"]) == {"camera:ana", "partner:ana"}
+    out = getattr(governance, forget)(db, "ana", T0 + 8 * DAY + 2)
+    assert out["effects"]["consolidated_deleted"] == 6 and out["effects"]["roots_forgotten"] == 0
+    assert out["effects"]["derived_deleted"] == {"changepoints": 1}
+    live = beliefs.compute(db, "desk")
+    kept_scope = "partner:ana" if scope == "camera:ana" else "camera:ana"
+    assert "ana" not in live[gone] and "ana" in live[stays] and set(live["segments"]) == {kept_scope}
+    assert "ana" not in db.execute("SELECT target_id FROM deletion_log ORDER BY id DESC LIMIT 1").fetchone()[0]
+    for n, archive in enumerate(archives):
+        report, first = _restored(db, archive, tmp_path / f"r{n}.sqlite", T0 + 8 * DAY + 10 + n)
+        with closing(first):
+            assert report["scope_changes_removed"] == 1
+            assert first.execute("SELECT scope FROM changepoints").fetchall() == [(kept_scope,)]
+            copy = beliefs.compute(first, "desk")
+            assert {k: copy[k] for k in BELIEF} == {k: live[k] for k in BELIEF}
+            assert executive.decide(first, "desk", T0 + 9 * DAY)["reason"] == \
+                executive.decide(db, "desk", T0 + 9 * DAY)["reason"]
+            # a camera (or partner) of that name seen again starts from nothing, not in the forgotten segment
+            channel = "camera" if scope == "camera:ana" else "word"
+            obs(first, "again", "desk", channel, "ana", 1, T0 + 9 * DAY)
+            again = beliefs.compute(first, "desk")[gone]["ana"]
+            assert again["n"] == 1 and "segment" not in again
+            if n == 0:
+                continue
+            # second generation: the copy took the record over; the older archive restored from it is clean too
+            log = first.execute("SELECT effects FROM deletion_log WHERE target_kind=?", (scope.split(":")[0],)).fetchall()
+            assert len(log) == 1 and json.loads(log[0][0])["replayed"] is True
+            _, second = _restored(first, archives[0], tmp_path / "r-second.sqlite", T0 + 9 * DAY + 1)
+            with closing(second):
+                assert second.execute("SELECT scope FROM changepoints").fetchall() == [(kept_scope,)]
+                assert "ana" not in beliefs.compute(second, "desk")[gone]
+
+
+def test_a_scope_of_the_same_name_created_after_the_forget_keeps_its_changes_in_a_later_archive(instance, tmp_path):
+    """The replay touches only a copy older than the forget: a camera named like a forgotten one, taught afterwards
+    with a confirmed change of its own, is in an archive written after the forget and stays in its restore."""
+    db, path = instance
+    _same_named_camera_and_partner(db, path, tmp_path)
+    governance.forget_camera(db, "ana", T0 + 8 * DAY + 2)
+    seqs = [obs(db, f"new-{k}", "desk", "camera", "ana", 1, T0 + 8 * DAY + 3 + k) for k in range(4)]
+    with store.write(db):
+        db.execute("INSERT INTO changepoints(epoch,scope,since_seq,pending_id,created_at,confirmed) "
+                   "VALUES('desk','camera:ana',?,NULL,?,1)", (seqs[2], T0))
+        store.bump_state_version(db)
+    later = checkpoints.create(db, path, tmp_path / "cps", T0 + 8 * DAY + 10)
+    report, copy = _restored(db, later, tmp_path / "later.sqlite", T0 + 8 * DAY + 11)
+    with closing(copy):
+        assert report["scope_changes_removed"] == 0
+        assert ("camera:ana", seqs[2]) in copy.execute("SELECT scope, since_seq FROM changepoints").fetchall()
+        assert beliefs.compute(copy, "desk")["sensors"]["ana"]["segment"] == f"ana@{seqs[2]}"
+
+
+def _first_build_shape(path):
+    """Make a current file look as the first build of schema 14 left one: the old sample index (no seq, no value),
+    tombstones by seq alone, no index by root."""
+    with closing(sqlite3.connect(path, isolation_level=None)) as raw:
+        raw.executescript(
+            "BEGIN; DROP INDEX evidence_consolidated_copies; DROP INDEX evidence_consolidated_root; "
+            "DROP INDEX tombstones_epoch_seq; "
+            "CREATE INDEX evidence_consolidated_sample ON evidence_consolidated(epoch, channel, root, sample_id) "
+            "WHERE sample_id IS NOT NULL; CREATE INDEX tombstones_seq ON tombstones(seq); COMMIT;")
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
+
+
+def _indexes(db):
+    return {name for (name,) in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name IN ('evidence_consolidated','tombstones') "
+        "AND name NOT LIKE 'sqlite_%'")}
+
+
+def test_a_file_migrated_by_the_first_build_of_version_14_gets_the_current_indexes_when_opened(tmp_path):
+    """Second-pass review S3. Version 14 was amended in place, and a file already at 14 is never migrated again: on
+    one made by the first build every web query failed with "no such index: evidence_consolidated_root". Opening
+    brings the indexes to the current set; nothing else changes, and a current file is opened without a write."""
+    path = tmp_path / "first-build.sqlite"
+    db = store.create(path, T0)
+    teach(db)
+    obs(db, "s-a", "desk", "word", "ana", 0, T0 + 50, sample="s1")
+    obs(db, "s-b", "desk", "word", "ana", 0, T0 + 51, sample="s1")
+    governance.sweep(db, T0 + 8 * DAY)
+    believed, rows, current = held(db, "desk"), folded(db), _indexes(db)
+    db.close()
+    _first_build_shape(path)
+    with closing(sqlite3.connect(path)) as raw:      # the reviewer's reproduction: the hinted index is not there
+        assert "evidence_consolidated_root" not in _indexes(raw) and "tombstones_seq" in _indexes(raw)
+    db = store.open_existing(path)
+    try:
+        assert _indexes(db) == current == {"evidence_consolidated_epoch", "evidence_consolidated_tally",
+                                           "evidence_consolidated_copies", "evidence_consolidated_root",
+                                           "tombstones_epoch_seq"}
+        assert governance.held_roots(db) == ["ana", "cam-a"]
+        from neuroscifi.webcortex import orchestrator
+        from neuroscifi.webcortex.config import WebConfig
+        assert orchestrator.private_terms(db, WebConfig()) == ["ana", "cam-a"]
+        assert held(db, "desk") == believed and folded(db) == rows
+        assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        assert schema.ensure_indexes(db) == []                       # and now there is nothing to do
+        before = db.total_changes
+        cookie = db.execute("PRAGMA schema_version").fetchone()[0]
+    finally:
+        db.close()
+    db = store.open_existing(path)
+    try:
+        assert db.total_changes == 0 and db.execute("PRAGMA schema_version").fetchone()[0] == cookie
+        assert before >= 0
+    finally:
+        db.close()
+
+
+def test_held_roots_names_no_index_a_version_14_file_may_lack(instance):
+    """Even on a connection that never ran the open-time check, listing the held roots must not fail."""
+    db, path = instance
+    teach(db)
+    governance.sweep(db, T0 + 8 * DAY)
+    with store.write(db):
+        db.execute("DROP INDEX evidence_consolidated_root")
+    assert governance.held_roots(db) == ["ana", "cam-a"] and governance.root_held(db, "cam-a")
+
+
+def _damage_settings(db, change):
+    raw = json.loads(db.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
+    with store.write(db):
+        db.execute("UPDATE meta SET value=? WHERE key='config'",
+                   (change if isinstance(change, str) else json.dumps(raw | change),))
+
+
+@pytest.mark.parametrize("saved", ["no", "false", 0, 1, "yes", None, []])
+def test_consolidation_is_never_on_by_truthiness(instance, saved):
+    """Second-pass review S4. A hand-edited `"consolidation": "no"` is a truthy string and counted as on. A saved
+    value that is not a JSON boolean now reads as off (nothing is kept that an owner may have opted out of), every
+    sweep says so, and `nsf config` repairs it."""
+    db, _ = instance
+    teach(db, rounds=2)
+    _damage_settings(db, {"consolidation": saved})
+    assert store.config(db).consolidation is False
+    problems = store.setting_problems(db)
+    assert len(problems) == 1 and "consolidation" in problems[0] and "treated as off" in problems[0]
+    out = governance.sweep(db, T0 + 8 * DAY)
+    assert out["expired"] == 6 and "consolidated" not in out and out["warnings"] == problems
+    assert count(db, "evidence_consolidated") == 0
+    assert store.set_config(db, {"consolidation": False}, T0 + 9 * DAY)["changed"] == ["consolidation"]   # repaired
+    assert store.setting_problems(db) == [] and "warnings" not in governance.sweep(db, T0 + 9 * DAY)
+    assert json.loads(db.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])["consolidation"] is False
+
+
+def test_a_restore_validates_the_settings_it_carries(instance, tmp_path):
+    """Second-pass review S4: `"consolidation": "no"` was carried as "no" (and counted as on in the copy), a string
+    ask budget as a string. A value set_config would refuse is not carried as it stands: consolidation goes over as
+    what the live file acts on (off), the others stay as the archive has them, and the result says which."""
+    db, path = instance
+    teach(db)
+    archive = checkpoints.create(db, path, tmp_path / "cps", T0 + 60)
+    _damage_settings(db, {"consolidation": "no", "ask_budget_per_epoch": "3", "ask_budget_window_seconds": -5})
+    report, copy = _restored(db, archive, tmp_path / "r.sqlite", T0 + 70)
+    with closing(copy):
+        assert report["settings_carried"] == {"consolidation": {"from": True, "to": False}}
+        warnings = " | ".join(report["settings_warnings"])
+        assert len(report["settings_warnings"]) == 3 and "consolidation ('no')" in warnings
+        assert "ask_budget_per_epoch ('3')" in warnings and "ask_budget_window_seconds (-5)" in warnings
+        saved = json.loads(copy.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
+        assert saved["consolidation"] is False and saved["ask_budget_per_epoch"] == 3
+        assert saved["ask_budget_window_seconds"] == 7 * 86400 and store.setting_problems(copy) == []
+        assert "consolidated" not in governance.sweep(copy, T0 + 8 * DAY)
+        assert executive.decide(copy, "desk", T0 + 8 * DAY + 1)["ask_budget"] == 3
+
+
+@pytest.mark.parametrize("row", ["{not json", "[1, 2]", ""])
+def test_a_restore_survives_a_live_settings_row_that_cannot_be_read(instance, tmp_path, row):
+    """Second-pass review S4. Restore is the recovery tool: before it carried settings it never read the row, and it
+    must not start failing on a damaged one. Nothing is carried, the result says so, and the forgets still apply."""
+    db, path = instance
+    ids = teach(db)
+    archive = checkpoints.create(db, path, tmp_path / "cps", T0 + 60)
+    governance.forget_evidence(db, ids[0], T0 + 61)
+    _damage_settings(db, row)
+    report, copy = _restored(db, archive, tmp_path / "r.sqlite", T0 + 70)
+    with closing(copy):
+        assert report["settings_carried"] == {} and len(report["settings_warnings"]) == 1
+        assert "could not be read" in report["settings_warnings"][0]
+        assert report["evidence_removed"] == 1 and count(copy, "evidence") == 17
+        assert store.config(copy).consolidation is True          # the archive's own, sound settings
+
+
+def test_the_replay_survives_a_copy_whose_settings_row_cannot_be_read(instance, tmp_path):
+    """The archive's own settings row may be the damaged one (a checkpoint cannot be made from such a file, but an
+    archive can be damaged later): the replay writes no setting into the copy, says so, and applies the forgets."""
+    db, path = instance
+    ids = teach(db)
+    archive = checkpoints.create(db, path, tmp_path / "cps", T0 + 60)
+    checkpoints.restore(db, archive["id"], tmp_path / "copy.sqlite", T0 + 61, apply_tombstones=False)
+    governance.forget_evidence(db, ids[0], T0 + 62)
+    store.set_config(db, {"consolidation": False}, T0 + 63)
+    with closing(sqlite3.connect(tmp_path / "copy.sqlite", isolation_level=None)) as copy:
+        copy.execute("UPDATE meta SET value='{not json' WHERE key='config'")
+        report = checkpoints._replay(copy, checkpoints._forgets(db, T0 + 64), T0 + 64)
+        assert report["settings_carried"] == {}
+        assert "archive's settings could not be read" in report["settings_warnings"][0]
+        assert report["evidence_removed"] == 1
+        assert copy.execute("SELECT count(*) FROM evidence").fetchone()[0] == 17
+
+
+@pytest.mark.parametrize("seq", [2 ** 63, 2 ** 64, 10 ** 30])
+def test_a_seq_or_dataset_id_beyond_sqlite_is_refused_not_an_overflow(instance, seq):
+    """Second-pass review S5: forget_consolidated(2**63) raised OverflowError (the console answered 500)."""
+    from neuroscifi.instance.errors import NotFound, ValidationError
+    db, _ = instance
+    for forget in (governance.forget_consolidated, governance.forget_dataset):
+        with pytest.raises(ValidationError):
+            forget(db, seq, T0)
+    assert governance.forget_consolidated(db, 2 ** 63 - 1, T0)["status"] == "absent"
+    with pytest.raises(NotFound):
+        governance.forget_dataset(db, 2 ** 63 - 1, T0)
+    with pytest.raises(ValidationError):
+        governance.forget_dataset(db, True, T0)
+
+
+def test_cli_config_reports_a_damaged_setting(tmp_path, capsys):
+    from neuroscifi import cli
+    path = tmp_path / "cli.sqlite"
+    db = store.create(path, T0)
+    _damage_settings(db, {"consolidation": "no"})
+    db.close()
+    assert cli.main(["config", "--db", str(path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["config"]["consolidation"] is False and "treated as off" in out["warnings"][0]
+    assert cli.main(["config", "--db", str(path), "--no-consolidation"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["changed"] == ["consolidation"] and "warnings" not in out

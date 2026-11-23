@@ -480,8 +480,9 @@ MIGRATIONS = [
     CREATE INDEX evidence_consolidated_epoch ON evidence_consolidated(epoch, seq);
     -- beliefs._aggregate reads its tallies from this index alone, one group after the other, without a sort.
     CREATE INDEX evidence_consolidated_tally ON evidence_consolidated(epoch, channel, root, value, seq);
-    -- The copies of one sample in seq order: which copy is the earliest, and which samples have more than one.
-    CREATE INDEX evidence_consolidated_sample ON evidence_consolidated(epoch, channel, root, sample_id, seq)
+    -- The copies of one sample in seq order, with their readings: which copy is the earliest, which samples have
+    -- more than one, and what the later copies read, from the index alone.
+    CREATE INDEX evidence_consolidated_copies ON evidence_consolidated(epoch, channel, root, sample_id, seq, value)
       WHERE sample_id IS NOT NULL;
     -- "Does the individual still hold this root?" (a sweep asks it per root, a web query lists the roots) and the
     -- forgets of a partner or a camera: without it each is a scan of a table that only grows.
@@ -503,6 +504,54 @@ def has_consolidated(db):
                       ).fetchone() is not None
 
 
+# Version 14 was amended while it was unreleased: the first build of it made evidence_consolidated with two other
+# indexes. A file that reached version 14 under that build is never migrated again, so every open makes sure the
+# current indexes exist and the superseded ones are gone (ensure_indexes). The statements are those of migration 14.
+_INDEXES_14 = {
+    "evidence_consolidated_epoch": "CREATE INDEX IF NOT EXISTS evidence_consolidated_epoch "
+                                   "ON evidence_consolidated(epoch, seq)",
+    "evidence_consolidated_tally": "CREATE INDEX IF NOT EXISTS evidence_consolidated_tally "
+                                   "ON evidence_consolidated(epoch, channel, root, value, seq)",
+    "evidence_consolidated_copies": "CREATE INDEX IF NOT EXISTS evidence_consolidated_copies "
+                                    "ON evidence_consolidated(epoch, channel, root, sample_id, seq, value) "
+                                    "WHERE sample_id IS NOT NULL",
+    "evidence_consolidated_root": "CREATE INDEX IF NOT EXISTS evidence_consolidated_root "
+                                  "ON evidence_consolidated(root, channel)",
+    "tombstones_epoch_seq": "CREATE INDEX IF NOT EXISTS tombstones_epoch_seq ON tombstones(epoch, seq)",
+}
+_SUPERSEDED_14 = ("evidence_consolidated_sample", "tombstones_seq")
+
+
+def ensure_indexes(db):
+    """Bring the indexes of a version-14 file to their current set; returns the names created or dropped ([] for a
+    file that has them, which is every file but one migrated by the first build of version 14: one catalogue read
+    and no write)."""
+    names = (*_INDEXES_14, *_SUPERSEDED_14)
+    present = {name for (name,) in db.execute(
+        f"SELECT name FROM sqlite_master WHERE type='index' AND name IN ({','.join('?' * len(names))})", names)}
+    missing = [name for name in _INDEXES_14 if name not in present]
+    stale = [name for name in _SUPERSEDED_14 if name in present]
+    if not missing and not stale:
+        return []
+    control = db.autocommit
+    db.autocommit = True
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            for name in missing:
+                db.execute(_INDEXES_14[name])
+            for name in stale:
+                db.execute(f"DROP INDEX IF EXISTS {name}")
+            db.execute("COMMIT")
+        except BaseException:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise
+    finally:
+        db.autocommit = control
+    return missing + stale
+
+
 def migrate(db):
     """Apply pending migrations, each in its own transaction. Refuse a newer schema.
 
@@ -519,6 +568,7 @@ def migrate(db):
     current = db.execute("PRAGMA user_version").fetchone()[0]
     refuse_newer(current)
     if current == SCHEMA_VERSION:
+        ensure_indexes(db)                   # nothing to do but for a file of the first version-14 build
         return SCHEMA_VERSION                # an up-to-date file is opened without taking the write lock
     control = db.autocommit
     db.autocommit = True                     # so executescript does not commit the transaction holding the lock
@@ -530,6 +580,7 @@ def migrate(db):
                 refuse_newer(version)
                 if version == SCHEMA_VERSION:
                     db.execute("COMMIT")
+                    ensure_indexes(db)       # in case the process that upgraded meanwhile was a first build of 14
                     return SCHEMA_VERSION
                 db.executescript(MIGRATIONS[version] + f";PRAGMA user_version={version + 1};")
                 db.execute("COMMIT")

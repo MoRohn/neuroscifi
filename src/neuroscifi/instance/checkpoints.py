@@ -214,11 +214,44 @@ def _forgets(db, now):
         db.execute("COMMIT")
 
 
+def _live_settings(db):
+    """({name: value} to carry into a copy, [warnings]). Restore is the recovery tool, so a damaged settings row never
+    stops it: a row that cannot be read carries nothing; a value store.set_config would refuse is not carried as it
+    stands. For consolidation the value carried is then the one the live file acts on, off (InstanceConfig.from_json:
+    never on by truthiness), so the copy cannot keep what the live file would not; a bad ask budget or window is
+    left as the archive has it."""
+    try:
+        effective = asdict(store.config(db))
+        raw = json.loads(store._meta(db, "config"))
+    except (ValueError, TypeError, NotFound):
+        return {}, ["the live instance's settings could not be read: no setting was carried into the copy, which "
+                    "keeps the archive's (check `nsf config` on both)"]
+    carried, warnings = {}, []
+    for name in CARRIED_SETTINGS:
+        value = raw.get(name, effective[name])
+        if store.valid_setting(name, value):
+            carried[name] = value
+        elif name == "consolidation":
+            carried[name] = effective[name]
+            warnings.append(f"the live instance's saved consolidation ({value!r}) is not true or false; it acts as "
+                            "off there, and off was carried into the copy")
+        else:
+            warnings.append(f"the live instance's saved {name} ({value!r}) is not a valid value and was not carried; "
+                            "the copy keeps the archive's")
+    return carried, warnings
+
+
 def _read_forgets(db, now):
     from ..webcortex.signing import FRESH_SECONDS
-    settings = asdict(store.config(db))
+    settings, warnings = _live_settings(db)
     return {
-        "settings": {name: settings[name] for name in CARRIED_SETTINGS},
+        "settings": settings, "settings_warnings": warnings,
+        # Cameras and partners forgotten by name (governance.SCOPE_KINDS): their changepoints carry no tombstone, so
+        # the deletion log is the record, as for epochs below.
+        "scopes": [(kind, label, json.loads(effects).get("state_version", float("inf")), requested_at, effects)
+                   for kind, label, requested_at, effects in db.execute(
+                       "SELECT target_kind, target_id, requested_at, effects FROM deletion_log WHERE target_kind IN "
+                       f"({','.join('?' * len(governance.SCOPE_KINDS))}) ORDER BY id", governance.SCOPE_KINDS)],
         "tombstones": db.execute("SELECT id,seq,epoch,deleted_at,reason FROM tombstones").fetchall(),
         # Consolidated readings the live file holds (ADR-044), by seq: an expired event of the copy becomes one only
         # when the live file kept it, with the live row's content.
@@ -261,7 +294,8 @@ def _replay(copy, forgets, now):
     tombstones = forgets["tombstones"] if forgets else []
     live_consolidated = forgets.get("consolidated", {}) if forgets else {}
     consolidated = unconsolidated = 0
-    carried = {}
+    carried, settings_warnings = {}, list(forgets.get("settings_warnings", ())) if forgets else []
+    scope_changes = 0
     forgotten = forgets["datasets"] if forgets else []
     roots = forgets["roots"] if forgets else []
     epochs = forgets["epochs"] if forgets else []
@@ -279,10 +313,17 @@ def _replay(copy, forgets, now):
     copy.execute("BEGIN IMMEDIATE")
     if forgets and forgets.get("settings"):
         # First of all, so that nothing done to the copy from here on runs under a setting the owner has changed.
-        saved = json.loads(copy.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
-        before = asdict(store.InstanceConfig.from_json(json.dumps(saved)))
+        try:
+            saved = json.loads(copy.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
+            before = asdict(store.InstanceConfig.from_json(json.dumps(saved)))
+        except (ValueError, TypeError):
+            saved, before = None, {}
+            settings_warnings.append("the archive's settings could not be read: no setting was written into the copy")
+        # (compared with what the archive saved, type included: a damaged value there is replaced by the live one)
+        before = before | {name: saved[name] for name in forgets["settings"] if saved and name in saved}
         carried = {name: {"from": before[name], "to": value} for name, value in forgets["settings"].items()
-                   if before[name] != value}
+                   if saved is not None and (before[name] != value
+                                             or isinstance(before[name], bool) != isinstance(value, bool))}
         if carried:
             saved.update({name: change["to"] for name, change in carried.items()})
             copy.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(saved, sort_keys=True),))
@@ -339,6 +380,7 @@ def _replay(copy, forgets, now):
     # An epoch forgotten after this copy was written (its state version is older than the forget's) loses its
     # derived rows as in the live forget; a copy written after the forget may hold the same name used again.
     version = store.state_version(copy)
+    scope_changes = governance.replay_scope_forgets(copy, forgets.get("scopes", ()) if forgets else (), version)
     for epoch, forgotten_at_version, requested_at, effects_json in epochs:
         if version < forgotten_at_version:
             epoch_rows += sum(governance.drop_epoch_rows(copy, epoch).values())
@@ -392,7 +434,8 @@ def _replay(copy, forgets, now):
     copy.execute("PRAGMA journal_mode=DELETE")
     return {"tombstones_applied": len(tombstones), "evidence_removed": removed,
             "evidence_consolidated": consolidated, "consolidated_removed": unconsolidated,
-            "settings_carried": carried,
+            "settings_carried": carried, "settings_warnings": settings_warnings,
+            "scope_changes_removed": scope_changes,
             "epoch_rows_removed": epoch_rows,
             "datasets_blanked": blobs, "graph_effects_removed": effects,
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,

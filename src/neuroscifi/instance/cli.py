@@ -147,10 +147,10 @@ def _config(db, args, now):
         changes["ask_budget_window_seconds"] = args.ask_window_days * 86400
     if args.consolidation is not None:
         changes["consolidation"] = args.consolidation
-    if changes:
-        return store.set_config(db, changes, now)
     from dataclasses import asdict
-    return {"config": asdict(store.config(db)), "changed": []}
+    out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
+    problems = store.setting_problems(db)
+    return out | ({"warnings": problems} if problems else {})
 
 
 def register(sub):

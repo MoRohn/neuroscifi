@@ -1108,7 +1108,10 @@ The design must keep four things that the journal gives today:
    epoch's pool, the change window, epoch matching, the legacy status and the executive's "new events since".
    Copies of one `(channel, root, sample_id)` count once, and the copy that counts is the one with the lowest seq
    among the journal's learning copies and the consolidated readings together: the journal's own rule, extended
-   over both tables (`beliefs._uncounted`, `learning_sql`). Consequences, tested: a posterior is the same number
+   over both tables. It is applied in SQL, never by listing readings in Python: one pass over the copies index
+   finds the samples with several readings; a few are looked up by key, many are counted in one grouped pass
+   (per sample, all its readings less its first; `beliefs._not_counted`), and the window and the "new events
+   since" count test each reading they touch (`_EARLIEST`). Consequences, tested: a posterior is the same number
    before and after its events expire (`==`, not approximately), with confirmed changes on any scope, sampled
    events and a linked epoch; and when the owner forgets the first copy of a sample, the next copy counts, whether
    or not anything had expired, so beliefs after a forget are those of an individual that never had the event
@@ -1127,7 +1130,11 @@ The design must keep four things that the journal gives today:
    reason from `expired` (to `forgotten`, `partner_forgotten` or `epoch_forgotten`; a camera's say `forgotten`,
    the tombstone table's reasons being fixed since schema 1); that is the durable record that a reading which once
    existed must not exist (schema 14 indexes the tombstones by epoch and seq for this). A root is a forgotten root
-   only when neither an event nor a consolidated reading of it is left. All of these go through the routes the
+   only when neither an event nor a consolidated reading of it is left. `forget_camera` and `forget_partner` also
+   delete the confirmed and rejected changes of their scope in every epoch, and a restore replays that by the
+   digest label of the deletion-log row (`governance.replay_scope_forgets`, for copies older than the forget, and
+   the copy takes the record over): without it a camera forgotten while a partner of the same name kept the root
+   held stayed in a restored copy as an empty sensor with its old segment. All of these go through the routes the
    other forgets use (`POST /api/forget` behind the console token; the Pocket bridge exposes no instance forget).
 5. **Restore and rewrite** (`checkpoints._replay`). For each tombstone of the live file: an event in the copy
    whose tombstone says `expired`, and whose seq the live file holds as a consolidated reading, becomes that
@@ -1141,11 +1148,17 @@ The design must keep four things that the journal gives today:
    on, nor one taken after it turn it off against a later choice. The restore result lists them
    (`settings_carried`) and the copy's deletion log records each. The settings fixed at `nsf init` (lifetime,
    journal limit, free-space reserve, temperature limit) stay as the archive has them: they cannot differ between
-   an individual and its own archives. A restore without replay (`apply_tombstones=False`) is a plain copy.
+   an individual and its own archives. A restore without replay (`apply_tombstones=False`) is a plain copy, with
+   the archive's settings: consolidation can be on in it after the owner turned it off. Restore is the recovery
+   tool, so a damaged settings row does not stop it: a live row that cannot be read carries nothing, and a value
+   `set_config` would refuse is not carried as it stands (consolidation goes over as what the live file acts on,
+   off; a bad ask budget or window leaves the archive's); the result lists both under `settings_warnings`.
 6. **A switch.** `InstanceConfig.consolidation` (default on; `nsf config --no-consolidation`, `nsf init
    --no-consolidation`). Off gives the sweep of schema 13 exactly. Turning it off stops further consolidation;
    readings already kept keep counting until they are forgotten. Settings saved by 0.7.0 have no such field and
-   read the default. `nsf config` migrates the file and changes the setting without sweeping first, so on an
+   read the default. **Never on by truthiness:** a saved value that is not a JSON boolean (a hand-edited `"no"`, a
+   `1`) reads as off, the reading that cannot keep what an owner opted out of; every sweep and `nsf config` report
+   it until `nsf config` sets a valid value. `nsf config` migrates the file and changes the setting without sweeping first, so on an
    upgrade it takes effect before any event is consolidated (tested on a version-13 file; the services must be
    stopped, because the console and the Pocket bridge sweep on access). Every change of a setting leaves a row
    in the deletion log (kind `setting`), so the log shows from when to when expired events left nothing.
@@ -1157,21 +1170,40 @@ The design must keep four things that the journal gives today:
 ## Measured
 
 `docs/quality/evidence/accel_consolidation_cost.json` (`scripts/bench_consolidation.py`), on the reference host (CPU
-time, best of 31 calls; the sweep is one wall-clock call). A third of the events carry a sample id.
+time, best of 31 calls; the sweep is one wall-clock call). A third of the events carry a sample id, each sample once.
 
 | Learning readings in one epoch | `compute()`, all raw events | `compute()`, all consolidated | The sweep that consolidates them | Bytes per consolidated reading, with indexes |
 |---|---|---|---|---|
-| 200 | 2.07 ms | 1.91 ms | 4 ms | n/a (one page) |
-| 10,000 | 6.32 ms | 4.15 ms | 86 ms | 93 |
-| 100,000 | 51.43 ms | 22.96 ms | 933 ms | 96 |
+| 200 | 2.06 ms | 1.92 ms | 4 ms | n/a (one page) |
+| 10,000 | 6.72 ms | 4.05 ms | 85 ms | 93 |
+| 100,000 | 55.17 ms | 23.99 ms | 930 ms | 96 |
 
-- In every row the posteriors after the sweep equal those before it.
+The copy rule, where it costs most: every reading has a sample id (`bench_consolidation.py WORKDIR copies`; one
+wall-clock call each, milliseconds, before → after the second review pass, which replaced one query per copied
+sample by passes over the index):
+
+| Readings in one epoch, all sampled | Each sample recorded | `compute()` | `learning_since()`, one root | `explain()` | Forget one reading |
+|---|---|---|---|---|---|
+| 10,000 | once | 19 → 19 | 3 → 0 | 38 → 42 | 19 → 19 |
+| 10,000 | one in ten twice | 21 → 21 | 7 → 0 | 50 → 53 | 22 → 23 |
+| 10,000 | twice | 39 → 26 | 21 → 0 | 98 → 60 | 38 → 27 |
+| 100,000 | once | 57 → 57 | 34 → 1 | 156 → 121 | 58 → 57 |
+| 100,000 | one in ten twice | 105 → 86 | 73 → 1 | 287 → 178 | 100 → 87 |
+| 100,000 | twice | 308 → 97 | 235 → 0 | 818 → 200 | 271 → 95 |
+| 1,000,000 | once | 502 → 454 | 381 → 5 | 1484 → 922 | 538 → 456 |
+| 1,000,000 | one in ten twice | 1477 → 744 | 1124 → 5 | 3927 → 1496 | 1381 → 744 |
+| 1,000,000 | twice | 5370 → 791 | 4238 → 4 | 14595 → 1587 | 5148 → 793 |
+
+- In every row of the first table the posteriors after the sweep equal those before it.
 - An epoch with nothing consolidated pays 2 to 3 % more for `compute()` than before schema 14
   (1.955 to 2.0 ms at 200 events, 5.044 to 5.193 ms at 10,000).
-- Half of the consolidated time is the pass that finds samples with more than one reading (decision 2): about
-  0.3 microseconds per reading that has a sample id, nothing for an epoch whose readings have none. With the first
-  version of this decision (only the first copy kept, no such pass) the 100,000 row read 11.8 ms; that version
-  made forgetting inexact (see "Alternatives rejected").
+- Half of the consolidated time in the first table is the pass that finds samples with more than one reading
+  (decision 2): about 0.3 microseconds per reading that has a sample id, nothing for an epoch whose readings have
+  none. With the first version of this decision (only the first copy kept, no such pass) the 100,000 row read
+  11.8 ms; that version made forgetting inexact (see "Alternatives rejected").
+- With every sample recorded twice the grouped pass costs about as much again. At a million readings that all
+  carry a sample id, `compute()` takes 0.45 s when each sample was recorded once and 0.79 s when each was recorded
+  twice; with one query per copied sample, as first built, the second case took 5.4 s (second table).
 - At 1,000,000 readings of 200 roots: a sweep that expires one event per root takes 0.08 s (5.3 s before the index
   by root), listing the held roots for a web query 0.2 ms (51 ms), a forget of an unknown id 0.0 ms (195 ms).
 
@@ -1214,9 +1246,13 @@ accumulate for the life of the epoch.
 - Growth: about 95 bytes per consolidated reading with its four indexes, without limit, one reading per expired
   learning copy. `nsf regulation` and `nsf birth` report the count. `max_evidence_rows` still bounds the journal
   only.
-- A camera forgotten while a partner of the same name is still held: an archive older than the forget keeps the
-  camera's confirmed changes after a restore (an empty segment under that name, no reading); the name itself is
-  still held as the partner's. A partner forget has had the same residue since 0.7.0.
+- A camera forgotten while a partner of the same name is still held (or the reverse): its readings, events and
+  changes go, in the live file and in every restore. Its **name** stays in the text of belief revisions, questions
+  and decisions, because scrubbing works per root name and the name is still held by the other channel; it goes
+  when the last evidence of that name does.
+- Version 14 was amended twice before any release. A file that reached version 14 under an earlier build of this
+  branch gets the current indexes when it is next opened (`schema.ensure_indexes`); the sweeps it ran under the
+  first build kept only the first copy of a sample, and that history is not repaired.
 - `compute()` is linear in the readings of an epoch, as it was in its events.
 - The prototype's `legacy` status reads the same readings, but without event ids to order them by its sums can
   differ from `legacy_live`'s in the last bits once readings are consolidated.
@@ -1229,7 +1265,7 @@ accumulate for the life of the epoch.
   must move first).
 - An older binary refuses a schema-14 file ("Instance schema 14 is newer than this software (13)") and changes
   nothing; rollback is a restore of the pre-upgrade checkpoint (MIGRATIONS.md).
-- Tests: `tests/instance/test_consolidation.py` (67), `tests/console/test_console_api.py` (the readings and the
+- Tests: `tests/instance/test_consolidation.py` (92 cases, each run on both paths of the copy rule), `tests/console/test_console_api.py` (the readings and the
   two forgets over HTTP), and the expiry tests of `test_erasure.py` and `test_journeys.py`, which keep their old
   assertions under `consolidation=False`.
 

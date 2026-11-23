@@ -47,7 +47,12 @@ store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [na
 #   deletion_log effects of a sweep: "consolidated"; its belief revision summary: "consolidated_now"
 #   store.inventory()["memory"]["consolidated_readings"], store.regulation()["consolidated_readings"]  (always present)
 #   checkpoints.restore() -> "evidence_consolidated", "consolidated_removed", "settings_carried" {name: {"from",
-#       "to"}} (always present; the settings an owner may change are the live file's in the copy)
+#       "to"}}, "settings_warnings" [str], "scope_changes_removed" int (always present; the settings an owner may
+#       change are the live file's in the copy when valid; changepoints of a camera or partner forgotten since go)
+#   store.valid_setting(name, value) -> bool ; store.setting_problems(db) -> [str]  (saved values set_config would
+#       refuse; such a consolidation value reads as off). governance.sweep() and `nsf config` add "warnings" then.
+#   governance.forget_consolidated / forget_dataset: an id beyond SQLite's integers is a ValidationError
+#   governance.forget_partner also deletes the partner's changepoints (effects["derived_deleted"]["changepoints"])
 #   executive.decide() -> "warnings": [str]             only when the saved ask-budget window was unusable (the default
 #                                                      window is then used)
 #   memory.retrieve(db, "consolidated", id=SEQ, epoch=, channel=, root=) -> records with payload

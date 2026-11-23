@@ -82,8 +82,15 @@ class InstanceConfig:
     @classmethod
     def from_json(cls, text):
         raw = json.loads(text)
+        if not isinstance(raw, dict):
+            raise ValueError("the settings are not a JSON object")
         known = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in raw.items() if k in known})
+        values = {k: v for k, v in raw.items() if k in known}
+        # Never on by truthiness: a saved value that is not a JSON boolean (a hand-edited "no", a 1) reads as off,
+        # the reading that cannot keep data an owner opted out of. setting_problems() reports it.
+        if not isinstance(values.get("consolidation", True), bool):
+            values["consolidation"] = False
+        return cls(**values)
 
 
 def default_db_path():
@@ -192,6 +199,27 @@ _SETTABLE = {
 SETTING_KIND = "setting"      # deletion_log.target_kind of a changed setting (target_id: the setting's name)
 
 
+def valid_setting(name, value):
+    """Whether `value` is one that set_config would accept for the owner-settable setting `name`."""
+    return name in _SETTABLE and bool(_SETTABLE[name](value))
+
+
+def setting_problems(db):
+    """Owner-settable settings whose saved value set_config would refuse (a hand-edited or damaged settings row), as
+    sentences; [] for a sound row. Such a value is never used as it stands: consolidation reads as off, the ask
+    budget's window as its default (executive._ask_window)."""
+    try:
+        raw = json.loads(_meta(db, "config"))
+    except ValueError:
+        return ["the saved settings cannot be read as JSON"]
+    if not isinstance(raw, dict):
+        return ["the saved settings are not a JSON object"]
+    return [f"the saved {name} ({raw[name]!r}) is not a valid value"
+            + ("; consolidation is treated as off until it is set with `nsf config --consolidation` or "
+               "`--no-consolidation`" if name == "consolidation" else "")
+            for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
+
+
 def set_config(db, changes, now=None):
     """Change owner-settable instance settings. Returns {"config": the settings now, "changed": [names]}.
 
@@ -212,7 +240,10 @@ def set_config(db, changes, now=None):
     with write(db):
         raw = json.loads(_meta(db, "config"))
         current = asdict(InstanceConfig.from_json(json.dumps(raw)))
-        changed = sorted(name for name, value in changes.items() if current[name] != value)
+        # (against what is saved, type included: setting a damaged "no" to false is a change and repairs the row)
+        current = current | {name: raw[name] for name in changes if name in raw}
+        changed = sorted(name for name, value in changes.items()
+                         if current[name] != value or isinstance(current[name], bool) != isinstance(value, bool))
         if changed:
             raw.update({name: changes[name] for name in changed})
             db.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(raw, sort_keys=True),))

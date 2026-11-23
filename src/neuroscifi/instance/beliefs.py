@@ -32,8 +32,9 @@ reading and sample id. Every belief and likelihood here reads the journal's even
 one set ordered by seq: the tallies, a linked epoch's pool, the change window, epoch matching and the legacy
 status. A consolidated reading sits in the segment its seq falls in, exactly as the event did. Copies of one
 sample count once, and the copy that counts is the earliest one among the journal's learning copies and the
-consolidated readings of that sample, whichever of them have expired (`_uncounted` names the consolidated
-readings that do not count; `learning_sql` leaves out a journal copy with an earlier consolidated one). So a
+consolidated readings of that sample, whichever of them have expired (`_not_counted` counts the consolidated
+readings that do not count, `_EARLIEST` tests one; `learning_sql` leaves out a journal copy with an earlier
+consolidated one). So a
 posterior is the same number before and after its events expire, and forgetting the first copy of a sample lets
 the next one count, as in a journal where nothing expired. Listings of episodes (ids, actors, timestamps) show
 raw events only; counts say how many consolidated readings stand beside them.
@@ -88,10 +89,19 @@ _LEARNING = ("consent='learn' AND (sample_id IS NULL OR (seq=(SELECT min(p.seq) 
              "WHERE p.epoch=evidence.epoch AND p.consent='learn' AND p.sample_id=evidence.sample_id "
              "AND p.channel=evidence.channel AND p.root=evidence.root){earlier}))")
 # The earliest consolidated reading of a row's sample (ADR-044), NULL when it has none; {t} is the row's table or
-# alias. Pinned to the sample index: left to itself the planner walks the tally index, every reading of the root.
-_FIRST_READING = ("(SELECT min(c.seq) FROM evidence_consolidated c INDEXED BY evidence_consolidated_sample "
+# alias. Pinned to the copies index (schema.ensure_indexes guarantees it on every file opened through store): left
+# to itself the planner walks the tally index, every reading of the root.
+_FIRST_READING = ("(SELECT min(c.seq) FROM evidence_consolidated c INDEXED BY evidence_consolidated_copies "
                   "WHERE c.epoch={t}.epoch AND c.channel={t}.channel AND c.root={t}.root "
                   "AND c.sample_id={t}.sample_id)")
+# A consolidated reading `c` that is the earliest reading of its sample, or has no sample id. (A journal copy may
+# still precede it: _preceded.)
+_EARLIEST = ("(c.sample_id IS NULL OR NOT EXISTS (SELECT 1 FROM evidence_consolidated d "
+             "INDEXED BY evidence_consolidated_copies WHERE d.epoch=c.epoch AND d.channel=c.channel "
+             "AND d.root=c.root AND d.sample_id=c.sample_id AND d.seq<c.seq))")
+# Up to this many samples with several readings are looked up one by one (the usual case: none or a handful); beyond
+# it, one grouped pass over the copies index counts them all.
+_FEW_COPIED_SAMPLES = 256
 
 # Owned by this module and created by schema migration 3 (same statements; tests/instance/test_migrations.py
 # checks they stay identical). Kept here so ensure_tables can run on a connection that has not migrated.
@@ -128,39 +138,80 @@ def learning_sql(db):
     return _LEARNING.format(hint=" INDEXED BY evidence_tally" if "evidence_tally" in present else "", earlier=earlier)
 
 
-def _uncounted(db, epoch):
-    """The epoch's consolidated readings that do NOT count as learning readings: [(channel, root, value, seq)].
-
-    Every expired copy of a sample left its own reading (ADR-044), and one copy of a sample counts: the earliest
-    among the journal's learning copies and the consolidated readings. So a reading does not count when an earlier
-    reading of its sample exists, or an earlier learning copy in the journal. Samples with one reading and no
-    journal copy, by far the usual case, cost one ordered pass over the sample index and return nothing.
-    """
+def _preceded(db, epoch):
+    """Seqs of consolidated readings that are the first reading of their sample but have an earlier learning copy
+    still in the journal (a promoted event, or a copy whose lifetime is longer): the journal's copy counts, where it
+    stands, and the reading does not. One seek per sampled event of the journal, so bounded by the journal."""
     if not has_consolidated(db) or db.execute(
-            "SELECT 1 FROM evidence_consolidated INDEXED BY evidence_consolidated_sample WHERE epoch=? "
+            "SELECT 1 FROM evidence_consolidated INDEXED BY evidence_consolidated_copies WHERE epoch=? "
             "AND sample_id IS NOT NULL LIMIT 1", (epoch,)).fetchone() is None:
-        return []           # no consolidated reading of the epoch has a sample id: nothing can be a later copy
-    later = []
-    for channel, root, sample, first in db.execute(
-            "SELECT channel, root, sample_id, min(seq) FROM evidence_consolidated "
-            "INDEXED BY evidence_consolidated_sample WHERE epoch=? AND sample_id IS NOT NULL "
-            "GROUP BY channel, root, sample_id HAVING count(*)>1", (epoch,)).fetchall():
-        later += db.execute(
-            "SELECT channel, root, value, seq FROM evidence_consolidated INDEXED BY evidence_consolidated_sample "
-            "WHERE epoch=? AND channel=? AND root=? AND sample_id=? AND seq>?",
-            (epoch, channel, root, sample, first)).fetchall()
-    # The first reading of a sample that still has an earlier learning copy in the journal (a promoted event, or a
-    # copy whose lifetime is longer): the journal's copy counts, where it stands.
-    # (Two steps: the journal's samples, one seek each for their first reading; then those few readings by key. As a
-    # join the planner walked every reading of the epoch.)
-    firsts = [seq for (seq,) in db.execute(
+        return []           # no consolidated reading of the epoch has a sample id
+    return [seq for (seq,) in db.execute(
         f"SELECT reading FROM (SELECT min(seq) AS first, {_FIRST_READING.format(t='e')} AS reading FROM evidence e "
         "WHERE epoch=? AND consent='learn' AND sample_id IS NOT NULL GROUP BY sample_id, channel, root) "
         "WHERE reading>first", (epoch,))]
-    preceded = [row for start in range(0, len(firsts), 500) for row in db.execute(
-        "SELECT channel, root, value, seq FROM evidence_consolidated WHERE seq IN "
-        f"({','.join('?' * len(firsts[start:start + 500]))})", firsts[start:start + 500])]
-    return later + preceded
+
+
+def _chunks(values, size=400):
+    return [values[start:start + size] for start in range(0, len(values), size)]
+
+
+def _not_counted(db, epoch, predicates, preceded):
+    """How many of the epoch's consolidated readings do NOT count as learning readings, per root, corrected reading
+    and predicate: {(channel, root): [[n0, n1] for each predicate]}.
+
+    Every expired copy of a sample left its own reading (ADR-044) and one copy of a sample counts: the earliest among
+    the journal's learning copies and the readings. So a reading does not count when an earlier reading of its sample
+    exists (a "later copy"), or when it is in `preceded` (_preceded). `predicates`: [(template, params)], SQL
+    conditions on a reading's channel, root and seq, the seq written `{s}`.
+
+    Nothing here grows with Python work per reading. One ordered pass over the copies index finds the samples with
+    several readings. Few of them (the usual case): their later copies are read by key and counted in one statement.
+    Many (every sample recorded by two devices): one grouped pass counts, per sample, all its readings minus its
+    first, and sums that per root, so the cost is that of a pass over the index however many samples are copied.
+    """
+    out = {}
+
+    def add(rows):
+        for channel, root, *counts in rows:
+            entry = out.setdefault((channel, root), [[0, 0] for _ in predicates])
+            for i in range(len(predicates)):
+                entry[i][0] += counts[2 * i] or 0
+                entry[i][1] += counts[2 * i + 1] or 0
+
+    def by_seq(seqs):
+        sums = "".join(f", sum(value=0 AND ({t.format(s='seq')})), sum(value=1 AND ({t.format(s='seq')}))"
+                       for t, _ in predicates)
+        params = [x for _, values in predicates for x in (*values, *values)]
+        for chunk in _chunks(seqs):
+            add(db.execute(f"SELECT channel, root{sums} FROM evidence_consolidated WHERE seq IN "
+                           f"({','.join('?' * len(chunk))}) GROUP BY channel, root", (*params, *chunk)))
+
+    copied = db.execute(
+        "SELECT channel, root, sample_id, min(seq), count(*) FROM evidence_consolidated "
+        "INDEXED BY evidence_consolidated_copies WHERE epoch=? AND sample_id IS NOT NULL "
+        "GROUP BY channel, root, sample_id HAVING count(*)>1 LIMIT ?", (epoch, _FEW_COPIED_SAMPLES + 1)).fetchall()
+    # (few samples, and few readings of them: one sample recorded thousands of times goes to the grouped pass too)
+    if len(copied) <= _FEW_COPIED_SAMPLES and sum(row[4] for row in copied) <= 16 * _FEW_COPIED_SAMPLES:
+        later = [seq for channel, root, sample, first, _ in copied for (seq,) in db.execute(
+            "SELECT seq FROM evidence_consolidated INDEXED BY evidence_consolidated_copies WHERE epoch=? "
+            "AND channel=? AND root=? AND sample_id=? AND seq>?", (epoch, channel, root, sample, first))]
+        by_seq(later + list(preceded))
+        return out
+    # Per sample with several readings: its readings under each predicate, and its first reading (seq and value packed
+    # into one minimum); per root: the readings minus the first ones.
+    inner = "".join(f", sum(value=0 AND ({t.format(s='seq')})) AS a{i}, sum(value=1 AND ({t.format(s='seq')})) AS b{i}"
+                    for i, (t, _) in enumerate(predicates))
+    outer = "".join(f", sum(a{i}) - sum(first%2=0 AND ({t.format(s='first/2')})), "
+                    f"sum(b{i}) - sum(first%2=1 AND ({t.format(s='first/2')}))" for i, (t, _) in enumerate(predicates))
+    inner_params = [x for _, values in predicates for x in (*values, *values)]
+    add(db.execute(
+        f"SELECT channel, root{outer} FROM (SELECT channel, root, min(seq*2+value) AS first{inner} "
+        "FROM evidence_consolidated INDEXED BY evidence_consolidated_copies WHERE epoch=? AND sample_id IS NOT NULL "
+        "GROUP BY channel, root, sample_id HAVING count(*)>1) GROUP BY channel, root",
+        (*inner_params, *inner_params, epoch)))
+    by_seq(list(preceded))
+    return out
 
 
 def last_seq(db, epoch):
@@ -183,9 +234,16 @@ def learning_since(db, epoch, after, channel=None, root=None):
     n = db.execute(f"SELECT count(*) FROM evidence WHERE epoch=? AND seq>? AND {learning_sql(db)}{where}",
                    [epoch, after, *params]).fetchone()[0]
     if has_consolidated(db):
-        n += db.execute(f"SELECT count(*) FROM evidence_consolidated WHERE epoch=? AND seq>?{where}",
-                        [epoch, after, *params]).fetchone()[0]
-        n -= sum(1 for c, r, _, seq in _uncounted(db, epoch) if seq > after and (channel is None or (c, r) == (channel, root)))
+        # Readings after `after` that are the earliest of their sample: one seek per reading in that range, which a
+        # question's horizon keeps short. Less those with an earlier copy still in the journal.
+        scope = where.replace("channel=?", "c.channel=?").replace("root=?", "c.root=?")
+        # (by seq for the whole epoch; within one root by the tally index, whose rows of that root are few)
+        index = "evidence_consolidated_epoch" if channel is None else "evidence_consolidated_tally"
+        n += db.execute(f"SELECT count(*) FROM evidence_consolidated c INDEXED BY {index} "
+                        f"WHERE c.epoch=? AND c.seq>?{scope} AND {_EARLIEST}", [epoch, after, *params]).fetchone()[0]
+        for chunk in _chunks(_preceded(db, epoch)):
+            n -= db.execute(f"SELECT count(*) FROM evidence_consolidated WHERE seq>?{where} AND seq IN "
+                            f"({','.join('?' * len(chunk))})", [after, *params, *chunk]).fetchone()[0]
     return n
 
 
@@ -310,11 +368,10 @@ def _linked_tallies(db, linked):
 
     def within(scope, label):
         start, end = _segment_range(confirmed, scope, label)
-        return ("seq>=?" + (" AND seq<?" if end is not None else ""),
+        return ("{s}>=?" + (" AND {s}<?" if end is not None else ""),
                 [start] + ([end] if end is not None else []))
 
     where, params = within("mechanism", segments.get("mechanism", "mechanism@0"))
-    ranges = {"mechanism": _segment_range(confirmed, "mechanism", segments.get("mechanism", "mechanism@0"))}
     alternatives = ["channel='reference'"]
     for scope, label in sorted(segments.items()):
         if scope == "mechanism":
@@ -323,40 +380,26 @@ def _linked_tallies(db, linked):
         clause, values = within(scope, label)
         alternatives.append(f"(channel=? AND root=? AND {clause})")
         params += [_CHANNEL[prefix], root, *values]
-        ranges[(_CHANNEL[prefix], root)] = _segment_range(confirmed, scope, label)
     tallies = {}
-    scope = f"{where} AND ({' OR '.join(alternatives)})"
+    scope = f"{where} AND ({' OR '.join(alternatives)})"       # a template: the seq column is written {s}
     rows = db.execute(
         f"SELECT channel, root, bit, action, count(*), min(seq) FROM evidence WHERE epoch=? AND {learning_sql(db)} "
-        f"AND {scope} GROUP BY channel, root, bit, action", [source, *params]).fetchall()
+        f"AND {scope.format(s='seq')} GROUP BY channel, root, bit, action", [source, *params]).fetchall()
+    if has_consolidated(db):
+        # The source's consolidated readings lie in its segments by their seq, as its events did; those that do not
+        # count (a later copy of a sample) are left out, so that the first seq of a root is a counted one.
+        rows += [(channel, root, value, 0, n, first) for channel, root, value, _, _, n, first in
+                 _consolidated_tallies(db, source, [], scope=(scope, params))[0]]
     for channel, root, bit, action, n, first in rows:
         entry = tallies.setdefault((channel, root), [0, 0, first])
         entry[bit ^ action] += n
-        entry[2] = min(entry[2], first)
-    if not has_consolidated(db):
-        return tallies
-
-    # The source's consolidated readings lie in its segments by their seq, as its events did. Those that do not
-    # count (a later copy of a sample) are left out by seq, so that the first seq of a root is a counted one.
-    def linked(channel, root, seq):
-        def inside(span):
-            return span is not None and span[0] <= seq and (span[1] is None or seq < span[1])
-        return inside(ranges["mechanism"]) and (channel == "reference" or inside(ranges.get((channel, root))))
-
-    skip = [seq for channel, root, _, seq in _uncounted(db, source) if linked(channel, root, seq)]
-    skipped = f" AND seq NOT IN ({','.join('?' * len(skip))})" if skip else ""
-    for channel, root, value, n, first in db.execute(
-            "SELECT channel, root, value, count(*), min(seq) FROM evidence_consolidated "
-            f"WHERE epoch=? AND {scope}{skipped} GROUP BY channel, root, value", [source, *params, *skip]):
-        entry = tallies.setdefault((channel, root), [0, 0, first])
-        entry[value] += n
         entry[2] = min(entry[2], first)
     return tallies
 
 
 # ---- tallies and the model ----------------------------------------------------------------------------
 
-def _consolidated_tallies(db, epoch, bounds, uncounted=None):
+def _consolidated_tallies(db, epoch, bounds, preceded=None, scope=None):
     """Rows (channel, root, value, 0, bucket, n, first_seq) of the epoch's consolidated readings that count, bucket =
     number of `bounds` <= seq, as _aggregate's other statements return them; and how many readings do not count.
 
@@ -364,53 +407,67 @@ def _consolidated_tallies(db, epoch, bounds, uncounted=None):
     events. One pass over the covering index in its own order, without a sort: per (channel, root, value) the
     number of readings at or after each bound and the first seq there; a bucket's count is the difference of two
     neighbours, and its first seq is the first seq at or after its bound. The readings that do not count
-    (`_uncounted`: later copies of a sample, few) are then taken out one by one; where one of them was the first
-    of its bucket, the bucket's first counted seq is read again.
+    (_not_counted: later copies of a sample) are taken out per root, value and bucket; a bucket that lost any has
+    its first counted seq read again (factors are ordered by their first reading).
+    `preceded`: _preceded(db, epoch), read here when not given. `scope`: (template, params), a further condition on
+    channel, root and seq (written {s}) that every reading must meet (a linked epoch's segments).
     """
+    preceded = _preceded(db, epoch) if preceded is None else preceded
+    scope_sql, scope_params = scope if scope is not None else ("1", [])
     per_bound = "".join(", sum(seq>=?), min(CASE WHEN seq>=? THEN seq END)" for _ in bounds)
     tallies = {}
     for channel, root, value, n, first, *rest in db.execute(
             f"SELECT channel, root, value, count(*), min(seq){per_bound} FROM evidence_consolidated "
-            "INDEXED BY evidence_consolidated_tally WHERE epoch=? GROUP BY channel, root, value",
-            (*(b for bound in bounds for b in (bound, bound)), epoch)):
+            f"INDEXED BY evidence_consolidated_tally WHERE epoch=? AND ({scope_sql.format(s='seq')}) "
+            "GROUP BY channel, root, value", (*(b for bound in bounds for b in (bound, bound)), epoch, *scope_params)):
         at_or_after = [n, *rest[0::2], 0]
         firsts = [first, *rest[1::2]]
         for b in range(len(bounds) + 1):
             if at_or_after[b] - at_or_after[b + 1]:
                 tallies[(channel, root, value, b)] = [at_or_after[b] - at_or_after[b + 1], firsts[b]]
-    uncounted = _uncounted(db, epoch) if uncounted is None else uncounted
-    out = {}
-    for channel, root, value, seq in uncounted:
-        out.setdefault((channel, root, value, _segment(bounds, seq)), []).append(seq)
-    for key, seqs in out.items():
-        entry = tallies.get(key)
-        if entry is None:           # a writer removed the readings between the two reads: nothing to take out
-            continue
-        entry[0] -= len(seqs)
-        if entry[0] <= 0:
-            del tallies[key]
-        elif entry[1] in seqs:
-            channel, root, value, b = key
-            low, high = (bounds[b - 1] if b else 0), (bounds[b] if b < len(bounds) else None)
-            entry[1] = db.execute(
-                "SELECT min(seq) FROM evidence_consolidated INDEXED BY evidence_consolidated_tally WHERE epoch=? "
-                f"AND channel=? AND root=? AND value=? AND seq>=? AND seq NOT IN ({','.join('?' * len(seqs))})"
-                + (" AND seq<?" if high is not None else ""),
-                (epoch, channel, root, value, low, *seqs, *([high] if high is not None else []))).fetchone()[0]
+    if not tallies:
+        return [], 0
+    predicates = [(scope_sql, list(scope_params))] + [(f"({scope_sql}) AND {{s}}>=?", [*scope_params, bound])
+                                                      for bound in bounds]
+    uncounted = 0
+    skip = f" AND c.seq NOT IN ({','.join('?' * len(preceded))})" if preceded else ""
+    for (channel, root), cumulative in _not_counted(db, epoch, predicates, preceded).items():
+        cumulative = cumulative + [[0, 0]]
+        for value in (0, 1):
+            for b in range(len(bounds) + 1):
+                lost = cumulative[b][value] - cumulative[b + 1][value]
+                entry = tallies.get((channel, root, value, b))
+                if not lost or entry is None:   # None: a writer removed the readings between the two reads
+                    continue
+                uncounted += lost
+                entry[0] -= lost
+                if entry[0] <= 0:
+                    del tallies[(channel, root, value, b)]
+                    continue
+                low, high = (bounds[b - 1] if b else 0), (bounds[b] if b < len(bounds) else None)
+                first = db.execute(
+                    "SELECT c.seq FROM evidence_consolidated c INDEXED BY evidence_consolidated_tally "
+                    "WHERE c.epoch=? AND c.channel=? AND c.root=? AND c.value=? AND c.seq>=?"
+                    + (" AND c.seq<?" if high is not None else "") + f" AND ({scope_sql.format(s='c.seq')}) "
+                    f"AND {_EARLIEST}{skip} ORDER BY c.seq LIMIT 1",
+                    (epoch, channel, root, value, low, *([high] if high is not None else []), *scope_params,
+                     *preceded)).fetchone()
+                if first is not None:
+                    entry[1] = first[0]
     return [(channel, root, value, 0, b, n, first) for (channel, root, value, b), (n, first) in tallies.items()], \
-        len(uncounted)
+        uncounted
 
 
-def _aggregate(db, epoch, bounds, uncounted=None):
+def _aggregate(db, epoch, bounds, preceded=None):
     """Learning-event tallies from SQL: {(channel, root, bucket): [n0, n1, first_seq]} and the evidence counts.
 
     bucket = number of `bounds` <= seq. Copies of one (channel, root, sample_id) count once: the earliest copy
-    among the journal's and the consolidated readings (`uncounted`: _uncounted(db, epoch), read here when not given).
+    among the journal's and the consolidated readings (`preceded`: _preceded(db, epoch), read here when not given).
     """
     bucket = "+".join(["(seq>=?)"] * len(bounds)) or "0"
     group = ", b" if bounds else ""
     raw = {}
-    consolidated, later_copies = _consolidated_tallies(db, epoch, bounds, uncounted) if has_consolidated(db) \
+    consolidated, later_copies = _consolidated_tallies(db, epoch, bounds, preceded) if has_consolidated(db) \
         else ([], 0)
     nonsample = db.execute(
         f"SELECT channel, root, bit, action, {bucket} AS b, count(*), min(seq) FROM evidence "
@@ -557,9 +614,10 @@ def _legacy(db, epoch):
     if has_consolidated(db):
         # Consolidated readings have no id to order by: they come first, in seq order. The prototype never
         # consolidated, so with them the sums can differ from legacy_live's in the last bits (not in the readings).
-        skip = {seq for _, _, _, seq in _uncounted(db, epoch)}
+        skip = set(_preceded(db, epoch))
         records = [row[:4] for row in db.execute(
-            "SELECT channel, root, value, 0, seq FROM evidence_consolidated WHERE epoch=? ORDER BY seq", (epoch,))
+            "SELECT c.channel, c.root, c.value, 0, c.seq FROM evidence_consolidated c "
+            f"INDEXED BY evidence_consolidated_epoch WHERE c.epoch=? AND {_EARLIEST} ORDER BY c.seq", (epoch,))
             if row[4] not in skip] + records
     references = {}
     readouts, observed = [], []
@@ -619,8 +677,8 @@ def _assess(db, epoch, *, detect=True, legacy=True, pool=True):
     known = changes(db, epoch)
     confirmed = known["confirmed"]
     bounds = sorted({seq for seqs in confirmed.values() for seq in seqs})
-    uncounted = _uncounted(db, epoch)       # read once for the tallies and the change window
-    counts, raw = _aggregate(db, epoch, bounds, uncounted)
+    preceded = _preceded(db, epoch)         # read once for the tallies and the change window
+    counts, raw = _aggregate(db, epoch, bounds, preceded)
     linked = link(db, epoch) if pool else None
     linked_from = None
     if linked is not None:
@@ -692,7 +750,7 @@ def _assess(db, epoch, *, detect=True, legacy=True, pool=True):
         "linked_from": linked_from,
     }
     if detect:
-        change = _detect(db, epoch, known, uncounted)
+        change = _detect(db, epoch, known, preceded)
         result["change"] = change
         if change["suspected"]:
             # A change is suspected and the owner has neither confirmed nor rejected it: the confident
@@ -726,27 +784,29 @@ def compute(db, epoch):
 
 # ---- change detection ---------------------------------------------------------------------------------
 
-def _window(db, epoch, limit, uncounted=None):
+def _window(db, epoch, limit, preceded=None):
     """The epoch's latest `limit` learning readings in seq order. A raw event carries EVENT_COLUMNS; a consolidated
     reading carries seq, channel, root, bit (its corrected reading), action 0 and "consolidated": True. Consolidated
-    readings that do not count (`uncounted`: _uncounted(db, epoch), read here when not given) are left out."""
+    readings that do not count are left out: later copies of a sample by the statement, those with an earlier copy
+    in the journal by `preceded` (_preceded(db, epoch), read here when not given)."""
     rows = db.execute(f"SELECT {','.join(EVENT_COLUMNS)} FROM evidence INDEXED BY evidence_epoch "
                       f"WHERE epoch=? AND {learning_sql(db)} ORDER BY seq DESC LIMIT ?", (epoch, limit)).fetchall()
     events = [event_dict(row) for row in rows]
     if has_consolidated(db):
-        skip = {seq for _, _, _, seq in (_uncounted(db, epoch) if uncounted is None else uncounted)}
+        skip = set(_preceded(db, epoch) if preceded is None else preceded)
         kept = [{"seq": seq, "channel": channel, "root": root, "bit": value, "action": 0, "consolidated": True}
                 for seq, channel, root, value in db.execute(
-                    "SELECT seq, channel, root, value FROM evidence_consolidated INDEXED BY "
-                    "evidence_consolidated_epoch WHERE epoch=? ORDER BY seq DESC LIMIT ?", (epoch, limit + len(skip)))
+                    "SELECT c.seq, c.channel, c.root, c.value FROM evidence_consolidated c INDEXED BY "
+                    f"evidence_consolidated_epoch WHERE c.epoch=? AND {_EARLIEST} ORDER BY c.seq DESC LIMIT ?",
+                    (epoch, limit + len(skip)))
                 if seq not in skip]
         events = sorted(events + kept, key=lambda e: -e["seq"])[:limit]
     return events[::-1]
 
 
-def _detect(db, epoch, known, uncounted=None):
+def _detect(db, epoch, known, preceded=None):
     confirmed, rejected = known["confirmed"], known["rejected"]
-    window = _window(db, epoch, CHANGE_WINDOW, uncounted)
+    window = _window(db, epoch, CHANGE_WINDOW, preceded)
     mechanism = confirmed.get("mechanism", [])
     present = sorted({_segment(mechanism, e["seq"]) for e in window})
     remap = {m: i for i, m in enumerate(present)}
@@ -1127,15 +1187,17 @@ def explain(db, epoch):
     p_w = result["mechanism"]["p_inverted"]
     identifiable = result["mechanism"]["identifiable"]
     learning = _load(db, epoch)
-    tallies = {}
+    # One pass under all the epoch's bounds (the buckets compute() used); a scope's own segment of a bucket follows
+    # from where the bucket begins, as in _model.
+    every = sorted({seq for seqs in confirmed.values() for seq in seqs})
+    kept = _consolidated_tallies(db, epoch, every)[0] if has_consolidated(db) else []
 
-    def consolidated(channel, bounds, bucket, root=None):
-        """(n0, n1): consolidated readings of a channel (and root) in segment `bucket` of the scope's own bounds."""
-        if tuple(bounds) not in tallies:
-            tallies[tuple(bounds)] = _consolidated_tallies(db, epoch, bounds)[0] if has_consolidated(db) else []
+    def consolidated(channel, bounds, segment, root=None):
+        """(n0, n1): consolidated readings of a channel (and root) in `segment` of the scope's own bounds."""
         counts = [0, 0]
-        for row_channel, row_root, value, _, b, n, _ in tallies[tuple(bounds)]:
-            if row_channel == channel and b == bucket and root in (None, row_root):
+        for row_channel, row_root, value, _, b, n, _ in kept:
+            if row_channel == channel and root in (None, row_root) \
+                    and _segment(bounds, every[b - 1] if b else -1) == segment:
                 counts[value] += n
         return counts
 
