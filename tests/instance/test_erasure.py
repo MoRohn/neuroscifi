@@ -175,6 +175,22 @@ def test_forget_epoch_deletes_its_revisions_decisions_and_questions(instance):
     assert hits(db, "Carol-x")  # the other epoch's partner is still known
 
 
+def test_forget_epoch_clears_the_owners_free_text_note_even_when_the_epoch_holds_nothing_else(instance):
+    """The note is the owner's own words about the epoch: forget_epoch keeps the name (tombstones and the deletion
+    log refer to it) but no copy of the note, in the table or in a freed page."""
+    db, path = instance
+    teach_ambiguous_partner(db, "bench")
+    evidence.start_epoch(db, "bare", T0, note="bare note: Alice's flat qz")
+    with store.write(db):
+        db.execute("UPDATE epochs SET note=? WHERE name='bench'", ("bench note: Alice's office qz",))
+    assert governance.forget_epoch(db, "bench", T0 + 100)["effects"]["derived_deleted"]["epoch_note"] == 1
+    out = governance.forget_epoch(db, "bare", T0 + 101)
+    assert out["status"] == "forgotten" and out["effects"]["derived_deleted"]["epoch_note"] == 1
+    assert db.execute("SELECT name, note FROM epochs ORDER BY name").fetchall() == [("bare", None), ("bench", None)]
+    assert b"note: Alice" not in raw_bytes(path)
+    assert governance.forget_epoch(db, "bare", T0 + 102)["status"] == "absent"
+
+
 def test_wal_is_truncated_after_forgetting_while_another_reader_is_open(instance):
     db, path = instance
     evidence.start_epoch(db, "e", T0)

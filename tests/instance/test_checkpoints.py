@@ -715,7 +715,7 @@ def test_restore_carries_over_recent_node_nonces(instance, tmp_path):
 
 EPOCH_DERIVED = ("evidence", "belief_revisions", "decisions", "pending", "changepoints", "epoch_contexts",
                  "epoch_streams")
-NOTHING_LEFT = {t: 0 for t in (*EPOCH_DERIVED, "epoch_links")}
+NOTHING_LEFT = {**{t: 0 for t in (*EPOCH_DERIVED, "epoch_links")}, "note": None}
 
 
 def _teach_epoch_with_every_derived_row(db, epoch, start, *, note=None):
@@ -750,6 +750,7 @@ def _epoch_rows(path, epoch):
                 for t in EPOCH_DERIVED}
         rows["epoch_links"] = copy.execute("SELECT count(*) FROM epoch_links WHERE epoch=? OR source_epoch=?",
                                            (epoch, epoch)).fetchone()[0]
+        rows["note"] = copy.execute("SELECT note FROM epochs WHERE name=?", (epoch,)).fetchone()[0]
     return rows
 
 
@@ -766,6 +767,7 @@ def test_restore_never_brings_back_any_row_of_an_epoch_forgotten_after_the_check
     assert _epoch_rows(path, "room") == NOTHING_LEFT
     checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 42)
     assert _epoch_rows(tmp_path / "r.sqlite", "room") == NOTHING_LEFT
+    assert b"private note zq" not in (tmp_path / "r.sqlite").read_bytes()
     with closing(sqlite3.connect(tmp_path / "r.sqlite")) as copy:   # the linked epoch itself is kept
         assert copy.execute("SELECT count(*) FROM epochs WHERE name='room-next'").fetchone()[0] == 1
 

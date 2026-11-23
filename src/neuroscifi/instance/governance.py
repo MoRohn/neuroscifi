@@ -176,7 +176,9 @@ def _forget_roots(db, rows, now):
 
 def drop_epoch_rows(db, epoch):
     """Delete the epoch's derived rows: belief_revisions, decisions, pending, changepoints, every epoch link from
-    or to it, its graph context and its streams. Caller owns the transaction. Returns {table: rows deleted}.
+    or to it, its graph context and its streams, and clear the owner's free-text note. The epochs row itself stays:
+    tombstones and deletion_log name it, and evidence rows reference it. Caller owns the transaction. Returns
+    {table: rows deleted} (epoch_note: 1 when a note was cleared).
 
     Shared by forget_epoch and checkpoints._replay, so a restored copy loses exactly what the live forget removed.
     """
@@ -186,6 +188,8 @@ def drop_epoch_rows(db, epoch):
                                         (epoch, epoch)).rowcount
     for table in ("epoch_contexts", "epoch_streams"):
         derived[table] = db.execute(f"DELETE FROM {table} WHERE epoch=?", (epoch,)).rowcount
+    derived["epoch_note"] = db.execute("UPDATE epochs SET note=NULL WHERE name=? AND note IS NOT NULL",
+                                       (epoch,)).rowcount
     return derived
 
 
@@ -275,7 +279,7 @@ def forget_evidence(db, event_id, now, *, reason="forgotten"):
 
 def forget_epoch(db, epoch, now):
     """Forget every evidence row of the epoch, its belief revisions, decisions, questions and changepoints, every
-    epoch link from or to it, its graph-context association and its population streams."""
+    epoch link from or to it, its graph-context association, its population streams and the owner's note."""
     with store.write(db):
         if db.execute("SELECT 1 FROM epochs WHERE name=?", (epoch,)).fetchone() is None:
             raise NotFound(f"Unknown epoch '{epoch}'")
