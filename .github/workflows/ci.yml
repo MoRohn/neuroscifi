@@ -8,6 +8,7 @@ jobs:
   check:
     name: lint, tests, JS checks, numerical reproduction
     runs-on: ubuntu-latest
+    timeout-minutes: 40   # a test that leaves processes holding the log pipe must not hold a runner for 6 hours
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,6 +29,7 @@ jobs:
   acceptance:
     name: simulated first-release milestones
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: check
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +46,7 @@ jobs:
   e2e:
     name: browser end-to-end and accessibility (Chromium + axe-core)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: check
     steps:
       - uses: actions/checkout@v4

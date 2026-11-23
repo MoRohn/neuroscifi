@@ -8,7 +8,7 @@
 ![Version](https://img.shields.io/badge/version-0.7.0-3A3437)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-3A3437)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-3A3437?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-3321%20passed-3A3437)
+![Tests](https://img.shields.io/badge/tests-3337%20passed-3A3437)
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-3A3437)
 ![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-3A3437)
 
@@ -670,7 +670,7 @@ nsf acceptance --all                                                     # simul
 
 | Gate | Result |
 |---|---|
-| Quality gate (`bash scripts/check.sh`) | **3321 passed**, 18 skipped (live-service tests), 0 failed |
+| Quality gate (`bash scripts/check.sh`) | **3337 passed**, 18 skipped (live-service tests), 0 failed |
 | Browser end-to-end (`tests/e2e`) | **184 passed**, 1 skipped (opt-in degraded-voice test), 0 failed |
 | Acceptance scenarios (`nsf acceptance --all`) | 7 of 7 pass. The D-1 redesign was [pre-registered](docs/quality/PREREGISTRATION_D1.md) |
 | Reproduction | 8 of 8 analyses within tolerance |
