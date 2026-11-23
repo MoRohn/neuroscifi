@@ -457,6 +457,32 @@ MIGRATIONS = [
       (SELECT 1 FROM autonomy_nodes n WHERE n.device=autonomy_sessions.offered_to AND n.signed=1
        AND n.public_key IS NOT NULL AND n.revoked_at IS NULL);
     """,
+    # ---- version 14 (consolidation of expiring evidence; ADR-044, governance.sweep, beliefs.py) -------------------
+    """
+    -- What an expired learning event leaves behind, so that a belief outlives its raw events: the event's own
+    -- journal position (evidence.seq, never issued twice), its epoch, channel and root, the corrected reading
+    -- (bit XOR action) and its sample id (copies of one sample count once). Nothing else of the event is kept: not
+    -- its id (the tombstone keeps that, with the seq), actor, action and bit, provenance, consent or timestamps.
+    -- One row per event and not a count per segment: a change confirmed later sets a segment boundary at a seq, a
+    -- count cannot tell which sample it already holds, and the owner may still forget one event (by its id, through
+    -- the tombstone's seq). Rows are deleted only by a forget (event, partner, epoch); they never expire.
+    CREATE TABLE evidence_consolidated(
+      seq INTEGER PRIMARY KEY,
+      epoch TEXT NOT NULL REFERENCES epochs(name),
+      channel TEXT NOT NULL CHECK(channel IN ('camera','word','reference')),
+      root TEXT NOT NULL CHECK(length(root) BETWEEN 1 AND 128),
+      value INTEGER NOT NULL CHECK(value IN (0,1)),
+      sample_id TEXT,
+      consolidated_at REAL NOT NULL);
+    CREATE INDEX evidence_consolidated_epoch ON evidence_consolidated(epoch, seq);
+    -- beliefs._aggregate reads its tallies from this index alone, one group after the other, without a sort.
+    CREATE INDEX evidence_consolidated_tally ON evidence_consolidated(epoch, channel, root, value, seq);
+    CREATE INDEX evidence_consolidated_sample ON evidence_consolidated(epoch, channel, root, sample_id)
+      WHERE sample_id IS NOT NULL;
+    -- A consolidated reading is tied to its tombstone by seq (the tombstone keeps the event id): forgetting a
+    -- reading changes that tombstone's reason, for thousands of readings when a partner or an epoch is forgotten.
+    CREATE INDEX tombstones_seq ON tombstones(seq);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

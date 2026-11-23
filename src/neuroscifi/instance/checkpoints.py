@@ -3,8 +3,10 @@
 `create` takes a consistent online backup (the writer may stay open) and packs it as an NSFA archive; retained
 voice audio past its TTL is deleted first, so it never enters a new archive.
 A deletion that commits while the archive is being written makes the new checkpoint 'stale' at once.
-`restore` never publishes a partial file and re-applies current tombstones (with the revision causes naming them),
-forgotten epochs (their derived rows, governance.drop_epoch_rows, in copies written before the forget), forgotten
+`restore` never publishes a partial file and re-applies current tombstones (with the revision causes naming them;
+an event the live file has consolidated since, ADR-044, becomes the same consolidated reading in the copy, and a
+consolidated reading the owner forgot since is removed from it), forgotten epochs (their derived rows,
+governance.drop_epoch_rows, in copies written before the forget), forgotten
 datasets (with the graph effects measured on them and their graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
 the same cascade as the live forget: governance.replay_web_forgets; forgotten voice sessions with their
 transcripts and audio: governance.replay_voice_forgets), research-node revocations and retired node keys, and the
@@ -194,6 +196,17 @@ def _forgets(db, now):
     from ..webcortex.signing import FRESH_SECONDS
     return {
         "tombstones": db.execute("SELECT id,seq,epoch,deleted_at,reason FROM tombstones").fetchall(),
+        # Consolidated readings the live file holds (ADR-044), by seq: an expired event of the copy becomes one only
+        # when the live file kept it, with the live row's content.
+        "consolidated": {row[0]: row for row in db.execute(
+            "SELECT seq,epoch,channel,root,value,sample_id,consolidated_at FROM evidence_consolidated")},
+        # The highest evidence seq the live file ever issued or recorded. A consolidated reading is identified by its
+        # seq alone, so the restored copy must never issue one of them again for another event.
+        "max_seq": max(row[0] or 0 for row in (
+            db.execute("SELECT seq FROM sqlite_sequence WHERE name='evidence'").fetchone() or (0,),
+            db.execute("SELECT max(seq) FROM evidence").fetchone(),
+            db.execute("SELECT max(seq) FROM evidence_consolidated").fetchone(),
+            db.execute("SELECT max(seq) FROM tombstones").fetchone())),
         "datasets": [r[0] for r in db.execute("SELECT id FROM datasets WHERE deleted_at IS NOT NULL")],
         "roots": db.execute("SELECT digest,kind,forgotten_at FROM forgotten_roots").fetchall(),
         # Forgotten epochs with the state version their forget committed at: an epoch's derived rows carry no
@@ -222,6 +235,8 @@ def _replay(copy, forgets, now):
     """Migrate an archive's decoded copy and apply `forgets` (None: nothing) in one transaction, the WAL truncated
     and the journal back to DELETE. Shared by restore and rewrite, so both remove exactly the same rows."""
     tombstones = forgets["tombstones"] if forgets else []
+    live_consolidated = forgets.get("consolidated", {}) if forgets else {}
+    consolidated = unconsolidated = 0
     forgotten = forgets["datasets"] if forgets else []
     roots = forgets["roots"] if forgets else []
     epochs = forgets["epochs"] if forgets else []
@@ -239,8 +254,31 @@ def _replay(copy, forgets, now):
     copy.execute("BEGIN IMMEDIATE")
     candidates = _root_candidates(copy) if roots else {}
     for tomb in tombstones:
-        removed += copy.execute("DELETE FROM evidence WHERE id=?", (tomb[0],)).rowcount
-        copy.execute("INSERT OR IGNORE INTO tombstones(id,seq,epoch,deleted_at,reason) VALUES(?,?,?,?,?)", tomb)
+        event_id, seq, epoch, _, reason = tomb
+        # The live file's consolidated reading of this very event (same id, seq and epoch): the copy keeps what the
+        # event taught exactly as the live file does, and loses the rest of it like any expired event.
+        kept = live_consolidated.get(seq) if reason == "expired" else None
+        if kept is not None and kept[1] == epoch and copy.execute(
+                "SELECT 1 FROM evidence WHERE id=? AND seq=? AND epoch=?", (event_id, seq, epoch)).fetchone():
+            consolidated += copy.execute(
+                "INSERT OR IGNORE INTO evidence_consolidated(seq,epoch,channel,root,value,sample_id,consolidated_at) "
+                "VALUES(?,?,?,?,?,?,?)", kept).rowcount
+        removed += copy.execute("DELETE FROM evidence WHERE id=?", (event_id,)).rowcount
+        if reason != "expired":
+            # A consolidated reading the owner forgot since (one event, its partner or its epoch): the live forget
+            # changed the tombstone's reason from 'expired', which is how a copy that still holds the reading knows.
+            unconsolidated += copy.execute("DELETE FROM evidence_consolidated WHERE seq=? AND epoch=?",
+                                           (seq, epoch)).rowcount
+        # The copy remembers the stronger reason too: an older archive restored FROM it must lose the reading.
+        copy.execute("INSERT INTO tombstones(id,seq,epoch,deleted_at,reason) VALUES(?,?,?,?,?) "
+                     "ON CONFLICT(id) DO UPDATE SET reason=excluded.reason, deleted_at=excluded.deleted_at "
+                     "WHERE tombstones.reason='expired' AND excluded.reason!='expired'", tomb)
+    if forgets:
+        # Never issue an evidence seq the live file already used (see _forgets "max_seq").
+        high = max(forgets.get("max_seq", 0), copy.execute("SELECT coalesce(max(seq),0) FROM evidence").fetchone()[0])
+        if copy.execute("UPDATE sqlite_sequence SET seq=max(seq, ?) WHERE name='evidence'", (high,)).rowcount == 0 \
+                and high:
+            copy.execute("INSERT INTO sqlite_sequence(name,seq) VALUES('evidence',?)", (high,))
     # Revision causes naming a removed event id become evidence:#forgotten, as in the live forget.
     gone = {tomb[0] for tomb in tombstones}
     causes = [cause.partition(":")[2] for (cause,) in copy.execute(
@@ -314,7 +352,9 @@ def _replay(copy, forgets, now):
     copy.execute("COMMIT")
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
-    return {"tombstones_applied": len(tombstones), "evidence_removed": removed, "epoch_rows_removed": epoch_rows,
+    return {"tombstones_applied": len(tombstones), "evidence_removed": removed,
+            "evidence_consolidated": consolidated, "consolidated_removed": unconsolidated,
+            "epoch_rows_removed": epoch_rows,
             "datasets_blanked": blobs, "graph_effects_removed": effects,
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
@@ -549,7 +589,8 @@ def after_forget(db, now) -> dict:
 def _root_candidates(copy):
     """Camera/word roots named in the copy (evidence rows and belief summaries), before tombstones apply."""
     found = {("camera" if channel == "camera" else "partner", root) for channel, root in copy.execute(
-        "SELECT DISTINCT channel, root FROM evidence WHERE channel IN ('camera','word')")}
+        "SELECT DISTINCT channel, root FROM evidence WHERE channel IN ('camera','word') UNION "
+        "SELECT DISTINCT channel, root FROM evidence_consolidated WHERE channel IN ('camera','word')")}
     for (summary,) in copy.execute("SELECT summary FROM belief_revisions"):
         try:
             parsed = json.loads(summary)
@@ -568,8 +609,7 @@ def _scrub_copy(copy, candidates, digests):
     roots = {}
     for kind, root in sorted(candidates):
         digest = governance.root_digest(instance_id, root)
-        if digest in digests and root not in roots and \
-                copy.execute("SELECT 1 FROM evidence WHERE root=? LIMIT 1", (root,)).fetchone() is None:
+        if digest in digests and root not in roots and not governance.root_held(copy, root):
             roots[root] = (kind, digest)
     return governance.scrub_roots(copy, roots)
 

@@ -55,6 +55,11 @@ class InstanceConfig:
     # The budget's rolling window: questions asked in an epoch longer ago than this no longer count, so a long-lived
     # epoch can ask again. 0 = the whole epoch (the rule before the window existed: the budget never refills).
     ask_budget_window_seconds: float = 7 * 86400
+    # Consolidation (ADR-044): when a learning event's lifetime ends, what it taught (its place in the journal, its
+    # channel and root, the corrected reading, its sample id) stays as a consolidated reading, so beliefs outlive
+    # their raw events. False = an expired event leaves nothing, as before schema 14; readings consolidated earlier
+    # keep counting until they are forgotten.
+    consolidation: bool = True
     max_thermal_celsius: float | None = None  # regulation: pause new writes above this temperature (None = off)
 
     @classmethod
@@ -163,6 +168,7 @@ _SETTABLE = {
     "ask_budget_per_epoch": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 1000,
     "ask_budget_window_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool)
                                             and math.isfinite(v) and 0 <= v <= 36500 * 86400),
+    "consolidation": lambda v: isinstance(v, bool),
 }
 
 
@@ -320,6 +326,7 @@ def regulation(db, path=None):
     return {
         "writes_allowed": allowed, "reason": reason,
         "evidence_rows": db.execute("SELECT count(*) FROM evidence").fetchone()[0],
+        "consolidated_readings": db.execute("SELECT count(*) FROM evidence_consolidated").fetchone()[0],
         "open_questions": db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL").fetchone()[0],
         "open_web_questions": db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL "
                                          "AND scope LIKE 'web:%'").fetchone()[0],
@@ -339,6 +346,7 @@ def inventory(db):
             "epochs": count("SELECT count(*) FROM epochs"),
             "evidence": count("SELECT count(*) FROM evidence"),
             "promoted_evidence": count("SELECT count(*) FROM evidence WHERE retention='promoted'"),
+            "consolidated_readings": count("SELECT count(*) FROM evidence_consolidated"),
             "tombstones": count("SELECT count(*) FROM tombstones"),
             "belief_revisions": count("SELECT count(*) FROM belief_revisions"),
             "open_questions": count("SELECT count(*) FROM pending WHERE resolved_at IS NULL"),

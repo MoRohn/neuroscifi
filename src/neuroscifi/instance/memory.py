@@ -4,16 +4,20 @@ Every record has the same envelope: kind, id, scope, time, permissions, confiden
 Association or embedding search is out of scope; retrieval is by identity, scope and time.
 Web Cortex kinds (migration 6): research (web_tasks), claim, knowledge, source, monitor; they also filter by
 status and (claim, source) by task.
+Kind 'consolidated' (migration 14, ADR-044): what expired learning events left behind, one record per event. Its id
+is the event's seq (the event id is gone; the tombstone keeps it), its time is when it was consolidated, and it
+filters by epoch, channel and root like evidence.
 """
 import json
 
 from . import store
 from .errors import ValidationError
 
-KINDS = ("evidence", "belief", "graph", "dataset", "checkpoint", "deletion", "decision", "pending",
+KINDS = ("evidence", "consolidated", "belief", "graph", "dataset", "checkpoint", "deletion", "decision", "pending",
          "research", "claim", "knowledge", "source", "monitor")
 _FILTERS = {  # filters beyond id/since/until that each kind understands
-    "evidence": {"epoch", "channel", "root"}, "belief": {"epoch"}, "graph": {"context"}, "dataset": {"context"},
+    "evidence": {"epoch", "channel", "root"}, "consolidated": {"epoch", "channel", "root"},
+    "belief": {"epoch"}, "graph": {"context"}, "dataset": {"context"},
     "checkpoint": set(), "deletion": set(), "decision": {"epoch"}, "pending": {"epoch", "context"},
     "research": {"status"}, "claim": {"status", "task"}, "knowledge": {"status"}, "source": {"task"},
     "monitor": {"status"},
@@ -45,6 +49,13 @@ def _evidence(r):
                    {"seq": seq, "channel": channel, "action": action, "bit": bit, "sample_id": sample_id,
                     "actor": actor, "provenance": prov, "acquired_at": acq},
                    permissions=_perm(consent, ret, exp))
+
+
+def _consolidated(r):
+    seq, epoch, channel, root, value, sample_id, at = r
+    return _record("consolidated", seq, {"epoch": epoch, "root": root}, at,
+                   {"seq": seq, "channel": channel, "reading": value, "sample_id": sample_id},
+                   permissions=_perm("learn", "consolidated", None))
 
 
 def _belief_confidence(summary):
@@ -169,6 +180,8 @@ def _monitor(r):
 _TABLES = {
     "evidence": ("evidence", "seq,id,epoch,channel,action,bit,root,sample_id,actor,consent,provenance,"
                  "acquired_at,recorded_at,retention,expires_at", "recorded_at", "seq", "id", _evidence),
+    "consolidated": ("evidence_consolidated", "seq,epoch,channel,root,value,sample_id,consolidated_at",
+                     "consolidated_at", "seq", "seq", _consolidated),
     "belief": ("belief_revisions", "id,epoch,state_version,created_at,cause,summary", "created_at", "id", "id", _belief),
     "graph": ("graph_revisions", "id,context,parent_id,status,bits,degree,rows,cols,byte_size,sha256,"
               "rule_version,origin,metrics,decision,created_at,decided_at", "created_at", "id", "id", _graph),
@@ -227,14 +240,14 @@ def retrieve(db, kind, *, id=None, epoch=None, context=None, channel=None, root=
     where, params = [], []
     if id is not None:
         if kind in _TEXT_IDS:
-            where.append("id=?")
+            where.append(f"{id_col}=?")
             params.append(str(id))
         else:
             try:
                 params.append(int(id))
             except (TypeError, ValueError):
                 raise ValidationError(f"id for kind '{kind}' must be an integer") from None
-            where.append("id=?")
+            where.append(f"{id_col}=?")
     for name, value in filters.items():
         if value is not None:
             where.append(f"{_FILTER_COLUMNS.get(kind, {}).get(name, name)}=?")

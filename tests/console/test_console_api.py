@@ -291,6 +291,31 @@ def test_writes_sweep_expired_evidence_first_and_reads_sweep_once_a_minute(conso
     assert c.ok("GET", "/api/epochs/e1/evidence") == []  # a due GET sweeps
 
 
+def test_expired_learning_events_stay_as_consolidated_readings_over_http(console):
+    """ADR-044: after the lifetime the journal is empty, the beliefs are the same, and the API says what was kept."""
+    c = console
+    teach_baseline(c)
+    before = c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]
+    c.clock[0] += 8 * 86400
+    c.srv.last_sweep = float("-inf")
+    assert c.ok("GET", "/api/epochs/e1/evidence") == []
+    after = c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]
+    for key in ("mechanism", "sensors", "partners", "reference_roots", "unidentifiable"):
+        assert after[key] == before[key]
+    assert after["evidence"] == {"total": 15, "learning": 15, "memory_only": 0, "duplicates_ignored": 0,
+                                 "consolidated": 15}
+    epoch, = c.ok("GET", "/api/epochs")
+    assert epoch["evidence"] == 0 and epoch["consolidated"] == 15 and epoch["forgotten"] == 15
+    inventory = c.ok("GET", "/api/inventory")
+    assert inventory["memory"]["consolidated_readings"] == 15 and inventory["regulation"]["consolidated_readings"] == 15
+    kept = c.ok("GET", "/api/memory?kind=consolidated&epoch=e1&channel=word")["items"]
+    assert len(kept) == 6 and {i["scope"]["root"] for i in kept} == {"alice"}
+    assert set(kept[0]["payload"]) == {"seq", "channel", "reading", "sample_id"}
+    gone = c.ok("POST", "/api/forget", {"kind": "evidence", "target": "w0"})     # by its id, though it expired
+    assert gone["status"] == "forgotten" and gone["effects"]["consolidated_deleted"] == 1
+    assert c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]["partners"]["alice"]["n"] == 5
+
+
 def _hold_write_lock(path):
     other = sqlite3.connect(path, isolation_level=None)
     other.execute("BEGIN IMMEDIATE")

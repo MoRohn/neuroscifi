@@ -132,6 +132,13 @@ Forgetting removes evidence, leaves a payload-free tombstone, recomputes beliefs
 
 Find ids with `nsfs memory evidence --epoch NAME`, `nsfs memory dataset`, and `nsfs memory deletion` (the deletion log).
 
+**What expiry leaves (consolidation, ADR-044).** An event that reaches its lifetime is deleted and tombstoned. If it was a learning event, what it taught stays as a *consolidated reading*: its position in the journal (seq), its epoch, channel and root, the corrected reading and its sample id. Beliefs keep counting it, so the individual still knows on day 8 what it learned on day 1. The event's id, actor, action and bit, provenance and timestamps are gone. Memory-only events and repeated copies of a sample leave nothing.
+
+- See them: `nsfs memory consolidated --epoch NAME` (the record's id is the seq). `nsfs birth` and `nsfs regulation` count them; `nsfs sweep` says how many it kept (`consolidated`).
+- Forget them: `nsfs forget evidence EVENT_ID` still works after the event expired (the tombstone knows which reading it left); `nsfs forget partner NAME` and `nsfs forget epoch NAME` remove the consolidated readings they cover. A root's name stays in the file while a consolidated reading holds it.
+- Turn it off: `nsfs config --no-consolidation` (back on: `--consolidation`). From then on an expired event leaves nothing, as in 0.7.0. Readings already kept stay until you forget them.
+- They never expire and are not counted in `max_evidence_rows`. Each takes about 75 bytes.
+
 Forgetting an epoch also clears the free-text note the owner gave it; the epoch's row stays, because tombstones, the deletion log and evidence refer to its name. An epoch that holds only a note is forgotten and logged too. Forgetting a dataset also deletes the lesion and coactivation effects measured on it (`graph_effects_deleted` in the result); effects measured on other datasets stay.
 
 A voice session: `nsfs forget voice SESSION` (or `nsfs voice forget SESSION`); a research task, knowledge item or source: `nsfs forget research|knowledge|source TARGET`.

@@ -107,11 +107,14 @@ def _epochs(c, p, q, b):
         "coalesce(sum(v.consent='memory_only'),0), coalesce(sum(v.retention='promoted'),0), "
         "(SELECT count(*) FROM tombstones t WHERE t.epoch=e.name), "
         "(SELECT context FROM epoch_contexts c WHERE c.epoch=e.name), "
-        "(SELECT count(*) FROM epoch_streams s WHERE s.epoch=e.name) "
+        "(SELECT count(*) FROM epoch_streams s WHERE s.epoch=e.name), "
+        "(SELECT count(*) FROM evidence_consolidated k WHERE k.epoch=e.name) "
         "FROM epochs e LEFT JOIN evidence v ON v.epoch=e.name GROUP BY e.name ORDER BY e.created_at, e.name")
+    # "evidence", "learning", "memory_only" and "promoted" count events in the journal; "consolidated" (absent while
+    # zero) counts what expired learning events left (ADR-044), which beliefs also read.
     keys = ("name", "created_at", "note", "evidence", "learning", "memory_only", "promoted", "forgotten", "context",
-            "streams")
-    return [dict(zip(keys, row)) for row in rows]
+            "streams", "consolidated")
+    return [{key: value for key, value in zip(keys, row) if key != "consolidated" or value} for row in rows]
 
 
 def _start_epoch(c, p, q, b):

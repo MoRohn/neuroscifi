@@ -50,18 +50,16 @@ _HORIZON = re.compile(r"\(evidence through #(\d+)\)")
 
 
 def _horizon(db, epoch):
-    return db.execute("SELECT coalesce(max(seq), 0) FROM evidence WHERE epoch=?", (epoch,)).fetchone()[0]
+    """The seq of the epoch's latest evidence, raw or consolidated (an expired event keeps its place: ADR-044)."""
+    return beliefs.last_seq(db, epoch)
 
 
 def _new_events(db, epoch, scope, after):
-    """Learning events of `scope` with seq > after."""
-    sql = f"SELECT count(*) FROM evidence WHERE epoch=? AND seq>? AND {beliefs.learning_sql(db)}"
-    params = [epoch, after]
-    if scope != "mechanism":
-        prefix, root = scope.split(":", 1)
-        sql += " AND channel=? AND root=?"
-        params += [beliefs._CHANNEL[prefix], root]
-    return db.execute(sql, params).fetchone()[0]
+    """Learning events of `scope` with seq > after, whether still raw or consolidated since."""
+    if scope == "mechanism":
+        return beliefs.learning_since(db, epoch, after)
+    prefix, root = scope.split(":", 1)
+    return beliefs.learning_since(db, epoch, after, beliefs._CHANNEL[prefix], root)
 
 
 def _answered(db, epoch, kind, scope):
@@ -133,8 +131,7 @@ def _policy(db, epoch, allowed, why, horizon):
                     question)
         reason = (f"change suspected since evidence #{since} but ambiguous: {scope} at {llr:.2f} nats{detail}, "
                   f"within {beliefs.AMBIGUITY_MARGIN} nat")
-        has_reference = db.execute("SELECT 1 FROM evidence WHERE epoch=? AND channel='reference' LIMIT 1",
-                                   (epoch,)).fetchone() is not None
+        has_reference = beliefs.has_reference(db, epoch)
         rival = runner["scope"] if runner else "another factor"
         if has_reference:
             return ("test_reference", "test_reference", scope,

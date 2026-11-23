@@ -171,9 +171,10 @@ def executed_on() -> dict:
 # ---- privacy -----------------------------------------------------------------------------------------------------
 
 def private_terms(db, cfg) -> list[str]:
-    """Owner-listed private terms plus every camera and partner root of the evidence journal (private names)."""
-    roots = [r for (r,) in db.execute("SELECT DISTINCT root FROM evidence WHERE channel IN ('camera','word')")]
-    return list(dict.fromkeys([*cfg.private_terms, *roots]))
+    """Owner-listed private terms plus every camera and partner root the individual holds evidence of (private
+    names): the journal's and those of consolidated readings (ADR-044), whose events have expired."""
+    from ..instance import governance
+    return list(dict.fromkeys([*cfg.private_terms, *governance.held_roots(db)]))
 
 
 def screen(db, text, cfg) -> list[dict]:

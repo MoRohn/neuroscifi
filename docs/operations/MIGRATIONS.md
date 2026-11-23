@@ -2,13 +2,15 @@
 
 ## 1. How the instance database is versioned
 
-The instance database (one SQLite file per individual) stores its schema version in `PRAGMA user_version`. The software holds an append-only list of migrations in `src/neuroscifi/instance/schema.py`; the current schema version is the length of that list (1 in this release).
+The instance database (one SQLite file per individual) stores its schema version in `PRAGMA user_version`. The software holds an append-only list of migrations in `src/neuroscifi/instance/schema.py`; the current schema version is the length of that list (14 in this release; 13 in 0.7.0).
 
 - **Forward only.** Opening an instance with `nsf` applies every pending migration in order, each in one transaction that also sets `user_version`. The version is read again under the write lock, so two processes opening an old file at once apply each migration once; a migration that fails is rolled back. There are no down-migrations. A released migration is never edited; changes arrive as a new migration.
 - **Newer than the software is refused.** If `user_version` is greater than the software's version, the command stops with "Instance schema N is newer than this software (M)" and changes nothing. Do not run older software on a database an upgrade has opened.
 - Because any `nsf` command that opens the database can migrate it, the first command after installing new software is the upgrade. Plan it; do not let the nightly timer or the console be the first thing to touch it.
 
 Read the version with `sqlite3 /var/lib/neuroscifi/instance.sqlite 'PRAGMA user_version'` if the sqlite3 tool is installed *(not part of the project)*.
+
+**Version 14 (consolidation, ADR-044).** It adds one empty table, `evidence_consolidated`, with three indexes, and an index on the tombstones by seq. No existing row is changed; building the tombstone index reads every tombstone once (well under a second for a million). What changes is the next sweep: with the default setting, an expiring learning event leaves a consolidated reading instead of nothing (RUNBOOK section 6). An individual upgraded from 0.7.0 has no `consolidation` setting saved and gets the default, on. To keep the 0.7.0 meaning of expiry, run `nsfs config --no-consolidation` as the first command after the upgrade, with the services still stopped: `nsf config` is the one instance command besides `nsf sweep` that does not expire due evidence before it runs, so the setting is in place before the first sweep. 0.7.0 software refuses a version-14 file.
 
 ## 2. Upgrade procedure
 

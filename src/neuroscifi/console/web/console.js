@@ -16,7 +16,7 @@ const MAX_BODY = 4096;
 const MAX_TEXT_BODY = 8192;   // the server's limit for research questions and monitor topics (2000 characters)
 const TEXT_ROUTES = ['/api/web/tasks', '/api/web/monitors'];
 const MATCH_LAST = 12;        // beliefs.MATCH_EVENTS: the executive's match question is asked only this early
-const MEMORY_KINDS = ['evidence', 'belief', 'graph', 'dataset', 'checkpoint', 'deletion', 'decision', 'pending',
+const MEMORY_KINDS = ['evidence', 'consolidated', 'belief', 'graph', 'dataset', 'checkpoint', 'deletion', 'decision', 'pending',
                       'research', 'claim', 'knowledge', 'source', 'monitor'];
 
 const state = { token: null, view: null, epoch: '', epochs: [], semantics: null, datasets: [], graphs: [],
@@ -364,7 +364,9 @@ async function loadOverview() {
     ['Evidence rows', `${r.evidence_rows} of ${r.config.max_evidence_rows}`],
     ['Open questions', r.open_questions],
     ['Evidence written', r.write_volume],
-    ['Evidence lifetime', `${(r.config.evidence_ttl_seconds / 86400).toFixed(1)} days unless promoted`],
+    ['Evidence lifetime', `${(r.config.evidence_ttl_seconds / 86400).toFixed(1)} days unless promoted` +
+      (r.config.consolidation ? '; what a learning event taught is kept as a consolidated reading' : '')],
+    r.consolidated_readings ? ['Consolidated readings', r.consolidated_readings] : null,
     ['Free-space reserve', fmtBytes(r.config.min_free_bytes)],
     ['Ask budget per epoch', r.config.ask_budget_window_seconds
       ? `${r.config.ask_budget_per_epoch} per ${(r.config.ask_budget_window_seconds / 86400).toFixed(1)} days`
@@ -400,7 +402,7 @@ async function loadEpochs() {
   }
   const current = state.epochs.find((e) => e.name === state.epoch);
   $('epochSummary').textContent = current
-    ? `Started ${fmtTime(current.created_at)} · ${current.evidence} stored (${current.learning} learning, ${current.memory_only} memory-only, ${current.promoted} promoted) · ${current.forgotten} forgotten or expired · panel context ${current.context ?? 'none'} · ${current.streams ? `${current.streams} population stream${current.streams === 1 ? '' : 's'} attached` : 'no population stream'}${current.note ? ` · ${current.note}` : ''}`
+    ? `Started ${fmtTime(current.created_at)} · ${current.evidence} stored (${current.learning} learning, ${current.memory_only} memory-only, ${current.promoted} promoted)${current.consolidated ? ` · ${current.consolidated} consolidated reading${current.consolidated === 1 ? '' : 's'} kept from expired events` : ''} · ${current.forgotten} forgotten or expired · panel context ${current.context ?? 'none'} · ${current.streams ? `${current.streams} population stream${current.streams === 1 ? '' : 's'} attached` : 'no population stream'}${current.note ? ` · ${current.note}` : ''}`
     : 'Start an epoch to begin teaching.';
   syncControls();
 }
@@ -486,6 +488,7 @@ function renderBeliefs(b) {
   fill($('beliefs'),
     h('ul', { class: 'counts', 'aria-label': 'Evidence counts' },
       h('li', { text: `${c.total} stored` }), h('li', { text: `${c.learning} learning` }),
+      c.consolidated ? h('li', { text: `${c.consolidated} of them consolidated (their events expired)` }) : null,
       h('li', { text: `${c.memory_only} memory-only` }), h('li', { text: `${c.duplicates_ignored} duplicate copies ignored` }),
       h('li', { text: `state version ${b.state_version}` })),
     b.linked_from
@@ -646,6 +649,8 @@ function forgetSummary(result) {
   if (result.status === 'absent') return 'Nothing to forget: no matching rows remain.';
   const parts = [];
   if (e.deleted !== undefined) parts.push(`${e.deleted} evidence row(s) deleted`);
+  if (e.consolidated_deleted) parts.push(`${e.consolidated_deleted} consolidated reading(s) deleted`);
+  if (e.consolidated) parts.push(`${e.consolidated} kept as consolidated reading(s)`);
   if (e.dataset !== undefined) parts.push(`dataset #${e.dataset} deleted`);
   if (e.invalidated?.length) parts.push(`graph revision(s) ${e.invalidated.join(', ')} invalidated`);
   if (e.reactivated) parts.push(`revision ${e.reactivated} re-activated`);

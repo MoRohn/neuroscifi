@@ -24,9 +24,23 @@ store.write(db) -> context manager                  # BEGIN IMMEDIATE / COMMIT /
 store.bump_state_version(db) -> int ; store.state_version(db) -> int
 store.bump(db, name, amount=1) ; store.counter(db, name) -> int
 store.config(db) -> InstanceConfig(evidence_ttl_seconds, max_evidence_rows, min_free_bytes, ask_budget_per_epoch,
-                                   ask_budget_window_seconds, max_thermal_celsius)
+                                   ask_budget_window_seconds, consolidation, max_thermal_celsius)
 store.set_config(db, changes: dict) -> {"config": dict, "changed": [names]}   # owner-settable settings only
-#   (ask_budget_per_epoch, ask_budget_window_seconds); ValidationError otherwise. `nsf config` is its CLI.
+#   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation); ValidationError otherwise. `nsf config` is its CLI.
+#
+# Consolidation (ADR-044, schema 14). Additive fields, each absent while zero unless noted:
+#   beliefs.compute()["evidence"]["consolidated"]      learning readings that are consolidated (counted in "learning"
+#                                                      and "total")
+#   beliefs.explain() factors: "supporting_consolidated", "counterevidence_consolidated" (counted in *_total; the
+#                                                      event lists hold raw events only)
+#   governance.sweep() -> "consolidated"               readings kept by this sweep
+#   forget results, effects["consolidated_deleted"]    consolidated readings a forget removed ("deleted" counts events)
+#   deletion_log effects of a sweep: "consolidated"; its belief revision summary: "consolidated_now"
+#   store.inventory()["memory"]["consolidated_readings"], store.regulation()["consolidated_readings"]  (always present)
+#   checkpoints.restore() -> "evidence_consolidated", "consolidated_removed"                           (always present)
+#   memory.retrieve(db, "consolidated", id=SEQ, epoch=, channel=, root=) -> records with payload
+#       {"seq", "channel", "reading", "sample_id"}, permissions.retention "consolidated"
+#   governance.held_roots(db) -> camera and word roots held as events or consolidated readings
 store.birth(db) -> dict ; store.inventory(db) -> dict ; store.regulation(db, path=None) -> dict
 store.require_write_allowed(db, path=None)          # raises WritesPaused
 rules.register(db, definition, now, *, created_by)   # caller owns txn; idempotent on identical content

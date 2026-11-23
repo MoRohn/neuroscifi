@@ -110,8 +110,9 @@ def with_db(handler):
             now = time.time()
             # Like the Pocket bridge, expire due evidence before every read or write so that
             # beliefs never count records past their lifetime (MEM-09).
-            # `nsf sweep` itself is excluded so that it can report what it expired.
-            if getattr(args, "command", None) != "sweep":
+            # `nsf sweep` itself is excluded so that it can report what it expired, and `nsf config` so that a
+            # setting of the sweep (consolidation) takes effect before the next one, not after it.
+            if getattr(args, "command", None) not in ("sweep", "config"):
                 from .governance import sweep
                 sweep(db, now)
             return handler(db, args, now)
@@ -125,6 +126,7 @@ def _init(args):
     cfg = store.InstanceConfig(evidence_ttl_seconds=int(args.ttl_days * 86400),
                                ask_budget_per_epoch=args.ask_budget,
                                ask_budget_window_seconds=args.ask_window_days * 86400,
+                               consolidation=args.consolidation,
                                max_evidence_rows=args.max_evidence_rows,
                                min_free_bytes=int(args.min_free_mib * 1024 * 1024))
     founding = args.founding_graph.read_bytes() if args.founding_graph else None
@@ -143,6 +145,8 @@ def _config(db, args, now):
         changes["ask_budget_per_epoch"] = args.ask_budget
     if args.ask_window_days is not None:
         changes["ask_budget_window_seconds"] = args.ask_window_days * 86400
+    if args.consolidation is not None:
+        changes["consolidation"] = args.consolidation
     if changes:
         return store.set_config(db, changes)
     from dataclasses import asdict
@@ -150,6 +154,7 @@ def _config(db, args, now):
 
 
 def register(sub):
+    import argparse
     from pathlib import Path
     p = sub.add_parser("init", help="create a new individual (refuses an existing file)")
     store.add_db_argument(p)
@@ -159,6 +164,8 @@ def register(sub):
     p.add_argument("--ask-budget", type=int, default=3, help="questions per epoch before deferring")
     p.add_argument("--ask-window-days", type=days_or_zero, default=7.0,
                    help="the ask budget counts questions of the last this many days (0 = the whole epoch)")
+    p.add_argument("--consolidation", action=argparse.BooleanOptionalAction, default=True,
+                   help="keep what an expired learning event taught as a consolidated reading (default: on)")
     p.add_argument("--max-evidence-rows", type=int, default=store.InstanceConfig.max_evidence_rows,
                    help="regulation: pause new evidence writes at this journal size")
     p.add_argument("--min-free-mib", type=float, default=store.InstanceConfig.min_free_bytes / 1048576,
@@ -171,6 +178,9 @@ def register(sub):
     p.add_argument("--ask-budget", type=bounded_int(0, 1000), help="questions per epoch and window before deferring")
     p.add_argument("--ask-window-days", type=days_or_zero,
                    help="the ask budget counts questions of the last this many days (0 = the whole epoch)")
+    p.add_argument("--consolidation", action=argparse.BooleanOptionalAction, default=None,
+                   help="keep what an expired learning event taught as a consolidated reading (default: on); "
+                        "--no-consolidation stops further consolidation, readings already kept stay until forgotten")
     p.set_defaults(handler=with_db(_config))
 
     p = sub.add_parser("birth", help="birth record, memory inventory and development counters")
