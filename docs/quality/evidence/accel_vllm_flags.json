@@ -1,0 +1,238 @@
+{
+ "evidence": "accel_vllm_flags",
+ "recorded": "2026-11-23",
+ "host": "DGX Spark GB10, aarch64; other tenants' containers resident (MemAvailable about 30 GiB)",
+ "server": "vllm/vllm-openai@sha256:48c0a41e...3009700 (vLLM 0.33.0rc1.dev910), Qwen3-30B-A3B-Instruct-2507-FP8, flags of deploy/vllm/vllm.env plus the ones listed per run",
+ "method": "scripts/bench_inference.py --runs 8, scenarios short, evidence, structured or context, concurrency, mixed; the mixed scenario's four background requests carry priority 10 in runs A to E (--background-priority 10); the server was restarted for each configuration through deploy/vllm/run.sh with an owner override file, and the shipped configuration was restored after each chain",
+ "restart_seconds_to_healthy": {
+  "A": 58,
+  "B": 83,
+  "C": 47,
+  "D": 47,
+  "E": 46,
+  "D2": 32,
+  "restore": [
+   45,
+   30,
+   31
+  ]
+ },
+ "runs": [
+  {
+   "config": "baseline (shipped: fcfs, default step)",
+   "extra_flags": "",
+   "short_first_token_ms_p50": 179.707,
+   "short_decode_tokens_per_s_p50": 49.808,
+   "evidence_first_token_ms_p50": 718.698,
+   "evidence_total_s_p50": 3.116,
+   "context_8k_first_token_ms_p50": 1767.227,
+   "context_24k_first_token_ms_p50": 7625.184,
+   "context_recall": [
+    "3/3",
+    "3/3"
+   ],
+   "aggregate_tokens_per_s_by_concurrency": {
+    "1": 31.3,
+    "2": 42.44,
+    "4": 47.94,
+    "8": 63.56
+   },
+   "concurrency_8_first_token_ms_p95": 5145.164,
+   "foreground_alone_first_token_ms_p50": 177.323,
+   "foreground_with_4_background_first_token_ms_p50": 1723.681,
+   "foreground_with_4_background_first_token_ms_p95": 1738.668,
+   "foreground_with_4_background_total_s_p50": 2.863,
+   "preemptions": 0
+  },
+  {
+   "config": "baseline repeat (shipped config, after the experiments)",
+   "extra_flags": "",
+   "short_first_token_ms_p50": 141.657,
+   "short_decode_tokens_per_s_p50": 49.867,
+   "evidence_first_token_ms_p50": 693.29,
+   "evidence_total_s_p50": 3.168,
+   "context_8k_first_token_ms_p50": 1718.2,
+   "context_24k_first_token_ms_p50": 7458.769,
+   "context_recall": [
+    "3/3",
+    "3/3"
+   ],
+   "aggregate_tokens_per_s_by_concurrency": {
+    "1": 31.43,
+    "2": 42.8,
+    "4": 43.59,
+    "8": 64.0
+   },
+   "concurrency_8_first_token_ms_p95": 5106.717,
+   "foreground_alone_first_token_ms_p50": 144.677,
+   "foreground_with_4_background_first_token_ms_p50": 1723.032,
+   "foreground_with_4_background_first_token_ms_p95": 1771.455,
+   "foreground_with_4_background_total_s_p50": 2.897,
+   "preemptions": 0
+  },
+  {
+   "config": "A priority",
+   "extra_flags": "--scheduling-policy priority",
+   "short_first_token_ms_p50": 137.761,
+   "short_decode_tokens_per_s_p50": 50.265,
+   "evidence_first_token_ms_p50": 732.369,
+   "evidence_total_s_p50": 3.208,
+   "context_8k_first_token_ms_p50": null,
+   "context_24k_first_token_ms_p50": null,
+   "context_recall": [
+    null,
+    null
+   ],
+   "aggregate_tokens_per_s_by_concurrency": {
+    "1": 30.74,
+    "2": 42.69,
+    "4": 44.07,
+    "8": 63.87
+   },
+   "concurrency_8_first_token_ms_p95": 5034.351,
+   "foreground_alone_first_token_ms_p50": 143.208,
+   "foreground_with_4_background_first_token_ms_p50": 1155.767,
+   "foreground_with_4_background_first_token_ms_p95": 1256.086,
+   "foreground_with_4_background_total_s_p50": 2.75,
+   "preemptions": 0
+  },
+  {
+   "config": "B priority + interactivity",
+   "extra_flags": "--scheduling-policy priority --performance-mode interactivity",
+   "short_first_token_ms_p50": 147.868,
+   "short_decode_tokens_per_s_p50": 50.06,
+   "evidence_first_token_ms_p50": 696.36,
+   "evidence_total_s_p50": 3.161,
+   "context_8k_first_token_ms_p50": null,
+   "context_24k_first_token_ms_p50": null,
+   "context_recall": [
+    null,
+    null
+   ],
+   "aggregate_tokens_per_s_by_concurrency": {
+    "1": 30.85,
+    "2": 42.79,
+    "4": 42.68,
+    "8": 61.4
+   },
+   "concurrency_8_first_token_ms_p95": 5049.767,
+   "foreground_alone_first_token_ms_p50": 143.801,
+   "foreground_with_4_background_first_token_ms_p50": 1153.953,
+   "foreground_with_4_background_first_token_ms_p95": 1178.018,
+   "foreground_with_4_background_total_s_p50": 2.735,
+   "preemptions": 0
+  },
+  {
+   "config": "C priority + step 2048",
+   "extra_flags": "--scheduling-policy priority --max-num-batched-tokens 2048",
+   "short_first_token_ms_p50": 141.573,
+   "short_decode_tokens_per_s_p50": 50.314,
+   "evidence_first_token_ms_p50": 708.499,
+   "evidence_total_s_p50": 3.135,
+   "context_8k_first_token_ms_p50": 1710.004,
+   "context_24k_first_token_ms_p50": 7529.619,
+   "context_recall": [
+    "3/3",
+    "3/3"
+   ],
+   "aggregate_tokens_per_s_by_concurrency": {
+    "1": 31.34,
+    "2": 42.71,
+    "4": 48.16,
+    "8": 62.61
+   },
+   "concurrency_8_first_token_ms_p95": 5086.027,
+   "foreground_alone_first_token_ms_p50": 143.508,
+   "foreground_with_4_background_first_token_ms_p50": 1160.143,
+   "foreground_with_4_background_first_token_ms_p95": 1184.26,
+   "foreground_with_4_background_total_s_p50": 2.734,
+   "preemptions": 0
+  },
+  {
+   "config": "D priority + step 4096",
+   "extra_flags": "--scheduling-policy priority --max-num-batched-tokens 4096",
+   "short_first_token_ms_p50": 137.646,
+   "short_decode_tokens_per_s_p50": 50.416,
+   "evidence_first_token_ms_p50": 549.3,
+   "evidence_total_s_p50": 3.001,
+   "context_8k_first_token_ms_p50": 1506.63,
+   "context_24k_first_token_ms_p50": 6789.703,
+   "context_recall": [
+    "3/3",
+    "3/3"
+   ],
+   "aggregate_tokens_per_s_by_concurrency": {
+    "1": 33.61,
+    "2": 45.91,
+    "4": 50.98,
+    "8": 69.86
+   },
+   "concurrency_8_first_token_ms_p95": 4060.255,
+   "foreground_alone_first_token_ms_p50": 141.434,
+   "foreground_with_4_background_first_token_ms_p50": 1111.516,
+   "foreground_with_4_background_first_token_ms_p95": 1142.262,
+   "foreground_with_4_background_total_s_p50": 2.214,
+   "preemptions": 0
+  },
+  {
+   "config": "D2 priority + step 4096 (repeat)",
+   "extra_flags": "--scheduling-policy priority --max-num-batched-tokens 4096",
+   "short_first_token_ms_p50": 143.703,
+   "short_decode_tokens_per_s_p50": 49.567,
+   "evidence_first_token_ms_p50": 551.439,
+   "evidence_total_s_p50": 3.018,
+   "context_8k_first_token_ms_p50": 1509.903,
+   "context_24k_first_token_ms_p50": 6814.847,
+   "context_recall": [
+    "3/3",
+    "3/3"
+   ],
+   "aggregate_tokens_per_s_by_concurrency": {
+    "1": 33.36,
+    "2": 45.08,
+    "4": 50.25,
+    "8": 69.0
+   },
+   "concurrency_8_first_token_ms_p95": 4110.763,
+   "foreground_alone_first_token_ms_p50": 144.142,
+   "foreground_with_4_background_first_token_ms_p50": 1147.583,
+   "foreground_with_4_background_first_token_ms_p95": 1169.174,
+   "foreground_with_4_background_total_s_p50": 2.278,
+   "preemptions": 0
+  },
+  {
+   "config": "E priority + step 8192",
+   "extra_flags": "--scheduling-policy priority --max-num-batched-tokens 8192",
+   "short_first_token_ms_p50": 140.901,
+   "short_decode_tokens_per_s_p50": 50.017,
+   "evidence_first_token_ms_p50": 592.499,
+   "evidence_total_s_p50": 3.042,
+   "context_8k_first_token_ms_p50": 1464.962,
+   "context_24k_first_token_ms_p50": 6525.681,
+   "context_recall": [
+    "3/3",
+    "3/3"
+   ],
+   "aggregate_tokens_per_s_by_concurrency": {
+    "1": 33.44,
+    "2": 44.55,
+    "4": 47.71,
+    "8": 70.73
+   },
+   "concurrency_8_first_token_ms_p95": 3603.994,
+   "foreground_alone_first_token_ms_p50": 144.853,
+   "foreground_with_4_background_first_token_ms_p50": 1109.166,
+   "foreground_with_4_background_first_token_ms_p95": 1136.584,
+   "foreground_with_4_background_total_s_p50": 2.19,
+   "preemptions": 0
+  }
+ ],
+ "findings": [
+  "Run-to-run noise is small: the two shipped-config runs and the two step-4096 runs agree within about 2 % on every loaded metric (the first scenario of a run, short, has a warm-up effect: 180 ms against 142 ms).",
+  "--performance-mode interactivity changed nothing measurable (decode 50.1 against 50.3 tokens/s, same loaded latencies) and took 83 s to become healthy against 58 s: not adopted.",
+  "--max-num-batched-tokens 2048 equals the default behaviour (C = A).",
+  "Priority scheduling with a 4096-token step, against the shipped configuration: evidence-sized first token 706 -> 550 ms (-22 %), 24k-token prefill 7.54 -> 6.80 s (-10 %), 8-way aggregate throughput 63.8 -> 69.4 tokens/s (+9 %), foreground first token beside four background requests 1.72 -> 1.13 s (-34 %) and its total 2.88 -> 2.25 s (-22 %); single-stream decode and long-context recall (3/3 at 8k and 24k tokens) unchanged; no preemption.",
+  "A step of 8192 is no better than 4096 where it matters (evidence first token 592 ms, loaded foreground the same) and doubles the longest step a foreground request can wait behind: 4096 is adopted.",
+  "A typical NeuroSciFi answer prompt is 1.1k tokens (p95 1.7k), under either step size: the step matters for long evidence, tool loops and concurrent tasks, not for the median task."
+ ]
+}

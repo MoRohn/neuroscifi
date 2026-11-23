@@ -397,13 +397,20 @@ def scenario_concurrency(ep, runs, seed):
     return out
 
 
+OPTIONS = {"background_priority": None}
+
+
 def scenario_mixed(ep, runs, seed):
-    """A short interactive request sent 1 s after four long background requests started decoding."""
+    """A short interactive request sent 1 s after four long background requests started decoding. With
+    --background-priority N the background requests carry `priority: N` (vLLM --scheduling-policy priority: a
+    lower value is served first; the foreground request keeps the default 0)."""
     alone, loaded = [], []
     front = messages_for("In two sentences, say what a barometer measures.", "You are concise.")
+    low = {"extra": {"priority": OPTIONS["background_priority"]}} if OPTIONS["background_priority"] is not None else {}
     for i in range(runs):
         alone.append(ep.chat(front, max_tokens=80))
-        background = [(messages_for(evidence_prompt(seed + 30000 + i * 10 + j)), {"max_tokens": 500}) for j in range(4)]
+        background = [(messages_for(evidence_prompt(seed + 30000 + i * 10 + j)), {"max_tokens": 500} | low)
+                      for j in range(4)]
         box = {}
         thread = threading.Thread(target=lambda: box.update(r=parallel(ep, background)))
         thread.start()
@@ -501,8 +508,11 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, default=20261123)
     ap.add_argument("--timeout", type=float, default=300.0)
     ap.add_argument("--scenarios", default=",".join(SCENARIOS))
+    ap.add_argument("--background-priority", type=int, help="mixed scenario: `priority` of the background requests "
+                    "(needs a server with priority scheduling; default: not sent)")
     ap.add_argument("--out", help="write the JSON result here (default: stdout)")
     args = ap.parse_args(argv)
+    OPTIONS["background_priority"] = args.background_priority
     chosen = [s for s in args.scenarios.split(",") if s]
     unknown = [s for s in chosen if s not in SCENARIOS]
     if unknown:
@@ -519,7 +529,7 @@ def main(argv=None):
     sampler = GpuSampler()
     sampler.start()
     result = {"benchmark": "inference-endpoint", "version": 1, "label": args.label, "url": args.url,
-              "model": args.model, "runs": args.runs, "seed": args.seed,
+              "model": args.model, "runs": args.runs, "seed": args.seed, "options": dict(OPTIONS),
               "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "environment": environment(ep),
               "scenarios": {}}
     try:

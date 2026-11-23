@@ -9,7 +9,8 @@ apply(db, report, services, question=, now=, task_id=) adds to the report:
   report["reasoning"] = {"generated_by", "status", "label", "answer": [{"text", "citations", "claims", "states",
                          "hedged", "insufficiency"?}], "rejected": [{"text", "reasons"}], "gaps": [{"text", "by"}],
                          "critique", "usage", "reason", "unanswered"? {"text", "by": "rules"} (status "rejected":
-                         no sentence survived; say this rather than an unrelated quote), "note"? {"text", "by":
+                         no sentence survived; say this rather than an unrelated quote), "abstained"? True (status
+                         "rejected" because the model wrote no sentence, not because one failed), "note"? {"text", "by":
                          "rules"} (verdict_note: the verdict did not evaluate or establish the checked statement)}
 The extractive `answer` is never changed: it stays the evidence of record and the degraded view.
 
@@ -105,6 +106,8 @@ QUOTE_CHARS = 420
 ANSWER_TOKENS = 900
 CRITIQUE_TOKENS = 400
 MIN_MODEL_SECONDS = 5.0   # less of the task's time budget left than this: no model call (the label says so)
+# reasoning.reason when the model answered with no sentence (reasoning.abstained = True; status stays "rejected")
+ABSTAINED = "the model wrote no sentence from this evidence{gaps}: no model sentence was checked or rejected"
 
 # The model's answer (v0.7.0 prompt lane): per sentence the claim ids it restates, then the restatement. The claim ids
 # come first so the model picks what it restates before writing it; answer_schema(b) narrows them to the bundle's ids
@@ -2653,10 +2656,16 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     usage = _usage(results)
     if not accepted:
         removed = (critique or {}).get("removed") or 0
+        # the model wrote no sentence at all: it abstained (live: "latest news this week" over undated facts, a
+        # question no claim answers). Nothing failed a check, so the reason must not say that sentences did.
+        abstained = not rejected and not removed
+        named = sum(1 for g in gaps if g["by"] == "model")
         why = ("the self-critique pass removed every sentence that passed the citation and claim checks" if removed
+               else ABSTAINED.format(gaps=f"; it named {named} gap(s)" if named else "") if abstained
                else "every model sentence failed NeuroSciFi's citation and claim checks")
         return _degraded(report, "rejected", why, unanswered=unanswered(question),
-                         rejected=rejected, gaps=merged[:2 * MAX_GAPS], critique=critique, usage=usage)
+                         rejected=rejected, gaps=merged[:2 * MAX_GAPS], critique=critique, usage=usage,
+                         **({"abstained": True} if abstained else {}))
     model = usage.get("model") or gw.cfg.model or "unknown"
     generated_by = f"model:{model}"
     report["reasoning"] = {"generated_by": generated_by, "status": "model", "label": LABEL_MODEL.format(model=model),

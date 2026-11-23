@@ -1000,6 +1000,26 @@ def test_when_no_sentence_survives_the_report_says_what_was_not_established(gate
     assert r["answer"] == REPORT["answer"]
 
 
+def test_a_model_that_writes_no_sentence_abstained_and_the_reason_says_so(gateway, fake):
+    """Live (pipeline baseline, T04/T08/F25): asked for "the latest news this week" over undated facts the model
+    answered {"sentences": [], "gaps": [...]}. The report said "every model sentence failed NeuroSciFi's citation
+    and claim checks" although there was no sentence. The status stays "rejected" (the contract), the reason says
+    what happened, `abstained` marks it, and no critique call is made."""
+    fake.replies += [answer(gaps=["news from this week", "a dated source"])]
+    r = report()
+    out = reasoning.apply(None, r, None, question=Q, now=T0, gateway=gateway)
+    assert out["status"] == "rejected" and out["generated_by"] == "template" and out["abstained"] is True
+    assert out["reason"] == ("the model wrote no sentence from this evidence; it named 2 gap(s): no model sentence "
+                             "was checked or rejected")
+    assert out["rejected"] == [] and out["critique"] is None and len(fake.requests) == 1
+    assert {"text": "news from this week", "by": "model"} in out["gaps"] and "unanswered" in out
+    assert r["answer"] == REPORT["answer"]
+    # a sentence the guard rejected is not an abstention
+    fake.replies += [answer(("The build times dropped by 45 percent.", [3], ["C2"])), fine()]
+    out = reasoning.apply(None, report(), None, question=Q, now=T0, gateway=gateway)
+    assert "abstained" not in out and out["reason"] == "every model sentence failed NeuroSciFi's citation and claim checks"
+
+
 # ---- apply ---------------------------------------------------------------------------------------------------
 
 def test_model_answer_is_validated_labelled_and_accounted(gateway, fake):

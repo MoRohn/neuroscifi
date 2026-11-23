@@ -29,6 +29,8 @@ ENV_FILE="$NSF_INFERENCE_DIR/vllm.secret.env"
 
 [[ "$NSF_VLLM_BIND" == "127.0.0.1" || "$NSF_VLLM_BIND" == "::1" ]] || die "NSF_VLLM_BIND must be loopback (got $NSF_VLLM_BIND)"
 [[ "$NSF_VLLM_IMAGE" == *@sha256:* ]] || die "NSF_VLLM_IMAGE must be pinned by digest"
+[[ "${NSF_VLLM_SCHEDULING:-fcfs}" == "fcfs" || "$NSF_VLLM_SCHEDULING" == "priority" ]] || die "NSF_VLLM_SCHEDULING must be fcfs or priority (got $NSF_VLLM_SCHEDULING)"
+[[ "${NSF_VLLM_BATCHED_TOKENS:-}" =~ ^[0-9]*$ ]] || die "NSF_VLLM_BATCHED_TOKENS must be a number of tokens or empty (got $NSF_VLLM_BATCHED_TOKENS)"
 
 ensure_key() {
   umask 077
@@ -72,6 +74,8 @@ docker_args() {
     --max-num-seqs "$NSF_VLLM_MAX_SEQS"
     --enable-auto-tool-choice --tool-call-parser "$NSF_VLLM_TOOL_PARSER"
     --disable-uvicorn-access-log)
+  [ -n "${NSF_VLLM_SCHEDULING:-}" ] && ARGS+=(--scheduling-policy "$NSF_VLLM_SCHEDULING")
+  [ -n "${NSF_VLLM_BATCHED_TOKENS:-}" ] && ARGS+=(--max-num-batched-tokens "$NSF_VLLM_BATCHED_TOKENS")
   # shellcheck disable=SC2206
   [ -n "${NSF_VLLM_EXTRA_ARGS:-}" ] && ARGS+=($NSF_VLLM_EXTRA_ARGS)
   return 0
