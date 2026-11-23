@@ -34,7 +34,8 @@ class InferenceConfig:
     model: str = ""                    # served model name; "" = the first model the endpoint lists
     key_file: str = ""                 # API key file; "" = DEFAULT_KEY_FILE when it exists, else no key
     reasoning: bool = True             # research answers are written by the model when it is ready
-    self_critique: bool = True         # one bounded critique pass that may only remove sentences
+    self_critique: bool = True         # one bounded critique pass: it marks sentences ("self-check flagged") and
+    #                                    names gaps; a mark removes a sentence only when an objective check confirms
     tools: bool = False                # `nsf llm ask` may offer the allow-listed read-only tools
     remote_allowed: bool = False       # owner authorisation for any endpoint that is not loopback
     remote_private_memory: bool = False   # ... and for sending private memory to it
@@ -46,6 +47,12 @@ class InferenceConfig:
     max_output_tokens: int = 1200
     temperature: float = 0.2
     thinking: str = "default"          # Qwen3-style chat_template_kwargs.enable_thinking: default / on / off
+    # Adaptive inference policy (docs/architecture/COGNITIVE_INFERENCE.md §7). Both defaults keep 0.7.0 behaviour.
+    background_priority: int = 0       # `priority` sent with background (autonomous) model calls; 0 = not sent.
+    #                                    With vLLM --scheduling-policy priority a higher value waits behind the
+    #                                    owner's calls (deploy/vllm sets the policy; `nsf setup` sets 10)
+    critique_voice: bool = True        # run the self-critique pass for spoken questions too. Its marks are shown
+    #                                    by the console and Pocket and never spoken: off answers by voice sooner
 
     @classmethod
     def from_json(cls, text: str | None) -> "InferenceConfig":
@@ -61,10 +68,11 @@ class InferenceConfig:
         return bool(self.base_url)
 
 
-_BOOLS = {"reasoning", "self_critique", "tools", "remote_allowed", "remote_private_memory"}
+_BOOLS = {"reasoning", "self_critique", "tools", "remote_allowed", "remote_private_memory", "critique_voice"}
 _RANGES = {"connect_timeout": (0.1, 60.0), "read_timeout": (1.0, 3600.0), "backoff": (0.0, 30.0),
            "temperature": (0.0, 2.0)}
-_INTS = {"max_retries": (0, 5), "max_context_tokens": (512, 1_000_000), "max_output_tokens": (16, 32768)}
+_INTS = {"max_retries": (0, 5), "max_context_tokens": (512, 1_000_000), "max_output_tokens": (16, 32768),
+         "background_priority": (0, 100)}
 
 
 def _validate(name, value):
@@ -101,13 +109,26 @@ def _validate(name, value):
     return value
 
 
-def get_config(db) -> InferenceConfig:
-    row = db.execute("SELECT value FROM meta WHERE key=?", (META_KEY,)).fetchone()
+# Further endpoints of the same gateway, each with its own settings row (meta key `inference:<provider>`): the
+# models that serve memory rather than write answers. They follow every rule of the answer model's endpoint (the
+# local-first guard, the key file, the ledger). `chat` is the answer model and keeps the 0.7.0 meta key.
+PROVIDERS = ("chat", "embed", "rerank")
+
+
+def meta_key(provider: str = "chat") -> str:
+    if provider not in PROVIDERS:
+        raise ValidationError(f"unknown inference provider {provider!r} (one of {', '.join(PROVIDERS)})")
+    return META_KEY if provider == "chat" else f"{META_KEY}:{provider}"
+
+
+def get_config(db, provider: str = "chat") -> InferenceConfig:
+    row = db.execute("SELECT value FROM meta WHERE key=?", (meta_key(provider),)).fetchone()
     return InferenceConfig.from_json(row[0] if row else None)
 
 
-def set_config(db, changes: dict, now=None) -> InferenceConfig:
+def set_config(db, changes: dict, now=None, provider: str = "chat") -> InferenceConfig:
     """Validate and apply `changes` (field -> value); unknown keys are refused. One state_version bump."""
+    key = meta_key(provider)
     if not isinstance(changes, dict) or not changes:
         raise ValidationError("configuration changes must be a non-empty object")
     known = {f.name for f in fields(InferenceConfig)}
@@ -116,12 +137,12 @@ def set_config(db, changes: dict, now=None) -> InferenceConfig:
         raise ValidationError(f"unknown inference setting(s): {', '.join(unknown)}")
     validated = {name: _validate(name, value) for name, value in changes.items()}
     with store.write(db):
-        current = get_config(db).to_json()
+        current = get_config(db, provider).to_json()
         current.update(validated)
         db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                   (META_KEY, json.dumps(current, sort_keys=True)))
+                   (key, json.dumps(current, sort_keys=True)))
         store.bump_state_version(db)
-    return get_config(db)
+    return get_config(db, provider)
 
 
 def public(cfg: InferenceConfig) -> dict:

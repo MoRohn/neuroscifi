@@ -76,6 +76,7 @@ class ChatResult:
     first_token_ms: float | None = None
     attempts: int = 1
     stream: bool = False
+    cached_tokens: int | None = None     # prompt tokens the server took from its prefix cache; None: not reported
 
     @property
     def tokens_per_second(self) -> float | None:
@@ -118,8 +119,13 @@ def _usage(value) -> dict:
     """Token counts from a usage object; anything that is not a non-negative integer is unknown (None)."""
     if not isinstance(value, dict):
         return {}
-    return {k: v for k in ("prompt_tokens", "completion_tokens")
-            if isinstance(v := value.get(k), int) and not isinstance(v, bool) and v >= 0}
+    out = {k: v for k in ("prompt_tokens", "completion_tokens")
+           if isinstance(v := value.get(k), int) and not isinstance(v, bool) and v >= 0}
+    details = value.get("prompt_tokens_details")
+    cached = details.get("cached_tokens") if isinstance(details, dict) else None
+    if isinstance(cached, int) and not isinstance(cached, bool) and 0 <= cached <= out.get("prompt_tokens", cached):
+        out["cached_tokens"] = cached
+    return out
 
 
 def strip_thinking(text: str) -> str:
@@ -183,6 +189,8 @@ class Gateway:
         self.cfg, self.key, self.ledger = cfg, key, ledger
         self.clock, self.wall, self.sleep, self.resolver = clock, wall, sleep, resolver
         self.task_id = task_id
+        self.provider = "chat"       # which endpoint this gateway speaks to (config.PROVIDERS); set by from_db
+        self.priority = None         # scheduling priority sent with chat calls (None or 0: none); see chat()
         self.db_path = None          # set by from_db: the idle policy (resources.idle) reloads an unloaded vLLM
         self.notices: list[str] = []  # what the user was told while this gateway waited (e.g. a model reload)
         self._locality = None
@@ -190,13 +198,18 @@ class Gateway:
         self._model = cfg.model or None
 
     @classmethod
-    def from_db(cls, db, db_path=None, **kwargs) -> "Gateway":
+    def from_db(cls, db, db_path=None, provider="chat", **kwargs) -> "Gateway":
+        """The gateway of one of the individual's endpoints: `chat` (the answer model) or a memory model (`embed`,
+        `rerank`; config.PROVIDERS). Every provider has its own settings row and the same guard, key rule and
+        ledger."""
         from .ledger import Ledger, ledger_path
-        cfg = iconfig.get_config(db)
+        cfg = iconfig.get_config(db, provider)
         key = iconfig.read_key(cfg) if cfg.configured else None
         ledger = Ledger(ledger_path(db_path)) if db_path is not None and cfg.configured else None
         gateway = cls(cfg, key=key, ledger=ledger, **kwargs)
-        gateway.db_path = db_path
+        gateway.provider = provider
+        # the idle policy manages the answer model's server only: a memory model's gateway takes no in-use lock
+        gateway.db_path = db_path if provider == "chat" else None
         return gateway
 
     # ---- endpoint policy ------------------------------------------------------------------------------------
@@ -428,7 +441,12 @@ class Gateway:
 
     # ---- generation -------------------------------------------------------------------------------------------
     def chat(self, messages, *, purpose, max_tokens=None, temperature=None, tools=None, tool_choice=None,
-             response_format=None, stream=False, on_delta=None, authorization=None, timeout=None) -> ChatResult:
+             response_format=None, stream=False, on_delta=None, authorization=None, timeout=None,
+             priority=None) -> ChatResult:
+        """`priority` (default self.priority): sent as the request's `priority` when it is a positive integer. A
+        server with priority scheduling (vLLM --scheduling-policy priority) serves a higher value after the
+        others; background calls carry cfg.background_priority so the owner's first token does not queue behind
+        them. Nothing is sent for None or 0, so an endpoint that does not know the field never sees it."""
         where = self.guard()
         self.screen(messages, authorization)
         max_tokens = min(int(max_tokens or self.cfg.max_output_tokens), self.cfg.max_output_tokens)
@@ -451,11 +469,15 @@ class Gateway:
             payload["response_format"] = response_format
         if self.cfg.thinking != "default":
             payload["chat_template_kwargs"] = {"enable_thinking": self.cfg.thinking == "on"}
+        priority = self.priority if priority is None else priority
+        priority = priority if isinstance(priority, int) and not isinstance(priority, bool) and priority > 0 else None
+        if priority:
+            payload["priority"] = priority
         # A server that ignores max_tokens cannot hand back more than the cap allows (generous: ~6 chars a token).
         max_chars = max_tokens * MAX_CHARS_PER_TOKEN
         start = self.clock()
         row = {"at": self.wall(), "purpose": purpose, "model": model, "locality": where, "stream": stream,
-               "task_id": self.task_id}
+               "task_id": self.task_id, "provider": self.provider, "priority": priority}
         # The ledger row is written when the call ends; while a stream runs it is visible to Presence only through
         # the in-process registry (presence/activity.py), with the content and tool-call deltas counted as tokens.
         inflight = activity.track("generating", subsystem="reasoning", purpose=purpose, task_id=self.task_id,
@@ -483,8 +505,89 @@ class Gateway:
         self._record(row | {"status": "ok", "prompt_tokens": result.prompt_tokens,
                             "completion_tokens": result.completion_tokens, "latency_ms": result.latency_ms,
                             "first_token_ms": result.first_token_ms, "attempts": attempts,
-                            "tokens_per_second": result.tokens_per_second})
+                            "tokens_per_second": result.tokens_per_second, "cached_tokens": result.cached_tokens})
         return result
+
+    # ---- memory models: embeddings and relevance scores ------------------------------------------------------
+    def _memory_call(self, path, payload, texts, purpose, timeout, parse):
+        """One POST for embed()/rerank(): the endpoint guard, the off-host screen with every text marked private
+        (a memory statement is the owner's: never sent off this host without remote_private_memory), `parse` to
+        check the answer's shape, then one ledger row (tokens and latency, no text) with the real outcome: a
+        malformed answer is recorded as bad_response, never as ok."""
+        where = self.guard()
+        self.screen([{"content": t, "private": True} for t in texts])
+        start = self.clock()
+        row = {"at": self.wall(), "purpose": purpose, "model": payload.get("model"), "locality": where,
+               "stream": False, "task_id": self.task_id, "provider": self.provider}
+        try:
+            data, attempts = self._json("POST", path, payload, timeout=timeout)
+            if not isinstance(data, dict):
+                raise InferenceError("bad_response", f"{path} did not return a JSON object")
+            out = parse(data)
+        except InferenceError as err:
+            self._record(row | {"status": err.code, "error": str(err)[:300], "attempts": getattr(err, "attempts", 1),
+                                "latency_ms": round((self.clock() - start) * 1000, 1)})
+            raise
+        self._record(row | {"status": "ok", "attempts": attempts, "latency_ms": round((self.clock() - start) * 1000, 1),
+                            "prompt_tokens": _usage(data.get("usage")).get("prompt_tokens")})
+        return out
+
+    def embed(self, texts, *, purpose, input_type=None, timeout=None) -> list[list[float]]:
+        """One vector per text, in order, from POST /embeddings (the OpenAI shape; vLLM, TEI and NVIDIA's embedding
+        NIM speak it). `input_type` ("query" or "passage") is sent only when given, for servers of asymmetric
+        models that ask for it. Every vector is checked: finite numbers, one length for all."""
+        texts = list(texts)
+        if not texts or not all(isinstance(t, str) and t for t in texts):
+            raise ValueError("embed needs a non-empty list of non-empty strings")
+        payload = {"model": self.model(), "input": texts, "encoding_format": "float"}
+        if input_type:
+            payload["input_type"] = input_type
+
+        def parse(data):
+            items = data.get("data")
+            if not isinstance(items, list) or len(items) != len(texts):
+                raise InferenceError("bad_response", "/embeddings did not return one item per input")
+            out = [None] * len(texts)
+            for position, item in enumerate(items):
+                index = item.get("index", position) if isinstance(item, dict) else None
+                vector = item.get("embedding") if isinstance(item, dict) else None
+                if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(texts) \
+                        or out[index] is not None or not isinstance(vector, list) or not vector \
+                        or not all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+                                   for x in vector):
+                    raise InferenceError("bad_response", "/embeddings returned an item that is not a vector of "
+                                                         "numbers")
+                out[index] = [float(x) for x in vector]
+            if len({len(v) for v in out}) != 1:
+                raise InferenceError("bad_response", "/embeddings returned vectors of different lengths")
+            return out
+        return self._memory_call("/embeddings", payload, texts, purpose, timeout, parse)
+
+    def rerank(self, query, documents, *, purpose, timeout=None) -> list[float]:
+        """A relevance score per document, in the documents' order, from POST /rerank (the Jina/Cohere shape that
+        vLLM and TEI serve): how well each document answers the query, by a cross-encoder that reads both
+        together. Scores are the server's (vLLM: a probability in 0..1) and are checked to be finite numbers."""
+        documents = list(documents)
+        if not isinstance(query, str) or not query or not documents \
+                or not all(isinstance(d, str) and d for d in documents):
+            raise ValueError("rerank needs a query and a non-empty list of non-empty documents")
+        payload = {"model": self.model(), "query": query, "documents": documents}
+
+        def parse(data):
+            items = data.get("results")
+            if not isinstance(items, list) or len(items) != len(documents):
+                raise InferenceError("bad_response", "/rerank did not return one result per document")
+            out = [None] * len(documents)
+            for item in items:
+                index = item.get("index") if isinstance(item, dict) else None
+                score = item.get("relevance_score") if isinstance(item, dict) else None
+                if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(documents) \
+                        or out[index] is not None or isinstance(score, bool) \
+                        or not isinstance(score, (int, float)) or not math.isfinite(score):
+                    raise InferenceError("bad_response", "/rerank returned a result without a valid index and score")
+                out[index] = float(score)
+            return out
+        return self._memory_call("/rerank", payload, [query, *documents], purpose, timeout, parse)
 
     def _loaded(self, purpose):
         """The idle policy may have unloaded the local model: reload it first (the user is told, see self.notices)
@@ -549,7 +652,8 @@ class Gateway:
         usage = _usage(data.get("usage"))
         return ChatResult(text=content or "", model=_text(data.get("model")),
                           finish_reason=_text(choice.get("finish_reason")) or None, tool_calls=list(calls),
-                          prompt_tokens=usage.get("prompt_tokens"), completion_tokens=usage.get("completion_tokens"))
+                          prompt_tokens=usage.get("prompt_tokens"), completion_tokens=usage.get("completion_tokens"),
+                          cached_tokens=usage.get("cached_tokens"))
 
     def _lines(self, conn, resp, deadline):
         """The stream's lines, each read no later than `deadline` (a line dripped byte by byte, never ending, is
@@ -646,7 +750,8 @@ class Gateway:
                                  "and no [DONE]); the partial answer is not used")
         return ChatResult(text="".join(parts), model=model, finish_reason=finish,
                           tool_calls=[calls[i] for i in sorted(calls)], prompt_tokens=usage.get("prompt_tokens"),
-                          completion_tokens=usage.get("completion_tokens"), first_token_ms=first)
+                          completion_tokens=usage.get("completion_tokens"), first_token_ms=first,
+                          cached_tokens=usage.get("cached_tokens"))
 
     def structured(self, messages, schema, *, name, purpose, **kwargs):
         """A JSON value matching `schema`: requested with response_format json_schema, validated HERE, and on a

@@ -35,7 +35,7 @@ def _config(db, a, now):
         value = getattr(a, flag)
         if value is not None:
             changes[key] = value
-    for key in ("reasoning", "self_critique", "tools", "remote_allowed", "remote_private_memory"):
+    for key in ("reasoning", "self_critique", "critique_voice", "tools", "remote_allowed", "remote_private_memory"):
         value = getattr(a, key)
         if value is not None:
             changes[key] = value
@@ -64,6 +64,8 @@ def _status(db, a, now):
     path = ledger_path(store.resolve_db(a))
     out["usage_24h"] = Ledger(path).summary(since=now - 86400) if path.exists() else None
     out["reasoning"] = {"enabled": gw.cfg.reasoning, "self_critique": gw.cfg.self_critique,
+                        "critique_voice": gw.cfg.critique_voice,
+                        "background_priority": gw.cfg.background_priority or None,
                         "used_for": "nsf web ask / console research answers, from verified evidence only",
                         "when_unavailable": "the extractive summary, labelled 'template'"}
     return out
@@ -155,6 +157,8 @@ def register(sub):
                                       "~/.config/neuroscifi/inference/api_key when it exists)")
     _switch(p, "reasoning", "reasoning", "write research answers with the model", "extractive answers only")
     _switch(p, "self-critique", "self_critique", "one bounded critique pass", "no critique pass")
+    _switch(p, "critique-voice", "critique_voice", "the critique pass also for spoken questions (default)",
+            "skip it for spoken questions: its marks are never spoken, and the answer comes sooner")
     _switch(p, "tools", "tools", "allow read-only tools in `nsf llm ask`", "no tools")
     _switch(p, "remote-allowed", "remote_allowed", "authorise an endpoint off this host (LAN included; privacy-screened)",
             "loopback endpoints only (default)")

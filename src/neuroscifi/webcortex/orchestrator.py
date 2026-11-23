@@ -95,6 +95,7 @@ MCP_ORIGIN = "mcp"
 USER_ORIGINS = ("console", "cli", "voice", "pocket", "pocket-voice", "owner", MCP_ORIGIN)
 USER_ORIGIN_PREFIXES = ("refresh-owner:",)
 OWNER_NOTE_ORIGINS = frozenset({"console", "voice", "pocket", "pocket-voice"})   # reasoning.verdict_note unquoted
+SPOKEN_ORIGINS = frozenset({"voice", "pocket-voice"})    # the answer is spoken (voice/bridge.py), not shown
 MAX_OBJECTIVE = 2000
 MAX_FOLLOW = 2
 MAX_CONTEXT_PACKAGES = 200
@@ -699,6 +700,32 @@ class _Run:
         if why not in self.limitations:
             self.limitations.append(why)
 
+    def memory_check(self, assessment, known):
+        """Before memory answers a question without the web, the answer model confirms that each chosen item states
+        the answer to exactly what is asked (memory_gate.confirm). intent.covers counts shared word stems, so "Does
+        Orbix support encryption in transit?" was answered from "... does not support encryption at rest" and "the
+        tallest structure in the world?" from "... the tallest structure in the Ostra region". The check can only
+        send a question to the web that memory would have answered, never the reverse. Without a usable model, or
+        with `memory_check` off, the lexical decision stands as before. Returns what the task's needs_web decision
+        event records as `memory_check` (None when nothing was attempted)."""
+        from . import memory_gate
+        chosen = set(assessment.get("memory_items") or [])
+        items = [k for k in known if k.get("id") in chosen]
+        if not items or not getattr(self.cfg, "memory_check", True):
+            return None
+        verdict = memory_gate.confirm(self.db, self.services, self.objective, items, task_id=self.id,
+                                      timeout=min(memory_gate.TIMEOUT, max(0.0, self.budget.max_seconds - self.elapsed())),
+                                      background=is_autonomous(self.origin))
+        if verdict.get("unconfigured"):      # no model to ask: nothing was attempted, nothing is recorded
+            return None
+        if verdict["status"] == "checked" and verdict["confirmed"]:
+            assessment["memory_items"] = verdict["confirmed"]
+        elif verdict["status"] == "checked":
+            assessment["needs_web"], assessment["memory_items"] = True, []
+            assessment["reasons"] = [f"{len(items)} knowledge item(s) share the question's words but do not state "
+                                     "its answer (checked by the answer model)"]
+        return {k: verdict[k] for k in ("status", "confirmed", "refused", "reason") if verdict.get(k) is not None}
+
     # ---- discovering --------------------------------------------------------------------------------------------
     def discover(self):
         from . import intent, knowledge
@@ -724,12 +751,14 @@ class _Run:
                                                                  "max_depth": crawl["max_depth"]}}, "discovering")
             self.done("discovering", plan=QueryPlan(queries=()).to_json(), results=[], attempts=[])
             return True
+        checked = self.memory_check(assessment, known) if not assessment.get("needs_web", True) else None
+        checked = {"memory_check": checked} if checked else {}
         self.save(assessment=assessment, known=[k["id"] for k in known])
         if not assessment.get("needs_web", True):
             self.event("decision", {"needs_web": False, "reasons": assessment.get("reasons", []),
-                                    "knowledge": [k["id"] for k in known]}, "discovering")
+                                    "knowledge": [k["id"] for k in known]} | checked, "discovering")
             return False
-        self.event("decision", {"needs_web": True, "reasons": assessment.get("reasons", [])}, "discovering")
+        self.event("decision", {"needs_web": True, "reasons": assessment.get("reasons", [])} | checked, "discovering")
         local = self.local_terms()
         plan = self.screened(intent.plan(self.objective, assessment, now=now, local_terms=local))
         results, attempts, failures = [], [], []
@@ -2143,7 +2172,8 @@ def _reason(db, run, report):
     def apply():
         return reasoning.apply(db, report, run.services, question=run.objective, now=run.clock(), task_id=run.id,
                                time_left=run.budget.max_seconds - run.elapsed(),
-                               presentation=(run.checkpoint.get("context") or {}).get("presentation"), asked=asked)
+                               presentation=(run.checkpoint.get("context") or {}).get("presentation"), asked=asked,
+                               background=is_autonomous(run.origin), spoken=run.origin in SPOKEN_ORIGINS)
     try:
         if not is_autonomous(run.origin):
             out = apply()

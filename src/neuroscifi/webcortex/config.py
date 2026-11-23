@@ -51,6 +51,10 @@ class WebConfig:
     # ADR-041: news / time-sensitive questions asked by a person may render a scripted news page when its static
     # HTML gave no text or no date (owner switch; on by default), at most daily_renders renders per UTC day in all.
     news_rendering: bool = True
+    # Before memory answers a question without the web, the answer model confirms that the chosen statements state
+    # the answer to exactly what is asked (memory_gate.py). It can only send a question to the web. On by default;
+    # without a configured model it does nothing.
+    memory_check: bool = True
     daily_renders: int = 40
     # Owner opt-in (ADR-032), off by default: let the upstream open-webSearch scrapers send their built-in browser
     # User-Agent strings (a form of impersonation) instead of the honest USER_AGENT patched in by `npm run

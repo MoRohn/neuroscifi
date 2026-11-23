@@ -2554,21 +2554,25 @@ def gateway_for(db, services, task_id=None):
     return Gateway.from_db(db, getattr(services, "db_path", None), task_id=task_id)
 
 
-def _critique(gw, b, accepted, timeout=None):
+def _critique(gw, b, accepted, timeout=None, **urgency):
     numbered = "\n".join(f"{i}. {s['text']} [sources {s['citations']}; claims {s['claims']}]"
                          for i, s in enumerate(accepted, 1))
     evidence = json.dumps({"untrusted": True, "claims": b["claims"], "sources": b["sources"]}, ensure_ascii=False)
     msgs = [{"role": "system", "content": CRITIC},
             {"role": "user", "content": f"Question: {b['question']}\n\n<evidence>\n{evidence}\n</evidence>\n\n"
                                         f"Answer sentences:\n{numbered}"}]
-    extra = {"timeout": timeout} if timeout is not None else {}
+    extra = ({"timeout": timeout} if timeout is not None else {}) | urgency
     return gw.structured(msgs, CRITIQUE_SCHEMA, name="nsf_critique", purpose="research_critique",
                          max_tokens=CRITIQUE_TOKENS, temperature=0.0, **extra)
 
 
 def apply(db, report: dict, services, *, question: str, now: float, task_id=None, gateway=None,
-          time_left: float | None = None, presentation: str | None = None, asked: str = "owner") -> dict:
+          time_left: float | None = None, presentation: str | None = None, asked: str = "owner",
+          background: bool = False, spoken: bool = False) -> dict:
     """Write report['reasoning'] and report['generated_by'] (see module doc). Never raises for model failures.
+    `background`: the task is autonomous (nobody waits for it): its model calls carry cfg.background_priority,
+    so a server with priority scheduling serves the owner's calls first. `spoken`: the answer will be spoken, not
+    shown; with cfg.critique_voice off the critique pass, whose marks are never spoken, is skipped.
     `time_left`: seconds of the task's time budget still available; the model calls (answer, repair, critique)
     share it as their deadline, and with less than MIN_MODEL_SECONDS left no call is made (degraded).
     `presentation`: the owner's style instruction for the answer (task context, messages()); the guard and the
@@ -2604,9 +2608,11 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     def remaining():
         return None if deadline is None else max(0.05, deadline - time.monotonic())
 
+    lower = getattr(gw.cfg, "background_priority", 0) if background else 0
+    urgency = {"priority": lower} if lower else {}       # only when set: the default request is unchanged
     results = []
     try:
-        extra = {"timeout": remaining()} if deadline is not None else {}
+        extra = ({"timeout": remaining()} if deadline is not None else {}) | urgency
         value, results = gw.structured(messages(b, presentation), answer_schema(b), name="nsf_answer",
                                        purpose="research_answer", stream=True, max_tokens=ANSWER_TOKENS,
                                        temperature=0.1, **extra)
@@ -2620,9 +2626,12 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
     critique = None
     if accepted and gw.cfg.self_critique and deadline is not None and deadline - time.monotonic() < MIN_MODEL_SECONDS:
         critique = {"status": "skipped", "reason": "time_budget: too little of the task's time budget left"}
+    elif accepted and gw.cfg.self_critique and spoken and not getattr(gw.cfg, "critique_voice", True):
+        critique = {"status": "skipped", "reason": "spoken answer: the critique pass is off for voice "
+                                                   "(nsf llm config --critique-voice turns it on)"}
     elif accepted and gw.cfg.self_critique:
         try:
-            verdicts, more = _critique(gw, b, accepted, timeout=remaining())
+            verdicts, more = _critique(gw, b, accepted, timeout=remaining(), **urgency)
             results += more
             dropped, flagged = set(), 0
             for issue in verdicts.get("issues") or []:
