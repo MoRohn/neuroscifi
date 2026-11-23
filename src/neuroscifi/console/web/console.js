@@ -457,6 +457,7 @@ async function loadTeach() {
   const roots = new Set([...Object.keys(explain.beliefs.sensors), ...Object.keys(explain.beliefs.partners)]);
   $('rootList').replaceChildren(...[...roots].map((r) => h('option', { value: r })));
   $('partnerList').replaceChildren(...Object.keys(explain.beliefs.partners).map((r) => h('option', { value: r })));
+  $('cameraList').replaceChildren(...Object.keys(explain.beliefs.sensors).map((r) => h('option', { value: r })));
 }
 
 // "Reads as declared, 99% sure" instead of P(inverted) = 0.010.
@@ -1161,7 +1162,8 @@ async function loadMemory() {
   fill($('deletionLog'), deletions.items.length
     ? table('Deletion log, newest first', [{ label: 'Id', num: true }, 'Time', 'Target', 'Effects', 'Failure'],
         deletions.items.map((d) => [d.id, fmtTime(d.time), `${d.payload.target_kind} ${d.payload.target_id}`,
-          forgetSummary({ status: 'forgotten', effects: d.payload.effects ?? {} }), d.payload.failure ?? 'none']))
+          d.payload.target_kind === 'setting' ? settingSummary(d.payload.effects ?? {})
+            : forgetSummary({ status: 'forgotten', effects: d.payload.effects ?? {} }), d.payload.failure ?? 'none']))
     : empty('Nothing has been forgotten or expired.'));
   fill($('decisionLog'), decisions.items.length
     ? table('Recorded decisions, newest first', [{ label: 'Id', num: true }, 'Time', 'Epoch', 'Decision', 'Scope', 'Reason'],
@@ -1175,12 +1177,34 @@ function scopeText(scope) {
   return Object.entries(scope).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => `${k} ${v}`).join(' · ') || '—';
 }
 
+// A changed instance setting in the deletion log (the log is where forgets and sweeps are, whose meaning it changes).
+function settingSummary(e) {
+  return `Setting changed from ${JSON.stringify(e.from)} to ${JSON.stringify(e.to)}` +
+    (e.carried_by_restore ? ', carried over from the instance this copy was restored from.' : '.');
+}
+
+// A consolidated reading has no event id any more; its journal position (the id shown) is what forgets it.
+async function forgetReading(button, r) {
+  const ok = await confirmAction(`Forget consolidated reading #${r.id}?`,
+    `The ${r.payload.channel} reading ${r.payload.reading} from ${r.scope.root} in epoch ${r.scope.epoch}, kept when its event expired, is deleted. ` +
+    'Beliefs are recomputed without it, its tombstone says it was forgotten, and every checkpoint becomes stale until it is rebuilt.', 'Forget reading');
+  if (!ok) return;
+  await act(button, $('memoryStatus'), async () => {
+    const result = await api('POST', '/api/forget', { kind: 'consolidated', target: r.id });
+    await Promise.all([loadMemory(), loadHeader()]);
+    return `Forgot reading #${r.id}: ${forgetSummary(result)}`;
+  });
+}
+
 // Any memory kind: id, time, scope and the stored record as text (records are shown as data, never as markup).
 function renderMemoryBrowse(kind, items) {
+  const forgettable = kind === 'consolidated';
   fill($('memoryBrowse'), items.length
-    ? table(`Memory of kind ${kind}, newest first`, ['Id', 'Time', 'Scope', 'Record'], items.map((r) => [
+    ? table(`Memory of kind ${kind}, newest first`, ['Id', 'Time', 'Scope', 'Record', ...(forgettable ? ['Actions'] : [])], items.map((r) => [
         h('code', { text: String(r.id) }), fmtTime(r.time), scopeText(r.scope),
-        h('details', {}, h('summary', { text: 'Show record' }), h('pre', { text: JSON.stringify(r.payload, null, 2) }))]))
+        h('details', {}, h('summary', { text: 'Show record' }), h('pre', { text: JSON.stringify(r.payload, null, 2) })),
+        ...(forgettable ? [{ actions: [h('button', { type: 'button', class: 'danger', 'data-forget-reading': r.id,
+          'aria-label': `Forget consolidated reading ${r.id}`, text: 'Forget', onclick: (ev) => forgetReading(ev.currentTarget, r) })] }] : [])]))
     : empty(`No ${kind} records.`));
 }
 
@@ -2638,6 +2662,22 @@ function wire() {
       $('partnerRoot').value = '';
       await Promise.all([loadEvidence(), loadHeader()]);
       return `Forgot partner ${root}: ${forgetSummary(result)}`;
+    });
+  });
+
+  $('forgetCameraForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const root = $('cameraRoot').value.trim();
+    if (!root) { say($('evidenceStatus'), 'Enter the camera root to forget.', 'error'); $('cameraRoot').focus(); return; }
+    const ok = await confirmAction(`Forget camera ${root}?`,
+      `Every camera reading from ${root}, in every epoch, is deleted: events in the journal are tombstoned and readings kept from expired events are removed. ` +
+      'Beliefs about this camera and the changes confirmed for it are dropped.', 'Forget camera');
+    if (!ok) return;
+    act($('forgetCamera'), $('evidenceStatus'), async () => {
+      const result = await api('POST', '/api/forget', { kind: 'camera', target: root });
+      $('cameraRoot').value = '';
+      await Promise.all([loadEvidence(), loadHeader()]);
+      return `Forgot camera ${root}: ${forgetSummary(result)}`;
     });
   });
 

@@ -349,6 +349,70 @@ def test_owner_journey(console, new_page):
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
 
 
+def test_forget_a_consolidated_reading_and_a_camera(console, new_page):
+    """Security review M2. What an expired event left (ADR-044) is listed in the memory view by its seq, with a
+    Forget button that asks first; a camera is forgotten by its root like a partner. The new controls pass the
+    accessibility scan."""
+    db = store.open_existing(console.path)
+    try:
+        long_ago = time.time() - 30 * 86400            # past the 7-day lifetime: the console's first read expires them
+        evidence.start_epoch(db, "bench", long_ago)
+        for n in range(4):
+            evidence.observe(db, {"id": f"old-cam-{n}", "epoch": "bench", "channel": "camera", "action": 0, "bit": 0,
+                                  "root": "porch-cam"}, long_ago + n)
+            evidence.observe(db, {"id": f"old-word-{n}", "epoch": "bench", "channel": "word", "action": 0, "bit": 0,
+                                  "root": "alice"}, long_ago + 10 + n)
+    finally:
+        db.close()
+    page = new_page(1280, 900, bypass_csp=True)        # only so axe can be injected for the scan at the end
+    page.goto(console.url)
+    expect(page.locator("#h-overview")).to_be_visible()
+    go(page, "evidence")
+    expect(page.locator("#evidenceTable")).to_contain_text("No evidence in this epoch yet")
+    expect(page.locator("#epochSummary")).to_contain_text("8 consolidated readings kept from expired events")
+    go(page, "memory")
+    page.locator("#memKind").select_option("consolidated")
+    rows = page.locator("#memoryBrowse tbody tr")
+    expect(rows).to_have_count(8)
+    expect(rows.first).to_contain_text("epoch bench")
+    newest = int(rows.first.locator("code").inner_text())
+    assert newest == 8 and "old-word-3" not in page.locator("#memoryBrowse").inner_text()   # the seq, never the id
+    page.get_by_role("button", name=f"Forget consolidated reading {newest}", exact=True).click()
+    dialog = page.locator("#confirmDialog")
+    expect(dialog).to_be_visible()
+    expect(dialog).to_contain_text("kept when its event expired")
+    page.locator("#confirmCancel").click()
+    expect(rows).to_have_count(8)
+    page.get_by_role("button", name=f"Forget consolidated reading {newest}", exact=True).click()
+    page.locator("#confirmOk").click()
+    expect(page.locator("#memoryStatus")).to_contain_text(f"Forgot reading #{newest}: 0 evidence row(s) deleted; "
+                                                          "1 consolidated reading(s) deleted")
+    expect(page.locator("#memoryBrowse tbody tr")).to_have_count(7)
+    expect(page.locator("#deletionLog")).to_contain_text(f"consolidated {newest}")
+    page.add_script_tag(path=str(AXE))
+    found = {}
+    scan(page, found, "memory-consolidated")
+    # a camera, by its root, in the evidence view beside the partner form
+    go(page, "evidence")
+    page.locator("#forgetCamera").click()
+    expect(page.locator("#evidenceStatus")).to_contain_text("Enter the camera root to forget.")
+    page.locator("#cameraRoot").fill("porch-cam")
+    page.locator("#forgetCamera").click()
+    expect(dialog).to_be_visible()
+    expect(dialog).to_contain_text("Every camera reading from porch-cam, in every epoch")
+    page.locator("#confirmOk").click()
+    expect(page.locator("#evidenceStatus")).to_contain_text("Forgot camera porch-cam: 0 evidence row(s) deleted; "
+                                                            "4 consolidated reading(s) deleted")
+    expect(page.locator("#epochSummary")).to_contain_text("3 consolidated readings kept from expired events")
+    scan(page, found, "evidence-forget-camera")
+    assert not found, found
+    go(page, "teach")
+    assert "porch-cam" not in page.locator("#teach").inner_text()
+    go(page, "memory")
+    assert "porch-cam" not in page.locator("#memory").inner_text()       # the log keeps a digest label only
+    expect(page.locator("#deletionLog")).to_contain_text("camera camera:#")
+
+
 def test_locked_states_and_api_errors(console, new_page):
     page = new_page(1280, 900)
     requests = []

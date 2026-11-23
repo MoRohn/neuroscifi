@@ -57,7 +57,9 @@ HEADERS = {
                                 "img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"),
 }
 FORGET = {"evidence": governance.forget_evidence, "epoch": governance.forget_epoch,
-          "partner": governance.forget_partner, "dataset": governance.forget_dataset}
+          "partner": governance.forget_partner, "camera": governance.forget_camera,
+          "consolidated": governance.forget_consolidated, "dataset": governance.forget_dataset}
+FORGET_BY_NUMBER = ("dataset", "consolidated")      # the target is an id or a seq, the others take a name
 
 
 # ---- request helpers -------------------------------------------------------------------------------
@@ -167,8 +169,8 @@ def _forget(c, p, q, b):
     _fields(b, ("kind", "target"))
     if b["kind"] not in FORGET:
         raise ValidationError("kind must be one of " + ", ".join(FORGET))
-    target = _int(b["target"], "target") if b["kind"] == "dataset" else b["target"]
-    if b["kind"] != "dataset" and not isinstance(target, str):
+    target = _int(b["target"], "target") if b["kind"] in FORGET_BY_NUMBER else b["target"]
+    if b["kind"] not in FORGET_BY_NUMBER and not isinstance(target, str):
         raise ValidationError("target must be a string")
     return FORGET[b["kind"]](c.db, target, c.now)
 

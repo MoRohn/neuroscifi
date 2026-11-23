@@ -276,6 +276,37 @@ def test_forget_epoch_and_partner(console):
     assert [d["payload"]["target_kind"] for d in deletions] == ["epoch", "partner"]
 
 
+def test_forget_a_consolidated_reading_by_its_seq_and_a_camera_by_its_root(console):
+    """Security review M2: the memory view lists a consolidated reading by its seq, so that is what forgets it; a
+    camera root is forgotten like a partner. Both go through POST /api/forget, behind the same token and checks."""
+    c = console
+    teach_baseline(c)
+    c.clock[0] += 8 * 86400
+    c.srv.last_sweep = float("-inf")
+    assert c.ok("GET", "/api/epochs/e1/evidence") == []
+    listed = c.ok("GET", "/api/memory?kind=consolidated&epoch=e1&channel=word")["items"]
+    seq = listed[0]["id"]
+    assert isinstance(seq, int) and len(listed) == 6
+    for token in (None, "wrong"):
+        assert c.post("/api/forget", {"kind": "consolidated", "target": seq}, token=token)[0] == 403
+        assert c.post("/api/forget", {"kind": "camera", "target": "cam1"}, token=token)[0] == 403
+    assert c.post("/api/forget", {"kind": "camera", "target": "cam1"}, headers={"Origin": "http://evil.example"})[0] == 403
+    for bad in (str(seq), 1.5, True, None, 0):
+        assert c.post("/api/forget", {"kind": "consolidated", "target": bad})[0] == 400
+    assert c.post("/api/forget", {"kind": "camera", "target": 7})[0] == 400
+    assert len(c.ok("GET", "/api/memory?kind=consolidated&epoch=e1")["items"]) == 15       # nothing went so far
+    status, data = c.post("/api/forget", {"kind": "consolidated", "target": seq})
+    assert status == 200 and data["status"] == "forgotten" and data["effects"]["consolidated_deleted"] == 1
+    assert c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]["partners"]["alice"]["n"] == 5
+    assert c.post("/api/forget", {"kind": "consolidated", "target": seq})[1]["status"] == "absent"
+    status, data = c.post("/api/forget", {"kind": "camera", "target": "cam1"})
+    assert status == 200 and data["effects"]["consolidated_deleted"] == 6 and data["effects"]["roots_forgotten"] == 1
+    assert c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]["sensors"] == {}
+    deletions = c.ok("GET", "/api/memory?kind=deletion")["items"]
+    assert [d["payload"]["target_kind"] for d in deletions][:2] == ["camera", "consolidated"]
+    assert "cam1" not in json.dumps(deletions)
+
+
 def test_writes_sweep_expired_evidence_first_and_reads_sweep_once_a_minute(console):
     c = console
     c.post("/api/epochs", {"name": "e1"})

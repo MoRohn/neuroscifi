@@ -110,6 +110,9 @@
     <article class="card" aria-labelledby="h-fpartner"><h2 id="h-fpartner">Forget a partner</h2>
       <form id="forgetPartnerForm" novalidate><label for="partnerRoot">Partner root</label><input id="partnerRoot" maxlength="128" autocomplete="off" list="partnerList" required><datalist id="partnerList"></datalist>
       <button class="danger" id="forgetPartner">Forget partner</button></form></article>
+    <article class="card" aria-labelledby="h-fcamera"><h2 id="h-fcamera">Forget a camera</h2>
+      <form id="forgetCameraForm" novalidate><label for="cameraRoot">Camera root</label><input id="cameraRoot" maxlength="128" autocomplete="off" list="cameraList" required><datalist id="cameraList"></datalist>
+      <button class="danger" id="forgetCamera">Forget camera</button></form></article>
   </div>
   <p id="evidenceStatus" class="msg" role="status"></p>
 </section>
@@ -348,7 +351,8 @@
     <article class="card wide" aria-labelledby="h-declog"><h2 id="h-declog">Recorded decisions</h2><div id="decisionLog" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
     <article class="card wide" aria-labelledby="h-browse"><h2 id="h-browse">Browse memory</h2>
       <label for="memKind">Kind of memory</label><select id="memKind"></select>
-      <div id="memoryBrowse" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+      <div id="memoryBrowse" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+      <p id="memoryStatus" class="msg" role="status"></p></article>
     <article class="card wide" aria-labelledby="h-cli"><h2 id="h-cli">Only from the command line</h2>
       <p class="sub">These change the individual in ways the console does not offer. Run them where the instance file lives:</p>
       <ul class="reasons">
