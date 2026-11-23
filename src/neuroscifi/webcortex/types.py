@@ -200,7 +200,9 @@ class BudgetExceeded(Exception):
 @dataclass
 class Budget(JsonMixin):
     max_queries: int = 6
-    max_requests: int = 40            # every network request incl. API calls and robots.txt
+    # every network request the task is charged for, incl. API calls and robots.txt. Pages fetched ahead of their
+    # turn and then not used are counted apart (Usage.prefetch_unused_*); together they never exceed this either
+    max_requests: int = 40
     max_pages: int = 8                # documents acquired (fetched or rendered)
     max_bytes: int = 20_000_000
     max_seconds: float = 120.0
@@ -238,6 +240,12 @@ class Usage(JsonMixin):
     # The daily allowances add them to requests/bytes (scheduler.traffic).
     prefetch_unused_requests: int = 0
     prefetch_unused_bytes: int = 0
+
+    def refund(self, *, requests=0):
+        """Take back requests charged just before they would have been sent and then not sent (net.SafeFetcher: the
+        task was stopped while the connection was being opened, and nothing was written on it)."""
+        with _CHARGE_LOCK:
+            self.requests = max(0, self.requests - requests)
 
     def charge_unused(self, *, requests=0, bytes=0):
         """Count what an unused read-ahead fetch sent and received (net.SafeFetcher.speculate). Never checked

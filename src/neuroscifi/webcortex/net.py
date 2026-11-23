@@ -48,14 +48,27 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
   that moment would have sent the same requests and seen the same answers (same policy, backoff, robots entries
   and cached validators; the budget stopping it at the same point), else it fetches again. An unused one (abandon)
   is never charged, cached or remembered; what it sent counts in Usage.prefetch_unused_*. Throttle slots and
-  Retry-After backoff it caused apply at once. It sends no request its task's request budget would refuse.
-- Stops (gated, speculate(wanted=...)): before every network step of a fetch (each name lookup and each request:
-  robots.txt, the page, every redirect hop) the fetcher asks whether the fetch is still wanted. The reader's own
-  fetches ask the gate of the calling thread (gated()), a read-ahead fetch asks the one it was started with, and a
-  read-ahead fetch also stops once it is abandoned or the fetcher's policy was replaced. So no lookup and no
-  request starts after the stop its gate reports. A read-ahead request already on the wire when its fetch is
-  abandoned is cut (the connection is shut down; what arrived counts as unused); a connection being opened may
-  finish its handshake, and nothing is sent on it. The reader's own request already on the wire finishes.
+  Retry-After backoff it caused apply at once. The fetches ahead of one task share that task's budget: a request
+  is sent, and a body byte read, only while what the task was charged, what its earlier fetches ahead sent unused
+  and what its fetches ahead in flight hold (SafeFetcher._ahead) leave room in max_requests / max_bytes. At the
+  byte limit a fetch ahead reads one byte more, as the reader's own read does, to learn that the body goes on.
+- Stops (gated, speculate(wanted=...)): before every network step of a fetch the fetcher asks whether the fetch
+  is still wanted: before each name lookup, before each connection is opened (after the politeness wait) and once
+  more when the connection is open, immediately before the request is written on it (robots.txt, the page, every
+  redirect hop). The reader's own fetches ask the gate of the calling thread (gated()), a read-ahead fetch asks the
+  one it was started with, and a read-ahead fetch also stops once it is abandoned or the fetcher's policy was
+  replaced. So no lookup starts and no request is sent after the stop its gate reports; a connection being opened
+  when the stop lands may complete its handshake, and it is closed with nothing sent on it and no request counted.
+  A request already on the wire is cut (the connection is shut down): at once when a read-ahead fetch is
+  abandoned, and within STOP_POLL seconds of the stop otherwise, because while an exchange is on the wire its
+  watchdog asks too (a read-ahead fetch's own gate; for the reader's fetch the `watch` given to gated(), which
+  must be callable from another thread). What had arrived of a cut read-ahead request counts as unused. A claim
+  waiting for its read-ahead fetch asks the caller's gate every STOP_POLL seconds as well.
+- One exchange per host for fetches ahead: a host is busy while any exchange with it is in progress in this
+  fetcher. A read-ahead fetch that reaches a busy host (a redirect onto the site the reader is on, or onto another
+  fetch ahead's) stops there and is not used: the claim fetches as usual. When the reader's own fetch reaches a
+  host a read-ahead fetch is talking to, that fetch is cut and likewise not used. The reader's own fetches are not
+  held back by one another (as before).
 - Numeric headers (Retry-After, Content-Length) accept ASCII digits only.
 - Privacy: bodies and full query strings are never logged; purpose='api' responses are never cached (API URLs
   carry search queries, ADR-023).
@@ -116,6 +129,7 @@ _CHARGE_LOCK = threading.Lock()
 # a read-ahead fetch reads its body unbounded by the task's byte budget (its own page cap still applies); the budget
 # is applied when the reader claims it (SafeFetcher._commit), exactly where a fetch made then would have stopped
 _UNBOUNDED = Budget(max_requests=1 << 62, max_bytes=1 << 62)
+STOP_POLL = 0.25      # seconds between two looks at the gate while a request is on the wire or a claim waits
 
 
 @dataclass(frozen=True)
@@ -417,12 +431,16 @@ class _Abandoned(BudgetExceeded):
 
 
 class _OverBudget(BudgetExceeded):
-    """Raised inside a read-ahead fetch instead of a request its task's request budget has no room for. The request
-    was not sent. A fetch made at claim time stops at this request too (the task's requests only grow), so the
-    claim replays what was sent and then lets the task's own charge refuse the next request (_commit)."""
+    """Raised inside a read-ahead fetch where its task's budget has no room: instead of a request (`kind`
+    'requests': the request was not sent) or while a body is read (`kind` 'bytes': the read stopped one byte past
+    the room, and a 'cut' event says what had arrived). Room is counted for the task as a whole: charged, sent
+    unused before, and held by its fetches ahead in flight. The claim uses the fetch only when a fetch made at
+    that moment would be refused at the same place (_fits), and then lets the task's own budget refuse it
+    (_commit); otherwise it fetches again."""
 
-    def __init__(self):
-        super().__init__("read-ahead", "requests", "budget")
+    def __init__(self, kind="requests"):
+        super().__init__("read-ahead", kind, "budget")
+        self.kind = kind
 
 
 class _Speculation:
@@ -445,11 +463,14 @@ class _Speculation:
         self.lock = threading.Lock()
         self.finished = threading.Event()
         self.abandoned = False
+        self.halted = False               # stopped for good without being abandoned (halt): sends nothing more
         self.stopped = None               # why the fetch ended itself early (its gate, the policy), else None
         self.wire = None                  # the _Watchdog of the exchange on the wire, if any (abandon cuts it)
         self.pending = False              # the request recorded last is not on the wire yet (sent() clears it)
+        self.held = [0, 0]                # requests and bytes this fetch holds in fetcher._ahead (release())
         # in order: ("request",) | ("bytes", wire, identity-encoded) | ("robots", key, entry, (text, at) | None)
-        # | ("cache", FetchResult)
+        # | ("cache", FetchResult) | ("cut", wire, identity-encoded, declared length | None, size limit): the body
+        # read stopped at the task's byte budget (last event of the fetch)
         self.events: list[tuple] = []
         self.robots: dict = {}            # robots key -> entry this fetch fetched (held back)
         self.robots_text: dict = {}       # robots key -> (text, fetched_at) for the public cache (held back)
@@ -468,8 +489,15 @@ class _Speculation:
         wanted: abandoned by the reader, the fetcher's policy replaced (the run applied a new deny list: nothing
         goes out under the old one), or the task's gate gives a reason (cancelled, web access off, the deny list
         changed). The gate is read now, outside the lock; a gate that fails counts as a stop."""
+        why = self.unwanted(url)
+        if why:
+            raise _Abandoned(why)
+
+    def unwanted(self, url) -> str | None:
+        """Why the fetch must not go on (kept in `stopped`), else None. Callable from any thread: the watchdog of
+        the exchange on the wire asks it too."""
         with self.lock:
-            why = "abandoned" if self.abandoned else \
+            why = "abandoned" if self.abandoned else self.stopped if self.halted else \
                 "policy changed" if self.fetcher.policy is not self.policy else None
         if why is None and self.wanted is not None:
             try:
@@ -479,26 +507,120 @@ class _Speculation:
         if why:
             with self.lock:
                 self.stopped = self.stopped or why
-            raise _Abandoned(why)
+        return why
+
+    def halt(self, why) -> None:
+        """Stop the fetch for good without abandoning it: it sends nothing more and its request on the wire is cut.
+        It stays for its claim, which will not use it (its error is not a FetchError), and what it sent is counted
+        when the reader abandons it. Used when the reader's own fetch reaches the host it is talking to."""
+        with self.lock:
+            self.halted = True
+            self.stopped = self.stopped or why
+            wire = self.wire
+        if wire is not None:
+            wire.abort()
 
     def charge(self, _budget, *, requests=0, bytes=0, identity=True, **_others):
         """Record a charge in order. Once abandoned, or once the fetcher's policy changed, refuse it so no further
         request is sent; bytes that already arrived then count as unused. A request the task's request budget has
-        no room for (what the task was charged so far plus this fetch's own requests) is refused as _OverBudget."""
+        no room for is refused as _OverBudget and not sent. Room is the task's, not this fetch's: what the task was
+        charged, what its fetches ahead sent unused, and what all its fetches ahead in flight hold."""
         with self.lock:
-            if self.abandoned or (requests and self.fetcher.policy is not self.policy):
+            if self.abandoned:
                 if bytes:
                     self.usage.charge_unused(bytes=bytes)
                 raise _Abandoned()
+            if requests and (self.halted or self.fetcher.policy is not self.policy):
+                raise _Abandoned(self.stopped or "policy changed")
             if requests and self.budget is not None:
-                sent = sum(1 for e in self.events if e[0] == "request")
-                if self.usage.requests + sent + requests > self.budget.max_requests:
-                    raise _OverBudget()
+                with self.fetcher._lock:
+                    held = self.fetcher._ahead.setdefault(id(self.usage), [0, 0])
+                    if self.usage.requests + self.usage.prefetch_unused_requests + held[0] + requests \
+                            > self.budget.max_requests:
+                        raise _OverBudget("requests")
+                    held[0] += requests
+                    self.held[0] += requests
             self.events.extend([("request",)] * requests)
             if requests:
                 self.pending = True
             if bytes:
                 self.events.append(("bytes", bytes, identity))
+
+    def take(self, wanted: int) -> int:
+        """Before a body read of up to `wanted` bytes: how many of them the task's byte budget has room for (0: none),
+        now held for this fetch. Room is the task's: max_bytes less what it was charged, what its fetches ahead
+        received unused and what all its fetches ahead in flight hold. Without a budget: `wanted`."""
+        with self.lock:
+            if self.abandoned or self.budget is None:     # abandoned: its connection is shut, the read ends itself
+                return wanted
+            with self.fetcher._lock:
+                held = self.fetcher._ahead.setdefault(id(self.usage), [0, 0])
+                room = self.budget.max_bytes - self.usage.bytes - self.usage.prefetch_unused_bytes - held[1]
+                granted = max(0, min(wanted, room))
+                held[1] += granted
+                self.held[1] += granted
+            return granted
+
+    def give_back(self, count: int) -> None:
+        """Bytes taken for a read that did not arrive (a short read, the end of the body)."""
+        if count <= 0 or self.budget is None:
+            return
+        with self.fetcher._lock:
+            count = min(count, self.held[1])
+            held = self.fetcher._ahead.get(id(self.usage))
+            if held is not None:
+                held[1] -= count
+            self.held[1] -= count
+
+    def cut(self, wire, identity, declared, limit):
+        """The body read stopped at the task's byte budget: `wire` bytes of it had arrived (one more than there was
+        room for). Recorded for the claim (_fits) and for the count of unused bytes; then _OverBudget('bytes')."""
+        with self.lock:
+            if self.abandoned:
+                self.usage.charge_unused(bytes=wire)
+                raise _Abandoned()
+            self.events.append(("cut", wire, identity, declared, limit))
+        raise _OverBudget("bytes")
+
+    def release(self) -> None:
+        """Give up what this fetch holds of the task's budget in fetcher._ahead: when it is claimed (its charges are
+        on the task's Usage by then) or abandoned (what it sent counts as unused by then). Harmless twice."""
+        with self.fetcher._lock:
+            held = self.fetcher._ahead.get(id(self.usage))
+            if held is not None:
+                held[0] -= self.held[0]
+                held[1] -= self.held[1]
+                if held[0] <= 0 and held[1] <= 0:
+                    del self.fetcher._ahead[id(self.usage)]
+            self.held = [0, 0]
+
+    def unsend(self) -> None:
+        """The request recorded last was never written on a connection (the fetch was stopped while the connection
+        was being opened, or cut before the send). It is not a request: taken out of the record and of what this
+        fetch holds of the task's budget."""
+        with self.lock:
+            if not self.pending:
+                return
+            self.pending = False
+            for i in range(len(self.events) - 1, -1, -1):
+                if self.events[i][0] == "request":
+                    del self.events[i]
+                    break
+            with self.fetcher._lock:
+                if self.held[0] > 0:
+                    self.held[0] -= 1
+                    held = self.fetcher._ahead.get(id(self.usage))
+                    if held is not None:
+                        held[0] -= 1
+
+    def arrived(self, wire) -> None:
+        """Bytes of a body whose read was cut short (the connection was shut down under it): they arrived, so they
+        count, as unused at once when the fetch is abandoned, else in the record for when it is."""
+        with self.lock:
+            if not self.abandoned:
+                self.events.append(("bytes", wire, False))
+                return
+        self.usage.charge_unused(bytes=wire)
 
     def on_wire(self, watchdog):
         """The exchange about to use the wire (None: it ended). False when the fetch was abandoned meanwhile: the
@@ -507,7 +629,7 @@ class _Speculation:
             self.wire = watchdog
             if watchdog is None:
                 self.pending = False
-            return not self.abandoned
+            return not (self.abandoned or self.halted)
 
     def sent(self):
         """The request recorded last went out. Abandoned in the meantime (abandon() had left it out, not knowing
@@ -532,15 +654,23 @@ class _Speculation:
         if wire is not None:
             wire.abort()
         self.usage.charge_unused(requests=sum(1 for e in spent if e[0] == "request") - unsent,
-                                 bytes=sum(e[1] for e in spent if e[0] == "bytes"))
+                                 bytes=sum(e[1] for e in spent if e[0] in ("bytes", "cut")))
+        self.release()        # after the count: the task's room never looks larger than it is
 
 
 def _fits(spec: _Speculation, budget, usage) -> bool:
     """Whether replaying the speculation's charges on `usage` reproduces exactly what a fetch made now would do: it
     either fits, or stops at a request or at an uncompressed body exactly where _read_body would. A compressed
-    body near the byte limit does not qualify (where its read stops depends on the chunk sizes the limit sets)."""
+    body near the byte limit does not qualify (where its read stops depends on the chunk sizes the limit sets).
+
+    A fetch ahead that stopped itself at the task's budget (_OverBudget) qualifies only when a fetch made now is
+    refused at the same place. It may have stopped earlier than that, because its room also counted what other
+    fetches ahead held or had sent unused; then the reader fetches for itself. For a body cut at the byte budget
+    the same place means: uncompressed, the size limit not ending the read first, and the body known to be longer
+    than what the task has left now (by its declared length, or by what had already arrived)."""
+    over = isinstance(spec.error, _OverBudget)
     if budget is None or usage is None:
-        return True
+        return not over
     requests, used = usage.requests, usage.bytes
     for event in spec.events:
         if event[0] == "request":
@@ -555,6 +685,12 @@ def _fits(spec: _Speculation, budget, usage) -> bool:
             if not identity and wire + CHUNK > left:
                 return False
             used += wire
+        elif event[0] == "cut":
+            _, wire, identity, declared, limit = event
+            left = budget.max_bytes - used
+            return bool(identity and left <= limit and max(wire, declared or 0) > left)
+    if over:                                    # stopped before a request: is that request refused now, too?
+        return requests + 1 > budget.max_requests
     return True
 
 
@@ -563,17 +699,21 @@ class _Watchdog:
     that trickles one byte per gap shorter than the timeout would otherwise keep a fetch alive indefinitely. The
     watchdog holds a duplicate of the connection's descriptor (shutdown acts on the connection, so it also stops a
     TLS socket wrapped around the original), and `fired` tells the reader the EOF/error it sees is the deadline.
-    abort() shuts it down at once for a read-ahead fetch nobody wants any more (`aborted`); called before the
-    connection exists, the connection is shut down as soon as it is armed, before anything is sent on it."""
+    abort() shuts it down at once for a fetch nobody wants any more (`aborted`); called before the connection
+    exists, the connection is shut down as soon as it is armed, before anything is sent on it. With `poll` (a
+    callable safe on another thread; truthy: stop) the watchdog asks every STOP_POLL seconds while the exchange is
+    on the wire and aborts on a stop; a poll that fails counts as one."""
 
-    def __init__(self, deadline: float):
+    def __init__(self, deadline: float, poll=None):
         self.deadline = deadline
+        self.poll = poll
         self.fired = False
         self.aborted = False
         self._lock = threading.Lock()
         self._dup = None
         self._timer = None
         self._done = False
+        self._wake = threading.Event()
 
     def arm(self, sock) -> None:
         try:
@@ -588,9 +728,28 @@ class _Watchdog:
             if self.aborted:
                 self._shutdown()
                 return
-            self._timer = threading.Timer(max(0.0, self.deadline - time.monotonic()), self._fire)
+            if self.poll is None:
+                self._timer = threading.Timer(max(0.0, self.deadline - time.monotonic()), self._fire)
+            else:
+                self._timer = threading.Thread(target=self._watch, name="nsf-fetch-watch")
             self._timer.daemon = True
             self._timer.start()
+
+    def _watch(self) -> None:
+        while True:
+            remaining = self.deadline - time.monotonic()
+            if self._wake.wait(max(0.0, min(STOP_POLL, remaining))):
+                return                                    # disarmed
+            if time.monotonic() >= self.deadline:
+                self._fire()
+                return
+            try:
+                stop = self.poll()
+            except Exception:                             # a gate that cannot be read is a stop
+                stop = True
+            if stop:
+                self.abort()
+                return
 
     def _shutdown(self) -> None:
         try:
@@ -614,7 +773,8 @@ class _Watchdog:
     def disarm(self) -> None:
         with self._lock:
             self._done = True
-            if self._timer is not None:
+            self._wake.set()
+            if self._timer is not None and self.poll is None:
                 self._timer.cancel()
             if self._dup is not None:
                 self._dup.close()
@@ -802,18 +962,18 @@ def _robots_disallow_all(fetched_at: float, reason: str) -> _Robots:
 
 
 class _Gated:
-    """SafeFetcher.gated: sets the calling thread's gate, and puts the previous one back on exit."""
+    """SafeFetcher.gated: sets the calling thread's gate (and watch), and puts the previous ones back on exit."""
 
-    def __init__(self, local, ask):
-        self.local, self.ask = local, ask
+    def __init__(self, local, ask, watch=None):
+        self.local, self.ask, self.watch = local, ask, watch
 
     def __enter__(self):
-        self.previous = getattr(self.local, "ask", None)
-        self.local.ask = self.ask
+        self.previous = (getattr(self.local, "ask", None), getattr(self.local, "watch", None))
+        self.local.ask, self.local.watch = self.ask, self.watch
         return self
 
     def __exit__(self, *_exc):
-        self.local.ask = self.previous
+        self.local.ask, self.local.watch = self.previous
         return False
 
 
@@ -837,6 +997,10 @@ class SafeFetcher:
         self._semaphores = weakref.WeakKeyDictionary()
         self._speculations: dict = {}      # (url, purpose, id(usage)) -> _Speculation not yet claimed or abandoned
         self._gate = threading.local()     # .ask: the calling thread's gate while inside gated()
+        self._busy: dict = {}              # host -> [exchanges in progress, the fetches ahead among them]
+        # id(usage) -> [requests, bytes] held by that task's fetches ahead not yet claimed or abandoned: the part
+        # of the task's budget they have used or reserved (_Speculation.charge / take / release)
+        self._ahead: dict = {}
 
     # ---- public API -----------------------------------------------------------------------------------------
     def fetch(self, url, *, method="GET", body=None, headers=None, purpose="page", conditional=True, budget=None,
@@ -884,14 +1048,19 @@ class SafeFetcher:
                 self._inflight.pop(key, None)
             flight.event.set()
 
-    def gated(self, ask):
+    def gated(self, ask, watch=None):
         """Context manager: while inside it, every fetch this thread makes calls `ask(url)` before each of its
-        network steps (a name lookup, robots.txt, the page, every redirect hop) with the URL about to be contacted.
-        `ask` raises to stop the fetch there; whatever it raises leaves fetch() unchanged, except that a FetchError
-        raised while robots.txt is being fetched is taken for that file's failure, so a gate should raise its own
-        exception type (orchestrator._Run.still_wanted). A caller waiting on the same fetch made by another thread
-        then fetches for itself."""
-        return _Gated(self._gate, ask)
+        network steps (a name lookup, opening a connection, writing the request on it: robots.txt, the page, every
+        redirect hop) with the URL about to be contacted. `ask` raises to stop the fetch there; whatever it raises
+        leaves fetch() unchanged, except that a FetchError raised while robots.txt is being fetched is taken for
+        that file's failure, so a gate should raise its own exception type (orchestrator._Run.still_wanted). A
+        connection opened for a request that is then not sent is closed and the request is not charged. A caller
+        waiting on the same fetch made by another thread then fetches for itself.
+
+        `watch(url)` (optional; called from another thread; a reason or None) is asked every STOP_POLL seconds
+        while a request of this thread is on the wire: on a reason the request is cut and `ask` is asked on the
+        calling thread, which raises the stop."""
+        return _Gated(self._gate, ask, watch)
 
     def _ask(self, usage, url) -> None:
         """Before a network step of a fetch: is the fetch still wanted? (module doc, Stops)."""
@@ -998,14 +1167,29 @@ class SafeFetcher:
             spec = self._speculations.pop((url, purpose, id(usage)), None)
         if spec is None:
             return None
-        if not spec.finished.wait(self._claim_wait()) or not self._unchanged(spec) \
-                or not _fits(spec, budget, usage):
+        if not self._await(spec, url) or not self._unchanged(spec) or not _fits(spec, budget, usage):
             # abandon() cuts a request still on the wire, so the fetch the caller makes next is the only one talking
             # to that host; the short wait lets the cut fetch's thread finish first (it sends nothing either way)
             spec.abandon()
             spec.finished.wait(1.0)
             return None
         return spec
+
+    def _await(self, spec, url) -> bool:
+        """Wait for a read-ahead fetch being claimed (at most _claim_wait()); False when it did not finish. Every
+        STOP_POLL seconds the caller's gate is asked: on a stop the fetch is abandoned (its request on the wire is
+        cut) and the stop propagates."""
+        end = time.monotonic() + self._claim_wait()
+        while not spec.finished.wait(STOP_POLL):
+            if time.monotonic() >= end:
+                return False
+            try:
+                self._ask(None, url)
+            except BaseException:
+                spec.abandon()
+                spec.finished.wait(1.0)
+                raise
+        return True
 
     def _claim_wait(self) -> float:
         """The longest a claim waits for its read-ahead fetch: robots.txt and page, their waits, every hop."""
@@ -1047,36 +1231,43 @@ class SafeFetcher:
     def _commit(self, spec, budget, usage) -> FetchResult:
         """Apply a claimed read-ahead fetch as if it were made now: its charges on `usage` in order (raising
         BudgetExceeded exactly where a fetch made now would have stopped, the rest counted as unused), the held
-        robots entries and cache body written in order; then its result is returned or its FetchError raised."""
+        robots entries and cache body written in order; then its result is returned or its FetchError raised.
+        What it held of the task's budget (fetcher._ahead) is released once its charges are on `usage`."""
         events = spec.events
-        for i, event in enumerate(events):
-            try:
-                if event[0] == "request":
-                    _charge(budget, usage, requests=1)
-                elif event[0] == "bytes":
-                    if budget is not None and event[2] and usage.bytes + event[1] > budget.max_bytes:
-                        # _read_body reads one byte past what is left and stops there, before charging
+        try:
+            for i, event in enumerate(events):
+                try:
+                    if event[0] == "request":
+                        _charge(budget, usage, requests=1)
+                    elif event[0] == "bytes":
+                        if budget is not None and event[2] and usage.bytes + event[1] > budget.max_bytes:
+                            # _read_body reads one byte past what is left and stops there, before charging
+                            raise BudgetExceeded("bytes", budget.max_bytes + 1, budget.max_bytes)
+                        _charge(budget, usage, bytes=event[1])
+                    elif event[0] == "cut":
+                        # the fetch ahead stopped reading at the byte budget, and a read made now stops there too
+                        # (_fits): the error _read_body raises one byte past what is left
                         raise BudgetExceeded("bytes", budget.max_bytes + 1, budget.max_bytes)
-                    _charge(budget, usage, bytes=event[1])
-                elif event[0] == "robots":
-                    _, key, entry, text = event
-                    with self._lock:
-                        self._robots[key] = entry
-                    if text is not None and self.cache is not None:
-                        self.cache.put_robots(key, *text)
-                elif self.cache is not None:
-                    self.cache.put(event[1])
-            except BudgetExceeded:
-                spec.abandon(events[i:])
-                raise
-        if isinstance(spec.error, _OverBudget):
-            # the fetch stopped before a request the task had no room for (not sent). The task's requests have not
-            # shrunk since, so its own charge refuses that request now, as it would refuse a fetch made now
-            _charge(budget, usage, requests=1)
-            raise spec.error                  # unreachable while the budget is the one the fetch was started with
-        if spec.error is not None:
-            raise spec.error
-        return spec.result
+                    elif event[0] == "robots":
+                        _, key, entry, text = event
+                        with self._lock:
+                            self._robots[key] = entry
+                        if text is not None and self.cache is not None:
+                            self.cache.put_robots(key, *text)
+                    elif self.cache is not None:
+                        self.cache.put(event[1])
+                except BudgetExceeded:
+                    spec.abandon(events[i:])
+                    raise
+            if isinstance(spec.error, _OverBudget):
+                # the fetch stopped before a request the task had no room for (not sent), and that request is
+                # refused now as well (_fits): the task's own charge raises what a fetch made now raises
+                _charge(budget, usage, requests=1)
+            if spec.error is not None:
+                raise spec.error
+            return spec.result
+        finally:
+            spec.release()
 
     def _validators(self, url):
         """The cached response of `url` a conditional GET revalidates (an ETag or Last-Modified and its body still
@@ -1286,16 +1477,80 @@ class SafeFetcher:
     def _exchange(self, parts, method, body, headers, addresses, purpose, budget, usage, deadline) -> _Response:
         """One HTTP exchange over a pinned connection. Reads the body only for 2xx responses."""
         url = parts.geturl()
+        host = parts.hostname
+        self._ask(usage, url)                 # still wanted? after the politeness wait, before connecting
+        spec = usage if isinstance(usage, _Speculation) else None
+        self._enter(host, spec)               # one exchange per host for fetches ahead (module doc)
+        try:
+            return self._exchange_on(parts, method, body, headers, addresses, purpose, budget, usage, deadline, spec)
+        finally:
+            self._leave(host, spec)
+
+    def _enter(self, host, spec) -> None:
+        """An exchange with `host` begins. A read-ahead fetch does not begin one while any other is in progress
+        with that host: it stops there (_Abandoned, 'host busy') and its claim fetches as usual. The reader's own
+        fetch begins regardless (as before), and cuts the read-ahead fetches talking to that host."""
+        with self._lock:
+            busy = self._busy.setdefault(host, [0, set()])
+            if spec is not None and busy[0]:
+                yielding = None
+            else:
+                busy[0] += 1
+                yielding = [] if spec is not None else list(busy[1])
+                if spec is not None:
+                    busy[1].add(spec)
+        if yielding is None:
+            with spec.lock:
+                spec.stopped = spec.stopped or "host busy"
+            raise _Abandoned("host busy")
+        for other in yielding:
+            other.halt("host busy")
+
+    def _leave(self, host, spec) -> None:
+        with self._lock:
+            busy = self._busy.get(host)
+            if busy is None or (spec is not None and spec not in busy[1]):
+                return                         # a read-ahead fetch that never entered (host busy)
+            busy[0] -= 1
+            busy[1].discard(spec)
+            if busy[0] <= 0:
+                del self._busy[host]
+
+    def _unsent(self, usage, host) -> None:
+        """The request charged for this exchange was never written on a connection: it is not a request."""
+        if isinstance(usage, _Speculation):
+            usage.unsend()
+        else:
+            refund = getattr(usage, "refund", None)
+            if refund is not None:
+                refund(requests=1)
+        self._count(host, "requests", -1)
+
+    def _cut(self, usage, url):
+        """The exchange was cut on purpose (its watchdog was aborted): raise what ends the fetch. A read-ahead fetch
+        ends unused. The reader's own fetch was cut because its `watch` saw a stop: its gate raises that stop here;
+        should the stop have been withdrawn in the meantime, the page counts as not reached."""
+        if isinstance(usage, _Speculation):
+            raise _Abandoned(usage.stopped or "abandoned")
+        self._ask(usage, url)
+        raise FetchError("connect_failed", _redact(url), "cut: a stop was seen while the request was on the wire")
+
+    def _exchange_on(self, parts, method, body, headers, addresses, purpose, budget, usage, deadline, spec):
+        url = parts.geturl()
         host, port = parts.hostname, parts.port or (443 if parts.scheme == "https" else 80)
-        self._ask(usage, url)                 # still wanted? after the politeness wait, before the request
         _charge(budget, usage, requests=1)
         self._count(host, "requests")
         chosen = []
-        watchdog = _Watchdog(deadline)
-        spec = usage if isinstance(usage, _Speculation) else None
+        if spec is not None:
+            poll = (lambda: spec.unwanted(url)) if spec.wanted is not None else None
+        else:
+            watch = getattr(self._gate, "watch", None)
+            poll = (lambda: watch(url)) if watch is not None else None
+        watchdog = _Watchdog(deadline, poll)
         if spec is not None and not spec.on_wire(watchdog):     # abandon() from now on cuts this exchange
-            spec.on_wire(None)                                  # abandoned since the charge: nothing is sent
-            raise _Abandoned()
+            spec.unsend()                                       # stopped since the charge: nothing is sent
+            spec.on_wire(None)
+            raise _Abandoned(spec.stopped or "abandoned")
 
         def opener():
             last = None
@@ -1324,6 +1579,12 @@ class SafeFetcher:
         target = quote(parts.path or "/", safe="/%:@!$&'()*+,;=-._~") + (
             "?" + quote(parts.query, safe="=&%+:@/?!$'()*,;-._~") if parts.query else "")
         try:
+            conn.connect()                    # the handshake is not the request: the gate is asked again after it
+            try:
+                self._ask(usage, url)         # a stop that landed while the connection was being opened
+            except BaseException:
+                self._unsent(usage, host)     # nothing is written on the connection, and no request is counted
+                raise
             conn.request(method, target, body=body, headers=headers)
             if spec is not None:
                 spec.sent()
@@ -1353,20 +1614,20 @@ class SafeFetcher:
                     if not any(fnmatch.fnmatchcase(media, pattern) for pattern in allowed):
                         raise FetchError("unsupported_type", _redact(url), media or "no content type", status=status)
                 self._read_body(raw, conn, response, purpose, budget, usage, deadline, url)
-            if watchdog.aborted:                  # cut by abandon(): whatever arrived is not a response
-                raise _Abandoned()
+            if watchdog.aborted:                  # cut on purpose: whatever arrived is not a response
+                self._cut(usage, url)
             if watchdog.fired:                    # the body "ended" because the watchdog shut the socket
                 raise TimeoutError
             return response
         except FetchError:
             if watchdog.aborted:
-                raise _Abandoned() from None
+                self._cut(usage, url)
             raise
         except BudgetExceeded:
             raise
         except (OSError, http.client.HTTPException) as error:
             if watchdog.aborted:
-                raise _Abandoned() from None
+                self._cut(usage, url)
             if watchdog.fired or isinstance(error, (TimeoutError, socket.timeout)):
                 raise FetchError("timeout", _redact(url), f"no response within {self.policy.timeout:g}s") from None
             if isinstance(error, (ssl.SSLError, ssl.CertificateError)):
@@ -1378,6 +1639,8 @@ class SafeFetcher:
             raise FetchError("connect_failed", _redact(url), detail) from None
         finally:
             if spec is not None:
+                if watchdog.aborted:
+                    spec.unsend()             # cut before the request was written: it is not a request
                 spec.on_wire(None)
             watchdog.disarm()
             conn.release()
@@ -1388,6 +1651,8 @@ class SafeFetcher:
         budget_left = None
         if budget is not None and usage is not None:
             budget_left = budget.max_bytes - usage.bytes
+        # a fetch ahead that knows its task's budget takes the room for every read from the task's shared account
+        ahead = usage if isinstance(usage, _Speculation) and usage.budget is not None else None
         encoding = (response.headers.get("content-encoding") or "identity").strip().lower()
         if encoding in ("gzip", "x-gzip"):
             decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
@@ -1416,12 +1681,21 @@ class SafeFetcher:
                 amount = min(amount, budget_left - wire + 1)
             if amount <= 0:
                 amount = 1
+            granted = amount
+            if ahead is not None:
+                granted = ahead.take(amount)
+                amount = max(granted, 1)      # no room left: one byte tells whether the body goes on (as below)
             try:
                 chunk = raw.read(amount)
             except (OSError, http.client.HTTPException):
-                if isinstance(usage, _Speculation) and usage.abandoned and wire:
-                    usage.usage.charge_unused(bytes=wire)      # cut mid-body: what had arrived still arrived
+                if isinstance(usage, _Speculation) and wire:
+                    usage.arrived(wire)                        # cut mid-body: what had arrived still arrived
                 raise
+            if ahead is not None:
+                ahead.give_back(granted - min(granted, len(chunk)))
+                if len(chunk) > granted:      # the body is longer than the task's byte budget has room for
+                    ahead.cut(wire + len(chunk), decoder is False,
+                              int(declared) if _DIGITS.fullmatch(declared) else None, limit)
             if not chunk:
                 break
             wire += len(chunk)

@@ -152,7 +152,14 @@ class FixtureWeb:
             def do_HEAD(self):
                 self._serve(head=True)
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        class Server(ThreadingHTTPServer):
+            def handle_error(self, request, client_address):
+                import sys
+                if isinstance(sys.exc_info()[1], ConnectionError):
+                    return        # the client hung up (a fetch that was cut on a stop): not this server's error
+                super().handle_error(request, client_address)
+
+        self.server = Server(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
         self.port = self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()

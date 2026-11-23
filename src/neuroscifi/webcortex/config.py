@@ -80,12 +80,14 @@ class WebConfig:
     daily_autonomous: dict = field(default_factory=lambda: {"tasks": 12, "requests": 400, "bytes": 80_000_000})
     min_domain_interval: float = 1.0         # seconds between requests to one host
     # Pages a research task may fetch at once while reading: the next candidates are fetched ahead of their turn, one
-    # per host, at most budget.max_concurrency; what the task reads, charges and reports is unchanged. Measured with
-    # 300 ms per response: task time 2.10 s at 1, 0.99 s at 4. Every fetch, ahead of its turn or not, asks before
-    # each of its network steps whether the task was cancelled, web access turned off or the deny list changed, so
-    # no request starts after one of these; a request ahead that is already on the wire is cut (at most
-    # read_ahead - 1 of them), the reader's own finishes. Tasks under a daily allowance (curiosity, refreshes, MCP)
-    # always read one page at a time, and the allowances count unused read-ahead traffic.
+    # per host name, at most budget.max_concurrency; what the task reads, charges and reports is unchanged (about
+    # half the waiting at 4). Every fetch, ahead of its turn or not, asks before each lookup, each connection and
+    # each request whether the task was cancelled, web access turned off or the host denied, so no request is sent
+    # after one of these, and requests on the wire are cut. The fetches ahead of a task share its request and byte
+    # budget, never open a second connection to a site an exchange is in progress with, and are not made at all
+    # for tasks under a daily allowance (curiosity, refreshes, MCP); the allowances count unused read-ahead traffic.
+    # The one exception to "unchanged": a 429 answered to a page fetched ahead backs its site off at once, so a
+    # source an earlier candidate would have redirected to there is not read (the report says so).
     # 1 reads one page at a time for every task, as 0.7.0 did: `nsf web config --set read_ahead=1`.
     read_ahead: int = 4
     max_document_bytes: int = 5_000_000

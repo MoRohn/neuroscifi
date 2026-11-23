@@ -21,7 +21,7 @@ from neuroscifi.webcortex.cache import PublicCache
 from neuroscifi.webcortex.fixtureweb import FixtureWeb
 from neuroscifi.webcortex.net import NetPolicy, SafeFetcher
 from neuroscifi.webcortex.providers.corpus import CorpusProvider
-from neuroscifi.webcortex.types import Budget, BudgetExceeded, Usage
+from neuroscifi.webcortex.types import Budget, BudgetExceeded, FetchError, Usage
 
 T0 = 1_795_200_000.0            # 2026-11-21
 QUESTION = "Which boards does the Zephyr compiler version 4.2.0 support?"
@@ -68,16 +68,22 @@ def redirecting(web):
     return resolver, lookups
 
 
-# The network steps of that fetch, in order, as the gate is asked: before a hop's name lookup, and again (after the
-# politeness wait) before each request. Stopping at step k must leave exactly the requests and lookups before it.
+# The network steps of that fetch, in order, as the gate is asked: before a hop's name lookup, before each
+# connection is opened (after the politeness wait) and once more when it is open, before the request is written on
+# it. Stopping at step k must leave exactly the requests and lookups before it (a connection opened at the step
+# before is closed with nothing sent).
 STEPS = [("http://a.example/p", 0, 0),             # 1 before a.example's lookup
          ("http://a.example/robots.txt", 0, 1),    # 2 before robots.txt (the lookup is shared with the page)
-         ("http://a.example/robots.txt", 0, 1),    # 3 before the robots.txt request
-         ("http://a.example/p", 1, 1),             # 4 before the page request
-         ("http://b.example/q", 2, 1),             # 5 before b.example's lookup (the redirect hop)
-         ("http://b.example/robots.txt", 2, 2),    # 6
-         ("http://b.example/robots.txt", 2, 2),    # 7 before b's robots.txt request
-         ("http://b.example/q", 3, 2)]             # 8 before the final request
+         ("http://a.example/robots.txt", 0, 1),    # 3 before connecting for robots.txt
+         ("http://a.example/robots.txt", 0, 1),    # 4 connected: before the robots.txt request is written
+         ("http://a.example/p", 1, 1),             # 5 before connecting for the page
+         ("http://a.example/p", 1, 1),             # 6 connected: before the page request is written
+         ("http://b.example/q", 2, 1),             # 7 before b.example's lookup (the redirect hop)
+         ("http://b.example/robots.txt", 2, 2),    # 8
+         ("http://b.example/robots.txt", 2, 2),    # 9
+         ("http://b.example/robots.txt", 2, 2),    # 10 connected: before b's robots.txt request is written
+         ("http://b.example/q", 3, 2),             # 11
+         ("http://b.example/q", 3, 2)]             # 12 connected: before the final request is written
 
 
 def settled(web, seconds=3.0, quiet=0.3):
@@ -313,6 +319,140 @@ def test_a_fetch_ahead_counts_what_the_task_was_charged_meanwhile(web, tmp_path)
     assert usage.requests == 3 and usage.prefetch_unused_requests == 0 and web.log == []
 
 
+# ---- the fetcher: the fetches ahead of one task share that task's budget ----------------------------------------
+
+def finish_all(fetcher):
+    for spec in list(fetcher._speculations.values()):
+        assert spec.finished.wait(5)
+
+
+def redirect_sites(web, hosts):
+    """Each site: robots.txt, and /p -> /q -> /r (four requests for one page)."""
+    for host in hosts:
+        web.add(host, "/robots.txt", ROBOTS, content_type="text/plain")
+        web.add_redirect(host, "/p", f"http://{host}/q")
+        web.add_redirect(host, "/q", f"http://{host}/r")
+        web.add(host, "/r", "<p>page</p>")
+
+
+def test_fetches_ahead_together_send_no_more_requests_than_the_task_has_room_for(web, tmp_path):
+    """Security review L1: three fetches ahead of one task, four requests each, a request budget of four. Each used
+    to check the budget against its own requests only, and twelve requests reached the sites."""
+    hosts = ["a.example", "b.example", "c.example"]
+    redirect_sites(web, hosts)
+    fetcher, budget, usage = fetcher_for(web, tmp_path), Budget(max_requests=4), Usage()
+    for host in hosts:
+        assert fetcher.speculate(f"http://{host}/p", usage=usage, budget=budget)
+    finish_all(fetcher)
+    assert len(settled(web, quiet=0.2)) == 4 and usage.requests == 0
+    assert fetcher._ahead[id(usage)][0] == 4                      # all of the task's room is held
+    for host in hosts:
+        fetcher.abandon(f"http://{host}/p", usage=usage)
+    assert usage.prefetch_unused_requests == 4 == len(web.log) and fetcher._ahead == {}
+    # what was sent unused keeps counting: a further fetch ahead of this task sends nothing
+    web.add("d.example", "/p", "<p>more</p>")
+    fetcher.speculate("http://d.example/p", usage=usage, budget=budget)
+    finish_all(fetcher)
+    fetcher.abandon("http://d.example/p", usage=usage)
+    assert len(settled(web, quiet=0.2)) == 4 and usage.prefetch_unused_requests == 4 and fetcher._ahead == {}
+
+
+def test_fetches_ahead_count_what_the_task_was_charged(web, tmp_path):
+    hosts = ["a.example", "b.example", "c.example"]
+    redirect_sites(web, hosts)
+    fetcher, budget, usage = fetcher_for(web, tmp_path), Budget(max_requests=7), Usage()
+    usage.charge(budget, requests=5)                              # the reader used five; two are left for all
+    for host in hosts:
+        fetcher.speculate(f"http://{host}/p", usage=usage, budget=budget)
+    finish_all(fetcher)
+    assert len(settled(web, quiet=0.2)) == 2
+
+
+def test_a_fetch_ahead_stopped_early_by_the_others_is_fetched_again_and_ends_as_one_at_a_time(web, tmp_path):
+    """The room a fetch ahead sees also counts what other fetches ahead hold, so it can stop where a fetch made at
+    its turn would not. It is then not used: the reader fetches for itself and gets what one page at a time gets."""
+    redirect_sites(web, ["a.example", "b.example"])
+    budget = Budget(max_requests=4)
+    plain_fetcher, plain = fetcher_for(web, tmp_path / "plain"), Usage()
+    expected = plain_fetcher.fetch("http://b.example/p", budget=budget, usage=plain)
+    assert plain.requests == 4 and len(web.log) == 4
+    fetcher, usage = fetcher_for(web, tmp_path / "ahead"), Usage()
+    fetcher.speculate("http://a.example/p", usage=usage, budget=budget)
+    fetcher.speculate("http://b.example/p", usage=usage, budget=budget)
+    finish_all(fetcher)
+    sent_ahead = len(settled(web, quiet=0.2)) - 4
+    assert sent_ahead == 4                                        # together: the task's four, however they fell
+    fetcher.abandon("http://a.example/p", usage=usage)            # the reader passed it by
+    result = fetcher.fetch("http://b.example/p", budget=budget, usage=usage)
+    assert (result.body, result.final_url, result.redirects) == (expected.body, expected.final_url,
+                                                                 expected.redirects)
+    assert usage.requests == plain.requests == 4 and usage.bytes == plain.bytes
+    assert usage.prefetch_unused_requests == sent_ahead and fetcher._ahead == {}
+    assert len(web.log) == 4 + usage.requests + usage.prefetch_unused_requests
+
+
+def big_pages(web, hosts, size=4000):
+    for host in hosts:
+        web.add(host, "/robots.txt", ROBOTS, content_type="text/plain")
+        web.add(host, "/p", "<p>" + "x" * (size - 7) + "</p>")
+
+
+def test_fetches_ahead_together_read_no_more_bytes_than_the_task_has_room_for(web, tmp_path):
+    """Three fetches ahead of one task, a 4000-byte page each, a byte budget of 1000. Each used to read its whole
+    page (bounded by the document size limit only). Now they share the task's room; at the limit each reads one
+    byte more, as the reader's own read does, to learn that the body goes on."""
+    hosts = ["a.example", "b.example", "c.example"]
+    big_pages(web, hosts)
+    fetcher, budget, usage = fetcher_for(web, tmp_path), Budget(max_bytes=1000), Usage()
+    for host in hosts:
+        fetcher.speculate(f"http://{host}/p", usage=usage, budget=budget)
+    finish_all(fetcher)
+    held = {key: list(value) for key, value in getattr(fetcher, "_ahead", {}).items()}
+    for host in hosts:
+        fetcher.abandon(f"http://{host}/p", usage=usage)
+    assert 3 * len(ROBOTS) < usage.prefetch_unused_bytes <= 1000 + len(hosts)
+    assert usage.bytes == 0 and held[id(usage)][1] <= 1000 and fetcher._ahead == {}
+
+
+def test_a_fetch_ahead_cut_at_the_byte_budget_is_claimed_exactly_like_a_fetch(web, tmp_path):
+    big_pages(web, ["a.example"])
+    budget = Budget(max_bytes=1000)
+
+    def stopped(fetcher, usage):
+        with pytest.raises(BudgetExceeded) as info:
+            fetcher.fetch("http://a.example/p", budget=budget, usage=usage)
+        return str(info.value), usage.requests, usage.bytes
+
+    plain = stopped(fetcher_for(web, tmp_path / "plain"), Usage())
+    assert len(web.log) == 2
+    ahead, usage = fetcher_for(web, tmp_path / "ahead"), Usage()
+    ahead.speculate("http://a.example/p", usage=usage, budget=budget)
+    finish_all(ahead)
+    assert stopped(ahead, usage) == plain
+    assert len(settled(web, quiet=0.1)) == 4                       # the claim used it: nothing was fetched again
+    # what arrived of the page beyond what the task was charged: the room that was left, and the one byte past it
+    assert usage.prefetch_unused_bytes == 1000 - len(ROBOTS) + 1 and ahead._ahead == {}
+
+
+def test_a_fetch_ahead_cut_early_at_the_byte_budget_is_fetched_again_when_the_page_fits(web, tmp_path):
+    """Two fetches ahead, 3000 bytes each, a byte budget of 5000. The second is cut at the room the first leaves.
+    The reader passes the first by and reaches the second: one page at a time it fits, so it is fetched again."""
+    big_pages(web, ["a.example", "b.example"], size=3000)
+    budget = Budget(max_bytes=5000)
+    plain_fetcher, plain = fetcher_for(web, tmp_path / "plain"), Usage()
+    expected = plain_fetcher.fetch("http://b.example/p", budget=budget, usage=plain)
+    fetcher, usage = fetcher_for(web, tmp_path / "ahead"), Usage()
+    fetcher.speculate("http://a.example/p", usage=usage, budget=budget)
+    finish_all(fetcher)
+    fetcher.speculate("http://b.example/p", usage=usage, budget=budget)
+    finish_all(fetcher)
+    assert fetcher._ahead[id(usage)][1] <= 5000
+    fetcher.abandon("http://a.example/p", usage=usage)
+    result = fetcher.fetch("http://b.example/p", budget=budget, usage=usage)
+    assert result.body == expected.body and (usage.requests, usage.bytes) == (plain.requests, plain.bytes)
+    assert fetcher._ahead == {}
+
+
 # ---- whole runs: the stop lands while every fetch is waiting for an answer --------------------------------------
 
 def page(title, paragraphs):
@@ -350,11 +490,12 @@ def deny_all(connection, _task_id, _web):
     state.set_config(connection, {"deny_domains": list(HOSTS)}, T0 + 1)
 
 
-def run_until_held(tmp_path, window, in_flight, interrupt):
+def run_until_held(tmp_path, window, in_flight, interrupt, held=None):
     """Run the question with every robots.txt held; once `in_flight` requests wait at their sites (the reader's and
     the fetches ahead: nothing else can be sent), apply `interrupt` on another connection, note what has arrived,
     release the answers and let the run end. Returns what arrived by the stop, everything that ever arrived, and
-    the finished task."""
+    the finished task. `held` (a dict): the answers stay held for up to five more seconds after the stop, and
+    held['ended'] says whether the run ended in that time, with held['seconds'] how long after the stop."""
     release = threading.Event()
     web = held_web(release)
     path = tmp_path / f"w{window}" / "individual.sqlite"
@@ -393,6 +534,10 @@ def run_until_held(tmp_path, window, in_flight, interrupt):
         finally:
             other.close()
         at_stop = list(web.log)
+        if held is not None:
+            stopped_at = time.monotonic()
+            worker.join(5)
+            held.update(ended=not worker.is_alive(), seconds=time.monotonic() - stopped_at)
     finally:
         release.set()
     worker.join(30)
@@ -599,18 +744,21 @@ def test_the_lookout_answers_from_what_is_committed_when_it_is_asked(tmp_path):
         run = RunLike(path, task["id"], holder)
         lookout = orchestrator._Lookout(run)
 
-        def ask():
+        def ask(url="http://one.example/zephyr"):
             out = {}
-            thread = threading.Thread(target=lambda: out.update(answer=lookout("http://one.example/zephyr")))
+            thread = threading.Thread(target=lambda: out.update(answer=lookout(url)))
             thread.start()                    # asked from another thread, as a fetch ahead asks
             thread.join(5)
             return out["answer"]
 
         assert ask() is None
+        # a denial is read from the file as it is now, for the host asked about (and its subdomains), whatever
+        # list the reader has applied so far
         state.set_config(db, {"deny_domains": ["two.example"]}, T0 + 1)
-        assert ask() == "the deny list changed"
-        run.deny_list = ("two.example",)      # the reader applied the new list: fetches ahead may go on under it
-        assert ask() is None
+        assert ask() is None and ask("http://two.example/zephyr") == "the site was denied"
+        assert ask("http://www.two.example/x") == "the site was denied" and ask("http://nottwo.example/") is None
+        state.set_config(db, {"deny_domains": []}, T0 + 1)
+        assert ask("http://two.example/zephyr") is None
         state.set_config(db, {"enabled": False}, T0 + 2)
         assert ask() == "web access was turned off"
         state.set_config(db, {"enabled": True}, T0 + 3)
@@ -627,3 +775,409 @@ def test_the_lookout_answers_from_what_is_committed_when_it_is_asked(tmp_path):
         lookout.close()                       # closing twice is harmless
     finally:
         db.close()
+
+
+# ---- review round: a stop that lands while a connection is being opened (F1) -------------------------------------
+
+def slow_connector(web, connecting, proceed):
+    """A connection that takes a while to open (in the world: up to the fetch timeout)."""
+    def connector(ip, port, timeout):
+        connecting.set()
+        proceed.wait(5)
+        return web.connector(ip, port, timeout)
+    return connector
+
+
+def test_the_readers_request_is_not_sent_when_the_stop_lands_while_its_connection_opens(web, tmp_path):
+    """The gate was asked before connecting only: a stop during the handshake let the request out afterwards. It is
+    asked again on the open connection; the connection is closed with nothing written and no request is charged."""
+    web.add("a.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add("a.example", "/p", "<p>hi</p>")
+    fetcher = fetcher_for(web, tmp_path)
+    fetcher.robots_allowed("http://a.example/p")              # the site's robots.txt is known
+    before = len(web.log)
+    connecting, proceed, stop = threading.Event(), threading.Event(), threading.Event()
+    fetcher._connector = slow_connector(web, connecting, proceed)
+    usage, asked_after, out = Usage(), [], {}
+
+    def gate(url):
+        if stop.is_set():
+            asked_after.append(url)
+            raise Stop(url)
+
+    def reader():
+        try:
+            with fetcher.gated(gate):
+                out["result"] = fetcher.fetch("http://a.example/p", budget=Budget(), usage=usage)
+        except Stop:
+            out["stopped"] = True
+
+    thread = threading.Thread(target=reader)
+    thread.start()
+    assert connecting.wait(5)
+    stop.set()                                                # the owner stops now; the connection is still opening
+    proceed.set()
+    thread.join(5)
+    assert out == {"stopped": True} and asked_after == ["http://a.example/p"]
+    assert settled(web, quiet=0.2)[before:] == []
+    assert usage.requests == 0 and fetcher.stats()["hosts"]["a.example"]["requests"] == 1     # robots.txt only
+
+
+def test_a_fetch_aheads_request_is_not_sent_when_the_stop_lands_while_its_connection_opens(web, tmp_path):
+    web.add("a.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add("a.example", "/p", "<p>hi</p>")
+    connecting, proceed, stop = threading.Event(), threading.Event(), threading.Event()
+    fetcher, budget, usage = fetcher_for(web, tmp_path, connector=slow_connector(web, connecting, proceed)), \
+        Budget(), Usage()
+    fetcher.speculate("http://a.example/p", usage=usage, budget=budget,
+                      wanted=lambda url: "cancelled" if stop.is_set() else None)
+    spec = next(iter(fetcher._speculations.values()))
+    assert connecting.wait(5)                                 # the connection for robots.txt is being opened
+    stop.set()
+    proceed.set()
+    assert spec.finished.wait(5) and spec.stopped == "cancelled"
+    assert settled(web, quiet=0.2) == []
+    fetcher.abandon("http://a.example/p", usage=usage)
+    assert (usage.prefetch_unused_requests, usage.requests) == (0, 0) and fetcher._ahead == {}
+
+
+# ---- review round: one exchange per host for fetches ahead (F2) -------------------------------------------------
+
+def arrived(web, host, path, seconds=5.0):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline and not web.requests_to(host, path):
+        time.sleep(0.01)
+    assert web.requests_to(host, path), [(r["host"], r["path"]) for r in web.log]
+
+
+def test_a_fetch_ahead_opens_no_second_connection_to_the_site_the_reader_is_on(web, tmp_path):
+    """A page fetched ahead on b.example redirects to a.example while the reader's request to a.example is still
+    being answered. The read-ahead window counts candidate hosts, and cannot know a redirect's target: the fetch
+    ahead used to open a second connection to a.example. It stops at the busy site and is fetched at its turn."""
+    release = threading.Event()
+    web.add("a.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.routes[("a.example", "/slow")] = Held("<p>slow</p>", release, "text/html")
+    web.add("a.example", "/other", "<p>other</p>")
+    web.add("b.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add_redirect("b.example", "/p", "http://a.example/other")
+    fetcher, budget, usage, out = fetcher_for(web, tmp_path), Budget(), Usage(), {}
+    reader = threading.Thread(target=lambda: out.update(
+        slow=fetcher.fetch("http://a.example/slow", budget=budget, usage=usage)))
+    reader.start()
+    try:
+        arrived(web, "a.example", "/slow")
+        fetcher.speculate("http://b.example/p", usage=usage, budget=budget)
+        spec = next(iter(fetcher._speculations.values()))
+        assert spec.finished.wait(5) and spec.stopped == "host busy"
+        assert web.requests_to("a.example", "/other") == [] and web.requests_to("b.example", "/p")
+    finally:
+        release.set()
+    reader.join(5)
+    assert out["slow"].body == b"<p>slow</p>"
+    result = fetcher.fetch("http://b.example/p", budget=budget, usage=usage)        # at its turn: as usual
+    assert result.body == b"<p>other</p>" and fetcher._busy == {} and fetcher._ahead == {}
+    assert usage.prefetch_unused_requests == 2                                      # b's robots.txt and /p, ahead
+    assert len(web.log) == usage.requests + usage.prefetch_unused_requests
+
+
+def test_the_readers_fetch_cuts_the_fetch_ahead_that_is_talking_to_the_site_it_reaches(web, tmp_path):
+    """The other direction: the reader's page redirects onto a site where a fetch ahead is waiting for its answer.
+    The reader is not held back (as before); the fetch ahead is cut, so there is one connection to the site, and it
+    is not used."""
+    release = threading.Event()
+    web.add("b.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.routes[("b.example", "/slow")] = Held("<p>slow</p>", release, "text/html")
+    web.add("b.example", "/target", "<p>target</p>")
+    web.add("a.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add_redirect("a.example", "/p", "http://b.example/target")
+    fetcher, budget, usage = fetcher_for(web, tmp_path), Budget(), Usage()
+    try:
+        fetcher.speculate("http://b.example/slow", usage=usage, budget=budget)
+        spec = next(iter(fetcher._speculations.values()))
+        arrived(web, "b.example", "/slow")
+        result = fetcher.fetch("http://a.example/p", budget=budget, usage=usage)
+        assert result.body == b"<p>target</p>"
+        assert spec.finished.wait(2) and spec.stopped == "host busy" and spec.result is None
+    finally:
+        release.set()
+    fetcher.abandon("http://b.example/slow", usage=usage)
+    assert usage.prefetch_unused_requests == 2 and fetcher._busy == {} and fetcher._ahead == {}
+    assert len(settled(web, quiet=0.2)) == usage.requests + usage.prefetch_unused_requests
+
+
+# ---- review round: requests on the wire are cut on a stop, and a waiting claim asks too (F7) -------------------
+
+def held_page(web, release):
+    web.add("slow.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.routes[("slow.example", "/p")] = Held("<p>late</p>", release, "text/html")
+
+
+def test_the_readers_request_on_the_wire_is_cut_when_its_watch_sees_the_stop(web, tmp_path):
+    """Before, the reader's own request ran to its end (up to the fetch timeout) before a cancel took effect."""
+    release, stop = threading.Event(), threading.Event()
+    held_page(web, release)
+    fetcher, usage, out = fetcher_for(web, tmp_path), Usage(), {}
+
+    def gate(url):
+        if stop.is_set():
+            raise Stop(url)
+
+    def reader():
+        try:
+            with fetcher.gated(gate, lambda url: "stopped" if stop.is_set() else None):
+                fetcher.fetch("http://slow.example/p", budget=Budget(), usage=usage)
+        except Stop:
+            out["stopped"] = time.monotonic()
+
+    thread = threading.Thread(target=reader)
+    thread.start()
+    try:
+        arrived(web, "slow.example", "/p")
+        stopped_at = time.monotonic()
+        stop.set()
+        thread.join(3)                                        # the answer is still held: only the cut ends it
+        assert "stopped" in out and out["stopped"] - stopped_at < 2
+    finally:
+        release.set()
+    assert usage.requests == 2 == len(web.log)                # both were sent, so both are charged
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline and any(t.name == "nsf-fetch-watch" for t in threading.enumerate()):
+        time.sleep(0.05)
+    assert not any(t.name == "nsf-fetch-watch" for t in threading.enumerate())      # the watch ends with its request
+
+
+def test_a_request_cut_for_a_stop_that_was_withdrawn_is_a_page_not_reached(web, tmp_path):
+    release, seen = threading.Event(), []
+    held_page(web, release)
+    fetcher, usage = fetcher_for(web, tmp_path), Usage()
+    try:
+        with pytest.raises(FetchError) as info, fetcher.gated(lambda url: None, lambda url: seen.append(url) or "x"):
+            fetcher.fetch("http://slow.example/p", budget=Budget(), usage=usage)
+    finally:
+        release.set()
+    assert info.value.code == "connect_failed" and "cut" in info.value.detail and seen
+
+
+def test_a_watch_is_not_asked_for_fetches_outside_the_gate_and_a_plain_fetch_is_unchanged(web, tmp_path):
+    web.add("a.example", "/p", "<p>hi</p>", delay=0.6)
+    fetcher, seen = fetcher_for(web, tmp_path), []
+    with fetcher.gated(lambda url: None, lambda url: seen.append(url)):
+        assert fetcher.fetch("http://a.example/p", budget=Budget(), usage=Usage()).body == b"<p>hi</p>"
+    asked = len(seen)
+    assert asked >= 1                                         # asked while the page was on its way (0.6 s)
+    assert fetcher.fetch("http://a.example/p", budget=Budget(), usage=Usage(), conditional=False).body == b"<p>hi</p>"
+    assert len(seen) == asked
+
+
+def test_a_claim_waiting_for_its_fetch_ahead_asks_the_gate_and_cuts_the_fetch_on_a_stop(web, tmp_path):
+    release, stop = threading.Event(), threading.Event()
+    held_page(web, release)
+    fetcher, usage, out = fetcher_for(web, tmp_path), Usage(), {}
+    fetcher.speculate("http://slow.example/p", usage=usage)   # no gate of its own: only the claim can stop it
+    spec = next(iter(fetcher._speculations.values()))
+
+    def gate(url):
+        if stop.is_set():
+            raise Stop(url)
+
+    def reader():
+        try:
+            with fetcher.gated(gate):
+                fetcher.fetch("http://slow.example/p", budget=Budget(), usage=usage)
+        except Stop:
+            out["stopped"] = time.monotonic()
+
+    try:
+        arrived(web, "slow.example", "/p")
+        thread = threading.Thread(target=reader)
+        thread.start()
+        time.sleep(0.3)                                       # the claim is waiting for the held answer
+        stopped_at = time.monotonic()
+        stop.set()
+        thread.join(3)
+        assert "stopped" in out and out["stopped"] - stopped_at < 2
+        assert spec.finished.wait(2) and spec.abandoned
+    finally:
+        release.set()
+    assert (usage.requests, usage.prefetch_unused_requests) == (0, 2) and len(settled(web, quiet=0.2)) == 2
+
+
+@pytest.mark.parametrize("window", [1, 4])
+def test_a_cancel_ends_the_run_while_its_requests_are_still_unanswered(tmp_path, window):
+    """Every fetch waits for an answer that does not come. Before, the run ended when the reader's own request did
+    (up to the fetch timeout, 15 s by default); now the requests on the wire are cut and it ends at once."""
+    held = {}
+    at_stop, final, done = run_until_held(tmp_path, window, window, cancel, held)
+    assert held["ended"] and held["seconds"] < 3, held
+    assert done["status"] == "cancelled" and len(final) == len(at_stop) == window
+    assert done["usage"]["requests"] + done["usage"].get("prefetch_unused_requests", 0) == window
+
+
+# ---- review round: the crawler's own robots.txt and sitemap reads are gated (F4) --------------------------------
+
+def sitemap(urls):
+    return ('<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            + "".join(f"<url><loc>{u}</loc></url>" for u in urls) + "</urlset>")
+
+
+def crawl_task(tmp_path, web, interrupt):
+    """A crawl of docs.example whose robots.txt lists four sitemaps; the first one's answer is held. `interrupt` is
+    applied on another connection once that request has arrived. Returns (paths by the stop, paths after it, task)."""
+    path = tmp_path / "individual.sqlite"
+    db = store.create(path, T0)
+    state.set_config(db, {"enabled": True, "min_domain_interval": 0.0}, T0)
+    task = orchestrator.submit(db, "Investigate these sources: http://docs.example/", T0, mode="deep_research",
+                               context={"crawl": {"seeds": ["http://docs.example/"], "max_pages": 4, "max_depth": 1}})
+    holder, out = svc_mod.holder_id(), {}
+    with store.write(db):
+        state.update_task(db, task["id"], T0, lease_holder=holder, lease_expires_at=T0 + 600)
+    db.close()
+
+    def run():
+        connection = store.open_existing(path)
+        services = svc_mod.build(connection, path, fixture=web, providers=[], clock=lambda: T0)
+        services.holder = holder
+        try:
+            out["done"] = orchestrator.run(connection, task["id"], services)
+        except BaseException as error:
+            out["error"] = error
+        finally:
+            services.close()
+            connection.close()
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    arrived(web, "docs.example", "/s0.xml")
+    other = store.connect(path)
+    try:
+        interrupt(other, task["id"], web)
+    finally:
+        other.close()
+    at_stop = len(web.log)
+    return worker, out, at_stop
+
+
+@pytest.mark.parametrize("interrupt", [cancel, web_off], ids=["cancel", "web_off"])
+def test_a_crawl_reads_no_further_sitemap_after_a_stop(tmp_path, interrupt):
+    """The crawler fetches robots.txt and the sitemaps itself, not through the run's page fetch, so they were not
+    gated: after a cancel the three remaining sitemaps were still requested."""
+    release = threading.Event()
+    web = FixtureWeb()
+    robots = ROBOTS + "".join(f"Sitemap: http://docs.example/s{i}.xml\n" for i in range(4))
+    web.add("docs.example", "/robots.txt", robots, content_type="text/plain")
+    web.routes[("docs.example", "/s0.xml")] = Held(sitemap(["http://docs.example/a"]), release, "application/xml")
+    for i in range(1, 4):
+        web.add("docs.example", f"/s{i}.xml", sitemap([f"http://docs.example/x{i}"]), content_type="application/xml")
+    web.add("docs.example", "/", page("Zephyr compiler 4.2.0 boards", ["The Zephyr compiler supports 12 boards."]))
+    web.add("docs.example", "/a", page("Zephyr compiler 4.2.0 boards, more", ["It supports 14 boards."]))
+    web.start()
+    try:
+        try:
+            worker, out, at_stop = crawl_task(tmp_path, web, interrupt)
+        finally:
+            release.set()
+        worker.join(30)
+        assert not worker.is_alive() and "error" not in out, out.get("error")
+        log = settled(web)
+        assert [r["path"] for r in log[:at_stop]] == ["/robots.txt", "/s0.xml"]
+        assert [r["path"] for r in log[at_stop:]] == []
+        assert out["done"]["status"] in ("cancelled", "partial", "failed")
+    finally:
+        web.stop()
+
+
+# ---- review round: a new deny list is never visible beside the old policy (F6) -----------------------------------
+
+def test_the_fetchers_policy_is_replaced_before_the_run_records_the_new_deny_list(tmp_path):
+    """A fetch ahead that asked between the two used to see the new list recorded and its own (old) policy still in
+    force, and went on. The policy goes first; and the lookout no longer consults the reader's copy at all."""
+    path = tmp_path / "individual.sqlite"
+    db = store.create(path, T0)
+    try:
+        state.set_config(db, {"enabled": True}, T0)
+        seen = []
+
+        class Fetcher:
+            def __init__(self):
+                self._policy = NetPolicy()
+
+            policy = property(lambda self: self._policy)
+
+            @policy.setter
+            def policy(self, value):
+                seen.append((tuple(run.deny_list), tuple(value.deny_domains)))
+                self._policy = value
+
+        class Run:
+            recheck_config = orchestrator._Run.recheck_config
+            flush_deferred = orchestrator._Run.flush_deferred
+
+            def event(self, *args):
+                seen.append(("event", args[1]))
+
+        run = Run()
+        run.db, run.deny_list, run.config_read, run.deferred = db, (), 0.0, []
+        run.services = type("S", (), {"fetcher": Fetcher()})()
+        state.set_config(db, {"deny_domains": ["x.example"]}, T0 + 1)
+        run.recheck_config(force=True, defer=True)
+        assert seen == [((), ("x.example",))]                 # the old list was still the recorded one
+        assert run.deny_list == ("x.example",) and run.deferred     # the event waits until after the fetch
+        run.flush_deferred()
+        assert seen[-1] == ("event", {"deny_domains_updated": 1}) and run.deferred == []
+    finally:
+        db.close()
+
+
+# ---- review round: politeness wins over identical outcomes (F3) --------------------------------------------------
+
+def zephyr(host, n):
+    return page(f"Zephyr compiler 4.2.0 boards ({host})", [
+        f"The Zephyr compiler version 4.2.0 supports {10 + n} boards according to {host}.",
+        f"Source {n} lists the nRF52 and STM32 boards for version 4.2.0 of the Zephyr compiler."])
+
+
+@pytest.mark.parametrize("window", [1, 4])
+def test_a_back_off_received_by_a_fetch_ahead_applies_to_the_site_at_once(tmp_path, window):
+    """The one stated exception to "read-ahead reads what one page at a time reads". The first candidate redirects,
+    slowly, to two.example; the second candidate is on two.example and is answered 429 with Retry-After. One page at
+    a time, the first is read before the 429 exists. Read ahead, the 429 arrives first, the site is left alone from
+    that moment, and the first candidate's hop onto it is not made. The site asked: it is not asked again, and the
+    report says why the source is missing."""
+    web = FixtureWeb()
+    for host in ("one.example", "two.example", "three.example"):
+        web.add(host, "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add("one.example", "/zephyr", b"", status=302, content_type=None,
+            headers={"Location": "http://two.example/article"}, delay=0.5)
+    web.add("two.example", "/article", zephyr("two.example", 1))
+    web.add("two.example", "/zephyr", "slow down", status=429, content_type="text/plain",
+            headers={"Retry-After": "60"})
+    web.add("three.example", "/zephyr", zephyr("three.example", 3))
+    web.start()
+    path = tmp_path / "individual.sqlite"
+    db = store.create(path, T0)
+    try:
+        state.set_config(db, {"enabled": True, "min_domain_interval": 0.0, "read_ahead": window}, T0)
+        task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+        provider = CorpusProvider([{"url": f"http://{host}/zephyr", "title": f"Zephyr compiler 4.2.0 boards ({n})",
+                                    "snippet": "the Zephyr compiler version 4.2.0 and the boards it supports"}
+                                   for n, host in enumerate(("one.example", "two.example", "three.example"))])
+        services = svc_mod.build(db, path, fixture=web, providers=[provider], clock=time.time)
+        try:
+            done = orchestrator.run(db, task["id"], services)
+        finally:
+            services.close()
+        sources = sorted(s["url"] for s in state.sources(db, done["id"]))
+        limitations = (done["result"] or {}).get("limitations") or []
+        asked = [text for text in limitations if "two.example" in text and "asked for fewer requests" in text]
+        assert done["status"] in ("completed", "partial"), done["error"]
+        assert asked, limitations                              # at both windows the 429 itself is reported
+        to_two = [r["path"] for r in settled(web) if r["host"] == "two.example"]
+        if window == 1:
+            assert sources == ["http://one.example/zephyr", "http://three.example/zephyr"]
+            assert to_two == ["/robots.txt", "/article", "/zephyr"]
+        else:
+            assert sources == ["http://three.example/zephyr"]
+            assert to_two == ["/robots.txt", "/zephyr"]        # nothing after the site asked to slow down
+    finally:
+        db.close()
+        web.stop()

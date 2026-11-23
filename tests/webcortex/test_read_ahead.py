@@ -260,6 +260,27 @@ def test_budget_exhaustion_with_read_ahead_in_flight_ends_exactly_as_one_at_a_ti
     assert len(four["log"]) == four["usage"]["requests"] + four["usage"].get("prefetch_unused_requests", 0)
 
 
+EDGES = [{"max_requests": n} for n in (1, 2, 3, 4, 6, 7, 9, 12)] + \
+        [{"max_bytes": n} for n in (200, 450, 700, 950, 1300, 2000, 2700)]
+
+
+@pytest.mark.parametrize("budget", EDGES, ids=[f"{k}={v}" for edge in EDGES for k, v in edge.items()])
+def test_at_every_budget_edge_read_ahead_ends_as_one_at_a_time_and_stays_inside_the_budget(tmp_path, budget):
+    """The fetches ahead of a task share its budget (they send a request, and read a body byte, only while what the
+    task was charged, sent unused and holds ahead leaves room). Wherever the budget ends the task, it reads, charges
+    and reports what one-at-a-time reading does, and what was sent ahead unused never exceeds the budget itself."""
+    one = research(tmp_path, "one", 1, budget=budget)
+    four = research(tmp_path, "four", 4, budget=budget)
+    assert four["outcome"] == one["outcome"]
+    assert four["cached"] == one["cached"]
+    assert len(four["log"]) == four["usage"]["requests"] + four["usage"].get("prefetch_unused_requests", 0)
+    assert len(one["log"]) == one["usage"]["requests"]
+    if "max_requests" in budget:
+        assert four["usage"].get("prefetch_unused_requests", 0) <= budget["max_requests"]
+    else:       # at the byte limit each fetch ahead reads one byte more, as the reader's own read does
+        assert four["usage"].get("prefetch_unused_bytes", 0) <= budget["max_bytes"] + len(four["started"])
+
+
 def test_crash_with_read_ahead_in_flight_then_resume_uses_only_checkpointed_pages(tmp_path):
     def crash_before_second(n):
         if n == 2:
