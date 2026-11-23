@@ -1,19 +1,21 @@
 # NeuroSciFi wake requests (docs/architecture/RESOURCE_SCHEDULING.md §3c): reload a model service the idle policy
 # unloaded, on behalf of a process that may not start services itself. The console and the worker run as an
 # unprivileged, sandboxed user without Docker access; with NSF_WAKE_DIR set in their environment they leave an empty
-# file `<service>.wake` in that folder when a call or a memory lookup finds its service unloaded.
-# neuroscifi-wake.path sees it and starts this unit, which runs `nsf resources wake`: each request is removed,
-# checked against the policy's own service names (nothing else is ever run) and reloaded with the same free-memory
-# check, wait and event as any reload. It runs as the docker user that owns the services, like neuroscifi-idle.service,
-# and needs what that unit needs: NSF_DB, and read-write access to `<NSF_DB>.resources/` and to the request folder.
-# Not installed by deploy/install.sh. Install by hand, next to the idle timer:
-#   sed -e "s#@NSF_USER@#$USER#" -e "s#@NSF_REPO@#$PWD#" -e "s#@NSF_WAKE_DIR@#/path/to/wake#" \
-#     deploy/systemd/neuroscifi-wake.service | sudo install -m 0644 /dev/stdin /etc/systemd/system/neuroscifi-wake.service
-#   sed -e "s#@NSF_WAKE_DIR@#/path/to/wake#" deploy/systemd/neuroscifi-wake.path \
-#     | sudo install -m 0644 /dev/stdin /etc/systemd/system/neuroscifi-wake.path
+# file `<service>.wake` in that folder when a memory lookup finds its service unloaded, or when a connection to a
+# model service is refused. They need nothing else: not the idle policy's files (this account's, which they may be
+# unable to read), only the right to create a file in the request folder.
+# neuroscifi-wake.path sees the request and starts this unit, which runs `nsf resources wake`: each request is
+# removed, checked against the policy's own service names (nothing else is ever run), and the service is reloaded
+# if this account's own state says the idle policy unloaded it and a reload is due, with the same free-memory check,
+# wait and event as any reload. An entry that is not a plain file is removed or moved aside; if that is impossible
+# the command stays for 30 s, so the path unit starts it twice a minute at most (StartLimit below is never reached).
+# It runs as the docker user that owns the services, like neuroscifi-idle.service, and needs what that unit needs:
+# NSF_DB, read-write access to `<NSF_DB>.resources/`, and ownership of the request folder (mode 2770, group: the
+# console's; deploy/install.sh --idle creates it).
+# Installed (disabled) by `deploy/install.sh --idle [--idle-user USER]`, which fills the placeholders. Then:
 #   systemctl edit neuroscifi-wake.service      # [Service] Environment=NSF_DB=<the instance database>
-#   add NSF_WAKE_DIR=/path/to/wake to the environment of the console and the worker (/etc/neuroscifi/neuroscifi.env)
-#   sudo systemctl daemon-reload && sudo systemctl enable --now neuroscifi-wake.path
+#   add NSF_WAKE_DIR=<the request folder> to /etc/neuroscifi/neuroscifi.env (console, worker, Pocket)
+#   sudo systemctl enable --now neuroscifi-wake.path
 # (the template's placeholders fail safe: the units do not start until they are set)
 [Unit]
 Description=NeuroSciFi wake requests: reload an idle-unloaded model service

@@ -1,5 +1,12 @@
 # NeuroSciFi wake requests: starts neuroscifi-wake.service whenever a request file exists (see that unit's header for
-# what a request is and how to install both). systemd watches the folder itself, so no process polls it.
+# what a request is and how both are installed). systemd watches the folder itself, so no process polls it.
+#
+# PathExistsGlob= is checked when this unit starts and again each time the service ends (systemd.path(5)), so a
+# request left while the service was running, or before boot, is still served; PathChanged= would miss both. The
+# price of that is a loop if an entry matching the pattern can never be removed: the service therefore removes or
+# renames anything that is not a plain file, and where even that fails it stays for 30 s before it ends. The trigger
+# limit is left at systemd's default (200 starts in 2 s): reaching it stops the watch until someone restarts it, so
+# it is a last stop against a fault, not the way a stuck entry is handled.
 [Unit]
 Description=NeuroSciFi wake requests (watch)
 

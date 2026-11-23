@@ -3,13 +3,13 @@
 # set its idle timeout (`nsf resources idle --set vllm=30m ...`; all off by default), nothing is in flight, no voice
 # session is open, no research task runs and nothing used it within the timeout. With every timeout off it does
 # nothing and exits 0. It stops and starts the services with deploy/vllm/run.sh, deploy/voice/run.sh and
-# deploy/memory/run.sh (or systemctl for an active unit), so it runs as the docker user that owns them. Not installed
-# by deploy/install.sh. Install by hand:
-#   sed -e "s#@NSF_USER@#$USER#" -e "s#@NSF_REPO@#$PWD#" deploy/systemd/neuroscifi-idle.service \
-#     | sudo install -m 0644 /dev/stdin /etc/systemd/system/neuroscifi-idle.service
-#   sudo install -m 0644 deploy/systemd/neuroscifi-idle.timer /etc/systemd/system/
+# deploy/memory/run.sh (or systemctl for an active unit), so it runs as the docker user that owns them. Installed
+# (disabled) by `deploy/install.sh --idle [--idle-user USER]`, which fills the placeholders, together with the wake
+# units that reload a service on request. Then:
 #   systemctl edit neuroscifi-idle.service      # [Service] Environment=NSF_DB=<the instance database>
-#   sudo systemctl daemon-reload && sudo systemctl enable --now neuroscifi-idle.timer
+#   sudo systemctl enable --now neuroscifi-idle.timer
+# By hand instead: sed -e "s#@NSF_USER@#$USER#" -e "s#@NSF_REPO@#$PWD#" deploy/systemd/neuroscifi-idle.service \
+#     | sudo install -m 0644 /dev/stdin /etc/systemd/system/neuroscifi-idle.service, and the timer as it is.
 # (the template's @NSF_USER@ / @NSF_REPO@ placeholders fail safe: the unit does not start until they are set)
 [Unit]
 Description=NeuroSciFi idle-unload pass (opt-in per service)

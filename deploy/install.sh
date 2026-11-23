@@ -9,6 +9,7 @@
 #   sudo bash deploy/install.sh [--dry-run] [--source DIR | --wheel FILE] [--wheelhouse DIR]
 #                               [--prefix DIR] [--python PYTHON] [--unit-dir DIR] [--web] [--websearch]
 #                               [--searxng] [--llm [--llm-user USER]] [--memory [--memory-user USER]]
+#                               [--idle [--idle-user USER]]
 #
 # --dry-run     print every action and change nothing; allowed without root so the plan can be reviewed
 # --source DIR  project folder to install from (default: the folder above this script)
@@ -30,14 +31,24 @@
 #               models (memory search by meaning; MEMORY_INTEGRATION.md §5.1) in docker on 127.0.0.1:18441 and :18442
 #               through deploy/memory/run.sh in the source folder (NSF_REPO); needs docker and the weights
 # --memory-user U  the account the memory units run as (default: --llm-user, then $SUDO_USER); same conditions
+# --idle        also install the idle policy's units (RESOURCE_SCHEDULING.md §3c): neuroscifi-idle.service and .timer
+#               (the pass that unloads a model service nobody uses; every timeout is off until the owner sets one)
+#               and neuroscifi-wake.service and .path (reload on request, for the console and the worker, which may
+#               not start services themselves). Creates the request folder /var/lib/neuroscifi-wake (owner: the idle
+#               account, group: neuroscifi, mode 2770, so the services may leave a request and nothing else) and
+#               lets the console, worker and Pocket units write there. Set NSF_DB in a drop-in for both services
+#               and NSF_WAKE_DIR in /etc/neuroscifi/neuroscifi.env (the closing message says how).
+# --idle-user U  the account those units run as (default: --llm-user, then --memory-user, then $SUDO_USER): the one
+#               that runs the model services; it must be in the docker group
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$(cd "$HERE/.." && pwd)"
 WHEEL="" WHEELHOUSE="" PREFIX=/opt/neuroscifi PYTHON="" UNIT_DIR=/etc/systemd/system DRY=0 WEB=0 WEBSEARCH=0
-SEARXNG=0 LLM=0 LLM_USER="${SUDO_USER:-}" MEMORY=0 MEMORY_USER=""
+SEARXNG=0 LLM=0 LLM_USER="${SUDO_USER:-}" MEMORY=0 MEMORY_USER="" IDLE=0 IDLE_USER=""
 SVC_USER=neuroscifi
 STATE_DIR=/var/lib/neuroscifi
+WAKE_DIR=/var/lib/neuroscifi-wake      # beside the state folder, not inside it: that one is the service user's alone (0700)
 CONF_DIR=/etc/neuroscifi
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
@@ -59,6 +70,8 @@ while [ $# -gt 0 ]; do
     --llm-user) [ $# -ge 2 ] || die "--llm-user needs a value"; LLM_USER="$2"; shift ;;
     --memory) MEMORY=1 ;;
     --memory-user) [ $# -ge 2 ] || die "--memory-user needs a value"; MEMORY_USER="$2"; shift ;;
+    --idle) IDLE=1 ;;
+    --idle-user) [ $# -ge 2 ] || die "--idle-user needs a value"; IDLE_USER="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
@@ -81,6 +94,14 @@ if [ "$MEMORY" -eq 1 ]; then
   [[ "$MEMORY_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "--memory needs --memory-user USER (a plain account name; got: '$MEMORY_USER')"
   [ "$MEMORY_USER" != root ] || die "--memory-user must not be root"
   [[ "$SOURCE" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--memory: the source folder path has unexpected characters: $SOURCE"
+fi
+
+if [ "$IDLE" -eq 1 ]; then
+  # IDLE_USER, SOURCE and WAKE_DIR are spliced into the idle and wake units with sed, like PREFIX.
+  IDLE_USER="${IDLE_USER:-${LLM_USER:-$MEMORY_USER}}"
+  [[ "$IDLE_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "--idle needs --idle-user USER (a plain account name; got: '$IDLE_USER')"
+  [ "$IDLE_USER" != root ] || die "--idle-user must not be root"
+  [[ "$SOURCE" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--idle: the source folder path has unexpected characters: $SOURCE"
 fi
 
 if [ "$DRY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
@@ -197,10 +218,17 @@ install_unit() {
     mv -f "$UNIT_DIR/$unit.tmp" "$UNIT_DIR/$unit"
   fi
 }
+# With --idle the units that call the model services may also write the wake-request folder (they run under
+# ProtectSystem=strict, so every writable path is named). "-": a folder that is missing is not an error.
+WAKE_SED="s#^ReadWritePaths=%S/neuroscifi\$#ReadWritePaths=%S/neuroscifi -$WAKE_DIR#"
 for unit in neuroscifi-pocket.service neuroscifi-console.service neuroscifi-checkpoint.service neuroscifi-checkpoint.timer \
             neuroscifi-webcortex.service neuroscifi-webcortex-tick.service neuroscifi-webcortex-tick.timer \
             neuroscifi-websearch.service; do
-  install_unit "$unit" "$NODE_SED"
+  case "$IDLE:$unit" in
+    1:neuroscifi-pocket.service|1:neuroscifi-console.service|1:neuroscifi-webcortex.service)
+      install_unit "$unit" "$NODE_SED" "$WAKE_SED" ;;
+    *) install_unit "$unit" "$NODE_SED" ;;
+  esac
 done
 if [ "$SEARXNG" -eq 1 ] || [ "$LLM" -eq 1 ] || [ "$MEMORY" -eq 1 ]; then
   command -v docker >/dev/null 2>&1 || echo "# warning: docker not found on this host; --searxng/--llm/--memory units need it"
@@ -234,6 +262,27 @@ if [ "$MEMORY" -eq 1 ]; then
     install_unit "$unit" "s#^User=.*#User=$MEMORY_USER#" "s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=$SOURCE#"
   done
 fi
+if [ "$IDLE" -eq 1 ]; then
+  note "idle policy (RESOURCE_SCHEDULING.md §3c): units neuroscifi-idle.service/.timer and neuroscifi-wake.service/.path run $SOURCE/.venv/bin/nsf as $IDLE_USER"
+  if [ "$DRY" -eq 0 ]; then
+    getent passwd "$IDLE_USER" >/dev/null || die "--idle-user $IDLE_USER does not exist"
+    [ -x "$SOURCE/.venv/bin/nsf" ] || echo "# warning: no $SOURCE/.venv/bin/nsf yet; the idle and wake units run it"
+  fi
+  id -nG "$IDLE_USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker \
+    || echo "# warning: $IDLE_USER is not in the docker group; stopping and starting the model services would fail"
+  # The request folder: the idle account owns it (it removes the requests), the service user's group may create
+  # files in it (setgid: whatever is made there keeps that group), nobody else may enter. An existing folder is
+  # left as it is (install -d would reset its mode and owner): the owner may have chosen otherwise.
+  if [ -d "$WAKE_DIR" ]; then
+    echo "$WAKE_DIR exists; left as it is ($(stat -c '%U:%G %a' "$WAKE_DIR"))"
+  else
+    act install -d -m 2770 -o "$IDLE_USER" -g "$SVC_USER" "$WAKE_DIR"
+  fi
+  IDLE_SED=("s#@NSF_USER@#$IDLE_USER#g" "s#@NSF_REPO@#$SOURCE#g" "s#@NSF_WAKE_DIR@#$WAKE_DIR#g")
+  for unit in neuroscifi-idle.service neuroscifi-idle.timer neuroscifi-wake.service neuroscifi-wake.path; do
+    install_unit "$unit" "${IDLE_SED[@]}"
+  done
+fi
 if [ "$UNIT_DIR" = /etc/systemd/system ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   act systemctl daemon-reload
 fi
@@ -249,4 +298,19 @@ neuroscifi-webcortex-tick.timer, neuroscifi-websearch.service) are installed dis
 MSG
 [ "$SEARXNG" -eq 0 ] || echo "neuroscifi-searxng.service is installed disabled: set User= and NSF_DB (systemctl edit), then enable it."
 [ "$LLM" -eq 0 ] || echo "neuroscifi-vllm.service is installed disabled: enable it after the weights are in place (COGNITIVE_INFERENCE.md §5)."
+if [ "$IDLE" -eq 1 ]; then
+  cat <<MSG
+The idle policy's units are installed disabled and do nothing until an idle timeout is set. To use them:
+  1. name the individual for both services:  systemctl edit neuroscifi-idle.service neuroscifi-wake.service
+       [Service]
+       Environment=NSF_DB=$STATE_DIR/instance.sqlite
+  2. let the console, the worker and Pocket ask for a reload: add  NSF_WAKE_DIR=$WAKE_DIR  to $CONF_DIR/neuroscifi.env
+     and restart them
+  3. systemctl enable --now neuroscifi-idle.timer neuroscifi-wake.path
+  4. set a timeout as $IDLE_USER:  nsf resources idle --set vllm=30m   (RUNBOOK.md, "Idle unloading")
+$IDLE_USER must be able to read $STATE_DIR/instance.sqlite and write the folder beside it that ends in
+".resources": this script does not arrange that (the state folder is $SVC_USER's alone, 0700). RUNBOOK.md says
+what the two accounts share and what is not verified.
+MSG
+fi
 [ "$MEMORY" -eq 0 ] || echo "neuroscifi-memory-embed.service and neuroscifi-memory-rerank.service are installed disabled: enable them after the weights are in place (RUNBOOK.md, memory search), then run \`nsf setup\` once so the individual uses them."

@@ -188,6 +188,50 @@ def test_the_wake_units_watch_one_folder_run_only_the_wake_command_and_share_the
     def sandbox(text):
         return text[text.index("NoNewPrivileges=yes"):]
     assert sandbox(unit) == sandbox((ROOT / "deploy" / "systemd" / "neuroscifi-idle.service").read_text())
+    # a stuck entry is the command's to handle (it holds 30 s): no trigger limit that would stop the watch for good
+    assert "TriggerLimit" not in "".join(line for line in path.splitlines() if not line.startswith("#"))
+
+
+def test_install_sh_installs_the_idle_and_wake_units_only_when_asked_with_their_request_folder(tmp_path):
+    """Second-pass review S2: both were installed by hand, and nothing created the request folder with modes that
+    let the service user ask and the docker user serve."""
+    import subprocess
+    script = str(ROOT / "deploy" / "install.sh")
+    plain = subprocess.run(["bash", script, "--dry-run", "--unit-dir", str(tmp_path)], capture_output=True, text=True)
+    assert plain.returncode == 0
+    assert "neuroscifi-idle" not in plain.stdout and "neuroscifi-wake" not in plain.stdout     # also: no wake folder
+    asked = subprocess.run(["bash", script, "--dry-run", "--unit-dir", str(tmp_path), "--idle", "--idle-user",
+                            "nsfmodels"], capture_output=True, text=True)
+    assert asked.returncode == 0, asked.stderr
+    out = asked.stdout
+    # the folder: the serving account owns it, the service user's group may create files in it, setgid, nobody else
+    assert "+ install -d -m 2770 -o nsfmodels -g neuroscifi /var/lib/neuroscifi-wake\n" in out
+    sed = {name: next(row for row in out.splitlines() if row.startswith("+ sed") and f"/{name} >" in row)
+           for name in ("neuroscifi-idle.service", "neuroscifi-idle.timer", "neuroscifi-wake.service",
+                        "neuroscifi-wake.path", "neuroscifi-console.service", "neuroscifi-webcortex.service",
+                        "neuroscifi-pocket.service", "neuroscifi-checkpoint.service")}
+    for name in ("neuroscifi-idle.service", "neuroscifi-wake.service", "neuroscifi-wake.path"):
+        assert "'s#@NSF_USER@#nsfmodels#g'" in sed[name] and "'s#@NSF_WAKE_DIR@#/var/lib/neuroscifi-wake#g'" in sed[name]
+        assert "'s#@NSF_REPO@#" in sed[name]
+    grant = "'s#^ReadWritePaths=%S/neuroscifi$#ReadWritePaths=%S/neuroscifi -/var/lib/neuroscifi-wake#'"
+    for name in ("neuroscifi-console.service", "neuroscifi-webcortex.service", "neuroscifi-pocket.service"):
+        assert grant in sed[name]                                  # the units that call the model services
+    assert grant not in sed["neuroscifi-checkpoint.service"]
+    assert "NSF_WAKE_DIR=/var/lib/neuroscifi-wake" in out and "systemctl enable --now neuroscifi-idle.timer " \
+        "neuroscifi-wake.path" in out and "installed disabled" in out
+    assert not list(tmp_path.iterdir())                            # a dry run writes nothing
+    for user in ("root", "two words", ""):
+        refused = subprocess.run(["bash", script, "--dry-run", "--idle", "--idle-user", user], capture_output=True,
+                                 text=True, env={"PATH": "/usr/bin:/bin"})
+        assert refused.returncode == 1 and "--idle" in refused.stderr
+    # what those expressions make of the templates: no placeholder left, and the grant lands on the units' own line
+    units = ROOT / "deploy" / "systemd"
+    for name in ("neuroscifi-idle.service", "neuroscifi-wake.service", "neuroscifi-wake.path"):
+        text = (units / name).read_text().replace("@NSF_USER@", "nsfmodels").replace("@NSF_REPO@", "/srv/nsf") \
+            .replace("@NSF_WAKE_DIR@", "/var/lib/neuroscifi-wake")
+        assert "@NSF_" not in "".join(line for line in text.splitlines() if not line.startswith("#")), name
+    for name in ("neuroscifi-console.service", "neuroscifi-webcortex.service", "neuroscifi-pocket.service"):
+        assert re.search(r"^ReadWritePaths=%S/neuroscifi$", (units / name).read_text(), re.M), name
 
 
 def test_memory_status_prints_one_line_per_service_running_or_not(tmp_path):
