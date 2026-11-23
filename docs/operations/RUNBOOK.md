@@ -415,3 +415,37 @@ Measurements behind the two vLLM settings and what each change costs: [COGNITIVE
 ### MCP
 
 `nsf web mcp` allows at most `mcp_research_per_hour` (default 6) `web_research` calls per hour per server process, and MCP-origin tasks share the daily allowance `daily_mcp` (tasks, requests, bytes). Results carry the report's context pack (bounded by the task's `max_context_tokens`); `full_report: true` returns the whole report.
+
+## 13. Graph scoring rules: which rule an individual learns under
+
+A graph candidate is learned under the newest scoring rule of its individual and judged by that rule for good (`nsf graph rules list --db DB`; the last entry is the one in use). Rules are immutable: they are added, never edited, removed or reordered (ADR-045).
+
+| Individual | Rules it has | What `nsf graph learn` packs |
+|---|---|---|
+| Created by this version or later | `gate-v1`, then `best-learner-v1` (both `created_by: birth`) | The smallest file within 2 % of the better learner: a cut of the dense fit, or the sparse learner's graph. Same thresholds and byte budget as gate-v1 |
+| Created earlier | `gate-v1`, plus whatever its owner added | A cut of the dense fit, as before. Nothing changes until its owner adds a rule |
+
+**Adopt the rule on an older individual** (no file needed; services may stay up, the command takes one short write):
+
+```
+nsf graph rules add --builtin best-learner-v1 --owner-approved --db DB
+```
+
+Graphs learned afterwards use it. Graphs already learned, active or archived keep their rule and their bytes.
+
+**Go back.** `gate-v1` is registered already and the newest rule is the one in use, so going back is a new version with gate-v1's content:
+
+```
+nsf graph rules add --builtin gate-v1 --as gate-v1-again --owner-approved --db DB
+```
+
+The same form returns to best-learner later (`--builtin best-learner-v1 --as best-learner-v1-again`). A candidate already learned under the other rule is not relearned; learn it again if you want it judged under the new one.
+
+**What every individual gets, whatever its rules.** The promotion gate rejects a snapshot that predicts no better than a graph with no edges (check `beats_no_graph`; the console shows it as "Better than a graph with no edges", and the revision's detail has the line "Against no graph"). It applies to candidates learned by this version or later; a candidate learned earlier is judged by its five checks as before.
+
+| Symptom | Check | Recovery |
+|---|---|---|
+| `nsf graph promote` rejects with `failed: ["beats_no_graph"]` | `nsf graph show REV`: `metrics.validation_mse` against `metrics.no_graph_validation_mse`, and `metrics.sparse.validation_mse` | The dense learner stops fitting with many populations (about 100 and up). If the sparse learner's error is low, adopt `best-learner-v1` (above) and learn again. If both are near the no-graph error the data holds nothing to learn, or the stream is too short |
+| A candidate with 512 or more populations is rejected for `byte_budget` only | `byte_size` against 4096 | Expected under both built-in rules. To allow it, add your own rule: copy `best-learner-v1` from `nsf graph rules list`, give it a new `version` and a larger `byte_budget`, and `nsf graph rules add FILE.json --owner-approved` |
+| `Rule gate-v1 is already registered and a newer rule is in use` | — | Use `--as NEW-NAME` as above |
+| The software is to be downgraded below this version | `nsf graph rules list`: is the last rule one with `pack_reference`? | Go back to gate-v1 first (above). Older software ignores the two new parts of a rule and would pack as gate-v1 under best-learner-v1's name |

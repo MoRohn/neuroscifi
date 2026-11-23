@@ -1186,3 +1186,103 @@ readings accumulate for the life of the epoch.
   nothing; rollback is a restore of the pre-upgrade checkpoint (MIGRATIONS.md).
 - Tests: `tests/instance/test_consolidation.py` (29), and the expiry tests of `test_erasure.py` and
   `test_journeys.py`, which keep their old assertions under `consolidation=False`.
+
+# ADR-045 (draft) Which graph is promoted: the better learner's, and never one worse than no graph. R
+
+## Context
+
+`learner.fit` trains two matrices on one stream: a dense one, and a sparse one with k inputs per receiver whose
+support is rewired by edge exchange (GRA-02, the brief's fixed active-edge budget). Until this decision the snapshot
+of a candidate was always cut from the dense matrix (`learner.pack`: the smallest file within 2 % of the dense FP32
+error), and the sparse matrix was only measured (audit C6).
+
+Measuring whether the sparse graph should be promoted found a defect instead. The dense update takes a step from
+every input, each normalised by that input alone, so its error grows with the number of populations. On the lab's
+stream (`scripts/bench_graph_learner.py sizes`, validation MSE; the noise floor is 0.0042, a graph with no edges
+0.018):
+
+| Populations | Dense fit | Snapshot gate-v1 cuts from it | Sparse learner |
+|---|---|---|---|
+| 24 | 0.0049 | 0.0043 | 0.0043 |
+| 96 | 0.0097 | 0.0085 | 0.0043 |
+| 160 | 0.115 | 0.0192 | 0.0044 |
+| 256 | 3628 | 255 | 0.0043 |
+
+A cut of a failed fit is always "within tolerance" of that fit, and with no incumbent every check of the gate
+passed, so the first candidate of a context with 160 or more populations was promoted although it predicted worse
+than no graph. `datasets.add` accepts 1024 populations; the built-in source (`datasets.simulate`) has 24, where
+the two learners agree to within 0.3 %.
+
+## Decision
+
+1. **The gate has a sixth check that no rule can waive: `beats_no_graph`.** `graphs.learn` records the error of a
+   graph with no edges on the candidate's validation data (`no_graph_validation_mse`) and whether the snapshot is
+   below it (`beats_no_graph`). `graphs.promote` rejects a candidate that is not, with a reason naming both errors,
+   under every rule version. A candidate without the record (learned by earlier software) has the five checks it
+   always had, and its decision record is unchanged.
+2. **A scoring rule may pack the sparse learner's graph.** Two optional parts of a rule definition:
+   `pack_candidates.learned_sparse` (the sparse matrix is a candidate, as FP32 and at its own degree with each bit
+   width) and `pack_reference: "best_learner"` (the tolerance is measured against the lower validation error of
+   the two learners' FP32 graphs). Selection is unchanged in kind: the smallest file within the tolerance; with
+   `learned_sparse`, files of equal size are separated by the lower validation error. A rule without the two parts
+   keeps its meaning, its sha256 and its result, byte for byte.
+3. **New individuals are born with two rules, `gate-v1` and then `best-learner-v1`** (`store.BIRTH_RULES`):
+   gate-v1 with both parts, the same thresholds and the same 4096-byte budget. Graphs are learned under the last.
+4. **Existing individuals keep exactly the rules they have.** Their owner adopts the rule with
+   `nsf graph rules add --builtin best-learner-v1 --owner-approved`, and goes back with
+   `nsf graph rules add --builtin gate-v1 --as gate-v1-again --owner-approved` (rules are immutable and the newest
+   is used, so going back is a new version with gate-v1's content). Candidates keep the rule they were learned
+   under either way.
+
+## Measured
+
+`scripts/bench_graph_learner.py select`, 64 worlds per configuration (16 at 160 and 256 populations), held-out
+error on 1024 steps neither the fit nor the selection saw
+(`docs/quality/evidence/accel_decisions_graph_learner_select.json`):
+
+| Configuration | gate-v1 | best-learner-v1 |
+|---|---|---|
+| Lab world (24 populations, 3 inputs) | dense degree 3, 4 bit, 247 bytes; 0.004321 | the same size in every world; the sparse learner's weights in 64 %; 0.004313 |
+| Lab world, 512 steps | 0.004327 | the same file in every world |
+| 6 true inputs, edge budget 3 | dense degree 6; 0.004462 | the same file in every world |
+| 2 true inputs, edge budget 3 | dense degree 2; 0.004291 | the same file in every world |
+| 96 populations | dense degree 2, 715 bytes; 0.008368 | sparse degree 3, 859 bytes; 0.004321 |
+| 160 populations | 0.017967; worse than no graph in 8 of 16 worlds | 0.004319 |
+| 256 populations | 322.99; worse than no graph in 16 of 16 | 0.004317 |
+
+The acceptance scenarios that learn a graph, run once born under gate-v1 alone and once under the birth rules
+(`accel_decisions_graph_birth_rule.json`): all pass both ways and no check changes; the leaves of their reports
+that differ are listed there.
+
+## Alternatives rejected
+
+- **Adding the sparse graph as a candidate under the dense reference only.** Chosen in 64 % of lab worlds for an
+  error 0.3 % lower and never where it matters, because the reference is the failed fit.
+- **Refusing in `learn`.** A candidate that learned nothing is still worth showing with its numbers; the place
+  where a graph becomes the one in use is the gate.
+- **Making the no-graph check part of a rule version.** It would leave every individual on gate-v1 exposed, and a
+  graph worse than none is wrong under any exam.
+- **Repairing the dense learner.** Its arithmetic is the lab's, value for value, and the published reproduction
+  depends on it. The sparse learner is the one the brief specifies.
+- **Raising the byte budget.** At 512 populations the sparse 4-bit file is about 5.9 kB, over the 4096 bytes both
+  birth rules allow, so nothing is promoted there, as before. A larger budget is a resource decision for the owner
+  (a rule file with `byte_budget`).
+
+## Consequences
+
+- A new individual's promoted snapshot carries the sparse learner's weights in about two lab-size worlds of three:
+  the same size, degree and support, an error within 0.3 %. Its bytes and sha256 differ from what gate-v1 would
+  have stored.
+- The first physical test (D1) is preregistered as "learned and promoted under gate-v1"; its scenario creates its
+  individuals under gate-v1 explicitly and reproduces its recorded numbers. It passes with the same rates under the
+  birth rules.
+- `docs/quality/evidence/acceptance.json` was recorded under gate-v1 and is not regenerated. Run today,
+  `growth_retention` differs from it in the leaves listed in `accel_decisions_graph_birth_rule.json`, and its
+  `thresholds` name `best-learner-v1`.
+- A decision record of a candidate learned from now on lists six checks. Readers of `decision.order` see the
+  sixth; nothing else in the record moved.
+- Older software reading a file whose latest rule is `best-learner-v1` ignores the two parts and packs as gate-v1
+  while the candidate records `best-learner-v1`. The schema did not change, so nothing refuses such a downgrade:
+  go back with the command above first.
+- Tests: `tests/instance/test_graphs.py` (the gate check, the birth rules, the built-in command, a candidate
+  without the record), `tests/instance/test_learner.py` (packing).

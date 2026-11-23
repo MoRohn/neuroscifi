@@ -142,33 +142,44 @@ learner.fit(states, targets, *, k=3, seed=0) -> {"dense": ndarray, "sparse": nda
 learner.pack(dense, validation, rule, sparse=None) -> {"blob": bytes, "bits", "degree", "byte_size", "validation_mse", "dense_validation_mse", "candidates"}
 #   lab.graph_compression_bench selection: FP32 plus degrees x bits from the rule. Keep candidates with
 #   val MSE <= (1 + validation_tolerance) * dense val MSE, then take the smallest complete file.
-#   Which graph is packed. Under gate-v1 (and any rule without the two optional parts below) only the dense fit is
-#   packed; `sparse` is ignored and the result is what it always was. A rule the owner adds may carry:
+#   Which graph is packed (ADR-045). Under gate-v1 (and any rule without the two optional parts below) only the
+#   dense fit is packed; `sparse` is ignored and the result is what it always was. A rule may carry:
 #     "pack_candidates": {..., "learned_sparse": true}   the sparse learner's matrix is a candidate too, as FP32
 #                                                        and at its own degree with each bit width of the rule
 #     "pack_reference": "best_learner"                   the tolerance is measured against the lower validation MSE
 #                                                        of the two learners' FP32 graphs (needs learned_sparse)
 #   With learned_sparse, files of equal size are separated by the lower validation MSE and the result adds
 #   "learner" ('dense'|'sparse'), "reference", "reference_validation_mse" and a "learner" per candidate.
-#   No such rule is registered by the software. Adopt: `nsf graph rules add FILE.json --owner-approved` with
-#   gate-v1's definition plus the two parts and a new version name; candidates learned afterwards use it, earlier
-#   ones keep their recorded rule. Back: add gate-v1's definition again under another version name (rules are
-#   immutable and the newest is used). Measured effect: docs/quality/evidence/accel_decisions_graph_learner_*.json.
+#   store.BEST_LEARNER_V1 ('best-learner-v1') is gate-v1 with both parts, the same thresholds and byte budget.
+#   store.BIRTH_RULES = (GATE_V1, BEST_LEARNER_V1): a new individual is born with both, registered in that order,
+#   and learns under the last. store.create(..., birth_rules=None) takes another tuple (for example (GATE_V1,) to
+#   reproduce an individual born earlier). An individual born earlier keeps the rules it has; its owner adopts the
+#   rule with `nsf graph rules add --builtin best-learner-v1 --owner-approved` and goes back with
+#   `nsf graph rules add --builtin gate-v1 --as gate-v1-again --owner-approved` (rules are immutable and the newest
+#   is used). Candidates keep the rule they were learned under. With 512 or more populations the sparse file is over
+#   the 4096-byte budget of both rules, so nothing is promoted there, as before.
+#   Measured: docs/quality/evidence/accel_decisions_graph_learner_*.json, accel_decisions_graph_birth_rule.json.
 
 graphs.register_founding(db, nsg_blob, now) -> int           # caller owns txn? No: opens its own write(); status 'active', context 'founding'
 graphs.learn(db, context, now, *, train: int, validation: int, holder: str) -> int   # candidate revision id; takes the context lease
 #   metrics: validation_mse, dense_validation_mse, pack (the candidates and the choice), sparse (the sparse learner's
 #   swaps, edges, validation_mse and how much of its support the snapshot shares), and no_graph_validation_mse with
 #   beats_no_graph: the error of a graph with no edges on the same validation data, and whether the snapshot is
-#   below it. A snapshot that is not has learned nothing; under gate-v1 that happens with many populations (above).
+#   below it. A snapshot that is not has learned nothing; under gate-v1 that happens with many populations (above),
+#   and the gate rejects it (check (f) below).
 graphs.evaluate(db, revision_id, now) -> dict                # metrics on held-out sets not in its lineage; stored in metrics
 graphs.promote(db, revision_id, now) -> {"promoted": bool, "decision": {...all numbers and the rule version...}}
-#   Gate (rule recorded on the candidate):
+#   Gate (rule recorded on the candidate; decision["order"] lists the checks applied, graphs.CHECKS all six):
 #   (a) >=1 heldout dataset of the context not in its training lineage, else reject
 #   (b) incumbent present: candidate heldout MSE < incumbent heldout MSE * (1 - min_heldout_gain)
 #   (c) retention: on every older heldout dataset of the context, candidate MSE <= incumbent MSE * (1 + retention_tolerance);
 #       failing (c) while passing (b) adds "recommendation": "register as a new context; the incumbent still solves older data"
 #   (d) byte_size <= byte_budget
+#   (e) lineage_intact: no dataset the candidate was trained or validated on has been deleted
+#   (f) beats_no_graph: metrics.validation_mse < metrics.no_graph_validation_mse. Not part of any rule and waived by
+#       none: a snapshot no better than a graph with no edges is rejected, with "why" naming both errors. Applied only
+#       when learn() recorded metrics.beats_no_graph; a candidate learned before that has checks (a)-(e) and the
+#       decision record it always had.
 #   Pass: incumbent -> 'archived', candidate -> 'active'. Fail: candidate -> 'rejected'. Decision JSON stored either way.
 graphs.reject(db, revision_id, now, reason) -> dict
 graphs.rollback(db, context, revision_id, now) -> dict       # re-activate an archived, non-invalidated revision
@@ -193,7 +204,7 @@ recall.run(db, dataset_id, now, *, contexts=None, record=True) -> dict
 #   An 'unknown_context' verdict with record=True creates pending(kind='new_context'). Never creates a graph itself.
 ```
 
-CLI (W2-B): `nsf graph simulate CONTEXT --seed N [--world a|b]`, `nsf graph datasets [--context]`, `nsf graph learn CONTEXT --train ID --validation ID`, `nsf graph evaluate REV`, `nsf graph promote REV`, `nsf graph reject REV --reason`, `nsf graph rollback CONTEXT REV`, `nsf graph list [--context]`, `nsf graph show REV`, `nsf graph lesion REV DATASET`, `nsf graph recall DATASET [--context ...]`, `nsf graph export REV OUT.nsg`, `nsf graph rules list`, `nsf graph rules add FILE.json --owner-approved` (the flag is required).
+CLI (W2-B): `nsf graph simulate CONTEXT --seed N [--world a|b]`, `nsf graph datasets [--context]`, `nsf graph learn CONTEXT --train ID --validation ID`, `nsf graph evaluate REV`, `nsf graph promote REV`, `nsf graph reject REV --reason`, `nsf graph rollback CONTEXT REV`, `nsf graph list [--context]`, `nsf graph show REV`, `nsf graph lesion REV DATASET`, `nsf graph recall DATASET [--context ...]`, `nsf graph export REV OUT.nsg`, `nsf graph rules list`, `nsf graph rules add FILE.json --owner-approved` (the flag is required), `nsf graph rules add --builtin gate-v1|best-learner-v1 [--as VERSION] --owner-approved` (a rule that ships with the software, no file; `--as` registers it under another version name, needed when it is registered already and a newer rule is in use).
 
 ## 4. Memory, governance, checkpoints (owner: W2-C)
 

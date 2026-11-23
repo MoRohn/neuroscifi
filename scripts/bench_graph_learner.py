@@ -4,6 +4,7 @@ to how many populations the dense fit works.
     PYTHONPATH=src python scripts/bench_graph_learner.py time   [--out FILE] [--repeats 7]
     PYTHONPATH=src python scripts/bench_graph_learner.py select [--out FILE] [--worlds 64]
     PYTHONPATH=src python scripts/bench_graph_learner.py sizes  [--out FILE]
+    PYTHONPATH=src python scripts/bench_graph_learner.py birth  [--out FILE]
 
 `time`: one stream per size through (a) the dense matrix alone, (b) the loop as the lab wrote it (`learner._learn`
 before the exchange was vectorised, kept here verbatim), (c) today's `_learn`, (d) today's `_learn` with the
@@ -11,12 +12,19 @@ exchange switched off. (b) and (c) must agree bit for bit; the script says wheth
 on a shared machine: the minimum of the repeats is the figure to read, the median says how noisy the run was.
 
 `select`: for worlds drawn like `lab.graph_bench` (N populations, K true inputs per receiver), what three selection
-rules would promote and its error on data neither the fit nor the selection saw: the rule of today (candidates from
-the dense fit, within the tolerance of the dense FP32 error), the same with the learned sparse graph added as a
-candidate, and the rule format `pack_reference: best_learner` (within the tolerance of the better learner).
+rules would promote and its error on data neither the fit nor the selection saw: gate-v1 ("rule_today" in the
+output: candidates from the dense fit, within the tolerance of the dense FP32 error), the same with the learned
+sparse graph added as a candidate, and best-learner-v1 (`pack_reference: best_learner`: within the tolerance of the
+better learner).
 
-`sizes`: the product path (datasets.add, graphs.learn, evaluate, promote on a new individual) at 24 to 1024
-populations, beside the error of a graph with no edges at all.
+`sizes`: the product path (datasets.add, graphs.learn, evaluate, promote) at 24 to 1024 populations, on an
+individual born under gate-v1 alone and on one born under the birth rules of today, beside the error of a graph with
+no edges at all.
+
+`birth`: the acceptance scenarios that learn a graph, with their default parameters, once with every individual born
+under gate-v1 alone and once under the birth rules of today, and every leaf of the two reports that differs (timings
+and file sizes on disk left out). The first physical test is preregistered under gate-v1 and creates its individuals
+that way; for the second run this mode lifts that pin.
 """
 import argparse
 import json
@@ -248,55 +256,111 @@ def run_select(worlds, rule):
 
 
 def run_sizes():
-    """datasets.add -> graphs.learn -> evaluate -> promote on a new individual, per population count."""
+    """datasets.add -> graphs.learn -> evaluate -> promote on a new individual, per population count and birth rules."""
     import tempfile
     from pathlib import Path
 
     from neuroscifi.instance import datasets, graphs
 
     now = 1_800_000_000.0
+    births = {"born_under_gate_v1": (store.GATE_V1,), "born_under_birth_rules": store.BIRTH_RULES}
     out = []
     for n in (24, 48, 64, 96, 128, 160, 192, 224, 256, 512, 1024):
-        rows = []
+        rows = {name: [] for name in births}
         for seed in range(3 if n <= 256 else 1):
             rng = np.random.default_rng(1000 * n + seed)
             a = world(n, 3, rng)
             data = {"train": stream(a, 1536, rng), "validation": stream(a, 256, rng), "heldout": stream(a, 512, rng)}
-            with tempfile.TemporaryDirectory() as tmp:
-                path = Path(tmp) / "individual.sqlite"
-                store.create(path, now)
-                db = store.open_existing(path)
-                ids = {split: datasets.add(db, "panel", split, *pair, "simulated", now) for split, pair in data.items()}
-                revision = graphs.learn(db, "panel", now + 1, train=ids["train"], validation=ids["validation"],
-                                        holder="bench")
-                shown = graphs.show(db, revision)
-                heldout = graphs.evaluate(db, revision, now + 2)["heldout_mse"]
-                decision = graphs.promote(db, revision, now + 3)
-                db.close()
-            metrics = shown["metrics"]
-            rows.append({"no_graph_validation_mse": float(np.mean(data["validation"][1] ** 2)),
-                         "dense_validation_mse": metrics["dense_validation_mse"],
-                         "candidate_validation_mse": metrics["validation_mse"],
-                         "candidate_heldout_mse": heldout,
-                         "learned_sparse_validation_mse": metrics["sparse"]["validation_mse"],
-                         "candidate": [shown["degree"], shown["bits"], shown["byte_size"]],
-                         "promoted": decision["promoted"], "failed_checks": decision["decision"]["failed"]})
-        summary = {"n": n, "worlds": len(rows), "rule": shown["rule_version"],
-                   **{key: float(np.median([r[key] for r in rows])) for key in (
-                       "no_graph_validation_mse", "dense_validation_mse", "candidate_validation_mse",
-                       "candidate_heldout_mse", "learned_sparse_validation_mse")},
-                   "candidate_degree_bits_bytes": rows[0]["candidate"],
-                   "promoted": [r["promoted"] for r in rows], "failed_checks": [r["failed_checks"] for r in rows]}
-        summary["candidate_worse_than_no_graph"] = summary["candidate_validation_mse"] >= summary["no_graph_validation_mse"]
+            for name, birth_rules in births.items():
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "individual.sqlite"
+                    db = store.create(path, now, birth_rules=birth_rules)
+                    ids = {split: datasets.add(db, "panel", split, *pair, "simulated", now)
+                           for split, pair in data.items()}
+                    revision = graphs.learn(db, "panel", now + 1, train=ids["train"], validation=ids["validation"],
+                                            holder="bench")
+                    shown = graphs.show(db, revision)
+                    heldout = graphs.evaluate(db, revision, now + 2)["heldout_mse"]
+                    decision = graphs.promote(db, revision, now + 3)
+                    db.close()
+                metrics = shown["metrics"]
+                rows[name].append({
+                    "rule": shown["rule_version"], "learner": metrics["pack"].get("learner", "dense"),
+                    "no_graph_validation_mse": metrics["no_graph_validation_mse"],
+                    "dense_validation_mse": metrics["dense_validation_mse"],
+                    "candidate_validation_mse": metrics["validation_mse"], "candidate_heldout_mse": heldout,
+                    "learned_sparse_validation_mse": metrics["sparse"]["validation_mse"],
+                    "candidate": [shown["degree"], shown["bits"], shown["byte_size"]],
+                    "beats_no_graph": metrics["beats_no_graph"],
+                    "promoted": decision["promoted"], "failed_checks": decision["decision"]["failed"]})
+        summary = {"n": n, "worlds": len(rows["born_under_gate_v1"])}
+        for name, items in rows.items():
+            summary[name] = {
+                "rule": items[0]["rule"], "learner": sorted({r["learner"] for r in items}),
+                **{key: float(np.median([r[key] for r in items])) for key in (
+                    "no_graph_validation_mse", "dense_validation_mse", "candidate_validation_mse",
+                    "candidate_heldout_mse", "learned_sparse_validation_mse")},
+                "candidate_degree_bits_bytes": items[0]["candidate"],
+                "beats_no_graph": [r["beats_no_graph"] for r in items],
+                "promoted": [r["promoted"] for r in items], "failed_checks": [r["failed_checks"] for r in items]}
         out.append(summary)
         print(json.dumps(summary), flush=True)
     return {"stream": "lab.graph_bench.stream for N populations, 3 true inputs per receiver, 1536 training steps",
             "noise_floor_mse": round(.065 ** 2, 6), "sizes": out}
 
 
+NOT_COMPARED = ("seconds", "latency", "_ms.", "_ms[", "p50", "p95", "p99", "cpu", "duration", "elapsed", "wall",
+                "bytes", "path", "high_water", "throughput", "per_second", "mean_us", "max_us", "gpu")
+GRAPH_SCENARIOS = ("birth", "graph_development", "growth_retention", "device_ownership", "first_physical_test")
+
+
+def _leaves(value, prefix=""):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield from _leaves(item, f"{prefix}.{key}" if prefix else str(key))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from _leaves(item, f"{prefix}[{index}]")
+    else:
+        yield prefix, value
+
+
+def run_birth():
+    """The acceptance scenarios that learn a graph, born under gate-v1 alone and under the birth rules of today."""
+    from neuroscifi.acceptance import scenarios
+
+    def run(birth_rules):
+        saved = store.BIRTH_RULES, scenarios.FIRST_TEST_BIRTH_RULES
+        store.BIRTH_RULES = scenarios.FIRST_TEST_BIRTH_RULES = birth_rules
+        try:
+            return scenarios.run(list(GRAPH_SCENARIOS))
+        finally:
+            store.BIRTH_RULES, scenarios.FIRST_TEST_BIRTH_RULES = saved
+
+    today = store.BIRTH_RULES
+    gate, best = run((store.GATE_V1,)), run(today)
+    out = {"parameters": best["parameters"], "seed": best["seed"],
+           "birth_rules": {"gate-v1": ["gate-v1"], "today": [rule["version"] for rule in today]},
+           "not_compared": "leaves whose name marks a timing or a size on disk: " + ", ".join(NOT_COMPARED),
+           "scenarios": {}}
+    for name in GRAPH_SCENARIOS:
+        a, b = dict(_leaves(gate["scenarios"][name])), dict(_leaves(best["scenarios"][name]))
+        differing = [key for key in sorted(set(a) | set(b)) if a.get(key) != b.get(key)]
+        changed = {key: {"gate-v1": a.get(key), "today": b.get(key)} for key in differing
+                   if not any(word in key.lower() + "." for word in NOT_COMPARED)}
+        out["scenarios"][name] = {
+            "pass": {"gate-v1": gate["scenarios"][name]["pass"], "today": best["scenarios"][name]["pass"]},
+            "checks": len(best["scenarios"][name]["checks"]),
+            "checks_changed": sorted(key for key in changed if key.startswith("checks.")),
+            "leaves": len(set(a) | set(b)), "leaves_changed": len(changed),
+            "timing_or_size_leaves_differing": len(differing) - len(changed), "changed": changed}
+        print(json.dumps({name: {k: v for k, v in out["scenarios"][name].items() if k != "changed"}}), flush=True)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("mode", choices=("time", "select", "sizes"))
+    ap.add_argument("mode", choices=("time", "select", "sizes", "birth"))
     ap.add_argument("--out")
     ap.add_argument("--repeats", type=int, default=7)
     ap.add_argument("--worlds", type=int, default=64)
@@ -305,7 +369,7 @@ def main():
               "environment": {"machine": platform.machine(), "python": platform.python_version(),
                               "numpy": np.__version__, "load_average_at_start": list(os.getloadavg())}}
     result |= (run_time(args.repeats) if args.mode == "time" else run_sizes() if args.mode == "sizes"
-               else run_select(args.worlds, store.GATE_V1))
+               else run_birth() if args.mode == "birth" else run_select(args.worlds, store.GATE_V1))
     if args.out:
         with open(args.out, "w") as fh:
             json.dump(result, fh, indent=1)
