@@ -166,6 +166,39 @@ def test_worker_polls_until_stopped(individual):
     assert naps == [7.0, 7.0]
 
 
+def test_a_question_the_owner_asked_is_claimed_before_queued_autonomous_refreshes(individual, monkeypatch):
+    """Defect 2: claim_next was first-in-first-out, so an owner's question sat behind up to five queued autonomous
+    refreshes. Owner-asked tasks now claim first, in created_at order within each class; an autonomous task queued
+    for more than AUTONOMOUS_DEFER seconds competes by age again, so it is never starved."""
+    db, _ = individual
+    monkeypatch.setattr(scheduler, "background", lambda db: {"allowed": True, "reason": None, "why": None})
+    autonomous = [orchestrator.submit(db, f"Zephyr compiler board {n}", T0 + n, mode="quick_lookup",
+                                      origin=origin)["id"]
+                  for n, origin in enumerate(("refresh:1", "curiosity", "refresh:2"))]
+    owner = [orchestrator.submit(db, q, T0 + 10 + n, mode="quick_lookup", origin=origin)["id"]
+             for n, (q, origin) in enumerate((("What is the latest version of the Zephyr compiler?", "console"),
+                                              ("Zephyr compiler release date", "cli")))]
+    claims = [scheduler.claim_next(db, f"w{n}", T0 + 20 + n, lease=DAY)[0] for n in range(3)]
+    assert claims == [*owner, autonomous[0]]          # then the autonomous ones, oldest first
+
+    later = T0 + scheduler.AUTONOMOUS_DEFER + 1.5     # autonomous[1] has waited longer than that, autonomous[2] not
+    late = orchestrator.submit(db, "Zephyr compiler targets", later, mode="quick_lookup", origin="console")["id"]
+    claims = [scheduler.claim_next(db, f"v{n}", later, lease=DAY)[0] for n in range(2)]
+    assert claims == [autonomous[1], late]
+
+
+def test_the_claim_order_uses_the_orchestrators_definition_of_autonomous(individual):
+    """autonomy.AUTONOMOUS_SQL (claim_next's filter and order) and orchestrator.is_autonomous must agree origin by
+    origin, or an owner's question could be ordered as background work."""
+    db, _ = individual
+    origins = ["curiosity", "refresh:12", "refresh:", "cli", "console", "voice:console", "pocket:" + "ab" * 8,
+               "monitor:3", "mcp", "bench", "curiosity:x", "refreshed", "Curiosity", "x-refresh:1"]
+    from neuroscifi.webcortex import autonomy
+    for origin in origins:
+        sql = db.execute(f"SELECT {autonomy.AUTONOMOUS_SQL} FROM (SELECT ? AS origin)", (origin,)).fetchone()[0]
+        assert bool(sql) == orchestrator.is_autonomous(origin), origin
+
+
 def _worker_waiting(path, monkeypatch, **options):
     """A worker thread (sleep=stop.wait, as `nsf web work` and the console run it) that has found the queue empty
     and gone to wait for its next poll. orchestrator.run only records when a task reached it."""
