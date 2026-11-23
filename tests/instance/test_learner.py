@@ -98,3 +98,168 @@ def test_pack_selects_smallest_snapshot_within_tolerance():
     strict = learner.pack(dense, val, dict(rule, validation_tolerance=0.0, pack_candidates={"degrees": [2],
                                                                                             "bits": [4]}))
     assert strict["bits"] == 32 and strict["degree"] == 24
+
+
+# ---- the edge exchange for all receivers at once (learner._exchange) against the lab's loop ------------------------
+
+def _learn_as_the_lab_wrote_it(states, targets, use):
+    """learner._learn before the exchange was vectorised (lab.graph_bench.simulate for one stream), verbatim."""
+    n = states.shape[1]
+    dense = np.zeros((n, n))
+    growing = dense.copy()
+    score = dense.copy()
+    swaps = 0
+    for left in range(0, len(states), learner.WINDOW):
+        xx = states[left:left + learner.WINDOW]
+        yy = targets[left:left + learner.WINDOW]
+        denom = (xx * xx).sum(axis=0) + learner.RIDGE
+        for mat, mask in ((dense, None), (growing, use)):
+            residual = yy - xx @ mat.T
+            grad = (residual.T @ xx) / denom
+            np.fill_diagonal(grad, 0)
+            mat += learner.LEARNING_RATE * grad if mask is None else learner.LEARNING_RATE * grad * mask
+            if mat is growing:
+                score = learner.SCORE_KEEP * score + learner.SCORE_NEW * grad
+        if (left // learner.WINDOW + 1) % learner.SWAP_EVERY == 0:
+            for j in range(n):
+                inside = np.where(use[j])[0]
+                outside = np.where((~use[j]) & (np.arange(n) != j))[0]
+                if not len(inside) or not len(outside):
+                    continue
+                drop = inside[np.argmin(abs(growing[j, inside]))]
+                add = outside[np.argmax(abs(score[j, outside]))]
+                if abs(score[j, add]) > learner.SWAP_RATIO * abs(growing[j, drop]) + learner.SWAP_MARGIN:
+                    growing[j, drop] = 0
+                    use[j, drop] = False
+                    use[j, add] = True
+                    growing[j, add] = 0
+                    swaps += 1
+    return {"dense": dense, "sparse": growing, "support": use, "swaps": swaps}
+
+
+def _bitwise(a, b):
+    """Every bit of both matrices (so -0.0 is not 0.0 and a NaN equals only the same NaN), support and swaps."""
+    assert a["dense"].tobytes() == b["dense"].tobytes()
+    assert a["sparse"].tobytes() == b["sparse"].tobytes()
+    assert a["support"].dtype == b["support"].dtype == bool
+    np.testing.assert_array_equal(a["support"], b["support"])
+    assert a["swaps"] == b["swaps"] and isinstance(b["swaps"], int)
+
+
+def _world_stream(n, true_k, steps, seed):
+    rng = np.random.default_rng(seed)
+    a = np.zeros((n, n))
+    for j in range(n):
+        if n > 1:
+            idx = rng.choice(np.delete(np.arange(n), j), min(true_k, n - 1), replace=False)
+            a[j, idx] = rng.choice([-1., 1.], len(idx)) * rng.uniform(.17, .25, len(idx))
+    prev = np.zeros(n)
+    states = np.empty((steps, n))
+    targets = np.empty_like(states)
+    for t in range(steps):
+        residual = a @ prev + rng.normal(0, .065, n)
+        states[t], targets[t] = prev, residual
+        prev = .2 * prev + residual + rng.normal(0, .6, n) * (rng.random(n) < .22)
+    return states, targets
+
+
+@pytest.mark.parametrize("n,steps", [(2, 512), (3, 512), (24, 1536), (256, 768), (1024, 256)])
+def test_learn_is_the_lab_loop_bit_for_bit(n, steps):
+    swaps = 0
+    for seed in ((0, 1, 2) if n <= 24 else (0,)):
+        states, targets = _world_stream(n, 3, steps, seed)
+        for k in (sorted({0, 1, min(3, n - 1), n - 1}) if n <= 24 else (3, n - 1) if n == 256 else (3,)):
+            initial = learner._layout(n, k, np.random.default_rng(seed + 7))
+            lab = _learn_as_the_lab_wrote_it(states, targets, initial.copy())
+            _bitwise(lab, learner._learn(states, targets, initial.copy()))
+            _bitwise(lab, learner._learn(states, targets, initial.copy(), exchange=learner._exchange_reference))
+            assert (lab["support"].sum(axis=1) == k).all()             # an exchange keeps k inputs per receiver
+            _bitwise(lab, learner.fit(states, targets, k=k, seed=seed + 7))   # fit() draws that layout from its seed
+            swaps += lab["swaps"]
+    assert swaps > 0 or n <= 3     # edges were exchanged, or this proves nothing (the smallest sizes exchange none)
+
+
+@pytest.mark.parametrize("seed", [813240, 238194])
+def test_learn_matches_graph_bench_simulate_exactly(seed):
+    """The requirements matrix says 'max diff 0.0' (GRA-02); the older test above allows 1e-12."""
+    captured = _simulate_era_one(seed)
+    _, initial, x, y = _replay_era_one_inputs(seed)
+    sparse = learner._learn(x, y, initial.copy())
+    assert sparse["dense"].tobytes() == captured["dense"].tobytes()
+    assert sparse["sparse"].tobytes() == captured["sparse"].tobytes()
+
+
+def test_learn_on_streams_with_ties_and_zeros():
+    rng = np.random.default_rng(11)
+    n, steps = 12, 640
+    states = rng.integers(-1, 2, size=(steps, n)).astype(float)       # values -1, 0, 1: equal scores are common
+    states[:, 3] = states[:, 2]                                       # two identical inputs: tied scores every window
+    states[:, 5] = 0.0                                                # an input that never varies: score exactly 0
+    targets = np.roll(states, 1, axis=1) * .25
+    targets[:, 7] = 0.0                                               # a receiver with nothing to learn
+    swaps = 0
+    for k in (1, 3, n - 2, n - 1):
+        initial = learner._layout(n, k, np.random.default_rng(k))
+        lab = _learn_as_the_lab_wrote_it(states, targets, initial.copy())
+        _bitwise(lab, learner._learn(states, targets, initial.copy()))
+        swaps += lab["swaps"]
+    assert swaps > 0
+    zeros = np.zeros((96, n))                                         # nothing to learn at all: no exchange, no NaN
+    out = learner._learn(zeros, zeros, learner._layout(n, 3, np.random.default_rng(0)))
+    _bitwise(_learn_as_the_lab_wrote_it(zeros, zeros, learner._layout(n, 3, np.random.default_rng(0))), out)
+    assert out["swaps"] == 0 and not out["sparse"].any()
+
+
+def _exchange_both(growing, score, use):
+    a = (growing.copy(), score.copy(), use.copy())
+    b = (growing.copy(), score.copy(), use.copy())
+    swaps_a = learner._exchange_reference(*a)
+    swaps_b = learner._exchange(*b)
+    assert swaps_a == swaps_b
+    assert a[0].tobytes() == b[0].tobytes()                      # growing, every bit
+    assert a[1].tobytes() == b[1].tobytes() == score.tobytes()   # the score is read, never written
+    np.testing.assert_array_equal(a[2], b[2])
+    return swaps_b, b[0], b[2]
+
+
+def test_exchange_breaks_ties_at_the_lowest_index_like_the_loop():
+    use = np.array([[False, True, True, False, False],
+                    [True, False, False, True, False],
+                    [True, True, False, False, False],
+                    [False, False, True, False, True],
+                    [True, False, False, True, False]])
+    growing = np.where(use, .1, 0.0)                       # every weight equal: the weakest is the lowest index
+    score = np.full((5, 5), -.5)                           # every candidate equal: the best is the lowest index
+    swaps, new_growing, new_use = _exchange_both(growing, score, use)
+    assert swaps == 5
+    np.testing.assert_array_equal(new_use[0], [False, False, True, True, False])   # dropped 1, added 3 (0 is self)
+    np.testing.assert_array_equal(new_use[1], [False, False, True, True, False])   # dropped 0, added 2
+    np.testing.assert_array_equal(new_use[4], [False, True, False, True, False])   # dropped 0, added 1
+    assert new_growing[0, 1] == 0 and new_growing[0, 3] == 0 and new_growing[0, 2] == .1
+    # exactly at the threshold nothing moves (strictly greater), a hair above it does
+    edge = learner.SWAP_RATIO * .1 + learner.SWAP_MARGIN
+    assert _exchange_both(growing, np.full((5, 5), edge), use)[0] == 0
+    assert _exchange_both(growing, np.full((5, 5), np.nextafter(edge, 1)), use)[0] == 5
+
+
+def test_exchange_agrees_with_the_loop_on_awkward_values():
+    rng = np.random.default_rng(5)
+    values = np.array([0.0, -0.0, .5, -.5, 1.0, -1.0, 1e-300, np.inf, -np.inf, np.nan])
+    exchanged = 0
+    for case in range(400):
+        n = int(rng.integers(1, 10))
+        k = int(rng.integers(0, n))                          # 0 .. n - 1 inputs per receiver
+        use = learner._layout(n, k, rng)
+        pool = values[:7] if case % 2 == 0 else values       # finite values, then with inf and NaN
+        growing = np.where(use, rng.choice(pool, size=(n, n)), 0.0)
+        exchanged += _exchange_both(growing, rng.choice(pool, size=(n, n)), use)[0]
+    assert exchanged > 100
+    # supports the vectorised path does not take: uneven rows, a receiver listed as its own input, an empty row
+    for case in range(200):
+        n = int(rng.integers(2, 9))
+        use = rng.random((n, n)) < .4
+        if case % 2:
+            np.fill_diagonal(use, False)
+        growing = np.where(use, rng.choice(values[:7], size=(n, n)), 0.0)
+        _exchange_both(growing, rng.choice(values, size=(n, n)), use)
+    assert _exchange_both(np.zeros((1, 1)), np.ones((1, 1)), np.zeros((1, 1), bool))[0] == 0

@@ -29,8 +29,74 @@ def _layout(n, k, rng):
     return mask
 
 
-def _learn(states, targets, use):
-    """Run the windowed learner from an initial support mask. `use` is updated in place."""
+def _exchange_reference(growing, score, use):
+    """One edge-exchange check, receiver by receiver: the loop of `lab.graph_bench.simulate`.
+
+    Per receiver j: the weakest edge of its support (smallest |weight|, lowest index on a tie) is exchanged for the
+    non-support, non-self input with the largest |score| (lowest index on a tie) when that score exceeds
+    SWAP_RATIO * |weakest weight| + SWAP_MARGIN. Updates `growing` and `use` in place; returns the swaps made.
+    `_exchange` is tested against it bit for bit and hands it any support that is not k inputs per receiver.
+    """
+    n = len(use)
+    swaps = 0
+    for j in range(n):
+        inside = np.where(use[j])[0]
+        outside = np.where((~use[j]) & (np.arange(n) != j))[0]
+        if not len(inside) or not len(outside):
+            continue
+        drop = inside[np.argmin(abs(growing[j, inside]))]
+        add = outside[np.argmax(abs(score[j, outside]))]
+        if abs(score[j, add]) > SWAP_RATIO * abs(growing[j, drop]) + SWAP_MARGIN:
+            growing[j, drop] = 0
+            use[j, drop] = False
+            use[j, add] = True
+            growing[j, add] = 0
+            swaps += 1
+    return swaps
+
+
+def _exchange(growing, score, use):
+    """`_exchange_reference` for all receivers at once, with the same result bit for bit.
+
+    A receiver reads and writes only its own row of `growing`, `use` and `score`, so the rows are independent.
+    With k inputs per receiver (what `_layout` draws and every exchange keeps) the support is an [N, k] index array
+    in index order, so argmin over it is the reference's choice, lowest index on a tie. The candidate search is
+    argmax over |score| with the support and the diagonal set to -inf: |score| is never below zero, so the first
+    maximum of a row is the reference's first maximum over its candidates, for any values (NaN and inf included).
+    """
+    n = len(use)
+    per_row = use.sum(axis=1)
+    k = int(per_row[0]) if n else 0
+    if not (per_row == k).all() or np.diag(use).any():
+        return _exchange_reference(growing, score, use)     # an uneven or self-including support: receiver by receiver
+    if k == 0 or k >= n - 1:
+        return 0                                            # nothing to drop, or no candidate to add
+    rows = np.arange(n)
+    inside = np.nonzero(use)[1].reshape(n, k)               # row-major, so each receiver's inputs in index order
+    weight = np.abs(growing[rows[:, None], inside])
+    at = weight.argmin(axis=1)
+    drop, weakest = inside[rows, at], weight[rows, at]
+    strength = np.abs(score)
+    strength[rows[:, None], inside] = -np.inf
+    strength[rows, rows] = -np.inf
+    add = strength.argmax(axis=1)
+    swap = strength[rows, add] > SWAP_RATIO * weakest + SWAP_MARGIN
+    rows, drop, add = rows[swap], drop[swap], add[swap]
+    growing[rows, drop] = 0
+    use[rows, drop] = False
+    use[rows, add] = True
+    growing[rows, add] = 0
+    return int(len(rows))
+
+
+def _learn(states, targets, use, *, exchange=_exchange):
+    """Run the windowed learner from an initial support mask. `use` is updated in place.
+
+    The window update is `lab.graph_bench.simulate`'s, expression for expression. It is where the time goes: the
+    sparse matrix costs a second pass of the same products plus its score, so a fit takes about three times a
+    dense-only one whatever the exchange costs (scripts/bench_graph_learner.py time). `exchange`: the edge-exchange
+    check (tests pass `_exchange_reference` to compare).
+    """
     n = states.shape[1]
     dense = np.zeros((n, n))
     growing = dense.copy()
@@ -48,19 +114,7 @@ def _learn(states, targets, use):
             if mat is growing:
                 score = SCORE_KEEP * score + SCORE_NEW * grad
         if (left // WINDOW + 1) % SWAP_EVERY == 0:
-            for j in range(n):
-                inside = np.where(use[j])[0]
-                outside = np.where((~use[j]) & (np.arange(n) != j))[0]
-                if not len(inside) or not len(outside):
-                    continue
-                drop = inside[np.argmin(abs(growing[j, inside]))]
-                add = outside[np.argmax(abs(score[j, outside]))]
-                if abs(score[j, add]) > SWAP_RATIO * abs(growing[j, drop]) + SWAP_MARGIN:
-                    growing[j, drop] = 0
-                    use[j, drop] = False
-                    use[j, add] = True
-                    growing[j, add] = 0
-                    swaps += 1
+            swaps += exchange(growing, score, use)
     return {"dense": dense, "sparse": growing, "support": use, "swaps": swaps}
 
 
