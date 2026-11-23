@@ -774,8 +774,12 @@ def _just_spawned(idle, name, *, mark=False) -> bool:
 def _background_reload(idle, name, purpose) -> dict:
     """{"action": "loading" | "refused" | "failed", "why"} for a service the idle policy unloaded, without waiting:
     its reload runs in a process of its own, started here unless one already runs (this process's, or another's:
-    one holding the load lock or started a moment ago). A reload that ended refused or failed is reported as such, and the next one starts no
-    sooner than BACKGROUND_RETRY seconds after it did, so lookups do not start a hopeless load on every call."""
+    one holding the load lock or started a moment ago). A reload that ended refused or failed is reported as such,
+    and the next one starts no sooner than BACKGROUND_RETRY seconds after it ended.
+
+    Both limits hold across processes (review F6: they held inside one process only, so one-shot commands started
+    a reload each). The failure time is the one Idle.load writes to idle.json; and the decision to start, the
+    start and its marker happen under one short lock, so two processes that look at the same moment start one."""
     svc = idle.services[name]
     key = (str(idle.db_path), name)
     n = idle.estimate(name)
@@ -783,27 +787,33 @@ def _background_reload(idle, name, purpose) -> dict:
                                            + (f" (about {math.ceil(n)} s)" if n else "")}
     with _LOADS_LOCK:
         entry = _DETACHED.get(key)
-        if entry is not None:
-            process, started = entry
-            code = process.poll()
-            if code is None:
-                return loading
-            if code != 0 and 0 <= idle.monotonic() - started < BACKGROUND_RETRY:
-                last = next((e for e in reversed(idle.events(limit=50))
-                             if e.get("service") == name and e.get("action") == "load"), None) or {}
-                if last.get("refused"):
-                    return {"action": "refused",
-                            "why": last.get("error") or f"not enough memory to load {svc.label}"}
-                detail = " ".join(str(last.get("error") or "see nsf resources").split())[:160]
-                return {"action": "failed", "why": f"{svc.label} did not start: {detail}"}
-        if _load_in_progress(idle, name) or _just_spawned(idle, name):
+        if entry is not None and entry[0].poll() is None:
             return loading
         try:
-            _DETACHED[key] = (_spawn_load(idle, name, purpose), idle.monotonic())
-            _just_spawned(idle, name, mark=True)
+            with _flock(idle._file(f"idle-spawn-{name}.lock"), fcntl.LOCK_EX):       # held for milliseconds
+                state = idle.read()["services"].get(name) or {}
+                ended = max((t for t in (state.get("failed_at"), state.get("refused_at"))
+                             if isinstance(t, (int, float))), default=None)
+                if ended is not None and 0 <= idle.clock() - ended < BACKGROUND_RETRY:
+                    last = next((e for e in reversed(idle.events(limit=50))
+                                 if e.get("service") == name and e.get("action") == "load"), None) or {}
+                    if last.get("refused"):
+                        return {"action": "refused",
+                                "why": last.get("error") or f"not enough memory to load {svc.label}"}
+                    detail = " ".join(str(last.get("error") or "see nsf resources").split())[:160]
+                    return {"action": "failed", "why": f"{svc.label} did not start: {detail}"}
+                if _load_in_progress(idle, name) or _just_spawned(idle, name):
+                    return loading
+                _DETACHED[key] = (_start_reload(idle, name, purpose), idle.monotonic())
+                _just_spawned(idle, name, mark=True)
         except OSError as error:
             return {"action": "failed", "why": f"{svc.label} did not start: {type(error).__name__}: {error}"[:200]}
     return loading
+
+
+def _start_reload(idle, name, purpose):
+    """How a background reload is started. One way today: a process of its own."""
+    return _spawn_load(idle, name, purpose)
 
 
 @contextmanager

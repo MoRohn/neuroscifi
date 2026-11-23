@@ -1015,3 +1015,30 @@ def test_a_container_found_running_counts_as_loaded_only_once_it_answers(memory_
     waits = sum("wait" in c for c in fake.calls)
     assert p.load("embed", reason="owner command") == {"action": "none", "why": "already running"}
     assert sum("wait" in c for c in fake.calls) == waits      # one that answers is not waited for again
+
+
+# ---- review F6: the retry limit holds across processes ---------------------------------------------------------
+
+def test_a_failed_reload_is_not_started_again_by_another_process_inside_the_back_off(memory_host):
+    """Review F6: the 30 s limit lived in the process that started the reload, so every one-shot command started a
+    new one. It is now the failure time Idle.load records, which every process reads."""
+    fake = memory_host
+    p = _unload_idle(fake, "embed")
+    fake.fail.add("neuroscifi-memory-embed")
+    with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
+        assert state["action"] == "loading"
+    _finish_loads(fake)
+    starts = sum("start" in c for c in fake.calls)
+    for _ in range(3):                                    # three other processes: they know nothing of the first
+        idle._DETACHED.clear()
+        fake.now += 5
+        with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
+            assert state["action"] == "failed" and "did not start: run.sh: container exited" in state["why"]
+    assert idle._DETACHED == {} and sum("start" in c for c in fake.calls) == starts
+    assert len([e for e in p.events() if e.get("action") == "load"]) == 1
+    fake.now += idle.BACKGROUND_RETRY                     # the back-off is over: the next process tries once
+    fake.fail.clear()
+    with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
+        assert state["action"] == "loading"
+    _finish_loads(fake)
+    assert "neuroscifi-memory-embed" in fake.running
