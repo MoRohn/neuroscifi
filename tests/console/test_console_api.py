@@ -411,7 +411,8 @@ def test_graph_journey_over_http(console):
     promoted = c.ok("POST", f"/api/graphs/{revision}/promote")
     assert promoted["promoted"] is True and promoted["decision"]["failed"] == []
     assert set(promoted["decision"]["checks"]) == {"independent_heldout", "heldout_gain", "retention", "byte_budget",
-                                                   "lineage_intact"}
+                                                   "lineage_intact", "beats_no_graph"}
+    assert promoted["decision"]["rule_version"] == "best-learner-v1"       # the rule a new individual learns under
     assert c.post(f"/api/graphs/{revision}/promote")[0] == 409
     shown = c.ok("GET", f"/api/graphs/{revision}")
     assert shown["status"] == "active" and len(shown["matrix"]) == 24 and shown["edges"] == 72

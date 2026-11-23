@@ -4,9 +4,9 @@
 to N. It trains, in the same pass, a dense matrix and a sparse matrix whose per-receiver support of k
 inputs is rewired by a scored swap test. `pack` is the selection rule of
 `lab.graph_compression_bench`: the smallest complete NSG1 file whose validation error stays within
-the scoring rule's tolerance of the dense FP32 graph. Under the birth rule only the dense matrix is packed
-and the sparse one is measured beside it; a rule the owner adds can make the sparse matrix a candidate and
-the better of the two the reference (`pack`, rules.py).
+the scoring rule's tolerance of the dense FP32 graph. Under gate-v1 only the dense matrix is packed and the
+sparse one is measured beside it; under best-learner-v1, the rule new individuals learn under, the sparse
+matrix is a candidate too and the better of the two learners is the reference (`pack`, rules.py, ADR-045).
 
 The two learners do not have the same range. The dense update takes a step from every input, each
 normalised by that input alone, so the steps add up with the population count: on the lab's stream the

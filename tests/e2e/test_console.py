@@ -267,11 +267,16 @@ def test_owner_journey(console, new_page):
     expect(page.locator("#graphEvaluation")).to_contain_text("#3")
     page.locator("#gPromote").click()
     expect(page.locator("#graphStatus")).to_contain_text("Gate passed: revision #1 is now the active graph of world-a.")
-    expect(page.locator("#gateSummary")).to_contain_text("All 5 checks passed under gate-v1")
+    expect(page.locator("#gateSummary")).to_contain_text("All 6 checks passed under best-learner-v1")
     checks = page.locator("#gateChecklist li")
-    expect(checks).to_have_count(5)
-    for name in ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact"):
+    expect(checks).to_have_count(6)
+    for name in ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact",
+                 "beats_no_graph"):
         expect(page.locator(f'#gateChecklist li[data-check="{name}"]')).to_contain_text("Passed")
+    expect(page.locator('#gateChecklist li[data-check="beats_no_graph"]')).to_contain_text(
+        "Better than a graph with no edges")
+    expect(page.locator("#graphDetail")).to_contain_text("Against no graph")
+    expect(page.locator("#graphDetail")).to_contain_text("better: a graph with no edges has validation MSE")
     expect(page.locator('#gateChecklist li[data-check="byte_budget"]')).to_contain_text("of 4096 bytes")
     expect(page.locator("#gPromote")).to_be_disabled()
     cells = page.locator("#heatmap rect.cell")
@@ -493,3 +498,60 @@ def test_keyboard_reaches_every_enabled_button(seeded, new_page, view):
     assert not missing, page.evaluate(
         "ks => ks.map(k => document.querySelector(`[data-k='${k}']`).outerHTML.slice(0, 90))", sorted(missing))
     assert not page.problems, page.problems
+
+
+def test_gate_rejects_a_graph_no_better_than_no_graph(tmp_path, new_page):
+    """An individual born under gate-v1 learns 192 populations: the dense fit fails there, and the page says so
+    before the gate is run and after it rejected the snapshot (ADR-045)."""
+    import numpy as np
+
+    path = tmp_path / "older.sqlite"
+    db = store.create(path, time.time(), birth_rules=(store.GATE_V1,))
+    try:
+        n, now = 192, time.time()
+        rng = np.random.default_rng(7)
+        a = np.zeros((n, n))
+        for j in range(n):
+            idx = rng.choice(np.delete(np.arange(n), j), 3, replace=False)
+            a[j, idx] = rng.choice([-1., 1.], 3) * rng.uniform(.17, .25, 3)
+        ids = {}
+        for split, length in (("train", 1536), ("validation", 256), ("heldout", 512)):
+            prev, states, targets = np.zeros(n), np.empty((length, n)), np.empty((length, n))
+            for t in range(length):
+                residual = a @ prev + rng.normal(0, .065, n)
+                states[t], targets[t] = prev, residual
+                prev = .2 * prev + residual + rng.normal(0, .6, n) * (rng.random(n) < .22)
+            ids[split] = datasets.add(db, "wide", split, states, targets, "simulated", now)
+        revision = graphs.learn(db, "wide", now, train=ids["train"], validation=ids["validation"], holder="test")
+        assert graphs.show(db, revision)["metrics"]["beats_no_graph"] is False
+    finally:
+        db.close()
+    server = ConsoleServer(path, 0, token=TOKEN)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        page = new_page(1280, 900)
+        page.goto(server.url)
+        expect(page.locator("#h-overview")).to_be_visible()
+        go(page, "graphs")
+        open_graph(page, revision)
+        expect(page.locator("#graphDetail")).to_contain_text("Scoring rule")
+        expect(page.locator("#graphDetail")).to_contain_text("gate-v1")
+        expect(page.locator("#graphDetail")).to_contain_text("Against no graph")
+        expect(page.locator("#graphDetail")).to_contain_text("not better: a graph with no edges has validation MSE")
+        expect(page.locator("#graphDetail")).to_contain_text("The promotion gate rejects such a snapshot.")
+        page.locator("#gPromote").click()
+        expect(page.locator("#graphStatus")).to_contain_text(
+            f"Gate rejected revision #{revision}. Not met: Better than a graph with no edges.")
+        expect(page.locator("#gateSummary")).to_contain_text("Rejected")
+        expect(page.locator("#gateSummary")).to_contain_text("Failed: Better than a graph with no edges (rule gate-v1)")
+        expect(page.locator("#gateChecklist li")).to_have_count(6)
+        failed = page.locator('#gateChecklist li[data-check="beats_no_graph"]')
+        expect(failed).to_contain_text("Failed")
+        expect(failed).to_contain_text("is not below")
+        expect(failed).to_contain_text("this snapshot has learned nothing that helps")
+        for name in ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact"):
+            expect(page.locator(f'#gateChecklist li[data-check="{name}"]')).to_contain_text("Passed")
+        expect(page.locator('#revisionGroups [data-context="wide"]')).to_contain_text("rejected")
+    finally:
+        server.shutdown()
+        server.server_close()

@@ -11,7 +11,10 @@ write transaction; the short committing transaction re-checks what they read (da
 incumbent and lineage unchanged) and raises Gone or Conflict instead of committing a stale result.
 
 The scoring rule is copied from rules.latest(db) when a candidate is created and is immutable afterwards
-(schema trigger). Nothing in this module registers rules; only the owner command does.
+(schema trigger). Nothing in this module registers rules; only birth and the owner command do.
+
+One check of the gate belongs to no rule: a snapshot that predicts no better than a graph with no edges is never
+promoted (learn records the comparison in metrics.beats_no_graph, promote rejects on it; ADR-045).
 """
 from contextlib import contextmanager
 import hashlib
@@ -27,7 +30,10 @@ from .errors import Conflict, Gone, LeaseHeld, NotFound, ValidationError
 
 COLUMNS = ("id", "context", "parent_id", "status", "bits", "degree", "rows", "cols", "byte_size", "sha256",
            "rule_version", "origin", "metrics", "decision", "created_at", "decided_at")
-CHECKS = ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact")
+# The gate's checks in the order a decision lists them. The last one is not part of any rule: a snapshot that is not
+# better than a graph with no edges is never promoted, whatever the rule says. It is judged from what learn() recorded
+# (metrics.beats_no_graph), so a candidate learned before that was recorded has five checks, as it always had.
+CHECKS = ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact", "beats_no_graph")
 NEW_CONTEXT_ADVICE = "register as a new context; the incumbent still solves older data"
 REPLACED_BY_ROLLBACK = "replaced_by_rollback"
 LESION_BLOCK = 32          # time steps per block for the lesion standard error
@@ -260,7 +266,8 @@ def evaluate(db, revision_id, now):
 
 
 def _gate(db, cand, rule, now):
-    """Apply checks (a)-(d) of the candidate's own rule and return the full decision record."""
+    """Apply checks (a)-(e) of the candidate's own rule and (f), which no rule can waive, and return the full
+    decision record."""
     incumbent = _active(db, cand["context"])
     eligible, current, older, excluded = _heldout(db, cand)
     cand_matrix = _matrix(db, cand["id"])
@@ -313,7 +320,20 @@ def _gate(db, cand, rule, now):
     lineage = _lineage(db, cand["id"])
     deleted = [dataset_id for dataset_id, _, _, deleted_at in lineage if deleted_at is not None]
     checks["lineage_intact"] = {"passed": not deleted, "datasets": [row[0] for row in lineage], "deleted": deleted}
-    promoted = all(checks[name]["passed"] is True for name in CHECKS)
+    # (f) the snapshot is better than no graph. A graph that predicts worse than one with no edges misleads everything
+    # that reads it (recall, the panel match of beliefs), so no rule can let it through. The dense learner produces
+    # such a graph when there are many populations (learner.py).
+    recorded = cand["metrics"]
+    if isinstance(recorded.get("beats_no_graph"), bool):
+        ours, none = recorded.get("validation_mse"), recorded.get("no_graph_validation_mse")
+        check = {"passed": recorded["beats_no_graph"], "validation_mse": ours, "no_graph_validation_mse": none}
+        if not check["passed"]:
+            shown = [f"{value:.6g}" if isinstance(value, float) else "(not recorded)" for value in (ours, none)]
+            check["why"] = (f"the snapshot's validation error {shown[0]} is not below {shown[1]}, the error of a graph "
+                            "with no edges on the same validation data: it has learned nothing that helps")
+        checks["beats_no_graph"] = check
+    order = [name for name in CHECKS if name in checks]
+    promoted = all(checks[name]["passed"] is True for name in order)
     decision = {
         "action": "promote" if promoted else "reject", "promoted": promoted, "decided_at": now,
         "context": cand["context"], "candidate": cand["id"], "incumbent": incumbent,
@@ -322,9 +342,9 @@ def _gate(db, cand, rule, now):
                        "byte_budget": int(rule["byte_budget"]),
                        "validation_tolerance": float(rule["validation_tolerance"])},
         "heldout": {"current": current, "older": older},
-        "order": list(CHECKS), "checks": checks,
-        "passed": [name for name in CHECKS if checks[name]["passed"] is True],
-        "failed": [name for name in CHECKS if checks[name]["passed"] is not True],
+        "order": order, "checks": checks,
+        "passed": [name for name in order if checks[name]["passed"] is True],
+        "failed": [name for name in order if checks[name]["passed"] is not True],
     }
     if checks["heldout_gain"]["passed"] is True and checks["retention"]["passed"] is False:
         decision["recommendation"] = NEW_CONTEXT_ADVICE

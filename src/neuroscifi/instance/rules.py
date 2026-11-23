@@ -19,8 +19,9 @@ REQUIRED = {"version": str, "validation_tolerance": float, "pack_candidates": di
 #   pack_reference: "best_learner"         the tolerance is measured against the better of the two learners' own
 #                                          graphs instead of the dense one (needs learned_sparse)
 # With both, the rule can promote the sparse learner's graph, the only one of the two that still fits when there are
-# many populations (docs/architecture/API_CONTRACTS.md, "Which graph is packed"). No rule with them is
-# registered by this software: an individual gets one only by the owner's `nsf graph rules add`.
+# many populations (docs/architecture/API_CONTRACTS.md, "Which graph is packed"; ADR-045). store.BEST_LEARNER_V1
+# is gate-v1 with both: a new individual is born with it after gate-v1, and an individual born earlier gets it only by
+# its owner's `nsf graph rules add --builtin best-learner-v1 --owner-approved`.
 PACK_REFERENCES = ("dense", "best_learner")
 OPTIONAL = ("pack_reference",)
 

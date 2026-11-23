@@ -37,6 +37,23 @@ GATE_V1 = {
     "unknown_context_ratio": 3.0,
     "recall_history": 12,
 }
+# gate-v1 with the two optional parts of rules.py: the graph the edge-exchange learner fitted is a candidate beside the
+# cuts of the dense fit, and the tolerance is measured against the better of the two learners. Same thresholds, same
+# byte budget. Where the dense learner is the better one it chooses what gate-v1 chooses; where it is not (many
+# populations) it packs the sparse learner's graph instead of a cut of a fit that failed.
+BEST_LEARNER_V1 = {
+    **GATE_V1,
+    "version": "best-learner-v1",
+    "pack_candidates": {"degrees": list(GATE_V1["pack_candidates"]["degrees"]),
+                        "bits": list(GATE_V1["pack_candidates"]["bits"]), "learned_sparse": True},
+    "pack_reference": "best_learner",
+}
+# What a new individual is born with, in this order: candidates are learned under the last one (rules.latest), and
+# gate-v1 stays on record as the exam every individual born before best-learner-v1 started with. An individual born
+# earlier keeps exactly the rules it has; its owner adopts a built-in rule with
+# `nsf graph rules add --builtin best-learner-v1 --owner-approved` (cli_graphs.py).
+BIRTH_RULES = (GATE_V1, BEST_LEARNER_V1)
+BUILTIN_RULES = {rule["version"]: rule for rule in BIRTH_RULES}
 PRIORS = {
     "state_prior": "uniform over mechanism, per-camera-root alignment and per-partner convention bits",
     "camera_reading_error": 0.10,
@@ -202,11 +219,21 @@ def birth(db):
     return json.loads(_meta(db, "birth"))
 
 
-def create(path, now, *, action_semantics=None, config=None, founding_graph=None, note=None):
-    """Create a new individual. Refuses an existing file so an individual is never overwritten."""
+def create(path, now, *, action_semantics=None, config=None, founding_graph=None, note=None, birth_rules=None):
+    """Create a new individual. Refuses an existing file so an individual is never overwritten.
+
+    birth_rules: the scoring rules it starts with, registered in order (default BIRTH_RULES); graphs are learned
+    under the last. Given explicitly to reproduce an individual born under gate-v1 alone: `birth_rules=(GATE_V1,)`.
+    """
     path = Path(path)
     if path.exists():
         raise ValidationError(f"{path} already exists; each file is one individual")
+    birth_rules = BIRTH_RULES if birth_rules is None else tuple(birth_rules)
+    if not birth_rules:
+        raise ValidationError("An individual needs at least one scoring rule at birth")
+    from . import rules  # registered at birth so every individual starts with an immutable exam
+    for rule in birth_rules:
+        rules.validate(rule)
     config = config or InstanceConfig()
     semantics = action_semantics or {
         "0": "commanded direction A, as declared by the owner",
@@ -239,8 +266,8 @@ def create(path, now, *, action_semantics=None, config=None, founding_graph=None
         with write(db):
             db.execute("INSERT INTO meta VALUES('config',?)", (json.dumps(asdict(config), sort_keys=True),))
             db.execute("INSERT INTO meta VALUES('birth',?)", (json.dumps(record, sort_keys=True),))
-            from . import rules  # registered here so every individual starts with an immutable exam
-            rules.register(db, GATE_V1, now, created_by="birth")
+            for rule in birth_rules:
+                rules.register(db, rule, now, created_by="birth")
             bump_state_version(db)
         if founding_graph is not None:
             from . import graphs

@@ -11,6 +11,7 @@ const CHECK_LABELS = {
   retention: 'Retains older held-out performance',
   byte_budget: 'Fits the byte budget',
   lineage_intact: 'Trained only on data that still exists',
+  beats_no_graph: 'Better than a graph with no edges',
 };
 const MAX_BODY = 4096;
 const MAX_TEXT_BODY = 8192;   // the server's limit for research questions and monitor topics (2000 characters)
@@ -945,6 +946,10 @@ function renderGraph(g) {
     kv([['Origin', g.origin], ['Scoring rule', g.rule_version], ['Encoding', `${g.bits}-bit, degree ${g.degree}, ${g.rows}×${g.cols}`],
       ['Snapshot size', `${g.byte_size} bytes`], ['Edges', g.edges],
       ['Validation MSE', `${fmtNum(m.validation_mse)} (dense ${fmtNum(m.dense_validation_mse)})`],
+      // recorded by graphs.learn; absent on a revision learned before it was (and on a founding or imported graph)
+      ...(typeof m.beats_no_graph === 'boolean' ? [['Against no graph', m.beats_no_graph
+        ? `better: a graph with no edges has validation MSE ${fmtNum(m.no_graph_validation_mse)}`
+        : `not better: a graph with no edges has validation MSE ${fmtNum(m.no_graph_validation_mse)}. The promotion gate rejects such a snapshot.`]] : []),
       ['Held-out MSE', m.heldout_mse !== undefined && m.heldout_mse !== null ? fmtNum(m.heldout_mse)
         : heldoutMse(g) !== null ? `${fmtNum(heldoutMse(g))} (measured by the promotion gate)` : 'not evaluated yet'],
       ['Lineage', g.lineage.length ? g.lineage.map((l) => `${l.role} #${l.dataset_id}${l.deleted ? ' (deleted)' : ''}`).join(', ') : 'none'],
@@ -972,6 +977,10 @@ function checkDetail(name, c) {
       return `${c.byte_size} of ${c.byte_budget} bytes`;
     case 'lineage_intact':
       return c.deleted?.length ? `training or validation data was forgotten: ${c.deleted.map((d) => `#${d}`).join(', ')}` : `dataset(s) ${c.datasets.map((d) => `#${d}`).join(', ')} still exist`;
+    case 'beats_no_graph':
+      return c.passed
+        ? `validation MSE ${fmtNum(c.validation_mse)} is below ${fmtNum(c.no_graph_validation_mse)}, the error of a graph with no edges`
+        : `validation MSE ${fmtNum(c.validation_mse)} is not below ${fmtNum(c.no_graph_validation_mse)}, the error of a graph with no edges: this snapshot has learned nothing that helps`;
     default:
       return JSON.stringify(c);
   }
@@ -2677,7 +2686,7 @@ function wire() {
       await Promise.all([loadGraphs(), loadHeader()]);
       return result.promoted
         ? `Gate passed: revision #${id} is now the active graph of ${result.decision.context}.`
-        : `Gate rejected revision #${id}: failed ${result.decision.failed.join(', ')}.`;
+        : `Gate rejected revision #${id}. Not met: ${result.decision.failed.map((n) => CHECK_LABELS[n] ?? n).join('; ')}.`;
     });
   });
 
