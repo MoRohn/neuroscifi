@@ -258,6 +258,8 @@ def _config(db, a, now):
         value = getattr(a, flag, None)        # a caller that builds its own arguments may not know a newer switch
         if value is not None:
             changes[key] = value
+    if getattr(a, "read_ahead", None) is not None:
+        changes["read_ahead"] = a.read_ahead
     for item in a.set or []:
         key, sep, raw = item.partition("=")
         if not sep or not key.strip():
@@ -916,6 +918,8 @@ def register(sub):
     _switch(p, "search-browser-ua", "search_browser_ua",
             "let the search daemon's scrapers send browser User-Agent strings (impersonation; ADR-032)",
             "honest User-Agent only (default; needs `npm run patch-ua`)")
+    p.add_argument("--read-ahead", type=_positive_int, metavar="N",
+                   help="pages a research task may fetch at once while reading, one per site (1 = one at a time)")
     p.add_argument("--set", action="append", metavar="KEY=JSON", help="set one field, e.g. --set 'engines=[\"bing\"]'")
 
     cmd("status", _status, "configuration, provider health, daemon, cache, tasks and executing node")

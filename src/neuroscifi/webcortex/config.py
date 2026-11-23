@@ -79,6 +79,10 @@ class WebConfig:
         max_browser_sessions=2, max_render_requests=150, max_concurrency=6, max_context_tokens=6000)))
     daily_autonomous: dict = field(default_factory=lambda: {"tasks": 12, "requests": 400, "bytes": 80_000_000})
     min_domain_interval: float = 1.0         # seconds between requests to one host
+    # Pages a research task may fetch at once while reading: the next candidates are fetched ahead of their turn, one
+    # per host, at most budget.max_concurrency; what the task reads, charges and reports is unchanged (1 = one at a
+    # time).
+    read_ahead: int = 4
     max_document_bytes: int = 5_000_000
     cache_max_bytes: int = 512 * 1024 * 1024
     cache_max_age_days: float = 30.0

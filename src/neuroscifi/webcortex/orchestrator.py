@@ -1236,6 +1236,7 @@ class _Run:
         deferred = []
         later = []     # news questions: pages without text, undated or out of window, read after the others
         timely = self.timely()
+        ahead, window = {}, self.read_window()    # read-ahead: candidate index -> URL being fetched ahead (prefetch)
 
         def hint_of(r):
             return r.published_at if r.provider == "feeds" else None   # the feed item's date
@@ -1258,7 +1259,8 @@ class _Run:
             self.record(doc, provider=r.provider, api=True)
 
         try:
-            for r, api in picked:
+            for i, (r, api) in enumerate(picked):
+                self.drop_prefetched(ahead, below=i)
                 if canonical_url(r.url) in done:
                     continue
                 if full():
@@ -1284,6 +1286,8 @@ class _Run:
                     # (an engine date only orders candidates; it is never a source's date)
                     later.append((r, None, hint_of(r), None, "stale_hit"))
                     continue
+                if window > 1:
+                    self.prefetch(picked, i, done, waiting, ahead, window)
                 try:
                     if article:
                         doc, as_api = self.wikipedia(r)
@@ -1331,6 +1335,7 @@ class _Run:
                 self.usage.charge(self.budget, pages=1)
                 self.record(doc, provider=r.provider, api=as_api, published_hint=hint,
                             search_date=None if as_api or hint is not None else _search_date(r))
+            self.drop_prefetched(ahead)
             # pages without text (to render) first, then undated pages, encyclopedia articles and pages (or hits)
             # dated before the required window, in rank order (sorted() is stable). A page without text that could
             # not be rendered takes a slot only after all of them (`unread`).
@@ -1384,7 +1389,58 @@ class _Run:
             self.limit(f"budget exhausted while reading: {exc}")
         except _OutOfTime:
             self.limit("time budget exhausted while reading")
+        finally:
+            self.drop_prefetched(ahead)     # cancelled, stopped or crashed: nothing fetched ahead is used
         self.done("reading")
+
+    def read_window(self) -> int:
+        """Pages the reader may have in flight at once: config.read_ahead, at most budget.max_concurrency. 1 reads
+        one page at a time, and so does a fetcher that cannot fetch ahead (no speculate())."""
+        if getattr(self.services.fetcher, "speculate", None) is None:
+            return 1
+        return max(1, min(int(self.cfg.read_ahead), int(self.budget.max_concurrency)))
+
+    def prefetch(self, picked, i, done, waiting, ahead, window):
+        """Read-ahead: while read() fetches picked[i], start fetching (SafeFetcher.speculate) the next candidates
+        it would fetch as pages, in order, so their network time overlaps. At most `window` pages in flight counting
+        picked[i]; one per host, always that host's earliest candidate, so each site sees its requests (robots.txt
+        first) in the order a one-at-a-time reader sends them and its interval is never raced; never more than the
+        pages left in the budget, and two requests (robots.txt and page) per page in flight within the requests
+        left. Only when the network time is spent changes: read() still takes, extracts, charges and records each
+        page when it reaches it, and the fetcher hands over a page fetched ahead only when a fetch made then would
+        have done exactly the same. `ahead` (candidate index -> URL) gains the fetches started."""
+        from .extract import canonical_url
+        fetcher = self.services.fetcher
+        pages_left = self.budget.max_pages - self.usage.pages
+        requests_left = self.budget.max_requests - self.usage.requests
+        timely = self.timely()
+        hosts = set()
+        for j in range(i, len(picked)):
+            in_flight = len(ahead) + (i not in ahead)
+            if in_flight >= min(window, pages_left) or 2 * (in_flight + 1) > requests_left:
+                return
+            r, api = picked[j]
+            if api:
+                continue
+            host = _host(r.url)
+            if j == i or j in ahead:
+                hosts.add(host)
+                continue
+            # what read() would not fetch now as a page: skipped, waiting on its host, an article, a dated-out hit
+            if host in hosts or host in waiting or canonical_url(r.url) in done or self.denied(r.url) \
+                    or r.provider in SNIPPET_ONLY or (timely and self.stale(r.published_at)):
+                continue
+            hosts.add(host)
+            if fetcher.speculate(r.url, purpose="page", usage=self.usage):
+                ahead[j] = r.url
+
+    def drop_prefetched(self, ahead, below=None):
+        """Abandon the read-ahead fetches of candidates read() has passed (index < below; all when None). One read()
+        used was claimed and is gone already; any other (read() skipped it, had enough pages, ran out of budget or
+        was stopped) is never charged, cached or recorded, and its traffic counts as unused prefetch
+        (Usage.prefetch_unused_requests / _bytes)."""
+        for j in [j for j in ahead if below is None or j < below]:
+            self.services.fetcher.abandon(ahead.pop(j), purpose="page", usage=self.usage)
 
     def document_failed(self, url, provider, exc):
         """Record one document's unexpected failure (decode or internal error) and carry on with the others."""

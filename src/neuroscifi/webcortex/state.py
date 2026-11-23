@@ -158,6 +158,10 @@ def _validate(name, value):
         if not _is_int(value) or not 0 <= value <= 1000:
             raise ValidationError("mcp_research_per_hour must be an integer between 0 and 1000")
         return value
+    if name == "read_ahead":
+        if not _is_int(value) or not 1 <= value <= 16:
+            raise ValidationError("read_ahead must be an integer between 1 (one page at a time) and 16")
+        return value
     if name == "min_domain_interval":
         if not _is_num(value) or not 0 <= value <= 3600:
             raise ValidationError("min_domain_interval must be between 0 and 3600 seconds")

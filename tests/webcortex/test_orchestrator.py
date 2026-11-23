@@ -127,6 +127,7 @@ class CancellingFetcher:
 
 def test_cancel_from_another_connection_stops_before_the_next_fetch(individual, site):
     db, path = individual
+    state.set_config(db, {"read_ahead": 1}, T0)   # page hits below: one at a time (read-ahead: test_read_ahead.py)
     task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
     services = build(db, path, site)
     with store.write(db):   # the run holds the lease, so cancel() requests instead of cancelling outright
@@ -743,6 +744,7 @@ def test_turning_web_access_off_mid_run_stops_the_task_partial(individual, site,
     runs stops it at the next check, 'partial', with a plain limitation."""
     monkeypatch.setattr(orchestrator, "CONFIG_RECHECK", 0.0)
     db, path = individual
+    state.set_config(db, {"read_ahead": 1}, T0)   # page hits below: one at a time (read-ahead: test_read_ahead.py)
     task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
 
     def off(n):
@@ -763,6 +765,7 @@ def test_a_domain_denied_mid_run_is_never_fetched(individual, site, monkeypatch)
     """W-06: a deny_domains change during the run applies to the next request (the host is skipped and recorded)."""
     monkeypatch.setattr(orchestrator, "CONFIG_RECHECK", 0.0)
     db, path = individual
+    state.set_config(db, {"read_ahead": 1}, T0)   # page hits below: one at a time (read-ahead: test_read_ahead.py)
     task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
 
     def deny(n):
