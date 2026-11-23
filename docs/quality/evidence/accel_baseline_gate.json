@@ -1,0 +1,19 @@
+{
+ "evidence": "accel_baseline_gate",
+ "recorded": "2026-11-23",
+ "commit": "9e4570a",
+ "command": "bash scripts/check.sh",
+ "ruff": true,
+ "pytest": "3337 passed, 18 skipped, 7 warnings, 35 subtests passed in 454.62s (0:07:34)",
+ "node_checks": [
+  "tests/js/field_benchmark.mjs",
+  "tests/js/field_check.mjs",
+  "tests/js/offline_check.mjs",
+  "tests/js/sensor_check.mjs",
+  "tests/js/signing_check.mjs",
+  "tests/js/voice_micoff_check.mjs"
+ ],
+ "reproduce_and_all": true,
+ "exit": 0,
+ "wall_seconds": 468
+}
