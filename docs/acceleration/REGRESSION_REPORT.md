@@ -10,12 +10,12 @@ counted as passed.
 | Layer | Command | Before | After |
 |---|---|---|---|
 | Lint | `ruff check .` | clean | clean |
-| Python tests | `pytest -q --ignore=tests/e2e` | 3337 passed, 18 skipped | **GATE_PYTEST** |
+| Python tests | `pytest -q --ignore=tests/e2e` | 3337 passed, 18 skipped | 3483 passed, 18 skipped (146 tests added) |
 | Node checks | `tests/js/*.mjs` (6 files) | all pass | all pass |
 | Numerical reproduction | `scripts/reproduce.py` | 8 of 8 | 8 of 8 |
-| The gate as a whole | `bash scripts/check.sh` | passed in 468 s | **GATE_ALL** |
+| The gate as a whole | `bash scripts/check.sh` | passed in 468 s | passed in 497 s |
 | Acceptance scenarios (simulated) | `nsf acceptance --all` | not rerun at baseline (0.7.0 recorded 7 of 7) | exit 0 |
-| Browser end to end | `bash scripts/e2e.sh` | not run at baseline; the one test that failed here was run on `9e4570a` (passes) | **GATE_E2E** |
+| Browser end to end | `bash scripts/e2e.sh` | not run at baseline; the one test that failed here was run on `9e4570a` (passes) | 194 passed, 1 skipped, 1 failed on the final tree: `test_add_a_phone_from_the_console_to_a_paired_phone` saw Chromium's `net::ERR_NETWORK_CHANGED` when another tenant's container brought up a network interface on this shared host (system log, same second). Its file was rerun three times on the same tree: 3 of 3 pass each time. The full run before the last review fixes: 195 passed, 1 skipped |
 | Offline research benchmark | `nsf web bench` | deterministic, safety invariants hold | every metric identical to before, at read-ahead 1 and 4; safety invariants hold |
 
 The 18 skips are the same on both sides: tests marked live (the real internet, a real remote provider) and

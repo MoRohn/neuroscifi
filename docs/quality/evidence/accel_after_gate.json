@@ -1,0 +1,28 @@
+{
+ "evidence": "accel_after_gate",
+ "recorded": "2026-11-23",
+ "branch": "nvidia-acceleration-review",
+ "command": "bash scripts/check.sh",
+ "ruff": true,
+ "pytest": "3483 passed, 18 skipped, 7 warnings, 35 subtests passed in 485.42s (0:08:05)",
+ "node_checks": [
+  "tests/js/field_benchmark.mjs",
+  "tests/js/field_check.mjs",
+  "tests/js/offline_check.mjs",
+  "tests/js/sensor_check.mjs",
+  "tests/js/signing_check.mjs",
+  "tests/js/voice_micoff_check.mjs"
+ ],
+ "reproduce_and_all": true,
+ "exit": 0,
+ "wall_seconds": 497,
+ "browser_suite": {
+  "command": "bash scripts/e2e.sh",
+  "final_tree": "194 passed, 1 skipped, 1 failed (net::ERR_NETWORK_CHANGED in tests/e2e/test_phone_setup_e2e.py while another tenant's container changed the host's network interfaces); that file rerun 3 times: 3 passed each",
+  "before_the_last_review_fixes": "195 passed, 1 skipped"
+ },
+ "acceptance": {
+  "command": "nsf acceptance --all",
+  "exit": 0
+ }
+}
