@@ -491,13 +491,12 @@ def lesion(db, revision_id, dataset_id, now):
     n = matrix.shape[1]
     edges = []
     for dst, src in zip(*np.nonzero(matrix)):
-        copy = matrix.copy()
-        copy[dst, src] = 0
         weight = matrix[dst, src]
-        # Removing the edge shifts receiver dst's error by -weight * x_src at every step.
+        # Removing the edge shifts receiver dst's error by -weight * x_src at every step and leaves every other
+        # receiver unchanged, so the change in MSE is exactly the mean of per_step (no full recomputation per edge).
         per_step = ((residual[:, dst] - weight * states[:, src]) ** 2 - residual[:, dst] ** 2) / n
         edges.append({"src": int(src), "dst": int(dst), "weight": float(weight),
-                      "delta_mse": learner.mse(copy, states, targets) - base, "se": _block_se(per_step)})
+                      "delta_mse": float(per_step.mean()), "se": _block_se(per_step)})
     edges.sort(key=lambda e: -e["delta_mse"])
     rng = np.random.default_rng([revision_id, dataset_id])
     shuffled = np.zeros_like(matrix)

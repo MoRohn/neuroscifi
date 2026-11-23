@@ -412,6 +412,27 @@ def test_lesion_true_edges_matter_more_than_weak_ones(instance):
     assert detail["task"] == "desk" and detail["se"] == true_edges[0]["se"] and detail["block"] == 32
 
 
+def test_lesion_uses_the_closed_form_error_change_and_equals_the_full_recomputation(instance, monkeypatch):
+    """Zeroing one edge changes only its receiver's residual, so the change in MSE is the mean of the per-step
+    change: lesion no longer recomputes the full MSE per edge (base and control only), and every delta_mse equals
+    the full recomputation."""
+    from neuroscifi.instance import learner
+    db, _ = instance
+    rev, ids = _learn(db, "desk", T0, steps=256)
+    calls = []
+    full_mse = learner.mse
+    monkeypatch.setattr(learner, "mse", lambda *a: calls.append(1) or full_mse(*a))
+    out = graphs.lesion(db, rev, ids["heldout"], T0 + 3)
+    assert len(calls) == 2 and len(out["edges"]) > 10
+    matrix = graphs._matrix(db, rev).astype(np.float64)
+    states, targets = datasets.load(db, ids["heldout"])
+    base = full_mse(matrix, states, targets)
+    for edge in out["edges"]:
+        lesioned = matrix.copy()
+        lesioned[edge["dst"], edge["src"]] = 0
+        assert edge["delta_mse"] == pytest.approx(full_mse(lesioned, states, targets) - base, rel=1e-9, abs=1e-15)
+
+
 def test_functional_map_proposes_routes_missing_from_the_active_graph(tmp_path):
     a, _ = graph_bench.world(np.random.default_rng(SEED))
     pruned = a.copy()
