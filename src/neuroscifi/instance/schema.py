@@ -463,11 +463,38 @@ SCHEMA_VERSION = len(MIGRATIONS)
 
 
 def migrate(db):
-    """Apply pending migrations inside one transaction. Refuse a newer schema."""
+    """Apply pending migrations, each in its own transaction. Refuse a newer schema.
+
+    The version is read again after BEGIN IMMEDIATE takes the write lock, so a second process opening the file
+    while another upgrades it waits and then applies only what is still missing (it used to re-run a migration and
+    fail). A failing migration is rolled back; the connection is never left inside a transaction.
+    """
     from .errors import Conflict
+
+    def refuse_newer(version):
+        if version > SCHEMA_VERSION:
+            raise Conflict(f"Instance schema {version} is newer than this software ({SCHEMA_VERSION})")
+
     current = db.execute("PRAGMA user_version").fetchone()[0]
-    if current > SCHEMA_VERSION:
-        raise Conflict(f"Instance schema {current} is newer than this software ({SCHEMA_VERSION})")
-    for version in range(current, SCHEMA_VERSION):
-        db.executescript("BEGIN IMMEDIATE;" + MIGRATIONS[version] + f";PRAGMA user_version={version+1};COMMIT;")
-    return SCHEMA_VERSION
+    refuse_newer(current)
+    if current == SCHEMA_VERSION:
+        return SCHEMA_VERSION                # an up-to-date file is opened without taking the write lock
+    control = db.autocommit
+    db.autocommit = True                     # so executescript does not commit the transaction holding the lock
+    try:
+        while True:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                version = db.execute("PRAGMA user_version").fetchone()[0]
+                refuse_newer(version)
+                if version == SCHEMA_VERSION:
+                    db.execute("COMMIT")
+                    return SCHEMA_VERSION
+                db.executescript(MIGRATIONS[version] + f";PRAGMA user_version={version + 1};")
+                db.execute("COMMIT")
+            except BaseException:
+                if db.in_transaction:
+                    db.execute("ROLLBACK")
+                raise
+    finally:
+        db.autocommit = control
