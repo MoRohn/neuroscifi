@@ -148,6 +148,39 @@ still running, or another process holding the service's load lock, starts nothin
 `test_a_reload_another_process_is_running_is_not_started_twice`). The same headroom check, wait command,
 measurement and event as every other reload apply, because it is the same `Idle.load`.
 
+**Wake requests: when the process may not start services.** With `NSF_WAKE_DIR` set, no process of NeuroSciFi
+starts a service itself. A call or a lookup that finds its service unloaded leaves an empty file `<service>.wake`
+in that folder (created atomically, mode 0600; the name is the whole message). `neuroscifi-wake.path`
+(`PathExistsGlob=<folder>/*.wake`) starts `neuroscifi-wake.service`, which runs `nsf resources wake` as the user
+that owns the services. Each request is removed first, never opened, and its name is looked up in the policy's own
+service list: any other name is dropped and no command is run
+(`test_a_wake_request_is_only_a_service_name_anything_else_is_dropped_and_nothing_is_run`). The reload is
+`Idle.load`: the same free-memory check, wait, measurement and event. A memory lookup still returns at once; a
+model call waits until the state says "loaded", no longer than its own timeout, and then ends `unavailable` with
+"… it keeps starting in the background" as before; a voice session's start only asks. A request that nobody picked
+up within 60 s is reported: "its wake request was not picked up within 60 s (is neuroscifi-wake.path active?)".
+Install: the header of `deploy/systemd/neuroscifi-wake.service` (by hand, like the idle timer).
+
+Rules of every reload, found in review and fixed on 2026-11-23:
+
+- *A container that does not exist yet is not gone.* `systemctl start` of a `Type=simple` unit returns before the
+  wrapper has created the container; the wait that followed died in 130 ms with "container is gone" and the reload
+  of every stopped unit was recorded as failed while the model came up. The three `run.sh wait` loops now wait for
+  a missing container for 60 s (`NSF_WAIT_GONE_GRACE`) before calling it gone.
+- *Running is not answering.* A container found running counts as loaded only once it answers `/metrics`, else the
+  deploy's wait is run first. A start, or a found container, that does not become ready is stopped with its shape's
+  own command and the event says `stopped: true`: the state "unloaded" must stay true for the free-memory check,
+  and a crash-looping container holds memory.
+- *One reload, one retry limit, for all processes.* The 30 s limit after a failure is the failure time in
+  `idle.json`, and the decision to start, the start and its marker happen under one short lock.
+- *The key goes to the service only.* `deploy/memory/run.sh wait` sends its warm-up request, which carries the key,
+  only when Docker reports that container running and publishing that port on the loopback address; a port that
+  answers without that fails the wait. `nsf setup` and every memory lookup first read who owns the listening
+  socket (`/proc/net/tcp`): root (Docker's port proxy), the same user, or the owner of the key file is the
+  service; a listener of another account gets neither the key nor a memory text, and the lookup is lexical with
+  the reason. The answer model's key has the same exposure when its container is down (unloaded while idle,
+  stopped, crashed): its gateway does not make this check yet.
+
 Three consequences, each tested (`tests/test_resources_idle.py`, "the memory models"):
 
 - Nothing announces this reload. Presence shows `waiting` only for a service somebody is waiting for
@@ -309,6 +342,16 @@ four runs, the last two with the reload as a process of its own):
 | Presence during the reload | no `waiting` entry (`loading()` empty) |
 | Footprint recorded by the two reloads | 7.7 to 8.8 GiB each, because they ran at the same time; above the ceiling of 1.5 times the documented 4.4 GiB, so not believed, and the next free-memory check used each unload's figure |
 
+**The review fixes, live** (2026-11-23, transient user units, the real embedding container, one account):
+
+| Observation | Value |
+|---|---|
+| The embedding model started as a unit (`run.sh foreground embed` under the unit's sandbox), then `run.sh wait` at once, before the fix | exit 1 after 130 ms: "embed container is gone" |
+| The same wait after the fix | "embed ready after 35s", exit 0; `docker port` reports `127.0.0.1:18441` |
+| Unloaded by the policy, then a lookup with `NSF_WAKE_DIR` set (starting anything itself forbidden) | "loading" in 0.4 ms; `embed.wake` left in the folder |
+| A transient path unit (`PathExistsGlob=…/*.wake`) running `nsf resources wake` | started by the request; the model answered again 36.0 s after the lookup; event `on demand: wake request`, 35.5 s; the request file gone; unit result `success` |
+| Another process answering `/health` on the freed port 18441 | `run.sh wait` exits 1: "another process holds the port. The key was not sent"; that process received no request carrying the key |
+
 One model stopped by hand (no idle policy involved): the lookup was lexical in 30 to 40 ms with "semantic retrieval
 failed (unavailable): cannot connect: Connection refused", the next lookup inside the 30 s back-off cost 0.9 ms
 and tried nothing, and the first lookup after the back-off with the model running again was semantic.
@@ -335,13 +378,15 @@ and tried nothing, and the first lookup after the back-off with the model runnin
   again. The two reloads then run at the same time, so each one's measured footprint includes the other's and is
   discarded by the ceiling rule (a reading above 1.5 times the documented 4.4 GiB is not believed); the footprint
   used for the next free-memory check is then the one its last unload measured, else the documented one.
-- A reload on demand runs as the user of the process that needed the service, for every service of this policy.
-  Under the units of `deploy/install.sh` the worker and the console run as `neuroscifi`, which has no Docker access
-  and may not start units: there a reload on demand fails and is recorded, a model call ends `unavailable`, a memory
-  lookup stays lexical and says "… did not start", and `nsf resources load SERVICE` by the Docker user brings the
-  service back. Set idle timeouts where the processes that use the services may also start them (the `nsf start`
-  shape: one user), or let the service user manage those units. Not exercised in this review: the units are not
-  installed on the reference host.
+- Where one user runs everything (`nsf start`), a reload on demand is started by the process that needed the
+  service. Under the units of `deploy/install.sh` the worker and the console run as `neuroscifi`, which has no
+  Docker access and may not start units: there reloads go through **wake requests** (§3(c)), which need
+  `neuroscifi-wake.path` and `neuroscifi-wake.service` installed and `NSF_WAKE_DIR` set for the console and the
+  worker. Without them a reload on demand fails there and says so; `nsf resources load SERVICE` by the Docker user
+  brings the service back. The wake unit, like the idle unit, runs as the Docker user and needs read-write access
+  to `<NSF_DB>.resources/` and to the request folder: with two separate accounts that means a shared group on
+  both, which `deploy/install.sh` does not set up. Exercised here with transient user units and one account
+  (§4); **not exercised**: the two units installed as system units, and the two-account arrangement.
 - A lookup's use of a memory model is seen by the idle policy only when it goes through `knowledge.query` in a
   process that knows the individual's file. A result served from the per-process cache uses no model and marks no
   use.
