@@ -6,6 +6,8 @@ Status of this document: these are procedures. **No system-level service deploym
 
 Related: [ENVIRONMENT.md](ENVIRONMENT.md) (every setting), [MIGRATIONS.md](MIGRATIONS.md) (upgrades), [TESTING.md](TESTING.md).
 
+**Upgrading from 0.7.0?** Read [MIGRATIONS.md](MIGRATIONS.md) section 2 before you start any service. From schema 14 an expired learning event leaves a consolidated reading that is kept without limit (section 6). To keep the old meaning of expiry, stop the services and run `nsfs config --no-consolidation` as the first command after installing; the console and the Pocket bridge expire due evidence on access, so a service that starts first consolidates first.
+
 ## 0. Conventions
 
 All commands run on the host. `nsfs` runs `nsf` as the service user, with the service's database:
@@ -126,6 +128,8 @@ Forgetting removes evidence, leaves a payload-free tombstone, recomputes beliefs
 | One observation | `nsfs forget evidence EVENT_ID` |
 | A whole calibration epoch | `nsfs forget epoch NAME` |
 | Everything tied to one partner | `nsfs forget partner NAME` |
+| Everything one camera taught | `nsfs forget camera NAME` |
+| One consolidated reading (what an expired event left) | `nsfs forget consolidated SEQ` |
 | A stored dataset | `nsfs forget dataset ID` |
 | Keep one episode past its lifetime | `nsfs promote ID` |
 | Expire everything past its lifetime now | `nsfs sweep` |
@@ -135,9 +139,10 @@ Find ids with `nsfs memory evidence --epoch NAME`, `nsfs memory dataset`, and `n
 **What expiry leaves (consolidation, ADR-044).** An event that reaches its lifetime is deleted and tombstoned. If it was a learning event, what it taught stays as a *consolidated reading*: its position in the journal (seq), its epoch, channel and root, the corrected reading and its sample id. Beliefs keep counting it, so the individual still knows on day 8 what it learned on day 1. The event's id, actor, action and bit, provenance and timestamps are gone. Memory-only events and repeated copies of a sample leave nothing.
 
 - See them: `nsfs memory consolidated --epoch NAME` (the record's id is the seq). `nsfs birth` and `nsfs regulation` count them; `nsfs sweep` says how many it kept (`consolidated`).
-- Forget them: `nsfs forget evidence EVENT_ID` still works after the event expired (the tombstone knows which reading it left); `nsfs forget partner NAME` and `nsfs forget epoch NAME` remove the consolidated readings they cover. A root's name stays in the file while a consolidated reading holds it.
-- Turn it off: `nsfs config --no-consolidation` (back on: `--consolidation`). From then on an expired event leaves nothing, as in 0.7.0. Readings already kept stay until you forget them.
-- They never expire and are not counted in `max_evidence_rows`. Each takes about 75 bytes.
+- Forget them: `nsfs forget consolidated SEQ` forgets one reading by the seq the listing shows (the console's Memory log has a Forget button beside each reading). `nsfs forget evidence EVENT_ID` also still works after the event expired, if you kept the id. `nsfs forget partner NAME`, `nsfs forget camera NAME` and `nsfs forget epoch NAME` remove the consolidated readings they cover, in every epoch for a partner or a camera. A root's name stays in the file while any evidence of that name is held. When the first copy of a sample is forgotten, its next copy counts.
+- Turn it off: `nsfs config --no-consolidation` (back on: `--consolidation`). From then on an expired event leaves nothing, as in 0.7.0. Readings already kept stay until you forget them. The change is recorded in the deletion log (`nsfs memory deletion`, kind `setting`). **On an upgrade, do this before starting any service** (MIGRATIONS.md section 2): the console and the Pocket bridge expire due evidence on access.
+- A restored checkpoint takes this setting, and the ask budget and its window, from the instance it is restored from, not from the archive; the restore result lists what it changed (`settings_carried`).
+- They never expire and are not counted in `max_evidence_rows`. Each takes about 95 bytes.
 
 Forgetting an epoch also clears the free-text note the owner gave it; the epoch's row stays, because tombstones, the deletion log and evidence refer to its name. An epoch that holds only a note is forgotten and logged too. Forgetting a dataset also deletes the lesion and coactivation effects measured on it (`graph_effects_deleted` in the result); effects measured on other datasets stay.
 

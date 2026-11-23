@@ -548,7 +548,7 @@ flowchart LR
 |---|---|
 | `nsf pending` / `nsf resolve` | List and answer open questions |
 | `nsf memory evidence\|belief\|graph\|…` | Retrieve records with scope, permissions and state version |
-| `nsf forget evidence\|epoch\|partner\|dataset\|research\|knowledge\|source\|voice` | Delete with a full cascade: derived beliefs, questions and decisions are scrubbed and dependent graphs invalidated. A voice or web forget rewrites older checkpoints in place; the others mark them stale |
+| `nsf forget evidence\|consolidated\|epoch\|partner\|camera\|dataset\|research\|knowledge\|source\|voice` | Delete with a full cascade: derived beliefs, questions and decisions are scrubbed and dependent graphs invalidated. A voice or web forget rewrites older checkpoints in place; the others mark them stale |
 | `nsf promote` | Keep an episode past its default 7-day lifetime. Without it the episode expires, and what a learning event taught stays as a consolidated reading (`nsf memory consolidated`), so beliefs outlive their events |
 | `nsf config` | Show the instance settings; `--ask-budget`, `--ask-window-days` and `--consolidation` / `--no-consolidation` change the ones an owner may change |
 | `nsf checkpoint create\|list\|verify\|restore\|rebuild\|prune\|rewrite` | Manage verified lossless archives. A restore never resurrects forgotten ids |

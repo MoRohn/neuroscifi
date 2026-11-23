@@ -192,11 +192,17 @@ def _open_pending(db, epoch, kind, scope, now):
 
 
 def _ask_window(cfg):
-    """The ask budget's rolling window in seconds; 0 when the budget counts the whole epoch."""
+    """(window, warning): the ask budget's rolling window in seconds, 0 when the budget counts the whole epoch. A
+    saved value that is no finite number of seconds from 0 up (store.set_config refuses those; a hand-edited or
+    damaged settings row can hold one) gives the default window and a warning for the decision to carry, so the
+    executive keeps deciding."""
     window = cfg.ask_budget_window_seconds
     if isinstance(window, bool) or not isinstance(window, (int, float)) or not math.isfinite(window) or window < 0:
-        raise ValidationError("ask_budget_window_seconds must be a finite number of seconds, 0 or more")
-    return window
+        default = store.InstanceConfig.ask_budget_window_seconds
+        return default, (f"the saved ask_budget_window_seconds ({window!r}) is not a number of seconds from 0 up; "
+                         f"the default of {default / 86400:g} days is used (set it with `nsf config "
+                         "--ask-window-days`)")
+    return window, None
 
 
 def _window_text(window):
@@ -209,7 +215,7 @@ def _window_text(window):
 def _decide(db, epoch, now, record, path):
     beliefs.require_epoch(db, epoch)
     cfg = store.config(db)
-    budget, window = cfg.ask_budget_per_epoch, _ask_window(cfg)
+    budget, (window, window_warning) = cfg.ask_budget_per_epoch, _ask_window(cfg)
     asks_used = db.execute("SELECT count(*) FROM pending WHERE epoch=? AND kind IN ('ask','calibrate')"
                            + (" AND created_at>?" if window else ""),
                            (epoch, now - window) if window else (epoch,)).fetchone()[0]
@@ -248,9 +254,12 @@ def _decide(db, epoch, now, record, path):
                 asks_used += 1
         db.execute("INSERT INTO decisions(epoch,state_version,decision,scope,reason,created_at) VALUES(?,?,?,?,?,?)",
                    (epoch, version, decision, scope, reason, now))
-    return {"decision": decision, "scope": scope, "reason": reason, "pending_id": pending_id,
-            "asks_used": asks_used, "ask_budget": budget, "ask_budget_window_seconds": window,
-            "closed_pending": closed, "expired_pending": expired}
+    out = {"decision": decision, "scope": scope, "reason": reason, "pending_id": pending_id,
+           "asks_used": asks_used, "ask_budget": budget, "ask_budget_window_seconds": window,
+           "closed_pending": closed, "expired_pending": expired}
+    if window_warning:      # absent unless the saved window was unusable
+        out["warnings"] = [window_warning]
+    return out
 
 
 def decide(db, epoch, now, *, record=False, path=None):

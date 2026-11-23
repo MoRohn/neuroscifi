@@ -1096,58 +1096,98 @@ The design must keep four things that the journal gives today:
 
 ## Decision
 
-1. **A consolidated reading per expired learning event** (schema 14, `evidence_consolidated`). When
-   `governance.sweep` expires an event that is a learning event (consent `learn`, the first learning copy of its
-   sample, no consolidated reading of that sample yet), it keeps one row: the event's own `seq`, its epoch, channel
-   and root, the corrected reading (`bit XOR action`) and its sample id. The event row is deleted and tombstoned as
-   before. **Not kept:** the event id (the tombstone has it, with the seq), the actor, the action and the bit
-   themselves, provenance, consent, `acquired_at`, `recorded_at`. Memory-only events and later copies of a sample
-   expire to nothing, as before. Consolidated readings never expire.
-2. **Beliefs read both.** Every belief and likelihood reads raw learning events and consolidated readings as one
-   set ordered by seq: the tallies (`beliefs._aggregate`), a linked epoch's pool, the change window, epoch
-   matching, the legacy status, and the executive's "new events since" and horizon. A raw copy of a consolidated
-   sample is not a learning event. Consequence, tested: a posterior is the same number before and after its events
-   expire (`==`, not approximately), with confirmed changes on any scope, sampled events and a linked epoch.
+1. **A consolidated reading per expired event with consent `learn`** (schema 14, `evidence_consolidated`). When
+   `governance.sweep` expires such an event it keeps one row: the event's own `seq`, its epoch, channel and root,
+   the corrected reading (`bit XOR action`) and its sample id. The event row is deleted and tombstoned as before.
+   **Not kept:** the event id (the tombstone has it, with the seq), the actor, the action and the bit themselves,
+   provenance, consent, `acquired_at`, `recorded_at`. Memory-only events expire to nothing, as before. **Every copy
+   of a sample leaves its own reading**; which copy counts is decided when beliefs are read (decision 2).
+   Consolidated readings never expire.
+2. **Beliefs read both, and the earliest copy of a sample counts.** Every belief and likelihood reads the journal's
+   events and the consolidated readings as one set ordered by seq: the tallies (`beliefs._aggregate`), a linked
+   epoch's pool, the change window, epoch matching, the legacy status and the executive's "new events since".
+   Copies of one `(channel, root, sample_id)` count once, and the copy that counts is the one with the lowest seq
+   among the journal's learning copies and the consolidated readings together: the journal's own rule, extended
+   over both tables (`beliefs._uncounted`, `learning_sql`). Consequences, tested: a posterior is the same number
+   before and after its events expire (`==`, not approximately), with confirmed changes on any scope, sampled
+   events and a linked epoch; and when the owner forgets the first copy of a sample, the next copy counts, whether
+   or not anything had expired, so beliefs after a forget are those of an individual that never had the event
+   (a twin whose events never expire, same operations, in both orders of sweep and forget).
 3. **Listings stay honest.** The journal (`list_evidence`, `nsf memory evidence`, the event lists of `explain`)
    shows episodes only. Counts say how many consolidated readings stand beside them, and
    `nsf memory consolidated` lists the readings themselves.
-4. **Forgetting.** `forget_epoch` and `forget_partner` delete the consolidated readings they cover.
-   `forget_evidence ID` still works after the event expired: the tombstone maps the id to its seq. Each of these
-   changes the tombstone's reason from `expired` to the forget's reason; that is the durable record that a reading
-   which once existed must not exist (schema 14 indexes the tombstones by seq for this). A root is a forgotten
-   root only when neither an event nor a consolidated reading of it is left.
+4. **Forgetting, with a handle for everything that is kept.** `forget_epoch` and `forget_partner` delete the
+   consolidated readings they cover. `forget_evidence ID` still works after the event expired: the tombstone maps
+   the id to its seq (looked up by key, then the one reading by key). Because no listing shows an expired event's
+   id, a reading can also be forgotten by the seq it is listed under: `governance.forget_consolidated`,
+   `nsf forget consolidated SEQ`, and a button beside each reading in the console's memory view. A camera root is
+   a private name like a partner's and no longer leaves on its own, so it has its own forget:
+   `governance.forget_camera`, `nsf forget camera NAME`, the console's "Forget a camera" (every epoch, events and
+   readings, the changes confirmed for it; the log keeps a digest label). Each forget changes the tombstone's
+   reason from `expired` (to `forgotten`, `partner_forgotten` or `epoch_forgotten`; a camera's say `forgotten`,
+   the tombstone table's reasons being fixed since schema 1); that is the durable record that a reading which once
+   existed must not exist (schema 14 indexes the tombstones by epoch and seq for this). A root is a forgotten root
+   only when neither an event nor a consolidated reading of it is left. All of these go through the routes the
+   other forgets use (`POST /api/forget` behind the console token; the Pocket bridge exposes no instance forget).
 5. **Restore and rewrite** (`checkpoints._replay`). For each tombstone of the live file: an event in the copy
    whose tombstone says `expired`, and whose seq the live file holds as a consolidated reading, becomes that
    reading in the copy (the live row is copied); otherwise it is deleted as before. A consolidated reading in the
    copy whose tombstone no longer says `expired` is deleted. The copy takes over the stronger tombstone reason, so
    an older archive restored from the copy ends the same way. The copy's evidence sequence is raised to the live
    file's highest seq: a consolidated reading is identified by its seq, so no seq may be given to a second event.
+   The live file is read in one snapshot. **The owner's settings travel with the live file:** the replay writes
+   the settings an owner may change (`consolidation`, `ask_budget_per_epoch`, `ask_budget_window_seconds`) into
+   the copy before anything else, so an archive taken before `--no-consolidation` does not turn consolidation back
+   on, nor one taken after it turn it off against a later choice. The restore result lists them
+   (`settings_carried`) and the copy's deletion log records each. The settings fixed at `nsf init` (lifetime,
+   journal limit, free-space reserve, temperature limit) stay as the archive has them: they cannot differ between
+   an individual and its own archives. A restore without replay (`apply_tombstones=False`) is a plain copy.
 6. **A switch.** `InstanceConfig.consolidation` (default on; `nsf config --no-consolidation`, `nsf init
    --no-consolidation`). Off gives the sweep of schema 13 exactly. Turning it off stops further consolidation;
    readings already kept keep counting until they are forgotten. Settings saved by 0.7.0 have no such field and
-   read the default.
+   read the default. `nsf config` migrates the file and changes the setting without sweeping first, so on an
+   upgrade it takes effect before any event is consolidated (tested on a version-13 file; the services must be
+   stopped, because the console and the Pocket bridge sweep on access). Every change of a setting leaves a row
+   in the deletion log (kind `setting`), so the log shows from when to when expired events left nothing.
+7. **The executive's horizon is monotone.** "Evidence through #N" is the highest seq the epoch ever held (journal,
+   consolidated readings, tombstones). It no longer falls when a memory-only event expires or the latest event is
+   forgotten; no learning reading lies between the old value and the new one, so the count of new events since a
+   question is unchanged.
 
 ## Measured
 
-`docs/quality/evidence/accel_consolidation_cost.json`, on the reference host while it was loaded by other work (CPU time, best of 31 calls; the sweep is wall-clock):
+`docs/quality/evidence/accel_consolidation_cost.json` (`scripts/bench_consolidation.py`), on the reference host (CPU
+time, best of 31 calls; the sweep is one wall-clock call). A third of the events carry a sample id.
 
 | Learning readings in one epoch | `compute()`, all raw events | `compute()`, all consolidated | The sweep that consolidates them | Bytes per consolidated reading, with indexes |
 |---|---|---|---|---|
-| 200 | 2.07 ms | 1.88 ms | 4 ms | n/a (one page) |
-| 10,000 | 6.33 ms | 2.84 ms | 85 ms | 74 |
-| 100,000 | 51.25 ms | 11.81 ms | 911 ms | 77 |
+| 200 | 2.07 ms | 1.91 ms | 4 ms | n/a (one page) |
+| 10,000 | 6.32 ms | 4.15 ms | 86 ms | 93 |
+| 100,000 | 51.43 ms | 22.96 ms | 933 ms | 96 |
 
-An epoch with nothing consolidated pays 2 to 4 % more for `compute()` than before (1.96 to 2.01 ms at 200 events). In every row the posteriors after the sweep equal those before it.
+- In every row the posteriors after the sweep equal those before it.
+- An epoch with nothing consolidated pays 2 to 3 % more for `compute()` than before schema 14
+  (1.955 to 2.0 ms at 200 events, 5.044 to 5.193 ms at 10,000).
+- Half of the consolidated time is the pass that finds samples with more than one reading (decision 2): about
+  0.3 microseconds per reading that has a sample id, nothing for an epoch whose readings have none. With the first
+  version of this decision (only the first copy kept, no such pass) the 100,000 row read 11.8 ms; that version
+  made forgetting inexact (see "Alternatives rejected").
+- At 1,000,000 readings of 200 roots: a sweep that expires one event per root takes 0.08 s (5.3 s before the index
+  by root), listing the held roots for a web query 0.2 ms (51 ms), a forget of an unknown id 0.0 ms (195 ms).
 
-Per reading the consolidated path is cheaper than the raw path it replaces (one ordered pass over a covering
-index, no sort). What changes is the bound: raw events were limited to one lifetime's worth, consolidated
-readings accumulate for the life of the epoch.
+Per reading the consolidated path is cheaper than the raw path it replaces (ordered passes over covering indexes,
+no sort). What changes is the bound: raw events were limited to one lifetime's worth, consolidated readings
+accumulate for the life of the epoch.
 
 ## Alternatives rejected
 
 - **Counts per epoch, channel and segment** (the audit's sketch). They cannot be cut at a boundary confirmed
   later, cannot tell which sample they already hold, and cannot give back one event. A wrong count is a wrong
   belief with no way to notice.
+- **Keep only the first copy of a sample** (the first version of this decision). Later copies expired to nothing,
+  so forgetting the first copy after a sweep left the sample uncounted, where forgetting it before the sweep, or
+  with nothing expired, let the next copy count (review F1: n = 3 against n = 4). Since every command sweeps
+  first, the wrong order was the normal one.
 - **Promote every learning event.** It keeps the whole episode: who, when, the raw action and bit. The lifetime
   exists so that episodes do not persist.
 - **A hash of the sample id.** The dedupe runs in SQL; a salted hash needs a function registered on every
@@ -1162,16 +1202,21 @@ readings accumulate for the life of the epoch.
 ## Consequences
 
 - An individual keeps what it was taught. Day 8, and day 400, answer as day 1 did.
-- **What "expired" means changed.** After its lifetime a learning event leaves: its position in the journal, its
-  epoch, channel and root, the corrected reading and its sample id. The root's name therefore stays in the file
-  until the reading is forgotten, where 0.7.0 scrubbed it at expiry. This is the owner's decision; the switch
-  restores the old meaning.
+- **What "expired" means changed.** After its lifetime an event with consent `learn` leaves: its position in the
+  journal, its epoch, channel and root, the corrected reading and its sample id. The root's name and the sample
+  id therefore stay in the file until the reading is forgotten, where 0.7.0 scrubbed a root at expiry. This is
+  the owner's decision; the switch restores the old meaning, and each kept datum has a forget the owner can
+  reach: the reading by its seq, the camera or partner by its name, the epoch.
 - A suspected change that nobody answers no longer disappears with its events: it stays suspected, and the
   executive may ask again (within the ask budget's window).
 - The change window and epoch matching reach back past the lifetime: an epoch that was quiet for a month is
   matched and checked against what it knew.
-- Growth: about 75 bytes per consolidated reading with its indexes, without limit. `nsf regulation` and
-  `nsf birth` report the count. `max_evidence_rows` still bounds the journal only.
+- Growth: about 95 bytes per consolidated reading with its four indexes, without limit, one reading per expired
+  learning copy. `nsf regulation` and `nsf birth` report the count. `max_evidence_rows` still bounds the journal
+  only.
+- A camera forgotten while a partner of the same name is still held: an archive older than the forget keeps the
+  camera's confirmed changes after a restore (an empty segment under that name, no reading); the name itself is
+  still held as the partner's. A partner forget has had the same residue since 0.7.0.
 - `compute()` is linear in the readings of an epoch, as it was in its events.
 - The prototype's `legacy` status reads the same readings, but without event ids to order them by its sums can
   differ from `legacy_live`'s in the last bits once readings are consolidated.
@@ -1184,8 +1229,9 @@ readings accumulate for the life of the epoch.
   must move first).
 - An older binary refuses a schema-14 file ("Instance schema 14 is newer than this software (13)") and changes
   nothing; rollback is a restore of the pre-upgrade checkpoint (MIGRATIONS.md).
-- Tests: `tests/instance/test_consolidation.py` (29), and the expiry tests of `test_erasure.py` and
-  `test_journeys.py`, which keep their old assertions under `consolidation=False`.
+- Tests: `tests/instance/test_consolidation.py` (67), `tests/console/test_console_api.py` (the readings and the
+  two forgets over HTTP), and the expiry tests of `test_erasure.py` and `test_journeys.py`, which keep their old
+  assertions under `consolidation=False`.
 
 # ADR-045 (draft) Which graph is promoted: the better learner's, and never one worse than no graph. R
 

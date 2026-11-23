@@ -26,6 +26,7 @@ Older instances used `<db parent>/checkpoints`; those archives stay registered b
 verify, restore, rebuild and prune keep working on them.
 """
 from contextlib import closing, contextmanager
+from dataclasses import asdict
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -191,10 +192,33 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
     return {"checkpoint": checkpoint_id, "path": str(dest), **counts}
 
 
+# Settings of the live file that a restore or rewrite writes into the copy: every setting the owner may change with
+# `nsf config`. They are the owner's current choices, not part of what an archive remembers: an archive taken before
+# `--no-consolidation` must not turn consolidation back on in the copy (security review M1), nor one taken after it
+# turn it off against the owner's later choice; the same goes, with less at stake, for the ask budget and its
+# window. The settings fixed at `nsf init` (lifetime, journal limit, free-space reserve, temperature limit) cannot
+# differ between an individual and its own archives, so they stay as the archive has them.
+CARRIED_SETTINGS = ("consolidation", "ask_budget_per_epoch", "ask_budget_window_seconds")
+
+
 def _forgets(db, now):
-    """Everything the live instance has forgotten (or revoked), read once for a replay into an archive copy."""
+    """Everything the live instance has forgotten (or revoked) and the owner's settings, read in one snapshot for a
+    replay into an archive copy: a forget committing meanwhile is either wholly in it or not at all (a tombstone
+    saying 'forgotten' with the reading still listed as held, or the reverse, could keep a forgotten reading)."""
+    if db.in_transaction:
+        return _read_forgets(db, now)
+    db.execute("BEGIN")             # deferred: the first read takes the snapshot (WAL)
+    try:
+        return _read_forgets(db, now)
+    finally:
+        db.execute("COMMIT")
+
+
+def _read_forgets(db, now):
     from ..webcortex.signing import FRESH_SECONDS
+    settings = asdict(store.config(db))
     return {
+        "settings": {name: settings[name] for name in CARRIED_SETTINGS},
         "tombstones": db.execute("SELECT id,seq,epoch,deleted_at,reason FROM tombstones").fetchall(),
         # Consolidated readings the live file holds (ADR-044), by seq: an expired event of the copy becomes one only
         # when the live file kept it, with the live row's content.
@@ -237,6 +261,7 @@ def _replay(copy, forgets, now):
     tombstones = forgets["tombstones"] if forgets else []
     live_consolidated = forgets.get("consolidated", {}) if forgets else {}
     consolidated = unconsolidated = 0
+    carried = {}
     forgotten = forgets["datasets"] if forgets else []
     roots = forgets["roots"] if forgets else []
     epochs = forgets["epochs"] if forgets else []
@@ -252,6 +277,19 @@ def _replay(copy, forgets, now):
     copy.execute("PRAGMA secure_delete=ON")
     migrate(copy)  # an older archive gains forgotten_roots before the scrub below
     copy.execute("BEGIN IMMEDIATE")
+    if forgets and forgets.get("settings"):
+        # First of all, so that nothing done to the copy from here on runs under a setting the owner has changed.
+        saved = json.loads(copy.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
+        before = asdict(store.InstanceConfig.from_json(json.dumps(saved)))
+        carried = {name: {"from": before[name], "to": value} for name, value in forgets["settings"].items()
+                   if before[name] != value}
+        if carried:
+            saved.update({name: change["to"] for name, change in carried.items()})
+            copy.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(saved, sort_keys=True),))
+            for name, change in sorted(carried.items()):
+                copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                             (store.SETTING_KIND, name, now, json.dumps(change | {"carried_by_restore": True},
+                                                                        sort_keys=True)))
     candidates = _root_candidates(copy) if roots else {}
     for tomb in tombstones:
         event_id, seq, epoch, _, reason = tomb
@@ -354,6 +392,7 @@ def _replay(copy, forgets, now):
     copy.execute("PRAGMA journal_mode=DELETE")
     return {"tombstones_applied": len(tombstones), "evidence_removed": removed,
             "evidence_consolidated": consolidated, "consolidated_removed": unconsolidated,
+            "settings_carried": carried,
             "epoch_rows_removed": epoch_rows,
             "datasets_blanked": blobs, "graph_effects_removed": effects,
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,

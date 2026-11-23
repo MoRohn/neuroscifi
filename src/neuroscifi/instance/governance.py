@@ -22,6 +22,7 @@ import secrets
 
 from . import store
 from .errors import Gone, NotFound, ValidationError
+from .schema import has_consolidated
 
 REASONS = ("forgotten", "expired", "epoch_forgotten", "partner_forgotten")
 FORGOTTEN_CAUSE = "evidence:#forgotten"
@@ -161,11 +162,6 @@ def _forget_causes(db, event_ids):
     return rewritten
 
 
-def has_consolidated(db):
-    return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='evidence_consolidated'"
-                      ).fetchone() is not None
-
-
 def root_held(db, root):
     """Whether any evidence of the root is left, as a raw event or as a consolidated reading (ADR-044)."""
     if db.execute("SELECT 1 FROM evidence WHERE root=? LIMIT 1", (root,)).fetchone() is not None:
@@ -179,8 +175,14 @@ def held_roots(db):
     consolidated readings (ADR-044). Private names: the Web Cortex never sends one out (orchestrator.private_terms)."""
     roots = [r for (r,) in db.execute("SELECT DISTINCT root FROM evidence WHERE channel IN ('camera','word')")]
     if has_consolidated(db):
+        # One index seek per root, not a pass over every reading (the table only grows, and this runs for every web
+        # query): the next root after the last one found, then whether it has a camera or word reading.
         roots += [r for (r,) in db.execute(
-            "SELECT DISTINCT root FROM evidence_consolidated WHERE channel IN ('camera','word')")]
+            "WITH RECURSIVE r(root) AS (SELECT min(root) FROM evidence_consolidated UNION ALL "
+            "SELECT (SELECT min(c.root) FROM evidence_consolidated c WHERE c.root>r.root) FROM r "
+            "WHERE r.root IS NOT NULL) SELECT root FROM r WHERE root IS NOT NULL AND EXISTS (SELECT 1 FROM "
+            "evidence_consolidated c INDEXED BY evidence_consolidated_root WHERE c.root=r.root "
+            "AND c.channel IN ('camera','word'))")]
     return list(dict.fromkeys(roots))
 
 
@@ -249,14 +251,17 @@ def drop_epoch_rows(db, epoch, now=None):
 
 
 def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=None, consolidated=None,
-            consolidate=False):
+            consolidate=False, scopes=()):
     """Caller owns the transaction. Returns the effects dict, or None when nothing matched.
 
     drop_epoch: also delete that epoch's derived rows (drop_epoch_rows; forget_epoch).
+    scopes: also delete the confirmed and rejected changes of these scopes in every epoch (forget_camera: a camera
+    without evidence must not stay in the beliefs as an empty segment).
     consolidated: (where, params) on evidence_consolidated: a forget also deletes those consolidated readings.
-    consolidate: the sweep's expiry with InstanceConfig.consolidation on: of the matched events, the learning events
-    (beliefs.learning_sql: consent 'learn', the first learning copy of their sample, no consolidated reading of that
-    sample yet) leave a consolidated reading (ADR-044). Every matched event is deleted and tombstoned either way.
+    consolidate: the sweep's expiry with InstanceConfig.consolidation on: each matched event with consent 'learn'
+    leaves a consolidated reading (ADR-044), every copy of a sample its own: which copy counts is decided when
+    beliefs are read (the earliest), so a forgotten first copy gives way to the next. Every matched event is deleted
+    and tombstoned either way.
     """
     rows = db.execute(f"SELECT seq,id,epoch,channel,root FROM evidence WHERE {where} ORDER BY seq", params).fetchall()
     folded_rows = drop_consolidated(db, *consolidated, now, reason) if consolidated is not None else []
@@ -265,19 +270,20 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
                                        f"({','.join('?' * len(sources))}) ORDER BY epoch", sources)
               if e != drop_epoch and e not in sources]
     derived = drop_epoch_rows(db, drop_epoch, now) if drop_epoch is not None else {}
+    if scopes:
+        derived = derived | {"changepoints": derived.get("changepoints", 0) + db.execute(
+            f"DELETE FROM changepoints WHERE scope IN ({','.join('?' * len(scopes))})", tuple(scopes)).rowcount}
     if not rows and not folded_rows and not any(derived.values()):
         return None
     kept = set()
     if consolidate and rows and has_consolidated(db):
-        from .beliefs import learning_sql  # lazy, as compute below
-        # One statement over the journal as it stands, before any row goes: "first learning copy" is decided among
-        # all raw copies, so of two copies expiring together only the first leaves a reading. A seq is issued once
-        # (AUTOINCREMENT; a restore raises the counter past the live file's, checkpoints._replay), so no reading can
-        # hold it already; OR IGNORE only keeps a file that broke that rule sweepable.
+        # A seq is issued once (AUTOINCREMENT; a restore raises the counter past the live file's,
+        # checkpoints._replay), so no reading can hold it already; OR IGNORE only keeps a file that broke that rule
+        # sweepable.
         db.execute(
             "INSERT OR IGNORE INTO evidence_consolidated(seq,epoch,channel,root,value,sample_id,consolidated_at) "
             f"SELECT seq, epoch, channel, root, bit<>action, sample_id, ? FROM evidence WHERE ({where}) "
-            f"AND {learning_sql(db)}", (now, *params))
+            "AND consent='learn'", (now, *params))
         kept = {r[0] for r in rows} & {seq for (seq,) in db.execute(
             "SELECT seq FROM evidence_consolidated WHERE seq BETWEEN ? AND ?", (rows[0][0], rows[-1][0]))}
     db.executemany("DELETE FROM evidence WHERE seq=?", [(r[0],) for r in rows])
@@ -317,7 +323,7 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
         effects["consolidated"] = len(kept)
     if linked:
         effects["linked_epochs_revised"] = linked
-    if drop_epoch is not None:
+    if drop_epoch is not None or any(derived.values()):
         effects["derived_deleted"] = derived
     db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
                (kind, target, now, json.dumps(effects, sort_keys=True)))
@@ -353,13 +359,15 @@ def forget_evidence(db, event_id, now, *, reason="forgotten"):
     if not isinstance(event_id, str) or not event_id:
         raise ValidationError("event id must be a non-empty string")
     # The event id is caller-chosen and may carry meaning, so the revision cause does not repeat it.
-    # An event whose lifetime ended may live on as a consolidated reading (ADR-044). It has no id any more: its
-    # tombstone, which keeps the id with the seq, finds it, so the owner can still forget exactly that event.
-    folded = ("seq=(SELECT t.seq FROM tombstones t WHERE t.id=? AND t.reason='expired' "
-              "AND t.epoch=evidence_consolidated.epoch)", (event_id,))
     with store.write(db):
+        # An event whose lifetime ended may live on as a consolidated reading (ADR-044). It has no id any more: its
+        # tombstone, which keeps the id with the seq, finds it, so the owner can still forget exactly that event.
+        # The tombstone is looked up first (by its key), then the one reading (by its key): nothing is scanned,
+        # whether the id is a journal event's, a consolidated one's or unknown.
+        expired = None if reason == "expired" else db.execute(
+            "SELECT seq, epoch FROM tombstones WHERE id=? AND reason='expired'", (event_id,)).fetchone()
         effects = _remove(db, "id=?", (event_id,), now, reason=reason, cause=FORGOTTEN_CAUSE, kind="evidence",
-                          target=event_id, consolidated=None if reason == "expired" else folded)
+                          target=event_id, consolidated=("seq=? AND epoch=?", tuple(expired)) if expired else None)
     return _result(db, effects)
 
 
@@ -384,6 +392,38 @@ def forget_partner(db, root, now):
         effects = _remove(db, "channel='word' AND root=?", (root,), now, reason="partner_forgotten",
                           cause=f"forget:{label}", kind="partner", target=label,
                           consolidated=("channel='word' AND root=?", (root,)))
+    return _result(db, effects)
+
+
+def forget_camera(db, root, now):
+    """Forget everything a camera root taught, in every epoch: its events in the journal, its consolidated readings
+    (ADR-044) and the changes confirmed or rejected for it. The mirror of forget_partner for the camera channel: a
+    camera root is a private name too, and since consolidation it no longer leaves on its own after the lifetime.
+    The root is scrubbed from the history when no evidence of that name is left in any channel; the log keeps only
+    its instance-salted label. Tombstones say 'forgotten'.
+    """
+    if not isinstance(root, str) or not root:
+        raise ValidationError("camera root must be a non-empty string")
+    with store.write(db):
+        label = "camera:#" + root_digest(store.birth(db)["instance_id"], root)
+        effects = _remove(db, "channel='camera' AND root=?", (root,), now, reason="forgotten",
+                          cause=f"forget:{label}", kind="camera", target=label,
+                          consolidated=("channel='camera' AND root=?", (root,)), scopes=(f"camera:{root}",))
+    return _result(db, effects)
+
+
+def forget_consolidated(db, seq, now):
+    """Forget one consolidated reading by its journal position, the id `nsf memory consolidated` and the console
+    show for it (the event's own id is known only to its tombstone, which no listing shows). Everything else is as
+    for forget_evidence on an expired event: the tombstone then says 'forgotten', a belief revision and a
+    deletion_log row are written, every checkpoint is stale, and a restore removes the reading from any copy.
+    A seq that names no consolidated reading (an event still in the journal is forgotten by its id) is 'absent'.
+    """
+    if isinstance(seq, bool) or not isinstance(seq, int) or seq < 1:
+        raise ValidationError("the reading's seq must be a positive integer")
+    with store.write(db):
+        effects = _remove(db, "0", (), now, reason="forgotten", cause=FORGOTTEN_CAUSE, kind="consolidated",
+                          target=str(seq), consolidated=("seq=?", (seq,)))
     return _result(db, effects)
 
 

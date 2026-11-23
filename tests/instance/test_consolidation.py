@@ -186,9 +186,14 @@ def test_posteriors_are_the_same_numbers_before_and_after_expiry(instance, seed)
         assert _everything_believed(db) == reference, f"beliefs moved at the sweep of day {days}"
     # at the end only promoted events are still episodes; every other learning event is a consolidated reading
     assert count(db, "evidence", "retention!='promoted'") == 0
+    # (a reading that does not count is a later copy of a sample: kept, so that it can count if the first is forgotten)
     promoted_learning = count(db, "evidence", beliefs.learning_sql(db))
-    assert count(db, "evidence_consolidated") + promoted_learning == learning
-    assert count(db, "evidence_consolidated") > 60
+    later_copies = len(beliefs._uncounted(db, "a")) + len(beliefs._uncounted(db, "b"))
+    assert count(db, "evidence_consolidated") - later_copies + promoted_learning == learning
+    assert count(db, "evidence_consolidated") > 60 and later_copies > 0
+    # every reading has the tombstone of its event (the id-to-seq map a forget by id needs)
+    assert count(db, "evidence_consolidated") == count(
+        db, "tombstones", "reason='expired' AND seq IN (SELECT seq FROM evidence_consolidated)")
     assert db.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
@@ -241,32 +246,199 @@ def test_a_sample_counts_once_however_its_copies_expire(instance):
     before = beliefs.compute(db, "desk")
     assert before["evidence"] == {"total": 4, "learning": 2, "memory_only": 1, "duplicates_ignored": 1}
     out = governance.sweep(db, T0 + 8 * DAY)
-    assert out["expired"] == 4 and out["consolidated"] == 2
-    assert [(r[3], r[4], r[5]) for r in folded(db)] == [("cam-a", 1, "frame-1"), ("cam-a", 1, "frame-2")]
-    assert beliefs.compute(db, "desk")["sensors"] == before["sensors"]
+    # every copy with consent 'learn' leaves its own reading; the memory-only one leaves nothing
+    assert out["expired"] == 4 and out["consolidated"] == 3
+    assert [(r[0], r[3], r[4], r[5]) for r in folded(db)] == [
+        (1, "cam-a", 1, "frame-1"), (2, "cam-a", 1, "frame-1"), (4, "cam-a", 1, "frame-2")]
+    after = beliefs.compute(db, "desk")
+    assert after["sensors"] == before["sensors"]                    # the sample still counts once
+    assert after["evidence"] == {"total": 3, "learning": 2, "memory_only": 0, "duplicates_ignored": 1,
+                                 "consolidated": 2}
+    assert beliefs._uncounted(db, "desk") == [("camera", "cam-a", 1, 2)]
     # a copy of a consolidated sample arriving later is a duplicate, not a second reading
     obs(db, "third", "desk", "camera", "cam-a", 1, T0 + 9 * DAY, sample="frame-1")
     obs(db, "other-root", "desk", "camera", "cam-b", 1, T0 + 9 * DAY, sample="frame-1")  # another root: its own
     now = beliefs.compute(db, "desk")
     assert now["sensors"]["cam-a"] == before["sensors"]["cam-a"] and now["sensors"]["cam-b"]["n"] == 1
-    assert now["evidence"] == {"total": 4, "learning": 3, "memory_only": 0, "duplicates_ignored": 1,
+    assert now["evidence"] == {"total": 5, "learning": 3, "memory_only": 0, "duplicates_ignored": 2,
                                "consolidated": 2}
     assert executive._new_events(db, "desk", "camera:cam-a", 0) == 2
     again = governance.sweep(db, T0 + 20 * DAY)
-    assert again["expired"] == 2 and again["consolidated"] == 1                          # the copy leaves nothing
-    assert count(db, "evidence_consolidated") == 3
+    assert again["expired"] == 2 and again["consolidated"] == 2
+    assert count(db, "evidence_consolidated") == 5
     assert beliefs.compute(db, "desk")["sensors"] == now["sensors"]
+    assert sorted(beliefs._uncounted(db, "desk")) == [("camera", "cam-a", 1, 2), ("camera", "cam-a", 1, 5)]
 
 
-def test_a_promoted_first_copy_keeps_the_reading_and_a_later_copy_expires_to_nothing(instance):
+def test_a_promoted_first_copy_counts_and_the_expired_later_copy_waits_behind_it(instance):
+    """The first copy of a sample is still an episode (promoted), a later copy expired. The journal's copy counts,
+    where it stands; the reading of the later copy is kept and counts once the first one is forgotten."""
     db, _ = instance
     evidence.start_epoch(db, "desk", T0)
     obs(db, "kept", "desk", "word", "ana", 0, T0, sample="w1")
     governance.promote(db, "kept", T0 + 1)
-    obs(db, "copy", "desk", "word", "ana", 0, T0 + 2, sample="w1")
+    obs(db, "copy", "desk", "word", "ana", 1, T0 + 2, sample="w1")            # says the opposite, as a copy may
+    before = beliefs.compute(db, "desk")["partners"]
     out = governance.sweep(db, T0 + 8 * DAY)
-    assert out["expired"] == 1 and "consolidated" not in out and count(db, "evidence_consolidated") == 0
-    assert beliefs.compute(db, "desk")["partners"]["ana"]["n"] == 1
+    assert out["expired"] == 1 and out["consolidated"] == 1 and count(db, "evidence_consolidated") == 1
+    after = beliefs.compute(db, "desk")
+    assert after["partners"] == before and after["partners"]["ana"]["n"] == 1
+    assert after["evidence"] == {"total": 2, "learning": 1, "memory_only": 0, "duplicates_ignored": 1}
+    assert beliefs._uncounted(db, "desk") == [("word", "ana", 1, 2)]
+    readings = lambda: [(e["seq"], e["bit"] ^ e["action"]) for e in beliefs._window(db, "desk", 5)]  # noqa: E731
+    assert readings() == [(1, 0)]
+    governance.forget_evidence(db, "kept", T0 + 8 * DAY + 1)
+    now = beliefs.compute(db, "desk")
+    assert now["partners"]["ana"]["n"] == 1 and readings() == [(2, 1)]         # the later copy, where it stands
+    assert now["evidence"] == {"total": 1, "learning": 1, "memory_only": 0, "duplicates_ignored": 0,
+                               "consolidated": 1}
+
+
+def _one_partner_with_a_copied_sample(db):
+    evidence.start_epoch(db, "desk", T0)
+    obs(db, "a", "desk", "word", "ana", 0, T0, sample="s1")
+    obs(db, "b", "desk", "word", "ana", 1, T0 + 1, sample="s1")               # a later copy of the same sample
+    for k in range(3):
+        obs(db, f"plain-{k}", "desk", "word", "ana", 0, T0 + 2 + k)
+
+
+def test_forgetting_the_first_copy_of_a_sample_lets_the_next_one_count_whatever_expired_first(tmp_path):
+    """Review F1: sweep-then-forget lost the later copy (n = 3) where forget-then-sweep, or no expiry at all, kept it
+    (n = 4). Since every command sweeps first, the wrong order was the normal one. An individual that never had the
+    first copy still has the second: that is what "forgotten" promises."""
+    beliefs_of, readings = {}, {}
+    for order in ("forget_then_sweep", "sweep_then_forget", "no_expiry"):
+        ttl = 10**9 if order == "no_expiry" else 7 * 86400
+        db = store.create(tmp_path / f"{order}.sqlite", T0, config=store.InstanceConfig(evidence_ttl_seconds=ttl))
+        try:
+            _one_partner_with_a_copied_sample(db)
+            if order == "sweep_then_forget":
+                assert governance.sweep(db, T0 + 8 * DAY)["consolidated"] == 5
+            out = governance.forget_evidence(db, "a", T0 + 8 * DAY + 1)
+            assert out["status"] == "forgotten"
+            governance.sweep(db, T0 + 8 * DAY + 2)
+            beliefs_of[order] = held(db, "desk")
+            readings[order] = [(r[0], r[4], r[5]) for r in folded(db)]
+        finally:
+            db.close()
+    assert beliefs_of["sweep_then_forget"]["partners"]["ana"]["n"] == 4
+    assert beliefs_of["sweep_then_forget"] == beliefs_of["forget_then_sweep"] == beliefs_of["no_expiry"]
+    assert readings["sweep_then_forget"] == readings["forget_then_sweep"] == [(2, 1, "s1"), (3, 0, None), (4, 0, None),
+                                                                              (5, 0, None)]
+
+
+def test_a_later_copy_that_opens_a_segment_does_not_lend_it_its_place(tmp_path):
+    """Factors are ordered by their first reading, and the order is the order of the sums. A later copy of a sample
+    that is the first reading of a segment does not count, so the segment's first seq is the next reading's: the
+    tallies, first seqs included, are those of a journal where nothing expired."""
+    tallies, believed = {}, {}
+    for name, ttl in (("raw", 10**9), ("fold", 7 * 86400)):
+        db = store.create(tmp_path / f"{name}.sqlite", T0, config=store.InstanceConfig(evidence_ttl_seconds=ttl))
+        try:
+            evidence.start_epoch(db, "desk", T0)
+            obs(db, "c1", "desk", "camera", "cam", 1, T0, sample="s1")            # seq 1
+            obs(db, "r1", "desk", "reference", "ref-1", 0, T0 + 1)
+            obs(db, "r2", "desk", "reference", "ref-2", 0, T0 + 2)
+            obs(db, "w1", "desk", "word", "ana", 0, T0 + 3)
+            obs(db, "c2", "desk", "camera", "cam", 1, T0 + 4, sample="s1")        # seq 5: a later copy of s1
+            obs(db, "w2", "desk", "word", "bo", 0, T0 + 5)                        # seq 6
+            obs(db, "c3", "desk", "camera", "cam", 1, T0 + 6)                     # seq 7
+            obs(db, "c4", "desk", "camera", "cam", 1, T0 + 7)
+            with store.write(db):
+                db.execute("INSERT INTO changepoints(epoch,scope,since_seq,pending_id,created_at,confirmed) "
+                           "VALUES('desk','camera:cam',5,NULL,?,1)", (T0,))   # the copy opens the new segment
+                store.bump_state_version(db)
+            governance.sweep(db, T0 + 8 * DAY)
+            tallies[name] = beliefs._aggregate(db, "desk", [5])[1]
+            believed[name] = held(db, "desk")
+        finally:
+            db.close()
+    assert tallies["raw"][("camera", "cam", 1)] == [0, 2, 7]              # two readings, the first at seq 7, not 5
+    assert tallies["fold"] == tallies["raw"] and believed["fold"] == believed["raw"]
+
+
+def _twin_life(tmp_path, seed, order):
+    """The same operations on a file whose events never expire and on one with 7-day lifetimes: observations with
+    and without sample ids, promotions, forgets of single events (sampled ones too) and of a partner, and the
+    executive's questions answered with a confirmation. `order`: the expiring file sweeps before each forget (as
+    every command does) or after it. Returns the first difference in what is believed, or None."""
+    rng = random.Random(seed)
+    dbs = {"raw": store.create(tmp_path / f"raw-{seed}-{order}.sqlite", T0,
+                               config=store.InstanceConfig(evidence_ttl_seconds=10**9)),
+           "fold": store.create(tmp_path / f"fold-{seed}-{order}.sqlite", T0)}
+    try:
+        for db in dbs.values():
+            evidence.start_epoch(db, "a", T0)
+            evidence.start_epoch(db, "b", T0)
+        now, n, events, truth = T0, 0, [], {}
+
+        def forget(action):
+            for name, db in dbs.items():
+                if name == "fold" and order == "sweep_first":
+                    governance.sweep(db, now)
+                action(db)
+                if name == "fold":
+                    governance.sweep(db, now)
+
+        for step in range(90):
+            now += rng.choice([600, 3600, 6 * 3600, 86400])
+            r = rng.random()
+            if r < .72:
+                n += 1
+                channel = rng.choice(["camera", "word", "word", "reference"])
+                root = rng.choice({"camera": ["c1"], "word": ["ana", "bo"], "reference": ["r1", "r2", "r3"]}[channel])
+                epoch = "a" if rng.random() < .8 else "b"
+                value = truth.setdefault((epoch, channel, root), rng.randrange(2)) ^ (step > 45 and root == "c1")
+                sample = f"s{rng.randrange(4)}" if rng.random() < .4 else None
+                value, action = value ^ (rng.random() < .1), rng.randrange(2)
+                for db in dbs.values():
+                    obs(db, f"i{n}", epoch, channel, root, value, now, action=action, sample=sample)
+                events.append((f"i{n}", sample is not None))
+                if rng.random() < .08:
+                    for db in dbs.values():
+                        governance.promote(db, f"i{n}", now)
+            elif r < .86 and events:
+                sampled = [e for e in events if e[1]]
+                victim = rng.choice(sampled if sampled and rng.random() < .7 else events)[0]
+                forget(lambda db: governance.forget_evidence(db, victim, now))
+            elif r < .89:
+                forget(lambda db: governance.forget_partner(db, "bo", now))
+            else:
+                for db in dbs.values():
+                    governance.sweep(db, now)
+                decided = {name: executive.decide(db, "a", now, record=True) for name, db in dbs.items()}
+                answers = {name: (d["decision"], d["scope"], d["reason"]) for name, d in decided.items()}
+                if answers["raw"] != answers["fold"]:
+                    return ("decide", step, answers)
+                if decided["raw"]["decision"] == "ask" and rng.random() < .7:
+                    for name, db in dbs.items():
+                        try:
+                            executive.resolve(db, decided[name]["pending_id"], "yes", now + 1, confirm=True)
+                        except Exception as error:      # an epoch question that cannot link: the same in both
+                            answers[name] = type(error).__name__
+                    if answers["raw"] != answers["fold"] and "Error" in str(answers):
+                        return ("resolve", step, answers)
+            governance.sweep(dbs["fold"], now)
+            for epoch in ("a", "b"):
+                left, right = held(dbs["raw"], epoch), held(dbs["fold"], epoch)
+                if left != right:
+                    keys = [k for k in left if left[k] != right[k]]
+                    return (epoch, step, keys, left[keys[0]], right[keys[0]])
+                bounds = sorted({q for seqs in beliefs.changes(dbs["raw"], epoch)["confirmed"].values() for q in seqs})
+                left, right = (beliefs._aggregate(dbs[name], epoch, bounds)[1] for name in ("raw", "fold"))
+                if left != right:               # the counts and the first seq of every (channel, root, segment)
+                    return (epoch, step, "tallies", left, right)
+        return None
+    finally:
+        for db in dbs.values():
+            db.close()
+
+
+@pytest.mark.parametrize("order", ["sweep_first", "forget_first"])
+@pytest.mark.parametrize("seed", range(10))
+def test_an_expiring_individual_believes_what_one_that_never_expires_believes(tmp_path, seed, order):
+    """Review F1, the general case: forgets of sampled events included, and in both orders of sweep and forget."""
+    assert _twin_life(tmp_path, seed, order) is None
 
 
 def test_the_owner_can_see_what_was_kept_and_nothing_else_was(instance):
@@ -406,8 +578,8 @@ def test_private_roots_held_only_as_consolidated_readings_stay_private(instance)
     teach(db)
     obs(db, "fresh", "desk", "camera", "cam-new", 1, T0 + 7 * DAY)
     governance.sweep(db, T0 + 8 * DAY)
-    assert governance.held_roots(db) == ["cam-new", "cam-a", "ana"]
-    assert orchestrator.private_terms(db, WebConfig(private_terms=["mine"])) == ["mine", "cam-new", "cam-a", "ana"]
+    assert governance.held_roots(db) == ["cam-new", "ana", "cam-a"]       # the journal's, then the consolidated ones
+    assert orchestrator.private_terms(db, WebConfig(private_terms=["mine"])) == ["mine", "cam-new", "ana", "cam-a"]
 
 
 # ---- checkpoints and restore ---------------------------------------------------------------------------------------
@@ -555,7 +727,7 @@ def _version_13_file(tmp_path):
     believed = held(db, "desk")
     db.close()
     raw = sqlite3.connect(path, isolation_level=None)
-    raw.executescript("BEGIN; DROP TABLE evidence_consolidated; DROP INDEX tombstones_seq; "
+    raw.executescript("BEGIN; DROP TABLE evidence_consolidated; DROP INDEX tombstones_epoch_seq; "
                       "PRAGMA user_version=13; COMMIT;")
     tables = sorted(name for (name,) in raw.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
@@ -575,8 +747,10 @@ def test_a_version_13_file_gains_the_table_and_keeps_every_row(tmp_path):
         assert count(db, "evidence_consolidated") == 0
         assert {name for (name,) in db.execute("SELECT name FROM sqlite_master WHERE tbl_name='evidence_consolidated' "
                                                "AND type='index' AND name NOT LIKE 'sqlite_%'")} == \
-            {"evidence_consolidated_epoch", "evidence_consolidated_sample", "evidence_consolidated_tally"}
-        assert db.execute("SELECT tbl_name FROM sqlite_master WHERE name='tombstones_seq'").fetchone() == ("tombstones",)
+            {"evidence_consolidated_epoch", "evidence_consolidated_sample", "evidence_consolidated_tally",
+             "evidence_consolidated_root"}
+        assert db.execute("SELECT tbl_name FROM sqlite_master WHERE name='tombstones_epoch_seq'").fetchone() == \
+            ("tombstones",)
         # settings saved by 0.7.0 have no `consolidation`: the default applies, and the individual keeps learning
         assert store.config(db).consolidation is True and held(db, "desk") == believed
         assert governance.sweep(db, T0 + 8 * DAY)["consolidated"] == 18
@@ -664,3 +838,309 @@ def test_cli_sweep_reports_what_it_kept_and_config_turns_it_off(tmp_path, capsys
     assert code == 0 and gone["effects"]["consolidated_deleted"] == 1
     code, status = nsf("status", "e", "--db", path)
     assert status["sensors"] == {} and "consolidated" not in status["evidence"]
+
+
+# ---- review round: forgets with a handle the owner is shown; settings and restores; the horizon ---------------------
+
+def test_a_consolidated_reading_is_forgotten_by_the_seq_the_owner_is_shown(tmp_path):
+    """Security review M2: `nsf memory consolidated` shows a reading's seq, never its event id, so a forget has to
+    take the seq. Everything else is as a forget by id: checked against a twin that forgets the same event by id."""
+    states = {}
+    for name in ("by_seq", "by_id"):
+        path = tmp_path / f"{name}.sqlite"
+        db = store.create(path, T0)
+        try:
+            ids = teach(db, rounds=3)
+            archive = checkpoints.create(db, path, tmp_path / f"cps-{name}", T0 + 60)
+            governance.sweep(db, T0 + 8 * DAY)                       # the archive of raw events is stale from here
+            later = checkpoints.create(db, path, tmp_path / f"cps-{name}", T0 + 8 * DAY + 0.5)
+            listed = memory.retrieve(db, "consolidated", channel="word")["items"]
+            target = listed[-1]["id"]                        # the oldest word reading: seq 3, event ids[2]
+            assert target == 3 and "id" not in listed[-1]["payload"]
+            version = store.state_version(db)
+            out = governance.forget_consolidated(db, target, T0 + 8 * DAY + 1) if name == "by_seq" \
+                else governance.forget_evidence(db, ids[2], T0 + 8 * DAY + 1)
+            assert out["status"] == "forgotten" and out["effects"]["consolidated_deleted"] == 1
+            assert out["effects"]["deleted"] == 0 and out["effects"]["checkpoints_stale"] == [later["id"]]
+            assert store.state_version(db) == version + 1
+            log = db.execute("SELECT target_kind, target_id FROM deletion_log ORDER BY id DESC LIMIT 1").fetchone()
+            assert log == (("consolidated", "3") if name == "by_seq" else ("evidence", ids[2]))
+            last = json.loads(db.execute("SELECT summary FROM belief_revisions ORDER BY id DESC LIMIT 1").fetchone()[0])
+            assert last["removed"] == 1 and last["cause"] == governance.FORGOTTEN_CAUSE
+            # the same reading again, a seq that is no reading, and the seq of an event still in the journal: absent
+            fresh = obs(db, "fresh", "desk", "word", "ana", 0, T0 + 8 * DAY + 2)
+            for seq in (target, 10_000, fresh):
+                assert governance.forget_consolidated(db, seq, T0 + 8 * DAY + 3)["status"] == "absent"
+            assert count(db, "evidence") == 1
+            for n, held_in in enumerate((archive, later)):               # as raw events, and as readings
+                _, copy = _restored(db, held_in, tmp_path / f"r-{name}-{n}.sqlite", T0 + 8 * DAY + 4 + n)
+                with closing(copy):
+                    assert folded(copy) == folded(db) and count(copy, "evidence") == 0
+            states[name] = (held(db, "desk"), folded(db), db.execute(
+                "SELECT id, seq, epoch, reason, deleted_at FROM tombstones ORDER BY seq").fetchall())
+        finally:
+            db.close()
+    assert states["by_seq"] == states["by_id"]
+    assert [t for t in states["by_seq"][2] if t[3] != "expired"] == [("desk-2", 3, "desk", "forgotten", T0 + 8 * DAY + 1)]
+
+
+@pytest.mark.parametrize("bad", [0, -1, True, 1.5, "3", None])
+def test_forget_consolidated_refuses_what_is_not_a_seq(instance, bad):
+    from neuroscifi.instance.errors import ValidationError
+    db, _ = instance
+    with pytest.raises(ValidationError):
+        governance.forget_consolidated(db, bad, T0)
+
+
+def test_forgetting_a_camera_removes_it_everywhere_like_a_partner(instance, tmp_path):
+    """Security review M2: a camera root is a private name that consolidation now keeps; short of its epoch there
+    was no way to forget it. The mirror of forget_partner: every epoch, events and consolidated readings, the changes
+    confirmed for it, root scrubbing, a digest label in the log, and no return through a restore."""
+    db, path = instance
+    teach(db, "desk")
+    teach(db, "garage", now=T0 + 100)
+    obs(db, "word-named-cam", "garage", "word", "cam-a", 1, T0 + 300)       # a partner of the same name stays
+    raw_archive = checkpoints.create(db, path, tmp_path / "cps", T0 + 400)
+    governance.sweep(db, T0 + 8 * DAY)
+    obs(db, "late", "desk", "camera", "cam-a", 1, T0 + 8 * DAY + 1)         # one more, still in the journal
+    with store.write(db):
+        db.execute("INSERT INTO changepoints(epoch,scope,since_seq,pending_id,created_at,confirmed) "
+                   "VALUES('desk','camera:cam-a',5,NULL,?,1)", (T0,))
+        store.bump_state_version(db)
+    folded_archive = checkpoints.create(db, path, tmp_path / "cps", T0 + 8 * DAY + 2)
+    assert beliefs.compute(db, "desk")["sensors"]["cam-a"]["n"] == 6        # the current segment: seq 5 and later
+    out = governance.forget_camera(db, "cam-a", T0 + 8 * DAY + 3)
+    effects = out["effects"]
+    assert out["status"] == "forgotten" and effects["deleted"] == 1 and effects["consolidated_deleted"] == 12
+    assert effects["epochs"] == ["desk", "garage"] and effects["roots_forgotten"] == 0
+    assert effects["derived_deleted"] == {"changepoints": 1}
+    assert count(db, "evidence_consolidated", "channel='camera'") == 0
+    assert count(db, "evidence", "channel='camera'") == 0
+    assert count(db, "evidence_consolidated", "channel='word' AND root='cam-a'") == 1
+    for epoch in ("desk", "garage"):
+        now = beliefs.compute(db, epoch)
+        assert now["sensors"] == {} and now["segments"] == {} and now["confirmed_changes"] == []
+    assert count(db, "tombstones", "reason='forgotten'") == 13
+    assert count(db, "tombstones", "reason='partner_forgotten'") == 0
+    kind, target, logged = db.execute(
+        "SELECT target_kind, target_id, effects FROM deletion_log ORDER BY id DESC LIMIT 1").fetchone()
+    assert kind == "camera" and target.startswith("camera:#") and "cam-a" not in target + logged
+    assert governance.forget_camera(db, "cam-a", T0 + 8 * DAY + 4)["status"] == "absent"
+    live = folded(db)
+    for n, archive in enumerate((raw_archive, folded_archive)):
+        _, copy = _restored(db, archive, tmp_path / f"r{n}.sqlite", T0 + 8 * DAY + 10 + n)
+        with closing(copy):
+            assert count(copy, "evidence") == 0 and folded(copy) == live
+            assert count(copy, "evidence_consolidated", "channel='camera'") == 0
+    # the last evidence of that name goes: now the root is scrubbed from the history
+    gone = governance.forget_partner(db, "cam-a", T0 + 8 * DAY + 20)
+    assert gone["effects"]["roots_forgotten"] == 1
+    assert "cam-a" not in "".join(s for (s,) in db.execute("SELECT summary FROM belief_revisions"))
+    from neuroscifi.instance.errors import ValidationError
+    for bad in ("", None, 7):
+        with pytest.raises(ValidationError):
+            governance.forget_camera(db, bad, T0)
+
+
+def test_forgetting_a_camera_whose_events_never_expired(instance):
+    db, path = instance
+    teach(db, rounds=2)
+    out = governance.forget_camera(db, "cam-a", T0 + 100)
+    assert out["effects"]["deleted"] == 2 and "consolidated_deleted" not in out["effects"]
+    assert out["effects"]["roots_forgotten"] == 1 and b"cam-a" not in path.read_bytes()
+    now = beliefs.compute(db, "desk")
+    assert now["sensors"] == {} and now["partners"]["ana"]["n"] == 2
+
+
+def test_forget_evidence_looks_up_the_tombstone_and_scans_no_reading(instance):
+    """Review F3: the statement that found a consolidated event scanned every reading with a correlated subquery,
+    for every id: also for an event still in the journal and for an unknown id."""
+    db, _ = instance
+    ids = teach(db, rounds=3)
+    governance.sweep(db, T0 + 8 * DAY)
+    obs(db, "raw", "desk", "word", "ana", 0, T0 + 8 * DAY + 1)
+    statements = []
+    db.set_trace_callback(statements.append)
+    try:
+        assert governance.forget_evidence(db, "no-such-id", T0 + 8 * DAY + 2)["status"] == "absent"
+        assert governance.forget_evidence(db, "raw", T0 + 8 * DAY + 3)["effects"]["deleted"] == 1
+        seen = len(statements)
+        assert governance.forget_evidence(db, ids[0], T0 + 8 * DAY + 4)["effects"]["consolidated_deleted"] == 1
+    finally:
+        db.set_trace_callback(None)
+    # an unknown id and a journal event never touch the readings; a consolidated one is found by its key
+    finds = [s for s in statements if "FROM evidence_consolidated WHERE seq=" in s]
+    assert not [s for s in statements[:seen] if "SELECT seq, NULL, epoch, channel, root FROM evidence_consolidated" in s]
+    assert len(finds) >= 1 and all(s in statements[seen:] for s in finds)
+    for statement in finds:
+        plan = [row[3] for row in db.execute("EXPLAIN QUERY PLAN " + statement)]
+        assert plan and all(step.startswith("SEARCH") and "INTEGER PRIMARY KEY" in step for step in plan), plan
+
+
+def test_the_horizon_of_a_question_does_not_fall_when_events_expire(instance):
+    """Review F5: "evidence through #N" was the highest seq left in the journal, so it fell at a sweep that dropped a
+    memory-only event (9 before, 8 after), and one situation got two question texts."""
+    db, _ = instance
+    evidence.start_epoch(db, "desk", T0)
+    for root in ("ref-1", "ref-2", "ref-3"):
+        obs(db, root, "desk", "reference", root, 0, T0)
+    for k in range(4):
+        obs(db, f"w{k}", "desk", "word", "ana", k % 2, T0 + 1 + k)
+    obs(db, "quiet", "desk", "camera", "cam-a", 1, T0 + 9, consent="memory_only")
+    before = executive.decide(db, "desk", T0 + 10, record=True)
+    question = executive.pending(db)[0]["question"]
+    assert before["decision"] == "ask" and executive._horizon(db, "desk") == 8
+    assert "(evidence through #8)" in question
+    governance.sweep(db, T0 + 8 * DAY)
+    assert count(db, "evidence") == 0 and count(db, "evidence_consolidated") == 7
+    assert executive._horizon(db, "desk") == 8
+    with store.write(db):
+        db.execute("DELETE FROM pending")           # ask afresh: the same situation, the same text
+    after = executive.decide(db, "desk", T0 + 8 * DAY + 2, record=True)
+    assert after["decision"] == "ask" and executive.pending(db)[0]["question"] == question
+    # forgetting the latest reading does not move it either, and the count of new events since it is unchanged
+    governance.forget_consolidated(db, 7, T0 + 8 * DAY + 3)
+    assert executive._horizon(db, "desk") == 8 and executive._new_events(db, "desk", "partner:ana", 8) == 0
+    obs(db, "new", "desk", "word", "ana", 0, T0 + 8 * DAY + 4)
+    assert executive._horizon(db, "desk") == 9 and executive._new_events(db, "desk", "partner:ana", 8) == 1
+
+
+def test_a_restore_carries_the_owners_settings_into_the_copy(instance, tmp_path):
+    """Security review M1: an archive taken before `nsf config --no-consolidation` turned consolidation back on in
+    the restored copy, which then kept roots, sample ids and readings without limit and told nobody. The settings an
+    owner may change are the live file's in every copy, through a second generation, and the report says so."""
+    db, path = instance
+    teach(db)
+    oldest = checkpoints.create(db, path, tmp_path / "cps", T0 + 50)         # consolidation on, budget 3 per 7 days
+    older = checkpoints.create(db, path, tmp_path / "cps", T0 + 60)          # the same, and it lists `oldest`
+    assert store.set_config(db, {"consolidation": False, "ask_budget_per_epoch": 5}, T0 + 70)["changed"] == [
+        "ask_budget_per_epoch", "consolidation"]
+    newer = checkpoints.create(db, path, tmp_path / "cps", T0 + 80)          # the settings as they are now
+    report, first = _restored(db, older, tmp_path / "r1.sqlite", T0 + 90)
+    with closing(first):
+        assert report["settings_carried"] == {"consolidation": {"from": True, "to": False},
+                                              "ask_budget_per_epoch": {"from": 3, "to": 5}}
+        cfg = store.config(first)
+        assert cfg.consolidation is False and cfg.ask_budget_per_epoch == 5
+        assert cfg.ask_budget_window_seconds == 7 * 86400 and cfg.evidence_ttl_seconds == 7 * 86400
+        logged = first.execute("SELECT target_id, effects FROM deletion_log WHERE target_kind='setting' ORDER BY id"
+                               ).fetchall()
+        assert [(name, json.loads(e)) for name, e in logged] == [
+            ("ask_budget_per_epoch", {"from": 3, "to": 5, "carried_by_restore": True}),
+            ("consolidation", {"from": True, "to": False, "carried_by_restore": True})]
+        swept = governance.sweep(first, T0 + 8 * DAY)                        # the copy honours the opt-out
+        assert swept["expired"] == 18 and "consolidated" not in swept and count(first, "evidence_consolidated") == 0
+        assert first.execute("SELECT count(*) FROM forgotten_roots").fetchone()[0] == 2
+        # second generation: the copy is the individual now; the older archive restored from it stays opted out
+        again, second = _restored(first, oldest, tmp_path / "r2.sqlite", T0 + 8 * DAY + 1)
+        with closing(second):
+            assert again["settings_carried"] == {"consolidation": {"from": True, "to": False},
+                                                 "ask_budget_per_epoch": {"from": 3, "to": 5}}
+            assert store.config(second).consolidation is False
+            assert count(second, "evidence") == 0 and count(second, "evidence_consolidated") == 0
+    same, copy = _restored(db, newer, tmp_path / "r3.sqlite", T0 + 100)      # nothing to carry, and the report says so
+    with closing(copy):
+        assert same["settings_carried"] == {} and store.config(copy).consolidation is False
+    # the owner turns it on again: an archive from the opted-out time follows the owner's present choice
+    store.set_config(db, {"consolidation": True}, T0 + 110)
+    back, copy = _restored(db, newer, tmp_path / "r4.sqlite", T0 + 120)
+    with closing(copy):
+        assert back["settings_carried"] == {"consolidation": {"from": False, "to": True}}
+        assert governance.sweep(copy, T0 + 8 * DAY)["consolidated"] == 18
+    # a restore that replays nothing is a plain copy of the archive, settings included
+    plain = checkpoints.restore(db, older["id"], tmp_path / "plain.sqlite", T0 + 130, apply_tombstones=False)
+    assert plain["settings_carried"] == {}
+    with closing(store.open_existing(tmp_path / "plain.sqlite")) as copy:
+        assert store.config(copy).ask_budget_per_epoch == 3
+
+
+def test_a_changed_setting_is_in_the_deletion_log(instance):
+    """With consolidation switched off and on again, the log shows the gap in which expired events left nothing."""
+    db, _ = instance
+    store.set_config(db, {"consolidation": False}, T0 + 5)
+    store.set_config(db, {"consolidation": False}, T0 + 6)                   # no change, no row
+    store.set_config(db, {"consolidation": True, "ask_budget_window_seconds": 0}, T0 + 9)
+    rows = [(kind, name, at, json.loads(effects)) for kind, name, at, effects in db.execute(
+        "SELECT target_kind, target_id, requested_at, effects FROM deletion_log ORDER BY id")]
+    version = store.state_version(db)
+    assert rows == [("setting", "consolidation", T0 + 5, {"from": True, "to": False, "state_version": version - 1}),
+                    ("setting", "ask_budget_window_seconds", T0 + 9,
+                     {"from": 7 * 86400, "to": 0, "state_version": version}),
+                    ("setting", "consolidation", T0 + 9, {"from": False, "to": True, "state_version": version})]
+    items = memory.retrieve(db, "deletion")["items"]
+    assert [i["payload"]["target_kind"] for i in items] == ["setting"] * 3
+
+
+def test_the_live_file_is_read_in_one_snapshot_for_a_restore(instance):
+    """Review F4: tombstones and consolidated readings were read by separate statements outside a transaction; a
+    forget committing between them gave a replay whose tombstone said 'expired' while the reading was already gone."""
+    db, _ = instance
+    teach(db, rounds=2)
+    governance.sweep(db, T0 + 8 * DAY)
+    statements = []
+    db.set_trace_callback(statements.append)
+    try:
+        forgets = checkpoints._forgets(db, T0 + 8 * DAY + 1)
+    finally:
+        db.set_trace_callback(None)
+    assert statements[0] == "BEGIN" and statements[-1] == "COMMIT" and not db.in_transaction
+    assert len(forgets["consolidated"]) == 6 and forgets["settings"]["consolidation"] is True
+    with store.write(db):                               # inside a caller's transaction it opens none of its own
+        assert len(checkpoints._forgets(db, T0 + 8 * DAY + 2)["tombstones"]) == 6
+
+
+def test_the_opt_out_on_a_version_13_file_is_in_place_before_anything_is_swept(tmp_path, capsys):
+    """Security review L3, the upgrade path the documents give: with the services stopped, `nsf config
+    --no-consolidation` as the first command migrates the file and sets the switch. It does not sweep, so events
+    already past their lifetime leave nothing when the next command does."""
+    from neuroscifi import cli
+    path, _, _ = _version_13_file(tmp_path)
+    with closing(sqlite3.connect(path)) as raw:
+        raw.execute("UPDATE evidence SET expires_at=1.0")        # everything is past its lifetime at the upgrade
+        raw.commit()
+        assert raw.execute("SELECT count(*) FROM evidence").fetchone()[0] == 18
+    assert cli.main(["config", "--db", str(path), "--no-consolidation"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["changed"] == ["consolidation"] and out["config"]["consolidation"] is False
+    with closing(sqlite3.connect(path)) as raw:
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
+        assert raw.execute("SELECT count(*) FROM evidence").fetchone()[0] == 18          # nothing was swept
+        assert raw.execute("SELECT count(*) FROM evidence_consolidated").fetchone()[0] == 0
+    assert cli.main(["status", "desk", "--db", str(path)]) == 0                          # this one sweeps first
+    status = json.loads(capsys.readouterr().out)
+    assert status["evidence"] == {"total": 0, "learning": 0, "memory_only": 0, "duplicates_ignored": 0}
+    with closing(sqlite3.connect(path)) as raw:
+        assert raw.execute("SELECT count(*) FROM evidence_consolidated").fetchone()[0] == 0
+        assert raw.execute("SELECT count(*) FROM tombstones WHERE reason='expired'").fetchone()[0] == 18
+
+
+def test_cli_forgets_a_reading_by_seq_and_a_camera_by_name(tmp_path, capsys):
+    from neuroscifi import cli
+
+    def nsf(*argv):
+        code = cli.main(list(argv))
+        captured = capsys.readouterr()
+        return code, json.loads(captured.out) if code == 0 else captured.err
+
+    path = str(tmp_path / "cli.sqlite")
+    assert nsf("init", "--db", path, "--ttl-days", "0.000001")[0] == 0
+    assert nsf("epoch", "start", "e", "--db", path)[0] == 0
+    for n, (channel, root) in enumerate((("camera", "cam"), ("camera", "cam"), ("word", "ana"))):
+        assert nsf("observe", "e", f"x{n}", channel, "0", "0", root, "--db", path)[0] == 0
+    import time
+    time.sleep(0.2)
+    code, listed = nsf("memory", "consolidated", "--db", path)
+    assert code == 0 and sorted(i["id"] for i in listed["items"]) == [1, 2, 3]
+    code, out = nsf("forget", "consolidated", "3", "--db", path)
+    assert code == 0 and out["status"] == "forgotten" and out["effects"]["consolidated_deleted"] == 1
+    code, out = nsf("forget", "camera", "cam", "--db", path)
+    assert code == 0 and out["effects"]["consolidated_deleted"] == 2 and out["effects"]["roots_forgotten"] == 1
+    code, status = nsf("status", "e", "--db", path)
+    assert status["sensors"] == {} and status["partners"] == {}
+    with pytest.raises(SystemExit):
+        cli.main(["forget", "consolidated", "not-a-number", "--db", path])
+    capsys.readouterr()
+    with pytest.raises(SystemExit):                     # review F7: bounded like `nsf config --ask-budget`
+        cli.main(["init", "--db", str(tmp_path / "bad.sqlite"), "--ask-budget", "-5"])
+    capsys.readouterr()
+    assert not (tmp_path / "bad.sqlite").exists()

@@ -189,12 +189,17 @@ _SETTABLE = {
 }
 
 
-def set_config(db, changes):
+SETTING_KIND = "setting"      # deletion_log.target_kind of a changed setting (target_id: the setting's name)
+
+
+def set_config(db, changes, now=None):
     """Change owner-settable instance settings. Returns {"config": the settings now, "changed": [names]}.
 
     ValidationError for an unknown or fixed setting or a value out of range; nothing is written then. A real change
-    bumps the state version. Settings saved by older software keep every field they have; a field they lack reads
-    as its default (InstanceConfig.from_json).
+    bumps the state version and leaves a row in the deletion log (kind 'setting', the name, {"from", "to"}), beside
+    the forgets and sweeps whose meaning it changes: the log then shows from when to when expired events left no
+    consolidated reading. Settings saved by older software keep every field they have; a field they lack reads as
+    its default (InstanceConfig.from_json).
     """
     if not isinstance(changes, dict):
         raise ValidationError("settings must be a JSON object")
@@ -211,7 +216,11 @@ def set_config(db, changes):
         if changed:
             raw.update({name: changes[name] for name in changed})
             db.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(raw, sort_keys=True),))
-            bump_state_version(db)
+            version = bump_state_version(db)
+            db.executemany("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)", [
+                (SETTING_KIND, name, time.time() if now is None else now, json.dumps(
+                    {"from": current[name], "to": changes[name], "state_version": version}, sort_keys=True))
+                for name in changed])
     return {"config": asdict(config(db)), "changed": changed}
 
 

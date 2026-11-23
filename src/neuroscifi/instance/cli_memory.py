@@ -93,9 +93,13 @@ def register(sub, *, with_db, run):
 
     p = sub.add_parser("forget", help="forget memory and everything derived from it")
     fsub = p.add_subparsers(dest="forget_what", required=True)
+    notes = {"consolidated": "one consolidated reading, by the seq `nsf memory consolidated` shows as its id",
+             "camera": "everything a camera root taught, in every epoch (as `partner` does for a partner's words)"}
     for name, func, kind in (("evidence", governance.forget_evidence, str), ("epoch", governance.forget_epoch, str),
-                             ("partner", governance.forget_partner, str), ("dataset", governance.forget_dataset, int)):
-        q = fsub.add_parser(name)
+                             ("partner", governance.forget_partner, str), ("camera", governance.forget_camera, str),
+                             ("consolidated", governance.forget_consolidated, int),
+                             ("dataset", governance.forget_dataset, int)):
+        q = fsub.add_parser(name, help=notes.get(name))
         store.add_db_argument(q)
         q.add_argument("target", type=kind)
         q.set_defaults(handler=with_db(_rewriting(lambda db, a, now, func=func: func(db, a.target, now))))

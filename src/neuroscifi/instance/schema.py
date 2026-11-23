@@ -459,13 +459,16 @@ MIGRATIONS = [
     """,
     # ---- version 14 (consolidation of expiring evidence; ADR-044, governance.sweep, beliefs.py) -------------------
     """
-    -- What an expired learning event leaves behind, so that a belief outlives its raw events: the event's own
-    -- journal position (evidence.seq, never issued twice), its epoch, channel and root, the corrected reading
-    -- (bit XOR action) and its sample id (copies of one sample count once). Nothing else of the event is kept: not
-    -- its id (the tombstone keeps that, with the seq), actor, action and bit, provenance, consent or timestamps.
+    -- What an expired event with consent 'learn' leaves behind, so that a belief outlives its raw events: the
+    -- event's own journal position (evidence.seq, never issued twice), its epoch, channel and root, the corrected
+    -- reading (bit XOR action) and its sample id. Nothing else of the event is kept: not its id (the tombstone keeps
+    -- that, with the seq), actor, action and bit, provenance, consent or timestamps.
     -- One row per event and not a count per segment: a change confirmed later sets a segment boundary at a seq, a
-    -- count cannot tell which sample it already holds, and the owner may still forget one event (by its id, through
-    -- the tombstone's seq). Rows are deleted only by a forget (event, partner, epoch); they never expire.
+    -- count cannot tell which sample it already holds, and the owner may still forget one event (by its id through
+    -- the tombstone's seq, or by the seq itself). Every copy of a sample leaves its own row, and beliefs count the
+    -- earliest copy of a sample among the journal and these rows (beliefs.py), as the journal alone did: so when
+    -- the owner forgets the first copy, the next one counts, exactly as if nothing had expired.
+    -- Rows are deleted only by a forget (event, reading, partner, camera, epoch); they never expire.
     CREATE TABLE evidence_consolidated(
       seq INTEGER PRIMARY KEY,
       epoch TEXT NOT NULL REFERENCES epochs(name),
@@ -477,15 +480,27 @@ MIGRATIONS = [
     CREATE INDEX evidence_consolidated_epoch ON evidence_consolidated(epoch, seq);
     -- beliefs._aggregate reads its tallies from this index alone, one group after the other, without a sort.
     CREATE INDEX evidence_consolidated_tally ON evidence_consolidated(epoch, channel, root, value, seq);
-    CREATE INDEX evidence_consolidated_sample ON evidence_consolidated(epoch, channel, root, sample_id)
+    -- The copies of one sample in seq order: which copy is the earliest, and which samples have more than one.
+    CREATE INDEX evidence_consolidated_sample ON evidence_consolidated(epoch, channel, root, sample_id, seq)
       WHERE sample_id IS NOT NULL;
-    -- A consolidated reading is tied to its tombstone by seq (the tombstone keeps the event id): forgetting a
-    -- reading changes that tombstone's reason, for thousands of readings when a partner or an epoch is forgotten.
-    CREATE INDEX tombstones_seq ON tombstones(seq);
+    -- "Does the individual still hold this root?" (a sweep asks it per root, a web query lists the roots) and the
+    -- forgets of a partner or a camera: without it each is a scan of a table that only grows.
+    CREATE INDEX evidence_consolidated_root ON evidence_consolidated(root, channel);
+    -- A consolidated reading is tied to its tombstone by epoch and seq (the tombstone keeps the event id):
+    -- forgetting a reading changes that tombstone's reason, for thousands of readings when a partner or an epoch is
+    -- forgotten. The executive's horizon ("evidence through #N") is the epoch's highest seq, tombstones included.
+    CREATE INDEX tombstones_epoch_seq ON tombstones(epoch, seq);
     """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
+
+
+def has_consolidated(db):
+    """Whether this file has the evidence_consolidated table (schema 14). Every file opened through store has; a
+    connection that has not migrated (ensure_tables in beliefs.py serves those) does not."""
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='evidence_consolidated'"
+                      ).fetchone() is not None
 
 
 def migrate(db):

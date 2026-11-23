@@ -260,6 +260,27 @@ def test_settings_saved_before_the_window_existed_get_the_default(instance):
     assert store.config(db).evidence_ttl_seconds == 86400 and store.config(db).max_evidence_rows == 5
 
 
+@pytest.mark.parametrize("saved", ["seven days", -1, None, True, float("nan")])
+def test_a_bad_saved_window_falls_back_to_the_default_and_says_so(instance, saved):
+    """Review: a hand-edited or damaged settings row made every decide() fail. The executive keeps deciding with the
+    default window and the decision carries the warning; a good value carries none."""
+    import json
+    db, _ = instance
+    _exhaust(db)
+    assert "warnings" not in executive.decide(db, "desk", T0 + 10)
+    raw = json.loads(db.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
+    with store.write(db):
+        db.execute("UPDATE meta SET value=? WHERE key='config'",
+                   (json.dumps(raw | {"ask_budget_window_seconds": saved}),))
+    out = executive.decide(db, "desk", T0 + 10, record=True)
+    assert out["decision"] == "defer" and out["ask_budget_window_seconds"] == 7 * 86400
+    assert len(out["warnings"]) == 1 and "ask_budget_window_seconds" in out["warnings"][0]
+    assert "nsf config --ask-window-days" in out["warnings"][0]
+    assert executive.decide(db, "desk", T0 + 7 * 86400 + 5)["decision"] == "ask"       # the default window refills
+    store.set_config(db, {"ask_budget_window_seconds": 0})
+    assert "warnings" not in executive.decide(db, "desk", T0 + 10)
+
+
 def test_an_answered_question_is_not_asked_again_for_the_same_events(instance):
     db, _ = instance
     j = pinned_with_ambiguous_partner(db)

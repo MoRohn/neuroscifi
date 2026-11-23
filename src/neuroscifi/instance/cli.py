@@ -148,7 +148,7 @@ def _config(db, args, now):
     if args.consolidation is not None:
         changes["consolidation"] = args.consolidation
     if changes:
-        return store.set_config(db, changes)
+        return store.set_config(db, changes, now)
     from dataclasses import asdict
     return {"config": asdict(store.config(db)), "changed": []}
 
@@ -161,7 +161,7 @@ def register(sub):
     p.add_argument("--action-semantics", help='JSON like {"0":"turn left","1":"turn right"}')
     p.add_argument("--founding-graph", type=Path, help="NSG1 file registered as the founding graph")
     p.add_argument("--ttl-days", type=float, default=7.0, help="default lifetime of unpromoted evidence")
-    p.add_argument("--ask-budget", type=int, default=3, help="questions per epoch before deferring")
+    p.add_argument("--ask-budget", type=bounded_int(0, 1000), default=3, help="questions per epoch before deferring")
     p.add_argument("--ask-window-days", type=days_or_zero, default=7.0,
                    help="the ask budget counts questions of the last this many days (0 = the whole epoch)")
     p.add_argument("--consolidation", action=argparse.BooleanOptionalAction, default=True,

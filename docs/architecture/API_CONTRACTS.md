@@ -25,19 +25,31 @@ store.bump_state_version(db) -> int ; store.state_version(db) -> int
 store.bump(db, name, amount=1) ; store.counter(db, name) -> int
 store.config(db) -> InstanceConfig(evidence_ttl_seconds, max_evidence_rows, min_free_bytes, ask_budget_per_epoch,
                                    ask_budget_window_seconds, consolidation, max_thermal_celsius)
-store.set_config(db, changes: dict) -> {"config": dict, "changed": [names]}   # owner-settable settings only
+store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [names]}   # owner-settable settings only
 #   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation); ValidationError otherwise. `nsf config` is its CLI.
+#   Each real change adds a deletion_log row: target_kind "setting", target_id the name, effects {"from", "to",
+#   "state_version"} (from a restore: {"from", "to", "carried_by_restore": true}).
 #
 # Consolidation (ADR-044, schema 14). Additive fields, each absent while zero unless noted:
 #   beliefs.compute()["evidence"]["consolidated"]      learning readings that are consolidated (counted in "learning"
-#                                                      and "total")
+#                                                      and "total"). A consolidated reading that is a later copy of a
+#                                                      sample is in "total" and "duplicates_ignored", like a journal copy
 #   beliefs.explain() factors: "supporting_consolidated", "counterevidence_consolidated" (counted in *_total; the
 #                                                      event lists hold raw events only)
-#   governance.sweep() -> "consolidated"               readings kept by this sweep
+#   governance.sweep() -> "consolidated"               readings kept by this sweep (one per expired 'learn' event)
 #   forget results, effects["consolidated_deleted"]    consolidated readings a forget removed ("deleted" counts events)
+#   governance.forget_consolidated(db, seq: int, now)  one reading by the seq it is listed under; deletion_log kind
+#                                                      "consolidated", target the seq; 'absent' when no reading has it
+#   governance.forget_camera(db, root: str, now)       every camera event and reading of the root, in every epoch, and
+#                                                      its changepoints; deletion_log kind "camera", target
+#                                                      "camera:#<digest>"; effects["derived_deleted"]["changepoints"]
+#   console POST /api/forget {"kind": "consolidated", "target": SEQ (integer)} | {"kind": "camera", "target": ROOT}
 #   deletion_log effects of a sweep: "consolidated"; its belief revision summary: "consolidated_now"
 #   store.inventory()["memory"]["consolidated_readings"], store.regulation()["consolidated_readings"]  (always present)
-#   checkpoints.restore() -> "evidence_consolidated", "consolidated_removed"                           (always present)
+#   checkpoints.restore() -> "evidence_consolidated", "consolidated_removed", "settings_carried" {name: {"from",
+#       "to"}} (always present; the settings an owner may change are the live file's in the copy)
+#   executive.decide() -> "warnings": [str]             only when the saved ask-budget window was unusable (the default
+#                                                      window is then used)
 #   memory.retrieve(db, "consolidated", id=SEQ, epoch=, channel=, root=) -> records with payload
 #       {"seq", "channel", "reading", "sample_id"}, permissions.retention "consolidated"
 #   governance.held_roots(db) -> camera and word roots held as events or consolidated readings
@@ -294,7 +306,7 @@ Loopback only (`127.0.0.1`), started with `nsf console --db PATH [--port 8766]`.
 | POST | /api/observe | evidence.observe (body = obs) |
 | POST | /api/epochs/{e}/decide | executive.decide(record=True) |
 | POST | /api/pending/{id}/resolve | executive.resolve `{"resolution"}` |
-| POST | /api/forget | governance.forget_* `{"kind":"evidence"\|"epoch"\|"partner"\|"dataset","target"}` |
+| POST | /api/forget | governance.forget_* `{"kind":"evidence"\|"consolidated"\|"epoch"\|"partner"\|"camera"\|"dataset","target"}` (`target` is an integer for `dataset` and `consolidated`, a string otherwise) |
 | POST | /api/promote | governance.promote `{"id"}` |
 | POST | /api/graphs/{id}/promote, /reject | graphs.promote / graphs.reject |
 | POST | /api/checkpoints | checkpoints.create `{"policy"}` ; /api/checkpoints/{id}/verify |
