@@ -160,13 +160,24 @@ _SOURCE_PHRASE = (r"according to (?:(?:one|a|an|another|the|two|three|several|mu
                   r"official|other|release)\s+)*(?:sources?|reports?|records?|accounts?|articles?|stud(?:y|ies)|"
                   r"papers?|claims?|evidence|websites?|sites?|pages?|documents?|documentation|announcements?|notes|"
                   r"advisor(?:y|ies)|benchmarks?|surveys?|analys[ie]s|reviews?|data)")
-_OWN_ATTRIBUTION = re.compile(rf"^\s*{_SOURCE_PHRASE},\s*|"
-                              rf",?\s*\b{_SOURCE_PHRASE}(?P<after>[^,.;:!?]{{0,40}})[.!?]?\s*$", re.IGNORECASE)
-# Words after the source word that only name the source further ("a report by Reuters", "the notes of the release")
+_OWN_ATTRIBUTION = re.compile(rf"^\s*(?P<lead>{_SOURCE_PHRASE}),\s*|"
+                              rf",?\s*\b(?P<phrase>{_SOURCE_PHRASE})(?P<after>[^,.;:!?]{{0,40}})[.!?]?\s*$", re.IGNORECASE)
+# The two wordings attribution() itself appends, written by the model as an aside inside its sentence ("The library,
+# according to the cited sources, is safe"). Not before "though"/"possibly": that is a hedge the guard must judge.
+_OWN_ASIDE = re.compile(r"\s*,\s*according to (?:one source|the cited sources)\s*,\s*(?!though\b|possibly\b)",
+                        re.IGNORECASE)
+# Words that lead on from a source word to name the source further ("a report by Reuters", "the sources from the
+# advisory")
 _SOURCE_GLUE = frozenset({"by", "from", "of", "in", "on", "at", "the", "a", "an", "its", "their"})
 # "Yes, ..." / "No, ...": the model answering the question in a word no cited claim holds (the entailment check
 # reads "yes" as hedge vocabulary); compose() removes it, so the sentence says only its restatement.
 _ANSWER_WORD = re.compile(r"^\s*(?:yes|no)\b(?!-)\s*[,;:!\u2014\u2013-]+\s*", re.IGNORECASE)   # never "No-one"
+
+
+# The attributions of HEDGES as they stand in a composed sentence, up to a "though ..." (a clause of its own)
+_CODE_HEDGE = re.compile(",?\\s*(?:" + "|".join(sorted(
+    {re.escape(h.format(who=who).split(", though")[0]) for h in HEDGES.values()
+     for who in ("one source", "the cited sources")}, key=len, reverse=True)) + ")", re.IGNORECASE)
 
 
 def _hedge(states, sources: int) -> str | None:
@@ -181,25 +192,55 @@ def _hedge(states, sources: int) -> str | None:
     return HEDGES[weakest].format(who="one source" if sources == 1 else "the cited sources")
 
 
-def _without_own_attribution(text: str, held: str | None) -> str:
-    """`text` without a leading or trailing "according to <source word>" (_OWN_ATTRIBUTION). The trailing form reaches
-    up to 40 characters past the source word, for a source the model names further ("according to a report by
-    Reuters"). When those further words are words of the cited claims (`held`: their text), they are the claim's own
-    content, not the model's attribution ("The flaw is fixed according to the release notes except in versions 2 and
-    3": removing the phrase would drop the exception), and the phrase stays. held=None: no claim text is known and
-    the phrase is removed as before (the prompt's worked example)."""
-    known = set(T.tokens(held)) if held else set()
+def _run_of(words: list[str], held: list[list[str]]) -> bool:
+    """Whether `words` stand together and in this order in one of the token lists `held`."""
+    n = len(words)
+    return bool(n) and any(c[i:i + n] == words for c in held for i in range(len(c) - n + 1))
+
+
+def _without_own_attribution(text: str, held=None) -> str:
+    """`text` without the attribution the model wrote of its own: a leading "According to <source word>, ", a
+    trailing "... according to <source word>" with up to 40 further characters (_OWN_ATTRIBUTION), and the code's own
+    two wordings as an aside (_OWN_ASIDE). What is the model's and what is the claim's is decided by the cited
+    claims' text (`held`: their texts), word for word (T.tokens):
+
+    - the phrase "according to <source word>" stands in a cited claim: it is the claim's own attribution, and it and
+      whatever follows stay as written ("The flaw is fixed according to the release notes except in versions 2 and
+      3");
+    - otherwise the phrase is the model's and goes ("according to the cited sources" before the code's "according to
+      one source" would contradict the count the code chose). The words after it go too when the cited claims hold
+      none of them, or when they lead on from the source with by/from/of/in/on/at and are not the claim's own wording
+      ("... the cited sources from the advisory", "... a report by Reuters"): the model naming its source;
+    - any other words after it are content, the claim's or the model's, and stay for the guard to judge ("The bridge
+      is open according to one source except on Sundays" -> "The bridge is open except on Sundays").
+
+    held=None: no claim text is known, and the phrase goes with what follows it (the prompt's worked example)."""
+    texts = [held] if isinstance(held, str) else list(held or [])
+    claims = [T.tokens(t) for t in texts]
+    known = {w for c in claims for w in c}
 
     def drop(m):
-        after = set(T.tokens(m.group("after") or "")) - _SOURCE_GLUE
-        return m.group(0) if after & known else ""
-    return _OWN_ATTRIBUTION.sub(drop, text or "")
+        phrase = m.group("lead") or m.group("phrase")
+        if claims and _run_of(T.tokens(phrase), claims):
+            return m.group(0)                               # the claim's own attribution
+        after = m.group("after") or ""
+        words = T.tokens(after)
+        if not claims or not (set(words) - _SOURCE_GLUE) & known:
+            return ""                                       # nothing follows, or a source the claims do not name
+        if words[0] in _SOURCE_GLUE and not _run_of(words, claims):
+            return ""                                       # "from the advisory", "by Reuters": naming the source
+        return " " + after.strip()                          # content: it stays, without the model's attribution
+
+    def aside(m):
+        return m.group(0) if _run_of(T.tokens(m.group(0)), claims) else " "
+    out = _OWN_ATTRIBUTION.sub(drop, text or "")
+    return _OWN_ASIDE.sub(aside, out) if claims else out
 
 
-def attribution(text: str, states, sources: int, held: str | None = None) -> str:
+def attribution(text: str, states, sources: int, held=None) -> str:
     """`text` with the attribution of HEDGES for the weakest of `states` appended ("Python was first released in 1991,
-    according to one source."); a leading or trailing "according to ..." the model wrote is replaced, unless what
-    follows its source word is content of the cited claims (`held`, _without_own_attribution). Unchanged when
+    according to one source."); an "according to ..." the model wrote of its own is replaced, and one that is the
+    cited claims' own wording stays (`held`: the cited claims' texts, _without_own_attribution). Unchanged when
     every state is supported. `sources`: how many distinct sources the sentence cites."""
     tail = _hedge(states, sources)
     body = _without_own_attribution(text, held).strip().rstrip(".!?;:, ").strip()
@@ -1471,7 +1512,7 @@ def compose(value, b: dict) -> list[dict]:
         seen.add(key)
         if used and text and not text.rstrip().endswith("?") and not insufficiency(text, question) and \
                 not _relays_instruction(text, b, used):
-            text = attribution(text, [c["state"] for c in used], len(sources), " ".join(c["text"] for c in used))
+            text = attribution(text, [c["state"] for c in used], len(sources), [c["text"] for c in used])
         out.append({"text": text, "sources": sources, "claims": ids})
     return out
 
@@ -2084,7 +2125,28 @@ def _anchor_problems(text: str, used) -> list[str]:
     none with any of them, it may not take the words a claim says of something else ("2.5.5 has the parser flaw" for
     "2.5.4 has the parser flaw and 2.5.5 has the fix")."""
     mine = [(c, _anchors(c)) for c in _coarse_clauses(_V_PREFIX.sub("", text))]
-    theirs = [(c, _anchors(c)) for x in used for c in _coarse_clauses(_V_PREFIX.sub("", x["text"]))]
+
+    def borrowed(parts, n, wide):
+        """What a clause of anchors without a predicate ("..., but not NumPy 2.5.4") says of them: its neighbour's
+        predicate, under its own negator. None when there is no neighbour."""
+        if len(parts) < 2:
+            return None
+        near = parts[n - 1] if n else parts[n + 1]
+        flip = any(w in _ENTAIL_NEG or w.endswith("n't") for w in map(_e_plain, _E_WORD.findall(parts[n][0])))
+        return {w: neg != flip for w, neg in _predicate(near[0], near[1], wide).items()}
+
+    def worded(clause):                 # its words, the attribution compose() appended aside
+        return " ".join(map(_e_plain, _E_WORD.findall(_CODE_HEDGE.sub(" ", clause))))
+
+    # Each claim clause with what it states. A claim clause of anchors without a predicate ("... except in versions 2
+    # | and 3") states nothing of its own; `lent` is the reading the sentence's own such clauses get, kept for the
+    # one case below.
+    theirs = []
+    for x in used:
+        parts = [(c, _anchors(c)) for c in _coarse_clauses(_V_PREFIX.sub("", x["text"]))]
+        for n, (c, an) in enumerate(parts):
+            stated = _predicate(c, an, False)
+            theirs.append((c, an, stated, borrowed(parts, n, False) if not stated and an else None))
     # R7-6: a clause whose subject is a pronoun ("NumPy 2.5.5 - it is affected") speaks of the previous clause's
     # anchors; a clause of anchors without a predicate ("..., but not NumPy 2.5.4") takes its neighbour's predicate,
     # under its own negator
@@ -2093,24 +2155,28 @@ def _anchor_problems(text: str, used) -> list[str]:
         first = _e_plain((_E_WORD.findall(_JOIN_LEAD.sub("", clause.strip(_PUNCT))) or [""])[0])
         if first in _PRONOUN_SUBJECTS and n:
             anchors = anchors | mine[n - 1][1]
-        said = _predicate(clause, anchors, True)
+        said, bare = _predicate(clause, anchors, True), False
         if not said and anchors:
-            neighbour = mine[n - 1] if n else (mine[n + 1] if n + 1 < len(mine) else None)
-            if neighbour is not None:
-                flip = any(w in _ENTAIL_NEG or w.endswith("n't") for w in map(_e_plain, _E_WORD.findall(clause)))
-                said = {w: neg != flip for w, neg in _predicate(neighbour[0], neighbour[1], True).items()}
-        said_of.append((clause, anchors, said))
+            lent = borrowed(mine, n, True)
+            if lent is not None:
+                said, bare = lent, True
+        said_of.append((clause, anchors, said, bare))
     problems = []
-    for clause, anchors, said in said_of:
+    for clause, anchors, said, bare in said_of:
         for a in sorted(anchors):
-            holding = [(c, an) for c, an in theirs if a in an]
+            holding = [(c, an, stated, lent) for c, an, stated, lent in theirs if a in an]
             if not holding:
                 continue
             if not said:
                 continue
             fits, shares = False, False
-            for c, an in holding:
-                stated = _predicate(c, an, False)
+            for c, an, stated, lent in holding:
+                # the sentence's clause is the claim's own clause of bare anchors, word for word ("and 3" for "and
+                # 3", never "and 3" for "or 3" or "but not 3"): both borrow, and what they borrowed is compared.
+                # Without this a sentence that is such a claim word for word was rejected ("3: says what its cited
+                # claims say of something else")
+                if bare and lent is not None and worded(clause) == worded(c):
+                    stated = lent
                 shared = set(said) & set(stated)
                 if shared:
                     shares = True
@@ -2118,8 +2184,7 @@ def _anchor_problems(text: str, used) -> list[str]:
                         fits = True
                         break
             if not fits:                  # a claim clause naming nothing else ("... and it is not secure") may say it
-                for c, an in theirs:
-                    stated = _predicate(c, an, False)
+                for c, an, stated, _ in theirs:
                     shared = set(said) & set(stated)
                     if a not in an and not an - anchors and shared and all(said[w] == stated[w] for w in shared):
                         fits = True
@@ -2128,7 +2193,7 @@ def _anchor_problems(text: str, used) -> list[str]:
                 continue
             if shares:
                 problems.append(f"{a}: negated where its cited claim does not, or not where it does")
-            elif any(set(said) & set(_predicate(c, an, False)) for c, an in theirs if a not in an and an - anchors):
+            elif any(set(said) & set(stated) for c, an, stated, _ in theirs if a not in an and an - anchors):
                 problems.append(f"{a}: says what its cited claims say of something else")
     # within one clause: the content word right before a version or number names what it is ("the fix in NumPy
     # 2.5.4" for "affected NumPy 2.5.4 before the fix in NumPy 2.5.5")
@@ -2493,16 +2558,23 @@ def _restate_key(text) -> str | None:
     return text[:-1].rstrip() if text.endswith(".") and not text.endswith("..") else text
 
 
+# A first word, beside those of _LOWER_LEAD, that a model lowers when it joins a claim to another and whose capital
+# carries no meaning. A closed list on purpose: "Turkey", "Polish", "May", "Mark", "Will" are words too.
+_LOWER_AFTER_JOIN = re.compile(r"^(?:With)\b")
+
+
 def _part_at(body: str, at: int, part: str, first: bool, guard_led: bool) -> int | None:
     """Where `part` (a claim's key) ends when it stands in `body` at `at`, else None. Character for character, with
     one exception each for what code or a join does to a first letter: the guard's attribution lowers the first
-    letter of the sentence it leads (_attributed, _LOWER_LEAD), and a claim after a join may start in lower case when
-    it starts with an ordinary capital ("With a length ..." as "..., and with a length ..."; never "CO" as "cO")."""
+    letter of the sentence it leads (_attributed), and a claim after a join may start in lower case. Both only for a
+    first word of the guard's closed list _LOWER_LEAD ("The", "In", "After", ...), whose capital carries no meaning;
+    after a join also "With" (_LOWER_AFTER_JOIN: the live sentence "..., and with a length of 412 km, ..."). Never
+    "Turkey exports" as "turkey exports", "May" as "may" or "CO" as "cO"."""
     lowered = part[:1].lower() + part[1:]
     if first:
         forms = (lowered,) if guard_led and _LOWER_LEAD.match(part) else (part,)
     else:
-        forms = (part, lowered) if part[:1].isupper() and not part[1:2].isupper() else (part,)
+        forms = (part, lowered) if _LOWER_LEAD.match(part) or _LOWER_AFTER_JOIN.match(part) else (part,)
     for form in forms:
         if body.startswith(form, at):
             return at + len(form)

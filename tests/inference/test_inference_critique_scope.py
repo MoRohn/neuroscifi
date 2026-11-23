@@ -282,13 +282,135 @@ def test_compose_keeps_what_follows_a_source_phrase_when_the_claim_says_it():
                     "According to the cited sources, the bridge is open."):
         items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": written}]}, b)
         assert items[0]["text"] == "The bridge is open, according to one source.", written
-    # the source's name is the claim's own: it stays, with the code's attribution after it
+    # the model naming its source in its own words, also with a word the claim holds (review S4): replaced
     b = one_claim("insufficient", (3,), text="The bridge is open, Reuters reported.")
     items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": "The bridge is open according to a report "
                                                                         "by Reuters."}]}, b)
-    assert items[0]["text"] == "The bridge is open according to a report by Reuters, according to one source."
+    assert items[0]["text"] == "The bridge is open, according to one source."
     assert reasoning.attribution("The bridge is open according to a report by Reuters.", ["insufficient"], 1) == \
         "The bridge is open, according to one source."                # no claim text given: as before
+
+
+ADVISORY = "The advisory says the library is safe to use in production."
+
+
+@pytest.mark.parametrize("claim, written, shown", [
+    # the reviewer's case: the model's plural wording stood before the count the code chose
+    (ADVISORY, "The library is safe to use, according to the cited sources from the advisory.",
+     "The library is safe to use, according to one source."),
+    (ADVISORY, "The library is safe to use according to the cited sources.",
+     "The library is safe to use, according to one source."),
+    (ADVISORY, "According to the cited sources, the library is safe to use.",
+     "The library is safe to use, according to one source."),
+    (ADVISORY, "The library, according to the cited sources, is safe to use.",
+     "The library is safe to use, according to one source."),
+    (ADVISORY, "The library, according to one source, is safe to use in production.",
+     "The library is safe to use in production, according to one source."),
+    # the model's attribution in front of the claim's own words: the attribution goes, the words stay
+    (ADVISORY, "The library is safe to use according to one source in production.",
+     "The library is safe to use in production, according to one source."),
+    ("The bridge is open except on Sundays.", "The bridge is open according to the cited sources except on Sundays.",
+     "The bridge is open except on Sundays, according to one source."),
+    # ... and in front of a qualifier in the model's own wording: nothing is dropped by code, the guard judges it
+    ("The bridge is open except on Sundays.", "The bridge is open according to one source except on Sundays and "
+                                              "holidays.",
+     "The bridge is open except on Sundays and holidays, according to one source."),
+    # the claim's own attribution, in whatever wording, stays as the claim has it
+    ("The library is safe according to the cited sources of the advisory.",
+     "The library is safe according to the cited sources of the advisory.",
+     "The library is safe according to the cited sources of the advisory, according to one source."),
+    ("According to the release notes, the flaw is fixed for the Linux builds.",
+     "According to the release notes, the flaw is fixed for the Linux builds.",
+     "According to the release notes, the flaw is fixed for the Linux builds, according to one source."),
+    ("The flaw is fixed according to the release notes except in versions 2 and 3.",
+     "The flaw is fixed according to the release notes except in versions 2 and 3.",
+     "The flaw is fixed according to the release notes except in versions 2 and 3, according to one source."),
+    ("The flaw is fixed according to the release notes except in versions 2 and 3.",
+     "The flaw is fixed according to the release notes except in version 2.",
+     "The flaw is fixed according to the release notes except in version 2, according to one source."),
+])
+def test_the_models_own_attribution_goes_and_the_claims_own_words_stay(claim, written, shown):
+    """Review S4: the fix for F3 kept the whole "according to ..." phrase whenever one word after it was a word of
+    the claim, so a single-source claim was shown as "..., according to the cited sources from the advisory,
+    according to one source.". What is the model's and what is the claim's is decided by the cited claim's text."""
+    b = one_claim("insufficient", (3,), text=claim)
+    items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": written}]}, b)
+    assert items[0]["text"] == shown
+    assert items[0]["text"].count("according to the cited sources") == claim.count("according to the cited sources")
+
+
+def test_the_guard_judges_what_compose_left_in_place():
+    b = one_claim("insufficient", (3,), text="The bridge is open except on Sundays.")
+    ok = kept(b, ("The bridge is open according to the cited sources except on Sundays.", ["C1"]))
+    assert ok[0]["text"] == "The bridge is open except on Sundays, according to one source."
+    assert reasoning.restates(ok[0], b)                           # the claim's words, the code's attribution
+    items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": "The bridge is open according to one source "
+                                                                        "except on Sundays and holidays."}]}, b)
+    ok, bad = reasoning.guard(items, b)
+    assert ok == [] and "holidays" in " ".join(bad[0]["reasons"])     # the model's own exception is not the claim's
+
+
+@pytest.mark.parametrize("claim, state", [
+    ("The flaw is fixed according to the release notes except in versions 2 and 3.", "supported"),
+    ("The flaw is fixed according to the release notes except in versions 2 and 3.", "insufficient"),
+    ("The flaw is fixed in versions 2 and 3.", "supported"),
+    ("The flaw is fixed in versions 2 and 3.", "insufficient"),
+    ("The parser flaw affects Zephyr 4.1 and 4.2.", "supported"),
+    ("The parser flaw affects Zephyr 4.1 and 4.2.", "insufficient"),
+    ("The fix shipped in releases 4, 5 and 6.", "supported"),
+    ("The fix shipped in releases 4, 5 and 6.", "insufficient"),
+    # (from weak evidence the verbless clause "but not 4.2" is refused by the relayed-instruction rule, as before)
+    ("The parser flaw affects Zephyr 4.1 but not 4.2.", "supported"),
+])
+def test_a_cited_claim_word_for_word_passes_the_guard(claim, state):
+    """Review S4: a claim that ends in a bare number after "and" ("... versions 2 and 3") was rejected when copied
+    word for word ("3: says what its cited claims say of something else"): the guard gave the sentence's clause "and
+    3" its neighbour's predicate and the claim's own clause none. Both get the same reading now."""
+    b = one_claim(state, (3,), text=claim, question="Which versions are affected?")
+    ok = kept(b, (claim, ["C1"]))
+    assert claim[:-1] in ok[0]["text"]
+
+
+def test_the_same_reading_of_a_bare_number_still_holds_a_number_to_its_claim():
+    """What the anchor rule is for stays rejected: the negated version stated plainly, and one version given what
+    the claim says of another."""
+    b = one_claim("supported", (3,), text="The parser flaw affects Zephyr 4.1 but not 4.2.",
+                  question="Which versions are affected?")
+    ok, bad = reasoning.guard([{"text": "The parser flaw affects Zephyr 4.2.", "sources": [3], "claims": ["C1"]}], b)
+    assert ok == [] and any("4.2" in r for r in bad[0]["reasons"]), bad
+    b = one_claim("supported", (3,), text="Zephyr 4.1 has the parser flaw and Zephyr 4.2 has the fix.",
+                  question="Which versions are affected?")
+    ok, bad = reasoning.guard([{"text": "Zephyr 4.2 has the parser flaw.", "sources": [3], "claims": ["C1"]}], b)
+    assert ok == [] and any("4.2" in r for r in bad[0]["reasons"]), bad
+    # the borrowed reading holds only for the claim's own clause, word for word: another conjunction is another claim
+    for claim, text in (("The parser flaw affects Zephyr 4.1 but not 4.2.", "The parser flaw affects Zephyr 4.1 and "
+                                                                           "4.2."),
+                        ("The parser flaw affects Zephyr 4.1 or 4.2.", "The parser flaw affects Zephyr 4.1 and 4.2."),
+                        ("The parser flaw affects Zephyr 4.1 and 4.2.", "The parser flaw affects Zephyr 4.1 but not "
+                                                                        "4.2."),
+                        ("The parser flaw affects Zephyr 4.1 and 4.2.", "The parser flaw does not affect Zephyr 4.1 "
+                                                                        "and 4.2.")):
+        b = one_claim("supported", (3,), text=claim, question="Which versions are affected?")
+        ok, bad = reasoning.guard([{"text": text, "sources": [3], "claims": ["C1"]}], b)
+        assert ok == [] and bad, (claim, text)
+
+
+@pytest.mark.parametrize("second, lowered_is_the_same", [
+    ("Turkey exports fell 2 percent.", False), ("Polish exports fell 2 percent.", False),
+    ("May exports fell 2 percent.", False), ("Mark exports fell 2 percent.", False),
+    ("Will exports fell 2 percent.", False), ("Exports of steel fell 2 percent.", False),
+    ("The exports of steel fell 2 percent.", True), ("In March exports of steel fell 2 percent.", True),
+    ("After March exports of steel fell 2 percent.", True), ("With steel, exports fell 2 percent.", True),
+])
+def test_after_a_join_only_a_word_of_the_closed_list_may_lose_its_capital(second, lowered_is_the_same):
+    """Review S5: "Exports rose 4 percent, and turkey exports fell 2 percent." counted as a restatement of "Turkey
+    exports fell 2 percent." (the country became the bird; likewise "polish", "may", "mark"). A claim after a join may
+    start in lower case only when its first word is one of the guard's closed list (_LOWER_LEAD) or "With"."""
+    b = two_claims("supported", "supported")
+    b["claims"][0]["text"], b["claims"][1]["text"] = "Exports rose 4 percent.", second
+    low = second[0].lower() + second[1:]
+    assert reasoning.restates(item(f"Exports rose 4 percent, and {second}", b, ("C1", "C2")), b)
+    assert reasoning.restates(item(f"Exports rose 4 percent, and {low}", b, ("C1", "C2")), b) is lowered_is_the_same
 
 
 @pytest.mark.parametrize("claim, text, why", [

@@ -560,5 +560,6 @@ model calls; `spoken` skips the critique pass when `critique_voice` is off.
 (white space and one final full stop aside) with the attribution the code appended; the critique judges only the
 sentences for which it is false. It is always false for more than three cited claims, for a claim that holds its own
 "according to <source>", and for text with characters a reader does not see.
-`reasoning.attribution(text, states, sources, held=None)`: `held` is the cited claims' text; a trailing "according
-to <source> …" whose further words are words of `held` is the claim's content and is not replaced.
+`reasoning.attribution(text, states, sources, held=None)`: `held` is the cited claims' texts (a list, or one
+string). An "according to <source>" that stands in one of them is the claim's own and stays with what follows it;
+any other is the model's and is replaced by the code's attribution (COGNITIVE_INFERENCE §3).

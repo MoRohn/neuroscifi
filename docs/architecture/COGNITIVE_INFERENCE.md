@@ -408,7 +408,9 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   number of sources (nothing when all are supported), or led by the guard's own "According to one source, …" (items
   with `attributed`). Two differences are allowed and no other: runs of white space count as one space, and one
   final full stop may be present or absent. Case counts, with one exception: a claim that follows a join may begin
-  in lower case when it begins with an ordinary capital ("…, and with a length of 412 km, …"; never "CO" as "cO").
+  in lower case when its first word is one of a closed list whose capital carries no meaning (the guard's
+  `_LOWER_LEAD`: "The", "In", "After", …; and "With": "…, and with a length of 412 km, …"). "Turkey exports" is
+  never "turkey exports", "May" never "may", "CO" never "cO".
   Always judged, whatever the sentence says: a shortened, reordered or reworded claim; a changed number, unit or
   letter case ("CO" and "Co"); a dropped "not"; an added clause; a claim cited but not restated; more than three
   cited claims (the guard also reads citation markup inside the text, so an accepted sentence can carry more than
@@ -419,14 +421,27 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   one-character ellipsis). The cost is bounded: at most three parts, each tried only where it stands in the text, and
   no ordering of the claims is enumerated. The code never changes a sentence because of this test; it only decides
   whether the critic is asked about it. Tests: `tests/inference/test_inference_critique_scope.py`.
-- **The model's own attribution and the claim's.** `compose()` replaces a leading or trailing "according to
-  <source word>" the model wrote by the code's attribution. The trailing form reaches up to 40 characters past the
-  source word, for a source the model names further ("according to a report by Reuters"). When those further words
-  are words of the cited claims they are the claim's content and the phrase stays: the claim "The bridge is open
-  according to the official records except on Sundays", copied word for word, is shown as "The bridge is open
-  according to the official records except on Sundays, according to one source." (0.7.0 showed "The bridge is open,
-  according to one source."). A shortened sentence that drops such an exception still passes the lexical guard, as
-  any shortening does; it is not a restatement, so the critique reads it.
+- **The model's own attribution and the claim's.** `compose()` replaces the attribution the model wrote of its own
+  by the code's: a leading "According to <source word>, ", a trailing "… according to <source word>" with up to 40
+  further characters, and the code's own two wordings as an aside ("The library, according to the cited sources, is
+  safe"). What is the model's and what is the claim's is decided by the cited claims' text, word for word
+  (`_without_own_attribution`):
+  - the phrase "according to <source word>" stands in a cited claim: it is the claim's own attribution, and it and
+    whatever follows stay as written. The claim "The bridge is open according to the official records except on
+    Sundays", copied word for word, is shown as "The bridge is open according to the official records except on
+    Sundays, according to one source." (0.7.0 showed "The bridge is open, according to one source.");
+  - otherwise the phrase is the model's and goes, so the count the code chose is the only one in the sentence
+    ("…, according to the cited sources from the advisory." from one source is shown as "…, according to one
+    source."). The words after it go too when the cited claims hold none of them, or when they lead on from the
+    source with by, from, of, in, on or at and are not the claim's own wording: the model naming its source;
+  - any other words after it are content and stay for the guard to judge: "The bridge is open according to one
+    source except on Sundays" becomes "The bridge is open except on Sundays, according to one source.".
+
+  A shortened sentence that drops a claim's exception still passes the lexical guard, as any shortening does; it is
+  not a restatement, so the critique reads it. In the guard's rule that ties a version or number to what its claim
+  says of it, a claim clause of bare numbers ("… except in versions 2 | and 3") now gets the reading the sentence's
+  own clauses always had (its neighbour's predicate, under its own negator); before, a sentence that was such a
+  claim word for word was rejected ("3: says what its cited claims say of something else").
 - **Time budget.** `orchestrator._reason` passes what is left of the task's `budget.max_seconds`
   (`time_left`); the answer call, its schema repair and the critique share that one deadline (`Gateway.structured`
   gives the repair only the remaining time; `Gateway._call` never exceeds `read_timeout`). With less than

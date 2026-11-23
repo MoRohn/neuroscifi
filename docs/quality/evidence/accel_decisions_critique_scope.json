@@ -7301,5 +7301,44 @@
   ],
   "default_strict_test_repeat / critique_restatements_on_repeat": [],
   "default_strict_test_repeat / default_strict_test": []
+ },
+ "run_second_review_pass": {
+  "tasks": 51,
+  "model_answers": 45,
+  "abstentions": 4,
+  "sentences_kept": 88,
+  "sentences_rejected_by_the_guard": 23,
+  "kept_restating_their_claims": 77,
+  "critique_calls": 10,
+  "critique_skipped_why": {
+   "restatements_only": 35
+  },
+  "sentences_judged": 11,
+  "sentences_removed": 0,
+  "marks": 4,
+  "marks_on_restatements": 0,
+  "task_wall_s": {
+   "mean": 2.75,
+   "p50": 1.822,
+   "p95": 6.13
+  },
+  "generated_at": "2026-11-23T23:30:27Z",
+  "what_changed_before_it": "compose() decides by the cited claims' text which 'according to ...' is the model's; the guard's anchor rule reads a claim's own clause of bare numbers as it reads the sentence's; after a join only a word of a closed list may lose its capital",
+  "tasks_whose_kept_sentences_differ_from_default_strict_test": [
+   "F01",
+   "F02"
+  ],
+  "tasks_whose_rejected_sentences_differ_from_default_strict_test": [
+   "F01"
+  ],
+  "reading_of_the_differences": "F01 holds the sentences an earlier run of the first version also kept (targeted_default_repeat); in F02 the model wrote two sentences where other runs have three. Neither is the code: every kept sentence of seven stored runs (612), with the code's attribution taken off again, gives the same accepted text through compose() and the guard of this commit, and every one of the 700 stored sentences is classed by restates() as before.",
+  "replay_of_stored_kept_sentences": {
+   "sentences": 612,
+   "same_accepted_text": 612
+  },
+  "stored_sentences_reclassed": {
+   "sentences": 700,
+   "changed_class": 0
+  }
  }
 }
