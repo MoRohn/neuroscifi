@@ -1,0 +1,601 @@
+{
+ "benchmark": "graph_learner_select",
+ "generated_at": "2026-11-23T16:39:42-0500",
+ "environment": {
+  "machine": "aarch64",
+  "python": "3.12.16",
+  "numpy": "2.3.5"
+ },
+ "rule": {
+  "version": "gate-v1",
+  "validation_tolerance": 0.02,
+  "pack_candidates": {
+   "degrees": [
+    2,
+    3,
+    4,
+    6,
+    12
+   ],
+   "bits": [
+    4,
+    8
+   ]
+  },
+  "min_heldout_gain": 0.0,
+  "retention_tolerance": 0.1,
+  "byte_budget": 4096,
+  "unknown_context_ratio": 3.0,
+  "recall_history": 12
+ },
+ "selections": {
+  "rule_today": "gate-v1: candidates cut from the dense fit; within the tolerance of the dense FP32 error",
+  "sparse_added": "pack_candidates.learned_sparse: the learned sparse graph is a candidate too; the same reference",
+  "best_learner": "learned_sparse and pack_reference best_learner: within the tolerance of the better learner"
+ },
+ "noise_floor_mse": 0.004225,
+ "configurations": [
+  {
+   "label": "lab world: 24 populations, 3 true inputs, k = 3 (lab.graph_bench; datasets.simulate)",
+   "n": 24,
+   "true_inputs": 3,
+   "k": 3,
+   "steps": 1536,
+   "worlds": 64,
+   "median_validation_mse": {
+    "dense_fp32": 0.004843,
+    "sparse_4_bit": 0.00432,
+    "sparse_8_bit": 0.004297
+   },
+   "median_heldout_mse": {
+    "dense_fp32": 0.00487,
+    "sparse_4_bit": 0.004316,
+    "sparse_8_bit": 0.004292
+   },
+   "sparse_within_tolerance_of_dense_share": {
+    "4": 1.0,
+    "8": 1.0
+   },
+   "median_true_edges_in_sparse_support": 1.0,
+   "median_no_graph_heldout_mse": 0.018182,
+   "selection": {
+    "rule_today": {
+     "chosen": {
+      "dense degree 3, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 247.0,
+     "median_heldout_mse": 0.004321,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "sparse_added": {
+     "chosen": {
+      "dense degree 3, 4 bit": 0.359,
+      "sparse degree 3, 4 bit": 0.641
+     },
+     "sparse_chosen_share": 0.641,
+     "median_byte_size": 247.0,
+     "median_heldout_mse": 0.004313,
+     "median_heldout_mse_over_rule_today": 0.99693,
+     "heldout_better_than_rule_today_share": 0.609,
+     "heldout_worse_than_rule_today_share": 0.031,
+     "worse_than_no_graph_share": 0.0
+    },
+    "best_learner": {
+     "chosen": {
+      "dense degree 3, 4 bit": 0.359,
+      "sparse degree 3, 4 bit": 0.641
+     },
+     "sparse_chosen_share": 0.641,
+     "median_byte_size": 247.0,
+     "median_heldout_mse": 0.004313,
+     "median_heldout_mse_over_rule_today": 0.99693,
+     "heldout_better_than_rule_today_share": 0.609,
+     "heldout_worse_than_rule_today_share": 0.031,
+     "worse_than_no_graph_share": 0.0
+    }
+   }
+  },
+  {
+   "label": "the lab world on a short stream: 512 steps",
+   "n": 24,
+   "true_inputs": 3,
+   "k": 3,
+   "steps": 512,
+   "worlds": 64,
+   "median_validation_mse": {
+    "dense_fp32": 0.004872,
+    "sparse_4_bit": 0.004691,
+    "sparse_8_bit": 0.004656
+   },
+   "median_heldout_mse": {
+    "dense_fp32": 0.004888,
+    "sparse_4_bit": 0.00468,
+    "sparse_8_bit": 0.004658
+   },
+   "sparse_within_tolerance_of_dense_share": {
+    "4": 1.0,
+    "8": 1.0
+   },
+   "median_true_edges_in_sparse_support": 1.0,
+   "median_no_graph_heldout_mse": 0.018182,
+   "selection": {
+    "rule_today": {
+     "chosen": {
+      "dense degree 3, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 247.0,
+     "median_heldout_mse": 0.004327,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "sparse_added": {
+     "chosen": {
+      "dense degree 3, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 247.0,
+     "median_heldout_mse": 0.004327,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "best_learner": {
+     "chosen": {
+      "dense degree 3, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 247.0,
+     "median_heldout_mse": 0.004327,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    }
+   }
+  },
+  {
+   "label": "the lab world on a long stream: 6144 steps",
+   "n": 24,
+   "true_inputs": 3,
+   "k": 3,
+   "steps": 6144,
+   "worlds": 64,
+   "median_validation_mse": {
+    "dense_fp32": 0.004839,
+    "sparse_4_bit": 0.004313,
+    "sparse_8_bit": 0.0043
+   },
+   "median_heldout_mse": {
+    "dense_fp32": 0.004864,
+    "sparse_4_bit": 0.004322,
+    "sparse_8_bit": 0.004302
+   },
+   "sparse_within_tolerance_of_dense_share": {
+    "4": 1.0,
+    "8": 1.0
+   },
+   "median_true_edges_in_sparse_support": 1.0,
+   "median_no_graph_heldout_mse": 0.018182,
+   "selection": {
+    "rule_today": {
+     "chosen": {
+      "dense degree 3, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 247.0,
+     "median_heldout_mse": 0.004331,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "sparse_added": {
+     "chosen": {
+      "dense degree 3, 4 bit": 0.359,
+      "sparse degree 3, 4 bit": 0.641
+     },
+     "sparse_chosen_share": 0.641,
+     "median_byte_size": 247.0,
+     "median_heldout_mse": 0.004323,
+     "median_heldout_mse_over_rule_today": 0.997666,
+     "heldout_better_than_rule_today_share": 0.562,
+     "heldout_worse_than_rule_today_share": 0.078,
+     "worse_than_no_graph_share": 0.0
+    },
+    "best_learner": {
+     "chosen": {
+      "dense degree 3, 4 bit": 0.359,
+      "sparse degree 3, 4 bit": 0.641
+     },
+     "sparse_chosen_share": 0.641,
+     "median_byte_size": 247.0,
+     "median_heldout_mse": 0.004323,
+     "median_heldout_mse_over_rule_today": 0.997666,
+     "heldout_better_than_rule_today_share": 0.562,
+     "heldout_worse_than_rule_today_share": 0.078,
+     "worse_than_no_graph_share": 0.0
+    }
+   }
+  },
+  {
+   "label": "6 true inputs per receiver, k = 3 (the edge budget is too small)",
+   "n": 24,
+   "true_inputs": 6,
+   "k": 3,
+   "steps": 1536,
+   "worlds": 64,
+   "median_validation_mse": {
+    "dense_fp32": 0.004867,
+    "sparse_4_bit": 0.018449,
+    "sparse_8_bit": 0.018429
+   },
+   "median_heldout_mse": {
+    "dense_fp32": 0.004877,
+    "sparse_4_bit": 0.018564,
+    "sparse_8_bit": 0.018511
+   },
+   "sparse_within_tolerance_of_dense_share": {
+    "4": 0.0,
+    "8": 0.0
+   },
+   "median_true_edges_in_sparse_support": 1.0,
+   "median_no_graph_heldout_mse": 0.038114,
+   "selection": {
+    "rule_today": {
+     "chosen": {
+      "dense degree 6, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 355.0,
+     "median_heldout_mse": 0.004462,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "sparse_added": {
+     "chosen": {
+      "dense degree 6, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 355.0,
+     "median_heldout_mse": 0.004462,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "best_learner": {
+     "chosen": {
+      "dense degree 6, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 355.0,
+     "median_heldout_mse": 0.004462,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    }
+   }
+  },
+  {
+   "label": "2 true inputs per receiver, k = 3 (the edge budget is too large)",
+   "n": 24,
+   "true_inputs": 2,
+   "k": 3,
+   "steps": 1536,
+   "worlds": 64,
+   "median_validation_mse": {
+    "dense_fp32": 0.004851,
+    "sparse_4_bit": 0.004322,
+    "sparse_8_bit": 0.004304
+   },
+   "median_heldout_mse": {
+    "dense_fp32": 0.004868,
+    "sparse_4_bit": 0.00431,
+    "sparse_8_bit": 0.004296
+   },
+   "sparse_within_tolerance_of_dense_share": {
+    "4": 1.0,
+    "8": 1.0
+   },
+   "median_true_edges_in_sparse_support": 0.666667,
+   "median_no_graph_heldout_mse": 0.012827,
+   "selection": {
+    "rule_today": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 211.0,
+     "median_heldout_mse": 0.004291,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "sparse_added": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 211.0,
+     "median_heldout_mse": 0.004291,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "best_learner": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 211.0,
+     "median_heldout_mse": 0.004291,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    }
+   }
+  },
+  {
+   "label": "96 populations, 3 true inputs, k = 3",
+   "n": 96,
+   "true_inputs": 3,
+   "k": 3,
+   "steps": 1536,
+   "worlds": 64,
+   "median_validation_mse": {
+    "dense_fp32": 0.009897,
+    "sparse_4_bit": 0.004323,
+    "sparse_8_bit": 0.004301
+   },
+   "median_heldout_mse": {
+    "dense_fp32": 0.00996,
+    "sparse_4_bit": 0.004321,
+    "sparse_8_bit": 0.004298
+   },
+   "sparse_within_tolerance_of_dense_share": {
+    "4": 1.0,
+    "8": 1.0
+   },
+   "median_true_edges_in_sparse_support": 1.0,
+   "median_no_graph_heldout_mse": 0.018052,
+   "selection": {
+    "rule_today": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 715.0,
+     "median_heldout_mse": 0.008368,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "sparse_added": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 715.0,
+     "median_heldout_mse": 0.008368,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "best_learner": {
+     "chosen": {
+      "sparse degree 3, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 1.0,
+     "median_byte_size": 859.0,
+     "median_heldout_mse": 0.004321,
+     "median_heldout_mse_over_rule_today": 0.517404,
+     "heldout_better_than_rule_today_share": 1.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    }
+   }
+  },
+  {
+   "label": "96 populations on a long stream: 6144 steps",
+   "n": 96,
+   "true_inputs": 3,
+   "k": 3,
+   "steps": 6144,
+   "worlds": 64,
+   "median_validation_mse": {
+    "dense_fp32": 0.009933,
+    "sparse_4_bit": 0.004319,
+    "sparse_8_bit": 0.004299
+   },
+   "median_heldout_mse": {
+    "dense_fp32": 0.009947,
+    "sparse_4_bit": 0.00432,
+    "sparse_8_bit": 0.0043
+   },
+   "sparse_within_tolerance_of_dense_share": {
+    "4": 1.0,
+    "8": 1.0
+   },
+   "median_true_edges_in_sparse_support": 1.0,
+   "median_no_graph_heldout_mse": 0.018052,
+   "selection": {
+    "rule_today": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 715.0,
+     "median_heldout_mse": 0.00832,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "sparse_added": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 715.0,
+     "median_heldout_mse": 0.00832,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    },
+    "best_learner": {
+     "chosen": {
+      "sparse degree 3, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 1.0,
+     "median_byte_size": 859.0,
+     "median_heldout_mse": 0.00432,
+     "median_heldout_mse_over_rule_today": 0.519877,
+     "heldout_better_than_rule_today_share": 1.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    }
+   }
+  },
+  {
+   "label": "160 populations, 3 true inputs, k = 3",
+   "n": 160,
+   "true_inputs": 3,
+   "k": 3,
+   "steps": 1536,
+   "worlds": 16,
+   "median_validation_mse": {
+    "dense_fp32": 0.111382,
+    "sparse_4_bit": 0.004312,
+    "sparse_8_bit": 0.004292
+   },
+   "median_heldout_mse": {
+    "dense_fp32": 0.108946,
+    "sparse_4_bit": 0.004319,
+    "sparse_8_bit": 0.004297
+   },
+   "sparse_within_tolerance_of_dense_share": {
+    "4": 1.0,
+    "8": 1.0
+   },
+   "median_true_edges_in_sparse_support": 1.0,
+   "median_no_graph_heldout_mse": 0.018037,
+   "selection": {
+    "rule_today": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 1163.0,
+     "median_heldout_mse": 0.017967,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.5
+    },
+    "sparse_added": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 1163.0,
+     "median_heldout_mse": 0.017967,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.5
+    },
+    "best_learner": {
+     "chosen": {
+      "sparse degree 3, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 1.0,
+     "median_byte_size": 1403.0,
+     "median_heldout_mse": 0.004319,
+     "median_heldout_mse_over_rule_today": 0.23975,
+     "heldout_better_than_rule_today_share": 1.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    }
+   }
+  },
+  {
+   "label": "256 populations, 3 true inputs, k = 3",
+   "n": 256,
+   "true_inputs": 3,
+   "k": 3,
+   "steps": 1536,
+   "worlds": 16,
+   "median_validation_mse": {
+    "dense_fp32": 4344.079778,
+    "sparse_4_bit": 0.004311,
+    "sparse_8_bit": 0.004293
+   },
+   "median_heldout_mse": {
+    "dense_fp32": 4281.387896,
+    "sparse_4_bit": 0.004317,
+    "sparse_8_bit": 0.004295
+   },
+   "sparse_within_tolerance_of_dense_share": {
+    "4": 1.0,
+    "8": 1.0
+   },
+   "median_true_edges_in_sparse_support": 1.0,
+   "median_no_graph_heldout_mse": 0.017911,
+   "selection": {
+    "rule_today": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 1835.0,
+     "median_heldout_mse": 322.990426,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 1.0
+    },
+    "sparse_added": {
+     "chosen": {
+      "dense degree 2, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 0.0,
+     "median_byte_size": 1835.0,
+     "median_heldout_mse": 322.990426,
+     "median_heldout_mse_over_rule_today": 1.0,
+     "heldout_better_than_rule_today_share": 0.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 1.0
+    },
+    "best_learner": {
+     "chosen": {
+      "sparse degree 3, 4 bit": 1.0
+     },
+     "sparse_chosen_share": 1.0,
+     "median_byte_size": 2219.0,
+     "median_heldout_mse": 0.004317,
+     "median_heldout_mse_over_rule_today": 1.3e-05,
+     "heldout_better_than_rule_today_share": 1.0,
+     "heldout_worse_than_rule_today_share": 0.0,
+     "worse_than_no_graph_share": 0.0
+    }
+   }
+  }
+ ]
+}

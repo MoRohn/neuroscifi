@@ -116,8 +116,8 @@ learner.fit(states, targets, *, k=3, seed=0) -> {"dense": ndarray, "sparse": nda
 #   all receivers at once and gives the lab loop's result bit for bit (tests/instance/test_learner.py); the window
 #   update is the lab's, so a fit costs about 2.5 to 4 times a dense-only one (the second matrix and its score).
 #   Range: the dense matrix is updated from every input with a step normalised per input, so its error grows with
-#   the population count: on the lab's stream it is twice the noise floor at 96 populations, and from 160 the
-#   snapshot cut from it is worse than a graph with no edges. The sparse matrix, updated on k inputs per receiver,
+#   the population count: on the lab's stream it is twice the noise floor at 96 populations, and at 160 the
+#   snapshot cut from it is no better than a graph with no edges (far worse beyond). The sparse matrix, on k inputs,
 #   stays at the noise floor up to the 1024 populations a dataset may have (scripts/bench_graph_learner.py sizes).
 learner.pack(dense, validation, rule, sparse=None) -> {"blob": bytes, "bits", "degree", "byte_size", "validation_mse", "dense_validation_mse", "candidates"}
 #   lab.graph_compression_bench selection: FP32 plus degrees x bits from the rule. Keep candidates with

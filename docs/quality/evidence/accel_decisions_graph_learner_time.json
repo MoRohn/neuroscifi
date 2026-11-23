@@ -1,0 +1,148 @@
+{
+ "benchmark": "graph_learner_time",
+ "generated_at": "2026-11-23T16:28:56-0500",
+ "environment": {
+  "machine": "aarch64",
+  "python": "3.12.16",
+  "numpy": "2.3.5"
+ },
+ "repeats": 9,
+ "sizes": [
+  {
+   "n": 24,
+   "steps": 1536,
+   "swaps": 66,
+   "identical_to_lab_loop": true,
+   "seconds": {
+    "lab_loop_before": {
+     "min": 0.002,
+     "median": 0.002
+    },
+    "learn": {
+     "min": 0.0009,
+     "median": 0.0009
+    },
+    "learn_without_exchange": {
+     "min": 0.0007,
+     "median": 0.0007
+    },
+    "dense_matrix_only": {
+     "min": 0.0003,
+     "median": 0.0003
+    }
+   },
+   "ratio_to_dense_matrix_only": {
+    "lab_loop_before": 6.1,
+    "learn": 2.56,
+    "learn_without_exchange": 2.06
+   },
+   "speedup_over_lab_loop": 2.38,
+   "exchange_share_of_fit": {
+    "before": 0.662,
+    "now": 0.194
+   }
+  },
+  {
+   "n": 256,
+   "steps": 1536,
+   "swaps": 759,
+   "identical_to_lab_loop": true,
+   "seconds": {
+    "lab_loop_before": {
+     "min": 0.0368,
+     "median": 0.039
+    },
+    "learn": {
+     "min": 0.0212,
+     "median": 0.0219
+    },
+    "learn_without_exchange": {
+     "min": 0.0187,
+     "median": 0.0195
+    },
+    "dense_matrix_only": {
+     "min": 0.008,
+     "median": 0.0083
+    }
+   },
+   "ratio_to_dense_matrix_only": {
+    "lab_loop_before": 4.59,
+    "learn": 2.64,
+    "learn_without_exchange": 2.33
+   },
+   "speedup_over_lab_loop": 1.74,
+   "exchange_share_of_fit": {
+    "before": 0.492,
+    "now": 0.117
+   }
+  },
+  {
+   "n": 1024,
+   "steps": 1536,
+   "swaps": 3065,
+   "identical_to_lab_loop": true,
+   "seconds": {
+    "lab_loop_before": {
+     "min": 0.9746,
+     "median": 1.836
+    },
+    "learn": {
+     "min": 0.8309,
+     "median": 1.8455
+    },
+    "learn_without_exchange": {
+     "min": 0.7797,
+     "median": 1.5156
+    },
+    "dense_matrix_only": {
+     "min": 0.2133,
+     "median": 0.7236
+    }
+   },
+   "ratio_to_dense_matrix_only": {
+    "lab_loop_before": 4.57,
+    "learn": 3.9,
+    "learn_without_exchange": 3.66
+   },
+   "speedup_over_lab_loop": 1.17,
+   "exchange_share_of_fit": {
+    "before": 0.2,
+    "now": 0.062
+   }
+  },
+  {
+   "n": 1024,
+   "steps": 8192,
+   "swaps": 3066,
+   "identical_to_lab_loop": true,
+   "seconds": {
+    "lab_loop_before": {
+     "min": 2.5545,
+     "median": 10.2025
+    },
+    "learn": {
+     "min": 1.7235,
+     "median": 13.6162
+    },
+    "learn_without_exchange": {
+     "min": 1.8232,
+     "median": 19.7323
+    },
+    "dense_matrix_only": {
+     "min": 0.6701,
+     "median": 7.7009
+    }
+   },
+   "ratio_to_dense_matrix_only": {
+    "lab_loop_before": 3.81,
+    "learn": 2.57,
+    "learn_without_exchange": 2.72
+   },
+   "speedup_over_lab_loop": 1.48,
+   "exchange_share_of_fit": {
+    "before": 0.286,
+    "now": 0.0
+   }
+  }
+ ]
+}

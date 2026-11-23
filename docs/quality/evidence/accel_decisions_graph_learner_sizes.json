@@ -1,0 +1,295 @@
+{
+ "benchmark": "graph_learner_sizes",
+ "generated_at": "2026-11-23T16:37:39-0500",
+ "environment": {
+  "machine": "aarch64",
+  "python": "3.12.16",
+  "numpy": "2.3.5"
+ },
+ "stream": "lab.graph_bench.stream for N populations, 3 true inputs per receiver, 1536 training steps",
+ "noise_floor_mse": 0.004225,
+ "sizes": [
+  {
+   "n": 24,
+   "worlds": 3,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.018519989704883767,
+   "dense_validation_mse": 0.0048916460519023725,
+   "candidate_validation_mse": 0.0043356001273897535,
+   "candidate_heldout_mse": 0.004327952064025835,
+   "learned_sparse_validation_mse": 0.00431734953309076,
+   "candidate_degree_bits_bytes": [
+    3,
+    4,
+    247
+   ],
+   "promoted": [
+    true,
+    true,
+    true
+   ],
+   "failed_checks": [
+    [],
+    [],
+    []
+   ],
+   "candidate_worse_than_no_graph": false
+  },
+  {
+   "n": 48,
+   "worlds": 3,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.01753269134891363,
+   "dense_validation_mse": 0.005835984900491853,
+   "candidate_validation_mse": 0.004327068101012935,
+   "candidate_heldout_mse": 0.004353847559170278,
+   "learned_sparse_validation_mse": 0.004266256403574605,
+   "candidate_degree_bits_bytes": [
+    3,
+    4,
+    451
+   ],
+   "promoted": [
+    true,
+    true,
+    true
+   ],
+   "failed_checks": [
+    [],
+    [],
+    []
+   ],
+   "candidate_worse_than_no_graph": false
+  },
+  {
+   "n": 64,
+   "worlds": 3,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.018249864785909516,
+   "dense_validation_mse": 0.006827251563388489,
+   "candidate_validation_mse": 0.004375429844048845,
+   "candidate_heldout_mse": 0.0043736300386400025,
+   "learned_sparse_validation_mse": 0.00430643654230869,
+   "candidate_degree_bits_bytes": [
+    3,
+    4,
+    587
+   ],
+   "promoted": [
+    true,
+    true,
+    true
+   ],
+   "failed_checks": [
+    [],
+    [],
+    []
+   ],
+   "candidate_worse_than_no_graph": false
+  },
+  {
+   "n": 96,
+   "worlds": 3,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.018194084343738832,
+   "dense_validation_mse": 0.009690260594341837,
+   "candidate_validation_mse": 0.008468485743815113,
+   "candidate_heldout_mse": 0.008349101609234846,
+   "learned_sparse_validation_mse": 0.004332931610151409,
+   "candidate_degree_bits_bytes": [
+    2,
+    4,
+    715
+   ],
+   "promoted": [
+    true,
+    true,
+    true
+   ],
+   "failed_checks": [
+    [],
+    [],
+    []
+   ],
+   "candidate_worse_than_no_graph": false
+  },
+  {
+   "n": 128,
+   "worlds": 3,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.01786402149657776,
+   "dense_validation_mse": 0.01982311449998493,
+   "candidate_validation_mse": 0.008509459692587372,
+   "candidate_heldout_mse": 0.00858603355078352,
+   "learned_sparse_validation_mse": 0.004276983672162719,
+   "candidate_degree_bits_bytes": [
+    2,
+    4,
+    939
+   ],
+   "promoted": [
+    true,
+    true,
+    true
+   ],
+   "failed_checks": [
+    [],
+    [],
+    []
+   ],
+   "candidate_worse_than_no_graph": false
+  },
+  {
+   "n": 160,
+   "worlds": 3,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.017751279530759036,
+   "dense_validation_mse": 0.11540139043042633,
+   "candidate_validation_mse": 0.019160428643409826,
+   "candidate_heldout_mse": 0.019323125511881502,
+   "learned_sparse_validation_mse": 0.004351229620497372,
+   "candidate_degree_bits_bytes": [
+    2,
+    4,
+    1163
+   ],
+   "promoted": [
+    true,
+    true,
+    true
+   ],
+   "failed_checks": [
+    [],
+    [],
+    []
+   ],
+   "candidate_worse_than_no_graph": true
+  },
+  {
+   "n": 192,
+   "worlds": 3,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.018099079102806448,
+   "dense_validation_mse": 2.6156100792607044,
+   "candidate_validation_mse": 0.2675090764927726,
+   "candidate_heldout_mse": 0.272554136948536,
+   "learned_sparse_validation_mse": 0.004295949990509266,
+   "candidate_degree_bits_bytes": [
+    2,
+    4,
+    1387
+   ],
+   "promoted": [
+    true,
+    true,
+    true
+   ],
+   "failed_checks": [
+    [],
+    [],
+    []
+   ],
+   "candidate_worse_than_no_graph": true
+  },
+  {
+   "n": 224,
+   "worlds": 3,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.018011266090941367,
+   "dense_validation_mse": 136.98315832250913,
+   "candidate_validation_mse": 10.594451538684893,
+   "candidate_heldout_mse": 11.23043777496676,
+   "learned_sparse_validation_mse": 0.0042898589408193475,
+   "candidate_degree_bits_bytes": [
+    2,
+    4,
+    1611
+   ],
+   "promoted": [
+    true,
+    true,
+    true
+   ],
+   "failed_checks": [
+    [],
+    [],
+    []
+   ],
+   "candidate_worse_than_no_graph": true
+  },
+  {
+   "n": 256,
+   "worlds": 3,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.01804095192207422,
+   "dense_validation_mse": 3627.514934694942,
+   "candidate_validation_mse": 254.7867239652431,
+   "candidate_heldout_mse": 272.701075118075,
+   "learned_sparse_validation_mse": 0.004287573980984303,
+   "candidate_degree_bits_bytes": [
+    2,
+    4,
+    1835
+   ],
+   "promoted": [
+    true,
+    true,
+    true
+   ],
+   "failed_checks": [
+    [],
+    [],
+    []
+   ],
+   "candidate_worse_than_no_graph": true
+  },
+  {
+   "n": 512,
+   "worlds": 1,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.017852152960565693,
+   "dense_validation_mse": 105740075552923.17,
+   "candidate_validation_mse": 4039780663457.8984,
+   "candidate_heldout_mse": 4199868539882.118,
+   "learned_sparse_validation_mse": 0.004298597868595453,
+   "candidate_degree_bits_bytes": [
+    2,
+    4,
+    4651
+   ],
+   "promoted": [
+    false
+   ],
+   "failed_checks": [
+    [
+     "byte_budget"
+    ]
+   ],
+   "candidate_worse_than_no_graph": true
+  },
+  {
+   "n": 1024,
+   "worlds": 1,
+   "rule": "gate-v1",
+   "no_graph_validation_mse": 0.01811202574577496,
+   "dense_validation_mse": 1.1942488154020668e+25,
+   "candidate_validation_mse": 2.8516617374840058e+23,
+   "candidate_heldout_mse": 3.709849122575241e+23,
+   "learned_sparse_validation_mse": 0.004282773205598589,
+   "candidate_degree_bits_bytes": [
+    2,
+    4,
+    9259
+   ],
+   "promoted": [
+    false
+   ],
+   "failed_checks": [
+    [
+     "byte_budget"
+    ]
+   ],
+   "candidate_worse_than_no_graph": true
+  }
+ ]
+}

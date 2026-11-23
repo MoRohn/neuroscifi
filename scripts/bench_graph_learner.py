@@ -20,6 +20,7 @@ populations, beside the error of a graph with no edges at all.
 """
 import argparse
 import json
+import os
 import platform
 import statistics
 import time
@@ -302,7 +303,7 @@ def main():
     args = ap.parse_args()
     result = {"benchmark": f"graph_learner_{args.mode}", "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
               "environment": {"machine": platform.machine(), "python": platform.python_version(),
-                              "numpy": np.__version__}}
+                              "numpy": np.__version__, "load_average_at_start": list(os.getloadavg())}}
     result |= (run_time(args.repeats) if args.mode == "time" else run_sizes() if args.mode == "sizes"
                else run_select(args.worlds, store.GATE_V1))
     if args.out:
