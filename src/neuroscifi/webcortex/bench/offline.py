@@ -178,8 +178,9 @@ def _rss_bytes() -> int:
 
 
 class _Bench:
-    def __init__(self, root: Path, web, quick: bool):
+    def __init__(self, root: Path, web, quick: bool, read_ahead: int | None = None):
         self.root, self.web, self.quick = root, web, quick
+        self.read_ahead = read_ahead            # config.read_ahead of every bench individual; None: the default
         self.provider = CorpusProvider(C.search_results())
         self.wiki = CorpusProvider(C.wiki_snippet_results(), name="wikipedia", kinds=("encyclopedia", "web"))
         self.clock = _Clock(C.T0)
@@ -195,7 +196,8 @@ class _Bench:
     # ---- plumbing -------------------------------------------------------------------------------------------
     def _individual(self, path):
         db = store.create(path, C.T0, note="nsf web bench (offline, fictional corpus)")
-        state.set_config(db, {"enabled": True, "min_domain_interval": 0.0}, C.T0)
+        state.set_config(db, {"enabled": True, "min_domain_interval": 0.0,
+                              **({} if self.read_ahead is None else {"read_ahead": self.read_ahead})}, C.T0)
         return db
 
     def _services(self, db, path):
@@ -1070,20 +1072,73 @@ def _strings(value, path=""):
         yield path, value
 
 
-def run_once(*, quick: bool = False) -> dict:
+def run_once(*, quick: bool = False, read_ahead: int | None = None) -> dict:
     web = C.build_web().start()
     # a client that stops reading (truncation, timeout) makes the fixture handler hit a broken pipe; that is the
     # behaviour under test, so the server's traceback printer is silenced for this instance only
     web.server.handle_error = lambda request, client_address: None
     try:
         with tempfile.TemporaryDirectory(prefix="nsf-webbench-") as directory:
-            bench = _Bench(Path(directory), web, quick)
+            bench = _Bench(Path(directory), web, quick, read_ahead)
             try:
                 return bench.execute()
             finally:
                 bench.close()
     finally:
         web.stop()
+
+
+def _outcome(rec) -> dict:
+    """What a task produced, for comparing read-ahead windows: status, usage (without the unused-prefetch counters),
+    the sources in order with how they were retrieved, the answer, limitations and the event sequence."""
+    report = rec["report"]
+    events = [(e["kind"], e.get("stage"), e.get("detail")) for e in state.events(rec["db"], rec["task_id"])]
+    return {"status": rec["status"], "usage": {k: rec["usage"].get(k) for k in RESOURCES},
+            "sources": [(canon(s["url"]), s.get("retrieval_mode"), s.get("cited")) for s in report.get("sources") or []],
+            "answer": [a.get("text") for a in report.get("answer") or []],
+            "limitations": report.get("limitations") or [], "events": events}
+
+
+def latency(*, delay: float = 0.3, windows=(1, 4), quick: bool = False) -> dict:
+    """Task wall time over the benchmark questions when every fixture response (robots.txt and 404s included) waits
+    `delay` seconds, a stand-in for the round trip to a real site, at each read-ahead window (config.read_ahead).
+    Each window runs in a fresh individual against a fresh fixture, so no window inherits another's cache. Also
+    reports what read-ahead sent that no task used (Usage.prefetch_unused_*) and whether every task's outcome
+    (_outcome: usage, sources, answer, limitations, events) was identical to the first window's."""
+    rows, outcomes = {}, {}
+    for window in windows:
+        web = C.build_web()
+        for route in web.routes.values():
+            route.delay += delay
+        for host in list(web.hosts):
+            if (host, "/robots.txt") not in web.routes:
+                web.add(host, "/robots.txt", "not found", status=404, content_type="text/plain", delay=delay)
+        web.start()
+        web.server.handle_error = lambda request, client_address: None
+        try:
+            with tempfile.TemporaryDirectory(prefix="nsf-webbench-latency-") as directory:
+                bench = _Bench(Path(directory), web, quick, window)
+                try:
+                    recs = bench.questions()
+                    outcomes[window] = {key: _outcome(rec) for key, rec in recs.items()}
+                finally:
+                    bench.close()
+        finally:
+            web.stop()
+        usage = [rec["usage"] for rec in recs.values()]
+        rows[str(window)] = {
+            "task_seconds": M.summary([rec["wall_seconds"] for rec in recs.values()], digits=3),
+            "requests_used": sum(u.get("requests", 0) for u in usage),
+            "pages_read": sum(u.get("pages", 0) for u in usage),
+            "prefetch_unused_requests": sum(u.get("prefetch_unused_requests", 0) for u in usage),
+            "prefetch_unused_bytes": sum(u.get("prefetch_unused_bytes", 0) for u in usage),
+            "requests_reaching_fixture": len(web.log)}
+    first = windows[0]
+    differences = sorted({f"{key}.{path}" for window in windows[1:] for key in outcomes[first]
+                          for path in diff(outcomes[first][key], outcomes[window].get(key))})
+    return {"label": f"wall-clock seconds per task on this host, every fixture response delayed {delay:g} s; "
+                     "not comparable to live", "delay_seconds": delay, "windows": rows,
+            "identical_outcomes": not differences, "differences": differences[:50]}
 
 
 def corpus_summary() -> dict:

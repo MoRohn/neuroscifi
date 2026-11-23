@@ -2,7 +2,10 @@
 
     run(quick=False, repeat=3)            -> offline benchmark result (dict, see offline.py)
     run(live=True)                        -> live validation result (dict, see live.py)
-    main(argv)                            -> CLI: --out PATH, --repeat N, --quick, --live, --live-port PORT
+    run(read_ahead=N)                     -> offline benchmark with config.read_ahead N in every bench individual
+    run(latency_ms=300, windows=(1, 4))   -> task wall time with delayed fixture responses per read-ahead window
+    main(argv)                            -> CLI: --out PATH, --repeat N, --quick, --live, --live-port PORT,
+                                             --read-ahead N, --latency-ms MS [--windows 1,4]
 
 The offline benchmark is deterministic by design: it runs `repeat` times and reports whether every quality metric
 and per-item outcome was identical across runs (wall-clock latency, RSS and file sizes are excluded from that
@@ -53,20 +56,28 @@ def environment() -> dict:
             "git_commit": commit, "git_dirty": dirty}
 
 
-def run(*, quick: bool = False, repeat: int = 3, live: bool = False, live_port: int = 3291) -> dict:
-    """Run the offline benchmark (`repeat` times) or, with live=True, the live operational validation."""
+def run(*, quick: bool = False, repeat: int = 3, live: bool = False, live_port: int = 3291,
+        read_ahead: int | None = None, latency_ms: float | None = None, windows=(1, 4)) -> dict:
+    """Run the offline benchmark (`repeat` times; read_ahead: config.read_ahead of the bench individuals, None for
+    the default), with latency_ms the read-ahead latency measurement (offline.latency) instead, or with live=True
+    the live operational validation."""
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if live:
         from . import live as live_mod
         return {"benchmark": "webcortex-live", "version": 1, "generated_at": stamp, "environment": environment(),
                 **live_mod.run(port=live_port)}
     from . import offline
+    if latency_ms is not None:
+        return {"benchmark": "webcortex-latency", "version": 1, "quick": quick, "generated_at": stamp,
+                "environment": environment(),
+                **offline.latency(delay=float(latency_ms) / 1000.0, windows=tuple(windows), quick=quick)}
     if isinstance(repeat, bool) or not isinstance(repeat, int) or repeat < 1:
         raise ValueError("repeat must be a positive integer")
-    runs = [offline.run_once(quick=quick) for _ in range(repeat)]
+    runs = [offline.run_once(quick=quick, read_ahead=read_ahead) for _ in range(repeat)]
     first = runs[0]
     differences = sorted({path for r in runs[1:] for path in offline.diff(first["deterministic"], r["deterministic"])})
     return {"benchmark": "webcortex-offline", "version": 1, "label": offline.LABEL, "quick": quick,
+            **({} if read_ahead is None else {"read_ahead": read_ahead}),
             "generated_at": stamp, "environment": environment(), "corpus": offline.corpus_summary(),
             "metrics": first["deterministic"], "timing": [r["timing"] for r in runs],
             "resources": [r["resources"] for r in runs],
@@ -97,6 +108,14 @@ def safety_summary(m: dict) -> dict:
 
 
 def _headline(result: dict) -> str:
+    if result["benchmark"] == "webcortex-latency":
+        lines = [f"Web Cortex read-ahead latency (every fixture response delayed {result['delay_seconds']:g} s)"]
+        for window, row in result["windows"].items():
+            t = row["task_seconds"]
+            lines.append(f"  read_ahead {window}: task p50 {t['p50']} s, p95 {t['p95']} s; {row['requests_used']} "
+                         f"requests used, {row['prefetch_unused_requests']} sent ahead and unused")
+        lines.append(f"  identical task outcomes: {result['identical_outcomes']}")
+        return "\n".join(lines)
     if result["benchmark"] == "webcortex-live":
         lines = ["Web Cortex live validation (real internet):"]
         for name, sc in (result.get("scenarios") or {}).items():
@@ -143,10 +162,20 @@ def main(argv=None) -> int:
     parser.add_argument("--quick", action="store_true", help="small offline subset (used by the test suite)")
     parser.add_argument("--live", action="store_true", help="run the live operational validation instead")
     parser.add_argument("--live-port", type=int, default=3291, help="loopback port for the open-webSearch daemon")
+    parser.add_argument("--read-ahead", type=int, help="config.read_ahead of the bench individuals (default: the "
+                                                       "configuration default)")
+    parser.add_argument("--latency-ms", type=float, help="instead: task wall time with every fixture response "
+                                                         "delayed this long, per read-ahead window")
+    parser.add_argument("--windows", default="1,4", help="--latency-ms: read-ahead windows, comma-separated")
     args = parser.parse_args(argv)
     if args.repeat < 1:
         parser.error("--repeat must be at least 1")
-    result = run(quick=args.quick, repeat=args.repeat, live=args.live, live_port=args.live_port)
+    try:
+        windows = tuple(int(w) for w in args.windows.split(","))
+    except ValueError:
+        parser.error("--windows expects comma-separated integers")
+    result = run(quick=args.quick, repeat=args.repeat, live=args.live, live_port=args.live_port,
+                 read_ahead=args.read_ahead, latency_ms=args.latency_ms, windows=windows)
     out = args.out
     if out is None and DEFAULT_DIR.is_dir():
         out = DEFAULT_DIR / (LIVE_FILE if args.live else OFFLINE_FILE)
@@ -161,6 +190,8 @@ def main(argv=None) -> int:
         print(f"written: {out}")
     if args.live:
         return 0 if result.get("completed") else 1
+    if args.latency_ms is not None:
+        return 0 if result["identical_outcomes"] else 1
     return 0 if result["safety"]["all_hold"] else 1
 
 
