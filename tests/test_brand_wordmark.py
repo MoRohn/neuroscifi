@@ -1,6 +1,7 @@
 """The NeuroSciFi wordmark has one source (scripts/brand/build_wordmark.py): every committed copy is what the generator
 writes, each copy is valid XML with an accessible name, and the brain icon stays byte-identical everywhere."""
 import hashlib
+import json
 import importlib.util
 import re
 import xml.etree.ElementTree as ET
@@ -19,11 +20,12 @@ ICON_GROUP_OPEN = '<g transform="translate(250 200) scale(1.2) translate(-128 -1
 ICON_GROUP_SHA256 = "e3a01d3db6176fedd5685a0d2eaee81f2c804482746f1135fe3115e91d112714"
 ICON_FILES_SHA256 = {
     "docs/assets/brand/neuroscifi-icon.svg": "9cec14c79eabc1d4a7ff570e827267700f37de23f784183bbd3d3ded9717ca2a",
+    # Pocket's app icon is the brain logo itself (owner direction, 2026-11-23): byte-identical
+    "src/neuroscifi/pocket/web/icon.svg": "9cec14c79eabc1d4a7ff570e827267700f37de23f784183bbd3d3ded9717ca2a",
 }
-# The app icon (Pocket home screen, console favicon) is a separate ring mark, not the brain: it follows the grayscale
-# UI (owner direction, 2026-11-23: no green), so it is pinned by its geometry and its colours, graphite and light.
-APP_ICON = ROOT / "src" / "neuroscifi" / "pocket" / "web" / "icon.svg"
-APP_ICON_SHA256 = "2795dfb2bf81b1a4ac91ea7055f6fc15314e2becd934f2050cc30da8644b5d34"
+_icons_spec = importlib.util.spec_from_file_location("build_app_icons", ROOT / "scripts" / "brand" / "build_app_icons.py")
+app_icons = importlib.util.module_from_spec(_icons_spec)
+_icons_spec.loader.exec_module(app_icons)
 MARKED = re.compile(r"<!-- nsf-wordmark:begin.*?-->(.*?)<!-- nsf-wordmark:end -->", re.S)
 
 
@@ -83,16 +85,25 @@ def test_the_brain_icon_is_byte_identical():
         assert hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() == digest, rel
 
 
-def test_the_app_icons_are_grayscale():
-    assert hashlib.sha256(APP_ICON.read_bytes()).hexdigest() == APP_ICON_SHA256
-    favicon = (ROOT / "src" / "neuroscifi" / "console" / "server.py").read_text()
-    for text in (APP_ICON.read_text(), favicon[favicon.index("ICON = "):favicon.index("ASSETS = ")]):
-        colours = re.findall(r"#([0-9a-fA-F]{6})\b", text)
-        assert colours, text
-        for c in colours:
-            r, g, b = (int(c[i:i + 2], 16) for i in (0, 2, 4))
-            assert max(r, g, b) - min(r, g, b) <= 8, f"#{c} is not a neutral gray"
-
+def test_the_home_screen_icons_are_the_brain_logo():
+    """iPhone and iPad take apple-touch-icon.png (they ignore SVG), Android the manifest's PNGs (maskable included);
+    all are rendered from the logo by scripts/brand/build_app_icons.py, and the console's favicon is the logo too."""
+    assert app_icons.check() == []
+    web = ROOT / "src" / "neuroscifi" / "pocket" / "web"
+    manifest = json.loads((web / "manifest.webmanifest").read_text())
+    icons = {(i["src"], i["sizes"], i.get("purpose", "any")) for i in manifest["icons"]}
+    assert {("/icon-192.png", "192x192", "any"), ("/icon-512.png", "512x512", "any"),
+            ("/icon-maskable-512.png", "512x512", "maskable")} <= icons
+    page = (web / "index.html").read_text()
+    assert '<link rel="apple-touch-icon" href="/apple-touch-icon.png">' in page
+    from neuroscifi.console import server as console
+    from neuroscifi.pocket import server as bridge
+    assert console.ICON == (BRAND / "neuroscifi-icon.svg").read_bytes()
+    for name in ("apple-touch-icon.png", "icon-192.png", "icon-512.png", "icon-maskable-512.png"):
+        assert bridge.ASSETS["/" + name] == (name, "image/png")
+    shell = (web / "sw.js").read_text()
+    assert all(f'"/{name}"' in shell for name in ("apple-touch-icon.png", "icon-192.png", "icon-512.png",
+                                                  "icon-maskable-512.png"))
 
 def test_the_header_wordmarks_are_inline_named_images_that_follow_the_theme():
     css = wm.THEME_CSS.read_text()

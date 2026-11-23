@@ -228,6 +228,12 @@ def test_manifest_is_linked_and_shortcut_targets_exist(bridge, new_page):
     for shortcut in manifest["shortcuts"]:
         assert page.locator("#" + shortcut["url"].split("#")[1]).count() == 1
     assert page.evaluate("fetch('/icon.svg').then(r=>r.headers.get('content-type'))") == "image/svg+xml"
+    # home-screen icons: the brain logo (scripts/brand/build_app_icons.py), each loading at its declared size
+    sizes = page.evaluate("""async (srcs) => Promise.all(srcs.map(src => new Promise(r => { const i = new Image();
+        i.onload = () => r(i.naturalWidth + 'x' + i.naturalHeight); i.onerror = () => r('error'); i.src = src; })))""",
+        [i["src"] for i in manifest["icons"]] + [page.locator('link[rel="apple-touch-icon"]').get_attribute("href")])
+    assert sizes == [i["sizes"] if i["sizes"] != "any" else "256x256" for i in manifest["icons"]] + ["180x180"], sizes
+    assert {i.get("purpose") for i in manifest["icons"]} >= {"any", "maskable"}
     assert not page.problems, page.problems
 
 

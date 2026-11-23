@@ -28,7 +28,11 @@ VOCAB = {"sound": ("soft", "moderate", "strong"), "light": ("dim", "midrange", "
 ASSETS = {"/": ("index.html", "text/html; charset=utf-8"), "/mobile.js": ("mobile.js", "text/javascript"),
           "/style.css": ("style.css", "text/css"),
           "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
-          "/icon.svg": ("icon.svg", "image/svg+xml")}
+          "/icon.svg": ("icon.svg", "image/svg+xml"),
+          # home-screen icons, rendered from the brain logo by scripts/brand/build_app_icons.py
+          "/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"), "/icon-192.png": ("icon-192.png", "image/png"),
+          "/icon-512.png": ("icon-512.png", "image/png"),
+          "/icon-maskable-512.png": ("icon-maskable-512.png", "image/png")}
 for asset in ("field-model.mjs","field-ui.mjs","research-ui.mjs","node-key.mjs","sw.js"):
     ASSETS["/"+asset]=(asset,"text/javascript")
 from ..presence import POCKET as PRESENCE_FILES, assets as presence_assets  # noqa: E402  shared presence + theme

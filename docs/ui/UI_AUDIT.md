@@ -82,10 +82,9 @@ Pairs are the same state, size and theme before and after (`docs/ui/gallery/befo
 
 - Hardware checks on iOS Safari (standalone and in-browser), Android Chrome (installed PWA, adaptive icon), and
   Windows High Contrast with real system palettes.
-- A maskable (full-bleed) Android icon that Chrome can fetch offline, for example a PNG shipped with the
-  manifest and pre-cached through a page reference; the brand icon itself is hash-locked.
-- iOS ignores SVG home-screen icons: a PNG `apple-touch-icon` needs a binary asset, a server route and a shell
-  entry; not added in this pass.
+- ~~Home-screen icons~~ Done (2026-11-23): the brain logo is Pocket's app icon everywhere. `apple-touch-icon.png`
+  (iPhone and iPad), 192 and 512-pixel PNGs and a maskable 512 (Android), all pre-cached by the offline shell and
+  rendered from the unchanged logo by `scripts/brand/build_app_icons.py`; still to check on real devices.
 - Phones: after a question is sent, nothing next to the stage names the question being read (the entity shows the
   state; the question is in the list further down). A one-line caption under the stage would close the gap.
 - The presence ranks a fresh open question above a running research task, so the console can say "Waiting for your

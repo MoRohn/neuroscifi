@@ -93,3 +93,23 @@ in `src/neuroscifi/console/web/index.html` and `src/neuroscifi/pocket/web/index.
 palette or layout constants in the script, never the outputs. A change to Pocket's `index.html` or `theme.css` also
 needs a new shell cache name in `src/neuroscifi/pocket/web/sw.js` (and in `tests/js/offline_check.mjs`) so installed
 Pockets fetch it.
+
+## App icons (Pocket on a home screen)
+
+The brain logo (`neuroscifi-icon.svg`, unchanged) is Pocket's app icon. `src/neuroscifi/pocket/web/icon.svg` is a
+byte-identical copy (favicon, notifications, the phone setup page; the console's favicon is the same file).
+`scripts/brand/build_app_icons.py` renders it in Chromium, in its still pose, to:
+
+| File | For |
+|---|---|
+| `apple-touch-icon.png` (180, full square) | iPhone and iPad: they ignore SVG icons and round the corners themselves |
+| `icon-192.png`, `icon-512.png` (as drawn) | Android and other browsers (manifest `purpose: any`) |
+| `icon-maskable-512.png` (512, full square) | Android adaptive icon shapes (manifest `purpose: maskable`). The brain reaches 36 % of the size from the centre, inside the 40 % safe zone, so the logo is not shrunk |
+
+```sh
+python scripts/brand/build_app_icons.py           # copy the logo and render the PNGs
+python scripts/brand/build_app_icons.py --check   # the copy is identical and every PNG has its size
+```
+
+A change to these files needs a new shell cache name in `src/neuroscifi/pocket/web/sw.js` (and in
+`tests/js/offline_check.mjs`).

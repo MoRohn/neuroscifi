@@ -155,7 +155,7 @@ def test_push_opt_in_test_push_finish_and_opt_out(pushing, new_page):
     expect(page.locator("#researchmsg")).to_have_text("A push from your Spark arrived on this device.")
     wait(page, lambda: worker.evaluate("self.shown.length"))
     assert worker.evaluate("self.shown") == [{"title": "NeuroSciFi Pocket", "body": "Your Spark finished a research task.",
-                                              "tag": "pocket-push", "icon": "/icon.svg"}]
+                                              "tag": "pocket-push", "icon": "/icon-192.png"}]
 
     ask(page)
     spark.work()
