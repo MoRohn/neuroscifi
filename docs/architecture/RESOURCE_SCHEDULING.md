@@ -178,8 +178,11 @@ Rules of every reload, found in review and fixed on 2026-11-23:
   answers without that fails the wait. `nsf setup` and every memory lookup first read who owns the listening
   socket (`/proc/net/tcp`): root (Docker's port proxy), the same user, or the owner of the key file is the
   service; a listener of another account gets neither the key nor a memory text, and the lookup is lexical with
-  the reason. The answer model's key has the same exposure when its container is down (unloaded while idle,
-  stopped, crashed): its gateway does not make this check yet.
+  the reason. The inference gateway makes the same check before every request to any loopback endpoint
+  (`Gateway.stranger`), so the answer model's key and prompts are covered when its container is down (unloaded
+  while idle, stopped, crashed): the call fails as `unavailable` with the reason and nothing is sent. Not covered
+  anywhere: a process of the same account or of root, which can read the key file itself, and a network
+  namespace whose `/proc/net/tcp` cannot be read (the check then allows the call).
 
 Three consequences, each tested (`tests/test_resources_idle.py`, "the memory models"):
 

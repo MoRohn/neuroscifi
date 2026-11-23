@@ -4,6 +4,7 @@ per-provider settings, and /embeddings and /rerank with their shape checks and t
 import json
 import socket
 import sqlite3
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -298,3 +299,55 @@ def test_a_memory_model_error_is_recorded_and_raised(gateway, fake):
     assert err.value.code == "http_error"
     row = gateway.ledger.recent(1)[0]
     assert row["status"] == "http_error" and row["purpose"] == "memory_embed"
+
+
+# ---- whose process holds the loopback port (review L2, applied to every model endpoint) --------------------------
+
+def test_nothing_is_sent_to_a_loopback_port_held_by_another_accounts_process(gateway, fake):
+    """A loopback port belongs to whoever binds it first; while the model's container is down that can be another
+    account. Such a listener gets neither the key nor the request."""
+    import os
+    gateway.listeners = lambda port: {os.getuid() + 4242}
+    with pytest.raises(InferenceError) as err:
+        gateway.chat(MESSAGES, purpose="x")
+    assert err.value.code == "unavailable" and "another account" in str(err.value)
+    assert f"uid {os.getuid() + 4242}" in str(err.value)
+    assert fake.requests == [] and fake.paths == []          # not even a connection's first line
+    assert gateway.ledger.recent(1)[0]["status"] != "ok"
+
+
+def test_the_services_own_listeners_are_trusted(gateway, fake, key_file):
+    """Root (Docker's port proxy), this user and the owner of the key file are the service."""
+    import os
+    for owners in ({0}, {os.getuid()}, {0, os.getuid()}, {os.stat(key_file).st_uid}, set(), None):
+        gateway.listeners = lambda port, owners=owners: owners
+        assert gateway.stranger() is None
+        gateway.chat(MESSAGES, purpose="x")
+    assert len(fake.requests) == 6
+
+
+def test_the_listener_check_reads_the_endpoints_own_port_and_never_fails_a_call(gateway, fake):
+    asked = []
+    gateway.listeners = lambda port: asked.append(port) or set()
+    gateway.chat(MESSAGES, purpose="x")
+    assert asked == [urlsplit(fake.url).port]
+
+    def broken(port):
+        raise OSError("no /proc here")
+    gateway.listeners = broken
+    gateway.chat(MESSAGES, purpose="x")                      # the check must never be why a call fails
+    assert len(fake.requests) == 2
+
+
+def test_an_endpoint_off_this_host_is_not_asked_about_its_listener():
+    cfg = iconfig.InferenceConfig(base_url="https://models.example/v1", model="m", remote_allowed=True)
+    gw = Gateway(cfg, resolver=remote_resolver)
+    gw.listeners = lambda port: pytest.fail("a remote port is not this computer's to inspect")
+    assert gw.stranger() is None
+
+
+def test_the_real_listener_table_names_the_fake_servers_owner(fake):
+    import os
+    from neuroscifi.resources import monitor
+    owners = monitor.listener_uids(urlsplit(fake.url).port)
+    assert owners is None or owners == {os.getuid()}

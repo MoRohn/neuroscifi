@@ -27,6 +27,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 import http.client
+import os
 import json
 import math
 import re
@@ -193,6 +194,7 @@ class Gateway:
         self.priority = None         # scheduling priority sent with chat calls (None or 0: none); see chat()
         self.db_path = None          # set by from_db: the idle policy (resources.idle) reloads an unloaded vLLM
         self.notices: list[str] = []  # what the user was told while this gateway waited (e.g. a model reload)
+        self.listeners = None        # port -> uids of its listening sockets (resources.monitor.listener_uids)
         self._locality = None
         self._addresses: list[str] = []
         self._model = cfg.model or None
@@ -257,12 +259,48 @@ class Gateway:
                 raise InferenceError("private_blocked", f"message contains private data ({kinds}); not sent to a "
                                      "remote endpoint without owner-approved disclosure")
 
+    def stranger(self) -> str | None:
+        """Why nothing may be sent to this loopback endpoint, or None. A loopback port belongs to whoever binds it
+        first, and a model server's port is free whenever its container is down (on a schedule with idle unloading
+        on). So before each request the listening socket's owner is read from /proc/net/tcp (self.listeners):
+        root (Docker's port proxy), this user and the owner of the key file are the service; a process of any
+        other account is not, and is sent neither the key nor the request (which may hold private memory).
+        Nothing listening, or /proc unreadable, is no refusal: the call then fails or succeeds on its own. Not
+        covered: a process of this same account or of root, which can read the key file anyway."""
+        if self.locality()[0] != "loopback":
+            return None
+        parts = urlsplit(self.cfg.base_url)
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        listeners = self.listeners
+        if listeners is None:
+            from ..resources import monitor
+            listeners = monitor.listener_uids
+        try:
+            owners = listeners(port)
+        except Exception:                      # the check must never be the reason a call fails
+            return None
+        if not owners:
+            return None
+        trusted = {0, os.getuid()}
+        try:
+            trusted.add(os.stat(iconfig.key_path(self.cfg, self.provider)).st_uid)
+        except (OSError, TypeError, ValueError):
+            pass
+        strangers = sorted(set(owners) - trusted)
+        if not strangers:
+            return None
+        return (f"port {port} on this computer is held by a process of another account (uid "
+                f"{', '.join(map(str, strangers))}), not by the model service: nothing was sent to it")
+
     # ---- HTTP -------------------------------------------------------------------------------------------------
     def _open(self, method, path, payload, remaining):
         parts = urlsplit(self.cfg.base_url)
         self.guard()
         if not self._addresses:
             raise InferenceError("unavailable", "the endpoint has no address", retryable=True)
+        refused = self.stranger()
+        if refused:
+            raise InferenceError("unavailable", refused)
         cls = _PinnedHTTPS if parts.scheme == "https" else _PinnedHTTP
         conn = cls(parts.hostname, parts.port or (443 if parts.scheme == "https" else 80),
                    timeout=min(self.cfg.connect_timeout, max(0.05, remaining)))
