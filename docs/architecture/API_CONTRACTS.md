@@ -482,9 +482,17 @@ access (the console's systemd unit allows loopback only). Leases prevent double 
 | `{"mode": "semantic", "ranked_by": "rerank", "candidates": int, "dropped_below_floor": int, "floor": float, "models": {"embed", "rerank"}, "cached"?: true}` | ranked by the reranker; an item's `score` is the reranker's (0 to 1); statements under the floor are not returned |
 | `{"mode": "semantic", "ranked_by": "embedding", "candidates": int, "models": {"embed"}, "cached"?: true}` | no reranker configured: ranked by cosine similarity (the item's `score`), nothing cut |
 
+`knowledge.query(db, topic, now, *, limit=10, cached=True)`: the BM25 index of the live statements is kept per
+individual file for the life of the process and used only while the live statements read by the call are exactly
+the ones it was built from; `cached=False` builds it for the call. The result is the same either way.
+`knowledge.clear_index()` drops the process's indexes (`knowledge.forget` calls it).
+
 `nsf web memory [status|config|clear]` prints `{enabled, settings {enabled, candidates, floor, timeout,
-rerank_template}, providers {embed, rerank: {configured, endpoint?, model?, state?, reason?, key_present?}},
-vectors_held_by_this_process, effect, error?}`. A provider's `state` is the gateway's health state, or `"asleep"`
+rerank_template, contradictions, pair_similarity, pair_floor, pair_check}, providers {embed, rerank: {configured,
+endpoint?, model?, state?, reason?, key_present?}}, vectors_held_by_this_process, effect, contradictions, error?}`.
+`contradictions` (a sentence) says whether a new statement is also compared with the stored one that states the same
+property in other words (MEMORY_INTEGRATION §3.1); `nsf web memory config --contradictions|--no-contradictions` sets
+the switch (default on; it acts only while `enabled` is on and both memory models are configured). A provider's `state` is the gateway's health state, or `"asleep"`
 when the idle policy unloaded the local service (not an outage: the next lookup starts it). There is no console
 route for it. `nsf setup --json` reports a `memory` step (`done`, `already done`, `skipped` or `would do`) with
 `models {embed?, rerank?}` when it configured them.
@@ -508,6 +516,12 @@ unaffected.
   sentence is a restatement the record is `{status: "skipped", reason: "nothing to judge: …", judged: 0,
   restatements: N}` and no critique call was made.
 
+- The consolidation summary (`consolidate.run`; the task's `consolidated` event carries its counts) gains, only
+  while semantic memory and its `contradictions` switch are on, `pairing` (`{"mode": "semantic", "asked",
+  "proposed", "models", "confirmed"?, "refused_by_the_answer_model"?, "check"?, "not_asked"?}` or `{"mode":
+  "lexical", "reason", "retry_in_seconds"?, "waking"?}`) and `paired_by_meaning` (`[{key, knowledge_id, relation:
+  "same" | "conflict", similarity, score, score_back}]`). With the switch off the summary has neither key.
+
 `POST /api/web/config` accepts only the four switches listed above; `memory_check` is set with
 `nsf web config --memory-check|--no-memory-check`.
 
@@ -526,6 +540,13 @@ unaffected.
   `forecast_as_read` only in that case. `signals.prediction_uncertainty` and a hypothesis' `info_gain` are
   computed from the forecast as read. The `decision` event of a queued investigation carries both numbers.
 - No table, column or stored value is added or changed.
+
+**Web question budget.** `knowledge.web_question_load(db, now=None, cfg=None) -> {open, stale, counted, cap,
+stale_after_days, room}` and `knowledge.stale_web_questions(db, now, cfg=None) -> [{id, scope, question, created_at,
+age_days}]`. A web question open longer than `web_question_stale_days` (setting, default 30; 0 = never stale) is
+stale: still open and answerable, not counted toward `max_open_web_questions`. `knowledge.question_room(db, cfg=None,
+now=None)`: without `now` every open question counts. `nsf web status` carries `questions` (the load and
+`stale_questions: [{id, scope, age_days}]`).
 
 **Pocket bridge research actions** (ADR-028). Present only when the bridge runs with `--instance-db` and the
 individual has `enabled` and `pocket_research` on; otherwise 404 like any unknown route. Existing bearer, Origin,

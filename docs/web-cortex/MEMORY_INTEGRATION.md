@@ -52,6 +52,95 @@ One call per finished task (`completed` or `partial`, not memory-answered, not c
 
 **Versions.** A new row takes `consolidate.next_version(db, key)`: `MAX(version) + 1` over **every** row of the key (live, archived, rejected, superseded), so the `UNIQUE(key, version)` constraint cannot collide after an owner rejected or archived an earlier version.
 
+### 3.1 The same fact in other words (`consolidate.propose`, `semantic.pairs`; W2)
+
+**The defect.** Step 3 finds the knowledge a cluster is about by the words of its key. A statement of a known
+fact in other words shares too few of them: "From its source to the sea the Varnel runs for 389 km" against
+"The Varnel River is 412 kilometres long" was stored as a second, unrelated item, and the different value was
+never seen as a contradiction. On the benchmark below the words alone place 0 of 86 such statements (none
+detected, none mistaken).
+
+**What was built.** While semantic memory is on and both memory models are configured, a cluster that the words
+place nowhere is offered to the models before the consolidation's transaction (no model is called while the file
+is locked). The models only *propose* a stored statement; four tests that are not theirs make a pair:
+
+1. *Same subject* (`_same_subject`): every name one statement carries is carried by the other, and there is at
+   least one. A name is a word written with a capital inside the sentence, in capitals, or with letters and digits
+   ("Varnel", "TCP", "Lumen-7"). A capitalised first word counts when the other statement, its form, or a live
+   statement in memory writes it as a name. A statement that names nothing ("The river is 389 km long") is never
+   paired.
+2. *Comparable values* (`_comparable`): the value comparison has a group present on both sides (a length against
+   a length in any unit, a year against a date), and the two do not differ in both dates and values (a series).
+3. *Both models, both directions*: the embedding model's similarity at least `pair_similarity` (0.6), and the
+   reranker, reading the two statements with their numbers masked, scores the pair at least `pair_floor` (0.8)
+   read either way round. Masking matters: with the values in view the reranker scores a contradiction far under
+   a restatement (0.18 to 0.99 against 0.97 to 1.00 on the development half).
+4. *The answer model's confirmation* (`pair_check`, on): one short private call per pair, numbers masked, asking
+   whether the two state the same property of the same subject. It can only take a pair away. No answer model,
+   reasoning off, a failed call or the 8 s budget spent: no pair, and the summary's `pairing.check` says why.
+
+What the pair *is* stays the value comparison's verdict (`_compare`, the same one step 4 uses). `same`: the stored
+item is strengthened with the new sources (step 3), no second item is written. `conflict`: the contradiction is
+recorded on the stored item and the owner is asked, as in step 4; a pair found by meaning **never supersedes** a
+version and **never lowers** its confidence, because the pairing is a judgement and the decision is the owner's.
+The owner's own assertion is contradicted, never changed. Nothing of a pair is stored apart from those effects;
+the statement vectors stay in process memory and are dropped by every forget (§6).
+
+**Benchmark** (`scripts/bench_knowledge.py contradictions`; `webcortex/bench/contradiction_paraphrase.json`;
+evidence `docs/quality/evidence/open_items_knowledge.json`). 32 fictional facts of 16 subjects, stored as
+knowledge; 132 probe statements. Positive classes: restatements (32), contradictions (32), the same value in
+other units or formats (16), the subject called by another name (6). Negative classes, where any pair is wrong:
+the same subject and another property with a value of the same kind (16), another subject in the stored wording
+(16), no subject named (6), unrelated (8). Every threshold, the masking and the name rule were chosen on the first
+8 subjects; the last 8 are held out.
+
+| Run | Half | Right pairs / positives | False pairs / negatives |
+|---|---|---|---|
+| Words only (0.7.0 and the switch off) | development / held out | 0 / 43, 0 / 43 | 0 / 23, 0 / 23 |
+| Memory models, no answer model | development | 38 / 43 | 0 / 23 |
+| Memory models, no answer model | held out | 31 / 43 | **3 / 23** (all "property": a base camp's height paired with the summit's, a dome's diameter with a mirror's, a disk cache with memory) |
+| Memory models and the answer model (shipped) | development | 33 / 43 | 0 / 23 |
+| Memory models and the answer model (shipped) | held out, two runs | 31 / 43, 31 / 43 | **0 / 23, 0 / 23** |
+
+Per class on the held-out half (shipped): restatements 15 / 16, contradictions 15 / 16, other units 1 / 8, other
+names 0 / 3; every negative class 0 false pairs. No positive was paired with the wrong item in any run.
+
+**Order of work, stated because it matters for the held-out claim.** The held-out half was first run without the
+answer model and gave the 3 false pairs above. The confirmation step was added after that result was seen. Its
+prompt names examples from the development half only, and the held-out half was then run with it twice
+(identical results). The held-out precision of 1.0 is therefore of a design revised once after a held-out
+failure; a fresh set of subjects would be the clean test.
+
+**What stays undetected**, by the recorded scores of each miss (shipped configuration, both halves):
+
+- A subject called by another name: 0 of 6. The same-subject test is by names, on purpose.
+- The reranker read the other way round under 0.8: 7 misses, 6 of them held out ("Nobody stood on top of Mount
+  Avarel until 1911" against "Mount Avarel was first climbed in 1911": 0.81 one way, 0.71 the other; "11,400
+  feet": 0.35; "1.34 kilometres": 0.07). The answer model confirmed 6 of these 7 pairs; the floor was chosen on the
+  development half, where it removed every false pair before the confirmation existed.
+- The answer model's refusal: 6 misses, all on the development half. It takes "0.61 billion euros" and "610 million
+  euros", "4,000 MB" and "4 GB", "705,000 metres above the ground" and "an altitude of 705 kilometres" for
+  different properties, and "a staircase of 214 steps leads up the Tolvane tower" for another one than "visitors
+  climb 214 steps to the gallery".
+- The name test: 2 held out ("Quillstream's current stable build is v4.2.0", "Fennick asks for 4,000 MB …"): a
+  capitalised first word that neither the other statement nor memory writes inside a sentence is not proven a name.
+- A value written in words ("Four percent of …"): there is no value to compare, so it is never asked about.
+
+Most values in other units are therefore missed (5 of 16 found). The switch is on by default because the held-out
+half has no false pair with the confirmation, and a missed pair leaves things as they were in 0.7.0 (a second
+item), while a false pair would put a contradiction on good knowledge. Without an answer model nothing is paired.
+
+**Cost.** One embedding call for the new statements of a consolidation (the stored statements' vectors are the
+ones `knowledge.query` keeps), then for each statement with an admissible candidate one reranker call, one more
+per candidate it accepts, and one answer-model call per proposed pair; at most 24 statements and 10 s of model
+calls per consolidation. Measured per probe on this host: median 53 to 61 ms when nothing is paired, 428 to 454 ms
+when a pair is confirmed (the answer-model call), p95 551 to 561 ms.
+
+**Off.** `nsf web memory config --no-contradictions`, or semantic memory off: nothing is asked, and the
+consolidation summary is exactly what it was (`test_with_the_switch_off_nothing_is_asked_and_the_summary_is_what_it_was`).
+`nsf web memory config --set pair_check=false` drops the confirmation (measured above: 3 false pairs of 23 held
+out); `--set pair_floor=…`, `--set pair_similarity=…` move the thresholds. `nsf web memory` says what pairing does.
+
 **Report-safe text.** Statements in `held[]`, in contested questions and in contradiction records go through `consolidate.safe_text` (`claims.is_reportable`, `synthesis.report_safe_text`): text from an adversarial source or with instruction-like content is replaced by `(withheld: the statement carries instruction-like content)` (`test_held_statements_never_carry_instruction_like_text`). A page whose only finding is a Markdown image beacon is not adversarial (`test_a_markdown_image_beacon_alone_does_not_make_a_source_adversarial`). A contested question names the disagreement in plain words from the conflict `description`, for example "Sources disagree about NumPy: one says 2.3, another says 2.4." (`test_contested_questions_use_the_plain_conflict_description`).
 
 After the loop, entities and mentions are written (section 4). The summary returned and stored on the report holds `provisional`, `strengthened`, `unchanged`, `superseded`, `contested`, `held` and `pending` (question ids), plus the number of feedback rows and entities.
@@ -95,7 +184,7 @@ Limits: there is no disambiguation (two things with one name are one entity), no
 
 Events, predictions, feedback, entities and strategies have no `retrieve` kind. `store.inventory` adds a `web` section (tasks, open tasks, sources, claims, knowledge, accepted and provisional knowledge, entities, monitors, open predictions, feedback) when migration 6 is present (`test_memory_retrieves_web_kinds_with_filters`, `test_inventory_counts_web_memory`).
 
-`memory.retrieve` reads records by kind, id and time. Retrieval by topic is `knowledge.query(db, topic, now, limit=10)`: the live statements (provisional, accepted, stale) that match a question, used by `nsf web knowledge TOPIC`, the console knowledge view, the MCP `web_knowledge` tool and, in every research task, by `intent.assess` to decide whether memory answers without the web. By default it ranks by BM25 over each statement's own words and key. The two subsections below describe the optional ranking by meaning and the check that runs before memory answers.
+`memory.retrieve` reads records by kind, id and time. Retrieval by topic is `knowledge.query(db, topic, now, limit=10)`: the live statements (provisional, accepted, stale) that match a question, used by `nsf web knowledge TOPIC`, the console knowledge view, the MCP `web_knowledge` tool and, in every research task, by `intent.assess` to decide whether memory answers without the web. By default it ranks by BM25 over each statement's own words and key. The BM25 index is kept per individual file for the life of the process and used only while the live statements read by the call are exactly the ones it was built from (W8): a repeated query at 20,000 statements costs 31 ms instead of 200 ms and at 100,000 193 ms instead of 1.1 s, most of what is left being the read of the live statements itself (`scripts/bench_knowledge.py index`; evidence `open_items_knowledge.json`). A process keeps at most 4 individuals and 120,000 statements, about 1.4 to 1.7 KB a statement; every forget drops the indexes of the process that forgets. The two subsections below describe the optional ranking by meaning and the check that runs before memory answers.
 
 ### 5.1 Semantic retrieval (`semantic.py`, optional)
 
@@ -255,5 +344,7 @@ pytest -q tests/instance -k "erasure or memory"                  # the binary-be
 - Forgetting does not purge the public cache by itself (section 6).
 - A restored checkpoint has knowledge but not the page bodies behind it.
 - Without the memory models, retrieval by topic is lexical: a paraphrase finds the right fact first 27 % of the time and a question nothing in memory answers still returns unrelated facts (section 5.1, `accel_baseline_memory.json`).
+- The lexical index, like the vectors, is per process: another long-running process keeps a forgotten statement's text in its index until its own next query or its exit.
+- Contradictions in other words (§3.1) are found only with both memory models and the answer model; a subject called by another name and most values in other units stay undetected, and the held-out precision of 1.0 is of a design revised once after a held-out failure.
 - Semantic retrieval holds its vectors per process. A new process embeds every live statement again on its first query, and two processes (console and worker) each hold their own set. Every query compares the question with every live statement, and the measurement covers 48 statements only. With the reranker on, 3 of 10 questions that nothing in memory answers still return a statement.
 - The memory-answer check is a model's judgement, bounded to a yes or no per statement. In the measurement of section 5.2 it refused 10 of 96 right statements and accepted 1 of 288 wrong ones. A wrong refusal costs a web search; a wrong acceptance still needs the lexical test to have chosen the statement. It checks at most 8 statements.
