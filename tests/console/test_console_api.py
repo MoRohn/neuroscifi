@@ -349,8 +349,10 @@ def test_expired_learning_events_stay_as_consolidated_readings_over_http(console
     # the limit on readings (max_consolidated_rows): quiet below four fifths of it, plain words from there
     assert "warnings" not in inventory and "warnings" not in inventory["regulation"]
     assert inventory["regulation"]["config"]["max_consolidated_rows"] == 1_000_000
-    largest = inventory["regulation"]["largest_epoch"]
-    assert largest["epoch"] == "e1" and largest["consolidated_readings"] == 15 and largest["compute_ms"] > 0
+    assert "largest_epoch" not in inventory["regulation"]    # the header's request: no belief computation timed
+    largest = c.ok("GET", "/api/inventory?measure=1")["regulation"]["largest_epoch"]     # the overview's request
+    assert largest["epoch"] == "e1" and largest["compute_ms"] > 0
+    assert largest["consolidated_readings"] == 14            # asked after w0's reading was forgotten above
     with contextlib.closing(store.open_existing(c.path)) as db:
         store.set_config(db, {"max_consolidated_rows": 14})
     full = c.ok("GET", "/api/inventory")

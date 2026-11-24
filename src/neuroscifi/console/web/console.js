@@ -325,8 +325,9 @@ function confirmAction(title, text, okLabel) {
 
 // ---- header and overview -------------------------------------------------------------------------------
 
-async function loadHeader() {
-  const inv = await api('GET', '/api/inventory');
+async function loadHeader(measure = false) {
+  // measure: also time the largest epoch's belief computation (overview only; the header reloads after every action)
+  const inv = await api('GET', measure ? '/api/inventory?measure=1' : '/api/inventory');
   state.semantics = inv.birth.action_semantics;
   $('instanceId').textContent = inv.birth.instance_id.slice(0, 8);
   $('instanceId').title = inv.birth.instance_id;
@@ -344,7 +345,7 @@ async function loadHeader() {
 
 async function loadOverview() {
   const slots = ['birth', 'regulation', 'inventory', 'development'].map($);
-  const inv = await load('overview', slots, loadHeader);
+  const inv = await load('overview', slots, () => loadHeader(true));
   if (!inv) return;
   const b = inv.birth;
   fill($('birth'), kv([

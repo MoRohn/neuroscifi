@@ -100,7 +100,9 @@ def _number(text, name, kind=float):
 # ---- route handlers: (ctx, params, query, body) -> JSON value -----------------------------------------
 
 def _inventory(c, p, q, b):
-    return {**store.inventory(c.db), "regulation": store.regulation(c.db, c.path)}
+    measure = _query(q, ("measure",)).get("measure") in ("1", "true")   # the overview asks; the header, reloaded
+    # after every teaching action, does not
+    return {**store.inventory(c.db), "regulation": store.regulation(c.db, c.path, measure=measure)}
 
 
 def _epochs(c, p, q, b):

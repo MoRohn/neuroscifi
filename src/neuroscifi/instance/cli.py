@@ -198,7 +198,7 @@ def register(sub):
 
     p = sub.add_parser("regulation", help="write budget, backlog and pause state")
     store.add_db_argument(p)
-    p.set_defaults(handler=with_db(lambda db, args, now: store.regulation(db, store.resolve_db(args))))
+    p.set_defaults(handler=with_db(lambda db, args, now: store.regulation(db, store.resolve_db(args), measure=True)))
 
     for name in SUBMODULES:
         try:

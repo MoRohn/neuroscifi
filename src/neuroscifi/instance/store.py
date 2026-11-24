@@ -438,10 +438,12 @@ def database_path(db):
     return None
 
 
-def regulation(db, path=None):
+def regulation(db, path=None, *, measure=False):
     """Write regulation and interruption load. open_questions counts every open question; open_web_questions
     counts the Web Cortex ones (scope 'web:...'), which have their own budget (WebConfig.max_open_web_questions)
-    and never use an epoch's ask budget."""
+    and never use an epoch's ask budget. measure=True also reports the largest epoch and times one compute() of it
+    (largest_epoch): `nsf regulation` and the console's overview ask for it; the console header, which reloads after
+    every teaching action, does not, so teaching never pays for a belief computation it does not show."""
     allowed, reason = write_allowed(db, path)
     cfg = config(db)
     held = db.execute("SELECT count(*) FROM evidence_consolidated").fetchone()[0]
@@ -456,8 +458,8 @@ def regulation(db, path=None):
         "state_version": state_version(db),
         "config": asdict(cfg),
     }
-    if held:
-        out["largest_epoch"] = _largest_epoch(db)       # absent while nothing is consolidated
+    if held and measure:
+        out["largest_epoch"] = _largest_epoch(db)       # absent while nothing is consolidated, or not asked for
     warnings = consolidation_warnings(db, held, cfg)
     if warnings:
         out["warnings"] = warnings                      # absent while there is nothing to say

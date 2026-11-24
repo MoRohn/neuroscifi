@@ -50,9 +50,11 @@ store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [na
 #                                                      "warnings" in: store.regulation(), store.inventory() (top
 #                                                      level), `nsf config`, and a sweep that kept or turned away a
 #                                                      reading (beside the setting problems); absent while empty
-#   store.regulation()["largest_epoch"]                {"epoch", "consolidated_readings", "compute_ms" (float | None)}:
+#   store.regulation(measure=True)["largest_epoch"]    {"epoch", "consolidated_readings", "compute_ms" (float | None)}:
 #                                                      the epoch with the most readings and what compute() costs
-#                                                      there now; absent while nothing is consolidated
+#                                                      there now; absent while nothing is consolidated or unless
+#                                                      asked (`nsf regulation`; console GET /api/inventory?measure=1,
+#                                                      which the overview sends and the header does not)
 #   forget results, effects["consolidated_deleted"]    consolidated readings a forget removed ("deleted" counts events)
 #   governance.forget_consolidated(db, seq: int, now)  one reading by the seq it is listed under; deletion_log kind
 #                                                      "consolidated", target the seq; 'absent' when no reading has it
@@ -77,7 +79,7 @@ store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [na
 #   memory.retrieve(db, "consolidated", id=SEQ, epoch=, channel=, root=) -> records with payload
 #       {"seq", "channel", "reading", "sample_id"}, permissions.retention "consolidated"
 #   governance.held_roots(db) -> camera and word roots held as events or consolidated readings
-store.birth(db) -> dict ; store.inventory(db) -> dict ; store.regulation(db, path=None) -> dict
+store.birth(db) -> dict ; store.inventory(db) -> dict ; store.regulation(db, path=None, *, measure=False) -> dict
 store.require_write_allowed(db, path=None)          # raises WritesPaused
 rules.register(db, definition, now, *, created_by)   # caller owns txn; idempotent on identical content
 rules.get(db, version) -> dict ; rules.latest(db) -> str ; rules.listing(db) -> list

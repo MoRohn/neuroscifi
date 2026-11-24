@@ -222,16 +222,17 @@ def test_the_executive_and_forgets_are_untouched_by_a_full_limit(instance):
 
 def test_regulation_names_the_largest_epoch_and_what_its_beliefs_cost(instance):
     db, _ = instance
-    assert "largest_epoch" not in store.regulation(db)       # absent while nothing is consolidated
+    assert "largest_epoch" not in store.regulation(db, measure=True)     # absent while nothing is consolidated
     teach(db, "desk", rounds=2)
     teach(db, "lab", now=T0 + 100, rounds=4)
-    assert "largest_epoch" not in store.regulation(db)
+    assert "largest_epoch" not in store.regulation(db, measure=True)
     governance.sweep(db, T0 + 8 * DAY)
-    largest = store.regulation(db)["largest_epoch"]
+    assert "largest_epoch" not in store.regulation(db)       # only when asked: the console header never pays for it
+    largest = store.regulation(db, measure=True)["largest_epoch"]
     assert largest["epoch"] == "lab" and largest["consolidated_readings"] == 12
     assert isinstance(largest["compute_ms"], float) and 0 < largest["compute_ms"] < 5000
     version = store.state_version(db)
-    store.regulation(db)
+    store.regulation(db, measure=True)
     assert store.state_version(db) == version                # reading it writes nothing
 
 
@@ -243,7 +244,8 @@ def test_the_largest_epoch_is_reported_even_when_its_beliefs_cannot_be_computed(
     def refuse(db, epoch):
         raise ValidationError("more mechanism segments than the model enumerates")
     monkeypatch.setattr(beliefs, "compute", refuse)
-    assert store.regulation(db)["largest_epoch"] == {"epoch": "desk", "consolidated_readings": 3, "compute_ms": None}
+    assert store.regulation(db, measure=True)["largest_epoch"] == {"epoch": "desk", "consolidated_readings": 3,
+                                                                   "compute_ms": None}
 
 
 # ---- a restore --------------------------------------------------------------------------------------------------------
