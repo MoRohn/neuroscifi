@@ -66,8 +66,9 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
   to have gone out when its fetch is abandoned stays held until its exchange ends, so it is in the account all
   along, as held or as unused. Bytes: no fetch ahead is started once the bytes received ahead and not used have
   reached the allowance's byte part; those in flight then still finish, each within the document limit and the
-  task's max_bytes. So: charged <= max_requests, sent ahead unused <= the allowance's requests, and everything a
-  task sends is at most max_requests plus its unused allowance; with the allowance spent nothing is fetched ahead
+  task's max_bytes. So: charged <= max_requests, sent ahead unused <= the allowance's requests (and <=
+  max_requests, which still applies), and everything a task sends is at most max_requests plus the smaller of
+  the two; with the allowance spent nothing is fetched ahead
   and the task reads one page at a time. (A caller that gives no allowance keeps the older bound: unused <=
   max_requests, at most twice max_requests in all.)
 - Stops (gated, speculate(wanted=...)): before every network step of a fetch the fetcher asks whether the fetch
@@ -82,7 +83,12 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
   watchdog asks too (a read-ahead fetch's own gate; for the reader's fetch the `watch` given to gated(), which
   must be callable from another thread). What had arrived of a cut read-ahead request counts as unused. A claim
   waiting for its read-ahead fetch asks the caller's gate every STOP_POLL seconds as well. A request charged and
-  then never written (the stop came during the handshake) is not counted, on either path.
+  then never written (the stop came during the handshake, or the cut landed before the socket had taken a byte
+  of it) is not counted, on either path; one the socket had taken any part of when the cut landed is counted,
+  because that part may have reached the site (_Holding.wrote). A politeness slot reserved for a
+  request that was then not attempted at all (stopped before any connection was tried) is given back, so the
+  fetch that follows (the claim going on from that hop, or the reader fetching again) does not wait an interval
+  for a request nobody sent.
   The same gate serves the fetches a task makes on other threads: a search provider's API and feed requests and a
   render's sub-requests run inside gated() with a gate that raises types.Stopped (orchestrator._Run.elsewhere).
   A read-ahead fetch fails closed: a gate it cannot read is a stop. The reader's `watch` does not: a watch that
@@ -381,12 +387,27 @@ def _default_connector(ip, port, timeout):
 
 class _Holding:
     """Keeps the pinned socket open (http.client closes it early on `Connection: close`) so the body reader can
-    keep shrinking its timeout to the fetch deadline; `release()` closes for real."""
+    keep shrinking its timeout to the fetch deadline; `release()` closes for real. `wrote` counts the bytes of the
+    request the socket has taken: after a write that failed, it tells whether any of the request left this
+    process (0: nothing did, and it is not a request)."""
     held = True
+    wrote = 0
 
     def close(self):
         if not self.held:
             super().close()
+
+    def send(self, data):
+        if self.sock is None or not isinstance(data, (bytes, bytearray, memoryview)):
+            self.wrote += 1               # http.client's own paths (a file-like or iterable body): taken as written
+            return super().send(data)
+        view = memoryview(data)
+        while len(view):
+            taken = self.sock.send(view)
+            if not taken:                 # a blocking socket takes something or raises: never spin on one that does not
+                raise ConnectionError("the socket took none of the request")
+            self.wrote += taken
+            view = view[taken:]
 
     def release(self):
         self.held = False
@@ -1461,8 +1482,16 @@ class SafeFetcher:
                     raise FetchError("blocked_robots", _redact(current.geturl()), entry.reason or "disallowed")
                 crawl_delay = entry.delay
             # the fetch deadline starts after the politeness wait, not before it
-            deadline += self._throttle(host, self._interval(host, purpose, crawl_delay), current.geturl())
-            response = self._exchange(current, method, body, headers, addresses, purpose, budget, usage, deadline)
+            waited, slot = self._throttle(host, self._interval(host, purpose, crawl_delay), current.geturl())
+            deadline += waited
+            contacted = []
+            try:
+                response = self._exchange(current, method, body, headers, addresses, purpose, budget, usage,
+                                          deadline, contacted)
+            except BaseException:
+                if not contacted:       # stopped before any connection was tried: the host was not contacted
+                    self._give_back(slot)
+                raise
             if response.status not in REDIRECT_STATUSES:
                 return response, current, redirects
             location = response.headers.get("location")
@@ -1531,11 +1560,11 @@ class SafeFetcher:
         self._count(host, "backoffs")
         return in_force
 
-    def _throttle(self, host, interval, url="") -> float:
+    def _throttle(self, host, interval, url="") -> tuple[float, tuple]:
         """Reserve the next request slot for host: at least `interval` seconds after the previous one; sleeps until
-        then and returns the seconds waited. A slot further away than policy.timeout is not reserved and nothing
-        sleeps: FetchError('rate_limited', retry_after=wait) (a Crawl-delay at or above the timeout must not
-        turn every first page fetch into a charged timeout)."""
+        then and returns the seconds waited and the reservation (for _give_back). A slot further away than
+        policy.timeout is not reserved and nothing sleeps: FetchError('rate_limited', retry_after=wait) (a
+        Crawl-delay at or above the timeout must not turn every first page fetch into a charged timeout)."""
         with self._lock:
             now = self._clock()
             last = self._last_request.get(host)
@@ -1548,7 +1577,20 @@ class SafeFetcher:
             self._last_request[host] = slot
         if wait > 0:
             self._sleep(wait)
-        return max(0.0, wait)
+        return max(0.0, wait), (host, last, slot)
+
+    def _give_back(self, reservation) -> None:
+        """A slot reserved for a request that was then not attempted at all (the fetch was stopped before any
+        connection was tried: its gate, a busy site, no room in the task's budget, abandoned): the host was not
+        contacted, so its interval starts from the request before, as if the slot had never been taken. Only when
+        the slot is still the host's latest: a later reservation stands."""
+        host, previous, slot = reservation
+        with self._lock:
+            if self._last_request.get(host) == slot:
+                if previous is None:
+                    del self._last_request[host]
+                else:
+                    self._last_request[host] = previous
 
     def _resolve(self, parts, resolved):
         host, port = parts.hostname, parts.port or (443 if parts.scheme == "https" else 80)
@@ -1572,15 +1614,19 @@ class SafeFetcher:
         resolved[key] = answers
         return answers
 
-    def _exchange(self, parts, method, body, headers, addresses, purpose, budget, usage, deadline) -> _Response:
-        """One HTTP exchange over a pinned connection. Reads the body only for 2xx responses."""
+    def _exchange(self, parts, method, body, headers, addresses, purpose, budget, usage, deadline,
+                  contacted=None) -> _Response:
+        """One HTTP exchange over a pinned connection. Reads the body only for 2xx responses. `contacted` (a list)
+        gains an entry once a connection to the host is about to be tried: before that the host has seen nothing
+        of this exchange."""
         url = parts.geturl()
         host = parts.hostname
         self._ask(usage, url)                 # still wanted? after the politeness wait, before connecting
         spec = usage if isinstance(usage, _Speculation) else None
         self._enter(host, spec)               # one exchange per host for fetches ahead (module doc)
         try:
-            return self._exchange_on(parts, method, body, headers, addresses, purpose, budget, usage, deadline, spec)
+            return self._exchange_on(parts, method, body, headers, addresses, purpose, budget, usage, deadline, spec,
+                                     contacted)
         finally:
             self._leave(host, spec)
 
@@ -1637,7 +1683,8 @@ class SafeFetcher:
         raise FetchError("interrupted", _redact(url), "cut: a stop was seen while the request was on the wire, and "
                                                       "was withdrawn")
 
-    def _exchange_on(self, parts, method, body, headers, addresses, purpose, budget, usage, deadline, spec):
+    def _exchange_on(self, parts, method, body, headers, addresses, purpose, budget, usage, deadline, spec,
+                     contacted=None):
         url = parts.geturl()
         host, port = parts.hostname, parts.port or (443 if parts.scheme == "https" else 80)
         _charge(budget, usage, requests=1)
@@ -1682,16 +1729,27 @@ class SafeFetcher:
             "?" + quote(parts.query, safe="=&%+:@/?!$'()*,;-._~") if parts.query else "")
         written = refused = False             # the request went out on the connection; the gate said stop first
         try:
+            if contacted is not None:
+                contacted.append(host)
             conn.connect()                    # the handshake is not the request: the gate is asked again after it
             try:
                 self._ask(usage, url)         # a stop that landed while the connection was being opened
             except BaseException:
                 refused = True
                 raise
-            conn.request(method, target, body=body, headers=headers)
-            written = True
-            if spec is not None:
-                spec.sent()
+            try:
+                conn.request(method, target, body=body, headers=headers)
+            except BaseException:
+                # the write failed (a cut that landed while the request was being written, or the connection
+                # itself). If the socket had taken any of it, that part may have reached the site: the request
+                # counts as sent. If it had taken nothing, nothing left this process and it is not a request
+                written = conn.wrote > 0
+                raise
+            else:
+                written = True
+            finally:
+                if written and spec is not None:
+                    spec.sent()
             raw = conn.getresponse()
             status = raw.status
             response_headers: dict = {}

@@ -316,3 +316,85 @@ def test_with_the_allowance_spent_a_run_reads_one_page_at_a_time(tmp_path):
     finally:
         db.close()
         web.stop()
+
+
+# ---- residues of the reviews: a politeness slot nobody used, a request cut while it was being written ----------
+
+def interval_fetcher(web, tmp_path, slept):
+    from neuroscifi.webcortex.cache import PublicCache
+    from neuroscifi.webcortex.net import NetPolicy, SafeFetcher
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    return SafeFetcher(NetPolicy(min_domain_interval=5.0), cache=PublicCache(tmp_path / "c.sqlite"),
+                       resolver=web.resolver, connector=web.connector, clock=lambda: T0, sleep=slept.append)
+
+
+@pytest.mark.parametrize("stop_at, kept", [(2, False), (3, True)], ids=["before_connecting", "connected"])
+def test_a_slot_reserved_for_a_request_nobody_attempted_is_given_back(web, tmp_path, stop_at, kept):
+    """A fetch ahead waits its turn for a.example (the politeness interval after robots.txt), reserves the slot and
+    is then stopped. Stopped before any connection was tried, the site was not contacted: the slot goes back, and
+    the fetch that follows waits one interval, not two. Stopped on the open connection, the site was contacted
+    (a handshake): the slot stays."""
+    web.add("a.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add("a.example", "/p", "<p>hi</p>")
+    slept = []
+    fetcher, usage, asked = interval_fetcher(web, tmp_path, slept), Usage(), []
+    fetcher.robots_allowed("http://a.example/p")                  # robots.txt at T0: the page's slot is T0 + 5
+    assert fetcher._last_request["a.example"] == T0
+
+    def wanted(url):
+        asked.append(url)
+        return "cancelled" if len(asked) >= stop_at else None
+
+    assert fetcher.speculate("http://a.example/p", usage=usage, budget=Budget(), wanted=wanted)
+    finish_all(fetcher)
+    assert slept == [5.0] and len(asked) == stop_at
+    assert fetcher._last_request["a.example"] == (T0 + 5.0 if kept else T0)
+    fetcher.abandon("http://a.example/p", usage=usage)
+    assert usage.prefetch_unused_requests == 0                    # nothing was sent either way
+    assert fetcher.fetch("http://a.example/p", budget=Budget(), usage=usage).status == 200
+    assert slept == [5.0, 10.0 if kept else 5.0]
+
+
+def test_a_later_reservation_is_not_undone_by_giving_an_earlier_one_back(web, tmp_path):
+    fetcher = interval_fetcher(web, tmp_path, [])
+    _, first = fetcher._throttle("a.example", 5.0)
+    _, second = fetcher._throttle("a.example", 5.0)
+    fetcher._give_back(first)                                     # no longer the latest: stands
+    assert fetcher._last_request["a.example"] == T0 + 5.0
+    fetcher._give_back(second)
+    assert fetcher._last_request["a.example"] == T0
+    fetcher._give_back(first)
+    assert "a.example" not in fetcher._last_request
+
+
+@pytest.mark.parametrize("taken, counted", [(0, 0), (4, 1)], ids=["nothing_taken", "part_taken"])
+def test_a_request_cut_while_it_was_being_written_counts_when_any_of_it_left(web, tmp_path, monkeypatch, taken,
+                                                                             counted):
+    """The cut lands inside the write of the request. If the socket had taken part of it, that part may have
+    reached the site, so the request is counted (as unused, the fetch being abandoned); before, it was taken for
+    never sent. If the socket had taken nothing, nothing left this process and it is not a request, as before."""
+    from neuroscifi.webcortex import net
+    web.add("a.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add("a.example", "/p", "<p>hi</p>")
+    fetcher, budget, usage = fetcher_for(web, tmp_path), Budget(), Usage()
+    fetcher.robots_allowed("http://a.example/p")
+    before = len(web.log)
+
+    def send(self, data):
+        if taken:
+            self.wrote += self.sock.send(bytes(data)[:taken])    # the first bytes of the request line go out
+        fetcher.abandon("http://a.example/p", usage=usage)       # the reader moves on: the connection is shut down
+        raise BrokenPipeError("the socket was shut down under the write")
+    monkeypatch.setattr(net._PinnedHTTP, "send", send)
+    assert fetcher.speculate("http://a.example/p", usage=usage, budget=budget)
+    spec = next(iter(fetcher._speculations.values()))
+    assert spec.finished.wait(5)
+    assert usage.prefetch_unused_requests == counted and usage.requests == 0 and fetcher._ahead == {}
+    assert len(settled(web, quiet=0.2)) == before                # no whole request arrived either way
+
+
+def test_the_connection_counts_the_bytes_of_a_request_the_socket_took(web, tmp_path):
+    web.add("a.example", "/p", "<p>hi</p>")
+    fetcher, usage = fetcher_for(web, tmp_path), Usage()
+    assert fetcher.fetch("http://a.example/p", purpose="api", budget=Budget(), usage=usage).status == 200
+    assert usage.requests == 1 and len(web.log) == 1

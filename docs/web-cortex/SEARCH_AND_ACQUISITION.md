@@ -197,17 +197,30 @@ hours in that fetcher, which a cut must never cause).
 | Fetch | Asks | After a stop |
 |---|---|---|
 | The reader's own: pages, a crawl's pages, its robots.txt and its sitemaps (`_Run.fetch`, `_Run.gate`) | `_Run.still_wanted` through `SafeFetcher.gated`, on the run's thread; on the wire, the run's `_Lookout` as the gate's `watch` | No further lookup or request; the request on the wire is cut. Cancel ends the run `cancelled`, web off ends it `partial`, a denied host is that page's `blocked_policy` and the run says the domain was denied during it |
+| A search provider's requests: API calls, feeds (`_Run.search`, `ProviderRegistry.search(wanted=, scope=)`) | The run's `_Lookout` (`_Run.elsewhere`): before each query is charged, before each further round, on each provider's thread before the provider is called and, inside `SafeFetcher.gated`, before every lookup, connection and request of a fetch it makes; on the wire, the lookout as the `watch`. The metasearch daemons on this host (SearXNG, open-webSearch) are asked before each query or engine call is charged (`search.ask_gate`) | Nothing more is sent, and a query not handed over is not charged. The call ends `stopped` (it moves no circuit breaker), the search ends, and the run raises the stop on its own thread: `cancelled`, or `partial` with web access off. An API host denied meanwhile is that provider's failure; the others go on |
+| A record read through a provider's API (a Wikipedia article's text; `_Run.through_gate`) | `_Run.still_wanted`, as for a page | As for a page |
+| A page render's sub-requests (`BrowserRenderer.render(gate=)`) | The run's `_Lookout`, inside `SafeFetcher.gated` on the render thread: before every lookup, connection and request of each sub-request; on the wire, the lookout as the `watch` | No further sub-request is sent (`refused`, code `stopped`; the later ones without asking). One to a host denied meanwhile is `blocked_policy` and the others are served. The run raises the stop when the render returns |
 | A fetch made ahead of its turn (read-ahead, below) | `orchestrator._Lookout` through `speculate(wanted=...)`, on the fetch's own thread and on the wire, over a read-only connection of its own. It stops when the task was cancelled, forgotten or taken over, when web access is off, and when the host it is about to contact is on the deny list as it is now. A gate that cannot be read counts as a stop | No further lookup or request; the request on the wire is cut, and what had arrived is counted as unused. The reader also cuts it at once when it drops it (`abandon`), and a claim that is waiting for it asks the gate every 0.25 s |
 
 In 0.7.0 the reader's fetch went on to the end (its page after robots.txt, and every redirect hop), and a changed
 configuration was noticed at most 2 s later (`CONFIG_RECHECK`).
 
-Not covered by the per-request gate: searches, records read through a provider's API (a Wikipedia article's text)
-and the sub-requests of a page render. There the run checks the cancel flag before each step (a search round, a
-record, a render) and re-reads the web configuration at most every 2 s (`orchestrator.CONFIG_RECHECK`), as before;
-the fetcher's deny list still refuses a denied host once the run has applied it. A time budget that runs out and a
-regulation pause also stop the run at its next step, not inside a fetch. A name lookup under way and a politeness
-wait are not interrupted; the gate is asked again after each.
+Before the open-items round, searches, records read through a provider's API and a render's sub-requests were
+not under the per-request gate: the run checked the cancel flag before each step (a search round, a record, a
+render) and re-read the web configuration at most every 2 s (`orchestrator.CONFIG_RECHECK`), so a search round in
+flight sent its remaining queries and a render its remaining sub-requests after the stop.
+
+Not covered by the per-request gate now:
+
+- A query a metasearch daemon on this host already has. SearXNG and open-webSearch send the engines' requests
+  themselves; the gate decides whether a query is handed to them, not what they do with one they have.
+- The registry lookups of a dependency check (`deps.check`: PyPI, npm and OSV API calls on its own threads and
+  budget). The run checks before it starts one.
+- A time budget that runs out and a regulation pause stop the run at its next step, not inside a fetch.
+- A name lookup under way and a politeness wait are not interrupted; the gate is asked again after each.
+
+A gate that cannot be read is a stop on those threads too (`types.stop_verdict`); the run then decides on its own
+thread, from its own connection, whether anything stops it.
 
 Tests (`tests/webcortex/test_read_ahead_stops.py`): the gate is asked before every lookup, connection and request, in
 order; stopping at each of the twelve steps of a redirecting fetch leaves exactly the requests and lookups before
@@ -251,11 +264,26 @@ What bounds it:
   later fetch ahead cannot take them. Exactly:
   - what the task is charged is at most `max_requests` (the reader is charged as at `read_ahead=1`, so the task
     ends where one-at-a-time reading ends);
-  - what read-ahead sends unused is at most `max_requests` (bytes: `max_bytes`, plus one byte per fetch ahead: at
-    the limit a read takes one byte more to learn that the body goes on, as the reader's own read does);
-  - so everything a task sends is at most twice `max_requests`. That is the bound, and it can be reached (the
-    whole budget goes ahead, then every fetch ahead becomes unusable); it is not the typical case: the unused
-    part is only what a fetch ahead had sent before it became unusable.
+  - what read-ahead sends unused is at most the task's **unused allowance** (`Budget.unused_allowance(window)`):
+    a tenth of `max_requests`, and never less than two requests for each page of the window (8 at the default
+    window of 4, which is what three pages ahead hold while they are fetched, 6, plus one of them wasted, 2).
+    The fetcher holds every fetch ahead to it request by request: what the task's fetches ahead have sent
+    unused, plus what those not yet claimed or dropped have sent or hold, never passes it. A fetch ahead is not
+    started without room for a typical fetch there, and one under way stops before a request that would pass it
+    and is continued by its claim, like one that ran out of the budget's room. A request charged and not yet
+    known to have gone out when its fetch is dropped stays held until its exchange has ended;
+  - so everything a task sends is at most `max_requests` plus its unused allowance (48 for the default budget of
+    40; before, twice the budget). The budget's own check still applies too, so for a budget smaller than the
+    allowance's floor (under 8 requests at the default window) unused read-ahead stays within `max_requests`, as
+    before: the bound is `max_requests` plus the smaller of the two. As unused requests accumulate, fewer pages are fetched ahead, and with the
+    allowance spent the task reads one page at a time for the rest of the run: the same reading, slower. Only a
+    run in which fetches ahead keep becoming unusable gets there;
+  - bytes: no page is fetched ahead once the bytes received ahead and not used have reached the allowance's byte
+    part (a tenth of `max_bytes`, at least 256 KiB). The pages in flight at that moment still finish, each within
+    the document size limit, and all fetches ahead together stay within `max_bytes` as before (plus one byte per
+    fetch ahead: at the limit a read takes one byte more to learn that the body goes on, as the reader's own read
+    does). The byte part is a threshold, not a hold on bodies in flight: holding them to a tenth of the budget
+    would cut every large page fetched ahead and fetch it again.
   A fetch ahead that runs out of room at a later request (a redirect chain) stops before that request, and its
   claim *goes on from that hop* on the task's own budget: what it sent is charged as if the reader had sent it, and
   nothing is requested twice. (One case is not continued: a stop in the middle of fetching a robots.txt that
@@ -265,9 +293,11 @@ What bounds it:
   ahead overtaken by a changed deny list (every fetch ahead in flight is thrown away, and the reader fetches those
   pages at their turn under the new policy), by a back-off, or cut by the reader reaching its site, and a page
   the reader passed by. Measured with a request budget of 20 and three
-  five-hop redirect chains ahead (the review's worst-traffic scenario): 21 or 22 requests reach sites with no owner
-  action (34 before fetches ahead were continued), 32 when the owner denies an unrelated domain mid-run (38
-  before).
+  five-hop redirect chains ahead (the review's worst-traffic scenario): 20 requests reach sites with no owner
+  action (21 to 23 before the allowance, 34 before fetches ahead were continued), 25 when the owner denies an
+  unrelated domain mid-run (32 before the allowance, 38 before that; the bound is 28). The constructed case that
+  reached exactly twice a budget of 12 (24 requests) now reaches 17 to 19 (bound 20). On the benchmark nothing
+  changes: 4 unused requests beside 350 in 51 tasks, the same task times.
 - **Daily allowances.** Tasks whose traffic counts against one (`daily_autonomous`: curiosity and refreshes;
   `daily_mcp`: MCP clients) always read one page at a time (`orchestrator.daily_capped`), so every request they
   send is one they were charged for and the caps hold as before. Nobody waits for curiosity or a refresh. As a
@@ -276,8 +306,14 @@ What bounds it:
 - **A run that cannot read stops at request time** (services that name no individual file) fetches nothing ahead.
 - **Unused traffic is visible.** Requests sent and bytes received for pages the task then did not use are in the
   task's usage (`prefetch_unused_requests`, `prefetch_unused_bytes`, absent while zero), exact to the request: a
-  request that was never written on a connection is not counted. These two counters are the only part of a task's
-  usage that differs from `read_ahead=1`.
+  request that was never written on a connection is not counted, and one whose write had begun when its
+  connection was cut is (part of it may have gone out). These two counters are the only part of a task's usage
+  that differs from `read_ahead=1`. What a process that is killed loses is the same for both kinds of traffic:
+  usage since the task's last checkpoint, charged or unused, is not on record.
+- **A politeness slot nobody used is given back.** A fetch ahead reserves its site's next request slot before it
+  connects. Stopped before any connection was tried (its gate, a busy site, no room in the task's account), it
+  has not contacted the site, and the slot goes back, so the fetch that follows (its claim going on from that
+  hop, or the reader fetching again) does not wait an interval for a request nobody sent.
 
 **The one exception to "what one page at a time reads": a site that asks to slow down.** A 429, or a 503 with
 `Retry-After`, backs the whole site off at once, whichever fetch received it, a page fetched ahead included. If an

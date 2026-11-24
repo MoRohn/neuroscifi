@@ -351,7 +351,8 @@ def test_random_webs_under_tight_budgets_end_the_same_at_one_page_at_a_time_and_
     budget that ends the task somewhere in the middle: whatever happens ahead (a fetch stopped at the shared
     budget, at a busy site, inside a robots.txt walk, cut, continued, thrown away), the task ends exactly as one
     page at a time ends it (status, charged usage, sources, answer, limitations, documents, events), every request
-    that reached a site is charged or counted unused, and unused read-ahead stays within the request budget."""
+    that reached a site is charged or counted unused, and unused read-ahead stays within the request budget and
+    within the task's unused allowance."""
     rng = random.Random(seed)
     for n in range(8):
         hosts, routes, candidates, budget = random_web(rng)
@@ -363,6 +364,9 @@ def test_random_webs_under_tight_budgets_end_the_same_at_one_page_at_a_time_and_
         unused = four["usage"].get("prefetch_unused_requests", 0)
         assert four["requests_reaching_sites"] == four["usage"]["requests"] + unused, where
         assert unused <= budget["max_requests"], where
+        # and within the task's unused allowance: everything it sends is at most max_requests plus that
+        allowance = Budget(**budget).unused_allowance(4)[0]
+        assert unused <= allowance and four["requests_reaching_sites"] <= budget["max_requests"] + allowance, where
 
 
 def test_crash_with_read_ahead_in_flight_then_resume_uses_only_checkpointed_pages(tmp_path):
