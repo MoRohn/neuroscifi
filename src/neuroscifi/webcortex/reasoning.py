@@ -2452,13 +2452,17 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
 
 
 _UNHEDGED = "as fact without hedging"
-_PRONOUN_LEAD = frozenset("it its they their them he she his her we this these those that there".split())
+# Openers whose referent is on the claim's page, not in the claim: pronouns, pointing and choosing words
+_PRONOUN_LEAD = frozenset("""it its they their them he she his her we this these those that there both such one
+another each neither either other others""".split())
+_PRONOUN_LEAD_PAIRS = frozenset({("the", "latter"), ("the", "former"), ("the", "same"), ("the", "other")})
 
 
 def _pronoun_led(text: str) -> bool:
-    """Whether `text` starts with a pronoun or a pointing word ("It", "They", "This", "Those", "There")."""
-    first = (_E_WORD.findall(_clean(_norm(text))) or [""])[0]
-    return _e_plain(first) in _PRONOUN_LEAD
+    """Whether `text` starts with a word whose referent is on its page ("It", "They", "This", "Those", "Both",
+    "Such", "One", "Another", "Each", "Neither", "Either", "The latter", "The former")."""
+    words = [_e_plain(w) for w in _E_WORD.findall(_clean(_norm(text)))[:2]] + ["", ""]
+    return words[0] in _PRONOUN_LEAD or (words[0], words[1]) in _PRONOUN_LEAD_PAIRS
 ANCHOR_TIED = "ties a version or name to what its cited claims do not say of it"     # the anchor rule's reason
 # One sentence per item: a sentence end followed by more text ("secure. Upgrade now", "secure.Everyone ...").
 _MORE_SENTENCES = re.compile(r"[.!?]+[\"')\]]*(?:\s+\S|(?=[A-Z]))")

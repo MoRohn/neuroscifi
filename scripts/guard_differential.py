@@ -229,7 +229,9 @@ _HEDGES_307B907 = (("disputed", "according to {who}, though the claim is dispute
                    ("insufficient", "according to {who}"), ("not_evaluated", "according to {who}"))
 _UNSEEN_CATEGORIES = frozenset({"Cf", "Cc", "Co", "Cn", "Cs", "Zl", "Zp"})
 _ATTRIBUTION_WORDS = re.compile(r"\baccording\s+to\b", re.IGNORECASE)
-_PRONOUN_LEAD = frozenset("it its they their them he she his her we this these those that there".split())
+_PRONOUN_LEAD = frozenset("""it its they their them he she his her we this these those that there both such one
+another each neither either other others""".split())
+_PRONOUN_LEAD_PAIRS = frozenset({"the latter", "the former", "the same", "the other"})
 
 
 def _frozen_key(text) -> str | None:
@@ -257,8 +259,9 @@ def _exact_restatement(reasoning, item: dict, bundle: dict, reference: dict) -> 
     if sorted(set(item.get("citations") or [])) != sources:
         return False
     key, text = _frozen_key(claim.get("text")), _frozen_key(item.get("text"))
-    if key is None or text is None or _ATTRIBUTION_WORDS.search(key) or \
-            key.split(" ", 1)[0].lower().strip(",.;:") in _PRONOUN_LEAD:
+    lead = [w.lower().strip(",.;:()\"'") for w in (key or "").split(" ")[:2]] + ["", ""]
+    if key is None or text is None or _ATTRIBUTION_WORDS.search(key) or lead[0] in _PRONOUN_LEAD or \
+            f"{lead[0]} {lead[1]}" in _PRONOUN_LEAD_PAIRS:
         return False
     hedge = next((h for state, h in _HEDGES_307B907 if state == claim.get("state")), None)
     if hedge is None and claim.get("state") != "supported":
