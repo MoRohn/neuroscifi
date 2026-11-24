@@ -4,9 +4,9 @@ reference (scripts/guard_differential.py, tests/inference/fixtures/guard_referen
 Why this exists. The guard is the last check between fetched web text and what an answer states. A fix made beside
 it once moved verdicts unnoticed (a sentence inverting "... except 2.5.4 and 2.5.5" was accepted; a claim's own
 "according to the official advisory of evilcorp" was kept as if it were support), and was withdrawn. Since then
-every change to the answer path is held to this test: 1,689 inputs (every argument the guard's own tests of
-307b907 pass to compose() and the guard, the security review's corpora, the live benchmark's sentences, and one
-adversarial corpus per gap closed since), each compared in full.
+every change to the answer path is held to this test: every argument the guard's own tests of 307b907 pass to
+compose() and the guard, the security review's corpora, the live benchmark's sentences, and one adversarial corpus
+per gap closed since (INPUTS), each compared in full.
 
 A verdict may differ from 307b907 in two named ways only (scripts/guard_differential.py, classify):
   stricter   a sentence 307b907 accepted is refused, with reasons that all start with a refusal mark
@@ -14,6 +14,10 @@ A verdict may differ from 307b907 in two named ways only (scripts/guard_differen
   loosened   a sentence 307b907 rejected is accepted, of a class the script proves (none yet).
 The gap corpora say what the finished guard must do with each of their sentences; UNMET counts, per gap, the
 sentences this tree does not yet treat so, and goes to zero gap by gap.
+
+Closed so far:
+  restriction  a cited claim that carries an exception or a condition is restated whole or not at all
+               (reasoning.RESTRICTION_LOST). Stricter only.
 """
 import importlib.util
 import json
@@ -30,9 +34,16 @@ gd = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gd)
 
 GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording")
+INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 229}
+SIZES = {"restriction": 84, "case": 36, "unseen": 35, "restatement": 36, "cut": 33, "wording": 5}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 43, "case": 21, "unseen": 18, "restatement": 8, "cut": 10, "wording": 0}
+UNMET = {"restriction": 0, "case": 21, "unseen": 18, "restatement": 8, "cut": 9, "wording": 0}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
+RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
+# What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
+STRICTER = {"review": 26, "gap": 74}
+LOOSENED = {}
+REFUSED = {CUT_MARK: 42, RESTRICTION_MARK: 58}
 
 
 @pytest.fixture(scope="module")
@@ -61,8 +72,8 @@ def origin(d):
 def test_the_reference_is_the_attack_tested_commit_and_its_inputs_are_of_four_kinds(reference):
     assert reference["commit"] == "307b9070f973be63b1cdbd8da222da8114bd32d6"
     assert reference["reference_guard_tests"] == "827 passed"          # that commit's own guard tests, while recording
-    assert reference["cases_by_origin"] == {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 214}
-    assert len(reference["cases"]) == 1690
+    assert reference["cases_by_origin"] == INPUTS
+    assert len(reference["cases"]) == sum(INPUTS.values()) == 1705
     kinds = {c["kind"] for c in reference["cases"]}
     assert kinds == {"compose", "guard", "answer"}
 
@@ -71,7 +82,8 @@ def test_no_verdict_differs_from_the_reference_except_in_the_named_ways(result):
     """Every input: the same composed sentences, the same accepted items in full, the same rejections and reasons;
     or stricter, or loosened, as scripts/guard_differential.py defines them. Nothing else."""
     assert result["different"] == [], json.dumps(result["different"][:3], indent=1)[:4000]
-    assert result["identical"] + len(result["stricter"]) + len(result["loosened"]) == result["compared"] == 1690
+    assert result["identical"] + len(result["stricter"]) + len(result["loosened"]) == result["compared"]
+    assert result["compared"] == sum(INPUTS.values())
 
 
 def test_the_guards_own_attack_sentences_and_the_benchmarks_sentences_are_answered_identically(result):
@@ -81,26 +93,37 @@ def test_the_guards_own_attack_sentences_and_the_benchmarks_sentences_are_answer
     assert result["identical"] >= 1137 + 248
 
 
+def by_origin(cases):
+    out = {}
+    for d in cases:
+        out[origin(d)] = out.get(origin(d), 0) + 1
+    return out
+
+
 def test_what_is_stricter_is_a_subset_with_identical_text(result):
     """Each stricter case: every item accepted now was accepted by the reference, identically; whatever is missing
-    was refused with reasons that all start with a refusal mark; no other rejection changed."""
+    was refused with reasons that all start with a refusal mark; no other rejection changed. Counted by mark."""
     marks = gd.refusal_marks(reasoning)
-    assert marks == (CUT_MARK,)
-    refused = 0
-    for d in result["stricter"]:
+    assert set(marks) == set(REFUSED)
+    refused = {}
+    for d in result["stricter"] + result["loosened"]:
         now, ref = d["now"], d["reference"]
-        assert all(item in ref["accepted"] for item in now["accepted"]), d["case"]
-        new = [r for r in now["rejected"]
-               if gd.comparable({"rejected": [r]}) not in [gd.comparable({"rejected": [x]}) for x in ref["rejected"]]]
+        if d in result["stricter"]:
+            assert all(item in ref["accepted"] for item in now["accepted"]), d["case"]
+        theirs = [gd.comparable({"rejected": [x]}) for x in ref["rejected"]]
+        new = [r for r in now["rejected"] if gd.comparable({"rejected": [r]}) not in theirs]
         assert all(r["reasons"] and all(x.startswith(marks) for x in r["reasons"]) for r in new), d["case"]
-        assert len(new) == len(ref["accepted"]) - len(now["accepted"])
-        refused += len(new)
-    by_origin = {}
-    for d in result["stricter"]:
-        by_origin[origin(d)] = by_origin.get(origin(d), 0) + 1
-    assert by_origin == {"review": 17, "gap": 26}
-    assert refused == 16 + 26
-    assert result["loosened"] == []
+        assert len(new) == len([item for item in ref["accepted"] if item not in now["accepted"]])
+        for r in new:
+            for m in marks:
+                if any(x.startswith(m) for x in r["reasons"]):
+                    refused[m] = refused.get(m, 0) + 1
+    assert by_origin(result["stricter"]) == STRICTER
+    assert refused == REFUSED
+
+
+def test_what_is_loosened_is_of_a_class_the_differential_proves(result):
+    assert by_origin(result["loosened"]) == LOOSENED
 
 
 def test_the_differential_reports_a_guard_that_accepts_more(monkeypatch, reference):
@@ -135,7 +158,7 @@ def test_each_gap_has_its_own_corpus_recorded_against_the_reference(reference, e
     sizes = {}
     for e in expected:
         sizes[e["gap"]] = sizes.get(e["gap"], 0) + 1
-    assert sizes == {"restriction": 69, "case": 36, "unseen": 35, "restatement": 36, "cut": 33, "wording": 5}
+    assert sizes == SIZES
     assert all(sizes[g] >= 30 for g in GAPS if g != "wording")       # wording moves no verdict: five witnesses
     labels = {e["expect"] for e in expected}
     assert labels == {"reject", "accept", "lost", "open"}

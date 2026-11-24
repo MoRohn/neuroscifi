@@ -926,6 +926,263 @@
 "claims": [
 [
 "supported",
+"The flaw is confirmed fixed if the patch is applied to the 2.5 branch",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"s": [
+[
+"The flaw is confirmed fixed.",
+[
+"C1"
+],
+"reject",
+"a condition right after a word that also heads questions"
+],
+[
+"The flaw is confirmed fixed if the patch is applied to the 2.5 branch.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"When asked about the outage, the operator said service returned at noon",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "When did service return?",
+"s": [
+[
+"The operator said service returned at noon.",
+[
+"C1"
+],
+"accept",
+"'when asked' reports, it does not restrict"
+],
+[
+"Service returned at noon.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The vendor did not say if the patch covers version 3, and it published version 4 on 2 May 2026",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "What did the vendor publish?",
+"s": [
+[
+"The vendor published version 4 on 2 May 2026.",
+[
+"C1"
+],
+"accept",
+"'say if' asks"
+]
+]
+},
+{
+"claims": [
+[
+"disputed",
+"The dam is safe unless the reservoir rises above 40 metres"
+]
+],
+"gap": "restriction",
+"q": "Is the dam safe?",
+"s": [
+[
+"The dam is safe.",
+[
+"C1"
+],
+"reject"
+],
+[
+"The dam is safe unless the reservoir rises above 40 metres.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The library is safe except on Windows",
+[
+1,
+2
+]
+],
+[
+"supported",
+"The cache is fast unless tracing is on",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is the library safe?",
+"s": [
+[
+"The library is safe except on Windows, and the cache is fast unless tracing is on.",
+[
+"C1",
+"C2"
+],
+"accept"
+],
+[
+"The library is safe, and the cache is fast unless tracing is on.",
+[
+"C1",
+"C2"
+],
+"reject",
+"one of two restricted claims not whole"
+],
+[
+"The cache is fast unless tracing is on.",
+[
+"C2"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The audit found few defects, if any, and the release shipped on 4 June 2026",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "When did the release ship?",
+"s": [
+[
+"The release shipped on 4 June 2026.",
+[
+"C1"
+],
+"accept",
+"'if any' is an idiom"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The outage is all but over, and the operator has restored 12 regions",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "How many regions?",
+"s": [
+[
+"The operator has restored 12 regions.",
+[
+"C1"
+],
+"lost",
+"faithful; 'all but' here means 'almost', and code reads the exception it also is"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The flaw is fixed for all users not on Windows",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"s": [
+[
+"The flaw is fixed for all users.",
+[
+"C1"
+],
+"open",
+"an exception written as a negated phrase, not as one of the listed words"
+],
+[
+"The flaw is fixed for all users not on Windows.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"The bridge is open to traffic except on Sundays"
+]
+],
+"gap": "restriction",
+"q": "Is the bridge open?",
+"s": [
+[
+"According to one source, the bridge is open to traffic except on Sundays.",
+[
+"C1"
+],
+"accept",
+"the model's own leading attribution is replaced; the claim stays whole"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
 "Exposure to CO rose in 2025 while Turkey exports fell",
 [
 1,

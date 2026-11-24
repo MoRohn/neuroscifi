@@ -2428,6 +2428,81 @@ def _attributed(text: str, cites) -> str:
     return lead + (text[0].lower() + text[1:] if m else text)
 
 
+# ---- refusals added after 0.7.0 ------------------------------------------------------------------------------------
+# Each can only refuse a sentence that every check above accepted. guard() judges a sentence exactly as before and
+# asks _refusals() last, so no other sentence's verdict moves and no accepted text changes: the accepted sentences
+# are a subset of what 0.7.0 accepted (tests/inference/test_guard_differential.py holds every recorded input to
+# that). The reasons start with fixed words (REFUSALS) by which the differential tells them from every other reason.
+
+# A cited claim that carries a restriction (an exception or a condition) may be restated only whole. 0.7.0 accepted
+# "Every release is patched." and "... is patched in 2.5.4." for "Every release is patched except 2.5.4 and 2.5.5",
+# and "The bridge is open, according to one source." for "The bridge is open except on Sundays": the entailment
+# check counts words, and a sentence without the exception holds only words of the claim. What a restriction's scope
+# is, code cannot tell ("... except Mondays, and admission is free"), so the rule asks for the one thing it can
+# prove: the claim's own words, unbroken and in order, stand in the sentence.
+RESTRICTION_LOST = ("does not hold {claim} whole, which carries a restriction ('{words}'): a claim with an exception "
+                    "or a condition can only be restated word for word")
+REFUSALS = (RESTRICTION_LOST,)
+# Exceptions: what follows is taken out of what the claim says.
+_EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|exclusive of|other than|apart from|"
+              r"aside from|save for|barring|but not|"
+              r"(?:all|everything|everyone|everybody|anything|anyone|nothing|none|no one|nobody) but")
+# Conditions: the claim holds only under what follows. "when" only in its reduced form ("safe when used with TLS
+# 1.3", "when built from source"), and not the reporting kind ("when asked", "when speaking"); a "when" with its own
+# subject is mostly one of time ("when the ship sank").
+_WHEN_REPORTING = (r"asked|contacted|reached|questioned|pressed|approached|interviewed|queried|speaking|talking|"
+                   r"announcing|discussing|describing|presenting|unveiling|launching|introducing|commenting|"
+                   r"testifying|writing|reporting")
+_CONDITION = (r"unless|only (?:if|when)|provided that|providing that|(?:as|so) long as|on condition that|"
+              rf"when (?!(?:{_WHEN_REPORTING})\b)(?:\w+ly )?\w+(?:ed|ing)|"
+              r"when (?:built|run|set|shown|given|taken|left|kept|put|made|sent|read)")
+_RESTRICTION = re.compile(rf"(?<![\w-])(?:{_EXCEPTION}|{_CONDITION})(?![\w-])".replace(" ", r"\s+"), re.IGNORECASE)
+# "if" restricts unless it concedes ("even if"), compares ("as if"), asks ("unclear if", "did not say if", "whether
+# or if": the asking word stands right before it) or is an idiom ("if any", "if not all", "if ever", "if so")
+_IF = re.compile(r"(?<![\w-])if(?![\w-])(?!\s+(?:any|ever|so|at\s+all|not\s+(?:all|most|more|every\w*))\b)",
+                 re.IGNORECASE)
+_IF_BEFORE = re.compile(r"\b(?:even|as|what|or|whether|unclear|unknown|uncertain|unsure|sure|certain|know|knows|"
+                        r"known|knew|ask|asks|asked|asking|wonder|wonders|wondered|determine|decide|check|checks|"
+                        r"checked|see|tell|doubt|doubts|doubted|say|says|said|state|specify|show)\s+$", re.IGNORECASE)
+
+
+def _restriction(text: str) -> str | None:
+    """The first restriction `text` carries, as written ("except", "unless", "only if", "when used", "if"), or
+    None. A closed list (_EXCEPTION, _CONDITION) and "if" where it is a condition (_IF, _IF_BEFORE). Left out on
+    purpose: bounds of time ("until", "before", "after", "since", "while" and a "when" with its own subject), whose
+    loss generalises over time and inverts nothing, and "only" and "without", whose loss says less, not more."""
+    found = [(m.start(), m.group(0)) for m in _RESTRICTION.finditer(text or "")]
+    found += [(m.start(), m.group(0)) for m in _IF.finditer(text or "") if not _IF_BEFORE.search(text[:m.start()])]
+    return _SPACE.sub(" ", min(found)[1]) if found else None
+
+
+def _holds_whole(words: list[str], claim_words: list[str]) -> bool:
+    """Whether `claim_words` stand in `words`, unbroken and in order."""
+    n = len(claim_words)
+    return bool(n) and any(words[i:i + n] == claim_words for i in range(len(words) - n + 1))
+
+
+def _restriction_lost(text: str, used) -> list[str]:
+    """RESTRICTION_LOST for each cited claim that carries a restriction (_restriction) and whose words (letter case,
+    punctuation and bracketed reference marks aside) are not all in the sentence, unbroken and in order."""
+    mine = [w.casefold() for w in _WORD_RX.findall(text)]
+    out = []
+    for c in used:
+        theirs = _inline_refs(_clean(_norm(c["text"])))[0]
+        marker = _restriction(theirs)
+        if marker is not None and not _holds_whole(mine, [w.casefold() for w in _WORD_RX.findall(theirs)]):
+            out.append(RESTRICTION_LOST.format(claim=c["id"], words=marker))
+    return out
+
+
+def _refusals(text: str, used, b: dict) -> list[str]:
+    """Why a sentence that passed every check of check_sentence() is refused all the same (REFUSALS), or []. A caveat
+    of the closed grammar asserts nothing of its claims and is never refused here."""
+    if not used or insufficiency(text, b.get("question") or ""):
+        return []
+    return _restriction_lost(text, used)
+
+
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
     """Accepted and rejected model sentences (see the module docstring). A sentence whose ONLY fault is stating an
     unsupported claim plainly, and that restates its cited claim (_restates), is attributed to its source(s)
@@ -2459,7 +2534,11 @@ def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
             earlier.update(cites)
             rejected.append({"text": _clean(s["cut"][0]), "reasons": [CUT_WORDS.format(words=_clean(s["cut"][1], 80))]})
         else:
-            earlier.update(cites)
+            earlier.update(cites)       # counted whether refused or not: later sentences are judged as before
+            refused = _refusals(text, used, b)
+            if refused:
+                rejected.append({"text": text, "reasons": refused})
+                continue
             accepted.append({"text": text, "citations": sorted(set(cites)), "claims": list(dict.fromkeys(ids)),
                              "states": {c["id"]: c["state"] for c in used}, "hedged": is_hedged}
                             | ({"insufficiency": True} if insufficiency(text, b.get("question") or "") else {})

@@ -249,12 +249,14 @@ def test_a_claim_that_holds_an_attribution_phrase_is_always_judged():
         short = claim.split(" according to ")[0]
         for text in (f"{short}, according to one source.", f"{claim[:-1]}, according to one source.", claim):
             assert not reasoning.restates(item(text, b), b), (claim, text)
-    # through the answer path: what the model shortens itself passes the guard as any shortening does, and the
-    # critic reads it
+    # through the answer path: what the model shortens itself was accepted by 0.7.0 as any shortening is ("The bridge
+    # is open, according to one source."); the claim carries an exception, so the guard now refuses a sentence that
+    # does not hold it whole (reasoning.RESTRICTION_LOST)
     b = one_claim("insufficient", (3,), text=QUALIFIED)
     for written in ("The bridge is open.", "The bridge is open according to the official records."):
-        ok = kept(b, (written, ["C1"]))
-        assert ok[0]["text"] == "The bridge is open, according to one source." and not reasoning.restates(ok[0], b)
+        ok, bad = reasoning.guard(reasoning.compose({"sentences": [{"claims": ["C1"], "text": written}]}, b), b)
+        assert ok == [] and [r["text"] for r in bad] == ["The bridge is open, according to one source."]
+        assert bad[0]["reasons"] == [reasoning.RESTRICTION_LOST.format(claim="C1", words="except")]
     b = one_claim("supported", (3,), text=QUALIFIED)              # supported: nothing appended, nothing removed
     ok = kept(b, (QUALIFIED, ["C1"]))
     assert ok[0]["text"] == QUALIFIED and not reasoning.restates(ok[0], b)
