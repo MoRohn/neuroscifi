@@ -123,8 +123,25 @@ if [ "$MEMORY" -eq 1 ]; then
   [[ "$MEMORY_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "--memory needs --memory-user USER (a plain account name; got: '$MEMORY_USER')"
   [ "$MEMORY_USER" != root ] || die "--memory-user must not be root"
   [[ "$SOURCE" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--memory: the source folder path has unexpected characters: $SOURCE"
-  if [ -z "$MEMORY_SERVER" ]; then      # the shipped setting, read as data (never sourced here)
-    MEMORY_SERVER="$(sed -n 's/^NSF_MEMORY_SERVER=\([a-z]*\)[[:space:]]*$/\1/p' "$SOURCE/deploy/memory/memory.env" 2>/dev/null | tail -n 1)"
+  if [ -z "$MEMORY_SERVER" ]; then
+    # The setting as run.sh resolves it for MEMORY_USER (review F10: the owner's override was ignored, and the unit
+    # of the other way then refused to start): the shipped memory.env, then the override in MEMORY_USER's home.
+    # Both are read as data, never sourced, and only the forms `NSF_MEMORY_SERVER=x` (optionally `export`ed or
+    # quoted) count. The override is read only if it is a plain file owned by MEMORY_USER (this runs as root).
+    server_in() {
+      sed -nE "s/^[[:space:]]*(export[[:space:]]+)?NSF_MEMORY_SERVER=[\"']?([a-z]*)[\"']?[[:space:]]*(#.*)?$/\\2/p" "$1" 2>/dev/null | tail -n 1
+    }
+    MEMORY_SERVER="$(server_in "$SOURCE/deploy/memory/memory.env")"
+    MEMORY_HOME="$(getent passwd "$MEMORY_USER" 2>/dev/null | cut -d: -f6 || true)"   # an unknown account: none
+    OVERRIDE_ENV="$MEMORY_HOME/.config/neuroscifi/memory/memory.env"
+    if [ -n "$MEMORY_HOME" ] && [ -f "$OVERRIDE_ENV" ] && [ ! -L "$OVERRIDE_ENV" ]; then
+      if [ "$(stat -c %U "$OVERRIDE_ENV" 2>/dev/null)" = "$MEMORY_USER" ]; then
+        OWNER_SERVER="$(server_in "$OVERRIDE_ENV")"
+        MEMORY_SERVER="${OWNER_SERVER:-$MEMORY_SERVER}"
+      else
+        echo "# warning: $OVERRIDE_ENV is not owned by $MEMORY_USER; its NSF_MEMORY_SERVER is not read"
+      fi
+    fi
     MEMORY_SERVER="${MEMORY_SERVER:-single}"
   fi
   case "$MEMORY_SERVER" in single|vllm) ;; *) die "--memory-server must be single or vllm (got: '$MEMORY_SERVER')" ;; esac

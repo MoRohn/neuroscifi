@@ -65,6 +65,43 @@ def test_memory_units_run_the_deploy_script_in_the_foreground_under_the_voice_un
     assert sandbox(name) == sandbox("neuroscifi-voice-asr.service")
 
 
+def test_install_sh_follows_the_owners_override_of_the_memory_server(tmp_path):
+    """F10: the installer read NSF_MEMORY_SERVER from the shipped memory.env only, so with the owner's override
+    set to vllm it installed the single server's unit, which then refused to start. It now reads the override in
+    the memory account's home as run.sh does: as data, only a plain file that account owns."""
+    import getpass
+    import os
+    import subprocess
+    me = getpass.getuser()
+    home = tmp_path / "home"
+    folder = home / ".config" / "neuroscifi" / "memory"
+    folder.mkdir(parents=True)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "getent").write_text(f'#!/usr/bin/env bash\necho "$2:x:1:1::{home}:/bin/bash"\n')
+    (bin_dir / "getent").chmod(0o755)
+    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    script = str(ROOT / "deploy" / "install.sh")
+
+    def installed(user):
+        done = subprocess.run(["bash", script, "--dry-run", "--unit-dir", str(tmp_path / "units"), "--memory",
+                               "--memory-user", user], capture_output=True, text=True, env=env)
+        assert done.returncode == 0, done.stderr
+        return [name for name in ("neuroscifi-memory.service", "neuroscifi-memory-embed.service",
+                                  "neuroscifi-memory-rerank.service") if f"/{name} >" in done.stdout], done.stdout
+    for line, server in (("NSF_MEMORY_SERVER=vllm", "vllm"), ("export NSF_MEMORY_SERVER='vllm'  # two", "vllm"),
+                         ('NSF_MEMORY_SERVER="single"', "single")):
+        (folder / "memory.env").write_text(f"NSF_MEMORY_PORT_NOTE=1\n{line}\n")
+        assert installed(me)[0] == list(INSTALLED_BY_MEMORY_FLAG[server]), line
+    (folder / "memory.env").write_text("NSF_MEMORY_SERVER=vllm\n")
+    units, said = installed("nsfmodels")                  # the file belongs to another account: not read
+    assert units == list(INSTALLED_BY_MEMORY_FLAG["single"]) and "is not owned by nsfmodels" in said
+    (folder / "memory.env").unlink()
+    (tmp_path / "elsewhere.env").write_text("NSF_MEMORY_SERVER=vllm\n")
+    (folder / "memory.env").symlink_to(tmp_path / "elsewhere.env")    # a link is never followed as root
+    assert installed(me)[0] == list(INSTALLED_BY_MEMORY_FLAG["single"])
+
+
 def test_install_sh_installs_the_memory_units_only_when_asked_and_renders_their_placeholders(tmp_path):
     import subprocess
     script = str(ROOT / "deploy" / "install.sh")
