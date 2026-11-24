@@ -2442,7 +2442,14 @@ def _attributed(text: str, cites) -> str:
 # prove: the claim's own words, unbroken and in order, stand in the sentence.
 RESTRICTION_LOST = ("does not hold {claim} whole, which carries a restriction ('{words}'): a claim with an exception "
                     "or a condition can only be restated word for word")
-REFUSALS = (RESTRICTION_LOST,)
+# A word the sentence shares with its cited claims is written as the claims write it. The checks above compare
+# words without their case (stems, names, anchors), so 0.7.0 accepted "Exposure to Co rose" for a claim about CO
+# (carbon monoxide became cobalt), "the us team" for "the US team" and "turkey exports" for "Turkey exports". One
+# difference is allowed: the first letter, where one of the two words starts its sentence ("In 2025 exposure to CO
+# rose." for "Exposure to CO rose in 2025.").
+CASE_CHANGED = ("writes '{word}' where its cited claims write '{theirs}': a changed capital can make another word "
+                "of it")
+REFUSALS = (RESTRICTION_LOST, CASE_CHANGED)
 # Exceptions: what follows is taken out of what the claim says.
 _EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|exclusive of|other than|apart from|"
               r"aside from|save for|barring|but not|"
@@ -2495,12 +2502,82 @@ def _restriction_lost(text: str, used) -> list[str]:
     return out
 
 
+_RUN = re.compile(r"[^\W\d_]+")      # a run of letters: "Lumen-7" is "Lumen", "NumPy's" is "NumPy" and "s"
+_TITLE_LIKE = 0.7                    # a claim with this share of capitalised words is written as a title is
+# where a word starts its sentence: at the start of the text, after a sentence end, a colon or an opening quote or
+# bracket ('Crossref record: "Predictive coding in the visual cortex ..."')
+_STARTS = re.compile(r"(?:^|[.!?:;\"“‘(\[])[\s\"“‘'(\[]*$")
+
+
+def _own_words(text: str, question: str = "") -> str:
+    """`text` without what code put there: the attribution compose() appends for a weak state (HEDGES), the lead the
+    guard's repair puts in front (_attributed), and the caveat clauses of the closed grammar. What is left is what
+    the sentence says of its claims in the model's (or the claim's) words."""
+    for hedge in HEDGES.values():
+        for who in ("one source", "the cited sources"):
+            tail = f", {hedge.format(who=who)}."
+            if text.endswith(tail):
+                text = text[:-len(tail)]
+    for lead in ("According to one source, ", "According to the cited sources, "):
+        if text.startswith(lead):
+            text = text[len(lead):]
+    return _outside_gaps(text, question)
+
+
+def _case_changed(text: str, used, question: str = "") -> list[str]:
+    """CASE_CHANGED for each word (a run of two or more letters) of the sentence's own words (_own_words) that its
+    cited claims hold only in another case. Not judged:
+      - the form the owner wrote in the question ("numpy" for the claim's "NumPy", when the owner asked about
+        "numpy"); the question's capitals excuse nothing else ("Who ...?" does not make "who" of the claim's "WHO");
+      - a difference in the first letter alone where the sentence's word starts its sentence (_STARTS);
+      - when the claim's form stands in the sentence as well: a function word of the sentence's own beside it
+        ("... from May to September, but this may be out of date": T.STOPWORDS and the guard's auxiliaries and
+        hedge words), and nothing else ("Turkey raised tariffs on turkey" is refused);
+      - when it does not: a difference in the first letter alone where the claim's word starts its sentence, or
+        the claim is written as a title is (_TITLE_LIKE).
+    Only the cited claims say how a word is written: a source's title is a page's label and writes names as the
+    site likes ("numpy | Snyk" beside a sentence about NumPy, kept live)."""
+    folded, lenient = {}, set()          # casefold -> forms the claims write; forms whose first letter is free
+    for c in used:
+        t = _clean(_norm(c["text"]))
+        runs = list(_RUN.finditer(t))
+        capitals = sum(1 for m in runs if m.group(0)[:1].isupper())
+        titled = len(runs) > 3 and capitals >= _TITLE_LIKE * len(runs)
+        for m in runs:
+            folded.setdefault(m.group(0).casefold(), set()).add(m.group(0))
+            if titled or _STARTS.search(t[:m.start()]):
+                lenient.add(m.group(0))
+    asked = {m.group(0) for m in _RUN.finditer(_clean(_norm(question)))}
+    own = _own_words(text, question)
+    mine = {m.group(0) for m in _RUN.finditer(own)}
+    out = []
+    for m in _RUN.finditer(own):
+        w = m.group(0)
+        theirs = folded.get(w.casefold())
+        if len(w) < 2 or not theirs or w in theirs or w in asked:
+            continue                    # as the claims write it, or as the owner wrote it in the question
+        first_letter = [t for t in theirs if w[1:] == t[1:]]
+        if first_letter and _STARTS.search(own[:m.start()]):
+            continue                    # the capital, or the lack of one, of a sentence's first word
+        if theirs & mine:
+            # the claim's form stands in the sentence too, so this is a second word, not the same one re-cased:
+            # the sentence's own function word ("... but this may be out of date"), or another word altogether
+            # ("Turkey raised tariffs on turkey")
+            if w.islower() and (w in T.STOPWORDS or w in _AUX or w in _ENTAIL_META):
+                continue
+        elif any(t in lenient for t in first_letter):
+            continue                    # the claim's word starts its sentence there, or the claim is written as a title
+        out.append(CASE_CHANGED.format(word=w, theirs="/".join(sorted(theirs))))
+    return list(dict.fromkeys(out))
+
+
 def _refusals(text: str, used, b: dict) -> list[str]:
     """Why a sentence that passed every check of check_sentence() is refused all the same (REFUSALS), or []. A caveat
     of the closed grammar asserts nothing of its claims and is never refused here."""
-    if not used or insufficiency(text, b.get("question") or ""):
+    question = b.get("question") or ""
+    if not used or insufficiency(text, question):
         return []
-    return _restriction_lost(text, used)
+    return _restriction_lost(text, used) + _case_changed(text, used, question)
 
 
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:

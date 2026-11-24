@@ -18,6 +18,8 @@ sentences this tree does not yet treat so, and goes to zero gap by gap.
 Closed so far:
   restriction  a cited claim that carries an exception or a condition is restated whole or not at all
                (reasoning.RESTRICTION_LOST). Stricter only.
+  case         a word the sentence shares with its cited claims is written as they write it
+               (reasoning.CASE_CHANGED). Stricter only.
 """
 import importlib.util
 import json
@@ -34,16 +36,17 @@ gd = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gd)
 
 GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording")
-INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 229}
-SIZES = {"restriction": 84, "case": 36, "unseen": 35, "restatement": 36, "cut": 33, "wording": 5}
+INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 241}
+SIZES = {"restriction": 84, "case": 48, "unseen": 35, "restatement": 36, "cut": 33, "wording": 5}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 0, "case": 21, "unseen": 18, "restatement": 8, "cut": 9, "wording": 0}
+UNMET = {"restriction": 0, "case": 0, "unseen": 18, "restatement": 8, "cut": 9, "wording": 0}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
 RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
+CASE_MARK = reasoning.CASE_CHANGED.split("'")[0]
 # What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
-STRICTER = {"review": 26, "gap": 74}
+STRICTER = {"review": 26, "gap": 98}
 LOOSENED = {}
-REFUSED = {CUT_MARK: 42, RESTRICTION_MARK: 58}
+REFUSED = {CUT_MARK: 42, RESTRICTION_MARK: 58, CASE_MARK: 24}
 
 
 @pytest.fixture(scope="module")
@@ -73,7 +76,7 @@ def test_the_reference_is_the_attack_tested_commit_and_its_inputs_are_of_four_ki
     assert reference["commit"] == "307b9070f973be63b1cdbd8da222da8114bd32d6"
     assert reference["reference_guard_tests"] == "827 passed"          # that commit's own guard tests, while recording
     assert reference["cases_by_origin"] == INPUTS
-    assert len(reference["cases"]) == sum(INPUTS.values()) == 1705
+    assert len(reference["cases"]) == sum(INPUTS.values()) == 1717
     kinds = {c["kind"] for c in reference["cases"]}
     assert kinds == {"compose", "guard", "answer"}
 
@@ -120,6 +123,13 @@ def test_what_is_stricter_is_a_subset_with_identical_text(result):
                     refused[m] = refused.get(m, 0) + 1
     assert by_origin(result["stricter"]) == STRICTER
     assert refused == REFUSED
+
+
+def test_no_reason_of_the_reference_starts_like_a_refusal(reference):
+    """The refusal marks tell the added refusals from every reason 307b907 gives: none of its reasons starts so."""
+    marks = gd.refusal_marks(reasoning)
+    reasons = {x for c in reference["cases"] for r in c["reference"].get("rejected") or [] for x in r["reasons"]}
+    assert len(reasons) > 300 and not [x for x in reasons if x.startswith(marks)]
 
 
 def test_what_is_loosened_is_of_a_class_the_differential_proves(result):

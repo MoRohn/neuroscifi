@@ -1549,6 +1549,7 @@
 ]
 ],
 "gap": "case",
+"q": "Is NumPy 2.5.4 affected?",
 "s": [
 [
 "The parser flaw affects numpy 2.5.4.",
@@ -1570,6 +1571,209 @@
 "C1"
 ],
 "accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The parser flaw affects NumPy 2.5.4",
+[
+1,
+2
+]
+]
+],
+"gap": "case",
+"q": "Is numpy 2.5.4 affected?",
+"s": [
+[
+"The parser flaw affects numpy 2.5.4.",
+[
+"C1"
+],
+"accept",
+"the form the owner wrote in the question"
+],
+[
+"The parser flaw affects NUMPY 2.5.4.",
+[
+"C1"
+],
+"reject"
+]
+]
+},
+{
+"claims": [
+[
+"temporally_unresolved",
+"The Tolvane Lighthouse is open to visitors every day from May to September",
+[
+1,
+2
+]
+]
+],
+"gap": "case",
+"q": "When is the lighthouse open?",
+"s": [
+[
+"The Tolvane Lighthouse is open to visitors every day from May to September, but this may be out of date.",
+[
+"C1"
+],
+"accept",
+"the sentence's own 'may' beside the claim's 'May'"
+],
+[
+"The Tolvane Lighthouse is open to visitors every day from may to September.",
+[
+"C1"
+],
+"reject"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Turkey raised tariffs on poultry in 2025",
+[
+1,
+2
+]
+]
+],
+"gap": "case",
+"q": "Who raised tariffs?",
+"s": [
+[
+"Turkey raised tariffs on turkey in 2025.",
+[
+"C1"
+],
+"reject",
+"a second word made of the claim's first"
+],
+[
+"Turkey raised tariffs in 2025.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"US sanctions hit the firm in 2025",
+[
+1,
+2
+]
+]
+],
+"gap": "case",
+"q": "What hit the firm?",
+"s": [
+[
+"US sanctions hit us in 2025.",
+[
+"C1"
+],
+"open",
+"a pronoun of the sentence's own beside the claim's 'US': function words beside the claim's form are not judged"
+],
+[
+"US sanctions hit the firm in 2025.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Zephyr Labs Ships Compiler 4.2 With Faster Linking And New Diagnostics",
+[
+1,
+2
+]
+]
+],
+"gap": "case",
+"q": "What did Zephyr Labs ship?",
+"s": [
+[
+"Zephyr Labs ships compiler 4.2 with faster linking and new diagnostics.",
+[
+"C1"
+],
+"accept",
+"a claim written as a title is"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The mayor said: \"Rain delayed the launch by two days\"",
+[
+1,
+2
+]
+]
+],
+"gap": "case",
+"q": "What delayed the launch?",
+"s": [
+[
+"The mayor said that rain delayed the launch by two days.",
+[
+"C1"
+],
+"accept",
+"the claim's word starts a quotation"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The IT department said it moved to the new building in 2025",
+[
+1,
+2
+]
+]
+],
+"gap": "case",
+"q": "When did the department move?",
+"s": [
+[
+"The IT department said it moved in 2025.",
+[
+"C1"
+],
+"accept"
+],
+[
+"It moved to the new building in 2025.",
+[
+"C1"
+],
+"accept",
+"a capital at the start of the sentence"
 ]
 ]
 },

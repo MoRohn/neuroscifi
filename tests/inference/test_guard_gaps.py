@@ -121,3 +121,65 @@ def test_a_caveat_of_the_closed_grammar_is_never_refused_for_a_restriction():
     text = "The evidence does not establish whether numpy 2.5.5 is secure."
     assert reasoning.insufficiency(text, b["question"])
     assert reasoning._refusals(text, b["claims"], b) == []
+
+
+# ---- letter case ---------------------------------------------------------------------------------------------------
+
+def claims_of(*texts):
+    return [{"id": f"C{i}", "text": t} for i, t in enumerate(texts, 1)]
+
+
+@pytest.mark.parametrize("claim, sentence, word, theirs", [
+    ("Exposure to CO rose in 2025", "Exposure to Co rose in 2025.", "Co", "CO"),                 # another element
+    ("The US team shipped the patch on 3 May 2026", "The us team shipped the patch.", "us", "US"),
+    ("The US team shipped the patch on 3 May 2026", "The patch shipped on 3 may 2026.", "may", "May"),
+    ("Polish regulators fined the firm", "Polish regulators fined the Firm.", "Firm", "firm"),
+    ("iOS 19 ships with the eSIM transfer tool", "iOS 19 ships with the ESIM transfer tool.", "ESIM", "eSIM"),
+    ("NASA signed the Lumen-7 agreement", "Nasa signed the Lumen-7 agreement.", "Nasa", "NASA"),  # more than a first letter
+    ("NASA signed the Lumen-7 agreement", "NASA signed the lumen-7 agreement.", "lumen", "Lumen"),
+    ("Turkey raised tariffs on poultry", "Turkey raised tariffs on turkey.", "turkey", "Turkey"),  # a second word
+])
+def test_a_word_of_the_claims_in_another_case_is_a_change(claim, sentence, word, theirs):
+    assert reasoning._case_changed(sentence, claims_of(claim), "q") == [
+        reasoning.CASE_CHANGED.format(word=word, theirs=theirs)]
+
+
+@pytest.mark.parametrize("claim, sentence, question", [
+    ("Exposure to CO rose in 2025", "In 2025 exposure to CO rose.", "q"),            # the claim's first word, moved
+    ("Polish regulators fined the firm", "polish regulators fined the firm.", "q"),  # the sentence's first word
+    ("The IT department said it moved in 2025", "It moved in 2025.", "q"),           # both forms are the claim's
+    ("The parser flaw affects NumPy 2.5.4", "The parser flaw affects numpy 2.5.4.", "Is numpy 2.5.4 affected?"),
+    ("The lighthouse is open from May to September", "The lighthouse is open from May to September, but this may be "
+     "out of date.", "q"),                                                           # a function word of its own
+    ("Zephyr Labs Ships Compiler 4.2 With Faster Linking", "Zephyr Labs ships compiler 4.2 with faster linking.", "q"),
+    ('The mayor said: "Rain delayed the launch"', "The mayor said that rain delayed the launch.", "q"),
+    ("The U.S. team shipped it", "The u.s. team shipped it.", "q"),                  # single letters are not judged
+    ("The tower is 72 metres tall", "The tower is 72 metres tall, according to one source.", "q"),
+    ("Open Source tools found the flaw", "Open Source tools found the flaw, according to one source.", "q"),
+])
+def test_what_the_case_rule_does_not_judge(claim, sentence, question):
+    assert reasoning._case_changed(sentence, claims_of(claim), question) == []
+
+
+def test_the_case_rule_reads_claims_only_and_never_the_codes_own_attribution():
+    """A source's title is no evidence of how a word is written ("numpy | Snyk" beside a kept live sentence about
+    NumPy), and the words compose() appends ("according to one source") are code's, whatever case a claim gives
+    the same words."""
+    b = {"question": "q", "verdict": None, "sources": [{"id": 1, "title": "numpy | Snyk", "published": "undated"}],
+         "claims": [{"id": "C1", "state": "insufficient", "sources": [1], "published": None, "event": None,
+                     "text": "One Source reported that NumPy 2.5.5 fixes the parser flaw"}]}
+    ok, bad = judged(b, "NumPy 2.5.5 fixes the parser flaw.")
+    assert bad == [] and ok[0]["text"] == "NumPy 2.5.5 fixes the parser flaw, according to one source."
+    assert reasoning._own_words(ok[0]["text"], "q") == "NumPy 2.5.5 fixes the parser flaw"
+    ok, bad = judged(b, "numpy 2.5.5 fixes the Parser flaw.")       # the title's "numpy" excuses nothing
+    assert ok == [] and bad[0]["reasons"] == [reasoning.CASE_CHANGED.format(word="numpy", theirs="NumPy"),
+                                              reasoning.CASE_CHANGED.format(word="Parser", theirs="parser")]
+
+
+def test_a_sentence_can_be_refused_for_a_restriction_and_for_a_capital_at_once():
+    b = one_claim("supported", (1, 2), text="The US patch covers every model except the 2019 series",
+                  question="What does the patch cover?")
+    ok, bad = judged(b, "The us patch covers every model.")
+    assert ok == [] and bad[0]["reasons"] == [
+        reasoning.RESTRICTION_LOST.format(claim="C1", words="except"),
+        reasoning.CASE_CHANGED.format(word="us", theirs="US")]
