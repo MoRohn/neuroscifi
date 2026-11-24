@@ -777,10 +777,12 @@ class PocketServer(ThreadingHTTPServer):
         beacon = getattr(self, "audio_beacon", None)   # started with the voice hub (voice.http.hub_for)
         if beacon is not None:
             beacon.close()                               # an open session's audio state is withdrawn at once
+        super().server_close()
+        # Last (review F2): a request still being answered may write its transcript; the hub, once closed, makes
+        # such a write in that request's own thread and starts no writer again.
         hub = getattr(self, "voice_hub", None)
         if hub is not None:
             hub.close()                                  # its transcript writer and task followers end here
-        super().server_close()
 
     def process_request(self, request, client_address):
         conn = _Connection(request, client_address[0])

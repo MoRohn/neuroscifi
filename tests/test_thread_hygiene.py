@@ -13,25 +13,81 @@ def _hub_threads():
     return [t for t in threading.enumerate() if t.name in ("nsf-voice-writer", "nsf-voice-follow")]
 
 
-def test_a_voice_hubs_writer_ends_when_the_hub_closes_and_a_hub_used_again_starts_a_new_one(tmp_path):
+def _hub(tmp_path):
     from neuroscifi.instance import store
     from neuroscifi.voice.hub import VoiceHub
     path = tmp_path / "i.sqlite"
     store.create(path, time.time()).close()
+    return VoiceHub(path)
+
+
+def test_a_voice_hubs_writer_ends_when_the_hub_closes_and_a_later_write_starts_no_thread(tmp_path):
+    """Review F2(a): a reply that finished after close() wrote its transcript through a new writer that nothing
+    stopped. Closing is final now: the write is made in the caller's thread."""
     before = set(_hub_threads())
-    hub = VoiceHub(path)
+    hub = _hub(tmp_path)
     done = []
     assert hub._write_later(lambda: done.append(1))
     writer = hub._writer
     assert writer.is_alive()
     hub.close()
     assert done == [1] and not writer.is_alive() and set(_hub_threads()) == before      # the write was finished first
-    assert hub._write_later(lambda: done.append(2))                # used again: a new writer
-    hub.drain()
-    assert done == [1, 2] and hub._writer is not writer
-    hub.close()
+    caller = []
+    assert hub._write_later(lambda: (done.append(2), caller.append(threading.current_thread())))
+    assert done == [1, 2] and caller == [threading.current_thread()]      # made at once, in this thread
+    assert hub._writer is None and set(_hub_threads()) == before
+    assert hub._write_later(lambda: 1 / 0)                         # a failing write is dropped, as the writer did
     hub.close()                                                    # twice is harmless
     assert set(_hub_threads()) == before
+
+
+def test_a_write_racing_with_close_neither_starts_a_second_writer_nor_stalls_close(tmp_path):
+    """Review F2(b): a write landing between close()'s swap and its stop started a second writer; one of the two
+    took the single stop, the other ran for ever, and close() waited its whole join timeout. The race is made
+    deterministic: the write is run by another thread at the moment close() sends the stop, and waited for."""
+    from neuroscifi.voice import hub as hub_mod
+    before = set(_hub_threads())
+    hub = _hub(tmp_path)
+    done = []
+    assert hub._write_later(lambda: done.append("before"))
+    hub.drain()
+
+    real_put = hub._writes.put
+
+    def racing_put(item, *args, **kwargs):          # the writer keeps reading this same queue
+        if item is hub_mod._STOP:
+            racer = threading.Thread(target=hub._write_later, args=(lambda: done.append("raced"),))
+            racer.start()
+            racer.join(5)
+        return real_put(item, *args, **kwargs)
+    hub._writes.put = racing_put
+    started = time.monotonic()
+    hub.close(timeout=3.0)
+    took = time.monotonic() - started
+    deadline = time.monotonic() + 2
+    while set(_hub_threads()) - before and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert done == ["before", "raced"]                            # written once, not lost and not twice
+    assert took < 1.0 and not set(_hub_threads()) - before, (took, [t.name for t in _hub_threads()])
+
+
+def test_the_servers_close_their_hub_after_their_own_sockets(tmp_path):
+    """Review F2: the hub was closed before the server, while its requests could still be answered. Now it is the
+    last step (and a write that comes after it is made inline, so the order is not what keeps threads from leaking)."""
+    from neuroscifi.console.server import ConsoleServer
+    from neuroscifi.instance import store
+    from neuroscifi.pocket.server import PocketServer
+    path = tmp_path / "i.sqlite"
+    store.create(path, time.time()).close()
+    for server in (ConsoleServer(path, 0), PocketServer(("127.0.0.1", 0), tls=None)):
+        seen = []
+
+        class Hub:
+            def close(self):
+                seen.append(server.socket.fileno())
+        server.voice_hub = Hub()
+        server.server_close()
+        assert seen == [-1], type(server).__name__                 # the listening socket was already closed
 
 
 def test_a_follower_of_a_task_that_never_ends_stops_when_the_hub_closes(tmp_path, monkeypatch):

@@ -143,7 +143,8 @@ class VoiceHub:
         self._followers = threading.BoundedSemaphore(MAX_FOLLOWERS)
         self._writes: queue.Queue = queue.Queue(WRITE_QUEUE)
         self._writer = None
-        self._closed = threading.Event()      # close(): this hub's own threads end
+        self._closed = threading.Event()      # close(): this hub's own threads end, and it starts none again
+        self._inline = threading.Lock()       # after close: transcript writes made in the caller's thread, one at a time
         from pathlib import Path
         self.selftests = vselftest.SelfTests(Path(db_path).resolve().parent / "voice-selftest", clock)
         self.metrics = {"utterances": 0, "asr_ms": deque(maxlen=200), "reply_ms": deque(maxlen=200),
@@ -183,16 +184,29 @@ class VoiceHub:
             tx.sweep(db, self.clock())
 
     def _write_later(self, job) -> bool:
-        """Queue a transcript write for the writer thread (FIFO, so a session's writes keep their order)."""
+        """Queue a transcript write for the writer thread (FIFO, so a session's writes keep their order). After
+        close() the write is made at once in the calling thread: a reply that finishes after its server closed
+        still has its transcript written, and no writer is started that nothing would stop (review F2).
+
+        Whether the hub is closed, the start of a writer and the queueing of the job happen under one lock, the
+        same lock close() takes to mark the hub closed: so every job queued before close() is ahead of the stop
+        it sends, and no job can be queued behind it or start a second writer."""
         with self.lock:
-            if self._writer is None or not self._writer.is_alive():
-                self._writer = threading.Thread(target=self._write_loop, daemon=True, name="nsf-voice-writer")
-                self._writer.start()
-        try:
-            self._writes.put_nowait(job)
-            return True
-        except queue.Full:
-            return False
+            if not self._closed.is_set():
+                if self._writer is None or not self._writer.is_alive():
+                    self._writer = threading.Thread(target=self._write_loop, daemon=True, name="nsf-voice-writer")
+                    self._writer.start()
+                try:
+                    self._writes.put_nowait(job)
+                    return True
+                except queue.Full:
+                    return False
+        with self._inline:                   # closed: one inline write at a time, as the writer did them
+            try:
+                job()
+            except Exception:   # a forgotten or ended session: the write has nowhere to go
+                pass
+        return True
 
     def _write_loop(self):
         while True:
@@ -215,9 +229,10 @@ class VoiceHub:
         finishes what is queued and ends, and the threads that follow a research task stop looking: the task
         itself goes on (it belongs to the research system) and its answer is in the task. Before this a hub's
         threads could only end with the process: one writer, and up to MAX_FOLLOWERS followers that each looked for
-        up to FOLLOW_MAX. A hub used again afterwards starts a new writer."""
-        self._closed.set()
-        with self.lock:
+        up to FOLLOW_MAX. Closing is final: a write that comes later is made in the thread that asks for it
+        (_write_later), so nothing can start a writer again."""
+        with self.lock:                      # the lock of _write_later: nothing is queued behind the stop below
+            self._closed.set()
             writer, self._writer = self._writer, None
         if writer is not None and writer.is_alive():
             try:
