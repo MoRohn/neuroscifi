@@ -422,30 +422,65 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   one-character ellipsis). The cost is a few string comparisons. The code never changes a sentence because of this
   test; it only decides whether the critic is asked about it. Tests:
   `tests/inference/test_inference_critique_scope.py`.
-- **The model's own attribution, and the one refusal added after 0.7.0.** `compose()` and the guard are the ones
-  of 0.7.0 (commit `307b907`), which eight review rounds attacked: `compose()` replaces a leading "According to
-  <source word>, " and a trailing "… according to <source word>" by the code's attribution, and the trailing form
-  takes up to 40 characters after the source word with it. Those characters can name the source further ("a report
-  by Reuters") or be what the sentence says: 0.7.0 showed the claim "The bridge is open according to the official
-  records except on Sundays", copied word for word from one unsupported source, as "The bridge is open, according to
-  one source.". Code cannot tell the two apart, and keeping the words was tried and withdrawn (a claim's own
-  "according to the official advisory of …" then stood in the answer as if it were support). So the sentence is
-  composed and judged exactly as before, and when the guard would accept it, it is refused instead, with the reason
-  "ends in its own attribution followed by more words ('except on Sundays'): replacing the attribution would drop
-  them" (`reasoning.CUT_WORDS`; `compose()` marks the item with `cut`). The refused sentence still counts as the
-  earlier sentence it would have been, so no other sentence's verdict moves. Nothing else differs from 0.7.0:
-  `tests/inference/test_guard_differential.py` replays 1,476 recorded inputs (every argument that commit's own
-  guard tests pass to `compose()` and the guard, the security review's corpora, the live benchmark's sentences)
-  and compares every composed sentence, accepted item and rejection with what `307b907` gives
-  (`scripts/guard_differential.py record --ref 307b907` rewrites the reference from that commit's source): 1,459
-  identical, 17 that differ only by this refusal, all in the review's corpora, none among the attack suite's 1,137
-  inputs or the benchmark's 248. Known and unchanged, each recorded in the reference: a sentence the model itself
-  shortens so that a claim's exception is gone passes the lexical guard, as any shortening does (it is not a
-  restatement, so the critique reads it); an "according to the cited sources" set between commas inside a sentence
-  is not replaced, so one source can be shown as "…, according to the cited sources, …, according to one source.";
-  a supported claim that ends in a bare number after "and" ("… in versions 2 and 3") is rejected when copied word
-  for word ("3: says what its cited claims say of something else"); and the one-version form of an inverted
-  exception ("… except 2.5.4 and 2.5.5" stated as "… in 2.5.4.") is accepted.
+- **What the guard does beyond 0.7.0, and how that is held.** `compose()` and the guard are the ones of 0.7.0
+  (commit `307b907`), which eight review rounds attacked, with additions that each either only refuse or are of
+  one proven class. `tests/inference/test_guard_differential.py` replays 1,732 recorded inputs (every argument that
+  commit's own guard tests pass to `compose()` and the guard, the security review's corpora, the live benchmark's
+  sentences, and one adversarial corpus per gap closed since: `tests/inference/fixtures/guard_corpus_gaps.json`,
+  256 sentences, each labelled reject, accept, lost or open) and compares every composed sentence, accepted item and
+  rejection with what `307b907` gives (`scripts/guard_differential.py record --ref 307b907` rewrites the reference
+  from that commit's source). A case may differ only as *stricter* (a sentence 307b907 accepted is refused, with
+  reasons that all start with a refusal mark: `reasoning.CUT_WORDS`, `reasoning.REFUSALS`) or *loosened* (a
+  sentence 307b907 rejected is accepted, of the one class the script proves); anything else fails the test. Today:
+  1,579 identical, 136 stricter, 17 loosened, 0 different; none of the attack suite's 1,137 inputs and none of the
+  benchmark's 248 sentences moved. The refusals are asked after every 0.7.0 check has accepted the sentence, and a
+  refused sentence still counts as the earlier sentence it would have been, so no other sentence's verdict moves.
+  - *A restriction must survive* (`reasoning.RESTRICTION_LOST`): "does not hold C1 whole, which carries a
+    restriction ('except'): a claim with an exception or a condition can only be restated word for word". A cited
+    claim that carries an exception or a condition (a closed list: except, excluding, other than, apart from, save
+    for, with the exception of, but not, all but, barring, unless, only if, provided that, as long as, a reduced
+    "when used", and "if" where it is a condition, not "even if", "as if", "unclear if", "if any") must stand in the
+    sentence whole, its words unbroken and in order. 0.7.0 accepted "Every release is patched." and "… patched in
+    2.5.4." for "Every release is patched except 2.5.4 and 2.5.5", and "The bridge is open, according to one
+    source." for "… except on Sundays": the entailment check counts words. Code cannot tell where a restriction's
+    scope ends, so faithful sentences are lost on purpose ("Admission is free." from "The museum is open daily
+    except Mondays, and admission is free"). Left out: bounds of time ("until", "before", "after", "while"), whose
+    loss generalises over time and inverts nothing, and an exception written as a negated phrase ("for all users
+    not on Windows").
+  - *Letter case* (`reasoning.CASE_CHANGED`): "writes 'Co' where its cited claims write 'CO': a changed capital can
+    make another word of it". A word (two or more letters) that the cited claims hold only in another case.
+    Allowed: the form the owner wrote in the question; a first-letter difference where the sentence's word starts
+    its sentence, or, when the claim's form is not in the sentence, where the claim's word starts its own sentence
+    or the claim is written as a title is; a function word of the sentence's own beside the claim's form ("… from
+    May to September, but this may be out of date"). Source titles are no evidence of spelling.
+  - *Characters a reader does not see* (`reasoning.UNSEEN_IN_CLAIM`): "rests on characters a reader does not see in
+    C1 (U+202C, U+202E): what such a claim shows and what it holds can differ". Extraction removes such characters
+    from fetched text, character references included, and drops a line that a direction override reorders
+    (`text.as_seen`); a claim that reached the guard holding one (stored earlier, or by another road) is not cited.
+  - *The model's own attribution with further words* (`reasoning.CUT_WORDS`): `compose()` replaces a trailing "…
+    according to <source word>" by the code's attribution and takes up to 40 characters after it. When those words
+    only name the source further ("by Reuters", "from the NumPy security team": `reasoning._names_the_source`,
+    "by"/"from", at most six words with a capitalised name, no number, stopword, negation, restriction, word of
+    scope, quantity, time or comparison, and no verb form) the sentence is composed as in 0.7.0. Any other words
+    ("except in versions 2 and 3", "by the operator", "for adults") and the sentence is refused: "ends in its own
+    attribution followed by more words ('…'): replacing the attribution would drop them". Keeping the words was
+    tried and withdrawn (a claim's own "according to the official advisory of …" then stood as support).
+  - *The one loosening: an exact restatement and the anchor rule.* The anchor rule compares a sentence with its
+    claims clause by clause; for a sentence that is one cited claim word for word (`reasoning.restates`) it can
+    only find the claim's own structure ("The flaw is fixed in versions 2 and 3." for that very claim: "3: says what
+    its cited claims say of something else"). When that is the sentence's only fault it is accepted; with any other
+    fault every reason stays (`reasoning.ANCHOR_TIED`). The differential proves each such case: the sentence is
+    such a restatement, and 307b907 rejected that text for the anchor rule and nothing else. What a hostile page can
+    get from it: its own claim shown word for word with the code's hedge for the claim's state, as 0.7.0 already
+    showed that claim's one-version wording.
+
+  Known and unchanged, each recorded in the gap corpora as "open" or "lost": a pronoun of the sentence's own beside
+  a claim's capitalised word ("US sanctions hit us"); two versions swapped between two clauses of one name ("Zephyr
+  4.2 supports Windows and Zephyr 4.1 supports Linux" for the reverse); subject and object swapped across a comma;
+  a bound of time left out; an exception written as a negated phrase; a group named as an advisory's author dropped
+  as 0.7.0 dropped it; an "according to the cited sources" set between commas is not replaced, so one source can be
+  shown as "…, according to the cited sources, …, according to one source."; and the attribution is worded from
+  the sources counted before inline citations are added.
 - **Time budget.** `orchestrator._reason` passes what is left of the task's `budget.max_seconds`
   (`time_left`); the answer call, its schema repair and the critique share that one deadline (`Gateway.structured`
   gives the repair only the remaining time; `Gateway._call` never exceeds `read_timeout`). With less than

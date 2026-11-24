@@ -1,0 +1,284 @@
+{
+ "attack_suite_and_benchmark_inputs_moved": 0,
+ "classes": {
+  "different": "anything else: the test fails",
+  "identical": "nothing differs",
+  "loosened": "sentences 307b907 rejected are accepted, each one cited claim word for word that 307b907 rejected for its anchor rule alone",
+  "stricter": "sentences 307b907 accepted are refused with a refusal mark; nothing else moved"
+ },
+ "determinism": {
+  "raw reasons of all 1,732 inputs under PYTHONHASHSEED 1, 2, 3, 4": "byte-identical (sha256 f14a0d2d590c8e8a...); the role-swap reason with three verbs gave four orders in six processes before change 6, one after"
+ },
+ "final": {
+  "different": {},
+  "gap_sentences_as_labelled": {
+   "case": 48,
+   "cut": 40,
+   "restatement": 42,
+   "restriction": 84,
+   "unseen": 37,
+   "wording": 5
+  },
+  "gap_sentences_not_yet": {},
+  "identical": 1579,
+  "loosened": {
+   "gap": 11,
+   "review": 6
+  },
+  "stricter": {
+   "gap": 112,
+   "review": 24
+  }
+ },
+ "gap_corpora": {
+  "label_meaning": {
+   "accept": "faithful: must be accepted",
+   "lost": "faithful, refused on purpose (the cost of a rule)",
+   "open": "a change of meaning still accepted, listed in the docs",
+   "reject": "an attack: must be rejected"
+  },
+  "labels": {
+   "case": {
+    "accept": 23,
+    "open": 1,
+    "reject": 24
+   },
+   "cut": {
+    "accept": 15,
+    "open": 1,
+    "reject": 24
+   },
+   "restatement": {
+    "accept": 14,
+    "open": 1,
+    "reject": 27
+   },
+   "restriction": {
+    "accept": 35,
+    "lost": 5,
+    "open": 2,
+    "reject": 42
+   },
+   "unseen": {
+    "accept": 9,
+    "reject": 28
+   },
+   "wording": {
+    "open": 1,
+    "reject": 4
+   }
+  },
+  "sizes": {
+   "case": 48,
+   "cut": 40,
+   "restatement": 42,
+   "restriction": 84,
+   "unseen": 37,
+   "wording": 5
+  }
+ },
+ "generated_at": "2026-11-24",
+ "live_pipeline": {
+  "command": "scripts/bench_pipeline.py --url http://127.0.0.1:8811/v1 --model qwen3-30b-a3b-instruct-2507-fp8 --key-file <key file> --texts (default settings)",
+  "last_recorded_default_runs": [
+   {
+    "kept_sentences": 86,
+    "model_answers": 44
+   },
+   {
+    "kept_sentences": 86,
+    "model_answers": 44
+   }
+  ],
+  "reading": "model answers and kept sentences vary by one or two between runs of one setting (temperature 0.1, no seed); no sentence of this run was refused by a refusal added or narrowed here",
+  "this_run": {
+   "completed": 51,
+   "critique_calls": 10,
+   "kept_sentences": 91,
+   "model_answers": 45,
+   "refused_by_a_refusal_of_this_lane": 0,
+   "rejected_sentences": 22,
+   "task_mean_s": 2.717,
+   "tasks": 51
+  }
+ },
+ "offline_benchmark": {
+  "command": "nsf web bench",
+  "result": "every metric unchanged: retrieval 12/12, evidence coverage 21/24, answer correct (top) 9/12, citation precision 193/194 and 189/190 fully supported, verification states 29/29, contradiction P/R 1.0/0.8571, safety invariants hold"
+ },
+ "per_commit": {
+  "26a5ceb": {
+   "change": "2 letter case (stricter only)",
+   "different": {},
+   "gap_sentences_as_labelled": {
+    "case": 48,
+    "cut": 29,
+    "restatement": 31,
+    "restriction": 84,
+    "unseen": 19,
+    "wording": 5
+   },
+   "gap_sentences_not_yet": {
+    "cut": 11,
+    "restatement": 11,
+    "unseen": 18
+   },
+   "identical": 1601,
+   "loosened": {},
+   "stricter": {
+    "gap": 105,
+    "review": 26
+   }
+  },
+  "2f08c3e": {
+   "change": "5 the refusal of a sentence's own attribution with further words spares source names (stricter only against 307b907)",
+   "different": {},
+   "gap_sentences_as_labelled": {
+    "case": 48,
+    "cut": 40,
+    "restatement": 42,
+    "restriction": 84,
+    "unseen": 37,
+    "wording": 5
+   },
+   "gap_sentences_not_yet": {},
+   "identical": 1579,
+   "loosened": {
+    "gap": 11,
+    "review": 6
+   },
+   "stricter": {
+    "gap": 112,
+    "review": 24
+   }
+  },
+  "54c2c55": {
+   "change": "1 a claim's restriction must survive (stricter only)",
+   "different": {},
+   "gap_sentences_as_labelled": {
+    "case": 24,
+    "cut": 29,
+    "restatement": 31,
+    "restriction": 84,
+    "unseen": 19,
+    "wording": 5
+   },
+   "gap_sentences_not_yet": {
+    "case": 24,
+    "cut": 11,
+    "restatement": 11,
+    "unseen": 18
+   },
+   "identical": 1625,
+   "loosened": {},
+   "stricter": {
+    "gap": 81,
+    "review": 26
+   }
+  },
+  "930c267": {
+   "change": "3 characters a reader does not see: extraction, and the guard refuses such a claim (stricter only)",
+   "different": {},
+   "gap_sentences_as_labelled": {
+    "case": 48,
+    "cut": 29,
+    "restatement": 31,
+    "restriction": 84,
+    "unseen": 37,
+    "wording": 5
+   },
+   "gap_sentences_not_yet": {
+    "cut": 11,
+    "restatement": 11
+   },
+   "identical": 1583,
+   "loosened": {},
+   "stricter": {
+    "gap": 123,
+    "review": 26
+   }
+  },
+  "b7018ed": {
+   "change": "corpus and reference only (no guard change)",
+   "different": {},
+   "gap_sentences_as_labelled": {
+    "case": 24,
+    "cut": 28,
+    "restatement": 31,
+    "restriction": 37,
+    "unseen": 19,
+    "wording": 5
+   },
+   "gap_sentences_not_yet": {
+    "case": 24,
+    "cut": 12,
+    "restatement": 11,
+    "restriction": 47,
+    "unseen": 18
+   },
+   "identical": 1682,
+   "loosened": {},
+   "stricter": {
+    "gap": 33,
+    "review": 17
+   }
+  },
+  "d5a4adf": {
+   "change": "4 an exact restatement is not rejected by the anchor rule alone (loosening, one proven class)",
+   "different": {},
+   "gap_sentences_as_labelled": {
+    "case": 48,
+    "cut": 29,
+    "restatement": 42,
+    "restriction": 84,
+    "unseen": 37,
+    "wording": 5
+   },
+   "gap_sentences_not_yet": {
+    "cut": 11
+   },
+   "identical": 1566,
+   "loosened": {
+    "gap": 11,
+    "review": 6
+   },
+   "stricter": {
+    "gap": 123,
+    "review": 26
+   }
+  },
+  "edc1d52": {
+   "change": "6 reasons that list words list them in one order (no verdict change)",
+   "different": {},
+   "gap_sentences_as_labelled": {
+    "case": 48,
+    "cut": 40,
+    "restatement": 42,
+    "restriction": 84,
+    "unseen": 37,
+    "wording": 5
+   },
+   "gap_sentences_not_yet": {},
+   "identical": 1579,
+   "loosened": {
+    "gap": 11,
+    "review": 6
+   },
+   "stricter": {
+    "gap": 112,
+    "review": 24
+   }
+  }
+ },
+ "reference": {
+  "commit": "307b9070f973be63b1cdbd8da222da8114bd32d6",
+  "inputs": {
+   "benchmark": 248,
+   "gap": 256,
+   "harvested": 1137,
+   "review": 91
+  },
+  "its_own_guard_tests": "827 passed"
+ },
+ "what": "The guard gaps older than the 0.7.0 review, closed one by one: each change's class measured by scripts/guard_differential.py against 307b907 over every recorded input, with the final corpora"
+}

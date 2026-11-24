@@ -624,7 +624,15 @@ model calls; `spoken` skips the critique pass when `critique_voice` is off.
 (white space and one final full stop aside) with the attribution the code appended; the critique judges only the
 sentences for which it is false. It is always false for a sentence that cites more than one claim, for a claim that
 holds its own "according to <source>", and for text with characters a reader does not see.
-`reasoning.compose()` and `reasoning.guard()` are those of 0.7.0, with one addition that only refuses: a sentence
-whose own trailing "according to <source> …" would take further words with it is composed and judged as before
-(the item carries `cut: [text as written, the words]`) and, where the guard would accept it, is rejected with
-`reasoning.CUT_WORDS` instead (COGNITIVE_INFERENCE §3).
+`reasoning.compose()` and `reasoning.guard()` are those of 0.7.0 with additions that only refuse, and one proven
+exemption (COGNITIVE_INFERENCE §3). Refusal reasons a rejected sentence can now carry, each the whole reason list of
+a sentence every 0.7.0 check accepted: `reasoning.CUT_WORDS` (its own trailing "according to <source> …" would take
+words with it that do not only name the source; the composed item carries `cut: [text as written, the words]`),
+`reasoning.RESTRICTION_LOST` (a cited claim carries an exception or a condition and is not held whole),
+`reasoning.CASE_CHANGED` (a word of the cited claims written in another case) and `reasoning.UNSEEN_IN_CLAIM` (a
+cited claim holds characters a reader does not see); `reasoning.REFUSALS` lists the last three. A sentence that is
+one cited claim word for word is not rejected for `reasoning.ANCHOR_TIED` alone. Every rejection keeps the shape
+`{"text", "reasons": [str]}`; reasons that list words list them in one order in every process. Extraction
+(`webcortex/extract.py`, `text.as_seen`): a document's `flags` may carry `reordered_lines_removed` (lines dropped
+because a direction override reordered them), and `zero_width_removed` now also counts characters that came out of
+character references.
