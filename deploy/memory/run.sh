@@ -128,7 +128,12 @@ drop_other() {
 # (offline model loading, no telemetry). NSF_MEMORY_NETWORK= (empty) keeps Docker's default bridge.
 ensure_network() {
   [ -n "${NSF_MEMORY_NETWORK:-}" ] || return 0
-  docker network inspect "$NSF_MEMORY_NETWORK" >/dev/null 2>&1 && return 0
+  if docker network inspect "$NSF_MEMORY_NETWORK" >/dev/null 2>&1; then
+    # A network of that name that someone else made may let containers reach each other: not used then.
+    [ "$(docker network inspect -f '{{index .Options "com.docker.network.bridge.enable_icc"}}' "$NSF_MEMORY_NETWORK" 2>/dev/null)" = false ] \
+      || die "the docker network $NSF_MEMORY_NETWORK exists but lets its containers reach each other; remove it (docker network rm $NSF_MEMORY_NETWORK) or name another in NSF_MEMORY_NETWORK"
+    return 0
+  fi
   docker network create --driver bridge -o com.docker.network.bridge.enable_icc=false \
     --label org.neuroscifi.purpose=memory-models "$NSF_MEMORY_NETWORK" >/dev/null 2>&1 \
     || docker network inspect "$NSF_MEMORY_NETWORK" >/dev/null 2>&1 \

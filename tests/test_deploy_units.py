@@ -338,8 +338,9 @@ def test_memory_status_prints_one_line_per_service_running_or_not(tmp_path):
         "same ports; run.sh stop removes it)"]
 
 
-def _logging_docker(tmp_path, existing=()):
-    """A docker that records every command line and knows the containers and networks in `existing`."""
+def _logging_docker(tmp_path, existing=(), icc="false"):
+    """A docker that records every command line and knows the containers and networks in `existing`; an existing
+    network reports `icc` as its enable_icc option."""
     import os
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -348,6 +349,8 @@ def _logging_docker(tmp_path, existing=()):
         '#!/usr/bin/env bash\n'
         f'echo "$*" >> "{tmp_path}/docker.log"\n'
         'name="${@: -1}"\n'
+        f'case "$*" in "network inspect -f "*enable_icc*) case " {known} " in *" $name "*) echo "{icc}"; exit 0 ;; esac;'
+        ' exit 1 ;; esac\n'
         'case "$1 $2" in\n'
         f'  "inspect "*|"network inspect") case " {known} " in *" $name "*) echo "/$name running"; exit 0 ;; esac; exit 1 ;;\n'
         'esac\n'
@@ -410,6 +413,31 @@ def test_the_memory_containers_run_on_a_network_of_their_own(tmp_path, server):
 
 
 NAMES_MEMORY = ("qwen3-embedding-0.6b", "qwen3-reranker-0.6b")
+
+
+@pytest.mark.parametrize("icc,ok", [("false", True), ("true", False), ("", False)])
+def test_an_existing_network_of_that_name_is_used_only_if_its_containers_cannot_reach_each_other(tmp_path, icc, ok):
+    """Security re-review: a network named neuroscifi-memory that someone else created was reused without a look at
+    its options."""
+    import subprocess
+    models = tmp_path / "models"
+    for name in NAMES_MEMORY:
+        (models / name).mkdir(parents=True)
+        (models / name / "config.json").write_text("{}")
+    path = _logging_docker(tmp_path, existing=["neuroscifi-memory"], icc=icc)
+    env = _memory_env(tmp_path, "single", {"PATH": path})
+    with open(tmp_path / ".config" / "neuroscifi" / "memory" / "memory.env", "a") as fh:
+        fh.write(f"NSF_MEMORY_EMBED_MODEL_DIR={models}/qwen3-embedding-0.6b\n"
+                 f"NSF_MEMORY_RERANK_MODEL_DIR={models}/qwen3-reranker-0.6b\n")
+    done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "start", "all"], capture_output=True,
+                          text=True, env=env, timeout=60)
+    log = (tmp_path / "docker.log").read_text()
+    assert "network create" not in log
+    if ok:
+        assert done.returncode == 0 and " --network neuroscifi-memory " in log
+    else:
+        assert done.returncode == 1 and "lets its containers reach each other" in done.stderr
+        assert not any(line.startswith("run ") for line in log.splitlines())
 
 
 @pytest.mark.parametrize("server", MEMORY_SERVERS)

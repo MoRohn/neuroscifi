@@ -264,6 +264,11 @@ def test_a_model_failure_is_a_plain_500_and_the_log_never_holds_request_text(run
     assert call(ports["embed"], "POST", "/v1/embeddings", {"input": [secret]})[0] == 200       # and it goes on
     assert call(ports["rerank"], "POST", f"/v1/rerank?note={secret.replace(' ', '+')}",
                 {"query": secret, "documents": [secret]})[0] == 200
+    for _ in range(200):                  # a request is logged just after its answer is sent: wait for the lines
+        if sum(line.startswith(("embed POST /v1/embeddings 200", "rerank POST /v1/rerank 200"))
+               for line in list(lines)) >= 2:
+            break
+        threading.Event().wait(0.02)
     text = "\n".join(lines)
     assert "embed error RuntimeError" in text and "POST /v1/embeddings 200 items=1" in text
     assert secret not in text and "Orbix" not in text and KEY not in text and "?" not in text
@@ -311,19 +316,28 @@ def test_metrics_report_what_runs_waits_and_was_served_in_the_names_the_idle_pol
 
 
 def test_more_requests_at_once_than_the_server_holds_are_told_to_come_back(running):
-    """Beyond the cap a connection is answered 503 before a byte of it is read and gets no thread: health and
-    metrics too (the idle policy then sees /metrics unreadable, which never unloads anything)."""
+    """Beyond the cap of its kind a request is answered 503 and gets no thread. Requests with the key and requests
+    without it have separate slots (L3b), so a full keyless side never stops a keyed call, and the other way round;
+    with the keyless slots full, health and metrics are 503 too (the idle policy then reads /metrics as
+    unreadable, which never unloads anything)."""
     models, service, ports, _ = running
-    for _ in range(server.MAX_CONNECTIONS):
-        assert service.connections.acquire(blocking=False)
+    for _ in range(server.MAX_CONNECTIONS - server.KEYLESS_SLOTS):
+        assert service.keyed.acquire(timeout=5)          # a finishing request frees its slot just after
     try:
         status, answer = call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})
         assert status == 503 and answer["error"]["code"] == "overloaded" and models.seen == []
-        assert call(ports["embed"], "GET", "/health", key=None)[0] == 503
-        assert call(ports["rerank"], "GET", "/metrics", key=None)[0] == 503
+        assert call(ports["embed"], "GET", "/health", key=None)[0] == 200          # the keyless side is free
+        for _ in range(server.KEYLESS_SLOTS):            # (its thread frees the slot just after its answer)
+            assert service.keyless.acquire(timeout=5)
+        try:
+            assert call(ports["embed"], "GET", "/health", key=None)[0] == 503
+            assert call(ports["rerank"], "GET", "/metrics", key=None)[0] == 503
+        finally:
+            for _ in range(server.KEYLESS_SLOTS):
+                service.keyless.release()
     finally:
-        for _ in range(server.MAX_CONNECTIONS):
-            service.connections.release()
+        for _ in range(server.MAX_CONNECTIONS - server.KEYLESS_SLOTS):
+            service.keyed.release()
     assert call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})[0] == 200
 
 
@@ -332,8 +346,8 @@ def test_a_client_still_sending_a_large_body_gets_the_503_not_a_broken_pipe(runn
     broken pipe or a reset instead of the 503, and the gateway reported a connection failure, not "overloaded".
     The server now shuts its side for writing, reads and discards what still arrives (bounded), then closes."""
     models, service, ports, _ = running
-    for _ in range(server.MAX_CONNECTIONS):
-        assert service.connections.acquire(blocking=False)
+    for _ in range(server.MAX_CONNECTIONS - server.KEYLESS_SLOTS):
+        assert service.keyed.acquire(timeout=5)          # a finishing request frees its slot just after
     try:
         for size in (10, 200_000, server.MAX_BODY - 64):
             body = b'{"input":["' + b"a" * size + b'"]}'
@@ -345,8 +359,8 @@ def test_a_client_still_sending_a_large_body_gets_the_503_not_a_broken_pipe(runn
         assert err.value.code == "unavailable" and err.value.retryable and err.value.status == 503
         assert "too many connections at once" in str(err.value)
     finally:
-        for _ in range(server.MAX_CONNECTIONS):
-            service.connections.release()
+        for _ in range(server.MAX_CONNECTIONS - server.KEYLESS_SLOTS):
+            service.keyed.release()
     assert models.seen == []
     for _ in range(100):                                  # every refused connection is closed in the end
         if not service.draining:
@@ -472,29 +486,78 @@ def test_a_request_head_beyond_its_limits_is_refused(running):
     assert status_of(answer) == 414
 
 
-def test_connections_beyond_the_cap_are_answered_at_once_and_get_no_thread(running):
-    """L3: 300 half-open connections made 300 threads; the cap applied only once the headers were read."""
+def test_connections_that_send_nothing_get_no_thread_and_never_lock_out_a_keyed_call(running, monkeypatch):
+    """L3: 300 half-open connections made 300 threads. Now a connection gets a thread only once its request head is
+    whole; until then it is a socket the door watches, and when MAX_PENDING are waiting the oldest is closed."""
     import socket
+    monkeypatch.setattr(server, "MAX_PENDING", 64)
     _, service, ports, _ = running
+    call(ports["embed"], "GET", "/health", key=None)      # the shared threads exist before counting
     before = threading.active_count()
     held = [socket.create_connection(("127.0.0.1", ports["embed" if n % 2 else "rerank"]), timeout=5)
-            for n in range(server.MAX_CONNECTIONS)]
+            for n in range(300)]
     try:
-        for _ in range(100):
-            if threading.active_count() - before >= server.MAX_CONNECTIONS:
-                break
-            threading.Event().wait(0.02)
-        extra = [raw_exchange(ports["embed"], b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n", wait=3) for _ in range(40)]
-        assert all(status_of(answer) == 503 and closed for answer, closed in extra)
-        assert threading.active_count() - before <= server.MAX_CONNECTIONS + 2  # + the reaper and the drainer
+        threading.Event().wait(0.3)
+        assert threading.active_count() - before <= 1, "a connection that sent nothing got a thread"
+        assert len(service.pending) <= server.MAX_PENDING
+        for _ in range(5):                                # newer connections push the oldest idle ones out
+            assert call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})[0] == 200
+            assert call(ports["rerank"], "GET", "/health", key=None)[0] == 200
     finally:
         for sock in held:
             sock.close()
-    for _ in range(200):                                  # the slots come back as the held connections end
-        if call(ports["embed"], "GET", "/health", key=None)[0] == 200:
-            break
-        threading.Event().wait(0.05)
-    assert call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})[0] == 200
+
+
+def test_keyless_pollers_on_keep_alive_cannot_hold_the_slots_of_keyed_calls(running):
+    """L3b (the reviewer's scenario): 32 connections polled /health without the key and kept every slot, and a
+    keyed embedding got 503 in 15 of 15 tries. Now an answer to a request without the key closes its connection,
+    and requests without the key have KEYLESS_SLOTS of their own."""
+    import http.client
+    _, _, ports, _ = running
+    stop, polls = threading.Event(), []
+
+    def poller(port):
+        conn = None
+        while not stop.is_set():
+            try:
+                if conn is None:
+                    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+                conn.request("GET", "/health")
+                resp = conn.getresponse()
+                resp.read()
+                polls.append((resp.status, resp.getheader("Connection")))
+                if resp.will_close:
+                    conn.close()
+                    conn = None
+            except (OSError, http.client.HTTPException):
+                if conn is not None:
+                    conn.close()
+                conn = None
+            stop.wait(0.05)
+        if conn is not None:
+            conn.close()
+    threads = [threading.Thread(target=poller, args=(ports["embed" if n % 2 else "rerank"],), daemon=True)
+               for n in range(server.MAX_CONNECTIONS)]
+    for thread in threads:
+        thread.start()
+    try:
+        threading.Event().wait(0.5)
+        results = [call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})[0] for _ in range(15)]
+        assert results == [200] * 15, results
+    finally:
+        stop.set()
+        for thread in threads:
+            thread.join(10)
+    answered = [p for p in polls if p[0] == 200]
+    assert answered and all(header == "close" for _, header in answered)    # keyless: one request per connection
+
+
+def test_an_answer_without_the_key_closes_its_connection_and_a_keyed_one_keeps_it(running):
+    _, _, ports, _ = running
+    answer, closed = raw_exchange(ports["embed"], b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n", wait=3)
+    assert status_of(answer) == 200 and closed and b"Connection: close" in answer
+    answer, closed = raw_exchange(ports["embed"], b"GET /v1/models HTTP/1.1\r\nHost: x\r\n" + AUTH + b"\r\n", wait=1)
+    assert status_of(answer) == 200 and not closed                     # keep-alive stays for the key's holder
 
 
 def test_a_connection_that_does_not_finish_its_request_head_in_time_is_closed(running, monkeypatch):
@@ -525,6 +588,10 @@ def test_the_log_shows_only_known_routes_and_never_raw_request_bytes(running):
     raw_exchange(ports["embed"], b"GET /\x1b[31mRED\x1b[0m?q=secret HTTP/1.1\r\nHost: x\r\n\r\n")
     raw_exchange(ports["embed"], b"GET /v1/models\x7f HTTP/1.1\r\nHost: x\r\n\r\n")
     call(ports["embed"], "GET", "/health", key=None)
+    for _ in range(200):                  # a request is logged just after its answer is sent: wait for the line
+        if any(line.startswith("embed GET /health 200") for line in list(lines)):
+            break
+        threading.Event().wait(0.02)
     text = "\n".join(lines)
     assert "\x1b" not in text and "RED" not in text and "secret" not in text and "\x7f" not in text
     assert "embed GET <other> 401" in text and "embed GET /health 200" in text

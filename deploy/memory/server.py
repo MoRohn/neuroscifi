@@ -33,11 +33,17 @@ Security: started by run.sh inside a container whose ports Docker publishes on t
 Every request but /health and /metrics needs the key (`Authorization: Bearer`, compared in constant time; the key
 is read from a file mounted read-only, never from the environment or a command line). Outside a container the
 server binds a loopback address only; any other address needs --container, which run.sh passes because there the
-publish rule is what keeps it local. At most MAX_CONNECTIONS connections are served at once, across both ports;
-another is answered 503 before a byte of it is read and gets no thread of its own: the server shuts its side for
-writing, and one shared drainer reads and discards what the client still sends (at most DRAIN_BYTES, DRAIN_SECONDS)
-before closing, so a client in the middle of a large body still reads the 503 instead of a reset. A request head must arrive
-whole within HEAD_TIMEOUT, its body within BODY_TIMEOUT (a reaper closes the connection otherwise). The head is
+publish rule is what keeps it local. A connection gets no thread until its request head is whole: until then one
+door thread reads it (non-blocking, at most HEAD_TIMEOUT, at most MAX_PENDING such connections; when more arrive,
+the oldest waiting one is closed, which only a client that sends nothing can be). A whole head is then served by a
+thread of its kind: MAX_CONNECTIONS - KEYLESS_SLOTS for requests that carry the valid key, KEYLESS_SLOTS for the
+rest (/health, /metrics, refusals), so clients without the key can never take the slots of calls that have it
+(review L3b: 32 keep-alive /health pollers made every keyed call 503). An answer to a request without the key closes
+its connection. A request beyond the slots of its kind is answered 503: the server shuts its side for writing, and
+one shared drainer reads and discards what the client still sends (at most DRAIN_BYTES, DRAIN_SECONDS) before
+closing, so a client in the middle of a large body still reads the 503 instead of a reset. A body must arrive whole
+within BODY_TIMEOUT, the next request's head on a kept connection within HEAD_TIMEOUT (a reaper closes it
+otherwise). The head is
 parsed strictly: a request line of at most MAX_REQUEST_LINE bytes, at most MAX_HEADERS headers of MAX_HEADER_BYTES
 together, exactly one Content-Length of plain digits on a POST and none (or 0) on a GET, one Host and one
 Authorization at most, no Transfer-Encoding. Bodies, batches and text lengths are bounded; no request text is ever
@@ -62,7 +68,9 @@ MAX_BODY = 4 << 20             # bytes of one request body
 MAX_INPUTS = 256               # texts of one embeddings request
 MAX_DOCUMENTS = 256            # documents of one rerank request
 MAX_CHARS = 64_000             # characters of one text (the token limit is checked after this cheap one)
-MAX_CONNECTIONS = 32           # connections served at once, both ports together; more are told 503 and closed
+MAX_CONNECTIONS = 32           # requests served at once (one thread each), both ports together
+KEYLESS_SLOTS = 4              # of these, for requests without the valid key; the rest only for requests with it
+MAX_PENDING = 256              # connections whose request head is still arriving (no thread); more: the oldest goes
 MAX_REQUEST_LINE = 2048        # bytes of the request line
 MAX_HEADERS = 32               # headers of one request
 MAX_HEADER_BYTES = 16_384      # bytes of all header names and values together
@@ -77,6 +85,7 @@ TOKENIZE_CHUNK = 16            # texts tokenised at once
 DRAIN_SECONDS = 2.0            # a refused connection is read and discarded this long at most before it is closed
 DRAIN_BYTES = MAX_BODY + MAX_HEADER_BYTES + MAX_REQUEST_LINE + 1024   # and this much: the largest request accepted
 DRAIN_MAX = 256                # refused connections being drained at once; more are closed at once
+HEAD_BYTES = MAX_REQUEST_LINE + MAX_HEADER_BYTES + 4096   # a head not whole by then is served as it is (and refused)
 ROUTES_KNOWN = ("/health", "/metrics", "/v1/models", "/v1/embeddings", "/v1/rerank")
 _BUSY_BODY = b'{"error":{"message":"too many connections at once","type":"server_error","code":"overloaded"}}'
 BUSY = (b"HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nConnection: close\r\n"
@@ -264,7 +273,14 @@ class Service:
         self.models, self.key, self.names, self.max_len, self.log = models, key, names, int(max_len), log
         self.count = threading.Lock()
         self.running = self.served = 0
-        self.connections = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self.keyed = threading.BoundedSemaphore(MAX_CONNECTIONS - KEYLESS_SLOTS)
+        self.keyless = threading.BoundedSemaphore(KEYLESS_SLOTS)
+        self.pending: dict = {}                     # socket -> [listener, address, deadline, head bytes so far]
+        self.incoming: list = []                    # sockets accepted, not yet seen by the door
+        self.prefixes: dict = {}                    # socket -> the head bytes the door read, for its handler
+        self.door_lock = threading.Lock()
+        self.door = None
+        self.wake_r = self.wake_w = None
         self.deadlines: dict = {}                   # socket -> monotonic deadline of what it is sending (None: none)
         self.watch_lock = threading.Lock()
         self.reaper, self.closed = None, threading.Event()
@@ -273,11 +289,131 @@ class Service:
         self.drainer = None
 
     def close(self) -> None:
-        """Stop the reaper (the listeners are closed by their owner)."""
+        """Stop the door, the reaper and the drainer (the listeners are closed by their owner)."""
         self.closed.set()
-        for thread in (self.reaper, self.drainer):
+        self._wake()
+        for thread in (self.door, self.reaper, self.drainer):
             if thread is not None:
                 thread.join(DRAIN_SECONDS + 1)
+
+    # ---- the door: no thread before a request head is whole --------------------------------------------------------
+    def admit(self, listener, sock, address) -> None:
+        """Hand an accepted connection to the door (called on the accepting thread; never blocks, never reads)."""
+        import socket
+        with self.door_lock:
+            if self.closed.is_set():
+                sock.close()
+                return
+            self.incoming.append((listener, sock, address))
+            if self.door is None:
+                self.wake_r, self.wake_w = socket.socketpair()
+                self.wake_r.setblocking(False)
+                self.wake_w.setblocking(False)
+                self.door = threading.Thread(target=self._door, name="nsf-memory-door", daemon=True)
+                self.door.start()
+        self._wake()
+
+    def _wake(self) -> None:
+        try:
+            if self.wake_w is not None:
+                self.wake_w.send(b"x")
+        except OSError:                 # its buffer is full: the door is awake already
+            pass
+
+    def _drop(self, sel, sock) -> None:
+        self.pending.pop(sock, None)
+        try:
+            sel.unregister(sock)
+        except (KeyError, ValueError, OSError):
+            pass
+
+    def _door(self) -> None:
+        import selectors
+        sel = selectors.DefaultSelector()
+        sel.register(self.wake_r, selectors.EVENT_READ)
+        try:
+            while not self.closed.is_set():
+                events = sel.select(timeout=0.2)
+                with self.door_lock:
+                    arrived, self.incoming = self.incoming, []
+                for listener, sock, address in arrived:
+                    try:
+                        sock.setblocking(False)
+                        sel.register(sock, selectors.EVENT_READ)
+                    except (OSError, ValueError):
+                        sock.close()
+                        continue
+                    self.pending[sock] = [listener, address, time.monotonic() + HEAD_TIMEOUT, bytearray()]
+                    while len(self.pending) > MAX_PENDING:        # the oldest waiting connection makes room
+                        oldest = next(iter(self.pending))
+                        self._drop(sel, oldest)
+                        oldest.close()
+                for key, _ in events:
+                    sock = key.fileobj
+                    if sock is self.wake_r:
+                        try:
+                            while self.wake_r.recv(4096):
+                                pass
+                        except OSError:
+                            pass
+                        continue
+                    entry = self.pending.get(sock)
+                    if entry is None:
+                        continue
+                    try:
+                        got = sock.recv(4096)
+                    except BlockingIOError:
+                        continue
+                    except OSError:
+                        got = b""
+                    if not got:                                   # the client went away
+                        self._drop(sel, sock)
+                        sock.close()
+                        continue
+                    entry[3] += got
+                    if b"\r\n\r\n" in entry[3] or len(entry[3]) >= HEAD_BYTES:
+                        self._drop(sel, sock)
+                        self._dispatch(entry[0], sock, entry[1], bytes(entry[3]))
+                now = time.monotonic()
+                for sock in [s for s, e in self.pending.items() if now > e[2]]:   # a head too slow to arrive
+                    self._drop(sel, sock)
+                    sock.close()
+        finally:
+            for sock in list(self.pending):
+                self._drop(sel, sock)
+                sock.close()
+            with self.door_lock:
+                for _, sock, _ in self.incoming:
+                    sock.close()
+                self.incoming = []
+            sel.close()
+            self.wake_r.close()
+            self.wake_w.close()
+
+    def keyed_head(self, head: bytes) -> bool:
+        """Whether a request head carries exactly one Authorization header with the valid key (one line, unfolded).
+        Only decides which slots serve it; the handler checks everything again."""
+        lines = head.split(b"\r\n\r\n", 1)[0].split(b"\r\n")[1:]
+        found = [line for line in lines if line.split(b":", 1)[0].strip().lower() == b"authorization"]
+        if len(found) != 1 or any(line[:1] in (b" ", b"\t") for line in lines):
+            return False
+        return self.authorised(found[0].split(b":", 1)[1].strip().decode("latin-1"))
+
+    def _dispatch(self, listener, sock, address, head: bytes) -> None:
+        slots = self.keyed if self.keyed_head(head) else self.keyless
+        if not slots.acquire(blocking=False):
+            self.refuse(sock)
+            return
+        self.prefixes[sock] = head
+        try:
+            sock.setblocking(True)
+            threading.Thread(target=listener.serve_admitted, args=(sock, address, slots),
+                             name="nsf-memory-request", daemon=True).start()
+        except BaseException:
+            self.prefixes.pop(sock, None)
+            slots.release()
+            sock.close()
+            raise
 
     def refuse(self, sock) -> None:
         """Answer a connection beyond the cap with BUSY without reading it, on the accepting thread, without
@@ -307,17 +443,20 @@ class Service:
     def _drain(self) -> None:
         """One thread for every refused connection: read and discard until the client closes, the byte budget is
         spent or the deadline passes, then close."""
-        import select
+        import selectors
         while not self.closed.is_set():
             with self.drain_lock:
                 socks = list(self.draining)
             if not socks:
                 self.closed.wait(0.05)
                 continue
-            try:
-                readable, _, _ = select.select(socks, [], [], 0.05)
-            except (OSError, ValueError):
-                readable = socks
+            with selectors.DefaultSelector() as sel:
+                for sock in socks:
+                    try:
+                        sel.register(sock, selectors.EVENT_READ)
+                    except (OSError, ValueError, KeyError):
+                        pass
+                readable = {key.fileobj for key, _ in sel.select(timeout=0.05)}
             now = time.monotonic()
             done = []
             for sock in socks:
@@ -478,6 +617,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):          # the default access log is replaced by _done (never any request text)
         pass
 
+    def setup(self):
+        super().setup()
+        head = self.server.service.prefixes.pop(self.connection, b"")
+        if head:                                # what the door read comes first
+            self.rfile = _Prefixed(head, self.rfile)
+
     def handle_one_request(self):
         self.server.service.watch(self.connection, HEAD_TIMEOUT)     # the next request's head, whole, in time
         super().handle_one_request()
@@ -497,7 +642,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        if status >= 400:
+        if status >= 400 or self.close_connection:
             self.send_header("Connection", "close")
             self.close_connection = True
         self.end_headers()
@@ -560,6 +705,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         status, items = 500, 0
         try:
             length = self._strict(method)
+            if not service.authorised(self.headers.get("Authorization")):
+                self.close_connection = True    # one request per connection without the key (review L3b)
             if method == "GET" and path in ("/health", "/metrics"):      # no key: the health check, the idle policy
                 status = 200
                 if path == "/health":
@@ -618,25 +765,44 @@ class Listener(http.server.ThreadingHTTPServer):
         self.service.log(f"{self.role} connection error {sys.exc_info()[0].__name__}")
 
     def process_request(self, request, client_address):
-        """A thread for the connection only while a slot is free (both ports share MAX_CONNECTIONS); otherwise a
-        fixed 503 is written, nothing is read, and the drainer closes it (Service.refuse)."""
-        if not self.service.connections.acquire(blocking=False):
-            self.service.refuse(request)
-            return
+        """No thread yet: the door reads the request head (Service.admit)."""
+        self.service.admit(self, request, client_address)
+
+    def serve_admitted(self, request, client_address, slots):
+        """The thread of one admitted connection: its requests, then the connection closed and the slot freed."""
         try:
             self.service.watch(request, HEAD_TIMEOUT)
-            super().process_request(request, client_address)
-        except BaseException:
-            self.service.unwatch(request)
-            self.service.connections.release()
-            raise
-
-    def process_request_thread(self, request, client_address):
-        try:
-            super().process_request_thread(request, client_address)
+            self.finish_request(request, client_address)
+        except Exception:
+            self.handle_error(request, client_address)
         finally:
             self.service.unwatch(request)
-            self.service.connections.release()
+            self.service.prefixes.pop(request, None)
+            self.shutdown_request(request)
+            slots.release()
+
+
+class _Prefixed:
+    """A request stream that first yields the bytes the door already read, then the socket's own."""
+
+    def __init__(self, head, rest):
+        import io
+        self.head, self.rest = io.BytesIO(head), rest
+
+    def readline(self, limit=-1):
+        line = self.head.readline(limit)
+        if line.endswith(b"\n") or (limit is not None and 0 <= limit <= len(line)):
+            return line
+        return line + self.rest.readline(-1 if limit is None or limit < 0 else limit - len(line))
+
+    def read(self, n=-1):
+        got = self.head.read(n)
+        if n is None or n < 0:
+            return got + self.rest.read()
+        return got if len(got) >= n else got + self.rest.read(n - len(got))
+
+    def close(self):
+        self.rest.close()
 
 
 def check_bind(host, container) -> str:
