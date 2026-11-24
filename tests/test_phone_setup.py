@@ -65,7 +65,9 @@ class Running:
         argv = next(s["argv"] for s in record["services"] if s["name"] == "pocket")[2:]
         argv[argv.index("--port") + 1] = str(port)
         argv[argv.index("--setup-port") + 1] = str(setup_port)
-        self.thread = threading.Thread(target=bridge.main, args=(argv,), daemon=True)
+        self.servers = []
+        self.thread = threading.Thread(target=bridge.main, args=(argv,), kwargs={"started": self.servers.append},
+                                       daemon=True)
         self.port, self.setup_port, self.db = port, setup_port, record["pocket_db"]
         self.thread.start()
         deadline = time.monotonic() + 15
@@ -76,6 +78,14 @@ class Running:
             except OSError:
                 time.sleep(0.05)
         raise AssertionError("the bridge did not open its control socket")
+
+    def close(self):
+        """Stop the bridge as a service stop does: main() then closes the setup page, the control socket and its
+        own threads. Before this the bridge of every test lived on until the test process ended."""
+        for server in self.servers:
+            server.shutdown()
+        self.thread.join(15)
+        assert not self.thread.is_alive(), "the bridge did not stop"
 
     def get(self, path, host=None, port=None):
         c = http.client.HTTPConnection("127.0.0.1", port or self.setup_port, timeout=5)
@@ -103,7 +113,9 @@ class Running:
 def running(home, capsys):
     report = setup(home, capsys)
     record = json.loads(Path(report["record"]).read_text())
-    yield Running(record, free_port(), free_port())   # a daemon thread: its sockets close with the test process
+    bridge_ = Running(record, free_port(), free_port())
+    yield bridge_
+    bridge_.close()
 
 
 # ---- nsf setup: the record ---------------------------------------------------------------------------------------

@@ -52,7 +52,10 @@ class Spark:
         argv = ["--db", str(self.pocket_db), "--bind", "127.0.0.1", "--port", str(self.port), "--cert",
                 out["files"]["fullchain"], "--key", out["files"]["privkey"], "--setup-port", str(self.setup_port),
                 "--ca-file", str(ca)]
-        threading.Thread(target=bridge.main, args=(argv,), daemon=True).start()
+        self.bridges = []
+        self.bridge_thread = threading.Thread(target=bridge.main, args=(argv,),
+                                              kwargs={"started": self.bridges.append}, daemon=True)
+        self.bridge_thread.start()
         deadline = time.monotonic() + 15
         while True:
             try:
@@ -67,6 +70,9 @@ class Spark:
     def close(self):
         self.console.shutdown()
         self.console.server_close()
+        for server in self.bridges:              # as a service stop: main() closes its sockets and threads
+            server.shutdown()
+        self.bridge_thread.join(15)
         for f in self.run.rglob("*"):
             if not f.is_dir():
                 f.unlink()

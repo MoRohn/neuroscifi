@@ -125,6 +125,9 @@ class Session:
         self.seen = time.monotonic()
 
 
+_STOP = object()             # queued behind the transcript writes by close(): the writer thread ends there
+
+
 class VoiceHub:
     def __init__(self, db_path, *, clock=time.time, engines_factory=None):
         self.db_path, self.clock = db_path, clock
@@ -140,6 +143,7 @@ class VoiceHub:
         self._followers = threading.BoundedSemaphore(MAX_FOLLOWERS)
         self._writes: queue.Queue = queue.Queue(WRITE_QUEUE)
         self._writer = None
+        self._closed = threading.Event()      # close(): this hub's own threads end
         from pathlib import Path
         self.selftests = vselftest.SelfTests(Path(db_path).resolve().parent / "voice-selftest", clock)
         self.metrics = {"utterances": 0, "asr_ms": deque(maxlen=200), "reply_ms": deque(maxlen=200),
@@ -194,6 +198,8 @@ class VoiceHub:
         while True:
             job = self._writes.get()
             try:
+                if job is _STOP:
+                    return
                 job()
             except Exception:   # a forgotten or ended session: the write has nowhere to go
                 pass
@@ -203,6 +209,22 @@ class VoiceHub:
     def drain(self):
         """Wait until every queued transcript write is done (tests, shutdown)."""
         self._writes.join()
+
+    def close(self, timeout=5.0) -> None:
+        """End this hub's own threads; called when the server that owns the hub closes. The transcript writer
+        finishes what is queued and ends, and the threads that follow a research task stop looking: the task
+        itself goes on (it belongs to the research system) and its answer is in the task. Before this a hub's
+        threads could only end with the process: one writer, and up to MAX_FOLLOWERS followers that each looked for
+        up to FOLLOW_MAX. A hub used again afterwards starts a new writer."""
+        self._closed.set()
+        with self.lock:
+            writer, self._writer = self._writer, None
+        if writer is not None and writer.is_alive():
+            try:
+                self._writes.put(_STOP, timeout=timeout)      # behind everything already queued
+            except queue.Full:
+                return
+            writer.join(timeout)
 
     def _emit(self, s: Session, etype, **data):
         with s.cond:
@@ -1031,7 +1053,8 @@ class VoiceHub:
                     last_spoken = time.monotonic()
                     self._deliver(s, vbridge.Reply("progress", speech=[f"Still working: {words}."],
                                                    text=f"Still working: {words}.", task_id=None))
-            time.sleep(next(waits))
+            if self._closed.wait(next(waits)):       # the hub closed: nobody is left to tell
+                return
 
     # ---- transcripts -------------------------------------------------------------------------------------------------
     def transcripts(self, principal, *, session_id=None, query=None, limit=200) -> dict:
