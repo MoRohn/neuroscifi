@@ -34,7 +34,9 @@ Every request but /health and /metrics needs the key (`Authorization: Bearer`, c
 is read from a file mounted read-only, never from the environment or a command line). Outside a container the
 server binds a loopback address only; any other address needs --container, which run.sh passes because there the
 publish rule is what keeps it local. At most MAX_CONNECTIONS connections are served at once, across both ports;
-another is answered 503 and closed before a byte of it is read and gets no thread. A request head must arrive
+another is answered 503 before a byte of it is read and gets no thread of its own: the server shuts its side for
+writing, and one shared drainer reads and discards what the client still sends (at most DRAIN_BYTES, DRAIN_SECONDS)
+before closing, so a client in the middle of a large body still reads the 503 instead of a reset. A request head must arrive
 whole within HEAD_TIMEOUT, its body within BODY_TIMEOUT (a reaper closes the connection otherwise). The head is
 parsed strictly: a request line of at most MAX_REQUEST_LINE bytes, at most MAX_HEADERS headers of MAX_HEADER_BYTES
 together, exactly one Content-Length of plain digits on a POST and none (or 0) on a GET, one Host and one
@@ -72,6 +74,9 @@ SOCKET_TIMEOUT = 30.0          # seconds of one blocking read or write
 BATCH_SEQUENCES = 16           # sequences of one forward pass
 BATCH_TOKENS = 4096            # padded tokens of one forward pass: the longest any other call waits for the device
 TOKENIZE_CHUNK = 16            # texts tokenised at once
+DRAIN_SECONDS = 2.0            # a refused connection is read and discarded this long at most before it is closed
+DRAIN_BYTES = MAX_BODY + MAX_HEADER_BYTES + MAX_REQUEST_LINE + 1024   # and this much: the largest request accepted
+DRAIN_MAX = 256                # refused connections being drained at once; more are closed at once
 ROUTES_KNOWN = ("/health", "/metrics", "/v1/models", "/v1/embeddings", "/v1/rerank")
 _BUSY_BODY = b'{"error":{"message":"too many connections at once","type":"server_error","code":"overloaded"}}'
 BUSY = (b"HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nConnection: close\r\n"
@@ -263,12 +268,86 @@ class Service:
         self.deadlines: dict = {}                   # socket -> monotonic deadline of what it is sending (None: none)
         self.watch_lock = threading.Lock()
         self.reaper, self.closed = None, threading.Event()
+        self.draining: dict = {}                    # refused socket -> [deadline, bytes it may still send]
+        self.drain_lock = threading.Lock()
+        self.drainer = None
 
     def close(self) -> None:
         """Stop the reaper (the listeners are closed by their owner)."""
         self.closed.set()
-        if self.reaper is not None:
-            self.reaper.join(2)
+        for thread in (self.reaper, self.drainer):
+            if thread is not None:
+                thread.join(DRAIN_SECONDS + 1)
+
+    def refuse(self, sock) -> None:
+        """Answer a connection beyond the cap with BUSY without reading it, on the accepting thread, without
+        blocking it: the response is written to a fresh socket's empty buffer, the write side is shut (the client
+        sees the response end), and the socket goes to the drainer. Closing it while the client's body is still
+        arriving would make the kernel reset the connection, and the client would lose the 503 (found: a POST under
+        load got BrokenPipeError)."""
+        import socket
+        try:
+            sock.setblocking(False)
+            sent = sock.send(BUSY)
+            if sent != len(BUSY):
+                raise OSError("the 503 did not fit the socket's buffer")
+            sock.shutdown(socket.SHUT_WR)
+        except OSError:
+            sock.close()
+            return
+        with self.drain_lock:
+            if len(self.draining) >= DRAIN_MAX or self.closed.is_set():
+                sock.close()
+                return
+            self.draining[sock] = [time.monotonic() + DRAIN_SECONDS, DRAIN_BYTES]
+            if self.drainer is None:
+                self.drainer = threading.Thread(target=self._drain, name="nsf-memory-drainer", daemon=True)
+                self.drainer.start()
+
+    def _drain(self) -> None:
+        """One thread for every refused connection: read and discard until the client closes, the byte budget is
+        spent or the deadline passes, then close."""
+        import select
+        while not self.closed.is_set():
+            with self.drain_lock:
+                socks = list(self.draining)
+            if not socks:
+                self.closed.wait(0.05)
+                continue
+            try:
+                readable, _, _ = select.select(socks, [], [], 0.05)
+            except (OSError, ValueError):
+                readable = socks
+            now = time.monotonic()
+            done = []
+            for sock in socks:
+                entry = self.draining.get(sock)
+                if entry is None:
+                    continue
+                if sock in readable:
+                    try:
+                        got = sock.recv(65536)
+                    except BlockingIOError:
+                        got = None
+                    except OSError:
+                        got = b""
+                    if got == b"":
+                        done.append(sock)
+                        continue
+                    if got:
+                        entry[1] -= len(got)
+                if entry[1] <= 0 or now > entry[0]:
+                    done.append(sock)
+            if done:
+                with self.drain_lock:
+                    for sock in done:
+                        self.draining.pop(sock, None)
+                for sock in done:
+                    sock.close()
+        with self.drain_lock:
+            left, self.draining = list(self.draining), {}
+        for sock in left:
+            sock.close()
 
     def watch(self, sock, seconds) -> None:
         """Close `sock` if what it is sending now does not arrive whole within `seconds` (None: no deadline)."""
@@ -540,14 +619,9 @@ class Listener(http.server.ThreadingHTTPServer):
 
     def process_request(self, request, client_address):
         """A thread for the connection only while a slot is free (both ports share MAX_CONNECTIONS); otherwise a
-        fixed 503 is written, nothing is read, and the connection is closed here, on the accepting thread."""
+        fixed 503 is written, nothing is read, and the drainer closes it (Service.refuse)."""
         if not self.service.connections.acquire(blocking=False):
-            try:
-                request.settimeout(1.0)
-                request.sendall(BUSY)
-            except OSError:
-                pass
-            self.shutdown_request(request)
+            self.service.refuse(request)
             return
         try:
             self.service.watch(request, HEAD_TIMEOUT)

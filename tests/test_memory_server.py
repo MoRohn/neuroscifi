@@ -327,6 +327,34 @@ def test_more_requests_at_once_than_the_server_holds_are_told_to_come_back(runni
     assert call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})[0] == 200
 
 
+def test_a_client_still_sending_a_large_body_gets_the_503_not_a_broken_pipe(running, tmp_path):
+    """The refusal used to close the connection while the client's body was still arriving: the client then got a
+    broken pipe or a reset instead of the 503, and the gateway reported a connection failure, not "overloaded".
+    The server now shuts its side for writing, reads and discards what still arrives (bounded), then closes."""
+    models, service, ports, _ = running
+    for _ in range(server.MAX_CONNECTIONS):
+        assert service.connections.acquire(blocking=False)
+    try:
+        for size in (10, 200_000, server.MAX_BODY - 64):
+            body = b'{"input":["' + b"a" * size + b'"]}'
+            status, answer = call(ports["embed"], "POST", "/v1/embeddings", raw=body)
+            assert status == 503 and answer["error"]["code"] == "overloaded", size
+        embedder = gateway(ports["embed"], "embed", tmp_path)
+        with pytest.raises(InferenceError) as err:
+            embedder.embed(["word " * 50_000], purpose="t")
+        assert err.value.code == "unavailable" and err.value.retryable and err.value.status == 503
+        assert "too many connections at once" in str(err.value)
+    finally:
+        for _ in range(server.MAX_CONNECTIONS):
+            service.connections.release()
+    assert models.seen == []
+    for _ in range(100):                                  # every refused connection is closed in the end
+        if not service.draining:
+            break
+        threading.Event().wait(0.05)
+    assert not service.draining
+
+
 def test_the_gateway_reports_a_refusal_as_an_error_and_never_as_an_answer(running, tmp_path):
     _, _, ports, _ = running
     embedder = gateway(ports["embed"], "embed", tmp_path)
@@ -458,7 +486,7 @@ def test_connections_beyond_the_cap_are_answered_at_once_and_get_no_thread(runni
             threading.Event().wait(0.02)
         extra = [raw_exchange(ports["embed"], b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n", wait=3) for _ in range(40)]
         assert all(status_of(answer) == 503 and closed for answer, closed in extra)
-        assert threading.active_count() - before <= server.MAX_CONNECTIONS + 1        # + the one reaper
+        assert threading.active_count() - before <= server.MAX_CONNECTIONS + 2  # + the reaper and the drainer
     finally:
         for sock in held:
             sock.close()
