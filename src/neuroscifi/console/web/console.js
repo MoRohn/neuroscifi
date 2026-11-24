@@ -1244,6 +1244,7 @@ const LIMITATION_TEXT = {
   daemon_failed: 'the local search service (open-webSearch) failed to start',
   dns_failure: 'the site’s name could not be resolved',
   connect_failed: 'the site could not be reached',
+  interrupted: 'the request was interrupted and the page was not read',
   http_error: 'the site answered with an error',
   too_large: 'the document is larger than the size limit',
   unsupported_type: 'the document type is not supported',

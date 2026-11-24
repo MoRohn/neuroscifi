@@ -1384,7 +1384,11 @@ class _Run:
 
         def hint_of(r):
             return r.published_at if r.provider == "feeds" else None   # the feed item's date
-        waiting = {}   # host -> candidates skipped: its next polite request slot is beyond the fetch timeout
+        # site that cannot be asked now -> [candidates on it skipped since, why]: it asked for fewer requests (a
+        # back-off is in force), or its crawl delay puts the next polite request slot beyond the fetch timeout.
+        # Keyed by the site that said so, which is the failing request's, not the candidate's: a candidate whose
+        # redirect leads onto such a site says nothing about the candidate's own site
+        waiting = {}
 
         def full():
             return self.usage.pages >= self.budget.max_pages
@@ -1419,7 +1423,7 @@ class _Run:
                 if self.skip_denied(r.url, r.provider):
                     continue
                 if _host(r.url) in waiting:       # the same wait would refuse it again: no request is spent
-                    waiting[_host(r.url)] += 1
+                    waiting[_host(r.url)][0] += 1
                     continue
                 article = r.provider in SNIPPET_ONLY
                 if article and timely:        # an encyclopedia article is undated: after the dated news pages
@@ -1443,15 +1447,16 @@ class _Run:
                                                                  {"found_by": r.provider}), **exc.to_json()})
                     self.event("error", {"stage": "reading", **exc.to_json()}, "reading")
                     self.renew()
-                    if exc.code == "rate_limited" and (exc.status in (429, 503)
-                                                       or exc.detail == "host backoff in force"):
+                    asked = exc.code == "rate_limited" and (exc.status in (429, 503)
+                                                            or exc.detail == "host backoff in force")
+                    site = _host(exc.url) or _host(r.url)      # the site the failing request was for (a hop's)
+                    if asked:
                         # the site said so itself (or said so to an earlier request, a page fetched ahead included:
                         # a back-off applies to the whole site at once, whichever fetch received it)
-                        self.note(f"{_host(exc.url) or _host(r.url)}: a source there was not read: the site asked "
-                                  "for fewer requests (it answered 429 or 503 with a wait) and is left alone "
-                                  "until then")
+                        self.note(f"{site}: a source there was not read: the site asked for fewer requests (it "
+                                  "answered 429 or 503 with a wait) and is left alone until then")
                     if exc.code == "rate_limited" and exc.retry_after is not None and not article:
-                        waiting.setdefault(_host(r.url), 0)
+                        waiting.setdefault(site, [0, "asked" if asked else "crawl delay"])
                     if exc.code == "budget_exhausted":
                         self.limit(f"budget exhausted while reading: {exc.detail}")
                         break
@@ -1531,8 +1536,11 @@ class _Run:
                 if full() or self.exhausted:
                     break
                 take_api(r)
-            for host, n in waiting.items():
-                if n:
+            for host, (n, why) in waiting.items():
+                if n and why == "asked":
+                    self.note(f"{host}: {n} more candidate(s) not tried: the site asked for fewer requests and is "
+                              "left alone until then")
+                elif n:
                     self.note(f"{host}: {n} more candidate(s) not tried: the site's crawl delay puts the next "
                               "request beyond the fetch timeout")
             self.follow()

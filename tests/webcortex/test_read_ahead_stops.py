@@ -305,18 +305,39 @@ def test_a_fetch_ahead_sends_no_request_the_tasks_request_budget_has_no_room_for
     assert ahead.cache.robots("http~80~.a.example")                # what a plain fetch keeps, the claim kept
 
 
-def test_a_fetch_ahead_counts_what_the_task_was_charged_meanwhile(web, tmp_path):
-    """The reader used the budget's last request while the fetch ahead was waiting to start: it sends nothing."""
+def test_a_fetch_ahead_is_not_started_without_room_for_a_typical_fetch(web, tmp_path):
+    """The reader used the budget's last requests: nothing is started ahead (a fetch ahead needs room for
+    robots.txt and the page, and holds it from the start), and the reader's own fetch is refused as before."""
     web.add("a.example", "/p", "<p>hello</p>")
     budget, usage = Budget(max_requests=3), Usage()
-    usage.charge(budget, requests=3)
     fetcher = fetcher_for(web, tmp_path)
-    fetcher.speculate("http://a.example/p", usage=usage, budget=budget)
-    spec = next(iter(fetcher._speculations.values()))
-    assert spec.finished.wait(5) and settled(web, quiet=0.1) == []
+    usage.charge(budget, requests=2)                          # one request left: not a whole fetch
+    assert fetcher.speculate("http://a.example/p", usage=usage, budget=budget) is False
+    assert not fetcher._speculations and fetcher._ahead == {} and settled(web, quiet=0.1) == []
+    usage.charge(budget, requests=1)
     with pytest.raises(BudgetExceeded):
         fetcher.fetch("http://a.example/p", budget=budget, usage=usage)
     assert usage.requests == 3 and usage.prefetch_unused_requests == 0 and web.log == []
+
+
+def test_a_fetch_ahead_gives_back_what_it_held_and_did_not_use(web, tmp_path):
+    """Room for two requests is held from the start; a fetch that needed one (robots.txt was known) gives the other
+    back when it ends, so the next fetch ahead can start."""
+    web.add("a.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add("a.example", "/p", "<p>one</p>")
+    web.add("b.example", "/p", "<p>two</p>")
+    fetcher, budget, usage = fetcher_for(web, tmp_path), Budget(max_requests=4), Usage()
+    fetcher.robots_allowed("http://a.example/p")              # a.example's robots.txt is known: one request needed
+    before = len(web.log)
+    assert fetcher.speculate("http://a.example/p", usage=usage, budget=budget)
+    finish_all(fetcher)
+    assert fetcher._ahead[id(usage)][0] == 1 and len(web.log) == before + 1
+    assert fetcher.speculate("http://b.example/p", usage=usage, budget=budget)      # 1 held + 2 fit in 4
+    finish_all(fetcher)
+    assert fetcher._ahead[id(usage)][0] == 3
+    for host in ("a.example", "b.example"):
+        fetcher.abandon(f"http://{host}/p", usage=usage)
+    assert usage.prefetch_unused_requests == 3 and fetcher._ahead == {}
 
 
 # ---- the fetcher: the fetches ahead of one task share that task's budget ----------------------------------------
@@ -341,8 +362,8 @@ def test_fetches_ahead_together_send_no_more_requests_than_the_task_has_room_for
     hosts = ["a.example", "b.example", "c.example"]
     redirect_sites(web, hosts)
     fetcher, budget, usage = fetcher_for(web, tmp_path), Budget(max_requests=4), Usage()
-    for host in hosts:
-        assert fetcher.speculate(f"http://{host}/p", usage=usage, budget=budget)
+    started = [fetcher.speculate(f"http://{host}/p", usage=usage, budget=budget) for host in hosts]
+    assert started == [True, True, False]       # each holds a typical fetch from the start; the third has no room
     finish_all(fetcher)
     assert len(settled(web, quiet=0.2)) == 4 and usage.requests == 0
     assert fetcher._ahead[id(usage)][0] == 4                      # all of the task's room is held
@@ -368,9 +389,11 @@ def test_fetches_ahead_count_what_the_task_was_charged(web, tmp_path):
     assert len(settled(web, quiet=0.2)) == 2
 
 
-def test_a_fetch_ahead_stopped_early_by_the_others_is_fetched_again_and_ends_as_one_at_a_time(web, tmp_path):
-    """The room a fetch ahead sees also counts what other fetches ahead hold, so it can stop where a fetch made at
-    its turn would not. It is then not used: the reader fetches for itself and gets what one page at a time gets."""
+def test_a_fetch_ahead_that_ran_out_of_shared_room_is_continued_not_fetched_again(web, tmp_path):
+    """The room a fetch ahead sees also counts what other fetches ahead hold, so in a redirect chain it can stop
+    where a fetch made at its turn would go on. Its claim replays what it sent and goes on from that hop on the
+    task's own budget: the reader gets what one page at a time gets, and no request is made twice. (Before, the
+    fetch ahead was thrown away and fetched again: two more requests in this case.)"""
     redirect_sites(web, ["a.example", "b.example"])
     budget = Budget(max_requests=4)
     plain_fetcher, plain = fetcher_for(web, tmp_path / "plain"), Usage()
@@ -380,15 +403,63 @@ def test_a_fetch_ahead_stopped_early_by_the_others_is_fetched_again_and_ends_as_
     fetcher.speculate("http://a.example/p", usage=usage, budget=budget)
     fetcher.speculate("http://b.example/p", usage=usage, budget=budget)
     finish_all(fetcher)
-    sent_ahead = len(settled(web, quiet=0.2)) - 4
-    assert sent_ahead == 4                                        # together: the task's four, however they fell
+    assert len(settled(web, quiet=0.2)) - 4 == 4                  # robots.txt and /p each: the task's four
     fetcher.abandon("http://a.example/p", usage=usage)            # the reader passed it by
     result = fetcher.fetch("http://b.example/p", budget=budget, usage=usage)
     assert (result.body, result.final_url, result.redirects) == (expected.body, expected.final_url,
                                                                  expected.redirects)
     assert usage.requests == plain.requests == 4 and usage.bytes == plain.bytes
-    assert usage.prefetch_unused_requests == sent_ahead and fetcher._ahead == {}
-    assert len(web.log) == 4 + usage.requests + usage.prefetch_unused_requests
+    assert usage.prefetch_unused_requests == 2 and fetcher._ahead == {}           # a.example's two, and no more
+    paths = [r["path"] for r in web.log[4:] if r["host"] == "b.example"]
+    assert paths == ["/robots.txt", "/p", "/q", "/r"]             # each of b.example's four exactly once
+    assert fetcher.cache.lookup("http://b.example/p") and fetcher.cache.robots("http~80~.b.example")
+
+
+def test_a_fetch_ahead_that_ran_out_of_room_before_a_hops_robots_txt_is_continued_at_that_hop(web, tmp_path):
+    """The redirect leads to another site, and the room ran out before that site's robots.txt. The claim goes on at
+    the hop (the page's walk), fetching that robots.txt first, and returns the page, not the robots.txt."""
+    web.add("a.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add_redirect("a.example", "/p", "http://b.example/q")
+    web.add("b.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add("b.example", "/q", "<p>there</p>")
+    web.add("c.example", "/robots.txt", ROBOTS, content_type="text/plain")
+    web.add("c.example", "/p", "<p>other</p>")
+    budget = Budget(max_requests=4)
+    plain_fetcher, plain = fetcher_for(web, tmp_path / "plain"), Usage()
+    expected = plain_fetcher.fetch("http://a.example/p", budget=budget, usage=plain)
+    before = len(web.log)
+    fetcher, usage = fetcher_for(web, tmp_path / "ahead"), Usage()
+    fetcher.speculate("http://c.example/p", usage=usage, budget=budget)
+    fetcher.speculate("http://a.example/p", usage=usage, budget=budget)
+    finish_all(fetcher)
+    assert len(settled(web, quiet=0.2)) - before == 4             # two each; b.example was not asked anything
+    assert web.requests_to("b.example")[2:] == []
+    fetcher.abandon("http://c.example/p", usage=usage)
+    result = fetcher.fetch("http://a.example/p", budget=budget, usage=usage)
+    assert (result.body, result.final_url, result.content_type, result.redirects) == \
+        (expected.body, expected.final_url, expected.content_type, expected.redirects)
+    assert result.body == b"<p>there</p>" and (usage.requests, usage.bytes) == (plain.requests, plain.bytes)
+    assert [r["path"] for r in web.log[before:] if r["host"] == "b.example"] == ["/robots.txt", "/q"]
+    assert usage.prefetch_unused_requests == 2 and fetcher._ahead == {}
+
+
+def test_a_continued_fetch_ahead_is_refused_where_one_page_at_a_time_is(web, tmp_path):
+    """Continued on the task's own budget: when that has no room either, the refusal is the plain fetch's."""
+    redirect_sites(web, ["b.example"])
+    budget = Budget(max_requests=3)
+
+    def stopped(fetcher, usage):
+        with pytest.raises(BudgetExceeded) as info:
+            fetcher.fetch("http://b.example/p", budget=budget, usage=usage)
+        return str(info.value), usage.requests, usage.bytes
+
+    plain = stopped(fetcher_for(web, tmp_path / "plain"), Usage())
+    assert len(web.log) == 3
+    ahead, usage = fetcher_for(web, tmp_path / "ahead"), Usage()
+    ahead.speculate("http://b.example/p", usage=usage, budget=budget)
+    finish_all(ahead)
+    assert stopped(ahead, usage) == plain
+    assert len(settled(web, quiet=0.1)) == 6 and usage.prefetch_unused_requests == 0 and ahead._ahead == {}
 
 
 def big_pages(web, hosts, size=4000):
@@ -856,7 +927,8 @@ def arrived(web, host, path, seconds=5.0):
 def test_a_fetch_ahead_opens_no_second_connection_to_the_site_the_reader_is_on(web, tmp_path):
     """A page fetched ahead on b.example redirects to a.example while the reader's request to a.example is still
     being answered. The read-ahead window counts candidate hosts, and cannot know a redirect's target: the fetch
-    ahead used to open a second connection to a.example. It stops at the busy site and is fetched at its turn."""
+    ahead used to open a second connection to a.example. It stops at the busy site, before the request, and at its
+    turn the claim goes on from that hop: nothing it had fetched is fetched again."""
     release = threading.Event()
     web.add("a.example", "/robots.txt", ROBOTS, content_type="text/plain")
     web.routes[("a.example", "/slow")] = Held("<p>slow</p>", release, "text/html")
@@ -877,9 +949,12 @@ def test_a_fetch_ahead_opens_no_second_connection_to_the_site_the_reader_is_on(w
         release.set()
     reader.join(5)
     assert out["slow"].body == b"<p>slow</p>"
-    result = fetcher.fetch("http://b.example/p", budget=budget, usage=usage)        # at its turn: as usual
-    assert result.body == b"<p>other</p>" and fetcher._busy == {} and fetcher._ahead == {}
-    assert usage.prefetch_unused_requests == 2                                      # b's robots.txt and /p, ahead
+    result = fetcher.fetch("http://b.example/p", budget=budget, usage=usage)        # at its turn: continued
+    assert result.body == b"<p>other</p>" and result.redirects == ["http://a.example/other"]
+    assert fetcher._busy == {} and fetcher._ahead == {}
+    assert usage.prefetch_unused_requests == 0 and usage.requests == 5              # nothing wasted, nothing twice
+    assert [(r["host"], r["path"]) for r in web.log if r["host"] == "b.example"] == \
+        [("b.example", "/robots.txt"), ("b.example", "/p")]
     assert len(web.log) == usage.requests + usage.prefetch_unused_requests
 
 
@@ -949,16 +1024,98 @@ def test_the_readers_request_on_the_wire_is_cut_when_its_watch_sees_the_stop(web
     assert not any(t.name == "nsf-fetch-watch" for t in threading.enumerate())      # the watch ends with its request
 
 
-def test_a_request_cut_for_a_stop_that_was_withdrawn_is_a_page_not_reached(web, tmp_path):
+def test_a_request_cut_for_a_stop_that_was_withdrawn_is_interrupted_and_says_nothing_about_the_site(web, tmp_path):
+    """The watch saw a stop, the request was cut, and the gate does not confirm it (the owner undid it within the
+    poll). Here that happens while robots.txt is on the wire. It used to end as 'connect_failed', which a robots.txt
+    fetch turns into "disallow everything" for 24 hours, in a fetcher the worker keeps across tasks."""
     release, seen = threading.Event(), []
-    held_page(web, release)
+    web.routes[("slow.example", "/robots.txt")] = Held(ROBOTS, release)
+    web.add("slow.example", "/p", "<p>late</p>")
     fetcher, usage = fetcher_for(web, tmp_path), Usage()
     try:
-        with pytest.raises(FetchError) as info, fetcher.gated(lambda url: None, lambda url: seen.append(url) or "x"):
+        with pytest.raises(FetchError) as info, \
+                fetcher.gated(lambda url: None, lambda url: seen.append(url) or (len(seen) == 1 and "stop")):
             fetcher.fetch("http://slow.example/p", budget=Budget(), usage=usage)
     finally:
         release.set()
-    assert info.value.code == "connect_failed" and "cut" in info.value.detail and seen
+    assert info.value.code == "interrupted" and "cut" in info.value.detail and seen
+    with fetcher._lock:
+        assert fetcher._robots == {} and fetcher._backoff == {}           # no verdict on the site, no back-off
+    assert fetcher.cache.robots("http~80~.slow.example") is None and fetcher.cache.lookup("http://slow.example/p") is None
+    # the site is read as usual afterwards
+    assert fetcher.fetch("http://slow.example/p", budget=Budget(), usage=usage).body == b"<p>late</p>"
+
+
+def test_a_watch_that_cannot_be_read_does_not_cut_a_healthy_request(web, tmp_path):
+    """Any error from the watch used to count as a stop and cut the reader's request. The reader's own gate fails
+    closed before every step; a watch that fails is no answer, and the request goes on."""
+    web.add("a.example", "/robots.txt", ROBOTS, content_type="text/plain", delay=0.4)
+    web.add("a.example", "/p", "<p>hi</p>", delay=0.4)
+    fetcher, calls = fetcher_for(web, tmp_path), []
+
+    def watch(url):
+        calls.append(url)
+        raise OSError("database is locked")
+
+    with fetcher.gated(lambda url: None, watch):
+        result = fetcher.fetch("http://a.example/p", budget=Budget(), usage=Usage())
+    assert result.body == b"<p>hi</p>" and calls                # asked, failed, and nothing was cut
+    with fetcher._lock:
+        assert not fetcher._robots["http~80~.a.example"].rules.disallow_all
+
+
+def test_a_stop_during_the_readers_tls_handshake_charges_no_request(web, tmp_path):
+    """The watch asks while the connection is being opened too. A stop during a slow TLS handshake cut it, nothing
+    was sent, and the request charged before connecting stayed charged."""
+    import socket as socket_module
+    listener = socket_module.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(4)
+    held, stop, out = [], threading.Event(), {}
+
+    def serve():                                              # accepts, and never answers the handshake
+        try:
+            while True:
+                held.append(listener.accept()[0])
+        except OSError:
+            pass
+
+    threading.Thread(target=serve, daemon=True).start()
+    web._ip_for("tls.example")
+    port = listener.getsockname()[1]
+    fetcher = fetcher_for(web, tmp_path, connector=lambda ip, _port, timeout: socket_module.create_connection(
+        ("127.0.0.1", port), timeout=timeout))
+    usage = Usage()
+
+    def gate(url):
+        if stop.is_set():
+            raise Stop(url)
+
+    def reader():
+        try:
+            with fetcher.gated(gate, lambda url: "stopped" if stop.is_set() else None):
+                fetcher.fetch("https://tls.example/data", purpose="api", budget=Budget(), usage=usage)
+        except Stop:
+            out["stopped"] = True
+        except Exception as error:
+            out["error"] = error
+
+    thread = threading.Thread(target=reader)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not held:      # connected: the handshake is under way
+            time.sleep(0.01)
+        assert held
+        stop.set()
+        thread.join(5)
+        assert out == {"stopped": True}
+        assert usage.requests == 0                            # nothing was written, so nothing is charged
+        assert fetcher.stats()["hosts"]["tls.example"]["requests"] == 0
+    finally:
+        listener.close()
+        for connection in held:
+            connection.close()
 
 
 def test_a_watch_is_not_asked_for_fetches_outside_the_gate_and_a_plain_fetch_is_unchanged(web, tmp_path):
@@ -1145,12 +1302,15 @@ def test_a_back_off_received_by_a_fetch_ahead_applies_to_the_site_at_once(tmp_pa
     slowly, to two.example; the second candidate is on two.example and is answered 429 with Retry-After. One page at
     a time, the first is read before the 429 exists. Read ahead, the 429 arrives first, the site is left alone from
     that moment, and the first candidate's hop onto it is not made. The site asked: it is not asked again, and the
-    report says why the source is missing."""
+    report says why the source is missing. Only that is missing: the first candidate's own site did not ask for
+    anything, and a later page on it is read (it used to be skipped, and blamed on a crawl delay it does not
+    have)."""
     web = FixtureWeb()
     for host in ("one.example", "two.example", "three.example"):
         web.add(host, "/robots.txt", ROBOTS, content_type="text/plain")
     web.add("one.example", "/zephyr", b"", status=302, content_type=None,
             headers={"Location": "http://two.example/article"}, delay=0.5)
+    web.add("one.example", "/second", zephyr("one.example", 4))        # another page on the first site
     web.add("two.example", "/article", zephyr("two.example", 1))
     web.add("two.example", "/zephyr", "slow down", status=429, content_type="text/plain",
             headers={"Retry-After": "60"})
@@ -1161,9 +1321,11 @@ def test_a_back_off_received_by_a_fetch_ahead_applies_to_the_site_at_once(tmp_pa
     try:
         state.set_config(db, {"enabled": True, "min_domain_interval": 0.0, "read_ahead": window}, T0)
         task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
-        provider = CorpusProvider([{"url": f"http://{host}/zephyr", "title": f"Zephyr compiler 4.2.0 boards ({n})",
+        provider = CorpusProvider([{"url": url, "title": f"Zephyr compiler 4.2.0 boards ({n})",
                                     "snippet": "the Zephyr compiler version 4.2.0 and the boards it supports"}
-                                   for n, host in enumerate(("one.example", "two.example", "three.example"))])
+                                   for n, url in enumerate(("http://one.example/zephyr", "http://two.example/zephyr",
+                                                            "http://three.example/zephyr",
+                                                            "http://one.example/second"))])
         services = svc_mod.build(db, path, fixture=web, providers=[provider], clock=time.time)
         try:
             done = orchestrator.run(db, task["id"], services)
@@ -1174,13 +1336,54 @@ def test_a_back_off_received_by_a_fetch_ahead_applies_to_the_site_at_once(tmp_pa
         asked = [text for text in limitations if "two.example" in text and "asked for fewer requests" in text]
         assert done["status"] in ("completed", "partial"), done["error"]
         assert asked, limitations                              # at both windows the 429 itself is reported
+        # the first site never asked for anything: nothing blames it, and its other page is read at both windows
+        assert not [text for text in limitations if "one.example" in text or "crawl delay" in text], limitations
         to_two = [r["path"] for r in settled(web) if r["host"] == "two.example"]
         if window == 1:
-            assert sources == ["http://one.example/zephyr", "http://three.example/zephyr"]
+            assert sources == ["http://one.example/second", "http://one.example/zephyr",
+                               "http://three.example/zephyr"]
             assert to_two == ["/robots.txt", "/article", "/zephyr"]
-        else:
-            assert sources == ["http://three.example/zephyr"]
+        else:   # missing: exactly the page that leads onto the site that asked for fewer requests
+            assert sources == ["http://one.example/second", "http://three.example/zephyr"]
             assert to_two == ["/robots.txt", "/zephyr"]        # nothing after the site asked to slow down
+    finally:
+        db.close()
+        web.stop()
+
+
+# ---- second pass: every page read still shows as its own progress event -----------------------------------------
+
+def test_each_source_read_is_its_own_progress_event_at_the_default_read_ahead(tmp_path):
+    """Progress views (the console's and the phone's stage lists, Presence) follow a task through its recorded
+    events. With pages fetched ahead the reader takes several pages in quick succession; each must still be
+    recorded as its own 'fetch' event, in reading order, during the reading stage."""
+    release = threading.Event()
+    release.set()
+    web = held_web(release)
+    path = tmp_path / "individual.sqlite"
+    db = store.create(path, T0)
+    try:
+        state.set_config(db, {"enabled": True, "min_domain_interval": 0.0}, T0)       # read_ahead: the default
+        assert state.get_config(db).read_ahead == 4
+        task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification")
+        services = svc_mod.build(db, path, fixture=web, providers=[corpus()], clock=lambda: T0)
+        inner, ahead = services.fetcher.speculate, []
+        services.fetcher.speculate = lambda url, **kwargs: inner(url, **kwargs) and not ahead.append(url)
+        try:
+            done = orchestrator.run(db, task["id"], services)
+        finally:
+            services.close()
+        assert done["status"] in ("completed", "partial"), done["error"]
+        assert len(ahead) >= 2                                  # pages really were fetched ahead
+        events = state.events(db, task["id"])
+        fetched = [e for e in events if e["kind"] == "fetch"]
+        read = [d["url"] for d in state.task(db, task["id"])["checkpoint"]["documents"]]
+        assert [e["detail"]["url"] for e in fetched] == read and len(read) == done["usage"]["pages"] >= 4
+        assert all(e["stage"] == "reading" for e in fetched)
+        assert len({e["detail"]["source_id"] for e in fetched}) == len(fetched)
+        order = [e["kind"] for e in events]
+        assert order.index("fetch") > [i for i, e in enumerate(events) if e["kind"] == "stage"
+                                       and e["detail"].get("stage") == "reading"][0]
     finally:
         db.close()
         web.stop()

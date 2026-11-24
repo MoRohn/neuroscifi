@@ -32,7 +32,10 @@ TERMINAL_STATES = ("completed", "partial", "failed", "cancelled")
 STAGES = ("discovering", "reading", "evaluating", "synthesizing")
 FETCH_ERROR_CODES = ("blocked_policy", "blocked_robots", "dns_failure", "connect_failed", "timeout", "http_error",
                      "too_large", "unsupported_type", "rate_limited", "too_many_redirects", "tls_error",
-                     "disabled", "budget_exhausted", "decode_error")
+                     "disabled", "budget_exhausted", "decode_error",
+                     # the request was cut on a stop that was then withdrawn: the page was not read, and nothing is
+                     # concluded about the site (net.SafeFetcher._cut)
+                     "interrupted")
 
 
 class JsonMixin:
@@ -200,8 +203,10 @@ class BudgetExceeded(Exception):
 @dataclass
 class Budget(JsonMixin):
     max_queries: int = 6
-    # every network request the task is charged for, incl. API calls and robots.txt. Pages fetched ahead of their
-    # turn and then not used are counted apart (Usage.prefetch_unused_*); together they never exceed this either
+    # every network request the task is charged for, incl. API calls and robots.txt: charged <= max_requests.
+    # Requests of pages fetched ahead of their turn and then not used are counted apart
+    # (Usage.prefetch_unused_requests) and are on top: they alone never exceed max_requests either, so everything a
+    # task sends is below 2 x max_requests
     max_requests: int = 40
     max_pages: int = 8                # documents acquired (fetched or rendered)
     max_bytes: int = 20_000_000
