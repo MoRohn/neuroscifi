@@ -1422,7 +1422,10 @@ class _Run:
                     continue
                 if self.skip_denied(r.url, r.provider):
                     continue
-                if _host(r.url) in waiting:       # the same wait would refuse it again: no request is spent
+                if _host(r.url) in waiting and i not in ahead:
+                    # the same wait would refuse it again: no request is spent. Not so for a candidate fetched
+                    # ahead: its site was asked, and what it answered (the 429 itself, perhaps) is this candidate's
+                    # outcome, as it is one page at a time. The claim sends nothing to a site in back-off.
                     waiting[_host(r.url)][0] += 1
                     continue
                 article = r.provider in SNIPPET_ONLY

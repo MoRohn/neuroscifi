@@ -253,11 +253,13 @@ What bounds it:
     ends where one-at-a-time reading ends);
   - what read-ahead sends unused is at most `max_requests` (bytes: `max_bytes`, plus one byte per fetch ahead: at
     the limit a read takes one byte more to learn that the body goes on, as the reader's own read does);
-  - so everything a task sends is below twice `max_requests`. That is the bound, not the typical case: the
-    unused part is only what a fetch ahead had sent before it became unusable.
+  - so everything a task sends is at most twice `max_requests`. That is the bound, and it can be reached (the
+    whole budget goes ahead, then every fetch ahead becomes unusable); it is not the typical case: the unused
+    part is only what a fetch ahead had sent before it became unusable.
   A fetch ahead that runs out of room at a later request (a redirect chain) stops before that request, and its
   claim *goes on from that hop* on the task's own budget: what it sent is charged as if the reader had sent it, and
-  nothing is requested twice. One cut while reading a body is used only when a read made at its turn would stop at
+  nothing is requested twice. (One case is not continued: a stop in the middle of fetching a robots.txt that
+  redirects, after its first request. That fetch ahead is not used and the page is fetched as usual.) One cut while reading a body is used only when a read made at its turn would stop at
   the same place, and is fetched again otherwise. What remains unusable, and therefore unused traffic: a fetch
   ahead overtaken by a changed deny list (every fetch ahead in flight is thrown away, and the reader fetches those
   pages at their turn under the new policy), by a back-off, or cut by the reader reaching its site, and a page
@@ -285,7 +287,9 @@ moment earlier. Exactly what is missing: pages that lead onto the site that aske
 left alone (the failing request's site, a redirect hop's included), so later candidates *on that site* are not
 tried, at either window; the candidate's own site, which asked for nothing, is read as usual. The report says so
 ("a source there was not read: the site asked for fewer requests", and "N more candidate(s) not tried: the site
-asked for fewer requests" for those skipped), and the failure is recorded as `rate_limited`
+asked for fewer requests" for those skipped without a request; a candidate whose own request was answered 429,
+ahead of its turn or not, is a `rate_limited` failure, not one "not tried"), and the failure is recorded as
+`rate_limited`
 (`test_a_back_off_received_by_a_fetch_ahead_applies_to_the_site_at_once`).
 
 `nsf web config --set read_ahead=1` reads one page at a time for every task, as 0.7.0 did: nothing is fetched ahead

@@ -5,6 +5,7 @@ Two levels: SafeFetcher.speculate / claim / abandon on their own (charges replay
 robots writes, the budget stopping a claim where a fetch would stop), and whole research runs on FixtureWeb compared
 between read_ahead 1 and read_ahead 4 (consumed order, usage, sources, events, cancellation, budget exhaustion,
 crash and resume, the per-host interval)."""
+import random
 import threading
 import time
 
@@ -279,6 +280,89 @@ def test_at_every_budget_edge_read_ahead_ends_as_one_at_a_time_and_stays_inside_
         assert four["usage"].get("prefetch_unused_requests", 0) <= budget["max_requests"]
     else:       # at the byte limit each fetch ahead reads one byte more, as the reader's own read does
         assert four["usage"].get("prefetch_unused_bytes", 0) <= budget["max_bytes"] + len(four["started"])
+
+
+def random_web(rng):
+    """A small random web and a tight budget: two to five sites, three to six candidates, each a chain of zero to
+    three redirects within and across sites ending in a page of some size that answers after 0 to 0.1 s; sites
+    without a robots.txt, and sites whose robots.txt redirects, to a file on the same site or on another one (as
+    example.com/robots.txt does to www.example.com/robots.txt). Returns (routes to register, candidate URLs,
+    budget)."""
+    hosts = [f"h{i}.example" for i in range(rng.randint(2, 5))]
+    no_robots = {h for h in hosts if rng.random() < 0.2}
+    robots_elsewhere = {h: rng.choice(hosts) for h in hosts if h not in no_robots and rng.random() < 0.3}
+    routes, candidates = [], []
+    for host in hosts:
+        if host in robots_elsewhere:
+            target = robots_elsewhere[host]
+            routes.append(("redirect", host, "/robots.txt", f"http://{target}/robots-{host}.txt"))
+            routes.append(("robots", target, f"/robots-{host}.txt"))
+        elif host not in no_robots:
+            routes.append(("robots", host, "/robots.txt"))
+    for n in range(rng.randint(3, 6)):
+        host, path = rng.choice(hosts), f"/c{n}"
+        candidates.append(f"http://{host}{path}")
+        for k in range(rng.randint(0, 3)):
+            following = rng.choice(hosts) if rng.random() < 0.5 else host
+            routes.append(("redirect", host, path, f"http://{following}/c{n}_{k}"))
+            host, path = following, f"/c{n}_{k}"
+        routes.append(("page", host, path, n, rng.choice([2, 20, 200]), rng.choice([0, 0, 0.03, 0.1])))
+    budget = {"max_requests": rng.randint(3, 14), "max_bytes": rng.choice([4000, 20000, 60000, 20_000_000])}
+    return hosts, routes, candidates, budget
+
+
+def run_random_web(tmp_path, name, window, hosts, routes, candidates, budget):
+    web = FixtureWeb()
+    for host in hosts:
+        web._ip_for(host)
+    for route in routes:
+        if route[0] == "redirect":
+            web.add_redirect(route[1], route[2], route[3])
+        elif route[0] == "robots":
+            web.add(route[1], route[2], "User-agent: *\nAllow: /\n", content_type="text/plain")
+        else:
+            _, host, path, n, lines, delay = route
+            web.add(host, path, page(f"Zephyr compiler 4.2.0 boards ({host} {n})", [
+                f"The Zephyr compiler version 4.2.0 supports {10 + n} boards according to {host}."] + [
+                f"Board list line {k} of {host} for the Zephyr compiler version 4.2.0." for k in range(lines)]),
+                delay=delay)
+    web.start()
+    db, path = individual(tmp_path, name, window)
+    try:
+        task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification", budget=budget)
+        provider = CorpusProvider([{"url": url, "title": f"Zephyr compiler 4.2.0 boards ({n})",
+                                    "snippet": "the Zephyr compiler version 4.2.0 and the boards it supports"}
+                                   for n, url in enumerate(candidates)])
+        services = svc_mod.build(db, path, fixture=web, providers=[provider], clock=lambda: T0)
+        try:
+            done = orchestrator.run(db, task["id"], services)
+        finally:
+            services.close()
+        log = settled(web)
+        return {"outcome": outcome(db, done), "usage": done["usage"], "requests_reaching_sites": len(log)}
+    finally:
+        db.close()
+        web.stop()
+
+
+@pytest.mark.parametrize("seed", [3, 21, 117, 404])
+def test_random_webs_under_tight_budgets_end_the_same_at_one_page_at_a_time_and_read_ahead(tmp_path, seed):
+    """Redirect chains, shared sites, robots.txt files that redirect (also onto another site), slow pages, and a
+    budget that ends the task somewhere in the middle: whatever happens ahead (a fetch stopped at the shared
+    budget, at a busy site, inside a robots.txt walk, cut, continued, thrown away), the task ends exactly as one
+    page at a time ends it (status, charged usage, sources, answer, limitations, documents, events), every request
+    that reached a site is charged or counted unused, and unused read-ahead stays within the request budget."""
+    rng = random.Random(seed)
+    for n in range(8):
+        hosts, routes, candidates, budget = random_web(rng)
+        one = run_random_web(tmp_path, f"s{seed}n{n}w1", 1, hosts, routes, candidates, budget)
+        four = run_random_web(tmp_path, f"s{seed}n{n}w4", 4, hosts, routes, candidates, budget)
+        where = (seed, n, routes, candidates, budget)
+        assert four["outcome"] == one["outcome"], where
+        assert one["requests_reaching_sites"] == one["usage"]["requests"], where
+        unused = four["usage"].get("prefetch_unused_requests", 0)
+        assert four["requests_reaching_sites"] == four["usage"]["requests"] + unused, where
+        assert unused <= budget["max_requests"], where
 
 
 def test_crash_with_read_ahead_in_flight_then_resume_uses_only_checkpointed_pages(tmp_path):

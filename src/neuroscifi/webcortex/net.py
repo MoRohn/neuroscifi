@@ -55,9 +55,11 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
   A fetch ahead is started only when that room covers a typical fetch (TYPICAL_FETCH: robots.txt and the page),
   which it then holds from the start. One that runs out of room at a later request (a redirect chain) stops before
   that request; its claim replays what it sent and goes on from that hop on the task's own budget (nothing is
-  fetched twice). So: charged <= max_requests, sent ahead unused <= max_requests, and everything a task sends is
-  below twice max_requests; the unused part is what a fetch ahead sent before it became unusable (the policy
-  changed, a busy site, a back-off, a page the reader passed by).
+  fetched twice; a stop inside a robots.txt walk that has already sent a request is the exception: that fetch is
+  not continued, and its claim fetches as usual). So: charged <= max_requests, sent ahead unused <= max_requests,
+  and everything a task sends is at most twice max_requests (reachable: every fetch ahead unusable after the
+  whole budget went ahead); the unused part is what a fetch ahead sent before it became unusable (the policy
+  changed, a back-off, cut by the reader reaching its site, a page the reader passed by).
 - Stops (gated, speculate(wanted=...)): before every network step of a fetch the fetcher asks whether the fetch
   is still wanted: before each name lookup, before each connection is opened (after the politeness wait) and once
   more when the connection is open, immediately before the request is written on it (robots.txt, the page, every
@@ -452,7 +454,9 @@ class _OverBudget(BudgetExceeded):
 
     Stopped before a request, the fetch is continued by its claim: what it sent is replayed on the task's Usage and
     the walk goes on from that hop as the reader's own fetch, on the task's own budget (_fits, _commit). Stopped in
-    a body, it is used only when a read made at that moment would stop at the same place, else fetched again."""
+    a body, it is used only when a read made at that moment would stop at the same place, else fetched again.
+    Never raised out of a robots.txt walk that has sent a request: _fetch_robots turns that into _Abandoned (the
+    walk's own progress is not carried over, and going on from the page's hop would ask for the file twice)."""
 
     def __init__(self, kind="requests"):
         super().__init__("read-ahead", kind, "budget")
@@ -1842,10 +1846,20 @@ class SafeFetcher:
         robots = urlsplit(urlunsplit((parts.scheme, parts.netloc, "/robots.txt", "", "")))
         headers = {"User-Agent": self.policy.user_agent, "Accept": "text/plain,*/*;q=0.5",
                    "Accept-Encoding": "gzip, deflate", "Connection": "close"}
+        ahead = usage if isinstance(usage, _Speculation) else None
+        sent_before = ahead.recorded if ahead is not None else 0
         try:
             response, _final, _redirects = self._request(robots, "GET", None, headers, "robots", budget, usage,
                                                          resolved, deadline)
         except (BudgetExceeded, FetchError) as error:
+            if isinstance(error, _OverBudget) and error.kind != "bytes" and ahead.recorded > sent_before:
+                # a read-ahead fetch stopped before a request inside this robots.txt walk, after the walk had sent
+                # one (the file redirects). A claim goes on from the page's hop, where this file would have to be
+                # asked for again from its first request, so this stop is not one to go on from: the fetch is not
+                # used, what it sent counts as unused, and its claim fetches as usual
+                with ahead.lock:
+                    ahead.stopped = ahead.stopped or "stopped inside a robots.txt walk"
+                raise _Abandoned("stopped inside a robots.txt walk") from None
             if isinstance(error, BudgetExceeded) or error.code in ("rate_limited", "timeout", "interrupted"):
                 raise
             return _robots_disallow_all(self._clock(), f"robots.txt unavailable ({error.code})")

@@ -206,7 +206,7 @@ class Budget(JsonMixin):
     # every network request the task is charged for, incl. API calls and robots.txt: charged <= max_requests.
     # Requests of pages fetched ahead of their turn and then not used are counted apart
     # (Usage.prefetch_unused_requests) and are on top: they alone never exceed max_requests either, so everything a
-    # task sends is below 2 x max_requests
+    # task sends is at most 2 x max_requests
     max_requests: int = 40
     max_pages: int = 8                # documents acquired (fetched or rendered)
     max_bytes: int = 20_000_000
