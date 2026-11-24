@@ -112,9 +112,11 @@ def test_signed_node_requests_and_their_refusals(spark, devices):
     fixed = key.headers("research_session", raw)
     assert spark.req("research_session", take, a, headers=fixed)[1]["owner"] == "phone"
     assert spark.req("research_session", take, a, headers=fixed) == (401, {"error": "replayed_request"})
-    old = key.headers("research_session", raw, timestamp=time.time() - 121)
+    # 2 s past the 120 s window: the headers' timestamp is truncated to whole seconds and the request takes time, so
+    # 121 s ahead could arrive 120.x s ahead and be fresh (it failed that way, about one run in three)
+    old = key.headers("research_session", raw, timestamp=time.time() - 122)
     assert spark.req("research_session", take, a, headers=old) == (401, {"error": "stale_request"})
-    ahead = key.headers("research_session", raw, timestamp=time.time() + 121)
+    ahead = key.headers("research_session", raw, timestamp=time.time() + 122)
     assert spark.req("research_session", take, a, headers=ahead) == (401, {"error": "stale_request"})
     other = key.headers("research_session", json.dumps({"id": task_id, "action": "release"}).encode())
     assert spark.req("research_session", take, a, headers=other) == (401, {"error": "signature_invalid"})  # tampered
