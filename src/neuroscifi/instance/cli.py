@@ -127,6 +127,7 @@ def _init(args):
                                ask_budget_per_epoch=args.ask_budget,
                                ask_budget_window_seconds=args.ask_window_days * 86400,
                                consolidation=args.consolidation,
+                               max_consolidated_rows=args.max_consolidated_rows,
                                max_evidence_rows=args.max_evidence_rows,
                                min_free_bytes=int(args.min_free_mib * 1024 * 1024))
     founding = args.founding_graph.read_bytes() if args.founding_graph else None
@@ -147,9 +148,11 @@ def _config(db, args, now):
         changes["ask_budget_window_seconds"] = args.ask_window_days * 86400
     if args.consolidation is not None:
         changes["consolidation"] = args.consolidation
+    if args.max_consolidated_rows is not None:
+        changes["max_consolidated_rows"] = args.max_consolidated_rows
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
-    problems = store.setting_problems(db)
+    problems = store.setting_problems(db) + store.consolidation_warnings(db)
     return out | ({"warnings": problems} if problems else {})
 
 
@@ -166,6 +169,9 @@ def register(sub):
                    help="the ask budget counts questions of the last this many days (0 = the whole epoch)")
     p.add_argument("--consolidation", action=argparse.BooleanOptionalAction, default=True,
                    help="keep what an expired learning event taught as a consolidated reading (default: on)")
+    p.add_argument("--max-consolidated-rows", type=bounded_int(0, store.MAX_ROW_LIMIT),
+                   default=store.InstanceConfig.max_consolidated_rows,
+                   help="the most consolidated readings kept; at the limit expiring events leave nothing (0 = no limit)")
     p.add_argument("--max-evidence-rows", type=int, default=store.InstanceConfig.max_evidence_rows,
                    help="regulation: pause new evidence writes at this journal size")
     p.add_argument("--min-free-mib", type=float, default=store.InstanceConfig.min_free_bytes / 1048576,
@@ -181,6 +187,9 @@ def register(sub):
     p.add_argument("--consolidation", action=argparse.BooleanOptionalAction, default=None,
                    help="keep what an expired learning event taught as a consolidated reading (default: on); "
                         "--no-consolidation stops further consolidation, readings already kept stay until forgotten")
+    p.add_argument("--max-consolidated-rows", type=bounded_int(0, store.MAX_ROW_LIMIT),
+                   help="the most consolidated readings kept (0 = no limit); at the limit expiring learning events "
+                        "leave nothing. Lowering it removes no reading: it only stops further consolidation")
     p.set_defaults(handler=with_db(_config))
 
     p = sub.add_parser("birth", help="birth record, memory inventory and development counters")

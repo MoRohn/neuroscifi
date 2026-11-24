@@ -21,7 +21,7 @@ import time
 import uuid
 
 from .. import __version__
-from .errors import NotFound, ValidationError, WritesPaused
+from .errors import InstanceError, NotFound, ValidationError, WritesPaused
 from .schema import SCHEMA_VERSION, migrate
 
 THERMAL_ZONES = "/sys/class/thermal/thermal_zone*/temp"  # millidegrees Celsius, one file per zone
@@ -77,6 +77,11 @@ class InstanceConfig:
     # their raw events. False = an expired event leaves nothing, as before schema 14; readings consolidated earlier
     # keep counting until they are forgotten.
     consolidation: bool = True
+    # The most consolidated readings the file keeps (ADR-044; every reading counts, a later copy of a sample too).
+    # At the limit the sweep stops adding readings: expiring learning events leave nothing, as before schema 14, and
+    # the sweep, `nsf regulation`, `nsf birth` and the console say so; from CONSOLIDATION_WARN_SHARE of it they warn.
+    # It never deletes a reading: lowering it below what is kept only stops further consolidation. 0 = no limit.
+    max_consolidated_rows: int = 1_000_000
     max_thermal_celsius: float | None = None  # regulation: pause new writes above this temperature (None = off)
 
     @classmethod
@@ -90,7 +95,19 @@ class InstanceConfig:
         # the reading that cannot keep data an owner opted out of. setting_problems() reports it.
         if not isinstance(values.get("consolidation", True), bool):
             values["consolidation"] = False
+        # A limit that is not a whole number from 0 up (a hand-edited "none", a -1, true) is not a limit: the default
+        # stands, never "no limit" by accident. setting_problems() reports it.
+        if "max_consolidated_rows" in values and not _row_limit(values["max_consolidated_rows"]):
+            del values["max_consolidated_rows"]
         return cls(**values)
+
+
+MAX_ROW_LIMIT = 10**12
+CONSOLIDATION_WARN_SHARE = 0.8      # of max_consolidated_rows: from here the owner is warned
+
+
+def _row_limit(value):
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= MAX_ROW_LIMIT
 
 
 def default_db_path():
@@ -193,6 +210,7 @@ _SETTABLE = {
     "ask_budget_window_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool)
                                             and math.isfinite(v) and 0 <= v <= 36500 * 86400),
     "consolidation": lambda v: isinstance(v, bool),
+    "max_consolidated_rows": _row_limit,
 }
 
 
@@ -214,10 +232,45 @@ def setting_problems(db):
         return ["the saved settings cannot be read as JSON"]
     if not isinstance(raw, dict):
         return ["the saved settings are not a JSON object"]
-    return [f"the saved {name} ({raw[name]!r}) is not a valid value"
-            + ("; consolidation is treated as off until it is set with `nsf config --consolidation` or "
-               "`--no-consolidation`" if name == "consolidation" else "")
+    notes = {"consolidation": "; consolidation is treated as off until it is set with `nsf config --consolidation` or "
+                              "`--no-consolidation`",
+             "max_consolidated_rows": f"; the default limit of {InstanceConfig.max_consolidated_rows} consolidated "
+                                      "readings applies until it is set with `nsf config --max-consolidated-rows N`"}
+    return [f"the saved {name} ({raw[name]!r}) is not a valid value" + notes.get(name, "")
             for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
+
+
+def consolidation_room(db, cfg=None):
+    """How many more consolidated readings the file may take: None without a limit (max_consolidated_rows 0), else
+    the limit less what is kept, never below 0. One count over the smallest index of the table."""
+    cfg = config(db) if cfg is None else cfg
+    if not cfg.max_consolidated_rows:
+        return None
+    held = db.execute("SELECT count(*) FROM evidence_consolidated").fetchone()[0]
+    return max(0, cfg.max_consolidated_rows - held)
+
+
+_CAP_REMEDY = ("Raise the limit with `nsf config --max-consolidated-rows N` (0 = no limit), or forget an epoch, a "
+               "partner or a camera that is no longer needed (`nsf forget epoch|partner|camera NAME`).")
+
+
+def consolidation_warnings(db, held=None, cfg=None):
+    """What the owner must be told about the limit on consolidated readings, as sentences; [] below
+    CONSOLIDATION_WARN_SHARE of it, without a limit, and while consolidation is off (nothing is added then)."""
+    cfg = config(db) if cfg is None else cfg
+    limit = cfg.max_consolidated_rows
+    if not limit or not cfg.consolidation:
+        return []
+    if held is None:
+        held = db.execute("SELECT count(*) FROM evidence_consolidated").fetchone()[0]
+    if held >= limit:
+        return [f"The limit on consolidated readings is reached ({held} of {limit}): a learning event that reaches "
+                "the end of its lifetime now leaves nothing, as before consolidation existed, so beliefs stop "
+                f"outliving new evidence. Nothing already kept is removed. {_CAP_REMEDY}"]
+    if held >= CONSOLIDATION_WARN_SHARE * limit:
+        return [f"Consolidated readings are at {100 * held // limit} % of their limit ({held} of {limit}). At the "
+                f"limit a learning event that reaches the end of its lifetime leaves nothing. {_CAP_REMEDY}"]
+    return []
 
 
 def set_config(db, changes, now=None):
@@ -390,17 +443,42 @@ def regulation(db, path=None):
     counts the Web Cortex ones (scope 'web:...'), which have their own budget (WebConfig.max_open_web_questions)
     and never use an epoch's ask budget."""
     allowed, reason = write_allowed(db, path)
-    return {
+    cfg = config(db)
+    held = db.execute("SELECT count(*) FROM evidence_consolidated").fetchone()[0]
+    out = {
         "writes_allowed": allowed, "reason": reason,
         "evidence_rows": db.execute("SELECT count(*) FROM evidence").fetchone()[0],
-        "consolidated_readings": db.execute("SELECT count(*) FROM evidence_consolidated").fetchone()[0],
+        "consolidated_readings": held,
         "open_questions": db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL").fetchone()[0],
         "open_web_questions": db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL "
                                          "AND scope LIKE 'web:%'").fetchone()[0],
         "write_volume": counter(db, "evidence_written"),
         "state_version": state_version(db),
-        "config": asdict(config(db)),
+        "config": asdict(cfg),
     }
+    if held:
+        out["largest_epoch"] = _largest_epoch(db)       # absent while nothing is consolidated
+    warnings = consolidation_warnings(db, held, cfg)
+    if warnings:
+        out["warnings"] = warnings                      # absent while there is nothing to say
+    return out
+
+
+def _largest_epoch(db):
+    """The epoch with the most consolidated readings and what its beliefs cost to compute now: {"epoch",
+    "consolidated_readings", "compute_ms"}. Belief computation is linear in an epoch's readings (ADR-044), and every
+    decision and belief read of that epoch pays it, so the owner sees the cost here before it is felt. One grouped
+    pass over the epoch index and one compute(); compute_ms is None when the epoch's beliefs cannot be computed."""
+    epoch, readings = db.execute("SELECT epoch, count(*) FROM evidence_consolidated GROUP BY epoch "
+                                 "ORDER BY 2 DESC, 1 LIMIT 1").fetchone()
+    from .beliefs import compute                        # lazy: beliefs imports this module
+    started = time.perf_counter()
+    try:
+        compute(db, epoch)
+        elapsed = round((time.perf_counter() - started) * 1000, 1)
+    except InstanceError:
+        elapsed = None
+    return {"epoch": epoch, "consolidated_readings": readings, "compute_ms": elapsed}
 
 
 def inventory(db):
@@ -429,4 +507,7 @@ def inventory(db):
     web = web_state.counts(db)
     if web:
         out["web"] = web
+    warnings = consolidation_warnings(db, out["memory"]["consolidated_readings"])
+    if warnings:
+        out["warnings"] = warnings      # absent while there is nothing to say (the limit on consolidated readings)
     return out
