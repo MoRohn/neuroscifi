@@ -723,6 +723,8 @@ def _memory(db, a, now):
         changes = {}
         if a.memory_enable is not None:
             changes["enabled"] = a.memory_enable
+        if getattr(a, "memory_contradictions", None) is not None:
+            changes["contradictions"] = a.memory_contradictions
         for item in a.set or []:
             key, sep, raw = item.partition("=")
             if not sep:
@@ -991,6 +993,9 @@ def register(sub):
     p.add_argument("memory_action", nargs="?", default="status", choices=("status", "config", "clear"))
     _switch(p, "enable", "memory_enable", "rank memory by meaning when the endpoints answer",
             "rank memory by its words only (default)")
+    _switch(p, "contradictions", "memory_contradictions",
+            "with memory ranked by meaning: also compare a new statement with the stored one that says the same "
+            "in other words (default)", "compare a new statement only with knowledge that shares its key words")
     p.add_argument("--embed-url", help="OpenAI-compatible base of the embedding model, e.g. "
                                        "http://127.0.0.1:18441/v1 ('' to unset)")
     p.add_argument("--embed-model", help="served name of the embedding model ('' = the first one listed)")
