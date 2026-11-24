@@ -3663,6 +3663,259 @@
 {
 "claims": [
 [
+"supported",
+"Both fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Both fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'Both' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Such builds fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Such builds fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'Such' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The latter fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"The latter fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'The latter' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The former fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"The former fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'The former' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"One fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"One fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'One' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"These builds fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"These builds fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'These' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Those builds fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Those builds fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'Those' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Another build fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Another build fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'Another' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Each build fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Each build fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'Each' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Neither build fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Neither build fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'Neither' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Either build fixed the flaw in versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Either build fixed the flaw in versions 2 and 3.",
+[
+"C1"
+],
+"reject",
+"'Either' needs its page: no exemption"
+]
+]
+},
+{
+"claims": [
+[
 "insufficient",
 "NumPy 2.5.4 is vulnerable to remote code execution according to the advisory from the NumPy security team"
 ]
@@ -4690,6 +4943,181 @@
 "C1"
 ],
 "accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Globex acquired Acme Corp in 2025",
+[
+1,
+2
+]
+]
+],
+"gap": "wording",
+"q": "Who acquired whom?",
+"s": [
+[
+"Globex was acquired by Acme Corp.",
+[
+"C1"
+],
+"reject",
+"the passive with the roles reversed, agent named"
+],
+[
+"Globex was acquired in 2025.",
+[
+"C1"
+],
+"reject",
+"the claim's doer made the one it was done to"
+],
+[
+"Globex was quickly acquired.",
+[
+"C1"
+],
+"reject",
+"an adverb between 'be' and the participle"
+],
+[
+"Globex got acquired in 2025.",
+[
+"C1"
+],
+"reject",
+"a get-passive"
+],
+[
+"It was Globex that was acquired.",
+[
+"C1"
+],
+"reject",
+"a cleft passive"
+],
+[
+"It was Acme Corp that acquired Globex.",
+[
+"C1"
+],
+"reject",
+"a cleft with the roles reversed"
+],
+[
+"Acme Corp was acquired by Globex in 2025.",
+[
+"C1"
+],
+"accept",
+"a faithful passive"
+],
+[
+"Acme Corp was acquired in 2025.",
+[
+"C1"
+],
+"accept"
+],
+[
+"It was Globex that acquired Acme Corp.",
+[
+"C1"
+],
+"accept",
+"a faithful cleft"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"The maintainers patched the parser in May"
+]
+],
+"gap": "wording",
+"q": "Who patched the parser?",
+"s": [
+[
+"The maintainers were patched by the parser.",
+[
+"C1"
+],
+"reject"
+],
+[
+"The parser was patched by the maintainers in May.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Mallory was robbed by Trent",
+[
+1,
+2
+]
+]
+],
+"gap": "wording",
+"q": "Who was robbed?",
+"s": [
+[
+"Trent was reportedly robbed.",
+[
+"C1"
+],
+"reject",
+"an adverb between 'be' and the participle"
+],
+[
+"Trent got robbed.",
+[
+"C1"
+],
+"reject",
+"a get-passive"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Orbix Labs audited the library in March",
+[
+1,
+2
+]
+]
+],
+"gap": "wording",
+"q": "Who audited the library?",
+"s": [
+[
+"The library was audited by Orbix Labs in March.",
+[
+"C1"
+],
+"accept"
+],
+[
+"Orbix Labs was audited by the library.",
+[
+"C1"
+],
+"reject"
 ]
 ]
 }
