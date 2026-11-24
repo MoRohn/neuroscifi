@@ -236,22 +236,23 @@ def test_without_a_reranker_nothing_is_paired(db, monkeypatch, judge):
 
 # ---- a pair, and what it may do ------------------------------------------------------------------------------------------
 
-def test_the_same_fact_in_other_words_strengthens_the_item_and_makes_no_second_one(db, models, judge):
+def test_the_same_fact_in_other_words_is_reported_but_not_merged(db, models, judge):
+    """A same-value pair found by meaning does not strengthen the stored item: counting the new sources as its
+    independent support on a judgement could inflate it (two properties that share a value). The statement is stored
+    as its own item, as in 0.7.0, and the pair is reported."""
     on(db)
     kid = known(db)
     before = knowledge.row(db, kid)
     tid, out = consolidated(db, [sources(RESTATED)], T0 + 10, objective="How long is the Varnel?")
     assert out["paired_by_meaning"] == [{"key": claims.claim_key(RESTATED), "knowledge_id": kid, "relation": "same",
-                                         "similarity": 1.0, "score": 0.97, "score_back": 0.97}]
+                                         "similarity": 1.0, "score": 0.97, "score_back": 0.97, "merged": False}]
     assert out["pairing"]["mode"] == "semantic" and out["pairing"]["asked"] == 1 and out["pairing"]["proposed"] == 1
     assert out["pairing"]["confirmed"] == 1 and out["pairing"]["refused_by_the_answer_model"] == 0
-    assert out["strengthened"] == [kid] and out["provisional"] == [] and out["contested"] == []
-    after = knowledge.row(db, kid)
-    assert len(after["supporting"]) == len(before["supporting"]) + 2
-    assert [s["url"] for s in after["sources"]][-2:] == ["http://a.example/page", "http://b.example/page"]
-    assert after["statement"] == before["statement"] and after["key"] == before["key"]
-    assert db.execute("SELECT count(*) FROM web_knowledge").fetchone()[0] == 1
+    assert out["strengthened"] == [] and len(out["provisional"]) == 1 and out["contested"] == []
+    assert knowledge.row(db, kid) == before                                     # the stored item is untouched
+    assert db.execute("SELECT count(*) FROM web_knowledge").fetchone()[0] == 2
     assert judge == [(RESTATED, LENGTH)]
+    after = knowledge.row(db, kid)
     assert "paired_by" not in after and "pair" not in after                       # nothing of the pair is stored
     event = db.execute("SELECT detail FROM web_events WHERE task_id=? AND kind='consolidated'", (tid,)).fetchone()
     assert '"paired_by_meaning":1' in event[0]
@@ -405,7 +406,10 @@ def test_nothing_of_a_pair_outlives_a_forget(db, models, judge):
     tables = {name for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert not {t for t in tables if "vector" in t or "pair" in t or "embedding" in t}
     settings = " ".join(str(v) for (v,) in db.execute("SELECT value FROM meta"))
-    assert "Varnel" not in settings and db.execute("SELECT count(*) FROM web_knowledge").fetchone()[0] == 0
+    assert "Varnel" not in settings
+    # The restatement was not merged into the forgotten item: it is knowledge of its own and stays (as in 0.7.0)
+    left = db.execute("SELECT id, statement FROM web_knowledge").fetchall()
+    assert len(left) == 1 and left[0][0] != kid and left[0][1] == RESTATED
 
 
 # ---- semantic.pairs on its own -----------------------------------------------------------------------------------------

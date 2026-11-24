@@ -1154,13 +1154,18 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                 summary["paired_by_meaning"].append({"key": cluster.key, "knowledge_id": item["id"],
                                                      "relation": relation, **item["pair"]})
                 if relation == "same":
-                    _strengthen(db, task_id, cluster, item, now, summary, ids_by_key, verdict=verdict)
+                    # Not merged: a pair found by meaning is a judgement, and strengthening would count the new
+                    # sources as independent support of the stored item. A wrong pair of two properties that share
+                    # a value (the held-out failures were of that kind) would inflate it. The statement is stored as
+                    # its own item, exactly as in 0.7.0; the pair stays visible in the summary.
+                    summary["paired_by_meaning"][-1]["merged"] = False
+                    item = None
                 else:       # a contradiction in other words: recorded and asked, never decided here
                     owner = "; the owner asserted the stored statement" \
                         if item.get("provenance") == "user_asserted" else ""
                     _contradict(db, task_id, cluster, item, f"{differ}; the two statements say it in different "
                                 f"words and were matched by meaning{owner}", now, summary, questions, weaken=False)
-                continue
+                    continue
             if verdict["state"] != "supported":
                 rejected = _rejected_before(db, [cluster.key] + ([item["key"]] if item else []), values, polarity)
                 held = _held(cluster, _unverified(verdict, cluster))

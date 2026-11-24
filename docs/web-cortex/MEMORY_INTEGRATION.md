@@ -79,8 +79,11 @@ is locked). The models only *propose* a stored statement; four tests that are no
    whether the two state the same property of the same subject. It can only take a pair away. No answer model,
    reasoning off, a failed call or the 8 s budget spent: no pair, and the summary's `pairing.check` says why.
 
-What the pair *is* stays the value comparison's verdict (`_compare`, the same one step 4 uses). `same`: the stored
-item is strengthened with the new sources (step 3), no second item is written. `conflict`: the contradiction is
+What the pair *is* stays the value comparison's verdict (`_compare`, the same one step 4 uses). `same`: reported in
+the summary (`paired_by_meaning`, `merged: false`) and **not merged**: the statement is stored as its own item, as in
+0.7.0, because strengthening would count its sources as independent support of the stored item on a judgement, and
+a wrong pair of two properties that share a value would inflate it (the held-out failures before the answer model's
+confirmation were of that kind, and the held-out set was used once to revise the design). `conflict`: the contradiction is
 recorded on the stored item and the owner is asked, as in step 4; a pair found by meaning **never supersedes** a
 version and **never lowers** its confidence, because the pairing is a judgement and the decision is the owner's.
 The owner's own assertion is contradicted, never changed. Nothing of a pair is stored apart from those effects;
