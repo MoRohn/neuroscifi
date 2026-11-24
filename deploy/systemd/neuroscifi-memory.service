@@ -1,0 +1,68 @@
+# NeuroSciFi memory search: the embedding model and the reranker in one server process (deploy/memory/server.py,
+# NSF_MEMORY_SERVER=single in deploy/memory/memory.env, the default): one Docker container from the digest-pinned
+# image of the answer model, both ports published on loopback only (127.0.0.1:18441 embeddings, :18442 reranker),
+# read-only weights, read-only root filesystem, no capabilities, generated API key outside git
+# (~/.config/neuroscifi/memory/api_key, 0600, mounted read-only). Optional: memory is ranked by its words without
+# it (docs/web-cortex/MEMORY_INTEGRATION.md §5.1). With NSF_MEMORY_SERVER=vllm use neuroscifi-memory-embed.service
+# and neuroscifi-memory-rerank.service instead: never enable both kinds, they hold the same two ports. By hand:
+#   sed -e "s#@NSF_USER@#$USER#" -e "s#@NSF_REPO@#$PWD#" deploy/systemd/neuroscifi-memory.service \
+#     | sudo install -m 0644 /dev/stdin /etc/systemd/system/neuroscifi-memory.service
+#   (the template's @NSF_USER@ / @NSF_REPO@ placeholders fail safe: the unit does not start until they are set)
+#   sudo systemctl daemon-reload && sudo systemctl enable --now neuroscifi-memory.service
+# The user must be in the docker group; the key and weights live under that user's home (run.sh, memory.env).
+# Health: `deploy/memory/run.sh status`; what the individual sees: `nsf web memory status`. Then `nsf setup` (or
+# `nsf web memory config`, see run.sh) tells the individual where it is. Released while idle only when the owner
+# sets a timeout: `nsf resources idle --set embed=15m --set rerank=15m` (both names are this one unit: the idle
+# pass stops and starts it through systemctl, and a use under either name keeps it).
+[Unit]
+Description=NeuroSciFi memory search: embedding model and reranker in one server (loopback 127.0.0.1:18441 and :18442)
+After=docker.service network-online.target
+Requires=docker.service
+StartLimitIntervalSec=1h
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=@NSF_USER@
+Environment=NSF_REPO=@NSF_REPO@
+ExecStart=/usr/bin/env bash ${NSF_REPO}/deploy/memory/run.sh foreground all
+ExecStop=/usr/bin/env bash ${NSF_REPO}/deploy/memory/run.sh stop all
+# Measured on the reference host: 16 to 29 s from start to ready (RESOURCE_SCHEDULING.md §4).
+TimeoutStartSec=10min
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=20
+
+# Sandbox of this wrapper process only (the container has its own hardening, above). It runs the docker CLI, which
+# talks to the daemon over /run/docker.sock, plus bash, curl to 127.0.0.1 and python3 for the key. The same sandbox
+# as neuroscifi-voice-asr.service (verified with scripts/hardened_run.py, docs/operations/HARDENING_VERIFICATION.md).
+# Not applied: ProtectSystem=strict and ProtectHome (the wrapper reads and writes its key and cache under the
+# service user's home, whose path the template does not know), PrivateUsers (it must keep the docker group to reach
+# the socket).
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=full
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

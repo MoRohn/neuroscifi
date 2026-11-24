@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
-# NeuroSciFi memory models: a text-embedding model and a reranker (vLLM pooling runner), Docker, loopback only.
+# NeuroSciFi memory models: a text-embedding model and a reranker, Docker, loopback only.
+#
+# Two ways to serve them, chosen by NSF_MEMORY_SERVER in memory.env; the ports, the key, the endpoints and what the
+# individual is told are the same for both:
+#   single  one process holds both models (deploy/memory/server.py, in the same pinned image): one container,
+#           `neuroscifi-memory`, listening on both ports. `embed` and `rerank` are then two names for that one
+#           container: starting either starts it (a running one is left alone), stopping either stops it.
+#   vllm    two vLLM servers (pooling runner), one container each: twice the memory, vLLM's own batching.
 #
 #   deploy/memory/run.sh start [embed|rerank|all]   start detached (restart policy unless-stopped)
+#   deploy/memory/run.sh restart [embed|rerank|all] stop, then start (single: the way to apply a changed setting)
 #   deploy/memory/run.sh foreground embed|rerank    run attached (used by the systemd units; systemd restarts it)
 #   deploy/memory/run.sh stop [embed|rerank|all]    stop and remove
 #   deploy/memory/run.sh status                     container state and health
@@ -17,7 +25,8 @@
 #       --embed-url http://127.0.0.1:18441/v1 --embed-model qwen3-embedding-0.6b \
 #       --rerank-url http://127.0.0.1:18442/v1 --rerank-model qwen3-reranker-0.6b
 # (--key-file is required: a memory model is never sent the answer model's key.)
-# As system services: deploy/systemd/neuroscifi-memory-embed.service and -rerank.service (deploy/install.sh --memory).
+# As system services: deploy/systemd/neuroscifi-memory.service (single), or neuroscifi-memory-embed.service and
+# -rerank.service (vllm; deploy/install.sh --memory).
 # Released when idle, if the owner sets a timeout: nsf resources idle --set embed=15m --set rerank=15m.
 #
 # Security: as deploy/vllm and deploy/voice. Binds 127.0.0.1 only; one generated API key (0600, outside git);
@@ -37,6 +46,8 @@ ENV_FILE="$NSF_MEMORY_DIR/memory.secret.env"
 
 [[ "$NSF_MEMORY_BIND" == "127.0.0.1" || "$NSF_MEMORY_BIND" == "::1" ]] || die "NSF_MEMORY_BIND must be loopback (got $NSF_MEMORY_BIND)"
 [[ "$NSF_MEMORY_IMAGE" == *@sha256:* ]] || die "NSF_MEMORY_IMAGE must be pinned by digest"
+case "${NSF_MEMORY_SERVER:-}" in single|vllm) ;; *) die "NSF_MEMORY_SERVER must be single or vllm (got ${NSF_MEMORY_SERVER:-nothing})" ;; esac
+single() { [ "$NSF_MEMORY_SERVER" = single ]; }
 
 ensure_key() {
   umask 077
@@ -54,10 +65,78 @@ ensure_key() {
 services() { case "${1:-all}" in embed) echo embed ;; rerank) echo rerank ;; all) echo embed rerank ;; esac; }
 known() { case "${1:-all}" in embed|rerank|all) ;; *) die "unknown service: $1 (embed|rerank|all)" ;; esac; }
 restarts() { docker inspect -f '{{.RestartCount}}' "$(container "$1")" 2>/dev/null || echo 0; }
-container() { [ "$1" = embed ] && echo "$NSF_MEMORY_EMBED_CONTAINER" || echo "$NSF_MEMORY_RERANK_CONTAINER"; }
+container() {
+  if single; then echo "$NSF_MEMORY_CONTAINER"
+  elif [ "$1" = embed ]; then echo "$NSF_MEMORY_EMBED_CONTAINER"; else echo "$NSF_MEMORY_RERANK_CONTAINER"; fi
+}
+# The port a service listens on inside its container (single: one process, two ports).
+inner_port() { if single && [ "$1" = rerank ]; then echo 8001; else echo 8000; fi; }
+# Each container once: single has one for both names.
+containers() { if single; then echo "$NSF_MEMORY_CONTAINER"; else for s in $(services "${1:-all}"); do container "$s"; done; fi; }
+running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
 port() { [ "$1" = embed ] && echo "$NSF_MEMORY_EMBED_PORT" || echo "$NSF_MEMORY_RERANK_PORT"; }
 model_dir() { [ "$1" = embed ] && echo "$NSF_MEMORY_EMBED_MODEL_DIR" || echo "$NSF_MEMORY_RERANK_MODEL_DIR"; }
 served() { [ "$1" = embed ] && echo "$NSF_MEMORY_EMBED_SERVED_NAME" || echo "$NSF_MEMORY_RERANK_SERVED_NAME"; }
+
+# One process for both models: the image's own python3 runs server.py (mounted read-only) instead of vLLM. The
+# key is a read-only file in the container, not an environment variable (it is in no `docker inspect` output).
+single_args() {
+  local embed="$NSF_MEMORY_EMBED_MODEL_DIR" rerank="$NSF_MEMORY_RERANK_MODEL_DIR"
+  [ -f "$embed/config.json" ] || die "no embed model at $embed (config.json missing)"
+  [ -f "$rerank/config.json" ] || die "no rerank model at $rerank (config.json missing)"
+  [ -f "$HERE/server.py" ] || die "deploy/memory/server.py is missing"
+  mkdir -p "$NSF_MEMORY_CACHE_DIR/single"
+  ARGS=(--name "$NSF_MEMORY_CONTAINER"
+    -p "$NSF_MEMORY_BIND:$NSF_MEMORY_EMBED_PORT:8000" -p "$NSF_MEMORY_BIND:$NSF_MEMORY_RERANK_PORT:8001"
+    --device nvidia.com/gpu=all
+    --user "$(id -u):$(id -g)"
+    --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=1g,mode=1777
+    --cap-drop ALL --security-opt no-new-privileges
+    --cpus "$NSF_MEMORY_CPUS" --memory "$NSF_MEMORY_SINGLE_MEMORY" --shm-size 256m --pids-limit "$NSF_MEMORY_SINGLE_PIDS"
+    -v "$embed:/models/$NSF_MEMORY_EMBED_SERVED_NAME:ro" -v "$rerank:/models/$NSF_MEMORY_RERANK_SERVED_NAME:ro"
+    -v "$HERE/server.py:/opt/neuroscifi/server.py:ro" -v "$KEY_FILE:/run/neuroscifi/api_key:ro"
+    -v "$NSF_MEMORY_CACHE_DIR/single:/cache:rw"
+    -e HOME=/cache -e XDG_CACHE_HOME=/cache -e HF_HOME=/cache/hf -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1
+    -e DO_NOT_TRACK=1 -e PYTHONDONTWRITEBYTECODE=1 -e TOKENIZERS_PARALLELISM=false
+    --health-cmd "curl -fsS -m 5 http://127.0.0.1:8000/health && curl -fsS -m 5 http://127.0.0.1:8001/health || exit 1"
+    --health-interval 30s --health-timeout 10s --health-retries 3 --health-start-period 5m
+    --entrypoint python3
+    "$NSF_MEMORY_IMAGE" /opt/neuroscifi/server.py --container --host 0.0.0.0 --embed-port 8000 --rerank-port 8001
+    --embed-model "/models/$NSF_MEMORY_EMBED_SERVED_NAME" --embed-name "$NSF_MEMORY_EMBED_SERVED_NAME"
+    --rerank-model "/models/$NSF_MEMORY_RERANK_SERVED_NAME" --rerank-name "$NSF_MEMORY_RERANK_SERVED_NAME"
+    --key-file /run/neuroscifi/api_key --max-len "$NSF_MEMORY_MAX_LEN")
+}
+
+# The other way of serving holds the same two ports: its containers are removed before this one starts.
+drop_other() {
+  if single; then docker rm -f "$NSF_MEMORY_EMBED_CONTAINER" "$NSF_MEMORY_RERANK_CONTAINER" >/dev/null 2>&1 || true
+  else docker rm -f "$NSF_MEMORY_CONTAINER" >/dev/null 2>&1 || true; fi
+}
+
+# single: `embed` and `rerank` name one container, and the idle policy may start both at the same moment (two
+# reloads after one lookup). One start at a time, and a container that already runs is left alone.
+single_start() {
+  exec 9>"$NSF_MEMORY_DIR/start.lock"
+  flock 9
+  if running "$NSF_MEMORY_CONTAINER"; then
+    echo "$NSF_MEMORY_CONTAINER already runs (embed on $NSF_MEMORY_BIND:$NSF_MEMORY_EMBED_PORT, rerank on $NSF_MEMORY_BIND:$NSF_MEMORY_RERANK_PORT); run.sh restart replaces it"
+  else
+    single_args; drop_other
+    docker rm -f "$NSF_MEMORY_CONTAINER" >/dev/null 2>&1 || true
+    docker run -d --restart unless-stopped "${ARGS[@]}" >/dev/null
+    echo "started $NSF_MEMORY_CONTAINER: embed on http://$NSF_MEMORY_BIND:$NSF_MEMORY_EMBED_PORT, rerank on http://$NSF_MEMORY_BIND:$NSF_MEMORY_RERANK_PORT (key file $KEY_FILE)"
+  fi
+  flock -u 9
+}
+
+stop_all() {   # $1: embed | rerank | all
+  local c
+  for c in $(containers "$1"); do
+    docker stop -t 20 "$c" >/dev/null 2>&1 || true
+    docker rm -f "$c" >/dev/null 2>&1 || true
+    echo "stopped $c"
+  done
+}
 
 docker_args() {   # $1: embed | rerank
   local s="$1" dir mount
@@ -104,8 +183,8 @@ docker_args() {   # $1: embed | rerank
 owns_port() {   # $1: embed | rerank
   local s="$1" c want
   c="$(container "$s")"; want="$NSF_MEMORY_BIND:$(port "$s")"
-  [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = true ] || return 1
-  docker port "$c" 8000/tcp 2>/dev/null | grep -qxF -e "$want" -e "[$NSF_MEMORY_BIND]:$(port "$s")"
+  running "$c" || return 1
+  docker port "$c" "$(inner_port "$s")/tcp" 2>/dev/null | grep -qxF -e "$want" -e "[$NSF_MEMORY_BIND]:$(port "$s")"
 }
 
 warm() {   # $1: embed | rerank
@@ -128,31 +207,39 @@ GONE_GRACE="${NSF_WAIT_GONE_GRACE:-60}"
 
 cmd="${1:-status}"
 case "$cmd" in
-  start)
+  start|restart)
     known "${2:-all}"; ensure_key
-    for s in $(services "${2:-all}"); do
-      docker_args "$s"
-      docker rm -f "$(container "$s")" >/dev/null 2>&1 || true
-      docker run -d --restart unless-stopped "${ARGS[@]}" >/dev/null
-      echo "started $(container "$s") on http://$NSF_MEMORY_BIND:$(port "$s") (key file $KEY_FILE)"
-    done ;;
+    [ "$cmd" = restart ] && stop_all "${2:-all}" >/dev/null
+    if single; then single_start
+    else
+      drop_other
+      for s in $(services "${2:-all}"); do
+        docker_args "$s"
+        docker rm -f "$(container "$s")" >/dev/null 2>&1 || true
+        docker run -d --restart unless-stopped "${ARGS[@]}" >/dev/null
+        echo "started $(container "$s") on http://$NSF_MEMORY_BIND:$(port "$s") (key file $KEY_FILE)"
+      done
+    fi ;;
   foreground)
-    s="${2:-}"; [ "$s" = embed ] || [ "$s" = rerank ] || die "foreground needs embed or rerank"
-    ensure_key; docker_args "$s"
+    s="${2:-}"
+    if single; then
+      # One container for both models, so one unit (neuroscifi-memory.service runs `foreground all`). The two
+      # per-model units would each replace the other's container: they belong to NSF_MEMORY_SERVER=vllm.
+      case "$s" in ""|all) ;; *) die "with NSF_MEMORY_SERVER=single both models run in one container: use neuroscifi-memory.service (foreground all), not the unit of one model" ;; esac
+      ensure_key; single_args; drop_other
+    else
+      [ "$s" = embed ] || [ "$s" = rerank ] || die "foreground needs embed or rerank"
+      ensure_key; docker_args "$s"; drop_other
+    fi
     docker rm -f "$(container "$s")" >/dev/null 2>&1 || true
     exec docker run --rm --init "${ARGS[@]}" ;;
   stop)
-    known "${2:-all}"
-    for s in $(services "${2:-all}"); do
-      docker stop -t 20 "$(container "$s")" >/dev/null 2>&1 || true
-      docker rm -f "$(container "$s")" >/dev/null 2>&1 || true
-      echo "stopped $(container "$s")"
-    done ;;
+    known "${2:-all}"; stop_all "${2:-all}" ;;
   status)
-    for s in embed rerank; do
+    for c in $(containers all); do
       # captured first: for a missing container docker prints an empty line before it fails
       if line="$(docker inspect -f '{{.Name}} {{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} started={{.State.StartedAt}}' \
-        "$(container "$s")" 2>/dev/null)"; then echo "$line"; else echo "$(container "$s"): not running"; fi
+        "$c" 2>/dev/null)"; then echo "$line"; else echo "$c: not running"; fi
     done ;;
   wait)
     known "${2:-all}"; limit="${3:-600}"; start=$(date +%s)
@@ -173,12 +260,13 @@ case "$cmd" in
       else echo "$s ready after $(( $(date +%s) - start ))s (its warm-up request failed; the first lookup will be slower)"; fi
     done ;;
   logs)
-    s="${2:-}"; [ "$s" = embed ] || [ "$s" = rerank ] || die "logs needs embed or rerank"
+    s="${2:-}"; single || [ "$s" = embed ] || [ "$s" = rerank ] || die "logs needs embed or rerank"
     exec docker logs -f "$(container "$s")" ;;
   key) ensure_key; echo "$KEY_FILE" ;;
   print)
-    s="${2:-}"; [ "$s" = embed ] || [ "$s" = rerank ] || die "print needs embed or rerank"
-    ENV_FILE="<NSF_MEMORY_DIR>/memory.secret.env"; docker_args "$s"
+    s="${2:-}"; single || [ "$s" = embed ] || [ "$s" = rerank ] || die "print needs embed or rerank"
+    ENV_FILE="<NSF_MEMORY_DIR>/memory.secret.env"
+    if single; then KEY_FILE="<NSF_MEMORY_DIR>/api_key"; single_args; else docker_args "$s"; fi
     printf 'docker run -d --restart unless-stopped'; printf ' %q' "${ARGS[@]}"; printf '\n' ;;
-  *) die "unknown command: $cmd (start|foreground|stop|status|wait|logs|key|print)" ;;
+  *) die "unknown command: $cmd (start|restart|foreground|stop|status|wait|logs|key|print)" ;;
 esac

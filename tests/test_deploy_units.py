@@ -8,8 +8,24 @@ ROOT = Path(__file__).resolve().parents[1]
 UNITS = sorted((ROOT / "deploy" / "systemd").glob("*.service"))
 DOCKER_USER_UNITS = ("neuroscifi-vllm.service", "neuroscifi-voice-asr.service", "neuroscifi-voice-tts.service",
                      "neuroscifi-memory-embed.service", "neuroscifi-memory-rerank.service",
-                     "neuroscifi-wake.service")
-MEMORY_UNITS = {"neuroscifi-memory-embed.service": "embed", "neuroscifi-memory-rerank.service": "rerank"}
+                     "neuroscifi-memory.service", "neuroscifi-wake.service")
+# unit -> the service name its run.sh commands carry ("all": the one server that holds both models)
+MEMORY_UNITS = {"neuroscifi-memory-embed.service": "embed", "neuroscifi-memory-rerank.service": "rerank",
+                "neuroscifi-memory.service": "all"}
+MEMORY_SERVERS = ("single", "vllm")       # deploy/memory/memory.env: NSF_MEMORY_SERVER
+# What `deploy/install.sh --memory` installs today: the units of the two-server way. The single server's unit,
+# neuroscifi-memory.service, is installed by hand (its header says how) until the installer knows the setting.
+INSTALLED_BY_MEMORY_FLAG = ("neuroscifi-memory-embed.service", "neuroscifi-memory-rerank.service")
+
+
+def _memory_env(tmp_path, server, extra=None):
+    """The environment of a run.sh call that serves the models with `server`: the owner's override file, in a
+    settings folder of its own (the script reads it after its shipped memory.env)."""
+    import os
+    folder = tmp_path / ".config" / "neuroscifi" / "memory"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "memory.env").write_text(f"NSF_MEMORY_SERVER={server}\n")
+    return {"PATH": os.environ["PATH"], "HOME": str(tmp_path), **(extra or {})}
 
 
 @pytest.mark.parametrize("unit", UNITS, ids=lambda p: p.name)
@@ -57,7 +73,7 @@ def test_install_sh_installs_the_memory_units_only_when_asked_and_renders_their_
     asked = subprocess.run(["bash", script, "--dry-run", "--unit-dir", str(tmp_path), "--memory", "--memory-user",
                             "nsfmodels"], capture_output=True, text=True)
     assert asked.returncode == 0
-    for name in MEMORY_UNITS:
+    for name in INSTALLED_BY_MEMORY_FLAG:
         line = next(row for row in asked.stdout.splitlines() if row.startswith("+ sed") and f"/{name} >" in row)
         assert "'s#^User=.*#User=nsfmodels#'" in line and "'s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=" in line
     assert "installed disabled" in asked.stdout and not list(tmp_path.iterdir())      # a dry run writes nothing
@@ -67,24 +83,44 @@ def test_install_sh_installs_the_memory_units_only_when_asked_and_renders_their_
         assert refused.returncode == 1 and "--memory" in refused.stderr
 
 
-def test_the_memory_script_knows_its_services_and_refuses_any_other(tmp_path):
-    """`foreground` is what the units run: a wrong service name must fail before docker is touched."""
+@pytest.mark.parametrize("server,refused", [
+    ("vllm", (["foreground"], ["foreground", "all"], ["foreground", "vllm"], ["start", "vllm"], ["nonsense"])),
+    ("single", (["foreground", "vllm"], ["foreground", "embed"], ["foreground", "rerank"], ["start", "vllm"],
+                ["restart", "both"], ["stop", "x"], ["nonsense"]))])
+def test_the_memory_script_knows_its_services_and_refuses_any_other(tmp_path, server, refused):
+    """`foreground` is what the units run: a wrong service name must fail before docker is touched. (With one
+    server for both models `foreground` and `foreground all` are that server; with two, each needs its name.)"""
     import subprocess
     script = str(ROOT / "deploy" / "memory" / "run.sh")
-    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
+    env = _memory_env(tmp_path, server) | {"PATH": "/usr/bin:/bin"}
+    folder = tmp_path / ".config" / "neuroscifi" / "memory"
     assert subprocess.run(["bash", "-n", script]).returncode == 0
-    for argv in (["foreground"], ["foreground", "all"], ["foreground", "vllm"], ["start", "vllm"], ["nonsense"]):
+    for argv in refused:
         done = subprocess.run(["bash", script, *argv], capture_output=True, text=True, env=env)
         assert done.returncode == 1 and done.stderr.startswith("run.sh: "), argv
-    assert not (tmp_path / ".config").exists()             # refused before a key or a folder was created
+        if server == "single" and argv in (["foreground", "embed"], ["foreground", "rerank"]):
+            # the installer's per-model units would each replace the other's one container: refused, by name
+            assert "use neuroscifi-memory.service (foreground all)" in done.stderr
+    assert sorted(f.name for f in folder.iterdir()) == ["memory.env"]      # refused before a key was created
 
 
-def _memory_wait(tmp_path, warm_exit=0, health_exit=0, status="running", restarts=("0",)):
+def test_the_memory_script_refuses_a_server_it_does_not_know(tmp_path):
+    import subprocess
+    done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "status"], capture_output=True,
+                          text=True, env=_memory_env(tmp_path, "triton"))
+    assert done.returncode == 1 and "NSF_MEMORY_SERVER must be single or vllm (got triton)" in done.stderr
+
+
+def _memory_wait(tmp_path, warm_exit=0, health_exit=0, status="running", restarts=("0",), server="vllm"):
     """`deploy/memory/run.sh wait all 30` with a docker that reports the given container status and restart counts
     (in turn; the last repeats), a curl that answers /health with `health_exit`, records every command line it was
-    given and what it was fed on standard input, and a sleep that returns at once."""
+    given and what it was fed on standard input, and a sleep that returns at once. `server`: two vLLM containers
+    (each publishes its port 8000), or the one container of the single server (8000 embeddings, 8001 reranker)."""
     import os
     import subprocess
+    published = ('case "$*" in *embed*) echo 127.0.0.1:18441 ;; *) echo 127.0.0.1:18442 ;; esac' if server == "vllm"
+                 else 'case "$*" in "port neuroscifi-memory 8000/tcp") echo 127.0.0.1:18441 ;; '
+                      '"port neuroscifi-memory 8001/tcp") echo 127.0.0.1:18442 ;; esac')
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(parents=True)
     (tmp_path / "restarts").write_text("\n".join(restarts) + "\n")
@@ -95,7 +131,7 @@ def _memory_wait(tmp_path, warm_exit=0, health_exit=0, status="running", restart
         '  *RestartCount*) head -n1 "$R"; [ "$(wc -l < "$R")" -gt 1 ] && sed -i 1d "$R"; exit 0 ;;\n'
         '  *State.Running*) echo true ;;\n'
         f'  port*) [ -e "{tmp_path}/squatted" ] && exit 0\n'
-        '     case "$*" in *embed*) echo 127.0.0.1:18441 ;; *) echo 127.0.0.1:18442 ;; esac ;;\n'
+        f'     {published} ;;\n'
         f'  *) echo {status} ;;\n'
         'esac\n')
     (bin_dir / "curl").write_text(
@@ -106,18 +142,17 @@ def _memory_wait(tmp_path, warm_exit=0, health_exit=0, status="running", restart
     (bin_dir / "sleep").write_text(f'#!/usr/bin/env bash\necho x >> "{tmp_path}/polls"\n')
     for tool in ("docker", "curl", "sleep"):
         (bin_dir / tool).chmod(0o755)
-    key_dir = tmp_path / ".config" / "neuroscifi" / "memory"
-    key_dir.mkdir(parents=True)
-    (key_dir / "api_key").write_text("nsfm-wait-test-key\n")
-    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path)}
+    env = _memory_env(tmp_path, server, {"PATH": f"{bin_dir}:{os.environ['PATH']}"})
+    (tmp_path / ".config" / "neuroscifi" / "memory" / "api_key").write_text("nsfm-wait-test-key\n")
     return subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "wait", "all", "30"], env=env,
                           capture_output=True, text=True, timeout=60)
 
 
-def test_memory_wait_sends_one_real_request_per_model_and_never_puts_the_key_on_a_command_line(tmp_path):
+@pytest.mark.parametrize("server", MEMORY_SERVERS)
+def test_memory_wait_sends_one_real_request_per_model_and_never_puts_the_key_on_a_command_line(tmp_path, server):
     """Ready means "answered a real request": a model's first request after a start took 1.0 to 1.5 s on the
     reference host and a lookup allows 2 s. The key reaches curl on standard input, not in argv (`ps` shows argv)."""
-    done = _memory_wait(tmp_path)
+    done = _memory_wait(tmp_path, server=server)
     assert done.returncode == 0 and re.fullmatch(r"embed ready after \ds\nrerank ready after \ds\n", done.stdout)
     args = (tmp_path / "curl.args").read_text()
     assert "http://127.0.0.1:18441/v1/embeddings" in args and "http://127.0.0.1:18442/v1/rerank" in args
@@ -127,14 +162,15 @@ def test_memory_wait_sends_one_real_request_per_model_and_never_puts_the_key_on_
     assert "nsfm-wait-test-key" not in done.stdout + done.stderr
 
 
-def test_memory_wait_fails_at_once_on_a_container_that_stopped_or_keeps_restarting(tmp_path):
+@pytest.mark.parametrize("server", MEMORY_SERVERS)
+def test_memory_wait_fails_at_once_on_a_container_that_stopped_or_keeps_restarting(tmp_path, server):
     """With --restart unless-stopped a crash-looping container keeps existing: only its state or a growing restart
     count shows that it will never answer. The wait must not sit out its limit (the idle policy's reload calls it)."""
     one, two = tmp_path / "one", tmp_path / "two"
-    done = _memory_wait(one, health_exit=7, status="restarting")
+    done = _memory_wait(one, health_exit=7, status="restarting", server=server)
     assert done.returncode == 1 and "embed container is restarting" in done.stderr
     assert not (one / "polls").exists()                            # on the first look
-    done = _memory_wait(two, health_exit=7, restarts=("2", "3"))
+    done = _memory_wait(two, health_exit=7, restarts=("2", "3"), server=server)
     assert done.returncode == 1 and "embed restarted while starting" in done.stderr
     assert not (two / "curl.stdin").exists()                       # and no warm-up request was sent to it
 
@@ -236,7 +272,6 @@ def test_install_sh_installs_the_idle_and_wake_units_only_when_asked_with_their_
 
 
 def test_memory_status_prints_one_line_per_service_running_or_not(tmp_path):
-    import os
     import subprocess
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -245,24 +280,31 @@ def test_memory_status_prints_one_line_per_service_running_or_not(tmp_path):
         'case "$*" in *neuroscifi-memory-embed*) echo "/neuroscifi-memory-embed running health=healthy started=T" ;;\n'
         '  *) echo; exit 1 ;; esac\n')
     (bin_dir / "docker").chmod(0o755)
-    done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "status"], capture_output=True, text=True,
-                          env={"PATH": f"{bin_dir}:{os.environ['PATH']}", "HOME": str(tmp_path)}, timeout=60)
+    import os
+    env = _memory_env(tmp_path, "vllm", {"PATH": f"{bin_dir}:{os.environ['PATH']}"})
+    script = str(ROOT / "deploy" / "memory" / "run.sh")
+    done = subprocess.run(["bash", script, "status"], capture_output=True, text=True, env=env, timeout=60)
     assert done.returncode == 0 and done.stdout.splitlines() == [
         "/neuroscifi-memory-embed running health=healthy started=T", "neuroscifi-memory-rerank: not running"]
+    env = _memory_env(tmp_path, "single", {"PATH": f"{bin_dir}:{os.environ['PATH']}"})      # one container, one line
+    done = subprocess.run(["bash", script, "status"], capture_output=True, text=True, env=env, timeout=60)
+    assert done.returncode == 0 and done.stdout.splitlines() == ["neuroscifi-memory: not running"]
 
 
-def test_memory_wait_never_sends_the_key_to_a_port_the_container_does_not_publish(tmp_path):
+@pytest.mark.parametrize("server", MEMORY_SERVERS)
+def test_memory_wait_never_sends_the_key_to_a_port_the_container_does_not_publish(tmp_path, server):
     """Review L2: something answers /health on the port, and Docker does not report the container publishing it
     (another account's process took the free port). The wait fails and no request carried the key."""
     tmp_path.joinpath("squatted").write_text("")
-    done = _memory_wait(tmp_path)
+    done = _memory_wait(tmp_path, server=server)
     assert done.returncode == 1 and "another process holds the port. The key was not sent" in done.stderr
     assert not (tmp_path / "curl.stdin").exists()
     assert "nsfm-wait-test-key" not in (tmp_path / "curl.args").read_text() + done.stdout + done.stderr
 
 
-def test_memory_wait_does_not_fail_when_only_the_warm_up_request_fails(tmp_path):
-    done = _memory_wait(tmp_path, warm_exit=22)
+@pytest.mark.parametrize("server", MEMORY_SERVERS)
+def test_memory_wait_does_not_fail_when_only_the_warm_up_request_fails(tmp_path, server):
+    done = _memory_wait(tmp_path, warm_exit=22, server=server)
     assert done.returncode == 0
     assert len(re.findall(r"ready after \ds \(its warm-up request failed; the first lookup will be slower\)",
                           done.stdout)) == 2
