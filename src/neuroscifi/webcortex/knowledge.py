@@ -14,7 +14,11 @@ higher arXiv version (revision_seen, from web_sources.metadata.version).
 """
 from __future__ import annotations
 
+from array import array
+from collections import OrderedDict
+import math
 import re
+import threading
 
 from ..instance import store
 from ..instance.errors import Conflict, NotFound, ValidationError
@@ -155,11 +159,129 @@ def describe(db, item: dict, now, cfg=None) -> dict:
     }
 
 
-def query(db, topic, now, *, limit=10) -> dict:
+# ---- the lexical index of the live statements: this process only --------------------------------------------------
+#
+# query() used to tokenise every live statement and build BM25 on every call (measured: 212 ms at 20,000
+# statements, 1.2 s at 100,000). The index is now kept per individual file for the life of the process and is valid
+# only while the live statements are exactly the ones it was built from: each query reads (id, statement, key) of
+# the live rows and compares them with what the index holds, value by value. That is the whole invalidation rule,
+# so a write, a forget, a status change or another process's commit can never be answered from an older index.
+# What a query saves is the tokenising and the index build, not the read (26 ms of a 30 ms repeated query at
+# 20,000 statements). Rows are decoded only for the items a query returns, and they are read at that moment, so
+# nothing a query returns is older than its own read.
+# Bounds: at most INDEX_FILES individuals and INDEX_MAX_STATEMENTS statements in all are kept by one process (the
+# least recently asked individual goes first; one individual above the bound is indexed per call, as before). An
+# index holds the live statements and their tokens: 1.4 to 1.7 KB a statement where every statement brings a word of
+# its own (scripts/bench_knowledge.py index), so at most about 200 MB. forget() drops this process's indexes at
+# once, like the vectors of semantic.py; another long-running process keeps a forgotten statement's text in its
+# index until its own next query or its exit.
+
+INDEX_FILES = 4
+INDEX_MAX_STATEMENTS = 120_000
+
+
+class _Index:
+    """BM25 over the live statements with a posting list per term. scores() adds, for each statement, the same
+    terms in the same order as text.BM25.scores, so the two give the same floats
+    (tests/webcortex/test_knowledge_index.py)."""
+
+    def __init__(self, live, tokens_of):
+        from . import text
+        self.live = live                                   # [(id, statement, key)] in id order, as read
+        self.k1, self.b = text.BM25_K1, text.BM25_B
+        self.toks = []                                     # the tokens of live[n], reused by the next build
+        self._rows = None
+        words: dict[str, str] = {}                         # one string object per distinct token
+        where: dict[str, array] = {}                       # term -> positions of the statements that hold it
+        often: dict[str, array] = {}                       # term -> how often, in the same order
+        lengths = []
+        for n, row in enumerate(live):
+            toks = tuple(words.setdefault(t, t) for t in tokens_of(row))
+            self.toks.append(toks)
+            counts: dict[str, int] = {}
+            for t in toks:
+                counts[t] = counts.get(t, 0) + 1
+            lengths.append(len(toks))
+            for t, f in counts.items():
+                if t not in where:
+                    where[t], often[t] = array("L"), array("L")
+                where[t].append(n)
+                often[t].append(f)
+        self.n = len(live)
+        avgdl = (sum(lengths) / self.n) if self.n else 0.0
+        self.norm = [self.k1 * (1 - self.b + self.b * length / avgdl) if avgdl else self.k1 for length in lengths]
+        self.where, self.often = where, often
+        self.idf = {t: math.log(1.0 + (self.n - len(p) + 0.5) / (len(p) + 0.5)) for t, p in where.items()}
+
+    def scores(self, query_tokens) -> list[float]:
+        out = [0.0] * self.n
+        for t in dict.fromkeys(query_tokens):              # each query term counts once
+            positions = self.where.get(t)
+            if positions:
+                idf, gain, norm = self.idf[t], self.k1 + 1, self.norm
+                for n, f in zip(positions, self.often[t]):
+                    out[n] += idf * f * gain / (f + norm[n])
+        return out
+
+    @property
+    def rows(self) -> list[dict]:
+        """The live statements as the rows semantic.rank reads ({"id", "statement", "key"}); made on first use, so
+        an individual without semantic retrieval never holds them."""
+        if self._rows is None:
+            self._rows = [{"id": i, "statement": s, "key": k} for i, s, k in self.live]
+        return self._rows
+
+
+_INDEXES: OrderedDict[str, _Index] = OrderedDict()
+_INDEX_LOCK = threading.Lock()
+
+
+def _doc_tokens(statement, key):
+    from . import text
+    return text.content_tokens(statement + " " + key.replace("<", " ").replace(">", " "))
+
+
+def _index(db, *, cached=True) -> _Index:
+    """The index of the individual's live statements as they are now (see the comment above). `cached=False`
+    builds it from nothing and keeps nothing: the reference the kept index is tested against."""
+    live = db.execute(f"SELECT id, statement, key FROM web_knowledge WHERE status IN "
+                      f"({','.join('?' * len(state.LIVE_KNOWLEDGE))}) ORDER BY id", state.LIVE_KNOWLEDGE).fetchall()
+    path = store.database_path(db) if cached else None
+    if not path or len(live) > INDEX_MAX_STATEMENTS:
+        return _Index(live, lambda row: _doc_tokens(row[1], row[2]))
+    with _INDEX_LOCK:
+        held = _INDEXES.get(path)
+        if held is not None:
+            _INDEXES.move_to_end(path)
+    if held is not None and held.live == live:
+        return held
+    known = dict(zip(held.live, held.toks)) if held is not None else {}     # unchanged rows keep their tokens
+
+    def tokens_of(row):
+        toks = known.get(row)
+        return _doc_tokens(row[1], row[2]) if toks is None else toks
+    built = _Index(live, tokens_of)
+    with _INDEX_LOCK:
+        _INDEXES[path] = built
+        _INDEXES.move_to_end(path)
+        while len(_INDEXES) > INDEX_FILES or (len(_INDEXES) > 1 and
+                                              sum(i.n for i in _INDEXES.values()) > INDEX_MAX_STATEMENTS):
+            _INDEXES.popitem(last=False)
+    return built
+
+
+def clear_index() -> None:
+    """Drop every lexical index this process holds (forget(); tests)."""
+    with _INDEX_LOCK:
+        _INDEXES.clear()
+
+
+def query(db, topic, now, *, limit=10, cached=True) -> dict:
     """What is known about `topic`: live items (provisional, accepted, stale) ranked by BM25 over statement and key.
     With semantic retrieval on and reachable (semantic.py) they are ranked by meaning instead, and a statement the
     reranker scores under the floor is not returned; `retrieval` says which ranking produced the items and, when
-    the semantic one was asked for and could not be used, why."""
+    the semantic one was asked for and could not be used, why. The BM25 index is kept between calls (_index);
+    `cached=False` rebuilds it for this call, with the same result."""
     from . import semantic, text
     if not isinstance(topic, str) or not topic.strip() or len(topic) > 2000:
         raise ValidationError("topic must be a non-blank string of at most 2000 characters")
@@ -167,17 +289,31 @@ def query(db, topic, now, *, limit=10) -> dict:
         raise ValidationError("limit must be a positive integer")
     cfg = state.get_config(db)
     terms = text.content_tokens(topic)
-    live = rows(db, f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))})", state.LIVE_KNOWLEDGE)
+    index = _index(db, cached=cached)
     items, retrieval = [], {"mode": "lexical"}
-    if live:
-        scores = text.BM25([text.content_tokens(r["statement"] + " " + r["key"].replace("<", " ").replace(">", " "))
-                            for r in live]).scores(terms) if terms else [0.0] * len(live)
-        ranked, retrieval = semantic.rank(db, topic, live, scores, limit=min(100, limit))
+    if index.n:
+        scores = index.scores(terms) if terms else [0.0] * index.n
+        ranked = None
+        if semantic.get_config(db).enabled:     # rank() answers (None, lexical) at once when it is off: not asked
+            found, retrieval = semantic.rank(db, topic, index.rows, scores, limit=min(100, limit))
+            if found is not None:
+                ranked = [(score, item["id"]) for score, item in found]
         if ranked is None:          # off, not configured or unreachable: the lexical ranking, as before
-            ranked = sorted(((s, r) for s, r in zip(scores, live) if s > 0),
-                            key=lambda x: (-x[0], -x[1]["id"]))[:min(100, limit)]
-        for score, item in ranked:
-            items.append(describe(db, item, now, cfg) | {"score": round(score, 6)})
+            live = index.live
+            ranked = sorted(((s, live[n][0]) for n, s in enumerate(scores) if s > 0),
+                            key=lambda x: (-x[0], -x[1]))[:min(100, limit)]
+        # Only what is returned is decoded, and it is read now: an item that stopped being live since the index
+        # was read (forgotten, superseded, archived by another connection) is left out.
+        ids = [kid for _, kid in ranked]
+        full = {}
+        for start in range(0, len(ids), 500):
+            part = ids[start:start + 500]
+            full.update((r["id"], r) for r in rows(
+                db, f"id IN ({','.join('?' * len(part))}) AND status IN "
+                    f"({','.join('?' * len(state.LIVE_KNOWLEDGE))})", (*part, *state.LIVE_KNOWLEDGE)))
+        for score, kid in ranked:
+            if kid in full:
+                items.append(describe(db, full[kid], now, cfg) | {"score": round(score, 6)})
     return {"topic": topic, "as_of": now, "items": items, "matched": len(items), "retrieval": retrieval,
             "known": sum(1 for i in items if i["status"] == "accepted" and not i["stale"] and not i["contested"])}
 
@@ -612,6 +748,7 @@ def forget(db, knowledge_id, now) -> dict:
         return governance.forget_knowledge(db, knowledge_id, now)
     finally:
         semantic.clear()      # no vector or text of a forgotten statement stays in this process (semantic.py)
+        clear_index()         # ... nor its tokens in the lexical index
 
 
 OWNER_REFRESH = "refresh-owner:"
