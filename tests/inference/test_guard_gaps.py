@@ -337,3 +337,38 @@ def test_a_reason_that_lists_words_lists_them_in_the_same_order_in_every_process
         seen.add(done.stdout)
     assert len(seen) == 1, seen
     assert "changes who does what in its cited claims: hired, promoted, trained" in seen.pop()
+
+
+# ---- a passive clause that drops or swaps its agent ------------------------------------------------------------------
+
+@pytest.mark.parametrize("claim, sentence, verb, subject", [
+    ("NumPy 2.5.4 was replaced by NumPy 2.5.5 after the flaw", "NumPy 2.5.5 was replaced after the flaw.",
+     "replaced", "2.5.5 numpy"),
+    ("Acme Corp was acquired by Globex in 2025", "Globex was acquired in 2025.", "acquired", "globex"),
+    ("Mallory was robbed by Trent", "Trent was robbed, according to the police report by Mallory.", "robbed", "trent"),
+    ("The vault was broken by the Kestrel crew", "The Kestrel crew was broken.", "broken", "crew kestrel"),
+])
+def test_a_passive_whose_subject_is_the_claims_agent_is_refused(claim, sentence, verb, subject):
+    assert reasoning._passive_swaps(sentence, [{"id": "C1", "text": claim}]) == [
+        reasoning.PASSIVE_SWAP.format(verb=verb, claim="C1", subject=subject)]
+
+
+@pytest.mark.parametrize("claim, sentence", [
+    ("NumPy 2.5.4 was replaced by NumPy 2.5.5 after the flaw", "NumPy 2.5.4 was replaced after the flaw."),
+    ("NumPy 2.5.4 was replaced by NumPy 2.5.5 after the flaw", "NumPy 2.5.4 was replaced by NumPy 2.5.5."),
+    ("Acme Corp was acquired by Globex in 2025", "Acme Corp was acquired in 2025, according to one source."),
+    ("The library was audited by Orbix Labs in March", "The library was audited in March."),
+    ("Globex acquired Acme Corp in 2025", "Acme Corp was acquired by Globex."),        # active claim: no agent to swap
+    ("Mallory was robbed by Trent", "Mallory was robbed, according to the police report by Trent."),
+])
+def test_a_passive_that_keeps_its_subject_is_not_a_swap(claim, sentence):
+    assert reasoning._passive_swaps(sentence, [{"id": "C1", "text": claim}]) == []
+
+
+def test_the_passive_swap_is_refused_through_the_answer_path():
+    b = one_claim("supported", (1, 2), text="Mallory was robbed by Trent", question="Who was robbed?")
+    ok, bad = judged(b, "Trent was robbed.")
+    assert ok == [] and bad[0]["reasons"] == [
+        reasoning.PASSIVE_SWAP.format(verb="robbed", claim="C1", subject="trent")]
+    ok, bad = judged(b, "Mallory was robbed.")
+    assert bad == [] and len(ok) == 1

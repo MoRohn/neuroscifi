@@ -2523,8 +2523,17 @@ CASE_CHANGED = ("writes '{word}' where its cited claims write '{theirs}': a chan
 # what it looks like.
 UNSEEN_IN_CLAIM = ("rests on characters a reader does not see in {claim} ({points}): what such a claim shows and "
                    "what it holds can differ")
-REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM)
-# Exceptions: what follows is taken out of what the claim says.
+# A passive clause whose subject is the agent of the same verb in a cited claim swaps who did what. 0.7.0's role
+# check reads active clauses and passives that both keep their "by" agent; a passive that drops the agent passed:
+# "NumPy 2.5.5 was replaced after the flaw." for "NumPy 2.5.4 was replaced by NumPy 2.5.5 after the flaw",
+# "Trent was robbed." for "Mallory was robbed by Trent" (security review M3).
+PASSIVE_SWAP = ("makes the agent of '{verb}' in {claim} its subject ('{subject}'): who does what is swapped")
+REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM, PASSIVE_SWAP)
+# Past participles that do not end in -ed, for the passive check
+_PARTICIPLES = frozenset("""beaten bitten blown broken brought built bought caught chosen done drawn driven eaten fallen
+felt found forgiven forgotten frozen given gone grown hidden held hit hurt kept known laid led left lent lost made met
+paid put read ridden rung risen run said seen sent set shaken shot shown shut sold spent spoken stolen struck sung sunk
+taken taught thrown told torn understood won worn woven written""".split())# Exceptions: what follows is taken out of what the claim says.
 _EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|exclusive of|other than|apart from|"
               r"aside from|save for|barring|but not|besides(?!\s*,)|"
               r"(?:all|everything|everyone|everybody|anything|anyone|nothing|none|no one|nobody) but")
@@ -2669,13 +2678,64 @@ def _unseen_in_claims(used) -> list[str]:
     return out
 
 
+def _passive_parts(text: str):
+    """[(participle, subject words, agent words or None)] for each passive clause of `text`: a form of "be", a past
+    participle (-ed or _PARTICIPLES), the content words of its clause before "be" (the subject) and, after "by"
+    and a leading article, the words up to the next stopword (the agent). Words are plain (_e_plain): lower case,
+    numbers kept."""
+    cuts = [m.start() for m in _E_CLAUSE.finditer(text)]
+    toks = [(_e_plain(m.group(0)), sum(1 for c in cuts if c <= m.start())) for m in _E_WORD.finditer(text)]
+    words = [w for w, _ in toks]
+    out = []
+    for i, (w, clause) in enumerate(toks):
+        if i == 0 or words[i - 1] not in _BE or not (w.endswith("ed") or w in _PARTICIPLES):
+            continue
+        subject = [x for x, c in toks[:i - 1] if c == clause]
+        agent = None
+        if i + 1 < len(words) and words[i + 1] == "by":
+            agent = []
+            for x, c in toks[i + 2:]:
+                if c == clause and not agent and x in _DETERMINER:
+                    continue                    # "by the Kestrel crew"
+                if c != clause or x in T.STOPWORDS:
+                    break
+                agent.append(x)
+        out.append((w, subject, agent))
+    return out
+
+
+def _name_key(words) -> frozenset:
+    """The words that name something: no stopword, evidence word or single letter; numbers and versions kept."""
+    return frozenset(w for w in words if w not in T.STOPWORDS and w not in _ENTAIL_META and
+                     (len(w) > 1 or w.isdigit()))
+
+
+def _passive_swaps(text: str, used) -> list[str]:
+    """PASSIVE_SWAP for each passive clause of the sentence whose subject names the agent of the same participle in
+    a cited claim (its words are among the agent's) and not that claim clause's own subject. The sentence's own
+    attribution ("according to one source") is a clause of its own and names no subject."""
+    out = []
+    mine = _passive_parts(_strip_attribution(text))
+    for c in used:
+        for verb, their_subject, agent in _passive_parts(c["text"]):
+            if not agent:
+                continue
+            agent_key, subject_key = _name_key(agent), _name_key(their_subject)
+            for my_verb, my_subject, _ in mine:
+                key = _name_key(my_subject)
+                if my_verb == verb and key and key <= agent_key and not key <= subject_key:
+                    out.append(PASSIVE_SWAP.format(verb=verb, claim=c["id"], subject=" ".join(sorted(key))))
+    return list(dict.fromkeys(out))
+
+
 def _refusals(text: str, used, b: dict) -> list[str]:
     """Why a sentence that passed every check of check_sentence() is refused all the same (REFUSALS), or []. A caveat
     of the closed grammar asserts nothing of its claims and is never refused here."""
     question = b.get("question") or ""
     if not used or insufficiency(text, question):
         return []
-    return _unseen_in_claims(used) + _restriction_lost(text, used) + _case_changed(text, used, question)
+    return (_unseen_in_claims(used) + _restriction_lost(text, used) + _case_changed(text, used, question) +
+            _passive_swaps(text, used))
 
 
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
