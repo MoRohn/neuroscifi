@@ -117,6 +117,9 @@ _HIDDEN_STYLE = re.compile(r"(display\s*:\s*none|visibility\s*:\s*(hidden|collap
 _BLOCKS = {"p", "div", "section", "article", "main", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol", "dl",
            "dt", "dd", "pre", "blockquote", "table", "tr", "td", "th", "figure", "figcaption", "br", "hr",
            "address", "details", "summary", "body", "caption"}
+# A direction control acts to the end of its paragraph, which in HTML is the block that holds it, not the line a
+# <br> starts (_drop_reordered_blocks).
+_PARAGRAPH_BLOCKS = _BLOCKS - {"br", "hr", "body"}
 _JS_TYPES = {"text/javascript", "application/javascript", "module", "text/ecmascript", "application/ecmascript", ""}
 _JS_ROOTS = ("root", "app", "__next", "__nuxt", "svelte", "react-root")
 _DOI = re.compile(r"\b(10\.\d{4,9}/[^\s\"'<>]+)", re.I)
@@ -375,6 +378,34 @@ def _clean(root) -> tuple[int, int]:
             else:
                 stack.append(child)
     return hidden, boilerplate
+
+
+def _drop_reordered_blocks(root) -> int:
+    """Drop each paragraph whose order as shown differs from its characters' order (text.reorders: an override, or
+    another direction control without right-to-left letters) and return how many were dropped. A direction
+    control acts to the end of its paragraph, not to the next <br>, so the paragraph goes whole: the innermost block
+    (p, li, td, h1, ...) holding the control, when that block holds no other block. A control in text that stands
+    directly in a container of blocks (an <article> with loose text) is left to text.as_seen, which drops its line.
+    This only leaves text out; it never adds any."""
+    dropped = []
+    for el in list(root.iter()):
+        if not isinstance(el.tag, str):
+            continue
+        for chunk, holder in ((el.text, el), (el.tail, el.getparent())):
+            if not chunk or holder is None or not T._DIRECTION_RE.search(chunk):
+                continue
+            block = holder
+            while block is not None and (not isinstance(block.tag, str) or block.tag.lower() not in _PARAGRAPH_BLOCKS):
+                block = block.getparent()
+            if block is None or any(block is d or d in block.iterancestors() for d in dropped):
+                continue
+            if any(isinstance(x.tag, str) and x.tag.lower() in _PARAGRAPH_BLOCKS for x in block.iterdescendants()):
+                continue
+            if T.reorders("".join(block.itertext())):
+                dropped.append(block)
+    for block in dropped:
+        block.drop_tree()                       # lxml keeps the block's tail: the text after it is its parent's
+    return len(dropped)
 
 
 def _text_of(node) -> str:
@@ -680,6 +711,7 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
         base = _absolute(final_url, base_el[0].get("href")) or final_url
 
     hidden, boilerplate = _clean(root)
+    reordered_blocks = _drop_reordered_blocks(root)
     body_el = root.find(".//body")
     visible = _text_of(body_el if body_el is not None else root)
     main = _main_node(root)
@@ -737,8 +769,10 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
     zero_width += unseen + unseen_title
     reordered += reordered_title
     js_suspected = len(visible) < JS_TEXT_THRESHOLD and (scripts > 0 or mount or asks_js)
-    flags = {"hidden_removed": hidden + zero_width + reordered, "boilerplate_removed": boilerplate,
+    flags = {"hidden_removed": hidden + zero_width + reordered + reordered_blocks, "boilerplate_removed": boilerplate,
              "js_suspected": bool(js_suspected)}
+    if reordered_blocks:
+        flags["reordered_blocks_removed"] = reordered_blocks
     if zero_width:
         flags["zero_width_removed"] = zero_width
     if reordered:

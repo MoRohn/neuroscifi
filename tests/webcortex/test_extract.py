@@ -500,7 +500,7 @@ def test_character_references_to_unseen_characters_are_removed_after_parsing():
 
 def test_a_line_reordered_by_a_direction_override_is_not_read():
     """A right-to-left override shows "72" as "27". Whether it stands in the page as the character or as a character
-    reference, the line it reorders is dropped: neither order can be quoted faithfully."""
+    reference, the paragraph it reorders is dropped: neither order can be quoted faithfully."""
     for override in ("‮", "&#x202E;", "&#8238;", "‭", "&#x202d;"):
         page = ("<html><body><article><h1>The Tolvane tower</h1>"
                 f"<p>The tower is {override}72‬ metres tall and was finished in 1901.</p>"
@@ -509,10 +509,10 @@ def test_a_line_reordered_by_a_direction_override_is_not_read():
         doc = html_doc(page)
         assert "metres tall" not in doc.text and "metres tall" not in doc.markdown, override
         assert "It stands in the harbour of Tolvane" in doc.text
-        assert doc.flags["reordered_lines_removed"] == 1
+        assert doc.flags["reordered_blocks_removed"] == 1
         assert ex.T.unseen_characters(doc.text + doc.markdown) == []
     plain = html_doc("<html><body><article><p>The tower is 72 metres tall.</p></article></body></html>")
-    assert "reordered_lines_removed" not in plain.flags and "72 metres tall" in plain.text
+    assert "reordered_blocks_removed" not in plain.flags and "72 metres tall" in plain.text
 
 
 def test_an_override_inside_a_tag_is_still_removed_before_parsing():
@@ -520,7 +520,7 @@ def test_an_override_inside_a_tag_is_still_removed_before_parsing():
     doc = html_doc("<html><body><article><p>Dendrites compute in every layer of the cortex, the study says.</p>"
                    "<scr‮ipt>var leaked = 'secret';</scr‮ipt></article></body></html>")
     assert "leaked" not in doc.text and "Dendrites compute" in doc.text
-    assert "reordered_lines_removed" not in doc.flags
+    assert "reordered_blocks_removed" not in doc.flags
 
 
 def test_unseen_characters_are_removed_from_plain_text_json_and_feeds():
@@ -550,12 +550,12 @@ def test_unseen_characters_are_removed_from_plain_text_json_and_feeds():
 ])
 def test_an_override_between_a_literal_lt_and_gt_is_an_override_in_text(paragraph):
     """Only what the HTML tokenizer reads as a tag ("<" then a letter, "/", "!" or "?") is a tag: an override in
-    text between a literal "<" and ">" reorders what a reader sees, and its line is dropped like any other."""
+    text between a literal "<" and ">" reorders what a reader sees, and its paragraph is dropped like any other."""
     doc = html_doc("<html><body><article><h1>Kestrel</h1><p>" + paragraph + "</p>"
                    "<p>The compound was first described in 2019 by the Ostra laboratory.</p></article></body></html>")
     assert "72" not in doc.text and "72" not in doc.markdown, doc.text
     assert "first described in 2019" in doc.text
-    assert doc.flags["reordered_lines_removed"] == 1
+    assert doc.flags["reordered_blocks_removed"] == 1
 
 
 def test_one_override_is_counted_once():
@@ -564,7 +564,7 @@ def test_one_override_is_counted_once():
     doc = html_doc("<html><body><article><p>The tower is ‮72 metres tall.</p>"
                    "<p>It stands in the harbour of Tolvane.</p></article></body></html>")
     assert doc.flags["hidden_removed"] == 1 and "zero_width_removed" not in doc.flags
-    assert doc.flags["reordered_lines_removed"] == 1
+    assert doc.flags["reordered_blocks_removed"] == 1
 
 
 
@@ -599,7 +599,32 @@ def test_right_to_left_text_keeps_its_marks_and_its_claims_carry_them():
     assert any(arabic in line and "⁧" in line and "⁩" in line for line in lines)
     assert not any("‮" in line or (hebrew in line and "72." in line and "‏" not in line) for line in lines)
     assert any(line.startswith(arabic) and "41" in line for line in lines)           # no control: as before
-    assert doc.flags["reordered_lines_removed"] == 1
+    assert doc.flags["reordered_blocks_removed"] == 1
     from neuroscifi.webcortex import reasoning
     kept = next(line for line in lines if "‏" in line)
     assert reasoning._unseen_in_claims([{"id": "C1", "text": kept}])                 # the guard will not cite it
+
+
+
+def test_a_paragraph_holding_a_direction_control_is_dropped_whole_not_to_the_next_br():
+    """Web review F8: an override acts to the end of its paragraph, which in HTML is the block, not the line a <br>
+    starts: in <p>RLO<br>72 boards</p> the second visual line is shown reversed. The whole paragraph is dropped,
+    and only it: the text after it in the same container stays."""
+    doc = html_doc("<html><body><article><h1>Varnel bridge</h1>"
+                   "<p>Note ‮<br>72 boards were replaced.<br>The deck is 41 metres long.</p>"
+                   "<p>The bridge reopened in May 2026.</p></article></body></html>")
+    assert "72 boards" not in doc.text and "41 metres" not in doc.text and "72 boards" not in doc.markdown
+    assert "reopened in May 2026" in doc.text and doc.flags["reordered_blocks_removed"] == 1
+    li = html_doc("<html><body><article><ul><li>Affected:‏<br>3 4</li><li>Fixed: 5</li></ul>"
+                  "<p>Published by Orbix Labs in March 2026.</p></article></body></html>")
+    assert "3 4" not in li.text and "Fixed: 5" in li.text and li.flags["reordered_blocks_removed"] == 1
+
+
+def test_a_control_in_loose_text_of_a_container_drops_its_line_only():
+    """Text standing directly in a container of blocks is its own paragraph between them: the container is not
+    dropped, the line is (text.as_seen)."""
+    doc = html_doc("<html><body><article><p>The bridge reopened in May 2026.</p>"
+                   "The deck is ‮72 metres long."
+                   "<p>It carries 4 lanes.</p></article></body></html>")
+    assert "reopened in May 2026" in doc.text and "carries 4 lanes" in doc.text and "72" not in doc.text
+    assert "reordered_blocks_removed" not in doc.flags and doc.flags["reordered_lines_removed"] == 1
