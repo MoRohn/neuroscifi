@@ -18,15 +18,29 @@ What the models are given is what vLLM's pooling runner gives them, so the score
   around them, semantic._pair), and the score is the probability of "yes" against "no" at the last position:
   sigmoid(logit_yes - logit_no), the model card's log_softmax over the two tokens. Only those two rows of the
   output layer are computed.
-A text longer than the model's limit is refused with 400, as vLLM refuses it: a silently cut reranker prompt would
-lose its closing template and score nonsense.
+A text longer than the model's limit is refused with 400 and vLLM's own wording ("maximum context length"), which
+the gateway reads as context_overflow: a silently cut reranker prompt would lose its closing template and score
+nonsense.
+
+Who waits for whom: the device is taken in turns of one forward pass (at most BATCH_SEQUENCES texts and
+BATCH_TOKENS padded tokens), handed out in the order asked, whichever model asks. A call waits at most for the one
+forward pass running when it arrives, never for the rest of a large call. Measured on the reference host: one
+question's embedding waited 8.0 s behind the largest accepted batch of either model with one lock per request, and
+up to 1.5 s with the two models running side by side on the one GPU. Tokenising happens before the turn, a few
+texts at a time. A request holds at most MAX_REQUEST_TOKENS.
 
 Security: started by run.sh inside a container whose ports Docker publishes on the host's loopback address only.
 Every request but /health and /metrics needs the key (`Authorization: Bearer`, compared in constant time; the key
 is read from a file mounted read-only, never from the environment or a command line). Outside a container the
 server binds a loopback address only; any other address needs --container, which run.sh passes because there the
-publish rule is what keeps it local. Bodies, batches and text lengths are bounded; one model call runs at a time
-(one owner); no request text is ever logged. /metrics tells only how many requests ran (the idle policy reads it
+publish rule is what keeps it local. At most MAX_CONNECTIONS connections are served at once, across both ports;
+another is answered 503 and closed before a byte of it is read and gets no thread. A request head must arrive
+whole within HEAD_TIMEOUT, its body within BODY_TIMEOUT (a reaper closes the connection otherwise). The head is
+parsed strictly: a request line of at most MAX_REQUEST_LINE bytes, at most MAX_HEADERS headers of MAX_HEADER_BYTES
+together, exactly one Content-Length of plain digits on a POST and none (or 0) on a GET, one Host and one
+Authorization at most, no Transfer-Encoding. Bodies, batches and text lengths are bounded; no request text is ever
+logged, and a path is logged only if it is one of the routes (otherwise "<other>"). Weights load from safetensors
+only. /metrics tells only how many requests ran (the idle policy reads it
 to see whether the models are in use: resources/idle.py reads the same three names from a vLLM server).
 """
 from __future__ import annotations
@@ -46,12 +60,50 @@ MAX_BODY = 4 << 20             # bytes of one request body
 MAX_INPUTS = 256               # texts of one embeddings request
 MAX_DOCUMENTS = 256            # documents of one rerank request
 MAX_CHARS = 64_000             # characters of one text (the token limit is checked after this cheap one)
-MAX_CONNECTIONS = 32           # requests in the building at once; more are told 503
-SOCKET_TIMEOUT = 30.0          # seconds a connection may take to send its request
+MAX_CONNECTIONS = 32           # connections served at once, both ports together; more are told 503 and closed
+MAX_REQUEST_LINE = 2048        # bytes of the request line
+MAX_HEADERS = 32               # headers of one request
+MAX_HEADER_BYTES = 16_384      # bytes of all header names and values together
+MAX_REQUEST_TOKENS = 131_072   # tokens of one request: 64 texts of the longest kind, the gateway's largest batch
+HEAD_TIMEOUT = 10.0            # seconds a request head (line and headers) may take to arrive, whole
+BODY_TIMEOUT = 30.0            # seconds a request body may take to arrive, whole
+SEND_TIMEOUT = 30.0            # seconds a response may take to be taken
+SOCKET_TIMEOUT = 30.0          # seconds of one blocking read or write
 BATCH_SEQUENCES = 16           # sequences of one forward pass
-BATCH_TOKENS = 16_384          # padded tokens of one forward pass
+BATCH_TOKENS = 4096            # padded tokens of one forward pass: the longest any other call waits for the device
+TOKENIZE_CHUNK = 16            # texts tokenised at once
+ROUTES_KNOWN = ("/health", "/metrics", "/v1/models", "/v1/embeddings", "/v1/rerank")
+_BUSY_BODY = b'{"error":{"message":"too many connections at once","type":"server_error","code":"overloaded"}}'
+BUSY = (b"HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nConnection: close\r\n"
+        b"Content-Length: " + str(len(_BUSY_BODY)).encode() + b"\r\n\r\n" + _BUSY_BODY)
 CACHE_SLACK = 256 << 20        # bytes of unused device cache kept after a call; more is given back
 MIN_KEY = 16
+
+
+def too_long(tokens, max_len) -> str:
+    """vLLM's wording, so that the gateway reads the refusal as context_overflow."""
+    return (f"This model's maximum context length is {max_len} tokens; a text of this request has {tokens} "
+            "tokens")
+
+
+class _Turns:
+    """A lock handed out in the order it was asked for (threading.Lock is not: a thread that releases and asks
+    again usually gets it back first, so a large call would keep it from a small one)."""
+
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._next = self._now = 0
+
+    def __enter__(self):
+        with self._cond:
+            ticket, self._next = self._next, self._next + 1
+            while ticket != self._now:
+                self._cond.wait()
+
+    def __exit__(self, *exc):
+        with self._cond:
+            self._now += 1
+            self._cond.notify_all()
 
 
 class Refused(Exception):
@@ -65,19 +117,22 @@ class Refused(Exception):
 # ---- the models --------------------------------------------------------------------------------------------------
 
 class Models:
-    """Both models on one device. `embed` and `rerank` are called under the server's lock, one at a time."""
+    """Both models on one device, taken in turns of one forward pass (see the module's doc)."""
 
     def __init__(self, embed_dir, rerank_dir, *, max_len, device="cuda", log=print):
         import torch
         from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
         self.torch, self.max_len, self.device = torch, int(max_len), device
+        self.scheduling()
         dtype = torch.bfloat16 if device != "cpu" else torch.float32     # the checkpoints' own precision on a GPU
         started = time.monotonic()
         self.embed_tok = AutoTokenizer.from_pretrained(embed_dir, local_files_only=True, padding_side="left")
-        self.embed_model = self._on_device(AutoModel.from_pretrained(embed_dir, local_files_only=True, dtype=dtype))
+        self.embed_model = self._on_device(AutoModel.from_pretrained(embed_dir, local_files_only=True, dtype=dtype,
+                                                                     use_safetensors=True))
         self.rerank_tok = AutoTokenizer.from_pretrained(rerank_dir, local_files_only=True, padding_side="left")
-        lm = self._on_device(AutoModelForCausalLM.from_pretrained(rerank_dir, local_files_only=True, dtype=dtype))
+        lm = self._on_device(AutoModelForCausalLM.from_pretrained(rerank_dir, local_files_only=True, dtype=dtype,
+                                                                  use_safetensors=True))
         yes, no = self.rerank_tok.convert_tokens_to_ids("yes"), self.rerank_tok.convert_tokens_to_ids("no")
         if not isinstance(yes, int) or not isinstance(no, int) or yes == no or min(yes, no) < 0:
             raise RuntimeError("the reranker's tokenizer has no single tokens for 'yes' and 'no'")
@@ -85,6 +140,9 @@ class Models:
         # vocabulary of 150k rows, tied to the input embedding) is not run.
         self.yes_no = lm.get_output_embeddings().weight[[no, yes]].detach().float().clone()
         self.rerank_model = lm.get_decoder() if hasattr(lm, "get_decoder") else lm.model
+        self.pad_ids = {"embed": self.embed_tok.pad_token_id, "rerank": self.rerank_tok.pad_token_id}
+        if any(not isinstance(v, int) for v in self.pad_ids.values()):
+            raise RuntimeError("a tokenizer has no padding token")
         # The first call of each shape pays for the device's start-up (measured: 1.4 s for the first two-text
         # request after a one-text warm-up), so a few shapes are run here, before the ports open.
         for texts in (["warm up"], ["warm up", "a second and somewhat longer text to warm up with"],
@@ -110,99 +168,156 @@ class Models:
         """Give the device's cached blocks back after a batch much larger than the usual one (measured: 64 texts
         at once left 440 MiB cached for good). The usual lookup, one question and a dozen statements, keeps its
         cache and pays nothing."""
+        if self.device == "cpu":
+            return
         cuda = self.torch.cuda
-        if self.device != "cpu" and cuda.memory_reserved() - cuda.memory_allocated() > CACHE_SLACK:
+        if cuda.memory_reserved() - cuda.memory_allocated() > CACHE_SLACK:
             cuda.empty_cache()
 
-    def _batches(self, tok, texts):
-        """Token ids per text (refusing one over the limit), then index groups that fit one forward pass."""
-        ids = tok(texts, add_special_tokens=True, return_attention_mask=False)["input_ids"]
-        for n in map(len, ids):
-            if n > self.max_len:
-                raise Refused(400, f"a text has {n} tokens; this model serves at most {self.max_len}",
-                              "context_length_exceeded")
-        group = []
-        for i in sorted(range(len(ids)), key=lambda i: len(ids[i])):      # similar lengths together: less padding
+    def scheduling(self):
+        """The turns: one for the device, taken per forward pass by either model (two models side by side on one
+        GPU slowed a waiting lookup to 1.5 s); one lock per tokenizer (a fast tokenizer must not be used by two
+        threads at once), held for TOKENIZE_CHUNK texts at a time."""
+        device = _Turns()
+        self.turns = {"embed": device, "rerank": device}
+        self.tok_locks = {"embed": threading.Lock(), "rerank": threading.Lock()}
+
+    def _prepare(self, kind, tok, texts):
+        """Token ids per text and the groups of one forward pass each, refusing a text over the model's limit and a
+        request over MAX_REQUEST_TOKENS before any forward pass. Similar lengths go together (less padding)."""
+        ids, total = [], 0
+        for start in range(0, len(texts), TOKENIZE_CHUNK):      # a few at a time: another call never waits long
+            with self.tok_locks[kind]:
+                part = tok(texts[start:start + TOKENIZE_CHUNK], add_special_tokens=True,
+                           return_attention_mask=False)["input_ids"]
+            longest = max(map(len, part))
+            if longest > self.max_len:
+                raise Refused(400, too_long(longest, self.max_len), "context_length_exceeded")
+            total += sum(map(len, part))
+            if total > MAX_REQUEST_TOKENS:
+                raise Refused(400, f"the request holds more than {MAX_REQUEST_TOKENS} tokens, the most one request "
+                              "may hold", "request_too_large")
+            ids += part
+        groups, group = [], []
+        for i in sorted(range(len(ids)), key=lambda i: len(ids[i])):
             # ascending order: this text is the widest of its group, so the group pads to its length
             if group and (len(group) >= BATCH_SEQUENCES or len(ids[i]) * (len(group) + 1) > BATCH_TOKENS):
-                yield group, ids
+                groups.append(group)
                 group = []
             group.append(i)
         if group:
-            yield group, ids
+            groups.append(group)
+        return ids, groups
 
-    def _hidden(self, model, tok, ids, group):
-        """The last token's hidden state of each text of the group, in single precision."""
-        batch = tok.pad({"input_ids": [ids[i] for i in group]}, padding=True, return_tensors="pt")
-        batch = {name: value.to(self.device) for name, value in batch.items()}
-        out = model(**batch)
+    def _run(self, kind, tok, texts, compute) -> tuple[list, int]:
+        """compute(ids, group) for every group, each in the model's turn -> (values in the texts' order, tokens)."""
+        ids, groups = self._prepare(kind, tok, texts)       # before the turn: tokenising never holds the device
+        out, tokens = [None] * len(texts), 0
+        for group in groups:
+            with self.turns[kind], self.torch.inference_mode():
+                values = compute(ids, group)
+            for i, value in zip(group, values):
+                out[i] = value
+                tokens += len(ids[i])
+        self._release()
+        return out, tokens
+
+    def _hidden(self, kind, model, ids, group):
+        """The last token's hidden state of each text of the group, in single precision. Padding on the left, as
+        the model cards do it (the tokenizer's own pad, without calling the tokenizer from this thread)."""
+        torch = self.torch
+        rows = [ids[i] for i in group]
+        width = max(map(len, rows))
+        pad = self.pad_ids[kind]
+        input_ids = torch.tensor([[pad] * (width - len(r)) + list(r) for r in rows], device=self.device)
+        mask = torch.tensor([[0] * (width - len(r)) + [1] * len(r) for r in rows], device=self.device)
+        out = model(input_ids=input_ids, attention_mask=mask)
         return out.last_hidden_state[:, -1].float() if hasattr(out, "last_hidden_state") else out[0][:, -1].float()
 
     def embed(self, texts) -> tuple[list[list[float]], int]:
-        torch = self.torch
-        vectors, tokens = [None] * len(texts), 0
-        with torch.inference_mode():
-            for group, ids in self._batches(self.embed_tok, texts):
-                hidden = torch.nn.functional.normalize(self._hidden(self.embed_model, self.embed_tok, ids, group),
-                                                       p=2, dim=1).cpu().tolist()
-                for i, vector in zip(group, hidden):
-                    vectors[i] = vector
-                    tokens += len(ids[i])
-        self._release()
-        return vectors, tokens
+        normalize = self.torch.nn.functional.normalize
+
+        def compute(ids, group):
+            return normalize(self._hidden("embed", self.embed_model, ids, group), p=2, dim=1).cpu().tolist()
+        return self._run("embed", self.embed_tok, texts, compute)
 
     def rerank(self, query, documents) -> tuple[list[float], int]:
-        torch = self.torch
-        scores, tokens = [None] * len(documents), 0
-        with torch.inference_mode():
-            for group, ids in self._batches(self.rerank_tok, [query + d for d in documents]):
-                logits = self._hidden(self.rerank_model, self.rerank_tok, ids, group) @ self.yes_no.T
-                for i, score in zip(group, torch.sigmoid(logits[:, 1] - logits[:, 0]).cpu().tolist()):
-                    scores[i] = score
-                    tokens += len(ids[i])
-        self._release()
-        return scores, tokens
+        def compute(ids, group):
+            logits = self._hidden("rerank", self.rerank_model, ids, group) @ self.yes_no.T
+            return self.torch.sigmoid(logits[:, 1] - logits[:, 0]).cpu().tolist()
+        return self._run("rerank", self.rerank_tok, [query + d for d in documents], compute)
 
 
 # ---- the service -------------------------------------------------------------------------------------------------
 
 class Service:
-    """What both listeners share: the models, their lock, the key and the counters."""
+    """What both listeners share: the models, the key, the counters, the connection slots and their deadlines."""
 
     def __init__(self, models, key, names, *, max_len, log=print):
         if not isinstance(key, str) or len(key) < MIN_KEY:
             raise ValueError(f"the API key must hold at least {MIN_KEY} characters")
         self.models, self.key, self.names, self.max_len, self.log = models, key, names, int(max_len), log
-        self.lock = threading.Lock()                # one model call at a time
         self.count = threading.Lock()
-        self.running = self.waiting = self.served = 0
-        self.slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self.running = self.served = 0
+        self.connections = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self.deadlines: dict = {}                   # socket -> monotonic deadline of what it is sending (None: none)
+        self.watch_lock = threading.Lock()
+        self.reaper, self.closed = None, threading.Event()
+
+    def close(self) -> None:
+        """Stop the reaper (the listeners are closed by their owner)."""
+        self.closed.set()
+        if self.reaper is not None:
+            self.reaper.join(2)
+
+    def watch(self, sock, seconds) -> None:
+        """Close `sock` if what it is sending now does not arrive whole within `seconds` (None: no deadline)."""
+        with self.watch_lock:
+            self.deadlines[sock] = None if seconds is None else time.monotonic() + seconds
+            if self.reaper is None and not self.closed.is_set():
+                self.reaper = threading.Thread(target=self._reap, name="nsf-memory-reaper", daemon=True)
+                self.reaper.start()
+
+    def unwatch(self, sock) -> None:
+        with self.watch_lock:
+            self.deadlines.pop(sock, None)
+
+    def _reap(self) -> None:
+        import socket
+        while not self.closed.wait(0.2):
+            now = time.monotonic()
+            with self.watch_lock:
+                late = [sock for sock, deadline in self.deadlines.items() if deadline is not None and now > deadline]
+                for sock in late:
+                    self.deadlines[sock] = None
+            for sock in late:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
 
     def authorised(self, header) -> bool:
         given = header[7:] if isinstance(header, str) and header[:7].lower() == "bearer " else ""
         return hmac.compare_digest(given.encode("utf-8", "replace"), self.key.encode("utf-8"))
 
     def call(self, fn, *args):
-        """Run one model call, alone; a call that fails is not counted as served."""
+        """Run one model call (the model's turns order it with others); counted as running meanwhile."""
         with self.count:
-            self.waiting += 1
-        self.lock.acquire()
-        with self.count:
-            self.waiting -= 1
             self.running += 1
         try:
-            out = fn(*args)
+            return fn(*args)
         finally:
             with self.count:
                 self.running -= 1
-            self.lock.release()
+
+    def answered(self) -> None:
+        """A model request answered 200: what /metrics counts as served (a refused or unusable one is not)."""
         with self.count:
             self.served += 1
-        return out
 
     def metrics(self) -> str:
         with self.count:
-            running, waiting, served = self.running, self.waiting, self.served
+            running, waiting, served = self.running, 0, self.served    # waiting: inside running (turns)
         lines = []
         for name, kind, value in (("vllm:num_requests_running", "gauge", running),
                                   ("vllm:num_requests_waiting", "gauge", waiting),
@@ -284,7 +399,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):          # the default access log is replaced by _done (never any request text)
         pass
 
+    def handle_one_request(self):
+        self.server.service.watch(self.connection, HEAD_TIMEOUT)     # the next request's head, whole, in time
+        super().handle_one_request()
+
+    def parse_request(self):
+        if len(self.raw_requestline) > MAX_REQUEST_LINE:
+            self.requestline = self.request_version = self.command = ""     # as the base class does for its limit
+            self.close_connection = True
+            self.send_error(414)
+            return False
+        return super().parse_request()
+
     def _send(self, status, payload, content_type="application/json"):
+        self.server.service.watch(self.connection, SEND_TIMEOUT)
         body = payload if isinstance(payload, bytes) else json.dumps(payload, separators=(",", ":")).encode()
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -302,19 +430,41 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _done(self, status, started, items=0):
         role = self.server.role
-        self.server.service.log(f"{role} {self.command} {self.path.split('?', 1)[0][:40]} {status} items={items} "
+        path = self.path.split("?", 1)[0]
+        shown = path if path in ROUTES_KNOWN else "<other>"          # never the bytes a client sent
+        method = self.command if self.command in ("GET", "POST") else "<other>"
+        self.server.service.log(f"{role} {method} {shown} {status} items={items} "
                                 f"{(time.monotonic() - started) * 1000:.0f}ms")
 
-    def _body(self) -> dict:
-        if self.headers.get("Transfer-Encoding"):
+    def _strict(self, method) -> int:
+        """The head, checked before anything else -> the body's length (0 for a GET), or Refused."""
+        headers = self.headers
+        if len(headers) > MAX_HEADERS or sum(len(k) + len(v) for k, v in headers.items()) > MAX_HEADER_BYTES:
+            raise Refused(431, "the request's headers are too many or too large", "headers_too_large")
+        for name in ("Host", "Authorization", "Content-Length", "Transfer-Encoding"):
+            if len(headers.get_all(name) or []) > 1:
+                raise Refused(400, f"one {name} header at most", "invalid_request")
+        if headers.get("Transfer-Encoding") is not None:
             raise Refused(411, "send a Content-Length; chunked bodies are not accepted", "length_required")
-        try:
-            length = int(self.headers.get("Content-Length", ""))
-        except ValueError:
-            raise Refused(411, "send a Content-Length", "length_required") from None
-        if length < 0 or length > MAX_BODY:
+        given = headers.get("Content-Length")
+        if given is not None and (not given.isascii() or not given.isdigit() or len(given) > 9
+                                  or (len(given) > 1 and given.startswith("0"))):
+            raise Refused(400, "Content-Length must be one plain number", "invalid_request")
+        length = None if given is None else int(given)
+        if method == "GET":
+            if length:
+                raise Refused(400, "a GET carries no body", "invalid_request")
+            return 0
+        if length is None:
+            raise Refused(411, "send a Content-Length", "length_required")
+        if length > MAX_BODY:
             raise Refused(413, f"the body is larger than {MAX_BODY} bytes", "request_too_large")
+        return length
+
+    def _body(self, length) -> dict:
+        self.server.service.watch(self.connection, BODY_TIMEOUT)
         raw = self.rfile.read(length)
+        self.server.service.watch(self.connection, None)             # the model's work has no deadline here
         if len(raw) != length:
             raise Refused(400, "the body ended early", "invalid_request")
         try:
@@ -328,20 +478,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _handle(self, method):
         service, role, started = self.server.service, self.server.role, time.monotonic()
         path = self.path.split("?", 1)[0]
-        if method == "GET" and path in ("/health", "/metrics"):      # answered whatever else is going on: the
-            try:                                                     # container's health check and the idle policy
-                if path == "/health":
-                    self._send(200, {"status": "ok"})
-                else:
-                    self._send(200, service.metrics().encode(), "text/plain; version=0.0.4")
-            except OSError:
-                self.close_connection = True
-            return self._done(200, started)
-        if not service.slots.acquire(blocking=False):
-            self._refuse(503, "too many requests at once", "overloaded")
-            return self._done(503, started)
         status, items = 500, 0
         try:
+            length = self._strict(method)
+            if method == "GET" and path in ("/health", "/metrics"):      # no key: the health check, the idle policy
+                status = 200
+                if path == "/health":
+                    return self._send(200, {"status": "ok"})
+                return self._send(200, service.metrics().encode(), "text/plain; version=0.0.4")
             if not service.authorised(self.headers.get("Authorization")):
                 raise Refused(401, "a valid API key is required", "unauthorised")
             if method == "GET" and path == "/v1/models":
@@ -352,12 +496,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             route, fn = ROUTES[role]
             if method != "POST" or path != route:
                 raise Refused(404, "no such endpoint on this port", "not_found")
-            payload, items = fn(service, self._body())
+            payload, items = fn(service, self._body(length))
             status = 200
+            service.answered()
             return self._send(200, payload)
         except Refused as err:
             status = err.status
-            self._refuse(err.status, err.message, err.code)
+            try:
+                self._refuse(err.status, err.message, err.code)
+            except OSError:
+                self.close_connection = True
         except (BrokenPipeError, ConnectionError, TimeoutError):
             status = 499
             self.close_connection = True
@@ -369,7 +517,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except OSError:
                 self.close_connection = True
         finally:
-            service.slots.release()
             self._done(status, started, items)
 
     def do_GET(self):          # noqa: N802 - the base class's naming
@@ -390,6 +537,32 @@ class Listener(http.server.ThreadingHTTPServer):
 
     def handle_error(self, request, client_address):       # a dropped connection is not worth a traceback
         self.service.log(f"{self.role} connection error {sys.exc_info()[0].__name__}")
+
+    def process_request(self, request, client_address):
+        """A thread for the connection only while a slot is free (both ports share MAX_CONNECTIONS); otherwise a
+        fixed 503 is written, nothing is read, and the connection is closed here, on the accepting thread."""
+        if not self.service.connections.acquire(blocking=False):
+            try:
+                request.settimeout(1.0)
+                request.sendall(BUSY)
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        try:
+            self.service.watch(request, HEAD_TIMEOUT)
+            super().process_request(request, client_address)
+        except BaseException:
+            self.service.unwatch(request)
+            self.service.connections.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.service.unwatch(request)
+            self.service.connections.release()
 
 
 def check_bind(host, container) -> str:
@@ -429,6 +602,7 @@ def serve(service, host, embed_port, rerank_port, stop: threading.Event):
         for one in listeners:
             one.shutdown()
             one.server_close()
+        service.close()
     return listeners
 
 

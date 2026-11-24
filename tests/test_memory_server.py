@@ -35,15 +35,14 @@ class FakeModels:
     what it was given, and the token limit the real one enforces."""
 
     def __init__(self, max_len=2048):
-        self.max_len, self.seen, self.fail = max_len, [], None
+        self.max_len, self.seen, self.fail, self.vector = max_len, [], None, None
         self.gate = threading.Event()
         self.gate.set()
 
     def _tokens(self, texts):
         counts = [len(t.split()) for t in texts]
         if max(counts) > self.max_len:
-            raise server.Refused(400, f"a text has {max(counts)} tokens; this model serves at most {self.max_len}",
-                                 "context_length_exceeded")
+            raise server.Refused(400, server.too_long(max(counts), self.max_len), "context_length_exceeded")
         return sum(counts)
 
     def embed(self, texts):
@@ -51,7 +50,7 @@ class FakeModels:
         if self.fail:
             raise self.fail
         self.seen.append(("embed", list(texts)))
-        return [[float(len(t)), 1.0, 0.0] for t in texts], self._tokens(texts)
+        return [list(self.vector) if self.vector else [float(len(t)), 1.0, 0.0] for t in texts], self._tokens(texts)
 
     def rerank(self, query, documents):
         assert self.gate.wait(10)
@@ -89,6 +88,7 @@ def running():
         models.gate.set()
         stop.set()
         thread.join(10)
+        service.close()
 
 
 def call(port, method, path, body=None, key=KEY, headers=None, raw=None):
@@ -292,12 +292,12 @@ def test_metrics_report_what_runs_waits_and_was_served_in_the_names_the_idle_pol
                                                                    {"query": "q", "documents": ["d"]})[0]))]
     for thread in threads:
         thread.start()
-    for _ in range(200):                                              # one runs, the other waits for it
+    for _ in range(200):                  # both run at once: the two models do not wait for each other (F8)
         seen = samples(ports["rerank"])
-        if seen["vllm:num_requests_running"] == 1.0 and seen["vllm:num_requests_waiting"] == 1.0:
+        if seen["vllm:num_requests_running"] == 2.0:
             break
         threading.Event().wait(0.02)
-    assert (seen["vllm:num_requests_running"], seen["vllm:num_requests_waiting"]) == (1.0, 1.0)
+    assert (seen["vllm:num_requests_running"], seen["vllm:num_requests_waiting"]) == (2.0, 0.0)
     assert idle._metrics(url)["in_flight"] == 2.0                     # either port: the policy sees both in use
     models.gate.set()
     for thread in threads:
@@ -311,17 +311,19 @@ def test_metrics_report_what_runs_waits_and_was_served_in_the_names_the_idle_pol
 
 
 def test_more_requests_at_once_than_the_server_holds_are_told_to_come_back(running):
+    """Beyond the cap a connection is answered 503 before a byte of it is read and gets no thread: health and
+    metrics too (the idle policy then sees /metrics unreadable, which never unloads anything)."""
     models, service, ports, _ = running
     for _ in range(server.MAX_CONNECTIONS):
-        assert service.slots.acquire(blocking=False)
+        assert service.connections.acquire(blocking=False)
     try:
         status, answer = call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})
         assert status == 503 and answer["error"]["code"] == "overloaded" and models.seen == []
-        assert call(ports["embed"], "GET", "/health", key=None)[0] == 200      # health and metrics always answer
-        assert call(ports["rerank"], "GET", "/metrics", key=None)[0] == 200
+        assert call(ports["embed"], "GET", "/health", key=None)[0] == 503
+        assert call(ports["rerank"], "GET", "/metrics", key=None)[0] == 503
     finally:
         for _ in range(server.MAX_CONNECTIONS):
-            service.slots.release()
+            service.connections.release()
     assert call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})[0] == 200
 
 
@@ -374,3 +376,263 @@ def test_run_sh_starts_the_server_with_the_key_as_a_read_only_file_and_both_port
         assert flag in line, flag
     assert f"{NAMES['embed']}:ro" in line and f"{NAMES['rerank']}:ro" in line
     assert not (folder / "api_key").exists()                          # `print` creates nothing
+
+
+# ---- review round: strict requests, bounded connections, turns per model (open-items review F8, F11, L3) ------------
+
+def raw_exchange(port, data, *, wait=5.0):
+    """Send raw bytes, read until the server closes or `wait` passes -> (bytes received, closed by the server)."""
+    import socket
+    sock = socket.create_connection(("127.0.0.1", port), timeout=wait)
+    try:
+        sock.sendall(data)
+        got = b""
+        while True:
+            try:
+                chunk = sock.recv(65536)
+            except socket.timeout:
+                return got, False
+            if not chunk:
+                return got, True
+            got += chunk
+    finally:
+        sock.close()
+
+
+def status_of(answer: bytes) -> int:
+    return int(answer.split(b" ", 2)[1]) if answer.startswith(b"HTTP/1.") else 0
+
+
+AUTH = f"Authorization: Bearer {KEY}\r\n".encode()
+
+
+BODY = b'{"input":["abcde"]}'                              # 19 bytes
+
+
+@pytest.mark.parametrize("lengths", [["19", "19"], ["+19"], ["1_9"], ["0x13"], ["-19"], ["19 19"], ["١٩"], ["019"]])
+def test_a_content_length_that_is_not_exactly_one_plain_number_is_refused(running, lengths):
+    """L3: duplicate Content-Length headers (the first won), `+19` and `1_9` (int() accepts both) were taken."""
+    models, _, ports, _ = running
+    body = BODY
+    head = b"POST /v1/embeddings HTTP/1.1\r\nHost: x\r\n" + AUTH + b"Content-Type: application/json\r\n"
+    head += b"".join(f"Content-Length: {v}\r\n".encode() for v in lengths)
+    answer, _ = raw_exchange(ports["embed"], head + b"\r\n" + body)
+    assert status_of(answer) == 400 and models.seen == [], answer[:120]
+
+
+def test_duplicate_headers_that_decide_anything_and_a_get_with_a_body_are_refused(running):
+    _, _, ports, _ = running
+    for head in (b"GET /v1/models HTTP/1.1\r\nHost: x\r\n" + AUTH + AUTH + b"\r\n",
+                 b"GET /v1/models HTTP/1.1\r\nHost: x\r\nHost: y\r\n" + AUTH + b"\r\n",
+                 b"GET /v1/models HTTP/1.1\r\nHost: x\r\n" + AUTH + b"Content-Length: 5\r\n\r\nGET /"):
+        answer, closed = raw_exchange(ports["embed"], head)
+        assert status_of(answer) == 400 and closed, answer[:120]
+    answer, _ = raw_exchange(ports["embed"], b"POST /v1/embeddings HTTP/1.1\r\nHost: x\r\n" + AUTH +
+                             b"Transfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n")
+    assert status_of(answer) == 411
+
+
+def test_a_request_head_beyond_its_limits_is_refused(running):
+    _, _, ports, _ = running
+    many = b"".join(f"X-Filler-{n}: 1\r\n".encode() for n in range(server.MAX_HEADERS + 1))
+    answer, _ = raw_exchange(ports["embed"], b"GET /health HTTP/1.1\r\nHost: x\r\n" + many + b"\r\n")
+    assert status_of(answer) == 431
+    big = b"X-Big: " + b"a" * server.MAX_HEADER_BYTES + b"\r\n"
+    answer, _ = raw_exchange(ports["embed"], b"GET /health HTTP/1.1\r\nHost: x\r\n" + big + b"\r\n")
+    assert status_of(answer) == 431
+    answer, _ = raw_exchange(ports["embed"], b"GET /" + b"a" * server.MAX_REQUEST_LINE + b" HTTP/1.1\r\n\r\n")
+    assert status_of(answer) == 414
+
+
+def test_connections_beyond_the_cap_are_answered_at_once_and_get_no_thread(running):
+    """L3: 300 half-open connections made 300 threads; the cap applied only once the headers were read."""
+    import socket
+    _, service, ports, _ = running
+    before = threading.active_count()
+    held = [socket.create_connection(("127.0.0.1", ports["embed" if n % 2 else "rerank"]), timeout=5)
+            for n in range(server.MAX_CONNECTIONS)]
+    try:
+        for _ in range(100):
+            if threading.active_count() - before >= server.MAX_CONNECTIONS:
+                break
+            threading.Event().wait(0.02)
+        extra = [raw_exchange(ports["embed"], b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n", wait=3) for _ in range(40)]
+        assert all(status_of(answer) == 503 and closed for answer, closed in extra)
+        assert threading.active_count() - before <= server.MAX_CONNECTIONS + 1        # + the one reaper
+    finally:
+        for sock in held:
+            sock.close()
+    for _ in range(200):                                  # the slots come back as the held connections end
+        if call(ports["embed"], "GET", "/health", key=None)[0] == 200:
+            break
+        threading.Event().wait(0.05)
+    assert call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})[0] == 200
+
+
+def test_a_connection_that_does_not_finish_its_request_head_in_time_is_closed(running, monkeypatch):
+    import socket
+    import time
+    monkeypatch.setattr(server, "HEAD_TIMEOUT", 0.6)
+    _, _, ports, _ = running
+    started = time.monotonic()
+    answer, closed = raw_exchange(ports["embed"], b"", wait=5)                       # says nothing at all
+    assert closed and answer == b"" and time.monotonic() - started < 3
+    sock = socket.create_connection(("127.0.0.1", ports["embed"]), timeout=5)      # drips its head byte by byte:
+    started, closed = time.monotonic(), None                                         # each byte well inside any
+    try:                                                                             # per-read timeout
+        for byte in b"GET /health HTTP/1.1\r\nX-Slow: " + b"a" * 200:
+            sock.sendall(bytes([byte]))
+            threading.Event().wait(0.05)
+        sock.settimeout(3)
+        closed = sock.recv(100) == b""
+    except OSError:
+        closed = True
+    finally:
+        sock.close()
+    assert closed and time.monotonic() - started < 4, "a dripped request head held its connection"
+
+
+def test_the_log_shows_only_known_routes_and_never_raw_request_bytes(running):
+    _, _, ports, lines = running
+    raw_exchange(ports["embed"], b"GET /\x1b[31mRED\x1b[0m?q=secret HTTP/1.1\r\nHost: x\r\n\r\n")
+    raw_exchange(ports["embed"], b"GET /v1/models\x7f HTTP/1.1\r\nHost: x\r\n\r\n")
+    call(ports["embed"], "GET", "/health", key=None)
+    text = "\n".join(lines)
+    assert "\x1b" not in text and "RED" not in text and "secret" not in text and "\x7f" not in text
+    assert "embed GET <other> 401" in text and "embed GET /health 200" in text
+
+
+def test_the_too_long_message_is_the_one_the_gateway_reads_as_context_overflow(running, tmp_path):
+    """F11: the server said "a text has N tokens; this model serves at most M", which the gateway did not
+    recognise; it now says what vLLM says."""
+    _, _, ports, _ = running
+    with pytest.raises(InferenceError) as err:
+        gateway(ports["embed"], "embed", tmp_path).embed(["word " * 3000], purpose="t")
+    assert err.value.code == "context_overflow"
+    with pytest.raises(InferenceError) as err:
+        gateway(ports["rerank"], "rerank", tmp_path).rerank("q", ["word " * 3000], purpose="t")
+    assert err.value.code == "context_overflow"
+
+
+def test_an_unusable_answer_is_not_counted_as_served(running):
+    models, service, ports, _ = running
+    models.vector = [float("nan"), 1.0, 0.0]
+    status, _ = call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})
+    assert status == 500 and service.served == 0
+    models.vector = None
+    assert call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})[0] == 200 and service.served == 1
+
+
+def test_weights_are_loaded_from_safetensors_only():
+    source = (ROOT / "deploy" / "memory" / "server.py").read_text()
+    assert source.count("use_safetensors=True") == 2 and "trust_remote_code" not in source
+
+
+# ---- turns: how long one call can make another wait (F8) -----------------------------------------------------------
+
+class _Tok:
+    """A tokenizer stand-in: one token per word, and a record of when it was used."""
+
+    def __init__(self, log):
+        self.log = log
+
+    def __call__(self, texts, **kwargs):
+        self.log.append(("tokenize", len(texts)))
+        return {"input_ids": [[1] * len(t.split()) for t in texts]}
+
+
+def _models(log):
+    from types import SimpleNamespace
+    from contextlib import nullcontext
+    m = server.Models.__new__(server.Models)
+    m.torch, m.device, m.max_len = SimpleNamespace(inference_mode=nullcontext), "cpu", 2048
+    m.scheduling()
+    return m, _Tok(log)
+
+
+def test_a_small_call_waits_at_most_one_forward_pass_of_a_large_call_of_the_same_model():
+    log, gates = [], {}
+    models, tok = _models(log)
+
+    def compute(tag):
+        def run(ids, group):
+            log.append((tag, len(group)))
+            gate = gates.get((tag, len([e for e in log if e[0] == tag])))
+            if gate is not None:
+                assert gate.wait(10)
+            return [0.0] * len(group)
+        return run
+    gates[("large", 1)] = threading.Event()
+    large = threading.Thread(target=models._run, args=("embed", tok, ["w"] * (3 * server.BATCH_SEQUENCES),
+                                                        compute("large")))
+    large.start()
+    for _ in range(200):
+        if ("large", server.BATCH_SEQUENCES) in log:
+            break
+        threading.Event().wait(0.01)
+    small = threading.Thread(target=models._run, args=("embed", tok, ["w"], compute("small")))
+    small.start()
+    for _ in range(100):                                  # the small call has tokenised and taken its turn
+        if log.count(("tokenize", 1)) == 1:
+            break
+        threading.Event().wait(0.01)
+    threading.Event().wait(0.1)
+    gates[("large", 1)].set()
+    large.join(10)
+    small.join(10)
+    passes = [e for e in log if e[0] != "tokenize"]
+    assert passes == [("large", 16), ("small", 1), ("large", 16), ("large", 16)]
+    assert log.index(("tokenize", 1)) < log.index(("small", 1))     # tokenising never waited for the device
+
+
+def test_a_call_of_the_other_model_waits_at_most_one_forward_pass_too():
+    """Two models side by side on one GPU slowed a waiting lookup to 1.5 s (measured), so both share one turn per
+    forward pass: a rerank call arriving during a large embedding runs after the pass in progress, before the
+    rest of the large call."""
+    log, gates = [], {}
+    models, tok = _models(log)
+
+    def compute(tag):
+        def run(ids, group):
+            log.append((tag, len(group)))
+            gate = gates.get((tag, len([e for e in log if e[0] == tag])))
+            if gate is not None:
+                assert gate.wait(10)
+            return [0.0] * len(group)
+        return run
+    gates[("large", 1)] = threading.Event()
+    large = threading.Thread(target=models._run, args=("embed", tok, ["w"] * (2 * server.BATCH_SEQUENCES),
+                                                        compute("large")))
+    large.start()
+    for _ in range(200):
+        if ("large", server.BATCH_SEQUENCES) in log:
+            break
+        threading.Event().wait(0.01)
+    other = threading.Thread(target=models._run, args=("rerank", tok, ["w", "w w"], compute("rerank")))
+    other.start()
+    threading.Event().wait(0.2)
+    assert ("rerank", 2) not in log                       # it waits for the pass in progress
+    gates[("large", 1)].set()
+    large.join(10)
+    other.join(10)
+    assert [e for e in log if e[0] != "tokenize"] == [("large", 16), ("rerank", 2), ("large", 16)]
+
+
+def test_tokenising_a_large_call_never_holds_the_tokenizer_for_long():
+    log = []
+    models, tok = _models(log)
+    models._run("embed", tok, ["w"] * 40, lambda ids, group: [0.0] * len(group))
+    assert [e for e in log if e[0] == "tokenize"] == [("tokenize", 16), ("tokenize", 16), ("tokenize", 8)]
+
+
+def test_a_request_is_refused_before_any_forward_pass_when_too_large():
+    log = []
+    models, tok = _models(log)
+    with pytest.raises(server.Refused) as err:
+        models._run("embed", tok, ["w " * 2049], lambda ids, group: [0.0] * len(group))
+    assert err.value.code == "context_length_exceeded" and "maximum context length is 2048 tokens" in err.value.message
+    with pytest.raises(server.Refused) as err:
+        models._run("embed", tok, ["w " * 2000] * (server.MAX_REQUEST_TOKENS // 2000 + 1),
+                    lambda ids, group: [0.0] * len(group))
+    assert err.value.code == "request_too_large"
+    assert [e for e in log if e[0] != "tokenize"] == []
