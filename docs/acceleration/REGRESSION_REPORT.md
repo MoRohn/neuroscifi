@@ -22,8 +22,9 @@ including four defaults, so §2 to §4 say for each row which phase touched it.
 | Browser end to end | `bash scripts/e2e.sh` | not run at baseline; the one test that failed here was run on `9e4570a` (passes) | 194 passed, 1 skipped, 1 failed on the final tree: `test_add_a_phone_from_the_console_to_a_paired_phone` saw Chromium's `net::ERR_NETWORK_CHANGED` when another tenant's container brought up a network interface on this shared host (system log, same second). Its file was rerun three times on the same tree: 3 of 3 pass each time. The full run before the last review fixes: 195 passed, 1 skipped. A second full run on the same tree afterwards: 195 passed, 1 skipped, exit 0 | 198 passed, 1 skipped, exit 0 (the interim run on the tree before the last read-ahead fix gave the same) |
 | Offline research benchmark | `nsf web bench` | deterministic, safety invariants hold | every metric identical to before, at read-ahead 1 and 4; safety invariants hold | exit 0; every compared metric identical at read-ahead 1, at 4 and at the default (`accel_decisions_read_ahead.json`); safety invariants hold |
 
-The phase-2 column is one run on commit `5583823`, the last commit that changes code or tests; the commits after it
-change only these reports, one sentence of a web-reading page and evidence files. The 18 skips are the same on every side: tests marked live (the real internet, a real remote provider) and
+The phase-2 column is one run on commit `5583823`, the last commit that changes product code; the commits after it
+change these reports, one sentence of a web-reading page, evidence files, and the clean-up at the end of two
+Web Cortex tests (last row of the table below; `tests/webcortex` again afterwards: 1807 passed, 9 skipped). The 18 skips are the same on every side: tests marked live (the real internet, a real remote provider) and
 platform-conditional ones.
 
 **Tests changed, not only added.** One: `tests/e2e/test_presence.py::test_voice_events_listening_level_interrupt_and_mute`
@@ -54,6 +55,7 @@ under its switch or in a twin test.
 | `tests/e2e/test_console_uat.py` | Memory kinds 13 → 14 | The kind `consolidated` |
 | `tests/test_setup_cli.py::test_a_fresh_run_does_every_step_and_names_every_lan_address`, `tests/test_resources_idle.py::test_resources_idle_shows_loaded_as_resources_does` | Exact dictionaries gain the step `memory` and the services `embed`, `rerank` | New step, new services |
 | `tests/test_resources_idle.py::test_an_active_systemd_unit_is_stopped_and_started_with_systemctl` | One assertion added; its fake host reports a stopped unit as inactive, as systemd does | With the corrected fake the old code fails the test: that is finding R11 |
+| `tests/webcortex/test_autonomy.py::test_two_concurrent_autonomous_investigations_at_most_across_processes`, `tests/webcortex/test_browser.py::test_hung_render_kills_driver_and_chromium` | Each now kills a process that outlived it (the first also asserts that none did); no assertion removed | On one of two CI runs of the same commit both failed on a slow runner, and the processes they left held the log pipe until the job's 40-minute limit: the hang `main` already had a timeout for. The first forks from a test process that holds 34 threads of earlier tests on `9e4570a` and 35 here; neither failed in 12 local runs on one busy CPU on either commit |
 
 Tests that the phase-2 lanes themselves added and later rewrote during review (the consolidation file, the
 critique-scope file, the listener and wake tests) are not listed: they did not exist at `9e4570a`.
