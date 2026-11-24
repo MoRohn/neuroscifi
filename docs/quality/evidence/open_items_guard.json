@@ -280,5 +280,229 @@
   },
   "its_own_guard_tests": "827 passed"
  },
+ "review_round": {
+  "attack_suite_and_benchmark_inputs_moved": 0,
+  "extraction": {
+   "3f2eb78": "a tag is what the HTML tokenizer starts one with ('<' + ASCII letter, '/', '!', '?'): an override between a literal '<' and '>' is an override in text; one override counted once",
+   "7df4620": "the HTML paragraph (innermost block without inner blocks) holding such a control is dropped whole, not only to the next <br>; loose text in a container: its line",
+   "8042afc": "every direction control (U+200E, U+200F, U+061C, U+202A-202E, U+2066-2069) reorders what is shown: its line is dropped, unless it holds right-to-left letters, where marks and isolates stay and the claims made of it are not cited",
+   "offline_benchmark": "every metric unchanged (citation precision 193/194, 189/190; verification states 29/29; contradiction P/R 1.0/0.8571; safety invariants hold)"
+  },
+  "final": {
+   "different": {},
+   "gap_sentences_as_labelled": {
+    "case": 48,
+    "cut": 47,
+    "restatement": 45,
+    "restriction": 111,
+    "unseen": 37,
+    "wording": 18
+   },
+   "gap_sentences_not_yet": {},
+   "identical": 1602,
+   "loosened": {
+    "gap": 11,
+    "review": 6
+   },
+   "stricter": {
+    "gap": 139,
+    "review": 24
+   }
+  },
+  "gap_corpora": {
+   "labels": {
+    "case": {
+     "accept": 23,
+     "open": 1,
+     "reject": 24
+    },
+    "cut": {
+     "accept": 15,
+     "open": 1,
+     "reject": 31
+    },
+    "restatement": {
+     "accept": 14,
+     "open": 1,
+     "reject": 30
+    },
+    "restriction": {
+     "accept": 49,
+     "lost": 7,
+     "open": 2,
+     "reject": 53
+    },
+    "unseen": {
+     "accept": 9,
+     "reject": 28
+    },
+    "wording": {
+     "accept": 6,
+     "open": 1,
+     "reject": 11
+    }
+   },
+   "sizes": {
+    "case": 48,
+    "cut": 47,
+    "restatement": 45,
+    "restriction": 111,
+    "unseen": 37,
+    "wording": 18
+   }
+  },
+  "note": "measured with the final script and reference: before 4be5ee6 the three pronoun-led exact restatements count as 'different', because the final frozen class excludes them; with each commit's own script they were 'loosened' and its test passed. 4be5ee6 takes the exemption away from them (rejected as at 307b907).",
+  "per_commit_measured_with_the_final_script": {
+   "3576863": {
+    "change": "corpus entries only (50 sentences: condition words, status words, passive swaps, pronoun leads)",
+    "different": {
+     "gap": 3
+    },
+    "gap_sentences_as_labelled": {
+     "case": 48,
+     "cut": 40,
+     "restatement": 42,
+     "restriction": 98,
+     "unseen": 37,
+     "wording": 11
+    },
+    "gap_sentences_not_yet": {
+     "cut": 7,
+     "restatement": 3,
+     "restriction": 13,
+     "wording": 7
+    },
+    "identical": 1626,
+    "loosened": {
+     "gap": 11,
+     "review": 6
+    },
+    "stricter": {
+     "gap": 112,
+     "review": 24
+    }
+   },
+   "4be5ee6": {
+    "change": "7 the loosening class proven by a frozen copy; no exemption for a pronoun-led claim",
+    "different": {},
+    "gap_sentences_as_labelled": {
+     "case": 48,
+     "cut": 47,
+     "restatement": 45,
+     "restriction": 111,
+     "unseen": 37,
+     "wording": 18
+    },
+    "gap_sentences_not_yet": {},
+    "identical": 1602,
+    "loosened": {
+     "gap": 11,
+     "review": 6
+    },
+    "stricter": {
+     "gap": 139,
+     "review": 24
+    }
+   },
+   "4f147db": {
+    "change": "4 ten more condition and exception words (stricter only)",
+    "different": {
+     "gap": 3
+    },
+    "gap_sentences_as_labelled": {
+     "case": 48,
+     "cut": 40,
+     "restatement": 42,
+     "restriction": 111,
+     "unseen": 37,
+     "wording": 11
+    },
+    "gap_sentences_not_yet": {
+     "cut": 7,
+     "restatement": 3,
+     "wording": 7
+    },
+    "identical": 1613,
+    "loosened": {
+     "gap": 11,
+     "review": 6
+    },
+    "stricter": {
+     "gap": 125,
+     "review": 24
+    }
+   },
+   "efa222b": {
+    "change": "6 a passive clause that makes a claim's agent its subject is refused (stricter only)",
+    "different": {
+     "gap": 3
+    },
+    "gap_sentences_as_labelled": {
+     "case": 48,
+     "cut": 47,
+     "restatement": 42,
+     "restriction": 111,
+     "unseen": 37,
+     "wording": 18
+    },
+    "gap_sentences_not_yet": {
+     "restatement": 3
+    },
+    "identical": 1599,
+    "loosened": {
+     "gap": 11,
+     "review": 6
+    },
+    "stricter": {
+     "gap": 139,
+     "review": 24
+    }
+   },
+   "fef848c": {
+    "change": "5 a status word is no part of a source's name (stricter only)",
+    "different": {
+     "gap": 3
+    },
+    "gap_sentences_as_labelled": {
+     "case": 48,
+     "cut": 47,
+     "restatement": 42,
+     "restriction": 111,
+     "unseen": 37,
+     "wording": 11
+    },
+    "gap_sentences_not_yet": {
+     "restatement": 3,
+     "wording": 7
+    },
+    "identical": 1606,
+    "loosened": {
+     "gap": 11,
+     "review": 6
+    },
+    "stricter": {
+     "gap": 132,
+     "review": 24
+    }
+   }
+  },
+  "reference_inputs": {
+   "benchmark": 248,
+   "gap": 306,
+   "harvested": 1137,
+   "review": 91
+  },
+  "refusals_by_mark_final": {
+   "case": 24,
+   "cut words": 40,
+   "passive swap": 7,
+   "restriction": 74,
+   "unseen characters": 18
+  },
+  "suites": {
+   "tests/webcortex + tests/inference": "3193 passed, 18 skipped, exit 0"
+  },
+  "what": "two independent reviews (security, web) of the first round; their findings on the guard and on extraction fixed one commit at a time"
+ },
  "what": "The guard gaps older than the 0.7.0 review, closed one by one: each change's class measured by scripts/guard_differential.py against 307b907 over every recorded input, with the final corpora"
 }

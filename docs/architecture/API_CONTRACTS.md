@@ -631,10 +631,13 @@ exemption (COGNITIVE_INFERENCE §3). Refusal reasons a rejected sentence can now
 a sentence every 0.7.0 check accepted: `reasoning.CUT_WORDS` (its own trailing "according to <source> …" would take
 words with it that do not only name the source; the composed item carries `cut: [text as written, the words]`),
 `reasoning.RESTRICTION_LOST` (a cited claim carries an exception or a condition and is not held whole),
-`reasoning.CASE_CHANGED` (a word of the cited claims written in another case) and `reasoning.UNSEEN_IN_CLAIM` (a
-cited claim holds characters a reader does not see); `reasoning.REFUSALS` lists the last three. A sentence that is
-one cited claim word for word is not rejected for `reasoning.ANCHOR_TIED` alone. Every rejection keeps the shape
-`{"text", "reasons": [str]}`; reasons that list words list them in one order in every process. Extraction
-(`webcortex/extract.py`, `text.as_seen`): a document's `flags` may carry `reordered_lines_removed` (lines dropped
-because a direction override reordered them), and `zero_width_removed` now also counts characters that came out of
-character references.
+`reasoning.CASE_CHANGED` (a word of the cited claims written in another case), `reasoning.UNSEEN_IN_CLAIM` (a
+cited claim holds characters a reader does not see) and `reasoning.PASSIVE_SWAP` (a passive clause makes a cited
+claim's agent its subject); `reasoning.REFUSALS` lists the last four. A sentence that is one cited claim word for
+word, and whose claim does not start with a pronoun, is not rejected for `reasoning.ANCHOR_TIED` alone. Every
+rejection keeps the shape `{"text", "reasons": [str]}`; reasons that list words list them in one order in every
+process. Extraction (`webcortex/extract.py`, `text.as_seen`, `text.reorders`): a document's `flags` may carry
+`reordered_blocks_removed` (HTML paragraphs dropped because a direction control reorders what they show) and
+`reordered_lines_removed` (lines dropped for the same reason in other text, or loose text in an HTML container),
+and `zero_width_removed` also counts characters that came out of character references. A line of right-to-left
+text keeps its direction marks and isolates in `text`.

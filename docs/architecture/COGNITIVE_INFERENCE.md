@@ -424,27 +424,31 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   `tests/inference/test_inference_critique_scope.py`.
 - **What the guard does beyond 0.7.0, and how that is held.** `compose()` and the guard are the ones of 0.7.0
   (commit `307b907`), which eight review rounds attacked, with additions that each either only refuse or are of
-  one proven class. `tests/inference/test_guard_differential.py` replays 1,732 recorded inputs (every argument that
+  one proven class. `tests/inference/test_guard_differential.py` replays 1,782 recorded inputs (every argument that
   commit's own guard tests pass to `compose()` and the guard, the security review's corpora, the live benchmark's
   sentences, and one adversarial corpus per gap closed since: `tests/inference/fixtures/guard_corpus_gaps.json`,
-  256 sentences, each labelled reject, accept, lost or open) and compares every composed sentence, accepted item and
+  306 sentences, each labelled reject, accept, lost or open) and compares every composed sentence, accepted item and
   rejection with what `307b907` gives (`scripts/guard_differential.py record --ref 307b907` rewrites the reference
   from that commit's source). A case may differ only as *stricter* (a sentence 307b907 accepted is refused, with
   reasons that all start with a refusal mark: `reasoning.CUT_WORDS`, `reasoning.REFUSALS`) or *loosened* (a
-  sentence 307b907 rejected is accepted, of the one class the script proves); anything else fails the test. Today:
-  1,579 identical, 136 stricter, 17 loosened, 0 different; none of the attack suite's 1,137 inputs and none of the
+  sentence 307b907 rejected is accepted, of the one class the script proves with its own frozen copy of that
+  class, not with the tree's code); anything else fails the test. Today: 1,602 identical, 163 stricter, 17
+  loosened, 0 different; none of the attack suite's 1,137 inputs and none of the
   benchmark's 248 sentences moved. The refusals are asked after every 0.7.0 check has accepted the sentence, and a
   refused sentence still counts as the earlier sentence it would have been, so no other sentence's verdict moves.
   - *A restriction must survive* (`reasoning.RESTRICTION_LOST`): "does not hold C1 whole, which carries a
     restriction ('except'): a claim with an exception or a condition can only be restated word for word". A cited
     claim that carries an exception or a condition (a closed list: except, excluding, other than, apart from, save
-    for, with the exception of, but not, all but, barring, unless, only if, provided that, as long as, a reduced
-    "when used", and "if" where it is a condition, not "even if", "as if", "unclear if", "if any") must stand in the
+    for, with the exception of, but not, all but, barring, besides, unless, only if, provided (that), on (the)
+    condition that, as long as, assuming, subject to, given that, in case, in the event that/of, a reduced "when
+    used", "if" where it is a condition, not "even if", "as if", "unclear if", "if any"; and around a quantifier:
+    "every release but 2.5.4", "every release is patched save 2.5.4", "with 2.5.4 excepted") must stand in the
     sentence whole, its words unbroken and in order. 0.7.0 accepted "Every release is patched." and "… patched in
     2.5.4." for "Every release is patched except 2.5.4 and 2.5.5", and "The bridge is open, according to one
     source." for "… except on Sundays": the entailment check counts words. Code cannot tell where a restriction's
     scope ends, so faithful sentences are lost on purpose ("Admission is free." from "The museum is open daily
-    except Mondays, and admission is free"). Left out: bounds of time ("until", "before", "after", "while"), whose
+    except Mondays, and admission is free"; a claim that uses "provided" or "assuming" as a verb: "the study
+    provided the first count, and …"). Left out: bounds of time ("until", "before", "after", "while"), whose
     loss generalises over time and inverts nothing, and an exception written as a negated phrase ("for all users
     not on Windows").
   - *Letter case* (`reasoning.CASE_CHANGED`): "writes 'Co' where its cited claims write 'CO': a changed capital can
@@ -455,13 +459,20 @@ included); failed and cancelled runs keep the extractive report only. It passes 
     May to September, but this may be out of date"). Source titles are no evidence of spelling.
   - *Characters a reader does not see* (`reasoning.UNSEEN_IN_CLAIM`): "rests on characters a reader does not see in
     C1 (U+202C, U+202E): what such a claim shows and what it holds can differ". Extraction removes such characters
-    from fetched text, character references included, and drops a line that a direction override reorders
-    (`text.as_seen`); a claim that reached the guard holding one (stored earlier, or by another road) is not cited.
+    from fetched text, character references included. A direction control (an override, mark, embedding or isolate)
+    changes the order in which neighbouring characters are shown, so the paragraph that holds one is dropped whole
+    (the HTML block, not only to the next `<br>`; a line in other text: `text.reorders`, `text.as_seen`); a tag is
+    only what the HTML tokenizer starts one with, so a control between a literal "<" and ">" is a control in text.
+    Right-to-left text (Hebrew, Arabic) is the exception: there marks and isolates are how text is written, so its
+    line keeps them, the claims made of it carry them, and this refusal keeps those claims out of answers. A page in
+    those scripts thus loses the answer's use of every line that holds a mark or an isolate. A claim that reached
+    the guard holding such a character (stored earlier, or by another road) is not cited.
   - *The model's own attribution with further words* (`reasoning.CUT_WORDS`): `compose()` replaces a trailing "…
     according to <source word>" by the code's attribution and takes up to 40 characters after it. When those words
     only name the source further ("by Reuters", "from the NumPy security team": `reasoning._names_the_source`,
     "by"/"from", at most six words with a capitalised name, no number, stopword, negation, restriction, word of
-    scope, quantity, time or comparison, and no verb form) the sentence is composed as in 0.7.0. Any other words
+    scope, quantity, time or comparison, no word of what became of the source in any case: "Retracted",
+    "Withdrawn", "Superseded", and no verb form) the sentence is composed as in 0.7.0. Any other words
     ("except in versions 2 and 3", "by the operator", "for adults") and the sentence is refused: "ends in its own
     attribution followed by more words ('…'): replacing the attribution would drop them". Keeping the words was
     tried and withdrawn (a claim's own "according to the official advisory of …" then stood as support).
@@ -469,10 +480,19 @@ included); failed and cancelled runs keep the extractive report only. It passes 
     claims clause by clause; for a sentence that is one cited claim word for word (`reasoning.restates`) it can
     only find the claim's own structure ("The flaw is fixed in versions 2 and 3." for that very claim: "3: says what
     its cited claims say of something else"). When that is the sentence's only fault it is accepted; with any other
-    fault every reason stays (`reasoning.ANCHOR_TIED`). The differential proves each such case: the sentence is
-    such a restatement, and 307b907 rejected that text for the anchor rule and nothing else. What a hostile page can
-    get from it: its own claim shown word for word with the code's hedge for the claim's state, as 0.7.0 already
-    showed that claim's one-version wording.
+    fault every reason stays (`reasoning.ANCHOR_TIED`). Not for a claim whose subject is a bare pronoun ("It is
+    fixed in …"): out of its page it attaches to whatever the answer is about. The differential proves each such
+    case with a copy of the class frozen in the script (one claim, its own sources, its text character for
+    character with 307b907's attribution, no "according to", no unseen character, no pronoun lead), and 307b907
+    rejected that text for the anchor rule and nothing else; widening `restates()` makes the test fail. What a
+    hostile page can get from it: its own claim shown word for word with the code's hedge for the claim's state, as
+    0.7.0 already showed that claim's one-version wording.
+  - *A passive that swaps who did what* (`reasoning.PASSIVE_SWAP`): "makes the agent of 'replaced' in C1 its subject
+    ('2.5.5 numpy'): who does what is swapped". 0.7.0's role check read active clauses and passives that both keep
+    their "by" agent, so "NumPy 2.5.5 was replaced after the flaw." passed for "NumPy 2.5.4 was replaced by NumPy
+    2.5.5 after the flaw", and "Trent was robbed, according to the police report by Mallory." for "Mallory was
+    robbed by Trent". A passive clause whose subject names the claim's agent of the same participle, and not the
+    claim's own subject, is refused (names compared with numbers and versions kept).
 
   Known and unchanged, each recorded in the gap corpora as "open" or "lost": a pronoun of the sentence's own beside
   a claim's capitalised word ("US sanctions hit us"); two versions swapped between two clauses of one name ("Zephyr
