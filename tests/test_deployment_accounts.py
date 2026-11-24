@@ -15,6 +15,7 @@ import pytest
 
 from neuroscifi.resources import idle, shared
 from test_resources_idle import MIN, fake, memory_host, spool, _unload_idle      # noqa: F401 (fixtures)
+from test_resources_idle import two_vllm_servers                           # noqa: F401 (autouse: one container per model)
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL = str(ROOT / "deploy" / "install.sh")
@@ -220,3 +221,41 @@ def test_the_polkit_rule_allows_the_idle_account_start_and_stop_of_exactly_the_p
         check = subprocess.run([node, "-e", "var polkit={addRule:function(f){},Result:{YES:1}};" + rule],
                                capture_output=True, text=True)
         assert check.returncode == 0, check.stderr
+
+
+def test_the_polkit_rule_answers_yes_for_exactly_start_and_stop_of_its_units_by_its_account():
+    """Security review L6: run the rule's own JavaScript, as polkit would call it, over every combination of action,
+    unit detail (listed, another unit, a transient unit, none: StartTransientUnit and the manager-level methods carry
+    no unit detail), verb detail and caller. It answers YES for one action, the listed units, start and stop, and the
+    idle account, and for nothing else. Not checked here: that a running polkitd and systemd pass exactly these
+    details (pkcheck needs the rule installed in /etc and polkitd running, which this test may not arrange)."""
+    import itertools
+    import shutil
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed: the rule cannot be evaluated")
+    out = _dry("--idle-access", "--idle-user", "nsfmodels").stdout
+    rule = "\n".join(line[4:] for line in out.split("(mode 0644):\n", 1)[1].splitlines() if line.startswith("    "))
+    listed = sorted(set(re.findall(r'"(neuroscifi-[a-z-]+\.service)"', rule)))
+    actions = ["org.freedesktop.systemd1.manage-units", "org.freedesktop.systemd1.manage-unit-files",
+               "org.freedesktop.systemd1.reload-daemon", "org.freedesktop.systemd1.set-environment",
+               "org.freedesktop.login1.reboot"]
+    units = [*listed, "neuroscifi-console.service", "neuroscifi-wake.service", "run-u42.service", "sshd.service",
+             None, ""]
+    verbs = ["start", "stop", "restart", "reload", "try-restart", "reload-or-restart", "kill", "enable", None, ""]
+    users = ["nsfmodels", "neuroscifi", "root", "nsfmodels2"]
+    cases = [dict(zip(("action", "unit", "verb", "user"), c)) for c in itertools.product(actions, units, verbs, users)]
+    harness = ("var rules=[];var polkit={addRule:function(f){rules.push(f)},Result:{YES:'yes'}};\n" + rule +
+               "\nvar cases=" + json.dumps(cases) + ";var out=cases.map(function(c){"
+               "var action={id:c.action,lookup:function(k){return k=='unit'?(c.unit===null?undefined:c.unit):"
+               "k=='verb'?(c.verb===null?undefined:c.verb):undefined}};"
+               "var subject={user:c.user,local:true,active:true,isInGroup:function(){return false}};"
+               "var r=rules.map(function(f){return f(action,subject)}).filter(function(x){return x!==undefined});"
+               "return r.length?r[0]:null});console.log(JSON.stringify(out));")
+    done = subprocess.run([node, "-"], input=harness, capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    answers = json.loads(done.stdout)
+    yes = [c for c, a in zip(cases, answers) if a == "yes"]
+    assert {(c["unit"], c["verb"]) for c in yes} == {(u, v) for u in listed for v in ("start", "stop")}
+    assert all(c["action"] == "org.freedesktop.systemd1.manage-units" and c["user"] == "nsfmodels" for c in yes)
+    assert len(yes) == 2 * len(listed) and set(answers) <= {"yes", None}
