@@ -18,6 +18,7 @@ import pytest
 
 from neuroscifi.resources import idle
 from test_resources_idle import _unload_idle, fake, memory_host, spool      # noqa: F401 (fixtures)
+from test_resources_idle import two_vllm_servers                           # noqa: F401 (autouse: one container per model)
 
 
 # ---- S2 ------------------------------------------------------------------------------------------------------------
