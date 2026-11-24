@@ -1,0 +1,232 @@
+{
+ "what": "Open-items round, lane D: the installed two-account deployment and runtime hygiene",
+ "generated_at": "2026-11-24",
+ "base": "793a21f",
+ "two_accounts": {
+  "how": "scripts/two_account_check.py: unshare --user --map-root-user --map-auto --mount; a private copy of /etc and an empty /var/lib; useradd/gpasswd as the installer runs them; the real deploy/install.sh --idle-access as root of the namespace; then this checkout's code as each account (setpriv --init-groups), umask 077; a fake Docker for stop and start",
+  "passed": 41,
+  "failed": 0,
+  "checks": [
+   {
+    "check": "the service account creates the individual privately",
+    "ok": true
+   },
+   {
+    "check": "before the grant the idle account cannot tell whether a task runs",
+    "ok": true
+   },
+   {
+    "check": "deploy/install.sh --idle-access runs as root",
+    "ok": true
+   },
+   {
+    "check": "the state folder lets the group pass, not list",
+    "ok": true
+   },
+   {
+    "check": "the database is readable by the group and nothing more",
+    "ok": true
+   },
+   {
+    "check": "the resources folder is setgid and group-writable",
+    "ok": true
+   },
+   {
+    "check": "a file that was in it is migrated",
+    "ok": true
+   },
+   {
+    "check": "the request folder is the idle account's, for the service group, sticky",
+    "ok": true
+   },
+   {
+    "check": "another file of the service account keeps its mode",
+    "ok": true
+   },
+   {
+    "check": "the idle account is in the service group",
+    "ok": true
+   },
+   {
+    "check": "a second run changes nothing",
+    "ok": true
+   },
+   {
+    "check": "the polkit rule names the idle account and the model units only",
+    "ok": true
+   },
+   {
+    "check": "the idle account cannot list the state folder",
+    "ok": true
+   },
+   {
+    "check": "the idle account cannot read another file in it",
+    "ok": true
+   },
+   {
+    "check": "the idle account cannot write the database",
+    "ok": true
+   },
+   {
+    "check": "the idle account cannot create a file beside it",
+    "ok": true
+   },
+   {
+    "check": "a third account cannot enter the state folder",
+    "ok": true
+   },
+   {
+    "check": "the idle account counts a running task while the service account has the database open",
+    "ok": true
+   },
+   {
+    "check": "the idle pass unloads nothing while the task runs",
+    "ok": true
+   },
+   {
+    "check": "the idle account reads a database nobody has open (no write-ahead log beside it)",
+    "ok": true
+   },
+   {
+    "check": "what the idle account writes is the group's to read and write",
+    "ok": true
+   },
+   {
+    "check": "the service account reads the policy's settings and events",
+    "ok": true
+   },
+   {
+    "check": "what the service account writes is the group's to read and write",
+    "ok": true
+   },
+   {
+    "check": "a use is marked now",
+    "ok": true
+   },
+   {
+    "check": "a service used a moment ago stays loaded",
+    "ok": true
+   },
+   {
+    "check": "the idle pass unloads a service nobody used for longer than its timeout",
+    "ok": true
+   },
+   {
+    "check": "the service account sees that the policy unloaded it",
+    "ok": true
+   },
+   {
+    "check": "the service account leaves a wake request",
+    "ok": true
+   },
+   {
+    "check": "the service account cannot remove another account's entry",
+    "ok": true
+   },
+   {
+    "check": "a third account cannot enter the request folder",
+    "ok": true
+   },
+   {
+    "check": "the idle account serves the request and reloads the service",
+    "ok": true
+   },
+   {
+    "check": "the service account sees it loaded again",
+    "ok": true
+   },
+   {
+    "check": "`nsf resources tick` runs as the idle account and can tell whether a task runs",
+    "ok": true
+   },
+   {
+    "check": "`nsf resources wake` runs as the idle account and clears the request folder",
+    "ok": true
+   },
+   {
+    "check": "the same command run by the service account on the empty folder serves nothing and fails nothing",
+    "ok": true
+   },
+   {
+    "check": "a third account's listener is refused",
+    "ok": true
+   },
+   {
+    "check": "the service account's own listener is accepted",
+    "ok": true
+   },
+   {
+    "check": "root's listener (Docker's port proxy) is accepted",
+    "ok": true
+   },
+   {
+    "check": "the idle account's listener is refused without its key file",
+    "ok": true
+   },
+   {
+    "check": "the key file owner's listener is accepted",
+    "ok": true
+   },
+   {
+    "check": "the code imports and reads its settings as a uid without an account and without HOME",
+    "ok": true
+   }
+  ],
+  "not_shown": [
+   "systemd itself: the units, PrivateUsers=yes, the path unit as a system unit",
+   "polkit acting on the installed rule",
+   "the real root account"
+  ]
+ },
+ "wake_start_limit": {
+  "how": "a transient user path unit (systemd-run --user, PathExistsGlob=<folder>/*.wake) starting `nsf resources wake` (Type=oneshot, StartLimitBurst=5 in StartLimitIntervalSec=60, standing in for the shipped 30 in 10 min), a request every 2 s for 70 s; the requests name no service, so nothing was loaded and no container was touched",
+  "before": {
+   "command": "nsf resources wake --dir F",
+   "service_starts": 5,
+   "service_result": "start-limit-hit",
+   "path_unit": "failed (unit-start-limit-hit)",
+   "requests_left_unserved": "30 of 35"
+  },
+  "after": {
+   "command": "nsf resources wake --dir F --linger 15",
+   "service_starts": 4,
+   "service_result": "success",
+   "path_unit": "active",
+   "requests_left_unserved": 0
+  },
+  "shipped": "--linger 25 against StartLimitBurst=30 in 10 min: at most 24 starts per window"
+ },
+ "answer_model_key_on_a_command_line": {
+  "how": "deploy/vllm/run.sh status with a fake docker and a fake curl that records its arguments",
+  "base_793a21f": "the key appeared on curl's command line once per `status` (-H \"Authorization: Bearer ...\")",
+  "now": "the key reaches curl on standard input (-K -), and only while Docker reports the container publishing 127.0.0.1:8811; otherwise it is not sent (tests/test_deployment_accounts.py)"
+ },
+ "forking_test": {
+  "test": "tests/webcortex/test_autonomy.py::test_two_concurrent_autonomous_investigations_at_most_across_processes",
+  "change": "six processes started with the spawn method (race_helper.race) instead of forked from the multi-threaded test process; every assertion kept",
+  "runs": 50,
+  "failed": 0
+ },
+ "thread_census": {
+  "how": "a pytest plugin recording, per test, the threads of NeuroSciFi that appeared and were still alive 3 s after the whole non-browser suite (3996 passed, 18 skipped)",
+  "before_this_lane": "35 such threads at the forking test in an earlier census (8 nsf-voice-writer, 2 nsf-voice-follow, 6 Pocket bridges each with main, serve and upkeep, 6 nsf-pocket-setup)",
+  "after_the_product_fixes_and_the_phone_setup_fixture": [
+   [
+    "tests/voice/test_hub_responsiveness.py",
+    "nsf-voice-writer",
+    1
+   ],
+   [
+    "tests/voice/test_hub_transcripts.py",
+    "nsf-voice-follow",
+    1
+   ],
+   [
+    "tests/voice/test_hub_transcripts.py",
+    "nsf-voice-writer",
+    2
+   ]
+  ],
+  "then": "the voice hub fixture closes its hub; tests/conftest.py fails the session if any thread of NeuroSciFi is still alive at its end (allow-list empty)"
+ }
+}
