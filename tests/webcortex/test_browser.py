@@ -149,10 +149,13 @@ class HangingFetcher:
         self.release = threading.Event()
         self.tree: list[int] = []
         self.cmdlines: dict[int, str] = {}
+        # Processes this test process already had before the render (an earlier test's helpers, such as the
+        # resource tracker the `spawn` start method keeps for the process's life) are not the render's.
+        self.before = set(browser_mod._descendants(os.getpid()))
 
     def fetch(self, url, **kwargs):
         if kwargs.get("purpose") == "subresource":
-            self.tree = browser_mod._descendants(os.getpid())
+            self.tree = [p for p in browser_mod._descendants(os.getpid()) if p not in self.before]
             for pid in self.tree:
                 try:
                     self.cmdlines[pid] = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", "replace")
