@@ -1280,8 +1280,9 @@ def test_with_one_server_an_idle_unload_of_either_name_stops_the_one_container(s
     assert "unload" in (out["embed"]["action"], out["rerank"]["action"])
     assert SHARED not in fake.running                     # the one container is gone, whichever name asked
     assert p.unloaded_by_policy("embed") and p.unloaded_by_policy("rerank")       # and both names know it
-    after = p.tick()["decisions"]
-    assert all(after[n] == {"action": "none", "why": "not loaded"} for n in MEMORY)
+    after = p.tick()["decisions"]                         # one decision per container, under its first name
+    assert after == {"embed": {"action": "none", "why": "not loaded"},
+                     "rerank": {"action": "none", "why": "one container with embed: decided there"}}
     assert sum(c[-2] == "stop" and c[-1] in MEMORY for c in fake.calls) == 1      # stopped once, not twice
 
 
@@ -1301,7 +1302,8 @@ def test_with_one_server_a_use_under_one_name_keeps_the_container_for_both(singl
     with idle.using_now(fake.path, "embed", purpose="memory lookup"):
         fake.now += 3600                                  # a lookup in flight holds the embedding name's lock
         out = p.tick()["decisions"]
-        assert out["rerank"] == {"action": "none", "why": "a request is in flight"}
+        assert out["embed"] == {"action": "none", "why": "a request is in flight"}
+        assert out["rerank"] == {"action": "none", "why": "one container with embed: decided there"}
     assert SHARED in fake.running
 
 
@@ -1317,3 +1319,118 @@ def test_with_one_server_loading_both_names_starts_the_container_once(single_hos
     assert second == {"action": "none", "why": "already running"}
     assert sum("start" in c for c in fake.calls) == 1 and sum("wait" in c for c in fake.calls) == 1
 
+
+# ---- review round: one container, two names (findings F3 and F4 of the open-items review) ---------------------------
+
+def _in_thread(fn):
+    out, done = {}, threading.Event()
+
+    def run():
+        try:
+            out["result"] = fn()
+        finally:
+            done.set()
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return out, done, thread
+
+
+def test_an_owners_unload_of_one_name_waits_for_a_call_under_the_other_name(single_host):
+    """F3: `nsf resources unload embed` took only embed's in-use lock and stopped the one container under a rerank
+    call in flight. It now waits until no call under either name is in flight, then stops it once and both names
+    say so."""
+    fake = single_host
+    p = fake.make()
+    p.configure({"embed": 15 * MIN, "rerank": 15 * MIN})
+    with idle.using_now(fake.path, "rerank", purpose="memory lookup") as state:
+        assert state is None                              # a rerank call is in flight
+        out, done, thread = _in_thread(lambda: p.unload("embed", reason="owner", by="owner"))
+        assert not done.wait(0.5), "the owner's unload stopped the container under a rerank call"
+        assert SHARED in fake.running
+    thread.join(10)
+    assert out["result"]["action"] == "unload" and out["result"]["also"] == ["rerank"]
+    assert SHARED not in fake.running and sum("stop" in c for c in fake.calls) == 1
+    state = p.read()["services"]
+    assert state["embed"]["state"] == state["rerank"]["state"] == "unloaded"
+    assert state["embed"]["by"] == state["rerank"]["by"] == "owner"
+
+
+@pytest.mark.parametrize("on,off", [("embed", "rerank"), ("rerank", "embed")])
+def test_a_shared_container_is_never_unloaded_while_idle_when_one_of_its_names_says_never(single_host, on, off):
+    """F4: with a timeout set for one name only, the other name's calls took no lock and marked no use, and the pass
+    unloaded the container during such a call and recorded the other name as unloaded by the idle policy, although
+    the owner had set it to never unload. Now: the most conservative of the names decides (any "off": never)."""
+    fake = single_host
+    p = fake.make()
+    p.configure({on: 15 * MIN})
+    assert p.timeouts()[off] is None
+    with idle.using_now(fake.path, off, purpose="memory lookup") as state:
+        assert state is None
+        assert p.last_used(off) is not None               # the off name's call is marked: the policy covers it
+        fake.now += 3600
+        out = p.tick()["decisions"]
+    assert out[on]["action"] == "none" and off in out[on]["why"] and "never" in out[on]["why"]
+    fake.now += 24 * 3600
+    assert p.tick()["decisions"][on]["action"] == "none"
+    assert SHARED in fake.running and not p.unloaded_by_policy(off) and not p.unloaded_by_policy(on)
+    shown = p.status()["services"]
+    assert shown[on]["shared_with"] == [off] and shown[on]["effective_timeout_s"] is None
+
+
+def test_a_shared_container_follows_the_longest_timeout_of_its_names(single_host):
+    fake = single_host
+    p = fake.make()
+    p.configure({"embed": 15 * MIN, "rerank": 30 * MIN})
+    with idle.using_now(fake.path, "embed", purpose="memory lookup"):
+        pass
+    fake.now += 20 * MIN                                  # past embed's 15 min, inside rerank's 30
+    out = p.tick()["decisions"]
+    assert all(out[n]["action"] == "none" for n in MEMORY) and SHARED in fake.running
+    fake.now += 11 * MIN
+    out = p.tick()["decisions"]
+    assert [out[n]["action"] for n in MEMORY].count("unload") == 1 and SHARED not in fake.running
+    assert p.unloaded_by_policy("embed") and p.unloaded_by_policy("rerank")
+    assert p.status()["services"]["embed"]["effective_timeout_s"] == 30 * MIN
+
+
+def test_a_running_shared_container_counts_as_loaded_for_both_names(single_host):
+    fake = single_host
+    p = fake.make()
+    p.configure({"embed": 15 * MIN, "rerank": 15 * MIN})
+    fake.now += 16 * MIN
+    p.tick()
+    assert p.unloaded_by_policy("embed") and p.unloaded_by_policy("rerank")
+    fake.running[SHARED] = fake.now                       # started by other means (run.sh start, the unit)
+    assert p.load("rerank", reason="memory lookup", by="on demand") == {"action": "none", "why": "already running"}
+    assert not p.unloaded_by_policy("embed") and not p.unloaded_by_policy("rerank")
+
+
+def test_loads_of_both_names_at_once_start_the_shared_container_once(single_host):
+    """Concurrent reloads of embed and rerank took two different load locks; one lock per container now."""
+    fake = single_host
+    p = fake.make()
+    p.configure({"embed": 15 * MIN, "rerank": 15 * MIN})
+    assert p.unload("embed", reason="test")["action"] == "unload"
+    del fake.calls[:]
+    started = threading.Event()
+    release = threading.Event()
+
+    def runner(argv, timeout):                        # the deploy's wait blocks until the test lets it go
+        if "wait" in [str(a) for a in argv]:
+            started.set()
+            assert release.wait(10)
+        return fake(argv, timeout)
+
+    def make():
+        q = fake.make()
+        q.runner = runner
+        return q
+    first, _, one = _in_thread(lambda: make().load("embed", reason="lookup", by="on demand"))
+    assert started.wait(10)
+    second, second_done, two = _in_thread(lambda: make().load("rerank", reason="lookup", by="on demand"))
+    assert not second_done.wait(0.5), "the second load did not wait for the first one's start"
+    release.set()
+    one.join(10)
+    two.join(10)
+    assert first["result"]["action"] == "load" and second["result"] == {"action": "none", "why": "already running"}
+    assert sum("start" in c for c in fake.calls) == 1

@@ -558,18 +558,58 @@ class Idle:
         elif tasks:
             blockers.append(f"{tasks} research task(s) running")
         now = self.clock()
-        decisions = {}
+        decisions, decided = {}, {}
         for name, seconds in timeouts.items():
             if seconds is None:
                 continue
+            names = self.group(name)
+            if len(names) > 1:
+                first = decided.get(self.services[name].container)
+                if first is not None:            # one container, one decision: made under its first name
+                    decisions[name] = {"action": "none", "why": f"one container with {first}: decided there"}
+                    continue
+                decided[self.services[name].container] = name
+                seconds = self.group_timeout(name, timeouts)
+                if seconds is None:
+                    off = [other for other in names if timeouts.get(other) is None]
+                    decisions[name] = {"action": "none", "why": f"one container with {', '.join(off)}, whose idle "
+                                       "timeout is off: it is never unloaded while idle"}
+                    continue
             decisions[name] = self._consider(self.services[name], seconds, level, blockers, now)
         return {"enabled": True, "level": level, "blockers": blockers, "decisions": decisions}
 
-    def sharing(self, name) -> list[str]:
-        """The services that are one container with `name`, itself first (the single memory server is `embed` and
-        `rerank` at once): the container is in use while any of them is, and stopping one stops all."""
+    def group(self, name) -> list[str]:
+        """The services that are one container with `name`, in the order of the service list (the single memory
+        server is `embed` and `rerank` at once). The group is the unit of the policy: it is in use while any of its
+        names is, its locks are taken in this order, it is stopped and started once, and every name's state
+        follows it."""
         box = self.services[name].container
-        return [name] + sorted(other for other, svc in self.services.items() if other != name and svc.container == box)
+        return [other for other, svc in self.services.items() if svc.container == box]
+
+    def sharing(self, name) -> list[str]:
+        """group(name) with `name` first."""
+        return [name] + [other for other in self.group(name) if other != name]
+
+    def group_timeout(self, name, timeouts=None) -> float | None:
+        """The idle timeout of the container of `name`: the most conservative of its names. A name set to never
+        unload (off) keeps the container for good; otherwise the longest timeout of the names (review F4)."""
+        timeouts = self.timeouts() if timeouts is None else timeouts
+        values = [timeouts.get(other) for other in self.group(name)]
+        return None if any(v is None for v in values) else max(values)
+
+    def policy_on(self, name, data=None) -> bool:
+        """Whether calls to `name` take its in-use lock and mark their use: the policy is on for any name of its
+        container (a timeout set, or the container unloaded). One name's calls must keep the container from being
+        stopped under them even when only the other name has a timeout (review F4)."""
+        data = self.read() if data is None else data
+        names = self.group(name) if name in self.services else [name]
+        return any(data["timeouts"].get(other) is not None or
+                   (data["services"].get(other) or {}).get("state") == "unloaded" for other in names)
+
+    def _hold_all(self, stack, name, mode) -> None:
+        """The in-use lock of every name of `name`'s container, in the group's order (one order: no deadlock)."""
+        for other in self.group(name):
+            stack.enter_context(_flock(self._file(f"idle-inuse-{other}.lock"), mode))
 
     def _consider(self, svc, seconds, level, blockers, now) -> dict:
         timeout = self.effective_timeout(seconds, level)
@@ -577,7 +617,7 @@ class Idle:
         if not box or not box["running"]:
             return {"action": "none", "why": "not loaded"}
         state = self.read()["services"].get(svc.name, {})
-        names = self.sharing(svc.name)
+        names = self.group(svc.name)
         uses = [box.get("started_at"), state.get("loaded_at"), state.get("served_at")]
         uses += [self.last_used(name) for name in names]
         metrics = self.read_metrics(svc.metrics) if svc.metrics else None
@@ -606,8 +646,7 @@ class Idle:
                      f"critical memory pressure: {'; '.join(self.sample()['reasons'])})"
         try:
             with ExitStack() as held:           # no request in flight under any name of this container
-                for name in names:
-                    held.enter_context(_flock(self._file(f"idle-inuse-{name}.lock"), fcntl.LOCK_EX | fcntl.LOCK_NB))
+                self._hold_all(held, svc.name, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 if any(self.last_used(name) and now - self.last_used(name) < timeout for name in names):
                     return {"action": "none", "why": "used while the decision was being made"}
                 return self.unload(svc.name, reason=reason, by="idle policy", _locked=True)
@@ -616,10 +655,15 @@ class Idle:
 
     # ---- load and unload --------------------------------------------------------------------------------------
     def unload(self, name, *, reason, by="owner", _locked=False) -> dict:
+        """Stop the service's container. It waits until no call is in flight under any name of that container
+        (review F3: the owner's `nsf resources unload embed` stopped the single memory server under a rerank call);
+        the result names the other names it unloaded too (`also`)."""
         svc = self.services[name]
         if not _locked:
-            with _flock(self._file(f"idle-inuse-{name}.lock"), fcntl.LOCK_EX):   # waits for in-flight calls
+            with ExitStack() as held:           # waits for in-flight calls, under every name of the container
+                self._hold_all(held, name, fcntl.LOCK_EX)
                 return self.unload(name, reason=reason, by=by, _locked=True)
+        also = self.sharing(name)[1:]
         systemd = self._systemd(svc)
         argv = ["systemctl", "--no-ask-password", "stop", svc.unit] if systemd else self._cmd(svc.stop)
         before = self._available()
@@ -630,15 +674,15 @@ class Idle:
         after = self._available() if ok and before is not None else None
         freed = None if after is None else after - before
         event = self._event(name, "unload", reason, by=by, ok=ok, seconds=seconds,
-                            shape="systemd" if systemd else "docker",
+                            shape="systemd" if systemd else "docker", **({"also": also} if also else {}),
                             **({"freed_bytes": freed} if freed and freed > 0 else {}),
                             **({} if ok else {"error": (getattr(done, "stdout", "") or "")[-400:]}))
         if ok:
             with self._state() as data:
-                for shared in self.sharing(name):       # one container: every name of it is unloaded now
+                for shared in self.group(name):         # one container: every name of it is unloaded now
                     data["services"].setdefault(shared, {}).update(state="unloaded", by=by, at=event["at"],
                                                                    shape="systemd" if systemd else "docker")
-        return {"action": "unload" if ok else "failed", "why": reason, "event": event}
+        return {"action": "unload" if ok else "failed", "why": reason, "event": event} | ({"also": also} if also else {})
 
     def unloaded_by_policy(self, name) -> bool:
         entry = self.read()["services"].get(name) or {}
@@ -713,7 +757,8 @@ class Idle:
     def load(self, name, *, reason, by="owner", notify=None) -> dict:
         """Start the service with the deploy's commands and wait until it answers; the measured time is recorded."""
         svc = self.services[name]
-        with _flock(self._file(f"idle-load-{name}.lock"), fcntl.LOCK_EX):      # one start at a time, any process
+        first = self.group(name)[0]            # one start at a time per container, any process, under any name
+        with _flock(self._file(f"idle-load-{first}.lock"), fcntl.LOCK_EX):
             box = self.container(svc)
             if box and box["running"]:          # never restart a running service (run.sh start replaces it)
                 # Running is not answering (review F4): a container left behind by a reload that failed or was
@@ -739,13 +784,15 @@ class Idle:
                                             seconds=round(self.monotonic() - started, 1), stopped=stopped,
                                             error=(getattr(done, "stdout", "") or "")[-400:])
                         with self._state() as data:
-                            entry = data["services"].setdefault(name, {})
-                            entry.update(state="unloaded" if entry.get("state") == "unloaded" else "unknown",
-                                         failed_at=event["at"])
+                            for shared in self.group(name):
+                                entry = data["services"].setdefault(shared, {})
+                                entry.update(state="unloaded" if entry.get("state") == "unloaded" else "unknown",
+                                             failed_at=event["at"])
                         return {"action": "failed", "why": "it was running but did not answer", "event": event}
-                with self._state() as data:
-                    data["services"].setdefault(name, {}).update(state="loaded", by="already running",
-                                                                 at=self.clock())
+                with self._state() as data:             # one container: every name of it is loaded
+                    for shared in self.group(name):
+                        data["services"].setdefault(shared, {}).update(state="loaded", by="already running",
+                                                                       at=self.clock())
                 return {"action": "none", "why": "already running"}
             room = self.headroom(name)
             if not room["fits"]:       # refuse rather than start a container the kernel or vLLM will kill
@@ -839,8 +886,10 @@ class Idle:
             entry = data.get(name) or {}
             used = max((u for u in (self.last_used(name), entry.get("served_at"), entry.get("loaded_at"))
                         if u is not None), default=None)
+            shared = self.sharing(name)[1:]
             services[name] = {
                 "timeout_s": timeouts[name], "suggested_minutes": svc.suggested_minutes,
+                **({"shared_with": shared, "effective_timeout_s": self.group_timeout(name, timeouts)} if shared else {}),
                 "loaded": None if running is None else svc.container in running,
                 "state": entry.get("state"), "state_by": entry.get("by"),
                 "last_used_at": used, "idle_s": None if used is None else round(now - used, 1),
@@ -942,9 +991,7 @@ def using(db_path, name, *, purpose, notify=None, idle=None, timeout=None):
     {"action": "loading", ...} and the reload finishes in the background (_bounded_load); a reload refused for
     lack of memory yields {"action": "refused", "why"}."""
     idle = idle or (Idle(db_path) if db_path else None)
-    data = idle.read() if idle is not None else {}
-    if idle is None or (data["timeouts"].get(name) is None and
-                        (data["services"].get(name) or {}).get("state") != "unloaded"):
+    if idle is None or not idle.policy_on(name):
         yield None           # the policy is off for this service: no lock, no marker, no file
         return
     with ExitStack() as stack:
@@ -1299,9 +1346,7 @@ def using_now(db_path, name, *, purpose, idle=None):
       "unloading"  the idle policy is stopping it at this moment
     """
     idle = idle or (Idle(db_path) if db_path else None)
-    data = idle.read() if idle is not None else {}
-    if idle is None or (data["timeouts"].get(name) is None and
-                        (data["services"].get(name) or {}).get("state") != "unloaded"):
+    if idle is None or not idle.policy_on(name):
         yield None           # the policy is off for this service: no lock, no marker, no file
         return
     with ExitStack() as stack:
@@ -1366,9 +1411,9 @@ def mark_used(db_path, names) -> None:
     if not db_path:
         return
     idle = Idle(db_path)
-    timeouts = idle.timeouts()
+    data = idle.read()
     for name in names:
-        if timeouts.get(name) is not None:
+        if name in idle.services and idle.policy_on(name, data):
             try:
                 idle.touch(name)
             except OSError:
