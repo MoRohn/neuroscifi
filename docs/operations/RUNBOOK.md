@@ -352,7 +352,7 @@ nsf web memory config --enable --embed-url http://127.0.0.1:18441/v1 --rerank-ur
 
 `--key-file` takes an absolute path. A worker running as the `neuroscifi` service user cannot read a key in your home folder; give it a copy it can read, as for the answer model's key ([COGNITIVE_INFERENCE §5](../architecture/COGNITIVE_INFERENCE.md#5-run-configure-recover)).
 
-**As system services.** `sudo bash deploy/install.sh --memory --memory-user USER` (USER is in the docker group and owns the weights and the key) installs the unit that matches `NSF_MEMORY_SERVER` of `deploy/memory/memory.env` (or `--memory-server single|vllm`), disabled like every other unit. With the default single server that is `neuroscifi-memory.service`: it runs `deploy/memory/run.sh foreground all` under the wrapper sandbox of the speech units, and systemd restarts it on failure: `sudo systemctl enable --now neuroscifi-memory.service`. With `vllm` it is `neuroscifi-memory-embed.service` and `neuroscifi-memory-rerank.service`, each running `run.sh foreground embed|rerank`; with the single server those two refuse to start (each would replace the other's one container). Never enable both kinds, and do not also start the same service with `run.sh start`.
+**As system services.** `sudo bash deploy/install.sh --memory --memory-user USER` (USER is in the docker group and owns the weights and the key) installs the unit that matches `NSF_MEMORY_SERVER` as `run.sh` resolves it for USER (`deploy/memory/memory.env`, then USER's own `~/.config/neuroscifi/memory/memory.env` if it is a plain file USER owns; `--memory-server single|vllm` overrides both), disabled like every other unit. With the default single server that is `neuroscifi-memory.service`: it runs `deploy/memory/run.sh foreground all` under the wrapper sandbox of the speech units, and systemd restarts it on failure: `sudo systemctl enable --now neuroscifi-memory.service`. With `vllm` it is `neuroscifi-memory-embed.service` and `neuroscifi-memory-rerank.service`, each running `run.sh foreground embed|rerank`; with the single server those two refuse to start (each would replace the other's one container). Never enable both kinds, and do not also start the same service with `run.sh start`.
 
 **Status.**
 
@@ -360,13 +360,14 @@ nsf web memory config --enable --embed-url http://127.0.0.1:18441/v1 --rerank-ur
 nsf web memory                        # switch, both endpoints with state and reason, the effect in words
 nsf web knowledge "a question"        # result.retrieval says which ranking produced the items
 nsf resources                         # the containers' memory; policy.idle_unload.services.embed / .rerank
-deploy/memory/run.sh status           # container state and health (one line for the single server, two for vllm)
+deploy/memory/run.sh status           # container state and health (one line for the single server, two for vllm),
+                                      # and any container the other way left running, flagged
 deploy/memory/run.sh print embed      # the docker command, key path only; changes nothing
 ```
 
 In `nsf web memory` a model's `state` is `ready`, `degraded`, `unavailable` or `unauthorised` (each with its reason), or `asleep`: unloaded by the idle policy, not an outage.
 
-**Release the memory while idle (off by default).** The two models hold about 4.3 GiB together with the single server, 9.3 GiB with two vLLM servers (below). The idle policy can release them after a time without use (with the single server `embed` and `rerank` are one container: a use under either name keeps it, and it is released when both are idle), like the answer model and the speech services ([RESOURCE_SCHEDULING §3(c)](../architecture/RESOURCE_SCHEDULING.md)):
+**Release the memory while idle (off by default).** The two models hold about 4.3 GiB together with the single server, 9.3 GiB with two vLLM servers (below). The idle policy can release them after a time without use (with the single server `embed` and `rerank` are one container: a use under either name keeps it, it is released only when both are idle and only under the longer of their two timeouts, and if either name's timeout is `off` it is never released while idle; `nsf resources` shows `shared_with` and `effective_timeout_s`. `nsf resources unload embed` waits until no call under either name is in flight, then unloads both, and says so in `also`), like the answer model and the speech services ([RESOURCE_SCHEDULING §3(c)](../architecture/RESOURCE_SCHEDULING.md)):
 
 ```sh
 nsf resources idle --set embed=15m --set rerank=15m     # `off` turns one off again; needs the idle timer (below)
@@ -386,7 +387,7 @@ Check: `systemctl status neuroscifi-wake.path`; `nsf resources wake --dir /var/l
 **Stop and roll back.**
 
 ```sh
-deploy/memory/run.sh stop             # both (single server: either name stops the one container)   (systemd: systemctl disable --now …)
+deploy/memory/run.sh stop             # both (single server: either name stops the one container), and what the other way left   (systemd: systemctl disable --now …)
 nsf web memory config --disable       # the individual: back to the lexical ranking
 ```
 

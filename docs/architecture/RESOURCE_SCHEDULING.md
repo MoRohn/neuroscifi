@@ -370,10 +370,20 @@ GiB of process memory, 2.59 GiB of device memory; `docs/quality/evidence/open_it
 (`NSF_MEMORY_SERVER=vllm`) they hold 4.6 GiB each: 1.9 GiB of device memory (1.1 GiB of weights, the 0.25 GiB
 key-value cache vLLM requires for a 2,048-token input, the rest the CUDA context) and 2.6 GiB in the container's two
 processes, most of it libraries a full vLLM server imports. With the single server `embed` and `rerank` are two
-names of one container and one unit: the policy counts a use under either name as a use of both, stops the
-container once when both are idle and marks both names unloaded, and a reload under either name starts it once
-(`run.sh start` holds a lock and leaves a running container alone). The figures below were measured with two vLLM
-servers. An unload frees 3.6 to 4.7 GiB by its
+names of one container and one unit, and the policy treats the container as one unit (`Idle.group`):
+
+- its idle timeout is the most conservative of its names: a name set to off keeps it for good, otherwise the longest
+  timeout counts (`nsf resources` shows `shared_with` and `effective_timeout_s` for each name);
+- calls under every name take their in-use lock and mark their use as soon as the policy is on for any name, so a
+  rerank lookup keeps the container even when only `embed` has a timeout;
+- an unload, the owner's `nsf resources unload embed` included, takes the in-use locks of every name in one fixed
+  order and waits until no call under either name is in flight; it stops the container once and both names say
+  "unloaded" (the result's `also` names the other one);
+- one decision per container per pass (the second name reads "one container with embed: decided there"); one load
+  lock per container, so reloads under both names start it once; a container found running marks both names
+  loaded.
+
+The figures below were measured with two vLLM servers. An unload frees 3.6 to 4.7 GiB by its
 own measurement, and both together returned 7.9 to 9.4 GiB of MemAvailable. They were unloaded and reloaded live
 through this policy (§4): 1 to 2 s to unload each, 20 to 29 s until both answer again.
 
