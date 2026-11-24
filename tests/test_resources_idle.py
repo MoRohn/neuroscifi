@@ -33,6 +33,7 @@ class FakeHost:
 
     RELOAD = {"neuroscifi-vllm": 41.0, "neuroscifi-voice-asr": 18.0, "neuroscifi-voice-tts": 5.0,
               "neuroscifi-searxng": 3.0, "neuroscifi-memory-embed": 19.0, "neuroscifi-memory-rerank": 21.0}
+    PUBLISHED = {"neuroscifi-voice-tts": 18432, "neuroscifi-searxng": 18888}     # what `docker port` answers
 
     def __init__(self):
         self.now = T0
@@ -54,13 +55,19 @@ class FakeHost:
             if name not in self.running:
                 return subprocess.CompletedProcess(argv, 1, "Error: No such object")
             return subprocess.CompletedProcess(argv, 0, f"true {_iso(self.running[name])}\n")
+        if argv[0] == "docker" and argv[1] == "port":
+            name = argv[2]
+            if name not in self.running or name not in self.PUBLISHED:
+                return subprocess.CompletedProcess(argv, 1, "Error: No public port")
+            return subprocess.CompletedProcess(argv, 0, f"127.0.0.1:{self.PUBLISHED[name]}\n")
         if argv[0] == "systemctl":
             unit = argv[-1]
             if argv[1] == "is-active":
                 return subprocess.CompletedProcess(argv, 0 if unit in self.units else 3, "")
             name = idle.SERVICES[{"neuroscifi-vllm.service": "vllm", "neuroscifi-voice-asr.service": "asr",
                                   "neuroscifi-voice-tts.service": "tts", "neuroscifi-memory-embed.service": "embed",
-                                  "neuroscifi-memory-rerank.service": "rerank"}[unit]].container
+                                  "neuroscifi-memory-rerank.service": "rerank",
+                                  "neuroscifi-searxng.service": "searxng"}[unit]].container
             self._act(argv[2], name)
             if argv[2] == "stop":                     # as systemd does: a stopped unit is no longer active
                 self.units.discard(unit)
@@ -104,8 +111,18 @@ def fake(tmp_path, monkeypatch):
         value = host.metrics.get(name)
         return dict(value) if value is not None else None
 
+    host.deaf, host.asked = set(), []          # ports whose readiness address does not answer; every address asked
+
+    def ready(url):
+        host.asked.append(url)
+        return int(url.split(":")[2].split("/")[0]) not in host.deaf
+
+    def nap(seconds):                          # a wait for readiness passes on the fake clock
+        host.now += seconds
+
     def make():
-        return idle.Idle(path, runner=host, clock=host.clock, monotonic=host.clock, metrics=metrics,
+        return idle.Idle(path, runner=host, clock=host.clock, monotonic=host.clock, metrics=metrics, ready=ready,
+                         sleep=nap,
                          sample=lambda: {"level": host.level, "reasons": ["memory available 5.0 GiB of 128.0 GiB is "
                                                                           "below the critical threshold 7.7 GiB"]
                                          if host.level == "critical" else []})
@@ -113,6 +130,7 @@ def fake(tmp_path, monkeypatch):
     # Anything that builds its own Idle (using, wake, the gateway, the hub) talks to the fake host too.
     monkeypatch.setattr(idle, "_run", host)
     monkeypatch.setattr(idle, "_metrics", metrics)
+    monkeypatch.setattr(idle, "_answers", ready)
     monkeypatch.setattr(idle, "_clock", host.clock)
     monkeypatch.setattr(idle, "_monotonic", host.clock)
     vstate.reset()

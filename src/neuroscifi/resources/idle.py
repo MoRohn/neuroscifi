@@ -77,6 +77,7 @@ class Service:
     suggested_minutes: int | None = None
     documented_gib: float | None = None       # memory it takes when loaded (§4), until a load or unload measures it
     background: bool = False         # nobody waits for its reload (the memory models): not announced as "starting"
+    ready: tuple | None = None       # (container port, path) answering 200 once it serves, for one without /metrics
 
 
 def _port(env, default):
@@ -188,10 +189,14 @@ def _build_services() -> dict:
                        ("bash", "{repo}/deploy/voice/run.sh", "start", "tts"),
                        ("bash", "{repo}/deploy/voice/run.sh", "stop", "tts"),
                        ("bash", "{repo}/deploy/voice/run.sh", "wait", "tts", "900"), "neuroscifi-voice-tts.service",
-                       None, 5.2, 15, 1.5),
+                       None, 5.2, 15, 1.5, ready=("8000/tcp", "/health")),
+        # SearXNG's own start command waits for /healthz; its unit (deploy/install.sh --searxng) is stopped and
+        # started as a unit when it is active, like the others: `nsf web searxng` writes the instance database,
+        # which the account that runs the idle pass in an installed deployment may only read.
         "searxng": Service("searxng", "the search engine", "neuroscifi-searxng",
                            ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "start", "--db", "{db}"),
-                           ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "stop", "--db", "{db}")),
+                           ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "stop", "--db", "{db}"),
+                           unit="neuroscifi-searxng.service", ready=("8080/tcp", "/healthz")),
         # The memory models (deploy/memory; webcortex/semantic.py). Measured on the reference host, each: 18 to 31 s
         # from start to ready with warm files, 4.4 GiB (docs/quality/evidence/accel_decisions_memory_service.json).
         "embed": Service("embed", "memory search (the embedding model)", "neuroscifi-memory-embed",
@@ -297,6 +302,18 @@ def _metrics(url, timeout=2.0) -> dict | None:
     return {"in_flight": sum((v for _, v in in_flight), 0.0), "served": sum((v for _, v in served), 0.0)}
 
 
+def _answers(url, timeout=3.0) -> bool:
+    """Whether a loopback readiness address answers 200 (speech synthesis /health, SearXNG /healthz)."""
+    try:
+        with _DIRECT.open(url, timeout=timeout) as resp:   # noqa: S310 - a loopback URL built from SERVICES
+            return resp.status == 200
+    except (OSError, ValueError):
+        return False
+
+
+READY_WAIT = 60.0          # seconds a running service without a wait command may take to answer (SearXNG's own limit)
+READY_POLL = 2.0
+
 _clock, _monotonic = time.time, time.monotonic      # module-level so tests can give every Idle one fake clock
 
 
@@ -334,7 +351,7 @@ class Idle:
     """The idle policy of one instance (`db_path`); its files live in <db>.resources/ next to the audio beacon."""
 
     def __init__(self, db_path, *, runner=None, clock=None, monotonic=None, services=None, metrics=None,
-                 sample=None, memory=None):
+                 sample=None, memory=None, ready=None, sleep=None):
         self.db_path = Path(db_path)
         self.folder = Path(f"{db_path}.resources")
         self.runner = runner or _run
@@ -343,6 +360,8 @@ class Idle:
         self.read_metrics = metrics or _metrics
         self.sample = sample or (lambda: monitor.sample())
         self.read_memory = memory or (lambda: monitor.memory())     # uncached: a load or unload measures the change
+        self.read_ready = ready or _answers
+        self.sleep = sleep or time.sleep
 
     # ---- files ------------------------------------------------------------------------------------------------
     def _file(self, name) -> Path:
@@ -436,6 +455,25 @@ class Idle:
             return None
         running, _, started = (done.stdout or "").strip().partition(" ")
         return {"running": running == "true", "started_at": monitor._ts(started)}
+
+    def answers(self, svc) -> bool | None:
+        """Whether the running service answers: its /metrics is readable (the vLLM servers), or its readiness
+        address answers 200 on the port Docker publishes for it (speech synthesis, SearXNG). None when the service
+        has neither, or the published port cannot be told: it then counts as before, loaded because it runs."""
+        if svc.metrics:
+            return self.read_metrics(svc.metrics) is not None
+        if not svc.ready:
+            return None
+        inside, path = svc.ready
+        done = self.runner(["docker", "port", svc.container, inside], 30)
+        if getattr(done, "returncode", 1) != 0:
+            return None
+        for line in (getattr(done, "stdout", "") or "").splitlines():
+            host, _, port = line.strip().rpartition(":")
+            if host in ("127.0.0.1", "[::1]", "::1", "0.0.0.0", "[::]") and port.isdigit():
+                where = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else "[::1]"
+                return bool(self.read_ready(f"http://{where}:{port}{path}"))
+        return None
 
     def voice_session(self) -> bool:
         return policy.voice_session_active(self.db_path, now=self.clock())
@@ -635,9 +673,20 @@ class Idle:
                 # Running is not answering (review F4): a container left behind by a reload that failed or was
                 # killed may still be starting, or crash-looping. It counts as loaded once it answers; one that
                 # does not is stopped, so that "unloaded" stays true and the next attempt starts from nothing.
-                if svc.wait and svc.metrics and self.read_metrics(svc.metrics) is None:
+                # Every service has the rule now: the vLLM servers by their /metrics, speech synthesis and SearXNG by
+                # their readiness address (they had kept "running means loaded").
+                if self.answers(svc) is False:
                     started = self.monotonic()
-                    done = self.runner(self._cmd(svc.wait), 1500)
+                    if svc.wait:
+                        done = self.runner(self._cmd(svc.wait), 1500)
+                    else:                       # no wait command (SearXNG): ask again for as long as its start may
+                        answered = False
+                        while not answered and self.monotonic() - started < READY_WAIT:
+                            self.sleep(READY_POLL)
+                            answered = self.answers(svc) is not False
+                        done = subprocess.CompletedProcess([], 0 if answered else 1,
+                                                           "" if answered else f"{svc.label} runs but did not answer "
+                                                           f"its readiness address within {READY_WAIT:.0f} s")
                     if getattr(done, "returncode", 1) != 0:
                         stopped = self._stop_after_failure(svc, self._systemd(svc))
                         event = self._event(name, "load", reason, by=by, ok=False, found_running=True,
