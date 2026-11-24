@@ -490,6 +490,22 @@ unaffected.
 `POST /api/web/config` accepts only the four switches listed above; `memory_check` is set with
 `nsf web config --memory-check|--no-memory-check`.
 
+**Forecasts as read (ADR-046).** Additive, nothing renamed or removed:
+- Web setting `calibrated_forecasts` (boolean, default true; `nsf web config --set calibrated_forecasts=false`).
+- `evolution.fit_recalibration(pairs, *, minimum, window, prior_shift, prior_tilt) -> {n, used, minimum, applied,
+  shift, tilt, centre}`; `recalibrate(p, fit) -> float | None` (`p` itself while `applied` is false);
+  `settled_forecasts(db) -> {knowledge|hypothesis|owner: [(forecast, 1.0|0.0), …]}`; `recalibrations(db) ->
+  {kind: fit}` (every fit the identity, with `off: true`, when the setting is off); `prediction_kind(db, id)`;
+  `prequential(pairs) -> {n, adjusted, brier_stated, brier_mapped}`; `recalibration_report(db)`.
+- `nsf knowledge calibration` gains the key `recalibration`: `{enabled, minimum, window, kinds: {kind: {settled,
+  mapping, reads: {"0.1" … "0.9"}, had_it_been_used}}, used_by, off}`. `current` (`evolution.calibration`) and
+  `history` are unchanged and score the forecasts as stated.
+- An `autonomy.candidates` entry of kind `hypothesis_prediction` keeps `forecast` (the stored forecast) and gains
+  `forecast_as_read` when the mapping of its kind changes it; an entry of kind `prediction` gains `forecast` and
+  `forecast_as_read` only in that case. `signals.prediction_uncertainty` and a hypothesis' `info_gain` are
+  computed from the forecast as read. The `decision` event of a queued investigation carries both numbers.
+- No table, column or stored value is added or changed.
+
 **Pocket bridge research actions** (ADR-028). Present only when the bridge runs with `--instance-db` and the
 individual has `enabled` and `pocket_research` on; otherwise 404 like any unknown route. Existing bearer, Origin,
 JSON content type and 512-byte body rules apply.

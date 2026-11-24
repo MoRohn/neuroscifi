@@ -119,7 +119,19 @@ The deadline passing first gives `inconclusive`, and the hypothesis stays open.
 | `bins` | 10 equal reliability bins: `{lower, upper, n, mean_probability, observed_frequency}` |
 | `ece` | Bin-weighted \|mean forecast − observed frequency\| |
 
-Every settlement writes a snapshot to `web_metrics` (kind `calibration`). `nsf knowledge calibration` shows the current calibration and its history. Test: `test_prediction_lifecycle_confirm_error_revision_expiry_and_calibration` checks the Brier score against an independently computed value.
+Every settlement writes a snapshot to `web_metrics` (kind `calibration`). `nsf knowledge calibration` shows the current calibration and its history.
+
+**A forecast as read** (ADR-046; `evolution.recalibrations`, `recalibrate`). The calibration above scores forecasts; this is what is done with the score. Forecasts are of three kinds with unrelated base rates: `knowledge` (an item's confidence that it still holds at the next refresh), `hypothesis` (a derived hypothesis' posterior) and `owner` (the owner's own estimate). For each kind, the settled forecasts (the last 100; `inconclusive` excluded) give a mapping `logit q = logit p + shift + tilt × (logit p − centre)`, fitted with a prior that holds it to the stated forecast; with fewer than 20 settled forecasts of the kind it is the identity. The slope stays in [0, 2], so an order of forecasts is never reversed, and the result stays in [0.01, 0.99].
+
+| What | Behaviour |
+|---|---|
+| Stored | Nothing. The mapping is computed from `web_predictions` when it is needed, so a prediction removed by a forget stops counting with the delete, and a restored copy reads from its own rows |
+| Read by | `autonomy.candidates` only: the uncertainty signal of a due knowledge prediction, and the uncertainty signal and information gain of an open hypothesis (RESEARCH_POLICY) |
+| Not changed | The stored forecast of any prediction, an item's confidence, verification states, the thresholds of provisional knowledge, answers, and `calibration` itself, which goes on scoring the forecasts as stated |
+| Shown | `nsf knowledge calibration`, key `recalibration`: per kind the mapping, what it makes of 0.1 … 0.9, and how it would have fared on the individual's own settled predictions (each scored before its outcome is used) |
+| Off | `nsf web config --set calibrated_forecasts=false` |
+
+Example: 20 forecasts of 0.6 that all failed read the next 0.6 as 0.46, and 100 of them as 0.24; the plain frequency would say 0. The numbers (20, 100, the prior) were chosen on simulated forecasters and are reported on held-out ones: mean squared distance to the true probability 0.044 as stated, 0.017 as read; a forecaster that is already right pays 0.001; after a forecaster's rule reverses, the next 50 forecasts are read worse than stated until the window turns over (`docs/quality/evidence/open_items_calibration.json`, `scripts/bench_calibration.py`). Tests: `tests/webcortex/test_recalibration.py`. Test: `test_prediction_lifecycle_confirm_error_revision_expiry_and_calibration` checks the Brier score against an independently computed value.
 
 ## 6. Knowledge graph
 

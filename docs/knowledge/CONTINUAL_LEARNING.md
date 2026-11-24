@@ -1,4 +1,4 @@
-# Continual learning: three kinds, kept apart
+# Continual learning: the kinds, kept apart
 
 Status: v0.7.0, working tree. Decision: ADR-038 (draft `.omc/autopilot/adr/ADR-038-knowledge-evolution.md`). Code: `webcortex/evolution.py` (`update_research_policy`, `revert_research_policy`, `research_policy`, `model_adaptation_guard`). Tests: `tests/webcortex/test_evolution.py`. Related: [KNOWLEDGE_EVOLUTION.md](KNOWLEDGE_EVOLUTION.md).
 
@@ -8,6 +8,7 @@ Status: v0.7.0, working tree. Decision: ADR-038 (draft `.omc/autopilot/adr/ADR-0
 |---|---|---|---|---|---|
 | 1. Knowledge evolution | Memory and graph: knowledge versions, hypotheses, predictions, edges | Yes, but candidates only. The owner accepts every knowledge item | ADR-035 bar, question budget, hypotheses per task | `web_events`, `web_feedback`, versions | Owner reject or archive, `forget_*`, versions never destroyed |
 | 2. Procedural learning | Research-policy statistics: which providers yield verified claims | Only when asked (`nsf knowledge learning --update`) | Step ≤ 0.1, weight in [0.5, 1.5], ≥ 5 sources | `web_metrics` (kind `procedural`) and a `decision` event | `--revert` writes the previous weights back |
+| 2b. Forecasts as read (ADR-046) | How a forecast is read when autonomous research is ordered: nothing stored | Yes, once 20 forecasts of a kind have settled | Identity below 20; held to the stated forecast by a prior; never reverses an order; within [0.01, 0.99]; one reader | Each queued investigation's `decision` event holds the stated forecast and the reading; `nsf knowledge calibration` shows the mapping | `nsf web config --set calibrated_forecasts=false`; forgetting a prediction removes its part at once |
 | 3. Model adaptation | Model weights | **Never** automatic. Not implemented in this package | n/a | `web_metrics` (kind `adaptation`) for every guard decision | A rollback plan is required before anything can be permitted |
 
 ## 1. Knowledge evolution
@@ -20,7 +21,7 @@ Knowledge evolution changes what is known and nothing else. It is described in K
 - Supersession adds versions and never overwrites.
 - Contradictions are recorded and never resolved silently.
 
-It never changes how the system searches, scores or reasons. The evidence weights, the category policy and the thresholds are code constants and owner configuration, and no learned value modifies them.
+It never changes how the system searches, scores or reasons. The evidence weights, the category policy and the thresholds are code constants and owner configuration, and no learned value modifies them. One learned reading exists beside it since ADR-046 (kind 2b): which autonomous investigation is chosen next depends on forecasts read through how forecasts of the same kind fared. It moves no stored forecast, confidence, verification state or threshold.
 
 ## 2. Procedural learning (research-policy statistics)
 
@@ -35,7 +36,7 @@ It then moves each provider's advisory weight toward `0.5 + verified_sources / s
 - **Logged.** Each update is a new `web_metrics` row (kind `procedural`) holding the new weights, the previous weights, the changes and the statistics. A `decision` event names the snapshot and the changed providers.
 - **Reversible.** `revert_research_policy` writes a new snapshot with the previous weights, marked `reverted`. History is never deleted.
 
-The weights are **advisory** in this release. Nothing reads them to reorder or skip a provider automatically, and connecting them to provider selection is a separate owner decision. Because the statistics are recomputed from records at each update, a forgotten task or source drops out of the next update. Snapshots contain provider names and numbers only.
+The weights are **advisory** in this release. Nothing reads them to reorder or skip a provider automatically, and connecting them to provider selection is a separate owner decision: they are recorded for the owner's inspection (`nsf knowledge learning`) and for no other use. The review that closed the forecast loop (ADR-046) looked at this one again and left it as it is, because no document defines what a reader of the weights would do. Because the statistics are recomputed from records at each update, a forgotten task or source drops out of the next update. Snapshots contain provider names and numbers only.
 
 Test: `test_procedural_policy_is_bounded_logged_and_reversible`. Six sources of one provider with no verified conclusion move its weight from 1.0 to 0.9, then to 0.8, and the revert restores 0.9. All three snapshots and events are logged.
 

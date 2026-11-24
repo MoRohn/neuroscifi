@@ -1368,3 +1368,120 @@ that differ are listed there.
   go back with the command above first.
 - Tests: `tests/instance/test_graphs.py` (the gate check, the birth rules, the built-in command, a candidate
   without the record), `tests/instance/test_learner.py` (packing).
+
+# ADR-046 (draft) A forecast is read through what the settled forecasts of its kind show. R
+
+## Context
+
+ADR-038 gave every prediction a forecast probability and scores the settled ones (`evolution.calibration`: Brier
+score, reliability bins, a snapshot at every settlement). The audit found that the score went nowhere (W7): a
+prediction's probability is the confidence of the item or hypothesis it is about, and no number the individual
+uses changes when its forecasts turn out to be systematically too high or too low.
+
+Reading the code for this decision gave the map of what is written and what is read:
+
+| Written | By | Read by |
+|---|---|---|
+| `web_predictions.probability` of a "still holds" prediction (the item's confidence) | `predictions.add` | `calibration`; `autonomy.candidates` (the signal `prediction_uncertainty` of a due prediction); the error analysis text |
+| `web_predictions.probability` of a hypothesis prediction (its posterior, or the owner's estimate) | `evolution.predict` | `calibration`; `autonomy.candidates` (`prediction_uncertainty` and the information gain of the hypothesis: both decide which autonomous investigation runs next) |
+| Outcomes `confirmed`, `error`, `inconclusive` | `predictions.check`, `evolution.observe`, `expire` | `calibration`, `metrics`; `curiosity.rank` (a recent error raises an item's importance) |
+| Calibration snapshots (`web_metrics`, kind `calibration`) | `record_calibration` at every settlement | `nsf knowledge calibration` only: nothing computes with them |
+| Research-policy weights (`web_metrics`, kind `procedural`) | `update_research_policy`, only on `nsf knowledge learning --update` | `nsf knowledge learning` only. CONTINUAL_LEARNING §2 already says so: advisory, and connecting them to provider selection is the owner's decision |
+
+So one loop was open where closing it changes no belief: forecasts feed the order of autonomous research, and
+nothing told that order how forecasts of the same kind had fared. The thresholds of provisional knowledge are not
+part of it: MEMORY_INTEGRATION and EVIDENCE_AND_PROVENANCE state that they are policy and that the posterior is a
+weighting rule, not a calibrated probability; moving them would change what the individual holds as verified.
+
+## Decision
+
+1. **One mapping per kind of forecaster**, because their base rates have nothing to do with each other:
+   `knowledge` (an item's confidence that it still holds), `hypothesis` (a derived hypothesis' posterior) and
+   `owner` (the owner's own estimate, `nsf knowledge hypothesize`).
+2. **The mapping** is `logit q = logit p + shift + tilt × (logit p − centre)`, with `centre` the mean logit of the
+   settled forecasts. `shift = tilt = 0` is the forecast as stated. The pair is the maximum of the likelihood of
+   the settled outcomes under a Gaussian prior around 0 (precision 16 on each), so it starts at the stated
+   forecast and leaves it only as outcomes insist. `tilt` is kept in [−1, 1]: the slope stays in [0, 2] and an
+   order of forecasts is never reversed; a forecaster that has it backwards is flattened to its base rate. The
+   result is kept in [0.01, 0.99]. `evolution.fit_recalibration`, `recalibrate`.
+3. **Identity until 20 forecasts of the kind have settled** (`confirmed` or `error`; `inconclusive` observed
+   nothing and does not count). Only the last 100 settlements count.
+4. **Computed on read, stored nowhere.** `evolution.recalibrations(db)` reads the settled rows of
+   `web_predictions`, the rows `calibration` scores. There is no parameter to migrate, restore or forget: a
+   prediction removed by a forget (`forget_knowledge`, `forget_research` for the hypotheses a task formed) stops
+   counting with the delete, and a restored copy reads from the rows it holds after the replay.
+5. **One reader.** `autonomy.candidates` reads a due knowledge prediction's forecast and an open hypothesis'
+   forecast through the mapping of its kind before it computes `prediction_uncertainty` and the hypothesis'
+   information gain. The candidate still shows the stated `forecast`, and `forecast_as_read` beside it when the
+   two differ; the `decision` event of a queued investigation records both.
+6. **Not changed, by construction:** the stored forecast of any prediction, old or new; the confidence of a
+   knowledge item; verification states, verdicts, the thresholds of provisional knowledge, answers; `calibration`
+   and its snapshots, which go on scoring the forecasts as stated. Tests compare the tables before and after.
+7. **A setting:** `calibrated_forecasts` (web settings, default on); `nsf web config --set
+   calibrated_forecasts=false` makes every mapping the identity. `nsf knowledge calibration` shows, per kind, the
+   mapping in force, what it makes of five stated forecasts, and how it would have fared on the individual's own
+   settled predictions had it been in use all along (each scored before its outcome is used).
+
+## Why these numbers
+
+The individual has no history to learn them from, so they come from a simulation
+(`src/neuroscifi/webcortex/bench/calibration.py`, `scripts/bench_calibration.py`): streams of forecasts whose true
+probability follows a rule the forecaster does not know (right; too sure; not sure enough; off by a constant; one
+forecast every time; knows nothing; backwards; a rule that changes halfway). An outcome becomes known some
+predictions later, and every forecast is scored before its outcome is used. 108 settings (minimum 10, 20, 40;
+window 100, 200, all; prior precision 1, 4, 16 on the shift; shift alone or a tilt with precision 4, 16, 64) were
+run on eleven development streams. The rule, fixed before the run: the lowest mean squared distance to the true
+probability among the settings that make no stream worse by more than 0.002 at any prefix (the first 25, 50, 100
+predictions, or all). 13 settings pass; the first has a minimum of 10, and the second, the same with a minimum of
+20, was shipped (0.0263 against 0.0253): one refresh can settle several predictions about one source, so real
+settlements count for fewer than their number, and on streams whose outcomes arrive in bursts of five the two
+minimums score alike.
+
+Held-out streams (thirteen, with other rules, other forecast values, a longer delay and other seeds;
+`docs/quality/evidence/open_items_calibration.json`):
+
+| | Stated forecast | Read through the mapping |
+|---|---|---|
+| Mean squared distance to the true probability | 0.0436 | 0.0165 |
+| Brier score | 0.2273 | 0.1999 |
+| Worst change to any stream at any prefix | — | +0.0011 (a forecaster that was right) |
+| First 25 predictions of every stream | — | identical: below the minimum |
+
+Where it does not help, measured: a forecaster that is already right pays about 0.001 (0.002 when its outcomes
+come in bursts), which is estimation noise; and in the 50 predictions after a forecaster's rule reverses, the
+mapping still describes the old rule and is worse than the stated forecast (0.095 against 0.043 on the held-out
+reversal, 0.106 against 0.047 on the development one) until the window turns over. Over such a stream as a whole
+it is still better (0.046 against 0.053).
+
+## Alternatives considered
+
+- **Store the reading as the prediction's probability.** Rejected: the next fit would then learn from forecasts
+  it had already moved, and `calibration` would score the mapping instead of the forecaster.
+- **Reliability bins with isotonic smoothing.** Rejected for this size: with a few dozen settlements and a
+  handful of distinct forecast values the bins are nearly empty; two parameters with a prior use every outcome.
+- **A shift alone.** In the grid: it never passes the 0.002 rule on the development streams (a forecaster that is
+  too sure needs a slope).
+- **Move the thresholds of provisional knowledge with the calibration.** Not done and not proposed: it would
+  change what counts as verified from a statistic of a different question ("did it still hold at the next
+  refresh").
+- **Give the research-policy weights a reader.** Not done: CONTINUAL_LEARNING §2 reserves that for the owner, and
+  nothing in the docs defines what the reader would do.
+
+## Consequences
+
+- An individual with fewer than 20 settled forecasts of a kind behaves exactly as before; the offline benchmark
+  (`nsf web bench`) is identical with the mapping in force and with it made inert (every metric, the safety
+  summary and the regression block).
+- Once a mapping acts, the order of autonomous research changes: hypotheses whose kind of forecast kept failing
+  are read as less likely, carry less expected information and are refused sooner under `min_gain`; knowledge
+  whose "still holds" forecasts kept failing is read as less certain and ranks higher among due predictions.
+  This is the first value the individual learns from its own record that changes what it does next without the
+  owner asking (CONTINUAL_LEARNING, kind 2b): bounded as above, shown, logged with each decision, and one setting
+  away from off.
+- A prediction settled by a task that was later forgotten keeps its outcome (ADR-029: the observation is scrubbed,
+  the outcome stays) and so still counts, as it does in `calibration`.
+- Settlements are treated as independent draws. They are not (one source change can fail several predictions);
+  the minimum and the prior are the only allowance for that.
+- Tests: `tests/webcortex/test_recalibration.py` (22; the fit against the objective written out and against a
+  one-value solution by bisection, monotonicity over 200 random histories, the kinds, the reader, the decision
+  record, forgetting, restore, the setting, the command, and the recorded evidence recomputed).

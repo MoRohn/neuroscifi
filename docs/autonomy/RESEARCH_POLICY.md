@@ -105,13 +105,17 @@ Each subject appears once, with its strongest signals.
 | goal | 1.0 | word overlap (Jaccard) with active owner monitors and the owner's research of the last 7 days |
 | contradiction | 1.0 | contested knowledge or subject, or a hypothesis from a `conflicting`/`disputed` cluster |
 | hypothesis | 0.8 | an open hypothesis awaiting evidence |
-| prediction_uncertainty | 0.8 | binary entropy of the prediction's forecast probability |
+| prediction_uncertainty | 0.8 | binary entropy of the prediction's forecast probability, as read through the settled forecasts of its kind (ADR-046; the stated forecast until 20 of that kind have settled) |
 | source_change | 0.7 | a monitor reported a meaningful change of the subject in the last 7 days (`finding` events) |
 | stale | 0.6 | knowledge whose freshness window passed |
 | gap | 0.5 | a single-source claim, or a hypothesis from `insufficient`/`not_evaluated` evidence |
 
 - `info_gain` is the expected information gain in bits, computed with curiosity's model: a report of reliability
-  0.8 about a binary variable, or 4-way for contested subjects.
+  0.8 about a binary variable, or 4-way for contested subjects. For an open hypothesis the binary variable's
+  probability is its forecast as read (ADR-046): once 20 forecasts of its kind (derived hypotheses, or the
+  owner's own) have settled, a kind that kept failing is read as less likely, and one that kept coming true as
+  more likely. The candidate shows the stated `forecast` and, when it differs, `forecast_as_read`; so does the
+  decision that queues it. `nsf web config --set calibrated_forecasts=false` reads every forecast as stated.
 - `cost` is the mode's request budget relative to `fact_verification`, plus the estimated spend divided by the
   spend cap.
 - A candidate is refused, and the refusal is shown with its reason, when any of these holds:
