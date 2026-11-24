@@ -174,14 +174,63 @@ _OWN_ATTRIBUTION = re.compile(rf"^\s*{_SOURCE_PHRASE},\s*|,?\s*\b{_SOURCE_PHRASE
 _ANSWER_WORD = re.compile(r"^\s*(?:yes|no)\b(?!-)\s*[,;:!\u2014\u2013-]+\s*", re.IGNORECASE)   # never "No-one"
 
 
+# The words after the source word that only name the source: "by" or "from", then a name ("Reuters", "the Ostra
+# Space Agency", "the NumPy security team"). Anything else may be what the sentence says (CUT_WORDS).
+_NAMING_LEAD = re.compile(r"(?:by|from)\s+(?:(?:the|a|an)\s+)?", re.IGNORECASE)
+_NAME_TOKEN = re.compile(r"[^\W\d_][\w&'’.-]*")
+# head nouns of an organisation's name that are also verbs ("the NumPy security team", "the Reuters news desk")
+_ORGANISATION_NOUNS = frozenset("team staff board group panel desk press service office unit council committee "
+                                "project network watch monitor review".split())
+
+
+def _names_the_source(after: str) -> bool:
+    """Whether the words attribution() would remove after the source word (`after`) only name the source further:
+    "by" or "from", an optional article, then at most six words, at least one of them a name (it has a capital
+    letter), and nothing else, punctuation included. Whatever its case, no word may be a number or a number word, a
+    stopword (a preposition, a conjunction, an auxiliary, a pronoun: "for adults", "until further notice", "and was
+    vetoed", "in no case"; "of" and "and" only between two capitalised words: "the Bank of England"), a
+    negation, a word of scope, quantity, time or comparison ("Users Only", "NOT The City", "NumPy Two") or a
+    restriction (_restriction); and no word without a capital may be an -ed, -ing or -ly form or a verb (a head
+    noun of an organisation's name excepted: "team", "desk", _ORGANISATION_NOUNS)."""
+    lead = _NAMING_LEAD.match(after)
+    if not lead or _restriction(after) is not None or re.search(r"\d", after):
+        return False
+    words = _NAME_TOKEN.findall(after[lead.end():])
+    if not words or len(words) > 6 or not any(any(ch.isupper() for ch in w) for w in words) or \
+            " ".join(after[lead.end():].split()) != " ".join(words):
+        return False
+    capital = [any(ch.isupper() for ch in w) for w in words]
+    for i, w in enumerate(words):
+        low = w.strip(".'’").casefold()
+        if low in ("of", "and") and 0 < i < len(words) - 1 and capital[i - 1] and capital[i + 1]:
+            continue
+        if low in T.STOPWORDS or low in _ENTAIL_NEG or low in _NEG_WORDS or low in _PREPOSITIONS or \
+                low in _NUMBER_WORDS or low in _SCOPE or low in _QUANTITY_WORDS or low in _TIME or \
+                low in _COMPARATIVE:
+            return False
+        if not capital[i] and (low.endswith(("ed", "ing", "ly")) or (low in _verbs() and low not in
+                                                                     _ORGANISATION_NOUNS)):
+            return False                    # a verb form; a name may end so ("Tessaly", "Reading")
+    return True
+
+
 def _cut_with_attribution(text: str) -> str | None:
     """The words attribution() removes from `text` beyond an "according to <source word>" itself, or None. Its
     trailing form reaches up to 40 characters past the source word. Those can name the source further ("a report by
-    Reuters") or be what the sentence says ("... according to the release notes except in versions 2 and 3"), and
-    code cannot tell which; compose() marks such a sentence and the guard refuses it (CUT_WORDS)."""
+    Reuters") or be what the sentence says ("... according to the release notes except in versions 2 and 3").
+    Words that only name the source (_names_the_source; read from the end of the source word's own letters:
+    "according to document|ation by Orbix Labs") are removed as 0.7.0 removed them; for any other words compose()
+    marks the sentence and the guard refuses it (CUT_WORDS)."""
     for m in _OWN_ATTRIBUTION.finditer(text or ""):
-        rest = re.sub(_SOURCE_PHRASE, " ", m.group(0), count=1, flags=re.IGNORECASE).strip(" ,.;:!?")
-        if re.search(r"\w", rest):
+        span = m.group(0)
+        rest = re.sub(_SOURCE_PHRASE, " ", span, count=1, flags=re.IGNORECASE).strip(" ,.;:!?")
+        if not re.search(r"\w", rest):
+            continue
+        source = re.search(_SOURCE_PHRASE, span, re.IGNORECASE)
+        end = source.end() if source else 0
+        while end < len(span) and span[end].isalnum():
+            end += 1
+        if not _names_the_source(span[end:].strip(" ,.;:!?")):
             return rest
     return None
 

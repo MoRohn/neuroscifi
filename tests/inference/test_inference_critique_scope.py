@@ -276,14 +276,15 @@ ADVISORY = "The advisory says the library is safe to use in production."
      "if installed from PyPI"),
     (ADVISORY, "The library is safe to use, according to the cited sources from the advisory.",
      "from the advisory"),                                                         # review S4: no doubled attribution
-    ("The bridge is open.", "The bridge is open according to a report by Reuters.", "by Reuters"),     # the cost
+    ("The bridge is open.", "The bridge is open according to a report by the operator.", "by the operator"),
 ])
 def test_a_sentence_whose_attribution_would_take_words_with_it_is_refused_not_shown_cut(claim, written, words):
     """The qualifier-dropping defect of 0.7.0 (review F3): compose() replaces a trailing "according to <source>"
     together with up to 40 characters after it, so "... according to the official records except on Sundays" was
     shown as "The bridge is open, according to one source.". compose() and the guard judge the sentence exactly as
-    before; when it would be accepted, it is refused instead, with a plain reason (CUT_WORDS). The words can also be
-    the model naming its source ("by Reuters"): code cannot tell, and that sentence is refused too."""
+    before; when it would be accepted, it is refused instead, with a plain reason (CUT_WORDS). Words that only name
+    the source further ("by Reuters") are removed as 0.7.0 removed them (reasoning._names_the_source); words that
+    name nobody ("by the operator") are refused like any other."""
     b = one_claim("insufficient", (3,), text=claim)
     items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": written}]}, b)
     assert items[0]["cut"] == [written, words] and written != items[0]["text"]
@@ -310,14 +311,14 @@ def test_a_refused_sentence_leaves_every_other_verdict_as_it_was():
     sentence it would have been, so "another source" citing the same source is rejected as before."""
     b = one_claim("insufficient", (3,), text="The bridge is open.")
     first = reasoning.compose({"sentences": [{"claims": ["C1"], "text": "The bridge is open according to a report "
-                                                                        "by Reuters."}]}, b)[0]
+                                                                        "by the operator."}]}, b)[0]
     second = {"text": "Another source says the bridge is open.", "sources": [3], "claims": ["C1"]}
     plain = {k: v for k, v in first.items() if k != "cut"}
     before = reasoning.guard([plain, dict(second)], b)
     after = reasoning.guard([first, dict(second)], b)
     assert [x["text"] for x in before[0]] == ["The bridge is open, according to one source."] and after[0] == []
     assert before[1] == after[1][1:] and "another source" in before[1][0]["reasons"][0]
-    assert after[1][0]["reasons"] == [reasoning.CUT_WORDS.format(words="by Reuters")]
+    assert after[1][0]["reasons"] == [reasoning.CUT_WORDS.format(words="by the operator")]
 
 
 def test_an_aside_attribution_is_composed_as_in_0_7_0():

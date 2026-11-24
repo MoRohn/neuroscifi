@@ -3616,6 +3616,142 @@
 {
 "claims": [
 [
+"insufficient",
+"NumPy is secure according to the notes from NumPy Two"
+]
+],
+"gap": "cut",
+"s": [
+[
+"NumPy is secure according to the notes from NumPy Two.",
+[
+"C1"
+],
+"reject",
+"a number word"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"The patch works according to a report from Linux Users Only"
+]
+],
+"gap": "cut",
+"q": "Does the patch work?",
+"s": [
+[
+"The patch works according to a report from Linux Users Only.",
+[
+"C1"
+],
+"reject",
+"a word of scope"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"The bridge is open according to the report by NOT The City"
+]
+],
+"gap": "cut",
+"q": "Is the bridge open?",
+"s": [
+[
+"The bridge is open according to the report by NOT The City.",
+[
+"C1"
+],
+"reject",
+"a negation in capitals"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"The flaw is fixed according to the notes from Maintainers Except Version Three"
+]
+],
+"gap": "cut",
+"s": [
+[
+"The flaw is fixed according to the notes from Maintainers Except Version Three.",
+[
+"C1"
+],
+"reject"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"The dam is safe according to a survey by Ostra Unless Flooded"
+]
+],
+"gap": "cut",
+"q": "Is the dam safe?",
+"s": [
+[
+"The dam is safe according to a survey by Ostra Unless Flooded.",
+[
+"C1"
+],
+"reject",
+"a restriction in capitals"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"The inflation rate fell according to data from the Bank of England"
+]
+],
+"gap": "cut",
+"q": "Did inflation fall?",
+"s": [
+[
+"The inflation rate fell according to data from the Bank of England.",
+[
+"C1"
+],
+"accept",
+"'of' between two names"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"NumPy 2.5.5 is secure according to the advisory from Windows Users"
+]
+],
+"gap": "cut",
+"s": [
+[
+"NumPy 2.5.5 is secure according to the advisory from Windows Users.",
+[
+"C1"
+],
+"open",
+"a group named as the advisory's author, shown without it as 0.7.0 showed it; whether it was the source or the scope, code cannot tell"
+]
+]
+},
+{
+"claims": [
+[
 "supported",
 "The vendor reported the flaw and the maintainers fixed it",
 [

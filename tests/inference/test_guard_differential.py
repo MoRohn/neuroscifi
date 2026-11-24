@@ -26,6 +26,9 @@ Closed so far:
   restatement  a sentence that is one cited claim word for word is not rejected by the anchor rule when that is
                its only fault (reasoning.check_sentence, ANCHOR_TIED). The one loosening; its class is proven case
                by case (scripts/guard_differential.py, LOOSENINGS).
+  cut          the refusal of a sentence whose own attribution would take words with it (reasoning.CUT_WORDS)
+               spares words that only name the source ("by Reuters"); such a sentence gets 307b907's verdict
+               and text again. Still stricter only against 307b907.
 """
 import importlib.util
 import json
@@ -42,18 +45,18 @@ gd = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gd)
 
 GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording")
-INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 249}
-SIZES = {"restriction": 84, "case": 48, "unseen": 37, "restatement": 42, "cut": 33, "wording": 5}
+INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 256}
+SIZES = {"restriction": 84, "case": 48, "unseen": 37, "restatement": 42, "cut": 40, "wording": 5}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 9, "wording": 0}
+UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 0, "wording": 0}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
 RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
 CASE_MARK = reasoning.CASE_CHANGED.split("'")[0]
 UNSEEN_MARK = reasoning.UNSEEN_IN_CLAIM.split("{")[0]
 # What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
-STRICTER = {"review": 26, "gap": 116}
+STRICTER = {"review": 24, "gap": 112}
 LOOSENED = {"review": 6, "gap": 11}
-REFUSED = {CUT_MARK: 42, RESTRICTION_MARK: 58, CASE_MARK: 24, UNSEEN_MARK: 18}
+REFUSED = {CUT_MARK: 33, RESTRICTION_MARK: 61, CASE_MARK: 24, UNSEEN_MARK: 18}
 
 
 @pytest.fixture(scope="module")
@@ -83,7 +86,7 @@ def test_the_reference_is_the_attack_tested_commit_and_its_inputs_are_of_four_ki
     assert reference["commit"] == "307b9070f973be63b1cdbd8da222da8114bd32d6"
     assert reference["reference_guard_tests"] == "827 passed"          # that commit's own guard tests, while recording
     assert reference["cases_by_origin"] == INPUTS
-    assert len(reference["cases"]) == sum(INPUTS.values()) == 1725
+    assert len(reference["cases"]) == sum(INPUTS.values()) == 1732
     kinds = {c["kind"] for c in reference["cases"]}
     assert kinds == {"compose", "guard", "answer"}
 

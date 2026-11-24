@@ -253,3 +253,44 @@ def test_the_exemption_needs_exactly_one_cited_claim_and_its_own_sources():
     ok, bad = reasoning.guard([{"text": "The flaw is fixed in versions 2 and 3.", "sources": [1], "claims": ["C1"]}],
                               b)
     assert ok == []                                     # one of its two sources: not the claim as compose() cites it
+
+
+# ---- the sentence's own attribution with further words ---------------------------------------------------------------
+
+@pytest.mark.parametrize("after", [
+    "by Reuters", "from the NumPy security team", "by the Ostra Space Agency", "from Tessaly Statistics",
+    "by a Reuters news desk", "from the Bank of England", "by The New York Times", "from ACME and Sons",
+])
+def test_words_that_only_name_the_source_are_removed_as_0_7_0_removed_them(after):
+    assert reasoning._names_the_source(after)
+
+
+@pytest.mark.parametrize("after", [
+    "by the operator",                                      # names nobody
+    "except in versions 2 and 3", "from PyPI unless pinned", "by Ostra Unless Flooded",     # restrictions
+    "for adults", "by the Council in no case", "by Parliament and was vetoed", "by Tolvane Transit until further",
+    "from 2025", "from NumPy Two", "from Linux Users Only", "by NOT The City", "from Reuters, Monday",
+    "of its lower course", "that the vendor disputes", "by Reuters denied", "by Reuters reportedly",
+    "from Bank of", "by Ana Ruiz Jose Luis Maria Carmen Lopez",           # seven words
+    "from ACME & Sons",                                                   # a sign between words: refused, kept simple
+    "",
+])
+def test_anything_else_after_the_source_word_is_not_a_name(after):
+    assert not reasoning._names_the_source(after)
+
+
+def test_a_sentence_that_only_names_its_source_further_is_shown_as_0_7_0_showed_it():
+    b = one_claim("insufficient", (3,), text="The Tolvane Lighthouse is 41 metres tall",
+                  question="How tall is the lighthouse?")
+    written = "The Tolvane Lighthouse is 41 metres tall according to a report by Reuters."
+    items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": written}]}, b)
+    assert items == [{"text": "The Tolvane Lighthouse is 41 metres tall, according to one source.", "sources": [3],
+                      "claims": ["C1"]}]
+    ok, bad = reasoning.guard(items, b)
+    assert bad == [] and [x["text"] for x in ok] == ["The Tolvane Lighthouse is 41 metres tall, according to one "
+                                                     "source."]
+    # the source word's own letters are not words of their own: "according to document|ation by Orbix Labs"
+    assert reasoning._cut_with_attribution("Orbix supports encryption at rest according to documentation by "
+                                           "Orbix Labs.") is None
+    assert reasoning._cut_with_attribution("Orbix supports encryption at rest according to documentation by "
+                                           "Orbix Labs since 3.") is not None
