@@ -24,7 +24,9 @@ from pathlib import Path
 import socket
 import sys
 
-DEFAULT_CA_DIR = Path(os.environ.get("NSF_POCKET_CA_DIR") or Path.home() / ".config" / "neuroscifi" / "pocket-ca")
+from .. import paths
+
+DEFAULT_CA_DIR =Path(os.environ.get("NSF_POCKET_CA_DIR") or paths.home() / ".config" / "neuroscifi" / "pocket-ca")
 SERVER_DAYS = 397
 CA_DAYS = 3650
 
