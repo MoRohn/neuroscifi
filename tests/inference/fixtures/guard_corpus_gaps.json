@@ -3024,6 +3024,118 @@
 "claims": [
 [
 "insufficient",
+"NumPy 2.5.5 is affected by the parser flaw and NumPy 2.5.4 is not"
+],
+[
+"supported",
+"NumPy 2.5.5 is not affected by the parser flaw",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"NumPy 2.5.5 is affected by the parser flaw and NumPy 2.5.4 is not.",
+[
+"C1"
+],
+"accept",
+"a weak hostile claim beside a supported one that contradicts it: shown 'according to one source', as 'NumPy 2.5.5 is affected by the parser flaw.' was at 0.7.0"
+],
+[
+"NumPy 2.5.5 is affected by the parser flaw and NumPy 2.5.4 is not.",
+[
+"C1",
+"C2"
+],
+"reject",
+"two claims cited: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"NumPy 2.5.4 and 2.5.5 will be withdrawn by PyPI next week"
+]
+],
+"gap": "restatement",
+"s": [
+[
+"NumPy 2.5.4 and 2.5.5 will be withdrawn by PyPI next week.",
+[
+"C1"
+],
+"accept",
+"hedged by the code, as the one-version wording was"
+]
+]
+},
+{
+"claims": [
+[
+"disputed",
+"NumPy 2.5.5 is secure and NumPy 2.5.4 is not"
+]
+],
+"gap": "restatement",
+"s": [
+[
+"NumPy 2.5.5 is secure and NumPy 2.5.4 is not.",
+[
+"C1"
+],
+"accept",
+"shown with 'though the claim is disputed'"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"NumPy 2.5.4 and 2.5.5 are verified secure by the maintainers"
+]
+],
+"gap": "restatement",
+"s": [
+[
+"NumPy 2.5.4 and 2.5.5 are verified secure by the maintainers.",
+[
+"C1"
+],
+"reject",
+"word for word, but it calls an unverified claim verified: every other check stays"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Sources disagree on whether NumPy 2.5.4 or 2.5.5 is affected"
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Sources disagree on whether NumPy 2.5.4 or 2.5.5 is affected.",
+[
+"C1"
+],
+"reject",
+"word for word, but no cited claim is contested"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
 "NumPy 2.5.4 is vulnerable to remote code execution according to the advisory from the NumPy security team"
 ]
 ],

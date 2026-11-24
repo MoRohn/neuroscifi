@@ -2372,7 +2372,7 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
         reasons += _meaning_changes(asserted, used)
         tied = _anchor_problems(asserted, used)
         if tied:
-            reasons.append(f"ties a version or name to what its cited claims do not say of it: {'; '.join(tied)}")
+            reasons.append(f"{ANCHOR_TIED}: {'; '.join(tied)}")
         idle = [c["id"] for c in used if len(used) > 1 and not _claim_supports(text, c, question)]
         if idle:
             reasons.append(f"cites {', '.join(idle)}, which support(s) none of what it says")   # C3
@@ -2381,10 +2381,20 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
             reasons.append(f"puts numbers in the opposite order to its cited claims: {'; '.join(swapped)}")
     if safety.scan_injection(text):
         reasons.append("instruction-like text")
+    # The one exemption added after 0.7.0. The anchor rule compares a sentence with its claims clause by clause, and
+    # for a sentence that is one cited claim word for word (restates: one claim, its own text character for
+    # character, the code's attribution and nothing else) it can only find the claim's own structure: "The flaw is
+    # fixed in versions 2 and 3." for that very claim gave "3: says what its cited claims say of something else". So
+    # when that is the sentence's only fault, it is accepted; with any other fault every reason stays, the anchor's
+    # included, exactly as 0.7.0 gave them.
+    if len(reasons) == 1 and reasons[0].startswith(ANCHOR_TIED) and \
+            restates({"text": text, "citations": sorted(set(cites)), "claims": ids}, b):
+        reasons = []
     return text, cites, ids, used, is_hedged, reasons
 
 
 _UNHEDGED = "as fact without hedging"
+ANCHOR_TIED = "ties a version or name to what its cited claims do not say of it"     # the anchor rule's reason
 # One sentence per item: a sentence end followed by more text ("secure. Upgrade now", "secure.Everyone ...").
 _MORE_SENTENCES = re.compile(r"[.!?]+[\"')\]]*(?:\s+\S|(?=[A-Z]))")
 # A closed list of abbreviations whose full stop ends no sentence ("released on Nov. 17, 2026 by U.S.-based ...",

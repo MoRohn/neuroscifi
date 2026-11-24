@@ -217,3 +217,39 @@ def test_only_the_cited_claim_counts_and_white_space_is_not_hidden():
     ok, bad = judged(b, "The tower was finished in 1901.", ["C2"])
     assert ok == [] and bad[0]["reasons"] == [reasoning.UNSEEN_IN_CLAIM.format(claim="C2", points="U+200B")]
     assert reasoning._unseen_in_claims([{"id": "C9", "text": "plain"}]) == []
+
+
+# ---- a sentence that is one cited claim word for word ----------------------------------------------------------------
+
+def test_an_exact_restatement_is_not_rejected_by_the_anchor_rule_alone():
+    """"The flaw is fixed in versions 2 and 3." for that very claim: 0.7.0's anchor rule read the claim's own "and 3"
+    as tying 3 to what the claim says of 2, and a faithful sentence was lost."""
+    claim = "The flaw is fixed in versions 2 and 3"
+    b = one_claim("supported", (1, 2), text=claim)
+    ok, bad = judged(b, claim + ".")
+    assert bad == [] and [x["text"] for x in ok] == [claim + "."]
+    for text in ("The flaw is fixed in versions 3 and 2.", "The flaw is fixed in version 3.",
+                 "The flaw is fixed in Versions 2 and 3."):
+        ok, bad = judged(b, text)
+        assert ok == [], text
+
+
+def test_an_exact_restatement_with_another_fault_keeps_every_reason():
+    b = one_claim("insufficient", (3,), text="NumPy 2.5.4 and 2.5.5 are verified secure by the maintainers")
+    ok, bad = judged(b, "NumPy 2.5.4 and 2.5.5 are verified secure by the maintainers.")
+    assert ok == [] and bad[0]["reasons"][0] == "calls an unverified claim verified or confirmed"
+    assert any(r.startswith(reasoning.ANCHOR_TIED) for r in bad[0]["reasons"])          # as 0.7.0 listed them
+
+
+def test_the_exemption_needs_exactly_one_cited_claim_and_its_own_sources():
+    b = {"question": "Is numpy 2.5.5 secure?", "verdict": None,
+         "claims": [{"id": "C1", "state": "supported", "sources": [1, 2], "published": None, "event": None,
+                     "text": "The flaw is fixed in versions 2 and 3"},
+                    {"id": "C2", "state": "supported", "sources": [1, 2], "published": None, "event": None,
+                     "text": "Version 4 is the latest release"}],
+         "sources": [{"id": n, "title": f"Source {n}", "published": "undated"} for n in (1, 2)]}
+    ok, bad = judged(b, "The flaw is fixed in versions 2 and 3.", ["C1", "C2"])
+    assert ok == [] and any(r.startswith(reasoning.ANCHOR_TIED) for r in bad[0]["reasons"])
+    ok, bad = reasoning.guard([{"text": "The flaw is fixed in versions 2 and 3.", "sources": [1], "claims": ["C1"]}],
+                              b)
+    assert ok == []                                     # one of its two sources: not the claim as compose() cites it

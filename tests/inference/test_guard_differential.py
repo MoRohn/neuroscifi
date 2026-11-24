@@ -11,7 +11,8 @@ per gap closed since (INPUTS), each compared in full.
 A verdict may differ from 307b907 in two named ways only (scripts/guard_differential.py, classify):
   stricter   a sentence 307b907 accepted is refused, with reasons that all start with a refusal mark
              (reasoning.CUT_WORDS, reasoning.REFUSALS);
-  loosened   a sentence 307b907 rejected is accepted, of a class the script proves (none yet).
+  loosened   a sentence 307b907 rejected is accepted, of a class the script proves (one class: a sentence that is
+             exactly one cited claim, rejected at 307b907 by its anchor rule alone).
 The gap corpora say what the finished guard must do with each of their sentences; UNMET counts, per gap, the
 sentences this tree does not yet treat so, and goes to zero gap by gap.
 
@@ -22,6 +23,9 @@ Closed so far:
                (reasoning.CASE_CHANGED). Stricter only.
   unseen       a claim that holds a character nobody sees is not cited (reasoning.UNSEEN_IN_CLAIM). Stricter
                only. (Extraction removes such characters from fetched text: tests/webcortex/test_extract.py.)
+  restatement  a sentence that is one cited claim word for word is not rejected by the anchor rule when that is
+               its only fault (reasoning.check_sentence, ANCHOR_TIED). The one loosening; its class is proven case
+               by case (scripts/guard_differential.py, LOOSENINGS).
 """
 import importlib.util
 import json
@@ -38,17 +42,17 @@ gd = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gd)
 
 GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording")
-INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 243}
-SIZES = {"restriction": 84, "case": 48, "unseen": 37, "restatement": 36, "cut": 33, "wording": 5}
+INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 249}
+SIZES = {"restriction": 84, "case": 48, "unseen": 37, "restatement": 42, "cut": 33, "wording": 5}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 8, "cut": 9, "wording": 0}
+UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 9, "wording": 0}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
 RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
 CASE_MARK = reasoning.CASE_CHANGED.split("'")[0]
 UNSEEN_MARK = reasoning.UNSEEN_IN_CLAIM.split("{")[0]
 # What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
 STRICTER = {"review": 26, "gap": 116}
-LOOSENED = {}
+LOOSENED = {"review": 6, "gap": 11}
 REFUSED = {CUT_MARK: 42, RESTRICTION_MARK: 58, CASE_MARK: 24, UNSEEN_MARK: 18}
 
 
@@ -79,7 +83,7 @@ def test_the_reference_is_the_attack_tested_commit_and_its_inputs_are_of_four_ki
     assert reference["commit"] == "307b9070f973be63b1cdbd8da222da8114bd32d6"
     assert reference["reference_guard_tests"] == "827 passed"          # that commit's own guard tests, while recording
     assert reference["cases_by_origin"] == INPUTS
-    assert len(reference["cases"]) == sum(INPUTS.values()) == 1719
+    assert len(reference["cases"]) == sum(INPUTS.values()) == 1725
     kinds = {c["kind"] for c in reference["cases"]}
     assert kinds == {"compose", "guard", "answer"}
 
@@ -136,7 +140,24 @@ def test_no_reason_of_the_reference_starts_like_a_refusal(reference):
 
 
 def test_what_is_loosened_is_of_a_class_the_differential_proves(result):
+    """Each loosened case: every item only this tree accepts is one cited claim word for word, and 307b907 rejected
+    that text for the anchor rule and nothing else (scripts/guard_differential.py, _exact_restatement)."""
     assert by_origin(result["loosened"]) == LOOSENED
+    for d in result["loosened"]:
+        assert d["detail"]["classes"] and set(d["detail"]["classes"]) == {"restatement"}, d["case"]
+        theirs = [x["text"] for x in d["reference"]["accepted"]]
+        for item in d["now"]["accepted"]:
+            if item["text"] not in theirs:
+                rejected = [r for r in d["reference"]["rejected"] if r["text"] == item["text"]]
+                assert rejected and all(x.startswith(reasoning.ANCHOR_TIED) for r in rejected for x in r["reasons"])
+                assert len(item["claims"]) == 1
+
+
+def test_the_differential_reports_a_wider_exemption_as_different(monkeypatch, reference):
+    """The class is proven, not assumed: an exemption for sentences that only resemble a claim is reported."""
+    monkeypatch.setattr(reasoning, "restates", lambda item, b: True)
+    moved = gd.differences(reasoning, reference)
+    assert len(moved["different"]) > 0
 
 
 def test_the_differential_reports_a_guard_that_accepts_more(monkeypatch, reference):
