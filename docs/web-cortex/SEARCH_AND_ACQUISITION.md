@@ -229,8 +229,8 @@ so a task's report, events and charged usage are the ones `read_ahead=1` produce
 
 Measured on the offline benchmark (`docs/quality/evidence/accel_decisions_read_ahead.json`): at 1, at 4 and at the
 default every quality metric and every task's usage, sources, answer and events are identical, and the safety
-invariants hold. With 300 ms added to every response, the median task takes 2.08 s (p95 3.85 s) at 1 and
-0.96 s (p95 1.79 s) at 4, with 4 requests sent and not used beside the 350 the tasks used. The same
+invariants hold. With 300 ms added to every response, the median task takes 1.99 s (p95 3.79 s) at 1 and
+0.97 s (p95 1.85 s) at 4, with 4 requests sent and not used beside the 350 the tasks used. The same
 file records the stop test: requests reaching the sites after a cancel, after web access was turned off and after a
 denial were 1, 11 and 11 at `read_ahead` 1 before these changes (4, 8 and 8 at 4), and are 0 in all six cases now.
 

@@ -1,9 +1,9 @@
 {
  "what": "Read-ahead as the default (decision B): the offline corpus benchmark at read_ahead 1, at 4 and at the configuration default, every key under 'metrics' compared; and task wall time with every fixture response delayed 300 ms, per window",
- "generated_at": "2026-11-24T00:32:01Z",
- "git_commit": "34c21c3",
- "git_dirty": true,
- "git_note": "measured on the source of that commit; the tree was dirty with documentation only",
+ "generated_at": "2026-11-24T01:20:09Z",
+ "git_commit": "826af78",
+ "git_dirty": false,
+ "git_note": "measured on the source of that commit",
  "environment": {
   "host_digest": "382a803dcc0d",
   "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
@@ -20,8 +20,8 @@
    "markdownify": "1.2.4",
    "playwright": "1.64.1"
   },
-  "git_commit": "d3ef9a4",
-  "git_dirty": true
+  "git_commit": "826af78",
+  "git_dirty": false
  },
  "configuration_default_read_ahead": 4,
  "offline": {
@@ -115,68 +115,68 @@
      "per_mode_seconds": {
       "fact_verification": {
        "n": 25,
-       "p50": 0.0535,
-       "p95": 0.1542,
-       "mean": 0.0657,
-       "max": 0.1656
+       "p50": 0.0571,
+       "p95": 0.1545,
+       "mean": 0.0674,
+       "max": 0.1663
       },
       "quick_lookup": {
        "n": 16,
-       "p50": 0.0268,
-       "p95": 0.1457,
-       "mean": 0.0412,
-       "max": 0.1468
+       "p50": 0.0289,
+       "p95": 0.1492,
+       "mean": 0.0425,
+       "max": 0.1498
       },
       "scientific": {
        "n": 1,
-       "p50": 0.0635,
-       "p95": 0.0635,
-       "mean": 0.0635,
-       "max": 0.0635
+       "p50": 0.0644,
+       "p95": 0.0644,
+       "mean": 0.0644,
+       "max": 0.0644
       },
       "technical": {
        "n": 9,
-       "p50": 0.0756,
-       "p95": 0.1992,
-       "mean": 0.0947,
-       "max": 0.2782
+       "p50": 0.0797,
+       "p95": 0.2071,
+       "mean": 0.1003,
+       "max": 0.2898
       }
      },
      "all_tasks_seconds": {
       "n": 51,
-      "p50": 0.0534,
-      "p95": 0.1528,
-      "mean": 0.0631,
-      "max": 0.2782
+      "p50": 0.0555,
+      "p95": 0.1539,
+      "mean": 0.0653,
+      "max": 0.2898
      },
      "extraction_ms": {
       "scrapling": {
        "n": 61,
-       "p50": 0.608,
-       "p95": 1.1424,
-       "mean": 0.683,
-       "max": 2.5902
+       "p50": 0.6502,
+       "p95": 1.2028,
+       "mean": 0.7134,
+       "max": 2.6868
       },
       "trafilatura": {
        "n": 61,
-       "p50": 1.5479,
-       "p95": 2.9553,
-       "mean": 1.7741,
-       "max": 3.9402
+       "p50": 1.6748,
+       "p95": 3.7009,
+       "mean": 1.9904,
+       "max": 4.5581
       },
       "auto": {
        "n": 61,
-       "p50": 0.7785,
-       "p95": 2.8544,
-       "mean": 1.073,
-       "max": 3.2611
+       "p50": 0.8012,
+       "p95": 3.7027,
+       "mean": 1.2179,
+       "max": 4.0339
       }
      },
      "probe_seconds": {
-      "html_bomb_extract": 0.176,
-      "js_render": 1.259
+      "html_bomb_extract": 0.178,
+      "js_render": 1.176
      },
-     "run_seconds": 8.84
+     "run_seconds": 9.043
     }
    ],
    "4": [
@@ -185,136 +185,136 @@
      "per_mode_seconds": {
       "fact_verification": {
        "n": 25,
-       "p50": 0.0628,
-       "p95": 0.1798,
-       "mean": 0.0784,
-       "max": 0.1844
+       "p50": 0.075,
+       "p95": 0.1644,
+       "mean": 0.0816,
+       "max": 0.187
       },
       "quick_lookup": {
        "n": 16,
-       "p50": 0.0392,
-       "p95": 0.1692,
-       "mean": 0.0556,
-       "max": 0.2045
+       "p50": 0.0377,
+       "p95": 0.1595,
+       "mean": 0.0528,
+       "max": 0.163
       },
       "scientific": {
        "n": 1,
-       "p50": 0.0873,
-       "p95": 0.0873,
-       "mean": 0.0873,
-       "max": 0.0873
+       "p50": 0.0987,
+       "p95": 0.0987,
+       "mean": 0.0987,
+       "max": 0.0987
       },
       "technical": {
        "n": 9,
-       "p50": 0.0937,
-       "p95": 0.1291,
-       "mean": 0.0961,
-       "max": 0.1442
+       "p50": 0.1033,
+       "p95": 0.1912,
+       "mean": 0.1183,
+       "max": 0.2295
       }
      },
      "all_tasks_seconds": {
       "n": 51,
-      "p50": 0.0628,
-      "p95": 0.1735,
-      "mean": 0.0746,
-      "max": 0.2045
+      "p50": 0.0723,
+      "p95": 0.1642,
+      "mean": 0.0794,
+      "max": 0.2295
      },
      "extraction_ms": {
       "scrapling": {
        "n": 61,
-       "p50": 0.6721,
-       "p95": 1.7929,
-       "mean": 0.8484,
-       "max": 3.1771
+       "p50": 0.6316,
+       "p95": 1.6645,
+       "mean": 0.8094,
+       "max": 2.2333
       },
       "trafilatura": {
        "n": 61,
-       "p50": 1.8978,
-       "p95": 3.8467,
-       "mean": 2.2213,
-       "max": 4.743
+       "p50": 1.9116,
+       "p95": 3.3896,
+       "mean": 2.0611,
+       "max": 4.8547
       },
       "auto": {
        "n": 61,
-       "p50": 0.9382,
-       "p95": 3.6033,
-       "mean": 1.3135,
-       "max": 3.9238
+       "p50": 0.9876,
+       "p95": 3.0587,
+       "mean": 1.5178,
+       "max": 18.0079
       }
      },
      "probe_seconds": {
-      "html_bomb_extract": 0.178,
-      "js_render": 1.205
+      "html_bomb_extract": 0.176,
+      "js_render": 1.25
      },
-     "run_seconds": 10.325
+     "run_seconds": 10.395
     },
     {
      "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
      "per_mode_seconds": {
       "fact_verification": {
        "n": 25,
-       "p50": 0.0656,
-       "p95": 0.1622,
-       "mean": 0.0749,
-       "max": 0.1729
+       "p50": 0.0665,
+       "p95": 0.1726,
+       "mean": 0.0779,
+       "max": 0.1875
       },
       "quick_lookup": {
        "n": 16,
-       "p50": 0.0371,
-       "p95": 0.1711,
-       "mean": 0.053,
-       "max": 0.1928
+       "p50": 0.0381,
+       "p95": 0.155,
+       "mean": 0.0506,
+       "max": 0.1606
       },
       "scientific": {
        "n": 1,
-       "p50": 0.0962,
-       "p95": 0.0962,
-       "mean": 0.0962,
-       "max": 0.0962
+       "p50": 0.0851,
+       "p95": 0.0851,
+       "mean": 0.0851,
+       "max": 0.0851
       },
       "technical": {
        "n": 9,
-       "p50": 0.1029,
-       "p95": 0.1291,
-       "mean": 0.1028,
-       "max": 0.1321
+       "p50": 0.0956,
+       "p95": 0.1367,
+       "mean": 0.1005,
+       "max": 0.1575
       }
      },
      "all_tasks_seconds": {
       "n": 51,
-      "p50": 0.0633,
-      "p95": 0.1632,
-      "mean": 0.0734,
-      "max": 0.1928
+      "p50": 0.0658,
+      "p95": 0.1591,
+      "mean": 0.0735,
+      "max": 0.1875
      },
      "extraction_ms": {
       "scrapling": {
        "n": 61,
-       "p50": 0.6206,
-       "p95": 0.9904,
-       "mean": 0.6519,
-       "max": 1.4035
+       "p50": 0.588,
+       "p95": 0.9295,
+       "mean": 0.6187,
+       "max": 1.0239
       },
       "trafilatura": {
        "n": 61,
-       "p50": 1.3759,
-       "p95": 3.6596,
-       "mean": 1.8483,
-       "max": 4.0856
+       "p50": 1.3379,
+       "p95": 3.1171,
+       "mean": 1.7011,
+       "max": 3.7124
       },
       "auto": {
        "n": 61,
-       "p50": 0.6794,
-       "p95": 3.5669,
-       "mean": 1.1568,
-       "max": 3.7972
+       "p50": 0.6503,
+       "p95": 3.0094,
+       "mean": 1.0397,
+       "max": 3.3417
       }
      },
      "probe_seconds": {
-      "html_bomb_extract": 0.219,
-      "js_render": 1.111
+      "html_bomb_extract": 0.237,
+      "js_render": 1.194
      },
-     "run_seconds": 10.129
+     "run_seconds": 10.302
     }
    ],
    "default": [
@@ -324,67 +324,67 @@
       "fact_verification": {
        "n": 25,
        "p50": 0.0693,
-       "p95": 0.1697,
-       "mean": 0.0774,
-       "max": 0.1965
+       "p95": 0.1671,
+       "mean": 0.078,
+       "max": 0.1733
       },
       "quick_lookup": {
        "n": 16,
-       "p50": 0.0362,
-       "p95": 0.1527,
-       "mean": 0.0501,
-       "max": 0.1575
+       "p50": 0.0407,
+       "p95": 0.1573,
+       "mean": 0.0565,
+       "max": 0.1858
       },
       "scientific": {
        "n": 1,
-       "p50": 0.0769,
-       "p95": 0.0769,
-       "mean": 0.0769,
-       "max": 0.0769
+       "p50": 0.0867,
+       "p95": 0.0867,
+       "mean": 0.0867,
+       "max": 0.0867
       },
       "technical": {
        "n": 9,
-       "p50": 0.1009,
-       "p95": 0.1412,
-       "mean": 0.1033,
-       "max": 0.1535
+       "p50": 0.0881,
+       "p95": 0.1571,
+       "mean": 0.1019,
+       "max": 0.1909
       }
      },
      "all_tasks_seconds": {
       "n": 51,
-      "p50": 0.0673,
-      "p95": 0.1564,
-      "mean": 0.0734,
-      "max": 0.1965
+      "p50": 0.0693,
+      "p95": 0.1718,
+      "mean": 0.0756,
+      "max": 0.1909
      },
      "extraction_ms": {
       "scrapling": {
        "n": 61,
-       "p50": 0.6073,
-       "p95": 2.7393,
-       "mean": 0.8959,
-       "max": 3.3764
+       "p50": 0.6686,
+       "p95": 1.7278,
+       "mean": 0.82,
+       "max": 2.215
       },
       "trafilatura": {
        "n": 61,
-       "p50": 1.7041,
-       "p95": 5.125,
-       "mean": 2.1472,
-       "max": 6.2438
+       "p50": 1.902,
+       "p95": 3.8429,
+       "mean": 2.2517,
+       "max": 6.6601
       },
       "auto": {
        "n": 61,
-       "p50": 0.8118,
-       "p95": 2.8834,
-       "mean": 1.2352,
-       "max": 3.0951
+       "p50": 0.9255,
+       "p95": 3.5577,
+       "mean": 1.3088,
+       "max": 3.8972
       }
      },
      "probe_seconds": {
-      "html_bomb_extract": 0.177,
-      "js_render": 1.153
+      "html_bomb_extract": 0.18,
+      "js_render": 1.268
      },
-     "run_seconds": 10.193
+     "run_seconds": 10.465
     }
    ]
   },
@@ -397,10 +397,10 @@
    "1": {
     "task_seconds": {
      "n": 51,
-     "p50": 2.077,
-     "p95": 3.848,
-     "mean": 2.251,
-     "max": 5.904
+     "p50": 1.989,
+     "p95": 3.788,
+     "mean": 2.218,
+     "max": 6.053
     },
     "requests_used": 350,
     "pages_read": 287,
@@ -411,10 +411,10 @@
    "2": {
     "task_seconds": {
      "n": 51,
-     "p50": 1.341,
-     "p95": 2.299,
-     "mean": 1.409,
-     "max": 3.654
+     "p50": 1.283,
+     "p95": 2.27,
+     "mean": 1.404,
+     "max": 3.458
     },
     "requests_used": 350,
     "pages_read": 287,
@@ -425,10 +425,10 @@
    "3": {
     "task_seconds": {
      "n": 51,
-     "p50": 1.006,
-     "p95": 2.115,
-     "mean": 1.13,
-     "max": 2.776
+     "p50": 1.016,
+     "p95": 2.091,
+     "mean": 1.113,
+     "max": 2.702
     },
     "requests_used": 350,
     "pages_read": 287,
@@ -439,10 +439,10 @@
    "4": {
     "task_seconds": {
      "n": 51,
-     "p50": 0.962,
-     "p95": 1.785,
-     "mean": 0.985,
-     "max": 2.485
+     "p50": 0.966,
+     "p95": 1.847,
+     "mean": 1.012,
+     "max": 2.398
     },
     "requests_used": 350,
     "pages_read": 287,
@@ -696,6 +696,72 @@
   },
   "browser": {
    "the four tests with paced fixtures, 3 runs each": "12 of 12 passed"
+  },
+  "note": "numbers of the second review pass, as measured then; its bound is worded 'at most twice' since the third pass, which also found the robots.txt case below"
+ },
+ "third_pass": {
+  "what": "The findings of the third review pass, before (the merged branch at 7bf522c, as the review measured it) and after: the reviewer's own scripts run against the fixed code, and the tests named",
+  "C1_robots_txt_redirects_onto_the_site_the_reader_is_on": {
+   "one_page_at_a_time": {
+    "charged": 5,
+    "pages": 2
+   },
+   "read_ahead_4_before": {
+    "no_budget": {
+     "charged": 6,
+     "pages": 2
+    },
+    "max_requests_5": {
+     "charged": 5,
+     "pages": 1,
+     "status": "partial"
+    }
+   },
+   "read_ahead_4_after": {
+    "no_budget": {
+     "charged": 5,
+     "unused": 1,
+     "pages": 2
+    },
+    "max_requests_5": {
+     "charged": 5,
+     "unused": 1,
+     "pages": 2,
+     "status": "completed"
+    }
+   },
+   "how": "a fetch ahead stopped before a request inside a robots.txt walk that had already sent one is not continued: it is not used, and its claim fetches as usual",
+   "tests": [
+    "test_a_fetch_ahead_stopped_inside_a_robots_txt_walk_is_fetched_again_not_continued",
+    "test_a_robots_txt_that_redirects_onto_the_readers_site_changes_nothing_at_the_budget_edge",
+    "test_random_webs_under_tight_budgets_end_the_same_at_one_page_at_a_time_and_read_ahead (4 seeds, 32 webs; seeds 117 and 404 fail before)"
+   ]
+  },
+  "C2_bound": {
+   "statement": "charged <= max_requests; unused read-ahead <= max_requests; total at most 2 x max_requests",
+   "reached": "24 requests reaching sites under max_requests 12 (12 charged, 12 unused) in the reviewer's scenario: the reader's first candidate sends nothing, the whole budget goes ahead, then a deny makes every fetch ahead unusable"
+  },
+  "C3_a_candidate_answered_429_ahead_of_its_turn": {
+   "before": "read_ahead 4 added '<site>: 1 more candidate(s) not tried: the site asked for fewer requests'",
+   "after": "a rate_limited failure with status 429 at both windows; no 'not tried' line",
+   "tests": [
+    "test_a_back_off_received_by_a_fetch_ahead_applies_to_the_site_at_once"
+   ]
+  },
+  "equivalence_fuzz": {
+   "what": "the reviewer's extended fuzz_equivalence.py (redirect chains, robots.txt files that redirect to another site's file, page delays, random tight budgets) at read_ahead 1 and 4, comparing status, charged usage (requests and bytes), sources and limitations",
+   "before": "MAXREQ 12, seed 21, 400 webs: 4 differences; MAXREQ 20, seed 22: 5 differences in its first part",
+   "after": {
+    "MAXREQ 6": "seed 31, 600 webs: 0 differences, none above 2 x max_requests, worst traffic 1.75 x",
+    "MAXREQ 12": "seed 21, 600 webs: 0 differences, none above 2 x, worst 1.75 x",
+    "MAXREQ 20": "seed 22, 600 webs: 0 differences, none above 2 x, worst 1.8 x"
+   }
+  },
+  "tests": {
+   "tests/webcortex/test_read_ahead_stops.py": 82,
+   "tests/webcortex/test_read_ahead.py": 35,
+   "repeated_runs": "30 of 30 runs passed (82 tests each)",
+   "tests/webcortex and the six other research-running files": "2733 passed, 9 skipped"
   }
  },
  "default": {
