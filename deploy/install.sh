@@ -191,38 +191,65 @@ idle_access() {
     act gpasswd -a "$IDLE_USER" "$SVC_USER"
     echo "# $IDLE_USER can now read $CONF_DIR too (root:$SVC_USER 0750). It is in the docker group, which equals root here."
   fi
-  # The entrance: the group may pass through, not list. Nothing inside changes except what follows.
-  act chmod 0710 "$STATE_DIR"
-  # The database: readable by the group, for the one question "does a research task run". Its write-ahead log's
-  # files take the database's mode when SQLite creates them; existing ones are set here.
-  if [ -f "$IDLE_DB" ] || [ "$DRY" -eq 1 ]; then
-    for file in "$IDLE_DB" "$IDLE_DB-wal" "$IDLE_DB-shm"; do
-      if [ -f "$file" ] || { [ "$DRY" -eq 1 ] && [ "$file" = "$IDLE_DB" ]; }; then
-        act chgrp "$SVC_USER" "$file"
-        act chmod 0640 "$file"
-      fi
-    done
-  else
-    echo "# $IDLE_DB does not exist yet: create the individual (nsf init), then run this again with --idle-access."
-    echo "# Until then the idle pass unloads nothing and says why (nsf resources tick)."
-  fi
-  # The folder both write. setgid: a file the idle account creates there belongs to the group $SVC_USER; the code
-  # makes its own files group-writable when it finds the folder like this, and private otherwise.
-  if [ -d "$resources" ]; then
-    act chgrp "$SVC_USER" "$resources"
-    act chmod 2770 "$resources"
-    if [ "$DRY" -eq 1 ]; then
-      echo "+ chgrp $SVC_USER and chmod g+rw: every plain file directly in $resources"
-    else
-      find "$resources" -maxdepth 1 -type f -exec chgrp "$SVC_USER" {} + -exec chmod g+rw {} +
+  # Everything inside the state folder is done AS $SVC_USER, never as root (review F1). That folder is
+  # $SVC_USER's: whatever it holds may be a symbolic link or a hard link to anything on the host, swapped in at
+  # any moment, and root's chgrp/chmod would follow it (/etc/shadow, /etc). Run as $SVC_USER, every step is one
+  # that account could take anyway, and the kernel refuses the rest: no check here has to win a race. The steps:
+  # the entrance (the group may pass through, not list); the database and its write-ahead log's files readable
+  # by the group, for the one question "does a research task run" (SQLite gives files it creates later the
+  # database's mode); the folder both write, setgid so that what the idle account creates belongs to the group
+  # (the code makes its own files group-writable in such a folder and private elsewhere).
+  # $STATE_DIR itself is named by root's /var/lib, which $SVC_USER cannot change, so its path is the real folder.
+  local as_service=(setpriv --reuid="$SVC_USER" --regid="$SVC_USER" --init-groups --reset-env)
+  command -v setpriv >/dev/null 2>&1 || as_service=(runuser -u "$SVC_USER" --)
+  # shellcheck disable=SC2016  # the script is for the inner bash; its $1..$4 are its arguments
+  local inside='set -u
+state="$1" db="$2" group="$3" dry="$4" resources="$2.resources" failed=0
+step() { if [ "$dry" = 1 ]; then printf "+ (as %s)" "$group"; printf " %q" "$@"; printf "\n";
+         elif ! "$@"; then failed=1; fi; }
+plain() {   # $1 must be a plain file or folder of this account, not a link: say so and leave it otherwise
+  if [ -L "$1" ]; then echo "refused: $1 is a symbolic link; nothing is done to it or to where it points" >&2; failed=1; return 1; fi
+  if [ -e "$1" ] && [ "$(stat -c %u "$1")" != "$(id -u)" ]; then echo "refused: $1 does not belong to $(id -un)" >&2; failed=1; return 1; fi
+  return 0
+}
+step chmod 0710 "$state"
+if [ -e "$db" ] || [ -L "$db" ] || [ "$dry" = 1 ]; then
+  for f in "$db" "$db-wal" "$db-shm"; do
+    if [ -e "$f" ] || [ -L "$f" ] || { [ "$dry" = 1 ] && [ "$f" = "$db" ]; }; then
+      plain "$f" && { step chgrp "$group" "$f"; step chmod 0640 "$f"; }
     fi
-  else
-    act install -d -m 2770 -o "$SVC_USER" -g "$SVC_USER" "$resources"
+  done
+else
+  echo "# $db does not exist yet: create the individual (nsf init), then run this again with --idle-access."
+  echo "# Until then the idle pass unloads nothing and says why (nsf resources tick)."
+fi
+if [ -e "$resources" ] || [ -L "$resources" ]; then
+  if plain "$resources"; then
+    step chgrp "$group" "$resources"
+    step chmod 2770 "$resources"
+    if [ "$dry" = 1 ]; then
+      echo "+ (as the service account) chgrp $group and chmod g+rw: every plain file directly in $resources"
+    else
+      find "$resources" -maxdepth 1 -type f -user "$(id -u)" -exec chgrp "$group" {} + -exec chmod g+rw {} + || failed=1
+    fi
+  fi
+else
+  step mkdir -m 2770 "$resources"
+  step chgrp "$group" "$resources"
+  step chmod 2770 "$resources"
+fi
+exit "$failed"'
+  if [ "$DRY" -eq 1 ]; then
+    bash -c "$inside" inside "$STATE_DIR" "$IDLE_DB" "$SVC_USER" 1
+  elif ! "${as_service[@]}" bash -c "$inside" inside "$STATE_DIR" "$IDLE_DB" "$SVC_USER" 0; then
+    die "a step inside $STATE_DIR was refused (above); nothing there was done as root. Look at what $SVC_USER keeps there."
   fi
   # The request folder: the idle account owns it (it removes the requests), the service account's group may create
   # files in it, nobody else may enter. Sticky: a request can be removed by whoever left it and by the folder's
   # owner only, so one service cannot take away another's. An existing folder is left as it is (install -d would
-  # reset its mode and owner): the owner may have chosen otherwise.
+  # reset its mode and owner): the owner may have chosen otherwise. Root acts on this path safely: it is named in
+  # root's /var/lib, where neither account can create or swap an entry. The other root actions of this function are
+  # as plain: gpasswd edits root's /etc/group, and the polkit rule is written under root's /etc.
   if [ -d "$WAKE_DIR" ]; then
     echo "$WAKE_DIR exists; left as it is ($(stat -c '%U:%G %a' "$WAKE_DIR"))"
   else
@@ -304,7 +331,18 @@ fi
 
 note "directories"
 act install -d -m 0755 "$PREFIX"
-act install -d -m 0700 -o "$SVC_USER" -g "$SVC_USER" "$STATE_DIR"
+# A two-account arrangement made earlier (--idle / --idle-access: the request folder or the polkit rule exists) is
+# kept by a later run without --idle, an upgrade for example (review F7): the state folder keeps the entrance the
+# idle account needs (0710 instead of 0700), and the console, worker and Pocket units keep the request folder among
+# their writable paths. To take the arrangement away, see RUNBOOK.md section 1, "The two accounts", step 6.
+ARRANGED=0
+if [ "$IDLE" -eq 0 ] && { [ -d "$WAKE_DIR" ] || [ -e "$POLKIT_DIR/$POLKIT_RULE" ]; }; then
+  ARRANGED=1
+  echo "# a two-account arrangement is installed ($WAKE_DIR or $POLKIT_DIR/$POLKIT_RULE exists): it is kept"
+fi
+STATE_MODE=0700
+if [ "$IDLE" -eq 1 ] || [ "$ARRANGED" -eq 1 ]; then STATE_MODE=0710; fi
+act install -d -m "$STATE_MODE" -o "$SVC_USER" -g "$SVC_USER" "$STATE_DIR"
 act install -d -m 0750 -o root -g "$SVC_USER" "$CONF_DIR"
 act install -d -m 0750 -o root -g "$SVC_USER" "$CONF_DIR/tls"
 
@@ -380,7 +418,7 @@ WAKE_SED="s#^ReadWritePaths=%S/neuroscifi\$#ReadWritePaths=%S/neuroscifi -$WAKE_
 for unit in neuroscifi-pocket.service neuroscifi-console.service neuroscifi-checkpoint.service neuroscifi-checkpoint.timer \
             neuroscifi-webcortex.service neuroscifi-webcortex-tick.service neuroscifi-webcortex-tick.timer \
             neuroscifi-websearch.service; do
-  case "$IDLE:$unit" in
+  case "$(( IDLE | ARRANGED )):$unit" in
     1:neuroscifi-pocket.service|1:neuroscifi-console.service|1:neuroscifi-webcortex.service)
       install_unit "$unit" "$NODE_SED" "$WAKE_SED" ;;
     *) install_unit "$unit" "$NODE_SED" ;;

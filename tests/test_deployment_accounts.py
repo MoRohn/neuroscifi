@@ -168,16 +168,23 @@ def test_idle_access_arranges_what_the_two_accounts_share_and_nothing_else():
     done = _dry("--idle-access", "--idle-user", "nsfmodels")
     assert done.returncode == 0, done.stderr
     out = done.stdout
-    for line in ("+ gpasswd -a nsfmodels neuroscifi\n", "+ chmod 0710 /var/lib/neuroscifi\n",
-                 "+ chgrp neuroscifi /var/lib/neuroscifi/instance.sqlite\n",
-                 "+ chmod 0640 /var/lib/neuroscifi/instance.sqlite\n",
-                 "+ install -d -m 2770 -o neuroscifi -g neuroscifi /var/lib/neuroscifi/instance.sqlite.resources\n",
-                 "+ install -d -m 3770 -o nsfmodels -g neuroscifi /var/lib/neuroscifi-wake\n"):
+    # Root's own steps act on root's paths only; every step inside the service account's folder is done as that
+    # account (review F1: as root they followed whatever links it planted there).
+    for line in ("+ gpasswd -a nsfmodels neuroscifi\n",
+                 "+ install -d -m 3770 -o nsfmodels -g neuroscifi /var/lib/neuroscifi-wake\n",
+                 "+ (as neuroscifi) chmod 0710 /var/lib/neuroscifi\n",
+                 "+ (as neuroscifi) chgrp neuroscifi /var/lib/neuroscifi/instance.sqlite\n",
+                 "+ (as neuroscifi) chmod 0640 /var/lib/neuroscifi/instance.sqlite\n",
+                 "+ (as neuroscifi) mkdir -m 2770 /var/lib/neuroscifi/instance.sqlite.resources\n",
+                 "+ (as neuroscifi) chmod 2770 /var/lib/neuroscifi/instance.sqlite.resources\n"):
         assert line in out, line
+    inside = [row for row in out.splitlines() if row.startswith("+ ") and "/var/lib/neuroscifi/" in row]
+    assert inside and all(row.startswith("+ (as neuroscifi) ") for row in inside), inside
     assert "pip" not in out and "venv" not in out and "+ sed" not in out      # no package, no units
     assert "can now read /etc/neuroscifi too" in out                         # the consequence is said
     full = _dry("--idle", "--idle-user", "nsfmodels", "--db", "/var/lib/neuroscifi/ind.sqlite")
-    assert full.returncode == 0 and "+ chmod 0640 /var/lib/neuroscifi/ind.sqlite\n" in full.stdout
+    assert full.returncode == 0 and "+ (as neuroscifi) chmod 0640 /var/lib/neuroscifi/ind.sqlite\n" in full.stdout
+    assert "+ install -d -m 0710 -o neuroscifi -g neuroscifi /var/lib/neuroscifi\n" in full.stdout
     assert "Environment=NSF_DB=/var/lib/neuroscifi/ind.sqlite" in full.stdout
     assert "does not arrange" not in full.stdout
     plain = _dry()

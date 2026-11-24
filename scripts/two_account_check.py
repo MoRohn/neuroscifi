@@ -364,6 +364,58 @@ def inside(repo, prefix, site, rel_python):
           rule.read_text() and "neuroscifi-console" not in rule.read_text(),
           "written" if rule.exists() else "no /etc/polkit-1 on this host: the installer says so and writes none")
 
+    # 3b. The service account attacks the installer (review F1): it owns the state folder, so it can put anything
+    # there, and the installer is run again by root after it has been running. Root-only targets outside it:
+    victims = {name: f"{MNT}/victim-{name}" for name in ("db", "wal", "resources", "inner", "hard")}
+    for name, path in victims.items():
+        if name == "resources":
+            os.mkdir(path, 0o755)
+        else:
+            Path(path).write_text("root's own\n")
+            os.chmod(path, 0o600)
+    planted = f"{STATE}/planted.sqlite"
+    as_svc = ["setpriv", f"--reuid={SVC}", f"--regid={SVC}", "--init-groups"]
+    sh(*as_svc, "ln", "-s", victims["db"], planted)
+    sh(*as_svc, "ln", "-s", victims["wal"], f"{planted}-wal")
+    sh(*as_svc, "ln", "-s", victims["resources"], f"{planted}.resources")
+    sh(*as_svc, "ln", "-s", victims["inner"], f"{DB}.resources/planted.lock")   # for the step over the folder's files
+    hard = sh(*as_svc, "ln", victims["hard"], f"{DB}.resources/hard.lock", check=False)
+    before_attack = {p: mode(p) for p in victims.values()}
+    attacked = sh("bash", f"{repo}/deploy/install.sh", "--idle-access", "--idle-user", OPS, "--db", planted,
+                  check=False)
+    again = sh(*installer, check=False)              # the real database, with the links planted in its folder
+    after_attack = {p: mode(p) for p in victims.values()}
+    check("a symbolic link the service account planted makes the installer refuse, and changes nothing it points at",
+          attacked.returncode != 0 and "symbolic link" in attacked.stderr and after_attack == before_attack,
+          {"exit": attacked.returncode, "said": attacked.stderr.strip().splitlines()[-3:], "before": before_attack,
+           "after": after_attack})
+    check("links inside the shared folder are passed over: the installer's run over its files changes no target",
+          again.returncode == 0 and after_attack == before_attack,
+          {"exit": again.returncode, "hard link made": hard.returncode == 0, "after": after_attack})
+    read = run(SVC, "enter", victims["resources"])
+    secret = subprocess.run([*as_svc, "cat", victims["db"]], capture_output=True, text=True)
+    check("the service account still cannot read the root-only file or write the root folder",
+          secret.returncode != 0 and not os.listdir(victims["resources"]) and read.get("ok") is True, secret.stderr)
+    # What a race could make the installer do at worst: act on a link after its check. Every such step runs as the
+    # service account, so it is the kernel that answers, as it would for anything that account tries itself.
+    raced = [subprocess.run([*as_svc, *cmd], capture_output=True, text=True).returncode
+             for cmd in (["chgrp", SVC, planted], ["chmod", "0640", planted], ["chmod", "2770", f"{planted}.resources"])]
+    check("a step that a race slipped past the check is refused by the kernel (it runs as the service account)",
+          all(rc != 0 for rc in raced) and {p: mode(p) for p in victims.values()} == before_attack, raced)
+    for path in (planted, f"{planted}-wal", f"{planted}.resources", f"{DB}.resources/planted.lock",
+                 f"{DB}.resources/hard.lock"):
+        if os.path.lexists(path):
+            os.unlink(path)
+
+    # 3c. A plain run of the installer later (an upgrade, without --idle) keeps the arrangement (review F7).
+    plain = sh("bash", f"{repo}/deploy/install.sh", "--dry-run", "--unit-dir", f"{MNT}/units", check=False)
+    wake_rw = f"ReadWritePaths=%S/neuroscifi -{WAKE}"
+    keeps = [line for line in plain.stdout.splitlines() if line.startswith("+ sed") and wake_rw in line]
+    check("a plain run of the installer keeps the entrance and the units' request folder",
+          plain.returncode == 0 and f"+ install -d -m 0710 -o {SVC} -g {SVC} {STATE}\n" in plain.stdout
+          and "is kept" in plain.stdout and len(keeps) == 3,
+          [line for line in plain.stdout.splitlines() if STATE in line or "kept" in line][:4] + [len(keeps)])
+
     # 4. What the idle account may and may not do with the individual.
     probe = run(OPS, "probe")
     check("the idle account cannot list the state folder", probe["list"] == {"ok": False, "error": "PermissionError"},
