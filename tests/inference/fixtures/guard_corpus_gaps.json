@@ -1183,6 +1183,467 @@
 "claims": [
 [
 "supported",
+"Every Orbix release is patched provided the TLS 1.3 option is set",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'provided' left out"
+],
+[
+"Every Orbix release is patched provided the TLS 1.3 option is set.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every Orbix release is patched on the condition that the TLS 1.3 option is set",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'on the condition that' left out"
+],
+[
+"Every Orbix release is patched on the condition that the TLS 1.3 option is set.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every Orbix release is patched assuming the TLS 1.3 option is set",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'assuming' left out"
+],
+[
+"Every Orbix release is patched assuming the TLS 1.3 option is set.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every Orbix release is patched subject to the TLS 1.3 option being set",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'subject to' left out"
+],
+[
+"Every Orbix release is patched subject to the TLS 1.3 option being set.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every Orbix release is patched given that the TLS 1.3 option is set",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'given that' left out"
+],
+[
+"Every Orbix release is patched given that the TLS 1.3 option is set.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every Orbix release is patched in case the TLS 1.3 option is set",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'in case' left out"
+],
+[
+"Every Orbix release is patched in case the TLS 1.3 option is set.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every Orbix release is patched in the event that the TLS 1.3 option is set",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'in the event that' left out"
+],
+[
+"Every Orbix release is patched in the event that the TLS 1.3 option is set.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every Orbix release is patched save 2.5.4",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'save' left out"
+],
+[
+"Every Orbix release is patched save 2.5.4.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every Orbix release is patched besides 2.5.4",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'besides' left out"
+],
+[
+"Every Orbix release is patched besides 2.5.4.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every Orbix release is patched with 2.5.4 excepted",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'with ... excepted' left out"
+],
+[
+"Every Orbix release is patched with 2.5.4 excepted.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every Orbix release but 2.5.4 is patched",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Is Orbix patched?",
+"s": [
+[
+"Every Orbix release is patched.",
+[
+"C1"
+],
+"reject",
+"'every X but Y' left out"
+],
+[
+"Every Orbix release but 2.5.4 is patched.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The census data provided by Tessaly Statistics counted 248,000 residents",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "How many residents?",
+"s": [
+[
+"The census counted 248,000 residents.",
+[
+"C1"
+],
+"accept",
+"'provided by' names a source"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The study provided the first count, and the vote is planned for May 2027",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "When is the vote?",
+"s": [
+[
+"The vote is planned for May 2027.",
+[
+"C1"
+],
+"lost",
+"faithful; a bare 'provided' reads as a condition"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Engineers are assuming control of the grid, and the outage ended at noon",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "When did the outage end?",
+"s": [
+[
+"The outage ended at noon.",
+[
+"C1"
+],
+"lost",
+"faithful; 'assuming' as a verb reads as a condition"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The update helps save memory, and it ships on 3 May 2026",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "When does the update ship?",
+"s": [
+[
+"The update ships on 3 May 2026.",
+[
+"C1"
+],
+"accept",
+"'save' as a verb: no quantifier before it"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Besides, the vendor published version 4 on 2 May 2026",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "What did the vendor publish?",
+"s": [
+[
+"The vendor published version 4 on 2 May 2026.",
+[
+"C1"
+],
+"accept",
+"'Besides,' as a discourse word"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
 "Exposure to CO rose in 2025 while Turkey exports fell",
 [
 1,
@@ -3135,6 +3596,73 @@
 {
 "claims": [
 [
+"supported",
+"It is fixed in versions 2 and 3 but not in NumPy 2.5.5",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"It is fixed in versions 2 and 3 but not in NumPy 2.5.5.",
+[
+"C1"
+],
+"reject",
+"'It' can attach to the question's subject: no exemption"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"They patched versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"They patched versions 2 and 3.",
+[
+"C1"
+],
+"reject"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"This affects versions 2 and 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"s": [
+[
+"This affects versions 2 and 3.",
+[
+"C1"
+],
+"reject"
+]
+]
+},
+{
+"claims": [
+[
 "insufficient",
 "NumPy 2.5.4 is vulnerable to remote code execution according to the advisory from the NumPy security team"
 ]
@@ -3752,6 +4280,145 @@
 {
 "claims": [
 [
+"insufficient",
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Retracted"
+]
+],
+"gap": "cut",
+"q": "Is Orbix 2.5 safe?",
+"s": [
+[
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Retracted.",
+[
+"C1"
+],
+"reject",
+"'Retracted' says what became of the advisory"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Withdrawn"
+]
+],
+"gap": "cut",
+"q": "Is Orbix 2.5 safe?",
+"s": [
+[
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Withdrawn.",
+[
+"C1"
+],
+"reject",
+"'Withdrawn' says what became of the advisory"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Disputed"
+]
+],
+"gap": "cut",
+"q": "Is Orbix 2.5 safe?",
+"s": [
+[
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Disputed.",
+[
+"C1"
+],
+"reject",
+"'Disputed' says what became of the advisory"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Superseded"
+]
+],
+"gap": "cut",
+"q": "Is Orbix 2.5 safe?",
+"s": [
+[
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Superseded.",
+[
+"C1"
+],
+"reject",
+"'Superseded' says what became of the advisory"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Corrected"
+]
+],
+"gap": "cut",
+"q": "Is Orbix 2.5 safe?",
+"s": [
+[
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Corrected.",
+[
+"C1"
+],
+"reject",
+"'Corrected' says what became of the advisory"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Debunked"
+]
+],
+"gap": "cut",
+"q": "Is Orbix 2.5 safe?",
+"s": [
+[
+"Orbix 2.5 is safe according to the advisory by Orbix Labs Debunked.",
+[
+"C1"
+],
+"reject",
+"'Debunked' says what became of the advisory"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix 2.5 is safe according to the advisory from the Orbix Archive Superseded"
+]
+],
+"gap": "cut",
+"q": "Is Orbix 2.5 safe?",
+"s": [
+[
+"Orbix 2.5 is safe according to the advisory from the Orbix Archive Superseded.",
+[
+"C1"
+],
+"reject"
+]
+]
+},
+{
+"claims": [
+[
 "supported",
 "The vendor reported the flaw and the maintainers fixed it",
 [
@@ -3842,6 +4509,187 @@
 "C1"
 ],
 "reject"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"NumPy 2.5.4 was replaced by NumPy 2.5.5 after the flaw",
+[
+1,
+2
+]
+]
+],
+"gap": "wording",
+"s": [
+[
+"NumPy 2.5.5 was replaced after the flaw.",
+[
+"C1"
+],
+"reject",
+"the agent made the subject"
+],
+[
+"NumPy 2.5.4 was replaced after the flaw.",
+[
+"C1"
+],
+"accept",
+"the agent left out, the subject kept"
+],
+[
+"NumPy 2.5.4 was replaced by NumPy 2.5.5 after the flaw.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Acme Corp was acquired by Globex in 2025"
+]
+],
+"gap": "wording",
+"q": "Who was acquired?",
+"s": [
+[
+"Globex was acquired in 2025.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Acme Corp was acquired in 2025.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The Senate bill was vetoed by Kestrel",
+[
+1,
+2
+]
+]
+],
+"gap": "wording",
+"q": "What was vetoed?",
+"s": [
+[
+"Kestrel was vetoed.",
+[
+"C1"
+],
+"reject"
+],
+[
+"The Senate bill was vetoed.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Mallory was robbed by Trent",
+[
+1,
+2
+]
+]
+],
+"gap": "wording",
+"q": "Who was robbed?",
+"s": [
+[
+"Trent was robbed, according to the police report by Mallory.",
+[
+"C1"
+],
+"reject",
+"the agent made the subject, the victim named as the source"
+],
+[
+"Trent was robbed.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Mallory was robbed.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"The Senate bill was vetoed by Kestrel"
+]
+],
+"gap": "wording",
+"q": "What was vetoed?",
+"s": [
+[
+"Kestrel was vetoed, according to the record by The Senate.",
+[
+"C1"
+],
+"reject"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The library was audited by Orbix Labs in March and patched by the maintainers in May",
+[
+1,
+2
+]
+]
+],
+"gap": "wording",
+"q": "Was the library audited?",
+"s": [
+[
+"Orbix Labs was audited in March.",
+[
+"C1"
+],
+"reject"
+],
+[
+"The library was audited in March and patched in May.",
+[
+"C1"
+],
+"accept"
 ]
 ]
 }
