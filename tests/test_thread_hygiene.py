@@ -176,3 +176,26 @@ def test_the_session_check_names_a_thread_that_was_left_and_passes_once_it_is_go
         named.join(5)
         foreign.join(5)
     assert not [r for r in thread_check.left_behind(grace=2.0) if "left-behind" in r or "audio-beacon" in r]
+
+
+def test_the_session_check_also_sees_servers_of_the_package_and_servers_serving_its_handlers():
+    """Review F12: a thread counted only when named nsf-… or targeting a function of the package; a stdlib server's
+    serve_forever, socketserver's request threads and lambdas were never seen. Now a method of an object of the
+    package, or of a server whose handler class is of the package, is ours; the standard library's own and the
+    test tools' threads are not."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from neuroscifi.pocket.server import Handler, PocketServer
+    stdlib_with_ours = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    stdlib_alone = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
+    ours = PocketServer(("127.0.0.1", 0), tls=None)
+    try:
+        def thread(target):
+            return threading.Thread(target=target)
+        assert thread_check.ours(thread(stdlib_with_ours.serve_forever))
+        assert thread_check.ours(thread(ours.serve_forever)) and thread_check.ours(thread(ours.process_request_thread))
+        assert not thread_check.ours(thread(stdlib_alone.serve_forever))
+        assert not thread_check.ours(thread(lambda: None)) and not thread_check.ours(thread(time.sleep))
+        assert thread_check.ours(threading.Thread(target=lambda: None, name="nsf-anything"))
+    finally:
+        for server in (stdlib_with_ours, stdlib_alone, ours):
+            server.server_close()

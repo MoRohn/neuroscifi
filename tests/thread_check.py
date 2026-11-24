@@ -16,10 +16,27 @@ LEAK_GRACE = 10.0              # seconds a thread that is just finishing (a repl
 BORN: dict = {}                # thread -> the test file during which it appeared
 
 
+def _package(obj) -> bool:
+    return (getattr(type(obj), "__module__", "") or "").startswith("neuroscifi")
+
+
 def ours(thread) -> bool:
+    """A thread of NeuroSciFi: named nsf-…, or its target is a function of the package, or a method of an object
+    of the package (a server's serve_forever, a socketserver request thread), or a method of a server that serves
+    a handler of the package (a stdlib ThreadingHTTPServer serving the Pocket handler or the fixture web). Threads
+    of pytest, Playwright and the standard library's own objects are not ours (review F12)."""
+    if thread.name.startswith("nsf-"):
+        return True
     target = getattr(thread, "_target", None)
-    module = getattr(target, "__module__", None) or type(thread).__module__ or ""
-    return thread.name.startswith("nsf-") or module.startswith("neuroscifi")
+    if target is None:
+        return (type(thread).__module__ or "").startswith("neuroscifi")
+    if (getattr(target, "__module__", None) or "").startswith("neuroscifi"):
+        return True
+    owner = getattr(target, "__self__", None)
+    if owner is None:
+        return False
+    return _package(owner) or (getattr(getattr(owner, "RequestHandlerClass", None), "__module__", "") or
+                               "").startswith("neuroscifi")
 
 
 def describe(thread) -> str:
