@@ -230,3 +230,39 @@ def test_running_tasks_trusts_nothing_in_the_schema(tmp_path, monkeypatch):
     store.create(path, time.time()).close()
     assert idle.Idle(path).running_tasks() == 0
     assert "PRAGMA trusted_schema=OFF" in seen and "PRAGMA query_only=ON" in seen
+
+
+# ---- L4b, L4c (security re-review) -------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", ["-wal", "-shm"])
+def test_a_fifo_beside_the_database_is_reported_and_never_opened(tmp_path, name):
+    """SQLite opens the database's -wal and -shm by name; a FIFO there hung running_tasks() on every pass (no race
+    needed), and the idle pass until its unit's timeout."""
+    path = tmp_path / "i.sqlite"
+    store.create(path, time.time()).close()
+    os.mkfifo(f"{path}{name}")
+    p = idle.Idle(path)
+    assert _within(5, p.running_tasks) is None
+    assert name.lstrip("-") in p.db_problem and "not a plain file" in p.db_problem
+    p.configure({"vllm": 1800.0})
+    out = _within(5, p.tick)
+    assert any(name.lstrip("-") in b for b in out["blockers"])
+
+
+def test_a_deeply_nested_state_file_is_malformed_not_a_crash(instance):
+    """'[' * 200000 raised RecursionError, which the ValueError handlers did not catch: tick(), status() and the
+    voice check crashed."""
+    p = idle.Idle(instance)
+    p.configure({"vllm": 1800.0})
+    deep = "[" * 200000
+    Path(p._file("idle.json")).write_text(deep)
+    assert p.read() == {"timeouts": {}, "services": {}} and "nested too deeply" in p.problems[0]
+    assert p.tick()["enabled"] is False and "state_problems" in p.status([])
+    Path(p._file("audio.json")).write_text(deep)
+    assert policy.voice_session_active(instance) is False
+    with open(p._file("idle-events.jsonl"), "a") as fh:
+        fh.write(deep + "\n" + json.dumps({"service": "vllm", "action": "unload"}) + "\n")
+    assert p.events(limit=0)[-1] == {"service": "vllm", "action": "unload"}
+    from neuroscifi.voice.beacon import SharedAudioBeacon
+    SharedAudioBeacon(instance).write(True, True)                 # its merge reads the same file
+    assert policy.voice_session_active(instance) is True

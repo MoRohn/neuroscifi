@@ -391,7 +391,7 @@ class Idle:
         F6, L4). What was dropped is kept in `self.problems` and shown by `nsf resources idle`."""
         problems = []
         try:
-            data = json.loads(shared.read_text(self._file("idle.json")))
+            data = shared.read_json(self._file("idle.json"))
         except FileNotFoundError:
             data = {}
         except (OSError, ValueError) as error:
@@ -444,7 +444,7 @@ class Idle:
         out = []
         for line in lines[-limit:] if limit else lines:
             try:
-                event = json.loads(line)
+                event = shared.loads(line)
             except ValueError:
                 continue
             if isinstance(event, dict):
@@ -530,16 +530,25 @@ class Idle:
         """How many research tasks run now (a running stage with a live lease); None when this account cannot
         tell. The pass then unloads nothing: where the idle policy runs as another account than the one that owns
         the database (deploy/install.sh --idle), a database it may not read must not read as "nothing runs"."""
-        try:
-            kind = os.lstat(self.db_path).st_mode
-        except FileNotFoundError:
-            return 0
-        except OSError:
-            return None       # the folder itself is closed to this account
-        # The file is the service account's (review L5): a link, a FIFO (an open that never returns) or a device is
-        # not an answer. A swap between this look and the open below is not excluded; its worst is a pass that
-        # hangs until its unit's TimeoutStartSec, which unloads nothing, as an unreadable file would.
-        if not stat.S_ISREG(kind) or not os.access(self.db_path, os.R_OK):
+        # The database and its write-ahead log's two files are the service account's (review L5, L4b): SQLite opens
+        # all three, so a link, a FIFO (an open that never returns, on every pass) or a device under any of the three
+        # names is not an answer: each must be a plain file or absent, and nothing is opened otherwise. What remains
+        # is a swap after this look and before SQLite's open, which needs a race; its worst is a pass that hangs
+        # until its unit's TimeoutStartSec and unloads nothing, as an unreadable file would.
+        self.db_problem = None
+        for path in (str(self.db_path), f"{self.db_path}-wal", f"{self.db_path}-shm"):
+            try:
+                kind = os.lstat(path).st_mode
+            except FileNotFoundError:
+                if path == str(self.db_path):
+                    return 0
+                continue
+            except OSError:
+                return None   # the folder itself is closed to this account
+            if not stat.S_ISREG(kind):
+                self.db_problem = f"{os.path.basename(path)} is not a plain file; whether a task runs cannot be told"
+                return None
+        if not os.access(self.db_path, os.R_OK):
             return None
         sql = (f"SELECT count(*) FROM web_tasks WHERE status IN ({','.join('?' * len(RUNNING))}) "
                "AND lease_holder IS NOT NULL AND lease_expires_at>=?")
@@ -601,7 +610,8 @@ class Idle:
             blockers.append("a voice session is open")
         tasks = self.running_tasks()
         if tasks is None:
-            blockers.append("whether a research task runs cannot be told: this account may not read the instance "
+            blockers.append(getattr(self, "db_problem", None) or
+                            "whether a research task runs cannot be told: this account may not read the instance "
                             "database (deploy/install.sh --idle-access grants it)")
         elif tasks:
             blockers.append(f"{tasks} research task(s) running")

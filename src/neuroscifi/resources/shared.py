@@ -113,6 +113,22 @@ def read_text(path, *, limit=READ_LIMIT, tail=False) -> str:
         os.close(fd)
 
 
+def loads(text):
+    """json.loads for text another account wrote: anything that is not JSON raises ValueError, including text nested
+    deeply enough to exhaust the parser's recursion (a state file of 200,000 '[' raised RecursionError, which the
+    callers' ValueError handlers did not catch: review L4c)."""
+    import json
+    try:
+        return json.loads(text)
+    except RecursionError:
+        raise ValueError("nested too deeply to be read") from None
+
+
+def read_json(path, **kwargs):
+    """read_text, then loads: no link, no FIFO, bounded, and malformed or too deep is ValueError."""
+    return loads(read_text(path, **kwargs))
+
+
 def write_text(path, text) -> None:
     """Replace the file's content atomically (a temporary file of this process beside it, then a rename)."""
     path = Path(path)
@@ -148,4 +164,4 @@ def touch(path, when=None) -> None:
 
 
 __all__ = ["NotAFile", "PRIVATE_FILE", "PRIVATE_FOLDER", "READ_LIMIT", "SHARED_FILE", "ensure_folder", "file_mode",
-           "is_shared", "open_file", "read_text", "touch", "write_text"]
+           "is_shared", "loads", "open_file", "read_json", "read_text", "touch", "write_text"]

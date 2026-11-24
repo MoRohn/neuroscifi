@@ -83,7 +83,7 @@ def _beacon(db_path, key, now) -> bool:
     if path is None:
         return False
     try:
-        beacon = json.loads(shared.read_text(path))       # no link, no FIFO, bounded (review L4)
+        beacon = shared.read_json(path)       # no link, no FIFO, bounded, not too deep (review L4, L4c)
     except (OSError, ValueError):
         return False
     now = time.time() if now is None else now
