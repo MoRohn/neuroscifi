@@ -229,13 +229,39 @@ before). The model, once:
   --idle-access` grants it"). Before, an unreadable database read as zero tasks. While a process has the database
   open its write-ahead log's files exist and the read-only open works; when nobody has it open they do not, the
   idle account cannot create them in a folder it may not write, and the file is read as it stands
-  (`immutable=1`).
+  (`immutable=1`). The file is the service account's, so the idle account opens it only when it is a plain file
+  (not a link, a FIFO or a device), read-only, with `PRAGMA trusted_schema=OFF` and `query_only=ON`, and counts
+  only when `web_tasks` is a table (a view written by that account gives "cannot tell"). A swap between the look
+  and the open is not excluded; its worst is a pass that hangs until its unit's `TimeoutStartSec` and unloads
+  nothing.
+- *Root never acts inside the service account's folder* (review F1, security H1). The service account owns
+  `/var/lib/neuroscifi` and can put anything there; root's `chgrp`/`chmod` follow links, so a link from the
+  database's name to `/etc/shadow` or from `.resources` to `/etc` made that account root, and `find … -exec`
+  raced. Every step inside the folder now runs **as the service account** (`setpriv --reuid neuroscifi --regid
+  neuroscifi --init-groups`, `runuser` without setpriv): each is something that account could do anyway, and the
+  kernel refuses the rest, so no check has to win a race. A link is still refused and named before, so the owner
+  learns of it. Root acts only on root's own paths: the state folder's own name in `/var/lib`, the request
+  folder in `/var/lib`, `/etc/group` (gpasswd) and the polkit rule under `/etc`.
+- *A plain re-run keeps it* (review F7). When the request folder or the polkit rule exists, `deploy/install.sh`
+  without `--idle` (an upgrade) keeps the state folder at 0710 and the request folder writable in the console,
+  worker and Pocket units, and says so. RUNBOOK section 1 says how to take the arrangement away.
+- *What the idle account reads in the shared folder* (security L4). `idle.json`, the events and the audio
+  beacon are read without following a link and without blocking (a FIFO), plain files only, at most 4 MiB (the
+  events from their tail), and a state file of the wrong shape is reported (`state_problems` in `nsf resources
+  idle`) and read as empty instead of stopping the pass or the wake command. Files it creates or touches there
+  are opened the same way and their times set through the descriptor.
+- *The polkit rule* is evaluated by a test with its own JavaScript over every combination of action, unit
+  detail (the listed units, other units, a transient unit, none), verb and caller: YES for `manage-units`,
+  the listed units, `start`/`stop` and the idle account only. **Not verified:** that a running polkitd and
+  systemd pass exactly these details (`pkcheck` needs the rule installed under `/etc` and polkitd running).
 - *Verified with real accounts.* `scripts/two_account_check.py` (run by
   `tests/test_deployment_accounts.py`, skipped with the reason where the host forbids it) enters a user
   namespace in which it is root over further uids and its own mounts, creates the accounts with the installer's
-  commands, runs the real `deploy/install.sh --idle-access` and then acts as each account with this code: 41
-  checks, §4. **Not shown by it:** systemd itself (the units, `PrivateUsers=yes`, the path unit as a system
-  unit), polkit acting on the rule, and the real root account.
+  commands, runs the real `deploy/install.sh --idle-access` and then acts as each account with this code: 46
+  checks, §4, among them the service account's attacks on the installer (links for the database, its `-wal` and
+  `.resources` to root-only targets, links inside the shared folder, what a race could do at worst) and a plain
+  re-run. **Not shown by it:** systemd itself (the units, `PrivateUsers=yes`, the path unit as a system unit),
+  polkit acting on the rule, and the real root account.
 
 Rules of every reload, found in review and fixed on 2026-11-23:
 
@@ -501,9 +527,12 @@ a fake Docker for stop and start; evidence `docs/quality/evidence/open_items_dep
 | A real listener on a service's port, asked about by the service account | refused when a third account owns it, and when the idle account owns it without being the key file's owner; accepted for the service account itself, root, and the key file's owner |
 | The code imported by a uid with no account and no HOME | imports, reads its settings; no key file found, no error |
 | The units' own command lines as the idle account: `nsf resources tick --db …` and `nsf resources wake --db … --dir …` | both exit 0; the pass can tell whether a task runs; the wake command clears a request the service account left |
+| The service account plants links for a database (`planted.sqlite`, its `-wal`, its `.resources`) to root-only targets, and a link inside the shared folder; root then runs `install.sh --idle-access --db planted.sqlite` and the plain `--idle-access` (review round, 2026-11-24) | the first refuses and names the link, exit 1; the second passes over the inner link; every target keeps `root:root 600` / `755`. On 76f32d2 the targets became `root:neuroscifi 640` and `2770` |
+| What a race could make the installer do at worst (chgrp/chmod on such a link, as the service account) | refused by the kernel, each |
+| A plain `install.sh --dry-run` (no `--idle`) after the arrangement | "a two-account arrangement is installed … it is kept"; the state folder at 0710; the three units keep the request folder writable (on 76f32d2: 0700, and the units without it) |
 
-41 of 41 checks; the same checks fail where they should on the code before (the installer had no such step, and
-`Path.home()` raised at import).
+46 of 46 checks; the same checks fail where they should on the code before (the installer had no such step,
+`Path.home()` raised at import; on 76f32d2 five of the 46 fail: the four on the links and the plain re-run).
 
 **The wake unit's start limit, live** (2026-11-24; a transient user path unit, `StartLimitBurst=5` in 60 s
 standing in for 30 in 10 minutes, a request every 2 s for 70 s; no container touched: the requests name no
@@ -530,7 +559,10 @@ service):
   its own timeout and then ends `unavailable` (§3(c)). The reload and the request share one allowance since
   2026-11-24: what the reload took comes off the request's time, and a reload that took all of it ends the call
   `timeout` ("the local model was started again for this call and that took all of the call's N s; it is loaded
-  now"). Before, such a call could take up to twice its timeout.
+  now"). Before, such a call could take up to twice its timeout. A call that meets an unload in progress (the
+  pass holds the in-use lock while the service stops, up to 120 s) waits for it no longer than its own time either,
+  and ends `unavailable` ("… is being unloaded while idle and this call could not wait N s for it") without
+  claiming a reload (review F5: before, it waited for the whole stop).
 - The free-memory check uses one reading of MemAvailable and one footprint. Another workload that changes memory
   at the same moment skews both the check and the next measured footprint.
 - The memory models are released while idle only when the owner sets their timeouts, like every other service. The

@@ -48,7 +48,9 @@ Paths: code `/opt/neuroscifi/venv`, state `/var/lib/neuroscifi` (0700, owned by 
 5. Check: `sudo -u ops nsf resources tick --db /var/lib/neuroscifi/instance.sqlite` must not list "whether a research task runs cannot be told" under `blockers`. If it does, step 2 was not run after the database was created. `ls -ld /var/lib/neuroscifi /var/lib/neuroscifi/instance.sqlite*` shows the modes of step 3.
 6. To undo: `sudo gpasswd -d ops neuroscifi; sudo chmod 0700 /var/lib/neuroscifi; sudo chmod 0600 /var/lib/neuroscifi/instance.sqlite; sudo rm /etc/polkit-1/rules.d/49-neuroscifi-idle.rules`, and disable `neuroscifi-idle.timer` and `neuroscifi-wake.path`. The idle pass then unloads nothing and says why.
 
-Proven with real accounts in a user namespace (`python scripts/two_account_check.py`, 41 checks; [RESOURCE_SCHEDULING §3(d)](../architecture/RESOURCE_SCHEDULING.md)). Not proven here: the units as started by systemd, `PrivateUsers=yes`, polkit acting on the rule, the real root account.
+Root never acts on anything inside `/var/lib/neuroscifi`: every step there runs as `neuroscifi`, so a link that account left there (to `/etc/shadow`, say) is refused by the kernel, and the installer names it and stops ("refused: … is a symbolic link"). If you see that, look at what `neuroscifi` keeps in its folder before anything else. Running the installer again later without `--idle` (an upgrade) keeps the arrangement and says so.
+
+Proven with real accounts in a user namespace (`python scripts/two_account_check.py`, 46 checks, among them the service account's attacks on the installer; [RESOURCE_SCHEDULING §3(d)](../architecture/RESOURCE_SCHEDULING.md)). Not proven here: the units as started by systemd, `PrivateUsers=yes`, polkit acting on the rule, the real root account.
 
 ## 2. Start and stop
 
