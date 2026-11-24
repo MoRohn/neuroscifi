@@ -78,6 +78,85 @@
   }
  },
  "generated_at": "2026-11-24",
+ "last_review_round": {
+  "attack_suite_and_benchmark_inputs_moved": 0,
+  "commits": {
+   "279b712": "roles reversed in any voice refused (PASSIVE_SWAP, ROLE_SWAP); a first version refused three attack-suite and benchmark sentences and was tightened to 'the same names, numbers aside', a reduced passive, negation between 'be' and the participle, and clauses joined by 'and'",
+   "702bb48": "a raw-text element holding a direction control loses its content (L9); comment: right-to-left lines keep marks, embeddings and isolates; no other consumer compares claims with a model's words",
+   "81f3ab1": "no exemption for openers needing their page (Both, Such, One, The latter ...), live and in the frozen class (which only got narrower)",
+   "a9b7689": "corpus entries first: 26 sentences (openers needing their page; roles reversed in any voice)"
+  },
+  "final": {
+   "different": {},
+   "gap_sentences_not_yet": {},
+   "identical": 1618,
+   "loosened": {
+    "gap": 11,
+    "review": 6
+   },
+   "stricter": {
+    "gap": 149,
+    "review": 24
+   }
+  },
+  "gap_corpora": {
+   "labels": {
+    "case": {
+     "accept": 23,
+     "open": 1,
+     "reject": 24
+    },
+    "cut": {
+     "accept": 15,
+     "open": 1,
+     "reject": 31
+    },
+    "restatement": {
+     "accept": 14,
+     "open": 1,
+     "reject": 41
+    },
+    "restriction": {
+     "accept": 49,
+     "lost": 7,
+     "open": 2,
+     "reject": 53
+    },
+    "unseen": {
+     "accept": 9,
+     "reject": 28
+    },
+    "wording": {
+     "accept": 11,
+     "reject": 22
+    }
+   },
+   "sizes": {
+    "case": 48,
+    "cut": 47,
+    "restatement": 56,
+    "restriction": 111,
+    "unseen": 37,
+    "wording": 33
+   }
+  },
+  "offline_benchmark": "every metric unchanged",
+  "reference_inputs": {
+   "benchmark": 248,
+   "gap": 332,
+   "harvested": 1137,
+   "review": 91
+  },
+  "refusals_by_mark": {
+   "does not hold ": 74,
+   "ends in its own attribution followed by more words (": 40,
+   "makes the agent of ": 17,
+   "makes the one ": 5,
+   "rests on characters a reader does not see in ": 18,
+   "writes ": 24
+  },
+  "what": "the security re-review's leftovers on the guard and extraction (L9, the opener list, roles reversed in any voice, the right-to-left note)"
+ },
  "live_pipeline": {
   "command": "scripts/bench_pipeline.py --url http://127.0.0.1:8811/v1 --model qwen3-30b-a3b-instruct-2507-fp8 --key-file <key file> --texts (default settings)",
   "last_recorded_default_runs": [

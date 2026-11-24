@@ -424,15 +424,15 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   `tests/inference/test_inference_critique_scope.py`.
 - **What the guard does beyond 0.7.0, and how that is held.** `compose()` and the guard are the ones of 0.7.0
   (commit `307b907`), which eight review rounds attacked, with additions that each either only refuse or are of
-  one proven class. `tests/inference/test_guard_differential.py` replays 1,782 recorded inputs (every argument that
+  one proven class. `tests/inference/test_guard_differential.py` replays 1,808 recorded inputs (every argument that
   commit's own guard tests pass to `compose()` and the guard, the security review's corpora, the live benchmark's
   sentences, and one adversarial corpus per gap closed since: `tests/inference/fixtures/guard_corpus_gaps.json`,
-  306 sentences, each labelled reject, accept, lost or open) and compares every composed sentence, accepted item and
+  332 sentences, each labelled reject, accept, lost or open) and compares every composed sentence, accepted item and
   rejection with what `307b907` gives (`scripts/guard_differential.py record --ref 307b907` rewrites the reference
   from that commit's source). A case may differ only as *stricter* (a sentence 307b907 accepted is refused, with
   reasons that all start with a refusal mark: `reasoning.CUT_WORDS`, `reasoning.REFUSALS`) or *loosened* (a
   sentence 307b907 rejected is accepted, of the one class the script proves with its own frozen copy of that
-  class, not with the tree's code); anything else fails the test. Today: 1,602 identical, 163 stricter, 17
+  class, not with the tree's code); anything else fails the test. Today: 1,618 identical, 173 stricter, 17
   loosened, 0 different; none of the attack suite's 1,137 inputs and none of the
   benchmark's 248 sentences moved. The refusals are asked after every 0.7.0 check has accepted the sentence, and a
   refused sentence still counts as the earlier sentence it would have been, so no other sentence's verdict moves.
@@ -463,8 +463,9 @@ included); failed and cancelled runs keep the extractive report only. It passes 
     changes the order in which neighbouring characters are shown, so the paragraph that holds one is dropped whole
     (the HTML block, not only to the next `<br>`; a line in other text: `text.reorders`, `text.as_seen`); a tag is
     only what the HTML tokenizer starts one with, so a control between a literal "<" and ">" is a control in text.
-    Right-to-left text (Hebrew, Arabic) is the exception: there marks and isolates are how text is written, so its
-    line keeps them, the claims made of it carry them, and this refusal keeps those claims out of answers. A page in
+    Inside raw-text elements (title, textarea, script, style, xmp, …) there are no tags, so such an element holding a
+    control loses its content. Right-to-left text (Hebrew, Arabic) is the exception to the drop: there marks,
+    embeddings and isolates are how text is written, so its line keeps them (overrides never), the claims made of it carry them, and this refusal keeps those claims out of answers. A page in
     those scripts thus loses the answer's use of every line that holds a mark or an isolate. A claim that reached
     the guard holding such a character (stored earlier, or by another road) is not cited.
   - *The model's own attribution with further words* (`reasoning.CUT_WORDS`): `compose()` replaces a trailing "…
@@ -480,19 +481,24 @@ included); failed and cancelled runs keep the extractive report only. It passes 
     claims clause by clause; for a sentence that is one cited claim word for word (`reasoning.restates`) it can
     only find the claim's own structure ("The flaw is fixed in versions 2 and 3." for that very claim: "3: says what
     its cited claims say of something else"). When that is the sentence's only fault it is accepted; with any other
-    fault every reason stays (`reasoning.ANCHOR_TIED`). Not for a claim whose subject is a bare pronoun ("It is
-    fixed in …"): out of its page it attaches to whatever the answer is about. The differential proves each such
+    fault every reason stays (`reasoning.ANCHOR_TIED`). Not for a claim that opens with a word whose referent is on
+    its page ("It", "They", "This", "Both", "Such", "One", "Another", "Each", "Neither", "Either", "The latter",
+    "The former"): out of its page it attaches to whatever the answer is about. The differential proves each such
     case with a copy of the class frozen in the script (one claim, its own sources, its text character for
-    character with 307b907's attribution, no "according to", no unseen character, no pronoun lead), and 307b907
+    character with 307b907's attribution, no "according to", no unseen character, none of those openers), and 307b907
     rejected that text for the anchor rule and nothing else; widening `restates()` makes the test fail. What a
     hostile page can get from it: its own claim shown word for word with the code's hedge for the claim's state, as
     0.7.0 already showed that claim's one-version wording.
-  - *A passive that swaps who did what* (`reasoning.PASSIVE_SWAP`): "makes the agent of 'replaced' in C1 its subject
-    ('2.5.5 numpy'): who does what is swapped". 0.7.0's role check read active clauses and passives that both keep
-    their "by" agent, so "NumPy 2.5.5 was replaced after the flaw." passed for "NumPy 2.5.4 was replaced by NumPy
-    2.5.5 after the flaw", and "Trent was robbed, according to the police report by Mallory." for "Mallory was
-    robbed by Trent". A passive clause whose subject names the claim's agent of the same participle, and not the
-    claim's own subject, is refused (names compared with numbers and versions kept).
+  - *Roles reversed, in any voice* (`reasoning.PASSIVE_SWAP`, `reasoning.ROLE_SWAP`): "makes the agent of
+    'replaced' in C1 its subject ('2.5.5 numpy'): who does what is swapped", "makes the one C1 says was 'acquired'
+    its doer ('acme corp'): …". 0.7.0's role check read active clauses and passives that both keep their "by" agent,
+    so "NumPy 2.5.5 was replaced after the flaw." passed for "NumPy 2.5.4 was replaced by NumPy 2.5.5 after the
+    flaw", "Trent was robbed, according to the police report by Mallory." for "Mallory was robbed by Trent", and
+    "Globex was acquired by Acme Corp." or "It was Acme Corp that acquired Globex." for "Globex acquired Acme Corp".
+    Every clause built on a past form gets a doer and a done-to (`_roles`: active; passive with "be" or "get" and
+    up to two adverbs or "not" between; a reduced passive "created by …"; a cleft read without its frame; a clause
+    joined by "and", "or", "but" has its own subject). A sentence whose done-to names the claim's doer, or whose
+    doer names the claim's done-to, is refused; "names" means the same words, numbers and dates aside.
 
   Known and unchanged, each recorded in the gap corpora as "open" or "lost": a pronoun of the sentence's own beside
   a claim's capitalised word ("US sanctions hit us"); two versions swapped between two clauses of one name ("Zephyr
