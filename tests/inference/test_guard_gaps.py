@@ -291,7 +291,9 @@ def test_words_that_only_name_the_source_are_removed_as_0_7_0_removed_them(after
     "from 2025", "from NumPy Two", "from Linux Users Only", "by NOT The City", "from Reuters, Monday",
     "of its lower course", "that the vendor disputes", "by Reuters denied", "by Reuters reportedly",
     "from Bank of", "by Ana Ruiz Jose Luis Maria Carmen Lopez",           # seven words
-    "from ACME & Sons",                                                   # a sign between words: refused, kept simple
+    "from ACME & Sons",
+    "by Orbix Labs Retracted", "by Orbix Labs Withdrawn", "from the Orbix Archive Superseded",   # review round 2
+    "by Orbix Labs Disputed", "by Orbix Labs DEBUNKED", "by the Draft Orbix Board",                                                   # a sign between words: refused, kept simple
     "",
 ])
 def test_anything_else_after_the_source_word_is_not_a_name(after):

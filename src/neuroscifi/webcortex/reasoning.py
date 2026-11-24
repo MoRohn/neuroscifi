@@ -178,6 +178,12 @@ _ANSWER_WORD = re.compile(r"^\s*(?:yes|no)\b(?!-)\s*[,;:!\u2014\u2013-]+\s*", re
 # Space Agency", "the NumPy security team"). Anything else may be what the sentence says (CUT_WORDS).
 _NAMING_LEAD = re.compile(r"(?:by|from)\s+(?:(?:the|a|an)\s+)?", re.IGNORECASE)
 _NAME_TOKEN = re.compile(r"[^\W\d_][\w&'’.-]*")
+# Words that say what became of a source, not who it is: refused in a name, capitalised or not ("by Orbix Labs
+# Retracted" reads as a name only because of its capital)
+_SOURCE_STATUS = frozenset("""retracted withdrawn disputed contested superseded corrected updated amended revised
+deprecated obsolete outdated archived rescinded revoked cancelled canceled debunked disproven disproved discredited
+refuted unverified unconfirmed alleged purported draft preliminary provisional pending invalid invalidated void
+erroneous incorrect wrong false fake forged hoax satire satirical parody""".split())
 # head nouns of an organisation's name that are also verbs ("the NumPy security team", "the Reuters news desk")
 _ORGANISATION_NOUNS = frozenset("team staff board group panel desk press service office unit council committee "
                                 "project network watch monitor review".split())
@@ -189,8 +195,9 @@ def _names_the_source(after: str) -> bool:
     letter), and nothing else, punctuation included. Whatever its case, no word may be a number or a number word, a
     stopword (a preposition, a conjunction, an auxiliary, a pronoun: "for adults", "until further notice", "and was
     vetoed", "in no case"; "of" and "and" only between two capitalised words: "the Bank of England"), a
-    negation, a word of scope, quantity, time or comparison ("Users Only", "NOT The City", "NumPy Two") or a
-    restriction (_restriction); and no word without a capital may be an -ed, -ing or -ly form or a verb (a head
+    negation, a word of scope, quantity, time or comparison ("Users Only", "NOT The City", "NumPy Two"), a word of
+    what became of the source ("Orbix Labs Retracted", _SOURCE_STATUS) or a restriction (_restriction); and no word
+    without a capital may be an -ed, -ing or -ly form or a verb (a head
     noun of an organisation's name excepted: "team", "desk", _ORGANISATION_NOUNS)."""
     lead = _NAMING_LEAD.match(after)
     if not lead or _restriction(after) is not None or re.search(r"\d", after):
@@ -206,7 +213,7 @@ def _names_the_source(after: str) -> bool:
             continue
         if low in T.STOPWORDS or low in _ENTAIL_NEG or low in _NEG_WORDS or low in _PREPOSITIONS or \
                 low in _NUMBER_WORDS or low in _SCOPE or low in _QUANTITY_WORDS or low in _TIME or \
-                low in _COMPARATIVE:
+                low in _COMPARATIVE or low in _SOURCE_STATUS:
             return False
         if not capital[i] and (low.endswith(("ed", "ing", "ly")) or (low in _verbs() and low not in
                                                                      _ORGANISATION_NOUNS)):
