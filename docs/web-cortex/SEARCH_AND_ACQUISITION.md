@@ -182,7 +182,17 @@ the stop landed may complete its handshake; it is closed with nothing sent on it
 
 A request that is already on the wire is cut: while it waits for its answer its connection's watchdog asks too,
 every 0.25 s (`net.STOP_POLL`), and shuts the connection down on a stop. A cancel therefore ends a task within
-about a quarter of a second, not when its slowest request ends (before, up to the 15 s fetch timeout).
+about a quarter of a second, not when its slowest request ends (before, up to the 15 s fetch timeout). A request
+that was charged and then never written, because the stop came while the connection was being opened (a slow TLS
+handshake included), is not counted.
+
+Before a request is sent, an answer that cannot be read is a stop, for the reader and for a fetch ahead alike.
+For a request already on the wire the two differ. A fetch ahead is cut when its gate cannot be read. The reader's
+own request is not: a watch that fails is no answer, and the watch asks again. And when the reader's request was
+cut for a stop that its gate then does not confirm (the owner undid it within the quarter second), the fetch ends
+`interrupted`: the page was not read, and nothing is concluded about the site. No robots.txt verdict, back-off or
+cache entry is recorded from a cut request (a robots.txt fetch that fails on its own means "disallow" for 24
+hours in that fetcher, which a cut must never cause).
 
 | Fetch | Asks | After a stop |
 |---|---|---|
@@ -219,8 +229,8 @@ so a task's report, events and charged usage are the ones `read_ahead=1` produce
 
 Measured on the offline benchmark (`docs/quality/evidence/accel_decisions_read_ahead.json`): at 1, at 4 and at the
 default every quality metric and every task's usage, sources, answer and events are identical, and the safety
-invariants hold. With 300 ms added to every response, the median task takes 2.03 s (p95 3.84 s) at 1 and
-0.97 s (p95 1.81 s) at 4, with 4 requests sent and not used beside the 350 the tasks used. The same
+invariants hold. With 300 ms added to every response, the median task takes 2.08 s (p95 3.85 s) at 1 and
+0.96 s (p95 1.79 s) at 4, with 4 requests sent and not used beside the 350 the tasks used. The same
 file records the stop test: requests reaching the sites after a cancel, after web access was turned off and after a
 denial were 1, 11 and 11 at `read_ahead` 1 before these changes (4, 8 and 8 at 4), and are 0 in all six cases now.
 
@@ -228,18 +238,33 @@ What bounds it:
 
 - **Stops.** The section above: no request ahead is sent after a stop, and one on the wire is cut.
 - **One connection per site.** A site is busy while any exchange with it is in progress. A fetch ahead that reaches
-  a busy site (its page redirects onto the site the reader is on, or onto another fetch ahead's) stops there and is
-  not used; the reader fetches that page at its turn. When the reader's own fetch reaches a site a fetch ahead is
-  talking to, that fetch is cut and likewise not used. Request starts to one site stay spaced by its interval, as
-  for any fetch.
+  a busy site (its page redirects onto the site the reader is on, or onto another fetch ahead's) stops there,
+  before the request, and its claim goes on from that hop at the reader's turn, so nothing is fetched twice. When
+  the reader's own fetch reaches a site a fetch ahead is talking to, that fetch is cut and not used. Request starts to one site stay spaced by its interval, as
+  for any fetch. The busy mark lives in one fetcher, that is in one process: two worker processes, or the worker
+  and the MCP server, can each be talking to the same site (back-offs are shared through the public cache; the
+  busy mark is not).
 - **The task's budget, for all fetches ahead together.** A fetch ahead sends a request, and reads a body byte, only
   while the task's budget has room, counting what the task was charged, what its earlier fetches ahead sent unused
-  and what its fetches ahead in flight hold (`SafeFetcher._ahead`). So what read-ahead sends unused never exceeds
-  `max_requests`, nor what it receives unused `max_bytes` (plus one byte per fetch ahead: at the limit a read takes
-  one byte more to learn that the body goes on, as the reader's own read does). The reader itself is charged
-  exactly as at `read_ahead=1`, so the task ends where one-at-a-time reading ends: a fetch ahead that stopped at the
-  budget is used only when a fetch made at its turn would be refused at the same place, and is fetched again
-  otherwise. A task's whole traffic is therefore at most its budget plus what was sent ahead unused.
+  and what its fetches ahead in flight hold (`SafeFetcher._ahead`). One is started only when that room covers a
+  typical fetch, robots.txt and the page (`net.TYPICAL_FETCH` = 2 requests), which it holds from the start, so a
+  later fetch ahead cannot take them. Exactly:
+  - what the task is charged is at most `max_requests` (the reader is charged as at `read_ahead=1`, so the task
+    ends where one-at-a-time reading ends);
+  - what read-ahead sends unused is at most `max_requests` (bytes: `max_bytes`, plus one byte per fetch ahead: at
+    the limit a read takes one byte more to learn that the body goes on, as the reader's own read does);
+  - so everything a task sends is below twice `max_requests`. That is the bound, not the typical case: the
+    unused part is only what a fetch ahead had sent before it became unusable.
+  A fetch ahead that runs out of room at a later request (a redirect chain) stops before that request, and its
+  claim *goes on from that hop* on the task's own budget: what it sent is charged as if the reader had sent it, and
+  nothing is requested twice. One cut while reading a body is used only when a read made at its turn would stop at
+  the same place, and is fetched again otherwise. What remains unusable, and therefore unused traffic: a fetch
+  ahead overtaken by a changed deny list (every fetch ahead in flight is thrown away, and the reader fetches those
+  pages at their turn under the new policy), by a back-off, or cut by the reader reaching its site, and a page
+  the reader passed by. Measured with a request budget of 20 and three
+  five-hop redirect chains ahead (the review's worst-traffic scenario): 21 or 22 requests reach sites with no owner
+  action (34 before fetches ahead were continued), 32 when the owner denies an unrelated domain mid-run (38
+  before).
 - **Daily allowances.** Tasks whose traffic counts against one (`daily_autonomous`: curiosity and refreshes;
   `daily_mcp`: MCP clients) always read one page at a time (`orchestrator.daily_capped`), so every request they
   send is one they were charged for and the caps hold as before. Nobody waits for curiosity or a refresh. As a
@@ -256,8 +281,11 @@ What bounds it:
 earlier candidate's redirect leads onto that site, one-at-a-time reading would have followed it before the 429
 existed; read ahead, the site has already asked, so the hop is not made and that source is missing from the report.
 Politeness wins over identical outcomes here: the site is not asked again to find out what it would have answered a
-moment earlier. The report says so ("a source there was not read: the site asked for fewer requests"), and the
-failure is recorded as `rate_limited`
+moment earlier. Exactly what is missing: pages that lead onto the site that asked. The site that asked is the one
+left alone (the failing request's site, a redirect hop's included), so later candidates *on that site* are not
+tried, at either window; the candidate's own site, which asked for nothing, is read as usual. The report says so
+("a source there was not read: the site asked for fewer requests", and "N more candidate(s) not tried: the site
+asked for fewer requests" for those skipped), and the failure is recorded as `rate_limited`
 (`test_a_back_off_received_by_a_fetch_ahead_applies_to_the_site_at_once`).
 
 `nsf web config --set read_ahead=1` reads one page at a time for every task, as 0.7.0 did: nothing is fetched ahead

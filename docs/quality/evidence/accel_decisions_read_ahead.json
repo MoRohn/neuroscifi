@@ -1,9 +1,9 @@
 {
  "what": "Read-ahead as the default (decision B): the offline corpus benchmark at read_ahead 1, at 4 and at the configuration default, every key under 'metrics' compared; and task wall time with every fixture response delayed 300 ms, per window",
- "generated_at": "2026-11-23T23:07:44Z",
- "git_commit": "cff8ac8",
+ "generated_at": "2026-11-24T00:32:01Z",
+ "git_commit": "34c21c3",
  "git_dirty": true,
- "git_note": "measured on the source of that commit; the tree was dirty with documentation and one test file only",
+ "git_note": "measured on the source of that commit; the tree was dirty with documentation only",
  "environment": {
   "host_digest": "382a803dcc0d",
   "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
@@ -20,7 +20,7 @@
    "markdownify": "1.2.4",
    "playwright": "1.64.1"
   },
-  "git_commit": "9c9c011",
+  "git_commit": "d3ef9a4",
   "git_dirty": true
  },
  "configuration_default_read_ahead": 4,
@@ -115,68 +115,68 @@
      "per_mode_seconds": {
       "fact_verification": {
        "n": 25,
-       "p50": 0.0548,
-       "p95": 0.1539,
-       "mean": 0.0662,
-       "max": 0.1654
+       "p50": 0.0535,
+       "p95": 0.1542,
+       "mean": 0.0657,
+       "max": 0.1656
       },
       "quick_lookup": {
        "n": 16,
-       "p50": 0.0266,
-       "p95": 0.146,
-       "mean": 0.041,
-       "max": 0.149
+       "p50": 0.0268,
+       "p95": 0.1457,
+       "mean": 0.0412,
+       "max": 0.1468
       },
       "scientific": {
        "n": 1,
-       "p50": 0.0698,
-       "p95": 0.0698,
-       "mean": 0.0698,
-       "max": 0.0698
+       "p50": 0.0635,
+       "p95": 0.0635,
+       "mean": 0.0635,
+       "max": 0.0635
       },
       "technical": {
        "n": 9,
-       "p50": 0.0736,
-       "p95": 0.1921,
-       "mean": 0.093,
-       "max": 0.266
+       "p50": 0.0756,
+       "p95": 0.1992,
+       "mean": 0.0947,
+       "max": 0.2782
       }
      },
      "all_tasks_seconds": {
       "n": 51,
-      "p50": 0.0546,
-      "p95": 0.1521,
+      "p50": 0.0534,
+      "p95": 0.1528,
       "mean": 0.0631,
-      "max": 0.266
+      "max": 0.2782
      },
      "extraction_ms": {
       "scrapling": {
        "n": 61,
-       "p50": 0.6006,
-       "p95": 0.9458,
-       "mean": 0.6583,
-       "max": 2.1433
+       "p50": 0.608,
+       "p95": 1.1424,
+       "mean": 0.683,
+       "max": 2.5902
       },
       "trafilatura": {
        "n": 61,
-       "p50": 1.462,
-       "p95": 3.0882,
-       "mean": 1.7284,
-       "max": 3.9034
+       "p50": 1.5479,
+       "p95": 2.9553,
+       "mean": 1.7741,
+       "max": 3.9402
       },
       "auto": {
        "n": 61,
-       "p50": 0.6993,
-       "p95": 2.9005,
-       "mean": 1.0598,
-       "max": 3.4
+       "p50": 0.7785,
+       "p95": 2.8544,
+       "mean": 1.073,
+       "max": 3.2611
       }
      },
      "probe_seconds": {
-      "html_bomb_extract": 0.197,
-      "js_render": 1.25
+      "html_bomb_extract": 0.176,
+      "js_render": 1.259
      },
-     "run_seconds": 8.711
+     "run_seconds": 8.84
     }
    ],
    "4": [
@@ -185,136 +185,136 @@
      "per_mode_seconds": {
       "fact_verification": {
        "n": 25,
-       "p50": 0.076,
-       "p95": 0.1671,
-       "mean": 0.0796,
-       "max": 0.1755
+       "p50": 0.0628,
+       "p95": 0.1798,
+       "mean": 0.0784,
+       "max": 0.1844
       },
       "quick_lookup": {
        "n": 16,
-       "p50": 0.0374,
-       "p95": 0.1636,
-       "mean": 0.053,
-       "max": 0.1831
+       "p50": 0.0392,
+       "p95": 0.1692,
+       "mean": 0.0556,
+       "max": 0.2045
       },
       "scientific": {
        "n": 1,
-       "p50": 0.0907,
-       "p95": 0.0907,
-       "mean": 0.0907,
-       "max": 0.0907
+       "p50": 0.0873,
+       "p95": 0.0873,
+       "mean": 0.0873,
+       "max": 0.0873
       },
       "technical": {
        "n": 9,
-       "p50": 0.1007,
-       "p95": 0.1329,
-       "mean": 0.1052,
-       "max": 0.141
+       "p50": 0.0937,
+       "p95": 0.1291,
+       "mean": 0.0961,
+       "max": 0.1442
       }
      },
      "all_tasks_seconds": {
       "n": 51,
-      "p50": 0.075,
-      "p95": 0.1636,
-      "mean": 0.076,
-      "max": 0.1831
+      "p50": 0.0628,
+      "p95": 0.1735,
+      "mean": 0.0746,
+      "max": 0.2045
      },
      "extraction_ms": {
       "scrapling": {
        "n": 61,
-       "p50": 0.6642,
-       "p95": 1.6425,
-       "mean": 0.8009,
-       "max": 1.9209
+       "p50": 0.6721,
+       "p95": 1.7929,
+       "mean": 0.8484,
+       "max": 3.1771
       },
       "trafilatura": {
        "n": 61,
-       "p50": 1.8035,
-       "p95": 3.7888,
-       "mean": 2.1586,
-       "max": 4.2816
+       "p50": 1.8978,
+       "p95": 3.8467,
+       "mean": 2.2213,
+       "max": 4.743
       },
       "auto": {
        "n": 61,
-       "p50": 0.9069,
-       "p95": 3.6251,
-       "mean": 1.3183,
-       "max": 3.9987
+       "p50": 0.9382,
+       "p95": 3.6033,
+       "mean": 1.3135,
+       "max": 3.9238
       }
      },
      "probe_seconds": {
       "html_bomb_extract": 0.178,
-      "js_render": 1.321
+      "js_render": 1.205
      },
-     "run_seconds": 10.403
+     "run_seconds": 10.325
     },
     {
      "label": "wall-clock seconds on this host, offline (loopback FixtureWeb); not comparable to live",
      "per_mode_seconds": {
       "fact_verification": {
        "n": 25,
-       "p50": 0.0781,
-       "p95": 0.1762,
-       "mean": 0.0816,
-       "max": 0.1873
+       "p50": 0.0656,
+       "p95": 0.1622,
+       "mean": 0.0749,
+       "max": 0.1729
       },
       "quick_lookup": {
        "n": 16,
-       "p50": 0.0368,
-       "p95": 0.1643,
-       "mean": 0.0512,
-       "max": 0.1683
+       "p50": 0.0371,
+       "p95": 0.1711,
+       "mean": 0.053,
+       "max": 0.1928
       },
       "scientific": {
        "n": 1,
-       "p50": 0.0945,
-       "p95": 0.0945,
-       "mean": 0.0945,
-       "max": 0.0945
+       "p50": 0.0962,
+       "p95": 0.0962,
+       "mean": 0.0962,
+       "max": 0.0962
       },
       "technical": {
        "n": 9,
-       "p50": 0.0954,
-       "p95": 0.1804,
-       "mean": 0.1104,
-       "max": 0.2227
+       "p50": 0.1029,
+       "p95": 0.1291,
+       "mean": 0.1028,
+       "max": 0.1321
       }
      },
      "all_tasks_seconds": {
       "n": 51,
-      "p50": 0.068,
-      "p95": 0.1752,
-      "mean": 0.0774,
-      "max": 0.2227
+      "p50": 0.0633,
+      "p95": 0.1632,
+      "mean": 0.0734,
+      "max": 0.1928
      },
      "extraction_ms": {
       "scrapling": {
        "n": 61,
-       "p50": 0.6879,
-       "p95": 1.7576,
-       "mean": 0.8389,
-       "max": 2.2117
+       "p50": 0.6206,
+       "p95": 0.9904,
+       "mean": 0.6519,
+       "max": 1.4035
       },
       "trafilatura": {
        "n": 61,
-       "p50": 1.9429,
-       "p95": 3.7482,
-       "mean": 2.1923,
-       "max": 4.7841
+       "p50": 1.3759,
+       "p95": 3.6596,
+       "mean": 1.8483,
+       "max": 4.0856
       },
       "auto": {
        "n": 61,
-       "p50": 0.9741,
-       "p95": 3.5001,
-       "mean": 1.3154,
-       "max": 3.9988
+       "p50": 0.6794,
+       "p95": 3.5669,
+       "mean": 1.1568,
+       "max": 3.7972
       }
      },
      "probe_seconds": {
-      "html_bomb_extract": 0.177,
-      "js_render": 1.347
+      "html_bomb_extract": 0.219,
+      "js_render": 1.111
      },
-     "run_seconds": 10.535
+     "run_seconds": 10.129
     }
    ],
    "default": [
@@ -323,68 +323,68 @@
      "per_mode_seconds": {
       "fact_verification": {
        "n": 25,
-       "p50": 0.0672,
-       "p95": 0.1602,
-       "mean": 0.0781,
-       "max": 0.1988
+       "p50": 0.0693,
+       "p95": 0.1697,
+       "mean": 0.0774,
+       "max": 0.1965
       },
       "quick_lookup": {
        "n": 16,
-       "p50": 0.0357,
-       "p95": 0.1655,
-       "mean": 0.0526,
-       "max": 0.1807
+       "p50": 0.0362,
+       "p95": 0.1527,
+       "mean": 0.0501,
+       "max": 0.1575
       },
       "scientific": {
        "n": 1,
-       "p50": 0.0928,
-       "p95": 0.0928,
-       "mean": 0.0928,
-       "max": 0.0928
+       "p50": 0.0769,
+       "p95": 0.0769,
+       "mean": 0.0769,
+       "max": 0.0769
       },
       "technical": {
        "n": 9,
-       "p50": 0.0928,
-       "p95": 0.1945,
-       "mean": 0.1116,
-       "max": 0.2428
+       "p50": 0.1009,
+       "p95": 0.1412,
+       "mean": 0.1033,
+       "max": 0.1535
       }
      },
      "all_tasks_seconds": {
       "n": 51,
-      "p50": 0.0643,
-      "p95": 0.1709,
-      "mean": 0.0763,
-      "max": 0.2428
+      "p50": 0.0673,
+      "p95": 0.1564,
+      "mean": 0.0734,
+      "max": 0.1965
      },
      "extraction_ms": {
       "scrapling": {
        "n": 61,
-       "p50": 0.6687,
-       "p95": 1.7487,
-       "mean": 0.8223,
-       "max": 2.1582
+       "p50": 0.6073,
+       "p95": 2.7393,
+       "mean": 0.8959,
+       "max": 3.3764
       },
       "trafilatura": {
        "n": 61,
-       "p50": 1.9329,
-       "p95": 3.8018,
-       "mean": 2.2276,
-       "max": 4.8174
+       "p50": 1.7041,
+       "p95": 5.125,
+       "mean": 2.1472,
+       "max": 6.2438
       },
       "auto": {
        "n": 61,
-       "p50": 0.9615,
-       "p95": 3.672,
-       "mean": 1.3521,
-       "max": 3.9377
+       "p50": 0.8118,
+       "p95": 2.8834,
+       "mean": 1.2352,
+       "max": 3.0951
       }
      },
      "probe_seconds": {
-      "html_bomb_extract": 0.18,
-      "js_render": 1.177
+      "html_bomb_extract": 0.177,
+      "js_render": 1.153
      },
-     "run_seconds": 10.344
+     "run_seconds": 10.193
     }
    ]
   },
@@ -397,10 +397,10 @@
    "1": {
     "task_seconds": {
      "n": 51,
-     "p50": 2.027,
-     "p95": 3.841,
-     "mean": 2.208,
-     "max": 5.872
+     "p50": 2.077,
+     "p95": 3.848,
+     "mean": 2.251,
+     "max": 5.904
     },
     "requests_used": 350,
     "pages_read": 287,
@@ -411,10 +411,10 @@
    "2": {
     "task_seconds": {
      "n": 51,
-     "p50": 1.312,
-     "p95": 2.359,
-     "mean": 1.389,
-     "max": 3.579
+     "p50": 1.341,
+     "p95": 2.299,
+     "mean": 1.409,
+     "max": 3.654
     },
     "requests_used": 350,
     "pages_read": 287,
@@ -425,10 +425,10 @@
    "3": {
     "task_seconds": {
      "n": 51,
-     "p50": 1.096,
-     "p95": 2.085,
-     "mean": 1.133,
-     "max": 2.664
+     "p50": 1.006,
+     "p95": 2.115,
+     "mean": 1.13,
+     "max": 2.776
     },
     "requests_used": 350,
     "pages_read": 287,
@@ -439,10 +439,10 @@
    "4": {
     "task_seconds": {
      "n": 51,
-     "p50": 0.973,
-     "p95": 1.81,
-     "mean": 1.0,
-     "max": 2.451
+     "p50": 0.962,
+     "p95": 1.785,
+     "mean": 0.985,
+     "max": 2.485
     },
     "requests_used": 350,
     "pages_read": 287,
@@ -454,7 +454,7 @@
   "identical_outcomes": true,
   "differences": []
  },
- "wall_seconds": 334.2,
+ "wall_seconds": 335.5,
  "stops": {
   "what": "tests/webcortex/test_read_ahead_stops.py::test_no_request_starts_after_a_stop: a research run whose fetches (the reader's and read_ahead - 1 ahead) all wait for their site's robots.txt answer when the owner stops it on another connection; the answers are then released. Counted: requests that reach the fixture sites after the stop was committed",
   "requests_after_the_stop": {
@@ -600,6 +600,102 @@
    "three tests that failed at the default, 5 runs each": "15 of 15 passed",
    "test_console_research.py::test_research_journey, 5 runs": "5 of 5 passed",
    "test_presence, test_pocket_research_e2e, test_a11y_tree, test_console_research, test_reasoning_console": "42 passed"
+  },
+  "note": "numbers of the first review round, as measured then; the second pass below changed the budget case again"
+ },
+ "second_pass": {
+  "what": "The findings of the second review pass (G1 to G4), before (the merged branch at d3ef9a4, as the review measured it) and after: the reviewer's own scripts run against the fixed code, and the tests named",
+  "G1_sources_read_when_an_earlier_candidates_redirect_meets_a_429_received_ahead": {
+   "one_page_at_a_time": [
+    "one.example/second",
+    "one.example/zephyr",
+    "three.example/zephyr"
+   ],
+   "read_ahead_4_before": {
+    "sources": [
+     "three.example/zephyr"
+    ],
+    "false_limitation": "one.example: 1 more candidate(s) not tried: the site's crawl delay puts the next request beyond the fetch timeout"
+   },
+   "read_ahead_4_after": {
+    "sources": [
+     "one.example/second",
+     "three.example/zephyr"
+    ],
+    "limitations_about_one.example": []
+   },
+   "tests": [
+    "test_a_back_off_received_by_a_fetch_ahead_applies_to_the_site_at_once"
+   ]
+  },
+  "G2_requests_charged_after_a_stop_during_the_readers_tls_handshake": {
+   "before": 1,
+   "after": 0,
+   "tests": [
+    "test_a_stop_during_the_readers_tls_handshake_charges_no_request"
+   ]
+  },
+  "G3_one_watch_read_error_while_robots_txt_is_on_the_wire": {
+   "before": {
+    "sources": [
+     "two.example/zephyr"
+    ],
+    "robots_remembered_for_one.example": "disallow all (24 h)"
+   },
+   "after": {
+    "sources": [
+     "one.example/second",
+     "one.example/zephyr",
+     "two.example/zephyr"
+    ],
+    "failures": []
+   },
+   "tests": [
+    "test_a_watch_that_cannot_be_read_does_not_cut_a_healthy_request",
+    "test_a_request_cut_for_a_stop_that_was_withdrawn_is_interrupted_and_says_nothing_about_the_site"
+   ]
+  },
+  "G4_requests_reaching_sites_with_max_requests_20_and_three_five_hop_chains_ahead": {
+   "no_owner_action": {
+    "before": 34,
+    "after": 22,
+    "charged": 20,
+    "unused_after": 2
+   },
+   "owner_denies_an_unrelated_domain_mid_run": {
+    "before": 38,
+    "after": 32,
+    "charged": 20,
+    "unused_after": 12
+   },
+   "six_redirecting_candidates_max_requests_10": {
+    "first_review": 21,
+    "before": 16,
+    "after": 14,
+    "charged": 10
+   },
+   "bound": "charged <= max_requests; unused read-ahead <= max_requests; total below 2 x max_requests",
+   "how": "a fetch ahead starts only with room for robots.txt and the page and holds it; one that stops before a request (no shared room, or a busy site) is continued by its claim from that hop instead of being fetched again",
+   "tests": [
+    "test_a_fetch_ahead_that_ran_out_of_shared_room_is_continued_not_fetched_again",
+    "test_a_fetch_ahead_that_ran_out_of_room_before_a_hops_robots_txt_is_continued_at_that_hop",
+    "test_a_continued_fetch_ahead_is_refused_where_one_page_at_a_time_is",
+    "test_a_fetch_ahead_is_not_started_without_room_for_a_typical_fetch",
+    "test_a_fetch_ahead_gives_back_what_it_held_and_did_not_use"
+   ]
+  },
+  "equivalence_fuzz": {
+   "what": "the reviewer's fuzz_equivalence.py: random webs under random tight budgets at read_ahead 1 and 4, comparing status, charged usage, sources and limitations",
+   "result": "seeds 7, 11 and 200, 200 scenarios each: 0 differences in 600, none above 2 x max_requests; worst traffic 1.67 x, 1.82 x and 1.75 x max_requests"
+  },
+  "progress_events": "test_each_source_read_is_its_own_progress_event_at_the_default_read_ahead",
+  "tests": {
+   "tests/webcortex/test_read_ahead_stops.py": 79,
+   "repeated_runs": "30 of 30 runs passed (79 tests each)",
+   "tests/webcortex and the six other research-running files": "2726 passed, 9 skipped"
+  },
+  "browser": {
+   "the four tests with paced fixtures, 3 runs each": "12 of 12 passed"
   }
  },
  "default": {
