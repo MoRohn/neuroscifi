@@ -115,7 +115,9 @@ def test_last_camera_event_forgotten_scrubs_root_and_event_id(instance):
 
 
 def test_sweep_expiry_scrubs_a_root_whose_last_evidence_expired(instance):
+    """With consolidation off an expired event leaves nothing, as before schema 14: its root is scrubbed."""
     db, path = instance
+    store.set_config(db, {"consolidation": False})
     evidence.start_epoch(db, "e", T0)
     observe(db, "e", "x1", "camera", CAMERA, now=T0)
     observe(db, "e", "keep", "camera", "cam-b", now=T0 + 1)
@@ -123,7 +125,28 @@ def test_sweep_expiry_scrubs_a_root_whose_last_evidence_expired(instance):
     out = governance.sweep(db, T0 + 8 * 86400)
     assert hits(db, CAMERA) == [] and CAMERA.encode() not in raw_bytes(path)
     assert hits(db, "x1", skip={("tombstones", "id")}) == []
-    assert out["expired"] == 1 and out["wal_checkpoint"] == "ok"
+    assert out["expired"] == 1 and out["wal_checkpoint"] == "ok" and "consolidated" not in out
+
+
+def test_sweep_keeps_the_root_of_a_consolidated_reading_until_it_is_forgotten(instance):
+    """With consolidation (the default, ADR-044) the expired event's root is still evidence the individual holds: it
+    is not a forgotten root. Its id leaves every table but the tombstone. Forgetting the event by its id then
+    removes the reading and scrubs the root from the file."""
+    db, path = instance
+    evidence.start_epoch(db, "e", T0)
+    observe(db, "e", "x1", "camera", CAMERA, now=T0)
+    observe(db, "e", "keep", "camera", "cam-b", now=T0 + 1)
+    governance.promote(db, "keep", T0 + 2)
+    out = governance.sweep(db, T0 + 8 * 86400)
+    assert out["expired"] == 1 and out["consolidated"] == 1 and out["wal_checkpoint"] == "ok"
+    assert ("evidence_consolidated", "root") in hits(db, CAMERA)
+    assert db.execute("SELECT count(*) FROM forgotten_roots").fetchone()[0] == 0
+    assert hits(db, "x1", skip={("tombstones", "id")}) == []
+    gone = governance.forget_evidence(db, "x1", T0 + 8 * 86400 + 1)
+    assert gone["status"] == "forgotten" and gone["effects"]["consolidated_deleted"] == 1
+    assert gone["effects"]["roots_forgotten"] == 1
+    assert hits(db, CAMERA) == [] and CAMERA.encode() not in raw_bytes(path)
+    assert db.execute("SELECT kind FROM forgotten_roots").fetchall() == [("camera",)]
 
 
 def test_root_with_evidence_left_is_not_scrubbed(instance):
@@ -173,6 +196,22 @@ def test_forget_epoch_deletes_its_revisions_decisions_and_questions(instance):
     assert db.execute("SELECT target_kind,target_id FROM deletion_log").fetchall() == [("epoch", "bench")]
     assert hits(db, PARTNER) == []
     assert hits(db, "Carol-x")  # the other epoch's partner is still known
+
+
+def test_forget_epoch_clears_the_owners_free_text_note_even_when_the_epoch_holds_nothing_else(instance):
+    """The note is the owner's own words about the epoch: forget_epoch keeps the name (tombstones and the deletion
+    log refer to it) but no copy of the note, in the table or in a freed page."""
+    db, path = instance
+    teach_ambiguous_partner(db, "bench")
+    evidence.start_epoch(db, "bare", T0, note="bare note: Alice's flat qz")
+    with store.write(db):
+        db.execute("UPDATE epochs SET note=? WHERE name='bench'", ("bench note: Alice's office qz",))
+    assert governance.forget_epoch(db, "bench", T0 + 100)["effects"]["derived_deleted"]["epoch_note"] == 1
+    out = governance.forget_epoch(db, "bare", T0 + 101)
+    assert out["status"] == "forgotten" and out["effects"]["derived_deleted"]["epoch_note"] == 1
+    assert db.execute("SELECT name, note FROM epochs ORDER BY name").fetchall() == [("bare", None), ("bench", None)]
+    assert b"note: Alice" not in raw_bytes(path)
+    assert governance.forget_epoch(db, "bare", T0 + 102)["status"] == "absent"
 
 
 def test_wal_is_truncated_after_forgetting_while_another_reader_is_open(instance):

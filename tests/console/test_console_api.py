@@ -276,6 +276,38 @@ def test_forget_epoch_and_partner(console):
     assert [d["payload"]["target_kind"] for d in deletions] == ["epoch", "partner"]
 
 
+def test_forget_a_consolidated_reading_by_its_seq_and_a_camera_by_its_root(console):
+    """Security review M2: the memory view lists a consolidated reading by its seq, so that is what forgets it; a
+    camera root is forgotten like a partner. Both go through POST /api/forget, behind the same token and checks."""
+    c = console
+    teach_baseline(c)
+    c.clock[0] += 8 * 86400
+    c.srv.last_sweep = float("-inf")
+    assert c.ok("GET", "/api/epochs/e1/evidence") == []
+    listed = c.ok("GET", "/api/memory?kind=consolidated&epoch=e1&channel=word")["items"]
+    seq = listed[0]["id"]
+    assert isinstance(seq, int) and len(listed) == 6
+    for token in (None, "wrong"):
+        assert c.post("/api/forget", {"kind": "consolidated", "target": seq}, token=token)[0] == 403
+        assert c.post("/api/forget", {"kind": "camera", "target": "cam1"}, token=token)[0] == 403
+    assert c.post("/api/forget", {"kind": "camera", "target": "cam1"}, headers={"Origin": "http://evil.example"})[0] == 403
+    for bad in (str(seq), 1.5, True, None, 0, 2 ** 63, 10 ** 30):       # beyond SQLite's integers: 400, not a 500
+        assert c.post("/api/forget", {"kind": "consolidated", "target": bad})[0] == 400
+    assert c.post("/api/forget", {"kind": "dataset", "target": 2 ** 63})[0] == 400
+    assert c.post("/api/forget", {"kind": "camera", "target": 7})[0] == 400
+    assert len(c.ok("GET", "/api/memory?kind=consolidated&epoch=e1")["items"]) == 15       # nothing went so far
+    status, data = c.post("/api/forget", {"kind": "consolidated", "target": seq})
+    assert status == 200 and data["status"] == "forgotten" and data["effects"]["consolidated_deleted"] == 1
+    assert c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]["partners"]["alice"]["n"] == 5
+    assert c.post("/api/forget", {"kind": "consolidated", "target": seq})[1]["status"] == "absent"
+    status, data = c.post("/api/forget", {"kind": "camera", "target": "cam1"})
+    assert status == 200 and data["effects"]["consolidated_deleted"] == 6 and data["effects"]["roots_forgotten"] == 1
+    assert c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]["sensors"] == {}
+    deletions = c.ok("GET", "/api/memory?kind=deletion")["items"]
+    assert [d["payload"]["target_kind"] for d in deletions][:2] == ["camera", "consolidated"]
+    assert "cam1" not in json.dumps(deletions)
+
+
 def test_writes_sweep_expired_evidence_first_and_reads_sweep_once_a_minute(console):
     c = console
     c.post("/api/epochs", {"name": "e1"})
@@ -289,6 +321,31 @@ def test_writes_sweep_expired_evidence_first_and_reads_sweep_once_a_minute(conso
     assert len(c.ok("GET", "/api/epochs/e1/evidence")) == 1  # a GET within a minute of the last sweep does not sweep
     c.srv.last_sweep = float("-inf")
     assert c.ok("GET", "/api/epochs/e1/evidence") == []  # a due GET sweeps
+
+
+def test_expired_learning_events_stay_as_consolidated_readings_over_http(console):
+    """ADR-044: after the lifetime the journal is empty, the beliefs are the same, and the API says what was kept."""
+    c = console
+    teach_baseline(c)
+    before = c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]
+    c.clock[0] += 8 * 86400
+    c.srv.last_sweep = float("-inf")
+    assert c.ok("GET", "/api/epochs/e1/evidence") == []
+    after = c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]
+    for key in ("mechanism", "sensors", "partners", "reference_roots", "unidentifiable"):
+        assert after[key] == before[key]
+    assert after["evidence"] == {"total": 15, "learning": 15, "memory_only": 0, "duplicates_ignored": 0,
+                                 "consolidated": 15}
+    epoch, = c.ok("GET", "/api/epochs")
+    assert epoch["evidence"] == 0 and epoch["consolidated"] == 15 and epoch["forgotten"] == 15
+    inventory = c.ok("GET", "/api/inventory")
+    assert inventory["memory"]["consolidated_readings"] == 15 and inventory["regulation"]["consolidated_readings"] == 15
+    kept = c.ok("GET", "/api/memory?kind=consolidated&epoch=e1&channel=word")["items"]
+    assert len(kept) == 6 and {i["scope"]["root"] for i in kept} == {"alice"}
+    assert set(kept[0]["payload"]) == {"seq", "channel", "reading", "sample_id"}
+    gone = c.ok("POST", "/api/forget", {"kind": "evidence", "target": "w0"})     # by its id, though it expired
+    assert gone["status"] == "forgotten" and gone["effects"]["consolidated_deleted"] == 1
+    assert c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]["partners"]["alice"]["n"] == 5
 
 
 def _hold_write_lock(path):
@@ -386,7 +443,8 @@ def test_graph_journey_over_http(console):
     promoted = c.ok("POST", f"/api/graphs/{revision}/promote")
     assert promoted["promoted"] is True and promoted["decision"]["failed"] == []
     assert set(promoted["decision"]["checks"]) == {"independent_heldout", "heldout_gain", "retention", "byte_budget",
-                                                   "lineage_intact"}
+                                                   "lineage_intact", "beats_no_graph"}
+    assert promoted["decision"]["rule_version"] == "best-learner-v1"       # the rule a new individual learns under
     assert c.post(f"/api/graphs/{revision}/promote")[0] == 409
     shown = c.ok("GET", f"/api/graphs/{revision}")
     assert shown["status"] == "active" and len(shown["matrix"]) == 24 and shown["edges"] == 72

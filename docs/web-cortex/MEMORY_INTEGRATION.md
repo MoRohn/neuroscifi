@@ -95,6 +95,91 @@ Limits: there is no disambiguation (two things with one name are one entity), no
 
 Events, predictions, feedback, entities and strategies have no `retrieve` kind. `store.inventory` adds a `web` section (tasks, open tasks, sources, claims, knowledge, accepted and provisional knowledge, entities, monitors, open predictions, feedback) when migration 6 is present (`test_memory_retrieves_web_kinds_with_filters`, `test_inventory_counts_web_memory`).
 
+`memory.retrieve` reads records by kind, id and time. Retrieval by topic is `knowledge.query(db, topic, now, limit=10)`: the live statements (provisional, accepted, stale) that match a question, used by `nsf web knowledge TOPIC`, the console knowledge view, the MCP `web_knowledge` tool and, in every research task, by `intent.assess` to decide whether memory answers without the web. By default it ranks by BM25 over each statement's own words and key. The two subsections below describe the optional ranking by meaning and the check that runs before memory answers.
+
+### 5.1 Semantic retrieval (`semantic.py`, optional)
+
+**Why.** The lexical ranking finds a fact when the question uses its words. Measured on 118 queries over 48 fictional facts written through the real write path (`scripts/bench_memory.py`; `docs/quality/evidence/accel_baseline_memory.json`): the right fact is first for 0.92 of 48 questions in the fact's own vocabulary, for 0.27 of 48 paraphrases, and for 6 of 12 descriptions that do not name the subject (the other 6 do not find it at all); all 10 questions that nothing in memory answers still return an unrelated fact. A query takes 0.6 ms (p50).
+
+**What it does.** Semantic retrieval is off until the owner configures and enables it. When it is on, `knowledge.query` asks two small models behind the inference gateway (providers `embed` and `rerank`, [COGNITIVE_INFERENCE §2](../architecture/COGNITIVE_INFERENCE.md#2-inference-gateway-srcneuroscifiinference)), each optional:
+
+| Model | Role |
+|---|---|
+| `embed` | One vector per live statement and one for the question. The nearest statements are the candidates (`candidates`, default 10, or the query's limit when that is larger). The 5 best lexical hits are always added, so a rare exact word is never lost (`test_the_best_lexical_hits_are_always_among_the_candidates`) |
+| `rerank` | A cross-encoder reads the question with each candidate and scores it. The candidates are returned in that order, and one scoring under `floor` (default 0.02) is not returned at all: nothing in memory is about this (`test_a_question_about_nothing_in_memory_returns_nothing`) |
+
+With only `embed` configured the candidates are returned by cosine similarity and nothing is cut: similarity alone does not separate "about this" from "about something similar", so no floor is applied without the reranker (`test_without_a_reranker_the_order_is_by_similarity_and_nothing_is_cut`). An item's `score` is then the cosine; with the reranker it is the reranker's score (0 to 1). The reranker receives the question and each statement in Qwen3-Reranker's own prompt form (`rerank_template: qwen3`; `plain` sends the bare texts for another model).
+
+**The `retrieval` field.** Every `knowledge.query` result says which ranking produced its items:
+
+| Value | Meaning |
+|---|---|
+| `{"mode": "lexical"}` | Semantic retrieval is off. The result is exactly the 0.7.0 ranking and no model is asked (`test_off_by_default_the_lexical_ranking_is_unchanged_and_no_model_is_asked`) |
+| `{"mode": "lexical", "reason": "…"}` | It is on but could not be used: no embedding endpoint is set (the reason names `nsf web memory config --embed-url URL`), the key file is unusable, or a memory-model call failed or timed out (the reason carries the error code, e.g. `unavailable`). The items are exactly the lexical result (`test_a_failing_memory_model_falls_back_to_the_lexical_ranking_and_says_why`) |
+| `{"mode": "lexical", "reason": "…", "waking": ["embed", "rerank"]}` | A local memory model is unloaded while idle (below). The lookup is not held up: the items are the lexical result, and the models named in `waking` are starting again in the background (`test_a_memory_lookup_is_lexical_at_once_while_its_models_sleep_and_semantic_again_once_they_are_back`) |
+| `{"mode": "semantic", "ranked_by": "rerank", "candidates", "dropped_below_floor", "floor", "models": {"embed", "rerank"}}` | Ranked by the reranker; `dropped_below_floor` statements were scored and not returned |
+| `{"mode": "semantic", "ranked_by": "embedding", "candidates", "models": {"embed"}}` | Ranked by vector similarity, nothing cut |
+
+`"cached": true` is added when the same question over the same statements and settings was already ranked in this process: one research task asks memory the same question up to three times, and the repeats cost no model call (`test_the_same_question_over_the_same_memory_asks_the_models_once`).
+
+**Lexical fallback.** Any failure is the lexical ranking, never an error and never an empty answer caused by the models: off, not configured, unreachable, a malformed reply, or a call past `timeout` (default 2 s per memory-model call; embedding new statements gets at least 10 s). The owner sees the reason in `retrieval` and in `nsf web memory`. A failed call is not retried, and the models are then left alone for 30 s (`retrieval.retry_in_seconds`): with the reranker's port closed, the first version spent 1.5 s of connection retries on every lookup.
+
+**A service, not a dependency.** The two models are installed, supervised and released like the other model services, and memory never depends on them being up:
+
+- *Setup.* `nsf setup` configures them for the individual when their key file exists and each answers one real request, and switches semantic retrieval on; with the embedding model alone it switches on the ranking without the cut and says what is missing. It contacts nothing without the key file, sends no text of the individual, and never changes a memory setting the owner made by hand: it records what it wrote (`meta` key `semantic_setup`) and acts again only while the settings still equal that record (`tests/test_setup_cli.py`, "step 7").
+- *Supervision.* `deploy/systemd/neuroscifi-memory-embed.service` and `neuroscifi-memory-rerank.service` (installed disabled by `deploy/install.sh --memory`), or `deploy/memory/run.sh start` with Docker's own restart policy. `run.sh wait` counts a model as ready only after it answered a real request: the first request after a start took 1.0 to 1.5 s, the following ones about 20 ms, and a lookup allows each call 2 s.
+- *Idle.* With an idle timeout set by the owner (`nsf resources idle --set embed=15m --set rerank=15m`; off by default) the policy of [RESOURCE_SCHEDULING §3(c)](../architecture/RESOURCE_SCHEDULING.md) stops a model nobody used and a lookup brings it back. A lookup never waits for that: it is ranked by its words at once and says so (`retrieval.waking`), and a later one is ranked by meaning again. With one of the two models unloaded the lookup is lexical, not half semantic. A model that cannot be started (not enough free memory, a failing container) is tried again 30 s later at the earliest. Only this host's own services are managed; an endpoint configured elsewhere is called as it is.
+
+**What it is not.** It is not a second memory, and there is no vector store. Vectors live only in the process that computed them, keyed by the statement's text, per individual and per embedding model. On every query the set is trimmed to the live statements before anything else happens, so a forgotten, superseded or archived statement leaves no vector behind, is never shown to a model again, and nothing derived from memory is written to disk (`test_a_forgotten_statement_leaves_no_vector_and_is_never_shown_to_a_model_again`). A new statement is embedded once; the others are not embedded again. Semantic retrieval ranks and filters what `knowledge.query` returns. It does not decide whether memory answers a question (`intent.assess` and §5.2 do), it does not merge or compare knowledge, and it never changes a statement, a confidence or a verification state. Checkpoints, forgetting and erasure (section 6) need no step for it.
+
+**Privacy.** Statements and questions reach the two endpoints only through `Gateway.embed` and `Gateway.rerank`, which mark every text private. An endpoint off this host is refused unless the owner authorised that provider for remote use and, separately, for private memory (`test_memory_text_is_never_sent_off_this_host_without_the_private_memory_authorisation`). `nsf web memory config` sets neither authorisation, so memory models set up through the CLI are on this host. The token ledger records each call's purpose (`memory_embed`, `memory_query`, `memory_rerank`), tokens and latency, and no text.
+
+**Settings and commands.** One settings row per individual (`meta` key `semantic`): `enabled` (default false), `candidates` (10; 1 to 100), `floor` (0.02; 0 to 1, 0 returns every candidate), `timeout` (2.0 s; 0.1 to 60) and `rerank_template` (`qwen3` or `plain`). Unknown keys and out-of-range values are refused (`test_settings_are_validated_and_stored_per_individual`).
+
+```sh
+nsf web memory config --enable --embed-url http://127.0.0.1:18441/v1 --rerank-url http://127.0.0.1:18442/v1 \
+    --key-file ~/.config/neuroscifi/memory/api_key     # the key file path must be absolute
+nsf web memory                                         # the switch, both endpoints with their health, the effect
+nsf web memory config --set floor=0.05                 # one retrieval setting
+nsf web memory config --disable                        # back to the lexical ranking (0.7.0)
+```
+
+`nsf web memory` prints `enabled`, `settings`, `providers` {`embed`, `rerank`: `configured`, `endpoint`, `model`, `state`, `reason`, `key_present`}, `vectors_held_by_this_process` and `effect` in plain words, never a key. The models themselves are served by `deploy/memory/run.sh` (Qwen3-Embedding-0.6B and Qwen3-Reranker-0.6B, both Apache-2.0, from the digest-pinned vLLM image of the answer model, on loopback ports 18441 and 18442); any server that speaks `/v1/embeddings` or `/v1/rerank` can take their place without a code change. A provider's `state` is `asleep` while the idle policy has its service unloaded. Installing, starting, the idle timeouts, the footprint and rollback: [RUNBOOK](../operations/RUNBOOK.md), "Memory models".
+
+**Measured with the models on** (`scripts/bench_memory.py`, 130 queries over the same 48 facts: the 118 above and 12 topic queries; Qwen3-Embedding-0.6B and Qwen3-Reranker-0.6B, default settings):
+
+| | Lexical (`accel_after_memory_lexical.json`) | Embedding only (`accel_after_memory_embedding.json`) | Embedding and reranker (`accel_after_memory_semantic.json`) |
+|---|---|---|---|
+| Fact's own vocabulary, right fact first (48) | 0.92 | 0.98 | 1.00 |
+| Paraphrase, right fact first (48) | 0.27 | 0.94 | 0.98 |
+| Subject not named, right fact first (12) | 0.50 | 1.00 | 0.92 |
+| Nothing in memory answers it: something returned (10) | 10 of 10 | 10 of 10 | 3 of 10 |
+| Topic query: statements of other subjects returned, mean (12) | 0.0 | 6.0 | 0.25 |
+| `knowledge.query` time, p50 / p95 | 0.7 ms / 0.7 ms | 41 ms / 49 ms | 107 ms / 185 ms |
+
+The files are in `docs/quality/evidence/`. The benchmark reports the two halves of the subjects separately, so that a threshold chosen on the development half is checked on the held-out half: there the reranked run finds the right fact first for 24 of 24 paraphrases and still returns something for 2 of 5 unanswerable questions (`by_half.held_out`). The embedding alone ranks well and cuts nothing, which is why the floor needs the reranker. The price is time: a query costs about 0.1 s instead of under a millisecond, and the first query of a process embeds every live statement (318 ms for 48). The benchmark is 48 fictional facts; it says nothing about a memory of thousands of statements.
+
+### 5.2 The memory-answer check (`memory_gate.py`)
+
+**The defect it closes.** `intent.assess` lets memory answer a question without the web when a stored statement covers at least 60 % of the question's topical stems (`intent.covers`). Shared stems cannot tell a property from its neighbour: "Does the Orbix server support encryption in transit?" was answered from "… does not support encryption at rest", and "the tallest structure in the world?" from "… the tallest structure in the Ostra region" (`test_the_lexical_test_alone_answers_the_wrong_property_from_memory` pins the first with the check off).
+
+**What it does.** Before memory answers without the web, `_Run.memory_check` (orchestrator, discovering stage) asks the answer model whether each chosen statement states the answer to exactly what is asked: the same subject, the same property and the same scope. It makes one short structured call per statement (`memory_gate.confirm`, purpose `memory_gate` in the ledger; at most 8 statements, any beyond are refused unchecked): each reply is one boolean, and no statement appears in another's prompt, so the text of one cannot change the verdict on another, validated against a schema of exactly that length; no other text is generated. At most 8 statements are sent, each cut to 600 characters; a chosen statement beyond the eighth counts as not confirmed. The call has 8 s (`TIMEOUT`) or what is left of the task's time budget, whichever is less, and carries the background priority for an autonomous task ([COGNITIVE_INFERENCE §7](../architecture/COGNITIVE_INFERENCE.md#7-adaptive-inference-policy)).
+
+| Outcome | Effect | `memory_check` in the task's `decision` event |
+|---|---|---|
+| The model confirms at least one statement | Memory answers as before, from the confirmed statements only (`test_a_statement_the_model_confirms_is_answered_from_memory_as_before`) | `{"status": "checked", "confirmed": [ids], "refused": [ids]}` |
+| The model confirms none | The question goes to the web: `needs_web` becomes true with the reason "N knowledge item(s) share the question's words but do not state its answer (checked by the answer model)" (`test_a_statement_the_model_refuses_sends_the_question_to_the_web_instead`) | `{"status": "checked", "confirmed": [], "refused": [ids]}` |
+| The check cannot run: the call failed or timed out, a reply was not true or false, or less than 1 s of budget is left | The lexical decision stands; nothing is guessed (`test_when_the_check_cannot_run_the_lexical_decision_stands_and_the_event_says_so`) | `{"status": "skipped", "reason": "…"}` |
+| No answer model is configured, or model reasoning is off | Nothing is attempted and the event is exactly the 0.7.0 one (`test_without_any_model_the_decision_event_is_exactly_the_0_7_0_one`) | absent |
+
+It is a stricter filter, not a new source of answers: it only removes statements from the set the lexical test chose, so it can send a question to the web that memory would have answered and never the reverse. The statements are data inside the prompt; the system prompt says to ignore instructions inside them, and the single-boolean schema, in a call of its own, leaves an instruction nothing to change but possibly its own boolean. The check does not run when the task already needs the web, and not for a crawl of given sources.
+
+**Measured** (`scripts/bench_memory.py --gate --llm-url URL`; `docs/quality/evidence/accel_after_memory_answer_check.json`; 96 questions, each with the 4 stored facts of its subject, Qwen3-30B-A3B): the answer model accepts 86 of 96 statements that answer the question and 1 of 288 statements about another property of the same subject, at about 0.3 s per statement. (A first design put all statements in one prompt and accepted 94 of 96; an independent review showed that one statement's text could then sway the verdict on the others, so it was replaced, at the price of eight more right statements refused. A refusal sends the question to the web.) The lexical test alone accepts 64 of the 96 and 94 of the 288. In use a statement answers from memory only when both accept it. One check takes 0.45 s (p50; p95 0.50 s). The three mistakes of the model are listed in the file (`model_check_mistakes`). The module docstring of `memory_gate.py` records an earlier run of the same benchmark (95 of 96, 0 of 288) and that a 0.6B reranker accepts 11 to 60 of the 288 depending on its threshold and both wrong examples above, which is why the reranker of §5.1 is not used for this decision.
+
+**Privacy.** The statements are the owner's memory: the message that carries each one is marked private, as `Gateway.embed` and `Gateway.rerank` mark them. With the answer model on this host (the default) they do not leave it. With an answer model the owner authorised off this host they are sent only under the separate private-memory authorisation (`remote_private_memory`); without it the check is skipped (`private_blocked`) and the lexical decision stands (`test_memory_statements_are_never_sent_to_a_model_off_this_host_without_the_authorisation`).
+
+**Default and rollback.** On by default (`memory_check`, a web setting); without a configured answer model it does nothing. `nsf web config --no-memory-check` restores the 0.7.0 behaviour (memory answers whenever its statements share enough of the question's words); `nsf web config --memory-check` turns it back on. Cost: one extra model call for a question that memory would answer.
+
 ## 6. Forgetting and erasure
 
 Governance (`instance/governance.py`) removes web memory completely and records only ids.
@@ -140,7 +225,7 @@ Curiosity searches with the statement's own words (`intent.query_text`), never c
 | Autonomy scope | Autonomous research is limited to items **already in knowledge** and owner monitors. Hypotheses and gaps are reported as skipped ("propose it instead") |
 | Daily cap | `daily_autonomous` over the last 24 h for origins `curiosity` and `refresh:*`: tasks 12, requests 400, bytes 80,000,000. A cap hit is reported as skipped with the figures (`test_tick_respects_the_cap_for_curiosity_and_the_master_switch`). The request and byte budgets are also **clamped at submit** to what `scheduler.autonomous_remaining` says is left (caps minus what finished autonomous tasks spent and what open ones may still spend; proposals waiting for the owner are not counted), so the cap is passed by at most the request in flight; nothing left means the task is not submitted (`test_autonomous_budgets_are_clamped_to_the_daily_allowance`). Monitor runs are owner-authorised and not counted |
 | Per-task bounds | Every task has a mode budget clamped by the ceiling (RESEARCH_ORCHESTRATION §4) |
-| Worker | `work` claims queued tasks one at a time with a 600 s lease, renewed after every fetch and search round, and resumes tasks whose lease expired **or whose worker process is dead** on this host (`services.holder_alive`; RESEARCH_ORCHESTRATION §5); proposals are skipped |
+| Worker | `work` claims queued tasks one at a time with a 600 s lease, renewed after every fetch and search round, and resumes tasks whose lease expired **or whose worker process is dead** on this host (`services.holder_alive`; RESEARCH_ORCHESTRATION §5); proposals are skipped. Queued tasks the owner asked for are claimed before autonomous ones (`curiosity`, `refresh:*`), oldest first within each class; an autonomous task queued more than 10 minutes ago (`AUTONOMOUS_DEFER`) competes by age again, so it is never starved. A waiting worker is woken by a submission from any process (SQLite's `data_version` and the queue are watched between polls) and claims it within about 0.1 s; the 5 s poll stays as the fallback |
 | Cache retention | Every tick and every finished run calls `Services.prune_cache` (at most hourly through `PublicCache.maybe_prune`); the tick report carries `cache` (`test_tick_and_runs_apply_cache_retention`) |
 
 **Meaningful change rule** (`scheduler.compare`). A monitor keeps a baseline from its previous run: canonical URL to content hash, and claim key to values, polarity, status, independent groups and relevance, plus `seen_keys`, every claim key the monitor has seen (bounded at 5000, oldest dropped; URLs and claim details are bounded at 2000). A run is a *meaningful change* only if a baseline exists and at least one of these holds:
@@ -157,6 +242,8 @@ New URLs, changed page bytes and a different mix of search results saying the sa
 pytest -q tests/webcortex/test_consolidate.py tests/webcortex/test_knowledge.py tests/webcortex/test_state.py
 pytest -q tests/webcortex/test_instance_integration.py          # executive hook, forgetting, retrieve, inventory
 pytest -q tests/webcortex/test_curiosity.py tests/webcortex/test_scheduler.py
+pytest -q tests/webcortex/test_semantic_memory.py tests/webcortex/test_memory_gate.py   # §5.1, §5.2 (fake models)
+python scripts/bench_memory.py --label baseline --out memory.json   # the lexical baseline of §5.1, no model needed
 pytest -q tests/instance -k "erasure or memory"                  # the binary-belief side still passes
 ```
 
@@ -167,3 +254,6 @@ pytest -q tests/instance -k "erasure or memory"                  # the binary-be
 - Curiosity ranks; it does not decide. The owner or a cap-limited autonomous tick decides what runs.
 - Forgetting does not purge the public cache by itself (section 6).
 - A restored checkpoint has knowledge but not the page bodies behind it.
+- Without the memory models, retrieval by topic is lexical: a paraphrase finds the right fact first 27 % of the time and a question nothing in memory answers still returns unrelated facts (section 5.1, `accel_baseline_memory.json`).
+- Semantic retrieval holds its vectors per process. A new process embeds every live statement again on its first query, and two processes (console and worker) each hold their own set. Every query compares the question with every live statement, and the measurement covers 48 statements only. With the reranker on, 3 of 10 questions that nothing in memory answers still return a statement.
+- The memory-answer check is a model's judgement, bounded to a yes or no per statement. In the measurement of section 5.2 it refused 10 of 96 right statements and accepted 1 of 288 wrong ones. A wrong refusal costs a web search; a wrong acceptance still needs the lexical test to have chosen the statement. It checks at most 8 statements.

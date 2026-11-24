@@ -267,11 +267,16 @@ def test_owner_journey(console, new_page):
     expect(page.locator("#graphEvaluation")).to_contain_text("#3")
     page.locator("#gPromote").click()
     expect(page.locator("#graphStatus")).to_contain_text("Gate passed: revision #1 is now the active graph of world-a.")
-    expect(page.locator("#gateSummary")).to_contain_text("All 5 checks passed under gate-v1")
+    expect(page.locator("#gateSummary")).to_contain_text("All 6 checks passed under best-learner-v1")
     checks = page.locator("#gateChecklist li")
-    expect(checks).to_have_count(5)
-    for name in ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact"):
+    expect(checks).to_have_count(6)
+    for name in ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact",
+                 "beats_no_graph"):
         expect(page.locator(f'#gateChecklist li[data-check="{name}"]')).to_contain_text("Passed")
+    expect(page.locator('#gateChecklist li[data-check="beats_no_graph"]')).to_contain_text(
+        "Better than a graph with no edges")
+    expect(page.locator("#graphDetail")).to_contain_text("Against no graph")
+    expect(page.locator("#graphDetail")).to_contain_text("better: a graph with no edges has validation MSE")
     expect(page.locator('#gateChecklist li[data-check="byte_budget"]')).to_contain_text("of 4096 bytes")
     expect(page.locator("#gPromote")).to_be_disabled()
     cells = page.locator("#heatmap rect.cell")
@@ -342,6 +347,70 @@ def test_owner_journey(console, new_page):
     # (i) nothing was logged to the console, including CSP violations
     assert not page.problems, page.problems
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def test_forget_a_consolidated_reading_and_a_camera(console, new_page):
+    """Security review M2. What an expired event left (ADR-044) is listed in the memory view by its seq, with a
+    Forget button that asks first; a camera is forgotten by its root like a partner. The new controls pass the
+    accessibility scan."""
+    db = store.open_existing(console.path)
+    try:
+        long_ago = time.time() - 30 * 86400            # past the 7-day lifetime: the console's first read expires them
+        evidence.start_epoch(db, "bench", long_ago)
+        for n in range(4):
+            evidence.observe(db, {"id": f"old-cam-{n}", "epoch": "bench", "channel": "camera", "action": 0, "bit": 0,
+                                  "root": "porch-cam"}, long_ago + n)
+            evidence.observe(db, {"id": f"old-word-{n}", "epoch": "bench", "channel": "word", "action": 0, "bit": 0,
+                                  "root": "alice"}, long_ago + 10 + n)
+    finally:
+        db.close()
+    page = new_page(1280, 900, bypass_csp=True)        # only so axe can be injected for the scan at the end
+    page.goto(console.url)
+    expect(page.locator("#h-overview")).to_be_visible()
+    go(page, "evidence")
+    expect(page.locator("#evidenceTable")).to_contain_text("No evidence in this epoch yet")
+    expect(page.locator("#epochSummary")).to_contain_text("8 consolidated readings kept from expired events")
+    go(page, "memory")
+    page.locator("#memKind").select_option("consolidated")
+    rows = page.locator("#memoryBrowse tbody tr")
+    expect(rows).to_have_count(8)
+    expect(rows.first).to_contain_text("epoch bench")
+    newest = int(rows.first.locator("code").inner_text())
+    assert newest == 8 and "old-word-3" not in page.locator("#memoryBrowse").inner_text()   # the seq, never the id
+    page.get_by_role("button", name=f"Forget consolidated reading {newest}", exact=True).click()
+    dialog = page.locator("#confirmDialog")
+    expect(dialog).to_be_visible()
+    expect(dialog).to_contain_text("kept when its event expired")
+    page.locator("#confirmCancel").click()
+    expect(rows).to_have_count(8)
+    page.get_by_role("button", name=f"Forget consolidated reading {newest}", exact=True).click()
+    page.locator("#confirmOk").click()
+    expect(page.locator("#memoryStatus")).to_contain_text(f"Forgot reading #{newest}: 0 evidence row(s) deleted; "
+                                                          "1 consolidated reading(s) deleted")
+    expect(page.locator("#memoryBrowse tbody tr")).to_have_count(7)
+    expect(page.locator("#deletionLog")).to_contain_text(f"consolidated {newest}")
+    page.add_script_tag(path=str(AXE))
+    found = {}
+    scan(page, found, "memory-consolidated")
+    # a camera, by its root, in the evidence view beside the partner form
+    go(page, "evidence")
+    page.locator("#forgetCamera").click()
+    expect(page.locator("#evidenceStatus")).to_contain_text("Enter the camera root to forget.")
+    page.locator("#cameraRoot").fill("porch-cam")
+    page.locator("#forgetCamera").click()
+    expect(dialog).to_be_visible()
+    expect(dialog).to_contain_text("Every camera reading from porch-cam, in every epoch")
+    page.locator("#confirmOk").click()
+    expect(page.locator("#evidenceStatus")).to_contain_text("Forgot camera porch-cam: 0 evidence row(s) deleted; "
+                                                            "4 consolidated reading(s) deleted")
+    expect(page.locator("#epochSummary")).to_contain_text("3 consolidated readings kept from expired events")
+    scan(page, found, "evidence-forget-camera")
+    assert not found, found
+    go(page, "teach")
+    assert "porch-cam" not in page.locator("#teach").inner_text()
+    go(page, "memory")
+    assert "porch-cam" not in page.locator("#memory").inner_text()       # the log keeps a digest label only
+    expect(page.locator("#deletionLog")).to_contain_text("camera camera:#")
 
 
 def test_locked_states_and_api_errors(console, new_page):
@@ -493,3 +562,60 @@ def test_keyboard_reaches_every_enabled_button(seeded, new_page, view):
     assert not missing, page.evaluate(
         "ks => ks.map(k => document.querySelector(`[data-k='${k}']`).outerHTML.slice(0, 90))", sorted(missing))
     assert not page.problems, page.problems
+
+
+def test_gate_rejects_a_graph_no_better_than_no_graph(tmp_path, new_page):
+    """An individual born under gate-v1 learns 192 populations: the dense fit fails there, and the page says so
+    before the gate is run and after it rejected the snapshot (ADR-045)."""
+    import numpy as np
+
+    path = tmp_path / "older.sqlite"
+    db = store.create(path, time.time(), birth_rules=(store.GATE_V1,))
+    try:
+        n, now = 192, time.time()
+        rng = np.random.default_rng(7)
+        a = np.zeros((n, n))
+        for j in range(n):
+            idx = rng.choice(np.delete(np.arange(n), j), 3, replace=False)
+            a[j, idx] = rng.choice([-1., 1.], 3) * rng.uniform(.17, .25, 3)
+        ids = {}
+        for split, length in (("train", 1536), ("validation", 256), ("heldout", 512)):
+            prev, states, targets = np.zeros(n), np.empty((length, n)), np.empty((length, n))
+            for t in range(length):
+                residual = a @ prev + rng.normal(0, .065, n)
+                states[t], targets[t] = prev, residual
+                prev = .2 * prev + residual + rng.normal(0, .6, n) * (rng.random(n) < .22)
+            ids[split] = datasets.add(db, "wide", split, states, targets, "simulated", now)
+        revision = graphs.learn(db, "wide", now, train=ids["train"], validation=ids["validation"], holder="test")
+        assert graphs.show(db, revision)["metrics"]["beats_no_graph"] is False
+    finally:
+        db.close()
+    server = ConsoleServer(path, 0, token=TOKEN)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        page = new_page(1280, 900)
+        page.goto(server.url)
+        expect(page.locator("#h-overview")).to_be_visible()
+        go(page, "graphs")
+        open_graph(page, revision)
+        expect(page.locator("#graphDetail")).to_contain_text("Scoring rule")
+        expect(page.locator("#graphDetail")).to_contain_text("gate-v1")
+        expect(page.locator("#graphDetail")).to_contain_text("Against no graph")
+        expect(page.locator("#graphDetail")).to_contain_text("not better: a graph with no edges has validation MSE")
+        expect(page.locator("#graphDetail")).to_contain_text("The promotion gate rejects such a snapshot.")
+        page.locator("#gPromote").click()
+        expect(page.locator("#graphStatus")).to_contain_text(
+            f"Gate rejected revision #{revision}. Not met: Better than a graph with no edges.")
+        expect(page.locator("#gateSummary")).to_contain_text("Rejected")
+        expect(page.locator("#gateSummary")).to_contain_text("Failed: Better than a graph with no edges (rule gate-v1)")
+        expect(page.locator("#gateChecklist li")).to_have_count(6)
+        failed = page.locator('#gateChecklist li[data-check="beats_no_graph"]')
+        expect(failed).to_contain_text("Failed")
+        expect(failed).to_contain_text("is not below")
+        expect(failed).to_contain_text("this snapshot has learned nothing that helps")
+        for name in ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact"):
+            expect(page.locator(f'#gateChecklist li[data-check="{name}"]')).to_contain_text("Passed")
+        expect(page.locator('#revisionGroups [data-context="wide"]')).to_contain_text("rejected")
+    finally:
+        server.shutdown()
+        server.server_close()

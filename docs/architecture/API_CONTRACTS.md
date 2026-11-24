@@ -23,7 +23,41 @@ store.connect(path) -> Connection
 store.write(db) -> context manager                  # BEGIN IMMEDIATE / COMMIT / ROLLBACK
 store.bump_state_version(db) -> int ; store.state_version(db) -> int
 store.bump(db, name, amount=1) ; store.counter(db, name) -> int
-store.config(db) -> InstanceConfig(evidence_ttl_seconds, max_evidence_rows, min_free_bytes, ask_budget_per_epoch)
+store.config(db) -> InstanceConfig(evidence_ttl_seconds, max_evidence_rows, min_free_bytes, ask_budget_per_epoch,
+                                   ask_budget_window_seconds, consolidation, max_thermal_celsius)
+store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [names]}   # owner-settable settings only
+#   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation); ValidationError otherwise. `nsf config` is its CLI.
+#   Each real change adds a deletion_log row: target_kind "setting", target_id the name, effects {"from", "to",
+#   "state_version"} (from a restore: {"from", "to", "carried_by_restore": true}).
+#
+# Consolidation (ADR-044, schema 14). Additive fields, each absent while zero unless noted:
+#   beliefs.compute()["evidence"]["consolidated"]      learning readings that are consolidated (counted in "learning"
+#                                                      and "total"). A consolidated reading that is a later copy of a
+#                                                      sample is in "total" and "duplicates_ignored", like a journal copy
+#   beliefs.explain() factors: "supporting_consolidated", "counterevidence_consolidated" (counted in *_total; the
+#                                                      event lists hold raw events only)
+#   governance.sweep() -> "consolidated"               readings kept by this sweep (one per expired 'learn' event)
+#   forget results, effects["consolidated_deleted"]    consolidated readings a forget removed ("deleted" counts events)
+#   governance.forget_consolidated(db, seq: int, now)  one reading by the seq it is listed under; deletion_log kind
+#                                                      "consolidated", target the seq; 'absent' when no reading has it
+#   governance.forget_camera(db, root: str, now)       every camera event and reading of the root, in every epoch, and
+#                                                      its changepoints; deletion_log kind "camera", target
+#                                                      "camera:#<digest>"; effects["derived_deleted"]["changepoints"]
+#   console POST /api/forget {"kind": "consolidated", "target": SEQ (integer)} | {"kind": "camera", "target": ROOT}
+#   deletion_log effects of a sweep: "consolidated"; its belief revision summary: "consolidated_now"
+#   store.inventory()["memory"]["consolidated_readings"], store.regulation()["consolidated_readings"]  (always present)
+#   checkpoints.restore() -> "evidence_consolidated", "consolidated_removed", "settings_carried" {name: {"from",
+#       "to"}}, "settings_warnings" [str], "scope_changes_removed" int (always present; the settings an owner may
+#       change are the live file's in the copy when valid; changepoints of a camera or partner forgotten since go)
+#   store.valid_setting(name, value) -> bool ; store.setting_problems(db) -> [str]  (saved values set_config would
+#       refuse; such a consolidation value reads as off). governance.sweep() and `nsf config` add "warnings" then.
+#   governance.forget_consolidated / forget_dataset: an id beyond SQLite's integers is a ValidationError
+#   governance.forget_partner also deletes the partner's changepoints (effects["derived_deleted"]["changepoints"])
+#   executive.decide() -> "warnings": [str]             only when the saved ask-budget window was unusable (the default
+#                                                      window is then used)
+#   memory.retrieve(db, "consolidated", id=SEQ, epoch=, channel=, root=) -> records with payload
+#       {"seq", "channel", "reading", "sample_id"}, permissions.retention "consolidated"
+#   governance.held_roots(db) -> camera and word roots held as events or consolidated readings
 store.birth(db) -> dict ; store.inventory(db) -> dict ; store.regulation(db, path=None) -> dict
 store.require_write_allowed(db, path=None)          # raises WritesPaused
 rules.register(db, definition, now, *, created_by)   # caller owns txn; idempotent on identical content
@@ -74,7 +108,8 @@ beliefs.explain(db, epoch) -> {"beliefs": compute(), "factors": [{"scope","p_inv
 
 executive.decide(db, epoch, now, *, record=False, path=None) -> {"decision": "act"|"observe"|"ask"|"test_reference"|"defer",
                                                  "scope": str|None, "reason": str, "pending_id": int|None,
-                                                 "asks_used": int, "ask_budget": int}
+                                                 "asks_used": int, "ask_budget": int,
+                                                 "ask_budget_window_seconds": float}
 #   Policy, first match wins:
 #   1 writes paused -> defer
 #   2 change suspected and not ambiguous -> ask (kind 'calibrate', scope = changed scope)
@@ -83,8 +118,10 @@ executive.decide(db, epoch, now, *, record=False, path=None) -> {"decision": "ac
 #   5 mechanism not identifiable (|p-.5| < .37) -> test_reference
 #   6 a partner with >= 4 learning words still has |p-.5| < .37 -> ask (meaning still ambiguous for that partner)
 #   7 otherwise -> act
-#   An 'ask' beyond config.ask_budget_per_epoch (count of ask/calibrate pending rows created in the epoch) becomes
-#   'defer'. With record=True: insert into decisions; for ask/test_reference/calibrate create a pending row unless
+#   An 'ask' beyond config.ask_budget_per_epoch becomes 'defer'. asks_used counts the ask/calibrate pending rows
+#   created in the epoch within the last config.ask_budget_window_seconds (default 7 days), answered or not; with a
+#   window of 0 it counts every such row of the epoch (the rule up to 0.7.0: the budget never refills).
+#   With record=True: insert into decisions; for ask/test_reference/calibrate create a pending row unless
 #   an identical unresolved one (same epoch, kind, scope) exists.
 #   Also with record=True: unresolved ask/test_reference/calibrate rows of the epoch whose (kind, scope) differs from
 #   the policy's current recommendation are closed ('resolved by evidence: ...'); ids returned as "closed_pending".
@@ -102,6 +139,8 @@ Files: `datasets.py`, `graphs.py`, `learner.py`, `recall.py`, `cli_graphs.py`.
 ```python
 datasets.add(db, context, split, states: ndarray[T,N], targets: ndarray[T,N], provenance, now, note=None) -> int
 #   float64 finite, 1 <= N <= 1024, 8 <= T <= 200_000; stored as np.savez bytes (allow_pickle=False); sha256 of blob.
+#   A shape whose two arrays would not fit one SQLite blob (16 bytes per cell, 1e9 bytes less 4 kB of framing) is
+#   refused with ValidationError naming how many time steps fit, before the finite check and the encoding.
 datasets.load(db, dataset_id) -> (states, targets)          # Gone if deleted
 datasets.simulate(db, context, now, *, seed, world: 'a'|'b'='a', steps=1536) -> {"train": id, "validation": id, "heldout": id}
 #   Uses lab.graph_bench.world/stream (24 populations, 3 inputs each), provenance 'simulated'.
@@ -110,21 +149,54 @@ datasets.listing(db, context=None) -> list[dict]
 
 learner.fit(states, targets, *, k=3, seed=0) -> {"dense": ndarray, "sparse": ndarray, "support": bool ndarray, "swaps": int}
 #   The windowed learner from lab.graph_bench.simulate (window 32, lr .28, score EMA .85/.15, swap check every
-#   4 windows with |score| > 1.15|w| + .035), generalised to N populations and one stream.
-learner.pack(dense, validation, rule) -> {"blob": bytes, "bits", "degree", "byte_size", "validation_mse", "dense_validation_mse"}
+#   4 windows with |score| > 1.15|w| + .035), generalised to N populations and one stream. The swap check runs for
+#   all receivers at once and gives the lab loop's result bit for bit (tests/instance/test_learner.py); the window
+#   update is the lab's, so a fit costs about 2.5 to 4 times a dense-only one (the second matrix and its score).
+#   Range: the dense matrix is updated from every input with a step normalised per input, so its error grows with
+#   the population count: on the lab's stream it is twice the noise floor at 96 populations, and at 160 the
+#   snapshot cut from it is no better than a graph with no edges (far worse beyond). The sparse matrix, on k inputs,
+#   stays at the noise floor up to the 1024 populations a dataset may have (scripts/bench_graph_learner.py sizes).
+learner.pack(dense, validation, rule, sparse=None) -> {"blob": bytes, "bits", "degree", "byte_size", "validation_mse", "dense_validation_mse", "candidates"}
 #   lab.graph_compression_bench selection: FP32 plus degrees x bits from the rule. Keep candidates with
 #   val MSE <= (1 + validation_tolerance) * dense val MSE, then take the smallest complete file.
+#   Which graph is packed (ADR-045). Under gate-v1 (and any rule without the two optional parts below) only the
+#   dense fit is packed; `sparse` is ignored and the result is what it always was. A rule may carry:
+#     "pack_candidates": {..., "learned_sparse": true}   the sparse learner's matrix is a candidate too, as FP32
+#                                                        and at its own degree with each bit width of the rule
+#     "pack_reference": "best_learner"                   the tolerance is measured against the lower validation MSE
+#                                                        of the two learners' FP32 graphs (needs learned_sparse)
+#   With learned_sparse, files of equal size are separated by the lower validation MSE and the result adds
+#   "learner" ('dense'|'sparse'), "reference", "reference_validation_mse" and a "learner" per candidate.
+#   store.BEST_LEARNER_V1 ('best-learner-v1') is gate-v1 with both parts, the same thresholds and byte budget.
+#   store.BIRTH_RULES = (GATE_V1, BEST_LEARNER_V1): a new individual is born with both, registered in that order,
+#   and learns under the last. store.create(..., birth_rules=None) takes another tuple (for example (GATE_V1,) to
+#   reproduce an individual born earlier). An individual born earlier keeps the rules it has; its owner adopts the
+#   rule with `nsf graph rules add --builtin best-learner-v1 --owner-approved` and goes back with
+#   `nsf graph rules add --builtin gate-v1 --as gate-v1-again --owner-approved` (rules are immutable and the newest
+#   is used). Candidates keep the rule they were learned under. With 512 or more populations the sparse file is over
+#   the 4096-byte budget of both rules, so nothing is promoted there, as before.
+#   Measured: docs/quality/evidence/accel_decisions_graph_learner_*.json, accel_decisions_graph_birth_rule.json.
 
 graphs.register_founding(db, nsg_blob, now) -> int           # caller owns txn? No: opens its own write(); status 'active', context 'founding'
 graphs.learn(db, context, now, *, train: int, validation: int, holder: str) -> int   # candidate revision id; takes the context lease
+#   metrics: validation_mse, dense_validation_mse, pack (the candidates and the choice), sparse (the sparse learner's
+#   swaps, edges, validation_mse and how much of its support the snapshot shares), and no_graph_validation_mse with
+#   beats_no_graph: the error of a graph with no edges on the same validation data, and whether the snapshot is
+#   below it. A snapshot that is not has learned nothing; under gate-v1 that happens with many populations (above),
+#   and the gate rejects it (check (f) below).
 graphs.evaluate(db, revision_id, now) -> dict                # metrics on held-out sets not in its lineage; stored in metrics
 graphs.promote(db, revision_id, now) -> {"promoted": bool, "decision": {...all numbers and the rule version...}}
-#   Gate (rule recorded on the candidate):
+#   Gate (rule recorded on the candidate; decision["order"] lists the checks applied, graphs.CHECKS all six):
 #   (a) >=1 heldout dataset of the context not in its training lineage, else reject
 #   (b) incumbent present: candidate heldout MSE < incumbent heldout MSE * (1 - min_heldout_gain)
 #   (c) retention: on every older heldout dataset of the context, candidate MSE <= incumbent MSE * (1 + retention_tolerance);
 #       failing (c) while passing (b) adds "recommendation": "register as a new context; the incumbent still solves older data"
 #   (d) byte_size <= byte_budget
+#   (e) lineage_intact: no dataset the candidate was trained or validated on has been deleted
+#   (f) beats_no_graph: metrics.validation_mse < metrics.no_graph_validation_mse. Not part of any rule and waived by
+#       none: a snapshot no better than a graph with no edges is rejected, with "why" naming both errors. Applied only
+#       when learn() recorded metrics.beats_no_graph; a candidate learned before that has checks (a)-(e) and the
+#       decision record it always had.
 #   Pass: incumbent -> 'archived', candidate -> 'active'. Fail: candidate -> 'rejected'. Decision JSON stored either way.
 graphs.reject(db, revision_id, now, reason) -> dict
 graphs.rollback(db, context, revision_id, now) -> dict       # re-activate an archived, non-invalidated revision
@@ -133,7 +205,10 @@ graphs.invalidate_dependents(db, dataset_id, now) -> {"invalidated": [ids], "rea
 #   If the active one was invalidated, re-activate the newest archived revision of that context whose lineage has no
 #   deleted dataset; if none, failure = "no eligible snapshot for context <c>".
 graphs.lesion(db, revision_id, dataset_id, now) -> {"edges":[{"src","dst","delta_mse"}], "permuted_control_mse", "base_mse"}
-#   Zero each retained edge in a copy, re-score, store rows in graph_effects(kind='lesion').
+#   The change in MSE from zeroing each retained edge, stored in graph_effects(kind='lesion'). Zeroing one edge
+#   changes only its receiver's residual, so each delta is taken from its closed form (the mean of the per-step
+#   change); the full MSE is evaluated twice (base, permuted control), not once per edge. A test compares every
+#   edge with the full recomputation.
 graphs.listing(db, context=None) -> list[dict] ; graphs.show(db, revision_id) -> dict (includes the decoded matrix as nested lists)
 graphs.lease(db, context, holder, now, ttl=600) -> context manager   # LeaseHeld if another holder has an unexpired lease
 
@@ -146,7 +221,7 @@ recall.run(db, dataset_id, now, *, contexts=None, record=True) -> dict
 #   An 'unknown_context' verdict with record=True creates pending(kind='new_context'). Never creates a graph itself.
 ```
 
-CLI (W2-B): `nsf graph simulate CONTEXT --seed N [--world a|b]`, `nsf graph datasets [--context]`, `nsf graph learn CONTEXT --train ID --validation ID`, `nsf graph evaluate REV`, `nsf graph promote REV`, `nsf graph reject REV --reason`, `nsf graph rollback CONTEXT REV`, `nsf graph list [--context]`, `nsf graph show REV`, `nsf graph lesion REV DATASET`, `nsf graph recall DATASET [--context ...]`, `nsf graph export REV OUT.nsg`, `nsf graph rules list`, `nsf graph rules add FILE.json --owner-approved` (the flag is required).
+CLI (W2-B): `nsf graph simulate CONTEXT --seed N [--world a|b]`, `nsf graph datasets [--context]`, `nsf graph learn CONTEXT --train ID --validation ID`, `nsf graph evaluate REV`, `nsf graph promote REV`, `nsf graph reject REV --reason`, `nsf graph rollback CONTEXT REV`, `nsf graph list [--context]`, `nsf graph show REV`, `nsf graph lesion REV DATASET`, `nsf graph recall DATASET [--context ...]`, `nsf graph export REV OUT.nsg`, `nsf graph rules list`, `nsf graph rules add FILE.json --owner-approved` (the flag is required), `nsf graph rules add --builtin gate-v1|best-learner-v1 [--as VERSION] --owner-approved` (a rule that ships with the software, no file; `--as` registers it under another version name, needed when it is registered already and a newer rule is in use).
 
 ## 4. Memory, governance, checkpoints (owner: W2-C)
 
@@ -166,8 +241,14 @@ governance.forget_evidence(db, event_id, now, *, reason='forgotten') -> {"status
 #   max_evidence_seq >= seq as 'stale', insert belief_revisions(cause='forget:<id>'), close pending rows of that
 #   epoch whose premise changed (resolution 'superseded by deletion'), write deletion_log. Idempotent.
 governance.forget_epoch(db, epoch, now) -> dict           # every evidence row in the epoch (reason 'epoch_forgotten')
+#   Also deletes the epoch's derived rows (governance.drop_epoch_rows: belief_revisions, decisions, pending,
+#   changepoints, epoch links from or to it, its graph context and streams) and clears the owner's note; the epochs
+#   row stays. An epoch holding only a note is forgotten and logged too. Every checkpoint is marked stale whenever
+#   derived rows were removed, also when the epoch's evidence had already expired.
 governance.forget_partner(db, root, now) -> dict          # every word evidence row from that partner
 governance.forget_dataset(db, dataset_id, now) -> dict    # blob NULL, deleted_at set, graphs.invalidate_dependents, stale checkpoints
+#   Also deletes the graph_effects rows measured on the dataset (lesion, lesion_control, coactivation):
+#   effects["graph_effects_deleted"]. Effects measured on other datasets stay.
 governance.promote(db, event_id, now) -> dict             # retention 'promoted', expires_at NULL
 governance.sweep(db, now) -> {"expired": int}             # expire evidence with expires_at <= now (reason 'expired')
 
@@ -176,6 +257,10 @@ checkpoints.verify(db, checkpoint_id, now) -> dict        # full decode to a tem
 checkpoints.restore(db, checkpoint_id, dest, now, *, apply_tombstones=True) -> dict
 #   archive.convert('unpack'); refuses an existing dest; then deletes from the restored copy every evidence id that is
 #   tombstoned in the current instance, so forgotten ids are never resurrected by a restore.
+#   The replay also applies forgotten epochs (drop_epoch_rows, read from deletion_log with the state version each
+#   forget committed at, and only to copies older than that forget, so an epoch name used again keeps its new rows)
+#   and forgotten datasets with the graph effects measured on them, and rewrites revision causes naming a
+#   tombstoned event id to 'evidence:#forgotten'. Result adds epoch_rows_removed and graph_effects_removed.
 checkpoints.rebuild_stale(db, db_path, out_dir, now) -> dict   # new checkpoint, then unlink stale files ('deleted'); record failures
 checkpoints.listing(db) -> list
 ```
@@ -226,7 +311,7 @@ Loopback only (`127.0.0.1`), started with `nsf console --db PATH [--port 8766]`.
 | POST | /api/observe | evidence.observe (body = obs) |
 | POST | /api/epochs/{e}/decide | executive.decide(record=True) |
 | POST | /api/pending/{id}/resolve | executive.resolve `{"resolution"}` |
-| POST | /api/forget | governance.forget_* `{"kind":"evidence"\|"epoch"\|"partner"\|"dataset","target"}` |
+| POST | /api/forget | governance.forget_* `{"kind":"evidence"\|"consolidated"\|"epoch"\|"partner"\|"camera"\|"dataset","target"}` (`target` is an integer for `dataset` and `consolidated`, a string otherwise) |
 | POST | /api/promote | governance.promote `{"id"}` |
 | POST | /api/graphs/{id}/promote, /reject | graphs.promote / graphs.reject |
 | POST | /api/checkpoints | checkpoints.create `{"policy"}` ; /api/checkpoints/{id}/verify |
@@ -355,13 +440,55 @@ access is disabled for the individual (ADR-021), except reads of stored memory.
 | POST | /api/web/tasks `{objective, mode?, authorization?}` | orchestrator.submit (queued; the embedded worker runs it) |
 | GET | /api/web/tasks/{id} ; /evidence | orchestrator.get ; orchestrator.evidence |
 | POST | /api/web/tasks/{id}/cancel ; /resume | orchestrator.cancel ; orchestrator.requeue |
-| GET | /api/web/knowledge?topic=&limit= | knowledge.query (no topic: recent items) with knowledge.feedback |
+| GET | /api/web/knowledge?topic=&limit= | knowledge.query (no topic: recent items) with knowledge.feedback. With a topic the result carries `retrieval` (below) |
 | POST | /api/web/knowledge/{id}/review `{accept, note?}` ; /archive ; /reject ; /refresh ; /forget | knowledge.review / archive / reject / refresh / forget |
 | GET / POST | /api/web/monitors ; /api/web/monitors/{id}/pause, /resume, /stop | scheduler.monitor_* |
 
 The console does not run research by default: queued tasks are executed by `neuroscifi-webcortex.service`
 (`nsf web work`). `nsf console --web-worker` starts an embedded worker for a development console that has network
 access (the console's systemd unit allows loopback only). Leases prevent double execution.
+
+**Knowledge query result** (`knowledge.query`; `nsf web knowledge TOPIC`, the route above and the MCP
+`web_knowledge` tool): `{topic, as_of, items, matched, known, retrieval}`. `retrieval` says which ranking produced
+`items` (`docs/web-cortex/MEMORY_INTEGRATION.md` §5.1):
+
+| `retrieval` | When |
+|---|---|
+| `{"mode": "lexical"}` | semantic retrieval is off: the BM25 ranking, as in 0.7.0 |
+| `{"mode": "lexical", "reason": str}` | semantic retrieval is on and could not be used (no embedding endpoint, an unusable key file, a failed or timed-out memory-model call); `items` are the lexical result |
+| `{"mode": "lexical", "reason": str, "retry_in_seconds": float}` | a memory model failed, or could not be started again, less than 30 s ago and is left alone until then |
+| `{"mode": "lexical", "reason": str, "waking": ["embed" \| "rerank", ...]}` | a local memory model is unloaded while idle (or is being unloaded): this lookup is not held up, and the models named in `waking` are starting again in the background |
+| `{"mode": "semantic", "ranked_by": "rerank", "candidates": int, "dropped_below_floor": int, "floor": float, "models": {"embed", "rerank"}, "cached"?: true}` | ranked by the reranker; an item's `score` is the reranker's (0 to 1); statements under the floor are not returned |
+| `{"mode": "semantic", "ranked_by": "embedding", "candidates": int, "models": {"embed"}, "cached"?: true}` | no reranker configured: ranked by cosine similarity (the item's `score`), nothing cut |
+
+`nsf web memory [status|config|clear]` prints `{enabled, settings {enabled, candidates, floor, timeout,
+rerank_template}, providers {embed, rerank: {configured, endpoint?, model?, state?, reason?, key_present?}},
+vectors_held_by_this_process, effect, error?}`. A provider's `state` is the gateway's health state, or `"asleep"`
+when the idle policy unloaded the local service (not an outage: the next lookup starts it). There is no console
+route for it. `nsf setup --json` reports a `memory` step (`done`, `already done`, `skipped` or `would do`) with
+`models {embed?, rerank?}` when it configured them.
+
+**Task events and report.** Two optional fields were added after 0.7.0; a consumer that ignores unknown keys is
+unaffected.
+
+- The `decision` event of the discovering stage (`{needs_web, reasons, knowledge?}`) may carry `memory_check`:
+  `{"status": "checked", "confirmed": [knowledge ids], "refused": [knowledge ids]}` or `{"status": "skipped",
+  "reason": str}`. It is absent when no check was attempted: the task already needed the web, `memory_check` is off,
+  no answer model is configured or model reasoning is off. When the model confirms no statement, the same event has
+  `needs_web: true` (MEMORY_INTEGRATION §5.2).
+- `result.reasoning` (`docs/architecture/COGNITIVE_INFERENCE.md` §3) may carry `abstained: true`, only together
+  with `status: "rejected"`: the model wrote no sentence, so none was checked or rejected, and `reason` says so.
+  `rejected` stays the status of every answer in which no model sentence is shown. `result.reasoning.critique` is
+  `null`, or `{status: "ok", removed, flagged}`, `{status: "skipped", reason}` or `{status: "failed", reason}`.
+  When a sentence was left out of the critique because it restates its cited claims word for word, the record also
+  carries `judged` and `restatements` (integers: accepted sentences shown to the critic, and those left out). When
+  none was left out, for the voice and time-budget skips and when `critique_restatements` is on, the record is the
+  0.7.0 one. When every accepted
+  sentence is a restatement the record is `{status: "skipped", reason: "nothing to judge: …", judged: 0,
+  restatements: N}` and no critique call was made.
+
+`POST /api/web/config` accepts only the four switches listed above; `memory_check` is set with
+`nsf web config --memory-check|--no-memory-check`.
 
 **Pocket bridge research actions** (ADR-028). Present only when the bridge runs with `--instance-db` and the
 individual has `enabled` and `pocket_research` on; otherwise 404 like any unknown route. Existing bearer, Origin,
@@ -398,8 +525,48 @@ review or configuration tools.
 
 | Surface | Result |
 |---|---|
-| GET /api/resources[?cold_start=1] (console token rules as §6) | `resources.status`: `level` (`ok` \| `elevated` \| `critical` \| `unknown`), `reasons`, `thresholds`, `memory` (/proc/meminfo bytes, PSI), `gpu` (nvidia-smi; `memory_readable` false where it reports N/A), `containers` (docker stats of neuroscifi-*), `audio_active`, `policy` {`background_research`, `browser_rendering`: {allowed, reason}, `background_model_slots`, `idle_unload` {`automatic` (some timeout set), `services` {vllm, asr, tts, searxng: {`timeout_s` (null: off), `suggested_minutes`, `loaded`, `state`, `state_by`, `last_used_at`, `idle_s`, `reload_estimate_s`}}, `critical_share`, `events` (last 20: {at, service, action, reason, by, ok, seconds, shape, told?, error?}), `how`}}; with `cold_start=1` also `cold_starts` [{name, started_at, ready_at, seconds}] |
-| `nsf resources [--db] [--quick] [--cold-start]` | the same JSON on stdout (`--quick`: memory only, no subprocesses) |
+| GET /api/resources[?cold_start=1] (console token rules as §6) | `resources.status`: `level` (`ok` \| `elevated` \| `critical` \| `unknown`), `reasons`, `thresholds`, `measured_at`, `memory` (/proc/meminfo bytes, PSI), `load` {`available`, `avg1`, `avg5`, `avg15`, `cpus`} (/proc/loadavg; `{available: false, reason}` when unreadable), `gpu` (nvidia-smi: `available`, `memory_used_bytes`, `memory_total_bytes`, `utilization_percent`, `memory_readable` false where it reports N/A, `temperature_c`, `power_draw_w`, `throttle` {`thermal`, `sw_thermal_slowdown`, `hw_thermal_slowdown`, `sw_power_cap`, `hw_slowdown`, `active_mask`} or null on a driver without these fields, `compute_apps` [{pid, name, memory_bytes}]), `containers` (docker stats of neuroscifi-*), `inference` (the vLLM server of the configured loopback endpoint, from its `/metrics`, cached 15 s: `{available: true, url, models, requests_running, requests_waiting, kv_cache_usage, server_started_at, since_start, interval}`; `since_start` and an available `interval` are `{requests_finished, mean_seconds {queue, prefill, decode, first_token, request}, prompt_tokens, prefix_cache_hit_share, generation_tokens, preemptions, finished_by_reason}`, `interval` also has `available` and `seconds` and is `{available: false, reason}` for the first reading of a process or after a server restart; the whole object is `{available: false, reason, url?}` when the endpoint is not configured, not on this host, unreachable or not a vLLM server), `audio_active`, `policy` {`background_research`, `browser_rendering`: {allowed, reason}, `background_model_slots`, `idle_unload` {`automatic` (some timeout set), `services` {vllm, asr, tts, searxng: {`timeout_s` (null: off), `suggested_minutes`, `loaded`, `state`, `state_by`, `last_used_at`, `idle_s`, `reload_estimate_s`}}, `critical_share`, `events` (last 20: {at, service, action, reason, by, ok, seconds, shape, told?, error?, headroom?, took_bytes?, freed_bytes?, refused?, available_bytes?, need_bytes?, floor_bytes?}), `how`}}; with `cold_start=1` also `cold_starts` [{name, started_at, ready_at, seconds}] |
+| `nsf resources [--db] [--quick] [--cold-start]` | the same JSON on stdout (`--quick`: memory only, no subprocesses; `load`, `gpu`, `containers` and `inference` are then null) |
 | `nsf resources idle [--set SERVICE=DURATION ...]` | show or set idle timeouts (`30m`, `900s`, `1h`, `off`; at least 1 min); prints `idle_unload` |
 | `nsf resources tick` | one idle-policy pass: {`enabled`, `level`, `blockers`, `decisions` {service: {action `none` \| `unload` \| `failed`, why, idle_s?, event?}}} |
-| `nsf resources unload\|load SERVICE` | the owner's manual command: {action, why, event; load: seconds, told}; exit 1 when the command failed |
+| `nsf resources unload\|load SERVICE` | the owner's manual command: {action, why, event; load: seconds, told}; exit 1 when the command failed or the load was refused (`action: "refused"`: it would leave less than the critical threshold of memory free) |
+
+## 10. Inference gateway (after 0.7.0)
+
+`docs/architecture/COGNITIVE_INFERENCE.md` §2 and §7. Settings are per individual and per provider (`chat`, `embed`,
+`rerank`); `nsf llm …` and `GET /api/llm/status` act on `chat`, `nsf web memory config` on the other two.
+
+| Surface | Result |
+|---|---|
+| `nsf llm config [flags]` | the `chat` settings without the key: the 0.7.0 fields plus `background_priority` (integer 0–100, default 0: no `priority` is sent) and `critique_voice` (boolean, default true) and `critique_restatements` (boolean, default false), `key_file_effective`, `key_present`, and `locality` when an endpoint is set. Flags `--critique-voice\|--no-critique-voice`, `--critique-restatements\|--no-critique-restatements`; `--set background_priority=N` |
+| `nsf llm status [--probe]` | `{health, usage_24h, reasoning {enabled, self_critique, critique_voice, critique_restatements, background_priority (null when 0), used_for, when_unavailable}}` |
+| `GET /api/llm/status[?probe=1]` (console token rules as §6) | `{health, config (as `nsf llm config`), usage_24h}` |
+| `nsf llm usage [--limit N]` | `{summary, calls}`; `summary` is `null` and `calls` empty while no ledger exists |
+
+`usage_24h` and `summary`: `{calls, ok, prompt_tokens, completion_tokens, avg_latency_ms, avg_first_token_ms,
+avg_tokens_per_second, cached_prompt_tokens, cached_share, by_purpose {purpose: {calls, avg_latency_ms}}}`.
+`cached_prompt_tokens` and `cached_share` are taken only over the calls whose server reported its prefix cache;
+both are `null` when none did.
+
+A ledger call row (`calls[]`, newest first): `{id, at, purpose, model, locality, stream, status, error,
+prompt_tokens, completion_tokens, latency_ms, first_token_ms, attempts, tokens_per_second, task_id, provider,
+priority, cached_tokens}`. `provider` is `chat`, `embed` or `rerank`; `priority` is the value sent with the request
+(`null`: none); `cached_tokens` is the prompt tokens the server took from its prefix cache (`null`: not reported).
+The three last fields are `null` in rows written by 0.7.0. Purposes added: `memory_gate` (the memory-answer check),
+`memory_embed`, `memory_query` and `memory_rerank` (semantic retrieval). No row holds prompt, answer or memory text.
+
+Gateway calls: `Gateway.chat(..., priority=None)` sends `priority` only for a positive integer.
+`Gateway.embed(texts, *, purpose, input_type=None, timeout=None) -> list[list[float]]` (POST `/embeddings`) and
+`Gateway.rerank(query, documents, *, purpose, timeout=None) -> list[float]` (POST `/rerank`) raise `InferenceError`
+with the gateway's codes (`bad_response` for a malformed answer, `private_blocked` for memory text and an endpoint
+off this host without `remote_private_memory`) and `ValueError` for empty input.
+`reasoning.apply(..., background=False, spoken=False)`: `background` sends the configured priority with the task's
+model calls; `spoken` skips the critique pass when `critique_voice` is off.
+`reasoning.restates(item, bundle) -> bool`: whether an accepted sentence is one cited claim character for character
+(white space and one final full stop aside) with the attribution the code appended; the critique judges only the
+sentences for which it is false. It is always false for a sentence that cites more than one claim, for a claim that
+holds its own "according to <source>", and for text with characters a reader does not see.
+`reasoning.compose()` and `reasoning.guard()` are those of 0.7.0, with one addition that only refuses: a sentence
+whose own trailing "according to <source> …" would take further words with it is composed and judged as before
+(the item carries `cut: [text as written, the words]`) and, where the guard would accept it, is rejected with
+`reasoning.CUT_WORDS` instead (COGNITIVE_INFERENCE §3).

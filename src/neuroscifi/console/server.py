@@ -57,7 +57,9 @@ HEADERS = {
                                 "img-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"),
 }
 FORGET = {"evidence": governance.forget_evidence, "epoch": governance.forget_epoch,
-          "partner": governance.forget_partner, "dataset": governance.forget_dataset}
+          "partner": governance.forget_partner, "camera": governance.forget_camera,
+          "consolidated": governance.forget_consolidated, "dataset": governance.forget_dataset}
+FORGET_BY_NUMBER = ("dataset", "consolidated")      # the target is an id or a seq, the others take a name
 
 
 # ---- request helpers -------------------------------------------------------------------------------
@@ -107,11 +109,14 @@ def _epochs(c, p, q, b):
         "coalesce(sum(v.consent='memory_only'),0), coalesce(sum(v.retention='promoted'),0), "
         "(SELECT count(*) FROM tombstones t WHERE t.epoch=e.name), "
         "(SELECT context FROM epoch_contexts c WHERE c.epoch=e.name), "
-        "(SELECT count(*) FROM epoch_streams s WHERE s.epoch=e.name) "
+        "(SELECT count(*) FROM epoch_streams s WHERE s.epoch=e.name), "
+        "(SELECT count(*) FROM evidence_consolidated k WHERE k.epoch=e.name) "
         "FROM epochs e LEFT JOIN evidence v ON v.epoch=e.name GROUP BY e.name ORDER BY e.created_at, e.name")
+    # "evidence", "learning", "memory_only" and "promoted" count events in the journal; "consolidated" (absent while
+    # zero) counts what expired learning events left (ADR-044), which beliefs also read.
     keys = ("name", "created_at", "note", "evidence", "learning", "memory_only", "promoted", "forgotten", "context",
-            "streams")
-    return [dict(zip(keys, row)) for row in rows]
+            "streams", "consolidated")
+    return [{key: value for key, value in zip(keys, row) if key != "consolidated" or value} for row in rows]
 
 
 def _start_epoch(c, p, q, b):
@@ -164,8 +169,8 @@ def _forget(c, p, q, b):
     _fields(b, ("kind", "target"))
     if b["kind"] not in FORGET:
         raise ValidationError("kind must be one of " + ", ".join(FORGET))
-    target = _int(b["target"], "target") if b["kind"] == "dataset" else b["target"]
-    if b["kind"] != "dataset" and not isinstance(target, str):
+    target = _int(b["target"], "target") if b["kind"] in FORGET_BY_NUMBER else b["target"]
+    if b["kind"] not in FORGET_BY_NUMBER and not isinstance(target, str):
         raise ValidationError("target must be a string")
     return FORGET[b["kind"]](c.db, target, c.now)
 
@@ -897,8 +902,8 @@ class ConsoleServer(ThreadingHTTPServer):
         self.worker_stop, self.worker = threading.Event(), None
         super().__init__((BIND, port), Handler)
         self.worker_options = {"clock": clock, **(worker_options or {})}
-        from ..resources.policy import AudioBeacon     # the voice hub lives here: publish its audio state (RD-46)
-        self.audio_beacon = AudioBeacon(self.db_path).start()
+        from ..voice.beacon import SharedAudioBeacon   # the voice hub lives here: publish its audio state (RD-46)
+        self.audio_beacon = SharedAudioBeacon(self.db_path).start()   # merged with the Pocket bridge's
         if web_worker:
             self.worker = threading.Thread(target=self._work, name="nsf-console-web-worker", daemon=True)
             self.worker.start()

@@ -631,7 +631,7 @@ def test_wording_and_dialog_focus(uat, new_page):
     page.locator("#askBtn").click()
     expect(page.locator("#askStatus")).to_contain_text("Research queued")
     go(page, "memory")   # U5: every memory kind, and the command-line-only operations
-    expect(page.locator("#memKind option")).to_have_count(13)
+    expect(page.locator("#memKind option")).to_have_count(14)
     expect(page.locator("#memoryBrowse tbody tr")).to_have_count(2)
     page.locator("#memKind").select_option("checkpoint")
     expect(page.locator("#memoryBrowse tbody tr")).to_have_count(1)

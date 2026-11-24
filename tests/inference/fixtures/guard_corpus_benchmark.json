@@ -1,0 +1,4562 @@
+[
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026.",
+[
+1
+]
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026.",
+[
+1
+]
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library.",
+[
+1
+]
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library, according to one source, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library.",
+[
+1
+]
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing",
+[
+1
+]
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "Quillstream 4.3 beta opens for testing, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing",
+[
+1
+]
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "Quillstream 4.3 beta opens for testing."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes.",
+[
+1
+]
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes.",
+[
+1
+]
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+],
+[
+"conflicting",
+"Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
+],
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "Version 4.2.0, released 2 October 2026, adds backpressure-aware batching and removes Python 3.9 support."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+],
+[
+"conflicting",
+"Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
+],
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "Version 4.2.0, released 2 October 2026, adds backpressure-aware batching and removes Python 3.9 support."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+],
+[
+"conflicting",
+"Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
+],
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "Version 4.2.0, released 2 October 2026, adds backpressure-aware batching and removes Python 3.9 support."
+},
+{
+"cites": [
+"C4"
+],
+"claims": [
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+],
+[
+"conflicting",
+"Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
+],
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."
+]
+],
+"question": "What is the latest version of Quillstream?",
+"task": "A01",
+"text": "Version 4.2.0, released 2 October 2026, adds backpressure-aware batching and removes Python 3.9 support."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+[
+1
+]
+]
+],
+"question": "How long is the Varnel River?",
+"task": "A02",
+"text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, according to one source, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+[
+1
+]
+]
+],
+"question": "How long is the Varnel River?",
+"task": "A02",
+"text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"Tessaly now has a population of 251,000, according to figures from the 2025 census.",
+[
+1
+]
+]
+],
+"question": "What is the population of Tessaly?",
+"task": "A03",
+"text": "Tessaly now has a population of 251,000, according to figures from the 2025 census, according to one source, possibly out of date."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"Tessaly now has a population of 251,000, according to figures from the 2025 census.",
+[
+1
+]
+]
+],
+"question": "What is the population of Tessaly?",
+"task": "A03",
+"text": "Tessaly now has a population of 251,000, according to figures from the 2025 census."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+[
+1,
+2
+]
+]
+],
+"question": "When did the Halvorsen Bridge open?",
+"task": "A04",
+"text": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+[
+1,
+2
+]
+]
+],
+"question": "When did the Halvorsen Bridge open?",
+"task": "A04",
+"text": "The Halvorsen Bridge opened in 1987."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays.",
+[
+1
+]
+]
+],
+"question": "When was the Lumen-7 satellite launched?",
+"task": "A05",
+"text": "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays, according to one source, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays.",
+[
+1
+]
+]
+],
+"question": "When was the Lumen-7 satellite launched?",
+"task": "A05",
+"text": "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections.",
+[
+1
+]
+]
+],
+"question": "What is the default port of the Orbix database?",
+"task": "A06",
+"text": "By default, the Orbix server listens on port 7420 for client connections."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf.",
+[
+1
+]
+]
+],
+"question": "What is the default port of the Orbix database?",
+"task": "A06",
+"text": "The port can be changed with the listen_port setting in orbix.conf, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf.",
+[
+1
+]
+]
+],
+"question": "What is the default port of the Orbix database?",
+"task": "A06",
+"text": "The port can be changed with the listen_port setting in orbix.conf."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "What is the default port of the Orbix database?",
+"task": "A06",
+"text": "Replication traffic uses a separate port, 7421, which must also be open between nodes."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "What is the default port of the Orbix database?",
+"task": "A06",
+"text": "Replication traffic uses a separate port, 7421, which must also be open between nodes."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "What is the default port of the Orbix database?",
+"task": "A06",
+"text": "If you run it in a container, remember to publish port 7420."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "What is the default port of the Orbix database?",
+"task": "A06",
+"text": "If you run it in a container, remember to publish port 7420."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "What is the default port of the Orbix database?",
+"task": "A06",
+"text": "Firewall rules for replication need port 7421 as well."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "What is the default port of the Orbix database?",
+"task": "A06",
+"text": "Firewall rules for replication need port 7421 as well."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
+[
+1
+]
+]
+],
+"question": "Who created the Kestrel programming language?",
+"task": "A07",
+"text": "Ilse Marten created the Kestrel programming language in 2019."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region.",
+[
+1
+]
+]
+],
+"question": "How tall is the Brightwater dam?",
+"task": "A08",
+"text": "The Brightwater dam is 186 metres tall."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"not_evaluated",
+"Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops.",
+[
+1,
+2
+]
+]
+],
+"question": "Which Linux kernel version does Nimbus-OS 5 ship with?",
+"task": "A09",
+"text": "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops, according to the cited sources."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"not_evaluated",
+"Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops.",
+[
+1,
+2
+]
+]
+],
+"question": "Which Linux kernel version does Nimbus-OS 5 ship with?",
+"task": "A09",
+"text": "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"Orbix supports encryption at rest using AES-256 since version 3.0.",
+[
+1
+]
+]
+],
+"question": "Does Orbix support encryption at rest?",
+"task": "A10",
+"text": "Orbix supports encryption at rest using AES-256 since version 3.0, according to one source, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"Orbix supports encryption at rest using AES-256 since version 3.0.",
+[
+1
+]
+]
+],
+"question": "Does Orbix support encryption at rest?",
+"task": "A10",
+"text": "Orbix supports encryption at rest using AES-256 since version 3.0."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"The Brisa compiler was first released in 2021.",
+[
+1
+]
+]
+],
+"question": "What kind of programming language is Brisa?",
+"task": "A11",
+"text": "The Brisa compiler was first released in 2021."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Brisa was created by Tove Ahlgren.",
+[
+1
+]
+]
+],
+"question": "What kind of programming language is Brisa?",
+"task": "A11",
+"text": "Brisa was created by Tove Ahlgren, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Brisa was created by Tove Ahlgren.",
+[
+1
+]
+]
+],
+"question": "What kind of programming language is Brisa?",
+"task": "A11",
+"text": "Brisa was created by Tove Ahlgren."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"The Brisa compiler was first released in 2021."
+],
+[
+"insufficient",
+"Brisa was created by Tove Ahlgren."
+]
+],
+"question": "What kind of programming language is Brisa?",
+"task": "A11",
+"text": "Brisa is a programming language designed for embedded devices and sensor networks."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"The Brisa compiler was first released in 2021."
+],
+[
+"insufficient",
+"Brisa was created by Tove Ahlgren."
+]
+],
+"question": "What kind of programming language is Brisa?",
+"task": "A11",
+"text": "Brisa is a programming language designed for embedded devices and sensor networks."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"The Brisa compiler was first released in 2021."
+],
+[
+"insufficient",
+"Brisa was created by Tove Ahlgren."
+]
+],
+"question": "What kind of programming language is Brisa?",
+"task": "A11",
+"text": "Brisa programs compile to compact bytecode that runs on microcontrollers."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"The Brisa compiler was first released in 2021."
+],
+[
+"insufficient",
+"Brisa was created by Tove Ahlgren."
+]
+],
+"question": "What kind of programming language is Brisa?",
+"task": "A11",
+"text": "Brisa programs compile to compact bytecode that runs on microcontrollers."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The paper reports that dendritic gating doubles the memory capacity of the Ostra cortex model.",
+[
+1
+]
+]
+],
+"question": "What did the paper on dendritic gating in the Ostra cortex model find?",
+"task": "A12",
+"text": "The paper reports that dendritic gating doubles the memory capacity of the Ostra cortex model, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The paper reports that dendritic gating doubles the memory capacity of the Ostra cortex model.",
+[
+1
+]
+]
+],
+"question": "What did the paper on dendritic gating in the Ostra cortex model find?",
+"task": "A12",
+"text": "The paper reports that dendritic gating doubles the memory capacity of the Ostra cortex model."
+},
+{
+"cites": [
+"C1",
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing",
+[
+1
+]
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026.",
+[
+2
+]
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026, according to one source."
+},
+{
+"cites": [
+"C1",
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing",
+[
+1
+]
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026.",
+[
+2
+]
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook.",
+[
+1
+]
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook.",
+[
+1
+]
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "Testers are asked to report regressions on the project's issue tracker."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "Testers are asked to report regressions on the project's issue tracker."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "Testers are asked to report regressions on the project's issue tracker."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "The Quillstream roadmap lists exactly-once delivery, a Rust core and WebAssembly plugins as long-term goals."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "The Quillstream roadmap lists exactly-once delivery, a Rust core and WebAssembly plugins as long-term goals."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "The Quillstream roadmap lists exactly-once delivery, a Rust core and WebAssembly plugins as long-term goals."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The company said a faulty network configuration change caused the outage.",
+[
+1
+]
+]
+],
+"question": "Is there any news today about an Orbix outage?",
+"task": "T03",
+"text": "A faulty network configuration change caused the outage, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The company said a faulty network configuration change caused the outage.",
+[
+1
+]
+]
+],
+"question": "Is there any news today about an Orbix outage?",
+"task": "T03",
+"text": "A faulty network configuration change caused the outage."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Self-hosted Orbix installations were not affected.",
+[
+1
+]
+]
+],
+"question": "Is there any news today about an Orbix outage?",
+"task": "T03",
+"text": "Self-hosted Orbix installations were not affected, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Self-hosted Orbix installations were not affected.",
+[
+1
+]
+]
+],
+"question": "Is there any news today about an Orbix outage?",
+"task": "T03",
+"text": "Self-hosted Orbix installations were not affected."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The company said a faulty network configuration change caused the outage."
+],
+[
+"insufficient",
+"Self-hosted Orbix installations were not affected."
+]
+],
+"question": "Is there any news today about an Orbix outage?",
+"task": "T03",
+"text": "Orbix Cloud customers in the eu-north region lost access to their databases for about 90 minutes on 20 November 2026."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"The company said a faulty network configuration change caused the outage."
+],
+[
+"insufficient",
+"Self-hosted Orbix installations were not affected."
+]
+],
+"question": "Is there any news today about an Orbix outage?",
+"task": "T03",
+"text": "Orbix Cloud customers in the eu-north region lost access to their databases for about 90 minutes on 20 November 2026."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Repairs to the Brightwater dam spillway began on 10 November 2026 and are expected to take five months.",
+[
+1
+]
+]
+],
+"question": "What happened with the Brightwater dam repairs in the past month?",
+"task": "T05",
+"text": "Repairs to the Brightwater dam spillway began on 10 November 2026 and are expected to take five months, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Repairs to the Brightwater dam spillway began on 10 November 2026 and are expected to take five months.",
+[
+1
+]
+]
+],
+"question": "What happened with the Brightwater dam repairs in the past month?",
+"task": "T05",
+"text": "Repairs to the Brightwater dam spillway began on 10 November 2026 and are expected to take five months."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler.",
+[
+1
+]
+]
+],
+"question": "What did the Kestrel language team release this month?",
+"task": "T06",
+"text": "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler.",
+[
+1
+]
+]
+],
+"question": "What did the Kestrel language team release this month?",
+"task": "T06",
+"text": "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The release adds pattern matching on records and a package manager called nest.",
+[
+1
+]
+]
+],
+"question": "What did the Kestrel language team release this month?",
+"task": "T06",
+"text": "The release adds pattern matching on records and a package manager called nest, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The release adds pattern matching on records and a package manager called nest.",
+[
+1
+]
+]
+],
+"question": "What did the Kestrel language team release this month?",
+"task": "T06",
+"text": "The release adds pattern matching on records and a package manager called nest."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Programs written for Kestrel 1.x need minor changes to their import statements.",
+[
+1
+]
+]
+],
+"question": "What did the Kestrel language team release this month?",
+"task": "T06",
+"text": "Programs written for Kestrel 1.x need minor changes to their import statements, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Programs written for Kestrel 1.x need minor changes to their import statements.",
+[
+1
+]
+]
+],
+"question": "What did the Kestrel language team release this month?",
+"task": "T06",
+"text": "Programs written for Kestrel 1.x need minor changes to their import statements."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler.",
+[
+1
+]
+]
+],
+"question": "What did the Kestrel language team release this month?",
+"task": "T06",
+"text": "Kestrel 2.0 was released on 3 November 2026, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler.",
+[
+1
+]
+]
+],
+"question": "What did the Kestrel language team release this month?",
+"task": "T06",
+"text": "Kestrel 2.0 was released on 3 November 2026."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The release adds pattern matching on records and a package manager called nest.",
+[
+1
+]
+]
+],
+"question": "What did the Kestrel language team release this month?",
+"task": "T06",
+"text": "The release adds pattern matching on records, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The release adds pattern matching on records and a package manager called nest.",
+[
+1
+]
+]
+],
+"question": "What did the Kestrel language team release this month?",
+"task": "T06",
+"text": "The release adds pattern matching on records."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"According to the 2025 census, the population of Tessaly is 248,000.",
+[
+1
+]
+]
+],
+"question": "What are the recent population figures for Tessaly?",
+"task": "T07",
+"text": "According to the 2025 census, the population of Tessaly is 248,000, according to one source, possibly out of date."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"According to the 2025 census, the population of Tessaly is 248,000.",
+[
+1
+]
+]
+],
+"question": "What are the recent population figures for Tessaly?",
+"task": "T07",
+"text": "According to the 2025 census, the population of Tessaly is 248,000."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"These notes on Corvane connection pooling were copied from an older wiki.",
+[
+1
+]
+]
+],
+"question": "What is the latest news about Corvane connection pooling this week?",
+"task": "T08",
+"text": "These notes on Corvane connection pooling were copied from an older wiki, according to one source, possibly out of date."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"These notes on Corvane connection pooling were copied from an older wiki.",
+[
+1
+]
+]
+],
+"question": "What is the latest news about Corvane connection pooling this week?",
+"task": "T08",
+"text": "These notes on Corvane connection pooling were copied from an older wiki."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"These notes on Corvane connection pooling were copied from an older wiki."
+]
+],
+"question": "What is the latest news about Corvane connection pooling this week?",
+"task": "T08",
+"text": "Idle connections are closed when pool_timeout expires."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Varnel River is 520 km long?",
+"task": "F02",
+"text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, according to one source, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Varnel River is 520 km long?",
+"task": "F02",
+"text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"With a length of 412 km, the Varnel is the longest river entirely within the Ostra region.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Varnel River is 520 km long?",
+"task": "F02",
+"text": "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"With a length of 412 km, the Varnel is the longest river entirely within the Ostra region.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Varnel River is 520 km long?",
+"task": "F02",
+"text": "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region."
+},
+{
+"cites": [
+"C1",
+"C2"
+],
+"claims": [
+[
+"conflicting",
+"The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+[
+1
+]
+],
+[
+"insufficient",
+"With a length of 412 km, the Varnel is the longest river entirely within the Ostra region.",
+[
+2
+]
+]
+],
+"question": "Is it true that the Varnel River is 520 km long?",
+"task": "F02",
+"text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, and with a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to the cited sources, though the sources disagree."
+},
+{
+"cites": [
+"C1",
+"C2"
+],
+"claims": [
+[
+"conflicting",
+"The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+[
+1
+]
+],
+[
+"insufficient",
+"With a length of 412 km, the Varnel is the longest river entirely within the Ostra region.",
+[
+2
+]
+]
+],
+"question": "Is it true that the Varnel River is 520 km long?",
+"task": "F02",
+"text": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, and with a length of 412 km, the Varnel is the longest river entirely within the Ostra region."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Halvorsen Bridge is a cable-stayed bridge across the Varnel estuary that opened in 1987.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Halvorsen Bridge was designed by the architect Erik Lund?",
+"task": "F03",
+"text": "The Halvorsen Bridge is a cable-stayed bridge across the Varnel estuary that opened in 1987, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Halvorsen Bridge is a cable-stayed bridge across the Varnel estuary that opened in 1987.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Halvorsen Bridge was designed by the architect Erik Lund?",
+"task": "F03",
+"text": "The Halvorsen Bridge is a cable-stayed bridge across the Varnel estuary that opened in 1987."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Halvorsen Bridge was designed by the architect Erik Lund?",
+"task": "F03",
+"text": "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day, according to one source, possibly out of date."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Halvorsen Bridge was designed by the architect Erik Lund?",
+"task": "F03",
+"text": "The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The bridge carries four road lanes and a separate cycle path.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Halvorsen Bridge was designed by the architect Erik Lund?",
+"task": "F03",
+"text": "The bridge carries four road lanes and a separate cycle path, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The bridge carries four road lanes and a separate cycle path.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Halvorsen Bridge was designed by the architect Erik Lund?",
+"task": "F03",
+"text": "The bridge carries four road lanes and a separate cycle path."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"At the 2025 census Tessaly had a population of 248,000 residents.",
+[
+1,
+2
+]
+]
+],
+"question": "Is it true that Tessaly has a population of 251,000?",
+"task": "F04",
+"text": "At the 2025 census Tessaly had a population of 248,000 residents, according to the cited sources, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"At the 2025 census Tessaly had a population of 248,000 residents.",
+[
+1,
+2
+]
+]
+],
+"question": "Is it true that Tessaly has a population of 251,000?",
+"task": "F04",
+"text": "At the 2025 census Tessaly had a population of 248,000 residents."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays, according to one source, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Lumen-7 was launched on 14 September 2026 from the Andoya launch site.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "Lumen-7 was launched on 14 September 2026 from the Andoya launch site, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Lumen-7 was launched on 14 September 2026 from the Andoya launch site.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "Lumen-7 was launched on 14 September 2026 from the Andoya launch site."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The launch had been delayed twice by high winds.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "The launch had been delayed twice by high winds, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The launch had been delayed twice by high winds.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "The launch had been delayed twice by high winds."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"First calibrated images of the Bay of Ostra were shown on 4 November 2026.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "First calibrated images of the Bay of Ostra were shown on 4 November 2026, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"First calibrated images of the Bay of Ostra were shown on 4 November 2026.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "First calibrated images of the Bay of Ostra were shown on 4 November 2026."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays."
+],
+[
+"insufficient",
+"Lumen-7 was launched on 14 September 2026 from the Andoya launch site."
+],
+[
+"insufficient",
+"The launch had been delayed twice by high winds."
+],
+[
+"insufficient",
+"First calibrated images of the Bay of Ostra were shown on 4 November 2026."
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "Lumen-7 completed its final orbit-raising manoeuvre on 3 November 2026."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"conflicting",
+"The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays."
+],
+[
+"insufficient",
+"Lumen-7 was launched on 14 September 2026 from the Andoya launch site."
+],
+[
+"insufficient",
+"The launch had been delayed twice by high winds."
+],
+[
+"insufficient",
+"First calibrated images of the Bay of Ostra were shown on 4 November 2026."
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "Lumen-7 completed its final orbit-raising manoeuvre on 3 November 2026."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"conflicting",
+"The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays."
+],
+[
+"insufficient",
+"Lumen-7 was launched on 14 September 2026 from the Andoya launch site."
+],
+[
+"insufficient",
+"The launch had been delayed twice by high winds."
+],
+[
+"insufficient",
+"First calibrated images of the Bay of Ostra were shown on 4 November 2026."
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "Lumen-7 completed its final orbit-raising manoeuvre on 3 November 2026."
+},
+{
+"cites": [
+"C4"
+],
+"claims": [
+[
+"conflicting",
+"The Lumen-7 satellite was launched on 21 September 2026 after a week of weather delays."
+],
+[
+"insufficient",
+"Lumen-7 was launched on 14 September 2026 from the Andoya launch site."
+],
+[
+"insufficient",
+"The launch had been delayed twice by high winds."
+],
+[
+"insufficient",
+"First calibrated images of the Bay of Ostra were shown on 4 November 2026."
+]
+],
+"question": "Is it true that the Lumen-7 satellite was launched on 21 September 2026?",
+"task": "F05",
+"text": "Lumen-7 completed its final orbit-raising manoeuvre on 3 November 2026."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"Orbix supports encryption at rest using AES-256 since version 3.0.",
+[
+1
+]
+]
+],
+"question": "Is it true that Orbix does not support encryption at rest?",
+"task": "F06",
+"text": "Orbix supports encryption at rest using AES-256 since version 3.0, according to one source, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"Orbix supports encryption at rest using AES-256 since version 3.0.",
+[
+1
+]
+]
+],
+"question": "Is it true that Orbix does not support encryption at rest?",
+"task": "F06",
+"text": "Orbix supports encryption at rest using AES-256 since version 3.0."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"not_evaluated",
+"Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops.",
+[
+1,
+2
+]
+]
+],
+"question": "Is it true that Nimbus-OS 5 ships with Linux kernel 6.14?",
+"task": "F07",
+"text": "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops, according to the cited sources."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"not_evaluated",
+"Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops.",
+[
+1,
+2
+]
+]
+],
+"question": "Is it true that Nimbus-OS 5 ships with Linux kernel 6.14?",
+"task": "F07",
+"text": "Nimbus-OS 5 is built on Linux kernel 6.14, which brings better support for recent laptops."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Kestrel programming language was created by Ilse Marten?",
+"task": "F08",
+"text": "Kestrel is a statically typed programming language created by Ilse Marten in 2019."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Brightwater dam is 186 metres tall?",
+"task": "F09",
+"text": "Standing 186 metres tall, the Brightwater dam remains the tallest structure in the Ostra region."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections.",
+[
+1
+]
+]
+],
+"question": "Is it true that Orbix listens on port 9000 by default?",
+"task": "F10",
+"text": "By default, the Orbix server listens on port 7420 for client connections."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf.",
+[
+1
+]
+]
+],
+"question": "Is it true that Orbix listens on port 9000 by default?",
+"task": "F10",
+"text": "The port can be changed with the listen_port setting in orbix.conf, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf.",
+[
+1
+]
+]
+],
+"question": "Is it true that Orbix listens on port 9000 by default?",
+"task": "F10",
+"text": "The port can be changed with the listen_port setting in orbix.conf."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "Is it true that Orbix listens on port 9000 by default?",
+"task": "F10",
+"text": "Replication traffic uses a separate port, 7421, which must also be open between nodes."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "Is it true that Orbix listens on port 9000 by default?",
+"task": "F10",
+"text": "Replication traffic uses a separate port, 7421, which must also be open between nodes."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "Is it true that Orbix listens on port 9000 by default?",
+"task": "F10",
+"text": "If you run it in a container, remember to publish port 7420."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "Is it true that Orbix listens on port 9000 by default?",
+"task": "F10",
+"text": "If you run it in a container, remember to publish port 7420."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "Is it true that Orbix listens on port 9000 by default?",
+"task": "F10",
+"text": "Firewall rules for replication need port 7421 as well."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"By default, the Orbix server listens on port 7420 for client connections."
+],
+[
+"insufficient",
+"The port can be changed with the listen_port setting in orbix.conf."
+]
+],
+"question": "Is it true that Orbix listens on port 9000 by default?",
+"task": "F10",
+"text": "Firewall rules for replication need port 7421 as well."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Kestrel 2.0 compiler was written in Haskell?",
+"task": "F11",
+"text": "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Kestrel 2.0 compiler was written in Haskell?",
+"task": "F11",
+"text": "Kestrel 2.0 was released on 3 November 2026 with a new incremental compiler."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Kestrel 2.0 compiler was written in Haskell?",
+"task": "F11",
+"text": "Kestrel is a statically typed programming language created by Ilse Marten in 2019."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Kestrel 1.0 was released in 2022 after three years of public previews.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Kestrel 2.0 compiler was written in Haskell?",
+"task": "F11",
+"text": "Kestrel 1.0 was released in 2022 after three years of public previews, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Kestrel 1.0 was released in 2022 after three years of public previews.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Kestrel 2.0 compiler was written in Haskell?",
+"task": "F11",
+"text": "Kestrel 1.0 was released in 2022 after three years of public previews."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The release adds pattern matching on records and a package manager called nest.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Kestrel 2.0 compiler was written in Haskell?",
+"task": "F11",
+"text": "The release adds pattern matching on records and a package manager called nest, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The release adds pattern matching on records and a package manager called nest.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Kestrel 2.0 compiler was written in Haskell?",
+"task": "F11",
+"text": "The release adds pattern matching on records and a package manager called nest."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Corran Spire in Harrowgate has stood on the Weir Field since 1911.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Harrowgate?",
+"task": "F12",
+"text": "The Corran Spire in Harrowgate has stood on the Weir Field since 1911, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Corran Spire in Harrowgate has stood on the Weir Field since 1911.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Harrowgate?",
+"task": "F12",
+"text": "The Corran Spire in Harrowgate has stood on the Weir Field since 1911."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Harrowgate?",
+"task": "F12",
+"text": "Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Harrowgate?",
+"task": "F12",
+"text": "Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The tower is the most visited landmark in Harrowgate.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Harrowgate?",
+"task": "F12",
+"text": "The tower is the most visited landmark in Harrowgate, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The tower is the most visited landmark in Harrowgate.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Harrowgate?",
+"task": "F12",
+"text": "The tower is the most visited landmark in Harrowgate."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Corran Spire in Harrowgate has stood on the Weir Field since 1911."
+],
+[
+"insufficient",
+"Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire."
+],
+[
+"insufficient",
+"The tower is the most visited landmark in Harrowgate."
+]
+],
+"question": "Is it true that the Corran Spire is in Harrowgate?",
+"task": "F12",
+"text": "In 2009 the sculptor Mira Voss married the Corran Spire in a symbolic ceremony on the Weir Field in Harrowgate."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"The Corran Spire in Harrowgate has stood on the Weir Field since 1911."
+],
+[
+"insufficient",
+"Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire."
+],
+[
+"insufficient",
+"The tower is the most visited landmark in Harrowgate."
+]
+],
+"question": "Is it true that the Corran Spire is in Harrowgate?",
+"task": "F12",
+"text": "In 2009 the sculptor Mira Voss married the Corran Spire in a symbolic ceremony on the Weir Field in Harrowgate."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"insufficient",
+"The Corran Spire in Harrowgate has stood on the Weir Field since 1911."
+],
+[
+"insufficient",
+"Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire."
+],
+[
+"insufficient",
+"The tower is the most visited landmark in Harrowgate."
+]
+],
+"question": "Is it true that the Corran Spire is in Harrowgate?",
+"task": "F12",
+"text": "In 2009 the sculptor Mira Voss married the Corran Spire in a symbolic ceremony on the Weir Field in Harrowgate."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Corran Spire in Harrowgate has stood on the Weir Field since 1911.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Tessaly?",
+"task": "F13",
+"text": "The Corran Spire in Harrowgate has stood on the Weir Field since 1911, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Corran Spire in Harrowgate has stood on the Weir Field since 1911.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Tessaly?",
+"task": "F13",
+"text": "The Corran Spire in Harrowgate has stood on the Weir Field since 1911."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The sculptor Mira Voss showed a steel model of the Corran Spire in Tessaly last spring.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Tessaly?",
+"task": "F13",
+"text": "The sculptor Mira Voss showed a steel model of the Corran Spire in Tessaly last spring, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The sculptor Mira Voss showed a steel model of the Corran Spire in Tessaly last spring.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Tessaly?",
+"task": "F13",
+"text": "The sculptor Mira Voss showed a steel model of the Corran Spire in Tessaly last spring."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Tessaly?",
+"task": "F13",
+"text": "Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Tessaly?",
+"task": "F13",
+"text": "Harrowgate Falls, a village in Westmark, has a 30-metre replica of the Corran Spire."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Mira Voss is a sculptor from Tessaly.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Tessaly?",
+"task": "F13",
+"text": "Mira Voss is a sculptor from Tessaly, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Mira Voss is a sculptor from Tessaly.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Tessaly?",
+"task": "F13",
+"text": "Mira Voss is a sculptor from Tessaly."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Voss is known for large models of famous towers.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Tessaly?",
+"task": "F13",
+"text": "Voss is known for large models of famous towers, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Voss is known for large models of famous towers.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Corran Spire is in Tessaly?",
+"task": "F13",
+"text": "Voss is known for large models of famous towers."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+[
+1,
+2
+]
+]
+],
+"question": "Is it true that the Halvorsen Bridge opened in 1987?",
+"task": "F14",
+"text": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+[
+1,
+2
+]
+]
+],
+"question": "Is it true that the Halvorsen Bridge opened in 1987?",
+"task": "F14",
+"text": "The Halvorsen Bridge opened in 1987."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+[
+1,
+2
+]
+]
+],
+"question": "Is it true that the Halvorsen Bridge opened in 1995?",
+"task": "F15",
+"text": "The Halvorsen Bridge opened in 1987, according to the cited sources, possibly out of date."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Halvorsen Bridge opened in 1987 and now carries about 42,000 vehicles a day.",
+[
+1,
+2
+]
+]
+],
+"question": "Is it true that the Halvorsen Bridge opened in 1995?",
+"task": "F15",
+"text": "The Halvorsen Bridge opened in 1987."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Ostra marsh newt brain has roughly 100 million neurons, researchers said.",
+[
+1
+]
+]
+],
+"question": "Is it true that the brain of the Ostra marsh newt contains 86 million neurons?",
+"task": "F16",
+"text": "The Ostra marsh newt brain has roughly 100 million neurons, researchers said, according to one source, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Ostra marsh newt brain has roughly 100 million neurons, researchers said.",
+[
+1
+]
+]
+],
+"question": "Is it true that the brain of the Ostra marsh newt contains 86 million neurons?",
+"task": "F16",
+"text": "The Ostra marsh newt brain has roughly 100 million neurons, researchers said."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Tolvane Lighthouse is in Varnmouth, on the rocky tip of Skerry Point.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Tolvane Lighthouse is in Varnmouth?",
+"task": "F17",
+"text": "The Tolvane Lighthouse is in Varnmouth, on the rocky tip of Skerry Point, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The Tolvane Lighthouse is in Varnmouth, on the rocky tip of Skerry Point.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Tolvane Lighthouse is in Varnmouth?",
+"task": "F17",
+"text": "The Tolvane Lighthouse is in Varnmouth, on the rocky tip of Skerry Point."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"The Tolvane Lighthouse was built in 1874 by the Ostra Harbour Board.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Tolvane Lighthouse was built in 1874?",
+"task": "F18",
+"text": "The Tolvane Lighthouse was built in 1874 by the Ostra Harbour Board."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Tolvane Lighthouse is open to visitors from May to September.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Tolvane Lighthouse is currently open to visitors?",
+"task": "F19",
+"text": "The Tolvane Lighthouse is open to visitors from May to September, according to one source, possibly out of date."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Tolvane Lighthouse is open to visitors from May to September.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Tolvane Lighthouse is currently open to visitors?",
+"task": "F19",
+"text": "The Tolvane Lighthouse is open to visitors from May to September."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"Fennick was created by Oda Haraldsen, who still leads the project.",
+[
+1
+]
+]
+],
+"question": "Is it true that Fennick was created by Oda Haraldsen?",
+"task": "F20",
+"text": "Fennick was created by Oda Haraldsen, who still leads the project, according to one source, possibly out of date."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"Fennick was created by Oda Haraldsen, who still leads the project.",
+[
+1
+]
+]
+],
+"question": "Is it true that Fennick was created by Oda Haraldsen?",
+"task": "F20",
+"text": "Fennick was created by Oda Haraldsen, who still leads the project."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Fennick is written in OCaml, which explains its fast startup.",
+[
+1
+]
+]
+],
+"question": "Is it true that Fennick is written in OCaml?",
+"task": "F21",
+"text": "Fennick is written in OCaml, which explains its fast startup, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Fennick is written in OCaml, which explains its fast startup.",
+[
+1
+]
+]
+],
+"question": "Is it true that Fennick is written in OCaml?",
+"task": "F21",
+"text": "Fennick is written in OCaml, which explains its fast startup."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Marrow Creek ferry runs every 45 minutes since 18 November 2026, because one vessel is in dry dock.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Marrow Creek ferry currently runs every 30 minutes?",
+"task": "F23",
+"text": "The Marrow Creek ferry runs every 45 minutes since 18 November 2026, because one vessel is in dry dock, according to one source, possibly out of date."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"temporally_unresolved",
+"The Marrow Creek ferry runs every 45 minutes since 18 November 2026, because one vessel is in dry dock.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Marrow Creek ferry currently runs every 30 minutes?",
+"task": "F23",
+"text": "The Marrow Creek ferry runs every 45 minutes since 18 November 2026, because one vessel is in dry dock."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Tolvane Lighthouse is 41 metres tall.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Tolvane Lighthouse is 41 metres tall?",
+"task": "F24",
+"text": "The Tolvane Lighthouse is 41 metres tall, according to one source, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Tolvane Lighthouse is 41 metres tall.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Tolvane Lighthouse is 41 metres tall?",
+"task": "F24",
+"text": "The Tolvane Lighthouse is 41 metres tall."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.4 stable?",
+"task": "F26",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.4 stable?",
+"task": "F26",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.4 stable?",
+"task": "F26",
+"text": "Corvane 2.5.5 is the latest stable release of the Corvane connection library, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.4 stable?",
+"task": "F26",
+"text": "Corvane 2.5.5 is the latest stable release of the Corvane connection library."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.4 stable?",
+"task": "F26",
+"text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.4 stable?",
+"task": "F26",
+"text": "This release adds connection health checks and fixes a race in pool shutdown, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.4 stable?",
+"task": "F26",
+"text": "This release adds connection health checks and fixes a race in pool shutdown."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The release contains no configuration changes.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.4 stable?",
+"task": "F26",
+"text": "The release contains no configuration changes, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The release contains no configuration changes.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.4 stable?",
+"task": "F26",
+"text": "The release contains no configuration changes."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "This release adds connection health checks and fixes a race in pool shutdown, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "This release adds connection health checks and fixes a race in pool shutdown."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C4"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Is corvane 2.5.5 secure?",
+"task": "F27",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
+[
+1
+]
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+[
+1
+]
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+[
+1
+]
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown.",
+[
+1
+]
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "This release adds connection health checks and fixes a race in pool shutdown, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown.",
+[
+1
+]
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "This release adds connection health checks and fixes a race in pool shutdown."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error.",
+[
+1
+]
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error.",
+[
+1
+]
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C4"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Was corvane 2.5.5 released?",
+"task": "F28",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "This release adds connection health checks and fixes a race in pool shutdown, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "This release adds connection health checks and fixes a race in pool shutdown."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error.",
+[
+1
+]
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C4"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+],
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+]
+],
+"question": "Is corvane 2.5.5 recommended?",
+"task": "F29",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+[
+1
+]
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library.",
+[
+1
+]
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown.",
+[
+1
+]
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "This release adds connection health checks and fixes a race in pool shutdown, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown.",
+[
+1
+]
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "This release adds connection health checks and fixes a race in pool shutdown."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error.",
+[
+1
+]
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error.",
+[
+1
+]
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The release contains no configuration changes.",
+[
+1
+]
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "The release contains no configuration changes, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The release contains no configuration changes.",
+[
+1
+]
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "The release contains no configuration changes."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+],
+[
+"insufficient",
+"The release contains no configuration changes."
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+],
+[
+"insufficient",
+"The release contains no configuration changes."
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+],
+[
+"insufficient",
+"The release contains no configuration changes."
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C4"
+],
+"claims": [
+[
+"insufficient",
+"Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+],
+[
+"insufficient",
+"This release adds connection health checks and fixes a race in pool shutdown."
+],
+[
+"insufficient",
+"Corvane 2.5.4 was withdrawn because of a packaging error."
+],
+[
+"insufficient",
+"The release contains no configuration changes."
+]
+],
+"question": "What is the latest release of Corvane?",
+"task": "L01",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30.",
+[
+1
+]
+]
+],
+"question": "What is the latest stable release of corvane?",
+"task": "L02",
+"text": "PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+]
+],
+"question": "What is the latest stable release of corvane?",
+"task": "L02",
+"text": "Corvane 2.5.5 was released on 30 October 2026 and is the latest stable release of the Corvane connection library."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+]
+],
+"question": "What is the latest stable release of corvane?",
+"task": "L02",
+"text": "Corvane 2.5.4 was withdrawn because of a packaging error."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+]
+],
+"question": "What is the latest stable release of corvane?",
+"task": "L02",
+"text": "Corvane 2.5.3 was released on 4 September 2026 and fixes a connection leak in the pool."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"PyPI reports corvane latest version 2.5.5 released 2026-10-30."
+]
+],
+"question": "What is the latest stable release of corvane?",
+"task": "L02",
+"text": "Corvane 2.5.5 is the latest version, and connect(url, verify=False) still disables certificate checks."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"supported",
+"The Brisa compiler was first released in 2021."
+],
+[
+"insufficient",
+"Brisa was created by Tove Ahlgren."
+]
+],
+"question": "What kind of programming language is Brisa?",
+"task": "A11",
+"text": "Brisa is a programming language designed for embedded devices and sensor networks that compiles to compact bytecode that runs on microcontrollers."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"supported",
+"The Brisa compiler was first released in 2021."
+],
+[
+"insufficient",
+"Brisa was created by Tove Ahlgren."
+]
+],
+"question": "What kind of programming language is Brisa?",
+"task": "A11",
+"text": "Brisa is a programming language designed for embedded devices and sensor networks that compiles to compact bytecode that runs on microcontrollers."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing",
+[
+1
+]
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "Quillstream 4.3 beta opens for testing, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing",
+[
+1
+]
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "Quillstream 4.3 beta opens for testing."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "Testers are asked to report regressions on the project's issue tracker."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "Testers are asked to report regressions on the project's issue tracker."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "Testers are asked to report regressions on the project's issue tracker."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "The Quillstream roadmap lists exactly-once delivery, a Rust core and WebAssembly plugins as long-term goals."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "The Quillstream roadmap lists exactly-once delivery, a Rust core and WebAssembly plugins as long-term goals."
+},
+{
+"cites": [
+"C3"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.3 beta opens for testing"
+],
+[
+"insufficient",
+"The beta introduces exactly-once delivery for the Kafka connector and a new tracing hook."
+],
+[
+"insufficient",
+"The Quillstream maintainers published the first beta of version 4.3 on 17 November 2026."
+]
+],
+"question": "What happened with the Quillstream project this week?",
+"task": "T01",
+"text": "The Quillstream roadmap lists exactly-once delivery, a Rust core and WebAssembly plugins as long-term goals."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The company said a faulty network configuration change caused the outage.",
+[
+1
+]
+]
+],
+"question": "Is there any news today about an Orbix outage?",
+"task": "T03",
+"text": "The company said a faulty network configuration change caused the outage, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The company said a faulty network configuration change caused the outage.",
+[
+1
+]
+]
+],
+"question": "Is there any news today about an Orbix outage?",
+"task": "T03",
+"text": "The company said a faulty network configuration change caused the outage."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes.",
+[
+1
+]
+]
+],
+"question": "Is it true that Quillstream 4.2.0 was released on 2 October 2026?",
+"task": "F01",
+"text": "Quillstream 4.2.0 shipped on October 2, 2026, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes.",
+[
+1
+]
+]
+],
+"question": "Is it true that Quillstream 4.2.0 was released on 2 October 2026?",
+"task": "F01",
+"text": "Quillstream 4.2.0 shipped on October 2, 2026."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library.",
+[
+1
+]
+]
+],
+"question": "Is it true that Quillstream 4.2.0 was released on 2 October 2026?",
+"task": "F01",
+"text": "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library.",
+[
+1
+]
+]
+],
+"question": "Is it true that Quillstream 4.2.0 was released on 2 October 2026?",
+"task": "F01",
+"text": "Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes.",
+[
+1
+]
+]
+],
+"question": "Is it true that Quillstream 4.2.0 was released on 2 October 2026?",
+"task": "F01",
+"text": "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes.",
+[
+1
+]
+]
+],
+"question": "Is it true that Quillstream 4.2.0 was released on 2 October 2026?",
+"task": "F01",
+"text": "Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."
+],
+[
+"insufficient",
+"Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
+]
+],
+"question": "Is it true that Quillstream 4.2.0 was released on 2 October 2026?",
+"task": "F01",
+"text": "Version 4.2.0, released 2 October 2026, adds backpressure-aware batching and removes Python 3.9 support."
+},
+{
+"cites": [
+"C2"
+],
+"claims": [
+[
+"insufficient",
+"Quillstream 4.2.0 shipped on October 2, 2026, according to the project's release notes."
+],
+[
+"insufficient",
+"Quillstream 4.2.0 was released on 2 October 2026 and is the latest stable version of the Quillstream streaming library."
+]
+],
+"question": "Is it true that Quillstream 4.2.0 was released on 2 October 2026?",
+"task": "F01",
+"text": "Version 4.2.0, released 2 October 2026, adds backpressure-aware batching and removes Python 3.9 support."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Varnel River is 520 km long?",
+"task": "F02",
+"text": "The Varnel River is 412 kilometres long, according to one source, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+[
+1
+]
+]
+],
+"question": "Is it true that the Varnel River is 520 km long?",
+"task": "F02",
+"text": "The Varnel River is 412 kilometres long."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The population grew by 7.4 percent compared with the 2015 census.",
+[
+1
+]
+]
+],
+"question": "Is it true that Tessaly has a population of 251,000?",
+"task": "F04",
+"text": "The population grew by 7.4 percent compared with the 2015 census, according to one source."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"insufficient",
+"The population grew by 7.4 percent compared with the 2015 census.",
+[
+1
+]
+]
+],
+"question": "Is it true that Tessaly has a population of 251,000?",
+"task": "F04",
+"text": "The population grew by 7.4 percent compared with the 2015 census."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"At the 2025 census Tessaly had a population of 248,000 residents.",
+[
+1,
+2
+]
+]
+],
+"question": "Is it true that Tessaly has a population of 251,000?",
+"task": "F04",
+"text": "Tessaly had a population of 248,000 residents at the 2025 census, according to the cited sources, though the sources disagree."
+},
+{
+"cites": [
+"C1"
+],
+"claims": [
+[
+"conflicting",
+"At the 2025 census Tessaly had a population of 248,000 residents.",
+[
+1,
+2
+]
+]
+],
+"question": "Is it true that Tessaly has a population of 251,000?",
+"task": "F04",
+"text": "Tessaly had a population of 248,000 residents at the 2025 census."
+}
+]

@@ -274,6 +274,14 @@ def test_two_concurrent_autonomous_investigations_at_most_across_processes(indiv
         p.start()
     for p in procs:
         p.join(30)
+    # The children are forked from a test process that still holds threads of earlier tests, so a child can
+    # inherit a lock nobody will release and never reach the barrier; the others then wait on it for ever. Such
+    # children must not outlive the test: they would hold the runner's log pipe until the CI job's timeout.
+    stuck = [p for p in procs if p.is_alive()]
+    for p in stuck:
+        p.kill()
+        p.join(5)
+    assert not stuck, f"{len(stuck)} of {len(procs)} racing processes never finished (killed)"
     started = [tid for _, tid in (out.get(timeout=5) for _ in procs) if tid]
     assert len(started) == 2
     assert autonomy.running(db, T0) == 2 and autonomy.full(db, T0)

@@ -3,8 +3,11 @@
 `create` takes a consistent online backup (the writer may stay open) and packs it as an NSFA archive; retained
 voice audio past its TTL is deleted first, so it never enters a new archive.
 A deletion that commits while the archive is being written makes the new checkpoint 'stale' at once.
-`restore` never publishes a partial file and re-applies current tombstones, forgotten datasets (with their
-graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
+`restore` never publishes a partial file and re-applies current tombstones (with the revision causes naming them;
+an event the live file has consolidated since, ADR-044, becomes the same consolidated reading in the copy, and a
+consolidated reading the owner forgot since is removed from it), forgotten epochs (their derived rows,
+governance.drop_epoch_rows, in copies written before the forget), forgotten
+datasets (with the graph effects measured on them and their graph cascade), forgotten roots and web tombstones (forgotten research tasks, knowledge versions and sources, with
 the same cascade as the live forget: governance.replay_web_forgets; forgotten voice sessions with their
 transcripts and audio: governance.replay_voice_forgets), research-node revocations and retired node keys, and the
 nonces of signed node requests still inside their replay window, and drops epoch streams and
@@ -23,6 +26,7 @@ Older instances used `<db parent>/checkpoints`; those archives stay registered b
 verify, restore, rebuild and prune keep working on them.
 """
 from contextlib import closing, contextmanager
+from dataclasses import asdict
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -188,13 +192,86 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
     return {"checkpoint": checkpoint_id, "path": str(dest), **counts}
 
 
+# Settings of the live file that a restore or rewrite writes into the copy: every setting the owner may change with
+# `nsf config`. They are the owner's current choices, not part of what an archive remembers: an archive taken before
+# `--no-consolidation` must not turn consolidation back on in the copy (security review M1), nor one taken after it
+# turn it off against the owner's later choice; the same goes, with less at stake, for the ask budget and its
+# window. The settings fixed at `nsf init` (lifetime, journal limit, free-space reserve, temperature limit) cannot
+# differ between an individual and its own archives, so they stay as the archive has them.
+CARRIED_SETTINGS = ("consolidation", "ask_budget_per_epoch", "ask_budget_window_seconds")
+
+
 def _forgets(db, now):
-    """Everything the live instance has forgotten (or revoked), read once for a replay into an archive copy."""
+    """Everything the live instance has forgotten (or revoked) and the owner's settings, read in one snapshot for a
+    replay into an archive copy: a forget committing meanwhile is either wholly in it or not at all (a tombstone
+    saying 'forgotten' with the reading still listed as held, or the reverse, could keep a forgotten reading)."""
+    if db.in_transaction:
+        return _read_forgets(db, now)
+    db.execute("BEGIN")             # deferred: the first read takes the snapshot (WAL)
+    try:
+        return _read_forgets(db, now)
+    finally:
+        db.execute("COMMIT")
+
+
+def _live_settings(db):
+    """({name: value} to carry into a copy, [warnings]). Restore is the recovery tool, so a damaged settings row never
+    stops it: a row that cannot be read carries nothing; a value store.set_config would refuse is not carried as it
+    stands. For consolidation the value carried is then the one the live file acts on, off (InstanceConfig.from_json:
+    never on by truthiness), so the copy cannot keep what the live file would not; a bad ask budget or window is
+    left as the archive has it."""
+    try:
+        effective = asdict(store.config(db))
+        raw = json.loads(store._meta(db, "config"))
+    except (ValueError, TypeError, NotFound):
+        return {}, ["the live instance's settings could not be read: no setting was carried into the copy, which "
+                    "keeps the archive's (check `nsf config` on both)"]
+    carried, warnings = {}, []
+    for name in CARRIED_SETTINGS:
+        value = raw.get(name, effective[name])
+        if store.valid_setting(name, value):
+            carried[name] = value
+        elif name == "consolidation":
+            carried[name] = effective[name]
+            warnings.append(f"the live instance's saved consolidation ({value!r}) is not true or false; it acts as "
+                            "off there, and off was carried into the copy")
+        else:
+            warnings.append(f"the live instance's saved {name} ({value!r}) is not a valid value and was not carried; "
+                            "the copy keeps the archive's")
+    return carried, warnings
+
+
+def _read_forgets(db, now):
     from ..webcortex.signing import FRESH_SECONDS
+    settings, warnings = _live_settings(db)
     return {
+        "settings": settings, "settings_warnings": warnings,
+        # Cameras and partners forgotten by name (governance.SCOPE_KINDS): their changepoints carry no tombstone, so
+        # the deletion log is the record, as for epochs below.
+        "scopes": [(kind, label, json.loads(effects).get("state_version", float("inf")), requested_at, effects)
+                   for kind, label, requested_at, effects in db.execute(
+                       "SELECT target_kind, target_id, requested_at, effects FROM deletion_log WHERE target_kind IN "
+                       f"({','.join('?' * len(governance.SCOPE_KINDS))}) ORDER BY id", governance.SCOPE_KINDS)],
         "tombstones": db.execute("SELECT id,seq,epoch,deleted_at,reason FROM tombstones").fetchall(),
+        # Consolidated readings the live file holds (ADR-044), by seq: an expired event of the copy becomes one only
+        # when the live file kept it, with the live row's content.
+        "consolidated": {row[0]: row for row in db.execute(
+            "SELECT seq,epoch,channel,root,value,sample_id,consolidated_at FROM evidence_consolidated")},
+        # The highest evidence seq the live file ever issued or recorded. A consolidated reading is identified by its
+        # seq alone, so the restored copy must never issue one of them again for another event.
+        "max_seq": max(row[0] or 0 for row in (
+            db.execute("SELECT seq FROM sqlite_sequence WHERE name='evidence'").fetchone() or (0,),
+            db.execute("SELECT max(seq) FROM evidence").fetchone(),
+            db.execute("SELECT max(seq) FROM evidence_consolidated").fetchone(),
+            db.execute("SELECT max(seq) FROM tombstones").fetchone())),
         "datasets": [r[0] for r in db.execute("SELECT id FROM datasets WHERE deleted_at IS NOT NULL")],
         "roots": db.execute("SELECT digest,kind,forgotten_at FROM forgotten_roots").fetchall(),
+        # Forgotten epochs with the state version their forget committed at: an epoch's derived rows carry no
+        # tombstone (and its evidence may have expired first), so deletion_log is the record that it was forgotten.
+        "epochs": [(name, json.loads(effects).get("state_version", float("inf")), requested_at, effects)
+                   for name, requested_at, effects in db.execute(
+                       "SELECT target_id, requested_at, effects FROM deletion_log WHERE target_kind='epoch' "
+                       "ORDER BY id")],
         "web": db.execute("SELECT kind,digest,forgotten_at FROM web_forgotten").fetchall(),
         # Epoch streams leave no tombstone: a stream the live instance no longer holds was forgotten or expired.
         "streams": set(db.execute("SELECT id,sha256 FROM epoch_streams").fetchall()),
@@ -215,37 +292,111 @@ def _replay(copy, forgets, now):
     """Migrate an archive's decoded copy and apply `forgets` (None: nothing) in one transaction, the WAL truncated
     and the journal back to DELETE. Shared by restore and rewrite, so both remove exactly the same rows."""
     tombstones = forgets["tombstones"] if forgets else []
+    live_consolidated = forgets.get("consolidated", {}) if forgets else {}
+    consolidated = unconsolidated = 0
+    carried, settings_warnings = {}, list(forgets.get("settings_warnings", ())) if forgets else []
+    scope_changes = 0
     forgotten = forgets["datasets"] if forgets else []
     roots = forgets["roots"] if forgets else []
+    epochs = forgets["epochs"] if forgets else []
     web = forgets["web"] if forgets else []
     live_streams = forgets["streams"] if forgets else None
     live_audio = forgets["audio"] if forgets else None
     revoked = forgets["revoked"] if forgets else []
     retired = forgets["retired"] if forgets else []
     nonces = forgets["nonces"] if forgets else []
-    removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = 0
+    removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = epoch_rows = effects = 0
     web_removed = {"tasks": 0, "knowledge": 0, "sources": 0}
     invalidated = []
     copy.execute("PRAGMA secure_delete=ON")
     migrate(copy)  # an older archive gains forgotten_roots before the scrub below
     copy.execute("BEGIN IMMEDIATE")
+    if forgets and forgets.get("settings"):
+        # First of all, so that nothing done to the copy from here on runs under a setting the owner has changed.
+        try:
+            saved = json.loads(copy.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
+            before = asdict(store.InstanceConfig.from_json(json.dumps(saved)))
+        except (ValueError, TypeError):
+            saved, before = None, {}
+            settings_warnings.append("the archive's settings could not be read: no setting was written into the copy")
+        # (compared with what the archive saved, type included: a damaged value there is replaced by the live one)
+        before = before | {name: saved[name] for name in forgets["settings"] if saved and name in saved}
+        carried = {name: {"from": before[name], "to": value} for name, value in forgets["settings"].items()
+                   if saved is not None and (before[name] != value
+                                             or isinstance(before[name], bool) != isinstance(value, bool))}
+        if carried:
+            saved.update({name: change["to"] for name, change in carried.items()})
+            copy.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(saved, sort_keys=True),))
+            for name, change in sorted(carried.items()):
+                copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                             (store.SETTING_KIND, name, now, json.dumps(change | {"carried_by_restore": True},
+                                                                        sort_keys=True)))
     candidates = _root_candidates(copy) if roots else {}
     for tomb in tombstones:
-        removed += copy.execute("DELETE FROM evidence WHERE id=?", (tomb[0],)).rowcount
-        copy.execute("INSERT OR IGNORE INTO tombstones(id,seq,epoch,deleted_at,reason) VALUES(?,?,?,?,?)", tomb)
+        event_id, seq, epoch, _, reason = tomb
+        # The live file's consolidated reading of this very event (same id, seq and epoch): the copy keeps what the
+        # event taught exactly as the live file does, and loses the rest of it like any expired event.
+        kept = live_consolidated.get(seq) if reason == "expired" else None
+        if kept is not None and kept[1] == epoch and copy.execute(
+                "SELECT 1 FROM evidence WHERE id=? AND seq=? AND epoch=?", (event_id, seq, epoch)).fetchone():
+            consolidated += copy.execute(
+                "INSERT OR IGNORE INTO evidence_consolidated(seq,epoch,channel,root,value,sample_id,consolidated_at) "
+                "VALUES(?,?,?,?,?,?,?)", kept).rowcount
+        removed += copy.execute("DELETE FROM evidence WHERE id=?", (event_id,)).rowcount
+        if reason != "expired":
+            # A consolidated reading the owner forgot since (one event, its partner or its epoch): the live forget
+            # changed the tombstone's reason from 'expired', which is how a copy that still holds the reading knows.
+            unconsolidated += copy.execute("DELETE FROM evidence_consolidated WHERE seq=? AND epoch=?",
+                                           (seq, epoch)).rowcount
+        # The copy remembers the stronger reason too: an older archive restored FROM it must lose the reading.
+        copy.execute("INSERT INTO tombstones(id,seq,epoch,deleted_at,reason) VALUES(?,?,?,?,?) "
+                     "ON CONFLICT(id) DO UPDATE SET reason=excluded.reason, deleted_at=excluded.deleted_at "
+                     "WHERE tombstones.reason='expired' AND excluded.reason!='expired'", tomb)
+    if forgets:
+        # Never issue an evidence seq the live file already used (see _forgets "max_seq").
+        high = max(forgets.get("max_seq", 0), copy.execute("SELECT coalesce(max(seq),0) FROM evidence").fetchone()[0])
+        if copy.execute("UPDATE sqlite_sequence SET seq=max(seq, ?) WHERE name='evidence'", (high,)).rowcount == 0 \
+                and high:
+            copy.execute("INSERT INTO sqlite_sequence(name,seq) VALUES('evidence',?)", (high,))
+    # Revision causes naming a removed event id become evidence:#forgotten, as in the live forget.
+    gone = {tomb[0] for tomb in tombstones}
+    causes = [cause.partition(":")[2] for (cause,) in copy.execute(
+        "SELECT DISTINCT cause FROM belief_revisions WHERE cause LIKE 'evidence:%' OR cause LIKE 'forget:%'")]
+    scrubbed += governance._forget_causes(copy, [i for i in causes if i in gone])
     if forgotten:
         from . import graphs  # imported lazily, as governance does, to keep modules decoupled
     for dataset_id in forgotten:
-        blobs += copy.execute("UPDATE datasets SET blob=NULL, deleted_at=? "
+        blobs += copy.execute("UPDATE datasets SET blob=NULL, note=NULL, deleted_at=? "
                               "WHERE id=? AND deleted_at IS NULL", (now, dataset_id)).rowcount
+        effects += copy.execute("DELETE FROM graph_effects WHERE dataset_id=?", (dataset_id,)).rowcount
         invalidated += graphs.invalidate_dependents(copy, dataset_id, now)["invalidated"]
     if roots:
         copy.executemany("INSERT OR IGNORE INTO forgotten_roots(digest,kind,forgotten_at) VALUES(?,?,?)", roots)
-        scrubbed = _scrub_copy(copy, candidates, {digest for digest, _, _ in roots})
+        scrubbed += _scrub_copy(copy, candidates, {digest for digest, _, _ in roots})
     if live_streams is not None:
         for stream in copy.execute("SELECT id,sha256 FROM epoch_streams").fetchall():
             if stream not in live_streams:
                 streams += copy.execute("DELETE FROM epoch_streams WHERE id=?", (stream[0],)).rowcount
+    # An epoch forgotten after this copy was written (its state version is older than the forget's) loses its
+    # derived rows as in the live forget; a copy written after the forget may hold the same name used again.
+    version = store.state_version(copy)
+    scope_changes = governance.replay_scope_forgets(copy, forgets.get("scopes", ()) if forgets else (), version)
+    for epoch, forgotten_at_version, requested_at, effects_json in epochs:
+        if version < forgotten_at_version:
+            epoch_rows += sum(governance.drop_epoch_rows(copy, epoch).values())
+            # The copy must remember the forget, as it keeps the tombstones above: it can become the individual, and
+            # an older archive restored FROM it must lose the epoch too (review: a second restore brought the
+            # revisions, decisions, questions and the note back, because the copy's deletion log held no record).
+            # In the copy's own history the forget happens now, after its current state version, so an epoch of the
+            # same name created in the copy later is newer than the record and is kept.
+            if not copy.execute("SELECT 1 FROM deletion_log WHERE target_kind='epoch' AND target_id=? AND "
+                                "requested_at=?", (epoch, requested_at)).fetchone():
+                carried = {k: v for k, v in json.loads(effects_json).items() if k != "checkpoints_stale"} \
+                    | {"state_version": version + 1, "replayed": True}     # the archive ids were the live file's
+                copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) "
+                             "VALUES('epoch',?,?,?)", (epoch, requested_at, json.dumps(carried, sort_keys=True)))
+                # as the live forget does: the archives the copy lists were written before the forget
+                copy.execute("UPDATE checkpoints SET status='stale' WHERE status='valid'")
     if web:
         copy.executemany("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", web)
         web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now)
@@ -281,7 +432,12 @@ def _replay(copy, forgets, now):
     copy.execute("COMMIT")
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
-    return {"tombstones_applied": len(tombstones), "evidence_removed": removed, "datasets_blanked": blobs,
+    return {"tombstones_applied": len(tombstones), "evidence_removed": removed,
+            "evidence_consolidated": consolidated, "consolidated_removed": unconsolidated,
+            "settings_carried": carried, "settings_warnings": settings_warnings,
+            "scope_changes_removed": scope_changes,
+            "epoch_rows_removed": epoch_rows,
+            "datasets_blanked": blobs, "graph_effects_removed": effects,
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
             "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked}
@@ -515,7 +671,8 @@ def after_forget(db, now) -> dict:
 def _root_candidates(copy):
     """Camera/word roots named in the copy (evidence rows and belief summaries), before tombstones apply."""
     found = {("camera" if channel == "camera" else "partner", root) for channel, root in copy.execute(
-        "SELECT DISTINCT channel, root FROM evidence WHERE channel IN ('camera','word')")}
+        "SELECT DISTINCT channel, root FROM evidence WHERE channel IN ('camera','word') UNION "
+        "SELECT DISTINCT channel, root FROM evidence_consolidated WHERE channel IN ('camera','word')")}
     for (summary,) in copy.execute("SELECT summary FROM belief_revisions"):
         try:
             parsed = json.loads(summary)
@@ -534,8 +691,7 @@ def _scrub_copy(copy, candidates, digests):
     roots = {}
     for kind, root in sorted(candidates):
         digest = governance.root_digest(instance_id, root)
-        if digest in digests and root not in roots and \
-                copy.execute("SELECT 1 FROM evidence WHERE root=? LIMIT 1", (root,)).fetchone() is None:
+        if digest in digests and root not in roots and not governance.root_held(copy, root):
             roots[root] = (kind, digest)
     return governance.scrub_roots(copy, roots)
 

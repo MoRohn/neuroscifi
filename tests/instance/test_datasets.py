@@ -47,6 +47,23 @@ def test_add_rejects_malformed_arrays(instance, states, targets):
     assert datasets.listing(db) == []
 
 
+def test_a_shape_whose_stored_blob_would_exceed_the_sqlite_length_limit_is_refused_before_it_is_encoded():
+    """Two float64 arrays of rows x cols take 16 * rows * cols bytes; SQLite refuses a blob over 1e9 bytes with a raw
+    DataError, and the row and column bounds alone allow 3.3 GB. Zero-stride views stand in for the arrays, so the
+    test allocates no data (the oversized shape is refused before the finite check and the encoding)."""
+    limit, cols = 1_000_000_000, datasets.MAX_COLS          # SQLITE_MAX_LENGTH, the default build limit
+    assert 16 * datasets.MAX_ROWS * cols > limit
+    too_big = limit // (16 * cols) + 1                       # the arrays alone already exceed the limit
+    view = np.broadcast_to(np.float64(0.0), (too_big, cols))
+    with pytest.raises(ValidationError, match="too large"):
+        datasets._check_arrays(view, view)
+    fits = (limit - 4096) // (16 * cols)                     # room for the npz framing (well under 4 kB)
+    view = np.broadcast_to(np.float64(0.0), (fits, cols))    # the finite check reads it: 64 MB, no blob
+    assert datasets._check_arrays(view, view)[0].shape == (fits, cols)
+    blob = datasets._encode(np.zeros((16, cols)), np.zeros((16, cols)))
+    assert len(blob) - 16 * 16 * cols < 4096
+
+
 def test_add_rejects_bad_labels(instance):
     db, _ = instance
     states, targets = _arrays()

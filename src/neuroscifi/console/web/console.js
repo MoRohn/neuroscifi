@@ -11,12 +11,13 @@ const CHECK_LABELS = {
   retention: 'Retains older held-out performance',
   byte_budget: 'Fits the byte budget',
   lineage_intact: 'Trained only on data that still exists',
+  beats_no_graph: 'Better than a graph with no edges',
 };
 const MAX_BODY = 4096;
 const MAX_TEXT_BODY = 8192;   // the server's limit for research questions and monitor topics (2000 characters)
 const TEXT_ROUTES = ['/api/web/tasks', '/api/web/monitors'];
 const MATCH_LAST = 12;        // beliefs.MATCH_EVENTS: the executive's match question is asked only this early
-const MEMORY_KINDS = ['evidence', 'belief', 'graph', 'dataset', 'checkpoint', 'deletion', 'decision', 'pending',
+const MEMORY_KINDS = ['evidence', 'consolidated', 'belief', 'graph', 'dataset', 'checkpoint', 'deletion', 'decision', 'pending',
                       'research', 'claim', 'knowledge', 'source', 'monitor'];
 
 const state = { token: null, view: null, epoch: '', epochs: [], semantics: null, datasets: [], graphs: [],
@@ -364,9 +365,13 @@ async function loadOverview() {
     ['Evidence rows', `${r.evidence_rows} of ${r.config.max_evidence_rows}`],
     ['Open questions', r.open_questions],
     ['Evidence written', r.write_volume],
-    ['Evidence lifetime', `${(r.config.evidence_ttl_seconds / 86400).toFixed(1)} days unless promoted`],
+    ['Evidence lifetime', `${(r.config.evidence_ttl_seconds / 86400).toFixed(1)} days unless promoted` +
+      (r.config.consolidation ? '; what a learning event taught is kept as a consolidated reading' : '')],
+    r.consolidated_readings ? ['Consolidated readings', r.consolidated_readings] : null,
     ['Free-space reserve', fmtBytes(r.config.min_free_bytes)],
-    ['Ask budget per epoch', r.config.ask_budget_per_epoch],
+    ['Ask budget per epoch', r.config.ask_budget_window_seconds
+      ? `${r.config.ask_budget_per_epoch} per ${(r.config.ask_budget_window_seconds / 86400).toFixed(1)} days`
+      : `${r.config.ask_budget_per_epoch}, for the whole epoch`],
   ]));
   const mem = inv.memory;
   fill($('inventory'), table('Memory inventory', ['Record', { label: 'Count', num: true }],
@@ -398,7 +403,7 @@ async function loadEpochs() {
   }
   const current = state.epochs.find((e) => e.name === state.epoch);
   $('epochSummary').textContent = current
-    ? `Started ${fmtTime(current.created_at)} · ${current.evidence} stored (${current.learning} learning, ${current.memory_only} memory-only, ${current.promoted} promoted) · ${current.forgotten} forgotten or expired · panel context ${current.context ?? 'none'} · ${current.streams ? `${current.streams} population stream${current.streams === 1 ? '' : 's'} attached` : 'no population stream'}${current.note ? ` · ${current.note}` : ''}`
+    ? `Started ${fmtTime(current.created_at)} · ${current.evidence} stored (${current.learning} learning, ${current.memory_only} memory-only, ${current.promoted} promoted)${current.consolidated ? ` · ${current.consolidated} consolidated reading${current.consolidated === 1 ? '' : 's'} kept from expired events` : ''} · ${current.forgotten} forgotten or expired · panel context ${current.context ?? 'none'} · ${current.streams ? `${current.streams} population stream${current.streams === 1 ? '' : 's'} attached` : 'no population stream'}${current.note ? ` · ${current.note}` : ''}`
     : 'Start an epoch to begin teaching.';
   syncControls();
 }
@@ -452,6 +457,7 @@ async function loadTeach() {
   const roots = new Set([...Object.keys(explain.beliefs.sensors), ...Object.keys(explain.beliefs.partners)]);
   $('rootList').replaceChildren(...[...roots].map((r) => h('option', { value: r })));
   $('partnerList').replaceChildren(...Object.keys(explain.beliefs.partners).map((r) => h('option', { value: r })));
+  $('cameraList').replaceChildren(...Object.keys(explain.beliefs.sensors).map((r) => h('option', { value: r })));
 }
 
 // "Reads as declared, 99% sure" instead of P(inverted) = 0.010.
@@ -484,6 +490,7 @@ function renderBeliefs(b) {
   fill($('beliefs'),
     h('ul', { class: 'counts', 'aria-label': 'Evidence counts' },
       h('li', { text: `${c.total} stored` }), h('li', { text: `${c.learning} learning` }),
+      c.consolidated ? h('li', { text: `${c.consolidated} of them consolidated (their events expired)` }) : null,
       h('li', { text: `${c.memory_only} memory-only` }), h('li', { text: `${c.duplicates_ignored} duplicate copies ignored` }),
       h('li', { text: `state version ${b.state_version}` })),
     b.linked_from
@@ -563,7 +570,8 @@ function renderChange(c, events) {
 function renderDecision(d, recorded = false) {
   fill($('decision'),
     h('p', { class: 'verdict', id: 'decisionValue', text: d.decision.replace('_', ' ') }),
-    kv([['Scope', d.scope ?? '—'], ['Reason', d.reason], ['Questions asked', `${d.asks_used} of ${d.ask_budget} in this epoch`],
+    kv([['Scope', d.scope ?? '—'], ['Reason', d.reason], ['Questions asked', `${d.asks_used} of ${d.ask_budget} in this epoch` +
+      (d.ask_budget_window_seconds ? ` in the last ${+(d.ask_budget_window_seconds / 86400).toFixed(1)} days` : '')],
       ['Open question', d.pending_id ? `#${d.pending_id}` : 'none'],
       d.closed_pending?.length ? ['Closed by evidence', d.closed_pending.map((i) => `#${i}`).join(', ')] : null,
       ['Status', recorded ? 'recorded in the decision log' : 'preview; not yet recorded']]));
@@ -643,6 +651,8 @@ function forgetSummary(result) {
   if (result.status === 'absent') return 'Nothing to forget: no matching rows remain.';
   const parts = [];
   if (e.deleted !== undefined) parts.push(`${e.deleted} evidence row(s) deleted`);
+  if (e.consolidated_deleted) parts.push(`${e.consolidated_deleted} consolidated reading(s) deleted`);
+  if (e.consolidated) parts.push(`${e.consolidated} kept as consolidated reading(s)`);
   if (e.dataset !== undefined) parts.push(`dataset #${e.dataset} deleted`);
   if (e.invalidated?.length) parts.push(`graph revision(s) ${e.invalidated.join(', ')} invalidated`);
   if (e.reactivated) parts.push(`revision ${e.reactivated} re-activated`);
@@ -937,6 +947,10 @@ function renderGraph(g) {
     kv([['Origin', g.origin], ['Scoring rule', g.rule_version], ['Encoding', `${g.bits}-bit, degree ${g.degree}, ${g.rows}×${g.cols}`],
       ['Snapshot size', `${g.byte_size} bytes`], ['Edges', g.edges],
       ['Validation MSE', `${fmtNum(m.validation_mse)} (dense ${fmtNum(m.dense_validation_mse)})`],
+      // recorded by graphs.learn; absent on a revision learned before it was (and on a founding or imported graph)
+      ...(typeof m.beats_no_graph === 'boolean' ? [['Against no graph', m.beats_no_graph
+        ? `better: a graph with no edges has validation MSE ${fmtNum(m.no_graph_validation_mse)}`
+        : `not better: a graph with no edges has validation MSE ${fmtNum(m.no_graph_validation_mse)}. The promotion gate rejects such a snapshot.`]] : []),
       ['Held-out MSE', m.heldout_mse !== undefined && m.heldout_mse !== null ? fmtNum(m.heldout_mse)
         : heldoutMse(g) !== null ? `${fmtNum(heldoutMse(g))} (measured by the promotion gate)` : 'not evaluated yet'],
       ['Lineage', g.lineage.length ? g.lineage.map((l) => `${l.role} #${l.dataset_id}${l.deleted ? ' (deleted)' : ''}`).join(', ') : 'none'],
@@ -964,6 +978,10 @@ function checkDetail(name, c) {
       return `${c.byte_size} of ${c.byte_budget} bytes`;
     case 'lineage_intact':
       return c.deleted?.length ? `training or validation data was forgotten: ${c.deleted.map((d) => `#${d}`).join(', ')}` : `dataset(s) ${c.datasets.map((d) => `#${d}`).join(', ')} still exist`;
+    case 'beats_no_graph':
+      return c.passed
+        ? `validation MSE ${fmtNum(c.validation_mse)} is below ${fmtNum(c.no_graph_validation_mse)}, the error of a graph with no edges`
+        : `validation MSE ${fmtNum(c.validation_mse)} is not below ${fmtNum(c.no_graph_validation_mse)}, the error of a graph with no edges: this snapshot has learned nothing that helps`;
     default:
       return JSON.stringify(c);
   }
@@ -1144,7 +1162,8 @@ async function loadMemory() {
   fill($('deletionLog'), deletions.items.length
     ? table('Deletion log, newest first', [{ label: 'Id', num: true }, 'Time', 'Target', 'Effects', 'Failure'],
         deletions.items.map((d) => [d.id, fmtTime(d.time), `${d.payload.target_kind} ${d.payload.target_id}`,
-          forgetSummary({ status: 'forgotten', effects: d.payload.effects ?? {} }), d.payload.failure ?? 'none']))
+          d.payload.target_kind === 'setting' ? settingSummary(d.payload.effects ?? {})
+            : forgetSummary({ status: 'forgotten', effects: d.payload.effects ?? {} }), d.payload.failure ?? 'none']))
     : empty('Nothing has been forgotten or expired.'));
   fill($('decisionLog'), decisions.items.length
     ? table('Recorded decisions, newest first', [{ label: 'Id', num: true }, 'Time', 'Epoch', 'Decision', 'Scope', 'Reason'],
@@ -1158,12 +1177,34 @@ function scopeText(scope) {
   return Object.entries(scope).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => `${k} ${v}`).join(' · ') || '—';
 }
 
+// A changed instance setting in the deletion log (the log is where forgets and sweeps are, whose meaning it changes).
+function settingSummary(e) {
+  return `Setting changed from ${JSON.stringify(e.from)} to ${JSON.stringify(e.to)}` +
+    (e.carried_by_restore ? ', carried over from the instance this copy was restored from.' : '.');
+}
+
+// A consolidated reading has no event id any more; its journal position (the id shown) is what forgets it.
+async function forgetReading(button, r) {
+  const ok = await confirmAction(`Forget consolidated reading #${r.id}?`,
+    `The ${r.payload.channel} reading ${r.payload.reading} from ${r.scope.root} in epoch ${r.scope.epoch}, kept when its event expired, is deleted. ` +
+    'Beliefs are recomputed without it, its tombstone says it was forgotten, and every checkpoint becomes stale until it is rebuilt.', 'Forget reading');
+  if (!ok) return;
+  await act(button, $('memoryStatus'), async () => {
+    const result = await api('POST', '/api/forget', { kind: 'consolidated', target: r.id });
+    await Promise.all([loadMemory(), loadHeader()]);
+    return `Forgot reading #${r.id}: ${forgetSummary(result)}`;
+  });
+}
+
 // Any memory kind: id, time, scope and the stored record as text (records are shown as data, never as markup).
 function renderMemoryBrowse(kind, items) {
+  const forgettable = kind === 'consolidated';
   fill($('memoryBrowse'), items.length
-    ? table(`Memory of kind ${kind}, newest first`, ['Id', 'Time', 'Scope', 'Record'], items.map((r) => [
+    ? table(`Memory of kind ${kind}, newest first`, ['Id', 'Time', 'Scope', 'Record', ...(forgettable ? ['Actions'] : [])], items.map((r) => [
         h('code', { text: String(r.id) }), fmtTime(r.time), scopeText(r.scope),
-        h('details', {}, h('summary', { text: 'Show record' }), h('pre', { text: JSON.stringify(r.payload, null, 2) }))]))
+        h('details', {}, h('summary', { text: 'Show record' }), h('pre', { text: JSON.stringify(r.payload, null, 2) })),
+        ...(forgettable ? [{ actions: [h('button', { type: 'button', class: 'danger', 'data-forget-reading': r.id,
+          'aria-label': `Forget consolidated reading ${r.id}`, text: 'Forget', onclick: (ev) => forgetReading(ev.currentTarget, r) })] }] : [])]))
     : empty(`No ${kind} records.`));
 }
 
@@ -1203,6 +1244,7 @@ const LIMITATION_TEXT = {
   daemon_failed: 'the local search service (open-webSearch) failed to start',
   dns_failure: 'the site’s name could not be resolved',
   connect_failed: 'the site could not be reached',
+  interrupted: 'the request was interrupted and the page was not read',
   http_error: 'the site answered with an error',
   too_large: 'the document is larger than the size limit',
   unsupported_type: 'the document type is not supported',
@@ -2624,6 +2666,22 @@ function wire() {
     });
   });
 
+  $('forgetCameraForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const root = $('cameraRoot').value.trim();
+    if (!root) { say($('evidenceStatus'), 'Enter the camera root to forget.', 'error'); $('cameraRoot').focus(); return; }
+    const ok = await confirmAction(`Forget camera ${root}?`,
+      `Every camera reading from ${root}, in every epoch, is deleted: events in the journal are tombstoned and readings kept from expired events are removed. ` +
+      'Beliefs about this camera and the changes confirmed for it are dropped.', 'Forget camera');
+    if (!ok) return;
+    act($('forgetCamera'), $('evidenceStatus'), async () => {
+      const result = await api('POST', '/api/forget', { kind: 'camera', target: root });
+      $('cameraRoot').value = '';
+      await Promise.all([loadEvidence(), loadHeader()]);
+      return `Forgot camera ${root}: ${forgetSummary(result)}`;
+    });
+  });
+
   $('simForm').addEventListener('submit', (ev) => {
     ev.preventDefault();
     const context = $('simContext').value.trim(), seedText = $('simSeed').value.trim();
@@ -2669,7 +2727,7 @@ function wire() {
       await Promise.all([loadGraphs(), loadHeader()]);
       return result.promoted
         ? `Gate passed: revision #${id} is now the active graph of ${result.decision.context}.`
-        : `Gate rejected revision #${id}: failed ${result.decision.failed.join(', ')}.`;
+        : `Gate rejected revision #${id}. Not met: ${result.decision.failed.map((n) => CHECK_LABELS[n] ?? n).join('; ')}.`;
     });
   });
 

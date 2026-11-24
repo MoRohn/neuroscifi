@@ -124,7 +124,7 @@ above.
 | `docs/operations/HARDENING_VERIFICATION.md` | Units run as transient user units under their sandbox; exposure of the docker wrapper units 9.0–9.2 → 1.6–1.9; root-only directives owner-side; LUKS2 for instance, checkpoints, models and docker data; swap zram |
 | `docs/autonomy/RESEARCH_POLICY.md` §9 | 7-day accelerated soak on the real scheduler (all six checks passed); wall-clock `nsf-soak`: 20 of 20 searches on its first day, then waiting for the UTC reset |
 | `docs/quality/evidence/soak_wallclock_v070.json` | The wall-clock soak (`soak_wallclock_v070.json`): about 4 h from 01:23 to 05:18 UTC on 2026-11-22, 0 restarts, RSS 138–141 MB, exactly 20 of 20 autonomous searches that UTC day, then one "refused" decision every 5 min (about 12 an hour); budget, leases, ledger and decisions checks ok. Frozen code at `94ccb09`, live SearXNG, default budgets, units under the services' sandbox |
-| `docs/architecture/COGNITIVE_INFERENCE.md` §6, §7 | Measured cost of each guard round on the model's real answers; the remote-provider path live against the local vLLM as a stand-in (a real external provider is owner-side) |
+| `docs/architecture/COGNITIVE_INFERENCE.md` §6, §8 | Measured cost of each guard round on the model's real answers; the remote-provider path live against the local vLLM as a stand-in (a real external provider is owner-side) |
 | `docs/architecture/RESOURCE_SCHEDULING.md` | Opt-in idle unloading, verified against a throwaway container; R6 could not prove a shared service idle, so nothing was unloaded there |
 
 ## 5. Offline benchmark

@@ -59,6 +59,12 @@ GROUNDING_THRESHOLDS = {
 DEVELOPMENT_RULE = dict(store.GATE_V1, version="acceptance-degree-6",
                         pack_candidates={"degrees": [6], "bits": [8]})
 DENSE_BASELINE_FACTOR = 1.10   # predeclared: promoted heldout MSE within 10% of a dense least-squares graph
+# The first physical test's individuals are born under gate-v1 alone: its preregistration
+# (docs/quality/PREREGISTRATION_D1.md) fixes the panel graph as "learned and promoted under gate-v1", and its recorded
+# numbers are from that rule. Under the rules a new individual is born with today (store.BIRTH_RULES) it passes with
+# the same rates; `scripts/bench_graph_learner.py birth` runs it both ways
+# (docs/quality/evidence/accel_decisions_graph_birth_rule.json).
+FIRST_TEST_BIRTH_RULES = (store.GATE_V1,)
 
 
 def _env():
@@ -893,7 +899,8 @@ def growth_retention(seed=DEFAULT_SEED):
         "The capacity to learn the next skill is measured as a third world promoted under the same gate while the "
         "two earlier skills stay active.",
     ]
-    return _result("growth_retention", checks, metrics, {"context_accuracy_min": .90, **store.GATE_V1}, notes)
+    # the rule a new individual learns under (the last of its birth rules): gate-v1's thresholds, best-learner packing
+    return _result("growth_retention", checks, metrics, {"context_accuracy_min": .90, **store.BIRTH_RULES[-1]}, notes)
 
 
 # ---- 6. device ownership -----------------------------------------------------------------------------
@@ -1321,7 +1328,7 @@ def _first_test_panel(path, life, world_seed):
     """Product, before the restart: panel-A's dynamics graph learned and promoted (simulated data), then teaching in
     epoch panel-A (which declares that graph context), the silent remount, executive questions answered."""
     start = time.process_time()
-    db = store.create(path, T0, note="acceptance first physical test (simulated)")
+    db = store.create(path, T0, note="acceptance first physical test (simulated)", birth_rules=FIRST_TEST_BIRTH_RULES)
     camera_scope = f"camera:{CAMERA_ROOT}"
     questions, predictions = [], []
     try:

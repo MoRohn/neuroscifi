@@ -43,11 +43,18 @@ POCKET_ROUTES = {"voice_" + op for op in POCKET_OPS}
 
 
 def hub_for(server, db_path, clock=time.time) -> VoiceHub:
+    """The server's voice hub, created on first use. A server without an audio beacon of its own (the Pocket bridge;
+    the console starts one when it starts) gets one with its hub, so its voice sessions defer background research
+    and keep the idle unloader away in other processes too (resources/policy.py, RD-46)."""
     with _HUBS_LOCK:
         hub = getattr(server, "voice_hub", None)
         if hub is None:
             hub = VoiceHub(db_path, clock=clock)
             server.voice_hub = hub
+            if getattr(server, "audio_beacon", None) is None:
+                from pathlib import Path
+                from .beacon import SharedAudioBeacon
+                server.audio_beacon = SharedAudioBeacon(Path(db_path).resolve()).start()
         return hub
 
 

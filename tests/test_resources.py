@@ -2,6 +2,8 @@
 admission, the background model slot cap), critical-pressure refusals (autonomy, the Chromium renderer), the
 cross-process audio beacon, Presence resource_constrained, `nsf resources` and GET /api/resources."""
 import json
+from pathlib import Path
+import re
 import threading
 import time
 
@@ -133,7 +135,181 @@ def test_without_docker_or_nvidia_smi_nothing_is_invented(monkeypatch):
     monkeypatch.setattr(monitor.shutil, "which", lambda name: None)
     assert monitor.containers() is None and monitor.cold_starts() is None
     assert monitor.gpu() == {"available": False, "memory_used_bytes": None, "memory_total_bytes": None,
-                             "utilization_percent": None, "memory_readable": False, "compute_apps": []}
+                             "utilization_percent": None, "memory_readable": False, "temperature_c": None,
+                             "power_draw_w": None, "throttle": None, "compute_apps": []}
+
+
+def test_gpu_temperature_power_and_throttle_reasons_come_from_the_same_nvidia_smi_call(monkeypatch):
+    calls = []
+    health = "--query-gpu=" + monitor.GPU_HEALTH_QUERY
+    outputs = {health: "[N/A], [N/A], 96, 57, 59.13, 0x0000000000000400, Not Active, Not Active, Not Active, "
+                       "Not Active\n",
+               "--query-compute-apps=pid,process_name,used_memory": "61259, VLLM::EngineCore, 30499\n"}
+
+    def run(args, *a, **k):
+        calls.append(args[1])
+        return outputs.get(args[1])
+    monkeypatch.setattr(monitor.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(monitor, "_run", run)
+    g = monitor.gpu()            # the real GB10 answer, captured 2026-11-23
+    assert g["memory_readable"] is False and g["utilization_percent"] == 96.0
+    assert g["temperature_c"] == 57.0 and g["power_draw_w"] == 59.13
+    assert g["throttle"] == {"thermal": False, "sw_thermal_slowdown": False, "hw_thermal_slowdown": False,
+                             "sw_power_cap": False, "hw_slowdown": False, "active_mask": "0x0000000000000400"}
+    assert calls == [health, "--query-compute-apps=pid,process_name,used_memory"]     # one query, no fallback
+    outputs[health] = "[N/A], [N/A], 100, 91, 120.5, 0x0000000000000060, Active, [N/A], Not Active, Not Active\n"
+    g = monitor.gpu()
+    assert g["throttle"]["thermal"] is True and g["throttle"]["hw_thermal_slowdown"] is None
+
+
+def test_a_driver_without_the_health_fields_still_reports_utilisation_and_leaves_the_rest_unread(monkeypatch):
+    outputs = {"--query-gpu=" + monitor.GPU_QUERY: "1024, 81920, 12\n"}       # the health query fails: None
+    monkeypatch.setattr(monitor.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(monitor, "_run", lambda args, *a, **k: outputs.get(args[1]))
+    g = monitor.gpu()
+    assert g["memory_readable"] is True and g["utilization_percent"] == 12.0
+    assert g["temperature_c"] is None and g["power_draw_w"] is None and g["throttle"] is None
+
+
+def test_host_load_average_comes_from_proc_loadavg_and_an_unreadable_file_says_so(tmp_path):
+    (tmp_path / "loadavg").write_text("1.80 1.27 1.49 4/2270 62478\n")
+    out = monitor.load(tmp_path / "loadavg")
+    assert out["available"] is True and (out["avg1"], out["avg5"], out["avg15"]) == (1.8, 1.27, 1.49)
+    assert out["cpus"] >= 1
+    assert monitor.load(tmp_path / "absent") == {"available": False, "reason": f"{tmp_path / 'absent'} is not readable"}
+
+
+# ---- the inference server's state (vLLM /metrics) ---------------------------------------------------------------
+
+LIVE_METRICS = (Path(__file__).parent / "data" / "vllm_metrics.prom").read_text()
+MODEL = "qwen3-30b-a3b-instruct-2507-fp8"
+
+
+def _set(text, metric, value):
+    """The exposition with one sample's value replaced (`metric` names the series up to its labels)."""
+    return re.sub(rf"^({re.escape(metric)}\{{[^\n]*\}}) \S+$", rf"\g<1> {value}", text, count=1, flags=re.M)
+
+
+@pytest.fixture
+def metrics_server():
+    """A loopback HTTP server that answers /metrics with `server.text` (status `server.status`) and records the
+    Authorization headers it received."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            box.seen.append(self.headers.get("Authorization"))
+            body = box.text.encode()
+            self.send_response(box.status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+    box = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    box.text, box.status, box.seen = LIVE_METRICS, 200, []
+    box.url = f"http://127.0.0.1:{box.server_port}/metrics"
+    thread = threading.Thread(target=box.serve_forever, daemon=True)
+    thread.start()
+    yield box
+    box.shutdown()
+    box.server_close()
+
+
+def test_live_vllm_metrics_give_queue_depth_kv_cache_and_lifetime_means(metrics_server):
+    out = monitor.inference(metrics_server.url, "k-secret", clock=lambda: T0)
+    assert out["available"] is True and out["models"] == [MODEL]
+    assert (out["requests_running"], out["requests_waiting"]) == (1.0, 0.0)     # waiting_by_reason is not added
+    assert out["kv_cache_usage"] == pytest.approx(0.0275, abs=1e-4)
+    assert out["server_started_at"] == 1.79544966713e+09
+    life = out["since_start"]
+    assert life["mean_seconds"] == {"queue": round(0.001113671954954043 / 17, 4),
+                                    "prefill": round(5.329227845999412 / 17, 4),
+                                    "decode": round(32.43045773898484 / 17, 4),
+                                    "first_token": round(6.956857442855835 / 18, 4),
+                                    "request": round(38.26640057563782 / 17, 4)}
+    assert life["requests_finished"] == 17.0 and life["prompt_tokens"] == 34681.0
+    assert life["prefix_cache_hit_share"] == round(512 / 34681, 4) and life["generation_tokens"] == 1363.0
+    assert life["preemptions"] == 0.0
+    assert life["finished_by_reason"] == {"stop": 17.0, "length": 0.0, "abort": 0.0, "error": 0.0, "repetition": 0.0}
+    assert out["interval"] == {"available": False, "reason": "no earlier reading in this process (an interval "
+                                                             "appears from the second reading, at least 15 s later)"}
+    assert metrics_server.seen == ["Bearer k-secret"] and "k-secret" not in json.dumps(out)
+
+
+def test_the_interval_since_the_previous_reading_shows_what_lifetime_means_hide(metrics_server):
+    monitor.inference(metrics_server.url, clock=lambda: T0)
+    text = LIVE_METRICS
+    for metric, value in (("vllm:e2e_request_latency_seconds_count", 19.0),
+                          ("vllm:e2e_request_latency_seconds_sum", 38.26640057563782 + 20.0),
+                          ("vllm:request_queue_time_seconds_count", 19.0),
+                          ("vllm:request_queue_time_seconds_sum", 0.001113671954954043 + 12.0),
+                          ("vllm:prompt_tokens_total", 35681.0), ("vllm:prefix_cache_queries_total", 35681.0),
+                          ("vllm:prefix_cache_hits_total", 1412.0), ("vllm:num_preemptions_total", 3.0)):
+        text = _set(text, metric, value)
+    metrics_server.text = text
+    out = monitor.inference(metrics_server.url, clock=lambda: T0 + 60)
+    now = out["interval"]
+    assert now["available"] is True and now["seconds"] == 60.0 and now["requests_finished"] == 2.0
+    assert now["mean_seconds"]["queue"] == 6.0                 # lifetime says 0.4 s: a queue built up just now
+    assert now["mean_seconds"]["request"] == 10.0 and now["mean_seconds"]["decode"] is None   # no decode finished
+    assert now["prompt_tokens"] == 1000.0 and now["prefix_cache_hit_share"] == 0.9 and now["preemptions"] == 3.0
+    assert out["since_start"]["mean_seconds"]["queue"] == round((0.001113671954954043 + 12.0) / 19, 4)
+    metrics_server.text = _set(LIVE_METRICS, "vllm:e2e_request_latency_seconds_count", 1.0).replace(
+        "process_start_time_seconds 1.79544966713e+09", "process_start_time_seconds 1.79545e+09")
+    assert monitor.inference(metrics_server.url, clock=lambda: T0 + 120)["interval"] == {
+        "available": False, "reason": "the server restarted since the previous reading"}
+
+
+def test_an_unreachable_refusing_or_non_vllm_endpoint_is_reported_absent_with_the_reason(metrics_server):
+    metrics_server.text = "# HELP python_info x\npython_info{version=\"3.12\"} 1.0\n"
+    out = monitor.inference(metrics_server.url)
+    assert out == {"available": False, "url": metrics_server.url,
+                   "reason": f"{metrics_server.url} has no vllm: metrics (not a vLLM server)"}
+    metrics_server.status = 401
+    assert monitor.inference(metrics_server.url)["reason"] == f"{metrics_server.url} answered HTTP 401"
+    closed = "http://127.0.0.1:9/metrics"
+    out = monitor.inference(closed, timeout=1.0)
+    assert out["available"] is False and out["reason"].startswith(f"{closed} is unreachable (")
+
+
+def test_the_scrape_is_cached_and_the_hot_path_sample_never_makes_it(metrics_server, monkeypatch):
+    first = monitor.inference_cached(metrics_server.url)
+    assert monitor.inference_cached(metrics_server.url) is first and len(metrics_server.seen) == 1
+    monkeypatch.setattr(monitor, "inference", lambda *a, **k: pytest.fail("the hot path scraped /metrics"))
+    monkeypatch.setattr(monitor, "gpu", lambda: pytest.fail("the hot path ran nvidia-smi"))
+    assert monitor.sample()["load"] is None and resources.status(None, full=False)["inference"] is None
+
+
+def test_the_idle_policy_reads_in_flight_and_served_requests_with_the_shared_parser(metrics_server):
+    from neuroscifi.resources import idle
+    assert idle._metrics(metrics_server.url) == {"in_flight": 1.0, "served": 17.0}
+    assert metrics_server.seen == [None]                       # as before: the idle tick sends no key
+    metrics_server.text = "python_info 1.0\n"
+    assert idle._metrics(metrics_server.url) is None
+
+
+def test_status_reads_the_configured_loopback_endpoint_with_the_gateway_key_and_says_why_when_it_cannot(
+        individual, metrics_server, tmp_path):
+    from neuroscifi.inference import config as iconfig
+    db, path = individual
+    assert resources.status(path)["inference"] == {
+        "available": False, "reason": "the inference endpoint is not configured (nsf llm config --url ...)"}
+    assert resources.status(None)["inference"]["reason"] == "no instance database, so the inference endpoint is " \
+                                                            "not known"
+    key = tmp_path / "api_key"
+    key.write_text("k-from-file\n")
+    key.chmod(0o600)
+    iconfig.set_config(db, {"base_url": metrics_server.url.replace("/metrics", "/v1"), "key_file": str(key)})
+    out = resources.status(path)
+    assert out["inference"]["available"] is True and out["inference"]["requests_running"] == 1.0
+    assert metrics_server.seen == ["Bearer k-from-file"] and "k-from-file" not in json.dumps(out)
+    assert out["load"]["available"] in (True, False) and "temperature_c" in (out["gpu"] or {"temperature_c": 0})
+    iconfig.set_config(db, {"base_url": "https://models.example.org/v1", "remote_allowed": True})
+    assert resources.status(path)["inference"]["reason"] == (
+        "the inference endpoint https://models.example.org is not on this host; its server state is not measured "
+        "here")
 
 
 # ---- policy ---------------------------------------------------------------------------------------------------
@@ -315,3 +491,54 @@ def test_status_cli_and_console_route(individual, host, voice, tmp_path, capsys)
         srv.shutdown()
         srv.server_close()
     assert body["level"] == "critical" and set(body["policy"]) >= {"background_research", "browser_rendering"}
+
+
+def test_the_metrics_scrape_never_forwards_the_key_through_a_redirect():
+    """Found in review: urllib follows a 3xx and resends the Authorization header. A process answering on the
+    endpoint's port with 302 to another address received the model server's API key there. A redirect is now an
+    error ("answered HTTP 302") and nothing is sent to its target."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    seen = []
+
+    class Sink(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"vllm:num_requests_running 0\n")
+
+        def log_message(self, *args):
+            pass
+
+    class Redirector(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{sink.server_port}/elsewhere")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    sink, redirector = HTTPServer(("127.0.0.1", 0), Sink), HTTPServer(("127.0.0.1", 0), Redirector)
+    for server in (sink, redirector):
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        out = monitor.inference(f"http://127.0.0.1:{redirector.server_port}/metrics", "SECRET-KEY-1")
+    finally:
+        for server in (sink, redirector):
+            server.shutdown()
+            server.server_close()
+    assert seen == [] and out["available"] is False and "HTTP 302" in out["reason"]
+    assert "SECRET-KEY-1" not in str(out)
+
+
+def test_the_metrics_scrapes_never_go_through_a_proxy():
+    """Review: with http_proxy set and no_proxy not covering the loopback address, urllib handed the request, the
+    bearer key included, to the proxy. Both scrapes use an opener without any proxy."""
+    from urllib.request import ProxyHandler
+    from neuroscifi.resources import idle
+    for opener in (monitor._NO_REDIRECT, idle._DIRECT):
+        proxies = [h for h in opener.handlers if isinstance(h, ProxyHandler)]
+        assert all(not getattr(h, "proxies", None) for h in proxies)
+        assert "http" not in {name.split("_")[0] for h in proxies for name in dir(h) if name.endswith("_open")}

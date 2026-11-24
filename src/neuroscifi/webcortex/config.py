@@ -51,6 +51,10 @@ class WebConfig:
     # ADR-041: news / time-sensitive questions asked by a person may render a scripted news page when its static
     # HTML gave no text or no date (owner switch; on by default), at most daily_renders renders per UTC day in all.
     news_rendering: bool = True
+    # Before memory answers a question without the web, the answer model confirms that the chosen statements state
+    # the answer to exactly what is asked (memory_gate.py). It can only send a question to the web. On by default;
+    # without a configured model it does nothing.
+    memory_check: bool = True
     daily_renders: int = 40
     # Owner opt-in (ADR-032), off by default: let the upstream open-webSearch scrapers send their built-in browser
     # User-Agent strings (a form of impersonation) instead of the honest USER_AGENT patched in by `npm run
@@ -75,6 +79,17 @@ class WebConfig:
         max_browser_sessions=2, max_render_requests=150, max_concurrency=6, max_context_tokens=6000)))
     daily_autonomous: dict = field(default_factory=lambda: {"tasks": 12, "requests": 400, "bytes": 80_000_000})
     min_domain_interval: float = 1.0         # seconds between requests to one host
+    # Pages a research task may fetch at once while reading: the next candidates are fetched ahead of their turn, one
+    # per host name, at most budget.max_concurrency; what the task reads, charges and reports is unchanged (about
+    # half the waiting at 4). Every fetch, ahead of its turn or not, asks before each lookup, each connection and
+    # each request whether the task was cancelled, web access turned off or the host denied, so no request is sent
+    # after one of these, and requests on the wire are cut. The fetches ahead of a task share its request and byte
+    # budget, never open a second connection to a site an exchange is in progress with, and are not made at all
+    # for tasks under a daily allowance (curiosity, refreshes, MCP); the allowances count unused read-ahead traffic.
+    # The one exception to "unchanged": a 429 answered to a page fetched ahead backs its site off at once, so a
+    # source an earlier candidate would have redirected to there is not read (the report says so).
+    # 1 reads one page at a time for every task, as 0.7.0 did: `nsf web config --set read_ahead=1`.
+    read_ahead: int = 4
     max_document_bytes: int = 5_000_000
     cache_max_bytes: int = 512 * 1024 * 1024
     cache_max_age_days: float = 30.0

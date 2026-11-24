@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 
@@ -6,12 +7,24 @@ import pytest
 
 from neuroscifi import cli
 from neuroscifi.graph_store import decode, encode
-from neuroscifi.instance import datasets, graphs, rules, store
+from neuroscifi.instance import datasets, graphs, learner, recall, rules, store
 from neuroscifi.instance.errors import Conflict, Gone, LeaseHeld, NotFound, ValidationError
 from neuroscifi.lab import graph_bench
 
 T0 = 1_800_000_000.0
 SEED = 813240
+
+
+@pytest.fixture
+def gate_v1_instance(tmp_path):
+    """An individual born under gate-v1 alone, as every individual was before best-learner-v1 became the rule new
+    ones are born with. For the tests that assert what gate-v1 itself does or names."""
+    path = tmp_path / "born-under-gate-v1.sqlite"
+    db = store.create(path, T0, birth_rules=(store.GATE_V1,))
+    try:
+        yield db, path
+    finally:
+        db.close()
 
 
 def _learn(db, context, now, *, seed=SEED, world="a", steps=1536, holder="tester"):
@@ -33,7 +46,8 @@ def _add_rule(db, now, **changes):
 
 # ---- 2. end to end ------------------------------------------------------------------------------------
 
-def test_simulate_learn_evaluate_promote(instance):
+def test_simulate_learn_evaluate_promote(gate_v1_instance):
+    instance = gate_v1_instance
     db, _ = instance
     replay = store.counter(db, "replay_updates")
     rev, ids = _learn(db, "desk", T0)
@@ -132,7 +146,8 @@ def test_gate_c_rewired_world_fails_retention_and_new_context_promotes(instance)
     assert active == {"desk": first, "desk-remounted": remounted}
 
 
-def test_gate_d_owner_rule_budget_and_rule_version_is_frozen_at_learn(instance):
+def test_gate_d_owner_rule_budget_and_rule_version_is_frozen_at_learn(gate_v1_instance):
+    instance = gate_v1_instance
     db, _ = instance
     before, _ = _learn(db, "desk", T0)
     _add_rule(db, T0 + 5, version="tight-budget", byte_budget=128)
@@ -150,7 +165,8 @@ def test_gate_d_owner_rule_budget_and_rule_version_is_frozen_at_learn(instance):
     assert early["promoted"] and early["decision"]["thresholds"]["byte_budget"] == 4096
 
 
-def test_gate_e_rule_version_and_blob_are_immutable(instance):
+def test_gate_e_rule_version_and_blob_are_immutable(gate_v1_instance):
+    instance = gate_v1_instance
     db, _ = instance
     rev, _ = _learn(db, "desk", T0)
     _add_rule(db, T0 + 5, version="lenient", min_heldout_gain=0.0, retention_tolerance=1.0)
@@ -313,7 +329,8 @@ def test_cascade_does_not_revive_a_graph_the_owner_rolled_back_from(instance):
     assert graphs.rollback(db, "desk", strong, T0 + 22)["active"] == strong
 
 
-def test_cascade_picks_the_newest_eligible_snapshot_past_a_rolled_back_one(instance):
+def test_cascade_picks_the_newest_eligible_snapshot_past_a_rolled_back_one(gate_v1_instance):
+    instance = gate_v1_instance
     db, _ = instance
     weak, weak_ids, strong, strong_ids = _two_generations(db)
     third, third_ids = _learn(db, "desk", T0 + 30, seed=SEED, steps=1536 * 2)
@@ -412,6 +429,27 @@ def test_lesion_true_edges_matter_more_than_weak_ones(instance):
     assert detail["task"] == "desk" and detail["se"] == true_edges[0]["se"] and detail["block"] == 32
 
 
+def test_lesion_uses_the_closed_form_error_change_and_equals_the_full_recomputation(instance, monkeypatch):
+    """Zeroing one edge changes only its receiver's residual, so the change in MSE is the mean of the per-step
+    change: lesion no longer recomputes the full MSE per edge (base and control only), and every delta_mse equals
+    the full recomputation."""
+    from neuroscifi.instance import learner
+    db, _ = instance
+    rev, ids = _learn(db, "desk", T0, steps=256)
+    calls = []
+    full_mse = learner.mse
+    monkeypatch.setattr(learner, "mse", lambda *a: calls.append(1) or full_mse(*a))
+    out = graphs.lesion(db, rev, ids["heldout"], T0 + 3)
+    assert len(calls) == 2 and len(out["edges"]) > 10
+    matrix = graphs._matrix(db, rev).astype(np.float64)
+    states, targets = datasets.load(db, ids["heldout"])
+    base = full_mse(matrix, states, targets)
+    for edge in out["edges"]:
+        lesioned = matrix.copy()
+        lesioned[edge["dst"], edge["src"]] = 0
+        assert edge["delta_mse"] == pytest.approx(full_mse(lesioned, states, targets) - base, rel=1e-9, abs=1e-15)
+
+
 def test_functional_map_proposes_routes_missing_from_the_active_graph(tmp_path):
     a, _ = graph_bench.world(np.random.default_rng(SEED))
     pruned = a.copy()
@@ -508,7 +546,7 @@ def test_cli_graph_lifecycle(tmp_path, capsys):
     code, err = _nsf(capsys, "graph", "rules", "add", str(rule), "--db", db)
     assert code == 2 and "--owner-approved" in err
     code, versions = _nsf(capsys, "graph", "rules", "list", "--db", db)
-    assert [r["version"] for r in versions] == ["gate-v1"]
+    assert [r["version"] for r in versions] == ["gate-v1", "best-learner-v1"]   # the two an individual is born with
     code, added = _nsf(capsys, "graph", "rules", "add", str(rule), "--owner-approved", "--db", db)
     assert code == 0 and added["latest"] == "gate-v2"
     code, err = _nsf(capsys, "graph", "reject", str(rev), "--reason", "late", "--db", db)
@@ -534,3 +572,344 @@ def test_every_write_path_honours_the_free_space_reserve_without_a_path(instance
         evidence.start_epoch(db, "desk-2", T0 + 3)
     assert db.execute("SELECT count(*) FROM graph_revisions WHERE origin='learner'").fetchone()[0] == 0
     assert db.execute("SELECT count(*) FROM epochs WHERE name='desk-2'").fetchone()[0] == 0
+
+
+# ---- which learner's graph is packed (rules.py: pack_candidates.learned_sparse, pack_reference) ---------------------
+
+BEST_LEARNER = store.BEST_LEARNER_V1
+
+
+def _panel(db, context, now, populations, seed, *, steps=1536):
+    """Train, validation and held-out data of one world with `populations` populations and 3 inputs per receiver
+    (lab.graph_bench.world and .stream for any population count), stored like owner data."""
+    rng = np.random.default_rng([populations, seed])
+    a = np.zeros((populations, populations))
+    for j in range(populations):
+        idx = rng.choice(np.delete(np.arange(populations), j), 3, replace=False)
+        a[j, idx] = rng.choice([-1., 1.], 3) * rng.uniform(.17, .25, 3)
+    ids = {}
+    for split, length in (("train", steps), ("validation", 256), ("heldout", 512)):
+        prev = np.zeros(populations)
+        states, targets = np.empty((length, populations)), np.empty((length, populations))
+        for t in range(length):
+            residual = a @ prev + rng.normal(0, .065, populations)
+            states[t], targets[t] = prev, residual
+            prev = .2 * prev + residual + rng.normal(0, .6, populations) * (rng.random(populations) < .22)
+        ids[split] = datasets.add(db, context, split, states, targets, "simulated", now)
+    return ids, a
+
+
+def test_rule_format_gate_v1_is_unchanged_and_the_new_parts_are_validated():
+    # the birth rule and its digest are what they were: an individual's recorded rule still passes its integrity check
+    assert hashlib.sha256(rules.canonical(store.GATE_V1).encode()).hexdigest() == \
+        "b999e4b9c16571463bc883733cb091a3956c578df292de643ce8fec4f4522e57"
+    assert rules.validate(dict(store.GATE_V1)) == store.GATE_V1
+    assert "pack_reference" not in store.GATE_V1 and "learned_sparse" not in store.GATE_V1["pack_candidates"]
+    assert rules.validate(dict(BEST_LEARNER))["pack_reference"] == "best_learner"
+    candidates = store.GATE_V1["pack_candidates"]
+    rules.validate(dict(store.GATE_V1, version="x", pack_candidates=dict(candidates, learned_sparse=True)))
+    rules.validate(dict(store.GATE_V1, version="x", pack_reference="dense"))
+    for bad in (
+            dict(store.GATE_V1, pack_reference="best_learner"),                           # needs learned_sparse
+            dict(BEST_LEARNER, pack_candidates=dict(candidates, learned_sparse=False)),
+            dict(BEST_LEARNER, pack_reference="smallest"),
+            dict(BEST_LEARNER, pack_reference=True),
+            dict(BEST_LEARNER, pack_candidates=dict(candidates, learned_sparse="yes")),
+            dict(BEST_LEARNER, pack_candidates=dict(candidates, learned_sparse=1)),
+            dict(BEST_LEARNER, pack_candidates=dict(candidates, learned_sparse=True, learner="sparse")),
+            dict(BEST_LEARNER, pack_candidates={"degrees": [3], "bits": [], "learned_sparse": True}),
+            dict(BEST_LEARNER, pack_baseline="best"),                                     # an unknown part
+            {k: v for k, v in BEST_LEARNER.items() if k != "byte_budget"}):
+        with pytest.raises(ValidationError):
+            rules.validate(bad)
+
+
+def test_rule_bit_widths_and_degrees_must_be_integers():
+    # 4.0 == 4 inside a set and True == 1: both validated before and then broke or bent learner.pack
+    # (struct.error for a float bit width; degree True packed as degree 1).
+    candidates = store.GATE_V1["pack_candidates"]
+    for bad in (dict(candidates, bits=[4.0]), dict(candidates, bits=[True]), dict(candidates, bits=[4, 8.0]),
+                dict(candidates, degrees=[True]), dict(candidates, degrees=[3.0]),
+                # not a list at all: these raised TypeError ("'int' object is not iterable"), not ValidationError
+                dict(candidates, bits=4), dict(candidates, bits=None), dict(candidates, degrees=3),
+                dict(candidates, degrees=None), dict(candidates, bits="48"), dict(candidates, degrees={"3": 1})):
+        with pytest.raises(ValidationError):
+            rules.validate(dict(store.GATE_V1, version="x", pack_candidates=bad))
+    rules.validate(dict(store.GATE_V1, version="x", pack_candidates=dict(candidates, bits=[8, 4])))
+
+
+def test_an_individual_born_under_gate_v1_alone_packs_the_dense_fit_as_before(gate_v1_instance):
+    db, _ = gate_v1_instance
+    assert [(r["version"], r["created_by"]) for r in rules.listing(db)] == [("gate-v1", "birth")]
+    assert rules.get(db, "gate-v1") == store.GATE_V1
+    rev, _ = _learn(db, "desk", T0)
+    shown = graphs.show(db, rev)
+    assert shown["rule_version"] == "gate-v1" and (shown["bits"], shown["degree"], shown["byte_size"]) == (4, 3, 247)
+    assert set(shown["metrics"]["pack"]) == {"bits", "degree", "byte_size", "validation_mse", "dense_validation_mse",
+                                             "candidates"}
+    assert all(set(c) == {"bits", "degree", "byte_size", "validation_mse", "eligible"}
+               for c in shown["metrics"]["pack"]["candidates"])
+    # the dense fit's own snapshot, as before: the same bytes as packing the dense fit alone
+    x, y = datasets.load(db, shown["metrics"]["train_dataset"])
+    val = datasets.load(db, shown["metrics"]["validation_dataset"])
+    blob = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (rev,)).fetchone()[0]
+    assert blob == learner.pack(learner.fit(x, y, seed=shown["metrics"]["train_dataset"])["dense"], val,
+                                store.GATE_V1)["blob"]
+    assert shown["metrics"]["beats_no_graph"] is True
+    assert shown["metrics"]["validation_mse"] < .3 * shown["metrics"]["no_graph_validation_mse"]
+
+
+def test_new_individuals_are_born_with_gate_v1_and_best_learner_v1(instance, tmp_path):
+    db, _ = instance
+    assert store.BEST_LEARNER_V1 == dict(store.GATE_V1, version="best-learner-v1", pack_reference="best_learner",
+                                         pack_candidates=dict(store.GATE_V1["pack_candidates"], learned_sparse=True))
+    assert store.BIRTH_RULES == (store.GATE_V1, store.BEST_LEARNER_V1)
+    assert store.BUILTIN_RULES == {"gate-v1": store.GATE_V1, "best-learner-v1": store.BEST_LEARNER_V1}
+    # individuals record this rule by name and digest: its content is fixed from now on, like gate-v1's
+    assert hashlib.sha256(rules.canonical(store.BEST_LEARNER_V1).encode()).hexdigest() == \
+        "bc19952fe8faf6bd34e26ce6f63a01ed1ce2f33d4d88241dccc780a60578b68d"
+    assert [(r["version"], r["created_by"]) for r in rules.listing(db)] == [("gate-v1", "birth"),
+                                                                           ("best-learner-v1", "birth")]
+    assert rules.latest(db) == "best-learner-v1" and rules.get(db, "gate-v1") == store.GATE_V1
+    assert rules.get(db, "best-learner-v1") == store.BEST_LEARNER_V1
+    # the journey of test_simulate_learn_evaluate_promote, under the rule graphs are now learned with
+    rev, ids = _learn(db, "desk", T0)
+    shown = graphs.show(db, rev)
+    pack = shown["metrics"]["pack"]
+    assert shown["rule_version"] == "best-learner-v1"
+    assert (shown["bits"], shown["degree"], shown["byte_size"]) == (4, 3, 247)       # the size gate-v1 chooses here
+    assert pack["reference"] == "best_learner" and pack["learner"] in ("dense", "sparse")
+    assert pack["validation_mse"] <= 1.02 * pack["reference_validation_mse"] <= 1.02 * pack["dense_validation_mse"]
+    assert shown["metrics"]["sparse"]["support_agreement_with_snapshot"] > 0.9
+    a, _ = graph_bench.world(np.random.default_rng(SEED))
+    support = np.array(shown["support"])
+    assert (support & (a != 0)).sum() / support.sum() > 0.9
+    evaluation = graphs.evaluate(db, rev, T0 + 2)
+    assert evaluation["heldout_mse"] < 0.006
+    result = graphs.promote(db, rev, T0 + 3)
+    decision = result["decision"]
+    assert result["promoted"] and decision["rule_version"] == "best-learner-v1" and decision["failed"] == []
+    assert decision["order"] == decision["passed"] == list(graphs.CHECKS)
+    assert decision["thresholds"] == {"min_heldout_gain": 0.0, "retention_tolerance": 0.10, "byte_budget": 4096,
+                                      "validation_tolerance": 0.02}                 # gate-v1's thresholds
+    assert _status(db, rev) == "active"
+    assert recall.run(db, ids["heldout"], T0 + 4, contexts=["desk"])["verdict"] == "known:desk"
+    # birth takes the rules it is given, validates them before any file exists, and needs at least one
+    for bad in ((), (dict(store.GATE_V1, pack_reference="best_learner"),)):
+        with pytest.raises(ValidationError):
+            store.create(tmp_path / "never.sqlite", T0, birth_rules=bad)
+        assert not (tmp_path / "never.sqlite").exists()
+
+
+def test_gate_refuses_a_snapshot_that_is_no_better_than_no_graph(gate_v1_instance):
+    """With 192 populations the dense learner no longer fits (its step grows with the population count), and gate-v1
+    packs a cut of it that is worse than a graph with no edges. With no incumbent every check of the rule passes.
+    The gate refuses it all the same, under whatever rule."""
+    db, _ = gate_v1_instance
+    ids, truth = _panel(db, "panel", T0, 192, 1)
+    rev = graphs.learn(db, "panel", T0 + 1, train=ids["train"], validation=ids["validation"], holder="tester")
+    old = graphs.show(db, rev)
+    floor = .065 ** 2                                              # the noise of the stream: no graph can do better
+    assert old["rule_version"] == "gate-v1"
+    assert old["metrics"]["beats_no_graph"] is False
+    assert old["metrics"]["validation_mse"] > 5 * old["metrics"]["no_graph_validation_mse"]
+    assert old["metrics"]["dense_validation_mse"] > 50 * old["metrics"]["no_graph_validation_mse"]
+    assert old["metrics"]["sparse"]["validation_mse"] < 1.1 * floor     # measured, and not used by gate-v1
+    graphs.evaluate(db, rev, T0 + 2)                                # evaluating is still possible, and changes nothing
+    result = graphs.promote(db, rev, T0 + 3)
+    decision = result["decision"]
+    assert not result["promoted"] and decision["action"] == "reject" and decision["failed"] == ["beats_no_graph"]
+    assert decision["passed"] == list(graphs.CHECKS[:5]) and decision["order"] == list(graphs.CHECKS)
+    check = decision["checks"]["beats_no_graph"]
+    assert check["passed"] is False
+    assert check["validation_mse"] == old["metrics"]["validation_mse"]
+    assert check["no_graph_validation_mse"] == old["metrics"]["no_graph_validation_mse"]
+    assert f"{check['validation_mse']:.6g}" in check["why"] and f"{check['no_graph_validation_mse']:.6g}" in check["why"]
+    assert "no edges" in check["why"]
+    assert _status(db, rev) == "rejected" and graphs.show(db, rev)["decision"]["failed"] == ["beats_no_graph"]
+    assert db.execute("SELECT count(*) FROM graph_revisions WHERE status='active'").fetchone()[0] == 0
+    with pytest.raises(Conflict):
+        graphs.promote(db, rev, T0 + 4)
+    # A rule cannot waive it: the most lenient rule an owner can write rejects the same snapshot.
+    _add_rule(db, T0 + 5, version="lenient", retention_tolerance=1.0, validation_tolerance=1.0, byte_budget=10 ** 9)
+    again = graphs.learn(db, "panel", T0 + 6, train=ids["train"], validation=ids["validation"], holder="tester")
+    assert graphs.promote(db, again, T0 + 7)["decision"]["failed"] == ["beats_no_graph"]
+
+    # The owner adopts the built-in rule: the sparse learner's graph is packed, and it passes all six checks.
+    with store.write(db):
+        assert rules.register(db, BEST_LEARNER, T0 + 8, created_by="owner") == "best-learner-v1"
+    rev = graphs.learn(db, "panel", T0 + 9, train=ids["train"], validation=ids["validation"], holder="tester")
+    new = graphs.show(db, rev)
+    pack = new["metrics"]["pack"]
+    assert new["rule_version"] == "best-learner-v1"
+    assert (pack["learner"], pack["reference"], new["degree"], new["bits"]) == ("sparse", "best_learner", 3, 4)
+    assert pack["reference_validation_mse"] < 1.1 * floor < pack["dense_validation_mse"]
+    assert new["metrics"]["beats_no_graph"] is True and new["metrics"]["validation_mse"] < 1.1 * floor
+    assert new["metrics"]["sparse"]["support_agreement_with_snapshot"] == 1.0
+    assert not any(c["eligible"] for c in pack["candidates"] if c["learner"] == "dense")
+    support = np.array(new["support"])
+    assert (support & (truth != 0)).sum() / support.sum() > .95    # the generator's edges
+    # everything downstream reads it as any other snapshot
+    assert decode(db.execute("SELECT blob FROM graph_revisions WHERE id=?", (rev,)).fetchone()[0]).shape == (192, 192)
+    evaluation = graphs.evaluate(db, rev, T0 + 10)
+    assert evaluation["heldout_mse"] < 1.1 * floor
+    promoted = graphs.promote(db, rev, T0 + 11)
+    assert promoted["promoted"] and promoted["decision"]["rule"]["pack_reference"] == "best_learner"
+    assert promoted["decision"]["passed"] == list(graphs.CHECKS)
+    assert promoted["decision"]["checks"]["beats_no_graph"] == {
+        "passed": True, "validation_mse": new["metrics"]["validation_mse"],
+        "no_graph_validation_mse": new["metrics"]["no_graph_validation_mse"]}
+    assert _status(db, rev) == "active"
+    lesion = graphs.lesion(db, rev, ids["heldout"], T0 + 12)
+    assert len(lesion["edges"]) == 192 * 3 and lesion["permuted_control_mse"] > 2 * lesion["base_mse"]
+    assert recall.run(db, ids["heldout"], T0 + 13, contexts=["panel"])["verdict"] == "known:panel"
+    # the earlier candidates keep the rule they were learned under
+    assert graphs.show(db, old["id"])["rule_version"] == "gate-v1"
+
+
+def test_gate_judges_a_candidate_learned_before_the_metric_as_it_always_did(gate_v1_instance):
+    """A candidate whose metrics do not say whether it beats no graph (learned by earlier software) has the five
+    checks it always had, with the same record, even when its snapshot is as bad as the one above."""
+    db, _ = gate_v1_instance
+    ids, _ = _panel(db, "panel", T0, 192, 1)
+    rev = graphs.learn(db, "panel", T0 + 1, train=ids["train"], validation=ids["validation"], holder="tester")
+    metrics = graphs.show(db, rev)["metrics"]
+    assert metrics["beats_no_graph"] is False
+    earlier = {k: v for k, v in metrics.items() if k not in ("beats_no_graph", "no_graph_validation_mse")}
+    with store.write(db):          # what earlier software stored for this candidate
+        db.execute("UPDATE graph_revisions SET metrics=? WHERE id=?", (json.dumps(earlier, sort_keys=True), rev))
+    result = graphs.promote(db, rev, T0 + 2)
+    decision = result["decision"]
+    assert result["promoted"] and decision["failed"] == []
+    assert decision["order"] == decision["passed"] == list(graphs.CHECKS[:5])
+    assert set(decision["checks"]) == {"independent_heldout", "heldout_gain", "retention", "byte_budget",
+                                       "lineage_intact"}
+    # a well-fitted candidate without the metric: the same five checks
+    small, _ = _learn(db, "desk", T0 + 3)
+    kept = {k: v for k, v in graphs.show(db, small)["metrics"].items()
+            if k not in ("beats_no_graph", "no_graph_validation_mse")}
+    with store.write(db):
+        db.execute("UPDATE graph_revisions SET metrics=? WHERE id=?", (json.dumps(kept, sort_keys=True), small))
+    assert graphs.promote(db, small, T0 + 5)["decision"]["passed"] == list(graphs.CHECKS[:5])
+
+
+def test_new_individuals_learn_many_populations_with_the_sparse_learner(instance):
+    db, _ = instance
+    ids, truth = _panel(db, "panel", T0, 192, 1)
+    rev = graphs.learn(db, "panel", T0 + 1, train=ids["train"], validation=ids["validation"], holder="tester")
+    shown = graphs.show(db, rev)
+    assert shown["rule_version"] == "best-learner-v1" and shown["metrics"]["pack"]["learner"] == "sparse"
+    assert shown["metrics"]["beats_no_graph"] is True and shown["metrics"]["validation_mse"] < 1.1 * .065 ** 2
+    assert graphs.promote(db, rev, T0 + 2)["promoted"]
+    # 512 populations: the sparse graph is learned and beats no graph, and its smallest file is over the 4096-byte
+    # budget the birth rules share, so nothing is promoted, as under gate-v1. A rule the owner adds can raise it.
+    wide, _ = _panel(db, "wide", T0 + 3, 512, 2, steps=768)
+    rev = graphs.learn(db, "wide", T0 + 4, train=wide["train"], validation=wide["validation"], holder="tester")
+    shown = graphs.show(db, rev)
+    assert shown["metrics"]["pack"]["learner"] == "sparse" and shown["metrics"]["beats_no_graph"] is True
+    assert shown["byte_size"] > 4096
+    assert graphs.promote(db, rev, T0 + 5)["decision"]["failed"] == ["byte_budget"]
+
+
+def test_adopted_rule_keeps_the_dense_snapshot_when_the_sparse_budget_is_too_small(gate_v1_instance):
+    """Six true inputs per receiver and an edge budget of three: the sparse learner cannot fit, so the reference
+    is the dense graph and the choice is the one gate-v1 makes, byte for byte."""
+    db, _ = gate_v1_instance
+    rng = np.random.default_rng(3)
+    a = np.zeros((24, 24))
+    for j in range(24):
+        idx = rng.choice(np.delete(np.arange(24), j), 6, replace=False)
+        a[j, idx] = rng.choice([-1., 1.], 6) * rng.uniform(.17, .25, 6)
+    ids = {}
+    for split, length in (("train", 1536), ("validation", 256)):
+        states, targets = graph_bench.stream(a, length, rng)
+        ids[split] = datasets.add(db, "six", split, states, targets, "simulated", T0)
+    first = graphs.learn(db, "six", T0 + 1, train=ids["train"], validation=ids["validation"], holder="tester")
+    with store.write(db):
+        rules.register(db, BEST_LEARNER, T0 + 2, created_by="owner")
+    second = graphs.learn(db, "six", T0 + 3, train=ids["train"], validation=ids["validation"], holder="tester")
+    assert [graphs.show(db, r)["rule_version"] for r in (first, second)] == ["gate-v1", "best-learner-v1"]
+    blobs = [db.execute("SELECT blob FROM graph_revisions WHERE id=?", (r,)).fetchone()[0] for r in (first, second)]
+    assert blobs[0] == blobs[1]
+    pack = graphs.show(db, second)["metrics"]["pack"]
+    assert pack["learner"] == "dense" and pack["reference_validation_mse"] == pack["dense_validation_mse"]
+    assert graphs.show(db, second)["degree"] == 6
+    assert not any(c["eligible"] for c in pack["candidates"] if c["learner"] == "sparse")
+
+
+def test_cli_an_older_individual_adopts_the_built_in_rule_and_goes_back(tmp_path, capsys):
+    path = tmp_path / "older.sqlite"
+    store.create(path, T0, birth_rules=(store.GATE_V1,)).close()      # born before best-learner-v1
+    db = str(path)
+
+    def add(*argv):
+        return _nsf(capsys, "graph", "rules", "add", *argv, "--db", db)
+
+    def learned_under():
+        code, ids = _nsf(capsys, "graph", "simulate", "desk", "--seed", str(SEED), "--db", db)
+        code, learned = _nsf(capsys, "graph", "learn", "desk", "--train", str(ids["train"]),
+                             "--validation", str(ids["validation"]), "--db", db)
+        code, shown = _nsf(capsys, "graph", "show", str(learned["revision_id"]), "--db", db)
+        assert code == 0
+        return shown
+
+    assert learned_under()["rule_version"] == "gate-v1"
+    code, err = add("--builtin", "best-learner-v1")
+    assert code == 2 and "--owner-approved" in err
+    code, err = add("--builtin", "sparse-only", "--owner-approved")
+    assert code == 2 and "gate-v1, best-learner-v1" in err
+    code, err = add("--owner-approved")
+    assert code == 2 and "--builtin" in err
+    rule = tmp_path / "rule.json"
+    rule.write_text(json.dumps(dict(store.GATE_V1, version="from-a-file")))
+    code, err = add(str(rule), "--builtin", "best-learner-v1", "--owner-approved")
+    assert code == 2 and "either" in err
+    code, err = add(str(rule), "--as", "renamed", "--owner-approved")
+    assert code == 2 and "--as" in err
+    code, versions = _nsf(capsys, "graph", "rules", "list", "--db", db)
+    assert [r["version"] for r in versions] == ["gate-v1"]            # nothing was added by the refusals
+
+    code, added = add("--builtin", "best-learner-v1", "--owner-approved")
+    assert code == 0 and added["latest"] == added["version"] == "best-learner-v1"
+    assert added["definition"] == store.BEST_LEARNER_V1
+    code, again = add("--builtin", "best-learner-v1", "--owner-approved")     # the same rule twice is no change
+    assert code == 0 and again["latest"] == "best-learner-v1"
+    code, versions = _nsf(capsys, "graph", "rules", "list", "--db", db)
+    assert [(r["version"], r["created_by"]) for r in versions] == [("gate-v1", "birth"), ("best-learner-v1", "owner")]
+    shown = learned_under()
+    assert shown["rule_version"] == "best-learner-v1" and shown["byte_size"] == 247
+    assert shown["metrics"]["pack"]["learner"] in ("dense", "sparse")
+    code, promoted = _nsf(capsys, "graph", "promote", str(shown["id"]), "--db", db)
+    assert code == 0 and promoted["promoted"] and promoted["decision"]["passed"] == list(graphs.CHECKS)
+
+    # the way back: gate-v1 is registered already and rules are never reordered, so it is added under a new name
+    code, err = add("--builtin", "gate-v1", "--owner-approved")
+    assert code == 2 and "--as" in err and "best-learner-v1" in err
+    code, back = add("--builtin", "gate-v1", "--as", "gate-v1-again", "--owner-approved")
+    assert code == 0 and back["latest"] == "gate-v1-again"
+    assert back["definition"] == dict(store.GATE_V1, version="gate-v1-again")
+    shown = learned_under()
+    assert shown["rule_version"] == "gate-v1-again" and "learner" not in shown["metrics"]["pack"]
+    # a rule file may carry the new parts too, and a wrong one is refused
+    rule.write_text(json.dumps(dict(store.BEST_LEARNER_V1, version="mine", byte_budget=8192)))
+    code, mine = add(str(rule), "--owner-approved")
+    assert code == 0 and mine["latest"] == "mine" and mine["definition"]["pack_reference"] == "best_learner"
+    rule.write_text(json.dumps(dict(store.BEST_LEARNER_V1, version="broken", pack_reference="best")))
+    code, err = add(str(rule), "--owner-approved")
+    assert code == 2 and "pack_reference" in err
+
+
+def test_cli_a_new_individual_learns_under_best_learner_v1(tmp_path, capsys):
+    db = str(tmp_path / "cli.sqlite")
+    assert _nsf(capsys, "init", "--db", db)[0] == 0
+    code, versions = _nsf(capsys, "graph", "rules", "list", "--db", db)
+    assert [(r["version"], r["created_by"]) for r in versions] == [("gate-v1", "birth"), ("best-learner-v1", "birth")]
+    code, ids = _nsf(capsys, "graph", "simulate", "desk", "--seed", str(SEED), "--db", db)
+    code, learned = _nsf(capsys, "graph", "learn", "desk", "--train", str(ids["train"]),
+                         "--validation", str(ids["validation"]), "--db", db)
+    code, shown = _nsf(capsys, "graph", "show", str(learned["revision_id"]), "--db", db)
+    assert code == 0 and shown["rule_version"] == "best-learner-v1" and shown["byte_size"] == 247
+    code, promoted = _nsf(capsys, "graph", "promote", str(learned["revision_id"]), "--db", db)
+    assert code == 0 and promoted["promoted"]
+    code, again = _nsf(capsys, "graph", "rules", "add", "--builtin", "best-learner-v1", "--owner-approved", "--db", db)
+    assert code == 0 and again["latest"] == "best-learner-v1"          # already the rule in use: no change

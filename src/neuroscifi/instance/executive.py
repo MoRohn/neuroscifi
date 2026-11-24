@@ -22,7 +22,10 @@ ask/calibrate question of a scope suppresses a new question of the same kind and
 3 learning events of that scope arrived after the evidence the question was about (its "evidence through
 #H" horizon); a suppressed change question defers, a suppressed partner question lets the next rule run.
 An ask that needs a new pending row once config.ask_budget_per_epoch ask/calibrate rows were created in
-the epoch becomes defer. Re-deciding the same open question reuses its pending row.
+the epoch within the last config.ask_budget_window_seconds (7 days by default; 0 = since the epoch began, so the
+budget never refills) becomes defer. The window counts every question asked, answered or not: the budget bounds
+how often the owner is interrupted, and an ignored question is still an interruption. Re-deciding the same open
+question reuses its pending row.
 
 Working memory decays: decide(record=True) closes ask/test_reference/calibrate questions left open for
 more than 7 days ('expired: no answer within 7 days'). Web Cortex questions (scope 'web:...', epoch NULL) are not
@@ -31,6 +34,7 @@ webcortex.knowledge.apply_review inside the same transaction (accept/reject a kn
 decline a monitor or research proposal).
 """
 import json
+import math
 import re
 
 from . import beliefs, store
@@ -46,18 +50,16 @@ _HORIZON = re.compile(r"\(evidence through #(\d+)\)")
 
 
 def _horizon(db, epoch):
-    return db.execute("SELECT coalesce(max(seq), 0) FROM evidence WHERE epoch=?", (epoch,)).fetchone()[0]
+    """The seq of the epoch's latest evidence, raw or consolidated (an expired event keeps its place: ADR-044)."""
+    return beliefs.last_seq(db, epoch)
 
 
 def _new_events(db, epoch, scope, after):
-    """Learning events of `scope` with seq > after."""
-    sql = f"SELECT count(*) FROM evidence WHERE epoch=? AND seq>? AND {beliefs.learning_sql(db)}"
-    params = [epoch, after]
-    if scope != "mechanism":
-        prefix, root = scope.split(":", 1)
-        sql += " AND channel=? AND root=?"
-        params += [beliefs._CHANNEL[prefix], root]
-    return db.execute(sql, params).fetchone()[0]
+    """Learning events of `scope` with seq > after, whether still raw or consolidated since."""
+    if scope == "mechanism":
+        return beliefs.learning_since(db, epoch, after)
+    prefix, root = scope.split(":", 1)
+    return beliefs.learning_since(db, epoch, after, beliefs._CHANNEL[prefix], root)
 
 
 def _answered(db, epoch, kind, scope):
@@ -129,8 +131,7 @@ def _policy(db, epoch, allowed, why, horizon):
                     question)
         reason = (f"change suspected since evidence #{since} but ambiguous: {scope} at {llr:.2f} nats{detail}, "
                   f"within {beliefs.AMBIGUITY_MARGIN} nat")
-        has_reference = db.execute("SELECT 1 FROM evidence WHERE epoch=? AND channel='reference' LIMIT 1",
-                                   (epoch,)).fetchone() is not None
+        has_reference = beliefs.has_reference(db, epoch)
         rival = runner["scope"] if runner else "another factor"
         if has_reference:
             return ("test_reference", "test_reference", scope,
@@ -190,18 +191,41 @@ def _open_pending(db, epoch, kind, scope, now):
     return row[0] if row else None
 
 
+def _ask_window(cfg):
+    """(window, warning): the ask budget's rolling window in seconds, 0 when the budget counts the whole epoch. A
+    saved value that is no finite number of seconds from 0 up (store.set_config refuses those; a hand-edited or
+    damaged settings row can hold one) gives the default window and a warning for the decision to carry, so the
+    executive keeps deciding."""
+    window = cfg.ask_budget_window_seconds
+    if isinstance(window, bool) or not isinstance(window, (int, float)) or not math.isfinite(window) or window < 0:
+        default = store.InstanceConfig.ask_budget_window_seconds
+        return default, (f"the saved ask_budget_window_seconds ({window!r}) is not a number of seconds from 0 up; "
+                         f"the default of {default / 86400:g} days is used (set it with `nsf config "
+                         "--ask-window-days`)")
+    return window, None
+
+
+def _window_text(window):
+    if not window:
+        return ""
+    days = window / 86400
+    return f" in the last {days:g} day{'' if days == 1 else 's'}" if days >= 1 else f" in the last {window:g} s"
+
+
 def _decide(db, epoch, now, record, path):
     beliefs.require_epoch(db, epoch)
-    budget = store.config(db).ask_budget_per_epoch
-    asks_used = db.execute("SELECT count(*) FROM pending WHERE epoch=? AND kind IN ('ask','calibrate')",
-                           (epoch,)).fetchone()[0]
+    cfg = store.config(db)
+    budget, (window, window_warning) = cfg.ask_budget_per_epoch, _ask_window(cfg)
+    asks_used = db.execute("SELECT count(*) FROM pending WHERE epoch=? AND kind IN ('ask','calibrate')"
+                           + (" AND created_at>?" if window else ""),
+                           (epoch, now - window) if window else (epoch,)).fetchone()[0]
     allowed, why = store.write_allowed(db, path)
     decision, kind, scope, reason, question = _policy(db, epoch, allowed, why, _horizon(db, epoch))
     wanted = (kind, scope)  # the policy's own recommendation, before any budget conversion
     pending_id = _open_pending(db, epoch, kind, scope, now) if kind else None
     if decision == "ask" and pending_id is None and asks_used >= budget:
-        reason = (f"ask budget exhausted: {asks_used} of {budget} questions already asked in epoch {epoch}; "
-                  f"deferring instead of: {reason}")
+        reason = (f"ask budget exhausted: {asks_used} of {budget} questions already asked in epoch {epoch}"
+                  f"{_window_text(window)}; deferring instead of: {reason}")
         decision, kind = "defer", None
     closed, expired = [], []
     if record and allowed:
@@ -230,8 +254,12 @@ def _decide(db, epoch, now, record, path):
                 asks_used += 1
         db.execute("INSERT INTO decisions(epoch,state_version,decision,scope,reason,created_at) VALUES(?,?,?,?,?,?)",
                    (epoch, version, decision, scope, reason, now))
-    return {"decision": decision, "scope": scope, "reason": reason, "pending_id": pending_id,
-            "asks_used": asks_used, "ask_budget": budget, "closed_pending": closed, "expired_pending": expired}
+    out = {"decision": decision, "scope": scope, "reason": reason, "pending_id": pending_id,
+           "asks_used": asks_used, "ask_budget": budget, "ask_budget_window_seconds": window,
+           "closed_pending": closed, "expired_pending": expired}
+    if window_warning:      # absent unless the saved window was unusable
+        out["warnings"] = [window_warning]
+    return out
 
 
 def decide(db, epoch, now, *, record=False, path=None):

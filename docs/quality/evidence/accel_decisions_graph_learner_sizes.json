@@ -1,0 +1,755 @@
+{
+ "benchmark": "graph_learner_sizes",
+ "generated_at": "2026-11-23T17:10:30-0500",
+ "environment": {
+  "machine": "aarch64",
+  "python": "3.12.16",
+  "numpy": "2.3.5",
+  "load_average_at_start": [
+   2.1796875,
+   2.62744140625,
+   6.23388671875
+  ]
+ },
+ "stream": "lab.graph_bench.stream for N populations, 3 true inputs per receiver, 1536 training steps",
+ "noise_floor_mse": 0.004225,
+ "sizes": [
+  {
+   "n": 24,
+   "worlds": 3,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.018519989704883767,
+    "dense_validation_mse": 0.0048916460519023725,
+    "candidate_validation_mse": 0.0043356001273897535,
+    "candidate_heldout_mse": 0.004327952064025835,
+    "learned_sparse_validation_mse": 0.00431734953309076,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     247
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "dense",
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.018519989704883767,
+    "dense_validation_mse": 0.0048916460519023725,
+    "candidate_validation_mse": 0.0043275668871813845,
+    "candidate_heldout_mse": 0.0043270986890111595,
+    "learned_sparse_validation_mse": 0.00431734953309076,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     247
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   }
+  },
+  {
+   "n": 48,
+   "worlds": 3,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.01753269134891363,
+    "dense_validation_mse": 0.005835984900491853,
+    "candidate_validation_mse": 0.004327068101012935,
+    "candidate_heldout_mse": 0.004353847559170278,
+    "learned_sparse_validation_mse": 0.004266256403574605,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     451
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.01753269134891363,
+    "dense_validation_mse": 0.005835984900491853,
+    "candidate_validation_mse": 0.0042882235198013945,
+    "candidate_heldout_mse": 0.004330176859479925,
+    "learned_sparse_validation_mse": 0.004266256403574605,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     451
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   }
+  },
+  {
+   "n": 64,
+   "worlds": 3,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.018249864785909516,
+    "dense_validation_mse": 0.006827251563388489,
+    "candidate_validation_mse": 0.004375429844048845,
+    "candidate_heldout_mse": 0.0043736300386400025,
+    "learned_sparse_validation_mse": 0.00430643654230869,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     587
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.018249864785909516,
+    "dense_validation_mse": 0.006827251563388489,
+    "candidate_validation_mse": 0.00432624832283352,
+    "candidate_heldout_mse": 0.004331151650324562,
+    "learned_sparse_validation_mse": 0.00430643654230869,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     587
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   }
+  },
+  {
+   "n": 96,
+   "worlds": 3,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.018194084343738832,
+    "dense_validation_mse": 0.009690260594341837,
+    "candidate_validation_mse": 0.008468485743815113,
+    "candidate_heldout_mse": 0.008349101609234846,
+    "learned_sparse_validation_mse": 0.004332931610151409,
+    "candidate_degree_bits_bytes": [
+     2,
+     4,
+     715
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.018194084343738832,
+    "dense_validation_mse": 0.009690260594341837,
+    "candidate_validation_mse": 0.004350913561993167,
+    "candidate_heldout_mse": 0.004342299853096763,
+    "learned_sparse_validation_mse": 0.004332931610151409,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     859
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   }
+  },
+  {
+   "n": 128,
+   "worlds": 3,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.01786402149657776,
+    "dense_validation_mse": 0.01982311449998493,
+    "candidate_validation_mse": 0.008509459692587372,
+    "candidate_heldout_mse": 0.00858603355078352,
+    "learned_sparse_validation_mse": 0.004276983672162719,
+    "candidate_degree_bits_bytes": [
+     2,
+     4,
+     939
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.01786402149657776,
+    "dense_validation_mse": 0.01982311449998493,
+    "candidate_validation_mse": 0.004291044372774774,
+    "candidate_heldout_mse": 0.004318058750837854,
+    "learned_sparse_validation_mse": 0.004276983672162719,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     1131
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   }
+  },
+  {
+   "n": 160,
+   "worlds": 3,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.017751279530759036,
+    "dense_validation_mse": 0.11540139043042633,
+    "candidate_validation_mse": 0.019160428643409826,
+    "candidate_heldout_mse": 0.019323125511881502,
+    "learned_sparse_validation_mse": 0.004351229620497372,
+    "candidate_degree_bits_bytes": [
+     2,
+     4,
+     1163
+    ],
+    "beats_no_graph": [
+     false,
+     false,
+     false
+    ],
+    "promoted": [
+     false,
+     false,
+     false
+    ],
+    "failed_checks": [
+     [
+      "beats_no_graph"
+     ],
+     [
+      "beats_no_graph"
+     ],
+     [
+      "beats_no_graph"
+     ]
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.017751279530759036,
+    "dense_validation_mse": 0.11540139043042633,
+    "candidate_validation_mse": 0.004369349777054875,
+    "candidate_heldout_mse": 0.00431737467265771,
+    "learned_sparse_validation_mse": 0.004351229620497372,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     1403
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   }
+  },
+  {
+   "n": 192,
+   "worlds": 3,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.018099079102806448,
+    "dense_validation_mse": 2.6156100792607044,
+    "candidate_validation_mse": 0.2675090764927726,
+    "candidate_heldout_mse": 0.272554136948536,
+    "learned_sparse_validation_mse": 0.004295949990509266,
+    "candidate_degree_bits_bytes": [
+     2,
+     4,
+     1387
+    ],
+    "beats_no_graph": [
+     false,
+     false,
+     false
+    ],
+    "promoted": [
+     false,
+     false,
+     false
+    ],
+    "failed_checks": [
+     [
+      "beats_no_graph"
+     ],
+     [
+      "beats_no_graph"
+     ],
+     [
+      "beats_no_graph"
+     ]
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.018099079102806448,
+    "dense_validation_mse": 2.6156100792607044,
+    "candidate_validation_mse": 0.004322808571496353,
+    "candidate_heldout_mse": 0.004314934972351532,
+    "learned_sparse_validation_mse": 0.004295949990509266,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     1675
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   }
+  },
+  {
+   "n": 224,
+   "worlds": 3,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.018011266090941367,
+    "dense_validation_mse": 136.98315832250913,
+    "candidate_validation_mse": 10.594451538684893,
+    "candidate_heldout_mse": 11.23043777496676,
+    "learned_sparse_validation_mse": 0.0042898589408193475,
+    "candidate_degree_bits_bytes": [
+     2,
+     4,
+     1611
+    ],
+    "beats_no_graph": [
+     false,
+     false,
+     false
+    ],
+    "promoted": [
+     false,
+     false,
+     false
+    ],
+    "failed_checks": [
+     [
+      "beats_no_graph"
+     ],
+     [
+      "beats_no_graph"
+     ],
+     [
+      "beats_no_graph"
+     ]
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.018011266090941367,
+    "dense_validation_mse": 136.98315832250913,
+    "candidate_validation_mse": 0.004311695862925296,
+    "candidate_heldout_mse": 0.004333444489333631,
+    "learned_sparse_validation_mse": 0.0042898589408193475,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     1947
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   }
+  },
+  {
+   "n": 256,
+   "worlds": 3,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.01804095192207422,
+    "dense_validation_mse": 3627.514934694942,
+    "candidate_validation_mse": 254.7867239652431,
+    "candidate_heldout_mse": 272.701075118075,
+    "learned_sparse_validation_mse": 0.004287573980984303,
+    "candidate_degree_bits_bytes": [
+     2,
+     4,
+     1835
+    ],
+    "beats_no_graph": [
+     false,
+     false,
+     false
+    ],
+    "promoted": [
+     false,
+     false,
+     false
+    ],
+    "failed_checks": [
+     [
+      "beats_no_graph"
+     ],
+     [
+      "beats_no_graph"
+     ],
+     [
+      "beats_no_graph"
+     ]
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.01804095192207422,
+    "dense_validation_mse": 3627.514934694942,
+    "candidate_validation_mse": 0.004301381448253399,
+    "candidate_heldout_mse": 0.004315374348952692,
+    "learned_sparse_validation_mse": 0.004287573980984303,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     2219
+    ],
+    "beats_no_graph": [
+     true,
+     true,
+     true
+    ],
+    "promoted": [
+     true,
+     true,
+     true
+    ],
+    "failed_checks": [
+     [],
+     [],
+     []
+    ]
+   }
+  },
+  {
+   "n": 512,
+   "worlds": 1,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.017852152960565693,
+    "dense_validation_mse": 105740075552923.17,
+    "candidate_validation_mse": 4039780663457.8984,
+    "candidate_heldout_mse": 4199868539882.118,
+    "learned_sparse_validation_mse": 0.004298597868595453,
+    "candidate_degree_bits_bytes": [
+     2,
+     4,
+     4651
+    ],
+    "beats_no_graph": [
+     false
+    ],
+    "promoted": [
+     false
+    ],
+    "failed_checks": [
+     [
+      "byte_budget",
+      "beats_no_graph"
+     ]
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.017852152960565693,
+    "dense_validation_mse": 105740075552923.17,
+    "candidate_validation_mse": 0.004317444269632083,
+    "candidate_heldout_mse": 0.0043176436368402,
+    "learned_sparse_validation_mse": 0.004298597868595453,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     5931
+    ],
+    "beats_no_graph": [
+     true
+    ],
+    "promoted": [
+     false
+    ],
+    "failed_checks": [
+     [
+      "byte_budget"
+     ]
+    ]
+   }
+  },
+  {
+   "n": 1024,
+   "worlds": 1,
+   "born_under_gate_v1": {
+    "rule": "gate-v1",
+    "learner": [
+     "dense"
+    ],
+    "no_graph_validation_mse": 0.01811202574577496,
+    "dense_validation_mse": 1.1942488154020668e+25,
+    "candidate_validation_mse": 2.8516617374840058e+23,
+    "candidate_heldout_mse": 3.709849122575241e+23,
+    "learned_sparse_validation_mse": 0.004282773205598589,
+    "candidate_degree_bits_bytes": [
+     2,
+     4,
+     9259
+    ],
+    "beats_no_graph": [
+     false
+    ],
+    "promoted": [
+     false
+    ],
+    "failed_checks": [
+     [
+      "byte_budget",
+      "beats_no_graph"
+     ]
+    ]
+   },
+   "born_under_birth_rules": {
+    "rule": "best-learner-v1",
+    "learner": [
+     "sparse"
+    ],
+    "no_graph_validation_mse": 0.01811202574577496,
+    "dense_validation_mse": 1.1942488154020668e+25,
+    "candidate_validation_mse": 0.004307282524575944,
+    "candidate_heldout_mse": 0.0043277676564218905,
+    "learned_sparse_validation_mse": 0.004282773205598589,
+    "candidate_degree_bits_bytes": [
+     3,
+     4,
+     11819
+    ],
+    "beats_no_graph": [
+     true
+    ],
+    "promoted": [
+     false
+    ],
+    "failed_checks": [
+     [
+      "byte_budget"
+     ]
+    ]
+   }
+  }
+ ]
+}

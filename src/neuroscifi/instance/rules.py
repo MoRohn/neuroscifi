@@ -12,6 +12,18 @@ from .errors import Conflict, NotFound, ValidationError
 REQUIRED = {"version": str, "validation_tolerance": float, "pack_candidates": dict,
             "min_heldout_gain": float, "retention_tolerance": float, "byte_budget": int,
             "unknown_context_ratio": float, "recall_history": int}
+# Two optional parts of a definition, both about which file `learner.pack` chooses. A rule without them (gate-v1 and
+# every rule registered before they existed) keeps its meaning and its sha256: the smallest file cut from the dense
+# fit whose validation error is within the tolerance of the dense FP32 graph.
+#   pack_candidates.learned_sparse: true   the graph the edge-exchange learner fitted is a candidate too
+#   pack_reference: "best_learner"         the tolerance is measured against the better of the two learners' own
+#                                          graphs instead of the dense one (needs learned_sparse)
+# With both, the rule can promote the sparse learner's graph, the only one of the two that still fits when there are
+# many populations (docs/architecture/API_CONTRACTS.md, "Which graph is packed"; ADR-045). store.BEST_LEARNER_V1
+# is gate-v1 with both: a new individual is born with it after gate-v1, and an individual born earlier gets it only by
+# its owner's `nsf graph rules add --builtin best-learner-v1 --owner-approved`.
+PACK_REFERENCES = ("dense", "best_learner")
+OPTIONAL = ("pack_reference",)
 
 
 def canonical(definition):
@@ -19,8 +31,9 @@ def canonical(definition):
 
 
 def validate(definition):
-    if not isinstance(definition, dict) or set(definition) != set(REQUIRED):
-        raise ValidationError("Rule must define exactly: " + ", ".join(sorted(REQUIRED)))
+    if not isinstance(definition, dict) or not set(REQUIRED) <= set(definition) <= set(REQUIRED) | set(OPTIONAL):
+        raise ValidationError("Rule must define exactly: " + ", ".join(sorted(REQUIRED))
+                              + " (optional: " + ", ".join(OPTIONAL) + ")")
     for key, kind in REQUIRED.items():
         value = definition[key]
         if kind is float and isinstance(value, int) and not isinstance(value, bool):
@@ -28,9 +41,21 @@ def validate(definition):
         if not isinstance(value, kind) or isinstance(value, bool):
             raise ValidationError(f"Rule field {key} must be {kind.__name__}")
     pack = definition["pack_candidates"]
-    if set(pack) != {"degrees", "bits"} or not pack["degrees"] or not set(pack["bits"]) <= {4, 8} \
-            or not all(isinstance(d, int) and d > 0 for d in pack["degrees"]):
+    if not isinstance(pack, dict) or not {"degrees", "bits"} <= set(pack) <= {"degrees", "bits", "learned_sparse"} \
+            or not isinstance(pack["degrees"], list) or not isinstance(pack["bits"], list) or not pack["degrees"] \
+            or not all(type(b) is int and b in (4, 8) for b in pack["bits"]) \
+            or not all(type(d) is int and d > 0 for d in pack["degrees"]):
         raise ValidationError("pack_candidates needs positive degrees and bits from {4, 8}")
+    learned = pack.get("learned_sparse", False)
+    if not isinstance(learned, bool):
+        raise ValidationError("pack_candidates.learned_sparse must be true or false")
+    if learned and not pack["bits"]:
+        raise ValidationError("pack_candidates.learned_sparse needs at least one bit width")
+    reference = definition.get("pack_reference", PACK_REFERENCES[0])
+    if reference not in PACK_REFERENCES:
+        raise ValidationError("pack_reference must be one of: " + ", ".join(PACK_REFERENCES))
+    if reference == "best_learner" and not learned:
+        raise ValidationError("pack_reference best_learner needs pack_candidates.learned_sparse: true")
     if not (0 <= definition["validation_tolerance"] <= 1 and 0 <= definition["retention_tolerance"] <= 1
             and 0 <= definition["min_heldout_gain"] < 1 and definition["byte_budget"] > 0
             and definition["unknown_context_ratio"] > 1 and definition["recall_history"] >= 1):

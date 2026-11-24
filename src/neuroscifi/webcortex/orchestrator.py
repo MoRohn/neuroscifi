@@ -55,7 +55,10 @@ that exhausts its budget or loses a stage ends 'partial' when it still has a rep
 A run that read nothing because every provider or page failed ends 'failed' (W-07; 'partial' when knowledge about
 the question exists), its stages cleared so a retry searches again. check() also re-reads the owner's
 configuration (at most every CONFIG_RECHECK seconds): web access turned off stops the run 'partial' (WEB_OFF), a
-newly denied domain is skipped. A task forgotten while it runs stops at its next fenced write and writes nothing.
+newly denied domain is skipped. Inside a page fetch the same is asked before every network step (_Run.fetch,
+still_wanted: the cancel flag and the configuration read at that moment), and a fetch made ahead of its turn asks
+its own gate (_Lookout), so no request starts after a cancel, after web access was turned off or to a host denied
+meanwhile. A task forgotten while it runs stops at its next fenced write and writes nothing.
 Leases name the holder's host digest, pid and process start time: a dead worker on this host does not hold its task
 (cancel, resume, requeue and the worker act at once; task JSON carries `worker_alive` and `origin_label`). An
 identical submission while one is queued or running returns that task (`deduplicated: true`).
@@ -95,6 +98,7 @@ MCP_ORIGIN = "mcp"
 USER_ORIGINS = ("console", "cli", "voice", "pocket", "pocket-voice", "owner", MCP_ORIGIN)
 USER_ORIGIN_PREFIXES = ("refresh-owner:",)
 OWNER_NOTE_ORIGINS = frozenset({"console", "voice", "pocket", "pocket-voice"})   # reasoning.verdict_note unquoted
+SPOKEN_ORIGINS = frozenset({"voice", "pocket-voice"})    # the answer is spoken (voice/bridge.py), not shown
 MAX_OBJECTIVE = 2000
 MAX_FOLLOW = 2
 MAX_CONTEXT_PACKAGES = 200
@@ -154,8 +158,74 @@ class _Disabled(Exception):
     """The owner turned web access off while the task ran: it stops at the next check and ends 'partial'."""
 
 
+class _Denied(Exception):
+    """Raised by the run's gate inside a fetch (_Run.still_wanted): the host about to be contacted is on the owner's
+    deny list now. _Run.fetch turns it into the FetchError('blocked_policy') of that page."""
+
+    def __init__(self, url, domain):
+        super().__init__(domain)
+        self.url, self.domain = url, domain
+
+
 # Control flow that per-document isolation must never swallow.
 _STOP = (_Cancelled, _OutOfTime, _Paused, _Disabled, BudgetExceeded, state.LostLease)
+
+
+def daily_capped(origin) -> bool:
+    """Origins whose traffic counts against a daily allowance (config.daily_autonomous, config.daily_mcp;
+    scheduler._counted). They read one page at a time: every request they send is one the task was charged for."""
+    return is_autonomous(origin) or origin == "mcp"
+
+
+def denied_by(deny_list, url) -> str | None:
+    """The entry of `deny_list` that `url`'s host falls under (the host itself or a parent domain), else None."""
+    from urllib.parse import urlsplit
+    try:
+        host = (urlsplit(url).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return None
+    return next((d.strip(".").lower() for d in deny_list if d.strip(".") and
+                 (host == d.strip(".").lower() or host.endswith("." + d.strip(".").lower()))), None)
+
+
+class _Lookout:
+    """What a run's fetches ask from threads other than the reader's: the gate of its read-ahead fetches
+    (SafeFetcher.speculate(wanted=...)) and the watch of its own requests on the wire (SafeFetcher.gated(watch=...)).
+    Those cannot wait for the reader's next check, so the answer is read at that moment from the individual's file
+    through a connection of its own (read only): the task's cancel flag and lease, and the owner's web
+    configuration. A reason to stop: the task was cancelled, forgotten or taken over, web access is off, or the
+    host of the URL asked about is on the deny list as it is now (the reader's own copy of the list is not
+    consulted, so nothing depends on when the reader applies a change). After close() every answer is a stop."""
+
+    def __init__(self, run):
+        import threading
+        self.run, self.lock = run, threading.Lock()
+        self.db = sqlite3.connect(run.services_db_path(), timeout=5, isolation_level=None, check_same_thread=False)
+        self.db.execute("PRAGMA query_only=ON")
+
+    def __call__(self, url) -> str | None:
+        run = self.run
+        with self.lock:
+            if self.db is None:
+                return "the reader moved on"
+            rows = self.db.execute("SELECT cancel_requested, lease_holder FROM web_tasks WHERE id=?",
+                                   (run.id,)).fetchall()
+            cfg = state.get_config(self.db)
+        if not rows or rows[0][1] != run.holder:
+            return "the task was forgotten or taken over"
+        if rows[0][0]:
+            return "the task was cancelled"
+        if not cfg.enabled:
+            return "web access was turned off"
+        if denied_by(cfg.deny_domains, url) is not None:
+            return "the site was denied"
+        return None
+
+    def close(self):
+        with self.lock:
+            db, self.db = self.db, None
+        if db is not None:
+            db.close()
 
 
 def executed_on() -> dict:
@@ -170,9 +240,10 @@ def executed_on() -> dict:
 # ---- privacy -----------------------------------------------------------------------------------------------------
 
 def private_terms(db, cfg) -> list[str]:
-    """Owner-listed private terms plus every camera and partner root of the evidence journal (private names)."""
-    roots = [r for (r,) in db.execute("SELECT DISTINCT root FROM evidence WHERE channel IN ('camera','word')")]
-    return list(dict.fromkeys([*cfg.private_terms, *roots]))
+    """Owner-listed private terms plus every camera and partner root the individual holds evidence of (private
+    names): the journal's and those of consolidated readings (ADR-044), whose events have expired."""
+    from ..instance import governance
+    return list(dict.fromkeys([*cfg.private_terms, *governance.held_roots(db)]))
 
 
 def screen(db, text, cfg) -> list[dict]:
@@ -567,6 +638,8 @@ class _Run:
         self.deny_list = tuple(self.cfg.deny_domains)
         self.denied_at_start = frozenset(d.strip(".").lower() for d in self.deny_list)
         self.config_read = time.monotonic()
+        self.lookout = None               # what fetches ask from other threads while the task reads (_Lookout)
+        self.deferred = []                # events noted inside a fetch, written after it (flush_deferred)
 
     def clock(self):
         return float(self.services.clock())
@@ -638,10 +711,12 @@ class _Run:
         if self.elapsed() > self.budget.max_seconds:
             raise _OutOfTime()
 
-    def recheck_config(self, *, force=False):
+    def recheck_config(self, *, force=False, defer=False):
         """Re-read the owner's web configuration (one meta row) at most every CONFIG_RECHECK seconds: web access
         turned off -> _Disabled (the run ends 'partial', WEB_OFF); a changed deny list applies from the next
-        request (denied() skips those hosts, and the fetcher's policy is updated when it can be)."""
+        request (the fetcher's policy is replaced first, when it can be, then denied() skips those hosts).
+        `defer`: the decision event is written by flush_deferred() instead of here (the gate asks inside a fetch,
+        where a write must not fail the page)."""
         if not force and time.monotonic() - self.config_read < CONFIG_RECHECK:
             return
         self.config_read = time.monotonic()
@@ -651,7 +726,6 @@ class _Run:
         denied = tuple(cfg.deny_domains)
         if denied == self.deny_list:
             return
-        self.deny_list = denied
         fetcher = self.services.fetcher
         policy = getattr(fetcher, "policy", None)
         if policy is not None and hasattr(policy, "deny_domains"):
@@ -659,17 +733,24 @@ class _Run:
                 fetcher.policy = replace(policy, deny_domains=tuple(dict.fromkeys((*policy.deny_domains, *denied))))
             except (TypeError, AttributeError):   # a fetcher without a replaceable policy: denied() still applies
                 pass
-        self.event("decision", {"deny_domains_updated": len(denied)}, None)
+        self.deny_list = denied           # after the policy: nothing sees the new list beside the old policy
+        self.deferred.append(("decision", {"deny_domains_updated": len(denied)}, None))
+        if not defer:
+            self.flush_deferred()
+
+    def flush_deferred(self):
+        """Write the events noted inside a fetch (recheck_config(defer=True)). One that cannot be written now (the
+        file is locked) stays for the next flush."""
+        while self.deferred:
+            try:
+                self.event(*self.deferred[0])
+            except sqlite3.OperationalError:
+                return
+            self.deferred.pop(0)
 
     def denied(self, url) -> str | None:
         """The owner's deny-list entry (as last read, recheck_config) that `url`'s host falls under, else None."""
-        from urllib.parse import urlsplit
-        try:
-            host = (urlsplit(url).hostname or "").lower().rstrip(".")
-        except ValueError:
-            return None
-        return next((d.strip(".").lower() for d in self.deny_list if d.strip(".") and
-                     (host == d.strip(".").lower() or host.endswith("." + d.strip(".").lower()))), None)
+        return denied_by(self.deny_list, url)
 
     def skip_denied(self, url, provider) -> bool:
         """Record and skip a candidate whose host the owner denied. A domain denied *during* the run (not on the
@@ -699,6 +780,33 @@ class _Run:
         if why not in self.limitations:
             self.limitations.append(why)
 
+    def memory_check(self, assessment, known):
+        """Before memory answers a question without the web, the answer model confirms that each chosen item states
+        the answer to exactly what is asked (memory_gate.confirm). intent.covers counts shared word stems, so "Does
+        Orbix support encryption in transit?" was answered from "... does not support encryption at rest" and "the
+        tallest structure in the world?" from "... the tallest structure in the Ostra region". The check can only
+        send a question to the web that memory would have answered, never the reverse. Without a usable model, or
+        with `memory_check` off, the lexical decision stands as before. Returns what the task's needs_web decision
+        event records as `memory_check` (None when nothing was attempted)."""
+        from . import memory_gate
+        chosen = set(assessment.get("memory_items") or [])
+        items = [k for k in known if k.get("id") in chosen]
+        arithmetic = any(str(r).startswith("pure arithmetic") for r in assessment.get("reasons") or [])
+        if not items or arithmetic or not getattr(self.cfg, "memory_check", True):
+            return None            # arithmetic is computed locally: no statement is being asked to answer it
+        verdict = memory_gate.confirm(self.db, self.services, self.objective, items, task_id=self.id,
+                                      timeout=min(memory_gate.TIMEOUT, max(0.0, self.budget.max_seconds - self.elapsed())),
+                                      background=is_autonomous(self.origin))
+        if verdict.get("unconfigured"):      # no model to ask: nothing was attempted, nothing is recorded
+            return None
+        if verdict["status"] == "checked" and verdict["confirmed"]:
+            assessment["memory_items"] = verdict["confirmed"]
+        elif verdict["status"] == "checked":
+            assessment["needs_web"], assessment["memory_items"] = True, []
+            assessment["reasons"] = [f"{len(items)} knowledge item(s) share the question's words but do not state "
+                                     "its answer (checked by the answer model)"]
+        return {k: verdict[k] for k in ("status", "confirmed", "refused", "reason") if verdict.get(k) is not None}
+
     # ---- discovering --------------------------------------------------------------------------------------------
     def discover(self):
         from . import intent, knowledge
@@ -724,12 +832,14 @@ class _Run:
                                                                  "max_depth": crawl["max_depth"]}}, "discovering")
             self.done("discovering", plan=QueryPlan(queries=()).to_json(), results=[], attempts=[])
             return True
+        checked = self.memory_check(assessment, known) if not assessment.get("needs_web", True) else None
+        checked = {"memory_check": checked} if checked else {}
         self.save(assessment=assessment, known=[k["id"] for k in known])
         if not assessment.get("needs_web", True):
             self.event("decision", {"needs_web": False, "reasons": assessment.get("reasons", []),
-                                    "knowledge": [k["id"] for k in known]}, "discovering")
+                                    "knowledge": [k["id"] for k in known]} | checked, "discovering")
             return False
-        self.event("decision", {"needs_web": True, "reasons": assessment.get("reasons", [])}, "discovering")
+        self.event("decision", {"needs_web": True, "reasons": assessment.get("reasons", [])} | checked, "discovering")
         local = self.local_terms()
         plan = self.screened(intent.plan(self.objective, assessment, now=now, local_terms=local))
         results, attempts, failures = [], [], []
@@ -1003,8 +1113,71 @@ class _Run:
         return self.finish(url, self.fetch(url, purpose))
 
     def fetch(self, url, purpose="page"):
-        """One fetch through SafeFetcher."""
-        return self.services.fetcher.fetch(url, purpose=purpose, budget=self.budget, usage=self.usage)
+        """One fetch through SafeFetcher, inside the run's gate (gate()): every network step of the fetch first asks
+        still_wanted, so no lookup starts and no request is sent after a cancel, after web access was turned off or
+        to a host denied meanwhile, and a request already on the wire is cut within net.STOP_POLL seconds. A host
+        denied meanwhile is that page's FetchError('blocked_policy')."""
+        try:
+            with self.gate():
+                return self.services.fetcher.fetch(url, purpose=purpose, budget=self.budget, usage=self.usage)
+        except _Denied as stop:
+            raise self.denied_meanwhile(stop) from None
+        finally:
+            self.flush_deferred()
+
+    def gate(self):
+        """Context manager around fetches this run makes on its own thread: SafeFetcher.gated with still_wanted as
+        the gate and the run's _Lookout as the watch of requests on the wire; nothing for a fetcher that cannot
+        ask."""
+        gated = getattr(self.services.fetcher, "gated", None)
+        if gated is None:
+            from contextlib import nullcontext
+            return nullcontext()
+        return gated(self.still_wanted, self.watch())
+
+    def watch(self):
+        """The run's _Lookout (made on first use, closed by close_lookout), or None when the services name no
+        individual file to read the owner's stops from."""
+        if self.lookout is None:
+            path = self.services_db_path()
+            if not path or not os.path.isfile(path):
+                return None
+            try:
+                self.lookout = _Lookout(self)
+            except sqlite3.Error:
+                return None
+        return self.lookout
+
+    def close_lookout(self):
+        if self.lookout is not None:
+            self.lookout.close()          # whatever still asks gets "stop" from now on
+            self.lookout = None
+
+    def denied_meanwhile(self, stop) -> FetchError:
+        """The FetchError of a fetch the gate stopped because its host is denied now; a domain denied during the
+        run is also a limitation of the report."""
+        from .net import _redact
+        if stop.domain not in self.denied_at_start:
+            self.limit(f"the owner denied {stop.domain} during the run: sources on it were not read")
+        return FetchError("blocked_policy", _redact(stop.url), "domain is on the deny list")
+
+    def still_wanted(self, url):
+        """The run's gate (SafeFetcher.gated), asked on the run's own thread before every network step of a fetch
+        it makes, with the URL about to be contacted. Read now, not at the reader's last check: the task's cancel
+        flag and lease (-> _Cancelled, state.LostLease) and the owner's web configuration (web access off ->
+        _Disabled; a changed deny list is applied at once, and a host on it -> _Denied)."""
+        row = self.db.execute("SELECT cancel_requested, lease_holder FROM web_tasks WHERE id=?",
+                              (self.id,)).fetchone()
+        if row is None:
+            raise state.LostLease(f"research task {self.id} was forgotten while it ran")
+        if row[0]:
+            raise _Cancelled()
+        if row[1] != self.holder:
+            raise state.LostLease(f"research task {self.id}: the lease is held by another worker")
+        self.recheck_config(force=True, defer=True)
+        domain = self.denied(url)
+        if domain is not None:
+            raise _Denied(url, domain)
 
     def finish(self, url, result, published_hint=None):
         """Extract -> quarantine (-> render escalation) of a fetched page, on the run's own thread."""
@@ -1207,10 +1380,15 @@ class _Run:
         deferred = []
         later = []     # news questions: pages without text, undated or out of window, read after the others
         timely = self.timely()
+        ahead, window = {}, self.read_window()    # read-ahead: candidate index -> URL being fetched ahead (prefetch)
 
         def hint_of(r):
             return r.published_at if r.provider == "feeds" else None   # the feed item's date
-        waiting = {}   # host -> candidates skipped: its next polite request slot is beyond the fetch timeout
+        # site that cannot be asked now -> [candidates on it skipped since, why]: it asked for fewer requests (a
+        # back-off is in force), or its crawl delay puts the next polite request slot beyond the fetch timeout.
+        # Keyed by the site that said so, which is the failing request's, not the candidate's: a candidate whose
+        # redirect leads onto such a site says nothing about the candidate's own site
+        waiting = {}
 
         def full():
             return self.usage.pages >= self.budget.max_pages
@@ -1229,7 +1407,8 @@ class _Run:
             self.record(doc, provider=r.provider, api=True)
 
         try:
-            for r, api in picked:
+            for i, (r, api) in enumerate(picked):
+                self.drop_prefetched(ahead, below=i)
                 if canonical_url(r.url) in done:
                     continue
                 if full():
@@ -1243,8 +1422,11 @@ class _Run:
                     continue
                 if self.skip_denied(r.url, r.provider):
                     continue
-                if _host(r.url) in waiting:       # the same wait would refuse it again: no request is spent
-                    waiting[_host(r.url)] += 1
+                if _host(r.url) in waiting and i not in ahead:
+                    # the same wait would refuse it again: no request is spent. Not so for a candidate fetched
+                    # ahead: its site was asked, and what it answered (the 429 itself, perhaps) is this candidate's
+                    # outcome, as it is one page at a time. The claim sends nothing to a site in back-off.
+                    waiting[_host(r.url)][0] += 1
                     continue
                 article = r.provider in SNIPPET_ONLY
                 if article and timely:        # an encyclopedia article is undated: after the dated news pages
@@ -1255,6 +1437,8 @@ class _Run:
                     # (an engine date only orders candidates; it is never a source's date)
                     later.append((r, None, hint_of(r), None, "stale_hit"))
                     continue
+                if window > 1:
+                    self.prefetch(picked, i, done, waiting, ahead, window)
                 try:
                     if article:
                         doc, as_api = self.wikipedia(r)
@@ -1266,8 +1450,16 @@ class _Run:
                                                                  {"found_by": r.provider}), **exc.to_json()})
                     self.event("error", {"stage": "reading", **exc.to_json()}, "reading")
                     self.renew()
+                    asked = exc.code == "rate_limited" and (exc.status in (429, 503)
+                                                            or exc.detail == "host backoff in force")
+                    site = _host(exc.url) or _host(r.url)      # the site the failing request was for (a hop's)
+                    if asked:
+                        # the site said so itself (or said so to an earlier request, a page fetched ahead included:
+                        # a back-off applies to the whole site at once, whichever fetch received it)
+                        self.note(f"{site}: a source there was not read: the site asked for fewer requests (it "
+                                  "answered 429 or 503 with a wait) and is left alone until then")
                     if exc.code == "rate_limited" and exc.retry_after is not None and not article:
-                        waiting.setdefault(_host(r.url), 0)
+                        waiting.setdefault(site, [0, "asked" if asked else "crawl delay"])
                     if exc.code == "budget_exhausted":
                         self.limit(f"budget exhausted while reading: {exc.detail}")
                         break
@@ -1302,6 +1494,7 @@ class _Run:
                 self.usage.charge(self.budget, pages=1)
                 self.record(doc, provider=r.provider, api=as_api, published_hint=hint,
                             search_date=None if as_api or hint is not None else _search_date(r))
+            self.drop_prefetched(ahead)
             # pages without text (to render) first, then undated pages, encyclopedia articles and pages (or hits)
             # dated before the required window, in rank order (sorted() is stable). A page without text that could
             # not be rendered takes a slot only after all of them (`unread`).
@@ -1346,8 +1539,11 @@ class _Run:
                 if full() or self.exhausted:
                     break
                 take_api(r)
-            for host, n in waiting.items():
-                if n:
+            for host, (n, why) in waiting.items():
+                if n and why == "asked":
+                    self.note(f"{host}: {n} more candidate(s) not tried: the site asked for fewer requests and is "
+                              "left alone until then")
+                elif n:
                     self.note(f"{host}: {n} more candidate(s) not tried: the site's crawl delay puts the next "
                               "request beyond the fetch timeout")
             self.follow()
@@ -1355,7 +1551,74 @@ class _Run:
             self.limit(f"budget exhausted while reading: {exc}")
         except _OutOfTime:
             self.limit("time budget exhausted while reading")
+        finally:
+            self.drop_prefetched(ahead)     # cancelled, stopped or crashed: nothing fetched ahead is used
+            self.close_lookout()            # a fetch ahead that is still running gets "stop" from now on
         self.done("reading")
+
+    def read_window(self) -> int:
+        """Pages the reader may have in flight at once: config.read_ahead, at most budget.max_concurrency. 1 reads
+        one page at a time, and so does a fetcher that cannot fetch ahead (no speculate()), a task whose traffic
+        counts against a daily allowance (daily_capped: nobody waits for curiosity or a refresh, and an allowance
+        must not be spent on requests the task did not use), and a run without a file of its own to read the
+        owner's stops from at request time (_Lookout)."""
+        if getattr(self.services.fetcher, "speculate", None) is None or daily_capped(self.origin):
+            return 1
+        path = self.services_db_path()
+        if not path or not os.path.isfile(path):
+            return 1
+        return max(1, min(int(self.cfg.read_ahead), int(self.budget.max_concurrency)))
+
+    def prefetch(self, picked, i, done, waiting, ahead, window):
+        """Read-ahead: while read() fetches picked[i], start fetching (SafeFetcher.speculate) the next candidates
+        it would fetch as pages, in order, so their network time overlaps. At most `window` pages in flight counting
+        picked[i]; one per host, always that host's earliest candidate, so each site sees its requests (robots.txt
+        first) in the order a one-at-a-time reader sends them and its interval is never raced; never more than the
+        pages left in the budget, and two requests (robots.txt and page) per page in flight within the requests
+        left. Only when the network time is spent changes: read() still takes, extracts, charges and records each
+        page when it reaches it, and the fetcher hands over a page fetched ahead only when a fetch made then would
+        have done exactly the same. `ahead` (candidate index -> URL) gains the fetches started. Each fetch ahead
+        asks the run's _Lookout before every network step, so none sends a request after a cancel, after web access
+        was turned off or to a host denied meanwhile; together they send no request and read no byte the task's
+        budget has no room for; and none opens a connection to a site an exchange is in progress with."""
+        from .extract import canonical_url
+        fetcher = self.services.fetcher
+        if self.watch() is None:         # no gate to ask at request time: nothing is fetched ahead
+            return
+        pages_left = self.budget.max_pages - self.usage.pages
+        # room for fetches ahead is the task's: what it was charged and what it already sent ahead unused both count
+        # (the fetcher holds every fetch ahead to the same account, request by request and byte by byte)
+        requests_left = self.budget.max_requests - self.usage.requests - self.usage.prefetch_unused_requests
+        if self.budget.max_bytes - self.usage.bytes - self.usage.prefetch_unused_bytes <= 0:
+            return
+        timely = self.timely()
+        hosts = set()
+        for j in range(i, len(picked)):
+            in_flight = len(ahead) + (i not in ahead)
+            if in_flight >= min(window, pages_left) or 2 * (in_flight + 1) > requests_left:
+                return
+            r, api = picked[j]
+            if api:
+                continue
+            host = _host(r.url)
+            if j == i or j in ahead:
+                hosts.add(host)
+                continue
+            # what read() would not fetch now as a page: skipped, waiting on its host, an article, a dated-out hit
+            if host in hosts or host in waiting or canonical_url(r.url) in done or self.denied(r.url) \
+                    or r.provider in SNIPPET_ONLY or (timely and self.stale(r.published_at)):
+                continue
+            hosts.add(host)
+            if fetcher.speculate(r.url, purpose="page", usage=self.usage, budget=self.budget, wanted=self.lookout):
+                ahead[j] = r.url
+
+    def drop_prefetched(self, ahead, below=None):
+        """Abandon the read-ahead fetches of candidates read() has passed (index < below; all when None). One read()
+        used was claimed and is gone already; any other (read() skipped it, had enough pages, ran out of budget or
+        was stopped) is never charged, cached or recorded, its request on the wire is cut, and its traffic counts
+        as unused prefetch (Usage.prefetch_unused_requests / _bytes)."""
+        for j in [j for j in ahead if below is None or j < below]:
+            self.services.fetcher.abandon(ahead.pop(j), purpose="page", usage=self.usage)
 
     def document_failed(self, url, provider, exc):
         """Record one document's unexpected failure (decode or internal error) and carry on with the others."""
@@ -1407,8 +1670,16 @@ class _Run:
                     listed = []
                     for origin in dict.fromkeys(urlunsplit((urlsplit(u).scheme, urlsplit(u).netloc, "/", "", ""))
                                                 for u in seeds):
-                        listed += crawler._sitemap_urls(self.services.fetcher, origin, budget=self.budget,
-                                                        usage=self.usage, failures=failures)
+                        # robots.txt and the sitemaps are fetched by the crawler itself: inside the run's gate,
+                        # so they stop like its pages (a site denied meanwhile: its sitemaps are skipped)
+                        try:
+                            with self.gate():
+                                listed += crawler._sitemap_urls(self.services.fetcher, origin, budget=self.budget,
+                                                                usage=self.usage, failures=failures)
+                        except _Denied as stop:
+                            failures.append(self.denied_meanwhile(stop).to_json())
+                        finally:
+                            self.flush_deferred()
                     self.save(crawl_sitemap_urls=listed[:crawler.MAX_SITEMAP_ENTRIES])
                 for url in listed:
                     enqueue(url, 1)
@@ -1987,8 +2258,18 @@ def _execute(db, task_id, services, *, resume):
             from . import knowledge
             assessment = run.checkpoint.get("assessment") or {}
             chosen = set(assessment.get("memory_items") or run.checkpoint.get("known", []))
-            items = [i for i in knowledge.query(db, task["objective"], run.clock())["items"]
-                     if i["id"] in chosen and not i["stale"] and not i["contested"]]
+            found = knowledge.query(db, task["objective"], run.clock())["items"]
+            # The items were chosen (and, with a model, confirmed) at discovery. This second lookup can rank
+            # differently (the memory models failed in between and the ranking is lexical again): an approved item
+            # it does not return is loaded by its id, so the answer never loses the facts it was approved on.
+            missing = chosen - {i["id"] for i in found}
+            if missing:
+                cfg_now, at = state.get_config(db), run.clock()
+                marks = ",".join("?" * len(state.LIVE_KNOWLEDGE))
+                found += [knowledge.describe(db, r, at, cfg_now) | {"score": 0.0}
+                          for r in knowledge.rows(db, f"status IN ({marks})", state.LIVE_KNOWLEDGE)
+                          if r["id"] in missing]
+            items = [i for i in found if i["id"] in chosen and not i["stale"] and not i["contested"]]
             run.documents, run.clusters = _memory_documents(items)
             run.stage("synthesizing")
             run.event("extract", {"from_memory": True, "knowledge_ids": [i["id"] for i in items],
@@ -2004,7 +2285,10 @@ def _execute(db, task_id, services, *, resume):
             _reason(db, run, report)
         else:
             run.stage("reading")
-            run.read()
+            try:
+                run.read()
+            finally:
+                run.close_lookout()
             run.stage("evaluating")
             if run.is_done("evaluating"):
                 run.clusters = state.load_clusters(db, task_id)
@@ -2143,7 +2427,8 @@ def _reason(db, run, report):
     def apply():
         return reasoning.apply(db, report, run.services, question=run.objective, now=run.clock(), task_id=run.id,
                                time_left=run.budget.max_seconds - run.elapsed(),
-                               presentation=(run.checkpoint.get("context") or {}).get("presentation"), asked=asked)
+                               presentation=(run.checkpoint.get("context") or {}).get("presentation"), asked=asked,
+                               background=is_autonomous(run.origin), spoken=run.origin in SPOKEN_ORIGINS)
     try:
         if not is_autonomous(run.origin):
             out = apply()

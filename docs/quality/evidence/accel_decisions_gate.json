@@ -1,0 +1,46 @@
+{
+ "what": "Final verification of phase 2 (the owner's decisions A to F and their review fixes)",
+ "generated_at": "2026-11-23",
+ "tree": "5583823",
+ "baseline_tree": "9e4570a",
+ "phase_1_tree": "307b907",
+ "gate": {
+  "command": "bash scripts/check.sh",
+  "ruff": "clean",
+  "pytest": "3996 passed, 18 skipped",
+  "node_checks": "all pass",
+  "reproduce": "8 of 8 verified",
+  "result": "ALL CHECKS PASSED",
+  "wall_seconds": 659
+ },
+ "browser_suite": {
+  "command": "bash scripts/e2e.sh",
+  "result": "198 passed, 1 skipped",
+  "exit": 0,
+  "seconds": 938
+ },
+ "acceptance": {
+  "command": "nsf acceptance --all",
+  "exit": 0
+ },
+ "offline_benchmark": {
+  "command": "nsf web bench",
+  "exit": 0,
+  "retrieval_success": "12/12",
+  "evidence_coverage": "21/24",
+  "answer_correct_top": "9/12",
+  "verification_states": "29/29",
+  "contradiction_precision_recall": "1.0/0.8571"
+ },
+ "interim_run_before_the_last_read_ahead_fix": {
+  "tree": "7bf522c",
+  "pytest": "3989 passed, 18 skipped",
+  "browser_suite": "198 passed, 1 skipped",
+  "acceptance_exit": 0
+ },
+ "before": {
+  "baseline_pytest": "3337 passed, 18 skipped",
+  "phase_1_pytest": "3483 passed, 18 skipped",
+  "phase_1_browser_suite": "195 passed, 1 skipped"
+ }
+}

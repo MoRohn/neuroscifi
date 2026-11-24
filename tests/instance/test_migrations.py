@@ -222,6 +222,53 @@ def test_newer_file_is_refused(tmp_path):
         store.open_existing(path)
 
 
+class _UpgradedMeanwhile(sqlite3.Connection):
+    """A connection that lets another process finish the whole upgrade right after it first reads user_version:
+    the interleaving of two processes opening an old file at once, made deterministic (no threads, no sleeps)."""
+    other = None
+
+    def execute(self, sql, *args):
+        result = super().execute(sql, *args)
+        if sql.strip() == "PRAGMA user_version" and self.other is not None:
+            other, self.other = self.other, None
+            version = result.fetchone()
+            schema.migrate(other)
+            return super().execute("SELECT ?", version)     # what this process read before the other upgraded
+        return result
+
+
+def test_a_second_process_opening_the_file_during_an_upgrade_does_not_reapply_a_migration(tmp_path):
+    """The version is re-read under the write lock, so the slower opener sees the upgrade done and applies nothing
+    (it used to re-run migration 1 and fail with 'already exists', left inside its transaction)."""
+    path = tmp_path / "old.sqlite"
+    first = sqlite3.connect(path, isolation_level=None, timeout=1)
+    second = sqlite3.connect(path, isolation_level=None, timeout=1, factory=_UpgradedMeanwhile)
+    try:
+        second.other = first
+        assert schema.migrate(second) == schema.SCHEMA_VERSION
+        assert second.other is None and not second.in_transaction and not first.in_transaction
+        assert second.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
+        assert second.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+    finally:
+        first.close()
+        second.close()
+
+
+def test_a_failing_migration_is_rolled_back_and_leaves_no_open_transaction(tmp_path, monkeypatch):
+    broken = list(schema.MIGRATIONS)
+    broken[0] = "CREATE TABLE meta(key TEXT); CREATE TABLE meta(key TEXT);"
+    monkeypatch.setattr(schema, "MIGRATIONS", broken)
+    db = sqlite3.connect(tmp_path / "new.sqlite", isolation_level=None)
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="already exists"):
+            schema.migrate(db)
+        assert not db.in_transaction
+        assert db.execute("SELECT count(*) FROM sqlite_master").fetchone()[0] == 0
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 0
+    finally:
+        db.close()
+
+
 # ---- migration 11: voice tombstones get their own kind -------------------------------------------------------------
 
 def _v10_file(tmp_path):
@@ -303,7 +350,9 @@ def test_migration_13_releases_sessions_of_unsigned_nodes(tmp_path):
     path = tmp_path / "v12.sqlite"
     store.create(path, T0).close()
     raw = sqlite3.connect(path, isolation_level=None)
-    raw.executescript("BEGIN; DROP TABLE node_keys_retired; PRAGMA user_version=12; COMMIT;")
+    raw.executescript("BEGIN; DROP TABLE evidence_consolidated; DROP INDEX tombstones_epoch_seq; "
+                      "DROP TABLE node_keys_retired; "
+                      "PRAGMA user_version=12; COMMIT;")
     raw.executemany("INSERT INTO autonomy_nodes(device,family,label,capabilities,enrolled_by,enrolled_at,alg,"
                     "public_key,key_fingerprint,signed) VALUES(?,?,?,'[\"node\"]','owner',?,?,?,?,?)",
                     [("legacy", "fam", "old", T0, None, None, None, 0),

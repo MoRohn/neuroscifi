@@ -1,0 +1,166 @@
+{
+ "benchmark": "graph_learner_birth",
+ "generated_at": "2026-11-23T17:10:20-0500",
+ "environment": {
+  "machine": "aarch64",
+  "python": "3.12.16",
+  "numpy": "2.3.5",
+  "load_average_at_start": [
+   1.8486328125,
+   2.580078125,
+   6.25830078125
+  ]
+ },
+ "parameters": {
+  "lifetimes": 200,
+  "events": 200,
+  "test_lifetimes": 100
+ },
+ "seed": 20260519,
+ "birth_rules": {
+  "gate-v1": [
+   "gate-v1"
+  ],
+  "today": [
+   "gate-v1",
+   "best-learner-v1"
+  ]
+ },
+ "not_compared": "leaves whose name marks a timing or a size on disk: seconds, latency, _ms., _ms[, p50, p95, p99, cpu, duration, elapsed, wall, bytes, path, high_water, throughput, per_second, mean_us, max_us, gpu",
+ "scenarios": {
+  "birth": {
+   "pass": {
+    "gate-v1": true,
+    "today": true
+   },
+   "checks": 9,
+   "checks_changed": [],
+   "leaves": 61,
+   "leaves_changed": 0,
+   "timing_or_size_leaves_differing": 1,
+   "changed": {}
+  },
+  "graph_development": {
+   "pass": {
+    "gate-v1": true,
+    "today": true
+   },
+   "checks": 16,
+   "checks_changed": [],
+   "leaves": 73,
+   "leaves_changed": 0,
+   "timing_or_size_leaves_differing": 1,
+   "changed": {}
+  },
+  "growth_retention": {
+   "pass": {
+    "gate-v1": true,
+    "today": true
+   },
+   "checks": 14,
+   "checks_changed": [],
+   "leaves": 75,
+   "leaves_changed": 9,
+   "timing_or_size_leaves_differing": 1,
+   "changed": {
+    "metrics.lookup_disabled.selected_mse": {
+     "gate-v1": 0.004645551224721565,
+     "today": 0.004641149126221088
+    },
+    "metrics.next_skill.heldout_mse": {
+     "gate-v1": 0.0042644331725202765,
+     "today": 0.004242540630717206
+    },
+    "metrics.recall.selected_mse": {
+     "gate-v1": 0.004645551224721565,
+     "today": 0.004641149126221088
+    },
+    "metrics.rejection.heldout_gain.incumbent_mse": {
+     "gate-v1": 0.013393105501474212,
+     "today": 0.01338466392742007
+    },
+    "metrics.rejection.retention[0].incumbent_mse": {
+     "gate-v1": 0.004313324529345801,
+     "today": 0.004298526770518885
+    },
+    "metrics.rejection.retention[0].limit": {
+     "gate-v1": 0.004744656982280382,
+     "today": 0.004728379447570774
+    },
+    "thresholds.pack_candidates.learned_sparse": {
+     "gate-v1": null,
+     "today": true
+    },
+    "thresholds.pack_reference": {
+     "gate-v1": null,
+     "today": "best_learner"
+    },
+    "thresholds.version": {
+     "gate-v1": "gate-v1",
+     "today": "best-learner-v1"
+    }
+   }
+  },
+  "device_ownership": {
+   "pass": {
+    "gate-v1": true,
+    "today": true
+   },
+   "checks": 15,
+   "checks_changed": [],
+   "leaves": 95,
+   "leaves_changed": 0,
+   "timing_or_size_leaves_differing": 24,
+   "changed": {}
+  },
+  "first_physical_test": {
+   "pass": {
+    "gate-v1": true,
+    "today": true
+   },
+   "checks": 6,
+   "checks_changed": [],
+   "leaves": 242,
+   "leaves_changed": 9,
+   "timing_or_size_leaves_differing": 9,
+   "changed": {
+    "metrics.new_panel_return_match.panel_a_dynamics_minus_new_setup_nats.max": {
+     "gate-v1": -355.1228474584709,
+     "today": -353.3563642587271
+    },
+    "metrics.new_panel_return_match.panel_a_dynamics_minus_new_setup_nats.mean": {
+     "gate-v1": -645.2826270324678,
+     "today": -646.934985918696
+    },
+    "metrics.new_panel_return_match.panel_a_dynamics_minus_new_setup_nats.min": {
+     "gate-v1": -1150.2715097369096,
+     "today": -1197.7893444724791
+    },
+    "metrics.new_panel_return_match.panel_a_posterior_max": {
+     "gate-v1": 1.7788002906367102e-157,
+     "today": 1.4853769638150623e-155
+    },
+    "metrics.new_panel_return_match.panel_a_posterior_mean": {
+     "gate-v1": 2.049646682738505e-159,
+     "today": 1.5107280441800584e-157
+    },
+    "metrics.panel_dynamics.validation_mse_mean": {
+     "gate-v1": 0.004337785887861205,
+     "today": 0.004324078865085529
+    },
+    "metrics.return_match.new_setup_posterior_mean": {
+     "gate-v1": 1.0126084585423489e-44,
+     "today": 1.0126084585423484e-44
+    },
+    "metrics.return_match.panel_a_dynamics_minus_new_setup_nats.max": {
+     "gate-v1": 288.0416985432497,
+     "today": 289.0133428869998
+    },
+    "metrics.return_match.panel_a_dynamics_minus_new_setup_nats.mean": {
+     "gate-v1": 195.293255335259,
+     "today": 195.8343649901293
+    }
+   }
+  }
+ }
+}

@@ -27,6 +27,14 @@ def no_owner_search_keys(request, monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def no_host_memory_models(request, monkeypatch, tmp_path_factory):
+    """The memory models that may run on this host (deploy/memory) must not decide test outcomes either: `nsf setup`
+    looks for their key file under NSF_MEMORY_DIR and contacts nothing without it."""
+    if "live" not in request.keywords:
+        monkeypatch.setenv("NSF_MEMORY_DIR", str(tmp_path_factory.getbasetemp() / "no-memory-models"))
+
+
+@pytest.fixture(autouse=True)
 def private_runtime_dir(monkeypatch, tmp_path_factory):
     folder = tmp_path_factory.getbasetemp() / "runtime"
     folder.mkdir(mode=0o700, exist_ok=True)

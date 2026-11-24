@@ -773,6 +773,12 @@ class PocketServer(ThreadingHTTPServer):
         self.tls, self.limit, self.per_ip, self.deadline = tls, limit, per_ip, deadline
         self.live, self.live_lock, self.current = set(), threading.Lock(), threading.local()
 
+    def server_close(self):
+        beacon = getattr(self, "audio_beacon", None)   # started with the voice hub (voice.http.hub_for)
+        if beacon is not None:
+            beacon.close()                               # an open session's audio state is withdrawn at once
+        super().server_close()
+
     def process_request(self, request, client_address):
         conn = _Connection(request, client_address[0])
         with self.live_lock:

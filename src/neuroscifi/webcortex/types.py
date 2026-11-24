@@ -32,7 +32,10 @@ TERMINAL_STATES = ("completed", "partial", "failed", "cancelled")
 STAGES = ("discovering", "reading", "evaluating", "synthesizing")
 FETCH_ERROR_CODES = ("blocked_policy", "blocked_robots", "dns_failure", "connect_failed", "timeout", "http_error",
                      "too_large", "unsupported_type", "rate_limited", "too_many_redirects", "tls_error",
-                     "disabled", "budget_exhausted", "decode_error")
+                     "disabled", "budget_exhausted", "decode_error",
+                     # the request was cut on a stop that was then withdrawn: the page was not read, and nothing is
+                     # concluded about the site (net.SafeFetcher._cut)
+                     "interrupted")
 
 
 class JsonMixin:
@@ -200,7 +203,11 @@ class BudgetExceeded(Exception):
 @dataclass
 class Budget(JsonMixin):
     max_queries: int = 6
-    max_requests: int = 40            # every network request incl. API calls and robots.txt
+    # every network request the task is charged for, incl. API calls and robots.txt: charged <= max_requests.
+    # Requests of pages fetched ahead of their turn and then not used are counted apart
+    # (Usage.prefetch_unused_requests) and are on top: they alone never exceed max_requests either, so everything a
+    # task sends is at most 2 x max_requests
+    max_requests: int = 40
     max_pages: int = 8                # documents acquired (fetched or rendered)
     max_bytes: int = 20_000_000
     max_seconds: float = 120.0
@@ -233,6 +240,33 @@ class Usage(JsonMixin):
     browser_sessions: int = 0
     tokens: int = 0
     render_requests: int = 0          # sub-requests of all renders (each within budget.max_render_requests)
+    # Requests sent and bytes received for pages fetched ahead of their turn (config.read_ahead) that the task then
+    # did not use: real traffic to the sites, counted apart from requests/bytes (what the task used and was charged).
+    # The daily allowances add them to requests/bytes (scheduler.traffic).
+    prefetch_unused_requests: int = 0
+    prefetch_unused_bytes: int = 0
+
+    def refund(self, *, requests=0):
+        """Take back requests charged just before they would have been sent and then not sent (net.SafeFetcher: the
+        task was stopped while the connection was being opened, and nothing was written on it)."""
+        with _CHARGE_LOCK:
+            self.requests = max(0, self.requests - requests)
+
+    def charge_unused(self, *, requests=0, bytes=0):
+        """Count what an unused read-ahead fetch sent and received (net.SafeFetcher.speculate). Never checked
+        against the budget: the traffic already happened, and the task never used it."""
+        with _CHARGE_LOCK:
+            self.prefetch_unused_requests += requests
+            self.prefetch_unused_bytes += bytes
+
+    def to_json(self) -> dict:
+        """As JsonMixin, without the unused-prefetch counters while they are 0, so a task that fetched nothing ahead
+        (read_ahead 1) records exactly the usage it always did."""
+        out = super().to_json()
+        for name in ("prefetch_unused_requests", "prefetch_unused_bytes"):
+            if not out.get(name):
+                out.pop(name, None)
+        return out
 
     def charge(self, budget: Budget, *, queries=0, requests=0, pages=0, bytes=0, browser_sessions=0):
         """Check then add, atomically. Raises BudgetExceeded before the limit would be passed (pre-flight)."""

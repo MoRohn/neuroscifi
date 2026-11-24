@@ -10,10 +10,31 @@ from .errors import ValidationError
 def _rules_add(db, args, now):
     if not args.owner_approved:
         raise ValidationError("Adding a scoring rule requires --owner-approved; learners cannot change their exam")
-    try:
-        definition = json.loads(args.file.read_text())
-    except (OSError, ValueError) as error:
-        raise ValidationError(f"Cannot read rule file {args.file}: {error}") from None
+    if (args.file is None) == (args.builtin is None):
+        raise ValidationError("Give either a rule file or --builtin NAME (one of: "
+                              + ", ".join(store.BUILTIN_RULES) + ")")
+    if args.builtin is not None:
+        # A rule that ships with the software, so adopting it (or going back to the earlier one) needs no file. Rules
+        # are immutable and the newest is used, so a built-in that is already registered is added again under a new
+        # name with --as.
+        if args.builtin not in store.BUILTIN_RULES:
+            raise ValidationError(f"Unknown built-in rule {args.builtin!r}; one of: " + ", ".join(store.BUILTIN_RULES))
+        definition = dict(store.BUILTIN_RULES[args.builtin])
+        if args.version is not None:
+            definition["version"] = args.version
+        registered = {r["version"] for r in rules.listing(db)}
+        if definition["version"] in registered and rules.latest(db) != definition["version"]:
+            raise ValidationError(
+                f"Rule {definition['version']} is already registered and a newer rule is in use ({rules.latest(db)}). "
+                f"Rules are never edited or reordered: add it under a new name, for example "
+                f"--builtin {args.builtin} --as {args.builtin}-again")
+    else:
+        if args.version is not None:
+            raise ValidationError("--as renames a built-in rule; a rule file carries its own version")
+        try:
+            definition = json.loads(args.file.read_text())
+        except (OSError, ValueError) as error:
+            raise ValidationError(f"Cannot read rule file {args.file}: {error}") from None
     with store.write(db):
         version = rules.register(db, definition, now, created_by="owner")
         store.bump_state_version(db)
@@ -100,6 +121,12 @@ def register(sub, *, with_db, run):
     p.set_defaults(handler=with_db(lambda db, a, now: rules.listing(db)))
     p = rule_cmds.add_parser("add", help="register a new rule version (owner only)")
     store.add_db_argument(p)
-    p.add_argument("file", type=Path)
+    p.add_argument("file", type=Path, nargs="?", help="a rule definition as JSON (or use --builtin)")
+    p.add_argument("--builtin", metavar="NAME", help="a rule that ships with the software, no file needed: "
+                   + ", ".join(store.BUILTIN_RULES) + ". New individuals are born with both, the last in use; "
+                   "an older individual adopts best-learner-v1 with this")
+    p.add_argument("--as", dest="version", metavar="VERSION",
+                   help="register the built-in rule under this version name (needed when it is registered already, "
+                        "for example to go back to gate-v1: --builtin gate-v1 --as gate-v1-again)")
     p.add_argument("--owner-approved", action="store_true", help="required: confirms the owner adds this rule")
     p.set_defaults(handler=with_db(_rules_add))

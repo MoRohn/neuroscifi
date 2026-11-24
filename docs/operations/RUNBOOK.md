@@ -6,6 +6,8 @@ Status of this document: these are procedures. **No system-level service deploym
 
 Related: [ENVIRONMENT.md](ENVIRONMENT.md) (every setting), [MIGRATIONS.md](MIGRATIONS.md) (upgrades), [TESTING.md](TESTING.md).
 
+**Upgrading from 0.7.0?** Read [MIGRATIONS.md](MIGRATIONS.md) section 2 before you start any service. From schema 14 an expired learning event leaves a consolidated reading that is kept without limit (section 6). To keep the old meaning of expiry, stop the services and run `nsfs config --no-consolidation` as the first command after installing; the console and the Pocket bridge expire due evidence on access, so a service that starts first consolidates first.
+
 ## 0. Conventions
 
 All commands run on the host. `nsfs` runs `nsf` as the service user, with the service's database:
@@ -102,7 +104,7 @@ nsfs checkpoint verify ID
 
 `verify` decodes the archive and runs SQLite's integrity check. A `status` of `missing` or `stale` in `list` means the file is gone or predates a forget. Run `nsfs checkpoint verify` on the newest id at least weekly and after any disk incident. A checkpoint that has never been verified is not a backup.
 
-Restore never overwrites. It writes a new file, re-applies current tombstones so forgotten ids stay forgotten, and is performed while the services are stopped:
+Restore never overwrites. It writes a new file and re-applies what the live database has forgotten since the archive was written, and is performed while the services are stopped. The replay covers tombstones (forgotten ids stay forgotten), forgotten epochs (their belief revisions, decisions, open questions, changepoints, links, graph context and the owner's note, in copies written before the forget; an epoch name used again afterwards keeps its new rows) and forgotten datasets (the blob and the lesion and coactivation effects measured on it):
 
 ```sh
 sudo systemctl stop neuroscifi-pocket.service neuroscifi-console.service neuroscifi-checkpoint.timer
@@ -126,11 +128,24 @@ Forgetting removes evidence, leaves a payload-free tombstone, recomputes beliefs
 | One observation | `nsfs forget evidence EVENT_ID` |
 | A whole calibration epoch | `nsfs forget epoch NAME` |
 | Everything tied to one partner | `nsfs forget partner NAME` |
+| Everything one camera taught | `nsfs forget camera NAME` |
+| One consolidated reading (what an expired event left) | `nsfs forget consolidated SEQ` |
 | A stored dataset | `nsfs forget dataset ID` |
 | Keep one episode past its lifetime | `nsfs promote ID` |
 | Expire everything past its lifetime now | `nsfs sweep` |
 
 Find ids with `nsfs memory evidence --epoch NAME`, `nsfs memory dataset`, and `nsfs memory deletion` (the deletion log).
+
+**What expiry leaves (consolidation, ADR-044).** An event that reaches its lifetime is deleted and tombstoned. If it was a learning event, what it taught stays as a *consolidated reading*: its position in the journal (seq), its epoch, channel and root, the corrected reading and its sample id. Beliefs keep counting it, so the individual still knows on day 8 what it learned on day 1. The event's id, actor, action and bit, provenance and timestamps are gone. Memory-only events and repeated copies of a sample leave nothing.
+
+- See them: `nsfs memory consolidated --epoch NAME` (the record's id is the seq). `nsfs birth` and `nsfs regulation` count them; `nsfs sweep` says how many it kept (`consolidated`).
+- Forget them: `nsfs forget consolidated SEQ` forgets one reading by the seq the listing shows (the console's Memory log has a Forget button beside each reading). `nsfs forget evidence EVENT_ID` also still works after the event expired, if you kept the id. `nsfs forget partner NAME`, `nsfs forget camera NAME` and `nsfs forget epoch NAME` remove the consolidated readings they cover, in every epoch for a partner or a camera. A root's name stays in the file while any evidence of that name is held. When the first copy of a sample is forgotten, its next copy counts.
+- Turn it off: `nsfs config --no-consolidation` (back on: `--consolidation`). From then on an expired event leaves nothing, as in 0.7.0. Readings already kept stay until you forget them. The change is recorded in the deletion log (`nsfs memory deletion`, kind `setting`). **On an upgrade, do this before starting any service** (MIGRATIONS.md section 2): the console and the Pocket bridge expire due evidence on access.
+- A restored checkpoint takes this setting, and the ask budget and its window, from the instance it is restored from, not from the archive; the restore result lists what it changed (`settings_carried`) and anything it could not carry (`settings_warnings`). A plain restore (`apply_tombstones=False`, or `nsf archive unpack`) is the archive as it was, settings included: consolidation can be on in that copy although you turned it off since, so run `nsfs config --no-consolidation` on the copy before anything else if you opted out.
+- A settings value that was edited by hand into something other than `true` or `false` counts as off, and `nsfs sweep` and `nsfs config` say so until you set it.
+- They never expire and are not counted in `max_evidence_rows`. Each takes about 95 bytes.
+
+Forgetting an epoch also clears the free-text note the owner gave it; the epoch's row stays, because tombstones, the deletion log and evidence refer to its name. An epoch that holds only a note is forgotten and logged too. Forgetting a dataset also deletes the lesion and coactivation effects measured on it (`graph_effects_deleted` in the result); effects measured on other datasets stay.
 
 A voice session: `nsfs forget voice SESSION` (or `nsfs voice forget SESSION`); a research task, knowledge item or source: `nsfs forget research|knowledge|source TARGET`.
 
@@ -281,7 +296,7 @@ nsfs web status                                                # switches, provi
 - Web questions have their own budget: at most `max_open_web_questions` (default 10) open, and at most `max_web_questions_per_task` (default 3) new per task. Beyond that, candidates stay provisional and one aggregate question per task (scope `web:review:<task>`) says how many await review. Review them in the console (Research) or with `nsfs web knowledge --status provisional` and `nsfs web review ID --accept|--reject`. `nsfs regulation` reports `open_web_questions` separately.
 - A monitor's meaningful change is a `finding` event and an informational question `web:finding:<monitor>:<task>`; the console's monitors table lists recent findings.
 - While regulation pauses writes (section 7), nothing web-related is written: submissions, consolidation, monitors and proposals return "writes paused", the worker claims nothing (one decision event), and a running task stops at its next step as `partial` without consolidating.
-- Turning web access off (`nsfs web config --disable`) or adding a domain to `deny_domains` takes effect in a running task within a few seconds: it stops as `partial` ("Web access was turned off during the run"), or skips the denied hosts.
+- Turning web access off (`nsfs web config --disable`), adding a domain to `deny_domains` or cancelling a task takes effect in a running task at once while it reads pages: no request is sent afterwards (every page fetch asks before each lookup, each connection and each request) and requests already on the wire are cut within about a quarter of a second. While it searches it takes effect at the next step, within about 2 s. The task stops as `partial` ("Web access was turned off during the run"), ends `cancelled`, or skips the denied hosts and says so ([Search and acquisition](../web-cortex/SEARCH_AND_ACQUISITION.md), "Stops").
 - A task that could read nothing because every provider or page failed (network down, all circuits open) ends `failed` with a limitation naming the failures. `nsfs web requeue TASK_ID` searches again once the network is back.
 - An identical submission (same objective, mode and origin) while one is queued or running returns that task (`deduplicated: true`). `requeue` of a partial or cancelled task returns the child already queued instead of creating another.
 - Curiosity proposals are sized to the daily autonomous allowance left when they are made, and are checked again when you confirm them and when the worker starts them.
@@ -302,6 +317,149 @@ Forgetting a knowledge item also forgets its queued or running refresh tasks (th
 
 Each web forget records a payload-free tombstone (`web_forgotten`, an instance-salted digest), marks every checkpoint stale and logs only a digest label for a URL or domain in `deletion_log`. `checkpoint restore` replays those tombstones on the restored copy, so a forgotten task, knowledge version or source never comes back. Then follow the erasure steps of section 6 (`checkpoint rebuild`). Forgetting a partner (`nsfs forget partner NAME`) also replaces the name in research objectives, reports, events, claims and knowledge.
 
+### Memory models (semantic retrieval)
+
+Optional. Without them memory is ranked by its words (the lexical ranking of 0.7.0) and nothing below is needed. They are two small models served by the same digest-pinned vLLM image as the answer model, on loopback only: an embedding model on port 18441 (`neuroscifi-memory-embed`) and a reranker on port 18442 (`neuroscifi-memory-rerank`). What they do and do not do: [MEMORY_INTEGRATION §5.1](../web-cortex/MEMORY_INTEGRATION.md#51-semantic-retrieval-semanticpy-optional).
+
+**Install.** Place the weights in `~/.local/share/neuroscifi/models/qwen3-embedding-0.6b` and `~/.local/share/neuroscifi/models/qwen3-reranker-0.6b` (the script refuses to start a model whose `config.json` is missing). Settings: `deploy/memory/memory.env`; override any line in `~/.config/neuroscifi/memory/memory.env`. The script runs as the user who owns the weights and Docker access, like `deploy/vllm/run.sh`. It generates one API key for both services on first use (`~/.config/neuroscifi/memory/api_key`, 0600), separate from the answer model's key, and refuses a non-loopback bind and an image without a digest.
+
+**Start, and tell the individual.** Two commands; the second is the same `nsf setup` that set up everything else, and it can be run again at any time:
+
+```sh
+deploy/memory/run.sh start && deploy/memory/run.sh wait   # both models; `wait` ends when each answered a real request
+nsf setup --db PATH                                        # step "memory": done
+```
+
+`nsf setup` looks for the key file and sends each model one request with a fixed, meaningless text. When both answer it configures them for the individual and switches memory by meaning on. With the embedding model alone it switches on the ranking without the cut and says what is missing; a later run adds the reranker. Without the key file it contacts nothing and says in one line how to add the models. A memory setting you made by hand (`nsf web memory config`) is never changed: the step then reports "kept as you set it". `--no-memory` skips the step; `--memory-embed-url`, `--memory-rerank-url` and `--memory-key-file` name other places. By hand, the same result:
+
+```sh
+nsf web memory config --enable --embed-url http://127.0.0.1:18441/v1 --rerank-url http://127.0.0.1:18442/v1 \
+    --key-file ~/.config/neuroscifi/memory/api_key
+```
+
+`--key-file` takes an absolute path. A worker running as the `neuroscifi` service user cannot read a key in your home folder; give it a copy it can read, as for the answer model's key ([COGNITIVE_INFERENCE §5](../architecture/COGNITIVE_INFERENCE.md#5-run-configure-recover)).
+
+**As system services.** `sudo bash deploy/install.sh --memory --memory-user USER` installs `neuroscifi-memory-embed.service` and `neuroscifi-memory-rerank.service`, disabled like every other unit (USER is in the docker group and owns the weights and the key; the default is `--llm-user`, then the invoking user). Each runs `deploy/memory/run.sh foreground embed|rerank` under the wrapper sandbox of the speech units, and systemd restarts it on failure. Enable them once the weights are in place: `sudo systemctl enable --now neuroscifi-memory-embed.service neuroscifi-memory-rerank.service`. Do not also start the same service with `run.sh start`: the two would replace each other's container.
+
+**Status.**
+
+```sh
+nsf web memory                        # switch, both endpoints with state and reason, the effect in words
+nsf web knowledge "a question"        # result.retrieval says which ranking produced the items
+nsf resources                         # the containers' memory; policy.idle_unload.services.embed / .rerank
+deploy/memory/run.sh status           # container state and health
+deploy/memory/run.sh print embed      # the docker command, key redacted; changes nothing
+```
+
+In `nsf web memory` a model's `state` is `ready`, `degraded`, `unavailable` or `unauthorised` (each with its reason), or `asleep`: unloaded by the idle policy, not an outage.
+
+**Release the memory while idle (off by default).** The two models hold about 8.7 GiB together (below). The idle policy can release each after a time without use, like the answer model and the speech services ([RESOURCE_SCHEDULING §3(c)](../architecture/RESOURCE_SCHEDULING.md)):
+
+```sh
+nsf resources idle --set embed=15m --set rerank=15m     # `off` turns one off again; needs the idle timer (below)
+nsf resources unload embed                              # by hand, now; `nsf resources load embed` brings it back
+```
+
+A memory lookup never waits for a model. A lookup that finds one unloaded is ranked by its words at once (`retrieval.reason` says "… is unloaded while idle and is starting again", `retrieval.waking` names the models) and starts the reload in the background; a lookup after that is ranked by meaning again. Measured on the reference host: unloading takes 1 to 2 s per model, both answer again 20 to 29 s after the lookup that found them unloaded, and that lookup took 2 to 4 ms (0.15 s as the whole command `nsf web knowledge TOPIC`, which may exit at once: the reload is a process of its own). A reload that would leave less free memory than the critical threshold is refused and recorded, and tried again by a lookup 30 s later at the earliest. The pass that unloads is `nsf resources tick`, run every minute by `neuroscifi-idle.timer` (installed by hand: the header of `deploy/systemd/neuroscifi-idle.service`); it stops and starts an active systemd unit through `systemctl` and a hand-started container through `run.sh`. Only this host's own two services are managed: a memory endpoint you configured elsewhere is never stopped or started.
+
+**Footprint.** Measured per model with both loaded and used (`docs/quality/evidence/accel_decisions_memory_service.json`): 1.9 GiB of device memory (1.1 GiB of weights, the 0.25 GiB key-value cache that vLLM requires for a 2,048-token input, the rest the CUDA context) and 2.6 GiB of process memory in two processes (1.0 GiB the API server, 1.5 GiB the engine, mostly imported libraries). No setting of the pinned image lowers it: a smaller key-value cache is refused at this input length, and limiting the allocator's arenas changed nothing. The cost is two full vLLM processes for two small models; a lighter server is listed under next priorities in `docs/acceleration/ENGINEERING_PLAN.md`. To hold half of it, run the embedding model alone (`deploy/memory/run.sh start embed`): the recall gain stays, the cut of unrelated statements goes.
+
+**Where the console and the worker may not start services** (the units of `deploy/install.sh`: user `neuroscifi`, no Docker access). A lookup or a model call cannot reload a service there. `sudo bash deploy/install.sh --idle --idle-user <the docker account>` installs the idle timer and the wake units (disabled) and creates the request folder `/var/lib/neuroscifi-wake` (owner: that account, group `neuroscifi`, mode 2770); its closing message lists the three steps left: `NSF_DB` in a drop-in for `neuroscifi-idle.service` and `neuroscifi-wake.service`, `NSF_WAKE_DIR=/var/lib/neuroscifi-wake` in `/etc/neuroscifi/neuroscifi.env`, and `systemctl enable --now neuroscifi-idle.timer neuroscifi-wake.path`. The unprivileged process then leaves an empty request file `embed.wake` (or `vllm.wake`, …) and `neuroscifi-wake.service` does the reload as the Docker account. The console and the worker need nothing but that folder: they leave the request when a lookup finds the service unloaded or, where they cannot read the idle policy's files, when a connection to the service is refused (the call's error then ends "its start was asked for (wake request)"). The Docker account decides whether a reload is due. **Not arranged by the installer, and not verified:** the Docker account must read the instance database and write the folder beside it that ends in `.resources` (the idle policy's own files); with the installed state folder (`neuroscifi` alone, 0700) that needs a group or an ACL you grant. Until then the idle policy unloads nothing there.
+
+Check: `systemctl status neuroscifi-wake.path`; `nsf resources wake --dir /var/lib/neuroscifi-wake` by hand prints what it served. A lookup whose request nobody served within 60 s says so in `retrieval.reason`. An entry in the folder that is not a plain file is removed or renamed to `.stuck-…` (delete those at leisure); if `journalctl -u neuroscifi-wake.service` shows the service starting every 30 s with "not a file: stuck", the folder is read-only or sticky: fix its mode (`chmod 2770`), nothing else is needed.
+
+**Who gets the key.** The memory key is sent only to the memory service. `run.sh wait` refuses a port that answers while Docker does not report the container publishing it ("another process holds the port. The key was not sent"), and `nsf setup` and every lookup refuse one of the memory models' ports when the socket that would take the connection belongs to another account (`nsf web memory`: state `refused`). If you see either, find what holds the port: `ss -ltnp 'sport = :18441'`. The answer model's endpoint is checked the same way before every request: a model call that fails with "127.0.0.1:8811 on this computer is held by a process of another account (uid N)" sent nothing; find the holder with `ss -ltnp 'sport = :8811'`. The check looks only at the ports of the services NeuroSciFi deploys itself and only at the socket that would accept the connection, so a model server you run yourself on its own port and account (Ollama, for instance) is used as before, and a listener on another address does not matter. If you run one of *these* services under another account on purpose, set `NSF_LISTENER_CHECK=0` in the environment of the processes that call it. Limits: inside the hardened units (`PrivateUsers=yes`) other accounts cannot be told apart, so the check refuses nobody there; and a process of your own account or of root is never refused (it can read the key file anyway).
+
+**Stop and roll back.**
+
+```sh
+deploy/memory/run.sh stop             # both; or: stop embed | stop rerank   (systemd: systemctl disable --now …)
+nsf web memory config --disable       # the individual: back to the lexical ranking
+```
+
+Stopping the containers does not need a configuration change: the next query falls back to the lexical ranking, `retrieval.reason` says why, and the models are left alone for 30 s before the next lookup tries them again.
+
+### Reading several pages at once (read-ahead, on by default)
+
+```sh
+nsf web config                        # shows read_ahead (default 4)
+nsf web config --set read_ahead=1     # one page at a time for every task, as 0.7.0
+nsf web config --set read_ahead=4     # back to the default
+```
+
+A task's report, events and charged usage are the same at any value; only the time spent waiting for sites changes
+(about half at 4). One exception: when a site answers 429 to a page fetched ahead, it is left alone from that moment,
+and a source an earlier page would have redirected to there is not read; the report says so. Curiosity, refresh and
+MCP tasks always read one page at a time, so the daily allowances are exact. After a cancel, a denial or switching
+web access off no request is sent and the ones on the wire are cut. Pages fetched ahead share the task's budget, and
+what a task sent ahead and did not use is in its usage (`prefetch_unused_requests`, `prefetch_unused_bytes`).
+Details: [Search and acquisition](../web-cortex/SEARCH_AND_ACQUISITION.md), "Stops" and "Read-ahead".
+
+### Rolling back the inference and memory defaults
+
+Each default below can be reverted on its own. None needs a database change beyond the setting itself.
+
+| Default | Roll back | Check |
+|---|---|---|
+| vLLM serves requests by `priority` (`NSF_VLLM_SCHEDULING=priority`) | Put `NSF_VLLM_SCHEDULING=fcfs` in `~/.config/neuroscifi/inference/vllm.env`, then `deploy/vllm/run.sh start` (it replaces the running container; answers fall back to the extractive summary until `deploy/vllm/run.sh wait` returns). Where `neuroscifi-vllm.service` runs the model, use `sudo systemctl restart neuroscifi-vllm.service` instead | `deploy/vllm/run.sh print` shows `--scheduling-policy fcfs` |
+| vLLM processes up to 4096 tokens per step (`NSF_VLLM_BATCHED_TOKENS=4096`) | Put `NSF_VLLM_BATCHED_TOKENS=` (empty: vLLM's default) in the same file, then `deploy/vllm/run.sh start` | `deploy/vllm/run.sh print` no longer shows `--max-num-batched-tokens` |
+| Background research is sent with `priority` 10 (set by `nsf setup` for a vLLM endpoint) | `nsf llm config --set background_priority=0` | `nsf llm status`: `reasoning.background_priority` is null |
+| The answer model confirms a memory answer before it is given (`memory_check`) | `nsf web config --no-memory-check` | `nsf web config`: `config.memory_check` is false |
+| The self-critique reads only sentences that say more than a word-for-word restatement of their cited claims, and makes no call when there is none | `nsf llm config --critique-restatements` (every accepted sentence is judged again, as in 0.7.0) | `nsf llm status`: `reasoning.critique_restatements` is true |
+| Semantic memory retrieval, once the owner or `nsf setup` enabled it | `nsf web memory config --disable` | `nsf web memory`: `effect` starts with "off" |
+| The memory model containers, once started | `deploy/memory/run.sh stop` | `deploy/memory/run.sh status`: both "not running" |
+| The memory step of `nsf setup` | `nsf setup --no-memory` skips it; what it set is undone with `nsf web memory config --disable` | `nsf web memory`: `effect` starts with "off"; a later `nsf setup` reports "kept as you set it" |
+| Idle unloading of the memory models, once the owner set a timeout | `nsf resources idle --set embed=off --set rerank=off` | `nsf resources idle`: both `timeout_s` null |
+| The memory units, once installed | `sudo systemctl disable --now neuroscifi-memory-embed.service neuroscifi-memory-rerank.service` | `systemctl is-active` says inactive |
+
+Measurements behind the two vLLM settings and what each change costs: [COGNITIVE_INFERENCE §4 and §7](../architecture/COGNITIVE_INFERENCE.md#4-deployment-on-the-dgx-spark-measured-2026-11-21).
+
+| Symptom | Check | Recovery |
+|---|---|---|
+| `nsf web knowledge TOPIC` shows `retrieval: {"mode": "lexical", "reason": "…"}` | The reason. "no embedding endpoint is set": the switch is on without an endpoint. "semantic retrieval failed (unavailable)": a container is down or still starting (`deploy/memory/run.sh status`). "(unauthorised)": the key file does not match the running containers (`nsf web memory` shows `key_present`). "(timeout)": the call took longer than the `timeout` setting. "semantic retrieval unusable": the key file is readable by every user or otherwise unusable | Set the endpoint (`nsf web memory config --embed-url URL`), start the containers (`deploy/memory/run.sh start && deploy/memory/run.sh wait`), point `--key-file` at `~/.config/neuroscifi/memory/api_key`, or raise the timeout (`nsf web memory config --set timeout=5`). Until then answers use the lexical ranking; nothing is lost |
+| `retrieval` is `{"mode": "lexical"}` without a reason | Semantic retrieval is off for this individual (`nsf web memory`: `enabled` false) | `nsf web memory config --enable` |
+| `retrieval` is lexical with `waking: ["embed", "rerank"]` | `nsf resources`: `policy.idle_unload.services.embed.state` is `unloaded` by the `idle policy`; the last events show the unload and the `load` that is running | Nothing to do: the idle policy released the models and this lookup started them again; a lookup about half a minute later is ranked by meaning. To keep them loaded: `nsf resources idle --set embed=off --set rerank=off` |
+| `retrieval.reason` says "not enough memory to load memory search (…)" or "… did not start" | `nsf resources`: MemAvailable, and the last `load` event of `embed` or `rerank` (`refused: true`, or `error` with the script's output); `docker logs neuroscifi-memory-embed` | Free memory, or fix what the log names; the next lookup after 30 s tries again by itself, or `nsf resources load embed` now |
+| A question that memory used to answer now goes to the web | The task's `decision` event: `memory_check.refused` lists the statements the answer model did not accept | Expected when the statement is about another property or scope. To restore the earlier behaviour: `nsf web config --no-memory-check` |
+| A report's `reasoning.rejected` holds "ends in its own attribution followed by more words ('…'): replacing the attribution would drop them" | The sentence and the words named. The model ended a sentence with "according to <source> …" and more words after the source; 0.7.0 showed such a sentence without those words (an exception such as "except on Sundays" could vanish) | Expected: the sentence is refused, the other sentences and the extractive answer stand. Nothing to configure |
+| A research answer shows no "self-check flagged" mark and its report has `reasoning.critique.status: "skipped"` | The `reason`. "nothing to judge: all N sentence(s) restate their cited claims word for word…": every sentence is a cited claim's own words with the attribution the code chose, so no critique call was made (`restatements: N`). "spoken answer…": `critique_voice` is off. "time_budget…": too little of the task's time was left | Expected. To have the critic read restatements too: `nsf llm config --critique-restatements` |
+| `deploy/vllm/run.sh wait` ends with "container is restarting" or "container restarted N time(s) while starting" | `docker logs neuroscifi-vllm` | The container is crash-looping, usually for lack of memory; `wait` no longer sits out its limit. Free memory or lower `NSF_VLLM_GPU_UTIL`, then start again |
+| A model call or `nsf resources load vllm` ends with "not enough memory to load the local model: …" | `nsf resources`: MemAvailable and the last `load` event with `refused: true` | The idle policy refuses a reload that would leave less than the critical threshold free. Free memory (stop another workload), then repeat the call or the command |
+
 ### MCP
 
 `nsf web mcp` allows at most `mcp_research_per_hour` (default 6) `web_research` calls per hour per server process, and MCP-origin tasks share the daily allowance `daily_mcp` (tasks, requests, bytes). Results carry the report's context pack (bounded by the task's `max_context_tokens`); `full_report: true` returns the whole report.
+
+## 13. Graph scoring rules: which rule an individual learns under
+
+A graph candidate is learned under the newest scoring rule of its individual and judged by that rule for good (`nsf graph rules list --db DB`; the last entry is the one in use). Rules are immutable: they are added, never edited, removed or reordered (ADR-045).
+
+| Individual | Rules it has | What `nsf graph learn` packs |
+|---|---|---|
+| Created by this version or later | `gate-v1`, then `best-learner-v1` (both `created_by: birth`) | The smallest file within 2 % of the better learner: a cut of the dense fit, or the sparse learner's graph. Same thresholds and byte budget as gate-v1 |
+| Created earlier | `gate-v1`, plus whatever its owner added | A cut of the dense fit, as before. Nothing changes until its owner adds a rule |
+
+**Adopt the rule on an older individual** (no file needed; services may stay up, the command takes one short write):
+
+```
+nsf graph rules add --builtin best-learner-v1 --owner-approved --db DB
+```
+
+Graphs learned afterwards use it. Graphs already learned, active or archived keep their rule and their bytes.
+
+**Go back.** `gate-v1` is registered already and the newest rule is the one in use, so going back is a new version with gate-v1's content:
+
+```
+nsf graph rules add --builtin gate-v1 --as gate-v1-again --owner-approved --db DB
+```
+
+The same form returns to best-learner later (`--builtin best-learner-v1 --as best-learner-v1-again`). A candidate already learned under the other rule is not relearned; learn it again if you want it judged under the new one.
+
+**What every individual gets, whatever its rules.** The promotion gate rejects a snapshot that predicts no better than a graph with no edges (check `beats_no_graph`; the console shows it as "Better than a graph with no edges", and the revision's detail has the line "Against no graph"). It applies to candidates learned by this version or later; a candidate learned earlier is judged by its five checks as before.
+
+| Symptom | Check | Recovery |
+|---|---|---|
+| `nsf graph promote` rejects with `failed: ["beats_no_graph"]` | `nsf graph show REV`: `metrics.validation_mse` against `metrics.no_graph_validation_mse`, and `metrics.sparse.validation_mse` | The dense learner stops fitting with many populations (about 100 and up). If the sparse learner's error is low, adopt `best-learner-v1` (above) and learn again. If both are near the no-graph error the data holds nothing to learn, or the stream is too short |
+| A candidate with 512 or more populations is rejected for `byte_budget` only | `byte_size` against 4096 | Expected under both built-in rules. To allow it, add your own rule: copy `best-learner-v1` from `nsf graph rules list`, give it a new `version` and a larger `byte_budget`, and `nsf graph rules add FILE.json --owner-approved` |
+| `Rule gate-v1 is already registered and a newer rule is in use` | — | Use `--as NEW-NAME` as above |
+| The software is to be downgraded below this version | `nsf graph rules list`: is the last rule one with `pack_reference`? | Go back to gate-v1 first (above). Older software ignores the two new parts of a rule and would pack as gate-v1 under best-learner-v1's name |

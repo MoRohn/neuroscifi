@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import expect
 
-from conftest import AXE, SHOTS, pair
+from conftest import AXE, SHOTS, paced, pair
 from neuroscifi.console.server import ConsoleServer
 from neuroscifi.instance import store
 from neuroscifi.webcortex import orchestrator, state
@@ -52,7 +52,12 @@ def html(title, paragraphs):
 class Spark:
     def __init__(self, folder, delay=1.5):
         self.web = FixtureWeb().start()
-        for (host, path), page in {**PAGES, **OKAPI}.items():
+        # `delay`: what a page read takes one after the other. The three Zephyr pages are read together under the
+        # default read-ahead, so each waits longer and the reading stage lasts as long as it did (conftest.paced);
+        # the okapi page is read alone
+        for (host, path), page in PAGES.items():
+            self.web.add(host, path, html(*page), delay=paced(delay, len(PAGES)))
+        for (host, path), page in OKAPI.items():
             self.web.add(host, path, html(*page), delay=delay)
         results = [{"url": f"http://{h}{p}", "title": t, "snippet": " ".join(x)[:160]} for (h, p), (t, x) in
                    {**PAGES, **OKAPI}.items()]
@@ -255,13 +260,6 @@ def test_voice_events_listening_level_interrupt_and_mute(idle_spark, new_page):
     voice(page, mic_capturing=False, speaking=False, output_muted=False, mode="voice_text", level=0.0)
     expect(root).to_have_attribute("data-activity", re.compile("idle|resting"), timeout=2000)
     assert stats(page)["level"] is None
-    # B: after the utterance a real research task is what the presence shows (no invented "reasoning")
-    voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.4)
-    expect(root).to_have_attribute("data-activity", "listening", timeout=2000)
-    idle_spark.submit()
-    voice(page, mic_capturing=False, speaking=False, output_muted=False, mode="voice_text", level=0.0)
-    expect(root).to_have_attribute("data-activity", re.compile("waiting|searching|reading|verifying|generating|consolidating|responding"),
-                                   timeout=5000)
     # E (voice): speaking follows the output level; F: interruption -> listening without snapping
     voice(page, mic_capturing=True, speaking=True, output_muted=False, mode="voice_text", level=0.7)
     expect(root).to_have_attribute("data-activity", "responding", timeout=2000)
@@ -292,6 +290,17 @@ def test_voice_events_listening_level_interrupt_and_mute(idle_spark, new_page):
     page.wait_for_timeout(500)
     i = page.evaluate("window.__nsfPresence.intent()")
     assert i["activity"] not in ("listening", "responding") and stats(page)["level"] is None
+    # B: after the utterance a real research task is what the presence shows (no invented "reasoning"). It runs
+    # last: the worker now claims a submitted task at once, and on this instant fixture the task ends in a fraction
+    # of a second with a review question for the owner, which by the state mapping (user_critical "asking")
+    # outranks "responding". The speaking checks above used to pass only while the task sat unclaimed for the
+    # worker's 5 s poll.
+    voice(page, mic_capturing=True, speaking=False, output_muted=False, mode="voice_text", level=0.4)
+    expect(root).to_have_attribute("data-activity", "listening", timeout=2000)
+    idle_spark.submit()
+    voice(page, mic_capturing=False, speaking=False, output_muted=False, mode="voice_text", level=0.0)
+    expect(root).to_have_attribute("data-activity", re.compile("waiting|searching|reading|verifying|generating|consolidating|responding"),
+                                   timeout=5000)
     assert page.problems == []
 
 

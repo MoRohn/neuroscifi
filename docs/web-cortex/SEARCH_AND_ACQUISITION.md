@@ -167,8 +167,135 @@ Notes that matter:
 - **Throttle.** A request slot per host at least the largest of three values after the previous one: `NetPolicy.min_domain_interval` (default 1.0 s), the host's entry in `NetPolicy.host_intervals`, and robots `Crawl-delay` (capped at 60 s). `host_intervals` defaults to `export.arxiv.org` 3.0 s (arXiv API terms) and `eutils.ncbi.nlm.nih.gov` 0.34 s (NCBI, three requests per second without a key); the longest matching domain suffix applies. Tests: `test_crawl_delay_and_domain_interval`, `test_host_intervals_with_fake_clock`. `purpose="subresource"` (browser sub-requests, section 9) uses `subresource_interval` (0.1 s) and the host interval only: `Crawl-delay` is not applied to one page view's sub-resources, robots allow/disallow still is (`test_subresource_obeys_robots_and_uses_short_interval`). Slot state is per process; the Retry-After backoff is shared (next item).
 - **Retry-After.** HTTP 429 sets a host backoff from `Retry-After` (seconds or HTTP date, capped at 6 h; 60 s if absent). HTTP 503 does so only when it carries `Retry-After`. Any request to the host inside the backoff raises `rate_limited` with `retry_after` and touches no network (`test_retry_after_seconds_sets_backoff`, `test_retry_after_http_date_on_503`). The backoff is also written to the public cache (`backoff` table, a later `until` never shortens an earlier one), so a second fetcher or process sharing the cache honours it (`test_retry_after_shared_by_fetchers_on_one_cache`, `test_backoff_rows_keep_the_longest_and_expire`).
 - **Conditional GET.** For `page`, `feed` and `crawl` GETs, if the cache holds an ETag or Last-Modified and the body, the request sends `If-None-Match` / `If-Modified-Since`. A 304 returns the cached body with `retrieval_mode="live"`, because the origin was just contacted and confirmed it current; the result header `x-nsf-revalidated: 304` (`net.REVALIDATED_HEADER`) marks that the body came from the cache (`test_conditional_get_returns_cached_body`).
-- **Coalescing.** Identical concurrent GETs (same URL, purpose, conditional flag, extra headers) share one network call; followers receive a copy of the leader's result or error. Only the leader's budget is charged (`test_identical_concurrent_gets_are_coalesced`).
+- **Coalescing.** Identical concurrent GETs (same URL, purpose, conditional flag, extra headers) share one network call; followers receive a copy of the leader's result or its `FetchError`; when the leader ended on its own budget or on a stop of its own task ("Stops" below), the follower fetches for itself. Only the leader's budget is charged (`test_identical_concurrent_gets_are_coalesced`).
 - **User agent.** `NeuroSciFi-WebCortex/0.7 (research agent; honours robots.txt)`. No contact address, no browser impersonation, no proxy rotation.
+
+### Stops: no request is sent after one
+
+A stop is the owner's: the task cancelled, web access switched off, a domain added to `deny_domains`. Every page
+fetch asks, with the URL about to be contacted, before each of its network steps: before a host's name lookup,
+before a connection is opened (after the politeness wait), and once more when the connection is open, immediately
+before the request is written on it (robots.txt, the page, every redirect hop). The answer is read at that moment
+from the individual's file (the task's cancel flag and lease, the web configuration), not taken from the reader's
+last check. So **no lookup starts and no request is sent after a stop.** A connection that was being opened when
+the stop landed may complete its handshake; it is closed with nothing sent on it, and no request is counted.
+
+A request that is already on the wire is cut: while it waits for its answer its connection's watchdog asks too,
+every 0.25 s (`net.STOP_POLL`), and shuts the connection down on a stop. A cancel therefore ends a task within
+about a quarter of a second, not when its slowest request ends (before, up to the 15 s fetch timeout). A request
+that was charged and then never written, because the stop came while the connection was being opened (a slow TLS
+handshake included), is not counted.
+
+Before a request is sent, an answer that cannot be read is a stop, for the reader and for a fetch ahead alike.
+For a request already on the wire the two differ. A fetch ahead is cut when its gate cannot be read. The reader's
+own request is not: a watch that fails is no answer, and the watch asks again. And when the reader's request was
+cut for a stop that its gate then does not confirm (the owner undid it within the quarter second), the fetch ends
+`interrupted`: the page was not read, and nothing is concluded about the site. No robots.txt verdict, back-off or
+cache entry is recorded from a cut request (a robots.txt fetch that fails on its own means "disallow" for 24
+hours in that fetcher, which a cut must never cause).
+
+| Fetch | Asks | After a stop |
+|---|---|---|
+| The reader's own: pages, a crawl's pages, its robots.txt and its sitemaps (`_Run.fetch`, `_Run.gate`) | `_Run.still_wanted` through `SafeFetcher.gated`, on the run's thread; on the wire, the run's `_Lookout` as the gate's `watch` | No further lookup or request; the request on the wire is cut. Cancel ends the run `cancelled`, web off ends it `partial`, a denied host is that page's `blocked_policy` and the run says the domain was denied during it |
+| A fetch made ahead of its turn (read-ahead, below) | `orchestrator._Lookout` through `speculate(wanted=...)`, on the fetch's own thread and on the wire, over a read-only connection of its own. It stops when the task was cancelled, forgotten or taken over, when web access is off, and when the host it is about to contact is on the deny list as it is now. A gate that cannot be read counts as a stop | No further lookup or request; the request on the wire is cut, and what had arrived is counted as unused. The reader also cuts it at once when it drops it (`abandon`), and a claim that is waiting for it asks the gate every 0.25 s |
+
+In 0.7.0 the reader's fetch went on to the end (its page after robots.txt, and every redirect hop), and a changed
+configuration was noticed at most 2 s later (`CONFIG_RECHECK`).
+
+Not covered by the per-request gate: searches, records read through a provider's API (a Wikipedia article's text)
+and the sub-requests of a page render. There the run checks the cancel flag before each step (a search round, a
+record, a render) and re-reads the web configuration at most every 2 s (`orchestrator.CONFIG_RECHECK`), as before;
+the fetcher's deny list still refuses a denied host once the run has applied it. A time budget that runs out and a
+regulation pause also stop the run at its next step, not inside a fetch. A name lookup under way and a politeness
+wait are not interrupted; the gate is asked again after each.
+
+Tests (`tests/webcortex/test_read_ahead_stops.py`): the gate is asked before every lookup, connection and request, in
+order; stopping at each of the twelve steps of a redirecting fetch leaves exactly the requests and lookups before
+that step, for the reader's fetch and for a fetch ahead; a stop that lands while a connection is being opened sends
+nothing and charges nothing; whole runs at `read_ahead` 1 and 4, stopped by cancel, web off and deny while every
+fetch waits for its robots.txt, send nothing more, and a cancelled run ends while its requests are still
+unanswered; a crawl reads no further sitemap after a stop; a caller sharing a fetch whose leader was stopped fetches
+for itself.
+
+### Read-ahead (`read_ahead`, default 4)
+
+While the reader fetches a page it also starts fetching the next candidates ahead of their turn: at most
+`read_ahead` pages in flight (never more than `budget.max_concurrency`), on distinct host names only. A page fetched
+ahead is *claimed* when the reader reaches it, and only if a fetch made at that moment would have done exactly the
+same (the same policy, backoff state, robots.txt entries, cached copy and budget cut-off); otherwise it is fetched
+again in the normal way. Until it is claimed nothing of it is charged, cached or remembered, and its robots.txt and
+cache writes are held back. The order in which pages are read, charged, recorded and cited is the sequential order,
+so a task's report, events and charged usage are the ones `read_ahead=1` produces, with the one exception below.
+
+Measured on the offline benchmark (`docs/quality/evidence/accel_decisions_read_ahead.json`): at 1, at 4 and at the
+default every quality metric and every task's usage, sources, answer and events are identical, and the safety
+invariants hold. With 300 ms added to every response, the median task takes 1.99 s (p95 3.79 s) at 1 and
+0.97 s (p95 1.85 s) at 4, with 4 requests sent and not used beside the 350 the tasks used. The same
+file records the stop test: requests reaching the sites after a cancel, after web access was turned off and after a
+denial were 1, 11 and 11 at `read_ahead` 1 before these changes (4, 8 and 8 at 4), and are 0 in all six cases now.
+
+What bounds it:
+
+- **Stops.** The section above: no request ahead is sent after a stop, and one on the wire is cut.
+- **One connection per site.** A site is busy while any exchange with it is in progress. A fetch ahead that reaches
+  a busy site (its page redirects onto the site the reader is on, or onto another fetch ahead's) stops there,
+  before the request, and its claim goes on from that hop at the reader's turn, so nothing is fetched twice. When
+  the reader's own fetch reaches a site a fetch ahead is talking to, that fetch is cut and not used. Request starts to one site stay spaced by its interval, as
+  for any fetch. The busy mark lives in one fetcher, that is in one process: two worker processes, or the worker
+  and the MCP server, can each be talking to the same site (back-offs are shared through the public cache; the
+  busy mark is not).
+- **The task's budget, for all fetches ahead together.** A fetch ahead sends a request, and reads a body byte, only
+  while the task's budget has room, counting what the task was charged, what its earlier fetches ahead sent unused
+  and what its fetches ahead in flight hold (`SafeFetcher._ahead`). One is started only when that room covers a
+  typical fetch, robots.txt and the page (`net.TYPICAL_FETCH` = 2 requests), which it holds from the start, so a
+  later fetch ahead cannot take them. Exactly:
+  - what the task is charged is at most `max_requests` (the reader is charged as at `read_ahead=1`, so the task
+    ends where one-at-a-time reading ends);
+  - what read-ahead sends unused is at most `max_requests` (bytes: `max_bytes`, plus one byte per fetch ahead: at
+    the limit a read takes one byte more to learn that the body goes on, as the reader's own read does);
+  - so everything a task sends is at most twice `max_requests`. That is the bound, and it can be reached (the
+    whole budget goes ahead, then every fetch ahead becomes unusable); it is not the typical case: the unused
+    part is only what a fetch ahead had sent before it became unusable.
+  A fetch ahead that runs out of room at a later request (a redirect chain) stops before that request, and its
+  claim *goes on from that hop* on the task's own budget: what it sent is charged as if the reader had sent it, and
+  nothing is requested twice. (One case is not continued: a stop in the middle of fetching a robots.txt that
+  redirects, after its first request. That fetch ahead is not used and the page is fetched as usual: what it sent
+  is sent again and counted as unused.) One cut while reading a body is used only when a read made at its turn would stop at
+  the same place, and is fetched again otherwise. What remains unusable, and therefore unused traffic: a fetch
+  ahead overtaken by a changed deny list (every fetch ahead in flight is thrown away, and the reader fetches those
+  pages at their turn under the new policy), by a back-off, or cut by the reader reaching its site, and a page
+  the reader passed by. Measured with a request budget of 20 and three
+  five-hop redirect chains ahead (the review's worst-traffic scenario): 21 or 22 requests reach sites with no owner
+  action (34 before fetches ahead were continued), 32 when the owner denies an unrelated domain mid-run (38
+  before).
+- **Daily allowances.** Tasks whose traffic counts against one (`daily_autonomous`: curiosity and refreshes;
+  `daily_mcp`: MCP clients) always read one page at a time (`orchestrator.daily_capped`), so every request they
+  send is one they were charged for and the caps hold as before. Nobody waits for curiosity or a refresh. As a
+  second line, the allowances count traffic, not charges: `scheduler.traffic` adds a task's
+  `prefetch_unused_requests` and `prefetch_unused_bytes` to its requests and bytes in every daily sum.
+- **A run that cannot read stops at request time** (services that name no individual file) fetches nothing ahead.
+- **Unused traffic is visible.** Requests sent and bytes received for pages the task then did not use are in the
+  task's usage (`prefetch_unused_requests`, `prefetch_unused_bytes`, absent while zero), exact to the request: a
+  request that was never written on a connection is not counted. These two counters are the only part of a task's
+  usage that differs from `read_ahead=1`.
+
+**The one exception to "what one page at a time reads": a site that asks to slow down.** A 429, or a 503 with
+`Retry-After`, backs the whole site off at once, whichever fetch received it, a page fetched ahead included. If an
+earlier candidate's redirect leads onto that site, one-at-a-time reading would have followed it before the 429
+existed; read ahead, the site has already asked, so the hop is not made and that source is missing from the report.
+Politeness wins over identical outcomes here: the site is not asked again to find out what it would have answered a
+moment earlier. Exactly what is missing: pages that lead onto the site that asked. The site that asked is the one
+left alone (the failing request's site, a redirect hop's included), so later candidates *on that site* are not
+tried, at either window; the candidate's own site, which asked for nothing, is read as usual. The report says so
+("a source there was not read: the site asked for fewer requests", and "N more candidate(s) not tried: the site
+asked for fewer requests" for those skipped without a request; a candidate whose own request was answered 429,
+ahead of its turn or not, is a `rate_limited` failure, not one "not tried"), and the failure is recorded as
+`rate_limited`
+(`test_a_back_off_received_by_a_fetch_ahead_applies_to_the_site_at_once`).
+
+`nsf web config --set read_ahead=1` reads one page at a time for every task, as 0.7.0 did: nothing is fetched ahead
+and the code path is the sequential one (the stop checks of the section above stay). Settings saved by 0.7.0 carry
+no `read_ahead` and take the default; a saved value stays what the owner set.
 
 ### What is cached
 
@@ -292,7 +419,8 @@ Stored as JSON in `meta` key `webcortex`; validated by `state.set_config`. Const
 | `engines` | duckduckgo, brave, startpage, bing | Engine order, tried one at a time |
 | `providers` | openwebsearch, wikipedia, arxiv, openalex, crossref, pubmed, pypi, npm, osv, github | Providers built, in order |
 | `budget_ceiling` | queries 16, requests 200, pages 30, bytes 60,000,000, seconds 600, depth 2, browser sessions 2, render requests 150, concurrency 6, context tokens 6000 | Upper bound for any task budget |
-| `daily_autonomous` | tasks 12, requests 400, bytes 80,000,000 | 24 h cap for curiosity and refresh tasks |
+| `daily_autonomous` | tasks 12, requests 400, bytes 80,000,000 | 24 h cap for curiosity and refresh tasks; requests and bytes are traffic (unused read-ahead included), and these tasks read one page at a time |
+| `read_ahead` | 4 (1-16) | Pages in flight while reading, one per host ("Read-ahead" above); 1 is one at a time |
 | `min_domain_interval` | 1.0 s (0-3600) | Minimum gap between requests to one host; the effective gap is the largest of this, the host's `NetPolicy.host_intervals` entry (arXiv 3.0 s, NCBI 0.34 s) and `Crawl-delay` |
 | `max_document_bytes` | 5,000,000 (min 1024) | Body cap per fetch |
 | `cache_max_bytes` | 512 MiB | Public-cache size bound, applied by `Services.prune_cache` and `nsf web cache prune` |

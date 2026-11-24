@@ -1,0 +1,123 @@
+{
+ "evidence": "accel_after_runtime",
+ "recorded": "2026-11-23",
+ "host": "DGX Spark GB10, aarch64; other tenants' containers resident",
+ "worker_queue_wake": {
+  "what": "time from submitting a task to the worker claiming it; 12 submissions at random moments against the worker's 5 s poll; the measurement script imports the test corpus and runs both loops in one process",
+  "before_ms": {
+   "n": 12,
+   "mean": 2726,
+   "median": 2362,
+   "max": 4814
+  },
+  "after_ms": {
+   "n": 12,
+   "mean": 53,
+   "median": 45,
+   "max": 96
+  },
+  "idle_cpu_ms_per_5_s": {
+   "before": 1,
+   "after": 10
+  },
+  "earlier_run_by_the_implementing_lane_ms": {
+   "before": {
+    "mean": 2738,
+    "max": 4818
+   },
+   "after": {
+    "mean": 47,
+    "max": 102
+   }
+  }
+ },
+ "memory_models_footprint": {
+  "what": "MemAvailable with both memory services running and used, after stopping both, and after starting and using them again (deploy/memory/run.sh)",
+  "mem_available_gib": {
+   "running": 30.91,
+   "stopped": 39.82,
+   "restarted_and_used": 31.33
+  },
+  "cost_of_both_gib": "8.5 to 8.9",
+  "gpu_memory_per_process_mib": [
+   1975,
+   1973
+  ],
+  "container_cgroup_gib": {
+   "embed": 2.81,
+   "rerank": 2.87
+  },
+  "start_to_ready_seconds": {
+   "first_start": [
+    58,
+    64
+   ],
+   "later_starts": [
+    18,
+    18
+   ]
+  },
+  "note": "On unified memory a container's CUDA allocations and its process memory both come out of MemAvailable; other workloads on the host moved by a few hundred MiB during the measurement."
+ },
+ "memory_model_latency_ms": {
+  "embed_one_question": 16,
+  "rerank_5_statements": 30,
+  "rerank_48_statements": 150,
+  "knowledge_query_p50": {
+   "lexical": 0.7,
+   "embedding": 41,
+   "embedding_and_reranker": 107
+  },
+  "first_query_embedding_48_statements": {
+   "embedding": 125,
+   "embedding_and_reranker": 318
+  }
+ },
+ "reranker_prompt_template": {
+  "what": "Qwen3-Reranker-0.6B served by vLLM, recall@1 over all 48 statements per query, with and without the model's own prompt template",
+  "without_template": {
+   "near": 0.792,
+   "para": 0.708,
+   "noname": 0.25
+  },
+  "with_template": {
+   "near": 1.0,
+   "para": 0.958,
+   "noname": 1.0
+  }
+ },
+ "ranking_rules_compared": {
+  "what": "recall@1 on the 108 answerable queries, computed offline from one set of scores",
+  "bm25": {
+   "near": 0.875,
+   "para": 0.271,
+   "noname": 0.5
+  },
+  "cosine": {
+   "near": 0.979,
+   "para": 0.938,
+   "noname": 1.0
+  },
+  "reciprocal_rank_fusion_of_both": {
+   "near": 0.896,
+   "para": 0.479,
+   "noname": 0.833
+  },
+  "reading": "fusing the lexical order into the semantic one lowers recall; the lexical hits are kept only as extra candidates for the reranker"
+ },
+ "reranker_as_answer_judge": {
+  "what": "strict instruction (does the statement state the answer), the four facts of each near/para query's subject",
+  "wrong_property_statements_accepted_of_288": {
+   "threshold_0.3": 60,
+   "0.5": 39,
+   "0.7": 28,
+   "0.8": 16,
+   "0.9": 11
+  },
+  "auditor_cases": {
+   "encryption in transit? <- no encryption at rest": 0.976,
+   "tallest in the world? <- tallest in the region": 1.0
+  },
+  "reading": "not usable for the memory-answer decision; the answer model is (accel_after_memory_answer_check.json)"
+ }
+}

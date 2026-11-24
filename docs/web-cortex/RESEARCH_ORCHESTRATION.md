@@ -42,6 +42,8 @@ A research task is a row in `web_tasks`. Nothing runs without a task, a budget a
 
 *Hard reasons* force a web visit: a URL in the question, any recency cue, a verification request, monitoring, change detection, relevant knowledge that is stale, relevant knowledge that is contested. *Soft reasons*: scientific question, technical question, comparison, an entity that no knowledge statement mentions. Knowledge counts only if it is `accepted` or `provisional` and shares a content word with the question (`test_rejected_or_irrelevant_knowledge_does_not_count`, `test_stale_and_contested_reasons`), and it answers without the web only if it also **covers** the question: `intent.covers(item, question)` requires the statement to state at least 60 % (`MEMORY_COVERAGE`) of the question's topical terms, compared as 5-letter stems, so sharing one name ("Orbix") is not an answer to another property of it (encryption versus port). When related items exist but none covers, the reason says so (`test_related_knowledge_that_does_not_cover_the_question_does_not_answer_it`).
 
+**The memory-answer check.** `intent.assess` decides by shared word stems. When it says memory answers and an answer model is configured, the orchestrator asks that model whether each chosen statement states the answer to exactly what is asked (`_Run.memory_check`, on by default). If the model confirms none, `needs_web` becomes true and the task searches; if it confirms some, only those answer. The check can only send a question to the web, never the reverse, and a check that cannot run leaves the decision as it was. The `decision` event records the outcome as `memory_check` ([MEMORY_INTEGRATION §5.2](MEMORY_INTEGRATION.md#52-the-memory-answer-check-memory_gatepy)).
+
 When the web is not needed the task builds its report from the knowledge items (stage `synthesizing` only). The report says `live: false`, carries `memory: {answered_from_memory: true, knowledge_ids, provisional_ids, reasons}`, and nothing is consolidated (`test_fresh_accepted_knowledge_answers_without_the_web`). Provisional knowledge is flagged, never presented as accepted: its answer items and findings carry `status: "provisional"` (and `knowledge_id`, `knowledge_status`), and each provisional item adds an `uncertainties` line saying the owner has not accepted it. The run emits an `extract` event (`from_memory`, `knowledge_ids`) and a `synthesized` event (`test_memory_answer_marks_provisional_knowledge_and_logs_extract_and_synthesis`).
 
 ## 2. Planning, expansion, refinement
@@ -80,7 +82,7 @@ queued ──▶ discovering ──▶ reading ──▶ evaluating ──▶ sy
 
 | Stage | Work | Checkpoint written |
 |---|---|---|
-| discovering | `knowledge.query`, `intent.assess`, `decision` event, plan (self-references removed), privacy screen, `registry.search`, at most one `refine` round. The lease is renewed after every search round | `assessment`, `plan`, `results`, `attempts` |
+| discovering | `knowledge.query`, `intent.assess`, the memory-answer check when memory would answer, `decision` event, plan (self-references removed), privacy screen, `registry.search`, at most one `refine` round. The lease is renewed after every search round | `assessment`, `plan`, `results`, `attempts` |
 | reading | Rank candidates, read until `max_pages` documents succeed (see *Selecting documents* below), extract, quarantine, optional render, optional two-link follow (SEARCH_AND_ACQUISITION §5). Each document is saved as a `web_sources` row and checkpointed as soon as it is read; the lease is renewed after every fetch (`test_lease_is_renewed_after_every_fetch`) | `documents`, `selected` |
 | evaluating | `claims.extract_claims` per document (one `extract` event each: `test_web_run_logs_extract_per_document`), `cluster`, `score` with the owner's `freshness_ttl` as `ttl_overrides`; clusters and claims persisted | `clusters` |
 | synthesizing | `synthesis.synthesize` builds the report (`synthesized` event); then `consolidate.run`, one prediction per new provisional item, mode statistics, and public-cache retention (`Services.prune_cache`, at most hourly; a failure is logged as an `error` event with stage `cache_retention` and does not change the outcome) | `result` |
@@ -152,7 +154,7 @@ Final status:
 **Cancellation** (`orchestrator.cancel`, any connection):
 
 - A queued task, or one whose lease is not live, becomes `cancelled` at once (`test_cancel_of_a_queued_task_is_immediate`).
-- A running task gets `cancel_requested = 1` and a `cancel_requested` event. The run checks the flag before every network step, stops, builds a **partial report** from what it has (limitation `cancelled by request: partial report`), and ends `cancelled`. No consolidation happens, so nothing reaches knowledge (`test_cancel_from_another_connection_stops_before_the_next_fetch`).
+- A running task gets `cancel_requested = 1` and a `cancel_requested` event. The run checks the flag before every network step (inside a page fetch too: before each name lookup, each connection and each request, redirect hops included, and so does every fetch made ahead of its turn; requests on the wire are cut within a quarter of a second; SEARCH_AND_ACQUISITION, "Stops"), stops, builds a **partial report** from what it has (limitation `cancelled by request: partial report`), and ends `cancelled`. No consolidation happens, so nothing reaches knowledge (`test_cancel_from_another_connection_stops_before_the_next_fetch`).
 
 **Partial results.** Reports from `partial` and `cancelled` tasks have the same shape as completed ones. Their `limitations` list says what was cut.
 
@@ -174,7 +176,7 @@ One row per event, in order. Kinds the committed code writes:
 |---|---|
 | `submitted`, `started`, `resumed` | Task creation; lease taken; lease taken on resume |
 | `stage` | Entering a stage (`detail.stage`) |
-| `decision` | `needs_web` and reasons; dropped queries; `disclosed_under_authorization` (count and finding kinds); render skipped (with reason); worker `claimed`; proposal authorised |
+| `decision` | `needs_web` and reasons, with `memory_check` when the memory-answer check ran; dropped queries; `disclosed_under_authorization` (count and finding kinds); render skipped (with reason); worker `claimed`; proposal authorised |
 | `query` | One per planned query, with `kind`, `purpose`, `round` |
 | `search` | Result count, attempt count, first failure reasons per round |
 | `fetch` | Each document recorded: `source_id`, kind, retrieval mode, flags, injection count |

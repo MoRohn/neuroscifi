@@ -132,7 +132,7 @@ The two High items of the first pass are fixed: T1-07 (word sense; independent l
 | Brave Search API (keyed, ADR-034 amendment 1) | **Built; tested offline against a fake Brave; live NOT TESTED** (no key; owner-side) | `SEARCH_PROVIDER_STRATEGY.md` §6; R6 item 7 (key handling, Brave never contacted) |
 | Structured APIs (Wikipedia, arXiv, OpenAlex, Crossref, PubMed, PyPI, npm, OSV, GitHub) | **Verified live** (bounded) | R1, R6 |
 | Local reasoning model: Qwen3-30B-A3B-Instruct-2507-FP8 on vLLM, loopback | **Verified live** | `inference_live.json`; R6 (all answers model-written) |
-| Remote inference provider | **Remote path verified live against the local vLLM as a stand-in** (8 passed, 1 skipped); a real provider owner-side | `COGNITIVE_INFERENCE.md` §7 |
+| Remote inference provider | **Remote path verified live against the local vLLM as a stand-in** (8 passed, 1 skipped); a real provider owner-side | `COGNITIVE_INFERENCE.md` §8 |
 | Whisper ASR and Kokoro TTS containers | **Verified on recorded human speech (public corpora) and fake-device audio** | `VOICE_VALIDATION.md`; R2; R6 item 10 |
 | NVIDIA PersonaPlex 7B | **Runs; not real-time upstream; experimental, opt-in; owner: leave as it is** | `PERSONAPLEX_INTEGRATION.md` |
 | Chromium rendering of news pages (ADR-041) | **Verified live** | `news_render_live_v2.json`; R6 item 5 |

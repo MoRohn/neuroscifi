@@ -42,9 +42,30 @@ def test_forget_records_the_real_post_deletion_belief_state(instance):
     assert db.execute("SELECT count(*) FROM belief_revisions").fetchone()[0] == before
 
 
-def test_cli_sweeps_expired_evidence_before_reading(tmp_path, capsys):
+def test_cli_sweeps_expired_evidence_and_keeps_what_it_taught(tmp_path, capsys):
+    """The default (consolidation, ADR-044): the expired event is gone from the journal and its reading still counts."""
     path = tmp_path / "i.sqlite"
     assert main(["init", "--db", str(path), "--ttl-days", "0.000001"]) == 0
+    assert main(["epoch", "start", "e", "--db", str(path)]) == 0
+    assert main(["observe", "e", "x1", "camera", "0", "0", "cam", "--db", str(path)]) == 0
+    capsys.readouterr()
+    import time
+    time.sleep(0.2)
+    assert main(["status", "e", "--db", str(path)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["evidence"] == {"total": 1, "learning": 1, "memory_only": 0, "duplicates_ignored": 0, "consolidated": 1}
+    assert out["sensors"]["cam"]["n"] == 1
+    db = sqlite3.connect(path)
+    assert db.execute("SELECT reason FROM tombstones WHERE id='x1'").fetchone() == ("expired",)
+    assert db.execute("SELECT count(*) FROM evidence").fetchone() == (0,)
+    assert db.execute("SELECT epoch, channel, root, value, sample_id FROM evidence_consolidated").fetchall() == \
+        [("e", "camera", "cam", 0, None)]
+    db.close()
+
+
+def test_cli_sweeps_expired_evidence_before_reading(tmp_path, capsys):
+    path = tmp_path / "i.sqlite"
+    assert main(["init", "--db", str(path), "--ttl-days", "0.000001", "--no-consolidation"]) == 0
     assert main(["epoch", "start", "e", "--db", str(path)]) == 0
     assert main(["observe", "e", "x1", "camera", "0", "0", "cam", "--db", str(path)]) == 0
     capsys.readouterr()

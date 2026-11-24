@@ -64,7 +64,7 @@ def test_a_fresh_run_does_every_step_and_names_every_lan_address(capsys, home):
     code, report, _ = setup(capsys, home)
     assert code == 0 and report["ok"]
     assert statuses(report) == {"individual": "done", "web": "done", "model": "skipped", "pocket_tls": "done",
-                                "ca_export": "done", "brave": "skipped", "push": "skipped"}
+                                "ca_export": "done", "brave": "skipped", "push": "skipped", "memory": "skipped"}
     db = store.open_existing(home / "ind.sqlite")
     try:
         cfg = state.get_config(db)
@@ -154,8 +154,11 @@ def test_brave_key_from_stdin_is_stored_and_never_in_output_or_logs(capsys, capl
 
 
 class Models(BaseHTTPRequestHandler):
+    owned_by = None
+
     def do_GET(self):
-        body = json.dumps({"data": [{"id": "test-model", "object": "model"}]}).encode()
+        item = {"id": "test-model", "object": "model"} | ({"owned_by": self.owned_by} if self.owned_by else {})
+        body = json.dumps({"data": [item]}).encode()
         self.send_response(200 if self.path == "/v1/models" else 404)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -180,6 +183,7 @@ def test_a_model_is_configured_only_when_one_answers(capsys, home):
         try:
             cfg = iconfig.get_config(db)
             assert (cfg.base_url, cfg.model) == (url, "test-model")
+            assert cfg.background_priority == 0       # a server that is not vLLM is never sent a `priority`
         finally:
             db.close()
         assert statuses(setup(capsys, home, model=url)[1])["model"] == "already done"
@@ -229,3 +233,271 @@ def test_a_file_that_is_not_an_individual_is_refused_with_its_step(capsys, home)
     code, report, err = setup(capsys, home, "--no-model")
     assert code == 2 and not report["ok"] and err.startswith("nsf setup: individual:")
     assert (home / "ind.sqlite").read_text() == "not a database"
+
+
+def test_a_vllm_endpoint_gets_the_background_priority_and_setup_says_so(capsys, home):
+    """deploy/vllm runs the model with priority scheduling: setup sends background research behind the owner's
+    questions when the endpoint names itself vLLM (owned_by in /models), and tells the owner."""
+    handler = type("VllmModels", (Models,), {"owned_by": "vllm"})
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}/v1"
+    try:
+        code, report, _ = setup(capsys, home, model=url)
+        assert code == 0 and "priority 10, behind your questions" in report["steps"][2]["detail"]
+        db = store.open_existing(home / "ind.sqlite")
+        try:
+            assert iconfig.get_config(db).background_priority == 10
+        finally:
+            db.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+# ---- step 7: memory by meaning, when the memory models of deploy/memory answer -------------------------------
+
+MEMORY_KEY = "nsfm-test-memory-key"
+
+
+class MemoryModel(BaseHTTPRequestHandler):
+    """A stand-in for one memory model of deploy/memory: /v1/models, and /v1/embeddings or /v1/rerank. It answers
+    only the memory key, and records what it was sent."""
+    served = "qwen3-embedding-0.6b"
+    kind = "embed"
+    broken = False            # answers /models but fails the real request
+    seen = None               # [(path, authorization, body)]
+
+    def _reply(self, status, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle(self, body=None):
+        self.seen.append((self.path, self.headers.get("Authorization"), body))
+        if self.headers.get("Authorization") != f"Bearer {MEMORY_KEY}":
+            return self._reply(401, {"error": "unauthorized"})
+        if self.path == "/v1/models":
+            return self._reply(200, {"data": [{"id": self.served, "object": "model", "owned_by": "vllm"}]})
+        if self.broken:
+            return self._reply(500, {"error": "model failed to load"})
+        if self.path == "/v1/embeddings" and self.kind == "embed":
+            return self._reply(200, {"data": [{"index": i, "embedding": [0.1, 0.2, 0.3]}
+                                              for i, _ in enumerate(body["input"])]})
+        if self.path == "/v1/rerank" and self.kind == "rerank":
+            return self._reply(200, {"results": [{"index": i, "relevance_score": 0.5}
+                                                 for i, _ in enumerate(body["documents"])]})
+        return self._reply(404, {"error": "no such route"})
+
+    def do_GET(self):
+        self._handle()
+
+    def do_POST(self):
+        self._handle(json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0))))
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture
+def memory_models(home):
+    """Both memory models answering on free loopback ports, and their key file (0600) where deploy/memory puts it.
+    Yields {"embed": server, "rerank": server, "args": [...], "key_file": path}; a server can be stopped."""
+    folder = home / "memory"
+    folder.mkdir(mode=0o700)
+    key_file = folder / "api_key"
+    key_file.write_text(MEMORY_KEY + "\n")
+    key_file.chmod(0o600)
+    out = {"key_file": key_file, "args": ["--memory-key-file", str(key_file)], "seen": []}
+    for kind, served in (("embed", "qwen3-embedding-0.6b"), ("rerank", "qwen3-reranker-0.6b")):
+        handler = type(f"Memory{kind}", (MemoryModel,), {"kind": kind, "served": served, "seen": out["seen"]})
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        out[kind] = server
+        out["args"] += [f"--memory-{kind}-url", f"http://127.0.0.1:{server.server_address[1]}/v1"]
+    yield out
+    for kind in ("embed", "rerank"):
+        out[kind].shutdown()
+        out[kind].server_close()
+
+
+def memory_of(home):
+    """(semantic settings, embed config, rerank config) of the individual."""
+    from neuroscifi.webcortex import semantic
+    db = store.open_existing(home / "ind.sqlite")
+    try:
+        return semantic.get_config(db), iconfig.get_config(db, "embed"), iconfig.get_config(db, "rerank")
+    finally:
+        db.close()
+
+
+def memory_step(report):
+    return next(s for s in report["steps"] if s["step"] == "memory")
+
+
+def test_without_the_memory_models_setup_says_how_to_add_them_and_contacts_nothing(capsys, home, monkeypatch):
+    """No key file of deploy/memory on this computer: memory stays lexical, one line says how to add it, and no
+    endpoint is contacted (the suite points NSF_MEMORY_DIR at an empty folder for the same reason)."""
+    from neuroscifi import setup_cli
+
+    def no_probe(*args):
+        raise AssertionError("nothing may be contacted without the memory key file")
+    monkeypatch.setattr(setup_cli, "_memory_probe", no_probe)
+    code, report, _ = setup(capsys, home)
+    step = memory_step(report)
+    assert code == 0 and step["status"] == "skipped" and report["steps"][-1] is step
+    assert "memory is ranked by its words" in step["detail"] and "bash deploy/memory/run.sh start" in step["detail"]
+    settings, embed, rerank = memory_of(home)
+    assert not settings.enabled and not embed.configured and not rerank.configured
+    assert memory_step(setup(capsys, home, "--no-memory")[1])["detail"] == "--no-memory"
+
+
+def test_both_memory_models_answering_are_configured_with_their_own_key_and_memory_is_switched_on(
+        capsys, home, memory_models):
+    code, report, _ = setup(capsys, home, *memory_models["args"])
+    step = memory_step(report)
+    assert code == 0 and step["status"] == "done"
+    assert step["detail"] == ("memory now finds a fact asked in other words, and leaves out what is not about the "
+                              "question (embedding model and reranker on this computer)")
+    assert step["models"] == {"embed": "qwen3-embedding-0.6b", "rerank": "qwen3-reranker-0.6b"}
+    settings, embed, rerank = memory_of(home)
+    assert settings.enabled and settings.rerank_template == "qwen3" and settings.floor == 0.02
+    port = {kind: memory_models[kind].server_address[1] for kind in ("embed", "rerank")}
+    assert (embed.base_url, embed.model, embed.key_file) == \
+        (f"http://127.0.0.1:{port['embed']}/v1", "qwen3-embedding-0.6b", str(memory_models["key_file"]))
+    assert (rerank.base_url, rerank.model, rerank.key_file) == \
+        (f"http://127.0.0.1:{port['rerank']}/v1", "qwen3-reranker-0.6b", str(memory_models["key_file"]))
+    # each model passed a real request of its kind, with the memory key, and was sent nothing of the individual
+    paths = {path for path, _, _ in memory_models["seen"]}
+    assert {"/v1/models", "/v1/embeddings", "/v1/rerank"} <= paths
+    assert {auth for _, auth, _ in memory_models["seen"]} == {f"Bearer {MEMORY_KEY}"}
+    sent = {path: body for path, _, body in memory_models["seen"] if body}
+    assert sent["/v1/embeddings"]["input"] == ["memory check"]
+    assert (sent["/v1/rerank"]["query"], sent["/v1/rerank"]["documents"]) == ("memory check", ["memory check"])
+    assert MEMORY_KEY not in json.dumps(report)
+    db = store.open_existing(home / "ind.sqlite")
+    try:
+        assert not iconfig.get_config(db).configured          # the answer model is not this step's business
+    finally:
+        db.close()
+
+
+def test_the_memory_step_is_idempotent_and_a_dry_run_changes_nothing(capsys, home, memory_models):
+    code, report, _ = setup(capsys, home, "--dry-run", *memory_models["args"])
+    step = memory_step(report)
+    assert code == 0 and step["status"] == "would do" and step["detail"].startswith("let memory find a fact")
+    assert not (home / "ind.sqlite").exists()
+    setup(capsys, home, *memory_models["args"])
+    before = (home / "ind.sqlite").read_bytes()
+    seen = len(memory_models["seen"])
+    code, report, _ = setup(capsys, home, *memory_models["args"])
+    step = memory_step(report)
+    assert code == 0 and step["status"] == "already done" and "embedding model and reranker" in step["detail"]
+    assert len(memory_models["seen"]) == seen             # nothing probed again
+    assert (home / "ind.sqlite").read_bytes() == before
+    assert memory_step(setup(capsys, home, "--dry-run", *memory_models["args"])[1])["status"] == "already done"
+
+
+def test_with_the_embedding_model_alone_memory_is_on_without_the_cut_and_the_reranker_is_added_later(
+        capsys, home, memory_models):
+    memory_models["rerank"].RequestHandlerClass.broken = True          # it lists a model but cannot score
+    code, report, _ = setup(capsys, home, *memory_models["args"])
+    step = memory_step(report)
+    assert code == 0 and step["status"] == "done" and step["models"] == {"embed": "qwen3-embedding-0.6b"}
+    assert "embedding model on this computer" in step["detail"] and "The reranker did not answer" in step["detail"]
+    assert "bash deploy/memory/run.sh start rerank, then nsf setup again" in step["detail"]
+    settings, embed, rerank = memory_of(home)
+    assert settings.enabled and embed.configured and not rerank.configured
+    again = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert again["status"] == "already done" and "ranked by the embedding model alone" in again["detail"]
+    memory_models["rerank"].RequestHandlerClass.broken = False         # the reranker is started
+    later = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert later["status"] == "done" and later["models"] == {"rerank": "qwen3-reranker-0.6b"}
+    settings, embed, rerank = memory_of(home)
+    assert settings.enabled and embed.configured and rerank.model == "qwen3-reranker-0.6b"
+    assert memory_step(setup(capsys, home, *memory_models["args"])[1])["status"] == "already done"
+
+
+def test_without_the_embedding_model_nothing_is_configured_even_when_the_reranker_answers(
+        capsys, home, memory_models):
+    memory_models["embed"].RequestHandlerClass.broken = True
+    step = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert step["status"] == "skipped" and "no embedding model answered" in step["detail"]
+    assert "the reranker answers, but it needs the embedding model" in step["detail"]
+    settings, embed, rerank = memory_of(home)
+    assert not settings.enabled and not embed.configured and not rerank.configured
+
+
+def test_a_memory_setting_the_owner_made_by_hand_is_never_changed(capsys, home, memory_models):
+    """An endpoint the owner set by hand before setup ever configured memory is kept, and memory is not switched
+    on behind it."""
+    assert setup(capsys, home, "--no-memory")[0] == 0
+    db = store.open_existing(home / "ind.sqlite")
+    try:
+        iconfig.set_config(db, {"base_url": "http://127.0.0.1:9/v1", "model": "my-embedder",
+                                "key_file": str(memory_models["key_file"])}, 1.0, provider="embed")
+    finally:
+        db.close()
+    seen = len(memory_models["seen"])
+    step = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert step["status"] == "already done" and "kept as you set it (memory by meaning is off)" in step["detail"]
+    settings, embed, rerank = memory_of(home)
+    assert not settings.enabled and embed.model == "my-embedder" and not rerank.configured
+    assert len(memory_models["seen"]) == seen             # and nothing was probed
+
+
+def test_memory_the_owner_switched_off_after_setup_stays_off(capsys, home, memory_models):
+    from neuroscifi.webcortex import semantic
+    assert memory_step(setup(capsys, home, *memory_models["args"])[1])["status"] == "done"
+    db = store.open_existing(home / "ind.sqlite")
+    try:
+        semantic.set_config(db, {"enabled": False, "floor": 0.1}, 2.0)
+    finally:
+        db.close()
+    step = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert step["status"] == "already done" and "memory by meaning is off" in step["detail"]
+    settings, embed, rerank = memory_of(home)
+    assert not settings.enabled and settings.floor == 0.1 and embed.configured and rerank.configured
+
+
+def test_a_memory_key_file_everyone_can_read_and_a_wrong_key_are_refused_with_the_reason(capsys, home, memory_models):
+    memory_models["key_file"].chmod(0o644)
+    step = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert step["status"] == "skipped" and "readable by every user" in step["detail"]
+    memory_models["key_file"].chmod(0o600)
+    memory_models["key_file"].write_text("nsfm-another-key\n")
+    step = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert step["status"] == "skipped" and "(unauthorised)" in step["detail"]
+    assert not memory_of(home)[1].configured
+
+
+def test_a_reranker_that_is_not_qwen3_is_given_the_plain_prompt_form(capsys, home, memory_models):
+    memory_models["rerank"].RequestHandlerClass.served = "bge-reranker-v2-m3"
+    assert memory_step(setup(capsys, home, *memory_models["args"])[1])["status"] == "done"
+    settings, _, rerank = memory_of(home)
+    assert settings.rerank_template == "plain" and rerank.model == "bge-reranker-v2-m3"
+
+
+def test_the_human_report_names_the_memory_step_in_plain_words(capsys, home, memory_models):
+    code, text, _ = setup(capsys, home, *memory_models["args"], json_out=False)
+    import re
+    assert code == 0 and re.search(r"^  8\. memory +done +memory now finds a fact asked in other words", text, re.M)
+    assert MEMORY_KEY not in text
+
+
+def test_setup_does_not_send_the_memory_key_to_a_port_held_by_another_account(capsys, home, memory_models, monkeypatch):
+    """Review L2: the probe carries the key, so it first asks who listens."""
+    from neuroscifi.resources import idle, monitor
+    ports = {memory_models[kind].server_address[1]: kind for kind in ("embed", "rerank")}
+    monkeypatch.setattr(idle, "managed_service", lambda port, services=None: ports.get(int(port)))   # deploy/memory's
+    monkeypatch.setattr(monitor, "listeners", lambda port, folder="/proc/net": [("127.0.0.1", 4242)])
+    step = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert step["status"] == "skipped" and "held by a process of another account (uid 4242)" in step["detail"]
+    assert memory_models["seen"] == [] and not memory_of(home)[1].configured
+    # a listener of that account on another address of this computer never sees the connection: not a refusal (S1)
+    monkeypatch.setattr(monitor, "listeners", lambda port, folder="/proc/net": [("127.0.0.53", 4242)])
+    step = memory_step(setup(capsys, home, *memory_models["args"])[1])
+    assert step["status"] == "done" and memory_models["seen"] and memory_of(home)[1].configured

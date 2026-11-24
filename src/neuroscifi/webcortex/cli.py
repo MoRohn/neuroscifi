@@ -253,10 +253,13 @@ def _config(db, a, now):
     changes = {}
     for flag, key in (("enable", "enabled"), ("autonomous", "autonomous"), ("pocket_research", "pocket_research"),
                       ("browser", "browser_rendering"), ("news_render", "news_rendering"),
+                      ("memory_check", "memory_check"),
                       ("search_browser_ua", "search_browser_user_agent")):
-        value = getattr(a, flag)
+        value = getattr(a, flag, None)        # a caller that builds its own arguments may not know a newer switch
         if value is not None:
             changes[key] = value
+    if getattr(a, "read_ahead", None) is not None:
+        changes["read_ahead"] = a.read_ahead
     for item in a.set or []:
         key, sep, raw = item.partition("=")
         if not sep or not key.strip():
@@ -299,7 +302,8 @@ def _status(db, a, now):
             "config": {"providers": cfg.providers, "unknown_providers": unknown(cfg), "engines": cfg.engines,
                        "openwebsearch_url": cfg.openwebsearch_url, "searxng_url": cfg.searxng_url,
                        "searxng_engines": cfg.searxng_engines, "budget_ceiling": cfg.budget_ceiling,
-                       "daily_autonomous": cfg.daily_autonomous, "deny_domains": len(cfg.deny_domains),
+                       "daily_autonomous": cfg.daily_autonomous, "read_ahead": cfg.read_ahead,
+                       "deny_domains": len(cfg.deny_domains),
                        "private_terms": len(cfg.private_terms),
                        "daily_provider_queries": cfg.daily_provider_queries,
                        "renders": {"today": state.render_day(db, now)["renders"], "daily_cap": cfg.daily_renders}},
@@ -706,6 +710,42 @@ def _knowledge(db, a, now):
             "items": [knowledge.describe(db, item, now, cfg) for item in items[-a.limit:]]}
 
 
+def _memory(db, a, now):
+    """`nsf web memory`: semantic memory retrieval (semantic.py). status; config sets the switch, the two
+    endpoints (inference providers `embed` and `rerank`) and the retrieval settings. The API key stays in a file."""
+    from ..inference import config as iconfig
+    from . import semantic
+    if a.memory_action == "config":
+        changes = {}
+        if a.memory_enable is not None:
+            changes["enabled"] = a.memory_enable
+        for item in a.set or []:
+            key, sep, raw = item.partition("=")
+            if not sep:
+                raise ValidationError("--set takes KEY=JSON")
+            try:
+                changes[key.strip()] = json.loads(raw)
+            except json.JSONDecodeError:
+                raise ValidationError(f"--set {key}: value is not JSON") from None
+        if changes:
+            semantic.set_config(db, changes, now)
+        for provider in ("embed", "rerank"):
+            endpoint = {}
+            for flag, field in (("url", "base_url"), ("model", "model")):
+                value = getattr(a, f"{provider}_{flag}")
+                if value is not None:
+                    endpoint[field] = value
+            if a.key_file is not None:
+                endpoint["key_file"] = a.key_file
+            if endpoint and (len(endpoint) > 1 or "key_file" not in endpoint
+                             or iconfig.get_config(db, provider).configured):
+                iconfig.set_config(db, endpoint, now, provider=provider)
+        semantic.clear()            # another model's vectors must not be compared with this one's
+    elif a.memory_action == "clear":
+        semantic.clear()
+    return semantic.status(db)
+
+
 def _review(db, a, now):
     from . import knowledge
     return knowledge.review(db, a.id, bool(a.accept), now, note=a.note or "")
@@ -873,9 +913,15 @@ def register(sub):
     _switch(p, "news-render", "news_render",
             "let news questions a person asks render a scripted news page without text or date (default; ADR-041)",
             "never render for news questions unless --browser is on")
+    _switch(p, "memory-check", "memory_check",
+            "the answer model confirms that memory states the answer before memory answers without the web (default)",
+            "memory answers whenever its statements share enough of the question's words (0.7.0)")
     _switch(p, "search-browser-ua", "search_browser_ua",
             "let the search daemon's scrapers send browser User-Agent strings (impersonation; ADR-032)",
             "honest User-Agent only (default; needs `npm run patch-ua`)")
+    p.add_argument("--read-ahead", type=_positive_int, metavar="N",
+                   help="pages a research task may fetch at once while reading, one per site (default 4; 1 = one at "
+                        "a time for every task)")
     p.add_argument("--set", action="append", metavar="KEY=JSON", help="set one field, e.g. --set 'engines=[\"bing\"]'")
 
     cmd("status", _status, "configuration, provider health, daemon, cache, tasks and executing node")
@@ -936,6 +982,19 @@ def register(sub):
     p.add_argument("topic", nargs="?")
     p.add_argument("--status", choices=("provisional", "accepted", "stale", "archived", "rejected", "superseded"))
     p.add_argument("--limit", type=_positive_int, default=50)
+    p = cmd("memory", _memory, "semantic memory retrieval: status, config (off until configured; lexical "
+            "ranking otherwise)")
+    p.add_argument("memory_action", nargs="?", default="status", choices=("status", "config", "clear"))
+    _switch(p, "enable", "memory_enable", "rank memory by meaning when the endpoints answer",
+            "rank memory by its words only (default)")
+    p.add_argument("--embed-url", help="OpenAI-compatible base of the embedding model, e.g. "
+                                       "http://127.0.0.1:18441/v1 ('' to unset)")
+    p.add_argument("--embed-model", help="served name of the embedding model ('' = the first one listed)")
+    p.add_argument("--rerank-url", help="base of the reranker (/rerank), e.g. http://127.0.0.1:18442/v1 ('' to unset)")
+    p.add_argument("--rerank-model", help="served name of the reranker ('' = the first one listed)")
+    p.add_argument("--key-file", help="absolute path of the API key file of both memory endpoints (deploy/memory: "
+                                      "~/.config/neuroscifi/memory/api_key)")
+    p.add_argument("--set", action="append", metavar="KEY=JSON", help="set one retrieval setting, e.g. --set floor=0.05")
     p = cmd("review", _review, "accept or reject a knowledge item")
     p.add_argument("id", type=int)
     verdict = p.add_mutually_exclusive_group(required=True)

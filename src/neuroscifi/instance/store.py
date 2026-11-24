@@ -5,13 +5,14 @@ Contract shared by every instance module:
 - Writers wrap mutations in `with write(db):` (BEGIN IMMEDIATE ... COMMIT) and call
   `bump_state_version(db)` exactly once per committed logical change.
 - Time is always passed in explicitly (`now`, seconds since the epoch) so tests control the clock.
-- Configuration and the birth record are written once at creation and read through `config(db)`
-  and `birth(db)`.
+- Configuration and the birth record are written at creation and read through `config(db)` and `birth(db)`.
+  The birth record never changes; `set_config(db, changes)` changes the few settings the owner may change later.
 """
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
 import glob
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -36,6 +37,23 @@ GATE_V1 = {
     "unknown_context_ratio": 3.0,
     "recall_history": 12,
 }
+# gate-v1 with the two optional parts of rules.py: the graph the edge-exchange learner fitted is a candidate beside the
+# cuts of the dense fit, and the tolerance is measured against the better of the two learners. Same thresholds, same
+# byte budget. Where the dense learner is the better one it chooses what gate-v1 chooses; where it is not (many
+# populations) it packs the sparse learner's graph instead of a cut of a fit that failed.
+BEST_LEARNER_V1 = {
+    **GATE_V1,
+    "version": "best-learner-v1",
+    "pack_candidates": {"degrees": list(GATE_V1["pack_candidates"]["degrees"]),
+                        "bits": list(GATE_V1["pack_candidates"]["bits"]), "learned_sparse": True},
+    "pack_reference": "best_learner",
+}
+# What a new individual is born with, in this order: candidates are learned under the last one (rules.latest), and
+# gate-v1 stays on record as the exam every individual born before best-learner-v1 started with. An individual born
+# earlier keeps exactly the rules it has; its owner adopts a built-in rule with
+# `nsf graph rules add --builtin best-learner-v1 --owner-approved` (cli_graphs.py).
+BIRTH_RULES = (GATE_V1, BEST_LEARNER_V1)
+BUILTIN_RULES = {rule["version"]: rule for rule in BIRTH_RULES}
 PRIORS = {
     "state_prior": "uniform over mechanism, per-camera-root alignment and per-partner convention bits",
     "camera_reading_error": 0.10,
@@ -51,13 +69,28 @@ class InstanceConfig:
     max_evidence_rows: int = 1_000_000      # regulation: pause new writes beyond this
     min_free_bytes: int = 64 * 1024 * 1024  # regulation: pause new writes below this free space
     ask_budget_per_epoch: int = 3           # executive interruption budget
+    # The budget's rolling window: questions asked in an epoch longer ago than this no longer count, so a long-lived
+    # epoch can ask again. 0 = the whole epoch (the rule before the window existed: the budget never refills).
+    ask_budget_window_seconds: float = 7 * 86400
+    # Consolidation (ADR-044): when a learning event's lifetime ends, what it taught (its place in the journal, its
+    # channel and root, the corrected reading, its sample id) stays as a consolidated reading, so beliefs outlive
+    # their raw events. False = an expired event leaves nothing, as before schema 14; readings consolidated earlier
+    # keep counting until they are forgotten.
+    consolidation: bool = True
     max_thermal_celsius: float | None = None  # regulation: pause new writes above this temperature (None = off)
 
     @classmethod
     def from_json(cls, text):
         raw = json.loads(text)
+        if not isinstance(raw, dict):
+            raise ValueError("the settings are not a JSON object")
         known = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in raw.items() if k in known})
+        values = {k: v for k, v in raw.items() if k in known}
+        # Never on by truthiness: a saved value that is not a JSON boolean (a hand-edited "no", a 1) reads as off,
+        # the reading that cannot keep data an owner opted out of. setting_problems() reports it.
+        if not isinstance(values.get("consolidation", True), bool):
+            values["consolidation"] = False
+        return cls(**values)
 
 
 def default_db_path():
@@ -154,15 +187,93 @@ def config(db):
     return InstanceConfig.from_json(_meta(db, "config"))
 
 
+# Settings the owner may change after birth (`nsf config`), each with its check. The others are fixed at `nsf init`.
+_SETTABLE = {
+    "ask_budget_per_epoch": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 1000,
+    "ask_budget_window_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool)
+                                            and math.isfinite(v) and 0 <= v <= 36500 * 86400),
+    "consolidation": lambda v: isinstance(v, bool),
+}
+
+
+SETTING_KIND = "setting"      # deletion_log.target_kind of a changed setting (target_id: the setting's name)
+
+
+def valid_setting(name, value):
+    """Whether `value` is one that set_config would accept for the owner-settable setting `name`."""
+    return name in _SETTABLE and bool(_SETTABLE[name](value))
+
+
+def setting_problems(db):
+    """Owner-settable settings whose saved value set_config would refuse (a hand-edited or damaged settings row), as
+    sentences; [] for a sound row. Such a value is never used as it stands: consolidation reads as off, the ask
+    budget's window as its default (executive._ask_window)."""
+    try:
+        raw = json.loads(_meta(db, "config"))
+    except ValueError:
+        return ["the saved settings cannot be read as JSON"]
+    if not isinstance(raw, dict):
+        return ["the saved settings are not a JSON object"]
+    return [f"the saved {name} ({raw[name]!r}) is not a valid value"
+            + ("; consolidation is treated as off until it is set with `nsf config --consolidation` or "
+               "`--no-consolidation`" if name == "consolidation" else "")
+            for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
+
+
+def set_config(db, changes, now=None):
+    """Change owner-settable instance settings. Returns {"config": the settings now, "changed": [names]}.
+
+    ValidationError for an unknown or fixed setting or a value out of range; nothing is written then. A real change
+    bumps the state version and leaves a row in the deletion log (kind 'setting', the name, {"from", "to"}), beside
+    the forgets and sweeps whose meaning it changes: the log then shows from when to when expired events left no
+    consolidated reading. Settings saved by older software keep every field they have; a field they lack reads as
+    its default (InstanceConfig.from_json).
+    """
+    if not isinstance(changes, dict):
+        raise ValidationError("settings must be a JSON object")
+    for name, value in changes.items():
+        check = _SETTABLE.get(name)
+        if check is None:
+            raise ValidationError(f"{name!r} cannot be changed (changeable: {', '.join(sorted(_SETTABLE))})")
+        if not check(value):
+            raise ValidationError(f"{name}: value {value!r} is out of range")
+    with write(db):
+        raw = json.loads(_meta(db, "config"))
+        current = asdict(InstanceConfig.from_json(json.dumps(raw)))
+        # (against what is saved, type included: setting a damaged "no" to false is a change and repairs the row)
+        current = current | {name: raw[name] for name in changes if name in raw}
+        changed = sorted(name for name, value in changes.items()
+                         if current[name] != value or isinstance(current[name], bool) != isinstance(value, bool))
+        if changed:
+            raw.update({name: changes[name] for name in changed})
+            db.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(raw, sort_keys=True),))
+            version = bump_state_version(db)
+            db.executemany("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)", [
+                (SETTING_KIND, name, time.time() if now is None else now, json.dumps(
+                    {"from": current[name], "to": changes[name], "state_version": version}, sort_keys=True))
+                for name in changed])
+    return {"config": asdict(config(db)), "changed": changed}
+
+
 def birth(db):
     return json.loads(_meta(db, "birth"))
 
 
-def create(path, now, *, action_semantics=None, config=None, founding_graph=None, note=None):
-    """Create a new individual. Refuses an existing file so an individual is never overwritten."""
+def create(path, now, *, action_semantics=None, config=None, founding_graph=None, note=None, birth_rules=None):
+    """Create a new individual. Refuses an existing file so an individual is never overwritten.
+
+    birth_rules: the scoring rules it starts with, registered in order (default BIRTH_RULES); graphs are learned
+    under the last. Given explicitly to reproduce an individual born under gate-v1 alone: `birth_rules=(GATE_V1,)`.
+    """
     path = Path(path)
     if path.exists():
         raise ValidationError(f"{path} already exists; each file is one individual")
+    birth_rules = BIRTH_RULES if birth_rules is None else tuple(birth_rules)
+    if not birth_rules:
+        raise ValidationError("An individual needs at least one scoring rule at birth")
+    from . import rules  # registered at birth so every individual starts with an immutable exam
+    for rule in birth_rules:
+        rules.validate(rule)
     config = config or InstanceConfig()
     semantics = action_semantics or {
         "0": "commanded direction A, as declared by the owner",
@@ -195,8 +306,8 @@ def create(path, now, *, action_semantics=None, config=None, founding_graph=None
         with write(db):
             db.execute("INSERT INTO meta VALUES('config',?)", (json.dumps(asdict(config), sort_keys=True),))
             db.execute("INSERT INTO meta VALUES('birth',?)", (json.dumps(record, sort_keys=True),))
-            from . import rules  # registered here so every individual starts with an immutable exam
-            rules.register(db, GATE_V1, now, created_by="birth")
+            for rule in birth_rules:
+                rules.register(db, rule, now, created_by="birth")
             bump_state_version(db)
         if founding_graph is not None:
             from . import graphs
@@ -282,6 +393,7 @@ def regulation(db, path=None):
     return {
         "writes_allowed": allowed, "reason": reason,
         "evidence_rows": db.execute("SELECT count(*) FROM evidence").fetchone()[0],
+        "consolidated_readings": db.execute("SELECT count(*) FROM evidence_consolidated").fetchone()[0],
         "open_questions": db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL").fetchone()[0],
         "open_web_questions": db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL "
                                          "AND scope LIKE 'web:%'").fetchone()[0],
@@ -301,6 +413,7 @@ def inventory(db):
             "epochs": count("SELECT count(*) FROM epochs"),
             "evidence": count("SELECT count(*) FROM evidence"),
             "promoted_evidence": count("SELECT count(*) FROM evidence WHERE retention='promoted'"),
+            "consolidated_readings": count("SELECT count(*) FROM evidence_consolidated"),
             "tombstones": count("SELECT count(*) FROM tombstones"),
             "belief_revisions": count("SELECT count(*) FROM belief_revisions"),
             "open_questions": count("SELECT count(*) FROM pending WHERE resolved_at IS NULL"),

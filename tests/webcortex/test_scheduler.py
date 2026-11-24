@@ -1,6 +1,7 @@
 """Monitors, the timer tick (fake clock, offline fixture web) and the worker's lease handling."""
 import json
 import threading
+import time
 
 import pytest
 
@@ -163,6 +164,106 @@ def test_worker_polls_until_stopped(individual):
 
     assert scheduler.work(path, stop=stop, sleep=sleep, poll=7.0, providers=[corpus()]) == {"processed": []}
     assert naps == [7.0, 7.0]
+
+
+def test_a_question_the_owner_asked_is_claimed_before_queued_autonomous_refreshes(individual, monkeypatch):
+    """Defect 2: claim_next was first-in-first-out, so an owner's question sat behind up to five queued autonomous
+    refreshes. Owner-asked tasks now claim first, in created_at order within each class; an autonomous task queued
+    for more than AUTONOMOUS_DEFER seconds competes by age again, so it is never starved."""
+    db, _ = individual
+    monkeypatch.setattr(scheduler, "background", lambda db: {"allowed": True, "reason": None, "why": None})
+    autonomous = [orchestrator.submit(db, f"Zephyr compiler board {n}", T0 + n, mode="quick_lookup",
+                                      origin=origin)["id"]
+                  for n, origin in enumerate(("refresh:1", "curiosity", "refresh:2"))]
+    owner = [orchestrator.submit(db, q, T0 + 10 + n, mode="quick_lookup", origin=origin)["id"]
+             for n, (q, origin) in enumerate((("What is the latest version of the Zephyr compiler?", "console"),
+                                              ("Zephyr compiler release date", "cli")))]
+    claims = [scheduler.claim_next(db, f"w{n}", T0 + 20 + n, lease=DAY)[0] for n in range(3)]
+    assert claims == [*owner, autonomous[0]]          # then the autonomous ones, oldest first
+
+    # Later both remaining autonomous tasks have waited longer than AUTONOMOUS_DEFER and no autonomous task was
+    # started within it: the oldest passes the owner's newer question, and only that one (review: a backlog of
+    # aged refreshes ran ahead of the owner as a block).
+    later = T0 + 30 + scheduler.AUTONOMOUS_DEFER
+    from neuroscifi.webcortex import autonomy
+    monkeypatch.setattr(autonomy, "full", lambda db, now: False)       # the concurrency cap is not the subject
+    late = [orchestrator.submit(db, q, later, mode="quick_lookup", origin="console")["id"]
+            for q in ("Zephyr compiler targets", "Zephyr compiler licence")]
+    claims = [scheduler.claim_next(db, f"v{n}", later + n, lease=DAY)[0] for n in range(4)]
+    assert claims == [autonomous[1], *late, autonomous[2]]
+
+
+def test_the_claim_order_uses_the_orchestrators_definition_of_autonomous(individual):
+    """autonomy.AUTONOMOUS_SQL (claim_next's filter and order) and orchestrator.is_autonomous must agree origin by
+    origin, or an owner's question could be ordered as background work."""
+    db, _ = individual
+    origins = ["curiosity", "refresh:12", "refresh:", "cli", "console", "voice:console", "pocket:" + "ab" * 8,
+               "monitor:3", "mcp", "bench", "curiosity:x", "refreshed", "Curiosity", "x-refresh:1"]
+    from neuroscifi.webcortex import autonomy
+    for origin in origins:
+        sql = db.execute(f"SELECT {autonomy.AUTONOMOUS_SQL} FROM (SELECT ? AS origin)", (origin,)).fetchone()[0]
+        assert bool(sql) == orchestrator.is_autonomous(origin), origin
+
+
+def _worker_waiting(path, monkeypatch, **options):
+    """A worker thread (sleep=stop.wait, as `nsf web work` and the console run it) that has found the queue empty
+    and gone to wait for its next poll. orchestrator.run only records when a task reached it."""
+    stop, idle, ran = threading.Event(), threading.Event(), {}
+    real_claim = scheduler.claim_next
+
+    def claim(*a, **k):
+        got = real_claim(*a, **k)
+        if got is None:
+            idle.set()
+        return got
+    monkeypatch.setattr(scheduler, "claim_next", claim)
+    monkeypatch.setattr(orchestrator, "run", lambda db, task_id, svc: ran.setdefault(task_id, time.monotonic())
+                        and {"id": task_id, "status": "completed"})
+    worker = threading.Thread(target=scheduler.work, args=(path,), daemon=True,
+                              kwargs={"stop": stop, "sleep": stop.wait, "providers": [corpus()], "idle": False,
+                                      **options})
+    worker.start()
+    assert idle.wait(10)
+    return stop, worker, ran
+
+
+def test_a_task_queued_while_the_worker_waits_is_claimed_at_once_not_at_the_next_poll(individual, monkeypatch):
+    """Defect 1: the worker polled every 5 s and nothing woke it, so a question from the console, Pocket or voice
+    waited up to a whole poll before work started. Another connection's commit that queues a task now wakes it."""
+    db, path = individual
+    stop, worker, ran = _worker_waiting(path, monkeypatch, poll=30.0)
+    try:
+        time.sleep(0.3)
+        submitted = time.monotonic()
+        task = orchestrator.submit(db, "What is the latest version of the Zephyr compiler?", T0, mode="quick_lookup")
+        deadline = submitted + 3.0
+        while task["id"] not in ran and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert task["id"] in ran, "the queued task waited for the 30 s poll"
+        assert ran[task["id"]] - submitted < 1.0
+    finally:
+        stop.set()
+        worker.join(10)
+    assert not worker.is_alive()
+
+
+def test_the_waiting_worker_does_not_wake_for_writes_that_queue_nothing(individual, monkeypatch):
+    """The wake-up is not a spin: other commits (configuration, knowledge, presence) leave the queue unchanged and
+    the worker stays asleep until its poll; the poll stays as the fallback for anything a wake-up misses."""
+    db, path = individual
+    calls = []
+    real_claim = scheduler.claim_next
+    stop, worker, _ = _worker_waiting(path, monkeypatch, poll=30.0)
+    monkeypatch.setattr(scheduler, "claim_next", lambda *a, **k: calls.append(1) or real_claim(*a, **k))
+    try:
+        for i in range(5):
+            state.set_config(db, {"min_domain_interval": float(i)}, T0)
+            time.sleep(0.15)
+        assert calls == []
+    finally:
+        stop.set()
+        worker.join(10)
+    assert scheduler.wait_for_queue(db, 0.2) is False       # nothing queued: it waits the whole poll
 
 
 def test_prediction_check_outcomes(individual):

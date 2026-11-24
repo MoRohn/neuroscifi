@@ -156,8 +156,11 @@ def describe(db, item: dict, now, cfg=None) -> dict:
 
 
 def query(db, topic, now, *, limit=10) -> dict:
-    """What is known about `topic`: live items (provisional, accepted, stale) ranked by BM25 over statement and key."""
-    from . import text
+    """What is known about `topic`: live items (provisional, accepted, stale) ranked by BM25 over statement and key.
+    With semantic retrieval on and reachable (semantic.py) they are ranked by meaning instead, and a statement the
+    reranker scores under the floor is not returned; `retrieval` says which ranking produced the items and, when
+    the semantic one was asked for and could not be used, why."""
+    from . import semantic, text
     if not isinstance(topic, str) or not topic.strip() or len(topic) > 2000:
         raise ValidationError("topic must be a non-blank string of at most 2000 characters")
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
@@ -165,14 +168,17 @@ def query(db, topic, now, *, limit=10) -> dict:
     cfg = state.get_config(db)
     terms = text.content_tokens(topic)
     live = rows(db, f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))})", state.LIVE_KNOWLEDGE)
-    items = []
-    if terms and live:
+    items, retrieval = [], {"mode": "lexical"}
+    if live:
         scores = text.BM25([text.content_tokens(r["statement"] + " " + r["key"].replace("<", " ").replace(">", " "))
-                            for r in live]).scores(terms)
-        ranked = sorted(((s, r) for s, r in zip(scores, live) if s > 0), key=lambda x: (-x[0], -x[1]["id"]))
-        for score, item in ranked[:min(100, limit)]:
+                            for r in live]).scores(terms) if terms else [0.0] * len(live)
+        ranked, retrieval = semantic.rank(db, topic, live, scores, limit=min(100, limit))
+        if ranked is None:          # off, not configured or unreachable: the lexical ranking, as before
+            ranked = sorted(((s, r) for s, r in zip(scores, live) if s > 0),
+                            key=lambda x: (-x[0], -x[1]["id"]))[:min(100, limit)]
+        for score, item in ranked:
             items.append(describe(db, item, now, cfg) | {"score": round(score, 6)})
-    return {"topic": topic, "as_of": now, "items": items, "matched": len(items),
+    return {"topic": topic, "as_of": now, "items": items, "matched": len(items), "retrieval": retrieval,
             "known": sum(1 for i in items if i["status"] == "accepted" and not i["stale"] and not i["contested"])}
 
 
@@ -601,7 +607,11 @@ def assert_fact(db, statement, now, *, note="") -> dict:
 def forget(db, knowledge_id, now) -> dict:
     """Forget the item and every version in its chain (governance.forget_knowledge)."""
     from ..instance import governance
-    return governance.forget_knowledge(db, knowledge_id, now)
+    from . import semantic
+    try:
+        return governance.forget_knowledge(db, knowledge_id, now)
+    finally:
+        semantic.clear()      # no vector or text of a forgotten statement stays in this process (semantic.py)
 
 
 OWNER_REFRESH = "refresh-owner:"

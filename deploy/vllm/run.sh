@@ -29,6 +29,8 @@ ENV_FILE="$NSF_INFERENCE_DIR/vllm.secret.env"
 
 [[ "$NSF_VLLM_BIND" == "127.0.0.1" || "$NSF_VLLM_BIND" == "::1" ]] || die "NSF_VLLM_BIND must be loopback (got $NSF_VLLM_BIND)"
 [[ "$NSF_VLLM_IMAGE" == *@sha256:* ]] || die "NSF_VLLM_IMAGE must be pinned by digest"
+[[ "${NSF_VLLM_SCHEDULING:-fcfs}" == "fcfs" || "$NSF_VLLM_SCHEDULING" == "priority" ]] || die "NSF_VLLM_SCHEDULING must be fcfs or priority (got $NSF_VLLM_SCHEDULING)"
+[[ "${NSF_VLLM_BATCHED_TOKENS:-}" =~ ^[0-9]*$ ]] || die "NSF_VLLM_BATCHED_TOKENS must be a number of tokens or empty (got $NSF_VLLM_BATCHED_TOKENS)"
 
 ensure_key() {
   umask 077
@@ -71,13 +73,21 @@ docker_args() {
     --max-model-len "$NSF_VLLM_MAX_LEN"
     --max-num-seqs "$NSF_VLLM_MAX_SEQS"
     --enable-auto-tool-choice --tool-call-parser "$NSF_VLLM_TOOL_PARSER"
+    --enable-prompt-tokens-details
     --disable-uvicorn-access-log)
+  [ -n "${NSF_VLLM_SCHEDULING:-}" ] && ARGS+=(--scheduling-policy "$NSF_VLLM_SCHEDULING")
+  [ -n "${NSF_VLLM_BATCHED_TOKENS:-}" ] && ARGS+=(--max-num-batched-tokens "$NSF_VLLM_BATCHED_TOKENS")
   # shellcheck disable=SC2206
   [ -n "${NSF_VLLM_EXTRA_ARGS:-}" ] && ARGS+=($NSF_VLLM_EXTRA_ARGS)
   return 0
 }
 
 url() { echo "http://$NSF_VLLM_BIND:$NSF_VLLM_PORT"; }
+
+# A container that does not exist yet is "not ready", not "gone", for the first seconds of a wait: a systemd unit
+# (Type=simple) returns from `systemctl start` before its wrapper has created the container (review F2: the idle
+# policy's reload of a stopped unit failed its own wait in 0.04 s while the model came up seconds later).
+GONE_GRACE="${NSF_WAIT_GONE_GRACE:-60}"
 
 cmd="${1:-status}"
 case "$cmd" in
@@ -102,10 +112,20 @@ case "$cmd" in
       echo
     fi ;;
   wait)
+    # Fails at once when the container is crash-looping: with --restart unless-stopped it keeps existing, so only
+    # its state (restarting / exited / dead) or a growing restart count shows that it will never become healthy.
     limit="${2:-1200}"; start=$(date +%s)
+    restarts="$(docker inspect -f '{{.RestartCount}}' "$NSF_VLLM_CONTAINER" 2>/dev/null || echo 0)"
     until curl -fsS -m 5 "$(url)/health" >/dev/null 2>&1; do
       [ $(( $(date +%s) - start )) -ge "$limit" ] && die "not healthy after ${limit}s"
-      docker inspect "$NSF_VLLM_CONTAINER" >/dev/null 2>&1 || die "container exited; see: docker logs $NSF_VLLM_CONTAINER"
+      if ! state="$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$NSF_VLLM_CONTAINER" 2>/dev/null)"; then
+        [ $(( $(date +%s) - start )) -lt "$GONE_GRACE" ] || die "container exited (none after ${GONE_GRACE}s); see: docker logs $NSF_VLLM_CONTAINER"
+        sleep 1; continue
+      fi
+      case "${state% *}" in
+        restarting|exited|dead) die "container is ${state% *} (it stopped while starting); see: docker logs $NSF_VLLM_CONTAINER" ;;
+      esac
+      [ "${state#* }" -gt "$restarts" ] && die "container restarted $(( ${state#* } - restarts )) time(s) while starting; see: docker logs $NSF_VLLM_CONTAINER"
       sleep 5
     done
     echo "healthy after $(( $(date +%s) - start ))s" ;;

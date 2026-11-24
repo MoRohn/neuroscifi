@@ -1,0 +1,323 @@
+{
+ "what": "Cost of consolidated readings (ADR-044, schema 14) against the same events raw, one epoch",
+ "script": "scripts/bench_consolidation.py",
+ "generated_at": "2026-11-23 (re-measured after the second review pass: the copy rule in SQL passes)",
+ "host": "reference DGX Spark (aarch64), shared; load average about 3 while this ran",
+ "method": "Events inserted directly: three channels, four roots each, a sample id on a third, one confirmed camera change in the middle. compute() and decide(): CPU time (time.process_time), minimum of 31 warm calls, because wall-clock medians moved by a factor of several between runs on the loaded host. Sweep: one call, wall-clock. Bytes per reading: dbstat pages of evidence_consolidated and its three indexes after VACUUM, divided by the readings (at 200 readings this is page granularity, not a per-row cost).",
+ "by_learning_readings": {
+  "200": {
+   "sweep": {
+    "expired": 200,
+    "consolidated": 200,
+    "ms": 4.5
+   },
+   "posteriors_identical": true,
+   "compute_ms": {
+    "raw": 2.06,
+    "consolidated": 1.92
+   },
+   "decide_ms": {
+    "raw": 2.12,
+    "consolidated": 1.97
+   },
+   "file_bytes": {
+    "raw_events": 524288,
+    "after_consolidation_and_vacuum": 524288
+   },
+   "bytes_per_consolidated_reading": 184.3
+  },
+  "10000": {
+   "sweep": {
+    "expired": 10000,
+    "consolidated": 10000,
+    "ms": 85.2
+   },
+   "posteriors_identical": true,
+   "compute_ms": {
+    "raw": 6.72,
+    "consolidated": 4.05
+   },
+   "decide_ms": {
+    "raw": 6.79,
+    "consolidated": 4.13
+   },
+   "file_bytes": {
+    "raw_events": 2138112,
+    "after_consolidation_and_vacuum": 2011136
+   },
+   "bytes_per_consolidated_reading": 93.4
+  },
+  "100000": {
+   "sweep": {
+    "expired": 100000,
+    "consolidated": 100000,
+    "ms": 929.8
+   },
+   "posteriors_identical": true,
+   "compute_ms": {
+    "raw": 55.17,
+    "consolidated": 23.99
+   },
+   "decide_ms": {
+    "raw": 55.6,
+    "consolidated": 24.32
+   },
+   "file_bytes": {
+    "raw_events": 17584128,
+    "after_consolidation_and_vacuum": 16625664
+   },
+   "bytes_per_consolidated_reading": 96.5
+  }
+ },
+ "epoch_without_consolidated_readings": {
+  "what": "compute() on raw events only, base commit 307b907 against this change: what the new code costs an epoch that has nothing consolidated. CPU ms, best of three interleaved runs of 41 calls each.",
+  "base_307b907": {
+   "50": 1.427,
+   "200": 1.955,
+   "10000": 5.044
+  },
+  "with_consolidation_code": {
+   "50": 1.455,
+   "200": 2.0,
+   "10000": 5.193
+  }
+ },
+ "mutation_check": {
+  "what": "Safeguards broken one at a time; tests/instance/test_consolidation.py and test_erasure.py run against each",
+  "mutations": 38,
+  "caught": 38,
+  "missed": []
+ },
+ "reading": "Per reading the consolidated path is cheaper than the raw path it replaces (ordered passes over covering indexes). About half of it is the pass that finds samples with more than one reading, paid per reading that has a sample id. What changed is the bound: the journal held one lifetime of events, consolidated readings accumulate for the life of the epoch, so compute() grows with the individual's age: about 23 ms per 100,000 readings of one epoch on this host with a third of them sampled.",
+ "first_version_only_first_copy_kept": {
+  "what": "The same benchmark before the review round (one reading per sample, no pass for later copies); that version made forgetting inexact (review F1) and is kept here only for the comparison.",
+  "compute_ms_consolidated": {
+   "200": 1.88,
+   "10000": 2.84,
+   "100000": 11.81
+  },
+  "bytes_per_consolidated_reading": {
+   "10000": 74.1,
+   "100000": 76.8
+  }
+ },
+ "one_million_readings_200_roots": {
+  "what": "The independent review's cases (its scripts t6_sweep_roots.py and t2b_perf_noanalyze.py, no ANALYZE), before and after the index by root, the keyed tombstone lookup and the seek-per-root listing",
+  "sweep_expiring_one_event_per_root_s": {
+   "before": 5.31,
+   "after": 0.08
+  },
+  "held_roots_per_web_query_ms": {
+   "before": 51,
+   "after": 0.2
+  },
+  "root_held_missing_root_ms": {
+   "before": 33,
+   "after": 0.0
+  },
+  "forget_evidence_unknown_id_ms": {
+   "before": 195,
+   "after": 0.0
+  }
+ },
+ "copied_samples": {
+  "what": "scripts/bench_consolidation.py WORKDIR copies: epochs whose readings are all consolidated and all carry a sample id; every sample recorded once, one in ten twice, or every sample twice. 200 roots, one confirmed change, no ANALYZE. One wall-clock call each, milliseconds.",
+  "before_second_pass_one_query_per_copied_sample": {
+   "10000": {
+    "each_sample_once": {
+     "readings": 10000,
+     "compute_ms": 19.1,
+     "decide_ms": 17.2,
+     "learning_since_one_root_ms": 3.4,
+     "explain_ms": 38.5,
+     "forget_one_reading_ms": 19.2,
+     "sweep_of_20_memory_only_events_ms": 18.5
+    },
+    "one_sample_in_ten_twice": {
+     "readings": 10000,
+     "compute_ms": 21.0,
+     "decide_ms": 21.2,
+     "learning_since_one_root_ms": 6.7,
+     "explain_ms": 49.7,
+     "forget_one_reading_ms": 22.5,
+     "sweep_of_20_memory_only_events_ms": 22.0
+    },
+    "each_sample_twice": {
+     "readings": 10000,
+     "compute_ms": 39.2,
+     "decide_ms": 42.1,
+     "learning_since_one_root_ms": 21.2,
+     "explain_ms": 97.7,
+     "forget_one_reading_ms": 37.7,
+     "sweep_of_20_memory_only_events_ms": 37.2
+    }
+   },
+   "100000": {
+    "each_sample_once": {
+     "readings": 100000,
+     "compute_ms": 57.4,
+     "decide_ms": 58.0,
+     "learning_since_one_root_ms": 34.5,
+     "explain_ms": 156.0,
+     "forget_one_reading_ms": 58.3,
+     "sweep_of_20_memory_only_events_ms": 61.0
+    },
+    "one_sample_in_ten_twice": {
+     "readings": 100001,
+     "compute_ms": 104.6,
+     "decide_ms": 107.3,
+     "learning_since_one_root_ms": 73.4,
+     "explain_ms": 286.7,
+     "forget_one_reading_ms": 100.3,
+     "sweep_of_20_memory_only_events_ms": 106.5
+    },
+    "each_sample_twice": {
+     "readings": 100000,
+     "compute_ms": 307.8,
+     "decide_ms": 309.0,
+     "learning_since_one_root_ms": 234.6,
+     "explain_ms": 817.6,
+     "forget_one_reading_ms": 271.2,
+     "sweep_of_20_memory_only_events_ms": 275.2
+    }
+   },
+   "1000000": {
+    "each_sample_once": {
+     "readings": 1000000,
+     "compute_ms": 501.9,
+     "decide_ms": 505.9,
+     "learning_since_one_root_ms": 380.9,
+     "explain_ms": 1483.7,
+     "forget_one_reading_ms": 538.3,
+     "sweep_of_20_memory_only_events_ms": 507.8
+    },
+    "one_sample_in_ten_twice": {
+     "readings": 1000000,
+     "compute_ms": 1477.4,
+     "decide_ms": 1398.2,
+     "learning_since_one_root_ms": 1124.2,
+     "explain_ms": 3927.1,
+     "forget_one_reading_ms": 1380.6,
+     "sweep_of_20_memory_only_events_ms": 1371.8
+    },
+    "each_sample_twice": {
+     "readings": 1000000,
+     "compute_ms": 5369.6,
+     "decide_ms": 5582.0,
+     "learning_since_one_root_ms": 4238.4,
+     "explain_ms": 14595.1,
+     "forget_one_reading_ms": 5148.0,
+     "sweep_of_20_memory_only_events_ms": 5056.1
+    }
+   }
+  },
+  "after_second_pass_passes_over_the_index": {
+   "10000": {
+    "each_sample_once": {
+     "readings": 10000,
+     "compute_ms": 18.8,
+     "decide_ms": 17.0,
+     "learning_since_one_root_ms": 0.1,
+     "explain_ms": 41.7,
+     "forget_one_reading_ms": 18.9,
+     "sweep_of_20_memory_only_events_ms": 18.2
+    },
+    "one_sample_in_ten_twice": {
+     "readings": 10000,
+     "compute_ms": 21.2,
+     "decide_ms": 21.5,
+     "learning_since_one_root_ms": 0.1,
+     "explain_ms": 52.7,
+     "forget_one_reading_ms": 23.4,
+     "sweep_of_20_memory_only_events_ms": 22.4
+    },
+    "each_sample_twice": {
+     "readings": 10000,
+     "compute_ms": 26.4,
+     "decide_ms": 26.5,
+     "learning_since_one_root_ms": 0.1,
+     "explain_ms": 59.6,
+     "forget_one_reading_ms": 27.3,
+     "sweep_of_20_memory_only_events_ms": 26.4
+    }
+   },
+   "100000": {
+    "each_sample_once": {
+     "readings": 100000,
+     "compute_ms": 56.9,
+     "decide_ms": 57.0,
+     "learning_since_one_root_ms": 0.6,
+     "explain_ms": 121.3,
+     "forget_one_reading_ms": 57.1,
+     "sweep_of_20_memory_only_events_ms": 58.0
+    },
+    "one_sample_in_ten_twice": {
+     "readings": 100001,
+     "compute_ms": 86.2,
+     "decide_ms": 86.8,
+     "learning_since_one_root_ms": 0.6,
+     "explain_ms": 178.5,
+     "forget_one_reading_ms": 87.4,
+     "sweep_of_20_memory_only_events_ms": 87.4
+    },
+    "each_sample_twice": {
+     "readings": 100000,
+     "compute_ms": 96.6,
+     "decide_ms": 95.6,
+     "learning_since_one_root_ms": 0.4,
+     "explain_ms": 199.8,
+     "forget_one_reading_ms": 95.0,
+     "sweep_of_20_memory_only_events_ms": 96.2
+    }
+   },
+   "1000000": {
+    "each_sample_once": {
+     "readings": 1000000,
+     "compute_ms": 454.4,
+     "decide_ms": 456.6,
+     "learning_since_one_root_ms": 5.3,
+     "explain_ms": 921.8,
+     "forget_one_reading_ms": 455.7,
+     "sweep_of_20_memory_only_events_ms": 456.6
+    },
+    "one_sample_in_ten_twice": {
+     "readings": 1000000,
+     "compute_ms": 743.9,
+     "decide_ms": 742.9,
+     "learning_since_one_root_ms": 5.0,
+     "explain_ms": 1496.1,
+     "forget_one_reading_ms": 744.0,
+     "sweep_of_20_memory_only_events_ms": 744.7
+    },
+    "each_sample_twice": {
+     "readings": 1000000,
+     "compute_ms": 791.0,
+     "decide_ms": 789.5,
+     "learning_since_one_root_ms": 3.7,
+     "explain_ms": 1586.8,
+     "forget_one_reading_ms": 792.9,
+     "sweep_of_20_memory_only_events_ms": 787.5
+    }
+   }
+  },
+  "review_script_t10_perf2_one_million_two_copies_ms": {
+   "what": "The independent review's own case (a third of the samples have two readings of one root)",
+   "before": {
+    "compute": 1411,
+    "decide": 1413,
+    "learning_since_one_root": 1153,
+    "forget_evidence": 1290,
+    "sweep_of_20_events": 1310,
+    "explain": 2632
+   },
+   "after": {
+    "compute": 561,
+    "decide": 562,
+    "learning_since_one_root": 5,
+    "forget_evidence": 563,
+    "sweep_of_20_events": 562,
+    "explain": 1125
+   }
+  }
+ }
+}

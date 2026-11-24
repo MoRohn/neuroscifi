@@ -89,7 +89,7 @@ def _str_list(name, value, *, max_items=200, max_len=256):
 
 def _validate(name, value):
     """Return the validated value for one WebConfig field, or raise ValidationError."""
-    if name in ("enabled", "autonomous", "pocket_research", "browser_rendering", "news_rendering",
+    if name in ("enabled", "autonomous", "pocket_research", "browser_rendering", "news_rendering", "memory_check",
                 "search_browser_user_agent"):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
@@ -157,6 +157,10 @@ def _validate(name, value):
     if name == "mcp_research_per_hour":
         if not _is_int(value) or not 0 <= value <= 1000:
             raise ValidationError("mcp_research_per_hour must be an integer between 0 and 1000")
+        return value
+    if name == "read_ahead":
+        if not _is_int(value) or not 1 <= value <= 16:
+            raise ValidationError("read_ahead must be an integer between 1 (one page at a time) and 16")
         return value
     if name == "min_domain_interval":
         if not _is_num(value) or not 0 <= value <= 3600:

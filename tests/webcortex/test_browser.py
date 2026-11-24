@@ -125,6 +125,7 @@ def test_render_runs_external_scripts_and_blocks_styles(web):
 # ---- review remediation (V1): hung renders, blocked navigations, no double fetch --------------------------------
 
 import os  # noqa: E402
+import signal  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 
@@ -181,6 +182,14 @@ def test_hung_render_kills_driver_and_chromium(web, monkeypatch):
         assert not [p for p in fetcher.tree if _alive(p)], "driver/Chromium processes outlived the render"
     finally:
         fetcher.release.set()
+        # A process that did outlive the render must not outlive the test: it would hold the runner's log pipe
+        # and keep a CI job alive until its timeout (the assertion above has already failed in that case).
+        for pid in fetcher.tree:
+            if _alive(pid):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    pass
 
 
 def test_blocked_navigation_error_page_is_not_content(web):

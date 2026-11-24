@@ -57,6 +57,7 @@ PRIMARY_RELEVANCE = 0.5      # a new single-source key counts only from a primar
 RESTATED_KEY = 0.5           # token Jaccard at which a key with the same values restates a known key
 MAX_SEEN_KEYS = 5000         # claim keys a monitor remembers across runs (oldest dropped first)
 MAX_BASELINE = 2000          # URLs and claim details kept in a monitor's baseline
+AUTONOMOUS_DEFER = 600.0     # longest an owner's newer questions keep a queued autonomous task waiting (claim_next)
 
 
 def _monitor(db, monitor_id) -> dict:
@@ -317,17 +318,25 @@ def _window(now):
     return _WINDOW, (now - DAY, now - DAY, *TERMINAL_STATES)
 
 
+def traffic(used, key) -> int:
+    """What a task sent (key 'requests') or received ('bytes') according to its usage: what it was charged plus what
+    read-ahead sent or received for pages it then did not use (Usage.prefetch_unused_*). The daily allowances count
+    traffic, so an unused request is never free. Tasks under an allowance read one page at a time
+    (orchestrator.daily_capped) and have none; the sum does not rely on that."""
+    return int(used.get(key, 0) or 0) + int(used.get(f"prefetch_unused_{key}", 0) or 0)
+
+
 def autonomous_usage(db, now, *, mcp=False) -> dict:
     """Tasks, requests and bytes spent by autonomous research (curiosity/refresh; mcp=True: MCP-origin tasks) in
-    the last 24 h (_window)."""
+    the last 24 h (_window); requests and bytes are traffic (traffic())."""
     tasks = requests = volume = 0
     where, params = _window(now)
     for origin, usage in db.execute(f"SELECT origin, usage FROM web_tasks WHERE {where}", params):
         if _counted(origin, mcp):
             used = state.loads(usage, {})
             tasks += 1
-            requests += int(used.get("requests", 0) or 0)
-            volume += int(used.get("bytes", 0) or 0)
+            requests += traffic(used, "requests")
+            volume += traffic(used, "bytes")
     return {"tasks": tasks, "requests": requests, "bytes": volume}
 
 
@@ -347,7 +356,7 @@ def autonomous_remaining(db, now, cfg, *, mcp=False, exclude=None, reserved=True
         used, limits = state.loads(usage, {}), state.loads(budget, {})
         running = status not in TERMINAL_STATES and (status != "queued" or started is not None)
         for key in committed:
-            spent = int(used.get(key, 0) or 0)
+            spent = traffic(used, key)
             if reserved and running:
                 spent = max(spent, int(limits.get(f"max_{key}", 0) or 0))
             committed[key] += spent
@@ -513,7 +522,12 @@ def background(db) -> dict:
 def claim_next(db, holder, now, *, lease=None):
     """Claim one runnable task: a queued task, else a running task whose lease expired or whose worker process is
     dead (same host: services.holder_alive, so a crash is recovered without waiting for the lease to expire).
-    Returns (task_id, resume) or None."""
+    Queued tasks the owner asked for are claimed before autonomous ones (autonomy.AUTONOMOUS_SQL, the same origins
+    as orchestrator.is_autonomous), oldest first within each class, so a question does not wait behind refreshes;
+    an autonomous task queued more than AUTONOMOUS_DEFER s ago is ordered by age with the owner's, at most one per
+    AUTONOMOUS_DEFER, so a steady stream of questions never stops background work and a backlog of aged
+    refreshes never runs ahead of the owner as a block. Returns (task_id, resume) or
+    None."""
     from . import autonomy, orchestrator
     from .services import holder_alive
     lease = orchestrator.LEASE_SECONDS if lease is None else lease
@@ -525,9 +539,18 @@ def claim_next(db, holder, now, *, lease=None):
             or autonomy.waiting(db, "autonomous", now) or autonomous_waiting(db, now) else ""
         if autonomy.waiting(db, "user", now):
             waiting += f" AND {autonomy.AUTONOMOUS_SQL}"
+        # Who asked comes first: an owner's task (console, Pocket, voice, CLI, monitor) before autonomous ones,
+        # created_at order within each; an autonomous task queued over AUTONOMOUS_DEFER s ago competes by age.
+        # At most one aged autonomous task per AUTONOMOUS_DEFER passes the owner's: with twelve refreshes aged at
+        # once, all twelve would otherwise run before a question asked a moment ago (review).
+        recent = db.execute(f"SELECT 1 FROM web_tasks WHERE {autonomy.AUTONOMOUS_SQL} AND (started_at>? OR "
+                            "(lease_holder IS NOT NULL AND updated_at>?)) LIMIT 1",     # started, or just claimed
+                            (now - AUTONOMOUS_DEFER, now - AUTONOMOUS_DEFER)).fetchone()
+        aged_before = float("-inf") if recent else now - AUTONOMOUS_DEFER
         row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status='queued' AND "
                          "coalesce(stage,'')!='proposed' AND (lease_holder IS NULL OR lease_expires_at<?)"
-                         f"{waiting} ORDER BY created_at, rowid LIMIT 1", (now,)).fetchone()
+                         f"{waiting} ORDER BY ({autonomy.AUTONOMOUS_SQL} AND created_at>?), created_at, rowid "
+                         "LIMIT 1", (now, aged_before)).fetchone()
         resume = False
         if row is None:
             row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status IN ('discovering','reading',"
@@ -605,11 +628,54 @@ def worker_status(db_path, now=None) -> dict:
                                          "console --web-worker`)"}
 
 
-def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=time.time, fixture=None,
+WAKE_CHECK = 0.1    # how often a waiting worker looks whether another connection queued a task (seconds)
+
+
+def _queue_mark(db):
+    """What changes when a task becomes claimable: how many tasks wait (proposals excluded) and the newest one."""
+    return db.execute("SELECT count(*), coalesce(max(rowid), 0) FROM web_tasks WHERE status='queued' AND "
+                      "coalesce(stage,'')!='proposed'").fetchone()
+
+
+def wait_for_queue(db, seconds, stop=None, *, check=WAKE_CHECK) -> bool:
+    """Wait up to `seconds`; return True early when another connection (the console, Pocket, the voice hub, the
+    CLI, in this process or another) queued or requeued a task, or when `stop` is set. False: the time ran out.
+
+    Without it a question waited for the worker's next poll (2.5 s on average at the 5 s default). SQLite's
+    PRAGMA data_version changes only when another connection commits, and reading it touches only the shared WAL
+    index, so the check every `check` s costs microseconds; the queue is read only after such a commit, and only a
+    change in the queued tasks wakes the worker (other writes do not). Every submitter is covered without telling
+    the worker anything. A missed or failed check loses nothing: the caller polls again after `seconds`."""
+    deadline = time.monotonic() + seconds
+    try:
+        version, mark = db.execute("PRAGMA data_version").fetchone()[0], _queue_mark(db)
+    except sqlite3.Error:
+        version = mark = None
+    while (left := deadline - time.monotonic()) > 0:
+        nap = left if version is None else min(check, left)
+        if stop.wait(nap) if stop is not None else time.sleep(nap):
+            return True
+        if version is None:
+            continue
+        try:
+            now_version = db.execute("PRAGMA data_version").fetchone()[0]
+            if now_version != version:
+                version = now_version
+                if _queue_mark(db) != mark:
+                    return True
+        except sqlite3.Error:
+            version = None          # degrade to the plain poll
+    return False
+
+
+def work(db_path, *, once=False, stop=None, poll=5.0, sleep=None, clock=time.time, fixture=None,
          providers=None, max_tasks=None, idle=True) -> dict:
     """Drain queued tasks with its own connection. once=True returns when nothing is runnable; otherwise polls
     every `poll` seconds until `stop` (a threading.Event) is set. With nothing claimable and `idle`, the worker asks
     autonomy.idle for one autonomous investigation (only when the owner enabled autonomy; D4 budgets apply).
+    `sleep` None or `stop.wait` (how `nsf web work` and the console run it): between polls the worker waits with
+    wait_for_queue, so a task queued by any process starts within WAKE_CHECK s instead of at the next poll; any
+    other callable (tests) is called with `poll` instead.
 
     The services (fetcher, public cache, provider registry) are built once and reused across tasks, so per-host
     request spacing and Retry-After backoffs carry over from one task to the next; they are rebuilt when the
@@ -621,6 +687,9 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=time.sleep, clock=ti
     db = store.open_existing(db_path)
     done, svc, built_for, paused, deferred = [], None, None, None, None
     holder, beating = service_builder.holder_id(), threading.Event()
+    if sleep is None or (stop is not None and getattr(sleep, "__self__", None) is stop):
+        def sleep(seconds):
+            wait_for_queue(db, seconds, stop)
 
     def beat():
         while not beating.is_set():
