@@ -6,6 +6,7 @@ whose fetches ahead all became unusable could send twice its budget. Now that pa
 of the budget and never less than a full window needs; the fetcher holds every fetch ahead to it request by
 request, and with it spent the task reads one page at a time, which is the same reading."""
 import threading
+import time
 
 import pytest
 
@@ -398,3 +399,47 @@ def test_the_connection_counts_the_bytes_of_a_request_the_socket_took(web, tmp_p
     fetcher, usage = fetcher_for(web, tmp_path), Usage()
     assert fetcher.fetch("http://a.example/p", purpose="api", budget=Budget(), usage=usage).status == 200
     assert usage.requests == 1 and len(web.log) == 1
+
+
+# ---- review round: the count and the release of an abandoned fetch are one step (review F1) ---------------------
+
+def test_an_abandoned_fetchs_room_is_never_free_before_what_it_sent_is_counted(web, tmp_path):
+    """abandon() used to cut the request on the wire first and count what the fetch had sent afterwards. The cut
+    ended the fetch's exchange on its own thread, whose on_wire(None) gave back everything the fetch held; in
+    between, its requests were neither held nor counted, and a second fetch ahead was let in past the allowance
+    (allowance 2, four requests out). Here the count is entered while the window would be open: on the old code
+    the cut fetch has ended by then and its room is free; now the count comes before the cut and the room is
+    still held, so the second fetch ahead is refused and the allowance holds."""
+    release = threading.Event()
+    for host in ("a.example", "b.example"):
+        web.add(host, "/robots.txt", ROBOTS, content_type="text/plain")
+    web.routes[("a.example", "/p")] = Held("<p>a</p>", release, "text/html")
+    web.add("b.example", "/p", "<p>b</p>")
+    fetcher, budget, usage, allowance = fetcher_for(web, tmp_path), Budget(max_requests=100), Usage(), (2, ROOMY)
+    try:
+        assert fetcher.speculate("http://a.example/p", usage=usage, budget=budget, allowance=allowance)
+        spec = next(iter(fetcher._speculations.values()))
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and len(web.log) < 2:          # robots.txt and the held page are out
+            time.sleep(0.01)
+        assert len(web.log) == 2 and fetcher._ahead[id(usage)][0] == 2
+        real, seen = usage.charge_unused, {}
+
+        def counting(**amounts):
+            if "account" not in seen:           # the first count abandon() makes: is the room free already?
+                wire = spec.wire
+                if wire is not None and wire.aborted:       # the old order: cut first; let the cut fetch end
+                    assert spec.finished.wait(5)
+                seen["account"] = ((fetcher._ahead.get(id(usage)) or [0])[0], usage.prefetch_unused_requests)
+                seen["second"] = fetcher.speculate("http://b.example/p", usage=usage, budget=budget,
+                                                   allowance=allowance)
+            return real(**amounts)
+        usage.charge_unused = counting
+        fetcher.abandon("http://a.example/p", usage=usage)
+        assert seen["account"] == (2, 0)          # requests held, not yet counted: never neither held nor counted
+        assert seen["second"] is False
+        assert spec.finished.wait(5)                              # the cut ends it without waiting for the answer
+        assert usage.prefetch_unused_requests == 2 and fetcher._ahead == {}
+        assert [r["host"] for r in settled(web, quiet=0.2)] == ["a.example", "a.example"]
+    finally:
+        release.set()

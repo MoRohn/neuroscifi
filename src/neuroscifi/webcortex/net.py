@@ -706,16 +706,17 @@ class _Speculation:
     def on_wire(self, watchdog):
         """The exchange about to use the wire (None: it ended). False when the fetch was abandoned meanwhile: the
         caller must not send. When the exchange of an abandoned fetch ends, the request abandon() had left held is
-        settled: sent() has counted it as unused if it went out, and its room goes back now either way."""
+        settled: sent() has counted it as unused if it went out, and its room goes back now either way. Decided and
+        done under self.lock, which abandon() holds while it counts and releases: an exchange that ends while the
+        fetch is being abandoned (the cut makes it end) settles after that count, never before it (see abandon)."""
         with self.lock:
             self.wire = watchdog
             ended = watchdog is None
             if ended:
                 self.pending = False
             wanted = not (self.abandoned or self.halted)
-            settle = ended and self.abandoned
-        if settle:
-            self.release()
+            if ended and self.abandoned:
+                self.release()            # only what abandon() kept: everything else was released with its count
         return wanted
 
     def sent(self):
@@ -732,18 +733,25 @@ class _Speculation:
         unused prefetch on the task's Usage, a fetch still running sends nothing more, and its request on the wire
         is cut (the connection is shut down). A request recorded but not sent yet is left out; sent() counts it if
         it still goes out before the cut, and until its exchange ends (on_wire(None)) it stays held in the task's
-        account, so that request is in the account at every moment, as held or as unused."""
+        account, so that request is in the account at every moment, as held or as unused.
+
+        Invariant (the unused allowance and the budget rely on it): every request this fetch recorded is, at every
+        moment, either held in fetcher._ahead or counted in usage.prefetch_unused_requests (for an instant both,
+        never neither). So the count and the release are one step, under self.lock, and the cut comes after them:
+        cut first, the fetch's own thread could end its exchange and, in on_wire(None), give back its room before
+        anything was counted, and another fetch ahead could take that room meanwhile (review F1). on_wire takes
+        self.lock too, so it sees either a fetch not yet abandoned (and settles nothing) or one already counted."""
         with self.lock:
             if self.abandoned:
                 return
             self.abandoned = True
             spent = list(self.events if events is None else events)
             wire, unsent = self.wire, 1 if self.pending and events is None else 0
+            self.usage.charge_unused(requests=sum(1 for e in spent if e[0] == "request") - unsent,
+                                     bytes=sum(e[1] for e in spent if e[0] in ("bytes", "cut")))
+            self.release(keep=unsent)    # after the count: the task's room never looks larger than it is
         if wire is not None:
-            wire.abort()
-        self.usage.charge_unused(requests=sum(1 for e in spent if e[0] == "request") - unsent,
-                                 bytes=sum(e[1] for e in spent if e[0] in ("bytes", "cut")))
-        self.release(keep=unsent)        # after the count: the task's room never looks larger than it is
+            wire.abort()                 # outside the lock: the watchdog's own lock is never taken under it
 
 
 def _fits(spec: _Speculation, budget, usage) -> bool:
