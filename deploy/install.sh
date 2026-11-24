@@ -9,7 +9,8 @@
 #   sudo bash deploy/install.sh [--dry-run] [--source DIR | --wheel FILE] [--wheelhouse DIR]
 #                               [--prefix DIR] [--python PYTHON] [--unit-dir DIR] [--web] [--websearch]
 #                               [--searxng] [--llm [--llm-user USER]] [--memory [--memory-user USER]]
-#                               [--idle [--idle-user USER]]
+#                               [--idle [--idle-user USER] [--db FILE]]
+#   sudo bash deploy/install.sh --idle-access [--idle-user USER] [--db FILE] [--dry-run]
 #
 # --dry-run     print every action and change nothing; allowed without root so the plan can be reviewed
 # --source DIR  project folder to install from (default: the folder above this script)
@@ -36,20 +37,38 @@
 #               and neuroscifi-wake.service and .path (reload on request, for the console and the worker, which may
 #               not start services themselves). Creates the request folder /var/lib/neuroscifi-wake (owner: the idle
 #               account, group: neuroscifi, mode 2770, so the services may leave a request and nothing else) and
-#               lets the console, worker and Pocket units write there. Set NSF_DB in a drop-in for both services
-#               and NSF_WAKE_DIR in /etc/neuroscifi/neuroscifi.env (the closing message says how).
+#               lets the console, worker and Pocket units write there. Then arranges what the two accounts share
+#               (--idle-access, below). Set NSF_DB in a drop-in for both services and NSF_WAKE_DIR in
+#               /etc/neuroscifi/neuroscifi.env (the closing message says how).
 # --idle-user U  the account those units run as (default: --llm-user, then --memory-user, then $SUDO_USER): the one
 #               that runs the model services; it must be in the docker group
+# --idle-access  only arrange what the service account and the idle account share, and stop (no package, no units):
+#               run it again after `nsf init`, because the database does not exist before. It
+#                 - adds the idle account to the group neuroscifi (it can then read /etc/neuroscifi as well; it is in
+#                   the docker group, which already equals root on this host);
+#                 - lets that group enter /var/lib/neuroscifi without listing it (0700 -> 0710);
+#                 - lets it read the instance database (0600 -> 0640, with its -wal and -shm), which the idle pass
+#                   needs to see whether a research task runs; nothing else in that folder changes;
+#                 - makes FILE.resources (the audio beacon, the use markers, the idle policy's state, events and
+#                   locks) a folder both write: setgid, 2770, the files in it group-writable;
+#                 - installs a polkit rule that lets the idle account start and stop the model services' units, and
+#                   nothing else (the idle pass and the wake unit do it without a password).
+#               An existing folder or file keeps its owner; only the modes and groups named here change.
+# --db FILE     the instance database those steps are about (default /var/lib/neuroscifi/instance.sqlite)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$(cd "$HERE/.." && pwd)"
 WHEEL="" WHEELHOUSE="" PREFIX=/opt/neuroscifi PYTHON="" UNIT_DIR=/etc/systemd/system DRY=0 WEB=0 WEBSEARCH=0
-SEARXNG=0 LLM=0 LLM_USER="${SUDO_USER:-}" MEMORY=0 MEMORY_USER="" IDLE=0 IDLE_USER=""
+SEARXNG=0 LLM=0 LLM_USER="${SUDO_USER:-}" MEMORY=0 MEMORY_USER="" IDLE=0 IDLE_USER="" ACCESS_ONLY=0 IDLE_DB=""
 SVC_USER=neuroscifi
 STATE_DIR=/var/lib/neuroscifi
-WAKE_DIR=/var/lib/neuroscifi-wake      # beside the state folder, not inside it: that one is the service user's alone (0700)
+WAKE_DIR=/var/lib/neuroscifi-wake      # beside the state folder, not inside it: the service account owns that one
 CONF_DIR=/etc/neuroscifi
+POLKIT_DIR=/etc/polkit-1/rules.d
+POLKIT_RULE=49-neuroscifi-idle.rules
+# The units the idle policy stops and starts (resources/idle.py SERVICES; tests/test_deploy_units.py keeps them equal).
+IDLE_UNITS="neuroscifi-vllm.service neuroscifi-voice-asr.service neuroscifi-voice-tts.service neuroscifi-searxng.service neuroscifi-memory-embed.service neuroscifi-memory-rerank.service"
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 die() { echo "install.sh: $*" >&2; exit 1; }
@@ -72,6 +91,8 @@ while [ $# -gt 0 ]; do
     --memory-user) [ $# -ge 2 ] || die "--memory-user needs a value"; MEMORY_USER="$2"; shift ;;
     --idle) IDLE=1 ;;
     --idle-user) [ $# -ge 2 ] || die "--idle-user needs a value"; IDLE_USER="$2"; shift ;;
+    --idle-access) ACCESS_ONLY=1 ;;
+    --db) [ $# -ge 2 ] || die "--db needs a value"; IDLE_DB="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
@@ -96,12 +117,20 @@ if [ "$MEMORY" -eq 1 ]; then
   [[ "$SOURCE" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--memory: the source folder path has unexpected characters: $SOURCE"
 fi
 
-if [ "$IDLE" -eq 1 ]; then
-  # IDLE_USER, SOURCE and WAKE_DIR are spliced into the idle and wake units with sed, like PREFIX.
+if [ "$IDLE" -eq 1 ] || [ "$ACCESS_ONLY" -eq 1 ]; then
+  # IDLE_USER, SOURCE and WAKE_DIR are spliced into the idle and wake units with sed, like PREFIX; IDLE_USER also
+  # into the polkit rule.
   IDLE_USER="${IDLE_USER:-${LLM_USER:-$MEMORY_USER}}"
   [[ "$IDLE_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "--idle needs --idle-user USER (a plain account name; got: '$IDLE_USER')"
   [ "$IDLE_USER" != root ] || die "--idle-user must not be root"
+  [ "$IDLE_USER" != "$SVC_USER" ] || die "--idle-user must not be $SVC_USER: that account has no Docker access; name the one that runs the model services"
   [[ "$SOURCE" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--idle: the source folder path has unexpected characters: $SOURCE"
+  IDLE_DB="${IDLE_DB:-$STATE_DIR/instance.sqlite}"
+  [[ "$IDLE_DB" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--db must be a plain absolute path (got: $IDLE_DB)"
+  case "$IDLE_DB/" in */../*) die "--db must not contain '..'" ;; esac
+  case "$IDLE_DB" in "$STATE_DIR"/*) ;; *) die "--db must be a file in $STATE_DIR (got: $IDLE_DB): the two accounts share that folder's entrance and nothing above it" ;; esac
+elif [ -n "$IDLE_DB" ]; then
+  die "--db goes with --idle or --idle-access"
 fi
 
 if [ "$DRY" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
@@ -112,6 +141,103 @@ fi
 # Run a command, or print it in a dry run.
 act() { if [ "$DRY" -eq 1 ]; then printf '+'; printf ' %q' "$@"; printf '\n'; else "$@"; fi; }
 note() { echo "== $*"; }
+
+# What the service account and the idle account share (RESOURCE_SCHEDULING.md §3d). Idempotent; an existing folder
+# or file keeps its owner, and nothing but the modes and groups named here is changed. $1: "units" also writes the
+# polkit rule (it names units, so it is only useful once they are installed).
+idle_access() {
+  local resources="$IDLE_DB.resources" file
+  note "what $SVC_USER (console, worker, Pocket) and $IDLE_USER (idle pass, wake requests) share"
+  if [ "$DRY" -eq 0 ]; then
+    getent passwd "$SVC_USER" >/dev/null || die "the service account $SVC_USER does not exist: run the installer without --idle-access first"
+    getent passwd "$IDLE_USER" >/dev/null || die "--idle-user $IDLE_USER does not exist"
+    [ -d "$STATE_DIR" ] || die "$STATE_DIR does not exist: run the installer without --idle-access first"
+  fi
+  # One group for both: the service account's own. Its units run with PrivateUsers=yes, where only the unit's own
+  # user and group are certain to keep their meaning, so what the idle account writes for them carries that group.
+  if id -nG "$IDLE_USER" 2>/dev/null | tr ' ' '\n' | grep -qx "$SVC_USER"; then
+    echo "$IDLE_USER is in the group $SVC_USER already"
+  else
+    act gpasswd -a "$IDLE_USER" "$SVC_USER"
+    echo "# $IDLE_USER can now read $CONF_DIR too (root:$SVC_USER 0750). It is in the docker group, which equals root here."
+  fi
+  # The entrance: the group may pass through, not list. Nothing inside changes except what follows.
+  act chmod 0710 "$STATE_DIR"
+  # The database: readable by the group, for the one question "does a research task run". Its write-ahead log's
+  # files take the database's mode when SQLite creates them; existing ones are set here.
+  if [ -f "$IDLE_DB" ] || [ "$DRY" -eq 1 ]; then
+    for file in "$IDLE_DB" "$IDLE_DB-wal" "$IDLE_DB-shm"; do
+      if [ -f "$file" ] || { [ "$DRY" -eq 1 ] && [ "$file" = "$IDLE_DB" ]; }; then
+        act chgrp "$SVC_USER" "$file"
+        act chmod 0640 "$file"
+      fi
+    done
+  else
+    echo "# $IDLE_DB does not exist yet: create the individual (nsf init), then run this again with --idle-access."
+    echo "# Until then the idle pass unloads nothing and says why (nsf resources tick)."
+  fi
+  # The folder both write. setgid: a file the idle account creates there belongs to the group $SVC_USER; the code
+  # makes its own files group-writable when it finds the folder like this, and private otherwise.
+  if [ -d "$resources" ]; then
+    act chgrp "$SVC_USER" "$resources"
+    act chmod 2770 "$resources"
+    if [ "$DRY" -eq 1 ]; then
+      echo "+ chgrp $SVC_USER and chmod g+rw: every plain file directly in $resources"
+    else
+      find "$resources" -maxdepth 1 -type f -exec chgrp "$SVC_USER" {} + -exec chmod g+rw {} +
+    fi
+  else
+    act install -d -m 2770 -o "$SVC_USER" -g "$SVC_USER" "$resources"
+  fi
+  # The request folder: the idle account owns it (it removes the requests), the service account's group may create
+  # files in it, nobody else may enter. Sticky: a request can be removed by whoever left it and by the folder's
+  # owner only, so one service cannot take away another's. An existing folder is left as it is (install -d would
+  # reset its mode and owner): the owner may have chosen otherwise.
+  if [ -d "$WAKE_DIR" ]; then
+    echo "$WAKE_DIR exists; left as it is ($(stat -c '%U:%G %a' "$WAKE_DIR"))"
+  else
+    act install -d -m 3770 -o "$IDLE_USER" -g "$SVC_USER" "$WAKE_DIR"
+  fi
+  if [ "${1:-}" = units ]; then
+    # Stopping and starting a system unit needs authorisation; the idle pass and the wake unit run without a
+    # terminal (systemctl --no-ask-password). The rule allows this one account these verbs on these units.
+    note "polkit rule $POLKIT_DIR/$POLKIT_RULE: $IDLE_USER may start and stop the model services' units"
+    local list="" unit
+    for unit in $IDLE_UNITS; do list="$list\"$unit\", "; done
+    local rule
+    rule="// NeuroSciFi (deploy/install.sh --idle): the idle policy's account may start and stop the model services.
+polkit.addRule(function(action, subject) {
+    var units = [${list%, }];
+    var verbs = [\"start\", \"stop\"];
+    if (action.id == \"org.freedesktop.systemd1.manage-units\" && subject.user == \"$IDLE_USER\" &&
+            units.indexOf(action.lookup(\"unit\")) >= 0 && verbs.indexOf(action.lookup(\"verb\")) >= 0) {
+        return polkit.Result.YES;
+    }
+});"
+    if [ "$DRY" -eq 1 ]; then
+      echo "+ write $POLKIT_DIR/$POLKIT_RULE (mode 0644):"; printf '%s\n' "$rule" | sed 's/^/    /'
+    elif [ -d "$(dirname "$POLKIT_DIR")" ]; then
+      install -d -m 0755 "$POLKIT_DIR"
+      printf '%s\n' "$rule" > "$POLKIT_DIR/$POLKIT_RULE.tmp"
+      chmod 0644 "$POLKIT_DIR/$POLKIT_RULE.tmp"
+      mv -f "$POLKIT_DIR/$POLKIT_RULE.tmp" "$POLKIT_DIR/$POLKIT_RULE"
+    else
+      echo "# warning: no $(dirname "$POLKIT_DIR") on this host (polkit is not installed): $IDLE_USER cannot stop or start a"
+      echo "# system unit without it; the idle pass then records each failed unload and unloads nothing."
+    fi
+  fi
+}
+
+if [ "$ACCESS_ONLY" -eq 1 ]; then
+  idle_access units
+  cat <<MSG
+
+== done$([ "$DRY" -eq 1 ] && echo " (dry run: nothing was changed)")
+$IDLE_USER reads $IDLE_DB and shares $IDLE_DB.resources with $SVC_USER.
+A session of $IDLE_USER that is already open keeps its old groups; the units read them when they next start.
+MSG
+  exit 0
+fi
 
 if [ -z "$PYTHON" ]; then
   for candidate in python3.12 python3; do
@@ -270,18 +396,11 @@ if [ "$IDLE" -eq 1 ]; then
   fi
   id -nG "$IDLE_USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker \
     || echo "# warning: $IDLE_USER is not in the docker group; stopping and starting the model services would fail"
-  # The request folder: the idle account owns it (it removes the requests), the service user's group may create
-  # files in it (setgid: whatever is made there keeps that group), nobody else may enter. An existing folder is
-  # left as it is (install -d would reset its mode and owner): the owner may have chosen otherwise.
-  if [ -d "$WAKE_DIR" ]; then
-    echo "$WAKE_DIR exists; left as it is ($(stat -c '%U:%G %a' "$WAKE_DIR"))"
-  else
-    act install -d -m 2770 -o "$IDLE_USER" -g "$SVC_USER" "$WAKE_DIR"
-  fi
   IDLE_SED=("s#@NSF_USER@#$IDLE_USER#g" "s#@NSF_REPO@#$SOURCE#g" "s#@NSF_WAKE_DIR@#$WAKE_DIR#g")
   for unit in neuroscifi-idle.service neuroscifi-idle.timer neuroscifi-wake.service neuroscifi-wake.path; do
     install_unit "$unit" "${IDLE_SED[@]}"
   done
+  idle_access units
 fi
 if [ "$UNIT_DIR" = /etc/systemd/system ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   act systemctl daemon-reload
@@ -303,14 +422,13 @@ if [ "$IDLE" -eq 1 ]; then
 The idle policy's units are installed disabled and do nothing until an idle timeout is set. To use them:
   1. name the individual for both services:  systemctl edit neuroscifi-idle.service neuroscifi-wake.service
        [Service]
-       Environment=NSF_DB=$STATE_DIR/instance.sqlite
+       Environment=NSF_DB=$IDLE_DB
   2. let the console, the worker and Pocket ask for a reload: add  NSF_WAKE_DIR=$WAKE_DIR  to $CONF_DIR/neuroscifi.env
      and restart them
   3. systemctl enable --now neuroscifi-idle.timer neuroscifi-wake.path
-  4. set a timeout as $IDLE_USER:  nsf resources idle --set vllm=30m   (RUNBOOK.md, "Idle unloading")
-$IDLE_USER must be able to read $STATE_DIR/instance.sqlite and write the folder beside it that ends in
-".resources": this script does not arrange that (the state folder is $SVC_USER's alone, 0700). RUNBOOK.md says
-what the two accounts share and what is not verified.
+  4. set a timeout as $IDLE_USER:  nsf resources idle --db $IDLE_DB --set vllm=30m   (RUNBOOK.md, "Idle unloading")
+$IDLE_USER now reads $IDLE_DB and shares $IDLE_DB.resources with $SVC_USER (RUNBOOK.md, "The two accounts").
+$([ -f "$IDLE_DB" ] || echo "The database does not exist yet: after \`nsf init\`, run  sudo bash deploy/install.sh --idle-access --idle-user $IDLE_USER")
 MSG
 fi
 [ "$MEMORY" -eq 0 ] || echo "neuroscifi-memory-embed.service and neuroscifi-memory-rerank.service are installed disabled: enable them after the weights are in place (RUNBOOK.md, memory search), then run \`nsf setup\` once so the individual uses them."

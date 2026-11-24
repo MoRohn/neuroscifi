@@ -25,11 +25,11 @@ from test_resources_idle import _unload_idle, fake, memory_host, spool      # no
 def test_a_process_that_asks_never_creates_the_wake_folder_and_never_changes_its_mode(spool, monkeypatch, tmp_path):  # noqa: F811
     fake = spool      # noqa: F811
     _unload_idle(fake, "embed", "rerank")
-    os.chmod(fake.spool, 0o2770)                                   # as deploy/install.sh --idle makes it
+    os.chmod(fake.spool, 0o3770)                                   # as deploy/install.sh --idle makes it
     with idle.using_now(fake.path, "embed", purpose="memory lookup") as state:
         assert state["action"] == "loading"
     assert (fake.spool / "embed.wake").read_bytes() == b""
-    assert stat.S_IMODE(fake.spool.stat().st_mode) == 0o2770       # honoured, not forced back to 0700
+    assert stat.S_IMODE(fake.spool.stat().st_mode) == 0o3770       # honoured, not forced back to 0700
     missing = tmp_path / "not-made-yet" / "wake"
     monkeypatch.setenv("NSF_WAKE_DIR", str(missing))
     idle._DETACHED.clear()
@@ -42,8 +42,9 @@ def test_the_wake_command_makes_a_missing_folder_for_its_group_and_leaves_an_exi
     fake = spool      # noqa: F811
     made = tmp_path / "spool" / "wake"
     assert idle.serve_wake_requests(fake.path, made) == []
-    assert stat.S_IMODE(made.stat().st_mode) == idle.WAKE_DIR_MODE == 0o2770
-    for mode in (0o700, 0o750, 0o2775):
+    # setgid for the group that may ask; sticky, so one asker cannot remove another's request (only the owner can)
+    assert stat.S_IMODE(made.stat().st_mode) == idle.WAKE_DIR_MODE == 0o3770
+    for mode in (0o700, 0o750, 0o2770, 0o2775):
         os.chmod(fake.spool, mode)
         assert idle.serve_wake_requests(fake.path, fake.spool) == []
         assert stat.S_IMODE(fake.spool.stat().st_mode) == mode     # the installer's or the owner's choice stands

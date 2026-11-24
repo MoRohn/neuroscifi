@@ -11,8 +11,8 @@
   nsf resources wake [--dir DIR]                  serve the wake requests in DIR (default $NSF_WAKE_DIR): reload each
                                                   service a request names, if the idle policy unloaded it and a
                                                   reload is due (neuroscifi-wake.service runs this). Creates DIR if
-                                                  missing (mode 2770); an entry that is not a plain file is removed
                                                   or moved aside, and if that is impossible the command stays 30 s
+                                                  missing (mode 3770); an entry that is not a plain file is removed
 """
 from __future__ import annotations
 

@@ -53,7 +53,7 @@ from urllib.request import ProxyHandler, build_opener
 
 _DIRECT = build_opener(ProxyHandler({}))      # a loopback service's /metrics is never read through a proxy
 
-from . import monitor, policy
+from . import monitor, policy, shared
 
 CRITICAL_SHARE = 0.25          # at critical pressure the idle timeout is a quarter of the configured one ...
 CRITICAL_FLOOR = 120.0         # ... but never under two minutes
@@ -327,8 +327,8 @@ def _run(args, timeout):
 
 @contextmanager
 def _flock(path, mode):
-    path.parent.mkdir(mode=0o700, exist_ok=True)
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    shared.ensure_folder(path.parent)
+    fd = shared.open_file(path, os.O_RDWR)
     try:
         fcntl.flock(fd, mode)
         yield fd
@@ -378,10 +378,8 @@ class Idle:
         return data
 
     def _write(self, data) -> None:
-        self.folder.mkdir(mode=0o700, exist_ok=True)
-        tmp = self._file("idle.json.tmp")
-        tmp.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
-        os.replace(tmp, self._file("idle.json"))
+        shared.ensure_folder(self.folder)
+        shared.write_text(self._file("idle.json"), json.dumps(data, indent=1, sort_keys=True))
 
     @contextmanager
     def _state(self):
@@ -406,17 +404,15 @@ class Idle:
 
     def _event(self, service, action, reason, **extra) -> dict:
         event = {"at": round(self.clock(), 3), "service": service, "action": action, "reason": reason, **extra}
-        self.folder.mkdir(mode=0o700, exist_ok=True)
+        shared.ensure_folder(self.folder)
         path = self._file("idle-events.jsonl")
         with _flock(self._file("idle-events.lock"), fcntl.LOCK_EX):
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            fd = shared.open_file(path, os.O_WRONLY | os.O_APPEND)
             with os.fdopen(fd, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(event, sort_keys=True) + "\n")
             lines = path.read_text(encoding="utf-8").splitlines()
             if len(lines) > 2 * EVENTS_KEPT:
-                tmp = path.with_suffix(".tmp")
-                tmp.write_text("\n".join(lines[-EVENTS_KEPT:]) + "\n", encoding="utf-8")
-                os.replace(tmp, path)
+                shared.write_text(path, "\n".join(lines[-EVENTS_KEPT:]) + "\n")
         return event
 
     # ---- configuration ----------------------------------------------------------------------------------------
@@ -478,16 +474,39 @@ class Idle:
     def voice_session(self) -> bool:
         return policy.voice_session_active(self.db_path, now=self.clock())
 
-    def running_tasks(self) -> int:
-        if not self.db_path.exists():
-            return 0
+    def running_tasks(self) -> int | None:
+        """How many research tasks run now (a running stage with a live lease); None when this account cannot
+        tell. The pass then unloads nothing: where the idle policy runs as another account than the one that owns
+        the database (deploy/install.sh --idle), a database it may not read must not read as "nothing runs"."""
         try:
-            with closing(sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=5)) as db:
-                return db.execute(f"SELECT count(*) FROM web_tasks WHERE status IN ({','.join('?' * len(RUNNING))}) "
-                                  "AND lease_holder IS NOT NULL AND lease_expires_at>=?",
-                                  (*RUNNING, self.clock())).fetchone()[0]
-        except sqlite3.Error:
-            return 0          # no web cortex tables yet: nothing runs
+            if not self.db_path.exists():
+                return 0
+        except OSError:
+            return None       # the folder itself is closed to this account
+        if not os.access(self.db_path, os.R_OK):
+            return None
+        sql = (f"SELECT count(*) FROM web_tasks WHERE status IN ({','.join('?' * len(RUNNING))}) "
+               "AND lease_holder IS NOT NULL AND lease_expires_at>=?")
+        # A reader that may not write beside the database (the operations account: the folder is the service
+        # account's) cannot create the write-ahead log's files. While a process has the database open they exist
+        # and the ordinary read-only open works. When they do not exist nobody has it open, so the file is complete
+        # as it stands and is read as it stands (immutable: no lock file is needed).
+        plain = f"file:{self.db_path}?mode=ro"
+        attempts = [plain]
+        if not os.path.exists(f"{self.db_path}-wal") and not os.access(self.db_path.parent, os.W_OK):
+            attempts.append(f"{plain}&immutable=1")
+        for n, uri in enumerate(attempts):
+            try:
+                with closing(sqlite3.connect(uri, uri=True, timeout=5)) as db:
+                    return db.execute(sql, (*RUNNING, self.clock())).fetchone()[0]
+            except sqlite3.OperationalError as error:
+                if "no such table" in str(error):
+                    return 0  # no web cortex tables yet: nothing runs
+                if n + 1 == len(attempts):
+                    return None
+            except sqlite3.Error:
+                return None
+        return None
 
     def last_used(self, name) -> float | None:
         try:
@@ -496,12 +515,8 @@ class Idle:
             return None
 
     def touch(self, name) -> None:
-        self.folder.mkdir(mode=0o700, exist_ok=True)
-        path = self._file(f"idle-used-{name}")
-        now = self.clock()
-        with open(path, "a"):
-            pass
-        os.utime(path, (now, now))
+        shared.ensure_folder(self.folder)
+        shared.touch(self._file(f"idle-used-{name}"), self.clock())
 
     # ---- the policy -------------------------------------------------------------------------------------------
     def effective_timeout(self, seconds, level) -> float | None:
@@ -520,7 +535,10 @@ class Idle:
         if self.voice_session():
             blockers.append("a voice session is open")
         tasks = self.running_tasks()
-        if tasks:
+        if tasks is None:
+            blockers.append("whether a research task runs cannot be told: this account may not read the instance "
+                            "database (deploy/install.sh --idle-access grants it)")
+        elif tasks:
             blockers.append(f"{tasks} research task(s) running")
         now = self.clock()
         decisions = {}
@@ -947,10 +965,8 @@ def _just_spawned(idle, name, *, mark=False) -> bool:
     path = idle._file(f"idle-spawned-{name}")
     try:
         if mark:
-            idle.folder.mkdir(mode=0o700, exist_ok=True)
-            with open(path, "a"):
-                pass
-            os.utime(path, (idle.clock(), idle.clock()))
+            shared.ensure_folder(idle.folder)
+            shared.touch(path, idle.clock())
             return True
         return 0 <= idle.clock() - path.stat().st_mtime < SPAWN_GRACE
     except OSError:
@@ -1050,7 +1066,8 @@ class _Requested:
         return None if self.path.exists() else 0
 
 
-WAKE_DIR_MODE = 0o2770     # the request folder: its owner (the account that serves) and its group (who may ask)
+WAKE_DIR_MODE = 0o3770     # the request folder: its owner (the account that serves) and its group (who may ask);
+#                            sticky, so a request is removed by whoever left it or by the folder's owner, nobody else
 STUCK_HOLD = 30.0          # seconds `nsf resources wake` stays when an entry can be neither removed nor moved aside
 STUCK_PREFIX = ".stuck-"   # hidden, and no *.wake name: systemd's PathExistsGlob= does not see it
 

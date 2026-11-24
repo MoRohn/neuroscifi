@@ -10,8 +10,8 @@
 # wait and event as any reload. An entry that is not a plain file is removed or moved aside; if that is impossible
 # the command stays for 30 s, so the path unit starts it twice a minute at most (StartLimit below is never reached).
 # It runs as the docker user that owns the services, like neuroscifi-idle.service, and needs what that unit needs:
-# NSF_DB, read-write access to `<NSF_DB>.resources/`, and ownership of the request folder (mode 2770, group: the
-# console's; deploy/install.sh --idle creates it).
+# NSF_DB, read-write access to `<NSF_DB>.resources/`, and ownership of the request folder (mode 3770, group: the
+# console's; deploy/install.sh --idle creates it and arranges the rest, see RESOURCE_SCHEDULING.md §3d).
 # Installed (disabled) by `deploy/install.sh --idle [--idle-user USER]`, which fills the placeholders. Then:
 #   systemctl edit neuroscifi-wake.service      # [Service] Environment=NSF_DB=<the instance database>
 #   add NSF_WAKE_DIR=<the request folder> to /etc/neuroscifi/neuroscifi.env (console, worker, Pocket)

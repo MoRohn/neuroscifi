@@ -204,8 +204,9 @@ def test_install_sh_installs_the_idle_and_wake_units_only_when_asked_with_their_
                             "nsfmodels"], capture_output=True, text=True)
     assert asked.returncode == 0, asked.stderr
     out = asked.stdout
-    # the folder: the serving account owns it, the service user's group may create files in it, setgid, nobody else
-    assert "+ install -d -m 2770 -o nsfmodels -g neuroscifi /var/lib/neuroscifi-wake\n" in out
+    # the folder: the serving account owns it, the service user's group may create files in it, setgid, nobody else;
+    # sticky, so a request is removed by whoever left it or by the owner
+    assert "+ install -d -m 3770 -o nsfmodels -g neuroscifi /var/lib/neuroscifi-wake\n" in out
     sed = {name: next(row for row in out.splitlines() if row.startswith("+ sed") and f"/{name} >" in row)
            for name in ("neuroscifi-idle.service", "neuroscifi-idle.timer", "neuroscifi-wake.service",
                         "neuroscifi-wake.path", "neuroscifi-console.service", "neuroscifi-webcortex.service",

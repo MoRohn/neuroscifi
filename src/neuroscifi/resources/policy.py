@@ -29,7 +29,7 @@ from pathlib import Path
 import threading
 import time
 
-from . import monitor
+from . import monitor, shared
 
 BACKGROUND_MODEL_SLOTS = 2          # background model calls at a time (= the default concurrent autonomy cap)
 BACKGROUND_MODEL_SLOTS_AUDIO = 1    # ... while a voice session is capturing or speaking
@@ -135,15 +135,14 @@ def background_model_slot(db_path, *, deadline: float | None = None, sleep=time.
     if not db_path:
         yield 0
         return
-    folder = Path(f"{db_path}.resources")
-    folder.mkdir(mode=0o700, exist_ok=True)
+    folder = shared.ensure_folder(f"{db_path}.resources")
     give_up = time.monotonic() + SLOT_WAIT
     if deadline is not None:
         give_up = min(give_up, deadline)
     held = None
     while held is None:
         for i in range(model_slots(db_path)):
-            fd = os.open(folder / f"model-slot-{i}.lock", os.O_RDWR | os.O_CREAT, 0o600)
+            fd = shared.open_file(folder / f"model-slot-{i}.lock", os.O_RDWR)
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except OSError:
@@ -178,11 +177,9 @@ class AudioBeacon:
         return self
 
     def write(self, active: bool, session: bool = False) -> None:
-        self.path.parent.mkdir(mode=0o700, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"active": bool(active), "session": bool(session), "at": self.clock(),
-                                   "pid": os.getpid()}), encoding="utf-8")
-        os.replace(tmp, self.path)
+        shared.ensure_folder(self.path.parent)
+        shared.write_text(self.path, json.dumps({"active": bool(active), "session": bool(session),
+                                                 "at": self.clock(), "pid": os.getpid()}))
 
     def tick(self) -> None:
         """Write when audio or an open session starts or stops and every BEACON_HEARTBEAT seconds while either is on;
