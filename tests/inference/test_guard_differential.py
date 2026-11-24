@@ -48,7 +48,7 @@ GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording")
 INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 306}
 SIZES = {"restriction": 111, "case": 48, "unseen": 37, "restatement": 45, "cut": 47, "wording": 18}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 3, "cut": 0, "wording": 0}
+UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 0, "wording": 0}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
 RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
 CASE_MARK = reasoning.CASE_CHANGED.split("'")[0]
@@ -56,7 +56,7 @@ UNSEEN_MARK = reasoning.UNSEEN_IN_CLAIM.split("{")[0]
 PASSIVE_MARK = reasoning.PASSIVE_SWAP.split("'")[0]
 # What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
 STRICTER = {"review": 24, "gap": 139}
-LOOSENED = {"review": 6, "gap": 14}
+LOOSENED = {"review": 6, "gap": 11}
 REFUSED = {CUT_MARK: 40, RESTRICTION_MARK: 74, CASE_MARK: 24, UNSEEN_MARK: 18, PASSIVE_MARK: 7}
 
 
@@ -158,10 +158,48 @@ def test_what_is_loosened_is_of_a_class_the_differential_proves(result):
 
 
 def test_the_differential_reports_a_wider_exemption_as_different(monkeypatch, reference):
-    """The class is proven, not assumed: an exemption for sentences that only resemble a claim is reported."""
+    """The class is proven, not assumed: an exemption for sentences that only resemble a claim is reported, because
+    the proof uses its own frozen copy of the class (gd._exact_restatement), not the tree's restates()."""
     monkeypatch.setattr(reasoning, "restates", lambda item, b: True)
     moved = gd.differences(reasoning, reference)
     assert len(moved["different"]) > 0
+
+
+def test_the_frozen_class_is_the_exact_restatement_and_nothing_more():
+    """gd._exact_restatement holds 307b907's attribution table and needs: one claim, its own sources, its text
+    character for character with that attribution, no 'according to', no unseen character, no pronoun lead."""
+    def bundle(text, state="supported", sources=(1, 2)):
+        return {"claims": [{"id": "C1", "state": state, "sources": list(sources), "text": text}]}
+    anchor = {"rejected": [{"text": None, "reasons": [gd.ANCHOR_REASON + ": 3: says what ..."]}]}
+
+    def proven(item_text, b, cites=(1, 2), claims=("C1",)):
+        ref = {"rejected": [{"text": item_text, "reasons": anchor["rejected"][0]["reasons"]}]}
+        return gd._exact_restatement(reasoning, {"text": item_text, "citations": list(cites), "claims": list(claims)},
+                                     b, ref)
+    claim = "The flaw is fixed in versions 2 and 3"
+    assert proven(claim + ".", bundle(claim))
+    assert proven(claim + ", according to one source.", bundle(claim, "insufficient", (3,)), cites=(3,))
+    assert proven(claim + ", according to the cited sources, though the sources disagree.",
+                  bundle(claim, "conflicting", (3, 4)), cites=(3, 4))
+    assert not proven(claim + ".", bundle(claim), cites=(1,))                         # not its own sources
+    assert not proven(claim + ".", bundle(claim), claims=("C1", "C2"))
+    assert not proven("The flaw is fixed in Versions 2 and 3.", bundle(claim))       # not character for character
+    assert not proven(claim + ", according to one source.", bundle(claim))           # a hedge on a supported claim
+    assert not proven("It is fixed in versions 2 and 3.", bundle("It is fixed in versions 2 and 3"))
+    assert not proven("Fixed according to the notes in 2 and 3.", bundle("Fixed according to the notes in 2 and 3"))
+    assert not proven("Fixed in 2\u200b and 3.", bundle("Fixed in 2\u200b and 3"))
+    ref_other = {"rejected": [{"text": claim + ".", "reasons": ["says more than its cited claims support: x"]}]}
+    assert not gd._exact_restatement(reasoning, {"text": claim + ".", "citations": [1, 2], "claims": ["C1"]},
+                                     bundle(claim), ref_other)                      # rejected for more than the anchor
+
+
+def test_a_pronoun_led_claim_gets_no_exemption():
+    """Review L1: "It is fixed in versions 2 and 3 but not in NumPy 2.5.5." was accepted word for word under the
+    exemption; out of its page "It" attaches to whatever the answer is about. It is rejected as at 307b907."""
+    b = one_claim("supported", (1, 2), text="It is fixed in versions 2 and 3 but not in NumPy 2.5.5")
+    ok, bad = reasoning.guard(reasoning.compose({"sentences": [{"claims": ["C1"], "text":
+                                                  "It is fixed in versions 2 and 3 but not in NumPy 2.5.5."}]}, b), b)
+    assert ok == [] and bad[0]["reasons"][0].startswith(reasoning.ANCHOR_TIED)
 
 
 def test_the_differential_reports_a_guard_that_accepts_more(monkeypatch, reference):

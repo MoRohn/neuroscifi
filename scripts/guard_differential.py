@@ -220,11 +220,51 @@ def refusal_marks(reasoning) -> tuple[str, ...]:
     return tuple(re.split(r"[{']", t)[0] for t in templates if t)
 
 
+# The exact-restatement class, frozen here so that the proof does not run the code it proves: a later change to
+# reasoning.restates() cannot widen the class without failing the test. The attribution table is 307b907's
+# (reasoning.HEDGES, attribution()): the weakest cited state in this order, "one source" for one source.
+_HEDGES_307B907 = (("disputed", "according to {who}, though the claim is disputed"),
+                   ("conflicting", "according to {who}, though the sources disagree"),
+                   ("temporally_unresolved", "according to {who}, possibly out of date"),
+                   ("insufficient", "according to {who}"), ("not_evaluated", "according to {who}"))
+_UNSEEN_CATEGORIES = frozenset({"Cf", "Cc", "Co", "Cn", "Cs", "Zl", "Zp"})
+_ATTRIBUTION_WORDS = re.compile(r"\baccording\s+to\b", re.IGNORECASE)
+_PRONOUN_LEAD = frozenset("it its they their them he she his her we this these those that there".split())
+
+
+def _frozen_key(text) -> str | None:
+    import unicodedata
+    text = " ".join(str(text or "").split())
+    if not text or any(unicodedata.category(ch) in _UNSEEN_CATEGORIES for ch in text) or \
+            unicodedata.normalize("NFKC", text) != text:
+        return None
+    return text[:-1].rstrip() if text.endswith(".") and not text.endswith("..") else text
+
+
 def _exact_restatement(reasoning, item: dict, bundle: dict, reference: dict) -> bool:
-    """The one class of sentence this tree may accept where the reference did not: `item` is exactly one cited
-    claim, word for word, with the code's own attribution (reasoning.restates), and the reference rejected that very
-    text for the anchor rule and for nothing else."""
-    if not reasoning.restates(dict(item, attributed=True), bundle):
+    """The one class of sentence this tree may accept where the reference did not, checked without the tree's
+    code: `item` cites exactly one claim, through that claim's own sources; the claim holds no "according to", no
+    character a reader does not see, no compatibility form, and does not start with a pronoun; the item's text is
+    the claim's text character for character (white space and one final full stop aside), followed by exactly
+    307b907's attribution for the claim's state and source count (nothing when supported); and the reference
+    rejected that very text for the anchor rule and for nothing else."""
+    claims = {c["id"]: c for c in bundle.get("claims") or []}
+    ids = list(dict.fromkeys(item.get("claims") or []))
+    if len(ids) != 1 or ids[0] not in claims:
+        return False
+    claim = claims[ids[0]]
+    sources = sorted(set(claim.get("sources") or []))
+    if sorted(set(item.get("citations") or [])) != sources:
+        return False
+    key, text = _frozen_key(claim.get("text")), _frozen_key(item.get("text"))
+    if key is None or text is None or _ATTRIBUTION_WORDS.search(key) or \
+            key.split(" ", 1)[0].lower().strip(",.;:") in _PRONOUN_LEAD:
+        return False
+    hedge = next((h for state, h in _HEDGES_307B907 if state == claim.get("state")), None)
+    if hedge is None and claim.get("state") != "supported":
+        hedge = "according to {who}"
+    tail = f", {hedge.format(who='one source' if len(sources) == 1 else 'the cited sources')}" if hedge else ""
+    if text != key + tail:
         return False
     theirs = [r for r in reference.get("rejected") or [] if r["text"] == item["text"]]
     return bool(theirs) and all(reason.startswith(ANCHOR_REASON) for r in theirs for reason in r["reasons"])

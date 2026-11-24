@@ -2442,14 +2442,23 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
     # character, the code's attribution and nothing else) it can only find the claim's own structure: "The flaw is
     # fixed in versions 2 and 3." for that very claim gave "3: says what its cited claims say of something else". So
     # when that is the sentence's only fault, it is accepted; with any other fault every reason stays, the anchor's
-    # included, exactly as 0.7.0 gave them.
-    if len(reasons) == 1 and reasons[0].startswith(ANCHOR_TIED) and \
+    # included, exactly as 0.7.0 gave them. Not for a claim whose subject is a bare pronoun ("It is fixed in versions
+    # 2 and 3"): out of its page, "It" attaches to whatever the answer is about.
+    if len(reasons) == 1 and reasons[0].startswith(ANCHOR_TIED) and len(used) == 1 and \
+            not _pronoun_led(used[0]["text"]) and \
             restates({"text": text, "citations": sorted(set(cites)), "claims": ids}, b):
         reasons = []
     return text, cites, ids, used, is_hedged, reasons
 
 
 _UNHEDGED = "as fact without hedging"
+_PRONOUN_LEAD = frozenset("it its they their them he she his her we this these those that there".split())
+
+
+def _pronoun_led(text: str) -> bool:
+    """Whether `text` starts with a pronoun or a pointing word ("It", "They", "This", "Those", "There")."""
+    first = (_E_WORD.findall(_clean(_norm(text))) or [""])[0]
+    return _e_plain(first) in _PRONOUN_LEAD
 ANCHOR_TIED = "ties a version or name to what its cited claims do not say of it"     # the anchor rule's reason
 # One sentence per item: a sentence end followed by more text ("secure. Upgrade now", "secure.Everyone ...").
 _MORE_SENTENCES = re.compile(r"[.!?]+[\"')\]]*(?:\s+\S|(?=[A-Z]))")
