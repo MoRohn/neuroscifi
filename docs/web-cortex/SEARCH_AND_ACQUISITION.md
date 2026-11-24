@@ -259,7 +259,8 @@ What bounds it:
   A fetch ahead that runs out of room at a later request (a redirect chain) stops before that request, and its
   claim *goes on from that hop* on the task's own budget: what it sent is charged as if the reader had sent it, and
   nothing is requested twice. (One case is not continued: a stop in the middle of fetching a robots.txt that
-  redirects, after its first request. That fetch ahead is not used and the page is fetched as usual.) One cut while reading a body is used only when a read made at its turn would stop at
+  redirects, after its first request. That fetch ahead is not used and the page is fetched as usual: what it sent
+  is sent again and counted as unused.) One cut while reading a body is used only when a read made at its turn would stop at
   the same place, and is fetched again otherwise. What remains unusable, and therefore unused traffic: a fetch
   ahead overtaken by a changed deny list (every fetch ahead in flight is thrown away, and the reader fetches those
   pages at their turn under the new policy), by a back-off, or cut by the reader reaching its site, and a page

@@ -11,18 +11,19 @@ including four defaults, so §2 to §4 say for each row which phase touched it.
 
 ## 1. Suites
 
-| Layer | Command | Before | After |
-|---|---|---|---|
-| Lint | `ruff check .` | clean | clean |
-| Python tests | `pytest -q --ignore=tests/e2e` | 3337 passed, 18 skipped | 3483 passed, 18 skipped (146 tests added) |
-| Node checks | `tests/js/*.mjs` (6 files) | all pass | all pass |
-| Numerical reproduction | `scripts/reproduce.py` | 8 of 8 | 8 of 8 |
-| The gate as a whole | `bash scripts/check.sh` | passed in 468 s | passed in 497 s |
-| Acceptance scenarios (simulated) | `nsf acceptance --all` | not rerun at baseline (0.7.0 recorded 7 of 7) | exit 0 |
-| Browser end to end | `bash scripts/e2e.sh` | not run at baseline; the one test that failed here was run on `9e4570a` (passes) | 194 passed, 1 skipped, 1 failed on the final tree: `test_add_a_phone_from_the_console_to_a_paired_phone` saw Chromium's `net::ERR_NETWORK_CHANGED` when another tenant's container brought up a network interface on this shared host (system log, same second). Its file was rerun three times on the same tree: 3 of 3 pass each time. The full run before the last review fixes: 195 passed, 1 skipped. A second full run on the same tree afterwards: 195 passed, 1 skipped, exit 0 |
-| Offline research benchmark | `nsf web bench` | deterministic, safety invariants hold | every metric identical to before, at read-ahead 1 and 4; safety invariants hold |
+| Layer | Command | Before | After phase 1 | After phase 2 (final code) |
+|---|---|---|---|---|
+| Lint | `ruff check .` | clean | clean | clean |
+| Python tests | `pytest -q --ignore=tests/e2e` | 3337 passed, 18 skipped | 3483 passed, 18 skipped (146 tests added) | 3996 passed, 18 skipped (513 more than after phase 1, 659 more than the baseline) |
+| Node checks | `tests/js/*.mjs` (6 files) | all pass | all pass | all pass |
+| Numerical reproduction | `scripts/reproduce.py` | 8 of 8 | 8 of 8 | 8 of 8 |
+| The gate as a whole | `bash scripts/check.sh` | passed in 468 s | passed in 497 s | passed in 659 s |
+| Acceptance scenarios (simulated) | `nsf acceptance --all` | not rerun at baseline (0.7.0 recorded 7 of 7) | exit 0 | exit 0, every scenario passes |
+| Browser end to end | `bash scripts/e2e.sh` | not run at baseline; the one test that failed here was run on `9e4570a` (passes) | 194 passed, 1 skipped, 1 failed on the final tree: `test_add_a_phone_from_the_console_to_a_paired_phone` saw Chromium's `net::ERR_NETWORK_CHANGED` when another tenant's container brought up a network interface on this shared host (system log, same second). Its file was rerun three times on the same tree: 3 of 3 pass each time. The full run before the last review fixes: 195 passed, 1 skipped. A second full run on the same tree afterwards: 195 passed, 1 skipped, exit 0 | 198 passed, 1 skipped, exit 0 (the interim run on the tree before the last read-ahead fix gave the same) |
+| Offline research benchmark | `nsf web bench` | deterministic, safety invariants hold | every metric identical to before, at read-ahead 1 and 4; safety invariants hold | exit 0; every compared metric identical at read-ahead 1, at 4 and at the default (`accel_decisions_read_ahead.json`); safety invariants hold |
 
-The 18 skips are the same on both sides: tests marked live (the real internet, a real remote provider) and
+The phase-2 column is one run on commit `5583823`, the last commit that changes code or tests; the commits after it
+change only these reports, one sentence of a web-reading page and evidence files. The 18 skips are the same on every side: tests marked live (the real internet, a real remote provider) and
 platform-conditional ones.
 
 **Tests changed, not only added.** One: `tests/e2e/test_presence.py::test_voice_events_listening_level_interrupt_and_mute`
@@ -69,7 +70,7 @@ critique-scope file, the listener and wake tests) are not listed: they did not e
 | Governed forgetting | Yes: three cascades widened. Phase 2: every forget cascades into consolidated readings; new forgets by journal position and by camera; `forget_partner` also removes the partner's change markers | `tests/instance/test_erasure.py`, `test_governance.py`, `test_consolidation.py`; new tests failed on the old code first; the security review checked the file, the WAL and free pages at the byte level after each forget | Verified; stricter than before |
 | Schema and migrations | Phase 1: locking only. Phase 2: **schema 14** (one table, `evidence_consolidated`, and indexes; nothing existing altered) | `tests/instance/test_migrations.py` with a two-connection interleaving; a version-13 file keeps every row (`integrity_check`, `foreign_key_check`); the opt-out on a version-13 file is in place before anything is swept; older software refuses a version-14 file | Verified |
 | Saved instance data | Not rewritten. An existing ledger gains three columns and an index on open; older code ignores them. Phase 2: settings saved by 0.7.0 read the new defaults (consolidation on, a 7-day ask window, `read_ahead` 4, the narrowed critique) | Tests with 0.7.0-shaped ledger, settings and web-configuration rows | Verified. The new defaults are behaviour changes (§3) |
-| Intent, discovery, safe fetch, extraction | Reading stage and fetcher. Phase 2: read-ahead on by default (4); every page fetch gated per request | Offline benchmark identical at 1, at 4 and at the default; `tests/webcortex`; 400 and 600 random small webs under tight budgets with 0 differences in the second review pass. The third pass found one case that differs (a redirected robots.txt inside a continued fetch): **open**, [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §5 item 2 | Verified on the benchmark and the fuzz named; one known defect at the budget edge |
+| Intent, discovery, safe fetch, extraction | Reading stage and fetcher. Phase 2: read-ahead on by default (4); every page fetch gated per request | Offline benchmark identical at 1, at 4 and at the default; `tests/webcortex`; 400 and 600 random small webs under tight budgets with 0 differences in the second review pass. The third pass found one case that differed (a redirected robots.txt inside a continued fetch); it was fixed (`989a384`) and the fourth pass found no difference in the reproduction, the replayed scenarios or 600 further random webs | Verified on the benchmark and the fuzz named |
 | SSRF, robots.txt, limits, backoff, budgets, injection containment | Fetcher. Phase 2: the same rules on the fetch-ahead threads; a shared budget for the pages fetched ahead | Benchmark safety summary: all ten hold at 1, 4 and the default; an independent review tried redirects to loopback, link-local, metadata, hex-IP and rebinding addresses on the fetch-ahead path (all refused), and found no second connection to one site after the fix | Verified offline. Traffic can exceed the request budget by the unused read-ahead (§3) |
 | Claims, verification states, word sense, synthesis | No | `tests/webcortex`; benchmark identical | Verified |
 | Model-written answers and the guard | Phase 1: the guard no; `apply`: two arguments and the abstention label. Phase 2: one refusal added to `compose` and `guard`; the critique block of `apply` | The guard suite of `307b907` (827 tests) passes unmodified; a committed differential replays 1,476 inputs recorded from `307b907`'s own code: 1,459 identical, 17 stricter only, 0 different; pipeline benchmark: 44 to 46 model answers in every run, the critique removed 0 | Verified. An attempted change to the guard was withdrawn after review (§3) |
@@ -188,7 +189,7 @@ their shapes in `docs/architecture/API_CONTRACTS.md`.
 | A lost audio chunk; an out-of-order reply | Voice tests | The utterance survives one repeat; the stale reply is not spoken |
 | Phase 2: a stop that lands while a connection is being opened, during a TLS handshake, or while the reader waits for a page fetched ahead | Stop tests; the independent review's scripts | Nothing sent, nothing charged, the fetch ahead cut |
 | A site that stalls, redirects onto the site being read, or answers 429 to a page fetched ahead | Stop and read-ahead tests; review scripts | One connection per site; the stated 429 exception |
-| The request or byte budget running out with pages in flight | 15 budget edges compared at 1 and 4; random webs | Identical outcomes, except the open case of a redirected robots.txt inside a continued fetch |
+| The request or byte budget running out with pages in flight | 15 budget edges compared at 1 and 4; random webs | Identical outcomes, including the case of a redirected robots.txt inside a fetch ahead that the third review pass found and the fourth confirmed fixed |
 | A watch that cannot read the file while a request is on the wire | `test_a_watch_that_cannot_be_read_does_not_cut_a_healthy_request` | Nothing is cut; no false robots.txt verdict |
 | Events expiring in any order relative to forgets, promotions, confirmed changes and restores | Randomised lives against a twin that never expires; restore fuzz | Beliefs equal; nothing forgotten returns, through a second generation |
 | A damaged settings row; a setting that is not a boolean; a position beyond SQLite's integers | Restore and settings tests | The restore goes on and reports it; consolidation reads as off; a validation error |

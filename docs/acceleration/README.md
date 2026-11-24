@@ -16,11 +16,11 @@ on a measurement, built, and read by independent reviewers in up to three passes
 taught now stays as a consolidated reading, so a belief no longer returns to its prior after seven days, and every
 forget still removes it exactly. Research reads four pages at once by default, and no request is sent after the
 owner's stop, which was not true before even for one page at a time. The self-critique reads only sentences in
-which the model wrote something of its own (9 to 11 calls instead of 44 on the benchmark, 4 marks instead of 42),
+which the model wrote something of its own (10 calls instead of 45 on the benchmark, 4 or 5 marks instead of 49),
 the ask budget refills over seven days, the memory models became a managed service that setup switches on, and a
 graph no better than no graph is no longer promoted. The sentence guard is the code of 0.7.0 with one added
 refusal: an attempt to change more was caught by a review and withdrawn, and the gaps the reviews found in the
-older guard, with one read-ahead defect from the last pass, head the list of what is open.
+older guard head the list of what is open.
 
 | Document | Deliverable |
 |---|---|

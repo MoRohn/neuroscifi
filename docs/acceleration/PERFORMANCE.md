@@ -32,9 +32,9 @@ temperature 0.1; they are reported as ranges where that matters. Reproduce with 
 | Queued question: submit to worker claims it | 2.73 s mean, 4.8 s worst | 0.05 s mean, 0.1 s worst | **−98 %** |
 | Research task, median (model calls included), settings of phase 1 | 3.10 s | 3.27 s | No change (§3) |
 | Research task, median, self-critique off (owner's choice) | — | 1.37 s | −56 % against the default; see the caveat in §3 |
-| Research task after phase 2: the critique reads only the model's own sentences | mean 4.13 s, median 3.03 s (every sentence judged, same session) | mean 2.59 to 2.80 s, median 1.77 to 1.87 s | **−32 to −37 %** on the mean; measured under load (§7.1) |
-| Self-critique marks on a sentence that is a cited claim word for word | 38 of 42 | 0 of 4 | **Removed** (§7.1) |
-| Reading pages, 300 ms per response, task p50 | 2.08 s | 0.96 s | **−54 %**, outcomes identical (§7.2) |
+| Research task after phase 2: the critique reads only the model's own sentences | mean 4.16 s, median 2.91 s (every sentence judged, same session) | mean 2.65 and 2.70 s, median 1.87 and 1.81 s | **−35 %** on the mean; final code, quiet host (§7.1) |
+| Self-critique marks on a sentence that is a cited claim word for word | 45 of 49 | 0 of 5 and 0 of 4 | **Removed** (§7.1) |
+| Reading pages, 300 ms per response, task p50 | 2.05 s | 0.96 s | **−53 %**, outcomes identical; final code, quiet host (§7.2) |
 | Requests reaching sites after a cancel / web access off / a deny | 1 / 11 / 11 | 0 / 0 / 0 | **Fixed** (§7.2) |
 | Belief after the evidence lifetime | back to the prior (0.5) | the posterior of the day before, exactly | **Fixed** (§7.3) |
 | First graph of a context with 160 to 256 populations | a snapshot no better than no graph, promoted | rejected under `gate-v1`; a working graph for new individuals | **Fixed** (§7.4) |
@@ -193,8 +193,9 @@ the budget and the one stated exception).
 | New individuals' graphs | At 24 populations the same 247 bytes, the sparse learner's weights in 64 % of worlds. A fit still costs 2.6 to 3.9 times a dense-only one | The better learner is packed; existing individuals are unchanged |
 
 Not measured: energy per task (no meter; GPU power is sampled and unchanged), sensor-to-action latency (no capture
-device), anything on a handset, and the live internet (no test contacted it). Phase 2's times were not re-measured
-on a quiet host on this page; its counts do not need it.
+device), anything on a handset, and the live internet (no test contacted it). Of phase 2's times, the research
+pipeline, the read-ahead latency and the memory benchmark were measured again on the final code on a quiet host
+(§7.1, §7.2, §7.5); the others were taken under load and are marked so.
 
 ## 7. Phase 2: the owner's decisions, measured
 
@@ -203,7 +204,10 @@ written. **Conditions:** these runs were taken while the other lanes' test and b
 (load average 20 to 40 at times, and at times a second model on the GPU). Counts (calls, sentences, requests,
 bytes, rows) do not depend on that; times do, and are indicative. Where a script reports CPU time or a minimum
 over repeats instead of a wall-clock median, the table says so. Evidence files are named
-`accel_decisions_*.json` and `accel_consolidation_cost.json`.
+`accel_decisions_*.json` and `accel_consolidation_cost.json`. Three measurements were repeated at the end, on the
+final code with nothing else running (load average under 4 for the model runs, under 1 for the others):
+`accel_decisions_pipeline_final.json`, `accel_decisions_final_read_ahead_latency.json` and
+`accel_decisions_final_memory.json`; their rows say "quiet host".
 
 ### 7.1 What the self-critique reads (decision A)
 
@@ -216,14 +220,19 @@ over repeats instead of a wall-clock median, the table says so. Evidence files a
 | Default scope, character-for-character test, two runs | 10, 10 | 11 / 86 | 4 | 0 | 0 | mean 2.64 s |
 | Default scope, final rule (a restatement is one claim), one run | 9 | 10 / 85 | 4 | 0 | 0 | mean 2.59 s |
 | Self-critique off | 0 | — | — | — | — | 2.33 / 1.38 s |
+| **Final code, quiet host:** default scope, two runs | 10, 10 | 11 / 86 | 5, 4 | 0 | 0 | 2.70 / 1.81 s, 2.65 / 1.87 s |
+| **Final code, quiet host:** every sentence judged | 45 | 90 / 90 | 49 | 45 | 0 | 4.16 / 2.91 s |
+| **Final code, quiet host:** self-critique off | 0 | — | — | — | — | 2.41 / 1.32 s |
 
-- The critique's share of task time fell from 42.6 % to 10.3 %, its tokens from 40,626 to 6,425 a run. The answer
-  call is the same request in every setting (59,755 prompt tokens in each of the first five runs).
+- The critique's share of task time fell from 42.6 % to 10.3 %, its tokens from 40,626 to 6,425 a run (quiet
+  host, final code: 42.1 % to 11.1 %). The answer call is the same request in every setting (59,755 prompt tokens
+  in every run, the quiet-host ones included).
 - **Correction to §3.** The stored default run of phase 1 (`accel_after_pipeline.json`), re-read with the final
   rule: 79 of its 90 kept sentences are one cited claim word for word with the code's attribution, and 42 of its
   46 marks sit on them. The "35 of 46" in §3 came from a looser test that compared content words; it missed one
   attribution wording and accepted shortened claims.
-- Model-written answers were 44 to 46 of 51 across these runs. The difference follows the run, not the setting:
+- Model-written answers were 44 to 46 of 51 across these runs (44 and 45 on the quiet host). The difference
+  follows the run, not the setting:
   the answer is sampled at temperature 0.1, the critique runs after it and removed nothing in any run.
 - What is still judged: sentences the model shortened, reordered or built from more than one claim. Of the 4
   marks, one reader took one to name a real shift of meaning (a company's own statement restated as fact) and
@@ -234,15 +243,17 @@ over repeats instead of a wall-clock median, the table says so. Evidence files a
 
 ### 7.2 Reading pages (decision B)
 
-`accel_decisions_read_ahead.json`. Task time on the offline corpus with every fixture response delayed 0.3 s
-(not comparable to live reading); outcomes of all 51 tasks identical across windows:
+`accel_decisions_final_read_ahead_latency.json` (final code, quiet host; the lane's own runs under load, in
+`accel_decisions_read_ahead.json`, gave 1.93 to 2.08 s at 1 and 0.96 to 0.97 s at 4). Task time on the offline
+corpus with every fixture response delayed 0.3 s (not comparable to live reading); outcomes of all 51 tasks
+identical across windows:
 
 | `read_ahead` | Task p50 | Task p95 | Requests used | Sent ahead and not used |
 |---|---|---|---|---|
-| 1 (0.7.0) | 2.08 s | 3.85 s | 350 | 0 |
-| 2 | 1.34 s | 2.30 s | 350 | 2 |
-| 3 | 1.01 s | 2.12 s | 350 | 4 |
-| 4 (the default) | 0.96 s | 1.79 s | 350 | 4 |
+| 1 (0.7.0) | 2.05 s | 3.62 s | 350 | 0 |
+| 2 | 1.31 s | 2.40 s | 350 | 2 |
+| 3 | 1.08 s | 2.09 s | 350 | 4 |
+| 4 (the default) | 0.96 s | 1.85 s | 350 | 4 |
 
 Requests that reach the sites after the owner's stop was committed (every fetch held at its robots.txt answer,
 the stop made on another connection, the answers then released):
@@ -349,7 +360,7 @@ across four runs of the same script.
 |---|---|
 | `nsf setup` on a new individual, both services up | step `memory` done; a second run reports "already done" and probes nothing |
 | A paraphrased question | semantic, the right fact first; 111 to 175 ms |
-| Retrieval benchmark with the committed settings (130 queries) | paraphrase recall@1 0.979, lookup p50 111 ms: equal to §4 |
+| Retrieval benchmark with the committed settings (130 queries) | paraphrase recall@1 0.979, lookup p50 111 ms: equal to §4. Again on the final code, quiet host (`accel_decisions_final_memory.json`): every class equal to §4 (paraphrase 0.979, unnamed subject 0.917, 3 of 10 unanswerable return something), lookup p50 113 ms, p95 168 ms; without the services, the lexical figures of §4 (paraphrase 0.271, 10 of 10) |
 | The reranker stopped by hand | the next lookup is lexical in 30 to 40 ms with the reason; the one after it 0.9 to 1.0 ms, nothing tried for 30 s |
 | First request to a model after a start | 1539 ms (embedding), 1051 ms (reranker) when the wait checked health only; 32 and 39 ms now that the wait sends one real request |
 | Start to ready | 18 to 31 s with warm files |

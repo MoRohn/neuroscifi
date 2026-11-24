@@ -29,7 +29,8 @@ could not check something it is marked **unverified**, not passed.
   the sparse graph and what is promoted (F). Building them turned up twelve further defects, most of them older
   than the branch ([ARCHITECTURE_AUDIT.md](ARCHITECTURE_AUDIT.md) §4, "Found in phase 2"). Four independent
   reviews read the result in up to three passes; one of their findings was a regression of the sentence guard by
-  a fix made during the review itself, which was withdrawn (§4). One defect from the last pass is open (§5).
+  a fix made during the review itself, which was withdrawn (§4). The one defect of the last pass on web reading
+  was fixed and the fix confirmed by the same reviewer (§4).
 
 ## 2. Definition of done
 
@@ -45,11 +46,11 @@ could not check something it is marked **unverified**, not passed.
 | Context and memory correctness validated | Done | Long-context recall 3 of 3; memory benchmark by class with held-out subjects (re-run in phase 2: unchanged); the memory-answer check 86 of 96 and 1 of 288; provenance and timestamps untouched (the same rows, reordered). Phase 2: beliefs equal before and after the evidence lifetime, against a twin that never expires, over 80 randomised lives; forgetting exact and restores clean through a second generation (two independent fuzzes) |
 | Hardware utilisation measured and optimised where practical | Done | GPU 96 % at one stream; queue, prefill, decode, cache, power and temperature now reported; scheduling flags. No further headroom was found to recover: the limit is single-stream decode. Phase 2: the memory models' 4.6 GiB each measured by component and not reducible by settings; releasable when idle (7.9 to 9.4 GiB returned, measured) |
 | Multimodal and distributed capabilities remain operational | Partly verifiable | Voice, Pocket and Presence pass their suites and the browser suite with synthetic media. **Unverified**: a real microphone, a real handset (as in 0.7.0) |
-| Existing features pass regression testing | Done | `bash scripts/check.sh` on the final tree: 3483 passed, 18 skipped, Node checks and 8 of 8 reproduction pass (baseline 3337 passed, 18 skipped); browser suite: 194 passed, 1 skipped, 1 failed on the final tree: `test_add_a_phone_from_the_console_to_a_paired_phone` saw Chromium's `net::ERR_NETWORK_CHANGED` when another tenant's container brought up a network interface on this shared host (system log, same second). Its file was rerun three times on the same tree: 3 of 3 pass each time. The full run before the last review fixes: 195 passed, 1 skipped. A second full run on the same tree afterwards: 195 passed, 1 skipped, exit 0; acceptance exit 0; offline benchmark metrics identical |
-| Edge cases and recovery scenarios pass | Done for those listed, with one known exception | [REGRESSION_REPORT.md](REGRESSION_REPORT.md) §4. Exception: the open read-ahead case of §5 item 2. **Unverified**: GPU memory exhaustion, a failed image upgrade and its rollback, days of autonomy, and the installed two-account deployment (§5 item 13) |
+| Existing features pass regression testing | Done | Final code (`5583823`; later commits change only reports and evidence files): `bash scripts/check.sh` 3996 passed, 18 skipped, Node checks and 8 of 8 reproduction pass, all checks passed in 659 s (baseline 3337 passed, phase 1 3483 passed, the same 18 skipped); browser suite 198 passed, 1 skipped, exit 0; acceptance exit 0, every scenario passes; offline benchmark exit 0 with every compared metric identical at read-ahead 1, 4 and the default. The same three suites had passed with the same counts but 3989 Python tests on the tree before the last read-ahead fix. Phase 1's runs are in [REGRESSION_REPORT.md](REGRESSION_REPORT.md) §1 |
+| Edge cases and recovery scenarios pass | Done for those listed | [REGRESSION_REPORT.md](REGRESSION_REPORT.md) §4. **Unverified**: GPU memory exhaustion, a failed image upgrade and its rollback, days of autonomy, and the installed two-account deployment (§5 item 13) |
 | New and existing services have observability | Done | `nsf resources`, `GET /api/resources`, the ledger, `nsf llm status`, `nsf web memory`, the `retrieval` and `memory_check` fields. Since phase 2 the memory models are services of the idle policy (`nsf resources`: timeouts, state, last use, events) and `nsf web memory` shows `asleep` or `refused`; a task's usage reports unused read-ahead; a report's `critique` says how many sentences were judged and why a call was skipped; `nsf config`, `nsf regulation` and `nsf memory consolidated` show the consolidation setting and readings; a changed instance setting leaves an audit row |
 | Improvements supported by reproducible evidence | Done | Scripts and evidence files; repeat runs for the engine flags; a dev and held-out split for memory. Phase 2: `accel_decisions_*.json`, `accel_consolidation_cost.json`; `scripts/bench_consolidation.py`, `scripts/bench_graph_learner.py`, `scripts/guard_differential.py`; repeat runs for the critique scope. Its times were taken under load and are marked indicative ([PERFORMANCE.md](PERFORMANCE.md) §7) |
-| No material unapproved regressions remain | Done, with the costs listed and one defect open | [PERFORMANCE.md](PERFORMANCE.md) §6. Phase 2 changed four defaults under the owner's delegation, each with its switch; their costs are listed there and in §5. The open read-ahead defect (§5 item 2) is a difference from one-at-a-time reading in one constructed case |
+| No material unapproved regressions remain | Done, with the costs listed | [PERFORMANCE.md](PERFORMANCE.md) §6. Phase 2 changed four defaults under the owner's delegation, each with its switch; their costs are listed there and in §5. |
 | All significant changes have rollback procedures | Done | Plan §1 and §2, last column; plan §4, the last line of each decision; the runbook. Three changes have no switch because they only refuse or only make a stated property true (the truncating attribution, the stops, the gate's no-graph check) |
 | Documentation matches the delivered implementation | Done | The architecture, resource, memory, contract and runbook pages were updated from the code by each lane; ADR-044 and ADR-045; `MIGRATIONS.md` and `ENVIRONMENT.md` corrected; this directory |
 
@@ -66,7 +67,7 @@ could not check something it is marked **unverified**, not passed.
 | Images | None pulled in phase 2. Three anonymous registry manifest reads (for the lighter-server proposal); nothing of the project or the owner was sent |
 | Model weights added | `~/.local/share/neuroscifi/models/qwen3-embedding-0.6b`, `qwen3-reranker-0.6b` (1.2 GB each, Apache-2.0, pinned revisions), from phase 1 |
 | Keys | `~/.config/neuroscifi/memory/api_key` created by `deploy/memory/run.sh` (0600), from phase 1; unchanged |
-| Git | Everything is on the branch `nvidia-acceleration-review`; nothing was pushed |
+| Git | Everything was committed on the branch `nvidia-acceleration-review`. On the owner's instruction (2026-11-23) the branch is pushed and merged to `main` with a merge commit, so the commit hashes cited on these pages stay valid, once the run of §2 has passed; that happens after this page is committed |
 
 No owner instance exists on this host, so no individual's settings were changed; the measurements used temporary
 individuals. The new defaults apply to an individual when its services next start. For an individual created by
@@ -110,11 +111,16 @@ security and privacy across all of it.
   rejected before. The reviewer confirmed this independently on its own five corpora and by replaying the
   reference through its own extraction of `307b907`.
 - **Third pass on web reading**, limited to the mechanisms the second-round fixes introduced. The 429 fix, the
-  `interrupted` error, the refund and the traffic numbers hold. **One defect is open as of this commit**: a fetch
-  ahead stopped inside a redirected robots.txt walk is continued from its page hop, so that robots.txt is
-  requested and charged twice and, at the edge of the request budget, the task reads fewer pages than one at a
-  time (reproduced; the reviewer's fuzz found it independently). It also asks for "at most twice" instead of
-  "below twice" in the statement of the traffic bound.
+  `interrupted` error, the refund and the traffic numbers hold. It found one defect: a fetch ahead stopped inside
+  a redirected robots.txt walk was continued from its page hop, so that robots.txt was requested and charged
+  twice and, at the edge of the request budget, the task read fewer pages than one at a time (reproduced; the
+  reviewer's fuzz found it independently, 9 times). It also asked for "at most twice" instead of "below twice" in
+  the statement of the traffic bound.
+- **Fourth pass on web reading (confirmation).** The fix (`989a384`: such a stop is no longer continued; the
+  fetch is made again and what was sent counts as unused) was read and re-attacked by the same reviewer: it sits
+  in the one place that knows how far the robots.txt walk got, can only make a stop non-resumable, and leaves
+  the charged usage equal to one-at-a-time reading. The reproduction, the replayed fuzz scenarios and 600 further
+  random webs on the seeds that had found the differences show none. Verdict: approve.
 - **Found sound by the reviewers:** beliefs equal before and after expiry in every case the fuzzes produced;
   forgets erase at the byte level (the file, the WAL, free pages) and do not return through a restore; older
   software refuses a schema-14 file; every console route needs the token and the Host and Origin checks, and
@@ -127,9 +133,8 @@ security and privacy across all of it.
 What the reviews did not cover: the core's second-round fixes (the copy rule as passes over one index) and the
 runtime redesign (the scoped listener check, the wake redesign, the installer's `--idle`) were read by the
 security reviewer's final pass but not by a further correctness pass; the last change to the critique's scope
-(a restatement is one claim) was made after the guard check and only narrows what is skipped; and a fix of the
-open web-reading defect, when made, will not have been reviewed. These rest on their tests and the final
-regression run.
+(a restatement is one claim) was made after the guard check and only narrows what is skipped. These rest on
+their tests and the final regression run.
 
 ## 5. Outstanding issues and residual risks
 
@@ -140,9 +145,11 @@ Correctness first; the full list with reasons is [ENGINEERING_PLAN.md](ENGINEERI
    compared without case; a clean sentence passes for a claim holding a direction-override character; one faithful
    word-for-word sentence is rejected. They are recorded in the differential reference and unchanged. The one
    attempt to fix one of them regressed the guard, which is why none was changed here.
-2. **One read-ahead defect is open** (§4, third pass): a doubled robots.txt request and, at the budget edge, a
-   page fewer than one-at-a-time reading, for a site whose robots.txt redirects to another site's file.
-   `nsf web config --set read_ahead=1` avoids it.
+2. **Read-ahead was reviewed four times and each of the first three passes found something** (§4). The last
+   pass approved it; the mechanism is new, concurrent and on by default, and `nsf web config --set read_ahead=1`
+   is the exact path of 0.7.0 with the stricter stops. One residue of the last fix: for a site whose robots.txt
+   redirects to another site's file while that site is being read, robots.txt is sent twice (charged once, the
+   other request counted as unused).
 3. **Read-ahead sends requests it does not use**: at most the task's request budget again, so everything a task
    sends is at most twice its budget (4 beside 350 on the benchmark). A site that answers "slow down" to a page
    fetched ahead removes the pages that lead onto it from the report. After a stop, a connection being opened may
@@ -186,8 +193,8 @@ Correctness first; the full list with reasons is [ENGINEERING_PLAN.md](ENGINEERI
 
 ## 6. Recommended next priorities
 
-In order: fix the open read-ahead defect of §5 item 2 (small, with the reviewer's script as its test); the guard
-gaps of item 1, each with its own adversarial corpus and the differential test as the gate; paraphrased
+In order: the guard gaps of §5 item 1, each with its own adversarial corpus and the differential test as the
+gate; paraphrased
 contradictions with the embedding model as a candidate source; a cap and a maintained list of copied samples for
 consolidated readings; verification of the installed two-account deployment (the units, the installer, the wake
 folder); the calibration loop; a lighter server for the memory models; a TensorRT-LLM comparison with this

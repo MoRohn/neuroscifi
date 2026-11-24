@@ -33,7 +33,7 @@ Each row: the smallest change that fixes the finding, how it was accepted, how t
 | 12 | R6, R7 voice ordering and a lost chunk | A reply generation per turn: an older reply is shown, not spoken. The hub accepts a repeat of the last chunk once; the client retries once | Tests; the Node checks | Revert |
 | 13 | R1 reload ignores the deadline; no memory check | A reload waits no longer than the caller may and continues in the background; a reload that would leave less than the critical threshold free is refused and recorded; `run.sh wait` fails at once on a crash loop | Tests that failed first | Revert |
 | 14 | Missing telemetry | `nsf resources` and `GET /api/resources`: GPU temperature, power, throttling, load, the model server's queue, prefill, decode, first-token and prefix-cache state (lifetime and since the last reading). The ledger: provider, priority, cached tokens; an index. `nsf llm status`: cache share and calls by purpose | Tests; read against the live server | Revert; the ledger's added columns are ignored by older code |
-| 16 | W5 pages read one at a time (phase 2, decision B) | Read-ahead is the default (`read_ahead` 4): while one page is read, up to three further pages, one per site, are fetched ahead, and read, charged and reported in the original order. The pages fetched ahead of a task share its request and byte budget; a page fetched ahead never opens a second connection to a site an exchange is in progress with. Curiosity, refresh and MCP tasks read one page at a time, and the daily allowances count unused traffic | Offline benchmark identical at 1, at 4 and at the default; 600 random small webs under tight budgets: 0 differences (one case found by the last review pass is open, §5 item 2); task p50 with 300 ms per response 2.08 → 0.96 s | `nsf web config --set read_ahead=1` |
+| 16 | W5 pages read one at a time (phase 2, decision B) | Read-ahead is the default (`read_ahead` 4): while one page is read, up to three further pages, one per site, are fetched ahead, and read, charged and reported in the original order. The pages fetched ahead of a task share its request and byte budget; a page fetched ahead never opens a second connection to a site an exchange is in progress with. Curiosity, refresh and MCP tasks read one page at a time, and the daily allowances count unused traffic | Offline benchmark identical at 1, at 4 and at the default; 600 random small webs under tight budgets, and after the last fix 1,800 more with redirecting robots.txt files: 0 differences (the one case the third review pass found was fixed and confirmed by a fourth); task p50 with 300 ms per response 2.05 → 0.96 s on a quiet host | `nsf web config --set read_ahead=1` |
 | 18 | W9, W10 a stop took effect late (found in phase 2; on the one-at-a-time path of 0.7.0 as well) | Every page fetch, the reader's own included, asks before each name lookup, each connection and each request whether the task was cancelled, web access turned off or the site denied, and again on the open connection before the request is written. Requests on the wire are cut within about 0.25 s. Crawl robots.txt and sitemap reads are inside the same gate | Requests reaching sites after a cancel / web access off / a deny: 1 / 11 / 11 at one page at a time and 4 / 8 / 8 at four before, 0 in all six after; a cancelled run ends about 0.25 s after the cancel (before: when its slowest request ended, up to the 15 s timeout); the stop tests 30 of 30 runs | None: the old timing contradicted the stated property |
 | 19 | W3 the critique marks the code's own hedges (decision A) | The critique reads only sentences that are not one cited claim word for word with the attribution the code appended (`reasoning.restates`, a character-for-character comparison), and makes no call when none is left; `reasoning.critique` records `judged` and `restatements` when a sentence was left out | The stored 0.7.0-scope run re-read: 79 of 90 kept sentences are such restatements and carried 42 of the 46 marks. Live, 51 tasks: 9 to 11 critique calls instead of 44, 4 marks instead of 42, none on a restatement, 0 sentences removed in every run; task mean 4.13 → 2.59 to 2.80 s | `nsf llm config --critique-restatements` |
 | 20 | W11 a shown sentence could lose the words after its own attribution (found in phase 2; in 0.7.0) | A sentence whose trailing "according to <source> …" would take further words with it is refused with a plain reason instead of shown cut. The answer path and the guard are otherwise the code of `307b907` | A committed differential over 1,476 inputs recorded from `307b907`'s own code: 1,459 identical, 17 refused (all from the review corpora), 0 different; 0 of 248 benchmark sentences lost; the 827 guard tests of `307b907` pass unmodified | None: it only refuses |
@@ -135,9 +135,10 @@ a switch or a command that restores the earlier behaviour, named at its end.
 on the benchmark 42 of its 46 marks sat on sentences that are one cited claim word for word with the attribution
 the code appended (79 of the 90 kept sentences; phase 1's count of 35 used a looser test that compared content
 words). Such a sentence holds nothing of the model's own for a second reading to judge, and the hedge is the
-code's. The critique now reads only the other sentences and makes no call when there is none: 9 to 11 calls
-instead of 44 on the 51 tasks, 4 marks instead of 42, none on a restatement, mean task time 2.59 to 2.80 s
-instead of 4.13 s (2.33 s with the pass off). Two rulings followed from the reviews. A restatement is exactly
+code's. The critique now reads only the other sentences and makes no call when there is none. On the final code
+and a quiet host: 10 calls instead of 45 on the 51 tasks, 4 or 5 marks instead of 49, none on a restatement,
+mean task time 2.65 and 2.70 s instead of 4.16 s (2.41 s with the pass off). Two rulings followed from the
+reviews. A restatement is exactly
 one claim, compared character for character: joined claims, a changed capital and text with invisible characters
 are always read. And the answer path itself was put back to what it was: an attempt to keep the words that follow
 an attribution, made while fixing a review finding, let sentences that invert an exception through the guard and
@@ -154,12 +155,13 @@ request is sent after a stop on either path (0 in six cases): the gate is asked 
 connection and request and again on the open connection, and requests on the wire are cut. What can still reach
 a site after a stop is a connection being opened, with nothing sent on it. Tasks under a daily allowance read one
 page at a time, and the allowances count unused traffic. Median task time with 300 ms per response went from
-2.08 s to 0.96 s with every outcome identical. Stated exceptions and costs: a site that answers "slow down" to a
+2.05 s to 0.96 s with every outcome identical. Stated exceptions and costs: a site that answers "slow down" to a
 page fetched ahead is left alone at once, so pages that lead onto that site are missing where one-at-a-time
 reading would have read them, and the report says so; a task's charged requests stay within its budget, but what
 it sends ahead and does not use comes on top, up to the budget again (22 requests reached sites under a budget of
 20 in the reviewer's worst case without owner action, 32 with a deny mid-run; 4 unused beside 350 used on the
-benchmark). One defect found by the last review pass is open (§5 item 2). Back: `nsf web config --set
+benchmark). The one defect found by the last review pass was fixed and the fix confirmed (`989a384`). Back:
+`nsf web config --set
 read_ahead=1`.
 
 **C. The memory models: yes, as a managed service.** Retrieval by meaning (paraphrase recall@1 0.27 → 0.98) is
@@ -232,12 +234,14 @@ In the order of the directive's hierarchy: correctness first. Each item says why
    - An "according to the cited sources" set between commas is not replaced, so one source can be shown with two
      attributions; the attribution is worded from the sources counted before inline citations are added; reason
      texts that list words from a set vary in order between processes.
-2. **Read-ahead: a fetch ahead stopped inside a redirected robots.txt walk** is continued from its page hop, so
-   that robots.txt is requested and charged twice, and at the edge of the request budget the task reads fewer
-   pages than one at a time (found by the third review pass on the continuation added in the second; a site whose
-   robots.txt redirects to another site's file, while that other site is being read). The suggested fix is small:
-   a stop inside a robots walk that has already sent a request is not resumable. The same pass asks for "at most
-   twice" where the code comments say "below twice" the request budget.
+2. **Read-ahead needed four review passes.** Each of the first three found something in what the pass before
+   had fixed or added (a request after a stop during connect, a second connection through a redirect, the 429
+   exception reaching too far, a continued fetch repeating robots.txt); the fourth approved. It is new, concurrent
+   and on by default, so it is the first place to look if a research run behaves differently from 0.7.0, and
+   `read_ahead=1` is the comparison. Residues stated by the reviews: for a site whose robots.txt redirects to
+   another site's file while that site is being read, robots.txt is sent twice (charged once); a request whose
+   write was cut partway is refunded although some of its bytes reached the server; a continued fetch waits one
+   extra politeness interval; one connection per site holds within one process only.
 3. **Contradictions in other words (W2).** Use the embedding model to propose candidates to
    `consolidate._existing`; keep the decision in the existing value comparison. Needs its own benchmark of
    paraphrased contradictions and a held-out set before any threshold is trusted: a false merge would inflate the
