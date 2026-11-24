@@ -90,9 +90,12 @@ _UNSEEN_BREAK_RE = re.compile(_char_class(_UNSEEN_BREAK))
 # digits and punctuation ("Affected:<U+200F> 3 4" is shown as "4 3"). Removing one would leave the order nobody was
 # shown, so a line (as_seen) or a paragraph (extract.py) that holds one is not read at all: what a page shows in
 # an order other than its own cannot be quoted faithfully. One exception, for right-to-left writing (Hebrew,
-# Arabic and the other scripts of bidirectional class R and AL), where marks and isolates are how text is written:
-# a line that holds such letters keeps its marks and isolates, the claims made of it carry them, and the answer
-# guard does not cite those claims (reasoning.UNSEEN_IN_CLAIM). An override is never kept.
+# Arabic and the other scripts of bidirectional class R and AL), where marks, embeddings and isolates are how text
+# is written: a line that holds one such letter keeps every direction control in it except the overrides (marks,
+# embeddings and their pop, isolates), the claims made of it carry them, and the answer guard does not cite those
+# claims (reasoning.UNSEEN_IN_CLAIM). Other consumers of claims (the extractive report, the knowledge store, memory
+# answers, Pocket) show a claim's text as stored, controls included, so as the page showed it; none of them
+# compares it with a model's words. An override is never kept.
 _OVERRIDE_RE = re.compile(f"[{chr(0x202D)}{chr(0x202E)}]")
 _DIRECTION = (0x200E, 0x200F, 0x061C, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069)
 _DIRECTION_RE = re.compile("[" + "".join(map(chr, _DIRECTION)) + "]")

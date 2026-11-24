@@ -628,3 +628,27 @@ def test_a_control_in_loose_text_of_a_container_drops_its_line_only():
                    "<p>It carries 4 lanes.</p></article></body></html>")
     assert "reopened in May 2026" in doc.text and "carries 4 lanes" in doc.text and "72" not in doc.text
     assert "reordered_blocks_removed" not in doc.flags and doc.flags["reordered_lines_removed"] == 1
+
+
+
+@pytest.mark.parametrize("element", ["title", "xmp", "textarea", "style", "script", "noscript", "iframe", "noembed",
+                                     "noframes", "TITLE"])
+def test_a_fake_tag_inside_a_raw_text_element_does_not_shield_a_control(element):
+    """Security re-review L9: inside raw-text elements there are no tags, so '<title>Dose <b RLO72 mg></title>' is shown
+    'Dose <b >gm 27'; extraction kept 'Dose <b 72 mg>'. Such an element now loses its content."""
+    page = (f"<html><head><{element}>Dose <b ‮72 mg></{element}></head><body><article>"
+            f"<p>Dose <{element}>for adults <i ‏3 4 mg></{element}> per day.</p>"
+            "<p>The Kestrel compound was first described in 2019.</p></article></body></html>")
+    doc = html_doc(page)
+    for field in (doc.title, doc.text, doc.markdown):
+        assert "72" not in field and "3 4" not in field and "‮" not in field, (element, field)
+    assert "first described in 2019" in doc.text
+
+
+def test_plaintext_holding_a_control_loses_everything_after_it_and_a_clean_title_stays():
+    doc = html_doc("<html><head><title>Kestrel dosage</title></head><body><article>"
+                   "<p>The Kestrel compound was first described in 2019.</p>"
+                   "<plaintext>Dose <b ‮72 mg> per day</article></body></html>")
+    assert doc.title == "Kestrel dosage" and "72" not in doc.text and "first described in 2019" in doc.text
+    clean = html_doc("<html><head><title>Dose <b>72</b> mg</title></head><body><p>x</p></body></html>")
+    assert clean.title == "Dose <b>72</b> mg"

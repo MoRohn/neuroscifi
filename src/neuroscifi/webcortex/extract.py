@@ -99,11 +99,31 @@ _ZERO_WIDTH = re.compile("[​-‏‪-‮⁠-⁤⁦-⁩﻿­]")
 _OVERRIDE = re.compile(r"<[A-Za-z/!?][^<>]*>|" + T._DIRECTION_RE.pattern)
 
 
+# Inside these elements the tokenizer makes no tags until the element's own end tag: raw text (script, style,
+# xmp, iframe, noembed, noframes, noscript) and escapable raw text (title, textarea), and plaintext to the end of
+# the document. A "<b 72 mg>" there is text, so a direction control beside it is a control in text (security
+# re-review L9: '<title>Dose <b RLO72 mg></title>' was shown 'Dose <b >gm 27' and extracted 'Dose <b 72 mg>').
+_RAW_TEXT_ELEMENT = re.compile(r"(<(title|textarea|style|script|xmp|iframe|noembed|noframes|noscript)\b[^>]*>)"
+                               r"(.*?)(</\2\s*>|$)|(<plaintext\b[^>]*>)(.*)$", re.IGNORECASE | re.DOTALL)
+
+
+def _empty_reordered_raw_text(markup: str) -> str:
+    """`markup` with the content of every raw-text element (_RAW_TEXT_ELEMENT) that holds a direction control taken
+    out: what such an element shows cannot be read as written, and code does not undo the reordering."""
+    def one(m):
+        if m.group(5) is not None:
+            return m.group(5) if T._DIRECTION_RE.search(m.group(6)) else m.group(0)
+        return m.group(1) + m.group(4) if T._DIRECTION_RE.search(m.group(3)) else m.group(0)
+    return _RAW_TEXT_ELEMENT.sub(one, markup)
+
+
 def _keep_overrides(markup: str) -> str:
     """`markup` with every direction control that stands outside a tag written as a character reference
     ("&#x202E;"), so that the removal of zero-width and direction characters before parsing (_ZERO_WIDTH) leaves it
     for the parser to decode. An override inside a tag is left to that removal, as before: "<scr\u202eipt>" must
-    still be read as the script element it is."""
+    still be read as the script element it is. A raw-text element holding a control loses its content first
+    (_empty_reordered_raw_text): there a "<...>" is no tag."""
+    markup = _empty_reordered_raw_text(markup)
     return _OVERRIDE.sub(lambda m: m.group(0) if m.group(0).startswith("<") else f"&#x{ord(m.group(0)):X};", markup)
 
 
