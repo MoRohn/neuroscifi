@@ -538,3 +538,30 @@ def test_unseen_characters_are_removed_from_plain_text_json_and_feeds():
             b'<description>It fixes the parser fl&#xad;aw.</description></item></channel></rss>')
     doc = extract(fetched(feed, "application/rss+xml"))
     assert doc.title == "Newswire" and doc.text == "NumPy 2.5.5 released. It fixes the parser flaw."
+
+
+
+@pytest.mark.parametrize("paragraph", [
+    "The safe dose for adults is < ‮72 mg> per day according to the label.",      # security review M1
+    "If a < b then the Varnel bridge has ‮72 lanes > 3.",                          # review F2
+    "The limit is <‮72> requests a minute.",
+    "The limit is <=‮72> requests a minute.",
+    "The limit is < &#x202E;72 > requests a minute.",
+])
+def test_an_override_between_a_literal_lt_and_gt_is_an_override_in_text(paragraph):
+    """Only what the HTML tokenizer reads as a tag ("<" then a letter, "/", "!" or "?") is a tag: an override in
+    text between a literal "<" and ">" reorders what a reader sees, and its line is dropped like any other."""
+    doc = html_doc("<html><body><article><h1>Kestrel</h1><p>" + paragraph + "</p>"
+                   "<p>The compound was first described in 2019 by the Ostra laboratory.</p></article></body></html>")
+    assert "72" not in doc.text and "72" not in doc.markdown, doc.text
+    assert "first described in 2019" in doc.text
+    assert doc.flags["reordered_lines_removed"] == 1
+
+
+def test_one_override_is_counted_once():
+    """Review F2 (low): the override was counted as a zero-width character before parsing and again as a dropped
+    line."""
+    doc = html_doc("<html><body><article><p>The tower is ‮72 metres tall.</p>"
+                   "<p>It stands in the harbour of Tolvane.</p></article></body></html>")
+    assert doc.flags["hidden_removed"] == 1 and "zero_width_removed" not in doc.flags
+    assert doc.flags["reordered_lines_removed"] == 1

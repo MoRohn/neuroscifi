@@ -92,8 +92,10 @@ XML_TYPES = ("application/xml", "text/xml", "application/atom+xml", "application
 _SPACE = re.compile(r"\s+")
 _ZERO_WIDTH = re.compile("[​-‏‪-‮⁠-⁤⁦-⁩﻿­]")
 # The two direction overrides, kept through parsing where they stand in text so that the lines they reorder can be
-# dropped afterwards (_keep_overrides, text.as_seen); written as code points so that this line holds neither.
-_OVERRIDE = re.compile(r"<[^<>]*>|[\u202d\u202e]")
+# dropped afterwards (_keep_overrides, text.as_seen); written as code points so that this line holds neither. A tag
+# is what the HTML tokenizer starts one with: "<" and then an ASCII letter, "/", "!" or "?". A "<" followed by
+# anything else is text ("dose is < 72 mg> per day"), and an override after it is an override in text.
+_OVERRIDE = re.compile(r"<[A-Za-z/!?][^<>]*>|[\u202d\u202e]")
 
 
 def _keep_overrides(markup: str) -> str:
@@ -548,9 +550,9 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
     `final_url` is the URL after redirects (defaults to `url`); `published_hint` (epoch seconds or a date string,
     e.g. the feed item's date) becomes `published_at` with date_source "feed"."""
     final_url = final_url or url
-    text_in = _decode(bytes(body), headers)
-    zero_width = len(_ZERO_WIDTH.findall(text_in))
-    text_in = _ZERO_WIDTH.sub("", _keep_overrides(text_in))
+    text_in = _keep_overrides(_decode(bytes(body), headers))
+    zero_width = len(_ZERO_WIDTH.findall(text_in))      # after _keep_overrides: an override is counted once, below
+    text_in = _ZERO_WIDTH.sub("", text_in)
     text_in = re.sub(r"^\s*<\?xml[^>]*\?>", "", text_in)
     if not text_in.strip():
         text_in = "<html><body></body></html>"
