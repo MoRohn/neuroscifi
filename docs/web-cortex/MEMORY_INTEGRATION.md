@@ -348,7 +348,10 @@ pytest -q tests/instance -k "erasure or memory"                  # the binary-be
 - Forgetting does not purge the public cache by itself (section 6).
 - A restored checkpoint has knowledge but not the page bodies behind it.
 - Without the memory models, retrieval by topic is lexical: a paraphrase finds the right fact first 27 % of the time and a question nothing in memory answers still returns unrelated facts (section 5.1, `accel_baseline_memory.json`).
-- The lexical index, like the vectors, is per process: another long-running process keeps a forgotten statement's text in its index until its own next query or its exit.
+- The lexical index, like the vectors, is per process. Every forget that removes or rewrites knowledge text
+  (`forget_knowledge`, `forget_research`, `forget_source`, a forgotten partner or camera name, and a restore's
+  replay) drops this process's copies at once (`governance._drop_in_process_copies`); another long-running process
+  keeps a forgotten statement's text until its own next query or its exit.
 - Contradictions in other words (§3.1) are found only with both memory models and the answer model; a subject called by another name and most values in other units stay undetected, and the held-out precision of 1.0 is of a design revised once after a held-out failure.
 - Semantic retrieval holds its vectors per process. A new process embeds every live statement again on its first query, and two processes (console and worker) each hold their own set. Every query compares the question with every live statement, and the measurement covers 48 statements only. With the reranker on, 3 of 10 questions that nothing in memory answers still return a statement.
 - The memory-answer check is a model's judgement, bounded to a yes or no per statement. In the measurement of section 5.2 it refused 10 of 96 right statements and accepted 1 of 288 wrong ones. A wrong refusal costs a web search; a wrong acceptance still needs the lexical test to have chosen the statement. It checks at most 8 statements.

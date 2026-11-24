@@ -110,6 +110,19 @@ _SCRUB_TABLES = (  # table, scrubbed columns, columns stored as JSON
 )
 
 
+def _drop_in_process_copies():
+    """Drop the statement text this process keeps outside the file: knowledge.query's lexical index and the
+    semantic vectors (review F6). Called by every forget that removes or rewrites knowledge text, so nothing
+    forgotten stays in memory; another process drops its copies at its own next query. A cache cannot fail a
+    forget."""
+    try:
+        from ..webcortex import knowledge, semantic
+        knowledge.clear_index()
+        semantic.clear()
+    except Exception:
+        pass
+
+
 def scrub_roots(db, roots):
     """Replace forgotten roots in belief_revisions, pending, decisions and the Web Cortex text columns (task
     objectives, reports and checkpoints, events, claims, knowledge); delete their changepoints and links.
@@ -143,6 +156,8 @@ def scrub_roots(db, roots):
                     db.execute(f"UPDATE {table} SET {','.join(c + '=?' for c in columns)} WHERE rowid=?",
                                (*new, row[0]))
                     rewritten += 1
+    if rewritten:
+        _drop_in_process_copies()      # a knowledge statement may have held the forgotten name
     return rewritten
 
 
@@ -747,6 +762,7 @@ def _drop_knowledge(db, ids, now):
         db.execute(f"DELETE FROM web_mentions WHERE knowledge_id IN ({marks})", part)
         db.execute(f"DELETE FROM web_events WHERE json_extract(detail,'$.knowledge_id') IN ({marks})", part)
     closed = _forget_pending(db, [f"web:knowledge:{k}" for k in ids], [], now)
+    _drop_in_process_copies()
     return {"knowledge_deleted": ids, "versions_restored": sorted(restored), "versions_relinked": sorted(relinked),
             "pending_closed": closed}
 

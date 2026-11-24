@@ -222,3 +222,74 @@ def test_the_kept_index_gives_the_semantic_ranking_what_a_fresh_one_gives(db, mo
         assert {k: v for k, v in kept.items() if k != "retrieval"} == \
             {k: v for k, v in fresh.items() if k != "retrieval"}
         knowledge.assert_fact(db, "The Pellham Lighthouse was built in 1902.", T0 + 3)
+
+
+# ---- every forget drops this process's copies (review F6) ---------------------------------------------------------------
+
+class _Endpoint:
+    """Enough of a gateway for semantic._vectors to name a store."""
+    cfg = type("Cfg", (), {"base_url": "http://127.0.0.1:1/v1", "model": "stand-in"})()
+
+
+def held_text():
+    """Every statement this process holds outside the file: the kept lexical indexes and the semantic vectors."""
+    texts = [statement for index in knowledge._INDEXES.values() for _, statement, _ in index.live]
+    return texts + [t for vectors in semantic._STORES.values() for t in vectors.by_text]
+
+
+def researched(db, now=T0):
+    """Knowledge from a research task on two sources -> (task id, knowledge id)."""
+    from test_consolidate import consolidated, two_sources
+    tid, out = consolidated(db, [two_sources()], now)
+    return tid, out["provisional"][0]
+
+
+def warm(db):
+    """This process holds the individual's index and a vector of its statement."""
+    statement = db.execute("SELECT statement FROM web_knowledge").fetchone()[0]
+    knowledge.query(db, statement, T0 + 50)
+    semantic._vectors(db, _Endpoint()).by_text[statement] = None
+    assert held_text().count(statement) == 2
+
+
+@pytest.mark.parametrize("forget", ["knowledge", "research", "source", "restore_replay"])
+def test_every_forget_that_removes_knowledge_drops_what_this_process_holds(db, tmp_path, forget):
+    from neuroscifi.instance import checkpoints, governance
+    tid, kid = researched(db)
+    if forget == "restore_replay":
+        checkpoint = checkpoints.create(db, str(tmp_path / "individual.sqlite"), tmp_path / "cps", T0 + 10)
+        governance.forget_knowledge(db, kid, T0 + 20)
+        knowledge.assert_fact(db, "The NumPy project publishes a release every six months.", T0 + 21)
+        warm(db)                       # copies held for the live file; the restored copy replays the forget
+        restored = checkpoints.restore(db, checkpoint["id"], tmp_path / "restored.sqlite", T0 + 30)
+        assert restored["web_removed"]["knowledge"] == 1           # the replay removed the forgotten item
+    else:
+        warm(db)
+        if forget == "knowledge":
+            governance.forget_knowledge(db, kid, T0 + 60)
+        elif forget == "research":
+            governance.forget_research(db, tid, T0 + 60)
+        else:
+            governance.forget_source(db, "a.example", T0 + 60)
+            governance.forget_source(db, "b.example", T0 + 61)
+        assert db.execute("SELECT count(*) FROM web_knowledge").fetchone()[0] == 0
+    assert held_text() == []
+
+
+def test_a_forgotten_name_rewritten_in_a_statement_drops_what_this_process_holds(db):
+    from neuroscifi.instance import governance
+    knowledge.assert_fact(db, "Ana Tolvane keeps the lighthouse log.", T0)
+    warm(db)
+    with store.write(db):
+        assert governance.scrub_roots(db, {"Tolvane": ("partner", "0123456789abcdef")}) >= 1
+    assert held_text() == []
+    assert "Tolvane" not in db.execute("SELECT statement FROM web_knowledge").fetchone()[0]
+
+
+def test_a_forget_that_changes_no_knowledge_keeps_the_index(db):
+    from neuroscifi.instance import governance
+    knowledge.assert_fact(db, "The Tolvane Lighthouse is 41 metres tall.", T0)
+    knowledge.query(db, "lighthouse", T0 + 1)
+    with store.write(db):
+        assert governance.scrub_roots(db, {"Nobodyhere": ("partner", "0123456789abcdef")}) == 0
+    assert len(knowledge._INDEXES) == 1
