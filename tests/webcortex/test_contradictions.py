@@ -472,8 +472,9 @@ def test_pairs_applies_the_callers_test_and_the_thresholds(db, models):
     assert semantic.pairs(db, [RESTATED], rows, admit=lambda n, row: False)[0] == [[]]
     semantic.set_config(db, {"pair_floor": 0.99}, T0)
     assert semantic.pairs(db, [RESTATED], rows)[0] == [[]]
-    semantic.set_config(db, {"pair_floor": 0.8, "pair_similarity": 1.0}, T0)
-    assert [c["id"] for c in semantic.pairs(db, [RESTATED], rows)[0][0]] == [rows[0]["id"]]      # cosine 1.0 only
+    # identical vectors only: a cosine of exactly 1.0 is not reachable on every platform (it was 0.99999… on x86 CI)
+    semantic.set_config(db, {"pair_floor": 0.8, "pair_similarity": 0.9999}, T0)
+    assert [c["id"] for c in semantic.pairs(db, [RESTATED], rows)[0][0]] == [rows[0]["id"]]
     swept, _ = semantic.pairs(db, [RESTATED], rows, sweep=True)
     assert {c["id"] for c in swept[0]} == {r["id"] for r in rows} and all("score_back" in c for c in swept[0])
 

@@ -296,6 +296,10 @@ def free_port():
         return sock.getsockname()[1]
 
 
+class StageUnusable(Exception):
+    """The host cannot provide the stage (not a finding about the code under test)."""
+
+
 def inside(repo, prefix, site, rel_python):
     sh("mount", "-t", "tmpfs", "-o", "mode=0755", "tmpfs", MNT)
     for name in ("etc", "varlib", "py", "site", "src"):
@@ -323,6 +327,14 @@ def inside(repo, prefix, site, rel_python):
        "/usr/sbin/nologin", "--comment", "NeuroSciFi service", SVC)
     sh("install", "-d", "-m", "0700", "-o", SVC, "-g", SVC, STATE)
     sh("install", "-d", "-m", "0750", "-o", "root", "-g", SVC, "/etc/neuroscifi")
+    # The stage itself must give an account the folder it owns: some hosts confine unprivileged user namespaces
+    # (AppArmor's restriction on Ubuntu 24.04, as on GitHub's runners), and then an account cannot write even its
+    # own folder there. That is the host, not the installer (which has not run yet): the check is skipped, saying so.
+    probe = subprocess.run(["setpriv", f"--reuid={SVC}", f"--regid={SVC}", "--init-groups", "sh", "-c",
+                            f"touch {STATE}/.stage-probe && rm {STATE}/.stage-probe"], capture_output=True, text=True)
+    if probe.returncode != 0:
+        raise StageUnusable("this host's user namespace does not let an account write the folder it owns "
+                            f"({(probe.stderr or '').strip()[:160]}); the two-account check needs that")
     for name in (OPS, OTHER):
         sh("useradd", "--no-create-home", name)
     uid = {name: int(sh("id", "-u", name).stdout) for name in (SVC, OPS, OTHER)}
@@ -583,6 +595,9 @@ def main(argv):
     if os.environ.get("NSF_NAMESPACE_STAGE") == "inside":
         try:
             checks = inside(*argv[:4])
+        except StageUnusable as why:
+            print(json.dumps({"skip": str(why)}))
+            return 0
         except Exception as error:
             checks = [{"check": "the namespace was set up", "ok": False, "detail": f"{type(error).__name__}: {error}"}]
         print(json.dumps(checks))
@@ -619,6 +634,9 @@ def main(argv):
     except (IndexError, ValueError):
         print(f"the stage did not report: exit {done.returncode}\n{done.stdout[-800:]}\n{done.stderr[-800:]}")
         return 1
+    if isinstance(checks, dict) and "skip" in checks:
+        print(f"skipped: {checks['skip']}")
+        return SKIP
     failed = [c for c in checks if not c["ok"]]
     for c in checks:
         print(("ok    " if c["ok"] else "FAILED") + " " + c["check"] + ("" if c["ok"] else f"\n       {c['detail']}"))
