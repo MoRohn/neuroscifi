@@ -1069,6 +1069,8 @@ class _Requested:
 WAKE_DIR_MODE = 0o3770     # the request folder: its owner (the account that serves) and its group (who may ask);
 #                            sticky, so a request is removed by whoever left it or by the folder's owner, nobody else
 STUCK_HOLD = 30.0          # seconds `nsf resources wake` stays when an entry can be neither removed nor moved aside
+WAKE_LINGER = 25.0         # seconds neuroscifi-wake.service stays after it starts: at most 24 starts in the unit's
+#                            10-minute window, under its limit of 30 (tests/test_deploy_units.py keeps the two apart)
 STUCK_PREFIX = ".stuck-"   # hidden, and no *.wake name: systemd's PathExistsGlob= does not see it
 
 
@@ -1195,7 +1197,7 @@ def _serve_once(idle, folder) -> tuple[list[dict], bool]:
     return out, stuck
 
 
-def serve_wake_requests(db_path, folder, *, idle=None, hold=STUCK_HOLD, sleep=time.sleep) -> list[dict]:
+def serve_wake_requests(db_path, folder, *, idle=None, hold=STUCK_HOLD, linger=0.0, sleep=time.sleep) -> list[dict]:
     """What neuroscifi-wake.service runs (`nsf resources wake`): take every request out of `folder` and reload the
     service it names, if the idle policy unloaded it and a reload is due. A request is a regular file's name only:
     it is removed first and never opened, a symbolic link is removed without being followed, and a name that is
@@ -1203,9 +1205,15 @@ def serve_wake_requests(db_path, folder, *, idle=None, hold=STUCK_HOLD, sleep=ti
     (WAKE_DIR_MODE; an existing folder's mode and owner are never changed).
 
     Anything else under a request's name is removed or moved aside (_set_aside). If even that fails (a read-only
-    or sticky folder), the path unit would start this command again the moment it exits; so it stays for `hold`
-    seconds, serving the requests that arrive meanwhile, and the unit is started twice a minute at most instead of
-    running into its start limit (review S3)."""
+    folder), the path unit would start this command again the moment it exits; so it stays for `hold` seconds,
+    serving the requests that arrive meanwhile (review S3).
+
+    `linger` (the unit passes WAKE_LINGER): the command stays that long in any case and serves what arrives, within
+    a second. The path unit starts the service once per request that finds it stopped, so without it the number of
+    starts is the asker's to choose: whoever may write the folder (the console's group), or simply three processes
+    asking for six services every 30 s, could start it more than StartLimitBurst times in StartLimitIntervalSec,
+    after which systemd refuses to start it until someone resets it and no request is served at all. Staying
+    WAKE_LINGER seconds bounds the starts by the clock (see WAKE_LINGER), whatever is written into the folder."""
     idle = idle or Idle(db_path)
     folder = Path(folder)
     try:
@@ -1215,11 +1223,11 @@ def serve_wake_requests(db_path, folder, *, idle=None, hold=STUCK_HOLD, sleep=ti
         pass                                 # it exists (its modes are the installer's or the owner's), or cannot be made
     out, stuck = _serve_once(idle, folder)
     waited = 0.0
-    while stuck and waited < hold:
+    while waited < linger or (stuck and waited < hold):
         sleep(1.0)
         waited += 1.0
         more, stuck = _serve_once(idle, folder)
-        out += [item for item in more if item.get("service")]      # the stuck entry itself is reported once
+        out += [item for item in more if item.get("service")]      # a stuck or foreign entry is reported once
     return out
 
 

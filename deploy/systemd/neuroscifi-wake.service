@@ -7,8 +7,12 @@
 # neuroscifi-wake.path sees the request and starts this unit, which runs `nsf resources wake`: each request is
 # removed, checked against the policy's own service names (nothing else is ever run), and the service is reloaded
 # if this account's own state says the idle policy unloaded it and a reload is due, with the same free-memory check,
-# wait and event as any reload. An entry that is not a plain file is removed or moved aside; if that is impossible
-# the command stays for 30 s, so the path unit starts it twice a minute at most (StartLimit below is never reached).
+# wait and event as any reload. An entry that is not a plain file is removed or moved aside.
+# Whoever may write the folder decides how often a request appears, so the command decides how often it starts:
+# `--linger 25` keeps it for 25 s, serving within a second what arrives meanwhile. That is 24 starts in ten minutes
+# at most, under StartLimitBurst below, whatever is written (before, 30 requests in ten minutes, from a member of
+# the group or from three services asking for six models, stopped the unit until `systemctl reset-failed`).
+# The limit itself stays as the last stop against a command that fails at once (a wrong NSF_DB, a missing nsf).
 # It runs as the docker user that owns the services, like neuroscifi-idle.service, and needs what that unit needs:
 # NSF_DB, read-write access to `<NSF_DB>.resources/`, and ownership of the request folder (mode 3770, group: the
 # console's; deploy/install.sh --idle creates it and arranges the rest, see RESOURCE_SCHEDULING.md §3d).
@@ -27,7 +31,7 @@ StartLimitBurst=30
 Type=oneshot
 User=@NSF_USER@
 Environment=NSF_REPO=@NSF_REPO@
-ExecStart=/usr/bin/env bash -c 'exec "${NSF_REPO}/.venv/bin/nsf" resources wake --db "${NSF_DB}" --dir "@NSF_WAKE_DIR@"'
+ExecStart=/usr/bin/env bash -c 'exec "${NSF_REPO}/.venv/bin/nsf" resources wake --db "${NSF_DB}" --dir "@NSF_WAKE_DIR@" --linger 25'
 # A reload waits for the service to answer (the answer model: minutes on a first start).
 TimeoutStartSec=30min
 

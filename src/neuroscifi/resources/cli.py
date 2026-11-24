@@ -8,11 +8,12 @@
                                                   embed, rerank)
   nsf resources load SERVICE --on-demand PURPOSE  reload it only if the idle policy unloaded it, recorded as "on
                                                   demand: PURPOSE": what a memory lookup starts in the background
-  nsf resources wake [--dir DIR]                  serve the wake requests in DIR (default $NSF_WAKE_DIR): reload each
+  nsf resources wake [--dir DIR] [--linger S]     serve the wake requests in DIR (default $NSF_WAKE_DIR): reload each
                                                   service a request names, if the idle policy unloaded it and a
                                                   reload is due (neuroscifi-wake.service runs this). Creates DIR if
-                                                  or moved aside, and if that is impossible the command stays 30 s
                                                   missing (mode 3770); an entry that is not a plain file is removed
+                                                  or moved aside, and if that is impossible the command stays 30 s.
+                                                  With --linger it stays S seconds and serves what arrives
 """
 from __future__ import annotations
 
@@ -50,7 +51,7 @@ def _status(args):
         folder = args.dir or idle.wake_dir()
         if folder is None:
             raise SystemExit("nsf resources wake: name the request folder (--dir DIR or NSF_WAKE_DIR)")
-        served = idle.serve_wake_requests(path, folder, idle=policy)
+        served = idle.serve_wake_requests(path, folder, idle=policy, linger=max(0.0, args.linger))
         emit({"served": served})
         return 1 if any(item["action"] in ("failed", "refused") for item in served) else 0
     if not args.service:
@@ -83,6 +84,9 @@ def register(sub):
                    help="with `load`: reload the service only if the idle policy unloaded it (an owner's unload "
                         "stands), and record it as on demand for PURPOSE")
     p.add_argument("--dir", metavar="DIR", help="with `wake`: the wake-request folder (default $NSF_WAKE_DIR)")
+    p.add_argument("--linger", type=float, default=0.0, metavar="SECONDS",
+                   help="with `wake`: stay this long and serve what arrives (neuroscifi-wake.service passes "
+                        f"{idle.WAKE_LINGER:.0f}, which keeps its starts under its start limit); default 0")
     p.add_argument("--quick", action="store_true", help="memory only (no nvidia-smi or docker calls)")
     p.add_argument("--cold-start", action="store_true",
                    help="also report each neuroscifi-* container's last measured start-to-ready time")
