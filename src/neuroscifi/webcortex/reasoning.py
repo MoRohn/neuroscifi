@@ -1949,7 +1949,7 @@ def _role_swaps(raw: str, claim_texts) -> list[str]:
     mine, mine_clause = split(raw)
     for claim in claim_texts:
         theirs, their_clause = split(claim)
-        for v in set(mine) & set(theirs):
+        for v in sorted(set(mine) & set(theirs)):          # sorted: the reason lists them in one order everywhere
             if not v.endswith("ed") or v in _BE or mine.count(v) != 1 or theirs.count(v) != 1:
                 continue
             i, k = mine.index(v), theirs.index(v)
@@ -2088,7 +2088,7 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
                    ", ".join(" ".join(p) for p in sorted(doubled)))
     swaps = _role_swaps(raw, claim_texts)
     if swaps:
-        out.append(f"changes who does what in its cited claims: {', '.join(swaps)}")
+        out.append(f"changes who does what in its cited claims: {', '.join(sorted(dict.fromkeys(swaps)))}")
     return out
 
 

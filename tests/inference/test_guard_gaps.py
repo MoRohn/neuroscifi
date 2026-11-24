@@ -294,3 +294,25 @@ def test_a_sentence_that_only_names_its_source_further_is_shown_as_0_7_0_showed_
                                            "Orbix Labs.") is None
     assert reasoning._cut_with_attribution("Orbix supports encryption at rest according to documentation by "
                                            "Orbix Labs since 3.") is not None
+
+
+# ---- reasons in one order ------------------------------------------------------------------------------------------
+
+def test_a_reason_that_lists_words_lists_them_in_the_same_order_in_every_process():
+    """The role-swap reason listed its verbs in the order of a set, which varies from one Python process to the
+    next (hash randomisation): the same sentence got differently worded reasons at 0.7.0."""
+    import os
+    import subprocess
+    import sys
+    code = ("from neuroscifi.webcortex import reasoning as r\n"
+            "print(r._unentailed('Ben hired Ana, Dan promoted Carla, Finn trained Eve and Hal funded Gus.', "
+            "[{'id': 'C1', 'state': 'supported', 'sources': [1], 'text': "
+            "'Ana hired Ben, Carla promoted Dan, Eve trained Finn and Gus funded Hal'}], []))")
+    src = str(__import__("pathlib").Path(reasoning.__file__).resolve().parents[2])
+    seen = set()
+    for seed in ("1", "2", "3", "4", "5", "6"):
+        done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True,
+                              env=dict(os.environ, PYTHONHASHSEED=seed, PYTHONPATH=src))
+        seen.add(done.stdout)
+    assert len(seen) == 1, seen
+    assert "changes who does what in its cited claims: hired, promoted, trained" in seen.pop()
