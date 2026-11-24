@@ -6,6 +6,9 @@ serving flags. After = branch `nvidia-acceleration-review`. Same host, same mode
 Unrelated containers of the host's other tenants were resident throughout (about 30 GiB of memory available);
 they are listed in each evidence file and were not controlled.
 
+§1 to §5 are phase 1 of the review. §7 holds what was measured after the owner's decisions were built (phase 2),
+under different conditions that it states; §1 and §6 carry both.
+
 **How to read the numbers.** Latency scenarios run 8 calls each; the pipeline benchmark runs 51 tasks. The shipped
 configuration and the adopted one were each measured twice: the two runs of each agree within about 2 % on every
 loaded metric (`accel_vllm_flags.json`), so a difference under 5 % on this page is reported as "no change". Quality
@@ -27,18 +30,25 @@ temperature 0.1; they are reported as ranges where that matters. Reproduce with 
 | Owner's first token beside 4 background requests | 1.72 s | 1.12 s | **−35 %** |
 | Owner's whole short reply beside 4 background requests | 2.86 s | 2.26 s | **−21 %** |
 | Queued question: submit to worker claims it | 2.73 s mean, 4.8 s worst | 0.05 s mean, 0.1 s worst | **−98 %** |
-| Research task, median (model calls included), default settings | 3.10 s | 3.27 s | No change (§3) |
+| Research task, median (model calls included), settings of phase 1 | 3.10 s | 3.27 s | No change (§3) |
 | Research task, median, self-critique off (owner's choice) | — | 1.37 s | −56 % against the default; see the caveat in §3 |
+| Research task after phase 2: the critique reads only the model's own sentences | mean 4.13 s, median 3.03 s (every sentence judged, same session) | mean 2.59 to 2.80 s, median 1.77 to 1.87 s | **−32 to −37 %** on the mean; measured under load (§7.1) |
+| Self-critique marks on a sentence that is a cited claim word for word | 38 of 42 | 0 of 4 | **Removed** (§7.1) |
+| Reading pages, 300 ms per response, task p50 | 2.08 s | 0.96 s | **−54 %**, outcomes identical (§7.2) |
+| Requests reaching sites after a cancel / web access off / a deny | 1 / 11 / 11 | 0 / 0 / 0 | **Fixed** (§7.2) |
+| Belief after the evidence lifetime | back to the prior (0.5) | the posterior of the day before, exactly | **Fixed** (§7.3) |
+| First graph of a context with 160 to 256 populations | a snapshot no better than no graph, promoted | rejected under `gate-v1`; a working graph for new individuals | **Fixed** (§7.4) |
 | Memory: paraphrased question finds its fact first | 27 % | 98 % | **+71 points** (with the memory models) |
 | Memory: unrelated memory returned for a question memory cannot answer | 10 of 10 | 3 of 10 | **Improved** |
 | Memory answers from a wrong-property fact (decision test, 288 cases) | 94 | 1 | **Fixed** (model check; it also refuses 10 of 96 right facts, which then go to the web) |
 | Memory lookup time | 0.7 ms | 107 ms with the memory models | **Slower** (§4): quality bought with latency |
-| Unified memory | — | unchanged by default; +8.7 GiB when the optional memory models run | **Cost** when enabled |
+| Unified memory | — | unchanged by default; +8.7 GiB when the optional memory models run (releasable when idle since phase 2, §7.5) | **Cost** when enabled |
 | Regression suite | 3337 passed | see [REGRESSION_REPORT.md](REGRESSION_REPORT.md) | — |
 
-Regressions and costs are listed in §6. Nothing on this page claims a gain in the model's own reasoning: the model,
-its precision and the guard are unchanged. The quality gains are in memory retrieval, in the decision of when
-memory may answer, and in honest labelling.
+Regressions and costs are listed in §6. Nothing on this page claims a gain in the model's own reasoning: the model
+and its precision are unchanged, and the guard is the code of 0.7.0 with one added refusal (§7.1). The quality
+gains are in memory retrieval, in the decision of when memory may answer, in what survives the evidence lifetime,
+and in honest labelling.
 
 ## 2. Inference endpoint
 
@@ -82,16 +92,17 @@ corpus through the real orchestrator; the reasoning step calls the model.
 | Task wall time p50 / p95 / mean | 3.10 / 8.41 / 4.41 s | 3.27 / 8.63 / 4.45 s | 1.37 / 4.90 / 2.36 s |
 | Share of wall time: answer / critique / NeuroSciFi's own code | 53 % / 42 % / 5 % | 53 % / 43 % / 4 % | 100 % answer |
 | Self-critique: sentences removed / marked | 0 / 41 | 0 / 46 | — |
-| Marks on a sentence that restates its cited claims word for word | not recorded | 35 of 46 | — |
+| Marks on a sentence that restates its cited claims | not recorded | 35 of 46 by the content-word test of phase 1; 42 of 46 by the exact test of phase 2 (§7.1) | — |
 | Abstentions labelled as such | 0 (3 mislabelled) | 2 | 4 |
 
 - **The default task is not faster.** A typical answer prompt is 1.1k tokens and runs alone, so neither engine flag
   touches it. The gains of §2 are for long prompts, concurrent tasks and the owner under background load.
 - **The self-critique pass is 42 % of a task and removes nothing.** It cannot: a mark removes a sentence only if the
   deterministic check that already accepted the sentence now rejects it. Of its 46 marks, 35 sit on sentences whose
-  every content word is in the claim they cite and whose attribution was appended by code. It stays on by default
-  because it is the owner's feature; the owner can turn it off (`nsf llm config --no-self-critique`) or off for
-  spoken answers only (`--no-critique-voice`), where its marks were never presented.
+  every content word is in the claim they cite and whose attribution was appended by code. At the end of phase 1
+  it stayed on by default as the owner's feature, with switches to turn it off (`nsf llm config
+  --no-self-critique`) or off for spoken answers only (`--no-critique-voice`). Phase 2 narrowed what it reads
+  instead (§7.1), and its exact comparison counts 42 of the 46.
 - **Caveat on the critique-off run.** It ran directly after the default run on the same questions, so its answer
   prompts were almost entirely in the server's prefix cache (97 % against 54 %): its first token was 168 ms against
   281 ms. About 0.1 s of its 1.9 s advantage is that cache. The 42 % share measured in the baseline is the better
@@ -152,24 +163,209 @@ the others; each statement is now judged in a call of its own, and the ten right
 | Queued question to claimed by the worker (12 submissions) | mean 2.73 s, max 4.81 s | mean 0.05 s, max 0.10 s |
 | Worker idle cost | 1 ms of CPU per 5 s | 10 ms per 5 s |
 | Voice: first check of a followed research task | 1 s | 0.1 s, backing off to 1 s |
-| Reading pages, 300 ms per response, task p50 / p95 (read-ahead **off by default**) | 2.10 / 3.80 s | 2.10 / 3.80 s at the default; 0.99 / 1.83 s with `read_ahead=4` |
+| Reading pages, 300 ms per response, task p50 / p95 (read-ahead off by default at the end of phase 1) | 2.10 / 3.80 s | 2.10 / 3.80 s at 1; 0.99 / 1.83 s with `read_ahead=4`, which phase 2 made the default (§7.2) |
 | `lesion` on a 128-node graph | about 16 s | closed form (the same values to 1e-15) |
 
 Read-ahead reads, charges and reports exactly what one-at-a-time reading does (every benchmark metric identical),
-and sent 4 unused requests over 51 tasks. It is off by default because of what it changes at the edges
-([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §4).
+and sent 4 unused requests over 51 tasks. Phase 1 left it off because of what it changed at the edges; phase 2
+removed those objections and turned it on ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §4 B; §7.2 for the stops,
+the budget and the one stated exception).
 
 ## 6. Regressions and costs
 
 | Item | Size | Why accepted |
 |---|---|---|
 | Memory lookup with the memory models | 0.7 ms → 107 ms | Optional; cached within a task; buys the recall of §4 |
-| Unified memory with the memory models | +8.7 GiB (4.3 GiB each) | Optional; the host keeps about 31 GiB available, above the 18.3 GiB "elevated" threshold. Each can be run alone: the embedding alone gives the recall without the floor |
+| Unified memory with the memory models | +8.7 GiB as measured in phase 1 (4.3 GiB each); phase 2 measured 4.6 GiB per service loaded and used (1.9 device, 2.6 process). Not reduced by any setting tried | Optional; the host keeps about 31 GiB available, above the 18.3 GiB "elevated" threshold. Each can be run alone: the embedding alone gives the recall without the floor. With an idle timeout (off by default) the memory is released when unused: 7.9 to 9.4 GiB returned, and a lookup brings the models back in 20 to 29 s without waiting for them |
 | One model call per chosen statement before memory answers alone | +0.3 s per statement on that path | It replaces a wrong answer with web research; `nsf web config --no-memory-check` restores 0.7.0 |
 | Worker idle CPU | 1 → 10 ms per 5 s | The price of the wake-up check |
 | Same prompt repeated: first token | 202 → 250 ms | Within the noise of an 8-call scenario; the cached path does one decode step either way. Listed because it moved in the wrong direction |
 | Background research under priority scheduling | Waits behind the owner by design | The owner is waiting; background work is not. No preemption was observed |
 | vLLM start | 45 to 58 s to healthy in these runs (0.7.0 measured 32 to 52 s) | Varies with what else the host is doing; not attributable to the new flags |
+| **Phase 2.** Storage of consolidated readings | About 96 bytes per expired learning copy, with no cap (0.7.0: nothing kept). The tombstone an expired event leaves either way is the larger part | The price of beliefs that outlive their events; `nsf config --no-consolidation` restores 0.7.0 |
+| Belief computation grows with an epoch's age | 24 ms per 100,000 readings with a third of them sampled; about 0.3 s per million readings that carry a sample id even when none was recorded twice; 0.79 s at a million readings each recorded twice (0.7.0: bounded by one lifetime of events) | Per reading it is cheaper than the raw path; the bound is what changed. A cap or a maintained list of copied samples is next work |
+| Privacy of an expired event | A root's name and a sample id stay in the file until the reading is forgotten (0.7.0 scrubbed a root when its last event expired). An individual upgraded from 0.7.0 gets this unless the owner opts out first | The owner's decision D; every reading can be forgotten by position, partner, camera or epoch, at the byte level |
+| Requests a task sends and does not use | 4 beside 350 on the benchmark; at most the task's request budget again in the worst case (22 to 23 under a budget of 20 without owner action, 32 with a deny mid-run) | The price of reading four pages at once; charged requests stay within the budget; tasks under a daily allowance do not read ahead |
+| One stated difference from one-at-a-time reading | A site that answers "slow down" to a page fetched ahead is left alone at once; pages that lead onto it are missing from the report, which names the site and the reason | Politeness to the site ranks above identical reports |
+| Sentences refused that 0.7.0 showed | A sentence ending in its own "according to <source>" followed by more words. 0 on the benchmark and in the live runs; 17 of 1,476 recorded inputs, all from adversarial corpora. A faithful "… according to a report by Reuters" is refused too | 0.7.0 showed such a sentence without the words after the attribution, which could drop an exception. Code cannot tell the two cases apart |
+| The critic reads fewer sentences | 75 to 81 restated sentences of a run are no longer shown to it, also not as context for the gaps it names | Every mark it put on such a sentence concerned the code's own attribution; `--critique-restatements` restores the full reading |
+| A gateway call to a local service | One read of the listening sockets per second at most (4.2 ms), 0.006 ms per call | It keeps a key and prompts from another account's process on a freed port |
+| New individuals' graphs | At 24 populations the same 247 bytes, the sparse learner's weights in 64 % of worlds. A fit still costs 2.6 to 3.9 times a dense-only one | The better learner is packed; existing individuals are unchanged |
 
 Not measured: energy per task (no meter; GPU power is sampled and unchanged), sensor-to-action latency (no capture
-device), anything on a handset, and the live internet (no test contacted it).
+device), anything on a handset, and the live internet (no test contacted it). Phase 2's times were not re-measured
+on a quiet host on this page; its counts do not need it.
+
+## 7. Phase 2: the owner's decisions, measured
+
+The six decisions of [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §4 were built after the sections above were
+written. **Conditions:** these runs were taken while the other lanes' test and benchmark jobs shared the host
+(load average 20 to 40 at times, and at times a second model on the GPU). Counts (calls, sentences, requests,
+bytes, rows) do not depend on that; times do, and are indicative. Where a script reports CPU time or a minimum
+over repeats instead of a wall-clock median, the table says so. Evidence files are named
+`accel_decisions_*.json` and `accel_consolidation_cost.json`.
+
+### 7.1 What the self-critique reads (decision A)
+
+`accel_decisions_critique_scope.json`: the pipeline benchmark of §3, 51 tasks, the live model.
+
+| Run | Critique calls | Sentences judged / kept | Marks | Marks on a restatement | Removed | Task mean / median |
+|---|---|---|---|---|---|---|
+| Every sentence judged (the 0.7.0 scope, now `critique_restatements` on), two runs | 44, 44 | 86 / 86 | 42, 42 | 38, 38 | 0 | 4.13 / 3.03 s, 4.16 / 2.96 s |
+| Default scope, first version of the test, two runs | 9, 11 | 10 / 91, 12 / 89 | 4, 4 | 0 | 0 | 2.80 / 1.77 s, 2.79 / 1.81 s |
+| Default scope, character-for-character test, two runs | 10, 10 | 11 / 86 | 4 | 0 | 0 | mean 2.64 s |
+| Default scope, final rule (a restatement is one claim), one run | 9 | 10 / 85 | 4 | 0 | 0 | mean 2.59 s |
+| Self-critique off | 0 | — | — | — | — | 2.33 / 1.38 s |
+
+- The critique's share of task time fell from 42.6 % to 10.3 %, its tokens from 40,626 to 6,425 a run. The answer
+  call is the same request in every setting (59,755 prompt tokens in each of the first five runs).
+- **Correction to §3.** The stored default run of phase 1 (`accel_after_pipeline.json`), re-read with the final
+  rule: 79 of its 90 kept sentences are one cited claim word for word with the code's attribution, and 42 of its
+  46 marks sit on them. The "35 of 46" in §3 came from a looser test that compared content words; it missed one
+  attribution wording and accepted shortened claims.
+- Model-written answers were 44 to 46 of 51 across these runs. The difference follows the run, not the setting:
+  the answer is sampled at temperature 0.1, the critique runs after it and removed nothing in any run.
+- What is still judged: sentences the model shortened, reordered or built from more than one claim. Of the 4
+  marks, one reader took one to name a real shift of meaning (a company's own statement restated as fact) and
+  three to be false alarms on shortened sentences. That is a reading of four marks, not a measured precision.
+- The answer path is unchanged by this: a differential over 1,476 inputs recorded from `307b907` shows 1,459
+  identical results and 17 that differ only by a sentence now refused ([REGRESSION_REPORT.md](REGRESSION_REPORT.md)
+  §3); none of the 248 benchmark sentences among them changed, and the live runs refused none.
+
+### 7.2 Reading pages (decision B)
+
+`accel_decisions_read_ahead.json`. Task time on the offline corpus with every fixture response delayed 0.3 s
+(not comparable to live reading); outcomes of all 51 tasks identical across windows:
+
+| `read_ahead` | Task p50 | Task p95 | Requests used | Sent ahead and not used |
+|---|---|---|---|---|
+| 1 (0.7.0) | 2.08 s | 3.85 s | 350 | 0 |
+| 2 | 1.34 s | 2.30 s | 350 | 2 |
+| 3 | 1.01 s | 2.12 s | 350 | 4 |
+| 4 (the default) | 0.96 s | 1.79 s | 350 | 4 |
+
+Requests that reach the sites after the owner's stop was committed (every fetch held at its robots.txt answer,
+the stop made on another connection, the answers then released):
+
+| | Cancel | Web access off | Sites denied |
+|---|---|---|---|
+| `read_ahead` 1, before | 1 | 11 | 11 |
+| `read_ahead` 4, before | 4 | 8 | 8 |
+| Either, after | 0 | 0 | 0 |
+
+The 11 is the one-at-a-time path of 0.7.0: the web settings were re-read at most every 2 s. A cancelled run now
+ends about 0.25 s after the cancel (measured 0.01 to 0.24 s); before, it ended when its slowest request did (4.0 s
+with a 4 s answer; up to the 15 s timeout).
+
+Traffic against the task's budget, from the independent reviews' scenarios:
+
+| Scenario | One page at a time | Read-ahead 4, first version | Read-ahead 4, now |
+|---|---|---|---|
+| Three fetches ahead, `max_requests` 4: requests reaching sites | 4 | 12 | 4 |
+| Six redirecting candidates, `max_requests` 10 | 10 | 21 (11 unused) | 14 |
+| Worst case found without owner action, `max_requests` 20 | 20 | 34 | 22 to 23 |
+| The same with an unrelated site denied mid-run | 20 | 38 | 32 |
+| Unused bytes under a byte budget of 1,281,313 | 0 | 2,562,673 | 427,061 |
+
+Charged requests never exceed the budget, and neither do the unused ones; both together can reach exactly twice
+the budget in a constructed case (24 requests under a budget of 12: the reader's first site is in back-off, the
+fetches ahead take the whole budget, and a deny makes all of them unusable). On the benchmark the unused part is
+4 requests beside 350.
+
+### 7.3 Consolidated readings (decision D)
+
+`accel_consolidation_cost.json`, `scripts/bench_consolidation.py`. One epoch, three channels, four roots each, a
+sample id on a third of the events, one confirmed change. `compute()` is CPU time, minimum of 31 warm calls; the
+sweep is one wall-clock call. Posteriors are identical before and after the sweep in every row.
+
+| Learning readings in one epoch | `compute()`, all raw | `compute()`, all consolidated | Sweep that consolidates them | Bytes per reading, with indexes |
+|---|---|---|---|---|
+| 200 | 2.06 ms | 1.92 ms | 4.5 ms | (one page) |
+| 10,000 | 6.72 ms | 4.05 ms | 85 ms | 93 |
+| 100,000 | 55.17 ms | 23.99 ms | 930 ms | 96.5 |
+
+- An epoch with nothing consolidated pays 2 to 3 % more than at `307b907` (1.427 → 1.455 ms at 50 events, 5.044 →
+  5.193 ms at 10,000).
+- Per reading the consolidated path is cheaper than the raw one it replaces. What changed is the bound: the
+  journal held one lifetime of events, readings accumulate for the life of the epoch.
+- The first version kept one reading per sample (12 ms and 77 bytes at 100,000). It made forgetting inexact and
+  was replaced; the difference is the price of exact forgetting.
+
+Epochs whose readings all carry a sample id (`copies` mode; one wall-clock call, milliseconds; before → after the
+second review pass replaced one query per copied sample by passes over one index):
+
+| Readings, all sampled | Each sample recorded | `compute()` | Readings of one root since a question | `explain()` | Forget one reading |
+|---|---|---|---|---|---|
+| 100,000 | once | 57 → 57 | 34 → 1 | 156 → 121 | 58 → 57 |
+| 100,000 | twice | 308 → 97 | 235 → 0 | 818 → 200 | 271 → 95 |
+| 1,000,000 | once | 502 → 454 | 381 → 5 | 1484 → 922 | 538 → 456 |
+| 1,000,000 | one in ten twice | 1477 → 744 | 1124 → 5 | 3927 → 1496 | 1381 → 744 |
+| 1,000,000 | twice | 5370 → 791 | 4238 → 4 | 14595 → 1587 | 5148 → 793 |
+
+The independent review's own cases at a million readings and 200 roots: a sweep that expires one event per root
+5.31 s → 0.08 s, the list of held roots that every web query reads 51 ms → 0.2 ms, a forget of an unknown id
+195 ms → 0 ms (an index by root, a keyed tombstone lookup).
+
+### 7.4 The graph learner and what is promoted (decision F)
+
+`accel_decisions_graph_learner_time.json`: fit time, minimum of 9, 1536 steps unless noted. All sizes are
+bit-identical to the lab's loop.
+
+| Populations | Before | Now | Speed-up | The exchange's share of a fit, before → now | Now, as a multiple of a dense-only fit |
+|---|---|---|---|---|---|
+| 24 | 2.0 ms | 0.9 ms | 2.4× | 66 % → 19 % | 2.6 |
+| 256 | 36.8 ms | 21.2 ms | 1.7× | 49 % → 12 % | 2.6 |
+| 1024 | 0.97 s | 0.83 s | 1.2× | 20 % → 6 % | 3.9 |
+| 1024, 8192 steps | 2.55 s | 1.72 s | 1.5× | 29 % → about 0 | 2.6 |
+
+The 24 and 256 rows are steady (median within 6 % of the minimum). The 1024 rows are not (medians two to eight
+times the minimum under the load named above): **indicative only**.
+
+`accel_decisions_graph_learner_sizes.json`: the product path (`datasets.add`, `graphs.learn`, `evaluate`,
+`promote` on a new individual), validation error of the candidate and what the gate did, three worlds per size
+(one at 512 and 1024). A graph with no edges scores about 0.018 at every size.
+
+| Populations | Born under `gate-v1` alone | Born under the birth rules (`best-learner-v1`) |
+|---|---|---|
+| 24 | 0.0043, promoted | 0.0043, promoted (247 bytes either way) |
+| 48, 64 | 0.0043, 0.0044, promoted | 0.0043, sparse learner's graph, promoted |
+| 96, 128 | 0.0085, promoted | 0.0044, 0.0043, promoted |
+| 160 | 0.0192, rejected: no better than no graph (before phase 2: promoted) | 0.0044, promoted |
+| 192 | 0.27, rejected (before: promoted) | 0.0043, promoted |
+| 256 | 255, rejected (before: promoted) | 0.0043, promoted |
+| 512, 1024 | rejected: byte budget and no better than no graph | 0.0043, rejected: byte budget only |
+
+Selection on the lab's own worlds (`accel_decisions_graph_learner_select.json`, 64 worlds): at 24 populations the
+birth rule chooses the sparse learner's weights in 64 % of worlds at the same 247 bytes, held-out error 0.004313
+against 0.004321. Acceptance scenarios under both births: all pass, no check changes
+(`accel_decisions_graph_birth_rule.json`).
+
+### 7.5 The memory models as a service (decision C)
+
+`accel_decisions_memory_service.json`: the real containers and a temporary individual on this host; ranges are
+across four runs of the same script.
+
+| What | Result |
+|---|---|
+| `nsf setup` on a new individual, both services up | step `memory` done; a second run reports "already done" and probes nothing |
+| A paraphrased question | semantic, the right fact first; 111 to 175 ms |
+| Retrieval benchmark with the committed settings (130 queries) | paraphrase recall@1 0.979, lookup p50 111 ms: equal to §4 |
+| The reranker stopped by hand | the next lookup is lexical in 30 to 40 ms with the reason; the one after it 0.9 to 1.0 ms, nothing tried for 30 s |
+| First request to a model after a start | 1539 ms (embedding), 1051 ms (reranker) when the wait checked health only; 32 and 39 ms now that the wait sends one real request |
+| Start to ready | 18 to 31 s with warm files |
+| Idle pass after a 1-minute timeout | both unloaded in 1.0 to 1.8 s each; available memory 30.0 to 30.4 GiB → 38.3 to 39.3 GiB |
+| A lookup while both are unloaded | lexical with `waking`, 1.9 to 3.3 ms; a one-shot command 0.15 to 0.18 s in all |
+| Both models answering again | 20.2 s after that lookup (16.4 to 28.7 s per reload across runs) |
+| First lookup after the reload | semantic, 65 to 74 ms (1862 ms before the warm-up request) |
+| A reload asked for by a wake request (transient user units) | the lookup returns in 0.4 ms; the model answers again after 36.0 s |
+| Reloading through a unit: the wait | before, exit after 130 ms with "container is gone"; now "ready after 35s" |
+| A stuck entry in the request folder | before, 29 starts and the unit's start limit; now 1 start, the entry set aside, the next request served |
+| Footprint per service, loaded and used | 4.55 to 4.57 GiB: 2.6 GiB of process memory and 1.93 GiB of device memory (weights 1.12). **Not reduced**: no setting of the pinned image lowers it |
+
+Unverified: the units as installed system units, the installer run as root, the idle timer, a second account.
+
+### 7.6 The listener check
+
+Reading who owns a listening port costs one parse of `/proc/net/tcp` and `tcp6`: 4.2 ms on this host (421 socket
+lines). The first version parsed on every request, about four times per memory lookup. Now one parse serves a
+second of checks: 0.006 ms per check.
