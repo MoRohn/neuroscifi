@@ -83,6 +83,13 @@ docker_args() {
 }
 
 url() { echo "http://$NSF_VLLM_BIND:$NSF_VLLM_PORT"; }
+# Whether Docker reports the container running and publishing its port on the loopback address. While it does, no
+# other process can hold that port, so what answers there is the container.
+owns_port() {
+  [ "$(docker inspect -f '{{.State.Running}}' "$NSF_VLLM_CONTAINER" 2>/dev/null)" = true ] || return 1
+  docker port "$NSF_VLLM_CONTAINER" 8000/tcp 2>/dev/null \
+    | grep -qxF -e "$NSF_VLLM_BIND:$NSF_VLLM_PORT" -e "[$NSF_VLLM_BIND]:$NSF_VLLM_PORT"
+}
 
 # A container that does not exist yet is "not ready", not "gone", for the first seconds of a wait: a systemd unit
 # (Type=simple) returns from `systemctl start` before its wrapper has created the container (review F2: the idle
@@ -107,9 +114,17 @@ case "$cmd" in
   status)
     docker inspect -f '{{.Name}} {{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} started={{.State.StartedAt}}' \
       "$NSF_VLLM_CONTAINER" 2>/dev/null || echo "$NSF_VLLM_CONTAINER: not running"
+    # The key goes to curl on standard input (-K -), never on a command line that `ps` shows to every account; and
+    # only while Docker reports this container running and publishing the port: with the container down the port
+    # is free, and whatever else answers there must not be handed the key (as deploy/memory/run.sh, review L2).
     if [ -s "$KEY_FILE" ]; then
-      curl -fsS -m 5 -H "Authorization: Bearer $(tr -d '\n' < "$KEY_FILE")" "$(url)/v1/models" || echo "models: unavailable"
-      echo
+      if owns_port; then
+        printf 'header = "Authorization: Bearer %s"\n' "$(tr -d '\n' < "$KEY_FILE")" \
+          | curl -fsS -m 5 -K - "$(url)/v1/models" || echo "models: unavailable"
+        echo
+      else
+        echo "models: not asked ($NSF_VLLM_CONTAINER does not publish $NSF_VLLM_BIND:$NSF_VLLM_PORT; the key was not sent)"
+      fi
     fi ;;
   wait)
     # Fails at once when the container is crash-looping: with --restart unless-stopped it keeps existing, so only
