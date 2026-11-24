@@ -57,7 +57,7 @@ could not check something it is marked **unverified**, not passed.
 | Context and memory correctness validated | Done | Long-context recall 3 of 3; memory benchmark by class with held-out subjects (re-run in phase 2 and against the single memory server in phase 3: unchanged); contradictions in other words 31 of 43 found and 0 of 23 false pairs on held-out subjects (of a design revised once); the kept knowledge index identical to a fresh one over random sequences on two connections; the memory-answer check 86 of 96 and 1 of 288; provenance and timestamps untouched (the same rows, reordered). Phase 2: beliefs equal before and after the evidence lifetime, against a twin that never expires, over 80 randomised lives; forgetting exact and restores clean through a second generation (two independent fuzzes) |
 | Hardware utilisation measured and optimised where practical | Done | GPU 96 % at one stream; queue, prefill, decode, cache, power and temperature now reported; scheduling flags. No further headroom was found to recover: the limit is single-stream decode. Phase 2: the memory models' 4.6 GiB each measured by component and not reducible by settings; releasable when idle (7.9 to 9.4 GiB returned, measured). Phase 3: one server for both, 4.26 GiB against 9.33 GiB measured side by side, ready in 7 to 11 s against 54 to 69 s; an interactive embedding behind the largest accepted call 8.0 s → 390 ms |
 | Multimodal and distributed capabilities remain operational | Partly verifiable | Voice, Pocket and Presence pass their suites and the browser suite with synthetic media. **Unverified**: a real microphone, a real handset (as in 0.7.0) |
-| Existing features pass regression testing | Done | Final code (`5583823`; later commits change only reports, evidence files and the clean-up at the end of two Web Cortex tests, §5 item 14, after which `tests/webcortex` gave 1807 passed, 9 skipped): `bash scripts/check.sh` 3996 passed, 18 skipped, Node checks and 8 of 8 reproduction pass, all checks passed in 659 s (baseline 3337 passed, phase 1 3483 passed, the same 18 skipped); browser suite 198 passed, 1 skipped, exit 0; acceptance exit 0, every scenario passes; offline benchmark exit 0 with every compared metric identical at read-ahead 1, 4 and the default. The same three suites had passed with the same counts but 3989 Python tests on the tree before the last read-ahead fix. Phase 1's runs are in [REGRESSION_REPORT.md](REGRESSION_REPORT.md) §1 |
+| Existing features pass regression testing | Done | Phase 3, final code (`1ece09b`; later commits change only these reports): `bash scripts/check.sh` 4584 passed, 18 skipped, Node checks and 8 of 8 reproduction pass, all checks passed in 747 s (baseline 3337, phase 1 3483, phase 2 3996; the same 18 skipped); browser suite 198 passed, 1 skipped, 1 failed on a 30 s wait for the phone's enrol button, then three further full runs on the same tree 199 passed, 1 skipped each; acceptance exit 0; offline benchmark exit 0 with every metric equal to phase 2's; guard differential 1,808 inputs, 0 different; two-account check 49 of 49. Earlier phases' runs are in [REGRESSION_REPORT.md](REGRESSION_REPORT.md) §1 |
 | Edge cases and recovery scenarios pass | Done for those listed | [REGRESSION_REPORT.md](REGRESSION_REPORT.md) §4. **Unverified**: GPU memory exhaustion, a failed image upgrade and its rollback, days of autonomy. The two-account deployment is verified in a user namespace with two real uids and the real installer (46 checks, the root-escalation attack among them), not under systemd and polkitd (§5 item 3) |
 | New and existing services have observability | Done | `nsf resources`, `GET /api/resources`, the ledger, `nsf llm status`, `nsf web memory`, the `retrieval` and `memory_check` fields. Since phase 2 the memory models are services of the idle policy (`nsf resources`: timeouts, state, last use, events) and `nsf web memory` shows `asleep` or `refused`; a task's usage reports unused read-ahead; a report's `critique` says how many sentences were judged and why a call was skipped; `nsf config`, `nsf regulation` and `nsf memory consolidated` show the consolidation setting and readings; a changed instance setting leaves an audit row. Phase 3: the consolidation limit's warnings and the largest epoch's belief cost (`nsf regulation`, the console's overview), `nsf web status` questions with the stale ones, `nsf knowledge calibration` with the mapping per kind and how it would have fared, `nsf resources` with a shared memory container's names and effective timeout, the idle state's problems, `merged` and `held` on a pair found by meaning |
 | Improvements supported by reproducible evidence | Done | Scripts and evidence files; repeat runs for the engine flags; a dev and held-out split for memory. Phase 2: `accel_decisions_*.json`, `accel_consolidation_cost.json`; `scripts/bench_consolidation.py`, `scripts/bench_graph_learner.py`, `scripts/guard_differential.py`; repeat runs for the critique scope. Its times were taken under load and are marked indicative ([PERFORMANCE.md](PERFORMANCE.md) §7). Phase 3: `open_items_*.json`; `scripts/bench_knowledge.py`, `scripts/bench_calibration.py`, `scripts/two_account_check.py`; the guard's gap corpus with every label fixed before the change ([PERFORMANCE.md](PERFORMANCE.md) §8) |
@@ -184,9 +184,21 @@ web reading, knowledge, guard and calibration work; correctness of the runtime, 
   numerics against the model cards and its constant-time key check; no secret or personal data in anything added.
 - **Fixes after the first pass.** The full non-browser suite and the browser suite were run on the merged round
   before the fixes; their two flaky tests and a thread left by a browser-test fixture were fixed. A narrow security
-  re-review of the critical and security-relevant fixes (the installer, the idle account's reads, the polkit rule,
-  direction controls in extraction, the guard's new refusals and the frozen proof, the memory server's parsing) is
-  **in progress** as this page is written.
+  re-review of the critical and security-relevant fixes, with the first pass's exploits and new variants, rated the
+  remaining risk **low**: the installer finding fixed (planted links for the database, `-wal`, `-shm` and
+  `.resources`, a link inside `--db`, 40 runs of the `find` race and a hard link, with the real installer as root
+  and two real accounts: no target changed); the idle account's reads fixed for every reported vector; the polkit
+  rule's JavaScript answers yes for exactly the 14 intended combinations of 95,744 (7 units × start and stop × the
+  idle account); direction controls caught in 36 HTML variants checked against what headless Chromium shows; the
+  frozen proof independent; the memory server's parsing strict. It found five new low items and one older medium,
+  all fixed in a last round with tests that fail on the earlier code: a FIFO planted as the database's `-wal` or
+  `-shm` hung the idle pass, and deeply nested JSON in a state file crashed it (both now reported, nothing opened);
+  32 keep-alive health checks without the key held every memory-server slot (now closed after an unkeyed answer,
+  with slots kept for keyed calls); a fake tag inside `<title>` or `<xmp>` hid an override; "Both…", "Such…", "The
+  latter…" counted as exact restatements; and, older than the branch, a claim restated with its roles reversed in
+  the passive ("Globex was acquired by Acme Corp." from "Globex acquired Acme Corp.") was accepted. The installer's
+  service-account steps now also run detached from root's terminal. These last fixes were not reviewed a further
+  time; they rest on their tests and the final run of §2.
 
 ## 5. Outstanding issues and residual risks
 
@@ -195,8 +207,8 @@ open on purpose is its §5.3.
 
 1. **The sentence guard is lexical, and some gaps are still open**, each pinned as "open" in the gap corpus: an
    exception written as a negated phrase; a bound of time; a group named as an advisory's author; a pronoun beside
-   a capitalised claim word; versions or roles swapped between two clauses of one active sentence; two attribution
-   wordings; a restriction after character 600 of a claim. What a hostile page can do is unchanged in kind from
+   a capitalised claim word; versions swapped between two clauses of one sentence; adverb, get-passive and cleft
+   forms of a role reversal; two attribution wordings; a restriction after character 600 of a claim. What a hostile page can do is unchanged in kind from
    0.7.0: have its own weak claim shown word for word with the code's hedge, or have a faithful sentence refused.
    The rules added in phase 3 refuse 7 faithful sentences of the corpus on purpose, and none of the benchmark's.
 2. **Right-to-left text loses citations.** A line of Hebrew or Arabic that uses a direction mark or isolate is read

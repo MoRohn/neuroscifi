@@ -269,6 +269,7 @@ Each row has a test that fails on the code before the fix.
 | The calibration mapping decided whether a hypothesis was researched, not only its rank | Admission from the stated forecast only |
 | A forgotten statement stayed in the kept index in memory; a paid search stopped before sending still counted against its daily cap | Every forget clears the index and the vectors; refunded |
 | Two flaky tests in the gate (a stale-signature margin; a wake test without its fixture's pin) and a test-fixture thread leak in the browser suite | Fixed in the tests and the fixture |
+| Security re-review (low, and one older medium): a FIFO planted as the database's `-wal`/`-shm` hung the idle pass; deeply nested JSON in a state file crashed it; 32 keep-alive health checks without the key held every memory-server slot; a fake tag inside `<title>` or `<xmp>` hid a direction override; "Both…", "Such…", "The latter…" counted as exact restatements; a claim restated with its roles reversed in the passive was accepted (also by `307b907`); the installer's service-account steps inherited root's terminal | Each fixed with a test that fails on the earlier code: nothing but regular files opened; nesting reported as malformed; an unkeyed answer closes its connection and slots are kept for keyed calls; raw-text elements read as text for the override rule; the openers excluded from the exemption (live and frozen); role reversal refused in either voice; the steps run in their own session with no terminal |
 
 ### 5.3 Left open on purpose
 
@@ -291,8 +292,8 @@ In the order of the directive's hierarchy: correctness first. Each item says why
    the differential: an exception written as a negated phrase ("for all users not on Windows"); a bound of time
    ("until May 2027": left out of the restriction rule on purpose, because its loss generalises over time and
    inverts nothing); a group named as an advisory's author ("according to the advisory from Windows Users");
-   a pronoun of the sentence's own beside a capitalised claim word; versions or roles swapped between two clauses
-   of one active sentence; an "according to the cited sources" set between commas, and the attribution worded from
+   a pronoun of the sentence's own beside a capitalised claim word; versions swapped between two clauses of one
+   sentence; adverb, get-passive and cleft forms of a role reversal; an "according to the cited sources" set between commas, and the attribution worded from
    the sources counted before inline citations (both would change accepted text); a restriction after character
    600 of a claim (production cuts claims at 420). Right-to-left text: a line that uses a direction mark or
    isolate is read but never cited in an answer.

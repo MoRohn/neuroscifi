@@ -13,18 +13,20 @@ left ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §5), has its own rows at the e
 
 ## 1. Suites
 
-| Layer | Command | Before | After phase 1 | After phase 2 (final code) |
-|---|---|---|---|---|
-| Lint | `ruff check .` | clean | clean | clean |
-| Python tests | `pytest -q --ignore=tests/e2e` | 3337 passed, 18 skipped | 3483 passed, 18 skipped (146 tests added) | 3996 passed, 18 skipped (513 more than after phase 1, 659 more than the baseline) |
-| Node checks | `tests/js/*.mjs` (6 files) | all pass | all pass | all pass |
-| Numerical reproduction | `scripts/reproduce.py` | 8 of 8 | 8 of 8 | 8 of 8 |
-| The gate as a whole | `bash scripts/check.sh` | passed in 468 s | passed in 497 s | passed in 659 s |
-| Acceptance scenarios (simulated) | `nsf acceptance --all` | not rerun at baseline (0.7.0 recorded 7 of 7) | exit 0 | exit 0, every scenario passes |
-| Browser end to end | `bash scripts/e2e.sh` | not run at baseline; the one test that failed here was run on `9e4570a` (passes) | 194 passed, 1 skipped, 1 failed on the final tree: `test_add_a_phone_from_the_console_to_a_paired_phone` saw Chromium's `net::ERR_NETWORK_CHANGED` when another tenant's container brought up a network interface on this shared host (system log, same second). Its file was rerun three times on the same tree: 3 of 3 pass each time. The full run before the last review fixes: 195 passed, 1 skipped. A second full run on the same tree afterwards: 195 passed, 1 skipped, exit 0 | 198 passed, 1 skipped, exit 0 (the interim run on the tree before the last read-ahead fix gave the same) |
-| Offline research benchmark | `nsf web bench` | deterministic, safety invariants hold | every metric identical to before, at read-ahead 1 and 4; safety invariants hold | exit 0; every compared metric identical at read-ahead 1, at 4 and at the default (`accel_decisions_read_ahead.json`); safety invariants hold |
+| Layer | Command | Before | After phase 1 | After phase 2 (final code) | After phase 3 (final code) |
+|---|---|---|---|---|---|
+| Lint | `ruff check .` | clean | clean | clean | clean |
+| Python tests | `pytest -q --ignore=tests/e2e` | 3337 passed, 18 skipped | 3483 passed, 18 skipped (146 tests added) | 3996 passed, 18 skipped (513 more than after phase 1, 659 more than the baseline) | 4584 passed, 18 skipped (588 more than after phase 2) |
+| Node checks | `tests/js/*.mjs` (6 files) | all pass | all pass | all pass | all pass |
+| Numerical reproduction | `scripts/reproduce.py` | 8 of 8 | 8 of 8 | 8 of 8 | 8 of 8 |
+| The gate as a whole | `bash scripts/check.sh` | passed in 468 s | passed in 497 s | passed in 659 s | passed in 747 s |
+| Acceptance scenarios (simulated) | `nsf acceptance --all` | not rerun at baseline (0.7.0 recorded 7 of 7) | exit 0 | exit 0, every scenario passes | exit 0 |
+| Browser end to end | `bash scripts/e2e.sh` | not run at baseline; the one test that failed here was run on `9e4570a` (passes) | 194 passed, 1 skipped, 1 failed on the final tree: `test_add_a_phone_from_the_console_to_a_paired_phone` saw Chromium's `net::ERR_NETWORK_CHANGED` when another tenant's container brought up a network interface on this shared host (system log, same second). Its file was rerun three times on the same tree: 3 of 3 pass each time. The full run before the last review fixes: 195 passed, 1 skipped. A second full run on the same tree afterwards: 195 passed, 1 skipped, exit 0 | 198 passed, 1 skipped, exit 0 (the interim run on the tree before the last read-ahead fix gave the same) | 198 passed, 1 skipped, 1 failed (`test_handoff_between_two_devices_of_one_family_and_refused_across_families`: a 30 s wait for the phone's enrol button); three further full runs on the same tree: 199 passed, 1 skipped each |
+| Offline research benchmark | `nsf web bench` | deterministic, safety invariants hold | every metric identical to before, at read-ahead 1 and 4; safety invariants hold | exit 0; every compared metric identical at read-ahead 1, at 4 and at the default (`accel_decisions_read_ahead.json`); safety invariants hold | exit 0; every metric equal to phase 2's |
 
-The phase-2 column is one run on commit `5583823`, the last commit that changes product code; the commits after it
+The phase-3 column is one run on commit `1ece09b`, the round's final code (the commits after it change only these
+reports); the guard's differential gave 1,808 inputs compared, 0 different, and `scripts/two_account_check.py` 49 of
+49 on the same tree. The phase-2 column is one run on commit `5583823`, the last commit that changes product code; the commits after it
 change these reports, one sentence of a web-reading page, evidence files, and the clean-up at the end of two
 Web Cortex tests (last row of the table below; `tests/webcortex` again afterwards: 1807 passed, 9 skipped). The 18 skips are the same on every side: tests marked live (the real internet, a real remote provider) and
 platform-conditional ones.
