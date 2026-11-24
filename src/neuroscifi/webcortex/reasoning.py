@@ -75,7 +75,7 @@ A bounded self-critique (one call, cfg.self_critique) may FLAG accepted sentence
 sentence only when an objective check confirms it (unknown source or claim, an unsupported claim state without a
 hedge, a number or unit not in the cited evidence: the same checks as the guard); otherwise the sentence stays,
 carrying the flag ({"problem", "note"}) for the reader. The model's judgement alone never removes a sentence.
-The critique judges only what the model wrote of its own: an accepted sentence that is its cited claims character
+The critique judges only what the model wrote of its own: an accepted sentence that is one cited claim, character
 for character with the attribution compose() appended (restates()) is not shown to it, and when every accepted
 sentence is such a restatement no call is made (critique {"status": "skipped", "reason", "judged": 0,
 "restatements"}). When some sentences were left out, critique carries "judged" and "restatements" beside "removed"
@@ -2470,17 +2470,15 @@ def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
 # ---- restatements: what the self-critique has nothing to judge in -------------------------------------------------
 # Everything below reads compose(), attribution() and the guard as they are and changes none of them.
 
-# How a model joins the claims it restates in one sentence ("A, and b"); a closed list, compared exactly.
-_RESTATE_JOINS = (", and ", " and ", "; ", "; and ")
-# A first word, beside those of the guard's _LOWER_LEAD, that a model lowers when it joins a claim to another and
-# whose capital carries no meaning. A closed list on purpose: "Turkey", "Polish", "May", "Mark", "Will" are words too.
-_LOWER_AFTER_JOIN = re.compile(r"^(?:With)\b")
 # Characters a reader does not see, or that change how the characters around them are shown: format characters
 # (bidirectional controls, zero-width spaces and joiners, soft hyphen, tags), controls, private use, unassigned,
-# surrogates, line and paragraph separators, and the invisible ones Unicode files elsewhere (combining grapheme
-# joiner, Hangul and Khmer fillers, Mongolian and other variation selectors, the Braille blank).
+# surrogates, line and paragraph separators (by category), and the invisible ones Unicode files elsewhere, by code
+# point: combining grapheme joiner, Hangul and Khmer fillers, the Braille blank, Mongolian and other variation
+# selectors. Written as numbers so that this file holds none of them.
 _UNSEEN_CATEGORIES = frozenset({"Cf", "Cc", "Co", "Cn", "Cs", "Zl", "Zp"})
-_UNSEEN = re.compile("[͏ᅟᅠ឴឵᠋-᠏⠀ㅤﾠ︀-️\U000e0100-\U000e01ef]")
+_UNSEEN = re.compile("[" + "".join(map(chr, (0x34F, 0x115F, 0x1160, 0x17B4, 0x17B5, 0x2800, 0x3164, 0xFFA0)))
+                     + "".join(f"{chr(a)}-{chr(z)}" for a, z in ((0x180B, 0x180F), (0xFE00, 0xFE0F),
+                                                                 (0xE0100, 0xE01EF))) + "]")
 _SOURCE_PHRASE_ANYWHERE = re.compile(_SOURCE_PHRASE, re.IGNORECASE)
 
 
@@ -2497,89 +2495,46 @@ def _restate_key(text) -> str | None:
     return text[:-1].rstrip() if text.endswith(".") and not text.endswith("..") else text
 
 
-def _part_at(body: str, at: int, part: str, first: bool, guard_led: bool) -> int | None:
-    """Where `part` (a claim's key) ends when it stands in `body` at `at`, else None. Character for character, with
-    one exception each for what code or a join does to a first letter: the guard's attribution lowers the first
-    letter of the sentence it leads (_attributed), and a claim after a join may start in lower case. Both only for a
-    first word of the guard's closed list _LOWER_LEAD ("The", "In", "After", ...), whose capital carries no meaning;
-    after a join also "With" (_LOWER_AFTER_JOIN: the live sentence "..., and with a length of 412 km, ..."). Never
-    "Turkey exports" as "turkey exports", "May" as "may" or "CO" as "cO"."""
-    lowered = part[:1].lower() + part[1:]
-    if first:
-        forms = (lowered,) if guard_led and _LOWER_LEAD.match(part) else (part,)
-    else:
-        forms = (part, lowered) if _LOWER_LEAD.match(part) or _LOWER_AFTER_JOIN.match(part) else (part,)
-    for form in forms:
-        if body.startswith(form, at):
-            return at + len(form)
-    return None
-
-
-def _joined(body: str, parts: list[str], guard_led: bool = False, at: int = 0, left: tuple | None = None) -> bool:
-    """Whether `body` from `at` is every one of `parts` (those at the indexes `left`) exactly once, in any order, with
-    one of _RESTATE_JOINS between two of them and nothing else. It walks the body once per way the parts can follow
-    each other in it, not once per ordering of the parts: a part is tried only where it stands."""
-    left = tuple(range(len(parts))) if left is None else left
-    for i in left:
-        end = _part_at(body, at, parts[i], len(left) == len(parts), guard_led)
-        if end is None:
-            continue
-        rest = tuple(j for j in left if j != i)
-        if not rest:
-            if end == len(body):
-                return True
-        elif any(body.startswith(join, end) and _joined(body, parts, guard_led, end + len(join), rest)
-                 for join in _RESTATE_JOINS):
-            return True
-    return False
-
-
 def restates(item: dict, b: dict) -> bool:
-    """Whether an accepted sentence (a guard() item) says exactly its cited claims and nothing of the model's own.
+    """Whether an accepted sentence (a guard() item) is one cited claim, word for word, and nothing of the model's.
 
-    True only when its text is, character for character (_restate_key: white space and one final full stop aside),
-    its cited claims' own text as extracted: one claim, or every cited claim once, in any order, joined by one of
-    _RESTATE_JOINS, followed by exactly what attribution() appends for those claims' states and number of sources
-    (nothing when all are supported), or led by exactly what the guard's _attributed() puts in front (items with
-    "attributed"). Both are asked of those functions themselves, with a one-letter text, so this test holds no copy
-    of their wording. Always False, so that the sentence is judged, for: a shortened, reordered or reworded claim; a
-    changed number, unit or letter case; a dropped "not"; an added clause; a claim cited but not restated; more than
-    MAX_SENTENCE_CLAIMS cited claims (the guard also reads citation markup in the text, so an item can carry more
-    than the schema allows); sources other than the cited claims' own; an unknown claim id; a cited claim whose own
-    text holds an attribution phrase (_SOURCE_PHRASE: attribution() removes such a phrase from a sentence together
-    with up to 40 characters after it, so what is shown may be less than the claim says); and a sentence or claim
-    that _restate_key cannot compare (unseen characters, compatibility forms).
+    True only when it cites exactly one claim and its text is, character for character (_restate_key: white space
+    and one final full stop aside), that claim's own text as extracted, followed by exactly what attribution()
+    appends for the claim's state and number of sources (nothing when it is supported), or led by exactly what the
+    guard's _attributed() puts in front of it (items with "attributed"). Both wordings are asked of those functions
+    themselves, so this test holds no copy of them and changes neither.
+
+    Always False, so that the sentence is judged, for: a sentence that cites more than one claim, joined or not (a
+    sentence made of two claims is the model's composition: "NumPy 2.5.5 is not affected by the flaw if built from
+    source; the wheels are." says what neither claim says alone); a shortened, reordered or reworded claim; a
+    changed number, unit or letter case; a dropped "not"; an added clause; sources other than the cited claim's
+    own; an unknown claim id; a cited claim whose own text holds an attribution phrase (_SOURCE_PHRASE: attribution()
+    removes such a phrase from a sentence together with up to 40 characters after it, so what is shown may be less
+    than the claim says); and a sentence or claim that _restate_key cannot compare (unseen characters, compatibility
+    forms).
 
     Used by apply(): the self-critique judges only sentences that are not restatements. In a restatement the words
     are the claim's and the hedge is the code's, so "unsupported", "overstated" or "missing_hedge" there can only be
-    a false alarm (measured on the pipeline benchmark: 43 of 46 marks sat on such sentences). The cost is bounded:
-    at most MAX_SENTENCE_CLAIMS parts, each tried only where it stands in the text."""
+    a false alarm (measured on the pipeline benchmark: 42 of 46 marks sat on such sentences). The cost is a few
+    string comparisons."""
     claims = {c["id"]: c for c in b.get("claims") or []}
     ids = list(dict.fromkeys(str(c).strip() for c in item.get("claims") or []))
-    if not ids or len(ids) > MAX_SENTENCE_CLAIMS or any(i not in claims for i in ids):
-        return False
-    used = [claims[i] for i in ids]
-    sources = list(dict.fromkeys(n for c in used for n in c.get("sources") or []))
+    if len(ids) != 1 or ids[0] not in claims:
+        return False                        # no claim, an unknown one, or more than one: the model's composition
+    claim = claims[ids[0]]
+    sources = list(dict.fromkeys(claim.get("sources") or []))
     if sorted(set(item.get("citations") or [])) != sorted(set(sources)):
-        return False                        # not the sources compose() gives these claims: judge it
-    text = _restate_key(item.get("text"))
-    if text is None:
-        return False
-    parts = []
-    for c in used:
-        key = _restate_key(c.get("text"))
-        if key is None or _SOURCE_PHRASE_ANYWHERE.search(key):
-            return False                    # not comparable, or attribution() may have taken words out of its copy
-        if key not in parts:                # the same words from two claims count once
-            parts.append(key)
-    hedged_x = attribution("X", [c["state"] for c in used], len(sources))       # "X", or "X, according to ... ."
+        return False                        # not the sources compose() gives this claim: judge it
+    text, key = _restate_key(item.get("text")), _restate_key(claim.get("text"))
+    if text is None or key is None or _SOURCE_PHRASE_ANYWHERE.search(key):
+        return False                        # not comparable, or attribution() may have taken words out of its copy
+    hedged_x = attribution("X", [claim["state"]], len(sources))                 # "X", or "X, according to ... ."
     tail = _restate_key(hedged_x[1:]) if hedged_x != "X" else ""
     if tail is None or not hedged_x.startswith("X"):
         return False
-    if text.endswith(tail) and _joined(text[:len(text) - len(tail)], parts):
+    if text == key + tail:
         return True
-    lead = _attributed("X", sources)[:-1]                                        # "According to one source, "
-    return bool(item.get("attributed")) and text.startswith(lead) and _joined(text[len(lead):], parts, guard_led=True)
+    return bool(item.get("attributed")) and text == _attributed(key, sources)   # "According to one source, the ..."
 
 
 def _gap_text(text) -> str | None:
@@ -2784,7 +2739,7 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
         critique = {"status": "skipped", "reason": "spoken answer: the critique pass is off for voice "
                                                    "(nsf llm config --critique-voice turns it on)"}
     elif accepted and gw.cfg.self_critique:
-        # The critique judges what the model wrote of its own. A sentence that is its cited claims character for
+        # The critique judges what the model wrote of its own. A sentence that is one cited claim, character for
         # character with the attribution the code appended (restates) gives a second reading nothing to judge, and is
         # left out of the critic's numbered list; cfg.critique_restatements has every accepted sentence judged, as
         # 0.7.0 did. When nothing was left out the record is the 0.7.0 one (no "judged", no "restatements").

@@ -396,33 +396,32 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   (`docs/quality/evidence/accel_baseline_pipeline.json`, `summary`): the critique call ran for the 46 model answers
   and took 42 % of the tasks' wall time (the answer call 53 %, orchestration 5 %); it removed 0 of the 94 kept
   sentences and flagged 41. The same run after the changes of §7 (`accel_after_pipeline.json`): 42 % of wall time,
-  0 of 90 kept sentences removed, 46 flagged. Read with the exact test below, 80 of those 90 sentences are their
-  cited claims word for word and 43 of the 46 flags sit on them (the file's own `critique_flags` says 79 and 35: it
-  used a looser content-word test that did not know one attribution and accepted shortened claims). That is why the
+  0 of 90 kept sentences removed, 46 flagged. Read with the exact test below, 79 of those 90 sentences are one
+  cited claim word for word and 42 of the 46 flags sit on them (the file's own `critique_flags` says 79 and 35 by
+  another count: it used a looser content-word test that did not know one attribution and accepted shortened
+  claims). That is why the
   critique's scope is what it is now (§7, "What the critique judges"). The pass is skipped when
   too little of the time budget is left (below), when `self_critique` is off, for a spoken answer when
   `critique_voice` is off, and when every accepted sentence is a restatement (§7).
-- **Restatements (`reasoning.restates`).** An accepted sentence is a restatement when its text is, character for
-  character, its cited claims' own text as extracted: one claim, or every cited claim once, in any order, joined by
-  `, and`, ` and`, `; ` or `; and`, followed by the attribution `compose()` appends for those claims' states and
-  number of sources (nothing when all are supported), or led by the guard's own "According to one source, …" (items
-  with `attributed`). Both wordings are asked of `attribution()` and `_attributed()` themselves with a one-letter
-  text, so the test holds no copy of them and changes neither function. Two differences are allowed and no other: runs of white space count as one space, and one
-  final full stop may be present or absent. Case counts, with one exception: a claim that follows a join may begin
-  in lower case when its first word is one of a closed list whose capital carries no meaning (the guard's
-  `_LOWER_LEAD`: "The", "In", "After", …; and "With": "…, and with a length of 412 km, …"). "Turkey exports" is
-  never "turkey exports", "May" never "may", "CO" never "cO".
-  Always judged, whatever the sentence says: a shortened, reordered or reworded claim; a changed number, unit or
-  letter case ("CO" and "Co"); a dropped "not"; an added clause; a claim cited but not restated; more than three
-  cited claims (the guard also reads citation markup inside the text, so an accepted sentence can carry more than
-  the schema's three); citations other than the cited claims' own sources; an unknown claim id; a claim whose own
+- **Restatements (`reasoning.restates`).** A restatement is one cited claim, word for word, with the code's
+  attribution: the sentence cites exactly one claim and its text is, character for character, that claim's own text
+  as extracted, followed by the attribution `compose()` appends for the claim's state and number of sources (nothing
+  when it is supported), or led by the guard's own "According to one source, …" (items with `attributed`). Both
+  wordings are asked of `attribution()` and `_attributed()` themselves, so the test holds no copy of them and
+  changes neither function. Two differences are allowed and no other: runs of white space count as one space, and
+  one final full stop may be present or absent. Case counts.
+  Always judged, whatever the sentence says: a sentence that cites more than one claim, joined or not (a sentence
+  made of two claims is the model's composition; "NumPy 2.5.5 is not affected by the flaw if built from source; the
+  wheels are." joins a claim and a fragment into something neither says); a shortened, reordered or reworded claim;
+  a changed number, unit or letter case ("CO" and "Co"); a dropped "not"; an added clause; citations other than the
+  cited claim's own sources; an unknown claim id; a claim whose own
   text holds "according to <source>" (`compose()` removes such a phrase from a sentence, see below, so what is
   shown may be less than the claim says); and any sentence or claim holding a
   character a reader does not see (bidirectional controls, zero-width and other format characters, variation
   selectors, fillers) or that the guard reads differently from how it is written (a superscript, a ligature, the
-  one-character ellipsis). The cost is bounded: at most three parts, each tried only where it stands in the text, and
-  no ordering of the claims is enumerated. The code never changes a sentence because of this test; it only decides
-  whether the critic is asked about it. Tests: `tests/inference/test_inference_critique_scope.py`.
+  one-character ellipsis). The cost is a few string comparisons. The code never changes a sentence because of this
+  test; it only decides whether the critic is asked about it. Tests:
+  `tests/inference/test_inference_critique_scope.py`.
 - **The model's own attribution, and the one refusal added after 0.7.0.** `compose()` and the guard are the ones
   of 0.7.0 (commit `307b907`), which eight review rounds attacked: `compose()` replaces a leading "According to
   <source word>, " and a trailing "… according to <source word>" by the code's attribution, and the trailing form
@@ -825,7 +824,8 @@ chose from the claim's state, so a mark of "unsupported", "overstated" or "missi
 the code's own hedge, and the critique cannot remove a sentence the guard accepted (§3). Measured with the live model
 on the 51 tasks of the offline corpus, seven runs
 (`docs/quality/evidence/accel_decisions_critique_scope.json`; times are indicative, the GPU was shared). The default
-column is the shipped, character-for-character test (`runs_strict_test`, two runs); the first version of the test,
+column is the character-for-character test (`runs_strict_test`, two runs; it still took two claims joined by "and"
+or ";" for a restatement, which no sentence of these two runs is); the first version of the test,
 which ignored case and compatibility forms, gave 9 and 11 calls, 10 of 91 and 12 of 89 sentences judged and 4 marks
 in its two runs (`runs`), and every sentence of those runs is classed the same by both versions
 (`earlier_runs_reread_with_the_strict_test`).
@@ -851,8 +851,11 @@ the 2025 census, …" from "At the 2025 census Tessaly had a population of 248,0
 and one that cites two claims and restates one. The four remaining marks are a model's judgement as before, shown
 and never acted on. One more default-scope run after the answer path was put back to that of `307b907` (§3;
 `guard_revert` in the same file): 9 critique calls, 10 of 85 sentences judged, 4 marks, none on a restatement, no
-sentence refused under `CUT_WORDS`, mean 2.64 s; all 873 sentences of the ten stored runs are classed by `restates`
-as they were. Tests: `tests/inference/test_inference_critique_scope.py`; in the browser,
+sentence refused under `CUT_WORDS`, mean 2.64 s. And one with the final rule, under which a sentence that joins
+two cited claims is the model's composition and is judged (`one_claim_rule`): 9 calls, 10 of 85 sentences judged, 4
+marks, none on a restatement, mean 2.59 s. Of the 958 sentences of the eleven stored runs, two change class under
+that rule, both the joined sentence of task F02 ("…, and with a length of 412 km, …"), which the critic now reads.
+Tests: `tests/inference/test_inference_critique_scope.py`; in the browser,
 `tests/e2e/test_reasoning_console.py::test_a_word_for_word_answer_is_shown_without_a_critique_call_by_default`.
 
 **Memory-answer check.** One structured call of at most 8 s (`memory_gate.TIMEOUT`, and never more than the task's

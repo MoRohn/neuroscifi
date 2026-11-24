@@ -7503,5 +7503,167 @@
    "test": "tests/inference/test_guard_differential.py"
   },
   "guard_tests_of_307b907_against_this_tree": "827 passed (tests/inference/test_inference_reasoning.py and tests/webcortex/test_shared_verdict.py as of 307b907); all of 307b907's tests/inference: 939 passed, 9 skipped"
+ },
+ "one_claim_rule": {
+  "what": "final rule of reasoning.restates: a restatement is one cited claim, word for word, with the code's attribution. A sentence that cites or joins more than one claim is the model's composition and is always judged; the join lists of the earlier versions are gone. Every number above this entry that counts restatements was measured with a version that also accepted two or three claims joined by ', and', ' and', '; ' or '; and'.",
+  "stored_sentences_reread": {
+   "sentences": 958,
+   "changed_class": 2,
+   "changed": [
+    {
+     "run": "accel_after_pipeline.json",
+     "task": "F02",
+     "sentence": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, and with a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to the cited sources, though the sources disagree.",
+     "cited_claims": [
+      "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+      "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region."
+     ]
+    },
+    {
+     "run": "targeted",
+     "task": "F02",
+     "sentence": "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres, and with a length of 412 km, the Varnel is the longest river entirely within the Ostra region, according to the cited sources, though the sources disagree.",
+     "cited_claims": [
+      "The Varnel River is 412 kilometres long and drains a basin of about 9,800 square kilometres.",
+      "With a length of 412 km, the Varnel is the longest river entirely within the Ostra region."
+     ]
+    }
+   ],
+   "by_run": {
+    "accel_after_pipeline.json": {
+     "kept": 90,
+     "restating_before": 80,
+     "restating_now": 79,
+     "marks": 46,
+     "marks_on_restatements_now": 42,
+     "tasks_with_a_sentence_to_judge_before": 9,
+     "tasks_with_a_sentence_to_judge_now": 10
+    },
+    "targeted": {
+     "kept": 91,
+     "restating_before": 81,
+     "restating_now": 80,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge_before": 9,
+     "tasks_with_a_sentence_to_judge_now": 10
+    },
+    "targeted2": {
+     "kept": 89,
+     "restating_before": 77,
+     "restating_now": 77,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge_before": 11,
+     "tasks_with_a_sentence_to_judge_now": 11
+    },
+    "every": {
+     "kept": 86,
+     "restating_before": 75,
+     "restating_now": 75,
+     "marks": 42,
+     "marks_on_restatements_now": 38,
+     "tasks_with_a_sentence_to_judge_before": 10,
+     "tasks_with_a_sentence_to_judge_now": 10
+    },
+    "every2": {
+     "kept": 86,
+     "restating_before": 75,
+     "restating_now": 75,
+     "marks": 42,
+     "marks_on_restatements_now": 38,
+     "tasks_with_a_sentence_to_judge_before": 10,
+     "tasks_with_a_sentence_to_judge_now": 10
+    },
+    "off": {
+     "kept": 86,
+     "restating_before": 75,
+     "restating_now": 75,
+     "marks": 0,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge_before": 10,
+     "tasks_with_a_sentence_to_judge_now": 10
+    },
+    "strict1": {
+     "kept": 86,
+     "restating_before": 75,
+     "restating_now": 75,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge_before": 10,
+     "tasks_with_a_sentence_to_judge_now": 10
+    },
+    "strict2": {
+     "kept": 86,
+     "restating_before": 75,
+     "restating_now": 75,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge_before": 10,
+     "tasks_with_a_sentence_to_judge_now": 10
+    },
+    "pass2b": {
+     "kept": 88,
+     "restating_before": 77,
+     "restating_now": 77,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge_before": 10,
+     "tasks_with_a_sentence_to_judge_now": 10
+    },
+    "revert": {
+     "kept": 85,
+     "restating_before": 75,
+     "restating_now": 75,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge_before": 9,
+     "tasks_with_a_sentence_to_judge_now": 9
+    },
+    "single": {
+     "kept": 85,
+     "restating_before": null,
+     "restating_now": 75,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge_before": null,
+     "tasks_with_a_sentence_to_judge_now": 9
+    }
+   }
+  },
+  "live_run_default_scope": {
+   "generated_at": "2026-11-24T00:47:37Z",
+   "tasks": 51,
+   "model_answers": 44,
+   "abstentions": 4,
+   "sentences_kept": 85,
+   "sentences_rejected_by_the_guard": 22,
+   "sentences_refused_for_words_their_attribution_would_drop": 0,
+   "kept_restating_their_claims": 75,
+   "sentences_citing_more_than_one_claim": 1,
+   "critique_calls": 9,
+   "critique_skipped_why": {
+    "restatements_only": 35
+   },
+   "sentences_judged": 10,
+   "sentences_removed": 0,
+   "marks": 4,
+   "marks_on_restatements": 0,
+   "marks_by_problem": {
+    "overstated": 1,
+    "unsupported": 3
+   },
+   "critique_tokens_total": 6771,
+   "task_wall_s": {
+    "mean": 2.591,
+    "p50": 1.748,
+    "p95": 5.806
+   },
+   "share_of_wall": {
+    "answer_call": 0.823,
+    "critique_call": 0.103,
+    "orchestration": 0.074
+   }
+  }
  }
 }

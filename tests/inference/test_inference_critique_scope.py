@@ -1,7 +1,7 @@
 """What the self-critique judges: only sentences that do more than restate their cited claims (reasoning.restates).
 
 Measured on the pipeline benchmark (docs/quality/evidence/accel_after_pipeline.json): the critique call was 42 % of a
-research task, could remove nothing the guard had accepted, and 43 of its 46 marks sat on sentences that are a cited
+research task, could remove nothing the guard had accepted, and 42 of its 46 marks sat on sentences that are a cited
 claim word for word with the attribution the code appended. Such a sentence gives a second reading nothing to judge.
 `restates` is exact: anything not provably a restatement is still judged. `critique_restatements` restores 0.7.0.
 """
@@ -147,21 +147,38 @@ def test_citations_or_claim_ids_that_are_not_the_cited_claims_own_are_judged():
     assert not reasoning.restates({"text": C2_SHOWN}, b)
 
 
-# ---- restates: several cited claims --------------------------------------------------------------------------------
+# ---- restates: more than one cited claim is the model's composition ------------------------------------------------
 
-def test_every_cited_claim_joined_by_a_listed_conjunction_is_a_restatement():
-    """Live (benchmark task F02): the model joined two cited claims with ", and" and the code appended the hedge of
-    the weaker state. Each claim once, either order, a closed list of joins; nothing else between them."""
+def test_a_sentence_that_joins_cited_claims_is_the_models_composition_and_is_judged():
+    """A restatement is one cited claim, word for word. Live (benchmark task F02): the model joined two cited claims
+    with ", and" and the code appended the hedge of the weaker state; the guard accepts it, and the critic reads it.
+    Whatever stands between the claims, in either order, with or without the capital of the second."""
     b = two_claims()
     a, c = (x["text"][:-1] for x in b["claims"])
     tail = ", according to the cited sources, though the sources disagree."
     live = kept(b, (f"{a}, and {c[0].lower()}{c[1:]}.", ["C1", "C2"]))
-    assert live[0]["text"] == f"{a}, and {c[0].lower()}{c[1:]}{tail}" and reasoning.restates(live[0], b)
+    assert live[0]["text"] == f"{a}, and {c[0].lower()}{c[1:]}{tail}" and not reasoning.restates(live[0], b)
     for first, second in itertools.permutations((a, c)):
-        for join in reasoning._RESTATE_JOINS:
-            assert reasoning.restates(item(first + join + second + tail, b, ("C1", "C2")), b), join
-        for glue in (" because ", ", so ", " but ", ", which means ", " and therefore ", " or "):
-            assert not reasoning.restates(item(first + glue + second + tail, b, ("C1", "C2")), b), glue
+        for glue in (", and ", " and ", "; ", "; and ", ", ", " because ", ", so ", " but ", " or "):
+            for text in (first + glue + second + tail, first + glue + second[0].lower() + second[1:] + tail):
+                assert not reasoning.restates(item(text, b, ("C1", "C2")), b), text
+    # each of them alone is one
+    assert reasoning.restates(item(a + ", according to one source, though the sources disagree.", b, ("C1",)), b)
+    assert reasoning.restates(item(c + ", according to one source.", b, ("C2",)), b)
+
+
+def test_two_claims_joined_can_say_what_neither_says_alone():
+    """The security review's example, and the reason for the rule: one claim is a fragment, and joined to the other
+    it borrows its predicate. "… ; the wheels are." says the wheels are affected, which no claim says."""
+    b = two_claims("supported", "supported")
+    b["claims"][0]["text"] = "NumPy 2.5.5 is not affected by the flaw if built from source"
+    b["claims"][1]["text"] = "the wheels are"
+    for text in ("NumPy 2.5.5 is not affected by the flaw if built from source; the wheels are.",
+                 "NumPy 2.5.5 is not affected by the flaw if built from source, and the wheels are.",
+                 "the wheels are; NumPy 2.5.5 is not affected by the flaw if built from source."):
+        assert not reasoning.restates(item(text, b, ("C1", "C2")), b), text
+        assert not reasoning.restates(item(text, b, ("C1",), citations=[1, 2]), b)      # nor under one claim's id
+    assert reasoning.restates(item("NumPy 2.5.5 is not affected by the flaw if built from source.", b, ("C1",)), b)
 
 
 def test_a_claim_cited_but_not_restated_is_judged():
@@ -171,21 +188,19 @@ def test_a_claim_cited_but_not_restated_is_judged():
     tail = ", according to the cited sources, though the sources disagree."
     assert not reasoning.restates(item(a + tail, b, ("C1", "C2")), b)
     assert not reasoning.restates(item(c + ", according to the cited sources.", b, ("C1", "C2")), b)
-    assert not reasoning.restates(item(f"{a}, and {a}, and {c}{tail}", b, ("C1", "C2")), b)     # one claim twice
     assert reasoning.restates(item(a + ", according to one source, though the sources disagree.", b, ("C1",)), b)
 
 
-def test_three_claims_and_the_same_words_from_two_claims():
+def test_three_claims_or_the_same_words_under_two_ids_are_judged():
     b = two_claims("supported", "supported")
     b["claims"].append({"id": "C3", "state": "supported", "sources": [2], "published": None, "event": None,
                         "text": "Its basin covers 9,800 square kilometres."})
     a, c, d = (x["text"][:-1] for x in b["claims"])
-    assert reasoning.restates(item(f"{a}; {d}; {c}.", b, ("C1", "C2", "C3")), b)
-    assert reasoning.restates(item(f"{c}, and {a}, and {d}.", b, ("C1", "C2", "C3")), b)
-    assert not reasoning.restates(item(f"{a}; {d}; {c}.", b, ("C1", "C2")), b)      # says more than it cites
-    assert not reasoning.restates(item(f"{a}, {d} and {c}.", b, ("C1", "C2", "C3")), b)   # a join not in the list
+    assert not reasoning.restates(item(f"{a}; {d}; {c}.", b, ("C1", "C2", "C3")), b)
+    assert not reasoning.restates(item(f"{c}, and {a}, and {d}.", b, ("C1", "C2", "C3")), b)
     b["claims"][1]["text"] = b["claims"][0]["text"]                # two sources carrying the same words
-    assert reasoning.restates(item(f"{a}.", b, ("C1", "C2")), b)
+    assert not reasoning.restates(item(f"{a}.", b, ("C1", "C2")), b)      # two claims cited: the model's choice
+    assert reasoning.restates(item(f"{a}.", b, ("C1",)), b) and reasoning.restates(item(f"{a}.", b, ("C1", "C1")), b)
 
 
 # ---- review round: bounded cost, qualifiers after a source phrase, differences a reader sees -------------------------
@@ -203,8 +218,8 @@ def many_claims(n):
 def test_a_sentence_citing_more_claims_than_the_schema_allows_is_judged_without_a_search(monkeypatch, n):
     """Review F1: the guard also reads citation markup in the text ("[C1-C9; 2; 3; ...]"), so an accepted item can
     carry up to MAX_CLAIMS claims although the schema allows three. The first version tried every ordering of them:
-    9 claims took 68.7 s, 12 would take a day, outside the task's time budget and steerable by a page. No ordering is
-    enumerated any more, and above MAX_SENTENCE_CLAIMS the sentence is judged."""
+    9 claims took 68.7 s, 12 would take a day, outside the task's time budget and steerable by a page. Nothing is
+    enumerated any more: a sentence that cites more than one claim is judged."""
     def no_search(*args, **kwargs):
         raise AssertionError("restates() must not enumerate orderings of the cited claims")
     monkeypatch.setattr(itertools, "permutations", no_search)
@@ -214,29 +229,9 @@ def test_a_sentence_citing_more_claims_than_the_schema_allows_is_judged_without_
                                 "claims": ["C1"]}], b)
     assert bad == [] and len(ok[0]["claims"]) == n > reasoning.MAX_SENTENCE_CLAIMS
     assert reasoning.restates(ok[0], b) is False
-    # also when the text really is all of them, joined: more than the schema allows is never excused
+    # also when the text really is all of them, joined
     joined = "; ".join(c["text"][:-1] for c in b["claims"]) + "."
     assert reasoning.restates(item(joined, b, tuple(c["id"] for c in b["claims"])), b) is False
-
-
-def test_the_join_matcher_tries_a_part_only_where_it_stands(monkeypatch):
-    """Timing-independent: twelve parts in the reverse of their listed order match after at most n(n+1)/2 tries
-    (78), where one try per ordering would be 479,001,600. restates() itself never passes more than three."""
-    parts = [f"Part number {i} of the river report is here" for i in range(12)]
-    tries = []
-    real = reasoning._part_at
-
-    def counted(*args):
-        tries.append(args[2])
-        return real(*args)
-    monkeypatch.setattr(reasoning, "_part_at", counted)
-    assert reasoning._joined("; ".join(reversed(parts)), parts) and len(tries) <= 78
-    tries.clear()
-    assert not reasoning._joined("; ".join(reversed(parts)) + " and more", parts) and len(tries) <= 78
-    tries.clear()
-    assert not reasoning._joined(", ".join(parts), parts) and len(tries) <= 12        # a join outside the list
-    assert reasoning._joined("B and A; and C", ["A", "B", "C"]) and not reasoning._joined("A and A", ["A", "B"])
-    assert not reasoning._joined("A and B and A", ["A", "B"]) and not reasoning._joined("", ["A"])
 
 
 QUALIFIED = "The bridge is open according to the official records except on Sundays."
@@ -358,24 +353,6 @@ def test_the_anchor_rule_holds_a_number_to_what_its_claim_says_of_it():
         assert ok == [] and bad, (claim, text)
 
 
-@pytest.mark.parametrize("second, lowered_is_the_same", [
-    ("Turkey exports fell 2 percent.", False), ("Polish exports fell 2 percent.", False),
-    ("May exports fell 2 percent.", False), ("Mark exports fell 2 percent.", False),
-    ("Will exports fell 2 percent.", False), ("Exports of steel fell 2 percent.", False),
-    ("The exports of steel fell 2 percent.", True), ("In March exports of steel fell 2 percent.", True),
-    ("After March exports of steel fell 2 percent.", True), ("With steel, exports fell 2 percent.", True),
-])
-def test_after_a_join_only_a_word_of_the_closed_list_may_lose_its_capital(second, lowered_is_the_same):
-    """Review S5: "Exports rose 4 percent, and turkey exports fell 2 percent." counted as a restatement of "Turkey
-    exports fell 2 percent." (the country became the bird; likewise "polish", "may", "mark"). A claim after a join may
-    start in lower case only when its first word is one of the guard's closed list (_LOWER_LEAD) or "With"."""
-    b = two_claims("supported", "supported")
-    b["claims"][0]["text"], b["claims"][1]["text"] = "Exports rose 4 percent.", second
-    low = second[0].lower() + second[1:]
-    assert reasoning.restates(item(f"Exports rose 4 percent, and {second}", b, ("C1", "C2")), b)
-    assert reasoning.restates(item(f"Exports rose 4 percent, and {low}", b, ("C1", "C2")), b) is lowered_is_the_same
-
-
 @pytest.mark.parametrize("claim, text, why", [
     ("The sample contained CO at 5 ppm.", "The sample contained Co at 5 ppm, according to one source.",
      "carbon monoxide and cobalt differ by case"),
@@ -420,21 +397,6 @@ def test_spacing_and_the_final_stop_are_the_only_differences_allowed():
     assert not reasoning.restates(item("The plant was built in the US.", b), b)
     assert reasoning._restate_key("  A  b. ") == "A b" and reasoning._restate_key("A b..") == "A b.."
     assert reasoning._restate_key("") is None and reasoning._restate_key("a​b") is None
-
-
-def test_only_an_ordinary_capital_after_a_join_may_be_lowered():
-    """The one case difference allowed: the first letter of a claim that follows a join, as the model wrote it in
-    benchmark task F02 ("..., and with a length of 412 km, ..."). Never the first claim, never an acronym."""
-    b = two_claims("supported", "supported")
-    a, c = (x["text"][:-1] for x in b["claims"])
-    assert reasoning.restates(item(f"{a}, and {c[0].lower()}{c[1:]}.", b, ("C1", "C2")), b)
-    assert reasoning.restates(item(f"{c}; {a[0].lower()}{a[1:]}.", b, ("C1", "C2")), b)
-    assert not reasoning.restates(item(f"{a[0].lower()}{a[1:]}, and {c}.", b, ("C1", "C2")), b)      # the first claim
-    assert not reasoning.restates(item(f"{a}, and {c.lower()}.", b, ("C1", "C2")), b)                # more than a letter
-    b["claims"][1]["text"] = "CO levels rose in the Varnel valley."
-    assert reasoning.restates(item(f"{a}, and CO levels rose in the Varnel valley.", b, ("C1", "C2")), b)
-    assert not reasoning.restates(item(f"{a}, and cO levels rose in the Varnel valley.", b, ("C1", "C2")), b)
-    assert not reasoning.restates(item(f"{a}, and co levels rose in the Varnel valley.", b, ("C1", "C2")), b)
 
 
 def test_the_guards_own_lead_lowers_exactly_what_the_guard_lowers():

@@ -562,10 +562,10 @@ with the gateway's codes (`bad_response` for a malformed answer, `private_blocke
 off this host without `remote_private_memory`) and `ValueError` for empty input.
 `reasoning.apply(..., background=False, spoken=False)`: `background` sends the configured priority with the task's
 model calls; `spoken` skips the critique pass when `critique_voice` is off.
-`reasoning.restates(item, bundle) -> bool`: whether an accepted sentence is its cited claims character for character
+`reasoning.restates(item, bundle) -> bool`: whether an accepted sentence is one cited claim character for character
 (white space and one final full stop aside) with the attribution the code appended; the critique judges only the
-sentences for which it is false. It is always false for more than three cited claims, for a claim that holds its own
-"according to <source>", and for text with characters a reader does not see.
+sentences for which it is false. It is always false for a sentence that cites more than one claim, for a claim that
+holds its own "according to <source>", and for text with characters a reader does not see.
 `reasoning.compose()` and `reasoning.guard()` are those of 0.7.0, with one addition that only refuses: a sentence
 whose own trailing "according to <source> …" would take further words with it is composed and judged as before
 (the item carries `cut: [text as written, the words]`) and, where the guard would accept it, is rejected with
