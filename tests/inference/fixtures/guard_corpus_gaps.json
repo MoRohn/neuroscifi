@@ -1812,7 +1812,7 @@
 "claims": [
 [
 "supported",
-"The tower is 7\u202e2\u202c metres tall",
+"The tower is \u202e72\u202c metres tall",
 [
 1,
 2
@@ -1828,7 +1828,7 @@
 "C1"
 ],
 "reject",
-"the claim shows 27 to a reader"
+"the claim shows 27 to a reader: 0.7.0 accepted the order nobody was shown"
 ],
 [
 "The tower is 27 metres tall.",
@@ -1838,7 +1838,7 @@
 "reject"
 ],
 [
-"The tower is 7\u202e2\u202c metres tall.",
+"The tower is \u202e72\u202c metres tall.",
 [
 "C1"
 ],
@@ -2295,8 +2295,8 @@
 [
 "C1"
 ],
-"reject",
-"a line separator inside the claim"
+"accept",
+"a line separator is white space, and a reader sees it as such"
 ]
 ]
 },
@@ -2462,6 +2462,45 @@
 "C2"
 ],
 "accept"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"The \u202dpatch\u202c ships on 3 May 2026"
+]
+],
+"gap": "unseen",
+"q": "When does the patch ship?",
+"s": [
+[
+"The patch ships on 3 May 2026.",
+[
+"C1"
+],
+"reject",
+"a left-to-right override, weak state"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"NumPy 2.5.5 is \u202eeruces\u202c in every build"
+]
+],
+"gap": "unseen",
+"s": [
+[
+"The evidence does not establish whether numpy 2.5.5 is secure.",
+[
+"C1"
+],
+"accept",
+"a caveat asserts nothing of its claim"
 ]
 ]
 },

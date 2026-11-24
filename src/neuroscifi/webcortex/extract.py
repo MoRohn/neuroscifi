@@ -65,6 +65,7 @@ import markdownify
 from scrapling.parser import Selector
 
 from . import temporal
+from . import text as T
 from .safety import safe_xml_parse
 from .types import Document, FetchError, FetchResult
 
@@ -90,6 +91,19 @@ XML_TYPES = ("application/xml", "text/xml", "application/atom+xml", "application
 
 _SPACE = re.compile(r"\s+")
 _ZERO_WIDTH = re.compile("[​-‏‪-‮⁠-⁤⁦-⁩﻿­]")
+# The two direction overrides, kept through parsing where they stand in text so that the lines they reorder can be
+# dropped afterwards (_keep_overrides, text.as_seen); written as code points so that this line holds neither.
+_OVERRIDE = re.compile(r"<[^<>]*>|[\u202d\u202e]")
+
+
+def _keep_overrides(markup: str) -> str:
+    """`markup` with every direction override that stands outside a tag written as a character reference
+    ("&#x202E;"), so that the removal of zero-width and direction characters before parsing (_ZERO_WIDTH) leaves it
+    for the parser to decode. An override inside a tag is left to that removal, as before: "<scr\u202eipt>" must
+    still be read as the script element it is."""
+    return _OVERRIDE.sub(lambda m: m.group(0) if m.group(0).startswith("<") else f"&#x{ord(m.group(0)):X};", markup)
+
+
 _BOILERPLATE = {"script", "style", "noscript", "svg", "nav", "header", "footer", "aside", "form", "iframe",
                 "object", "embed", "canvas", "button", "select", "textarea", "input", "dialog", "link", "meta"}
 _HIDING_CLASSES = {"hidden", "hide", "d-none", "sr-only", "visually-hidden", "visuallyhidden", "screen-reader-text",
@@ -428,8 +442,8 @@ def _main_node(root):
 def _fragment_text(fragment: str) -> str:
     """Plain text of an HTML fragment (feed summaries) with the same hidden-content removal as pages."""
     if "<" not in fragment:
-        return " ".join(htmlmod.unescape(_ZERO_WIDTH.sub("", fragment)).split())
-    sel = Selector(f"<html><body><div>{_ZERO_WIDTH.sub('', fragment)}</div></body></html>", url="",
+        return " ".join(T.as_seen(htmlmod.unescape(_ZERO_WIDTH.sub("", _keep_overrides(fragment))))[0].split())
+    sel = Selector(f"<html><body><div>{_ZERO_WIDTH.sub('', _keep_overrides(fragment))}</div></body></html>", url="",
                    huge_tree=False)
     root = sel._root
     _clean(root)
@@ -536,7 +550,7 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
     final_url = final_url or url
     text_in = _decode(bytes(body), headers)
     zero_width = len(_ZERO_WIDTH.findall(text_in))
-    text_in = _ZERO_WIDTH.sub("", text_in)
+    text_in = _ZERO_WIDTH.sub("", _keep_overrides(text_in))
     text_in = re.sub(r"^\s*<\?xml[^>]*\?>", "", text_in)
     if not text_in.strip():
         text_in = "<html><body></body></html>"
@@ -640,6 +654,9 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
         metadata["og_type"] = og_type[:50]
     if description:
         metadata["description"] = _fragment_text(description)[:2000]
+    for key in ("venue", "og_type"):
+        if key in metadata:
+            metadata[key] = T.as_seen(metadata[key])[0]
     for obj in ld:
         kind = obj.get("@type")
         if kind:
@@ -706,11 +723,23 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
     if len(text) > MAX_TEXT:
         truncated_extraction = True
 
+    # What was removed before parsing can come back out of it: "&#x200b;", "&zwnj;" and "&shy;" are plain text to
+    # the first pass and the characters themselves once the parser has decoded them. What becomes a claim or is
+    # shown (text, title, markdown, authors) is therefore read once more as a reader sees it (text.as_seen): the
+    # characters that draw nothing go, and a line a direction override reorders is dropped whole.
+    text, unseen, reordered = T.as_seen(text)
+    title, unseen_title, reordered_title = T.as_seen(title)
+    markdown = T.as_seen(markdown)[0]
+    authors = [a for a in (T.as_seen(x)[0].strip() for x in authors) if a]
+    zero_width += unseen + unseen_title
+    reordered += reordered_title
     js_suspected = len(visible) < JS_TEXT_THRESHOLD and (scripts > 0 or mount or asks_js)
-    flags = {"hidden_removed": hidden + zero_width, "boilerplate_removed": boilerplate,
+    flags = {"hidden_removed": hidden + zero_width + reordered, "boilerplate_removed": boilerplate,
              "js_suspected": bool(js_suspected)}
     if zero_width:
         flags["zero_width_removed"] = zero_width
+    if reordered:
+        flags["reordered_lines_removed"] = reordered
     if truncated_extraction:
         flags["truncated_extraction"] = True
 
@@ -758,7 +787,8 @@ def extract_pdf(body: bytes, url: str, *, retrieved_at, max_pages=30, retrieval_
     except Exception as error:       # pypdf raises many types on malformed input; all mean "cannot decode"
         raise FetchError("decode_error", url, f"unreadable PDF ({type(error).__name__})") from None
     text = "\n\n".join(c.strip() for c in chunks if c.strip())
-    text = _ZERO_WIDTH.sub("", text)[:MAX_TEXT]
+    text = T.as_seen(text)[0][:MAX_TEXT]
+    title, author = T.as_seen(title)[0], T.as_seen(author)[0]
     if not title:
         title = next((line.strip() for line in text.splitlines() if line.strip()), "")[:300]
     metadata = {"pages": pages, "pages_read": min(pages, int(max_pages))}
@@ -892,7 +922,7 @@ def extract(result: FetchResult, *, engine="auto", published_hint=None) -> Docum
         doc.content_type = content_type or "text/html"
     else:
         host = urlsplit(final).hostname or ""
-        text = _ZERO_WIDTH.sub("", _decode(body, headers))
+        text = T.as_seen(_decode(body, headers))[0]
         kind, title, links = "text", "", []
         if content_type in XML_TYPES or (content_type == "text/plain" and text.lstrip().startswith("<?xml")):
             feed_title, items = _feed(body, final)
@@ -903,10 +933,11 @@ def extract(result: FetchResult, *, engine="auto", published_hint=None) -> Docum
             else:
                 root = _safe_xml(body, final)
                 text = "\n".join(" ".join(t.split()) for t in root.itertext() if t.strip())
+            text, title = T.as_seen(text)[0], T.as_seen(title)[0]        # character references the parser decoded
         elif content_type == "application/json" or content_type.endswith("+json"):
             kind = "json"
             try:
-                text = json.dumps(json.loads(text), ensure_ascii=False, indent=1)
+                text = T.as_seen(json.dumps(json.loads(text), ensure_ascii=False, indent=1))[0]   # its escapes
             except ValueError:
                 pass
         if not title:

@@ -2449,7 +2449,15 @@ RESTRICTION_LOST = ("does not hold {claim} whole, which carries a restriction ('
 # rose." for "Exposure to CO rose in 2025.").
 CASE_CHANGED = ("writes '{word}' where its cited claims write '{theirs}': a changed capital can make another word "
                 "of it")
-REFUSALS = (RESTRICTION_LOST, CASE_CHANGED)
+# A claim that holds a character nobody sees is not cited. Extraction removes such characters and drops the lines
+# a direction override reorders (text.as_seen), but a claim can reach the guard by another road (a provider's
+# record, a search result, text stored before that), and then its characters are not what a reader of it sees:
+# an override shows "72" as "27", a zero-width character inside "NumPy" or "100" makes two words of one. The
+# sentence is read without such characters (_norm), so 0.7.0 compared a clean sentence with a claim that is not
+# what it looks like.
+UNSEEN_IN_CLAIM = ("rests on characters a reader does not see in {claim} ({points}): what such a claim shows and "
+                   "what it holds can differ")
+REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM)
 # Exceptions: what follows is taken out of what the claim says.
 _EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|exclusive of|other than|apart from|"
               r"aside from|save for|barring|but not|"
@@ -2571,13 +2579,24 @@ def _case_changed(text: str, used, question: str = "") -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def _unseen_in_claims(used) -> list[str]:
+    """UNSEEN_IN_CLAIM for each cited claim whose text holds a character that draws nothing (T.unseen_characters:
+    zero-width and direction characters, soft hyphen, tags, variation selectors, controls)."""
+    out = []
+    for c in used:
+        points = T.unseen_characters(c["text"])
+        if points:
+            out.append(UNSEEN_IN_CLAIM.format(claim=c["id"], points=", ".join(points[:6])))
+    return out
+
+
 def _refusals(text: str, used, b: dict) -> list[str]:
     """Why a sentence that passed every check of check_sentence() is refused all the same (REFUSALS), or []. A caveat
     of the closed grammar asserts nothing of its claims and is never refused here."""
     question = b.get("question") or ""
     if not used or insufficiency(text, question):
         return []
-    return _restriction_lost(text, used) + _case_changed(text, used, question)
+    return _unseen_in_claims(used) + _restriction_lost(text, used) + _case_changed(text, used, question)
 
 
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:

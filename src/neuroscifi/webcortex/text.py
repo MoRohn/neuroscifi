@@ -45,6 +45,82 @@ MONTHS = {
 MONTH_RE = (r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|"
             r"Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)")
 
+# ---- characters a reader does not see -----------------------------------------------------------------------
+# Fetched text is turned into claims, and a claim is shown to the owner and compared with what a model wrote. Both
+# go wrong when the text holds characters nobody sees: a right-to-left override shows "72" as "27", a zero-width
+# space inside "100" or a zero-width non-joiner inside "NumPy" makes two tokens of one word, a soft hyphen hides
+# in the middle of a name. strip_unseen() removes them where text is extracted (webcortex/extract.py), and the
+# answer guard refuses a sentence that cites a claim still holding one (reasoning.UNSEEN_IN_CLAIM).
+#
+# Removed (code points, so that this file holds none of the characters themselves):
+#   - the format characters that draw nothing: soft hyphen, Arabic letter mark, Mongolian vowel separator,
+#     zero-width space and joiners, direction marks, embeddings, overrides and isolates, word joiner and the
+#     invisible operators, the deprecated format controls, byte order mark, interlinear annotation controls,
+#     shorthand and musical format controls, tag characters;
+#   - what Unicode files under other categories and still draws nothing: combining grapheme joiner, Khmer inherent
+#     vowels, Mongolian free variation selectors, variation selectors and their supplement;
+#   - control characters other than tab, line feed and carriage return.
+# Turned into a space: the fillers that draw a blank (Hangul fillers, the Braille blank) and the controls Python
+# counts as white space. Turned into a line break: the line and paragraph separators.
+# Kept on purpose: the format characters that are drawn (category Cf all the same): Arabic number signs and end of
+# ayah, the Syriac abbreviation mark, Kaithi number signs, Egyptian hieroglyph joiners. Removing them would change
+# what a reader of those scripts sees.
+_UNSEEN_DELETE = ((0x00, 0x08), (0x0E, 0x1B), (0x7F, 0x84), (0x86, 0x9F), (0xAD, 0xAD), (0x34F, 0x34F),
+                  (0x61C, 0x61C), (0x17B4, 0x17B5), (0x180B, 0x180F), (0x200B, 0x200F), (0x202A, 0x202E),
+                  (0x2060, 0x206F), (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x1BCA0, 0x1BCA3),
+                  (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF))
+_UNSEEN_BLANK = ((0x0B, 0x0C), (0x1C, 0x1F), (0x85, 0x85), (0x115F, 0x1160), (0x2800, 0x2800), (0x3164, 0x3164),
+                 (0xFFA0, 0xFFA0))
+_UNSEEN_BREAK = ((0x2028, 0x2029),)
+
+
+def _char_class(ranges) -> str:
+    return "[" + "".join(chr(a) if a == z else f"{chr(a)}-{chr(z)}" for a, z in ranges) + "]"
+
+
+_UNSEEN_DELETE_RE = re.compile(_char_class(_UNSEEN_DELETE))
+_UNSEEN_BLANK_RE = re.compile(_char_class(_UNSEEN_BLANK))
+_UNSEEN_BREAK_RE = re.compile(_char_class(_UNSEEN_BREAK))
+
+
+# The two direction overrides (left-to-right U+202D, right-to-left U+202E) are a case of their own: they draw
+# nothing and make the characters after them appear in the opposite order, so "<U+202E>72" is shown as "27".
+# Removing the override would leave the order nobody was shown. A line that holds one is therefore not read at
+# all (as_seen drops it): what a page shows in an order other than its own cannot be quoted faithfully.
+_OVERRIDE_RE = re.compile(f"[{chr(0x202D)}{chr(0x202E)}]")
+
+
+def unseen_characters(s) -> list[str]:
+    """The characters of `s` that draw nothing (the removed kind above), as sorted code point names ("U+202E")."""
+    return sorted({f"U+{ord(ch):04X}" for ch in _UNSEEN_DELETE_RE.findall(str(s or ""))})
+
+
+def strip_unseen(s) -> tuple[str, int]:
+    """`s` without the characters that draw nothing, and how many were removed or replaced: those are removed,
+    blank fillers become a space, line and paragraph separators a line break. Nothing else changes: no
+    normalisation, no change of white space or case. Use as_seen() for fetched text: it first drops the lines a
+    direction override reorders."""
+    s = str(s or "")
+    s, removed = _UNSEEN_DELETE_RE.subn("", s)
+    s, blanked = _UNSEEN_BLANK_RE.subn(" ", s)
+    s, broken = _UNSEEN_BREAK_RE.subn("\n", s)
+    return s, removed + blanked + broken
+
+
+def as_seen(s) -> tuple[str, int, int]:
+    """Fetched text as a reader sees it -> (text, characters removed or replaced, lines dropped). A line that
+    holds a direction override is dropped whole (_OVERRIDE_RE); from the rest, strip_unseen() takes the characters
+    that draw nothing."""
+    s = str(s or "")
+    dropped = 0
+    if _OVERRIDE_RE.search(s):
+        lines = _UNSEEN_BREAK_RE.sub("\n", s).split("\n")
+        kept = [line for line in lines if not _OVERRIDE_RE.search(line)]
+        dropped, s = len(lines) - len(kept), "\n".join(kept)
+    s, removed = strip_unseen(s)
+    return s, removed, dropped
+
+
 # ---- tokens -------------------------------------------------------------------------------------------------
 
 _VERSION = r"v?\d+(?:\.\d+)+(?:[-.]?(?:rc|a|b|alpha|beta|dev|post)\d*)?"

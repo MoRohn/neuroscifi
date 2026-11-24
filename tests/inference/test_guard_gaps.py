@@ -183,3 +183,37 @@ def test_a_sentence_can_be_refused_for_a_restriction_and_for_a_capital_at_once()
     assert ok == [] and bad[0]["reasons"] == [
         reasoning.RESTRICTION_LOST.format(claim="C1", words="except"),
         reasoning.CASE_CHANGED.format(word="us", theirs="US")]
+
+
+# ---- characters a reader does not see --------------------------------------------------------------------------
+
+RLO, PDF, ZWSP = "‮", "‬", "​"
+
+
+def test_a_claim_that_holds_a_character_nobody_sees_is_not_cited():
+    """A direction override reorders what is shown ("<RLO>72<PDF>" reads 27). The sentence is read without such
+    characters, so 0.7.0 compared a clean sentence with a claim that is not what it looks like, and accepted it
+    wherever the hidden character stood between two words."""
+    b = one_claim("supported", (1, 2), text=f"The release is {RLO}elbats{PDF} on Linux",
+                  question="Is the release stable?")
+    for text in ("The release is elbats on Linux.", f"The release is {RLO}elbats{PDF} on Linux."):
+        ok, bad = judged(b, text)                              # shown to a reader as "stable"; 0.7.0 accepted both
+        assert ok == [] and bad[0]["reasons"] == [
+            reasoning.UNSEEN_IN_CLAIM.format(claim="C1", points="U+202C, U+202E")], text
+    clean = one_claim("supported", (1, 2), text="The release is stable on Linux", question="Is the release stable?")
+    ok, bad = judged(clean, f"The release is {RLO}stable{PDF} on Linux.")     # the model's own controls: removed
+    assert bad == [] and ok[0]["text"] == "The release is stable on Linux."
+
+
+def test_only_the_cited_claim_counts_and_white_space_is_not_hidden():
+    b = {"question": "How tall is the tower?", "verdict": None,
+         "claims": [{"id": "C1", "state": "supported", "sources": [1, 2], "published": None, "event": None,
+                     "text": "The tower is 72 metres tall and stands in Tolvane"},
+                    {"id": "C2", "state": "supported", "sources": [1, 2], "published": None, "event": None,
+                     "text": f"The tower was finished in 1901{ZWSP}"}],
+         "sources": [{"id": n, "title": f"Source {n}", "published": "undated"} for n in (1, 2)]}
+    ok, bad = judged(b, "The tower is 72 metres tall.")                # a no-break space, a line separator: seen
+    assert bad == [] and len(ok) == 1
+    ok, bad = judged(b, "The tower was finished in 1901.", ["C2"])
+    assert ok == [] and bad[0]["reasons"] == [reasoning.UNSEEN_IN_CLAIM.format(claim="C2", points="U+200B")]
+    assert reasoning._unseen_in_claims([{"id": "C9", "text": "plain"}]) == []

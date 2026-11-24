@@ -478,3 +478,63 @@ def test_importing_trafilatura_prints_no_socks_dependency_warning():
     assert out.returncode == 0, out.stderr
     assert "SOCKS" not in out.stderr and "DependencyWarning" not in out.stderr, out.stderr
     assert "an unrelated warning stays visible" in out.stderr
+
+
+# ---- characters a reader does not see (text.as_seen) -----------------------------------------------------------
+
+def test_character_references_to_unseen_characters_are_removed_after_parsing():
+    """0.7.0 removed zero-width and direction characters from the page's bytes, before parsing. Written as character
+    references they were plain text to that pass and came out of the parser as the characters themselves, into the
+    text that becomes claims."""
+    page = ("<html><head><title>Num&zwnj;Py 2.5.5&#xFEFF;</title></head><body><article>"
+            "<p>The fee is 1&#x200b;00 dollars a year at the co&shy;op, the &#x2066;vendor&#x2069; said.</p>"
+            "<p>The newt brain has roughly 100&#8203; million neurons, a survey found in the marsh.</p>"
+            "</article></body></html>")
+    doc = html_doc(page)
+    assert doc.title == "NumPy 2.5.5"
+    assert "The fee is 100 dollars a year at the coop, the vendor said." in doc.text
+    assert "roughly 100 million neurons" in doc.text
+    assert ex.T.unseen_characters(doc.text + doc.title + doc.markdown) == []
+    assert doc.flags["zero_width_removed"] == 7 and doc.flags["hidden_removed"] == 7
+
+
+def test_a_line_reordered_by_a_direction_override_is_not_read():
+    """A right-to-left override shows "72" as "27". Whether it stands in the page as the character or as a character
+    reference, the line it reorders is dropped: neither order can be quoted faithfully."""
+    for override in ("‮", "&#x202E;", "&#8238;", "‭", "&#x202d;"):
+        page = ("<html><body><article><h1>The Tolvane tower</h1>"
+                f"<p>The tower is {override}72‬ metres tall and was finished in 1901.</p>"
+                "<p>It stands in the harbour of Tolvane and is open to visitors in summer.</p>"
+                "</article></body></html>")
+        doc = html_doc(page)
+        assert "metres tall" not in doc.text and "metres tall" not in doc.markdown, override
+        assert "It stands in the harbour of Tolvane" in doc.text
+        assert doc.flags["reordered_lines_removed"] == 1
+        assert ex.T.unseen_characters(doc.text + doc.markdown) == []
+    plain = html_doc("<html><body><article><p>The tower is 72 metres tall.</p></article></body></html>")
+    assert "reordered_lines_removed" not in plain.flags and "72 metres tall" in plain.text
+
+
+def test_an_override_inside_a_tag_is_still_removed_before_parsing():
+    """"<scr<RLO>ipt>" must be read as the script element it is, and dropped as one."""
+    doc = html_doc("<html><body><article><p>Dendrites compute in every layer of the cortex, the study says.</p>"
+                   "<scr‮ipt>var leaked = 'secret';</scr‮ipt></article></body></html>")
+    assert "leaked" not in doc.text and "Dendrites compute" in doc.text
+    assert "reordered_lines_removed" not in doc.flags
+
+
+def test_unseen_characters_are_removed_from_plain_text_json_and_feeds():
+    def fetched(body, content_type):
+        return FetchResult(url="http://x.example/a", final_url="http://x.example/a", status=200, headers={},
+                           content_type=content_type, body=body, retrieved_at=1.0, retrieval_mode="live",
+                           truncated=False)
+    doc = extract(fetched("The fee is 1​00 dollars.\nShown as ‮72‬ here.\nThe end.".encode(),
+                          "text/plain"))
+    assert doc.text == "The fee is 100 dollars.\nThe end."
+    doc = extract(fetched(b'{"fee": "1\\u200b00 dollars", "note": "co\\u00adop"}', "application/json"))
+    assert '"fee": "100 dollars"' in doc.text and '"note": "coop"' in doc.text
+    feed = (b'<?xml version="1.0"?><rss version="2.0"><channel><title>News&#x200b;wire</title>'
+            b'<item><title>Num&#x200c;Py 2.5.5 released</title><link>http://x.example/n</link>'
+            b'<description>It fixes the parser fl&#xad;aw.</description></item></channel></rss>')
+    doc = extract(fetched(feed, "application/rss+xml"))
+    assert doc.title == "Newswire" and doc.text == "NumPy 2.5.5 released. It fixes the parser flaw."

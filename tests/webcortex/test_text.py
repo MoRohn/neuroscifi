@@ -331,3 +331,52 @@ def test_values_equal_agree_and_version_order():
 def test_strip_heading(sentence, out):
     # RT-W-06: "Abstract A key challenge ..." was quoted with the section heading glued to the sentence.
     assert T.strip_heading(sentence) == out
+
+
+# ---- characters a reader does not see ------------------------------------------------------------------------------
+
+RLO, LRO, PDF, ZWSP, ZWNJ, SHY = "‮", "‭", "‬", "​", "‌", "­"
+
+
+def test_strip_unseen_removes_what_draws_nothing_and_changes_nothing_else():
+    text = f"Num{ZWNJ}Py 2.5.5 costs 1{ZWSP}00 dollars at the co{SHY}op﻿, says the ⁦vendor⁩‏."
+    assert T.strip_unseen(text) == ("NumPy 2.5.5 costs 100 dollars at the coop, says the vendor.", 7)
+    assert T.unseen_characters(text) == ["U+00AD", "U+200B", "U+200C", "U+200F", "U+2066", "U+2069", "U+FEFF"]
+    plain = "Café “Naïve” — 日本語 12 km العربية"
+    assert T.strip_unseen(plain) == (plain, 0) and T.unseen_characters(plain) == []        # nothing normalised
+    assert T.strip_unseen("tab\there\nline\r\n") == ("tab\there\nline\r\n", 0)             # white space kept
+    assert T.strip_unseen(None) == ("", 0)
+
+
+def test_strip_unseen_turns_blank_fillers_into_a_space_and_separators_into_a_line_break():
+    assert T.strip_unseen("oneㅤtwo⠀threeᅟfour\x0bfive\x85six") == ("one two three four five six", 5)
+    assert T.strip_unseen("first second third") == ("first\nsecond\nthird", 2)
+    assert T.strip_unseen("a\x00b\x07c\x1bd\x7fe\x9ff") == ("abcdef", 5)                   # other controls go
+    assert T.strip_unseen("caf͏e vs15︎ tag\U000e0041 khmer឴ mongol᠋") == (
+        "cafe vs15 tag khmer mongol", 5)
+
+
+def test_as_seen_drops_a_line_that_a_direction_override_reorders():
+    """"<RLO>72" is shown as "27": removing the override would keep the order nobody was shown."""
+    text = f"The tower stands in Tolvane.\nIt is {RLO}72{PDF} metres tall.\nIt opened in 1901{ZWSP}."
+    assert T.as_seen(text) == ("The tower stands in Tolvane.\nIt opened in 1901.", 1, 1)
+    assert T.as_seen(f"safe{LRO} to install") == ("", 0, 1)                 # either override, whatever it encloses
+    assert T.as_seen(f"one two {RLO}owt three") == ("one\nthree", 0, 1)     # a separator ends a line too
+    assert T.as_seen("no override here​") == ("no override here", 1, 0)
+    assert T.as_seen("") == ("", 0, 0) and T.as_seen(None) == ("", 0, 0)
+
+
+def test_the_removed_set_is_every_format_character_that_draws_nothing():
+    """Every character of category Cf is removed, except the ones that are drawn (kept on purpose, text.py): a new
+    Unicode version that adds a format character shows up here."""
+    import unicodedata
+    drawn = ((0x600, 0x605), (0x6DD, 0x6DD), (0x70F, 0x70F), (0x890, 0x891), (0x8E2, 0x8E2), (0x110BD, 0x110BD),
+             (0x110CD, 0x110CD), (0x13430, 0x1345F))
+    kept = [f"U+{cp:04X}" for cp in range(0x110000)
+            if unicodedata.category(chr(cp)) == "Cf" and not T.unseen_characters(chr(cp))]
+    assert all(any(a <= int(k[2:], 16) <= z for a, z in drawn) for k in kept), kept
+    assert len(kept) >= 12
+    # and nothing that is drawn is taken: letters, digits, marks, punctuation, symbols and spaces of every script
+    taken = [cp for cp in range(0x110000) if T.unseen_characters(chr(cp))
+             and unicodedata.category(chr(cp))[0] in "LNPSZ" and cp != 0x2800]
+    assert taken == []
