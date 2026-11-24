@@ -65,8 +65,7 @@ def test_background_reasoning_sends_nothing_when_no_priority_is_configured(gatew
 def test_a_spoken_answer_keeps_the_critique_pass_by_default(gateway, fake):
     fake.replies += [answer(TWO), fine()]
     out = reasoning.apply(None, report(), None, question=Q, now=T0, gateway=gateway, spoken=True)
-    assert len(fake.requests) == 2 and out["critique"] == {"status": "ok", "removed": 0, "flagged": 0,
-                                                           "judged": 1, "restatements": 0}
+    assert len(fake.requests) == 2 and out["critique"] == {"status": "ok", "removed": 0, "flagged": 0}
 
 
 def test_with_critique_voice_off_a_spoken_answer_makes_one_model_call_and_says_why(fake, key_file, tmp_path):

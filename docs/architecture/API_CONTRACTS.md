@@ -480,9 +480,10 @@ unaffected.
   with `status: "rejected"`: the model wrote no sentence, so none was checked or rejected, and `reason` says so.
   `rejected` stays the status of every answer in which no model sentence is shown. `result.reasoning.critique` is
   `null`, or `{status: "ok", removed, flagged}`, `{status: "skipped", reason}` or `{status: "failed", reason}`.
-  With the default critique scope the record also carries `judged` and `restatements` (integers: accepted sentences
-  shown to the critic, and accepted sentences left out because they restate their cited claims word for word); they
-  are absent for the voice and time-budget skips and when `critique_restatements` is on. When every accepted
+  When a sentence was left out of the critique because it restates its cited claims word for word, the record also
+  carries `judged` and `restatements` (integers: accepted sentences shown to the critic, and those left out). When
+  none was left out, for the voice and time-budget skips and when `critique_restatements` is on, the record is the
+  0.7.0 one. When every accepted
   sentence is a restatement the record is `{status: "skipped", reason: "nothing to judge: …", judged: 0,
   restatements: N}` and no critique call was made.
 
@@ -565,6 +566,7 @@ model calls; `spoken` skips the critique pass when `critique_voice` is off.
 (white space and one final full stop aside) with the attribution the code appended; the critique judges only the
 sentences for which it is false. It is always false for more than three cited claims, for a claim that holds its own
 "according to <source>", and for text with characters a reader does not see.
-`reasoning.attribution(text, states, sources, held=None)`: `held` is the cited claims' texts (a list, or one
-string). An "according to <source>" that stands in one of them is the claim's own and stays with what follows it;
-any other is the model's and is replaced by the code's attribution (COGNITIVE_INFERENCE §3).
+`reasoning.compose()` and `reasoning.guard()` are those of 0.7.0, with one addition that only refuses: a sentence
+whose own trailing "according to <source> …" would take further words with it is composed and judged as before
+(the item carries `cut: [text as written, the words]`) and, where the guard would accept it, is rejected with
+`reasoning.CUT_WORDS` instead (COGNITIVE_INFERENCE §3).

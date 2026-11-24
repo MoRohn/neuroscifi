@@ -83,6 +83,9 @@ def run(args) -> dict:
             "summary": summarise(tasks), "tasks": tasks}
 
 
+CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
+
+
 def task_row(q, rec, calls, texts):
     report = rec["report"] or {}
     reasoned = report.get("reasoning") or {}
@@ -100,7 +103,10 @@ def task_row(q, rec, calls, texts):
            "flagged": sum(1 for s in kept if s.get("flag")),
            "flagged_restating": sum(1 for s, r in zip(kept, restating) if r and s.get("flag")),
            "flags_by_problem": dict(Counter(s["flag"]["problem"] for s in kept if s.get("flag"))),
-           "calls": [{k: c.get(k) for k in ("purpose", "status", "latency_ms", "first_token_ms", "prompt_tokens",
+           # sentences the guard would have shown without words their own attribution took along (CUT_WORDS)
+           "refused_cut_words": sum(1 for r in reasoned.get("rejected") or []
+                                    if any(x.startswith(CUT_MARK) for x in r["reasons"])),
+           "calls":[{k: c.get(k) for k in ("purpose", "status", "latency_ms", "first_token_ms", "prompt_tokens",
                                              "completion_tokens", "tokens_per_second", "attempts", "cached_tokens",
                                              "priority")} for c in calls]}
     if texts:           # the corpus is fictional: the sentences and the claims each cites, to judge what a flag is worth
@@ -133,7 +139,8 @@ def summarise(tasks):
         "reasoning_status": dict(Counter(t["reasoning_status"] for t in tasks)),
         "model_answers": len(answered),
         "kept_sentences_per_model_answer": summary([t["kept"] for t in answered]),
-        "sentences": {"kept": sum(t["kept"] for t in tasks), "rejected": sum(t["rejected"] for t in tasks)},
+        "sentences": {"kept": sum(t["kept"] for t in tasks), "rejected": sum(t["rejected"] for t in tasks),
+                      "refused_cut_words": sum(t["refused_cut_words"] for t in tasks)},
         "wall_s_tasks_with_model_calls": summary([t["wall_s"] for t in with_model]),
         "orchestration_s": summary([t["orchestration_s"] for t in with_model]),
         "share_of_wall": {

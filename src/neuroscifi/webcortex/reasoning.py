@@ -75,12 +75,13 @@ A bounded self-critique (one call, cfg.self_critique) may FLAG accepted sentence
 sentence only when an objective check confirms it (unknown source or claim, an unsupported claim state without a
 hedge, a number or unit not in the cited evidence: the same checks as the guard); otherwise the sentence stays,
 carrying the flag ({"problem", "note"}) for the reader. The model's judgement alone never removes a sentence.
-The critique judges only what the model wrote of its own: an accepted sentence that is its cited claims word for word
-with the attribution compose() appended (restates(): an exact comparison) is not shown to it, and when every accepted
+The critique judges only what the model wrote of its own: an accepted sentence that is its cited claims character
+for character with the attribution compose() appended (restates()) is not shown to it, and when every accepted
 sentence is such a restatement no call is made (critique {"status": "skipped", "reason", "judged": 0,
-"restatements"}). Otherwise critique is {"status": "ok", "removed", "flagged", "judged", "restatements"}; the critic
-numbers the judged sentences only. cfg.critique_restatements has every sentence judged, as 0.7.0 did (then
-"judged" and "restatements" are absent).
+"restatements"}). When some sentences were left out, critique carries "judged" and "restatements" beside "removed"
+and "flagged", and the critic numbers the judged sentences only; when none was, it is the 0.7.0 record.
+cfg.critique_restatements has every sentence judged, as 0.7.0 did. restates() reads compose() and the guard; it
+changes neither.
 `time_left` (seconds, from the task's budget) bounds both calls; too little time or a timeout degrades the label.
 Any model failure (not configured, unavailable, unauthorised, invalid JSON after one repair, every sentence
 rejected) leaves generated_by "template" with LABEL_DEGRADED and the reason; the extractive report is unchanged.
@@ -114,6 +115,12 @@ CRITIQUE_TOKENS = 400
 MIN_MODEL_SECONDS = 5.0   # less of the task's time budget left than this: no model call (the label says so)
 # reasoning.reason when the model answered with no sentence (reasoning.abstained = True; status stays "rejected")
 ABSTAINED = "the model wrote no sentence from this evidence{gaps}: no model sentence was checked or rejected"
+# The one rejection added to the guard after 0.7.0, and it can only refuse: the sentence ended in its own
+# "according to <source> ..." with further words, and replacing that attribution by the code's would have shown the
+# sentence without them (0.7.0 showed "The flaw is fixed, according to one source." for "The flaw is fixed according
+# to the release notes except in versions 2 and 3").
+CUT_WORDS = ("ends in its own attribution followed by more words ('{words}'): replacing the attribution would "
+             "drop them")
 # critique.reason when every accepted sentence is a restatement (restates) and no critique call is made
 RESTATEMENTS_ONLY = ("nothing to judge: all {n} sentence(s) restate their cited claims word for word, with the "
                      "attribution chosen by code from the claims' states (nsf llm config --critique-restatements has "
@@ -160,95 +167,39 @@ _SOURCE_PHRASE = (r"according to (?:(?:one|a|an|another|the|two|three|several|mu
                   r"official|other|release)\s+)*(?:sources?|reports?|records?|accounts?|articles?|stud(?:y|ies)|"
                   r"papers?|claims?|evidence|websites?|sites?|pages?|documents?|documentation|announcements?|notes|"
                   r"advisor(?:y|ies)|benchmarks?|surveys?|analys[ie]s|reviews?|data)")
-_OWN_ATTRIBUTION = re.compile(rf"^\s*(?P<lead>{_SOURCE_PHRASE}),\s*|"
-                              rf",?\s*\b(?P<phrase>{_SOURCE_PHRASE})(?P<after>[^,.;:!?]{{0,40}})[.!?]?\s*$", re.IGNORECASE)
-# The two wordings attribution() itself appends, written by the model as an aside inside its sentence ("The library,
-# according to the cited sources, is safe"). Not before "though"/"possibly": that is a hedge the guard must judge.
-_OWN_ASIDE = re.compile(r"\s*,\s*according to (?:one source|the cited sources)\s*,\s*(?!though\b|possibly\b)",
-                        re.IGNORECASE)
-# Words that lead on from a source word to name the source further ("a report by Reuters", "the sources from the
-# advisory")
-_SOURCE_GLUE = frozenset({"by", "from", "of", "in", "on", "at", "the", "a", "an", "its", "their"})
+_OWN_ATTRIBUTION = re.compile(rf"^\s*{_SOURCE_PHRASE},\s*|,?\s*\b{_SOURCE_PHRASE}[^,.;:!?]{{0,40}}[.!?]?\s*$",
+                              re.IGNORECASE)
 # "Yes, ..." / "No, ...": the model answering the question in a word no cited claim holds (the entailment check
 # reads "yes" as hedge vocabulary); compose() removes it, so the sentence says only its restatement.
 _ANSWER_WORD = re.compile(r"^\s*(?:yes|no)\b(?!-)\s*[,;:!\u2014\u2013-]+\s*", re.IGNORECASE)   # never "No-one"
 
 
-# The attributions of HEDGES as they stand in a composed sentence, up to a "though ..." (a clause of its own)
-_CODE_HEDGE = re.compile(",?\\s*(?:" + "|".join(sorted(
-    {re.escape(h.format(who=who).split(", though")[0]) for h in HEDGES.values()
-     for who in ("one source", "the cited sources")}, key=len, reverse=True)) + ")", re.IGNORECASE)
+def _cut_with_attribution(text: str) -> str | None:
+    """The words attribution() removes from `text` beyond an "according to <source word>" itself, or None. Its
+    trailing form reaches up to 40 characters past the source word. Those can name the source further ("a report by
+    Reuters") or be what the sentence says ("... according to the release notes except in versions 2 and 3"), and
+    code cannot tell which; compose() marks such a sentence and the guard refuses it (CUT_WORDS)."""
+    for m in _OWN_ATTRIBUTION.finditer(text or ""):
+        rest = re.sub(_SOURCE_PHRASE, " ", m.group(0), count=1, flags=re.IGNORECASE).strip(" ,.;:!?")
+        if re.search(r"\w", rest):
+            return rest
+    return None
 
 
-def _hedge(states, sources: int) -> str | None:
-    """The attribution of HEDGES for the weakest of `states` ("according to one source, though the sources disagree"),
-    or None when every state is supported. `sources`: how many distinct sources the sentence cites."""
+def attribution(text: str, states, sources: int) -> str:
+    """`text` with the attribution of HEDGES for the weakest of `states` appended ("Python was first released in 1991,
+    according to one source."); a leading or trailing "according to ..." the model wrote is replaced. Unchanged when
+    every state is supported. `sources`: how many distinct sources the sentence cites."""
     states = set(states)
     weakest = next((h for h in HEDGES if h in states), None)
     if weakest is None and states - SUPPORTED_STATES:
         weakest = "insufficient"                    # a state this table does not know is never stated plainly
-    if weakest is None:
-        return None
-    return HEDGES[weakest].format(who="one source" if sources == 1 else "the cited sources")
-
-
-def _run_of(words: list[str], held: list[list[str]]) -> bool:
-    """Whether `words` stand together and in this order in one of the token lists `held`."""
-    n = len(words)
-    return bool(n) and any(c[i:i + n] == words for c in held for i in range(len(c) - n + 1))
-
-
-def _without_own_attribution(text: str, held=None) -> str:
-    """`text` without the attribution the model wrote of its own: a leading "According to <source word>, ", a
-    trailing "... according to <source word>" with up to 40 further characters (_OWN_ATTRIBUTION), and the code's own
-    two wordings as an aside (_OWN_ASIDE). What is the model's and what is the claim's is decided by the cited
-    claims' text (`held`: their texts), word for word (T.tokens):
-
-    - the phrase "according to <source word>" stands in a cited claim: it is the claim's own attribution, and it and
-      whatever follows stay as written ("The flaw is fixed according to the release notes except in versions 2 and
-      3");
-    - otherwise the phrase is the model's and goes ("according to the cited sources" before the code's "according to
-      one source" would contradict the count the code chose). The words after it go too when the cited claims hold
-      none of them, or when they lead on from the source with by/from/of/in/on/at and are not the claim's own wording
-      ("... the cited sources from the advisory", "... a report by Reuters"): the model naming its source;
-    - any other words after it are content, the claim's or the model's, and stay for the guard to judge ("The bridge
-      is open according to one source except on Sundays" -> "The bridge is open except on Sundays").
-
-    held=None: no claim text is known, and the phrase goes with what follows it (the prompt's worked example)."""
-    texts = [held] if isinstance(held, str) else list(held or [])
-    claims = [T.tokens(t) for t in texts]
-    known = {w for c in claims for w in c}
-
-    def drop(m):
-        phrase = m.group("lead") or m.group("phrase")
-        if claims and _run_of(T.tokens(phrase), claims):
-            return m.group(0)                               # the claim's own attribution
-        after = m.group("after") or ""
-        words = T.tokens(after)
-        if not claims or not (set(words) - _SOURCE_GLUE) & known:
-            return ""                                       # nothing follows, or a source the claims do not name
-        if words[0] in _SOURCE_GLUE and not _run_of(words, claims):
-            return ""                                       # "from the advisory", "by Reuters": naming the source
-        return " " + after.strip()                          # content: it stays, without the model's attribution
-
-    def aside(m):
-        return m.group(0) if _run_of(T.tokens(m.group(0)), claims) else " "
-    out = _OWN_ATTRIBUTION.sub(drop, text or "")
-    return _OWN_ASIDE.sub(aside, out) if claims else out
-
-
-def attribution(text: str, states, sources: int, held=None) -> str:
-    """`text` with the attribution of HEDGES for the weakest of `states` appended ("Python was first released in 1991,
-    according to one source."); an "according to ..." the model wrote of its own is replaced, and one that is the
-    cited claims' own wording stays (`held`: the cited claims' texts, _without_own_attribution). Unchanged when
-    every state is supported. `sources`: how many distinct sources the sentence cites."""
-    tail = _hedge(states, sources)
-    body = _without_own_attribution(text, held).strip().rstrip(".!?;:, ").strip()
-    if tail is None or not body:
+    body = _OWN_ATTRIBUTION.sub("", text or "").strip().rstrip(".!?;:, ").strip()
+    if weakest is None or not body:
         return text
     if body[:1].islower() and body != (text or "").strip().rstrip(".!?;:, ").strip():
         body = body[0].upper() + body[1:]           # "According to X, the first ..." -> "The first ..."
-    return f"{body}, {tail}."
+    return f"{body}, {HEDGES[weakest].format(who='one source' if sources == 1 else 'the cited sources')}."
 
 
 # The prompt's worked example, as data: tests check that the good sentence passes the guard against the example claim
@@ -1510,10 +1461,15 @@ def compose(value, b: dict) -> list[dict]:
         if key[0] and key in seen:
             continue                        # the same sentence again (live: a model repeating its last items)
         seen.add(key)
+        cut = None
         if used and text and not text.rstrip().endswith("?") and not insufficiency(text, question) and \
                 not _relays_instruction(text, b, used):
-            text = attribution(text, [c["state"] for c in used], len(sources), [c["text"] for c in used])
-        out.append({"text": text, "sources": sources, "claims": ids})
+            written = text
+            text = attribution(text, [c["state"] for c in used], len(sources))
+            cut = _cut_with_attribution(written) if text != written else None
+        # "cut": the text and the guard's judgement of it are what they always were; the guard then refuses the
+        # sentence instead of showing it without the words attribution() removed (CUT_WORDS)
+        out.append({"text": text, "sources": sources, "claims": ids} | ({"cut": [written, cut]} if cut else {}))
     return out
 
 
@@ -2125,28 +2081,7 @@ def _anchor_problems(text: str, used) -> list[str]:
     none with any of them, it may not take the words a claim says of something else ("2.5.5 has the parser flaw" for
     "2.5.4 has the parser flaw and 2.5.5 has the fix")."""
     mine = [(c, _anchors(c)) for c in _coarse_clauses(_V_PREFIX.sub("", text))]
-
-    def borrowed(parts, n, wide):
-        """What a clause of anchors without a predicate ("..., but not NumPy 2.5.4") says of them: its neighbour's
-        predicate, under its own negator. None when there is no neighbour."""
-        if len(parts) < 2:
-            return None
-        near = parts[n - 1] if n else parts[n + 1]
-        flip = any(w in _ENTAIL_NEG or w.endswith("n't") for w in map(_e_plain, _E_WORD.findall(parts[n][0])))
-        return {w: neg != flip for w, neg in _predicate(near[0], near[1], wide).items()}
-
-    def worded(clause):                 # its words, the attribution compose() appended aside
-        return " ".join(map(_e_plain, _E_WORD.findall(_CODE_HEDGE.sub(" ", clause))))
-
-    # Each claim clause with what it states. A claim clause of anchors without a predicate ("... except in versions 2
-    # | and 3") states nothing of its own; `lent` is the reading the sentence's own such clauses get, kept for the
-    # one case below.
-    theirs = []
-    for x in used:
-        parts = [(c, _anchors(c)) for c in _coarse_clauses(_V_PREFIX.sub("", x["text"]))]
-        for n, (c, an) in enumerate(parts):
-            stated = _predicate(c, an, False)
-            theirs.append((c, an, stated, borrowed(parts, n, False) if not stated and an else None))
+    theirs = [(c, _anchors(c)) for x in used for c in _coarse_clauses(_V_PREFIX.sub("", x["text"]))]
     # R7-6: a clause whose subject is a pronoun ("NumPy 2.5.5 - it is affected") speaks of the previous clause's
     # anchors; a clause of anchors without a predicate ("..., but not NumPy 2.5.4") takes its neighbour's predicate,
     # under its own negator
@@ -2155,28 +2090,24 @@ def _anchor_problems(text: str, used) -> list[str]:
         first = _e_plain((_E_WORD.findall(_JOIN_LEAD.sub("", clause.strip(_PUNCT))) or [""])[0])
         if first in _PRONOUN_SUBJECTS and n:
             anchors = anchors | mine[n - 1][1]
-        said, bare = _predicate(clause, anchors, True), False
+        said = _predicate(clause, anchors, True)
         if not said and anchors:
-            lent = borrowed(mine, n, True)
-            if lent is not None:
-                said, bare = lent, True
-        said_of.append((clause, anchors, said, bare))
+            neighbour = mine[n - 1] if n else (mine[n + 1] if n + 1 < len(mine) else None)
+            if neighbour is not None:
+                flip = any(w in _ENTAIL_NEG or w.endswith("n't") for w in map(_e_plain, _E_WORD.findall(clause)))
+                said = {w: neg != flip for w, neg in _predicate(neighbour[0], neighbour[1], True).items()}
+        said_of.append((clause, anchors, said))
     problems = []
-    for clause, anchors, said, bare in said_of:
+    for clause, anchors, said in said_of:
         for a in sorted(anchors):
-            holding = [(c, an, stated, lent) for c, an, stated, lent in theirs if a in an]
+            holding = [(c, an) for c, an in theirs if a in an]
             if not holding:
                 continue
             if not said:
                 continue
             fits, shares = False, False
-            for c, an, stated, lent in holding:
-                # the sentence's clause is the claim's own clause of bare anchors, word for word ("and 3" for "and
-                # 3", never "and 3" for "or 3" or "but not 3"): both borrow, and what they borrowed is compared.
-                # Without this a sentence that is such a claim word for word was rejected ("3: says what its cited
-                # claims say of something else")
-                if bare and lent is not None and worded(clause) == worded(c):
-                    stated = lent
+            for c, an in holding:
+                stated = _predicate(c, an, False)
                 shared = set(said) & set(stated)
                 if shared:
                     shares = True
@@ -2184,7 +2115,8 @@ def _anchor_problems(text: str, used) -> list[str]:
                         fits = True
                         break
             if not fits:                  # a claim clause naming nothing else ("... and it is not secure") may say it
-                for c, an, stated, _ in theirs:
+                for c, an in theirs:
+                    stated = _predicate(c, an, False)
                     shared = set(said) & set(stated)
                     if a not in an and not an - anchors and shared and all(said[w] == stated[w] for w in shared):
                         fits = True
@@ -2193,7 +2125,7 @@ def _anchor_problems(text: str, used) -> list[str]:
                 continue
             if shares:
                 problems.append(f"{a}: negated where its cited claim does not, or not where it does")
-            elif any(set(said) & set(stated) for c, an, stated, _ in theirs if a not in an and an - anchors):
+            elif any(set(said) & set(_predicate(c, an, False)) for c, an in theirs if a not in an and an - anchors):
                 problems.append(f"{a}: says what its cited claims say of something else")
     # within one clause: the content word right before a version or number names what it is ("the fix in NumPy
     # 2.5.4" for "affected NumPy 2.5.4 before the fix in NumPy 2.5.5")
@@ -2489,14 +2421,11 @@ def _restates(text: str, used) -> bool:
                for c in used)
 
 
-def _attributed_lead(cites) -> str:
-    return "According to one source, " if len(set(cites)) == 1 else "According to the cited sources, "
-
-
 def _attributed(text: str, cites) -> str:
     """`text` attributed to its cited source(s): "According to one source, the first stable release ..." (R1-04)."""
+    lead = "According to one source, " if len(set(cites)) == 1 else "According to the cited sources, "
     m = _LOWER_LEAD.match(text)
-    return _attributed_lead(cites) + (text[0].lower() + text[1:] if m else text)
+    return lead + (text[0].lower() + text[1:] if m else text)
 
 
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
@@ -2524,6 +2453,11 @@ def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
                                  "as an earlier sentence"]
         if reasons:
             rejected.append({"text": text, "reasons": reasons})
+        elif s.get("cut"):
+            # judged exactly as before, and `earlier` counts it as before, so every other sentence gets the verdict
+            # it always got; only this one is refused rather than shown without the words compose() cut
+            earlier.update(cites)
+            rejected.append({"text": _clean(s["cut"][0]), "reasons": [CUT_WORDS.format(words=_clean(s["cut"][1], 80))]})
         else:
             earlier.update(cites)
             accepted.append({"text": text, "citations": sorted(set(cites)), "claims": list(dict.fromkeys(ids)),
@@ -2534,15 +2468,20 @@ def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
 
 
 # ---- restatements: what the self-critique has nothing to judge in -------------------------------------------------
+# Everything below reads compose(), attribution() and the guard as they are and changes none of them.
 
 # How a model joins the claims it restates in one sentence ("A, and b"); a closed list, compared exactly.
 _RESTATE_JOINS = (", and ", " and ", "; ", "; and ")
+# A first word, beside those of the guard's _LOWER_LEAD, that a model lowers when it joins a claim to another and
+# whose capital carries no meaning. A closed list on purpose: "Turkey", "Polish", "May", "Mark", "Will" are words too.
+_LOWER_AFTER_JOIN = re.compile(r"^(?:With)\b")
 # Characters a reader does not see, or that change how the characters around them are shown: format characters
 # (bidirectional controls, zero-width spaces and joiners, soft hyphen, tags), controls, private use, unassigned,
 # surrogates, line and paragraph separators, and the invisible ones Unicode files elsewhere (combining grapheme
 # joiner, Hangul and Khmer fillers, Mongolian and other variation selectors, the Braille blank).
 _UNSEEN_CATEGORIES = frozenset({"Cf", "Cc", "Co", "Cn", "Cs", "Zl", "Zp"})
 _UNSEEN = re.compile("[͏ᅟᅠ឴឵᠋-᠏⠀ㅤﾠ︀-️\U000e0100-\U000e01ef]")
+_SOURCE_PHRASE_ANYWHERE = re.compile(_SOURCE_PHRASE, re.IGNORECASE)
 
 
 def _restate_key(text) -> str | None:
@@ -2556,11 +2495,6 @@ def _restate_key(text) -> str | None:
             or _SPACE.sub(" ", _norm(text)).strip() != text:
         return None
     return text[:-1].rstrip() if text.endswith(".") and not text.endswith("..") else text
-
-
-# A first word, beside those of _LOWER_LEAD, that a model lowers when it joins a claim to another and whose capital
-# carries no meaning. A closed list on purpose: "Turkey", "Polish", "May", "Mark", "Will" are words too.
-_LOWER_AFTER_JOIN = re.compile(r"^(?:With)\b")
 
 
 def _part_at(body: str, at: int, part: str, first: bool, guard_led: bool) -> int | None:
@@ -2605,14 +2539,16 @@ def restates(item: dict, b: dict) -> bool:
 
     True only when its text is, character for character (_restate_key: white space and one final full stop aside),
     its cited claims' own text as extracted: one claim, or every cited claim once, in any order, joined by one of
-    _RESTATE_JOINS, followed by the attribution compose() appends for those claims' states and number of sources
-    (_hedge; nothing when all are supported), or led by the guard's own "According to one source, " (items with
-    "attributed"). Always False, so that the sentence is judged, for: a shortened, reordered or reworded claim; a
+    _RESTATE_JOINS, followed by exactly what attribution() appends for those claims' states and number of sources
+    (nothing when all are supported), or led by exactly what the guard's _attributed() puts in front (items with
+    "attributed"). Both are asked of those functions themselves, with a one-letter text, so this test holds no copy
+    of their wording. Always False, so that the sentence is judged, for: a shortened, reordered or reworded claim; a
     changed number, unit or letter case; a dropped "not"; an added clause; a claim cited but not restated; more than
     MAX_SENTENCE_CLAIMS cited claims (the guard also reads citation markup in the text, so an item can carry more
-    than the schema allows); sources other than the cited claims' own; an unknown claim id; a claim whose own text
-    holds an attribution phrase (_SOURCE_PHRASE: compose() may have replaced it); and a sentence or claim that
-    _restate_key cannot compare (unseen characters, compatibility forms).
+    than the schema allows); sources other than the cited claims' own; an unknown claim id; a cited claim whose own
+    text holds an attribution phrase (_SOURCE_PHRASE: attribution() removes such a phrase from a sentence together
+    with up to 40 characters after it, so what is shown may be less than the claim says); and a sentence or claim
+    that _restate_key cannot compare (unseen characters, compatibility forms).
 
     Used by apply(): the self-critique judges only sentences that are not restatements. In a restatement the words
     are the claim's and the hedge is the code's, so "unsupported", "overstated" or "missing_hedge" there can only be
@@ -2632,17 +2568,17 @@ def restates(item: dict, b: dict) -> bool:
     parts = []
     for c in used:
         key = _restate_key(c.get("text"))
-        if key is None or re.search(_SOURCE_PHRASE, key, re.IGNORECASE):
-            return False                    # not comparable, or compose() may have taken its own attribution out
+        if key is None or _SOURCE_PHRASE_ANYWHERE.search(key):
+            return False                    # not comparable, or attribution() may have taken words out of its copy
         if key not in parts:                # the same words from two claims count once
             parts.append(key)
-    tail = _hedge([c["state"] for c in used], len(sources))
-    if tail is None:
-        if _joined(text, parts):
-            return True
-    elif text.endswith(f", {tail}") and _joined(text[:-len(f", {tail}")], parts):
+    hedged_x = attribution("X", [c["state"] for c in used], len(sources))       # "X", or "X, according to ... ."
+    tail = _restate_key(hedged_x[1:]) if hedged_x != "X" else ""
+    if tail is None or not hedged_x.startswith("X"):
+        return False
+    if text.endswith(tail) and _joined(text[:len(text) - len(tail)], parts):
         return True
-    lead = _attributed_lead(sources)
+    lead = _attributed("X", sources)[:-1]                                        # "According to one source, "
     return bool(item.get("attributed")) and text.startswith(lead) and _joined(text[len(lead):], parts, guard_led=True)
 
 
@@ -2848,12 +2784,14 @@ def apply(db, report: dict, services, *, question: str, now: float, task_id=None
         critique = {"status": "skipped", "reason": "spoken answer: the critique pass is off for voice "
                                                    "(nsf llm config --critique-voice turns it on)"}
     elif accepted and gw.cfg.self_critique:
-        # The critique judges what the model wrote of its own. A sentence that is its cited claims word for word with
-        # the attribution the code appended (restates) gives a second reading nothing to judge, and is left out of
-        # the critic's numbered list; cfg.critique_restatements has every accepted sentence judged, as 0.7.0 did.
+        # The critique judges what the model wrote of its own. A sentence that is its cited claims character for
+        # character with the attribution the code appended (restates) gives a second reading nothing to judge, and is
+        # left out of the critic's numbered list; cfg.critique_restatements has every accepted sentence judged, as
+        # 0.7.0 did. When nothing was left out the record is the 0.7.0 one (no "judged", no "restatements").
         every = bool(getattr(gw.cfg, "critique_restatements", False))
         judged = [i for i, s in enumerate(accepted) if every or not restates(s, b)]
-        counts = {} if every else {"judged": len(judged), "restatements": len(accepted) - len(judged)}
+        left_out = len(accepted) - len(judged)
+        counts = {"judged": len(judged), "restatements": left_out} if left_out else {}
         if not judged:
             critique = {"status": "skipped", "reason": RESTATEMENTS_ONLY.format(n=len(accepted))} | counts
         else:

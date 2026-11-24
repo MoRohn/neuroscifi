@@ -7340,5 +7340,168 @@
    "sentences": 700,
    "changed_class": 0
   }
+ },
+ "guard_revert": {
+  "what": "compose(), attribution() and the guard are those of 307b907 again; restates() reads them and changes neither. One refusal is added (reasoning.CUT_WORDS). The entries run_second_review_pass and the notes of the two review rounds above describe an answer path that was withdrawn; their critique numbers stand, their compose() and anchor-rule behaviour does not.",
+  "live_run_default_scope": {
+   "generated_at": "2026-11-24T00:29:57Z",
+   "tasks": 51,
+   "model_answers": 44,
+   "abstentions": 4,
+   "sentences_kept": 85,
+   "sentences_rejected_by_the_guard": 23,
+   "sentences_refused_for_words_their_attribution_would_drop": 0,
+   "kept_restating_their_claims": 75,
+   "critique_calls": 9,
+   "critique_skipped_why": {
+    "restatements_only": 35
+   },
+   "sentences_judged": 10,
+   "sentences_removed": 0,
+   "marks": 4,
+   "marks_on_restatements": 0,
+   "marks_by_problem": {
+    "overstated": 1,
+    "unsupported": 3
+   },
+   "critique_prompt_tokens_total": 6162,
+   "critique_completion_tokens_total": 609,
+   "task_wall_s": {
+    "mean": 2.643,
+    "p50": 1.869,
+    "p95": 5.705
+   },
+   "share_of_wall": {
+    "answer_call": 0.828,
+    "critique_call": 0.102,
+    "orchestration": 0.07
+   },
+   "critique_records": [
+    "[\"flagged\", \"judged\", \"removed\", \"restatements\", \"status\"]",
+    "[\"flagged\", \"removed\", \"status\"]",
+    "[\"judged\", \"reason\", \"restatements\", \"status\"]"
+   ],
+   "tasks_whose_kept_sentences_differ_from": {
+    "strict1": [
+     "F02"
+    ],
+    "strict2": [
+     "F02"
+    ],
+    "every": [
+     "F02"
+    ],
+    "off": [
+     "F02"
+    ],
+    "targeted2": [
+     "F01",
+     "F02"
+    ],
+    "pass2b": [
+     "F01"
+    ]
+   }
+  },
+  "stored_sentences_reread": {
+   "sentences": 873,
+   "changed_class": 0,
+   "by_run": {
+    "accel_after_pipeline.json": {
+     "kept": 90,
+     "restating_now": 80,
+     "changed_class": 0,
+     "marks": 46,
+     "marks_on_restatements_now": 43,
+     "tasks_with_a_sentence_to_judge": 9
+    },
+    "targeted": {
+     "kept": 91,
+     "restating_now": 81,
+     "changed_class": 0,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge": 9
+    },
+    "targeted2": {
+     "kept": 89,
+     "restating_now": 77,
+     "changed_class": 0,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge": 11
+    },
+    "every": {
+     "kept": 86,
+     "restating_now": 75,
+     "changed_class": 0,
+     "marks": 42,
+     "marks_on_restatements_now": 38,
+     "tasks_with_a_sentence_to_judge": 10
+    },
+    "every2": {
+     "kept": 86,
+     "restating_now": 75,
+     "changed_class": 0,
+     "marks": 42,
+     "marks_on_restatements_now": 38,
+     "tasks_with_a_sentence_to_judge": 10
+    },
+    "off": {
+     "kept": 86,
+     "restating_now": 75,
+     "changed_class": 0,
+     "marks": 0,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge": 10
+    },
+    "strict1": {
+     "kept": 86,
+     "restating_now": 75,
+     "changed_class": 0,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge": 10
+    },
+    "strict2": {
+     "kept": 86,
+     "restating_now": 75,
+     "changed_class": 0,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge": 10
+    },
+    "pass2b": {
+     "kept": 88,
+     "restating_now": 77,
+     "changed_class": 0,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge": 10
+    },
+    "revert": {
+     "kept": 85,
+     "restating_now": 75,
+     "changed_class": 0,
+     "marks": 4,
+     "marks_on_restatements_now": 0,
+     "tasks_with_a_sentence_to_judge": 9
+    }
+   }
+  },
+  "differential_against_307b907": {
+   "compared": 1476,
+   "identical": 1459,
+   "stricter_only": 17,
+   "different": 0,
+   "stricter_by_origin": {
+    "harvested": 0,
+    "review": 17,
+    "benchmark": 0
+   },
+   "reference": "tests/inference/fixtures/guard_reference.json",
+   "test": "tests/inference/test_guard_differential.py"
+  },
+  "guard_tests_of_307b907_against_this_tree": "827 passed (tests/inference/test_inference_reasoning.py and tests/webcortex/test_shared_verdict.py as of 307b907); all of 307b907's tests/inference: 939 passed, 9 skipped"
  }
 }

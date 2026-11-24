@@ -390,7 +390,7 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   none and a mark removes nothing: the sentence stays with `flag: {problem, note, confirmed: false}`, shown in the
   console as "self-check flagged". The model's judgement alone never removes a sentence, and it can never add one.
   `critique` reports `status` (`ok`, `skipped` with a reason, `failed` with a reason), `removed` and `flagged`, and
-  with the default scope `judged` and `restatements` (sentences shown to the critic, sentences left out).
+  when a restatement was left out `judged` and `restatements` (sentences shown to the critic, sentences left out).
   (Before v0.7.0 Lane G any mark removed the sentence; live, that dropped correct sentences and once a whole
   answer.) Measured on the 51 tasks of the offline corpus with the live model
   (`docs/quality/evidence/accel_baseline_pipeline.json`, `summary`): the critique call ran for the 46 model answers
@@ -406,7 +406,8 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   character, its cited claims' own text as extracted: one claim, or every cited claim once, in any order, joined by
   `, and`, ` and`, `; ` or `; and`, followed by the attribution `compose()` appends for those claims' states and
   number of sources (nothing when all are supported), or led by the guard's own "According to one source, …" (items
-  with `attributed`). Two differences are allowed and no other: runs of white space count as one space, and one
+  with `attributed`). Both wordings are asked of `attribution()` and `_attributed()` themselves with a one-letter
+  text, so the test holds no copy of them and changes neither function. Two differences are allowed and no other: runs of white space count as one space, and one
   final full stop may be present or absent. Case counts, with one exception: a claim that follows a join may begin
   in lower case when its first word is one of a closed list whose capital carries no meaning (the guard's
   `_LOWER_LEAD`: "The", "In", "After", …; and "With": "…, and with a length of 412 km, …"). "Turkey exports" is
@@ -415,33 +416,37 @@ included); failed and cancelled runs keep the extractive report only. It passes 
   letter case ("CO" and "Co"); a dropped "not"; an added clause; a claim cited but not restated; more than three
   cited claims (the guard also reads citation markup inside the text, so an accepted sentence can carry more than
   the schema's three); citations other than the cited claims' own sources; an unknown claim id; a claim whose own
-  text holds "according to <source>" (the code may have replaced it, see below); and any sentence or claim holding a
+  text holds "according to <source>" (`compose()` removes such a phrase from a sentence, see below, so what is
+  shown may be less than the claim says); and any sentence or claim holding a
   character a reader does not see (bidirectional controls, zero-width and other format characters, variation
   selectors, fillers) or that the guard reads differently from how it is written (a superscript, a ligature, the
   one-character ellipsis). The cost is bounded: at most three parts, each tried only where it stands in the text, and
   no ordering of the claims is enumerated. The code never changes a sentence because of this test; it only decides
   whether the critic is asked about it. Tests: `tests/inference/test_inference_critique_scope.py`.
-- **The model's own attribution and the claim's.** `compose()` replaces the attribution the model wrote of its own
-  by the code's: a leading "According to <source word>, ", a trailing "… according to <source word>" with up to 40
-  further characters, and the code's own two wordings as an aside ("The library, according to the cited sources, is
-  safe"). What is the model's and what is the claim's is decided by the cited claims' text, word for word
-  (`_without_own_attribution`):
-  - the phrase "according to <source word>" stands in a cited claim: it is the claim's own attribution, and it and
-    whatever follows stay as written. The claim "The bridge is open according to the official records except on
-    Sundays", copied word for word, is shown as "The bridge is open according to the official records except on
-    Sundays, according to one source." (0.7.0 showed "The bridge is open, according to one source.");
-  - otherwise the phrase is the model's and goes, so the count the code chose is the only one in the sentence
-    ("…, according to the cited sources from the advisory." from one source is shown as "…, according to one
-    source."). The words after it go too when the cited claims hold none of them, or when they lead on from the
-    source with by, from, of, in, on or at and are not the claim's own wording: the model naming its source;
-  - any other words after it are content and stay for the guard to judge: "The bridge is open according to one
-    source except on Sundays" becomes "The bridge is open except on Sundays, according to one source.".
-
-  A shortened sentence that drops a claim's exception still passes the lexical guard, as any shortening does; it is
-  not a restatement, so the critique reads it. In the guard's rule that ties a version or number to what its claim
-  says of it, a claim clause of bare numbers ("… except in versions 2 | and 3") now gets the reading the sentence's
-  own clauses always had (its neighbour's predicate, under its own negator); before, a sentence that was such a
-  claim word for word was rejected ("3: says what its cited claims say of something else").
+- **The model's own attribution, and the one refusal added after 0.7.0.** `compose()` and the guard are the ones
+  of 0.7.0 (commit `307b907`), which eight review rounds attacked: `compose()` replaces a leading "According to
+  <source word>, " and a trailing "… according to <source word>" by the code's attribution, and the trailing form
+  takes up to 40 characters after the source word with it. Those characters can name the source further ("a report
+  by Reuters") or be what the sentence says: 0.7.0 showed the claim "The bridge is open according to the official
+  records except on Sundays", copied word for word from one unsupported source, as "The bridge is open, according to
+  one source.". Code cannot tell the two apart, and keeping the words was tried and withdrawn (a claim's own
+  "according to the official advisory of …" then stood in the answer as if it were support). So the sentence is
+  composed and judged exactly as before, and when the guard would accept it, it is refused instead, with the reason
+  "ends in its own attribution followed by more words ('except on Sundays'): replacing the attribution would drop
+  them" (`reasoning.CUT_WORDS`; `compose()` marks the item with `cut`). The refused sentence still counts as the
+  earlier sentence it would have been, so no other sentence's verdict moves. Nothing else differs from 0.7.0:
+  `tests/inference/test_guard_differential.py` replays 1,476 recorded inputs (every argument that commit's own
+  guard tests pass to `compose()` and the guard, the security review's corpora, the live benchmark's sentences)
+  and compares every composed sentence, accepted item and rejection with what `307b907` gives
+  (`scripts/guard_differential.py record --ref 307b907` rewrites the reference from that commit's source): 1,459
+  identical, 17 that differ only by this refusal, all in the review's corpora, none among the attack suite's 1,137
+  inputs or the benchmark's 248. Known and unchanged, each recorded in the reference: a sentence the model itself
+  shortens so that a claim's exception is gone passes the lexical guard, as any shortening does (it is not a
+  restatement, so the critique reads it); an "according to the cited sources" set between commas inside a sentence
+  is not replaced, so one source can be shown as "…, according to the cited sources, …, according to one source.";
+  a supported claim that ends in a bare number after "and" ("… in versions 2 and 3") is rejected when copied word
+  for word ("3: says what its cited claims say of something else"); and the one-version form of an inverted
+  exception ("… except 2.5.4 and 2.5.5" stated as "… in 2.5.4.") is accepted.
 - **Time budget.** `orchestrator._reason` passes what is left of the task's `budget.max_seconds`
   (`time_left`); the answer call, its schema repair and the critique share that one deadline (`Gateway.structured`
   gives the repair only the remaining time; `Gateway._call` never exceeds `read_timeout`). With less than
@@ -787,7 +792,7 @@ has a default and one command that restores the 0.7.0 behaviour. None of them ch
 |---|---|---|---|
 | `background_priority` (inference setting, 0–100) | 0: no `priority` field is sent. `nsf setup` sets 10 when the endpoint's `/models` answer says `owned_by: vllm`; `nsf llm config --url` alone leaves it at 0 | The model calls of an autonomous task (origin `curiosity` or `refresh:<id>`, `orchestrator.is_autonomous`) carry `priority: N`: the answer call, its schema repair, the critique and the memory-answer check. The owner's calls never carry it (console, CLI, Pocket, voice, monitors, owner refreshes) | `nsf llm config --set background_priority=0` |
 | `critique_voice` (inference setting) | on: a spoken answer gets the critique pass like any other | Off: for a task whose origin is `voice` or `pocket-voice` the critique call is not made, so a spoken answer costs one model call. `critique` is then `{status: skipped, reason: "spoken answer: the critique pass is off for voice (nsf llm config --critique-voice turns it on)"}`. The critique's marks are shown by the console and Pocket and are never spoken | `nsf llm config --critique-voice` (off: `--no-critique-voice`) |
-| `critique_restatements` (inference setting) | off: the critique judges only accepted sentences that are not restatements (§3), and makes no call when there is none | On: every accepted sentence is numbered and judged, as in 0.7.0. Off, `critique` carries `judged` and `restatements`; an answer made only of restatements gets `{status: skipped, reason: "nothing to judge: all N sentence(s) restate their cited claims word for word, …", judged: 0, restatements: N}` and one model call. The answer call, the guard and the gaps the answer call names are the same in both settings | `nsf llm config --critique-restatements` (default: `--no-critique-restatements`) |
+| `critique_restatements` (inference setting) | off: the critique judges only accepted sentences that are not restatements (§3), and makes no call when there is none | On: every accepted sentence is numbered and judged, as in 0.7.0. Off, `critique` carries `judged` and `restatements` when a restatement was left out (otherwise it is the 0.7.0 record); an answer made only of restatements gets `{status: skipped, reason: "nothing to judge: all N sentence(s) restate their cited claims word for word, …", judged: 0, restatements: N}` and one model call. The answer call, the guard and the gaps the answer call names are the same in both settings | `nsf llm config --critique-restatements` (default: `--no-critique-restatements`) |
 | `memory_check` (web setting) | on; it does nothing without a configured answer model or with `reasoning` off | Before memory answers a question without the web, the answer model confirms that a chosen statement states the answer to exactly what is asked. It can only send a question to the web, never the reverse ([MEMORY_INTEGRATION §5.2](../web-cortex/MEMORY_INTEGRATION.md#52-the-memory-answer-check-memory_gatepy)) | `nsf web config --no-memory-check` |
 
 **Background priority.** The value only has an effect on a server that schedules by priority; `deploy/vllm` starts
@@ -844,7 +849,10 @@ sentences still judged are the ones the model shortened or rewrote ("The Halvors
 claim that goes on "and now carries about 42,000 vehicles a day"; "Tessaly had a population of 248,000 residents at
 the 2025 census, …" from "At the 2025 census Tessaly had a population of 248,000 residents.")
 and one that cites two claims and restates one. The four remaining marks are a model's judgement as before, shown
-and never acted on. Tests: `tests/inference/test_inference_critique_scope.py`; in the browser,
+and never acted on. One more default-scope run after the answer path was put back to that of `307b907` (§3;
+`guard_revert` in the same file): 9 critique calls, 10 of 85 sentences judged, 4 marks, none on a restatement, no
+sentence refused under `CUT_WORDS`, mean 2.64 s; all 873 sentences of the ten stored runs are classed by `restates`
+as they were. Tests: `tests/inference/test_inference_critique_scope.py`; in the browser,
 `tests/e2e/test_reasoning_console.py::test_a_word_for_word_answer_is_shown_without_a_critique_call_by_default`.
 
 **Memory-answer check.** One structured call of at most 8 s (`memory_gate.TIMEOUT`, and never more than the task's

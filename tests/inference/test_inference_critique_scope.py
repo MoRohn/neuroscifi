@@ -254,126 +254,89 @@ def test_a_claim_that_holds_an_attribution_phrase_is_always_judged():
         short = claim.split(" according to ")[0]
         for text in (f"{short}, according to one source.", f"{claim[:-1]}, according to one source.", claim):
             assert not reasoning.restates(item(text, b), b), (claim, text)
+    # through the answer path: what the model shortens itself passes the guard as any shortening does, and the
+    # critic reads it
     b = one_claim("insufficient", (3,), text=QUALIFIED)
-    for written in ("The bridge is open.", "The bridge is open according to the official records.", QUALIFIED):
+    for written in ("The bridge is open.", "The bridge is open according to the official records."):
         ok = kept(b, (written, ["C1"]))
-        assert not reasoning.restates(ok[0], b), ok[0]["text"]        # each reaches the critic
-
-
-def test_compose_keeps_what_follows_a_source_phrase_when_the_claim_says_it():
-    """Review F3, the answer path (older than the critique scope): compose() replaced "according to the official
-    records except on Sundays" by "according to one source", so a claim copied word for word was shown without its
-    exception. Words after the source word that the cited claim holds are the claim's content and stay; a source the
-    model names on its own is still replaced."""
-    b = one_claim("insufficient", (3,), text=QUALIFIED)
-    items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": QUALIFIED}]}, b)
-    assert items[0]["text"] == QUALIFIED[:-1] + ", according to one source."
-    ok, bad = reasoning.guard(items, b)
-    assert bad == [] and "except on Sundays" in ok[0]["text"]
-    for claim in ("The flaw is fixed according to the release notes for the Linux builds.",
-                  "Drug Z is safe according to the official advisory for adults over 65 only."):
-        b = one_claim("insufficient", (3,), text=claim)
-        shown = reasoning.compose({"sentences": [{"claims": ["C1"], "text": claim}]}, b)[0]["text"]
-        assert claim[:-1] in shown, shown
-    b = one_claim("insufficient", (3,), text="The bridge is open.")
-    for written in ("The bridge is open according to a report by Reuters.",
-                    "The bridge is open, according to the benchmark.",
-                    "The bridge is open according to the notes of the release.",
-                    "According to the cited sources, the bridge is open."):
-        items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": written}]}, b)
-        assert items[0]["text"] == "The bridge is open, according to one source.", written
-    # the model naming its source in its own words, also with a word the claim holds (review S4): replaced
-    b = one_claim("insufficient", (3,), text="The bridge is open, Reuters reported.")
-    items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": "The bridge is open according to a report "
-                                                                        "by Reuters."}]}, b)
-    assert items[0]["text"] == "The bridge is open, according to one source."
-    assert reasoning.attribution("The bridge is open according to a report by Reuters.", ["insufficient"], 1) == \
-        "The bridge is open, according to one source."                # no claim text given: as before
+        assert ok[0]["text"] == "The bridge is open, according to one source." and not reasoning.restates(ok[0], b)
+    b = one_claim("supported", (3,), text=QUALIFIED)              # supported: nothing appended, nothing removed
+    ok = kept(b, (QUALIFIED, ["C1"]))
+    assert ok[0]["text"] == QUALIFIED and not reasoning.restates(ok[0], b)
 
 
 ADVISORY = "The advisory says the library is safe to use in production."
 
 
-@pytest.mark.parametrize("claim, written, shown", [
-    # the reviewer's case: the model's plural wording stood before the count the code chose
+@pytest.mark.parametrize("claim, written, words", [
+    (QUALIFIED, QUALIFIED, "except on Sundays"),                                   # review F3: the claim's exception
+    ("The flaw is fixed according to the release notes except in versions 2 and 3.",
+     "The flaw is fixed according to the release notes except in versions 2 and 3.", "except in versions 2 and 3"),
+    ("The flaw is fixed according to the release notes except in versions 2 and 3.",
+     "The flaw is fixed according to the release notes in versions 2 and 3.", "in versions 2 and 3"),
+    ("NumPy 2.5.5 is safe to install according to the release notes unless installed from PyPI.",
+     "NumPy 2.5.5 is safe to install according to the release notes if installed from PyPI.",
+     "if installed from PyPI"),
     (ADVISORY, "The library is safe to use, according to the cited sources from the advisory.",
-     "The library is safe to use, according to one source."),
-    (ADVISORY, "The library is safe to use according to the cited sources.",
-     "The library is safe to use, according to one source."),
-    (ADVISORY, "According to the cited sources, the library is safe to use.",
-     "The library is safe to use, according to one source."),
-    (ADVISORY, "The library, according to the cited sources, is safe to use.",
-     "The library is safe to use, according to one source."),
-    (ADVISORY, "The library, according to one source, is safe to use in production.",
-     "The library is safe to use in production, according to one source."),
-    # the model's attribution in front of the claim's own words: the attribution goes, the words stay
-    (ADVISORY, "The library is safe to use according to one source in production.",
-     "The library is safe to use in production, according to one source."),
-    ("The bridge is open except on Sundays.", "The bridge is open according to the cited sources except on Sundays.",
-     "The bridge is open except on Sundays, according to one source."),
-    # ... and in front of a qualifier in the model's own wording: nothing is dropped by code, the guard judges it
-    ("The bridge is open except on Sundays.", "The bridge is open according to one source except on Sundays and "
-                                              "holidays.",
-     "The bridge is open except on Sundays and holidays, according to one source."),
-    # the claim's own attribution, in whatever wording, stays as the claim has it
-    ("The library is safe according to the cited sources of the advisory.",
-     "The library is safe according to the cited sources of the advisory.",
-     "The library is safe according to the cited sources of the advisory, according to one source."),
-    ("According to the release notes, the flaw is fixed for the Linux builds.",
-     "According to the release notes, the flaw is fixed for the Linux builds.",
-     "According to the release notes, the flaw is fixed for the Linux builds, according to one source."),
-    ("The flaw is fixed according to the release notes except in versions 2 and 3.",
-     "The flaw is fixed according to the release notes except in versions 2 and 3.",
-     "The flaw is fixed according to the release notes except in versions 2 and 3, according to one source."),
-    ("The flaw is fixed according to the release notes except in versions 2 and 3.",
-     "The flaw is fixed according to the release notes except in version 2.",
-     "The flaw is fixed according to the release notes except in version 2, according to one source."),
+     "from the advisory"),                                                         # review S4: no doubled attribution
+    ("The bridge is open.", "The bridge is open according to a report by Reuters.", "by Reuters"),     # the cost
 ])
-def test_the_models_own_attribution_goes_and_the_claims_own_words_stay(claim, written, shown):
-    """Review S4: the fix for F3 kept the whole "according to ..." phrase whenever one word after it was a word of
-    the claim, so a single-source claim was shown as "..., according to the cited sources from the advisory,
-    according to one source.". What is the model's and what is the claim's is decided by the cited claim's text."""
+def test_a_sentence_whose_attribution_would_take_words_with_it_is_refused_not_shown_cut(claim, written, words):
+    """The qualifier-dropping defect of 0.7.0 (review F3): compose() replaces a trailing "according to <source>"
+    together with up to 40 characters after it, so "... according to the official records except on Sundays" was
+    shown as "The bridge is open, according to one source.". compose() and the guard judge the sentence exactly as
+    before; when it would be accepted, it is refused instead, with a plain reason (CUT_WORDS). The words can also be
+    the model naming its source ("by Reuters"): code cannot tell, and that sentence is refused too."""
     b = one_claim("insufficient", (3,), text=claim)
     items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": written}]}, b)
-    assert items[0]["text"] == shown
-    assert items[0]["text"].count("according to the cited sources") == claim.count("according to the cited sources")
-
-
-def test_the_guard_judges_what_compose_left_in_place():
-    b = one_claim("insufficient", (3,), text="The bridge is open except on Sundays.")
-    ok = kept(b, ("The bridge is open according to the cited sources except on Sundays.", ["C1"]))
-    assert ok[0]["text"] == "The bridge is open except on Sundays, according to one source."
-    assert reasoning.restates(ok[0], b)                           # the claim's words, the code's attribution
-    items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": "The bridge is open according to one source "
-                                                                        "except on Sundays and holidays."}]}, b)
+    assert items[0]["cut"] == [written, words] and written != items[0]["text"]
+    assert items[0]["text"].endswith(", according to one source.")             # the text 0.7.0 composed, unchanged
     ok, bad = reasoning.guard(items, b)
-    assert ok == [] and "holidays" in " ".join(bad[0]["reasons"])     # the model's own exception is not the claim's
+    assert ok == [] and bad == [{"text": written, "reasons": [reasoning.CUT_WORDS.format(words=words)]}]
+    assert "replacing the attribution would drop them" in bad[0]["reasons"][0]
 
 
-@pytest.mark.parametrize("claim, state", [
-    ("The flaw is fixed according to the release notes except in versions 2 and 3.", "supported"),
-    ("The flaw is fixed according to the release notes except in versions 2 and 3.", "insufficient"),
-    ("The flaw is fixed in versions 2 and 3.", "supported"),
-    ("The flaw is fixed in versions 2 and 3.", "insufficient"),
-    ("The parser flaw affects Zephyr 4.1 and 4.2.", "supported"),
-    ("The parser flaw affects Zephyr 4.1 and 4.2.", "insufficient"),
-    ("The fix shipped in releases 4, 5 and 6.", "supported"),
-    ("The fix shipped in releases 4, 5 and 6.", "insufficient"),
-    # (from weak evidence the verbless clause "but not 4.2" is refused by the relayed-instruction rule, as before)
-    ("The parser flaw affects Zephyr 4.1 but not 4.2.", "supported"),
-])
-def test_a_cited_claim_word_for_word_passes_the_guard(claim, state):
-    """Review S4: a claim that ends in a bare number after "and" ("... versions 2 and 3") was rejected when copied
-    word for word ("3: says what its cited claims say of something else"): the guard gave the sentence's clause "and
-    3" its neighbour's predicate and the claim's own clause none. Both get the same reading now."""
-    b = one_claim(state, (3,), text=claim, question="Which versions are affected?")
-    ok = kept(b, (claim, ["C1"]))
-    assert claim[:-1] in ok[0]["text"]
+def test_an_attribution_with_nothing_after_it_is_replaced_as_before():
+    b = one_claim("insufficient", (3,), text="The bridge is open.")
+    for written in ("The bridge is open, according to the benchmark.", "The bridge is open according to one source.",
+                    "According to the cited sources, the bridge is open.", "The bridge is open."):
+        items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": written}]}, b)
+        assert items == [{"text": "The bridge is open, according to one source.", "sources": [3], "claims": ["C1"]}]
+        assert reasoning.guard(items, b)[1] == []
+    b = one_claim("supported", (3,), text=QUALIFIED)              # no attribution is appended: nothing is cut
+    items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": QUALIFIED}]}, b)
+    assert items == [{"text": QUALIFIED, "sources": [3], "claims": ["C1"]}]
 
 
-def test_the_same_reading_of_a_bare_number_still_holds_a_number_to_its_claim():
-    """What the anchor rule is for stays rejected: the negated version stated plainly, and one version given what
-    the claim says of another."""
+def test_a_refused_sentence_leaves_every_other_verdict_as_it_was():
+    """The refusal is added after the guard's own judgement: the refused sentence still counts as the earlier
+    sentence it would have been, so "another source" citing the same source is rejected as before."""
+    b = one_claim("insufficient", (3,), text="The bridge is open.")
+    first = reasoning.compose({"sentences": [{"claims": ["C1"], "text": "The bridge is open according to a report "
+                                                                        "by Reuters."}]}, b)[0]
+    second = {"text": "Another source says the bridge is open.", "sources": [3], "claims": ["C1"]}
+    plain = {k: v for k, v in first.items() if k != "cut"}
+    before = reasoning.guard([plain, dict(second)], b)
+    after = reasoning.guard([first, dict(second)], b)
+    assert [x["text"] for x in before[0]] == ["The bridge is open, according to one source."] and after[0] == []
+    assert before[1] == after[1][1:] and "another source" in before[1][0]["reasons"][0]
+    assert after[1][0]["reasons"] == [reasoning.CUT_WORDS.format(words="by Reuters")]
+
+
+def test_an_aside_attribution_is_composed_as_in_0_7_0():
+    """Recorded, not wanted: an "according to the cited sources" the model sets between commas is not replaced (the
+    replacement reads the start and the end of a sentence only), so one source can be shown as "..., according to
+    the cited sources, ..., according to one source.". This is 0.7.0's behaviour and stays until it is changed
+    together with the attack suite; such a sentence is no restatement, so the critic reads it."""
+    b = one_claim("insufficient", (3,), text=ADVISORY)
+    ok = kept(b, ("The library, according to the cited sources, is safe to use.", ["C1"]))
+    assert ok[0]["text"] == "The library, according to the cited sources, is safe to use, according to one source."
+    assert not reasoning.restates(ok[0], b)
+
+
+def test_the_anchor_rule_holds_a_number_to_what_its_claim_says_of_it():
+    """The guard's anchor rule as it is at 0.7.0, which the critique scope leaves alone: the negated version stated
+    plainly, one version given what the claim says of another, and a list joined by another conjunction."""
     b = one_claim("supported", (3,), text="The parser flaw affects Zephyr 4.1 but not 4.2.",
                   question="Which versions are affected?")
     ok, bad = reasoning.guard([{"text": "The parser flaw affects Zephyr 4.2.", "sources": [3], "claims": ["C1"]}], b)
@@ -382,7 +345,7 @@ def test_the_same_reading_of_a_bare_number_still_holds_a_number_to_its_claim():
                   question="Which versions are affected?")
     ok, bad = reasoning.guard([{"text": "Zephyr 4.2 has the parser flaw.", "sources": [3], "claims": ["C1"]}], b)
     assert ok == [] and any("4.2" in r for r in bad[0]["reasons"]), bad
-    # the borrowed reading holds only for the claim's own clause, word for word: another conjunction is another claim
+    # another conjunction is another claim
     for claim, text in (("The parser flaw affects Zephyr 4.1 but not 4.2.", "The parser flaw affects Zephyr 4.1 and "
                                                                            "4.2."),
                         ("The parser flaw affects Zephyr 4.1 or 4.2.", "The parser flaw affects Zephyr 4.1 and 4.2."),
@@ -563,6 +526,15 @@ def test_sentences_that_paraphrase_or_combine_claims_reach_the_critic(gateway, f
                                "percent, according to the cited sources. ")
     assert [bool(s.get("flag")) for s in out["answer"]] == [False, False, True]
     assert out["critique"] == {"status": "ok", "removed": 0, "flagged": 1, "judged": 2, "restatements": 1}
+
+
+def test_when_no_sentence_is_left_out_the_record_is_the_0_7_0_one(gateway, fake):
+    """`judged` and `restatements` appear only when a restatement was left out: an answer of the model's own
+    sentences is recorded exactly as 0.7.0 recorded it, which the 0.7.0 tests of this record still check."""
+    fake.replies += [answer((SHORT, [3], ["C2"])),
+                     {"content": json.dumps({"issues": [{"sentence": 1, "problem": "overstated"}], "gaps": []})}]
+    out = reasoning.apply(None, report(), None, question=Q, now=T0, gateway=gateway)
+    assert out["critique"] == {"status": "ok", "removed": 0, "flagged": 1} and len(fake.requests) == 2
 
 
 def test_a_failed_critique_call_still_says_what_it_was_given(gateway, fake):
