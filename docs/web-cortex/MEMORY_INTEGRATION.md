@@ -139,8 +139,17 @@ per candidate it accepts, and one answer-model call per proposed pair; at most 2
 calls per consolidation. Measured per probe on this host: median 53 to 61 ms when nothing is paired, 428 to 454 ms
 when a pair is confirmed (the answer-model call), p95 551 to 561 ms.
 
+**The owner's earlier answer stands.** A pair is checked against the owner's rejections as the lexical path checks
+a cluster (`_rejected_before`), under the new statement's key and the paired item's key: a value the owner rejected
+is held ("owner rejected this before"), never asked about again. A pair in conflict skips the provisional bar and
+the shape check, as the lexical path does for a statement that only records a contradiction: no item is written,
+only the contradiction and its question.
+
 **Off.** `nsf web memory config --no-contradictions`, or semantic memory off: nothing is asked, and the
 consolidation summary is exactly what it was (`test_with_the_switch_off_nothing_is_asked_and_the_summary_is_what_it_was`).
+With the switch on and a memory model down, failing or unloaded, the knowledge rows, questions and feedback are
+exactly those of the words-only path, and the summary and its `consolidated` event say why nothing was paired
+(`pairing` with the reason, `paired_by_meaning` empty).
 `nsf web memory config --set pair_check=false` drops the confirmation (measured above: 3 false pairs of 23 held
 out); `--set pair_floor=…`, `--set pair_similarity=…` move the thresholds. `nsf web memory` says what pairing does.
 

@@ -1147,12 +1147,21 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                 summary["held"].append(_held(cluster, reasons))
                 continue
             values, polarity = _values(cluster)
+            paired_keys = []      # the key of an item paired by meaning: the owner's rejections under it count too
             if item is None and proposals and verdict["state"] == "supported":
                 item = _paired(db, cluster, proposals)       # the same fact in other words (comment at propose)
             if item is not None and item.get("paired_by") == "meaning":
                 relation, differ = _compare(values, polarity, item)
+                paired_keys = [item["key"]]
                 summary["paired_by_meaning"].append({"key": cluster.key, "knowledge_id": item["id"],
                                                      "relation": relation, **item["pair"]})
+                rejected = _rejected_before(db, [cluster.key, item["key"]], values, polarity)
+                if rejected is not None:    # the owner's rejection stands, as on the lexical path: never asked again
+                    summary["paired_by_meaning"][-1]["held"] = f"owner rejected this before (knowledge " \
+                                                               f"#{rejected['id']})"
+                    summary["held"].append(_held(cluster, [f"owner rejected this before (knowledge "
+                                                           f"#{rejected['id']})"]))
+                    continue
                 if relation == "same":
                     # Not merged: a pair found by meaning is a judgement, and strengthening would count the new
                     # sources as independent support of the stored item. A wrong pair of two properties that share
@@ -1227,7 +1236,7 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                 why = differ if newer is False else f"{differ}; newer but below the provisional bar ({'; '.join(bar)})"
                 _contradict(db, task_id, cluster, item, why, now, summary, questions)
                 continue
-            rejected = _rejected_before(db, [cluster.key], values, polarity)
+            rejected = _rejected_before(db, [cluster.key, *paired_keys], values, polarity)
             if rejected is not None:
                 summary["held"].append(_held(cluster, [f"owner rejected this before (knowledge #{rejected['id']})"]))
                 continue

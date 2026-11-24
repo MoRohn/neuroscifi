@@ -288,6 +288,37 @@ def test_the_owners_assertion_is_contradicted_by_meaning_never_changed(db, model
     assert out["paired_by_meaning"][0]["relation"] == "conflict"
 
 
+def rejected_value(db, kid, value, statement):
+    """A row of the stored item's key, stating `value`, that the owner rejected -> its id."""
+    key = knowledge.row(db, kid)["key"]
+    with store.write(db):
+        return db.execute(
+            "INSERT INTO web_knowledge(key,version,statement,status,confidence,uncertainty,freshness_class,"
+            "first_verified_at,last_verified_at,claim_values,polarity,note,created_at,updated_at) "
+            "VALUES(?,?,?,'rejected',0.5,0.5,'stable',?,?,?,1,'owner rejected',?,?)",
+            (key, consolidate.next_version(db, key), statement, T0, T0, f'["{value}"]', T0, T0)).lastrowid
+
+
+@pytest.mark.parametrize("probe, value, relation", [(CONTRADICTED, "389 km", "conflict"), (RESTATED, "412 km", "same")])
+def test_a_value_the_owner_rejected_is_not_asked_about_again_when_found_by_meaning(db, models, judge, probe, value,
+                                                                                   relation):
+    """Review: the lexical path holds a value the owner rejected (`_rejected_before`); a pair found by meaning did
+    not, and would ask the owner again about a value already rejected."""
+    on(db)
+    kid = known(db)
+    before = knowledge.row(db, kid)
+    rid = rejected_value(db, kid, value, f"The Varnel River is {value.split()[0]} kilometres long.")
+    pending = db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL").fetchone()[0]
+    _, out = consolidated(db, [sources(probe)], T0 + 10, objective="How long is the Varnel?")
+    pair = out["paired_by_meaning"][0]
+    assert pair["relation"] == relation and pair["held"] == f"owner rejected this before (knowledge #{rid})"
+    assert [h["reasons"] for h in out["held"]] == [[f"owner rejected this before (knowledge #{rid})"]]
+    assert out["contested"] == [] and out["provisional"] == [] and out["strengthened"] == []
+    assert knowledge.row(db, kid) == before
+    assert db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL").fetchone()[0] == pending
+    assert db.execute("SELECT count(*) FROM web_knowledge").fetchone()[0] == 2        # nothing new written
+
+
 @pytest.mark.parametrize("statement, why", [
     (OTHER_RIVER, "another subject"),
     (UNNAMED, "no subject named"),
