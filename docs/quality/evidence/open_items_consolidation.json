@@ -1,0 +1,84 @@
+{
+ "what": "The limit on consolidated readings (InstanceConfig.max_consolidated_rows, ADR-044 decision 8), its reporting, and what a restore holds in memory",
+ "script": "scripts/bench_consolidation.py WORKDIR limit 100000 1000000",
+ "generated_at": "2026-11-24",
+ "host": "DGX Spark (aarch64), shared; load average about 6 during the run",
+ "method": "Readings written straight into evidence_consolidated with their tombstones (every sample once, 200 roots, one confirmed camera change), then: the count a sweep makes for the limit; a sweep of 1,000 expiring learning events with no limit, with room for 100 and with no room; store.regulation(); and the tracemalloc peak while checkpoints._forgets reads the live file, for every reading (the behaviour before) and for the 1,000 journal seqs of an archive. Wall-clock, one call each.",
+ "by_readings": {
+  "100000": {
+   "readings": 100000,
+   "count_for_the_limit_ms": 0.4,
+   "regulation_ms": 60.6,
+   "regulation_largest_epoch": {
+    "epoch": "e",
+    "consolidated_readings": 100000,
+    "compute_ms": 57.4
+   },
+   "sweep_of_1000_learning_events_room_for_all_ms": 76.3,
+   "sweep_of_1000_learning_events_room_for_all": {
+    "expired": 1000,
+    "consolidated": 1000,
+    "not_consolidated": 0
+   },
+   "sweep_of_1000_learning_events_room_for_100_ms": 70.2,
+   "sweep_of_1000_learning_events_room_for_100": {
+    "expired": 1000,
+    "consolidated": 100,
+    "not_consolidated": 900
+   },
+   "sweep_of_1000_learning_events_no_room_ms": 68.1,
+   "sweep_of_1000_learning_events_no_room": {
+    "expired": 1000,
+    "consolidated": 0,
+    "not_consolidated": 1000
+   },
+   "restore_reads_every_reading_peak_mib": 56.1,
+   "restore_reads_the_archives_1000_events_peak_mib": 23.9,
+   "tombstones": 103020
+  },
+  "1000000": {
+   "readings": 1000000,
+   "count_for_the_limit_ms": 3.6,
+   "regulation_ms": 491.4,
+   "regulation_largest_epoch": {
+    "epoch": "e",
+    "consolidated_readings": 1000000,
+    "compute_ms": 459.1
+   },
+   "sweep_of_1000_learning_events_room_for_all_ms": 477.7,
+   "sweep_of_1000_learning_events_room_for_all": {
+    "expired": 1000,
+    "consolidated": 1000,
+    "not_consolidated": 0
+   },
+   "sweep_of_1000_learning_events_room_for_100_ms": 475.8,
+   "sweep_of_1000_learning_events_room_for_100": {
+    "expired": 1000,
+    "consolidated": 100,
+    "not_consolidated": 900
+   },
+   "sweep_of_1000_learning_events_no_room_ms": 473.1,
+   "sweep_of_1000_learning_events_no_room": {
+    "expired": 1000,
+    "consolidated": 0,
+    "not_consolidated": 1000
+   },
+   "restore_reads_every_reading_peak_mib": 548.7,
+   "restore_reads_the_archives_1000_events_peak_mib": 231.9,
+   "tombstones": 1003020
+  }
+ },
+ "reading": "The limit costs one count per sweep that meets a learning event (3.6 ms at a million readings). A sweep's time at a million readings is the recomputation of the epoch's beliefs for its revision, as before. A restore no longer holds the live file's readings (about 317 MiB per million as Python objects); it still holds every tombstone (about 230 MiB per million).",
+ "not_changed": "The pass that looks for samples recorded more than once (about 0.3 s per million readings that carry a sample id): it is itself the existence test, so skipping it needs maintained state, which was ruled out.",
+ "mutation_check": {
+  "what": "Each safeguard broken once (38 of the consolidation lane, three of their anchors moved to the new sweep statement, and 16 new ones for the limit, its warnings, the setting and the restore's reading of the live file); tests/instance/test_consolidation_limit.py, test_consolidation.py and test_erasure.py run against each",
+  "mutations": 54,
+  "caught": 54,
+  "missed": []
+ },
+ "tests": {
+  "non_browser_suite": "4026 passed, 18 skipped (base 793a21f: 3996 passed, 18 skipped)",
+  "new_tests_failing_on_793a21f": "30 of 30 in tests/instance/test_consolidation_limit.py",
+  "console_browser_files": "43 passed (tests/e2e/test_console.py, test_console_uat.py; one new test)"
+ }
+}

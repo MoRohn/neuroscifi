@@ -24,9 +24,11 @@ store.write(db) -> context manager                  # BEGIN IMMEDIATE / COMMIT /
 store.bump_state_version(db) -> int ; store.state_version(db) -> int
 store.bump(db, name, amount=1) ; store.counter(db, name) -> int
 store.config(db) -> InstanceConfig(evidence_ttl_seconds, max_evidence_rows, min_free_bytes, ask_budget_per_epoch,
-                                   ask_budget_window_seconds, consolidation, max_thermal_celsius)
+                                   ask_budget_window_seconds, consolidation, max_consolidated_rows,
+                                   max_thermal_celsius)
 store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [names]}   # owner-settable settings only
-#   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation); ValidationError otherwise. `nsf config` is its CLI.
+#   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation, max_consolidated_rows); ValidationError
+#   otherwise. `nsf config` is its CLI.
 #   Each real change adds a deletion_log row: target_kind "setting", target_id the name, effects {"from", "to",
 #   "state_version"} (from a restore: {"from", "to", "carried_by_restore": true}).
 #
@@ -37,6 +39,20 @@ store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [na
 #   beliefs.explain() factors: "supporting_consolidated", "counterevidence_consolidated" (counted in *_total; the
 #                                                      event lists hold raw events only)
 #   governance.sweep() -> "consolidated"               readings kept by this sweep (one per expired 'learn' event)
+#   governance.sweep() -> "not_consolidated"           'learn' events of this sweep that left nothing because the
+#                                                      limit on readings was reached (the oldest by seq are kept)
+#   InstanceConfig.max_consolidated_rows               the limit: int >= 0, default 1,000,000, 0 = none. Never deletes
+#                                                      a reading. A saved value that is not such an int reads as the
+#                                                      default and is listed by store.setting_problems()
+#   store.consolidation_room(db) -> int | None         readings the limit still has room for (None: no limit)
+#   store.consolidation_warnings(db) -> [str]          at the limit, and from 80 % of it; [] otherwise, without a limit
+#                                                      and while consolidation is off. The same sentences appear as
+#                                                      "warnings" in: store.regulation(), store.inventory() (top
+#                                                      level), `nsf config`, and a sweep that kept or turned away a
+#                                                      reading (beside the setting problems); absent while empty
+#   store.regulation()["largest_epoch"]                {"epoch", "consolidated_readings", "compute_ms" (float | None)}:
+#                                                      the epoch with the most readings and what compute() costs
+#                                                      there now; absent while nothing is consolidated
 #   forget results, effects["consolidated_deleted"]    consolidated readings a forget removed ("deleted" counts events)
 #   governance.forget_consolidated(db, seq: int, now)  one reading by the seq it is listed under; deletion_log kind
 #                                                      "consolidated", target the seq; 'absent' when no reading has it
@@ -44,11 +60,14 @@ store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [na
 #                                                      its changepoints; deletion_log kind "camera", target
 #                                                      "camera:#<digest>"; effects["derived_deleted"]["changepoints"]
 #   console POST /api/forget {"kind": "consolidated", "target": SEQ (integer)} | {"kind": "camera", "target": ROOT}
-#   deletion_log effects of a sweep: "consolidated"; its belief revision summary: "consolidated_now"
+#   deletion_log effects of a sweep: "consolidated", "not_consolidated"; its belief revision summary:
+#       "consolidated_now", and "consolidation_limit_reached": true when the sweep turned an event away
 #   store.inventory()["memory"]["consolidated_readings"], store.regulation()["consolidated_readings"]  (always present)
 #   checkpoints.restore() -> "evidence_consolidated", "consolidated_removed", "settings_carried" {name: {"from",
 #       "to"}}, "settings_warnings" [str], "scope_changes_removed" int (always present; the settings an owner may
-#       change are the live file's in the copy when valid; changepoints of a camera or partner forgotten since go)
+#       change are the live file's in the copy when valid; changepoints of a camera or partner forgotten since go).
+#       The live file's readings are read for the seqs of the copy's journal only (checkpoints._forgets(db, now,
+#       wanted)); the result is the same as reading all of them
 #   store.valid_setting(name, value) -> bool ; store.setting_problems(db) -> [str]  (saved values set_config would
 #       refuse; such a consolidation value reads as off). governance.sweep() and `nsf config` add "warnings" then.
 #   governance.forget_consolidated / forget_dataset: an id beyond SQLite's integers is a ValidationError
