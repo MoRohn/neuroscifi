@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import math
 import re
+import unicodedata
 
 BM25_K1 = 1.5
 BM25_B = 0.75
@@ -83,11 +84,33 @@ _UNSEEN_BLANK_RE = re.compile(_char_class(_UNSEEN_BLANK))
 _UNSEEN_BREAK_RE = re.compile(_char_class(_UNSEEN_BREAK))
 
 
-# The two direction overrides (left-to-right U+202D, right-to-left U+202E) are a case of their own: they draw
-# nothing and make the characters after them appear in the opposite order, so "<U+202E>72" is shown as "27".
-# Removing the override would leave the order nobody was shown. A line that holds one is therefore not read at
-# all (as_seen drops it): what a page shows in an order other than its own cannot be quoted faithfully.
+# Direction controls are a case of their own: they draw nothing and change the order in which the characters around
+# them are shown. The two overrides (U+202D, U+202E) reverse what follows ("<U+202E>72" is shown as "27"); the
+# marks, embeddings and isolates (U+200E, U+200F, U+061C, U+202A-U+202C, U+2066-U+2069) reorder neighbouring
+# digits and punctuation ("Affected:<U+200F> 3 4" is shown as "4 3"). Removing one would leave the order nobody was
+# shown, so a line (as_seen) or a paragraph (extract.py) that holds one is not read at all: what a page shows in
+# an order other than its own cannot be quoted faithfully. One exception, for right-to-left writing (Hebrew,
+# Arabic and the other scripts of bidirectional class R and AL), where marks and isolates are how text is written:
+# a line that holds such letters keeps its marks and isolates, the claims made of it carry them, and the answer
+# guard does not cite those claims (reasoning.UNSEEN_IN_CLAIM). An override is never kept.
 _OVERRIDE_RE = re.compile(f"[{chr(0x202D)}{chr(0x202E)}]")
+_DIRECTION = (0x200E, 0x200F, 0x061C, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069)
+_DIRECTION_RE = re.compile("[" + "".join(map(chr, _DIRECTION)) + "]")
+_UNSEEN_DELETE_BUT_DIRECTION_RE = re.compile("(?!" + _DIRECTION_RE.pattern + ")" + _char_class(_UNSEEN_DELETE))
+
+
+def right_to_left(s) -> bool:
+    """Whether `s` holds a letter of a right-to-left script (bidirectional class R or AL; a letter: the right-to-left
+    and Arabic letter marks are of those classes too and count for nothing)."""
+    return any(unicodedata.bidirectional(ch) in ("R", "AL") and unicodedata.category(ch).startswith("L")
+               for ch in str(s or ""))
+
+
+def reorders(s) -> bool:
+    """Whether `s` holds a direction control that makes what a reader sees differ from its characters' order: an
+    override anywhere, or any other direction control in text without right-to-left letters."""
+    s = str(s or "")
+    return bool(_OVERRIDE_RE.search(s)) or (bool(_DIRECTION_RE.search(s)) and not right_to_left(s))
 
 
 def unseen_characters(s) -> list[str]:
@@ -109,14 +132,27 @@ def strip_unseen(s) -> tuple[str, int]:
 
 def as_seen(s) -> tuple[str, int, int]:
     """Fetched text as a reader sees it -> (text, characters removed or replaced, lines dropped). A line that
-    holds a direction override is dropped whole (_OVERRIDE_RE); from the rest, strip_unseen() takes the characters
-    that draw nothing."""
+    reorders what is shown (reorders: an override, or another direction control without right-to-left letters) is
+    dropped whole; a line with right-to-left letters keeps its direction marks and isolates; from the rest,
+    strip_unseen() takes the characters that draw nothing."""
     s = str(s or "")
     dropped = 0
-    if _OVERRIDE_RE.search(s):
+    if _DIRECTION_RE.search(s):
         lines = _UNSEEN_BREAK_RE.sub("\n", s).split("\n")
-        kept = [line for line in lines if not _OVERRIDE_RE.search(line)]
-        dropped, s = len(lines) - len(kept), "\n".join(kept)
+        kept = [line for line in lines if not reorders(line)]
+        dropped = len(lines) - len(kept)
+        removed = 0
+        out = []
+        for line in kept:
+            if _DIRECTION_RE.search(line):          # right-to-left text: its marks stay, the rest goes
+                line, n = _UNSEEN_DELETE_BUT_DIRECTION_RE.subn("", line)
+                line, m = _UNSEEN_BLANK_RE.subn(" ", line)
+                removed += n + m
+            else:
+                line, n = strip_unseen(line)
+                removed += n
+            out.append(line)
+        return "\n".join(out), removed, dropped
     s, removed = strip_unseen(s)
     return s, removed, dropped
 

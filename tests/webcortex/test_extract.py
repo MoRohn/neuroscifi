@@ -487,7 +487,7 @@ def test_character_references_to_unseen_characters_are_removed_after_parsing():
     references they were plain text to that pass and came out of the parser as the characters themselves, into the
     text that becomes claims."""
     page = ("<html><head><title>Num&zwnj;Py 2.5.5&#xFEFF;</title></head><body><article>"
-            "<p>The fee is 1&#x200b;00 dollars a year at the co&shy;op, the &#x2066;vendor&#x2069; said.</p>"
+            "<p>The fee is 1&#x200b;00 dollars a year at the co&shy;op, the vendor&#x2060; said.</p>"
             "<p>The newt brain has roughly 100&#8203; million neurons, a survey found in the marsh.</p>"
             "</article></body></html>")
     doc = html_doc(page)
@@ -495,7 +495,7 @@ def test_character_references_to_unseen_characters_are_removed_after_parsing():
     assert "The fee is 100 dollars a year at the coop, the vendor said." in doc.text
     assert "roughly 100 million neurons" in doc.text
     assert ex.T.unseen_characters(doc.text + doc.title + doc.markdown) == []
-    assert doc.flags["zero_width_removed"] == 7 and doc.flags["hidden_removed"] == 7
+    assert doc.flags["zero_width_removed"] == 6 and doc.flags["hidden_removed"] == 6
 
 
 def test_a_line_reordered_by_a_direction_override_is_not_read():
@@ -565,3 +565,41 @@ def test_one_override_is_counted_once():
                    "<p>It stands in the harbour of Tolvane.</p></article></body></html>")
     assert doc.flags["hidden_removed"] == 1 and "zero_width_removed" not in doc.flags
     assert doc.flags["reordered_lines_removed"] == 1
+
+
+
+@pytest.mark.parametrize("control", ["‏", "&#x200F;", "&rlm;", "؜", "‫", "‪", "⁧",
+                                     "⁦", "⁨", "‎", "&lrm;"])
+def test_a_line_with_any_direction_control_and_no_right_to_left_letter_is_not_read(control):
+    """Security review M2: a right-to-left mark next to numbers reorders them as shown ("Affected:<RLM> 3 4" is shown
+    "4 3"); so do the Arabic letter mark, the embeddings and the isolates. Only the overrides were dropped; these were
+    deleted and the line kept in an order nobody was shown."""
+    doc = html_doc("<html><body><article><h1>Orbix advisory</h1>"
+                   f"<p>Affected:{control} 3 4, fixed: 5.</p>"
+                   "<p>The advisory was published by Orbix Labs in March 2026.</p></article></body></html>")
+    assert "Affected" not in doc.text and "Affected" not in doc.markdown, control
+    assert "published by Orbix Labs" in doc.text
+    assert ex.T.unseen_characters(doc.text + doc.markdown) == []
+
+
+def test_right_to_left_text_keeps_its_marks_and_its_claims_carry_them():
+    """In Hebrew or Arabic, marks and isolates are how mixed text is written: such a line is kept with its marks, so
+    the claims made of it carry them and the answer guard does not cite those claims (UNSEEN_IN_CLAIM). A line with
+    an override is dropped whatever its script. A right-to-left line without any control is read as before."""
+    hebrew = "הגשר פתוח"             # "the bridge is open"
+    arabic = "الجسر مفتوح"   # "the bridge is open"
+    doc = html_doc("<html><body><article>"
+                   f"<p>{hebrew} ‏72 מטר.</p>"
+                   f"<p>{arabic} &#x2067;2026&#x2069;.</p>"
+                   f"<p>{hebrew} ‮72.</p>"
+                   f"<p>{arabic} 41.</p>"
+                   "<p>The Tolvane bridge reopened in May 2026 after repairs.</p></article></body></html>")
+    lines = doc.text.split("\n")
+    assert any(hebrew in line and "‏" in line for line in lines)               # kept, with its mark
+    assert any(arabic in line and "⁧" in line and "⁩" in line for line in lines)
+    assert not any("‮" in line or (hebrew in line and "72." in line and "‏" not in line) for line in lines)
+    assert any(line.startswith(arabic) and "41" in line for line in lines)           # no control: as before
+    assert doc.flags["reordered_lines_removed"] == 1
+    from neuroscifi.webcortex import reasoning
+    kept = next(line for line in lines if "‏" in line)
+    assert reasoning._unseen_in_claims([{"id": "C1", "text": kept}])                 # the guard will not cite it

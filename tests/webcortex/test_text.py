@@ -380,3 +380,13 @@ def test_the_removed_set_is_every_format_character_that_draws_nothing():
     taken = [cp for cp in range(0x110000) if T.unseen_characters(chr(cp))
              and unicodedata.category(chr(cp))[0] in "LNPSZ" and cp != 0x2800]
     assert taken == []
+
+
+
+def test_reorders_and_right_to_left():
+    assert T.reorders("Affected:‏ 3 4") and T.reorders("‮72") and T.reorders("x⁦y⁩")
+    assert not T.reorders("plain text 3 4") and not T.reorders("אב ‏72")     # Hebrew keeps its mark
+    assert T.reorders("אב ‮72")                                               # an override: never kept
+    assert T.right_to_left("ال") and T.right_to_left("א") and not T.right_to_left("Numéro 7")
+    text = "אב ‏72​\nAffected:‏ 3 4\nplain​"
+    assert T.as_seen(text) == ("אב ‏72\nplain", 2, 1)

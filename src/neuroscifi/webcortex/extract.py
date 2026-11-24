@@ -91,15 +91,16 @@ XML_TYPES = ("application/xml", "text/xml", "application/atom+xml", "application
 
 _SPACE = re.compile(r"\s+")
 _ZERO_WIDTH = re.compile("[​-‏‪-‮⁠-⁤⁦-⁩﻿­]")
-# The two direction overrides, kept through parsing where they stand in text so that the lines they reorder can be
-# dropped afterwards (_keep_overrides, text.as_seen); written as code points so that this line holds neither. A tag
-# is what the HTML tokenizer starts one with: "<" and then an ASCII letter, "/", "!" or "?". A "<" followed by
-# anything else is text ("dose is < 72 mg> per day"), and an override after it is an override in text.
-_OVERRIDE = re.compile(r"<[A-Za-z/!?][^<>]*>|[\u202d\u202e]")
+# Direction controls (text._DIRECTION: overrides, marks, embeddings, isolates), kept through parsing where they
+# stand in text so that what they reorder can be dropped afterwards (_keep_overrides, text.as_seen); written as code
+# points so that this line holds none. A tag is what the HTML tokenizer starts one with: "<" and then an ASCII
+# letter, "/", "!" or "?". A "<" followed by anything else is text ("dose is < 72 mg> per day"), and a control after
+# it is a control in text.
+_OVERRIDE = re.compile(r"<[A-Za-z/!?][^<>]*>|" + T._DIRECTION_RE.pattern)
 
 
 def _keep_overrides(markup: str) -> str:
-    """`markup` with every direction override that stands outside a tag written as a character reference
+    """`markup` with every direction control that stands outside a tag written as a character reference
     ("&#x202E;"), so that the removal of zero-width and direction characters before parsing (_ZERO_WIDTH) leaves it
     for the parser to decode. An override inside a tag is left to that removal, as before: "<scr\u202eipt>" must
     still be read as the script element it is."""
