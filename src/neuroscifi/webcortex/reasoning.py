@@ -2541,7 +2541,11 @@ UNSEEN_IN_CLAIM = ("rests on characters a reader does not see in {claim} ({point
 # "NumPy 2.5.5 was replaced after the flaw." for "NumPy 2.5.4 was replaced by NumPy 2.5.5 after the flaw",
 # "Trent was robbed." for "Mallory was robbed by Trent" (security review M3).
 PASSIVE_SWAP = ("makes the agent of '{verb}' in {claim} its subject ('{subject}'): who does what is swapped")
-REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM, PASSIVE_SWAP)
+# The other direction: the sentence names as the doer of a verb the one its claim says the verb was done to ("It was
+# Acme Corp that acquired Globex." for "Globex acquired Acme Corp", "Orbix Labs was audited by the library." for
+# "Orbix Labs audited the library").
+ROLE_SWAP = ("makes the one {claim} says was '{verb}' its doer ('{subject}'): who does what is swapped")
+REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM, PASSIVE_SWAP, ROLE_SWAP)
 # Past participles that do not end in -ed, for the passive check
 _PARTICIPLES = frozenset("""beaten bitten blown broken brought built bought caught chosen done drawn driven eaten fallen
 felt found forgiven forgotten frozen given gone grown hidden held hit hurt kept known laid led left lent lost made met
@@ -2691,30 +2695,73 @@ def _unseen_in_claims(used) -> list[str]:
     return out
 
 
-def _passive_parts(text: str):
-    """[(participle, subject words, agent words or None)] for each passive clause of `text`: a form of "be", a past
-    participle (-ed or _PARTICIPLES), the content words of its clause before "be" (the subject) and, after "by"
-    and a leading article, the words up to the next stopword (the agent). Words are plain (_e_plain): lower case,
-    numbers kept."""
+_GET = frozenset("get gets got gotten getting".split())
+_ROLE_BETWEEN = frozenset("not never no longer also still already".split())    # "is not affected", "was also hit"
+_ROLE_CUT = frozenset("and or but while whereas".split())   # a clause joined by these has its own subject
+# "It was Acme Corp that acquired Globex" says "Acme Corp acquired Globex": a cleft is read without its frame
+_CLEFT = re.compile(r"(?:^|(?<=[,;:]\s))(?:it|this)\s+(?:is|was)\s+(.{1,80}?)\s+(?:that|who|which)\s+",
+                    re.IGNORECASE)
+
+
+def _roles(text: str):
+    """[(verb, doer words or None, done-to words or None)] for each clause of `text` built on a past form (-ed or
+    _PARTICIPLES). Passive ("be" or "get", with up to two -ly adverbs or "not", "never", "also" … between, then
+    the participle): the words before "be" are the done-to, the words after "by" (a leading article skipped, up to
+    the next stopword) the doer. A participle with "by" after it and no "be" before it ("a language created by Ilse
+    Marten") is a reduced passive: its doer only. Active (the past form with neither): the words before it are the
+    doer, the words after it up to the next stopword (a leading article skipped) the done-to. "Before" reaches back
+    to the start of the clause or to the last "and", "or", "but", "while", "whereas" in it. A cleft is read without
+    its frame (_CLEFT). Words are plain (_e_plain): lower case, numbers kept."""
+    text = _CLEFT.sub(lambda m: m.group(1) + " ", text)
     cuts = [m.start() for m in _E_CLAUSE.finditer(text)]
     toks = [(_e_plain(m.group(0)), sum(1 for c in cuts if c <= m.start())) for m in _E_WORD.finditer(text)]
     words = [w for w, _ in toks]
+
+    def phrase_after(j, clause):
+        out = []
+        for x, c in toks[j:]:
+            if c == clause and not out and x in _DETERMINER:
+                continue
+            if c != clause or x in T.STOPWORDS:
+                break
+            out.append(x)
+        return out
+
+    def words_before(j, clause):
+        out = []
+        for x, c in toks[:j]:
+            if c != clause:
+                continue
+            if x in _ROLE_CUT:
+                out = []
+                continue
+            out.append(x)
+        return out
     out = []
     for i, (w, clause) in enumerate(toks):
-        if i == 0 or words[i - 1] not in _BE or not (w.endswith("ed") or w in _PARTICIPLES):
+        if not (w.endswith("ed") or w in _PARTICIPLES) or w in _BE:
             continue
-        subject = [x for x, c in toks[:i - 1] if c == clause]
-        agent = None
-        if i + 1 < len(words) and words[i + 1] == "by":
-            agent = []
-            for x, c in toks[i + 2:]:
-                if c == clause and not agent and x in _DETERMINER:
-                    continue                    # "by the Kestrel crew"
-                if c != clause or x in T.STOPWORDS:
-                    break
-                agent.append(x)
-        out.append((w, subject, agent))
+        k = i - 1
+        while k >= 0 and toks[k][1] == clause and k > i - 3 and (words[k].endswith("ly") or words[k] in _ROLE_BETWEEN):
+            k -= 1                              # "was quickly acquired", "is not affected"
+        by = i + 1 < len(words) and words[i + 1] == "by" and toks[i + 1][1] == clause
+        if k >= 0 and toks[k][1] == clause and (words[k] in _BE or words[k] in _GET):
+            done_to = words_before(k, clause)
+            doer = phrase_after(i + 2, clause) if by else None
+        elif by:
+            done_to, doer = None, phrase_after(i + 2, clause)      # a reduced passive: "created by Ilse Marten"
+        else:
+            if i == 0 or toks[i - 1][1] != clause:
+                continue
+            doer = words_before(i, clause)
+            done_to = phrase_after(i + 1, clause) or None
+        out.append((w, doer, done_to))
     return out
+
+
+def _names_one(mine: frozenset, theirs: frozenset) -> bool:
+    """Whether `mine` names what `theirs` names: the same words, or `theirs` with only numbers or dates more."""
+    return bool(mine) and mine <= theirs and all(any(ch.isdigit() for ch in x) for x in theirs - mine)
 
 
 def _name_key(words) -> frozenset:
@@ -2723,21 +2770,27 @@ def _name_key(words) -> frozenset:
                      (len(w) > 1 or w.isdigit()))
 
 
-def _passive_swaps(text: str, used) -> list[str]:
-    """PASSIVE_SWAP for each passive clause of the sentence whose subject names the agent of the same participle in
-    a cited claim (its words are among the agent's) and not that claim clause's own subject. The sentence's own
-    attribution ("according to one source") is a clause of its own and names no subject."""
+def _role_swaps_refused(text: str, used) -> list[str]:
+    """For each clause of the sentence and each clause of a cited claim built on the same past form (_roles):
+    PASSIVE_SWAP when the sentence's done-to names the claim's doer (_names_one: the same words, numbers aside) and
+    not the claim's done-to; ROLE_SWAP when the sentence's doer names the claim's done-to and not its doer. Active
+    and passive on either side, with an adverb, a get-passive or a cleft. The sentence's own attribution ("according
+    to one source") is taken out first."""
     out = []
-    mine = _passive_parts(_strip_attribution(text))
+    mine = _roles(_strip_attribution(text))
     for c in used:
-        for verb, their_subject, agent in _passive_parts(c["text"]):
-            if not agent:
-                continue
-            agent_key, subject_key = _name_key(agent), _name_key(their_subject)
-            for my_verb, my_subject, _ in mine:
-                key = _name_key(my_subject)
-                if my_verb == verb and key and key <= agent_key and not key <= subject_key:
+        for verb, their_doer, their_done_to in _roles(c["text"]):
+            doer_key = _name_key(their_doer or [])
+            done_key = _name_key(their_done_to or [])
+            for my_verb, my_doer, my_done_to in mine:
+                if my_verb != verb:
+                    continue
+                key = _name_key(my_done_to or [])
+                if _names_one(key, doer_key) and not _names_one(key, done_key):
                     out.append(PASSIVE_SWAP.format(verb=verb, claim=c["id"], subject=" ".join(sorted(key))))
+                key = _name_key(my_doer or [])
+                if _names_one(key, done_key) and not _names_one(key, doer_key):
+                    out.append(ROLE_SWAP.format(verb=verb, claim=c["id"], subject=" ".join(sorted(key))))
     return list(dict.fromkeys(out))
 
 
@@ -2748,7 +2801,7 @@ def _refusals(text: str, used, b: dict) -> list[str]:
     if not used or insufficiency(text, question):
         return []
     return (_unseen_in_claims(used) + _restriction_lost(text, used) + _case_changed(text, used, question) +
-            _passive_swaps(text, used))
+            _role_swaps_refused(text, used))
 
 
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:

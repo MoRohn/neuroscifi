@@ -349,7 +349,7 @@ def test_a_reason_that_lists_words_lists_them_in_the_same_order_in_every_process
     ("The vault was broken by the Kestrel crew", "The Kestrel crew was broken.", "broken", "crew kestrel"),
 ])
 def test_a_passive_whose_subject_is_the_claims_agent_is_refused(claim, sentence, verb, subject):
-    assert reasoning._passive_swaps(sentence, [{"id": "C1", "text": claim}]) == [
+    assert reasoning._role_swaps_refused(sentence, [{"id": "C1", "text": claim}]) == [
         reasoning.PASSIVE_SWAP.format(verb=verb, claim="C1", subject=subject)]
 
 
@@ -362,7 +362,7 @@ def test_a_passive_whose_subject_is_the_claims_agent_is_refused(claim, sentence,
     ("Mallory was robbed by Trent", "Mallory was robbed, according to the police report by Trent."),
 ])
 def test_a_passive_that_keeps_its_subject_is_not_a_swap(claim, sentence):
-    assert reasoning._passive_swaps(sentence, [{"id": "C1", "text": claim}]) == []
+    assert reasoning._role_swaps_refused(sentence, [{"id": "C1", "text": claim}]) == []
 
 
 def test_the_passive_swap_is_refused_through_the_answer_path():
@@ -372,3 +372,50 @@ def test_the_passive_swap_is_refused_through_the_answer_path():
         reasoning.PASSIVE_SWAP.format(verb="robbed", claim="C1", subject="trent")]
     ok, bad = judged(b, "Mallory was robbed.")
     assert bad == [] and len(ok) == 1
+
+
+
+# ---- an active claim restated with its roles reversed (last review round) -----------------------------------------
+
+@pytest.mark.parametrize("claim, sentence, template, verb, subject", [
+    ("Globex acquired Acme Corp in 2025", "Globex was acquired by Acme Corp.", "PASSIVE_SWAP", "acquired", "globex"),
+    ("Globex acquired Acme Corp in 2025", "Globex was acquired in 2025.", "PASSIVE_SWAP", "acquired", "globex"),
+    ("Globex acquired Acme Corp in 2025", "Globex got acquired in 2025.", "PASSIVE_SWAP", "acquired", "globex"),
+    ("Globex acquired Acme Corp in 2025", "Globex was quickly acquired.", "PASSIVE_SWAP", "acquired", "globex"),
+    ("Globex acquired Acme Corp in 2025", "It was Globex that was acquired.", "PASSIVE_SWAP", "acquired", "globex"),
+    ("Globex acquired Acme Corp in 2025", "It was Acme Corp that acquired Globex.", "ROLE_SWAP", "acquired",
+     "acme corp"),
+    ("Orbix Labs audited the library in March", "Orbix Labs was audited by the library.", "PASSIVE_SWAP", "audited",
+     "labs orbix"),
+    ("Mallory was robbed by Trent", "Trent was reportedly robbed.", "PASSIVE_SWAP", "robbed", "trent"),
+    ("Mallory was robbed by Trent", "Trent got robbed.", "PASSIVE_SWAP", "robbed", "trent"),
+])
+def test_roles_reversed_in_any_voice_are_refused(claim, sentence, template, verb, subject):
+    found = reasoning._role_swaps_refused(sentence, [{"id": "C1", "text": claim}])
+    assert getattr(reasoning, template).format(verb=verb, claim="C1", subject=subject) in found, found
+
+
+@pytest.mark.parametrize("claim, sentence", [
+    ("Globex acquired Acme Corp in 2025", "Acme Corp was acquired by Globex in 2025."),
+    ("Globex acquired Acme Corp in 2025", "Acme Corp was acquired in 2025."),
+    ("Globex acquired Acme Corp in 2025", "It was Globex that acquired Acme Corp."),
+    ("Globex acquired Acme Corp in 2025", "Globex acquired Acme Corp."),
+    ("The maintainers patched the parser in May", "The parser was patched by the maintainers in May."),
+    # three sentences of the guard's own suite and the benchmark that a first version of the rule refused
+    ("PyPI reports numpy latest version 2.5.5 released 2026-11-15.", "numpy 2.5.5 was released on 2026-11-15."),
+    ("NumPy 2.5.4 is affected by the parser flaw and NumPy 2.5.5 is not affected.",
+     "NumPy 2.5.5 is not affected by the parser flaw, but NumPy 2.5.4 is affected."),
+    ("Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
+     "Ilse Marten created the Kestrel programming language in 2019."),
+])
+def test_faithful_voices_are_not_role_swaps(claim, sentence):
+    assert reasoning._role_swaps_refused(sentence, [{"id": "C1", "text": claim}]) == []
+
+
+def test_roles_read_a_reduced_passive_negation_and_a_joined_clause():
+    roles = reasoning._roles("Kestrel is a language created by Ilse Marten")
+    assert ("created", ["ilse", "marten"], None) in roles
+    roles = reasoning._roles("NumPy 2.5.4 is affected by the flaw and NumPy 2.5.5 is not affected")
+    assert ("affected", ["flaw"], ["numpy", "2.5.4", "is"]) in roles or ("affected", ["flaw"], ["numpy", "2.5.4"]) \
+        in [(v, d, [x for x in t if x != "is"] if t else t) for v, d, t in roles]
+    assert any(v == "affected" and t and "2.5.5" in t and "2.5.4" not in t for v, d, t in roles)

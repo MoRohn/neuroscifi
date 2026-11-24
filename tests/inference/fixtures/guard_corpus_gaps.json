@@ -4753,8 +4753,8 @@
 [
 "C1"
 ],
-"open",
-"subject and object swapped: accepted at 0.7.0 too; found while writing this corpus, not closed here"
+"reject",
+"subject and object swapped: accepted at 0.7.0 too; closed by the role comparison of the last review round"
 ],
 [
 "The firm sold the mill and bought the farm.",

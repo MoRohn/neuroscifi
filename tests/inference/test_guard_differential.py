@@ -48,16 +48,17 @@ GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording")
 INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 332}
 SIZES = {"restriction": 111, "case": 48, "unseen": 37, "restatement": 56, "cut": 47, "wording": 33}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 0, "wording": 9}
+UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 0, "wording": 0}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
 RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
 CASE_MARK = reasoning.CASE_CHANGED.split("'")[0]
 UNSEEN_MARK = reasoning.UNSEEN_IN_CLAIM.split("{")[0]
 PASSIVE_MARK = reasoning.PASSIVE_SWAP.split("'")[0]
+ROLE_MARK = reasoning.ROLE_SWAP.split("{")[0]
 # What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
-STRICTER = {"review": 24, "gap": 139}
+STRICTER = {"review": 24, "gap": 149}
 LOOSENED = {"review": 6, "gap": 11}
-REFUSED = {CUT_MARK: 40, RESTRICTION_MARK: 74, CASE_MARK: 24, UNSEEN_MARK: 18, PASSIVE_MARK: 7}
+REFUSED = {CUT_MARK: 40, RESTRICTION_MARK: 74, CASE_MARK: 24, UNSEEN_MARK: 18, PASSIVE_MARK: 17, ROLE_MARK: 5}
 
 
 @pytest.fixture(scope="module")
