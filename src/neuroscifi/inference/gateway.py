@@ -492,9 +492,15 @@ class Gateway:
         if need > self.cfg.max_context_tokens:
             raise InferenceError("context_overflow", f"prompt estimate {need - max_tokens} + output {max_tokens} "
                                  f"tokens exceeds max_context_tokens {self.cfg.max_context_tokens}")
+        # One time allowance for the whole call. A reload the idle policy makes this call wait for comes off it: the
+        # request that follows runs within what is left, not within a second full allowance (a call that triggered
+        # a reload could take up to twice its timeout).
+        allowance = self.cfg.read_timeout if timeout is None else min(timeout, self.cfg.read_timeout)
+        began = self.clock()
         with self._loaded(purpose, timeout):
             model = self.model()
-        wire = [{k: v for k, v in m.items() if k in ("role", "content", "name", "tool_calls", "tool_call_id")}
+        timeout = max(0.0, allowance - (self.clock() - began))
+        wire =[{k: v for k, v in m.items() if k in ("role", "content", "name", "tool_calls", "tool_call_id")}
                 for m in messages]
         payload = {"model": model, "messages": wire, "max_tokens": max_tokens,
                    "temperature": self.cfg.temperature if temperature is None else temperature, "stream": bool(stream)}
@@ -521,6 +527,9 @@ class Gateway:
         inflight = activity.track("generating", subsystem="reasoning", purpose=purpose, task_id=self.task_id,
                                   clock=self.wall) if stream else nullcontext(None)
         try:
+            if timeout <= 0:
+                raise InferenceError("timeout", "the local model was started again for this call and that took all "
+                                     f"of the call's {allowance:.0f} s; it is loaded now", retryable=True)
             with self._loaded(purpose, timeout), inflight as count:
                 conn, resp, attempts, deadline = self._call("POST", "/chat/completions", payload, timeout=timeout)
                 try:
