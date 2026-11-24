@@ -44,6 +44,20 @@ def judged(b, text, ids=("C1",)):
     ("If the seal is broken, the warranty is void", "If"),
     ("The flaw is confirmed fixed if the patch is applied", "if"),
     ("The   flaw is fixed  other\tthan in 2.5.4", "other than"),
+    # review round 2
+    ("Every release is patched provided the option is set", "provided"),
+    ("Every release is patched on the condition that the option is set", "on the condition that"),
+    ("Every release is patched assuming the option is set", "assuming"),
+    ("Every release is patched subject to the option being set", "subject to"),
+    ("Every release is patched given that the option is set", "given that"),
+    ("Every release is patched in case the option is set", "in case"),
+    ("Every release is patched in the event that the option is set", "in the event that"),
+    ("Every release is patched in the event of a reboot", "in the event of"),
+    ("Every release is patched save 2.5.4", "save"),
+    ("Every release is patched besides 2.5.4", "besides"),
+    ("Every release is patched with 2.5.4 excepted", "excepted"),
+    ("Every release but 2.5.4 is patched", "but"),
+    ("All versions save the oldest are patched", "save"),
 ])
 def test_a_restriction_is_found_by_its_closed_list_of_words(text, marker):
     assert reasoning._restriction(text) == marker
@@ -66,6 +80,11 @@ def test_a_restriction_is_found_by_its_closed_list_of_words(text, marker):
     "The exception handler logs every unexpected error",                         # the words inside other words
     "The gift certificate is valid in all stores",
     "The whenever-ready build passed",
+    "The census data provided by Tessaly Statistics counted 248,000 residents",  # review round 2
+    "The update helps save memory on every device",
+    "Besides, the vendor published version 4",
+    "The vendor was given the patch in May",
+    "Every release shipped on time, but the docs lagged behind",               # "but" too far from "every"
 ])
 def test_words_that_restrict_nothing_are_not_restrictions(text):
     assert reasoning._restriction(text) is None

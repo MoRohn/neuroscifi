@@ -2519,15 +2519,26 @@ UNSEEN_IN_CLAIM = ("rests on characters a reader does not see in {claim} ({point
 REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM)
 # Exceptions: what follows is taken out of what the claim says.
 _EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|exclusive of|other than|apart from|"
-              r"aside from|save for|barring|but not|"
+              r"aside from|save for|barring|but not|besides(?!\s*,)|"
               r"(?:all|everything|everyone|everybody|anything|anyone|nothing|none|no one|nobody) but")
+# Exceptions written around a quantifier: "every release but 2.5.4", "every release is patched save 2.5.4" (a "save"
+# or "but" within five words after every/all/each/any/no; "save" alone is mostly the verb), and "with 2.5.4
+# excepted".
+_QUANTIFIED_EXCEPTION = re.compile(r"(?<![\w-])(?:every|all|each|any|no)(?:\s+[\w.-]+){1,5}?\s+(but|save)(?![\w-])|"
+                                   r"(?<![\w-])with\s+(?:[^,.;:]|\.(?=\w)){1,40}?\s+(excepted)(?![\w-])",
+                                   re.IGNORECASE)
 # Conditions: the claim holds only under what follows. "when" only in its reduced form ("safe when used with TLS
 # 1.3", "when built from source"), and not the reporting kind ("when asked", "when speaking"); a "when" with its own
 # subject is mostly one of time ("when the ship sank").
 _WHEN_REPORTING = (r"asked|contacted|reached|questioned|pressed|approached|interviewed|queried|speaking|talking|"
                    r"announcing|discussing|describing|presenting|unveiling|launching|introducing|commenting|"
                    r"testifying|writing|reporting")
-_CONDITION = (r"unless|only (?:if|when)|provided that|providing that|(?:as|so) long as|on condition that|"
+# A bare "provided" is a condition ("patched provided the option is set") unless a preposition shows it is the verb
+# ("provided by", "provided to"); "assuming" likewise. Both also stand as verbs before an object ("the study
+# provided the first count"), which code cannot tell from the condition: such a claim's sentences are refused.
+_CONDITION = (r"unless|only (?:if|when)|provided that|providing that|(?:as|so) long as|on (?:the )?condition that|"
+              r"provided(?! (?:by|to|with|for|in|as|on|via|from|under|at|through|that)\b)|assuming|subject to|"
+              r"given that|in case|in the event (?:that|of)|"
               rf"when (?!(?:{_WHEN_REPORTING})\b)(?:\w+ly )?\w+(?:ed|ing)|"
               r"when (?:built|run|set|shown|given|taken|left|kept|put|made|sent|read)")
 _RESTRICTION = re.compile(rf"(?<![\w-])(?:{_EXCEPTION}|{_CONDITION})(?![\w-])".replace(" ", r"\s+"), re.IGNORECASE)
@@ -2542,12 +2553,14 @@ _IF_BEFORE = re.compile(r"\b(?:even|as|what|or|whether|unclear|unknown|uncertain
 
 def _restriction(text: str) -> str | None:
     """The first restriction `text` carries, as written ("except", "unless", "only if", "when used", "if"), or
-    None. A closed list (_EXCEPTION, _CONDITION) and "if" where it is a condition (_IF, _IF_BEFORE). Left out on
+    None. A closed list (_EXCEPTION, _CONDITION, _QUANTIFIED_EXCEPTION) and "if" where it is a condition (_IF,
+    _IF_BEFORE). Left out on
     purpose: bounds of time ("until", "before", "after", "since", "while" and a "when" with its own subject), whose
     loss generalises over time and inverts nothing, and "only" and "without", whose loss says less, not more."""
     found = [(m.start(), m.group(0)) for m in _RESTRICTION.finditer(text or "")]
+    found += [(m.start(m.lastindex), m.group(m.lastindex)) for m in _QUANTIFIED_EXCEPTION.finditer(text or "")]
     found += [(m.start(), m.group(0)) for m in _IF.finditer(text or "") if not _IF_BEFORE.search(text[:m.start()])]
-    return _SPACE.sub(" ", min(found)[1]) if found else None
+    return _SPACE.sub(" ", min(found, key=lambda f: (f[0], -len(f[1])))[1]) if found else None   # longest first
 
 
 def _holds_whole(words: list[str], claim_words: list[str]) -> bool:
