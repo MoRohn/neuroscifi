@@ -194,3 +194,31 @@ def test_an_individual_in_memory_is_never_kept():
     schema.migrate(conn)
     assert store.database_path(conn) in (None, "")
     assert knowledge._index(conn).n == 0 and len(knowledge._INDEXES) == 0
+
+
+def test_the_kept_index_gives_the_semantic_ranking_what_a_fresh_one_gives(db, monkeypatch):
+    """With memory ranked by meaning the index supplies the statements the models read: kept or built for the
+    call, the answer is the same, before and after a write."""
+    from neuroscifi.inference import config as iconfig
+
+    class Model:
+        def __init__(self, name):
+            self.cfg = iconfig.InferenceConfig(base_url="http://127.0.0.1:1/v1", model=name)
+
+        def embed(self, texts, *, purpose, timeout=None, input_type=None):
+            return [[1.0 if "port" in x else 0.1, 1.0 if "Lighthouse" in x or "beacon" in x else 0.1] for x in texts]
+
+        def rerank(self, query, documents, *, purpose, timeout=None):
+            return [0.9 if ("beacon" in query) == ("Lighthouse" in d) else 0.001 for d in documents]
+    monkeypatch.setattr(semantic, "_gateways", lambda conn: (Model("embedder"), Model("reranker")))
+    semantic.set_config(db, {"enabled": True}, T0)
+    knowledge.assert_fact(db, "The Nolvar1 daemon listens on port 7001.", T0)
+    knowledge.assert_fact(db, "The Tolvane Lighthouse is 41 metres tall.", T0 + 1)
+    for now, expected in ((T0 + 2, 1), (T0 + 4, 2)):
+        kept = knowledge.query(db, "how tall is the beacon", now)
+        semantic.clear()                                  # the result cache must not be what makes them equal
+        fresh = knowledge.query(db, "how tall is the beacon", now, cached=False)
+        assert kept["retrieval"]["mode"] == "semantic" and kept["matched"] == expected
+        assert {k: v for k, v in kept.items() if k != "retrieval"} == \
+            {k: v for k, v in fresh.items() if k != "retrieval"}
+        knowledge.assert_fact(db, "The Pellham Lighthouse was built in 1902.", T0 + 3)
