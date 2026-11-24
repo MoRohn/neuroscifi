@@ -361,19 +361,60 @@ def open_web_questions(db) -> int:
     return db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:%'").fetchone()[0]
 
 
-def question_room(db, cfg=None) -> bool:
-    """Whether a NEW web question fits the owner's interruption budget (config.max_open_web_questions)."""
+def _stale_before(now, cfg) -> float | None:
+    """The time before which an open web question is stale, or None when nothing is (no `now` given, or
+    config.web_question_stale_days is 0: every open question counts, the rule before this setting)."""
+    days = state.finite(getattr(cfg, "web_question_stale_days", 0), 0.0)
+    if now is None or state.finite(now) is None or not days or days <= 0:
+        return None
+    return now - days * 86400.0
+
+
+def web_question_load(db, now=None, cfg=None) -> dict:
+    """The owner's web-question load: {open, stale, counted, cap, stale_after_days, room}. A question left open
+    for more than config.web_question_stale_days is *stale*: it stays open, listed and answerable, and no longer
+    counts toward config.max_open_web_questions, so ten questions the owner never answers do not stop new ones for
+    ever. counted = open - stale; room = counted < cap. A question updated later (open_question appends to it)
+    keeps the age of its first asking."""
     cfg = cfg or state.get_config(db)
-    return open_web_questions(db) < cfg.max_open_web_questions
+    total = open_web_questions(db)
+    before = _stale_before(now, cfg)
+    stale = 0 if before is None else db.execute(
+        "SELECT count(*) FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:%' AND created_at<?",
+        (before,)).fetchone()[0]
+    counted = total - stale
+    return {"open": total, "stale": stale, "counted": counted, "cap": cfg.max_open_web_questions,
+            "stale_after_days": state.finite(getattr(cfg, "web_question_stale_days", 0), 0.0) or 0,
+            "room": counted < cfg.max_open_web_questions}
+
+
+def stale_web_questions(db, now, cfg=None) -> list[dict]:
+    """The open web questions that are stale at `now` (web_question_load), oldest first: {id, scope, question,
+    created_at, age_days}. Each is still answered with `nsf resolve ID ...`."""
+    cfg = cfg or state.get_config(db)
+    before = _stale_before(now, cfg)
+    if before is None:
+        return []
+    return [{"id": pid, "scope": scope, "question": question, "created_at": created,
+             "age_days": round((now - created) / 86400.0, 1)}
+            for pid, scope, question, created in db.execute(
+                "SELECT id, scope, question, created_at FROM pending WHERE resolved_at IS NULL AND scope LIKE "
+                "'web:%' AND created_at<? ORDER BY created_at, id", (before,))]
+
+
+def question_room(db, cfg=None, now=None) -> bool:
+    """Whether a NEW web question fits the owner's interruption budget (config.max_open_web_questions). With `now`
+    the stale questions (web_question_load) are left out of the count; without it every open question counts."""
+    return web_question_load(db, now, cfg)["room"]
 
 
 def ask(db, scope, question, now, cfg=None):
     """open_question within the web question budget: an open question of the same scope is updated (no new
-    interruption); a new one is opened only while fewer than config.max_open_web_questions are open. Returns the
-    pending id, or None when the budget is spent (the subject stays reviewable in the console / `nsf web
-    knowledge`). Caller owns the transaction."""
+    interruption); a new one is opened only while fewer than config.max_open_web_questions are open and not stale
+    (web_question_load). Returns the pending id, or None when the budget is spent (the subject stays reviewable in
+    the console / `nsf web knowledge`). Caller owns the transaction."""
     found = db.execute("SELECT 1 FROM pending WHERE scope=? AND resolved_at IS NULL LIMIT 1", (scope,)).fetchone()
-    if found is None and not question_room(db, cfg):
+    if found is None and not question_room(db, cfg, now):
         return None
     return open_question(db, scope, question, now)
 
@@ -389,7 +430,7 @@ def review_question(db, task_id, deferred, now, cfg=None) -> int | None:
             "was opened for each (web question budget).")
     scope = f"web:review:{task_id}"
     if db.execute("SELECT 1 FROM pending WHERE scope=? AND resolved_at IS NULL", (scope,)).fetchone() is None \
-            and not question_room(db, cfg):
+            and not question_room(db, cfg, now):
         latest = db.execute("SELECT scope FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:review:%' "
                             "ORDER BY id DESC LIMIT 1").fetchone()
         if latest is not None:

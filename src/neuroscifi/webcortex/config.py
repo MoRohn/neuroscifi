@@ -107,6 +107,10 @@ class WebConfig:
     # candidates stay provisional and one aggregate question per task points to the console / `nsf web knowledge`.
     max_open_web_questions: int = 10
     max_web_questions_per_task: int = 3
+    # An open web question older than this many days is stale: it stays open and answerable and no longer counts
+    # toward max_open_web_questions, so questions the owner never answers do not stop new ones for ever. 0: every
+    # open question counts (the rule before this setting). knowledge.web_question_load.
+    web_question_stale_days: float = 30.0
     # MCP (`nsf web mcp`): web_research calls per hour per server process, and a daily cap for origin 'mcp' tasks
     # (tasks, requests and bytes of the last 24 h; request/byte budgets are clamped to what is left at submit).
     mcp_research_per_hour: int = 6

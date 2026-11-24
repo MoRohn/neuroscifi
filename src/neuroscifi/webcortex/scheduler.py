@@ -93,7 +93,7 @@ def monitor_add(db, topic, now, *, interval, mode="continuous", budget=None, aut
     chosen = orchestrator._budget(cfg, mode, budget)
     owner = authorized_by == "owner"
     from .knowledge import question_room
-    if not owner and not question_room(db, cfg):
+    if not owner and not question_room(db, cfg, now):
         raise Conflict(f"the owner already has {cfg.max_open_web_questions} open web questions; a device's "
                        "monitor proposal waits until some are answered")
     with store.write(db):

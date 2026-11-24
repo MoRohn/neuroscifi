@@ -150,6 +150,12 @@ def _validate(name, value):
         if not _is_int(value) or not 1 <= value <= 1000:
             raise ValidationError(f"{name} must be an integer between 1 and 1000")
         return value
+    if name == "web_question_stale_days":
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) \
+                or not 0 <= value <= 3650:
+            raise ValidationError("web_question_stale_days must be a number of days between 0 and 3650 (0: an open "
+                                  "question never becomes stale)")
+        return float(value)
     if name == "daily_renders":
         if not _is_int(value) or not 0 <= value <= 1000:
             raise ValidationError("daily_renders must be an integer between 0 and 1000")

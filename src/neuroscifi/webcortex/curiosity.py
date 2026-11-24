@@ -299,7 +299,7 @@ def propose(db, candidate: dict, now) -> dict:
                                     origin="curiosity", proposed=True)
     with store.write(db):
         cfg = state.get_config(db)
-        if not question_room(db, cfg):
+        if not question_room(db, cfg, now):
             raise Conflict(f"the owner already has {cfg.max_open_web_questions} open web questions; no further "
                            "research proposal is made until some are answered")
         task_id = orchestrator.insert(db, prepared, now)
