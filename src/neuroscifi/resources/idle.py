@@ -84,8 +84,10 @@ def _port(env, default):
     return os.environ.get(env, default)
 
 
-_MEMORY_NAMES = ("NSF_MEMORY_DIR", "NSF_MEMORY_BIND", "NSF_MEMORY_EMBED_PORT", "NSF_MEMORY_RERANK_PORT")
-_MEMORY_LINE = re.compile(r"^(?:export\s+)?(NSF_MEMORY_(?:DIR|BIND|EMBED_PORT|RERANK_PORT))=(.*)$")
+_MEMORY_NAMES = ("NSF_MEMORY_DIR", "NSF_MEMORY_BIND", "NSF_MEMORY_EMBED_PORT", "NSF_MEMORY_RERANK_PORT",
+                 "NSF_MEMORY_SERVER", "NSF_MEMORY_CONTAINER")
+_MEMORY_LINE = re.compile(r"^(?:export\s+)?(NSF_MEMORY_(?:DIR|BIND|EMBED_PORT|RERANK_PORT|SERVER|CONTAINER))=(.*)$")
+_MEMORY_CONTAINER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
 _MEMORY_PLAIN = re.compile(r"^[0-9A-Za-z_.:/\[\]@%+,=~-]*$")       # what a value may hold once it is expanded
 _LOOPBACK = ("127.0.0.1", "::1", "[::1]", "localhost")
 
@@ -123,8 +125,10 @@ def _memory_value(raw, found, environ):
 
 
 def memory_settings(environ=None, repo=None) -> dict:
-    """{"dir", "key_file", "bind", "embed_port", "rerank_port", "ignored", "error"}: where deploy/memory/run.sh puts
-    the two memory models and their key, read the way the script resolves them (review F8: `nsf setup` and the idle
+    """{"dir", "key_file", "bind", "embed_port", "rerank_port", "server", "container", "ignored", "error"}: where
+    deploy/memory/run.sh puts the two memory models and their key, and which server holds them ("single": one
+    process and one container, `container`, for both; "vllm": a vLLM server and a container each), read the way
+    the script resolves them (review F8: `nsf setup` and the idle
     policy looked at the environment only, so an owner's override of a port was seen by the script alone).
 
     As in the script: the environment first, then deploy/memory/memory.env, then the owner's override
@@ -165,9 +169,12 @@ def memory_settings(environ=None, repo=None) -> dict:
     if bind not in _LOOPBACK:
         error, bind = f"NSF_MEMORY_BIND must be loopback (got {bind[:64]}): deploy/memory/run.sh refuses it", "127.0.0.1"
     folder = Path(found["NSF_MEMORY_DIR"])
+    server = found["NSF_MEMORY_SERVER"] if found["NSF_MEMORY_SERVER"] in ("single", "vllm") else "single"
+    shared = found["NSF_MEMORY_CONTAINER"] if _MEMORY_CONTAINER.match(found["NSF_MEMORY_CONTAINER"]) \
+        else "neuroscifi-memory"
     return {"dir": folder, "key_file": folder / "api_key", "bind": bind,
             "embed_port": port("NSF_MEMORY_EMBED_PORT", 18441), "rerank_port": port("NSF_MEMORY_RERANK_PORT", 18442),
-            "ignored": ignored, "error": error}
+            "server": server, "container": shared, "ignored": ignored, "error": error}
 
 
 def _build_services() -> dict:
@@ -175,6 +182,15 @@ def _build_services() -> dict:
         memory = memory_settings()
     except Exception:                 # a settings file must never be why the policy, or an import, fails
         memory = {"embed_port": 18441, "rerank_port": 18442}
+    # One server for both memory models (deploy/memory/server.py, the default) is one container and one unit under
+    # both names: starting either starts it, stopping either stops it, and its /metrics counts the requests of
+    # both, so the two are idle together. Measured, both models in it: 4.4 GiB, 16 to 29 s from start to ready
+    # (docs/quality/evidence/open_items_memory_server.json).
+    single = memory.get("server", "single") == "single"
+    boxes = {name: memory.get("container", "neuroscifi-memory") if single else f"neuroscifi-memory-{name}"
+             for name in ("embed", "rerank")}
+    units = {name: "neuroscifi-memory.service" if single else f"neuroscifi-memory-{name}.service"
+             for name in ("embed", "rerank")}
     return {
         "vllm": Service("vllm", "the local model", "neuroscifi-vllm",
                         ("bash", "{repo}/deploy/vllm/run.sh", "start"), ("bash", "{repo}/deploy/vllm/run.sh", "stop"),
@@ -197,20 +213,21 @@ def _build_services() -> dict:
                            ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "start", "--db", "{db}"),
                            ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "stop", "--db", "{db}"),
                            unit="neuroscifi-searxng.service", ready=("8080/tcp", "/healthz")),
-        # The memory models (deploy/memory; webcortex/semantic.py). Measured on the reference host, each: 18 to 31 s
-        # from start to ready with warm files, 4.4 GiB (docs/quality/evidence/accel_decisions_memory_service.json).
-        "embed": Service("embed", "memory search (the embedding model)", "neuroscifi-memory-embed",
+        # The memory models (deploy/memory; webcortex/semantic.py). Measured on the reference host as two vLLM
+        # servers, each: 18 to 31 s from start to ready with warm files, 4.4 GiB
+        # (docs/quality/evidence/accel_decisions_memory_service.json).
+        "embed": Service("embed", "memory search (the embedding model)", boxes["embed"],
                          ("bash", "{repo}/deploy/memory/run.sh", "start", "embed"),
                          ("bash", "{repo}/deploy/memory/run.sh", "stop", "embed"),
                          ("bash", "{repo}/deploy/memory/run.sh", "wait", "embed", "600"),
-                         "neuroscifi-memory-embed.service",
+                         units["embed"],
                          f"http://127.0.0.1:{memory['embed_port']}/metrics", 20.0, 15, 4.4,
                          background=True),
-        "rerank": Service("rerank", "memory search (the reranker)", "neuroscifi-memory-rerank",
+        "rerank": Service("rerank", "memory search (the reranker)", boxes["rerank"],
                           ("bash", "{repo}/deploy/memory/run.sh", "start", "rerank"),
                           ("bash", "{repo}/deploy/memory/run.sh", "stop", "rerank"),
                           ("bash", "{repo}/deploy/memory/run.sh", "wait", "rerank", "600"),
-                          "neuroscifi-memory-rerank.service",
+                          units["rerank"],
                           f"http://127.0.0.1:{memory['rerank_port']}/metrics", 20.0, 15, 4.4,
                           background=True),
     }
@@ -548,13 +565,21 @@ class Idle:
             decisions[name] = self._consider(self.services[name], seconds, level, blockers, now)
         return {"enabled": True, "level": level, "blockers": blockers, "decisions": decisions}
 
+    def sharing(self, name) -> list[str]:
+        """The services that are one container with `name`, itself first (the single memory server is `embed` and
+        `rerank` at once): the container is in use while any of them is, and stopping one stops all."""
+        box = self.services[name].container
+        return [name] + sorted(other for other, svc in self.services.items() if other != name and svc.container == box)
+
     def _consider(self, svc, seconds, level, blockers, now) -> dict:
         timeout = self.effective_timeout(seconds, level)
         box = self.container(svc)
         if not box or not box["running"]:
             return {"action": "none", "why": "not loaded"}
         state = self.read()["services"].get(svc.name, {})
-        uses = [self.last_used(svc.name), box.get("started_at"), state.get("loaded_at"), state.get("served_at")]
+        names = self.sharing(svc.name)
+        uses = [box.get("started_at"), state.get("loaded_at"), state.get("served_at")]
+        uses += [self.last_used(name) for name in names]
         metrics = self.read_metrics(svc.metrics) if svc.metrics else None
         if metrics is not None:
             if metrics["in_flight"] > 0:
@@ -580,8 +605,10 @@ class Idle:
             reason = f"idle {_minutes(idle_for)} (timeout {_minutes(seconds)}, shortened to {_minutes(timeout)} at " \
                      f"critical memory pressure: {'; '.join(self.sample()['reasons'])})"
         try:
-            with _flock(self._file(f"idle-inuse-{svc.name}.lock"), fcntl.LOCK_EX | fcntl.LOCK_NB):
-                if self.last_used(svc.name) and now - self.last_used(svc.name) < timeout:
+            with ExitStack() as held:           # no request in flight under any name of this container
+                for name in names:
+                    held.enter_context(_flock(self._file(f"idle-inuse-{name}.lock"), fcntl.LOCK_EX | fcntl.LOCK_NB))
+                if any(self.last_used(name) and now - self.last_used(name) < timeout for name in names):
                     return {"action": "none", "why": "used while the decision was being made"}
                 return self.unload(svc.name, reason=reason, by="idle policy", _locked=True)
         except BlockingIOError:
@@ -608,8 +635,9 @@ class Idle:
                             **({} if ok else {"error": (getattr(done, "stdout", "") or "")[-400:]}))
         if ok:
             with self._state() as data:
-                data["services"].setdefault(name, {}).update(state="unloaded", by=by, at=event["at"],
-                                                             shape="systemd" if systemd else "docker")
+                for shared in self.sharing(name):       # one container: every name of it is unloaded now
+                    data["services"].setdefault(shared, {}).update(state="unloaded", by=by, at=event["at"],
+                                                                   shape="systemd" if systemd else "docker")
         return {"action": "unload" if ok else "failed", "why": reason, "event": event}
 
     def unloaded_by_policy(self, name) -> bool:
@@ -768,6 +796,9 @@ class Idle:
                 entry.pop("loading", None)
                 if ok:
                     entry.update(state="loaded", by=by, at=event["at"], loaded_at=event["at"])
+                    for shared in self.sharing(name)[1:]:       # one container: its other names answer too
+                        data["services"].setdefault(shared, {}).update(state="loaded", by=by, at=event["at"],
+                                                                       loaded_at=event["at"])
                 else:
                     entry.update(state="unloaded" if entry.get("state") == "unloaded" else "unknown",
                                  failed_at=event["at"])

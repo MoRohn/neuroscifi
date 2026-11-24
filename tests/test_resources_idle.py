@@ -27,6 +27,23 @@ def _iso(at):
     return datetime.fromtimestamp(at, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f000Z")
 
 
+def memory_services(server):
+    """idle's service list as built when deploy/memory serves the two models with `server` (single | vllm)."""
+    real = idle.memory_settings
+    try:
+        idle.memory_settings = lambda *a, **k: real(*a, **k) | {"server": server, "container": "neuroscifi-memory"}
+        return idle._build_services()
+    finally:
+        idle.memory_settings = real
+
+
+@pytest.fixture(autouse=True)
+def two_vllm_servers(monkeypatch):
+    """The tests below describe the policy over one container per memory model (NSF_MEMORY_SERVER=vllm), as they
+    were written. The shipped default, one server and one container for both, has its own tests at the end."""
+    monkeypatch.setattr(idle, "SERVICES", memory_services("vllm"), raising=False)
+
+
 class FakeHost:
     """docker inspect / run.sh start|stop|wait / systemctl / `nsf web searxng` as one fake host with a clock. A wait
     advances the clock by the service's reload time, so the measured reload is known in advance."""
@@ -1176,7 +1193,8 @@ def test_memory_settings_are_read_as_run_sh_resolves_them_and_nothing_is_evaluat
         "NSF_MEMORY_DIR=${NSF_MEMORY_DIR:-${HOME}/.config/neuroscifi/memory}\n")
     env = {"NSF_MEMORY_DIR": str(folder), "NSF_MEMORY_EMBED_PORT": "1"}       # the script ignores this port too
     assert idle.memory_settings(env, repo) == {"dir": folder, "key_file": folder / "api_key", "bind": "127.0.0.1",
-                                               "embed_port": 18441, "rerank_port": 18442, "ignored": [], "error": None}
+                                               "embed_port": 18441, "rerank_port": 18442, "server": "single",
+                                               "container": "neuroscifi-memory", "ignored": [], "error": None}
     marker = tmp_path / "evaluated"
     (folder / "memory.env").write_text(                                   # the owner's override
         f"NSF_MEMORY_EMBED_PORT=28441\nNSF_MEMORY_RERANK_PORT=$(touch {marker})\n"
@@ -1199,3 +1217,103 @@ def test_setup_and_the_policy_look_where_the_script_listens(tmp_path, monkeypatc
                      "key_file": folder / "api_key", "error": None, "ignored": []}
     script = (idle.REPO / "deploy" / "memory" / "memory.env").read_text()
     assert "NSF_MEMORY_DIR=${NSF_MEMORY_DIR:-${HOME}/.config/neuroscifi/memory}" in script   # run.sh honours it too
+
+
+
+# ---- one server for both memory models (NSF_MEMORY_SERVER=single, the shipped default) ---------------------------
+
+SHARED = "neuroscifi-memory"
+
+
+@pytest.fixture
+def single_host(memory_host, monkeypatch):
+    """The fake host with deploy/memory in its single mode: `embed` and `rerank` are one container."""
+    monkeypatch.setattr(idle, "SERVICES", memory_services("single"), raising=False)
+    fake = memory_host
+    fake.RELOAD = dict(fake.RELOAD, **{SHARED: 17.0})
+    for name in ("neuroscifi-memory-embed", "neuroscifi-memory-rerank"):
+        fake.running.pop(name, None)
+    fake.running[SHARED] = T0 - 6 * 3600
+    return fake
+
+
+def test_which_server_holds_the_memory_models_is_read_from_the_scripts_settings(tmp_path):
+    repo, folder = tmp_path / "repo", tmp_path / "cfg"
+    (repo / "deploy" / "memory").mkdir(parents=True)
+    folder.mkdir()
+    shipped = repo / "deploy" / "memory" / "memory.env"
+    shipped.write_text("NSF_MEMORY_SERVER=single\nNSF_MEMORY_CONTAINER=neuroscifi-memory\n")
+    env = {"NSF_MEMORY_DIR": str(folder), "NSF_MEMORY_SERVER": "vllm"}        # the script's file wins over this too
+    assert (idle.memory_settings(env, repo)["server"], idle.memory_settings(env, repo)["container"]) == \
+        ("single", "neuroscifi-memory")
+    (folder / "memory.env").write_text("NSF_MEMORY_SERVER=vllm\n")          # the owner goes back to two servers
+    assert idle.memory_settings(env, repo)["server"] == "vllm"
+    (folder / "memory.env").write_text("NSF_MEMORY_SERVER=triton\nNSF_MEMORY_CONTAINER=my-memory.1\n")
+    found = idle.memory_settings(env, repo)
+    assert (found["server"], found["container"]) == ("single", "my-memory.1")     # run.sh refuses to start "triton"
+    (folder / "memory.env").write_text("NSF_MEMORY_CONTAINER=a/b\n")
+    assert idle.memory_settings(env, repo)["container"] == "neuroscifi-memory"   # not a container name: the default
+
+
+def test_with_one_server_both_names_are_one_container_and_one_unit():
+    single, pair = memory_services("single"), memory_services("vllm")
+    assert {single[n].container for n in MEMORY} == {SHARED}
+    assert {single[n].unit for n in MEMORY} == {"neuroscifi-memory.service"}
+    assert (single["embed"].metrics, single["rerank"].metrics) == (pair["embed"].metrics, pair["rerank"].metrics)
+    assert [single[n].stop[-2:] for n in MEMORY] == [("stop", "embed"), ("stop", "rerank")]   # the script decides
+    assert [pair[n].container for n in MEMORY] == ["neuroscifi-memory-embed", "neuroscifi-memory-rerank"]
+    assert [pair[n].unit for n in MEMORY] == ["neuroscifi-memory-embed.service", "neuroscifi-memory-rerank.service"]
+    assert {n: s for n, s in single.items() if n not in MEMORY} == {n: s for n, s in pair.items() if n not in MEMORY}
+
+
+def test_with_one_server_an_idle_unload_of_either_name_stops_the_one_container(single_host):
+    fake = single_host
+    p = fake.make()
+    p.configure({"embed": 15 * MIN, "rerank": 15 * MIN})
+    with idle.using_now(fake.path, "embed", purpose="memory lookup"):
+        pass
+    fake.now += 10 * MIN
+    out = p.tick()["decisions"]                           # the reranker was never used by name: it is the same
+    assert out["embed"]["action"] == out["rerank"]["action"] == "none", out       # container, used 10 min ago
+    fake.now += 6 * MIN
+    out = p.tick()["decisions"]
+    assert "unload" in (out["embed"]["action"], out["rerank"]["action"])
+    assert SHARED not in fake.running                     # the one container is gone, whichever name asked
+    assert p.unloaded_by_policy("embed") and p.unloaded_by_policy("rerank")       # and both names know it
+    after = p.tick()["decisions"]
+    assert all(after[n] == {"action": "none", "why": "not loaded"} for n in MEMORY)
+    assert sum(c[-2] == "stop" and c[-1] in MEMORY for c in fake.calls) == 1      # stopped once, not twice
+
+
+def test_with_one_server_a_use_under_one_name_keeps_the_container_for_both(single_host):
+    """An individual that uses the embedding model alone must not lose the container to the reranker's timeout,
+    and a request in flight under one name blocks the unload asked for under the other."""
+    fake = single_host
+    p = fake.make()
+    p.configure({"embed": 15 * MIN, "rerank": 15 * MIN})
+    for _ in range(4):
+        with idle.using_now(fake.path, "embed", purpose="memory lookup"):
+            pass
+        fake.now += 10 * MIN
+        out = p.tick()["decisions"]
+        assert out["embed"]["action"] == out["rerank"]["action"] == "none", out
+    assert SHARED in fake.running
+    with idle.using_now(fake.path, "embed", purpose="memory lookup"):
+        fake.now += 3600                                  # a lookup in flight holds the embedding name's lock
+        out = p.tick()["decisions"]
+        assert out["rerank"] == {"action": "none", "why": "a request is in flight"}
+    assert SHARED in fake.running
+
+
+def test_with_one_server_loading_both_names_starts_the_container_once(single_host):
+    fake = single_host
+    p = fake.make()
+    p.configure({"embed": 15 * MIN, "rerank": 15 * MIN})
+    assert p.unload("embed", reason="test")["action"] == "unload" and SHARED not in fake.running
+    del fake.calls[:]
+    first = p.load("embed", reason="memory lookup", by="on demand")
+    assert first["action"] == "load" and SHARED in fake.running
+    second = p.load("rerank", reason="memory lookup", by="on demand")
+    assert second == {"action": "none", "why": "already running"}
+    assert sum("start" in c for c in fake.calls) == 1 and sum("wait" in c for c in fake.calls) == 1
+
