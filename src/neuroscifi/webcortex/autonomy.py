@@ -29,7 +29,9 @@ Prioritisation (candidates): every candidate comes from stored records - curiosi
 knowledge, knowledge predictions due, contested subjects, single-source gaps) and open hypotheses with an open
 prediction (evolution, Lane D). priority = info_gain x (1 + sum(WEIGHTS[s] x signal[s])) / cost, signals in [0, 1]:
 goal (word overlap with active owner monitors and the owner's research of the last 7 days), gap, hypothesis,
-prediction_uncertainty (binary entropy of the forecast), stale, contradiction, source_change (a monitor reported a
+prediction_uncertainty (binary entropy of the forecast, read through what the settled forecasts of its kind show
+once 20 of them have settled: evolution.recalibrations, ADR-046; the information gain of a hypothesis uses the same
+reading), stale, contradiction, source_change (a monitor reported a
 meaningful change of that subject in the last 7 days). cost = curiosity.cost(mode) + estimated spend / spend cap.
 A candidate whose expected information gain is below min_gain bits is refused: no browsing to generate activity.
 A subject investigated autonomously within `cooldown` seconds is skipped. The owner's own records always rank first;
@@ -516,6 +518,7 @@ def candidates(db, now, *, limit=10) -> dict:
     recent = _recent(db, now, cooldown)
     lineage = _lineage(db)
     asserted = {kid for (kid,) in db.execute("SELECT id FROM web_knowledge WHERE provenance='user_asserted'")}
+    read = evolution.recalibrations(db)      # ADR-046: a forecast as the settled forecasts of its kind read it
     by_key: dict = {}
 
     def add(kind, key, statement, mode, gain, signals, extra=None):
@@ -552,9 +555,12 @@ def candidates(db, now, *, limit=10) -> dict:
         if c["kind"] == "prediction":
             row = db.execute("SELECT probability FROM web_predictions WHERE id=?",
                              (target.get("prediction_id"),)).fetchone()
-            p = state.finite(row[0] if row else None, 0.5)
+            stated = state.finite(row[0] if row else None, 0.5)
+            p = evolution.recalibrate(stated, read["knowledge"])
             signals["prediction_uncertainty"] = round(curiosity.entropy(p), 6)
             extra["prediction_id"] = target.get("prediction_id")
+            if p != stated:                  # shown and logged only where the reading changed the number
+                extra |= {"forecast": stated, "forecast_as_read": p}
         add(c["kind"], target.get("key"), target.get("statement") or "", c["mode"], float(c["info_gain"]), signals,
             extra)
     # Every open owner hypothesis (with its latest open prediction, if any), then the newest derived ones.
@@ -567,12 +573,14 @@ def candidates(db, now, *, limit=10) -> dict:
     for pid, hid in rows:
         h = evolution.hypothesis(db, hid)
         found = db.execute("SELECT probability FROM web_predictions WHERE id=?", (pid,)).fetchone() if pid else None
-        p = state.finite(found[0] if found else h["verification"].get("confidence"), 0.5)
+        stated = state.finite(found[0] if found else h["verification"].get("confidence"), 0.5)
+        p = evolution.recalibrate(stated, read["owner" if h["origin"] == "owner" else "hypothesis"])
         add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", curiosity.info_gain(p),
             {"hypothesis": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6),
              "contradiction": 1.0 if h["origin"] in ("conflicting", "disputed") else 0.0,
              "gap": 1.0 if h["origin"] in ("insufficient", "gap", "not_evaluated") else 0.0},
-            {"hypothesis_id": hid, "prediction_id": pid, "forecast": p} |
+            {"hypothesis_id": hid, "prediction_id": pid, "forecast": stated} |
+            ({"forecast_as_read": p} if p != stated else {}) |
             ({"owner": True} if h["origin"] == "owner" else {}))
     # The owner's assertions that no evidence has been examined for yet (ADR-038: not_evaluated, no support).
     for kid, key, statement, confidence in db.execute(
@@ -704,8 +712,8 @@ def idle(db, now, *, worker=None) -> dict:
                 return {"action": "refused", "reason": str(exc)}
             continue
         inputs = {k: pick[k] for k in ("kind", "key", "mode", "info_gain", "cost", "priority", "signals", "reason")}
-        inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast", "owner",
-                                        "depth") if k in pick}
+        inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast",
+                                        "forecast_as_read", "owner", "depth") if k in pick}
         _decide(db, now, {"autonomy": inputs | {"weights": dict(WEIGHTS), "min_gain": ranked["min_gain"]}},
                 task_id=task["id"], worker=worker)
         return {"action": "queued", "task_id": task["id"], "candidate": inputs}

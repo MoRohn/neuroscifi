@@ -1,0 +1,1764 @@
+{
+ "benchmark": "calibration, selection",
+ "grid": {
+  "minimum": [
+   10,
+   20,
+   40
+  ],
+  "window": [
+   100,
+   200,
+   0
+  ],
+  "prior_shift": [
+   1.0,
+   4.0,
+   16.0
+  ],
+  "prior_tilt": [
+   null,
+   4.0,
+   16.0,
+   64.0
+  ]
+ },
+ "rule": "lowest mean distance among the settings whose worst change to any development stream at any prefix is at most +0.002; decided before the grid was run",
+ "shipped": {
+  "minimum": 20,
+  "window": 100,
+  "prior_shift": 16.0,
+  "prior_tilt": 16.0
+ },
+ "note": "the first row of this order has a minimum of 10 settlements; the shipped setting is the second row, the same with a minimum of 20 (mean distance 0.0263 against 0.0253). The larger minimum was kept because one refresh can settle several predictions about one source, so real settlements count for fewer than their number; on the burst streams of `report` the two minimums score alike",
+ "rows": [
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.025296,
+   "mean_brier": 0.196061,
+   "worst_distance_change": {
+    "change": 0.001049,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.026315,
+   "mean_brier": 0.197239,
+   "worst_distance_change": {
+    "change": 0.001025,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.027456,
+   "mean_brier": 0.198896,
+   "worst_distance_change": {
+    "change": 0.001619,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.029188,
+   "mean_brier": 0.200191,
+   "worst_distance_change": {
+    "change": 0.001433,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.029263,
+   "mean_brier": 0.200286,
+   "worst_distance_change": {
+    "change": 0.001842,
+    "stream": "right",
+    "first": "100"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.029819,
+   "mean_brier": 0.201128,
+   "worst_distance_change": {
+    "change": 0.000889,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.030424,
+   "mean_brier": 0.201655,
+   "worst_distance_change": {
+    "change": 0.001713,
+    "stream": "right",
+    "first": "100"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.032424,
+   "mean_brier": 0.203503,
+   "worst_distance_change": {
+    "change": 0.001769,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.033384,
+   "mean_brier": 0.204842,
+   "worst_distance_change": {
+    "change": 0.000582,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.033775,
+   "mean_brier": 0.20579,
+   "worst_distance_change": {
+    "change": 0.001275,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.033996,
+   "mean_brier": 0.205549,
+   "worst_distance_change": {
+    "change": 0.000574,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.034103,
+   "mean_brier": 0.206151,
+   "worst_distance_change": {
+    "change": 0.00182,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.036245,
+   "mean_brier": 0.208166,
+   "worst_distance_change": {
+    "change": 0.00052,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": true
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.019762,
+   "mean_brier": 0.189505,
+   "worst_distance_change": {
+    "change": 0.006567,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.019883,
+   "mean_brier": 0.189978,
+   "worst_distance_change": {
+    "change": 0.004357,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.021157,
+   "mean_brier": 0.191145,
+   "worst_distance_change": {
+    "change": 0.004611,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.021333,
+   "mean_brier": 0.191712,
+   "worst_distance_change": {
+    "change": 0.002344,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.021947,
+   "mean_brier": 0.192399,
+   "worst_distance_change": {
+    "change": 0.003519,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.022065,
+   "mean_brier": 0.192268,
+   "worst_distance_change": {
+    "change": 0.005127,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.022378,
+   "mean_brier": 0.192267,
+   "worst_distance_change": {
+    "change": 0.006068,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.022505,
+   "mean_brier": 0.192037,
+   "worst_distance_change": {
+    "change": 0.009007,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.022546,
+   "mean_brier": 0.192375,
+   "worst_distance_change": {
+    "change": 0.007599,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.022686,
+   "mean_brier": 0.192154,
+   "worst_distance_change": {
+    "change": 0.010628,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.022886,
+   "mean_brier": 0.193533,
+   "worst_distance_change": {
+    "change": 0.00216,
+    "stream": "right",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.022965,
+   "mean_brier": 0.193335,
+   "worst_distance_change": {
+    "change": 0.003663,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.023662,
+   "mean_brier": 0.194085,
+   "worst_distance_change": {
+    "change": 0.002953,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.023698,
+   "mean_brier": 0.193811,
+   "worst_distance_change": {
+    "change": 0.005074,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.023782,
+   "mean_brier": 0.193502,
+   "worst_distance_change": {
+    "change": 0.007942,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.023865,
+   "mean_brier": 0.193917,
+   "worst_distance_change": {
+    "change": 0.006606,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.023962,
+   "mean_brier": 0.193617,
+   "worst_distance_change": {
+    "change": 0.009567,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.024442,
+   "mean_brier": 0.194688,
+   "worst_distance_change": {
+    "change": 0.008745,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.02461,
+   "mean_brier": 0.194796,
+   "worst_distance_change": {
+    "change": 0.010276,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.024808,
+   "mean_brier": 0.1948,
+   "worst_distance_change": {
+    "change": 0.012322,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.024862,
+   "mean_brier": 0.195097,
+   "worst_distance_change": {
+    "change": 0.002953,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.024975,
+   "mean_brier": 0.195162,
+   "worst_distance_change": {
+    "change": 0.00413,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.024988,
+   "mean_brier": 0.194918,
+   "worst_distance_change": {
+    "change": 0.013943,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.025203,
+   "mean_brier": 0.195882,
+   "worst_distance_change": {
+    "change": 0.00232,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.025251,
+   "mean_brier": 0.195632,
+   "worst_distance_change": {
+    "change": 0.007642,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.025418,
+   "mean_brier": 0.195738,
+   "worst_distance_change": {
+    "change": 0.009174,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.02559,
+   "mean_brier": 0.195692,
+   "worst_distance_change": {
+    "change": 0.011241,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.02577,
+   "mean_brier": 0.195807,
+   "worst_distance_change": {
+    "change": 0.012866,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.026324,
+   "mean_brier": 0.196839,
+   "worst_distance_change": {
+    "change": 0.002203,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.026403,
+   "mean_brier": 0.196895,
+   "worst_distance_change": {
+    "change": 0.004338,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.026434,
+   "mean_brier": 0.1969,
+   "worst_distance_change": {
+    "change": 0.003453,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.026516,
+   "mean_brier": 0.196959,
+   "worst_distance_change": {
+    "change": 0.005591,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.026941,
+   "mean_brier": 0.19811,
+   "worst_distance_change": {
+    "change": 0.002132,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.02729,
+   "mean_brier": 0.198522,
+   "worst_distance_change": {
+    "change": 0.00264,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.027344,
+   "mean_brier": 0.198017,
+   "worst_distance_change": {
+    "change": 0.003452,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.027454,
+   "mean_brier": 0.198078,
+   "worst_distance_change": {
+    "change": 0.004702,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.0278,
+   "mean_brier": 0.199287,
+   "worst_distance_change": {
+    "change": 0.002146,
+    "stream": "right",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.029006,
+   "mean_brier": 0.199613,
+   "worst_distance_change": {
+    "change": 0.004123,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.029436,
+   "mean_brier": 0.200398,
+   "worst_distance_change": {
+    "change": 0.015085,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.029603,
+   "mean_brier": 0.200507,
+   "worst_distance_change": {
+    "change": 0.016615,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.029673,
+   "mean_brier": 0.200312,
+   "worst_distance_change": {
+    "change": 0.004414,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.029687,
+   "mean_brier": 0.199914,
+   "worst_distance_change": {
+    "change": 0.007272,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.029821,
+   "mean_brier": 0.200995,
+   "worst_distance_change": {
+    "change": 0.013898,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.029826,
+   "mean_brier": 0.200405,
+   "worst_distance_change": {
+    "change": 0.005932,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.029854,
+   "mean_brier": 0.200017,
+   "worst_distance_change": {
+    "change": 0.008886,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.029988,
+   "mean_brier": 0.201101,
+   "worst_distance_change": {
+    "change": 0.015431,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.030033,
+   "mean_brier": 0.201054,
+   "worst_distance_change": {
+    "change": 0.019201,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.030214,
+   "mean_brier": 0.201171,
+   "worst_distance_change": {
+    "change": 0.020822,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.030388,
+   "mean_brier": 0.201204,
+   "worst_distance_change": {
+    "change": 0.008525,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.030425,
+   "mean_brier": 0.201643,
+   "worst_distance_change": {
+    "change": 0.018135,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.030452,
+   "mean_brier": 0.201384,
+   "worst_distance_change": {
+    "change": 0.00325,
+    "stream": "right",
+    "first": "50"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": 4.0
+   },
+   "mean_distance": 0.030501,
+   "mean_brier": 0.201269,
+   "worst_distance_change": {
+    "change": 0.009777,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.030605,
+   "mean_brier": 0.201759,
+   "worst_distance_change": {
+    "change": 0.019761,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.030835,
+   "mean_brier": 0.201682,
+   "worst_distance_change": {
+    "change": 0.006941,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.030847,
+   "mean_brier": 0.201906,
+   "worst_distance_change": {
+    "change": 0.007344,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": 16.0
+   },
+   "mean_distance": 0.030957,
+   "mean_brier": 0.201967,
+   "worst_distance_change": {
+    "change": 0.008593,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.030988,
+   "mean_brier": 0.201775,
+   "worst_distance_change": {
+    "change": 0.00846,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.031132,
+   "mean_brier": 0.201685,
+   "worst_distance_change": {
+    "change": 0.010564,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.031299,
+   "mean_brier": 0.201787,
+   "worst_distance_change": {
+    "change": 0.012179,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.032518,
+   "mean_brier": 0.203549,
+   "worst_distance_change": {
+    "change": 0.002998,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.033037,
+   "mean_brier": 0.20421,
+   "worst_distance_change": {
+    "change": 0.002938,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.03313,
+   "mean_brier": 0.204256,
+   "worst_distance_change": {
+    "change": 0.004166,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.034186,
+   "mean_brier": 0.205817,
+   "worst_distance_change": {
+    "change": 0.013148,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.034338,
+   "mean_brier": 0.205909,
+   "worst_distance_change": {
+    "change": 0.014667,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.034783,
+   "mean_brier": 0.206453,
+   "worst_distance_change": {
+    "change": 0.01746,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.03495,
+   "mean_brier": 0.206555,
+   "worst_distance_change": {
+    "change": 0.019074,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.035285,
+   "mean_brier": 0.206827,
+   "worst_distance_change": {
+    "change": 0.006669,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": 64.0
+   },
+   "mean_distance": 0.035379,
+   "mean_brier": 0.206873,
+   "worst_distance_change": {
+    "change": 0.007897,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.046598,
+   "mean_brier": 0.217924,
+   "worst_distance_change": {
+    "change": 0.005139,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.046974,
+   "mean_brier": 0.218736,
+   "worst_distance_change": {
+    "change": 0.004441,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.047912,
+   "mean_brier": 0.219543,
+   "worst_distance_change": {
+    "change": 0.004969,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.047991,
+   "mean_brier": 0.21994,
+   "worst_distance_change": {
+    "change": 0.004369,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.049448,
+   "mean_brier": 0.22088,
+   "worst_distance_change": {
+    "change": 0.007064,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.049513,
+   "mean_brier": 0.221355,
+   "worst_distance_change": {
+    "change": 0.004441,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.049638,
+   "mean_brier": 0.221002,
+   "worst_distance_change": {
+    "change": 0.008669,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.049688,
+   "mean_brier": 0.221466,
+   "worst_distance_change": {
+    "change": 0.005706,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.05053,
+   "mean_brier": 0.222558,
+   "worst_distance_change": {
+    "change": 0.006712,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 4.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.050679,
+   "mean_brier": 0.22341,
+   "worst_distance_change": {
+    "change": 0.005865,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.050705,
+   "mean_brier": 0.22267,
+   "worst_distance_change": {
+    "change": 0.008218,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.050762,
+   "mean_brier": 0.222498,
+   "worst_distance_change": {
+    "change": 0.010354,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 1.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.050924,
+   "mean_brier": 0.223674,
+   "worst_distance_change": {
+    "change": 0.007291,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.050953,
+   "mean_brier": 0.22262,
+   "worst_distance_change": {
+    "change": 0.011959,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.051339,
+   "mean_brier": 0.22358,
+   "worst_distance_change": {
+    "change": 0.002695,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.051798,
+   "mean_brier": 0.224111,
+   "worst_distance_change": {
+    "change": 0.002674,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.052432,
+   "mean_brier": 0.22472,
+   "worst_distance_change": {
+    "change": 0.002695,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 10,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.052544,
+   "mean_brier": 0.224782,
+   "worst_distance_change": {
+    "change": 0.002883,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.052891,
+   "mean_brier": 0.225251,
+   "worst_distance_change": {
+    "change": 0.002813,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 20,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.053004,
+   "mean_brier": 0.225314,
+   "worst_distance_change": {
+    "change": 0.004022,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 4.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.053218,
+   "mean_brier": 0.226029,
+   "worst_distance_change": {
+    "change": 0.012898,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 100,
+    "prior_shift": 16.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.053367,
+   "mean_brier": 0.226041,
+   "worst_distance_change": {
+    "change": 0.003268,
+    "stream": "backwards (slope -1)",
+    "first": "100"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 4.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.053393,
+   "mean_brier": 0.22614,
+   "worst_distance_change": {
+    "change": 0.014404,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 1.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.053773,
+   "mean_brier": 0.226629,
+   "worst_distance_change": {
+    "change": 0.017249,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 1.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.053964,
+   "mean_brier": 0.226751,
+   "worst_distance_change": {
+    "change": 0.018854,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 200,
+    "prior_shift": 16.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.05446,
+   "mean_brier": 0.227181,
+   "worst_distance_change": {
+    "change": 0.006475,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  },
+  {
+   "options": {
+    "minimum": 40,
+    "window": 0,
+    "prior_shift": 16.0,
+    "prior_tilt": null
+   },
+   "mean_distance": 0.054572,
+   "mean_brier": 0.227244,
+   "worst_distance_change": {
+    "change": 0.007684,
+    "stream": "drift: rarely true, then often",
+    "first": "all"
+   },
+   "harmless": false
+  }
+ ]
+}

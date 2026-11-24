@@ -108,6 +108,11 @@ class WebConfig:
     # (tasks, requests and bytes of the last 24 h; request/byte budgets are clamped to what is left at submit).
     mcp_research_per_hour: int = 6
     daily_mcp: dict = field(default_factory=lambda: {"tasks": 24, "requests": 400, "bytes": 80_000_000})
+    # ADR-046: a forecast (a knowledge item's confidence, a hypothesis' posterior, the owner's estimate) is read
+    # through what the settled forecasts of its kind show (evolution.recalibrations) where the order of autonomous
+    # research depends on it. The identity until 20 forecasts of the kind have settled; stored forecasts,
+    # verification states, verdicts and answers never change. Off: `nsf web config --set calibrated_forecasts=false`.
+    calibrated_forecasts: bool = True
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":
