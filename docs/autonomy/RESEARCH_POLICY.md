@@ -111,11 +111,13 @@ Each subject appears once, with its strongest signals.
 | gap | 0.5 | a single-source claim, or a hypothesis from `insufficient`/`not_evaluated` evidence |
 
 - `info_gain` is the expected information gain in bits, computed with curiosity's model: a report of reliability
-  0.8 about a binary variable, or 4-way for contested subjects. For an open hypothesis the binary variable's
-  probability is its forecast as read (ADR-046): once 20 forecasts of its kind (derived hypotheses, or the
-  owner's own) have settled, a kind that kept failing is read as less likely, and one that kept coming true as
-  more likely. The candidate shows the stated `forecast` and, when it differs, `forecast_as_read`; so does the
-  decision that queues it. `nsf web config --set calibrated_forecasts=false` reads every forecast as stated.
+  0.8 about a binary variable, or 4-way for contested subjects. For an open hypothesis this is the gain of its
+  stated forecast, and it is what the refusal below compares. Its priority uses the gain of its forecast as read
+  instead (ADR-046; `info_gain_as_read`): once 20 forecasts of its kind (derived hypotheses, or the owner's own)
+  have settled, a kind that kept failing is read as less likely, and one that kept coming true as more likely.
+  The reading changes the order of the admitted candidates, never which ones are admitted. The candidate shows
+  the stated `forecast` and, when they differ, `forecast_as_read` and `info_gain_as_read`; so does the decision
+  that queues it. `nsf web config --set calibrated_forecasts=false` reads every forecast as stated.
 - `cost` is the mode's request budget relative to `fact_verification`, plus the estimated spend divided by the
   spend cap.
 - A candidate is refused, and the refusal is shown with its reason, when any of these holds:

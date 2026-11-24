@@ -537,8 +537,10 @@ unaffected.
   `history` are unchanged and score the forecasts as stated.
 - An `autonomy.candidates` entry of kind `hypothesis_prediction` keeps `forecast` (the stored forecast) and gains
   `forecast_as_read` when the mapping of its kind changes it; an entry of kind `prediction` gains `forecast` and
-  `forecast_as_read` only in that case. `signals.prediction_uncertainty` and a hypothesis' `info_gain` are
-  computed from the forecast as read. The `decision` event of a queued investigation carries both numbers.
+  `forecast_as_read` only in that case. `signals.prediction_uncertainty` is computed from the forecast as read.
+  `info_gain` stays the stated forecast's gain and is what `min_gain` compares; a hypothesis' entry gains
+  `info_gain_as_read` (the gain of its forecast as read, which its `priority` uses) when the two differ. The
+  `decision` event of a queued investigation carries `forecast_as_read` and `info_gain_as_read` when present.
 - No table, column or stored value is added or changed.
 
 **Web question budget.** `knowledge.web_question_load(db, now=None, cfg=None) -> {open, stale, counted, cap,

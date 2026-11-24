@@ -30,10 +30,12 @@ knowledge, knowledge predictions due, contested subjects, single-source gaps) an
 prediction (evolution, Lane D). priority = info_gain x (1 + sum(WEIGHTS[s] x signal[s])) / cost, signals in [0, 1]:
 goal (word overlap with active owner monitors and the owner's research of the last 7 days), gap, hypothesis,
 prediction_uncertainty (binary entropy of the forecast, read through what the settled forecasts of its kind show
-once 20 of them have settled: evolution.recalibrations, ADR-046; the information gain of a hypothesis uses the same
-reading), stale, contradiction, source_change (a monitor reported a
-meaningful change of that subject in the last 7 days). cost = curiosity.cost(mode) + estimated spend / spend cap.
-A candidate whose expected information gain is below min_gain bits is refused: no browsing to generate activity.
+once 20 of them have settled: evolution.recalibrations, ADR-046), stale, contradiction, source_change (a monitor
+reported a meaningful change of that subject in the last 7 days). cost = curiosity.cost(mode) + estimated spend /
+spend cap. For an open hypothesis, priority uses the information gain of its forecast as read (info_gain_as_read,
+shown when it differs). A candidate whose expected information gain from its stated forecast (info_gain) is below
+min_gain bits is refused: no browsing to generate activity. The reading only orders the candidates that are
+admitted; it never admits or refuses one (ADR-046, review F3).
 A subject investigated autonomously within `cooldown` seconds is skipped. The owner's own records always rank first;
 a subject only autonomous research produced is pursued at most one step from the owner's records and only when it
 stays on the owner subject it came from (UAT T1-02, T1-03).
@@ -521,7 +523,10 @@ def candidates(db, now, *, limit=10) -> dict:
     read = evolution.recalibrations(db)      # ADR-046: a forecast as the settled forecasts of its kind read it
     by_key: dict = {}
 
-    def add(kind, key, statement, mode, gain, signals, extra=None):
+    def add(kind, key, statement, mode, gain, signals, extra=None, *, gain_as_read=None):
+        """`gain` (from the stated forecast) decides which candidate of a subject wins and whether it clears
+        min_gain; `gain_as_read` (ADR-046, the forecast read through its kind's settled forecasts) only its
+        priority among the admitted candidates."""
         if not key:
             return
         words = _words(statement) | _words(key)
@@ -529,18 +534,19 @@ def candidates(db, now, *, limit=10) -> dict:
         signals["goal"] = round(max((_overlap(words, g) for g in goal_words), default=0.0), 6)
         signals["source_change"] = 1.0 if key in changed or any(_overlap(_words(key), c) >= 0.5
                                                                 for c in changed_words) else 0.0
+        read_gain = gain if gain_as_read is None else gain_as_read
         found = by_key.get(key)
         if found is not None:     # one subject, one candidate: strongest signals and gain win
             for s, v in signals.items():
                 found["signals"][s] = max(found["signals"].get(s, 0.0), v)
             if gain > found["info_gain"]:
-                found.update(kind=kind, info_gain=gain, mode=mode)
+                found.update(kind=kind, info_gain=gain, mode=mode, _read_gain=read_gain)
             owner = found.get("owner") or (extra or {}).get("owner")
             found.update(extra or {})
             found["owner"] = bool(owner)
             return
         by_key[key] = {"kind": kind, "key": key, "statement": statement, "mode": mode, "info_gain": gain,
-                       "signals": signals} | (extra or {})
+                       "_read_gain": read_gain, "signals": signals} | (extra or {})
 
     for c in curiosity.rank(db, now, limit=MAX_CANDIDATES):
         if c["excluded"]:
@@ -575,13 +581,14 @@ def candidates(db, now, *, limit=10) -> dict:
         found = db.execute("SELECT probability FROM web_predictions WHERE id=?", (pid,)).fetchone() if pid else None
         stated = state.finite(found[0] if found else h["verification"].get("confidence"), 0.5)
         p = evolution.recalibrate(stated, read["owner" if h["origin"] == "owner" else "hypothesis"])
-        add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", curiosity.info_gain(p),
+        add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", curiosity.info_gain(stated),
             {"hypothesis": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6),
              "contradiction": 1.0 if h["origin"] in ("conflicting", "disputed") else 0.0,
              "gap": 1.0 if h["origin"] in ("insufficient", "gap", "not_evaluated") else 0.0},
             {"hypothesis_id": hid, "prediction_id": pid, "forecast": stated} |
             ({"forecast_as_read": p} if p != stated else {}) |
-            ({"owner": True} if h["origin"] == "owner" else {}))
+            ({"owner": True} if h["origin"] == "owner" else {}),
+            gain_as_read=curiosity.info_gain(p))
     # The owner's assertions that no evidence has been examined for yet (ADR-038: not_evaluated, no support).
     for kid, key, statement, confidence in db.execute(
             "SELECT id, key, statement, confidence FROM web_knowledge WHERE provenance='user_asserted' AND "
@@ -598,8 +605,11 @@ def candidates(db, now, *, limit=10) -> dict:
         est = budget.max_queries * float(prices.get("search", 0)) + budget.max_pages * float(prices.get("page", 0))
         item["cost"] = round(mode_cost + (est / cap if cap > 0 else 0.0), 6)
         weighted = sum(WEIGHTS[s] * float(v) for s, v in item["signals"].items() if s in WEIGHTS)
-        item["priority"] = round(item["info_gain"] * (1.0 + weighted) / item["cost"], 6) if item["cost"] else 0.0
-        item["info_gain"] = round(item["info_gain"], 6)
+        read_gain = item.pop("_read_gain")
+        item["priority"] = round(read_gain * (1.0 + weighted) / item["cost"], 6) if item["cost"] else 0.0
+        item["info_gain"] = round(item["info_gain"], 6)        # min_gain and every other admission use this one
+        if round(read_gain, 6) != item["info_gain"]:
+            item["info_gain_as_read"] = round(read_gain, 6)
         statement = item["statement"] or ""
         if item["kind"] == "hypothesis_prediction" and statement:
             # a hypothesis is checked as the statement it makes (fact verification of its claim slots); the
@@ -639,7 +649,9 @@ def candidates(db, now, *, limit=10) -> dict:
         else:
             why = ("; the owner's own record: ranked ahead of derived candidates" if item["owner"] else
                    f"; derived 1 step from an owner subject (overlap {relevance:.2f})" if depth else "")
-            chosen.append(item | {"reason": f"priority {item['priority']:.4f} = gain {item['info_gain']:.3f} x "
+            gain_text = (f"gain as read {read_gain:.3f} (as stated {item['info_gain']:.3f}, which cleared the "
+                         f"minimum)" if "info_gain_as_read" in item else f"gain {item['info_gain']:.3f}")
+            chosen.append(item | {"reason": f"priority {item['priority']:.4f} = {gain_text} x "
                                             f"(1 + {weighted:.3f}) / cost {item['cost']:.3f}{why}"})
     chosen.sort(key=lambda c: (not c["owner"], -c["priority"], c["key"]))
     refused.sort(key=lambda c: (not c["owner"], -c["info_gain"], c["key"]))
@@ -713,7 +725,7 @@ def idle(db, now, *, worker=None) -> dict:
             continue
         inputs = {k: pick[k] for k in ("kind", "key", "mode", "info_gain", "cost", "priority", "signals", "reason")}
         inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast",
-                                        "forecast_as_read", "owner", "depth") if k in pick}
+                                        "forecast_as_read", "info_gain_as_read", "owner", "depth") if k in pick}
         _decide(db, now, {"autonomy": inputs | {"weights": dict(WEIGHTS), "min_gain": ranked["min_gain"]}},
                 task_id=task["id"], worker=worker)
         return {"action": "queued", "task_id": task["id"], "candidate": inputs}

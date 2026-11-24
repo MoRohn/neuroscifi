@@ -1465,10 +1465,15 @@ weighting rule, not a calibrated probability; moving them would change what the 
    `web_predictions`, the rows `calibration` scores. There is no parameter to migrate, restore or forget: a
    prediction removed by a forget (`forget_knowledge`, `forget_research` for the hypotheses a task formed) stops
    counting with the delete, and a restored copy reads from the rows it holds after the replay.
-5. **One reader.** `autonomy.candidates` reads a due knowledge prediction's forecast and an open hypothesis'
-   forecast through the mapping of its kind before it computes `prediction_uncertainty` and the hypothesis'
-   information gain. The candidate still shows the stated `forecast`, and `forecast_as_read` beside it when the
-   two differ; the `decision` event of a queued investigation records both.
+5. **One reader, and only for order.** `autonomy.candidates` reads a due knowledge prediction's forecast and an
+   open hypothesis' forecast through the mapping of its kind, and uses the reading for the candidate's priority
+   only: the signal `prediction_uncertainty`, and for a hypothesis the information gain that multiplies the
+   priority (`info_gain_as_read`). Whether a candidate is researched at all is decided from the stated forecast:
+   `info_gain`, which `min_gain` and every other admission test compare, is the stated forecast's gain, and the
+   candidate a subject keeps when several records name it is chosen by that gain too. So the mapping changes the
+   rank of the admitted candidates and never the set (review F3; before that fix a stated 0.9 read as 0.965 fell
+   below `min_gain` and was refused). The candidate shows the stated `forecast`, and `forecast_as_read` and
+   `info_gain_as_read` beside it when they differ; the `decision` event of a queued investigation records them.
 6. **Not changed, by construction:** the stored forecast of any prediction, old or new; the confidence of a
    knowledge item; verification states, verdicts, the thresholds of provisional knowledge, answers; `calibration`
    and its snapshots, which go on scoring the forecasts as stated. Tests compare the tables before and after.
@@ -1527,9 +1532,12 @@ it is still better (0.046 against 0.053).
 - An individual with fewer than 20 settled forecasts of a kind behaves exactly as before; the offline benchmark
   (`nsf web bench`) is identical with the mapping in force and with it made inert (every metric, the safety
   summary and the regression block).
-- Once a mapping acts, the order of autonomous research changes: hypotheses whose kind of forecast kept failing
-  are read as less likely, carry less expected information and are refused sooner under `min_gain`; knowledge
-  whose "still holds" forecasts kept failing is read as less certain and ranks higher among due predictions.
+- Once a mapping acts, the order of autonomous research changes, and only the order: a hypothesis whose reading
+  moves its forecast towards certainty carries less expected information as read and ranks lower, one whose
+  reading moves it towards even odds ranks higher; knowledge whose "still holds" forecasts kept failing is read as
+  less certain and ranks higher among due predictions. The set of admitted candidates is the one the stated
+  forecasts give. With `limit` (the idle investigator asks for five) a candidate can fall out of the returned
+  list by rank, as any lower-ranked candidate always could.
   This is the first value the individual learns from its own record that changes what it does next without the
   owner asking (CONTINUAL_LEARNING, kind 2b): bounded as above, shown, logged with each decision, and one setting
   away from off.
@@ -1537,6 +1545,6 @@ it is still better (0.046 against 0.053).
   the outcome stays) and so still counts, as it does in `calibration`.
 - Settlements are treated as independent draws. They are not (one source change can fail several predictions);
   the minimum and the prior are the only allowance for that.
-- Tests: `tests/webcortex/test_recalibration.py` (22; the fit against the objective written out and against a
+- Tests: `tests/webcortex/test_recalibration.py` (24; the fit against the objective written out and against a
   one-value solution by bisection, monotonicity over 200 random histories, the kinds, the reader, the decision
   record, forgetting, restore, the setting, the command, and the recorded evidence recomputed).

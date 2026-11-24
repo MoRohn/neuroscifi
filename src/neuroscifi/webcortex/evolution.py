@@ -706,8 +706,9 @@ def recalibration_report(db) -> dict:
                        "had_it_been_used": prequential(pairs) if pairs else None}
     return {"enabled": calibrated_forecasts_enabled(db), "minimum": RECALIBRATION_MINIMUM,
             "window": RECALIBRATION_WINDOW, "kinds": kinds,
-            "used_by": "the order of autonomous research (autonomy.candidates: the uncertainty of a forecast and "
-                       "the information gain of a hypothesis). Stored forecasts, verification states, verdicts "
+            "used_by": "the order of autonomous research among the candidates admitted from their stated "
+                       "forecasts (autonomy.candidates: the uncertainty of a forecast and the information gain "
+                       "that ranks a hypothesis; never min_gain). Stored forecasts, verification states, verdicts "
                        "and answers are not changed by it.",
             "off": "nsf web config --set calibrated_forecasts=false"}
 

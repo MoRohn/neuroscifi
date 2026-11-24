@@ -256,12 +256,13 @@ def test_autonomous_research_orders_by_the_forecast_as_read(db):
     found = next(c for c in autonomy.candidates(db, T0 + 300)["chosen"] if c["statement"] == statement)
     assert found["forecast"] == 0.5 and found["forecast_as_read"] == q
     assert found["signals"]["prediction_uncertainty"] == round(curiosity.entropy(q), 6) < 1.0
-    assert found["info_gain"] == round(curiosity.info_gain(q), 6) < round(curiosity.info_gain(0.5), 6)
+    assert found["info_gain"] == round(curiosity.info_gain(0.5), 6)                # admission: as stated
+    assert found["info_gain_as_read"] == round(curiosity.info_gain(q), 6) < found["info_gain"]   # rank: as read
     assert evolution.prediction(db, open_pid)["probability"] == 0.5
 
     state.set_config(db, {"calibrated_forecasts": False}, T0 + 400)
     off = next(c for c in autonomy.candidates(db, T0 + 500)["chosen"] if c["statement"] == statement)
-    assert off["forecast"] == 0.5 and "forecast_as_read" not in off
+    assert off["forecast"] == 0.5 and "forecast_as_read" not in off and "info_gain_as_read" not in off
     assert off["signals"]["prediction_uncertainty"] == 1.0
     assert off["info_gain"] == round(curiosity.info_gain(0.5), 6)
     assert all(f.get("off") and not f["applied"] for f in evolution.recalibrations(db).values())
@@ -301,6 +302,53 @@ def test_the_decision_to_research_records_the_stated_forecast_and_how_it_was_rea
     logged = [json.loads(d) for (d,) in db.execute("SELECT detail FROM web_events WHERE kind='decision' AND "
                                                     "task_id=?", (out["task_id"],))]
     assert any((d.get("autonomy") or {}).get("forecast_as_read") == q for d in logged if isinstance(d, dict))
+
+
+def test_the_mapping_orders_admitted_candidates_and_never_decides_whether_one_is_researched(db):
+    """Review F3. 100 of the owner's forecasts of 0.6 all came true, so a stated 0.9 reads 0.965: its information
+    gain as read (0.040 bits) is below min_gain (0.05), as stated (0.105) it is above. Whether it is researched is
+    decided by the stated forecast; only its rank among admitted candidates uses the reading."""
+    for n in range(100):
+        _, pid = hypothesize(db, f"The Orchid database supports {n + 2} replicas in its 3.1 version", 0.6, T0 + n)
+        settle(db, pid, "confirmed", T0 + 1000 + n)
+    statement = "The Zephyr compiler version 4.2.0 was released on 17 November 2026"
+    hypothesize(db, statement, 0.9, T0 + 2000)
+    q = evolution.recalibrate(0.9, evolution.recalibrations(db)["owner"])
+    min_gain = autonomy.policy(db)["min_gain"]
+    assert q == pytest.approx(0.965, abs=0.001)
+    assert curiosity.info_gain(q) < min_gain < curiosity.info_gain(0.9)
+    ranked = autonomy.candidates(db, T0 + 3000)
+    found = next(c for c in ranked["chosen"] if c["statement"] == statement)       # admitted, as stated
+    assert found["info_gain"] == round(curiosity.info_gain(0.9), 6)                # the gain the gate compares
+    assert found["info_gain_as_read"] == round(curiosity.info_gain(q), 6)          # the gain its rank uses
+    assert found["forecast"] == 0.9 and found["forecast_as_read"] == q
+    weighted = sum(autonomy.WEIGHTS[s] * float(v) for s, v in found["signals"].items() if s in autonomy.WEIGHTS)
+    assert found["priority"] == round(curiosity.info_gain(q) * (1 + weighted) / found["cost"], 6)
+    assert found["signals"]["prediction_uncertainty"] == round(curiosity.entropy(q), 6)
+    assert not any(c["statement"] == statement for c in ranked["refused"])
+    # the same set is admitted and refused with the mapping off; only the ranks may differ
+    state.set_config(db, {"calibrated_forecasts": False}, T0 + 3000)
+    off = autonomy.candidates(db, T0 + 3000)
+    assert sorted(c["key"] for c in off["chosen"]) == sorted(c["key"] for c in ranked["chosen"])
+    assert sorted(c["key"] for c in off["refused"]) == sorted(c["key"] for c in ranked["refused"])
+    assert [c["info_gain"] for c in off["refused"]] == [c["info_gain"] for c in ranked["refused"]]
+
+
+def test_a_hypothesis_below_min_gain_as_stated_stays_refused_whatever_the_reading(db):
+    """The other direction: 100 forecasts of 0.6 that all failed read a stated 0.99 lower, with more information
+    to gain than min_gain; as stated it is below min_gain, so it is still refused."""
+    for n in range(100):
+        _, pid = hypothesize(db, f"The Orchid database supports {n + 2} replicas in its 3.1 version", 0.6, T0 + n)
+        settle(db, pid, "error", T0 + 1000 + n)
+    statement = "The Quartz editor licence changed to MIT in 2025"
+    hypothesize(db, statement, 0.99, T0 + 2000)
+    q = evolution.recalibrate(0.99, evolution.recalibrations(db)["owner"])
+    min_gain = autonomy.policy(db)["min_gain"]
+    assert curiosity.info_gain(0.99) < min_gain < curiosity.info_gain(q)
+    ranked = autonomy.candidates(db, T0 + 3000)
+    low = next(c for c in ranked["refused"] if c["statement"] == statement)
+    assert low["info_gain"] == round(curiosity.info_gain(0.99), 6) and "minimum" in low["reason"]
+    assert not any(c["statement"] == statement for c in ranked["chosen"])
 
 
 def test_below_the_minimum_autonomous_research_is_ordered_exactly_as_before(db):

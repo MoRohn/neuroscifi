@@ -126,7 +126,7 @@ Every settlement writes a snapshot to `web_metrics` (kind `calibration`). `nsf k
 | What | Behaviour |
 |---|---|
 | Stored | Nothing. The mapping is computed from `web_predictions` when it is needed, so a prediction removed by a forget stops counting with the delete, and a restored copy reads from its own rows |
-| Read by | `autonomy.candidates` only: the uncertainty signal of a due knowledge prediction, and the uncertainty signal and information gain of an open hypothesis (RESEARCH_POLICY) |
+| Read by | `autonomy.candidates` only, and only for priority: the uncertainty signal of a due knowledge prediction, and the uncertainty signal and the information gain that ranks an open hypothesis. Whether a candidate is researched (`min_gain` and the other admission tests) is decided from the stated forecast (RESEARCH_POLICY) |
 | Not changed | The stored forecast of any prediction, an item's confidence, verification states, the thresholds of provisional knowledge, answers, and `calibration` itself, which goes on scoring the forecasts as stated |
 | Shown | `nsf knowledge calibration`, key `recalibration`: per kind the mapping, what it makes of 0.1 … 0.9, and how it would have fared on the individual's own settled predictions (each scored before its outcome is used) |
 | Off | `nsf web config --set calibrated_forecasts=false` |
