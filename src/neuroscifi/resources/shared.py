@@ -45,18 +45,33 @@ def file_mode(folder) -> int:
     return SHARED_FILE if is_shared(folder) else PRIVATE_FILE
 
 
+class NotAFile(OSError):
+    """What is at a path of the folder is not a plain file (a link, a FIFO, a device, a folder)."""
+
+
+def _regular(fd, path) -> int:
+    """`fd` if it is a plain file; else it is closed and NotAFile raised. In a folder two accounts write, either can
+    put a FIFO (an open or a read that never returns), a link to /dev/zero (a read that never ends) or a device
+    where a file is expected (review L4)."""
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise NotAFile(f"{path} is not a plain file")
+    return fd
+
+
 def open_file(path, flags) -> int:
     """os.open for a file of the folder: an existing file is opened as it is (its mode is never touched); a missing
-    one is created with the folder's file mode, set on the descriptor so that a umask cannot narrow it."""
+    one is created with the folder's file mode, set on the descriptor so that a umask cannot narrow it. A link is
+    never followed, and anything but a plain file is refused (NotAFile) without blocking on it."""
     path = Path(path)
-    flags &= ~(os.O_CREAT | os.O_EXCL)
+    flags = (flags & ~(os.O_CREAT | os.O_EXCL)) | os.O_NONBLOCK | os.O_NOFOLLOW
     mode = file_mode(path.parent)
     for _ in range(3):
         try:
-            fd = os.open(path, flags | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
+            fd = os.open(path, flags | os.O_CREAT | os.O_EXCL, mode)
         except FileExistsError:
             try:
-                return os.open(path, flags | os.O_NOFOLLOW)
+                return _regular(os.open(path, flags), path)
             except FileNotFoundError:
                 continue                     # removed in between: create it
         else:
@@ -66,7 +81,36 @@ def open_file(path, flags) -> int:
                 except OSError:
                     pass
             return fd
-    return os.open(path, flags | os.O_CREAT | os.O_NOFOLLOW, mode)
+    return _regular(os.open(path, flags | os.O_CREAT, mode), path)
+
+
+READ_LIMIT = 4 << 20                 # bytes read from one file of the folder at most
+
+
+def read_text(path, *, limit=READ_LIMIT, tail=False) -> str:
+    """The file's text, read without following a link and without blocking (NotAFile for anything but a plain
+    file). At most `limit` bytes: a larger file is refused (ValueError), or with `tail` its last `limit` bytes are
+    read, from the first whole line in them."""
+    fd = _regular(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), path)
+    try:
+        size = os.fstat(fd).st_size
+        if size > limit:
+            if not tail:
+                raise ValueError(f"{path} holds {size} bytes, more than the {limit} read from such a file")
+            os.lseek(fd, size - limit, os.SEEK_SET)
+        chunks, left = [], limit
+        while left > 0:
+            chunk = os.read(fd, min(left, 1 << 16))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            left -= len(chunk)
+        data = b"".join(chunks)
+        if tail and size > limit:
+            data = data.partition(b"\n")[2]
+        return data.decode("utf-8", "replace")
+    finally:
+        os.close(fd)
 
 
 def write_text(path, text) -> None:
@@ -93,12 +137,15 @@ def write_text(path, text) -> None:
 def touch(path, when=None) -> None:
     """Create the file if missing and set its times to `when` (None: now). Setting a chosen time needs the file's
     owner; a file the other account created can only be set to "now", which is what a use marker means."""
-    os.close(open_file(path, os.O_WRONLY))
-    try:
-        os.utime(path, None if when is None else (when, when))
-    except PermissionError:
-        os.utime(path, None)
+    fd = open_file(path, os.O_WRONLY)
+    try:                                 # through the descriptor: a link swapped in after the open is not followed
+        try:
+            os.utime(fd, None if when is None else (when, when))
+        except PermissionError:
+            os.utime(fd, None)
+    finally:
+        os.close(fd)
 
 
-__all__ = ["PRIVATE_FILE", "PRIVATE_FOLDER", "SHARED_FILE", "ensure_folder", "file_mode", "is_shared", "open_file",
-           "touch", "write_text"]
+__all__ = ["NotAFile", "PRIVATE_FILE", "PRIVATE_FOLDER", "READ_LIMIT", "SHARED_FILE", "ensure_folder", "file_mode",
+           "is_shared", "open_file", "read_text", "touch", "write_text"]

@@ -385,13 +385,43 @@ class Idle:
         return self.folder / name
 
     def read(self) -> dict:
+        """The policy's state. The file is in a folder the service account may write (two accounts), so it is read
+        without following a link or blocking, at most shared.READ_LIMIT bytes, and whatever is not of the expected
+        shape is dropped rather than trusted: a malformed file must not stop the pass or the wake command (review
+        F6, L4). What was dropped is kept in `self.problems` and shown by `nsf resources idle`."""
+        problems = []
         try:
-            data = json.loads(self._file("idle.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            data = json.loads(shared.read_text(self._file("idle.json")))
+        except FileNotFoundError:
             data = {}
-        data = data if isinstance(data, dict) else {}
-        data.setdefault("timeouts", {})
-        data.setdefault("services", {})
+        except (OSError, ValueError) as error:
+            problems.append(f"idle.json unreadable, treated as empty: {type(error).__name__}: {error}"[:200])
+            data = {}
+        return self._clean(data, problems)
+
+    def _clean(self, data, problems) -> dict:
+        if not isinstance(data, dict):
+            problems.append("idle.json is not an object; treated as empty")
+            data = {}
+        timeouts, services = data.get("timeouts", {}), data.get("services", {})
+        if not isinstance(timeouts, dict):
+            problems.append("timeouts is not an object; treated as all off")
+            timeouts = {}
+        if not isinstance(services, dict):
+            problems.append("services is not an object; treated as empty")
+            services = {}
+        for name in list(timeouts):
+            value = timeouts[name]
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                      or not math.isfinite(value) or value <= 0):
+                problems.append(f"timeout of {str(name)[:32]} is not a number of seconds; treated as off")
+                timeouts[name] = None
+        for name in list(services):
+            if not isinstance(services[name], dict):
+                problems.append(f"state of {str(name)[:32]} is not an object; dropped")
+                del services[name]
+        data["timeouts"], data["services"] = timeouts, services
+        self.problems = problems[:20]
         return data
 
     def _write(self, data) -> None:
@@ -407,16 +437,18 @@ class Idle:
             self._write(data)
 
     def events(self, limit=20) -> list[dict]:
-        try:
-            lines = self._file("idle-events.jsonl").read_text(encoding="utf-8").splitlines()
-        except OSError:
+        try:   # no link followed, nothing but a plain file, its last READ_LIMIT bytes at most (review L4)
+            lines = shared.read_text(self._file("idle-events.jsonl"), tail=True).splitlines()
+        except (OSError, ValueError):
             return []
         out = []
         for line in lines[-limit:] if limit else lines:
             try:
-                out.append(json.loads(line))
+                event = json.loads(line)
             except ValueError:
                 continue
+            if isinstance(event, dict):
+                out.append(event)
         return out
 
     def _event(self, service, action, reason, **extra) -> dict:
@@ -427,7 +459,10 @@ class Idle:
             fd = shared.open_file(path, os.O_WRONLY | os.O_APPEND)
             with os.fdopen(fd, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(event, sort_keys=True) + "\n")
-            lines = path.read_text(encoding="utf-8").splitlines()
+            try:
+                lines = shared.read_text(path, tail=True).splitlines()
+            except (OSError, ValueError):
+                lines = []             # replaced by something that is not a file since the append: not trimmed
             if len(lines) > 2 * EVENTS_KEPT:
                 shared.write_text(path, "\n".join(lines[-EVENTS_KEPT:]) + "\n")
         return event
@@ -496,11 +531,15 @@ class Idle:
         tell. The pass then unloads nothing: where the idle policy runs as another account than the one that owns
         the database (deploy/install.sh --idle), a database it may not read must not read as "nothing runs"."""
         try:
-            if not self.db_path.exists():
-                return 0
+            kind = os.lstat(self.db_path).st_mode
+        except FileNotFoundError:
+            return 0
         except OSError:
             return None       # the folder itself is closed to this account
-        if not os.access(self.db_path, os.R_OK):
+        # The file is the service account's (review L5): a link, a FIFO (an open that never returns) or a device is
+        # not an answer. A swap between this look and the open below is not excluded; its worst is a pass that
+        # hangs until its unit's TimeoutStartSec, which unloads nothing, as an unreadable file would.
+        if not stat.S_ISREG(kind) or not os.access(self.db_path, os.R_OK):
             return None
         sql = (f"SELECT count(*) FROM web_tasks WHERE status IN ({','.join('?' * len(RUNNING))}) "
                "AND lease_holder IS NOT NULL AND lease_expires_at>=?")
@@ -515,6 +554,15 @@ class Idle:
         for n, uri in enumerate(attempts):
             try:
                 with closing(sqlite3.connect(uri, uri=True, timeout=5)) as db:
+                    # Read only, and nothing of the writer's choosing runs here (review L5): no function a view or
+                    # a trigger names is trusted, nothing is written, and web_tasks must be a table, not a view.
+                    db.execute("PRAGMA trusted_schema=OFF")
+                    db.execute("PRAGMA query_only=ON")
+                    kind = db.execute("SELECT type FROM sqlite_schema WHERE name='web_tasks'").fetchone()
+                    if kind is None:
+                        return 0      # no web cortex tables yet: nothing runs
+                    if kind[0] != "table":
+                        return None
                     return db.execute(sql, (*RUNNING, self.clock())).fetchone()[0]
             except sqlite3.OperationalError as error:
                 if "no such table" in str(error):
@@ -895,6 +943,7 @@ class Idle:
                 "last_used_at": used, "idle_s": None if used is None else round(now - used, 1),
                 "reload_estimate_s": self.estimate(name)}
         return {"automatic": any(v is not None for v in timeouts.values()), "services": services,
+                **({"state_problems": self.problems} if getattr(self, "problems", None) else {}),
                 "critical_share": CRITICAL_SHARE, "events": self.events(limit=20),
                 "how": "nsf resources idle --set vllm=30m --set asr=15m --set tts=15m --set embed=15m --set "
                        "rerank=15m; nsf resources tick (neuroscifi-idle.timer); nsf resources unload|load SERVICE"}
@@ -995,17 +1044,46 @@ def using(db_path, name, *, purpose, notify=None, idle=None, timeout=None):
         yield None           # the policy is off for this service: no lock, no marker, no file
         return
     with ExitStack() as stack:
+        held = True
         try:
-            stack.enter_context(_flock(idle._file(f"idle-inuse-{name}.lock"), fcntl.LOCK_SH))
-            idle.touch(name)
-            stack.callback(idle.touch, name)
+            if timeout is None:
+                stack.enter_context(_flock(idle._file(f"idle-inuse-{name}.lock"), fcntl.LOCK_SH))
+            else:
+                held = _flock_until(stack, idle._file(f"idle-inuse-{name}.lock"), timeout)
+            if held:
+                idle.touch(name)
+                stack.callback(idle.touch, name)
         except OSError:      # an unwritable folder must never break a call
             pass
+        if not held:
+            # The pass holds the lock exclusively while it stops the service (up to COMMAND_TIMEOUT). A call with a
+            # deadline does not wait past it (review F5): it ends as the service being unloaded, and nothing is said
+            # to have been reloaded.
+            yield {"action": "unloading", "why": f"{idle.services[name].label} is being unloaded while idle and "
+                                                 f"this call could not wait {timeout:.0f} s for it"}
+            return
         if wake_dir() is not None:      # this process may not start services itself: ask, and wait (review F5)
             yield _requested_load(idle, name, purpose=purpose, notify=notify, timeout=timeout)
         else:
             yield idle.ensure_loaded(name, purpose=purpose, notify=notify) if timeout is None else \
                 _bounded_load(idle, name, purpose=purpose, notify=notify, timeout=timeout)
+
+
+LOCK_POLL = 0.05           # seconds between two tries for a lock a call with a deadline may not block on
+
+
+def _flock_until(stack, path, timeout) -> bool:
+    """Take `path`'s lock shared, trying until `timeout` seconds have passed; True once held (released with
+    `stack`), False when the time ran out."""
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        try:
+            stack.enter_context(_flock(path, fcntl.LOCK_SH | fcntl.LOCK_NB))
+            return True
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(min(LOCK_POLL, max(0.0, deadline - time.monotonic())))
 
 
 _DETACHED: dict = {}                # (db_path, service) -> (the reload process this process started, when)
@@ -1264,14 +1342,17 @@ def _serve_once(idle, folder) -> tuple[list[dict], bool]:
         if name not in idle.services:
             out.append({"request": name[:64], "action": "ignored", "why": "not a service of the idle policy"})
             continue
-        waits = _retry_not_due(idle, name)
-        if waits is not None:                # the limit of _background_reload, applied by the one that loads
-            out.append({"service": name, "action": "skipped",
-                        "why": f"not retried within {BACKGROUND_RETRY:.0f} s of: {waits['why']}"[:240]})
-            continue
-        result = idle.ensure_loaded(name, purpose="wake request") or \
-            {"action": "none", "why": "nothing to do: the idle policy has not unloaded it"}
-        out.append({"service": name, "action": result["action"], "why": result.get("why")})
+        try:                                 # one request's failure is that request's (review F6)
+            waits = _retry_not_due(idle, name)
+            if waits is not None:            # the limit of _background_reload, applied by the one that loads
+                out.append({"service": name, "action": "skipped",
+                            "why": f"not retried within {BACKGROUND_RETRY:.0f} s of: {waits['why']}"[:240]})
+                continue
+            result = idle.ensure_loaded(name, purpose="wake request") or \
+                {"action": "none", "why": "nothing to do: the idle policy has not unloaded it"}
+            out.append({"service": name, "action": result["action"], "why": result.get("why")})
+        except Exception as error:
+            out.append({"service": name, "action": "failed", "why": f"{type(error).__name__}: {error}"[:240]})
     return out, stuck
 
 
@@ -1294,18 +1375,30 @@ def serve_wake_requests(db_path, folder, *, idle=None, hold=STUCK_HOLD, linger=0
     WAKE_LINGER seconds bounds the starts by the clock (see WAKE_LINGER), whatever is written into the folder."""
     idle = idle or Idle(db_path)
     folder = Path(folder)
-    try:
-        folder.mkdir(parents=True)
-        os.chmod(folder, WAKE_DIR_MODE)      # just created by this process, so its mode is this process's to set
-    except OSError:
-        pass                                 # it exists (its modes are the installer's or the owner's), or cannot be made
-    out, stuck = _serve_once(idle, folder)
+    out, state = [], {"stuck": False}
+
+    def once(first):
+        try:
+            more, state["stuck"] = _serve_once(idle, folder)
+        except Exception as error:           # nothing that goes wrong may end the command before its linger
+            more, state["stuck"] = [{"action": "failed", "why": f"{type(error).__name__}: {error}"[:240]}], False
+        out.extend(more if first else [item for item in more if item.get("service")])
     waited = 0.0
-    while waited < linger or (stuck and waited < hold):
-        sleep(1.0)
-        waited += 1.0
-        more, stuck = _serve_once(idle, folder)
-        out += [item for item in more if item.get("service")]      # a stuck or foreign entry is reported once
+    try:
+        try:
+            folder.mkdir(parents=True)
+            os.chmod(folder, WAKE_DIR_MODE)  # just created by this process, so its mode is this process's to set
+        except OSError:
+            pass                             # it exists (its modes are the installer's or the owner's), or cannot be made
+        once(True)
+    finally:
+        # The bound on the unit's starts (WAKE_LINGER) holds on every way out (review F6): an error above, a
+        # malformed state file the service account wrote, a request that raised. Otherwise the command would end at
+        # once with the request already removed, and the next request would start it again.
+        while waited < linger or (state["stuck"] and waited < hold):
+            sleep(1.0)
+            waited += 1.0
+            once(False)
     return out
 
 

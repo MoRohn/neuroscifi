@@ -58,7 +58,7 @@ class SharedAudioBeacon(AudioBeacon):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX)
             try:
-                current = json.loads(self.path.read_text(encoding="utf-8"))
+                current = json.loads(shared.read_text(self.path))
             except (OSError, ValueError):
                 current = {}
             current = current if isinstance(current, dict) else {}

@@ -8,6 +8,7 @@ import re
 
 from neuroscifi.resources import idle
 from test_resources_idle import MIN, fake, memory_host, spool, _unload_idle      # noqa: F401 (fixtures)
+from test_resources_idle import two_vllm_servers                           # noqa: F401 (autouse: one container per model)
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL = str(ROOT / "deploy" / "install.sh")

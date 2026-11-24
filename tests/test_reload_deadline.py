@@ -28,14 +28,15 @@ def test_a_reload_comes_off_the_calls_own_time(tmp_path, monkeypatch):
         gw.clock = lambda: now[0]
 
         @contextmanager
-        def reload_takes(seconds):
+        def reload_takes(seconds, result=("load",)):
             def loaded(purpose, timeout=None):
                 @contextmanager
                 def wait():
-                    if not waited:
+                    first = not waited
+                    if first:
                         waited.append(timeout)
                         now[0] += seconds
-                    yield None
+                    yield {"action": result[0]} if first and result[0] else None
                 return wait()
             waited = []
             monkeypatch.setattr(gw, "_loaded", loaded)
@@ -57,6 +58,11 @@ def test_a_reload_comes_off_the_calls_own_time(tmp_path, monkeypatch):
                 gw.chat([{"role": "user", "content": "hello"}], purpose="t", timeout=60)
         assert err.value.code == "timeout" and "took all of the call's 60 s" in str(err.value) and len(seen) == 1
         assert gw.ledger.recent(1)[0]["status"] == "timeout"
+        with reload_takes(60.0, result=(None,)):                 # time went, but no reload: none is claimed
+            with pytest.raises(InferenceError) as err:
+                gw.chat([{"role": "user", "content": "hello"}], purpose="t", timeout=60)
+        assert err.value.code == "timeout" and "started again" not in str(err.value)
+        assert "nothing of the call's 60 s was left" in str(err.value)
     finally:
         server.stop()
 

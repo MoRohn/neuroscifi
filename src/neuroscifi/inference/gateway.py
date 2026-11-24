@@ -497,8 +497,9 @@ class Gateway:
         # a reload could take up to twice its timeout).
         allowance = self.cfg.read_timeout if timeout is None else min(timeout, self.cfg.read_timeout)
         began = self.clock()
-        with self._loaded(purpose, timeout):
+        with self._loaded(purpose, timeout) as reload:
             model = self.model()
+        reloaded = bool(reload) and reload.get("action") == "load"
         timeout = max(0.0, allowance - (self.clock() - began))
         wire =[{k: v for k, v in m.items() if k in ("role", "content", "name", "tool_calls", "tool_call_id")}
                 for m in messages]
@@ -528,8 +529,11 @@ class Gateway:
                                   clock=self.wall) if stream else nullcontext(None)
         try:
             if timeout <= 0:
-                raise InferenceError("timeout", "the local model was started again for this call and that took all "
-                                     f"of the call's {allowance:.0f} s; it is loaded now", retryable=True)
+                raise InferenceError("timeout", (
+                    "the local model was started again for this call and that took all of the call's "
+                    f"{allowance:.0f} s; it is loaded now" if reloaded else
+                    f"nothing of the call's {allowance:.0f} s was left before the request could be sent"),
+                    retryable=True)
             with self._loaded(purpose, timeout), inflight as count:
                 conn, resp, attempts, deadline = self._call("POST", "/chat/completions", payload, timeout=timeout)
                 try:
@@ -651,7 +655,7 @@ class Gateway:
         def loaded():
             with idle.using(self.db_path, "vllm", purpose=purpose, notify=self.notices.append,
                             timeout=limit) as reload:
-                if reload and reload.get("action") in ("loading", "refused"):
+                if reload and reload.get("action") in ("loading", "refused", "unloading"):
                     raise InferenceError("unavailable", reload["why"], retryable=True)
                 yield reload
         return loaded()
