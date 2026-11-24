@@ -332,7 +332,8 @@ voice engine health reports ASR and TTS unavailable until a voice session starts
 
 **How stop and start run.** The policy uses the deploy's own commands. vLLM uses `deploy/vllm/run.sh
 stop|start|wait`, ASR and TTS use `deploy/voice/run.sh stop|start|wait asr|tts`, the memory models use
-`deploy/memory/run.sh stop|start|wait embed|rerank`, and SearXNG uses `nsf web searxng stop|start`. When the
+`deploy/memory/run.sh stop|start|wait embed|rerank` (with the single server either name acts on its one
+container), and SearXNG uses `nsf web searxng stop|start`. When the
 service's systemd unit is active, the policy runs `systemctl --no-ask-password stop|start <unit>` instead, so it
 never fights the unit (an earlier reason this policy was manual). SearXNG's unit is treated like the others since
 2026-11-24: its own commands write the instance database, which the idle account of an installed deployment may
@@ -364,9 +365,15 @@ remains to be measured by the owner: the first reload records it in the event lo
 lane that built this policy did not restart the shared vLLM, ASR, TTS or SearXNG containers. It verified the stop,
 reload and measurement path against a disposable container (§4).
 
-The two memory models hold 4.6 GiB each when loaded and used: 1.9 GiB of device memory (1.1 GiB of weights, the
-0.25 GiB key-value cache vLLM requires for a 2,048-token input, the rest the CUDA context) and 2.6 GiB in the
-container's two processes, most of it libraries a full vLLM server imports. An unload frees 3.6 to 4.7 GiB by its
+The two memory models hold 4.26 GiB together in the single server of `deploy/memory/server.py`, the default (1.67
+GiB of process memory, 2.59 GiB of device memory; `docs/quality/evidence/open_items_memory_server.json`). Served by two vLLM servers
+(`NSF_MEMORY_SERVER=vllm`) they hold 4.6 GiB each: 1.9 GiB of device memory (1.1 GiB of weights, the 0.25 GiB
+key-value cache vLLM requires for a 2,048-token input, the rest the CUDA context) and 2.6 GiB in the container's two
+processes, most of it libraries a full vLLM server imports. With the single server `embed` and `rerank` are two
+names of one container and one unit: the policy counts a use under either name as a use of both, stops the
+container once when both are idle and marks both names unloaded, and a reload under either name starts it once
+(`run.sh start` holds a lock and leaves a running container alone). The figures below were measured with two vLLM
+servers. An unload frees 3.6 to 4.7 GiB by its
 own measurement, and both together returned 7.9 to 9.4 GiB of MemAvailable. They were unloaded and reloaded live
 through this policy (§4): 1 to 2 s to unload each, 20 to 29 s until both answer again.
 
