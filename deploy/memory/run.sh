@@ -46,6 +46,8 @@ ENV_FILE="$NSF_MEMORY_DIR/memory.secret.env"
 
 [[ "$NSF_MEMORY_BIND" == "127.0.0.1" || "$NSF_MEMORY_BIND" == "::1" ]] || die "NSF_MEMORY_BIND must be loopback (got $NSF_MEMORY_BIND)"
 [[ "$NSF_MEMORY_IMAGE" == *@sha256:* ]] || die "NSF_MEMORY_IMAGE must be pinned by digest"
+[[ "${NSF_MEMORY_NETWORK:-}" =~ ^([A-Za-z0-9][A-Za-z0-9_.-]{0,62})?$ ]] || die "NSF_MEMORY_NETWORK must be a docker network name or empty"
+case "${NSF_MEMORY_NETWORK:-}" in host|none) die "NSF_MEMORY_NETWORK must not be $NSF_MEMORY_NETWORK (host shares the host's network; none cannot publish the ports)" ;; esac
 case "${NSF_MEMORY_SERVER:-}" in single|vllm) ;; *) die "NSF_MEMORY_SERVER must be single or vllm (got ${NSF_MEMORY_SERVER:-nothing})" ;; esac
 single() { [ "$NSF_MEMORY_SERVER" = single ]; }
 
@@ -86,7 +88,8 @@ single_args() {
   [ -f "$rerank/config.json" ] || die "no rerank model at $rerank (config.json missing)"
   [ -f "$HERE/server.py" ] || die "deploy/memory/server.py is missing"
   mkdir -p "$NSF_MEMORY_CACHE_DIR/single"
-  ARGS=(--name "$NSF_MEMORY_CONTAINER"
+  # shellcheck disable=SC2046
+  ARGS=(--name "$NSF_MEMORY_CONTAINER" $(network_args)
     -p "$NSF_MEMORY_BIND:$NSF_MEMORY_EMBED_PORT:8000" -p "$NSF_MEMORY_BIND:$NSF_MEMORY_RERANK_PORT:8001"
     --device nvidia.com/gpu=all
     --user "$(id -u):$(id -g)"
@@ -107,11 +110,31 @@ single_args() {
     --key-file /run/neuroscifi/api_key --max-len "$NSF_MEMORY_MAX_LEN")
 }
 
-# The other way of serving holds the same two ports: its containers are removed before this one starts.
+# The other way of serving holds the same two ports: its containers are removed before this one starts, and
+# `stop` and `status` see them too (review F9: after a switch, a container of the other way kept both ports and
+# about 4 GiB, and neither command showed it).
+others() { if single; then echo "$NSF_MEMORY_EMBED_CONTAINER $NSF_MEMORY_RERANK_CONTAINER"; else echo "$NSF_MEMORY_CONTAINER"; fi; }
+other_mode() { if single; then echo vllm; else echo single; fi; }
+exists() { docker inspect -f '{{.Name}}' "$1" >/dev/null 2>&1; }
 drop_other() {
-  if single; then docker rm -f "$NSF_MEMORY_EMBED_CONTAINER" "$NSF_MEMORY_RERANK_CONTAINER" >/dev/null 2>&1 || true
-  else docker rm -f "$NSF_MEMORY_CONTAINER" >/dev/null 2>&1 || true; fi
+  local c
+  for c in $(others); do docker rm -f "$c" >/dev/null 2>&1 || true; done
 }
+
+# A network of the memory containers' own (review L8): a bridge with traffic between its containers off, so no
+# other container (SearXNG, a tenant's) can reach them at a container address; the ports are published on loopback
+# as before. Docker cannot publish a port from `--network none`, nor from an `--internal` network (checked on the
+# reference host: the published port did not answer), so outbound traffic stays possible; the server makes none
+# (offline model loading, no telemetry). NSF_MEMORY_NETWORK= (empty) keeps Docker's default bridge.
+ensure_network() {
+  [ -n "${NSF_MEMORY_NETWORK:-}" ] || return 0
+  docker network inspect "$NSF_MEMORY_NETWORK" >/dev/null 2>&1 && return 0
+  docker network create --driver bridge -o com.docker.network.bridge.enable_icc=false \
+    --label org.neuroscifi.purpose=memory-models "$NSF_MEMORY_NETWORK" >/dev/null 2>&1 \
+    || docker network inspect "$NSF_MEMORY_NETWORK" >/dev/null 2>&1 \
+    || die "cannot create the docker network $NSF_MEMORY_NETWORK (NSF_MEMORY_NETWORK= uses the default bridge)"
+}
+network_args() { if [ -n "${NSF_MEMORY_NETWORK:-}" ]; then echo "--network $NSF_MEMORY_NETWORK"; fi; }
 
 # single: `embed` and `rerank` name one container, and the idle policy may start both at the same moment (two
 # reloads after one lookup). One start at a time, and a container that already runs is left alone.
@@ -121,7 +144,7 @@ single_start() {
   if running "$NSF_MEMORY_CONTAINER"; then
     echo "$NSF_MEMORY_CONTAINER already runs (embed on $NSF_MEMORY_BIND:$NSF_MEMORY_EMBED_PORT, rerank on $NSF_MEMORY_BIND:$NSF_MEMORY_RERANK_PORT); run.sh restart replaces it"
   else
-    single_args; drop_other
+    single_args; drop_other; ensure_network
     docker rm -f "$NSF_MEMORY_CONTAINER" >/dev/null 2>&1 || true
     docker run -d --restart unless-stopped "${ARGS[@]}" >/dev/null
     echo "started $NSF_MEMORY_CONTAINER: embed on http://$NSF_MEMORY_BIND:$NSF_MEMORY_EMBED_PORT, rerank on http://$NSF_MEMORY_BIND:$NSF_MEMORY_RERANK_PORT (key file $KEY_FILE)"
@@ -136,6 +159,12 @@ stop_all() {   # $1: embed | rerank | all
     docker rm -f "$c" >/dev/null 2>&1 || true
     echo "stopped $c"
   done
+  for c in $(others); do
+    exists "$c" || continue
+    docker stop -t 20 "$c" >/dev/null 2>&1 || true
+    docker rm -f "$c" >/dev/null 2>&1 || true
+    echo "removed $c (left by NSF_MEMORY_SERVER=$(other_mode); it held the same ports)"
+  done
 }
 
 docker_args() {   # $1: embed | rerank
@@ -143,7 +172,8 @@ docker_args() {   # $1: embed | rerank
   dir="$(model_dir "$s")"; mount="/models/$(served "$s")"
   [ -f "$dir/config.json" ] || die "no $s model at $dir (config.json missing)"
   mkdir -p "$NSF_MEMORY_CACHE_DIR/$s"
-  ARGS=(--name "$(container "$s")" -p "$NSF_MEMORY_BIND:$(port "$s"):8000"
+  # shellcheck disable=SC2046
+  ARGS=(--name "$(container "$s")" $(network_args) -p "$NSF_MEMORY_BIND:$(port "$s"):8000"
     --device nvidia.com/gpu=all
     --user "$(id -u):$(id -g)"
     --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=2g,mode=1777
@@ -212,7 +242,7 @@ case "$cmd" in
     [ "$cmd" = restart ] && stop_all "${2:-all}" >/dev/null
     if single; then single_start
     else
-      drop_other
+      drop_other; ensure_network
       for s in $(services "${2:-all}"); do
         docker_args "$s"
         docker rm -f "$(container "$s")" >/dev/null 2>&1 || true
@@ -226,10 +256,10 @@ case "$cmd" in
       # One container for both models, so one unit (neuroscifi-memory.service runs `foreground all`). The two
       # per-model units would each replace the other's container: they belong to NSF_MEMORY_SERVER=vllm.
       case "$s" in ""|all) ;; *) die "with NSF_MEMORY_SERVER=single both models run in one container: use neuroscifi-memory.service (foreground all), not the unit of one model" ;; esac
-      ensure_key; single_args; drop_other
+      ensure_key; single_args; drop_other; ensure_network
     else
       [ "$s" = embed ] || [ "$s" = rerank ] || die "foreground needs embed or rerank"
-      ensure_key; docker_args "$s"; drop_other
+      ensure_key; docker_args "$s"; drop_other; ensure_network
     fi
     docker rm -f "$(container "$s")" >/dev/null 2>&1 || true
     exec docker run --rm --init "${ARGS[@]}" ;;
@@ -240,6 +270,11 @@ case "$cmd" in
       # captured first: for a missing container docker prints an empty line before it fails
       if line="$(docker inspect -f '{{.Name}} {{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} started={{.State.StartedAt}}' \
         "$c" 2>/dev/null)"; then echo "$line"; else echo "$c: not running"; fi
+    done
+    for c in $(others); do
+      if line="$(docker inspect -f '{{.Name}} {{.State.Status}}' "$c" 2>/dev/null)"; then
+        echo "$line (left by NSF_MEMORY_SERVER=$(other_mode): it holds the same ports; run.sh stop removes it)"
+      fi
     done ;;
   wait)
     known "${2:-all}"; limit="${3:-600}"; start=$(date +%s)

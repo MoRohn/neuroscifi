@@ -295,7 +295,84 @@ def test_memory_status_prints_one_line_per_service_running_or_not(tmp_path):
         "/neuroscifi-memory-embed running health=healthy started=T", "neuroscifi-memory-rerank: not running"]
     env = _memory_env(tmp_path, "single", {"PATH": f"{bin_dir}:{os.environ['PATH']}"})      # one container, one line
     done = subprocess.run(["bash", script, "status"], capture_output=True, text=True, env=env, timeout=60)
-    assert done.returncode == 0 and done.stdout.splitlines() == ["neuroscifi-memory: not running"]
+    assert done.returncode == 0 and done.stdout.splitlines() == [     # and the other way's leftover, flagged (F9)
+        "neuroscifi-memory: not running",
+        "/neuroscifi-memory-embed running health=healthy started=T (left by NSF_MEMORY_SERVER=vllm: it holds the "
+        "same ports; run.sh stop removes it)"]
+
+
+def _logging_docker(tmp_path, existing=()):
+    """A docker that records every command line and knows the containers and networks in `existing`."""
+    import os
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    known = " ".join(existing)
+    (bin_dir / "docker").write_text(
+        '#!/usr/bin/env bash\n'
+        f'echo "$*" >> "{tmp_path}/docker.log"\n'
+        'name="${@: -1}"\n'
+        'case "$1 $2" in\n'
+        f'  "inspect "*|"network inspect") case " {known} " in *" $name "*) echo "/$name running"; exit 0 ;; esac; exit 1 ;;\n'
+        'esac\n'
+        'exit 0\n')
+    (bin_dir / "docker").chmod(0o755)
+    return f"{bin_dir}:{os.environ['PATH']}"
+
+
+@pytest.mark.parametrize("server,leftovers", [("single", ["neuroscifi-memory-embed", "neuroscifi-memory-rerank"]),
+                                              ("vllm", ["neuroscifi-memory"])])
+def test_stop_also_removes_what_the_other_way_of_serving_left_running(tmp_path, server, leftovers):
+    """F9: after a switch, the other way's containers kept both ports (restart unless-stopped) and `stop` did not
+    see them."""
+    import subprocess
+    path = _logging_docker(tmp_path, existing=leftovers)
+    done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "stop", "all"], capture_output=True,
+                          text=True, env=_memory_env(tmp_path, server, {"PATH": path}), timeout=60)
+    assert done.returncode == 0, done.stderr
+    log = (tmp_path / "docker.log").read_text()
+    for name in leftovers:
+        assert f"rm -f {name}" in log and f"removed {name} (left by NSF_MEMORY_SERVER=" in done.stdout
+
+
+@pytest.mark.parametrize("server", MEMORY_SERVERS)
+def test_the_memory_containers_run_on_a_network_of_their_own(tmp_path, server):
+    """L8: on Docker's default bridge any other container (SearXNG, a tenant's) could reach the memory server at
+    its container address. A bridge of its own with traffic between containers off; ports stay on loopback."""
+    import subprocess
+    models = tmp_path / "models"
+    for name in NAMES_MEMORY:
+        (models / name).mkdir(parents=True)
+        (models / name / "config.json").write_text("{}")
+    path = _logging_docker(tmp_path)
+    env = _memory_env(tmp_path, server, {"PATH": path})
+    with open(tmp_path / ".config" / "neuroscifi" / "memory" / "memory.env", "a") as fh:
+        fh.write(f"NSF_MEMORY_EMBED_MODEL_DIR={models}/qwen3-embedding-0.6b\n"
+                 f"NSF_MEMORY_RERANK_MODEL_DIR={models}/qwen3-reranker-0.6b\n")
+    done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "start", "all"], capture_output=True,
+                          text=True, env=env, timeout=60)
+    assert done.returncode == 0, done.stderr
+    log = (tmp_path / "docker.log").read_text().splitlines()
+    create = [line for line in log if line.startswith("network create")]
+    assert create == ["network create --driver bridge -o com.docker.network.bridge.enable_icc=false "
+                      "--label org.neuroscifi.purpose=memory-models neuroscifi-memory"]
+    runs = [line for line in log if line.startswith("run ")]
+    assert runs and all(" --network neuroscifi-memory " in line for line in runs)
+    assert all("127.0.0.1:1844" in line and "0.0.0.0:" not in line for line in runs)
+    with open(tmp_path / ".config" / "neuroscifi" / "memory" / "memory.env", "a") as fh:
+        fh.write("NSF_MEMORY_NETWORK=\n")                                   # the way back: Docker's default bridge
+    (tmp_path / "docker.log").unlink()
+    done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "start", "all"], capture_output=True,
+                          text=True, env=env, timeout=60)
+    log = (tmp_path / "docker.log").read_text()
+    assert done.returncode == 0 and "network create" not in log and "--network" not in log
+    with open(tmp_path / ".config" / "neuroscifi" / "memory" / "memory.env", "a") as fh:
+        fh.write("NSF_MEMORY_NETWORK=host\n")                               # a name, but never host or none:
+    done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "start", "all"], capture_output=True,
+                          text=True, env=env, timeout=60)
+    assert done.returncode == 1 and "NSF_MEMORY_NETWORK" in done.stderr
+
+
+NAMES_MEMORY = ("qwen3-embedding-0.6b", "qwen3-reranker-0.6b")
 
 
 @pytest.mark.parametrize("server", MEMORY_SERVERS)
