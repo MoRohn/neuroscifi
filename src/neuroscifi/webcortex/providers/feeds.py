@@ -27,7 +27,7 @@ import time
 
 from ..safety import safe_xml_parse
 from ..search import ProviderError, parse_iso_date, strip_html
-from ..types import FetchError, Query, SearchResult
+from ..types import FetchError, Query, SearchResult, Stopped
 
 _STOP = frozenset("a an and are as at be by for from has have how in is it its of on or that the this to was "
                   "were what when where which who why will with".split())
@@ -190,6 +190,10 @@ class FeedProvider:
                 error = f"{exc.code}: {exc.detail}"[:200] if exc.detail else exc.code
             except _HTTPError as exc:
                 error = str(exc)
+            except Stopped as stop:    # the owner's stop (the search's gate): not a feed's failure
+                if not stop.denied:    # cancelled, web access off: nothing more for this task
+                    raise
+                error = "blocked_policy: the owner denied this site during the run"   # this feed only
             except Exception as exc:   # any parser failure on untrusted bytes is a per-feed error, recorded
                 error = f"unparseable feed: {exc}"[:200]
             attempt = {"engine": feed_url[:200], "ok": error is None, "n": 0, "error": error,

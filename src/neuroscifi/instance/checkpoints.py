@@ -171,7 +171,6 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
         raise NotFound(f"Destination directory {dest.parent} does not exist")
     if _sha256(path) != row["sha256"]:
         raise Conflict(f"Checkpoint {checkpoint_id} fails verification: archive hash differs from the registry")
-    forgets = _forgets(db, now) if apply_tombstones else None
     old_umask = os.umask(0o077)
     try:
         with archive.partial_dir(dest.parent) as directory:
@@ -181,6 +180,7 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
             except ValueError as error:
                 raise Conflict(f"Checkpoint {checkpoint_id} cannot be decoded: {error}") from None
             with closing(sqlite3.connect(staged, isolation_level=None)) as copy:
+                forgets = _forgets(db, now, _journal_seqs(copy)) if apply_tombstones else None
                 counts = _replay(copy, forgets, now)
             staged.chmod(0o600)
             try:
@@ -198,20 +198,50 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
 # turn it off against the owner's later choice; the same goes, with less at stake, for the ask budget and its
 # window. The settings fixed at `nsf init` (lifetime, journal limit, free-space reserve, temperature limit) cannot
 # differ between an individual and its own archives, so they stay as the archive has them.
-CARRIED_SETTINGS = ("consolidation", "ask_budget_per_epoch", "ask_budget_window_seconds")
+CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_epoch", "ask_budget_window_seconds")
 
 
-def _forgets(db, now):
+READING_BATCH = 500     # seqs per statement when the live file's readings are read for an archive's events
+
+
+def _journal_seqs(copy):
+    """The seqs of the events an archive's decoded copy holds in its journal, ascending: the only events of the copy
+    that can become consolidated readings in a replay. 8 bytes each, at most the journal's row limit of them."""
+    from array import array
+    return array("q", (seq for (seq,) in copy.execute("SELECT seq FROM evidence ORDER BY seq")))
+
+
+def _forgets(db, now, wanted=None):
     """Everything the live instance has forgotten (or revoked) and the owner's settings, read in one snapshot for a
     replay into an archive copy: a forget committing meanwhile is either wholly in it or not at all (a tombstone
-    saying 'forgotten' with the reading still listed as held, or the reverse, could keep a forgotten reading)."""
+    saying 'forgotten' with the reading still listed as held, or the reverse, could keep a forgotten reading).
+
+    wanted: the journal seqs of the copy the replay is for (_journal_seqs). The live file's consolidated readings are
+    then read for those seqs only, in the same snapshot: a replay asks for a reading only where the copy still holds
+    the event, so the result is the same, and what is held in memory is bounded by the archive's journal (one
+    lifetime of events, at most its row limit) instead of by every reading the individual ever kept. None reads
+    them all. The tombstones, each a few short fields, are still read whole: the copy takes every one of them."""
     if db.in_transaction:
-        return _read_forgets(db, now)
+        return _read_forgets(db, now, wanted)
     db.execute("BEGIN")             # deferred: the first read takes the snapshot (WAL)
     try:
-        return _read_forgets(db, now)
+        return _read_forgets(db, now, wanted)
     finally:
         db.execute("COMMIT")
+
+
+def _held_readings(db, wanted):
+    """{seq: row} of the live file's consolidated readings: all of them (wanted None), or those whose seq is in
+    `wanted`, READING_BATCH seqs per statement by the table's key."""
+    columns = "seq,epoch,channel,root,value,sample_id,consolidated_at"
+    if wanted is None:
+        return {row[0]: row for row in db.execute(f"SELECT {columns} FROM evidence_consolidated")}
+    held = {}
+    for start in range(0, len(wanted), READING_BATCH):
+        chunk = list(wanted[start:start + READING_BATCH])
+        held.update((row[0], row) for row in db.execute(
+            f"SELECT {columns} FROM evidence_consolidated WHERE seq IN ({','.join('?' * len(chunk))})", chunk))
+    return held
 
 
 def _live_settings(db):
@@ -241,7 +271,7 @@ def _live_settings(db):
     return carried, warnings
 
 
-def _read_forgets(db, now):
+def _read_forgets(db, now, wanted=None):
     from ..webcortex.signing import FRESH_SECONDS
     settings, warnings = _live_settings(db)
     return {
@@ -254,9 +284,8 @@ def _read_forgets(db, now):
                        f"({','.join('?' * len(governance.SCOPE_KINDS))}) ORDER BY id", governance.SCOPE_KINDS)],
         "tombstones": db.execute("SELECT id,seq,epoch,deleted_at,reason FROM tombstones").fetchall(),
         # Consolidated readings the live file holds (ADR-044), by seq: an expired event of the copy becomes one only
-        # when the live file kept it, with the live row's content.
-        "consolidated": {row[0]: row for row in db.execute(
-            "SELECT seq,epoch,channel,root,value,sample_id,consolidated_at FROM evidence_consolidated")},
+        # when the live file kept it, with the live row's content. For a replay: only those of the copy's own events.
+        "consolidated": _held_readings(db, wanted),
         # The highest evidence seq the live file ever issued or recorded. A consolidated reading is identified by its
         # seq alone, so the restored copy must never issue one of them again for another event.
         "max_seq": max(row[0] or 0 for row in (
@@ -577,7 +606,6 @@ def rewrite(db, checkpoint_id, now):
     path = Path(row["path"])
     if not path.is_file():
         raise NotFound(f"Checkpoint file {path} is missing")
-    forgets = _forgets(db, now)
     old_umask = os.umask(0o077)
     try:
         with _folder_lock(path.parent), archive.partial_dir(path.parent) as directory:
@@ -592,7 +620,7 @@ def rewrite(db, checkpoint_id, now):
                     raise Conflict(f"Checkpoint {checkpoint_id} cannot be decoded: {error}") from None
             vacuumed = directory / "vacuumed.sqlite"
             with closing(sqlite3.connect(staged, isolation_level=None)) as copy:
-                removed = _replay(copy, forgets, now)
+                removed = _replay(copy, _forgets(db, now, _journal_seqs(copy)), now)
                 # VACUUM INTO writes the compacted copy here, not into a temporary database in the system temp
                 # directory; no freed page of a removed row is carried over.
                 copy.execute("PRAGMA temp_store=MEMORY")

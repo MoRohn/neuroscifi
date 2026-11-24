@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import math
 import re
+import unicodedata
 
 BM25_K1 = 1.5
 BM25_B = 0.75
@@ -44,6 +45,120 @@ MONTHS = {
 }
 MONTH_RE = (r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|"
             r"Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)")
+
+# ---- characters a reader does not see -----------------------------------------------------------------------
+# Fetched text is turned into claims, and a claim is shown to the owner and compared with what a model wrote. Both
+# go wrong when the text holds characters nobody sees: a right-to-left override shows "72" as "27", a zero-width
+# space inside "100" or a zero-width non-joiner inside "NumPy" makes two tokens of one word, a soft hyphen hides
+# in the middle of a name. strip_unseen() removes them where text is extracted (webcortex/extract.py), and the
+# answer guard refuses a sentence that cites a claim still holding one (reasoning.UNSEEN_IN_CLAIM).
+#
+# Removed (code points, so that this file holds none of the characters themselves):
+#   - the format characters that draw nothing: soft hyphen, Arabic letter mark, Mongolian vowel separator,
+#     zero-width space and joiners, direction marks, embeddings, overrides and isolates, word joiner and the
+#     invisible operators, the deprecated format controls, byte order mark, interlinear annotation controls,
+#     shorthand and musical format controls, tag characters;
+#   - what Unicode files under other categories and still draws nothing: combining grapheme joiner, Khmer inherent
+#     vowels, Mongolian free variation selectors, variation selectors and their supplement;
+#   - control characters other than tab, line feed and carriage return.
+# Turned into a space: the fillers that draw a blank (Hangul fillers, the Braille blank) and the controls Python
+# counts as white space. Turned into a line break: the line and paragraph separators.
+# Kept on purpose: the format characters that are drawn (category Cf all the same): Arabic number signs and end of
+# ayah, the Syriac abbreviation mark, Kaithi number signs, Egyptian hieroglyph joiners. Removing them would change
+# what a reader of those scripts sees.
+_UNSEEN_DELETE = ((0x00, 0x08), (0x0E, 0x1B), (0x7F, 0x84), (0x86, 0x9F), (0xAD, 0xAD), (0x34F, 0x34F),
+                  (0x61C, 0x61C), (0x17B4, 0x17B5), (0x180B, 0x180F), (0x200B, 0x200F), (0x202A, 0x202E),
+                  (0x2060, 0x206F), (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x1BCA0, 0x1BCA3),
+                  (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF))
+_UNSEEN_BLANK = ((0x0B, 0x0C), (0x1C, 0x1F), (0x85, 0x85), (0x115F, 0x1160), (0x2800, 0x2800), (0x3164, 0x3164),
+                 (0xFFA0, 0xFFA0))
+_UNSEEN_BREAK = ((0x2028, 0x2029),)
+
+
+def _char_class(ranges) -> str:
+    return "[" + "".join(chr(a) if a == z else f"{chr(a)}-{chr(z)}" for a, z in ranges) + "]"
+
+
+_UNSEEN_DELETE_RE = re.compile(_char_class(_UNSEEN_DELETE))
+_UNSEEN_BLANK_RE = re.compile(_char_class(_UNSEEN_BLANK))
+_UNSEEN_BREAK_RE = re.compile(_char_class(_UNSEEN_BREAK))
+
+
+# Direction controls are a case of their own: they draw nothing and change the order in which the characters around
+# them are shown. The two overrides (U+202D, U+202E) reverse what follows ("<U+202E>72" is shown as "27"); the
+# marks, embeddings and isolates (U+200E, U+200F, U+061C, U+202A-U+202C, U+2066-U+2069) reorder neighbouring
+# digits and punctuation ("Affected:<U+200F> 3 4" is shown as "4 3"). Removing one would leave the order nobody was
+# shown, so a line (as_seen) or a paragraph (extract.py) that holds one is not read at all: what a page shows in
+# an order other than its own cannot be quoted faithfully. One exception, for right-to-left writing (Hebrew,
+# Arabic and the other scripts of bidirectional class R and AL), where marks, embeddings and isolates are how text
+# is written: a line that holds one such letter keeps every direction control in it except the overrides (marks,
+# embeddings and their pop, isolates), the claims made of it carry them, and the answer guard does not cite those
+# claims (reasoning.UNSEEN_IN_CLAIM). Other consumers of claims (the extractive report, the knowledge store, memory
+# answers, Pocket) show a claim's text as stored, controls included, so as the page showed it; none of them
+# compares it with a model's words. An override is never kept.
+_OVERRIDE_RE = re.compile(f"[{chr(0x202D)}{chr(0x202E)}]")
+_DIRECTION = (0x200E, 0x200F, 0x061C, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069)
+_DIRECTION_RE = re.compile("[" + "".join(map(chr, _DIRECTION)) + "]")
+_UNSEEN_DELETE_BUT_DIRECTION_RE = re.compile("(?!" + _DIRECTION_RE.pattern + ")" + _char_class(_UNSEEN_DELETE))
+
+
+def right_to_left(s) -> bool:
+    """Whether `s` holds a letter of a right-to-left script (bidirectional class R or AL; a letter: the right-to-left
+    and Arabic letter marks are of those classes too and count for nothing)."""
+    return any(unicodedata.bidirectional(ch) in ("R", "AL") and unicodedata.category(ch).startswith("L")
+               for ch in str(s or ""))
+
+
+def reorders(s) -> bool:
+    """Whether `s` holds a direction control that makes what a reader sees differ from its characters' order: an
+    override anywhere, or any other direction control in text without right-to-left letters."""
+    s = str(s or "")
+    return bool(_OVERRIDE_RE.search(s)) or (bool(_DIRECTION_RE.search(s)) and not right_to_left(s))
+
+
+def unseen_characters(s) -> list[str]:
+    """The characters of `s` that draw nothing (the removed kind above), as sorted code point names ("U+202E")."""
+    return sorted({f"U+{ord(ch):04X}" for ch in _UNSEEN_DELETE_RE.findall(str(s or ""))})
+
+
+def strip_unseen(s) -> tuple[str, int]:
+    """`s` without the characters that draw nothing, and how many were removed or replaced: those are removed,
+    blank fillers become a space, line and paragraph separators a line break. Nothing else changes: no
+    normalisation, no change of white space or case. Use as_seen() for fetched text: it first drops the lines a
+    direction override reorders."""
+    s = str(s or "")
+    s, removed = _UNSEEN_DELETE_RE.subn("", s)
+    s, blanked = _UNSEEN_BLANK_RE.subn(" ", s)
+    s, broken = _UNSEEN_BREAK_RE.subn("\n", s)
+    return s, removed + blanked + broken
+
+
+def as_seen(s) -> tuple[str, int, int]:
+    """Fetched text as a reader sees it -> (text, characters removed or replaced, lines dropped). A line that
+    reorders what is shown (reorders: an override, or another direction control without right-to-left letters) is
+    dropped whole; a line with right-to-left letters keeps its direction marks and isolates; from the rest,
+    strip_unseen() takes the characters that draw nothing."""
+    s = str(s or "")
+    dropped = 0
+    if _DIRECTION_RE.search(s):
+        lines = _UNSEEN_BREAK_RE.sub("\n", s).split("\n")
+        kept = [line for line in lines if not reorders(line)]
+        dropped = len(lines) - len(kept)
+        removed = 0
+        out = []
+        for line in kept:
+            if _DIRECTION_RE.search(line):          # right-to-left text: its marks stay, the rest goes
+                line, n = _UNSEEN_DELETE_BUT_DIRECTION_RE.subn("", line)
+                line, m = _UNSEEN_BLANK_RE.subn(" ", line)
+                removed += n + m
+            else:
+                line, n = strip_unseen(line)
+                removed += n
+            out.append(line)
+        return "\n".join(out), removed, dropped
+    s, removed = strip_unseen(s)
+    return s, removed, dropped
+
 
 # ---- tokens -------------------------------------------------------------------------------------------------
 

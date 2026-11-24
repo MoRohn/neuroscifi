@@ -22,13 +22,21 @@ graph no better than no graph is no longer promoted. The sentence guard is the c
 refusal: an attempt to change more was caught by a review and withdrawn, and the gaps the reviews found in the
 older guard head the list of what is open.
 
+**Phase 3, the next day.** The items phase 2 left open were ruled on, built and reviewed. The sentence guard's
+older gaps were closed one change at a time, each held by a differential against the 0.7.0 guard (1,782 inputs, 0
+unexplained differences), and contradictions stated in other words are now found and put to the owner, never
+decided. Read-ahead's waste is capped, the owner's stop covers searches and a page's sub-requests too, settled
+forecasts rank autonomous research, consolidated readings have a limit, and one process serves both memory models
+in half the memory. The two-account install now works as installed (verified with real accounts in a user
+namespace, not under systemd), after a review found and the round fixed a path to root in its first version.
+
 | Document | Deliverable |
 |---|---|
 | [ARCHITECTURE_AUDIT.md](ARCHITECTURE_AUDIT.md) | What runs, a capability inventory with status, the dependency map, every deficiency found, those of phase 2 included |
 | [NVIDIA_ASSESSMENT.md](NVIDIA_ASSESSMENT.md) | The machine, the adoption matrix, why each technology was integrated, deferred or rejected, sources |
 | [COGNITIVE_GAP_ANALYSIS.md](COGNITIVE_GAP_ANALYSIS.md) | Reasoning, memory, learning, perception, autonomy and distribution: what is real, what is missing |
-| [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) | Each change with its acceptance and rollback; what was rejected on measurement; the six decisions as made; next priorities |
-| [PERFORMANCE.md](PERFORMANCE.md) | Before and after, with regressions and costs; §7 for the decisions of phase 2 |
+| [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) | Each change with its acceptance and rollback; what was rejected on measurement; the six decisions as made; the open items of phase 3 (§5); next priorities |
+| [PERFORMANCE.md](PERFORMANCE.md) | Before and after, with regressions and costs; §7 for the decisions of phase 2, §8 for phase 3 |
 | [REGRESSION_REPORT.md](REGRESSION_REPORT.md) | Capability-by-capability preservation, behaviour changed on purpose, edge cases |
 | [VERIFICATION_REPORT.md](VERIFICATION_REPORT.md) | The definition of done, item by item, with evidence or "unverified" |
 
@@ -40,9 +48,12 @@ Updated in place rather than duplicated here: the architecture of inference and 
 Phase 2 also wrote two decision records, ADR-044 (consolidation) and ADR-045 (which graph is promoted), in
 [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md), the stops and read-ahead sections of
 [SEARCH_AND_ACQUISITION.md](../web-cortex/SEARCH_AND_ACQUISITION.md), and the upgrade notice of
-[MIGRATIONS.md](../operations/MIGRATIONS.md) (schema 14).
+[MIGRATIONS.md](../operations/MIGRATIONS.md) (schema 14). Phase 3 wrote ADR-046 (forecasts as read) and updated
+ADR-044 (the limit on consolidated readings), the memory and resource pages (contradictions in other words, the
+single memory server, the two accounts) and the runbook.
 
 Evidence: `docs/quality/evidence/accel_*.json` (`accel_decisions_*.json` and `accel_consolidation_cost.json` for
-phase 2). Reproduce with `scripts/bench_inference.py`, `scripts/bench_pipeline.py`, `scripts/bench_memory.py`,
-`scripts/bench_consolidation.py`, `scripts/bench_graph_learner.py` and `scripts/guard_differential.py`; each
-script's docstring gives the command.
+phase 2) and `open_items_*.json` (phase 3). Reproduce with `scripts/bench_inference.py`, `scripts/bench_pipeline.py`,
+`scripts/bench_memory.py`, `scripts/bench_consolidation.py`, `scripts/bench_graph_learner.py`,
+`scripts/guard_differential.py`, `scripts/bench_knowledge.py`, `scripts/bench_calibration.py` and
+`scripts/two_account_check.py`; each script's docstring gives the command.

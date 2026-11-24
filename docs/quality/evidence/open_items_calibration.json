@@ -1,0 +1,1340 @@
+{
+ "benchmark": "calibration",
+ "what": "prequential: every forecast is scored before its outcome is used; settings chosen on the development streams only",
+ "scores": {
+  "brier": "mean (forecast - outcome)^2",
+  "distance": "mean (forecast - true probability)^2"
+ },
+ "prefixes": "the first 25, 50 and 100 predictions of a stream, and all of it",
+ "options": {
+  "minimum": 20,
+  "window": 100,
+  "prior_shift": 16.0,
+  "prior_tilt": 16.0
+ },
+ "development": {
+  "lag": 5,
+  "predictions_per_stream": 240,
+  "seeds": 6,
+  "burst": 1,
+  "summary": {
+   "mean": {
+    "stated": {
+     "brier": 0.24173,
+     "distance": 0.069463
+    },
+    "mapped": {
+     "brier": 0.197239,
+     "distance": 0.026315
+    }
+   },
+   "worst_change": {
+    "brier": {
+     "change": 0.00265,
+     "stream": "right",
+     "first": "100"
+    },
+    "distance": {
+     "change": 0.001025,
+     "stream": "right",
+     "first": "all"
+    }
+   }
+  },
+  "the_50_predictions_after_a_change": {
+   "drift: rarely true, then often": {
+    "stated": 0.046679,
+    "mapped": 0.10587
+   },
+   "drift: too high, then right": {
+    "stated": 0.0,
+    "mapped": 0.018928
+   }
+  },
+  "streams": {
+   "right": {
+    "25": {
+     "stated": {
+      "brier": 0.207583,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.207583,
+      "distance": 0.0
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.187308,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.188458,
+      "distance": 0.000822
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.184742,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.187392,
+      "distance": 0.000986
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.185026,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.1867,
+      "distance": 0.001025
+     }
+    }
+   },
+   "knowledge that nearly always holds": {
+    "25": {
+     "stated": {
+      "brier": 0.050871,
+      "distance": 0.026099
+     },
+     "mapped": {
+      "brier": 0.050871,
+      "distance": 0.026099
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.055148,
+      "distance": 0.026535
+     },
+     "mapped": {
+      "brier": 0.05012,
+      "distance": 0.021447
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.055274,
+      "distance": 0.026838
+     },
+     "mapped": {
+      "brier": 0.0446,
+      "distance": 0.016514
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.055996,
+      "distance": 0.026591
+     },
+     "mapped": {
+      "brier": 0.040899,
+      "distance": 0.011682
+     }
+    }
+   },
+   "hypotheses that rarely come true": {
+    "25": {
+     "stated": {
+      "brier": 0.221133,
+      "distance": 0.081661
+     },
+     "mapped": {
+      "brier": 0.221133,
+      "distance": 0.081661
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.2248,
+      "distance": 0.083115
+     },
+     "mapped": {
+      "brier": 0.195253,
+      "distance": 0.059123
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.220183,
+      "distance": 0.082128
+     },
+     "mapped": {
+      "brier": 0.174264,
+      "distance": 0.039326
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.221104,
+      "distance": 0.082139
+     },
+     "mapped": {
+      "brier": 0.162705,
+      "distance": 0.024816
+     }
+    }
+   },
+   "too sure (slope 0.5)": {
+    "25": {
+     "stated": {
+      "brier": 0.255583,
+      "distance": 0.011693
+     },
+     "mapped": {
+      "brier": 0.255583,
+      "distance": 0.011693
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.232975,
+      "distance": 0.012029
+     },
+     "mapped": {
+      "brier": 0.232211,
+      "distance": 0.008569
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.243075,
+      "distance": 0.011618
+     },
+     "mapped": {
+      "brier": 0.236609,
+      "distance": 0.006178
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.243915,
+      "distance": 0.011984
+     },
+     "mapped": {
+      "brier": 0.233101,
+      "distance": 0.003778
+     }
+    }
+   },
+   "not sure enough (slope 1.8)": {
+    "25": {
+     "stated": {
+      "brier": 0.129583,
+      "distance": 0.00884
+     },
+     "mapped": {
+      "brier": 0.129583,
+      "distance": 0.00884
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.127642,
+      "distance": 0.008816
+     },
+     "mapped": {
+      "brier": 0.126504,
+      "distance": 0.007108
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.138242,
+      "distance": 0.008672
+     },
+     "mapped": {
+      "brier": 0.136651,
+      "distance": 0.005287
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.134401,
+      "distance": 0.008849
+     },
+     "mapped": {
+      "brier": 0.131621,
+      "distance": 0.004206
+     }
+    }
+   },
+   "hypotheses that come true more often": {
+    "25": {
+     "stated": {
+      "brier": 0.245133,
+      "distance": 0.047152
+     },
+     "mapped": {
+      "brier": 0.245133,
+      "distance": 0.047152
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.2428,
+      "distance": 0.047401
+     },
+     "mapped": {
+      "brier": 0.234625,
+      "distance": 0.036609
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.252183,
+      "distance": 0.047079
+     },
+     "mapped": {
+      "brier": 0.227472,
+      "distance": 0.025113
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.252076,
+      "distance": 0.046584
+     },
+     "mapped": {
+      "brier": 0.219402,
+      "distance": 0.01508
+     }
+    }
+   },
+   "one forecast every time (0.5, true 0.2)": {
+    "25": {
+     "stated": {
+      "brier": 0.25,
+      "distance": 0.09
+     },
+     "mapped": {
+      "brier": 0.25,
+      "distance": 0.09
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.25,
+      "distance": 0.09
+     },
+     "mapped": {
+      "brier": 0.219315,
+      "distance": 0.063593
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.25,
+      "distance": 0.09
+     },
+     "mapped": {
+      "brier": 0.20264,
+      "distance": 0.041522
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.25,
+      "distance": 0.09
+     },
+     "mapped": {
+      "brier": 0.195037,
+      "distance": 0.028613
+     }
+    }
+   },
+   "knows nothing (always 0.5 true)": {
+    "25": {
+     "stated": {
+      "brier": 0.313583,
+      "distance": 0.07525
+     },
+     "mapped": {
+      "brier": 0.313583,
+      "distance": 0.07525
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.318975,
+      "distance": 0.078475
+     },
+     "mapped": {
+      "brier": 0.297095,
+      "distance": 0.057238
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.329742,
+      "distance": 0.075575
+     },
+     "mapped": {
+      "brier": 0.284559,
+      "distance": 0.03684
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.337734,
+      "distance": 0.0777
+     },
+     "mapped": {
+      "brier": 0.271846,
+      "distance": 0.019796
+     }
+    }
+   },
+   "backwards (slope -1)": {
+    "25": {
+     "stated": {
+      "brier": 0.480917,
+      "distance": 0.301
+     },
+     "mapped": {
+      "brier": 0.480917,
+      "distance": 0.301
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.490975,
+      "distance": 0.3139
+     },
+     "mapped": {
+      "brier": 0.382051,
+      "distance": 0.208716
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.480908,
+      "distance": 0.3023
+     },
+     "mapped": {
+      "brier": 0.3189,
+      "distance": 0.142925
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.490998,
+      "distance": 0.310799
+     },
+     "mapped": {
+      "brier": 0.279244,
+      "distance": 0.106166
+     }
+    }
+   },
+   "drift: rarely true, then often": {
+    "25": {
+     "stated": {
+      "brier": 0.221133,
+      "distance": 0.081661
+     },
+     "mapped": {
+      "brier": 0.221133,
+      "distance": 0.081661
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.2248,
+      "distance": 0.083115
+     },
+     "mapped": {
+      "brier": 0.195253,
+      "distance": 0.059123
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.220183,
+      "distance": 0.082128
+     },
+     "mapped": {
+      "brier": 0.174264,
+      "distance": 0.039326
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.239854,
+      "distance": 0.064269
+     },
+     "mapped": {
+      "brier": 0.220874,
+      "distance": 0.047441
+     }
+    }
+   },
+   "drift: too high, then right": {
+    "25": {
+     "stated": {
+      "brier": 0.318871,
+      "distance": 0.088771
+     },
+     "mapped": {
+      "brier": 0.318871,
+      "distance": 0.088771
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.343681,
+      "distance": 0.09069
+     },
+     "mapped": {
+      "brier": 0.31911,
+      "distance": 0.07101
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.330174,
+      "distance": 0.09054
+     },
+     "mapped": {
+      "brier": 0.289503,
+      "distance": 0.049335
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.247926,
+      "distance": 0.045178
+     },
+     "mapped": {
+      "brier": 0.228201,
+      "distance": 0.026866
+     }
+    }
+   }
+  }
+ },
+ "held_out": {
+  "lag": 10,
+  "predictions_per_stream": 240,
+  "seeds": 12,
+  "burst": 1,
+  "summary": {
+   "mean": {
+    "stated": {
+     "brier": 0.227261,
+     "distance": 0.04355
+    },
+    "mapped": {
+     "brier": 0.199904,
+     "distance": 0.016526
+    }
+   },
+   "worst_change": {
+    "brier": {
+     "change": 0.001419,
+     "stream": "right (hypothesis values)",
+     "first": "all"
+    },
+    "distance": {
+     "change": 0.001055,
+     "stream": "right (hypothesis values)",
+     "first": "all"
+    }
+   }
+  },
+  "the_50_predictions_after_a_change": {
+   "drift: often true, then rarely": {
+    "stated": 0.042534,
+    "mapped": 0.094854
+   },
+   "drift: right, then too high": {
+    "stated": 0.053975,
+    "mapped": 0.045345
+   }
+  },
+  "streams": {
+   "right (hypothesis values)": {
+    "25": {
+     "stated": {
+      "brier": 0.2178,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.2178,
+      "distance": 0.0
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.21865,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.219961,
+      "distance": 0.0004
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.2118,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.212687,
+      "distance": 0.00077
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.216003,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.217422,
+      "distance": 0.001055
+     }
+    }
+   },
+   "right (knowledge values)": {
+    "25": {
+     "stated": {
+      "brier": 0.16686,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.16686,
+      "distance": 0.0
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.160423,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.160892,
+      "distance": 0.000183
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.145848,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.146328,
+      "distance": 0.000253
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.145401,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.145909,
+      "distance": 0.00028
+     }
+    }
+   },
+   "knowledge that holds 9 times in 10": {
+    "25": {
+     "stated": {
+      "brier": 0.118125,
+      "distance": 0.003625
+     },
+     "mapped": {
+      "brier": 0.118125,
+      "distance": 0.003625
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.102,
+      "distance": 0.0038
+     },
+     "mapped": {
+      "brier": 0.101833,
+      "distance": 0.003675
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.095556,
+      "distance": 0.003781
+     },
+     "mapped": {
+      "brier": 0.095096,
+      "distance": 0.003183
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.10124,
+      "distance": 0.003809
+     },
+     "mapped": {
+      "brier": 0.100446,
+      "distance": 0.002762
+     }
+    }
+   },
+   "knowledge that holds less often (shift -1.2)": {
+    "25": {
+     "stated": {
+      "brier": 0.288994,
+      "distance": 0.053367
+     },
+     "mapped": {
+      "brier": 0.288994,
+      "distance": 0.053367
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.306789,
+      "distance": 0.053341
+     },
+     "mapped": {
+      "brier": 0.293832,
+      "distance": 0.043966
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.289698,
+      "distance": 0.054108
+     },
+     "mapped": {
+      "brier": 0.2631,
+      "distance": 0.030015
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.287137,
+      "distance": 0.054262
+     },
+     "mapped": {
+      "brier": 0.251819,
+      "distance": 0.019527
+     }
+    }
+   },
+   "hypotheses that seldom come true (shift -1.0)": {
+    "25": {
+     "stated": {
+      "brier": 0.114867,
+      "distance": 0.023492
+     },
+     "mapped": {
+      "brier": 0.114867,
+      "distance": 0.023492
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.120017,
+      "distance": 0.022438
+     },
+     "mapped": {
+      "brier": 0.117809,
+      "distance": 0.018515
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.122135,
+      "distance": 0.02245
+     },
+     "mapped": {
+      "brier": 0.112382,
+      "distance": 0.012805
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.118937,
+      "distance": 0.022201
+     },
+     "mapped": {
+      "brier": 0.103548,
+      "distance": 0.007974
+     }
+    }
+   },
+   "too sure (slope 0.65)": {
+    "25": {
+     "stated": {
+      "brier": 0.212167,
+      "distance": 0.00491
+     },
+     "mapped": {
+      "brier": 0.212167,
+      "distance": 0.00491
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.206429,
+      "distance": 0.005124
+     },
+     "mapped": {
+      "brier": 0.206295,
+      "distance": 0.004644
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.209663,
+      "distance": 0.005021
+     },
+     "mapped": {
+      "brier": 0.208647,
+      "distance": 0.003908
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.20724,
+      "distance": 0.004969
+     },
+     "mapped": {
+      "brier": 0.206177,
+      "distance": 0.002808
+     }
+    }
+   },
+   "not sure enough (slope 1.5)": {
+    "25": {
+     "stated": {
+      "brier": 0.140833,
+      "distance": 0.004709
+     },
+     "mapped": {
+      "brier": 0.140833,
+      "distance": 0.004709
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.137762,
+      "distance": 0.004715
+     },
+     "mapped": {
+      "brier": 0.13699,
+      "distance": 0.003973
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.139912,
+      "distance": 0.004582
+     },
+     "mapped": {
+      "brier": 0.13833,
+      "distance": 0.003165
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.14026,
+      "distance": 0.004499
+     },
+     "mapped": {
+      "brier": 0.138475,
+      "distance": 0.002296
+     }
+    }
+   },
+   "hypotheses that come true more often (shift 0.7)": {
+    "25": {
+     "stated": {
+      "brier": 0.236467,
+      "distance": 0.023594
+     },
+     "mapped": {
+      "brier": 0.236467,
+      "distance": 0.023594
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.234983,
+      "distance": 0.023235
+     },
+     "mapped": {
+      "brier": 0.235069,
+      "distance": 0.020043
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.232133,
+      "distance": 0.023238
+     },
+     "mapped": {
+      "brier": 0.226161,
+      "distance": 0.015607
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.236003,
+      "distance": 0.023351
+     },
+     "mapped": {
+      "brier": 0.219475,
+      "distance": 0.009058
+     }
+    }
+   },
+   "one forecast every time (0.7, true 0.45)": {
+    "25": {
+     "stated": {
+      "brier": 0.324667,
+      "distance": 0.0625
+     },
+     "mapped": {
+      "brier": 0.324667,
+      "distance": 0.0625
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.316667,
+      "distance": 0.0625
+     },
+     "mapped": {
+      "brier": 0.304774,
+      "distance": 0.049323
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.314667,
+      "distance": 0.0625
+     },
+     "mapped": {
+      "brier": 0.285144,
+      "distance": 0.032775
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.314861,
+      "distance": 0.0625
+     },
+     "mapped": {
+      "brier": 0.270899,
+      "distance": 0.019933
+     }
+    }
+   },
+   "knows nothing (always 0.3 true)": {
+    "25": {
+     "stated": {
+      "brier": 0.314833,
+      "distance": 0.113967
+     },
+     "mapped": {
+      "brier": 0.314833,
+      "distance": 0.113967
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.320263,
+      "distance": 0.113679
+     },
+     "mapped": {
+      "brier": 0.302132,
+      "distance": 0.092132
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.324496,
+      "distance": 0.114646
+     },
+     "mapped": {
+      "brier": 0.269175,
+      "distance": 0.05795
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.322622,
+      "distance": 0.113191
+     },
+     "mapped": {
+      "brier": 0.239048,
+      "distance": 0.031455
+     }
+    }
+   },
+   "backwards (slope -0.5)": {
+    "25": {
+     "stated": {
+      "brier": 0.407833,
+      "distance": 0.184864
+     },
+     "mapped": {
+      "brier": 0.407833,
+      "distance": 0.184864
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.421596,
+      "distance": 0.198574
+     },
+     "mapped": {
+      "brier": 0.376573,
+      "distance": 0.150072
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.419496,
+      "distance": 0.196408
+     },
+     "mapped": {
+      "brier": 0.317845,
+      "distance": 0.092828
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.417552,
+      "distance": 0.197171
+     },
+     "mapped": {
+      "brier": 0.278182,
+      "distance": 0.055903
+     }
+    }
+   },
+   "drift: often true, then rarely": {
+    "25": {
+     "stated": {
+      "brier": 0.243133,
+      "distance": 0.064789
+     },
+     "mapped": {
+      "brier": 0.243133,
+      "distance": 0.064789
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.24565,
+      "distance": 0.06405
+     },
+     "mapped": {
+      "brier": 0.238328,
+      "distance": 0.05428
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.2428,
+      "distance": 0.064378
+     },
+     "mapped": {
+      "brier": 0.220085,
+      "distance": 0.039431
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.231351,
+      "distance": 0.053039
+     },
+     "mapped": {
+      "brier": 0.222539,
+      "distance": 0.045867
+     }
+    }
+   },
+   "drift: right, then too high": {
+    "25": {
+     "stated": {
+      "brier": 0.16686,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.16686,
+      "distance": 0.0
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.160423,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.160892,
+      "distance": 0.000183
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.145848,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.146328,
+      "distance": 0.000253
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.21579,
+      "distance": 0.027155
+     },
+     "mapped": {
+      "brier": 0.204818,
+      "distance": 0.015925
+     }
+    }
+   }
+  }
+ },
+ "bursts": {
+  "lag": 10,
+  "predictions_per_stream": 240,
+  "seeds": 12,
+  "burst": 5,
+  "summary": {
+   "mean": {
+    "stated": {
+     "brier": 0.153226,
+     "distance": 0.027169
+    },
+    "mapped": {
+     "brier": 0.137507,
+     "distance": 0.011374
+    }
+   },
+   "worst_change": {
+    "brier": {
+     "change": 0.001483,
+     "stream": "right (knowledge values), outcomes in bursts of 5",
+     "first": "100"
+    },
+    "distance": {
+     "change": 0.001968,
+     "stream": "right, outcomes in bursts of 5",
+     "first": "all"
+    }
+   }
+  },
+  "the_50_predictions_after_a_change": {},
+  "streams": {
+   "right, outcomes in bursts of 5": {
+    "25": {
+     "stated": {
+      "brier": 0.187325,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.187325,
+      "distance": 0.0
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.174792,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.176081,
+      "distance": 0.000804
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.172415,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.172818,
+      "distance": 0.001599
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.174254,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.175508,
+      "distance": 0.001968
+     }
+    }
+   },
+   "right (knowledge values), outcomes in bursts of 5": {
+    "25": {
+     "stated": {
+      "brier": 0.124689,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.124689,
+      "distance": 0.0
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.145392,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.145938,
+      "distance": 0.000516
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.144736,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.146219,
+      "distance": 0.00097
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.151591,
+      "distance": 0.0
+     },
+     "mapped": {
+      "brier": 0.151604,
+      "distance": 0.001493
+     }
+    }
+   },
+   "hypotheses that rarely come true, in bursts of 5": {
+    "25": {
+     "stated": {
+      "brier": 0.233333,
+      "distance": 0.082719
+     },
+     "mapped": {
+      "brier": 0.233333,
+      "distance": 0.082719
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.2177,
+      "distance": 0.081726
+     },
+     "mapped": {
+      "brier": 0.195716,
+      "distance": 0.063656
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.21965,
+      "distance": 0.081103
+     },
+     "mapped": {
+      "brier": 0.188352,
+      "distance": 0.042792
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.219705,
+      "distance": 0.082256
+     },
+     "mapped": {
+      "brier": 0.166114,
+      "distance": 0.027991
+     }
+    }
+   },
+   "knowledge that nearly always holds, in bursts of 5": {
+    "25": {
+     "stated": {
+      "brier": 0.037156,
+      "distance": 0.027336
+     },
+     "mapped": {
+      "brier": 0.037156,
+      "distance": 0.027336
+     }
+    },
+    "50": {
+     "stated": {
+      "brier": 0.069725,
+      "distance": 0.026327
+     },
+     "mapped": {
+      "brier": 0.066938,
+      "distance": 0.022509
+     }
+    },
+    "100": {
+     "stated": {
+      "brier": 0.064086,
+      "distance": 0.026731
+     },
+     "mapped": {
+      "brier": 0.055808,
+      "distance": 0.018246
+     }
+    },
+    "all": {
+     "stated": {
+      "brier": 0.067355,
+      "distance": 0.026419
+     },
+     "mapped": {
+      "brier": 0.0568,
+      "distance": 0.014045
+     }
+    }
+   }
+  }
+ },
+ "bursts_with_a_minimum_of_10": {
+  "options": {
+   "minimum": 10,
+   "window": 100,
+   "prior_shift": 16.0,
+   "prior_tilt": 16.0
+  },
+  "summary": {
+   "mean": {
+    "stated": {
+     "brier": 0.153226,
+     "distance": 0.027169
+    },
+    "mapped": {
+     "brier": 0.136972,
+     "distance": 0.011063
+    }
+   },
+   "worst_change": {
+    "brier": {
+     "change": 0.001311,
+     "stream": "right (knowledge values), outcomes in bursts of 5",
+     "first": "100"
+    },
+    "distance": {
+     "change": 0.002027,
+     "stream": "right, outcomes in bursts of 5",
+     "first": "all"
+    }
+   }
+  }
+ }
+}

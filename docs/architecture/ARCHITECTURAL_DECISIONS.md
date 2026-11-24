@@ -1142,8 +1142,13 @@ The design must keep four things that the journal gives today:
    copy whose tombstone no longer says `expired` is deleted. The copy takes over the stronger tombstone reason, so
    an older archive restored from the copy ends the same way. The copy's evidence sequence is raised to the live
    file's highest seq: a consolidated reading is identified by its seq, so no seq may be given to a second event.
-   The live file is read in one snapshot. **The owner's settings travel with the live file:** the replay writes
-   the settings an owner may change (`consolidation`, `ask_budget_per_epoch`, `ask_budget_window_seconds`) into
+   The live file is read in one snapshot, once the archive's copy is open: its consolidated readings are read
+   for the seqs of the copy's own journal only (500 per statement, by key), because an archive can turn into
+   readings only the events it holds. What a restore keeps in memory of the readings is therefore bounded by the
+   archive's journal, not by everything the individual ever kept; the tombstones are still read whole, since the
+   copy takes every one. **The owner's settings travel with the live file:** the replay writes
+   the settings an owner may change (`consolidation`, `max_consolidated_rows`, `ask_budget_per_epoch`,
+   `ask_budget_window_seconds`) into
    the copy before anything else, so an archive taken before `--no-consolidation` does not turn consolidation back
    on, nor one taken after it turn it off against a later choice. The restore result lists them
    (`settings_carried`) and the copy's deletion log records each. The settings fixed at `nsf init` (lifetime,
@@ -1166,6 +1171,22 @@ The design must keep four things that the journal gives today:
    consolidated readings, tombstones). It no longer falls when a memory-only event expires or the latest event is
    forgotten; no learning reading lies between the old value and the new one, so the count of new events since a
    question is unchanged.
+8. **A limit, as a guard rail.** `InstanceConfig.max_consolidated_rows` (default 1,000,000; 0 = no limit;
+   `nsf config --max-consolidated-rows N`, `nsf init --max-consolidated-rows N`; carried through a restore like
+   `consolidation`). Every reading counts towards it, a later copy of a sample too: it bounds rows of the file.
+   At the limit the sweep stops adding readings: an expiring learning event leaves nothing, as with consolidation
+   off, and the individual stops outliving new evidence until the owner makes room. A sweep that would cross the
+   limit partway keeps the oldest of its learning events, by their place in the journal, until the limit is
+   reached; the rest expire, and the result says how many of each (`consolidated`, `not_consolidated`; the
+   deletion log and the belief revision record it too). **The limit never deletes a reading**: lowered below what
+   is kept, it only stops further consolidation. The owner is told in plain words, with what to do (raise the
+   limit, or forget an epoch, a partner or a camera), by the sweep that met the limit, `nsf regulation`,
+   `nsf birth`, `nsf config` and the console's Regulation card; from 80 % of the limit the same places warn. A
+   saved value that is not a whole number from 0 up is never read as "no limit": the default applies and the same
+   places say so. The count for the limit is made only by a sweep that meets a learning event.
+9. **The cost is shown before it is felt.** `nsf regulation` and the console's Regulation card name the epoch with
+   the most consolidated readings, how many it holds, and how long its beliefs take to compute now
+   (`largest_epoch`: one grouped pass over the readings and one `compute()`; absent while nothing is consolidated).
 
 ## Measured
 
@@ -1209,7 +1230,25 @@ sample by passes over the index):
 
 Per reading the consolidated path is cheaper than the raw path it replaces (ordered passes over covering indexes,
 no sort). What changes is the bound: raw events were limited to one lifetime's worth, consolidated readings
-accumulate for the life of the epoch.
+accumulate for the life of the epoch, up to the limit of decision 8.
+
+The limit and its reporting (`scripts/bench_consolidation.py WORKDIR limit`, wall-clock, one call each, on a file
+of readings that all carry a sample id; `docs/quality/evidence/open_items_consolidation.json`):
+
+| | 100,000 readings | 1,000,000 readings |
+|---|---|---|
+| The count a sweep makes for the limit (only when it meets a learning event) | 0.4 ms | 3.6 ms |
+| A sweep of 1,000 expiring learning events, room for all | 76.3 ms | 477.7 ms |
+| The same with room for 100 (100 kept, 900 expire to nothing) | 70.2 ms | 475.8 ms |
+| The same at the limit (none kept) | 68.1 ms | 473.1 ms |
+| `nsf regulation`, of which the largest epoch's `compute()` | 60.6 ms, 57.4 ms | 491.4 ms, 459.1 ms |
+| Python memory while a restore reads the live file: every reading, as before | 56.1 MiB | 548.7 MiB |
+| The same, the readings of an archive with 1,000 events in its journal | 23.9 MiB | 231.9 MiB |
+
+Each sweep in the table also recomputes the epoch's beliefs once for its revision, which is most of its time at a
+million readings. What a restore still holds in the last row is the tombstones, which it reads whole as before:
+one row of five short fields per event that ever expired or was forgotten, about 230 MiB of Python objects per
+million. Reading those in bounded pieces needs the live file's snapshot held open through the replay; not done.
 
 ## Alternatives rejected
 
@@ -1225,9 +1264,20 @@ accumulate for the life of the epoch.
 - **A hash of the sample id.** The dedupe runs in SQL; a salted hash needs a function registered on every
   connection that reads beliefs, and a connection without it would count copies twice. The sample id is kept in
   clear, as the journal holds it, and goes with every forget.
-- **A maintained summary table** in place of the rows. It would be a second source of truth for the individual's
-  beliefs, invalidated by every forget, every confirmed change and every restore. Left as a cache for later if
-  an epoch ever holds millions of readings; the rows stay the truth.
+- **A maintained summary table** in place of the rows, or a cache of computed beliefs beside them. Either is a
+  second source of truth for the individual's beliefs, to be invalidated by every forget, every confirmed change,
+  every sweep and every restore; a write path that forgot to do so would give a wrong belief with nothing to
+  notice it. Below about a million readings in one epoch it is not needed (table above), and the limit keeps a
+  file there by default. Not built; the rows stay the truth.
+- **Compacting old readings into counts at the limit**, so that nothing is ever turned away. A count cannot give
+  one reading back: the tombstone of an expired event maps its id to a position in the journal, not to a
+  channel, root and value, so forgetting by id and by position would stop working for everything compacted, and
+  a change confirmed later could not cut the count at its boundary. The limit therefore stops consolidation and
+  says so, and the owner decides what to give up.
+- **A maintained list of copied samples**, to spare an epoch whose readings all carry sample ids the pass that
+  looks for samples recorded more than once (about 0.3 s per million readings on every read). The pass is itself
+  the existence test: "no sample has two readings" cannot be read off an index without visiting each sample, so
+  skipping it needs state kept in step with every sweep, forget and restore. Left as it is.
 - **Counting consolidated readings against `max_evidence_rows`.** A full journal empties itself as events expire;
   with consolidated readings counted it never would, and a small limit would pause an individual for good.
 
@@ -1243,9 +1293,13 @@ accumulate for the life of the epoch.
   executive may ask again (within the ask budget's window).
 - The change window and epoch matching reach back past the lifetime: an epoch that was quiet for a month is
   matched and checked against what it knew.
-- Growth: about 95 bytes per consolidated reading with its four indexes, without limit, one reading per expired
-  learning copy. `nsf regulation` and `nsf birth` report the count. `max_evidence_rows` still bounds the journal
-  only.
+- Growth: about 95 bytes per consolidated reading with its four indexes, one reading per expired learning copy,
+  up to `max_consolidated_rows` (a million by default: about 95 MB). `nsf regulation` and `nsf birth` report the
+  count and warn from 80 % of the limit. `max_evidence_rows` still bounds the journal only.
+- **At the limit the individual stops keeping what new events teach.** That is the 0.7.0 behaviour for those
+  events, announced instead of silent; what was kept before stays and keeps counting. The owner raises the limit
+  or forgets what is no longer needed. Which events are kept when a sweep crosses the limit is decided by their
+  place in the journal, not by what they teach.
 - A camera forgotten while a partner of the same name is still held (or the reverse): its readings, events and
   changes go, in the live file and in every restore. Its **name** stays in the text of belief revisions, questions
   and decisions, because scrubbing works per root name and the name is still held by the other channel; it goes
@@ -1265,9 +1319,10 @@ accumulate for the life of the epoch.
   must move first).
 - An older binary refuses a schema-14 file ("Instance schema 14 is newer than this software (13)") and changes
   nothing; rollback is a restore of the pre-upgrade checkpoint (MIGRATIONS.md).
-- Tests: `tests/instance/test_consolidation.py` (92 cases, each run on both paths of the copy rule), `tests/console/test_console_api.py` (the readings and the
-  two forgets over HTTP), and the expiry tests of `test_erasure.py` and `test_journeys.py`, which keep their old
-  assertions under `consolidation=False`.
+- Tests: `tests/instance/test_consolidation.py` (92 cases, each run on both paths of the copy rule),
+  `tests/instance/test_consolidation_limit.py` (the limit at, below and across; the warning; the setting; what a
+  restore reads), `tests/console/test_console_api.py` (the readings and the two forgets over HTTP), and the expiry
+  tests of `test_erasure.py` and `test_journeys.py`, which keep their old assertions under `consolidation=False`.
 
 # ADR-045 (draft) Which graph is promoted: the better learner's, and never one worse than no graph. R
 
@@ -1368,3 +1423,128 @@ that differ are listed there.
   go back with the command above first.
 - Tests: `tests/instance/test_graphs.py` (the gate check, the birth rules, the built-in command, a candidate
   without the record), `tests/instance/test_learner.py` (packing).
+
+# ADR-046 (draft) A forecast is read through what the settled forecasts of its kind show. R
+
+## Context
+
+ADR-038 gave every prediction a forecast probability and scores the settled ones (`evolution.calibration`: Brier
+score, reliability bins, a snapshot at every settlement). The audit found that the score went nowhere (W7): a
+prediction's probability is the confidence of the item or hypothesis it is about, and no number the individual
+uses changes when its forecasts turn out to be systematically too high or too low.
+
+Reading the code for this decision gave the map of what is written and what is read:
+
+| Written | By | Read by |
+|---|---|---|
+| `web_predictions.probability` of a "still holds" prediction (the item's confidence) | `predictions.add` | `calibration`; `autonomy.candidates` (the signal `prediction_uncertainty` of a due prediction); the error analysis text |
+| `web_predictions.probability` of a hypothesis prediction (its posterior, or the owner's estimate) | `evolution.predict` | `calibration`; `autonomy.candidates` (`prediction_uncertainty` and the information gain of the hypothesis: both decide which autonomous investigation runs next) |
+| Outcomes `confirmed`, `error`, `inconclusive` | `predictions.check`, `evolution.observe`, `expire` | `calibration`, `metrics`; `curiosity.rank` (a recent error raises an item's importance) |
+| Calibration snapshots (`web_metrics`, kind `calibration`) | `record_calibration` at every settlement | `nsf knowledge calibration` only: nothing computes with them |
+| Research-policy weights (`web_metrics`, kind `procedural`) | `update_research_policy`, only on `nsf knowledge learning --update` | `nsf knowledge learning` only. CONTINUAL_LEARNING §2 already says so: advisory, and connecting them to provider selection is the owner's decision |
+
+So one loop was open where closing it changes no belief: forecasts feed the order of autonomous research, and
+nothing told that order how forecasts of the same kind had fared. The thresholds of provisional knowledge are not
+part of it: MEMORY_INTEGRATION and EVIDENCE_AND_PROVENANCE state that they are policy and that the posterior is a
+weighting rule, not a calibrated probability; moving them would change what the individual holds as verified.
+
+## Decision
+
+1. **One mapping per kind of forecaster**, because their base rates have nothing to do with each other:
+   `knowledge` (an item's confidence that it still holds), `hypothesis` (a derived hypothesis' posterior) and
+   `owner` (the owner's own estimate, `nsf knowledge hypothesize`).
+2. **The mapping** is `logit q = logit p + shift + tilt × (logit p − centre)`, with `centre` the mean logit of the
+   settled forecasts. `shift = tilt = 0` is the forecast as stated. The pair is the maximum of the likelihood of
+   the settled outcomes under a Gaussian prior around 0 (precision 16 on each), so it starts at the stated
+   forecast and leaves it only as outcomes insist. `tilt` is kept in [−1, 1]: the slope stays in [0, 2] and an
+   order of forecasts is never reversed; a forecaster that has it backwards is flattened to its base rate. The
+   result is kept in [0.01, 0.99]. `evolution.fit_recalibration`, `recalibrate`.
+3. **Identity until 20 forecasts of the kind have settled** (`confirmed` or `error`; `inconclusive` observed
+   nothing and does not count). Only the last 100 settlements count.
+4. **Computed on read, stored nowhere.** `evolution.recalibrations(db)` reads the settled rows of
+   `web_predictions`, the rows `calibration` scores. There is no parameter to migrate, restore or forget: a
+   prediction removed by a forget (`forget_knowledge`, `forget_research` for the hypotheses a task formed) stops
+   counting with the delete, and a restored copy reads from the rows it holds after the replay.
+5. **One reader, and only for order.** `autonomy.candidates` reads a due knowledge prediction's forecast and an
+   open hypothesis' forecast through the mapping of its kind, and uses the reading for the candidate's priority
+   only: the signal `prediction_uncertainty`, and for a hypothesis the information gain that multiplies the
+   priority (`info_gain_as_read`). Whether a candidate is researched at all is decided from the stated forecast:
+   `info_gain`, which `min_gain` and every other admission test compare, is the stated forecast's gain, and the
+   candidate a subject keeps when several records name it is chosen by that gain too. So the mapping changes the
+   rank of the admitted candidates and never the set (review F3; before that fix a stated 0.9 read as 0.965 fell
+   below `min_gain` and was refused). The candidate shows the stated `forecast`, and `forecast_as_read` and
+   `info_gain_as_read` beside it when they differ; the `decision` event of a queued investigation records them.
+6. **Not changed, by construction:** the stored forecast of any prediction, old or new; the confidence of a
+   knowledge item; verification states, verdicts, the thresholds of provisional knowledge, answers; `calibration`
+   and its snapshots, which go on scoring the forecasts as stated. Tests compare the tables before and after.
+7. **A setting:** `calibrated_forecasts` (web settings, default on); `nsf web config --set
+   calibrated_forecasts=false` makes every mapping the identity. `nsf knowledge calibration` shows, per kind, the
+   mapping in force, what it makes of five stated forecasts, and how it would have fared on the individual's own
+   settled predictions had it been in use all along (each scored before its outcome is used).
+
+## Why these numbers
+
+The individual has no history to learn them from, so they come from a simulation
+(`src/neuroscifi/webcortex/bench/calibration.py`, `scripts/bench_calibration.py`): streams of forecasts whose true
+probability follows a rule the forecaster does not know (right; too sure; not sure enough; off by a constant; one
+forecast every time; knows nothing; backwards; a rule that changes halfway). An outcome becomes known some
+predictions later, and every forecast is scored before its outcome is used. 108 settings (minimum 10, 20, 40;
+window 100, 200, all; prior precision 1, 4, 16 on the shift; shift alone or a tilt with precision 4, 16, 64) were
+run on eleven development streams. The rule, fixed before the run: the lowest mean squared distance to the true
+probability among the settings that make no stream worse by more than 0.002 at any prefix (the first 25, 50, 100
+predictions, or all). 13 settings pass; the first has a minimum of 10, and the second, the same with a minimum of
+20, was shipped (0.0263 against 0.0253): one refresh can settle several predictions about one source, so real
+settlements count for fewer than their number, and on streams whose outcomes arrive in bursts of five the two
+minimums score alike.
+
+Held-out streams (thirteen, with other rules, other forecast values, a longer delay and other seeds;
+`docs/quality/evidence/open_items_calibration.json`):
+
+| | Stated forecast | Read through the mapping |
+|---|---|---|
+| Mean squared distance to the true probability | 0.0436 | 0.0165 |
+| Brier score | 0.2273 | 0.1999 |
+| Worst change to any stream at any prefix | — | +0.0011 (a forecaster that was right) |
+| First 25 predictions of every stream | — | identical: below the minimum |
+
+Where it does not help, measured: a forecaster that is already right pays about 0.001 (0.002 when its outcomes
+come in bursts), which is estimation noise; and in the 50 predictions after a forecaster's rule reverses, the
+mapping still describes the old rule and is worse than the stated forecast (0.095 against 0.043 on the held-out
+reversal, 0.106 against 0.047 on the development one) until the window turns over. Over such a stream as a whole
+it is still better (0.046 against 0.053).
+
+## Alternatives considered
+
+- **Store the reading as the prediction's probability.** Rejected: the next fit would then learn from forecasts
+  it had already moved, and `calibration` would score the mapping instead of the forecaster.
+- **Reliability bins with isotonic smoothing.** Rejected for this size: with a few dozen settlements and a
+  handful of distinct forecast values the bins are nearly empty; two parameters with a prior use every outcome.
+- **A shift alone.** In the grid: it never passes the 0.002 rule on the development streams (a forecaster that is
+  too sure needs a slope).
+- **Move the thresholds of provisional knowledge with the calibration.** Not done and not proposed: it would
+  change what counts as verified from a statistic of a different question ("did it still hold at the next
+  refresh").
+- **Give the research-policy weights a reader.** Not done: CONTINUAL_LEARNING §2 reserves that for the owner, and
+  nothing in the docs defines what the reader would do.
+
+## Consequences
+
+- An individual with fewer than 20 settled forecasts of a kind behaves exactly as before; the offline benchmark
+  (`nsf web bench`) is identical with the mapping in force and with it made inert (every metric, the safety
+  summary and the regression block).
+- Once a mapping acts, the order of autonomous research changes, and only the order: a hypothesis whose reading
+  moves its forecast towards certainty carries less expected information as read and ranks lower, one whose
+  reading moves it towards even odds ranks higher; knowledge whose "still holds" forecasts kept failing is read as
+  less certain and ranks higher among due predictions. The set of admitted candidates is the one the stated
+  forecasts give. With `limit` (the idle investigator asks for five) a candidate can fall out of the returned
+  list by rank, as any lower-ranked candidate always could.
+  This is the first value the individual learns from its own record that changes what it does next without the
+  owner asking (CONTINUAL_LEARNING, kind 2b): bounded as above, shown, logged with each decision, and one setting
+  away from off.
+- A prediction settled by a task that was later forgotten keeps its outcome (ADR-029: the observation is scrubbed,
+  the outcome stays) and so still counts, as it does in `calibration`.
+- Settlements are treated as independent draws. They are not (one source change can fail several predictions);
+  the minimum and the prior are the only allowance for that.
+- Tests: `tests/webcortex/test_recalibration.py` (24; the fit against the objective written out and against a
+  one-value solution by bisection, monotonicity over 200 random histories, the kinds, the reader, the decision
+  record, forgetting, restore, the setting, the command, and the recorded evidence recomputed).

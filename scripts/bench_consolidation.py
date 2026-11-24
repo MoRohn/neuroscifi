@@ -2,6 +2,7 @@
 
     python scripts/bench_consolidation.py WORKDIR > result.json
     python scripts/bench_consolidation.py WORKDIR copies [10000 100000 1000000] > copies.json
+    python scripts/bench_consolidation.py WORKDIR limit [100000 1000000] > limit.json
 
 Builds, per size (200, 10,000 and 100,000 learning events), two temporary individuals in WORKDIR with the same events:
 three channels, four roots each, a sample id on a third of them, one confirmed camera change in the middle. In one of
@@ -20,6 +21,13 @@ straight into evidence_consolidated with their tombstones, 200 roots on two chan
 no ANALYZE. Reported: compute(), decide(), learning_since() for one root, explain(), a forget of one reading and a
 sweep that expires 20 memory-only events (each recomputes the epoch for its belief revision). One wall-clock call
 each after one warm call of compute().
+
+`limit`: what the limit on consolidated readings (InstanceConfig.max_consolidated_rows) and its reporting cost, and
+what a restore holds in memory, on a file of n readings written as for `copies` (every sample once). Reported: the
+count the sweep makes when it meets a learning event; a sweep of 1,000 expiring learning events with room for all
+of them, with room for 100 and with no room; `nsf regulation` (store.regulation) with its largest-epoch report;
+and the peak of Python memory (tracemalloc) while checkpoints._forgets reads the live file for a replay, once for
+every reading (as before the limit work) and once for the 1,000 journal seqs of an archive.
 """
 import json
 import os
@@ -157,8 +165,64 @@ def copies(workdir, sizes):
     print(json.dumps(out, indent=1))
 
 
+def limit(workdir, sizes):
+    from array import array
+    import tracemalloc
+
+    from neuroscifi.instance import checkpoints
+
+    def expiring(db, tag, count=1000):
+        """`count` learning events at the end of the journal, due at the returned time. Written straight into the
+        journal: evidence.observe would recompute the epoch's beliefs once per event."""
+        due = T0 + 20 * 86400
+        with store.write(db):
+            db.executemany(
+                "INSERT INTO evidence(id,epoch,channel,action,bit,root,recorded_at,retention,expires_at) "
+                "VALUES(?,'e','camera',0,?,?,?,'standard',?)",
+                [(f"late-{tag}-{k}", k % 2, f"r{k % 200}", T0 + 100 + k, due - 1) for k in range(count)])
+            store.bump_state_version(db)
+        return due
+
+    def peak(fn):
+        tracemalloc.start()
+        try:
+            fn()
+            return round(tracemalloc.get_traced_memory()[1] / 2**20, 1)
+        finally:
+            tracemalloc.stop()
+
+    out = {}
+    for n in sizes:
+        db, readings = build_copies(f"{workdir}/limit-{n}.sqlite", n, 0)
+        governance.sweep(db, T0 + 9 * 86400)                     # the 20 memory-only events of the builder
+        beliefs.compute(db, "e")
+        row = {"readings": readings}
+        row["count_for_the_limit_ms"] = once(lambda: store.consolidation_room(db))
+        row["regulation_ms"] = once(lambda: store.regulation(db))
+        row["regulation_largest_epoch"] = store.regulation(db)["largest_epoch"]
+        for label, cap in (("room_for_all", 0), ("room_for_100", readings + 100), ("no_room", readings)):
+            store.set_config(db, {"max_consolidated_rows": cap}, T0)
+            due = expiring(db, f"{n}-{label}")
+            result = {}
+            row[f"sweep_of_1000_learning_events_{label}_ms"] = once(lambda: result.update(governance.sweep(db, due)))
+            row[f"sweep_of_1000_learning_events_{label}"] = {
+                k: result.get(k, 0) for k in ("expired", "consolidated", "not_consolidated")}
+            with store.write(db):                                # back to n readings for the next case
+                db.execute("DELETE FROM evidence_consolidated WHERE seq>?", (readings,))
+        archive_journal = array("q", range(readings - 999, readings + 1))
+        row["restore_reads_every_reading_peak_mib"] = peak(lambda: checkpoints._forgets(db, T0 + 10 * 86400))
+        row["restore_reads_the_archives_1000_events_peak_mib"] = peak(
+            lambda: checkpoints._forgets(db, T0 + 10 * 86400, archive_journal))
+        row["tombstones"] = db.execute("SELECT count(*) FROM tombstones").fetchone()[0]
+        out[n] = row
+        db.close()
+    print(json.dumps(out, indent=1))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[2] == "copies":
         copies(sys.argv[1], [int(x) for x in sys.argv[3:]] or [10_000, 100_000, 1_000_000])
+    elif len(sys.argv) > 2 and sys.argv[2] == "limit":
+        limit(sys.argv[1], [int(x) for x in sys.argv[3:]] or [100_000, 1_000_000])
     else:
         main(sys.argv[1])

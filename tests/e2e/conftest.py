@@ -48,6 +48,16 @@ class Bridge:
     def close(self):
         self.server.shutdown()
         self.server.server_close()
+        # The product's server (pocket.server.PocketServer) closes the audio beacon and the voice hub that a voice
+        # request starts on it (voice.http.hub_for) in its server_close(). This fixture serves the same handler
+        # from a plain ThreadingHTTPServer, whose server_close() knows nothing of them: close them here, as the
+        # product does, or their threads outlive the test (the session-end thread check, tests/thread_check.py).
+        beacon = getattr(self.server, "audio_beacon", None)
+        if beacon is not None:
+            beacon.close()
+        hub = getattr(self.server, "voice_hub", None)
+        if hub is not None:
+            hub.close()
 
 
 @pytest.fixture

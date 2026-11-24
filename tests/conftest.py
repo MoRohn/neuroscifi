@@ -40,3 +40,22 @@ def private_runtime_dir(monkeypatch, tmp_path_factory):
     folder.mkdir(mode=0o700, exist_ok=True)
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(folder))
     monkeypatch.delenv("NSF_POCKET_CONTROL_DIR", raising=False)
+
+
+# ---- no thread is left behind (tests/thread_check.py says why) --------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _thread_births(request):
+    import threading
+    import thread_check
+    before = set(threading.enumerate())
+    yield
+    thread_check.note_births(before, request.node.nodeid)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def no_thread_is_left_behind():
+    import thread_check
+    yield
+    rows = thread_check.left_behind()
+    assert not rows, thread_check.MESSAGE + "\n".join(rows)

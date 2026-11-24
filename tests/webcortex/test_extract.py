@@ -478,3 +478,177 @@ def test_importing_trafilatura_prints_no_socks_dependency_warning():
     assert out.returncode == 0, out.stderr
     assert "SOCKS" not in out.stderr and "DependencyWarning" not in out.stderr, out.stderr
     assert "an unrelated warning stays visible" in out.stderr
+
+
+# ---- characters a reader does not see (text.as_seen) -----------------------------------------------------------
+
+def test_character_references_to_unseen_characters_are_removed_after_parsing():
+    """0.7.0 removed zero-width and direction characters from the page's bytes, before parsing. Written as character
+    references they were plain text to that pass and came out of the parser as the characters themselves, into the
+    text that becomes claims."""
+    page = ("<html><head><title>Num&zwnj;Py 2.5.5&#xFEFF;</title></head><body><article>"
+            "<p>The fee is 1&#x200b;00 dollars a year at the co&shy;op, the vendor&#x2060; said.</p>"
+            "<p>The newt brain has roughly 100&#8203; million neurons, a survey found in the marsh.</p>"
+            "</article></body></html>")
+    doc = html_doc(page)
+    assert doc.title == "NumPy 2.5.5"
+    assert "The fee is 100 dollars a year at the coop, the vendor said." in doc.text
+    assert "roughly 100 million neurons" in doc.text
+    assert ex.T.unseen_characters(doc.text + doc.title + doc.markdown) == []
+    assert doc.flags["zero_width_removed"] == 6 and doc.flags["hidden_removed"] == 6
+
+
+def test_a_line_reordered_by_a_direction_override_is_not_read():
+    """A right-to-left override shows "72" as "27". Whether it stands in the page as the character or as a character
+    reference, the paragraph it reorders is dropped: neither order can be quoted faithfully."""
+    for override in ("‮", "&#x202E;", "&#8238;", "‭", "&#x202d;"):
+        page = ("<html><body><article><h1>The Tolvane tower</h1>"
+                f"<p>The tower is {override}72‬ metres tall and was finished in 1901.</p>"
+                "<p>It stands in the harbour of Tolvane and is open to visitors in summer.</p>"
+                "</article></body></html>")
+        doc = html_doc(page)
+        assert "metres tall" not in doc.text and "metres tall" not in doc.markdown, override
+        assert "It stands in the harbour of Tolvane" in doc.text
+        assert doc.flags["reordered_blocks_removed"] == 1
+        assert ex.T.unseen_characters(doc.text + doc.markdown) == []
+    plain = html_doc("<html><body><article><p>The tower is 72 metres tall.</p></article></body></html>")
+    assert "reordered_blocks_removed" not in plain.flags and "72 metres tall" in plain.text
+
+
+def test_an_override_inside_a_tag_is_still_removed_before_parsing():
+    """"<scr<RLO>ipt>" must be read as the script element it is, and dropped as one."""
+    doc = html_doc("<html><body><article><p>Dendrites compute in every layer of the cortex, the study says.</p>"
+                   "<scr‮ipt>var leaked = 'secret';</scr‮ipt></article></body></html>")
+    assert "leaked" not in doc.text and "Dendrites compute" in doc.text
+    assert "reordered_blocks_removed" not in doc.flags
+
+
+def test_unseen_characters_are_removed_from_plain_text_json_and_feeds():
+    def fetched(body, content_type):
+        return FetchResult(url="http://x.example/a", final_url="http://x.example/a", status=200, headers={},
+                           content_type=content_type, body=body, retrieved_at=1.0, retrieval_mode="live",
+                           truncated=False)
+    doc = extract(fetched("The fee is 1​00 dollars.\nShown as ‮72‬ here.\nThe end.".encode(),
+                          "text/plain"))
+    assert doc.text == "The fee is 100 dollars.\nThe end."
+    doc = extract(fetched(b'{"fee": "1\\u200b00 dollars", "note": "co\\u00adop"}', "application/json"))
+    assert '"fee": "100 dollars"' in doc.text and '"note": "coop"' in doc.text
+    feed = (b'<?xml version="1.0"?><rss version="2.0"><channel><title>News&#x200b;wire</title>'
+            b'<item><title>Num&#x200c;Py 2.5.5 released</title><link>http://x.example/n</link>'
+            b'<description>It fixes the parser fl&#xad;aw.</description></item></channel></rss>')
+    doc = extract(fetched(feed, "application/rss+xml"))
+    assert doc.title == "Newswire" and doc.text == "NumPy 2.5.5 released. It fixes the parser flaw."
+
+
+
+@pytest.mark.parametrize("paragraph", [
+    "The safe dose for adults is < ‮72 mg> per day according to the label.",      # security review M1
+    "If a < b then the Varnel bridge has ‮72 lanes > 3.",                          # review F2
+    "The limit is <‮72> requests a minute.",
+    "The limit is <=‮72> requests a minute.",
+    "The limit is < &#x202E;72 > requests a minute.",
+])
+def test_an_override_between_a_literal_lt_and_gt_is_an_override_in_text(paragraph):
+    """Only what the HTML tokenizer reads as a tag ("<" then a letter, "/", "!" or "?") is a tag: an override in
+    text between a literal "<" and ">" reorders what a reader sees, and its paragraph is dropped like any other."""
+    doc = html_doc("<html><body><article><h1>Kestrel</h1><p>" + paragraph + "</p>"
+                   "<p>The compound was first described in 2019 by the Ostra laboratory.</p></article></body></html>")
+    assert "72" not in doc.text and "72" not in doc.markdown, doc.text
+    assert "first described in 2019" in doc.text
+    assert doc.flags["reordered_blocks_removed"] == 1
+
+
+def test_one_override_is_counted_once():
+    """Review F2 (low): the override was counted as a zero-width character before parsing and again as a dropped
+    line."""
+    doc = html_doc("<html><body><article><p>The tower is ‮72 metres tall.</p>"
+                   "<p>It stands in the harbour of Tolvane.</p></article></body></html>")
+    assert doc.flags["hidden_removed"] == 1 and "zero_width_removed" not in doc.flags
+    assert doc.flags["reordered_blocks_removed"] == 1
+
+
+
+@pytest.mark.parametrize("control", ["‏", "&#x200F;", "&rlm;", "؜", "‫", "‪", "⁧",
+                                     "⁦", "⁨", "‎", "&lrm;"])
+def test_a_line_with_any_direction_control_and_no_right_to_left_letter_is_not_read(control):
+    """Security review M2: a right-to-left mark next to numbers reorders them as shown ("Affected:<RLM> 3 4" is shown
+    "4 3"); so do the Arabic letter mark, the embeddings and the isolates. Only the overrides were dropped; these were
+    deleted and the line kept in an order nobody was shown."""
+    doc = html_doc("<html><body><article><h1>Orbix advisory</h1>"
+                   f"<p>Affected:{control} 3 4, fixed: 5.</p>"
+                   "<p>The advisory was published by Orbix Labs in March 2026.</p></article></body></html>")
+    assert "Affected" not in doc.text and "Affected" not in doc.markdown, control
+    assert "published by Orbix Labs" in doc.text
+    assert ex.T.unseen_characters(doc.text + doc.markdown) == []
+
+
+def test_right_to_left_text_keeps_its_marks_and_its_claims_carry_them():
+    """In Hebrew or Arabic, marks and isolates are how mixed text is written: such a line is kept with its marks, so
+    the claims made of it carry them and the answer guard does not cite those claims (UNSEEN_IN_CLAIM). A line with
+    an override is dropped whatever its script. A right-to-left line without any control is read as before."""
+    hebrew = "הגשר פתוח"             # "the bridge is open"
+    arabic = "الجسر مفتوح"   # "the bridge is open"
+    doc = html_doc("<html><body><article>"
+                   f"<p>{hebrew} ‏72 מטר.</p>"
+                   f"<p>{arabic} &#x2067;2026&#x2069;.</p>"
+                   f"<p>{hebrew} ‮72.</p>"
+                   f"<p>{arabic} 41.</p>"
+                   "<p>The Tolvane bridge reopened in May 2026 after repairs.</p></article></body></html>")
+    lines = doc.text.split("\n")
+    assert any(hebrew in line and "‏" in line for line in lines)               # kept, with its mark
+    assert any(arabic in line and "⁧" in line and "⁩" in line for line in lines)
+    assert not any("‮" in line or (hebrew in line and "72." in line and "‏" not in line) for line in lines)
+    assert any(line.startswith(arabic) and "41" in line for line in lines)           # no control: as before
+    assert doc.flags["reordered_blocks_removed"] == 1
+    from neuroscifi.webcortex import reasoning
+    kept = next(line for line in lines if "‏" in line)
+    assert reasoning._unseen_in_claims([{"id": "C1", "text": kept}])                 # the guard will not cite it
+
+
+
+def test_a_paragraph_holding_a_direction_control_is_dropped_whole_not_to_the_next_br():
+    """Web review F8: an override acts to the end of its paragraph, which in HTML is the block, not the line a <br>
+    starts: in <p>RLO<br>72 boards</p> the second visual line is shown reversed. The whole paragraph is dropped,
+    and only it: the text after it in the same container stays."""
+    doc = html_doc("<html><body><article><h1>Varnel bridge</h1>"
+                   "<p>Note ‮<br>72 boards were replaced.<br>The deck is 41 metres long.</p>"
+                   "<p>The bridge reopened in May 2026.</p></article></body></html>")
+    assert "72 boards" not in doc.text and "41 metres" not in doc.text and "72 boards" not in doc.markdown
+    assert "reopened in May 2026" in doc.text and doc.flags["reordered_blocks_removed"] == 1
+    li = html_doc("<html><body><article><ul><li>Affected:‏<br>3 4</li><li>Fixed: 5</li></ul>"
+                  "<p>Published by Orbix Labs in March 2026.</p></article></body></html>")
+    assert "3 4" not in li.text and "Fixed: 5" in li.text and li.flags["reordered_blocks_removed"] == 1
+
+
+def test_a_control_in_loose_text_of_a_container_drops_its_line_only():
+    """Text standing directly in a container of blocks is its own paragraph between them: the container is not
+    dropped, the line is (text.as_seen)."""
+    doc = html_doc("<html><body><article><p>The bridge reopened in May 2026.</p>"
+                   "The deck is ‮72 metres long."
+                   "<p>It carries 4 lanes.</p></article></body></html>")
+    assert "reopened in May 2026" in doc.text and "carries 4 lanes" in doc.text and "72" not in doc.text
+    assert "reordered_blocks_removed" not in doc.flags and doc.flags["reordered_lines_removed"] == 1
+
+
+
+@pytest.mark.parametrize("element", ["title", "xmp", "textarea", "style", "script", "noscript", "iframe", "noembed",
+                                     "noframes", "TITLE"])
+def test_a_fake_tag_inside_a_raw_text_element_does_not_shield_a_control(element):
+    """Security re-review L9: inside raw-text elements there are no tags, so '<title>Dose <b RLO72 mg></title>' is shown
+    'Dose <b >gm 27'; extraction kept 'Dose <b 72 mg>'. Such an element now loses its content."""
+    page = (f"<html><head><{element}>Dose <b ‮72 mg></{element}></head><body><article>"
+            f"<p>Dose <{element}>for adults <i ‏3 4 mg></{element}> per day.</p>"
+            "<p>The Kestrel compound was first described in 2019.</p></article></body></html>")
+    doc = html_doc(page)
+    for field in (doc.title, doc.text, doc.markdown):
+        assert "72" not in field and "3 4" not in field and "‮" not in field, (element, field)
+    assert "first described in 2019" in doc.text
+
+
+def test_plaintext_holding_a_control_loses_everything_after_it_and_a_clean_title_stays():
+    doc = html_doc("<html><head><title>Kestrel dosage</title></head><body><article>"
+                   "<p>The Kestrel compound was first described in 2019.</p>"
+                   "<plaintext>Dose <b ‮72 mg> per day</article></body></html>")
+    assert doc.title == "Kestrel dosage" and "72" not in doc.text and "first described in 2019" in doc.text
+    clean = html_doc("<html><head><title>Dose <b>72</b> mg</title></head><body><p>x</p></body></html>")
+    assert clean.title == "Dose <b>72</b> mg"

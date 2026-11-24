@@ -413,6 +413,53 @@ def test_forget_a_consolidated_reading_and_a_camera(console, new_page):
     expect(page.locator("#deletionLog")).to_contain_text("camera camera:#")
 
 
+def test_the_overview_says_when_consolidated_readings_reach_their_limit(console, new_page):
+    """ADR-044: the file keeps at most max_consolidated_rows readings. The Regulation card shows how many of how many,
+    names the largest epoch with what its beliefs cost to compute, and says in plain words when the limit is near or
+    reached and what to do. The card passes the accessibility scan with the warning shown."""
+    db = store.open_existing(console.path)
+    try:
+        long_ago = time.time() - 30 * 86400            # past the 7-day lifetime: the console's first read expires them
+        evidence.start_epoch(db, "bench", long_ago)
+        for n in range(5):
+            evidence.observe(db, {"id": f"old-{n}", "epoch": "bench", "channel": "camera", "action": 0, "bit": 0,
+                                  "root": "porch-cam"}, long_ago + n)
+        store.set_config(db, {"max_consolidated_rows": 4})
+    finally:
+        db.close()
+    page = new_page(1280, 900, bypass_csp=True)        # only so axe can be injected for the scan at the end
+    page.goto(console.url)
+    expect(page.locator("#h-overview")).to_be_visible()
+    card = page.locator("#regulation")
+    expect(card).to_contain_text("Consolidated readings")
+    expect(card).to_contain_text("4 of 4")
+    expect(card).to_contain_text("The limit on consolidated readings is reached (4 of 4)")
+    expect(card).to_contain_text("leaves nothing")
+    expect(card).to_contain_text("nsf config --max-consolidated-rows N")
+    expect(card).to_contain_text("Largest epoch")
+    expect(card).to_contain_text("bench: 4 consolidated readings; its beliefs take")
+    page.add_script_tag(path=str(AXE))
+    found = {}
+    scan(page, found, "overview-limit-reached")
+    assert not found, found
+    db = store.open_existing(console.path)
+    try:
+        store.set_config(db, {"max_consolidated_rows": 5})
+    finally:
+        db.close()
+    page.locator("#refreshOverview").click()
+    expect(card).to_contain_text("Consolidated readings are at 80 % of their limit (4 of 5)")
+    db = store.open_existing(console.path)
+    try:
+        store.set_config(db, {"max_consolidated_rows": 0})
+    finally:
+        db.close()
+    page.locator("#refreshOverview").click()
+    expect(card).to_contain_text("4 (no limit)")
+    expect(card).not_to_contain_text("limit on consolidated readings")
+    assert page.problems == []
+
+
 def test_locked_states_and_api_errors(console, new_page):
     page = new_page(1280, 900)
     requests = []

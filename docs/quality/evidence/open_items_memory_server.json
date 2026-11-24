@@ -1,0 +1,533 @@
+{
+ "what": "One process for both memory models (deploy/memory/server.py, NSF_MEMORY_SERVER=single) against the two vLLM servers it replaces: the memory benchmark, latency, footprint, a stress run, score equivalence, the setup step. Open-items round, lane M.",
+ "generated_at": "2026-11-24",
+ "host": "the reference DGX Spark (GB10, unified memory), shared with other tenants; load average 5 to 8",
+ "image": "the digest-pinned vLLM image of deploy/memory/memory.env (python 3.12.3, torch 2.14.0+cu130, transformers 5.22.1); nothing pulled",
+ "models": {
+  "embedding": "Qwen/Qwen3-Embedding-0.6B rev 97b0c614",
+  "reranker": "Qwen/Qwen3-Reranker-0.6B rev e61197ed",
+  "precision": "bfloat16 (the checkpoints' own) on the device; the reranker's yes/no rows in float32"
+ },
+ "containers": "own names (neuroscifi-memlite-*) and ports (18451/18452; reference pair 18461/18462), loopback, started through deploy/memory/run.sh with a scratch NSF_MEMORY_DIR; all stopped and removed",
+ "gate": {
+  "benchmark_reference": "accel_decisions_final_memory.json (the vLLM pair, quiet host)",
+  "benchmark_runs": {
+   "single_1": {
+    "first_query_ms": 211.6,
+    "summary": {
+     "near": {
+      "queries": 48,
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "not_found": 0
+     },
+     "para": {
+      "queries": 48,
+      "recall_at_1": 0.979,
+      "recall_at_3": 1.0,
+      "mrr": 0.99,
+      "not_found": 0
+     },
+     "noname": {
+      "queries": 12,
+      "recall_at_1": 0.917,
+      "recall_at_3": 0.875,
+      "mrr": 0.917,
+      "not_found": 1
+     },
+     "topic": {
+      "queries": 12,
+      "all_facts_on_top": 1.0,
+      "recall_of_facts": 1.0,
+      "other_subjects_returned_mean": 0.25
+     },
+     "none": {
+      "queries": 10,
+      "returned_something": 3,
+      "false_positive_rate": 0.3
+     },
+     "all_answerable": {
+      "queries": 108,
+      "recall_at_1": 0.981,
+      "recall_at_3": 0.986,
+      "mrr": 0.986
+     },
+     "query_ms": {
+      "p50": 100.749,
+      "p95": 134.509,
+      "max": 182.375
+     }
+    }
+   },
+   "single_2": {
+    "first_query_ms": 166.4,
+    "summary": {
+     "near": {
+      "queries": 48,
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "not_found": 0
+     },
+     "para": {
+      "queries": 48,
+      "recall_at_1": 0.979,
+      "recall_at_3": 1.0,
+      "mrr": 0.99,
+      "not_found": 0
+     },
+     "noname": {
+      "queries": 12,
+      "recall_at_1": 0.917,
+      "recall_at_3": 0.875,
+      "mrr": 0.917,
+      "not_found": 1
+     },
+     "topic": {
+      "queries": 12,
+      "all_facts_on_top": 1.0,
+      "recall_of_facts": 1.0,
+      "other_subjects_returned_mean": 0.25
+     },
+     "none": {
+      "queries": 10,
+      "returned_something": 3,
+      "false_positive_rate": 0.3
+     },
+     "all_answerable": {
+      "queries": 108,
+      "recall_at_1": 0.981,
+      "recall_at_3": 0.986,
+      "mrr": 0.986
+     },
+     "query_ms": {
+      "p50": 103.6,
+      "p95": 164.396,
+      "max": 191.292
+     }
+    }
+   },
+   "single_before_the_last_changes": {
+    "first_query_ms": 192.6,
+    "summary": {
+     "near": {
+      "queries": 48,
+      "recall_at_1": 1.0,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "not_found": 0
+     },
+     "para": {
+      "queries": 48,
+      "recall_at_1": 0.979,
+      "recall_at_3": 1.0,
+      "mrr": 0.99,
+      "not_found": 0
+     },
+     "noname": {
+      "queries": 12,
+      "recall_at_1": 0.917,
+      "recall_at_3": 0.875,
+      "mrr": 0.917,
+      "not_found": 1
+     },
+     "topic": {
+      "queries": 12,
+      "all_facts_on_top": 1.0,
+      "recall_of_facts": 1.0,
+      "other_subjects_returned_mean": 0.25
+     },
+     "none": {
+      "queries": 10,
+      "returned_something": 3,
+      "false_positive_rate": 0.3
+     },
+     "all_answerable": {
+      "queries": 108,
+      "recall_at_1": 0.981,
+      "recall_at_3": 0.986,
+      "mrr": 0.986
+     },
+     "query_ms": {
+      "p50": 103.893,
+      "p95": 134.754,
+      "max": 145.826
+     }
+    }
+   }
+  },
+  "benchmark_reference_summary": {
+   "all_answerable": {
+    "mrr": 0.986,
+    "queries": 108,
+    "recall_at_1": 0.981,
+    "recall_at_3": 0.986
+   },
+   "near": {
+    "mrr": 1.0,
+    "not_found": 0,
+    "queries": 48,
+    "recall_at_1": 1.0,
+    "recall_at_3": 1.0
+   },
+   "noname": {
+    "mrr": 0.917,
+    "not_found": 1,
+    "queries": 12,
+    "recall_at_1": 0.917,
+    "recall_at_3": 0.875
+   },
+   "none": {
+    "false_positive_rate": 0.3,
+    "queries": 10,
+    "returned_something": 3
+   },
+   "para": {
+    "mrr": 0.99,
+    "not_found": 0,
+    "queries": 48,
+    "recall_at_1": 0.979,
+    "recall_at_3": 1.0
+   },
+   "query_ms": {
+    "max": 297.949,
+    "p50": 113.106,
+    "p95": 168.384
+   },
+   "topic": {
+    "all_facts_on_top": 1.0,
+    "other_subjects_returned_mean": 0.25,
+    "queries": 12,
+    "recall_of_facts": 1.0
+   }
+  },
+  "every_class_equal_to_the_reference": true,
+  "per_query_against_the_stored_vllm_run": {
+   "queries": 130,
+   "ranked_list_differs": 5,
+   "first_relevant_rank_differs": 0,
+   "top_score_abs_difference": {
+    "n": 122,
+    "median": 6e-05,
+    "p95": 0.01418,
+    "max": 0.02396
+   },
+   "the_five": [
+    {
+     "class": "near",
+     "query": "From how many nautical miles is the Tolvane Lighthouse lamp visible?",
+     "vllm_ranked": [
+      "lighthouse.range"
+     ],
+     "single_ranked": [
+      "lighthouse.range",
+      "lighthouse.built"
+     ]
+    },
+    {
+     "class": "near",
+     "query": "Where was Imre Solvang born?",
+     "vllm_ranked": [
+      "solvang.born",
+      "solvang.group",
+      "solvang.book",
+      "solvang.medal"
+     ],
+     "single_ranked": [
+      "solvang.born",
+      "solvang.group",
+      "solvang.book"
+     ]
+    },
+    {
+     "class": "near",
+     "query": "Which group does Imre Solvang lead?",
+     "vllm_ranked": [
+      "solvang.group",
+      "solvang.book",
+      "solvang.born"
+     ],
+     "single_ranked": [
+      "solvang.group",
+      "solvang.book",
+      "solvang.born",
+      "solvang.medal"
+     ]
+    },
+    {
+     "class": "near",
+     "query": "Does Quillstream depend on Trellis?",
+     "vllm_ranked": [
+      "quill.trellis",
+      "quill.python",
+      "quill.batch"
+     ],
+     "single_ranked": [
+      "quill.trellis",
+      "quill.batch",
+      "quill.python"
+     ]
+    },
+    {
+     "class": "near",
+     "query": "Quillstream default batch size",
+     "vllm_ranked": [
+      "quill.batch",
+      "quill.trellis",
+      "quill.version",
+      "quill.python"
+     ],
+     "single_ranked": [
+      "quill.batch",
+      "quill.trellis",
+      "quill.python",
+      "quill.version"
+     ]
+    }
+   ],
+   "reading": "all five are 'near' queries whose first result is right in both; three differ by one statement more or less above the floor 0.02, two by the order of two lower results"
+  },
+  "latency_ms_reference": {
+   "p50": 113.106,
+   "p95": 168.384
+  },
+  "latency_ms_single": [
+   {
+    "p50": 100.749,
+    "p95": 134.509,
+    "max": 182.375
+   },
+   {
+    "p50": 103.6,
+    "p95": 164.396,
+    "max": 191.292
+   },
+   {
+    "p50": 103.893,
+    "p95": 134.754,
+    "max": 145.826
+   }
+  ],
+  "first_requests_after_wait_ms": {
+   "embed_two_texts": [
+    17,
+    45,
+    47
+   ],
+   "rerank_three_documents": [
+    50,
+    52,
+    467
+   ],
+   "note": "the single 467 ms was the first request after the start that ran beside the live setup check; every other first request was under 200 ms; the lookup budget is 2000 ms per call"
+  },
+  "start_to_ready_seconds": {
+   "run_sh_wait": [
+    29,
+    17,
+    11,
+    7,
+    7,
+    10
+   ],
+   "note": "the first 29 s was before the warm-up shapes moved into the load; model load itself 5.9 to 9.7 s; reference vLLM pair 54 to 69 s on this host"
+  },
+  "footprint": {
+   "method": "as the last round: the container's cgroup anonymous memory plus the device memory of its processes (nvidia-smi), after start, after the benchmark and after 2 x 200 requests",
+   "side_by_side": [
+    "neuroscifi-memlite-ref-embed anon_gib=2.74 shmem_gib=0.13 cgroup_current_gib=3.07 device_mib=1979 procs=3",
+    "neuroscifi-memlite-ref-rerank anon_gib=2.72 shmem_gib=0.05 cgroup_current_gib=2.97 device_mib=1979 procs=3",
+    "neuroscifi-memlite-single anon_gib=1.67 shmem_gib=0.05 cgroup_current_gib=1.80 device_mib=2655 procs=1"
+   ],
+   "single_over_the_gate_runs": [
+    "neuroscifi-memlite-single anon_gib=1.67 shmem_gib=0.05 cgroup_current_gib=1.91 device_mib=2655 procs=1",
+    "neuroscifi-memlite-single anon_gib=1.67 shmem_gib=0.05 cgroup_current_gib=1.92 device_mib=2787 procs=1",
+    "neuroscifi-memlite-single anon_gib=1.69 shmem_gib=0.05 cgroup_current_gib=1.94 device_mib=2741 procs=1",
+    "neuroscifi-memlite-single anon_gib=1.69 shmem_gib=0.05 cgroup_current_gib=1.93 device_mib=2741 procs=1"
+   ],
+   "summary_gib": {
+    "vllm_pair": 9.33,
+    "single": 4.26
+   },
+   "memavailable_drop_gib": {
+    "single": 4.27,
+    "vllm_pair": 12.14,
+    "note": "host MemAvailable before and after the start; includes page cache effects on a shared host, so indicative"
+   }
+  },
+  "stress_200_mixed_requests": {
+   "round_1": {
+    "requests": 200,
+    "ok": 179,
+    "refused": 21,
+    "seconds": 17.7,
+    "embed_ms": {
+     "n": 101,
+     "p50": 47.8,
+     "p95": 246.9
+    },
+    "rerank_ms": {
+     "n": 78,
+     "p50": 101.0,
+     "p95": 223.6
+    }
+   },
+   "round_2": {
+    "requests": 200,
+    "ok": 179,
+    "refused": 21,
+    "seconds": 18.0,
+    "embed_ms": {
+     "n": 101,
+     "p50": 49.8,
+     "p95": 266.9
+    },
+    "rerank_ms": {
+     "n": 78,
+     "p50": 95.6,
+     "p95": 215.4
+    }
+   },
+   "growth": "anonymous memory 1.67 -> 1.69 -> 1.69 GiB, device 2787 -> 2741 -> 2741 MiB across the two rounds: no growth"
+  },
+  "refused_cleanly": [
+   "no key / wrong key: 401",
+   "the other port's endpoint: 404",
+   "another model: 404",
+   "not JSON: 400",
+   "a text over 2048 tokens: 400 context_length_exceeded",
+   "empty input, dimensions, base64: 400",
+   "a body over 4 MiB: 413 (connection closed before the body is read)",
+   "a text over 64000 characters: 400",
+   "bad top_n: 400",
+   "chunked body: 411"
+  ],
+  "setup_step_live": {
+   "setup_first": [
+    0,
+    {
+     "status": "done",
+     "detail": "memory now finds a fact asked in other words, and leaves out what is not about the question (embedding model and reranker on this computer)"
+    }
+   ],
+   "setup_again": [
+    0,
+    {
+     "status": "already done",
+     "detail": "memory finds a fact asked in other words (embedding model and reranker on this computer)"
+    }
+   ],
+   "memory_status": {
+    "enabled": true,
+    "effect": "memory is ranked by the reranker; statements under the floor are not returned",
+    "providers": {
+     "embed": {
+      "configured": true,
+      "model": "qwen3-embedding-0.6b",
+      "state": "ready"
+     },
+     "rerank": {
+      "configured": true,
+      "model": "qwen3-reranker-0.6b",
+      "state": "ready"
+     }
+    }
+   },
+   "lookups": {
+    "paraphrase": {
+     "ms": 188.7,
+     "first": "The Orbix daemon listens on port 7411.",
+     "returned": 2,
+     "retrieval": {
+      "mode": "semantic",
+      "ranked_by": "rerank",
+      "candidates": 4,
+      "dropped_below_floor": 2,
+      "floor": 0.02,
+      "models": {
+       "embed": "qwen3-embedding-0.6b",
+       "rerank": "qwen3-reranker-0.6b"
+      }
+     }
+    },
+    "nothing in memory": {
+     "ms": 73.9,
+     "first": null,
+     "returned": 0,
+     "retrieval": {
+      "mode": "semantic",
+      "ranked_by": "rerank",
+      "candidates": 4,
+      "dropped_below_floor": 4,
+      "floor": 0.02,
+      "models": {
+       "embed": "qwen3-embedding-0.6b",
+       "rerank": "qwen3-reranker-0.6b"
+      }
+     }
+    },
+    "third lookup ms": 50.5
+   },
+   "semantic_status": {
+    "enabled": true,
+    "effect": "memory is ranked by the reranker; statements under the floor are not returned"
+   }
+  },
+  "semantic_tests": "tests/webcortex/test_semantic_memory.py and the suites listed in the lane report: passed"
+ },
+ "equivalence_with_the_vllm_pair": {
+  "same_texts": "the benchmark's 48 statements and 130 queries",
+  "embedding_and_rerank": {
+   "texts": 178,
+   "statements": 48,
+   "queries": 130,
+   "embedding": {
+    "cosine_between_the_two_servers_vectors": {
+     "n": 178,
+     "min": 0.999604,
+     "median": 0.999805,
+     "p95": 0.99988,
+     "max": 0.999904
+    },
+    "single_vector_norm": {
+     "n": 178,
+     "min": 1.0,
+     "median": 1.0,
+     "p95": 1.0,
+     "max": 1.0
+    },
+    "dimension": 1024,
+    "queries_with_the_same_ten_nearest_statements_in_the_same_order": 56
+   },
+   "rerank": {
+    "pairs": 1300,
+    "absolute_score_difference": {
+     "n": 1300,
+     "min": 0.0,
+     "median": 1.3e-05,
+     "p95": 0.009941,
+     "max": 0.05848
+    },
+    "pairs_on_different_sides_of_the_floor_0.02": 3,
+    "queries_with_the_same_best_statement": 129,
+    "queries_with_the_same_order_of_all_ten": 85
+   }
+  },
+  "nearest_statements": {
+   "queries": 130,
+   "single_vs_vllm": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 104,
+    "same_ten_in_order": 58
+   },
+   "vllm_vs_vllm_one_text_per_request": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 120,
+    "same_ten_in_order": 92
+   }
+  },
+  "reading": "vectors agree to cosine 0.9996 or better and the nearest statement is the same for every query; the ten nearest are the same set for 104 of 130 queries (vLLM against itself with another batching: 120). The reranker picks the same best statement for 129 of 130 queries and 3 of 1300 scores fall on the other side of the floor. Both are bfloat16 servers with different kernels; the benchmark's results are the same in every class."
+ },
+ "decision": "NSF_MEMORY_SERVER=single is the default: it passes every part of the gate at less than half the memory. NSF_MEMORY_SERVER=vllm keeps the two-server way, unchanged."
+}

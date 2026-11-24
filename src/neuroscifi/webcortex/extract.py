@@ -65,6 +65,7 @@ import markdownify
 from scrapling.parser import Selector
 
 from . import temporal
+from . import text as T
 from .safety import safe_xml_parse
 from .types import Document, FetchError, FetchResult
 
@@ -90,6 +91,42 @@ XML_TYPES = ("application/xml", "text/xml", "application/atom+xml", "application
 
 _SPACE = re.compile(r"\s+")
 _ZERO_WIDTH = re.compile("[​-‏‪-‮⁠-⁤⁦-⁩﻿­]")
+# Direction controls (text._DIRECTION: overrides, marks, embeddings, isolates), kept through parsing where they
+# stand in text so that what they reorder can be dropped afterwards (_keep_overrides, text.as_seen); written as code
+# points so that this line holds none. A tag is what the HTML tokenizer starts one with: "<" and then an ASCII
+# letter, "/", "!" or "?". A "<" followed by anything else is text ("dose is < 72 mg> per day"), and a control after
+# it is a control in text.
+_OVERRIDE = re.compile(r"<[A-Za-z/!?][^<>]*>|" + T._DIRECTION_RE.pattern)
+
+
+# Inside these elements the tokenizer makes no tags until the element's own end tag: raw text (script, style,
+# xmp, iframe, noembed, noframes, noscript) and escapable raw text (title, textarea), and plaintext to the end of
+# the document. A "<b 72 mg>" there is text, so a direction control beside it is a control in text (security
+# re-review L9: '<title>Dose <b RLO72 mg></title>' was shown 'Dose <b >gm 27' and extracted 'Dose <b 72 mg>').
+_RAW_TEXT_ELEMENT = re.compile(r"(<(title|textarea|style|script|xmp|iframe|noembed|noframes|noscript)\b[^>]*>)"
+                               r"(.*?)(</\2\s*>|$)|(<plaintext\b[^>]*>)(.*)$", re.IGNORECASE | re.DOTALL)
+
+
+def _empty_reordered_raw_text(markup: str) -> str:
+    """`markup` with the content of every raw-text element (_RAW_TEXT_ELEMENT) that holds a direction control taken
+    out: what such an element shows cannot be read as written, and code does not undo the reordering."""
+    def one(m):
+        if m.group(5) is not None:
+            return m.group(5) if T._DIRECTION_RE.search(m.group(6)) else m.group(0)
+        return m.group(1) + m.group(4) if T._DIRECTION_RE.search(m.group(3)) else m.group(0)
+    return _RAW_TEXT_ELEMENT.sub(one, markup)
+
+
+def _keep_overrides(markup: str) -> str:
+    """`markup` with every direction control that stands outside a tag written as a character reference
+    ("&#x202E;"), so that the removal of zero-width and direction characters before parsing (_ZERO_WIDTH) leaves it
+    for the parser to decode. An override inside a tag is left to that removal, as before: "<scr\u202eipt>" must
+    still be read as the script element it is. A raw-text element holding a control loses its content first
+    (_empty_reordered_raw_text): there a "<...>" is no tag."""
+    markup = _empty_reordered_raw_text(markup)
+    return _OVERRIDE.sub(lambda m: m.group(0) if m.group(0).startswith("<") else f"&#x{ord(m.group(0)):X};", markup)
+
+
 _BOILERPLATE = {"script", "style", "noscript", "svg", "nav", "header", "footer", "aside", "form", "iframe",
                 "object", "embed", "canvas", "button", "select", "textarea", "input", "dialog", "link", "meta"}
 _HIDING_CLASSES = {"hidden", "hide", "d-none", "sr-only", "visually-hidden", "visuallyhidden", "screen-reader-text",
@@ -100,6 +137,9 @@ _HIDDEN_STYLE = re.compile(r"(display\s*:\s*none|visibility\s*:\s*(hidden|collap
 _BLOCKS = {"p", "div", "section", "article", "main", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol", "dl",
            "dt", "dd", "pre", "blockquote", "table", "tr", "td", "th", "figure", "figcaption", "br", "hr",
            "address", "details", "summary", "body", "caption"}
+# A direction control acts to the end of its paragraph, which in HTML is the block that holds it, not the line a
+# <br> starts (_drop_reordered_blocks).
+_PARAGRAPH_BLOCKS = _BLOCKS - {"br", "hr", "body"}
 _JS_TYPES = {"text/javascript", "application/javascript", "module", "text/ecmascript", "application/ecmascript", ""}
 _JS_ROOTS = ("root", "app", "__next", "__nuxt", "svelte", "react-root")
 _DOI = re.compile(r"\b(10\.\d{4,9}/[^\s\"'<>]+)", re.I)
@@ -360,6 +400,34 @@ def _clean(root) -> tuple[int, int]:
     return hidden, boilerplate
 
 
+def _drop_reordered_blocks(root) -> int:
+    """Drop each paragraph whose order as shown differs from its characters' order (text.reorders: an override, or
+    another direction control without right-to-left letters) and return how many were dropped. A direction
+    control acts to the end of its paragraph, not to the next <br>, so the paragraph goes whole: the innermost block
+    (p, li, td, h1, ...) holding the control, when that block holds no other block. A control in text that stands
+    directly in a container of blocks (an <article> with loose text) is left to text.as_seen, which drops its line.
+    This only leaves text out; it never adds any."""
+    dropped = []
+    for el in list(root.iter()):
+        if not isinstance(el.tag, str):
+            continue
+        for chunk, holder in ((el.text, el), (el.tail, el.getparent())):
+            if not chunk or holder is None or not T._DIRECTION_RE.search(chunk):
+                continue
+            block = holder
+            while block is not None and (not isinstance(block.tag, str) or block.tag.lower() not in _PARAGRAPH_BLOCKS):
+                block = block.getparent()
+            if block is None or any(block is d or d in block.iterancestors() for d in dropped):
+                continue
+            if any(isinstance(x.tag, str) and x.tag.lower() in _PARAGRAPH_BLOCKS for x in block.iterdescendants()):
+                continue
+            if T.reorders("".join(block.itertext())):
+                dropped.append(block)
+    for block in dropped:
+        block.drop_tree()                       # lxml keeps the block's tail: the text after it is its parent's
+    return len(dropped)
+
+
 def _text_of(node) -> str:
     """Visible text of a cleaned subtree; block elements become line breaks; whitespace (source line breaks
     included) collapsed inside each block."""
@@ -428,8 +496,8 @@ def _main_node(root):
 def _fragment_text(fragment: str) -> str:
     """Plain text of an HTML fragment (feed summaries) with the same hidden-content removal as pages."""
     if "<" not in fragment:
-        return " ".join(htmlmod.unescape(_ZERO_WIDTH.sub("", fragment)).split())
-    sel = Selector(f"<html><body><div>{_ZERO_WIDTH.sub('', fragment)}</div></body></html>", url="",
+        return " ".join(T.as_seen(htmlmod.unescape(_ZERO_WIDTH.sub("", _keep_overrides(fragment))))[0].split())
+    sel = Selector(f"<html><body><div>{_ZERO_WIDTH.sub('', _keep_overrides(fragment))}</div></body></html>", url="",
                    huge_tree=False)
     root = sel._root
     _clean(root)
@@ -534,8 +602,8 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
     `final_url` is the URL after redirects (defaults to `url`); `published_hint` (epoch seconds or a date string,
     e.g. the feed item's date) becomes `published_at` with date_source "feed"."""
     final_url = final_url or url
-    text_in = _decode(bytes(body), headers)
-    zero_width = len(_ZERO_WIDTH.findall(text_in))
+    text_in = _keep_overrides(_decode(bytes(body), headers))
+    zero_width = len(_ZERO_WIDTH.findall(text_in))      # after _keep_overrides: an override is counted once, below
     text_in = _ZERO_WIDTH.sub("", text_in)
     text_in = re.sub(r"^\s*<\?xml[^>]*\?>", "", text_in)
     if not text_in.strip():
@@ -640,6 +708,9 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
         metadata["og_type"] = og_type[:50]
     if description:
         metadata["description"] = _fragment_text(description)[:2000]
+    for key in ("venue", "og_type"):
+        if key in metadata:
+            metadata[key] = T.as_seen(metadata[key])[0]
     for obj in ld:
         kind = obj.get("@type")
         if kind:
@@ -660,6 +731,7 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
         base = _absolute(final_url, base_el[0].get("href")) or final_url
 
     hidden, boilerplate = _clean(root)
+    reordered_blocks = _drop_reordered_blocks(root)
     body_el = root.find(".//body")
     visible = _text_of(body_el if body_el is not None else root)
     main = _main_node(root)
@@ -706,11 +778,25 @@ def extract_html(body: bytes, url: str, *, retrieved_at, retrieval_mode, engine=
     if len(text) > MAX_TEXT:
         truncated_extraction = True
 
+    # What was removed before parsing can come back out of it: "&#x200b;", "&zwnj;" and "&shy;" are plain text to
+    # the first pass and the characters themselves once the parser has decoded them. What becomes a claim or is
+    # shown (text, title, markdown, authors) is therefore read once more as a reader sees it (text.as_seen): the
+    # characters that draw nothing go, and a line a direction override reorders is dropped whole.
+    text, unseen, reordered = T.as_seen(text)
+    title, unseen_title, reordered_title = T.as_seen(title)
+    markdown = T.as_seen(markdown)[0]
+    authors = [a for a in (T.as_seen(x)[0].strip() for x in authors) if a]
+    zero_width += unseen + unseen_title
+    reordered += reordered_title
     js_suspected = len(visible) < JS_TEXT_THRESHOLD and (scripts > 0 or mount or asks_js)
-    flags = {"hidden_removed": hidden + zero_width, "boilerplate_removed": boilerplate,
+    flags = {"hidden_removed": hidden + zero_width + reordered + reordered_blocks, "boilerplate_removed": boilerplate,
              "js_suspected": bool(js_suspected)}
+    if reordered_blocks:
+        flags["reordered_blocks_removed"] = reordered_blocks
     if zero_width:
         flags["zero_width_removed"] = zero_width
+    if reordered:
+        flags["reordered_lines_removed"] = reordered
     if truncated_extraction:
         flags["truncated_extraction"] = True
 
@@ -758,7 +844,8 @@ def extract_pdf(body: bytes, url: str, *, retrieved_at, max_pages=30, retrieval_
     except Exception as error:       # pypdf raises many types on malformed input; all mean "cannot decode"
         raise FetchError("decode_error", url, f"unreadable PDF ({type(error).__name__})") from None
     text = "\n\n".join(c.strip() for c in chunks if c.strip())
-    text = _ZERO_WIDTH.sub("", text)[:MAX_TEXT]
+    text = T.as_seen(text)[0][:MAX_TEXT]
+    title, author = T.as_seen(title)[0], T.as_seen(author)[0]
     if not title:
         title = next((line.strip() for line in text.splitlines() if line.strip()), "")[:300]
     metadata = {"pages": pages, "pages_read": min(pages, int(max_pages))}
@@ -892,7 +979,7 @@ def extract(result: FetchResult, *, engine="auto", published_hint=None) -> Docum
         doc.content_type = content_type or "text/html"
     else:
         host = urlsplit(final).hostname or ""
-        text = _ZERO_WIDTH.sub("", _decode(body, headers))
+        text = T.as_seen(_decode(body, headers))[0]
         kind, title, links = "text", "", []
         if content_type in XML_TYPES or (content_type == "text/plain" and text.lstrip().startswith("<?xml")):
             feed_title, items = _feed(body, final)
@@ -903,10 +990,11 @@ def extract(result: FetchResult, *, engine="auto", published_hint=None) -> Docum
             else:
                 root = _safe_xml(body, final)
                 text = "\n".join(" ".join(t.split()) for t in root.itertext() if t.strip())
+            text, title = T.as_seen(text)[0], T.as_seen(title)[0]        # character references the parser decoded
         elif content_type == "application/json" or content_type.endswith("+json"):
             kind = "json"
             try:
-                text = json.dumps(json.loads(text), ensure_ascii=False, indent=1)
+                text = T.as_seen(json.dumps(json.loads(text), ensure_ascii=False, indent=1))[0]   # its escapes
             except ValueError:
                 pass
         if not title:

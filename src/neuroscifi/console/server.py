@@ -100,7 +100,9 @@ def _number(text, name, kind=float):
 # ---- route handlers: (ctx, params, query, body) -> JSON value -----------------------------------------
 
 def _inventory(c, p, q, b):
-    return {**store.inventory(c.db), "regulation": store.regulation(c.db, c.path)}
+    measure = _query(q, ("measure",)).get("measure") in ("1", "true")   # the overview asks; the header, reloaded
+    # after every teaching action, does not
+    return {**store.inventory(c.db), "regulation": store.regulation(c.db, c.path, measure=measure)}
 
 
 def _epochs(c, p, q, b):
@@ -933,6 +935,11 @@ class ConsoleServer(ThreadingHTTPServer):
         if self.worker is not None and self.worker is not threading.current_thread():
             self.worker.join(timeout=30)
         super().server_close()
+        # Last (review F2): a request still being answered may write its transcript; the hub, once closed, makes
+        # such a write in that request's own thread and starts no writer again.
+        hub = getattr(self, "voice_hub", None)            # created on first use (voice.http.hub_for)
+        if hub is not None:
+            hub.close()                                   # its transcript writer and task followers end here
 
     def handle_error(self, request, client_address):
         # R6: a tab closed or reloaded while its presence long-poll waited raised BrokenPipeError at the reply,

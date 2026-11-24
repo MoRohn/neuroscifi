@@ -48,6 +48,7 @@ from dataclasses import asdict, dataclass, fields
 import hashlib
 import json
 import math
+import re
 import threading
 import time
 
@@ -78,6 +79,15 @@ class SemanticConfig:
     floor: float = 0.02            # reranker score under which a statement is not returned (0 = return all)
     timeout: float = 2.0           # seconds for one memory-model call; past it the lexical ranking is used
     rerank_template: str = "qwen3"  # how the question and a statement are written for the reranker (TEMPLATES)
+    # Contradictions in other words (pairs(); consolidate.propose): when a new statement shares too few words with
+    # anything known, the memory models may propose the stored statement that states the same property of the
+    # same subject, and the value comparison of consolidate.py decides what the pair is. It needs the reranker
+    # and, with pair_check, the answer model. On whenever semantic memory is on: with pair_check the held-out
+    # half of the benchmark has no false pair in 23 (8 of them the hard kind); without it, 3 (MEMORY_INTEGRATION).
+    contradictions: bool = True
+    pair_similarity: float = 0.6   # embedding similarity under which a stored statement is not a candidate
+    pair_floor: float = 0.8        # reranker score (both directions) under which a candidate is not a pair
+    pair_check: bool = True        # a pair must also be confirmed by the answer model (consolidate._pair_judge)
 
     @classmethod
     def from_json(cls, text: str | None) -> "SemanticConfig":
@@ -90,10 +100,15 @@ class SemanticConfig:
 
 
 def _validate(name, value):
-    if name == "enabled":
+    if name in ("enabled", "contradictions", "pair_check"):
         if not isinstance(value, bool):
-            raise ValidationError("enabled must be true or false")
+            raise ValidationError(f"{name} must be true or false")
         return value
+    if name in ("pair_similarity", "pair_floor"):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) \
+                or not 0.0 <= value <= 1.0:
+            raise ValidationError(f"{name} must be a number between 0 and 1")
+        return float(value)
     if name == "candidates":
         if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 100:
             raise ValidationError("candidates must be an integer between 1 and 100")
@@ -271,9 +286,10 @@ def _gateways(db):
     return out
 
 
-def _pair(cfg: SemanticConfig, question: str, statements: list[str]) -> tuple[str, list[str]]:
+def _pair(cfg: SemanticConfig, question: str, statements: list[str], instruction: str = INSTRUCTION
+          ) -> tuple[str, list[str]]:
     if cfg.rerank_template == "qwen3":
-        return (f"{_QWEN3_PREFIX}<Instruct>: {INSTRUCTION}\n<Query>: {question}\n",
+        return (f"{_QWEN3_PREFIX}<Instruct>: {instruction}\n<Query>: {question}\n",
                 [f"<Document>: {s}{_QWEN3_SUFFIX}" for s in statements])
     return question, statements
 
@@ -430,6 +446,130 @@ def _rank(db, cfg, topic, rows, lexical, limit, embedder, reranker, vectors, sig
     return [(score, rows[i]) for score, i in kept], info
 
 
+# ---- the same fact in other words -------------------------------------------------------------------------------------
+#
+# consolidate.py finds knowledge "about the same subject" by its key words, so a statement of a known fact in other
+# words is stored as a second item, and one with another value is not seen as a contradiction (W2). pairs() lets
+# the memory models *propose* which stored statement a new one restates. It decides nothing: the caller admits a
+# candidate only when both name the same subject and their values can be compared (consolidate._admissible), and
+# what the pair is (the same, a contradiction) is the value comparison's verdict (consolidate._compare).
+# A pair needs both models: the embedding model chooses the candidates, and the reranker must take the two
+# statements to be about the same property of the same subject read in either direction. Measured on
+# webcortex/bench/contradiction_paraphrase.json (scripts/bench_knowledge.py contradictions): see
+# docs/web-cortex/MEMORY_INTEGRATION.md.
+
+PAIR_INSTRUCTION = ("Given a statement of fact with its numbers written as #, judge whether the stored fact states "
+                    "the same property of the same subject")
+PAIR_CANDIDATES = 3         # nearest admissible stored statements the reranker reads for one new statement
+PAIR_STATEMENTS = 24        # new statements asked about in one consolidation
+PAIR_BUDGET = 10.0          # seconds one consolidation may spend asking; what is left is not asked
+_NUMBER = re.compile(r"\d[\d.,]*\d|\d")
+
+
+def _masked(statement: str) -> str:
+    """The statement as the reranker reads it for a pair: every number replaced by one sign. Whether two
+    statements state the same property of the same subject does not depend on their values, and with the values
+    in view the reranker scores a contradiction far under a restatement (measured: 0.18 to 0.99 against 0.97 to
+    1.00); what the values say is the value comparison's part."""
+    return _NUMBER.sub("#", statement)
+
+
+def pairs(db, statements: list[str], rows: list[dict], *, admit=None, gateways=None, sweep: bool = False):
+    """For each new statement, the stored statements the memory models take to state the same property of the same
+    subject -> (candidates, info). candidates[n] is a list of {"id", "similarity", "score", "score_back"}, best
+    first, for statements[n]; empty when nothing qualifies.
+
+    `rows`: the live knowledge rows ({"id", "statement"}), every one of them (their vectors are the ones
+    knowledge.query keeps). `admit(n, row) -> bool`: the caller's own test of a candidate, applied before the
+    reranker reads it. info: {"mode": "semantic", "asked", "proposed", "models"} or {"mode": "lexical", "reason"}
+    when nothing was asked: off, no embedding endpoint or no reranker, a failed call (the models are then left
+    alone for RETRY_AFTER seconds, as after a failed lookup), a model the idle policy unloaded (its reload is
+    started; nothing waits for it). Never raises. `sweep`: no threshold is applied and every candidate is returned
+    with its scores (the benchmark's trace)."""
+    from ..inference.gateway import InferenceError
+    cfg = get_config(db)
+    nothing = [[] for _ in statements]
+    if not cfg.enabled or not cfg.contradictions:
+        return nothing, {"mode": "lexical"}
+    try:
+        embedder, reranker = gateways if gateways is not None else _gateways(db)
+    except Exception as exc:
+        return nothing, {"mode": "lexical", "reason": f"memory models unusable: {type(exc).__name__}: {exc}"[:200]}
+    if embedder is None:
+        return nothing, {"mode": "lexical", "reason": "no embedding endpoint is set (nsf web memory config "
+                                                      "--embed-url URL)"}
+    if reranker is None:
+        return nothing, {"mode": "lexical", "reason": "pairing statements needs the reranker as well (nsf web "
+                                                      "memory config --rerank-url URL)"}
+    if not statements or not rows:
+        return nothing, {"mode": "semantic", "asked": 0, "proposed": 0,
+                         "models": {"embed": embedder.cfg.model, "rerank": reranker.cfg.model}}
+    vectors = _vectors(db, embedder)
+    if time.monotonic() < vectors.down_until:
+        return nothing, {"mode": "lexical", "reason": vectors.down_reason,
+                         "retry_in_seconds": round(vectors.down_until - time.monotonic(), 1)}
+    stored = [r["statement"] for r in rows]
+    out, asked, started = [[] for _ in statements], 0, time.monotonic()
+    info = {"mode": "semantic", "models": {"embed": embedder.cfg.model, "rerank": reranker.cfg.model}}
+    with ExitStack() as held_services:
+        asleep = _asleep(db, embedder, reranker, held_services)
+        if asleep:
+            reason = "; ".join(a["why"] for a in asleep)
+            if any(a["action"] in ("refused", "failed") for a in asleep):
+                vectors.down_reason, vectors.down_until = reason[:300], time.monotonic() + RETRY_AFTER
+            waking = [a["service"] for a in asleep if a["action"] == "loading"]
+            return nothing, {"mode": "lexical", "reason": reason[:300]} | ({"waking": waking} if waking else {})
+        try:
+            matrix = vectors.sync(stored, lambda texts: embedder.embed(texts, purpose="memory_embed",
+                                                                       timeout=max(cfg.timeout, 10.0)),
+                                  store.state_version(db))
+            new = []
+            for start in range(0, len(statements), EMBED_BATCH):
+                part = statements[start:start + EMBED_BATCH]
+                new += [_unit(v) for v in embedder.embed(part, purpose="memory_pair", timeout=max(cfg.timeout, 10.0))]
+            for n, statement in enumerate(statements):
+                if n >= PAIR_STATEMENTS or time.monotonic() - started > PAIR_BUDGET:
+                    info["not_asked"] = len(statements) - n
+                    break
+                if new[n].shape != matrix.shape[1:]:
+                    raise InferenceError("bad_response", "a statement's vector has another length than the stored")
+                cosine = matrix @ new[n]
+                order = sorted(range(len(rows)), key=lambda i: (-float(cosine[i]), -rows[i]["id"]))
+                chosen = []
+                for i in order:
+                    if len(chosen) >= (5 if sweep else PAIR_CANDIDATES) or \
+                            (not sweep and float(cosine[i]) < cfg.pair_similarity):
+                        break
+                    if sweep or admit is None or admit(n, rows[i]):
+                        chosen.append(i)
+                if not chosen:
+                    continue
+                asked += 1
+                query, documents = _pair(cfg, _masked(statement), [_masked(stored[i]) for i in chosen],
+                                         PAIR_INSTRUCTION)
+                forward = reranker.rerank(query, documents, purpose="memory_pair", timeout=cfg.timeout)
+                found = []
+                for i, score in zip(chosen, forward):
+                    back = None
+                    if sweep or score >= cfg.pair_floor:     # read the other way round too: both must agree
+                        q, d = _pair(cfg, _masked(stored[i]), [_masked(statement)], PAIR_INSTRUCTION)
+                        back = reranker.rerank(q, d, purpose="memory_pair", timeout=cfg.timeout)[0]
+                    if sweep or (back is not None and back >= cfg.pair_floor):
+                        found.append({"id": rows[i]["id"], "similarity": round(float(cosine[i]), 4),
+                                      "score": round(float(score), 4),
+                                      "score_back": None if back is None else round(float(back), 4)})
+                found.sort(key=lambda c: (-min(c["score"], c["score_back"] if c["score_back"] is not None else 0.0),
+                                          -c["similarity"], -c["id"]))
+                out[n] = found
+        except (InferenceError, OSError, ValueError) as exc:
+            code = getattr(exc, "code", type(exc).__name__)
+            vectors.down_reason = f"semantic retrieval failed ({code}): {exc}"[:300]
+            vectors.down_until = time.monotonic() + RETRY_AFTER
+            return nothing, {"mode": "lexical", "reason": vectors.down_reason}
+    info["asked"], info["proposed"] = asked, sum(1 for found in out if found)
+    return out, info
+
+
 def status(db) -> dict:
     """What the owner sees in `nsf web memory`: the switch, the two endpoints and their health, never a key."""
     from ..inference import config as iconfig
@@ -457,6 +597,14 @@ def status(db) -> dict:
                      "on, but no embedding endpoint: lexical ranking" if embedder is None else
                      "memory is ranked by the reranker; statements under the floor are not returned"
                      if reranker is not None else "memory is ranked by vector similarity; nothing is cut")
+    out["contradictions"] = (
+        "off: a new statement is compared only with knowledge that shares its key words"
+        if not (cfg.enabled and cfg.contradictions) else
+        "on, but it needs both memory models: only knowledge that shares its key words is compared"
+        if embedder is None or reranker is None else
+        "a new statement is also compared with the stored one that states the same property of the same subject "
+        "in other words" + (", when the answer model confirms the pair" if cfg.pair_check else
+                            " (not confirmed by the answer model: pair_check is off)"))
     return out
 
 

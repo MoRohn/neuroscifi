@@ -19,13 +19,31 @@ from pathlib import Path
 import socket
 from urllib.parse import urlsplit
 
+from .. import paths
 from ..instance import store
 from ..instance.errors import ValidationError
 
 META_KEY = "inference"
-DEFAULT_DIR = Path(os.environ.get("NSF_INFERENCE_DIR") or Path.home() / ".config" / "neuroscifi" / "inference")
-DEFAULT_KEY_FILE = DEFAULT_DIR / "api_key"
 THINKING = ("default", "on", "off")
+
+
+def default_dir() -> Path:
+    """NSF_INFERENCE_DIR, else ~/.config/neuroscifi/inference. Read when asked, not when this module is imported:
+    importing it must work for an account without a home folder (a unit with a bare uid; scripts/two_account_check.py),
+    and a HOME set after the import is honoured."""
+    return Path(os.environ.get("NSF_INFERENCE_DIR") or paths.home() / ".config" / "neuroscifi" / "inference")
+
+
+def default_key_file() -> Path:
+    return globals().get("DEFAULT_KEY_FILE") or default_dir() / "api_key"     # an override set on the module wins
+
+
+def __getattr__(name):                 # DEFAULT_DIR and DEFAULT_KEY_FILE for importers, resolved on use
+    if name == "DEFAULT_DIR":
+        return default_dir()
+    if name == "DEFAULT_KEY_FILE":
+        return default_dir() / "api_key"
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @dataclass
@@ -170,7 +188,8 @@ def key_path(cfg: InferenceConfig, provider: str = "chat") -> Path | None:
     env = os.environ.get("NSF_INFERENCE_KEY_FILE")
     if env:
         return Path(env)
-    return DEFAULT_KEY_FILE if DEFAULT_KEY_FILE.is_file() else None
+    default = default_key_file()
+    return default if default.is_file() else None
 
 
 def read_key(cfg: InferenceConfig, provider: str = "chat") -> str | None:
@@ -223,5 +242,5 @@ def locality(url: str, *, resolver=socket.getaddrinfo) -> tuple[str, str]:
     return where, detail
 
 
-__all__ = ["DEFAULT_KEY_FILE", "InferenceConfig", "META_KEY", "get_config", "key_path", "locality", "public",
-           "read_key", "resolve", "set_config"]
+__all__ = ["DEFAULT_KEY_FILE", "InferenceConfig", "META_KEY", "default_dir", "default_key_file",   # noqa: F822
+           "get_config", "key_path", "locality", "public", "read_key", "resolve", "set_config"]     # (__getattr__)

@@ -563,3 +563,76 @@ def test_open_websearch_waits_for_brave_while_searxng_is_open():
         return [len(x.calls) for x in (b, s, o)], sorted({r.provider for r in out.results})
     assert run(True) == ([1, 0, 0], ["brave"])
     assert run(False) == ([1, 0, 1], ["openwebsearch"])                        # SearXNG skipped, open circuit
+
+
+# ---- review round: the owner's stop and the paid daily cap (review F5) ------------------------------------------
+
+def brave_through_gate(web, tmp_path, ask, watch=None):
+    """A Brave search through the real SafeFetcher inside the fetcher's gate, as a gated search runs it. Returns
+    (the stop raised, queries counted against the daily cap)."""
+    from neuroscifi.webcortex.types import Stopped
+    clock = Clock()
+    fetcher = net.SafeFetcher(net.NetPolicy(min_domain_interval=0), resolver=web.resolver, connector=web.connector,
+                              cache=PublicCache(tmp_path / "c.sqlite"), clock=clock, sleep=clock.sleep)
+    p = bv.BraveProvider(fetcher, clock=clock, daily_cap=5)
+    p.BASE = "http://api.search.brave.com/res/v1"
+    raised = None
+    with fetcher.gated(ask, watch):
+        try:
+            p.search(Query("fusion", "web"), 5, budget=Budget(), usage=Usage())
+        except Stopped as stop:
+            raised = stop
+    return raised, int(p.ledger.read().get("queries") or 0)
+
+
+def test_a_query_stopped_before_it_was_sent_is_given_back_to_the_daily_cap(key, web, tmp_path):
+    from neuroscifi.webcortex.types import Stopped
+    web.add("api.search.brave.com", "/res/v1/web/search", json.dumps(WEB), content_type="application/json")
+
+    def stop(url):
+        raise Stopped("the task was cancelled")
+    raised, counted = brave_through_gate(web, tmp_path, stop)
+    assert raised is not None and web.log == [] and counted == 0
+
+
+def test_a_query_cut_on_the_wire_by_the_stop_keeps_its_count(key, web, tmp_path):
+    """The request went out and was then cut (the owner stopped the task while Brave answered): Brave may bill it,
+    so it stays counted."""
+    import threading
+    from neuroscifi.webcortex.types import Stopped
+    release, stopped = threading.Event(), threading.Event()
+
+    class Slow:
+        status, headers, hits = 200, {"Content-Type": "application/json"}, 0
+        body = json.dumps(WEB).encode()
+
+        @property
+        def delay(self):
+            stopped.set()                                     # the request has arrived: the owner stops now
+            release.wait(5)
+            return 0.0
+    web._ip_for("api.search.brave.com")
+    web.routes[("api.search.brave.com", "/res/v1/web/search")] = Slow()
+
+    def ask(url):
+        if stopped.is_set():
+            raise Stopped("the task was cancelled")
+    try:
+        raised, counted = brave_through_gate(web, tmp_path, ask,
+                                             watch=lambda url: "cancelled" if stopped.is_set() else None)
+    finally:
+        release.set()
+    assert raised is not None and len(web.log) == 1 and counted == 1
+
+
+def test_a_fetcher_that_cannot_say_what_it_sent_keeps_the_count(key):
+    """Erring towards the cap: without SafeFetcher.written the provider cannot know, and keeps the query counted."""
+    from neuroscifi.webcortex.types import Stopped
+
+    class Gated:
+        def fetch(self, url, **kwargs):
+            raise Stopped("the task was cancelled")
+    p = bv.BraveProvider(Gated(), clock=Clock(), daily_cap=5)
+    with pytest.raises(Stopped):
+        p.search(Query("fusion", "web"), 5, budget=Budget(), usage=Usage())
+    assert p.ledger.read().get("queries") == 1

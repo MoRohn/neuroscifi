@@ -83,6 +83,7 @@ def hub(instance):
     yield h
     for s in list(h.sessions.values()):
         h._end(s, "test")
+    h.close()                       # its transcript writer and task followers end with the test, not with the suite
     vstate.reset()
 
 

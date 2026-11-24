@@ -162,9 +162,9 @@ up within 60 s is reported: "its wake request was not picked up within 60 s (is 
 Install: `deploy/install.sh --idle [--idle-user USER]` installs the idle timer and the wake units (disabled) and
 creates the request folder.
 
-*Who needs what* (second review, S2). The process that asks needs nothing of the idle policy's state. In the
-installed deployment that state (`<NSF_DB>.resources/idle.json`, its locks and events, all 0700/0600) belongs to
-the account that runs the services, and the console and the worker may be unable to read it; they then see "policy
+*Who needs what* (second review, S2). The process that asks needs nothing of the idle policy's state. Where the
+two accounts share that state (§3(d): what `deploy/install.sh --idle` arranges) the console and the worker read
+it and ask before they call. Where they cannot read it (an install made before that, or by hand) they see "policy
 off" and make their call. A **refused connection** to one of the deployment's own service ports is the signal: the
 inference gateway leaves the request then (`idle.asked_on_refusal`; at most one per service every 30 s from one
 process) and the call ends `unavailable` with "its start was asked for (wake request)"; a memory lookup is ranked
@@ -174,20 +174,94 @@ from its own state: unloaded by the policy (an owner's unload stands), enough fr
 its last failed or refused reload (`skipped`, with the reason).
 
 *The request folder* is the serving account's. It is created by `deploy/install.sh --idle`
-(`install -d -m 2770 -o <idle user> -g neuroscifi /var/lib/neuroscifi-wake`: the owner removes requests, the
-service user's group may create them, setgid, nobody else enters) or, when missing, by `nsf resources wake`
-(mode 2770). A process that asks never creates it and never changes its mode; a missing folder is an error it
-reports. A request is an empty file whose name is the whole message, so its own mode does not matter. The
-installer also adds the folder to `ReadWritePaths=` of the console, worker and Pocket units (they run under
-`ProtectSystem=strict`).
+(`install -d -m 3770 -o <idle user> -g neuroscifi /var/lib/neuroscifi-wake`: the owner removes requests, the
+service user's group may create them, setgid, nobody else enters; sticky, so a request is removed by whoever left
+it or by the folder's owner and by nobody else) or, when missing, by `nsf resources wake` (mode 3770). A process
+that asks never creates it and never changes its mode; a missing folder is an error it reports. A request is an
+empty file whose name is the whole message, so its own mode does not matter. The installer also adds the folder
+to `ReadWritePaths=` of the console, worker and Pocket units (they run under `ProtectSystem=strict`).
 
 *What is not a request* (S3). `PathExistsGlob=` starts the service again each time it ends while a matching entry
 exists; that is what serves a request left during a reload, and it would loop on an entry that never goes away.
 `nsf resources wake` therefore serves regular files only (a symbolic link is removed, not followed), removes an
 empty folder or a special file, and renames anything else to a hidden `.stuck-…` name that no pattern matches. If
-an entry can be neither removed nor renamed (a read-only or sticky folder), the command stays for 30 s, serving
-the requests that arrive, before it ends: the unit is started twice a minute at most and never reaches its start
-limit (30 in 10 minutes). Measured with a transient user unit: §4.
+an entry can be neither removed nor renamed (a read-only folder), the command stays for 30 s, serving the requests
+that arrive, before it ends.
+
+*How often the unit starts is the command's to decide, not the asker's.* The path unit starts the service once
+per request that finds it stopped. Thirty requests in ten minutes, from anyone who may write the folder or simply
+from three services asking for six models every 30 s, therefore reached the unit's start limit
+(`StartLimitBurst=30` in `StartLimitIntervalSec=10min`): systemd then refuses the service, the path unit fails
+with it, and no request is served until `systemctl reset-failed`. The unit now runs `nsf resources wake --linger
+25`: the command stays 25 s whenever it starts and serves within a second what arrives meanwhile. That is 24
+starts in ten minutes at most, whatever is written into the folder (`idle.WAKE_LINGER`;
+`test_the_wake_unit_cannot_reach_its_start_limit_whatever_is_written_into_the_folder` keeps the two numbers
+apart). The limit itself stays, as the last stop against a command that fails at once. Measured with a transient
+user unit and a request every 2 s: §4.
+
+**(d) Two accounts: what they share.** `deploy/install.sh` runs the console, the worker and Pocket as the
+service account `neuroscifi` (sandboxed, no Docker access) and the idle pass and the wake requests as the account
+that runs the model services (the *idle account*: `--idle-user`). `deploy/install.sh --idle` arranges what the
+two share, and `--idle-access` does only that (run it again after `nsf init`: the database does not exist
+before). The model, once:
+
+| Path | Owner : group, mode | Who does what |
+|---|---|---|
+| `/var/lib/neuroscifi` (the state folder) | `neuroscifi:neuroscifi` 0710 (was 0700) | The group may pass through; only the owner may list or create. Everything else inside keeps its mode (0600, 0700) |
+| The instance database, with its `-wal` and `-shm` | `neuroscifi:neuroscifi` 0640 (was 0600) | The idle account reads it for one question: does a research task run (`Idle.running_tasks`). It cannot write it. SQLite gives the write-ahead log's files the database's mode when it creates them |
+| `<db>.resources/` | `neuroscifi:neuroscifi` 2770 (was 0700); the files in it 0660 | Both read and write: the service account its audio beacon, use markers, in-use and slot locks; the idle account the policy's settings, state, events and locks |
+| `/var/lib/neuroscifi-wake` | idle account `:neuroscifi` 3770 | The service account leaves requests; the idle account removes them; sticky, so nobody removes another's |
+| `/etc/polkit-1/rules.d/49-neuroscifi-idle.rules` | `root` 0644 | The idle account may `start` and `stop` the model services' units, and nothing else (`systemctl --no-ask-password`, which the pass and the wake unit run without a terminal) |
+
+- *One group, the service account's own.* The idle account is added to the group `neuroscifi`. The service
+  units run with `PrivateUsers=yes`, where only the unit's own user and group are certain to keep their meaning;
+  so what the idle account writes for them carries that group (the folder's setgid bit does it). The price: the
+  idle account can read `/etc/neuroscifi` too (`root:neuroscifi` 0750). It is in the docker group, which already
+  equals root on the host; the installer says so when it adds it.
+- *The folder's mode decides the files' mode* (`resources/shared.py`). In a folder that is setgid and
+  group-writable a file this code creates is made 0660 on the open descriptor, because the units' `UMask=0077`
+  would remove the group's bits. Anywhere else (one account: `nsf start`, a checkout) the folder is created 0700
+  and its files 0600 as before. The code never changes the mode or owner of a folder, or of a file it did not
+  create in the same call. A use marker the other account created is set to "now" (a chosen time needs the
+  file's owner).
+- *A database this account may not read is not "no task".* `Idle.running_tasks` gives None then, and the pass
+  unloads nothing and says why ("whether a research task runs cannot be told … `deploy/install.sh
+  --idle-access` grants it"). Before, an unreadable database read as zero tasks. While a process has the database
+  open its write-ahead log's files exist and the read-only open works; when nobody has it open they do not, the
+  idle account cannot create them in a folder it may not write, and the file is read as it stands
+  (`immutable=1`). The file is the service account's, so the idle account opens it only when it is a plain file
+  (not a link, a FIFO or a device), read-only, with `PRAGMA trusted_schema=OFF` and `query_only=ON`, and counts
+  only when `web_tasks` is a table (a view written by that account gives "cannot tell"). A swap between the look
+  and the open is not excluded; its worst is a pass that hangs until its unit's `TimeoutStartSec` and unloads
+  nothing.
+- *Root never acts inside the service account's folder* (review F1, security H1). The service account owns
+  `/var/lib/neuroscifi` and can put anything there; root's `chgrp`/`chmod` follow links, so a link from the
+  database's name to `/etc/shadow` or from `.resources` to `/etc` made that account root, and `find … -exec`
+  raced. Every step inside the folder now runs **as the service account** (`setpriv --reuid neuroscifi --regid
+  neuroscifi --init-groups`, `runuser` without setpriv): each is something that account could do anyway, and the
+  kernel refuses the rest, so no check has to win a race. A link is still refused and named before, so the owner
+  learns of it. Root acts only on root's own paths: the state folder's own name in `/var/lib`, the request
+  folder in `/var/lib`, `/etc/group` (gpasswd) and the polkit rule under `/etc`.
+- *A plain re-run keeps it* (review F7). When the request folder or the polkit rule exists, `deploy/install.sh`
+  without `--idle` (an upgrade) keeps the state folder at 0710 and the request folder writable in the console,
+  worker and Pocket units, and says so. RUNBOOK section 1 says how to take the arrangement away.
+- *What the idle account reads in the shared folder* (security L4). `idle.json`, the events and the audio
+  beacon are read without following a link and without blocking (a FIFO), plain files only, at most 4 MiB (the
+  events from their tail), and a state file of the wrong shape is reported (`state_problems` in `nsf resources
+  idle`) and read as empty instead of stopping the pass or the wake command. Files it creates or touches there
+  are opened the same way and their times set through the descriptor.
+- *The polkit rule* is evaluated by a test with its own JavaScript over every combination of action, unit
+  detail (the listed units, other units, a transient unit, none), verb and caller: YES for `manage-units`,
+  the listed units, `start`/`stop` and the idle account only. **Not verified:** that a running polkitd and
+  systemd pass exactly these details (`pkcheck` needs the rule installed under `/etc` and polkitd running).
+- *Verified with real accounts.* `scripts/two_account_check.py` (run by
+  `tests/test_deployment_accounts.py`, skipped with the reason where the host forbids it) enters a user
+  namespace in which it is root over further uids and its own mounts, creates the accounts with the installer's
+  commands, runs the real `deploy/install.sh --idle-access` and then acts as each account with this code: 46
+  checks, §4, among them the service account's attacks on the installer (links for the database, its `-wal` and
+  `.resources` to root-only targets, links inside the shared folder, what a race could do at worst) and a plain
+  re-run. **Not shown by it:** systemd itself (the units, `PrivateUsers=yes`, the path unit as a system unit),
+  polkit acting on the rule, and the real root account.
 
 Rules of every reload, found in review and fixed on 2026-11-23:
 
@@ -198,7 +272,11 @@ Rules of every reload, found in review and fixed on 2026-11-23:
 - *Running is not answering.* A container found running counts as loaded only once it answers `/metrics`, else the
   deploy's wait is run first. A start, or a found container, that does not become ready is stopped with its shape's
   own command and the event says `stopped: true`: the state "unloaded" must stay true for the free-memory check,
-  and a crash-looping container holds memory.
+  and a crash-looping container holds memory. Speech synthesis and SearXNG have no `/metrics` and had kept
+  "running means loaded"; since 2026-11-24 they are asked at their readiness address (`/health`, `/healthz`) on
+  the port Docker publishes for the container (`docker port`, so a port the owner changed is still the right
+  one). Speech synthesis then runs its wait command; SearXNG, which has none, is asked again every 2 s for up to
+  60 s, the limit of its own start. A service whose published port cannot be told counts as before.
 - *One reload, one retry limit, for all processes.* The 30 s limit after a failure is the failure time in
   `idle.json`, and the decision to start, the start and its marker happen under one short lock. That lock is never
   waited for: a lookup that finds it held answers "loading" (whoever holds it is starting the reload), so a
@@ -280,9 +358,14 @@ voice engine health reports ASR and TTS unavailable until a voice session starts
 
 **How stop and start run.** The policy uses the deploy's own commands. vLLM uses `deploy/vllm/run.sh
 stop|start|wait`, ASR and TTS use `deploy/voice/run.sh stop|start|wait asr|tts`, the memory models use
-`deploy/memory/run.sh stop|start|wait embed|rerank`, and SearXNG uses `nsf web searxng stop|start`. When the service's systemd unit is active, the policy runs `systemctl --no-ask-password stop|start
-<unit>` instead, so it never fights the unit (an earlier reason this policy was manual). The user running the pass
-then needs permission to manage that unit; without it the event records the refusal and the service stays loaded.
+`deploy/memory/run.sh stop|start|wait embed|rerank` (with the single server either name acts on its one
+container), and SearXNG uses `nsf web searxng stop|start`. When the
+service's systemd unit is active, the policy runs `systemctl --no-ask-password stop|start <unit>` instead, so it
+never fights the unit (an earlier reason this policy was manual). SearXNG's unit is treated like the others since
+2026-11-24: its own commands write the instance database, which the idle account of an installed deployment may
+only read. The user running the pass then needs permission to manage that unit: `deploy/install.sh --idle`
+installs a polkit rule that allows the idle account `start` and `stop` on exactly these units (§3(d)); without
+it the event records the refusal and the service stays loaded.
 A unit the policy stopped is no longer active, so the unload records its shape and the reload starts that unit
 again. Before 2026-11-23 the reload looked only at whether the unit was active, found it stopped and ran
 `run.sh start`: a second, unsupervised container beside the unit
@@ -308,9 +391,25 @@ remains to be measured by the owner: the first reload records it in the event lo
 lane that built this policy did not restart the shared vLLM, ASR, TTS or SearXNG containers. It verified the stop,
 reload and measurement path against a disposable container (§4).
 
-The two memory models hold 4.6 GiB each when loaded and used: 1.9 GiB of device memory (1.1 GiB of weights, the
-0.25 GiB key-value cache vLLM requires for a 2,048-token input, the rest the CUDA context) and 2.6 GiB in the
-container's two processes, most of it libraries a full vLLM server imports. An unload frees 3.6 to 4.7 GiB by its
+The two memory models hold 4.26 GiB together in the single server of `deploy/memory/server.py`, the default (1.67
+GiB of process memory, 2.59 GiB of device memory; `docs/quality/evidence/open_items_memory_server.json`). Served by two vLLM servers
+(`NSF_MEMORY_SERVER=vllm`) they hold 4.6 GiB each: 1.9 GiB of device memory (1.1 GiB of weights, the 0.25 GiB
+key-value cache vLLM requires for a 2,048-token input, the rest the CUDA context) and 2.6 GiB in the container's two
+processes, most of it libraries a full vLLM server imports. With the single server `embed` and `rerank` are two
+names of one container and one unit, and the policy treats the container as one unit (`Idle.group`):
+
+- its idle timeout is the most conservative of its names: a name set to off keeps it for good, otherwise the longest
+  timeout counts (`nsf resources` shows `shared_with` and `effective_timeout_s` for each name);
+- calls under every name take their in-use lock and mark their use as soon as the policy is on for any name, so a
+  rerank lookup keeps the container even when only `embed` has a timeout;
+- an unload, the owner's `nsf resources unload embed` included, takes the in-use locks of every name in one fixed
+  order and waits until no call under either name is in flight; it stops the container once and both names say
+  "unloaded" (the result's `also` names the other one);
+- one decision per container per pass (the second name reads "one container with embed: decided there"); one load
+  lock per container, so reloads under both names start it once; a container found running marks both names
+  loaded.
+
+The figures below were measured with two vLLM servers. An unload frees 3.6 to 4.7 GiB by its
 own measurement, and both together returned 7.9 to 9.4 GiB of MemAvailable. They were unloaded and reloaded live
 through this policy (§4): 1 to 2 s to unload each, 20 to 29 s until both answer again.
 
@@ -409,6 +508,41 @@ One model stopped by hand (no idle policy involved): the lookup was lexical in 3
 failed (unavailable): cannot connect: Connection refused", the next lookup inside the 30 s back-off cost 0.9 ms
 and tried nothing, and the first lookup after the back-off with the model running again was semantic.
 
+**The two accounts, with real uids** (2026-11-24; `scripts/two_account_check.py` in a user namespace: root of the
+namespace, the accounts `neuroscifi`, an idle account and a third one, the real `deploy/install.sh --idle-access`,
+a fake Docker for stop and start; evidence `docs/quality/evidence/open_items_deployment.json`):
+
+| Observation | Result |
+|---|---|
+| Before the grant: the idle account asks whether a research task runs | cannot tell (None); the pass would unload nothing |
+| After `--idle-access` | state folder `710`, database `640`, `.resources` `2770` with the file that was in it now `660`, request folder `3770` owned by the idle account; another file of the service account still `600`; a second run changes nothing |
+| The idle account: list the state folder, read another file in it, write the database, create a file beside it | refused, each (PermissionError; the write fails) |
+| A third account: enter the state folder or the request folder | refused |
+| The idle account counts tasks while the service account has the database open with a task running | 1; and the pass unloads nothing ("1 research task(s) running") |
+| The same with nobody holding the database open (no write-ahead log beside it) | 0, read as the file stands |
+| Files each account creates in `.resources` under `UMask=0077` | `660`, group `neuroscifi`, readable and writable by the other |
+| A service unused for longer than its timeout | unloaded by the idle account's pass; the service account sees it and leaves `vllm.wake` |
+| The service account removes an entry the idle account left in the request folder | refused (sticky) |
+| The idle account serves the request | the service starts again, the request is gone, the service account reads "loaded" |
+| A real listener on a service's port, asked about by the service account | refused when a third account owns it, and when the idle account owns it without being the key file's owner; accepted for the service account itself, root, and the key file's owner |
+| The code imported by a uid with no account and no HOME | imports, reads its settings; no key file found, no error |
+| The units' own command lines as the idle account: `nsf resources tick --db …` and `nsf resources wake --db … --dir …` | both exit 0; the pass can tell whether a task runs; the wake command clears a request the service account left |
+| The service account plants links for a database (`planted.sqlite`, its `-wal`, its `.resources`) to root-only targets, and a link inside the shared folder; root then runs `install.sh --idle-access --db planted.sqlite` and the plain `--idle-access` (review round, 2026-11-24) | the first refuses and names the link, exit 1; the second passes over the inner link; every target keeps `root:root 600` / `755`. On 76f32d2 the targets became `root:neuroscifi 640` and `2770` |
+| What a race could make the installer do at worst (chgrp/chmod on such a link, as the service account) | refused by the kernel, each |
+| A plain `install.sh --dry-run` (no `--idle`) after the arrangement | "a two-account arrangement is installed … it is kept"; the state folder at 0710; the three units keep the request folder writable (on 76f32d2: 0700, and the units without it) |
+
+46 of 46 checks; the same checks fail where they should on the code before (the installer had no such step,
+`Path.home()` raised at import; on 76f32d2 five of the 46 fail: the four on the links and the plain re-run).
+
+**The wake unit's start limit, live** (2026-11-24; a transient user path unit, `StartLimitBurst=5` in 60 s
+standing in for 30 in 10 minutes, a request every 2 s for 70 s; no container touched: the requests name no
+service):
+
+| Command of the unit | Starts | End state | Requests left unserved |
+|---|---|---|---|
+| `nsf resources wake` (before) | 5, then refused | service `start-limit-hit`, path unit failed (`unit-start-limit-hit`) | 30 of 35 |
+| `nsf resources wake --linger 15` (a quarter of the window, as 25 s is to 10 minutes) | 4 | service `success`, path unit active | 0 |
+
 ## 5. Limits
 
 - The audio state is what the voice client reported. A client that goes silent for 30 s is no longer counted
@@ -422,8 +556,13 @@ and tried nothing, and the first lookup after the back-off with the model runnin
   (`/metrics`). A client outside NeuroSciFi that calls TTS or SearXNG directly is not seen. Such a request that starts
   in the moment between the pass's check and the stop fails.
 - The reload is on demand. Nothing preloads a service ahead of use. A call waits for the reload at most as long as
-  its own timeout and then ends `unavailable` (§3(c)); a call whose model becomes ready just inside that wait then has
-  its full timeout again for the request, so a call that needed a reload can take up to twice its timeout.
+  its own timeout and then ends `unavailable` (§3(c)). The reload and the request share one allowance since
+  2026-11-24: what the reload took comes off the request's time, and a reload that took all of it ends the call
+  `timeout` ("the local model was started again for this call and that took all of the call's N s; it is loaded
+  now"). Before, such a call could take up to twice its timeout. A call that meets an unload in progress (the
+  pass holds the in-use lock while the service stops, up to 120 s) waits for it no longer than its own time either,
+  and ends `unavailable` ("… is being unloaded while idle and this call could not wait N s for it") without
+  claiming a reload (review F5: before, it waited for the whole stop).
 - The free-memory check uses one reading of MemAvailable and one footprint. Another workload that changes memory
   at the same moment skews both the check and the next measured footprint.
 - The memory models are released while idle only when the owner sets their timeouts, like every other service. The
@@ -436,15 +575,20 @@ and tried nothing, and the first lookup after the back-off with the model runnin
   Docker access and may not start units: there reloads go through **wake requests** (§3(c)), which need
   `neuroscifi-wake.path` and `neuroscifi-wake.service` installed and `NSF_WAKE_DIR` set for the console and the
   worker. Without them a reload on demand fails there and says so; `nsf resources load SERVICE` by the Docker user
-  brings the service back. `deploy/install.sh --idle` installs the idle timer and the wake units and creates the
-  request folder with the modes the two accounts need (§3(c)). What it does **not** arrange: the idle and wake
-  units run as the Docker user and must read the instance database and write `<NSF_DB>.resources/`, and the
-  installed state folder is the service user's alone (0700). The asking side no longer depends on that (it needs
-  the request folder only), but the policy's own passes do; until the owner grants that access (a group or an
-  ACL on the database and on the `.resources` folder) the idle policy unloads nothing there and there is nothing
-  to wake. Exercised here with transient user units and one account (§4), and with file modes standing in for
-  the second account in the tests (`tests/test_resources_wake.py`); **not exercised**: the units installed as
-  system units, a real second account, and the request folder as seen from inside `PrivateUsers=yes`.
+  brings the service back. `deploy/install.sh --idle` installs the idle timer and the wake units, creates the
+  request folder and arranges what the two accounts share (§3(d)); the database must exist for the last step, so
+  after `nsf init` it is run again as `--idle-access`, and until then the pass unloads nothing and says why.
+  Exercised with real accounts in a user namespace (the installer's own commands, both accounts and a third
+  acting with this code: §3(d), §4) and with transient user units (§4). **Not exercised**: the units installed as
+  system units and started by systemd, `PrivateUsers=yes` as systemd sets it up, polkit acting on the installed
+  rule, and the real root account.
+- The idle account reads the whole instance database to answer one question (does a research task run). It is in
+  the docker group, which already equals root on the host, so this grants nothing that account could not take;
+  an account without that power would need the worker to publish the fact in `<db>.resources/` instead (the way
+  the audio beacon does), which is not built.
+- SearXNG's unit (`deploy/install.sh --searxng`) runs `nsf web searxng start`, which writes the instance
+  database, as a Docker user: in a two-account install that unit needs an account with both, which the installer
+  does not arrange (it asks for `User=` in a drop-in, as before).
 - A lookup's use of a memory model is seen by the idle policy only when it goes through `knowledge.query` in a
   process that knows the individual's file. A result served from the per-process cache uses no model and marks no
   use.

@@ -125,6 +125,9 @@ class Session:
         self.seen = time.monotonic()
 
 
+_STOP = object()             # queued behind the transcript writes by close(): the writer thread ends there
+
+
 class VoiceHub:
     def __init__(self, db_path, *, clock=time.time, engines_factory=None):
         self.db_path, self.clock = db_path, clock
@@ -140,6 +143,8 @@ class VoiceHub:
         self._followers = threading.BoundedSemaphore(MAX_FOLLOWERS)
         self._writes: queue.Queue = queue.Queue(WRITE_QUEUE)
         self._writer = None
+        self._closed = threading.Event()      # close(): this hub's own threads end, and it starts none again
+        self._inline = threading.Lock()       # after close: transcript writes made in the caller's thread, one at a time
         from pathlib import Path
         self.selftests = vselftest.SelfTests(Path(db_path).resolve().parent / "voice-selftest", clock)
         self.metrics = {"utterances": 0, "asr_ms": deque(maxlen=200), "reply_ms": deque(maxlen=200),
@@ -179,21 +184,36 @@ class VoiceHub:
             tx.sweep(db, self.clock())
 
     def _write_later(self, job) -> bool:
-        """Queue a transcript write for the writer thread (FIFO, so a session's writes keep their order)."""
+        """Queue a transcript write for the writer thread (FIFO, so a session's writes keep their order). After
+        close() the write is made at once in the calling thread: a reply that finishes after its server closed
+        still has its transcript written, and no writer is started that nothing would stop (review F2).
+
+        Whether the hub is closed, the start of a writer and the queueing of the job happen under one lock, the
+        same lock close() takes to mark the hub closed: so every job queued before close() is ahead of the stop
+        it sends, and no job can be queued behind it or start a second writer."""
         with self.lock:
-            if self._writer is None or not self._writer.is_alive():
-                self._writer = threading.Thread(target=self._write_loop, daemon=True, name="nsf-voice-writer")
-                self._writer.start()
-        try:
-            self._writes.put_nowait(job)
-            return True
-        except queue.Full:
-            return False
+            if not self._closed.is_set():
+                if self._writer is None or not self._writer.is_alive():
+                    self._writer = threading.Thread(target=self._write_loop, daemon=True, name="nsf-voice-writer")
+                    self._writer.start()
+                try:
+                    self._writes.put_nowait(job)
+                    return True
+                except queue.Full:
+                    return False
+        with self._inline:                   # closed: one inline write at a time, as the writer did them
+            try:
+                job()
+            except Exception:   # a forgotten or ended session: the write has nowhere to go
+                pass
+        return True
 
     def _write_loop(self):
         while True:
             job = self._writes.get()
             try:
+                if job is _STOP:
+                    return
                 job()
             except Exception:   # a forgotten or ended session: the write has nowhere to go
                 pass
@@ -203,6 +223,23 @@ class VoiceHub:
     def drain(self):
         """Wait until every queued transcript write is done (tests, shutdown)."""
         self._writes.join()
+
+    def close(self, timeout=5.0) -> None:
+        """End this hub's own threads; called when the server that owns the hub closes. The transcript writer
+        finishes what is queued and ends, and the threads that follow a research task stop looking: the task
+        itself goes on (it belongs to the research system) and its answer is in the task. Before this a hub's
+        threads could only end with the process: one writer, and up to MAX_FOLLOWERS followers that each looked for
+        up to FOLLOW_MAX. Closing is final: a write that comes later is made in the thread that asks for it
+        (_write_later), so nothing can start a writer again."""
+        with self.lock:                      # the lock of _write_later: nothing is queued behind the stop below
+            self._closed.set()
+            writer, self._writer = self._writer, None
+        if writer is not None and writer.is_alive():
+            try:
+                self._writes.put(_STOP, timeout=timeout)      # behind everything already queued
+            except queue.Full:
+                return
+            writer.join(timeout)
 
     def _emit(self, s: Session, etype, **data):
         with s.cond:
@@ -1031,7 +1068,8 @@ class VoiceHub:
                     last_spoken = time.monotonic()
                     self._deliver(s, vbridge.Reply("progress", speech=[f"Still working: {words}."],
                                                    text=f"Still working: {words}.", task_id=None))
-            time.sleep(next(waits))
+            if self._closed.wait(next(waits)):       # the hub closed: nobody is left to tell
+                return
 
     # ---- transcripts -------------------------------------------------------------------------------------------------
     def transcripts(self, principal, *, session_id=None, query=None, limit=200) -> dict:

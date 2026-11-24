@@ -15,6 +15,7 @@ import json
 import os
 import time
 
+from ..resources import shared
 from ..resources.policy import BEACON_HEARTBEAT, BEACON_STALE, AudioBeacon
 from . import state as vstate
 
@@ -52,12 +53,12 @@ class SharedAudioBeacon(AudioBeacon):
                 pass
 
     def write(self, active: bool, session: bool = False) -> None:
-        self.path.parent.mkdir(mode=0o700, exist_ok=True)
-        lock = os.open(self.path.parent / "audio.lock", os.O_RDWR | os.O_CREAT, 0o600)
+        shared.ensure_folder(self.path.parent)       # the folder's own mode decides who may read what is written
+        lock = shared.open_file(self.path.parent / "audio.lock", os.O_RDWR)
         try:
             fcntl.flock(lock, fcntl.LOCK_EX)
             try:
-                current = json.loads(self.path.read_text(encoding="utf-8"))
+                current = shared.read_json(self.path)
             except (OSError, ValueError):
                 current = {}
             current = current if isinstance(current, dict) else {}
@@ -73,8 +74,6 @@ class SharedAudioBeacon(AudioBeacon):
             record = {"active": any(e["active"] for e in entries.values()),
                       "session": any(e["session"] for e in entries.values()), "at": now, "pid": self.pid,
                       "writers": entries}
-            tmp = self.path.with_suffix(f".{self.pid}.tmp")
-            tmp.write_text(json.dumps(record), encoding="utf-8")
-            os.replace(tmp, self.path)
+            shared.write_text(self.path, json.dumps(record))
         finally:
             os.close(lock)                             # releases the flock

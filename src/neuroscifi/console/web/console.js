@@ -325,8 +325,9 @@ function confirmAction(title, text, okLabel) {
 
 // ---- header and overview -------------------------------------------------------------------------------
 
-async function loadHeader() {
-  const inv = await api('GET', '/api/inventory');
+async function loadHeader(measure = false) {
+  // measure: also time the largest epoch's belief computation (overview only; the header reloads after every action)
+  const inv = await api('GET', measure ? '/api/inventory?measure=1' : '/api/inventory');
   state.semantics = inv.birth.action_semantics;
   $('instanceId').textContent = inv.birth.instance_id.slice(0, 8);
   $('instanceId').title = inv.birth.instance_id;
@@ -344,7 +345,7 @@ async function loadHeader() {
 
 async function loadOverview() {
   const slots = ['birth', 'regulation', 'inventory', 'development'].map($);
-  const inv = await load('overview', slots, loadHeader);
+  const inv = await load('overview', slots, () => loadHeader(true));
   if (!inv) return;
   const b = inv.birth;
   fill($('birth'), kv([
@@ -361,13 +362,17 @@ async function loadOverview() {
   fill($('regulation'), h('p', {}, badge(r.writes_allowed ? 'Writes allowed' : 'Writes paused', r.writes_allowed ? 'ok' : 'warn'),
     r.reason ? ` · ${r.reason}` : ''),
     r.writes_allowed ? null : h('p', { class: 'sub', text: 'New evidence, research and other writes are refused until this clears. Free disk space, forget evidence or raise the limit.' }),
+    (r.warnings ?? []).map((w) => h('p', { class: 'sub', role: 'status' }, badge('Attention', 'warn'), ` ${w}`)),
     kv([
     ['Evidence rows', `${r.evidence_rows} of ${r.config.max_evidence_rows}`],
     ['Open questions', r.open_questions],
     ['Evidence written', r.write_volume],
     ['Evidence lifetime', `${(r.config.evidence_ttl_seconds / 86400).toFixed(1)} days unless promoted` +
       (r.config.consolidation ? '; what a learning event taught is kept as a consolidated reading' : '')],
-    r.consolidated_readings ? ['Consolidated readings', r.consolidated_readings] : null,
+    r.consolidated_readings ? ['Consolidated readings', r.config.max_consolidated_rows
+      ? `${r.consolidated_readings} of ${r.config.max_consolidated_rows}` : `${r.consolidated_readings} (no limit)`] : null,
+    r.largest_epoch ? ['Largest epoch', `${r.largest_epoch.epoch}: ${r.largest_epoch.consolidated_readings} consolidated readings` +
+      (r.largest_epoch.compute_ms == null ? '' : `; its beliefs take ${r.largest_epoch.compute_ms} ms to compute`)] : null,
     ['Free-space reserve', fmtBytes(r.config.min_free_bytes)],
     ['Ask budget per epoch', r.config.ask_budget_window_seconds
       ? `${r.config.ask_budget_per_epoch} per ${(r.config.ask_budget_window_seconds / 86400).toFixed(1)} days`

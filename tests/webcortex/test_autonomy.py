@@ -12,6 +12,7 @@ import pytest
 from neuroscifi.instance import store
 from neuroscifi.webcortex import autonomy, evolution, orchestrator, scheduler, state
 from neuroscifi.webcortex.types import Budget
+import race_helper
 from test_orchestrator import PAGES, T0, build, corpus, open_individual, serve  # noqa: F401
 
 DAY = 86400.0
@@ -247,36 +248,21 @@ def test_day_rollover_uses_the_explicit_now(individual):
 
 # ---- concurrency across processes --------------------------------------------------------------------------------
 
-def _race(path, n, now, barrier, out):
-    db = store.open_existing(path)
-    try:
-        barrier.wait()
-        holder = f"proc-{n}"
-        claimed = scheduler.claim_next(db, holder, now)
-        if claimed is None:
-            out.put((n, None))
-            return
-        task = orchestrator._claim(db, claimed[0], SimpleNamespace(holder=holder, clock=lambda: now), resume=False)
-        out.put((n, task["id"] if task else None))
-    finally:
-        db.close()
-
-
 def test_two_concurrent_autonomous_investigations_at_most_across_processes(individual):
     db, path = individual
     state.set_config(db, {"daily_autonomous": {"tasks": 50, "requests": 10_000, "bytes": 10**10}}, T0)  # 0.6 caps
     for n in range(6):
         curious(db, f"Zephyr compiler question {n}")
-    ctx = multiprocessing.get_context("fork")
+    # Started fresh, not forked (race_helper.py says why): six separate processes on one database file.
+    ctx = multiprocessing.get_context("spawn")
     barrier, out = ctx.Barrier(6), ctx.Queue()
-    procs = [ctx.Process(target=_race, args=(path, n, T0, barrier, out)) for n in range(6)]
+    procs = [ctx.Process(target=race_helper.race, args=(path, n, T0, barrier, out)) for n in range(6)]
     for p in procs:
         p.start()
     for p in procs:
-        p.join(30)
-    # The children are forked from a test process that still holds threads of earlier tests, so a child can
-    # inherit a lock nobody will release and never reach the barrier; the others then wait on it for ever. Such
-    # children must not outlive the test: they would hold the runner's log pipe until the CI job's timeout.
+        p.join(60)
+    # A process that did not finish must not outlive the test: it would hold the runner's log pipe until the CI
+    # job's timeout.
     stuck = [p for p in procs if p.is_alive()]
     for p in stuck:
         p.kill()

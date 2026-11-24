@@ -14,6 +14,7 @@ from pathlib import Path
 import stat
 from urllib.parse import urlsplit
 
+from .. import paths
 from ..instance import store
 from ..instance.errors import ValidationError
 
@@ -33,7 +34,7 @@ DEFAULTS = {
 }
 OWNER_ONLY = {"retain_audio", "audio_ttl_hours", "asr_url", "asr_model", "tts_url", "key_file", "personaplex",
               "personaplex_url", "personaplex_voice"}
-DEFAULT_KEY_FILE = Path.home() / ".config" / "neuroscifi" / "voice" / "api_key"
+DEFAULT_KEY_FILE = paths.home() / ".config" / "neuroscifi" / "voice" / "api_key"     # never raises (paths.home)
 
 
 def loopback_url(url: str) -> bool:

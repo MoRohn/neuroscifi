@@ -1,0 +1,5250 @@
+{
+ "contradictions": {
+  "data": "src/neuroscifi/webcortex/bench/contradiction_paraphrase.json: 32 facts, 132 probes; the first 8 subjects are the development half, the last 8 held out",
+  "memory_models_confirmed": {
+   "benchmark": "contradictions in other words",
+   "by_half": {
+    "development": {
+     "alias": {
+      "missed": 3,
+      "probes": 3,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "all": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 33,
+      "positives": 43,
+      "positives_right": 33,
+      "recall": 0.767
+     },
+     "contradict": {
+      "missed": 1,
+      "probes": 16,
+      "right": 15,
+      "wrong_relation_or_item": 0
+     },
+     "property": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "restate": {
+      "missed": 1,
+      "probes": 16,
+      "right": 15,
+      "wrong_relation_or_item": 0
+     },
+     "subject": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "units": {
+      "missed": 5,
+      "probes": 8,
+      "right": 3,
+      "wrong_relation_or_item": 0
+     },
+     "unnamed": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 3,
+      "right": 3
+     },
+     "unrelated": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 4,
+      "right": 4
+     }
+    },
+    "held_out": {
+     "alias": {
+      "missed": 3,
+      "probes": 3,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "all": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 31,
+      "positives": 43,
+      "positives_right": 31,
+      "recall": 0.721
+     },
+     "contradict": {
+      "missed": 1,
+      "probes": 16,
+      "right": 15,
+      "wrong_relation_or_item": 0
+     },
+     "property": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "restate": {
+      "missed": 1,
+      "probes": 16,
+      "right": 15,
+      "wrong_relation_or_item": 0
+     },
+     "subject": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "units": {
+      "missed": 7,
+      "probes": 8,
+      "right": 1,
+      "wrong_relation_or_item": 0
+     },
+     "unnamed": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 3,
+      "right": 3
+     },
+     "unrelated": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 4,
+      "right": 4
+     }
+    }
+   },
+   "facts": 32,
+   "facts_merged_by_the_write_path": false,
+   "label": "memory-models-confirmed",
+   "probes": 132,
+   "probes_detail": [
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "varnel.length",
+     "propose_ms": 567.6,
+     "right": true,
+     "statement": "From its source to the sea the Varnel runs for 412 km."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "varnel.length",
+     "propose_ms": 452.1,
+     "right": true,
+     "statement": "From its source to the sea the Varnel runs for 389 km."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "varnel.basin",
+     "propose_ms": 455.1,
+     "right": true,
+     "statement": "The catchment of the Varnel extends over 9,800 km\u00b2."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "varnel.basin",
+     "propose_ms": 447.2,
+     "right": true,
+     "statement": "The catchment of the Varnel extends over 7,150 km\u00b2."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 81.7,
+     "right": false,
+     "statement": "The Varnel flows 256 miles before it reaches the sea."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 70.4,
+     "right": true,
+     "statement": "At its deepest point the Varnel River is 38 metres deep."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 13.1,
+     "right": true,
+     "statement": "The Ostrel River is 520 kilometres long."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "brightwater.height",
+     "propose_ms": 354.7,
+     "right": true,
+     "statement": "The wall of the Brightwater dam reaches a height of 186 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "brightwater.height",
+     "propose_ms": 456.4,
+     "right": true,
+     "statement": "The wall of the Brightwater dam reaches a height of 152 m."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "brightwater.power",
+     "propose_ms": 380.0,
+     "right": true,
+     "statement": "At peak output the turbines at Brightwater deliver 740 megawatts."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "brightwater.power",
+     "propose_ms": 502.5,
+     "right": true,
+     "statement": "At peak output the turbines at Brightwater deliver 520 megawatts."
+    },
+    {
+     "class": "units",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "brightwater.height",
+     "propose_ms": 497.5,
+     "right": true,
+     "statement": "Brightwater is a dam 480 feet high."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 171.0,
+     "right": true,
+     "statement": "The crest of the Brightwater dam is 540 metres wide."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 38.8,
+     "right": true,
+     "statement": "The Haldane dam stands 201 metres tall."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "tessaly.population",
+     "propose_ms": 470.9,
+     "right": true,
+     "statement": "Some 248,000 residents live in Tessaly, the census found."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "tessaly.population",
+     "propose_ms": 453.5,
+     "right": true,
+     "statement": "Some 310,000 residents live in Tessaly, the census found."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "tessaly.area",
+     "propose_ms": 402.3,
+     "right": true,
+     "statement": "The municipal territory of Tessaly measures 143 km\u00b2."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "tessaly.area",
+     "propose_ms": 376.4,
+     "right": true,
+     "statement": "The municipal territory of Tessaly measures 98 km\u00b2."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "tessaly.area",
+     "propose_ms": 391.7,
+     "right": true,
+     "statement": "Tessaly spreads over 14,300 hectares."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 98.9,
+     "right": true,
+     "statement": "Tessaly has 31,000 residents enrolled at its university."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 30.4,
+     "right": true,
+     "statement": "At the last census Marlowe had a population of 251,000 residents."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 463.9,
+     "right": false,
+     "statement": "A staircase of 214 steps leads up the Tolvane tower."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 452.6,
+     "right": false,
+     "statement": "A staircase of 187 steps leads up the Tolvane tower."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "tolvane.built",
+     "propose_ms": 456.2,
+     "right": true,
+     "statement": "Construction of the Tolvane light was finished in 1874."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "tolvane.built",
+     "propose_ms": 376.6,
+     "right": true,
+     "statement": "Construction of the Tolvane light was finished in 1891."
+    },
+    {
+     "class": "units",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "tolvane.built",
+     "propose_ms": 381.7,
+     "right": true,
+     "statement": "The Tolvane Lighthouse dates from 12 May 1869."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 103.7,
+     "right": true,
+     "statement": "The Tolvane Lighthouse was automated in 1983."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 70.7,
+     "right": true,
+     "statement": "The Pellham Lighthouse was built in 1902."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "hollin.staff",
+     "propose_ms": 444.3,
+     "right": true,
+     "statement": "The payroll of Hollin & Reeve counts roughly 3,200 people."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "hollin.staff",
+     "propose_ms": 521.7,
+     "right": true,
+     "statement": "The payroll of Hollin & Reeve counts roughly 4,700 people."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "hollin.revenue",
+     "propose_ms": 421.9,
+     "right": true,
+     "statement": "Hollin & Reeve took in 610 million euros over the year."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "hollin.revenue",
+     "propose_ms": 357.8,
+     "right": true,
+     "statement": "Hollin & Reeve took in 455 million euros over the year."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 593.8,
+     "right": false,
+     "statement": "Yearly sales at Hollin & Reeve came to 0.61 billion euros."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 199.1,
+     "right": true,
+     "statement": "Hollin & Reeve posted a net profit of 48 million euros."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 59.5,
+     "right": true,
+     "statement": "Brandt & Voss employs about 5,100 people."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "lumen.altitude",
+     "propose_ms": 432.7,
+     "right": true,
+     "statement": "The Lumen-7 spacecraft circles the Earth 705 km up."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "lumen.altitude",
+     "propose_ms": 474.1,
+     "right": true,
+     "statement": "The Lumen-7 spacecraft circles the Earth 620 km up."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "lumen.bands",
+     "propose_ms": 506.6,
+     "right": true,
+     "statement": "The spectrometer on Lumen-7 records 220 bands."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "lumen.bands",
+     "propose_ms": 418.7,
+     "right": true,
+     "statement": "The spectrometer on Lumen-7 records 144 bands."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 421.2,
+     "right": false,
+     "statement": "Lumen-7 flies 705,000 metres above the ground."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 142.8,
+     "right": true,
+     "statement": "Each image taken by Lumen-7 covers a strip 185 kilometres wide."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 34.4,
+     "right": true,
+     "statement": "Corvus-3 orbits at an altitude of 512 kilometres."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "marrow.route",
+     "propose_ms": 503.6,
+     "right": true,
+     "statement": "Trains on the Marrow Valley line cover 87 km from end to end."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "marrow.route",
+     "propose_ms": 568.6,
+     "right": true,
+     "statement": "Trains on the Marrow Valley line cover 64 km from end to end."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "marrow.gauge",
+     "propose_ms": 424.0,
+     "right": true,
+     "statement": "The rails of the Marrow Valley line lie 760 mm apart."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "marrow.gauge",
+     "propose_ms": 502.5,
+     "right": true,
+     "statement": "The rails of the Marrow Valley line lie 1,000 mm apart."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 113.9,
+     "right": false,
+     "statement": "The Marrow Valley track is laid to a width of 0.76 metres."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 122.8,
+     "right": true,
+     "statement": "The longest tunnel on the Marrow Valley railway is 1.9 kilometres."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 61.0,
+     "right": true,
+     "statement": "The Thorne Valley railway runs 112 kilometres between Aske and Dunn."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "orbix.port",
+     "propose_ms": 403.1,
+     "right": true,
+     "statement": "Out of the box, Orbix accepts connections on TCP port 7420."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "orbix.port",
+     "propose_ms": 418.2,
+     "right": true,
+     "statement": "Out of the box, Orbix accepts connections on TCP port 8080."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "orbix.memory",
+     "propose_ms": 384.5,
+     "right": true,
+     "statement": "Indexing a big repository with Orbix takes 4 GB of RAM or more."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "orbix.memory",
+     "propose_ms": 485.5,
+     "right": true,
+     "statement": "Indexing a big repository with Orbix takes 16 GB of RAM or more."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 506.3,
+     "right": false,
+     "statement": "Orbix wants 4,000 MB of memory for a large repository."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 106.8,
+     "right": true,
+     "statement": "An Orbix installation takes up 2 GB of disk space."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 66.9,
+     "right": true,
+     "statement": "By default, the Tessera server listens on port 9300."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "kelder.length",
+     "propose_ms": 561.3,
+     "right": true,
+     "statement": "End to end, the Kelder crossing spans 1,340 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "kelder.length",
+     "propose_ms": 550.8,
+     "right": true,
+     "statement": "End to end, the Kelder crossing spans 1,120 m."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "kelder.opened",
+     "propose_ms": 402.4,
+     "right": true,
+     "statement": "Cars first drove over the Kelder Bridge in 1987."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "kelder.opened",
+     "propose_ms": 475.4,
+     "right": true,
+     "statement": "Cars first drove over the Kelder Bridge in 1994."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 89.9,
+     "right": false,
+     "statement": "The Kelder Bridge measures 1.34 kilometres."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 97.2,
+     "right": true,
+     "statement": "The towers of the Kelder Bridge are 210 metres high."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 62.4,
+     "right": true,
+     "statement": "The Arlen Bridge is 2,050 metres long."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "avarel.height",
+     "propose_ms": 438.7,
+     "right": true,
+     "statement": "The summit of Avarel lies at an elevation of 3,912 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "avarel.height",
+     "propose_ms": 515.0,
+     "right": true,
+     "statement": "The summit of Avarel lies at an elevation of 4,105 m."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 71.1,
+     "right": false,
+     "statement": "Nobody stood on top of Mount Avarel until 1911."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 64.4,
+     "right": false,
+     "statement": "Nobody stood on top of Mount Avarel until 1926."
+    },
+    {
+     "class": "units",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 76.5,
+     "right": false,
+     "statement": "Mount Avarel is 11,400 feet high."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 382.4,
+     "right": true,
+     "statement": "The base camp of Mount Avarel lies at 2,400 metres."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 126.7,
+     "right": true,
+     "statement": "Mount Corrin rises 3,480 metres above sea level."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "sennet.population",
+     "propose_ms": 384.2,
+     "right": true,
+     "statement": "Sennet is home to 61,500 people."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "sennet.population",
+     "propose_ms": 393.1,
+     "right": true,
+     "statement": "Sennet is home to 74,000 people."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "sennet.founded",
+     "propose_ms": 520.3,
+     "right": true,
+     "statement": "The history of Sennet as a settlement begins in 1432."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "sennet.founded",
+     "propose_ms": 378.5,
+     "right": true,
+     "statement": "The history of Sennet as a settlement begins in 1388."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "sennet.population",
+     "propose_ms": 431.8,
+     "right": true,
+     "statement": "Sennet counts 61.5 thousand inhabitants."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 123.8,
+     "right": true,
+     "statement": "Sennet received its town charter in 1510."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 65.6,
+     "right": true,
+     "statement": "The town of Wexcombe has 58,200 inhabitants."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "calder.hearing",
+     "propose_ms": 475.4,
+     "right": true,
+     "statement": "Loss of hearing occurs in roughly 4% of people who have Calder syndrome."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "calder.hearing",
+     "propose_ms": 509.9,
+     "right": true,
+     "statement": "Loss of hearing occurs in roughly 19% of people who have Calder syndrome."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "calder.described",
+     "propose_ms": 609.9,
+     "right": true,
+     "statement": "The earliest clinical report of Calder syndrome dates to 1968."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "calder.described",
+     "propose_ms": 441.8,
+     "right": true,
+     "statement": "The earliest clinical report of Calder syndrome dates to 1954."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.6,
+     "right": false,
+     "statement": "Four percent of Calder syndrome patients lose their hearing."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 130.5,
+     "right": true,
+     "statement": "About 30 percent of patients with Calder syndrome need a wheelchair."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 35.4,
+     "right": true,
+     "statement": "About 6 percent of patients with Brannock syndrome develop hearing loss."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "quill.batch",
+     "propose_ms": 393.5,
+     "right": true,
+     "statement": "Unless configured otherwise, Quillstream groups 500 records into a batch."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "quill.batch",
+     "propose_ms": 489.0,
+     "right": true,
+     "statement": "Unless configured otherwise, Quillstream groups 750 records into a batch."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "quill.version",
+     "propose_ms": 449.0,
+     "right": true,
+     "statement": "The newest production release of Quillstream is version 4.2.0, its maintainers say."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "quill.version",
+     "propose_ms": 411.1,
+     "right": true,
+     "statement": "The newest production release of Quillstream is version 4.3.1, its maintainers say."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 37.8,
+     "right": false,
+     "statement": "Quillstream's current stable build is v4.2.0."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 34.4,
+     "right": true,
+     "statement": "Quillstream retries a failed record up to 5 times."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 31.7,
+     "right": true,
+     "statement": "Tidewell processes records in batches of 250 by default."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "dunmere.mirror",
+     "propose_ms": 556.9,
+     "right": true,
+     "statement": "Dunmere's primary mirror measures 8.2 m in diameter."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "dunmere.mirror",
+     "propose_ms": 484.3,
+     "right": true,
+     "statement": "Dunmere's primary mirror measures 6.5 m in diameter."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "dunmere.altitude",
+     "propose_ms": 501.8,
+     "right": true,
+     "statement": "The domes of the Dunmere Observatory stand 2,635 m above sea level."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "dunmere.altitude",
+     "propose_ms": 562.5,
+     "right": true,
+     "statement": "The domes of the Dunmere Observatory stand 3,100 m above sea level."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 130.7,
+     "right": false,
+     "statement": "The Dunmere Observatory telescope has an 820 centimetre mirror."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 811.7,
+     "right": true,
+     "statement": "The dome of the Dunmere Observatory is 34 metres in diameter."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 35.5,
+     "right": true,
+     "statement": "The Halvar Observatory sits at an altitude of 4,200 metres."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "ibrel.length",
+     "propose_ms": 484.1,
+     "right": true,
+     "statement": "Ice of the Ibrel stretches 23 km down the valley."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "ibrel.length",
+     "propose_ms": 482.9,
+     "right": true,
+     "statement": "Ice of the Ibrel stretches 31 km down the valley."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "ibrel.retreat",
+     "propose_ms": 454.4,
+     "right": true,
+     "statement": "Each year the front of the Ibrel Glacier pulls back some 35 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "ibrel.retreat",
+     "propose_ms": 400.3,
+     "right": true,
+     "statement": "Each year the front of the Ibrel Glacier pulls back some 12 m."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 140.6,
+     "right": false,
+     "statement": "The Ibrel Glacier extends for 23,000 metres."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 188.0,
+     "right": true,
+     "statement": "The Ibrel Glacier is up to 600 metres thick."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 28.8,
+     "right": true,
+     "statement": "The Sorvik Glacier is 17 kilometres long."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "fennick.memory",
+     "propose_ms": 530.7,
+     "right": true,
+     "statement": "To build big workspaces Fennick wants 4 GB of RAM or more."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "fennick.memory",
+     "propose_ms": 422.3,
+     "right": true,
+     "statement": "To build big workspaces Fennick wants 12 GB of RAM or more."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "fennick.jobs",
+     "propose_ms": 421.6,
+     "right": true,
+     "statement": "The Fennick scheduler allows at most 64 jobs at the same time."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "fennick.jobs",
+     "propose_ms": 400.7,
+     "right": true,
+     "statement": "The Fennick scheduler allows at most 16 jobs at the same time."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 25.6,
+     "right": false,
+     "statement": "Fennick asks for 4,000 MB of memory on large workspaces."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 518.4,
+     "right": true,
+     "statement": "The Fennick cache is limited to 20 GB on disk by default."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 34.4,
+     "right": true,
+     "statement": "Lathe requires at least 8 GB of memory to build large workspaces."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 15.0,
+     "right": false,
+     "statement": "The largest city on the gulf coast has 310,000 residents."
+    },
+    {
+     "class": "alias",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 14.0,
+     "right": false,
+     "statement": "The tallest structure in the Ostra region rises 186 metres."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 15.2,
+     "right": false,
+     "statement": "Whitlock's indexing daemon listens on port 8080 by default."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 14.8,
+     "right": false,
+     "statement": "The old harbour town on the gulf has 74,000 inhabitants."
+    },
+    {
+     "class": "alias",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 19.3,
+     "right": false,
+     "statement": "The streaming library from the Trellis team batches 500 records by default."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 19.7,
+     "right": false,
+     "statement": "The highest peak of the northern range rises 4,105 metres above sea level."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 20.4,
+     "right": true,
+     "statement": "The river is 389 kilometres long."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 22.5,
+     "right": true,
+     "statement": "The lighthouse was built in 1891."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 24.5,
+     "right": true,
+     "statement": "The satellite orbits at an altitude of 620 kilometres."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 28.8,
+     "right": true,
+     "statement": "The bridge is 1,120 metres long."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 29.8,
+     "right": true,
+     "statement": "The town has 74,000 inhabitants."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 25.4,
+     "right": true,
+     "statement": "The glacier retreats by about 12 metres a year."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 31.4,
+     "right": true,
+     "statement": "The Wexcombe ferry carries 400 passengers on each crossing."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 33.2,
+     "right": true,
+     "statement": "A marathon is 42.195 kilometres long."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 31.7,
+     "right": true,
+     "statement": "The Brannock Prize is worth 50,000 euros."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 32.8,
+     "right": true,
+     "statement": "The Tessera protocol reserves port 443 for encrypted traffic."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 33.6,
+     "right": true,
+     "statement": "The Arlen tunnel was bored in 1987."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 35.9,
+     "right": true,
+     "statement": "Roughly 4 percent of the region's farmland lies fallow."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 41.0,
+     "right": true,
+     "statement": "The default page size of the Lathe database is 500 rows."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 25.2,
+     "right": true,
+     "statement": "A standard shipping container holds 64 pallets."
+    }
+   ],
+   "propose_ms": {
+    "max": 811.75,
+    "median_when": {
+     "not_paired": 61.0,
+     "paired": 453.5
+    },
+    "p50": 381.73,
+    "p95": 561.28
+   },
+   "semantic": true,
+   "summary": {
+    "alias": {
+     "missed": 6,
+     "probes": 6,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 46,
+     "negatives_paired": 0,
+     "pair_precision": 1.0,
+     "pairs_made": 64,
+     "positives": 86,
+     "positives_right": 64,
+     "recall": 0.744
+    },
+    "contradict": {
+     "missed": 2,
+     "probes": 32,
+     "right": 30,
+     "wrong_relation_or_item": 0
+    },
+    "property": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "restate": {
+     "missed": 2,
+     "probes": 32,
+     "right": 30,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "units": {
+     "missed": 12,
+     "probes": 16,
+     "right": 4,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 6,
+     "right": 6
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 8,
+     "right": 8
+    }
+   }
+  },
+  "memory_models_confirmed_second_run": {
+   "by_half": {
+    "development": {
+     "alias": {
+      "missed": 3,
+      "probes": 3,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "all": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 33,
+      "positives": 43,
+      "positives_right": 33,
+      "recall": 0.767
+     },
+     "contradict": {
+      "missed": 1,
+      "probes": 16,
+      "right": 15,
+      "wrong_relation_or_item": 0
+     },
+     "property": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "restate": {
+      "missed": 1,
+      "probes": 16,
+      "right": 15,
+      "wrong_relation_or_item": 0
+     },
+     "subject": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "units": {
+      "missed": 5,
+      "probes": 8,
+      "right": 3,
+      "wrong_relation_or_item": 0
+     },
+     "unnamed": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 3,
+      "right": 3
+     },
+     "unrelated": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 4,
+      "right": 4
+     }
+    },
+    "held_out": {
+     "alias": {
+      "missed": 3,
+      "probes": 3,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "all": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 31,
+      "positives": 43,
+      "positives_right": 31,
+      "recall": 0.721
+     },
+     "contradict": {
+      "missed": 1,
+      "probes": 16,
+      "right": 15,
+      "wrong_relation_or_item": 0
+     },
+     "property": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "restate": {
+      "missed": 1,
+      "probes": 16,
+      "right": 15,
+      "wrong_relation_or_item": 0
+     },
+     "subject": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "units": {
+      "missed": 7,
+      "probes": 8,
+      "right": 1,
+      "wrong_relation_or_item": 0
+     },
+     "unnamed": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 3,
+      "right": 3
+     },
+     "unrelated": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 4,
+      "right": 4
+     }
+    }
+   },
+   "propose_ms": {
+    "max": 803.27,
+    "median_when": {
+     "not_paired": 52.5,
+     "paired": 428.3
+    },
+    "p50": 380.14,
+    "p95": 551.01
+   },
+   "summary": {
+    "alias": {
+     "missed": 6,
+     "probes": 6,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 46,
+     "negatives_paired": 0,
+     "pair_precision": 1.0,
+     "pairs_made": 64,
+     "positives": 86,
+     "positives_right": 64,
+     "recall": 0.744
+    },
+    "contradict": {
+     "missed": 2,
+     "probes": 32,
+     "right": 30,
+     "wrong_relation_or_item": 0
+    },
+    "property": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "restate": {
+     "missed": 2,
+     "probes": 32,
+     "right": 30,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "units": {
+     "missed": 12,
+     "probes": 16,
+     "right": 4,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 6,
+     "right": 6
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 8,
+     "right": 8
+    }
+   }
+  },
+  "memory_models_unconfirmed": {
+   "benchmark": "contradictions in other words",
+   "by_half": {
+    "development": {
+     "alias": {
+      "missed": 3,
+      "probes": 3,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "all": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 38,
+      "positives": 43,
+      "positives_right": 38,
+      "recall": 0.884
+     },
+     "contradict": {
+      "missed": 0,
+      "probes": 16,
+      "right": 16,
+      "wrong_relation_or_item": 0
+     },
+     "property": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "restate": {
+      "missed": 0,
+      "probes": 16,
+      "right": 16,
+      "wrong_relation_or_item": 0
+     },
+     "subject": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "units": {
+      "missed": 2,
+      "probes": 8,
+      "right": 6,
+      "wrong_relation_or_item": 0
+     },
+     "unnamed": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 3,
+      "right": 3
+     },
+     "unrelated": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 4,
+      "right": 4
+     }
+    },
+    "held_out": {
+     "alias": {
+      "missed": 3,
+      "probes": 3,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "all": {
+      "negatives": 23,
+      "negatives_paired": 3,
+      "pair_precision": 0.912,
+      "pairs_made": 34,
+      "positives": 43,
+      "positives_right": 31,
+      "recall": 0.721
+     },
+     "contradict": {
+      "missed": 1,
+      "probes": 16,
+      "right": 15,
+      "wrong_relation_or_item": 0
+     },
+     "property": {
+      "false_conflict": 3,
+      "false_same": 0,
+      "paired": 3,
+      "probes": 8,
+      "right": 5
+     },
+     "restate": {
+      "missed": 1,
+      "probes": 16,
+      "right": 15,
+      "wrong_relation_or_item": 0
+     },
+     "subject": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "units": {
+      "missed": 7,
+      "probes": 8,
+      "right": 1,
+      "wrong_relation_or_item": 0
+     },
+     "unnamed": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 3,
+      "right": 3
+     },
+     "unrelated": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 4,
+      "right": 4
+     }
+    }
+   },
+   "facts": 32,
+   "facts_merged_by_the_write_path": false,
+   "label": "memory-models-unconfirmed",
+   "probes": 132,
+   "probes_detail": [
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "varnel.length",
+     "propose_ms": 116.3,
+     "right": true,
+     "statement": "From its source to the sea the Varnel runs for 412 km."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "varnel.length",
+     "propose_ms": 54.6,
+     "right": true,
+     "statement": "From its source to the sea the Varnel runs for 389 km."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "varnel.basin",
+     "propose_ms": 62.1,
+     "right": true,
+     "statement": "The catchment of the Varnel extends over 9,800 km\u00b2."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "varnel.basin",
+     "propose_ms": 53.5,
+     "right": true,
+     "statement": "The catchment of the Varnel extends over 7,150 km\u00b2."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 41.7,
+     "right": false,
+     "statement": "The Varnel flows 256 miles before it reaches the sea."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 27.1,
+     "right": true,
+     "statement": "At its deepest point the Varnel River is 38 metres deep."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 14.0,
+     "right": true,
+     "statement": "The Ostrel River is 520 kilometres long."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "brightwater.height",
+     "propose_ms": 45.5,
+     "right": true,
+     "statement": "The wall of the Brightwater dam reaches a height of 186 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "brightwater.height",
+     "propose_ms": 57.9,
+     "right": true,
+     "statement": "The wall of the Brightwater dam reaches a height of 152 m."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "brightwater.power",
+     "propose_ms": 75.6,
+     "right": true,
+     "statement": "At peak output the turbines at Brightwater deliver 740 megawatts."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "brightwater.power",
+     "propose_ms": 70.2,
+     "right": true,
+     "statement": "At peak output the turbines at Brightwater deliver 520 megawatts."
+    },
+    {
+     "class": "units",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "brightwater.height",
+     "propose_ms": 80.7,
+     "right": true,
+     "statement": "Brightwater is a dam 480 feet high."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 64.1,
+     "right": true,
+     "statement": "The crest of the Brightwater dam is 540 metres wide."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 32.4,
+     "right": true,
+     "statement": "The Haldane dam stands 201 metres tall."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "tessaly.population",
+     "propose_ms": 84.1,
+     "right": true,
+     "statement": "Some 248,000 residents live in Tessaly, the census found."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "tessaly.population",
+     "propose_ms": 80.2,
+     "right": true,
+     "statement": "Some 310,000 residents live in Tessaly, the census found."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "tessaly.area",
+     "propose_ms": 94.1,
+     "right": true,
+     "statement": "The municipal territory of Tessaly measures 143 km\u00b2."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "tessaly.area",
+     "propose_ms": 85.1,
+     "right": true,
+     "statement": "The municipal territory of Tessaly measures 98 km\u00b2."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "tessaly.area",
+     "propose_ms": 96.2,
+     "right": true,
+     "statement": "Tessaly spreads over 14,300 hectares."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 83.3,
+     "right": true,
+     "statement": "Tessaly has 31,000 residents enrolled at its university."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 28.9,
+     "right": true,
+     "statement": "At the last census Marlowe had a population of 251,000 residents."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "tolvane.steps",
+     "propose_ms": 80.7,
+     "right": true,
+     "statement": "A staircase of 214 steps leads up the Tolvane tower."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "tolvane.steps",
+     "propose_ms": 89.0,
+     "right": true,
+     "statement": "A staircase of 187 steps leads up the Tolvane tower."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "tolvane.built",
+     "propose_ms": 97.5,
+     "right": true,
+     "statement": "Construction of the Tolvane light was finished in 1874."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "tolvane.built",
+     "propose_ms": 79.2,
+     "right": true,
+     "statement": "Construction of the Tolvane light was finished in 1891."
+    },
+    {
+     "class": "units",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "tolvane.built",
+     "propose_ms": 89.3,
+     "right": true,
+     "statement": "The Tolvane Lighthouse dates from 12 May 1869."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 45.2,
+     "right": true,
+     "statement": "The Tolvane Lighthouse was automated in 1983."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 30.9,
+     "right": true,
+     "statement": "The Pellham Lighthouse was built in 1902."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "hollin.staff",
+     "propose_ms": 98.2,
+     "right": true,
+     "statement": "The payroll of Hollin & Reeve counts roughly 3,200 people."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "hollin.staff",
+     "propose_ms": 219.0,
+     "right": true,
+     "statement": "The payroll of Hollin & Reeve counts roughly 4,700 people."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "hollin.revenue",
+     "propose_ms": 100.9,
+     "right": true,
+     "statement": "Hollin & Reeve took in 610 million euros over the year."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "hollin.revenue",
+     "propose_ms": 98.4,
+     "right": true,
+     "statement": "Hollin & Reeve took in 455 million euros over the year."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "hollin.revenue",
+     "propose_ms": 103.8,
+     "right": true,
+     "statement": "Yearly sales at Hollin & Reeve came to 0.61 billion euros."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 106.4,
+     "right": true,
+     "statement": "Hollin & Reeve posted a net profit of 48 million euros."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 58.4,
+     "right": true,
+     "statement": "Brandt & Voss employs about 5,100 people."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "lumen.altitude",
+     "propose_ms": 104.7,
+     "right": true,
+     "statement": "The Lumen-7 spacecraft circles the Earth 705 km up."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "lumen.altitude",
+     "propose_ms": 117.7,
+     "right": true,
+     "statement": "The Lumen-7 spacecraft circles the Earth 620 km up."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "lumen.bands",
+     "propose_ms": 134.2,
+     "right": true,
+     "statement": "The spectrometer on Lumen-7 records 220 bands."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "lumen.bands",
+     "propose_ms": 94.8,
+     "right": true,
+     "statement": "The spectrometer on Lumen-7 records 144 bands."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "lumen.altitude",
+     "propose_ms": 110.1,
+     "right": true,
+     "statement": "Lumen-7 flies 705,000 metres above the ground."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 114.4,
+     "right": true,
+     "statement": "Each image taken by Lumen-7 covers a strip 185 kilometres wide."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 59.4,
+     "right": true,
+     "statement": "Corvus-3 orbits at an altitude of 512 kilometres."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "marrow.route",
+     "propose_ms": 64.7,
+     "right": true,
+     "statement": "Trains on the Marrow Valley line cover 87 km from end to end."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "marrow.route",
+     "propose_ms": 104.2,
+     "right": true,
+     "statement": "Trains on the Marrow Valley line cover 64 km from end to end."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "marrow.gauge",
+     "propose_ms": 89.3,
+     "right": true,
+     "statement": "The rails of the Marrow Valley line lie 760 mm apart."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "marrow.gauge",
+     "propose_ms": 90.6,
+     "right": true,
+     "statement": "The rails of the Marrow Valley line lie 1,000 mm apart."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 59.8,
+     "right": false,
+     "statement": "The Marrow Valley track is laid to a width of 0.76 metres."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 80.1,
+     "right": true,
+     "statement": "The longest tunnel on the Marrow Valley railway is 1.9 kilometres."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 35.5,
+     "right": true,
+     "statement": "The Thorne Valley railway runs 112 kilometres between Aske and Dunn."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "orbix.port",
+     "propose_ms": 133.5,
+     "right": true,
+     "statement": "Out of the box, Orbix accepts connections on TCP port 7420."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "orbix.port",
+     "propose_ms": 102.9,
+     "right": true,
+     "statement": "Out of the box, Orbix accepts connections on TCP port 8080."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "orbix.memory",
+     "propose_ms": 66.1,
+     "right": true,
+     "statement": "Indexing a big repository with Orbix takes 4 GB of RAM or more."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "orbix.memory",
+     "propose_ms": 174.2,
+     "right": true,
+     "statement": "Indexing a big repository with Orbix takes 16 GB of RAM or more."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "orbix.memory",
+     "propose_ms": 123.4,
+     "right": true,
+     "statement": "Orbix wants 4,000 MB of memory for a large repository."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 60.0,
+     "right": true,
+     "statement": "An Orbix installation takes up 2 GB of disk space."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 30.8,
+     "right": true,
+     "statement": "By default, the Tessera server listens on port 9300."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "kelder.length",
+     "propose_ms": 77.8,
+     "right": true,
+     "statement": "End to end, the Kelder crossing spans 1,340 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "kelder.length",
+     "propose_ms": 54.3,
+     "right": true,
+     "statement": "End to end, the Kelder crossing spans 1,120 m."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "kelder.opened",
+     "propose_ms": 64.0,
+     "right": true,
+     "statement": "Cars first drove over the Kelder Bridge in 1987."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "kelder.opened",
+     "propose_ms": 80.4,
+     "right": true,
+     "statement": "Cars first drove over the Kelder Bridge in 1994."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 154.9,
+     "right": false,
+     "statement": "The Kelder Bridge measures 1.34 kilometres."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 44.5,
+     "right": true,
+     "statement": "The towers of the Kelder Bridge are 210 metres high."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 29.7,
+     "right": true,
+     "statement": "The Arlen Bridge is 2,050 metres long."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "avarel.height",
+     "propose_ms": 171.0,
+     "right": true,
+     "statement": "The summit of Avarel lies at an elevation of 3,912 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "avarel.height",
+     "propose_ms": 133.7,
+     "right": true,
+     "statement": "The summit of Avarel lies at an elevation of 4,105 m."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 120.4,
+     "right": false,
+     "statement": "Nobody stood on top of Mount Avarel until 1911."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 143.9,
+     "right": false,
+     "statement": "Nobody stood on top of Mount Avarel until 1926."
+    },
+    {
+     "class": "units",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 126.0,
+     "right": false,
+     "statement": "Mount Avarel is 11,400 feet high."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "avarel.height",
+     "propose_ms": 69.0,
+     "right": false,
+     "statement": "The base camp of Mount Avarel lies at 2,400 metres."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 22.7,
+     "right": true,
+     "statement": "Mount Corrin rises 3,480 metres above sea level."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "sennet.population",
+     "propose_ms": 86.3,
+     "right": true,
+     "statement": "Sennet is home to 61,500 people."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "sennet.population",
+     "propose_ms": 77.4,
+     "right": true,
+     "statement": "Sennet is home to 74,000 people."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "sennet.founded",
+     "propose_ms": 96.4,
+     "right": true,
+     "statement": "The history of Sennet as a settlement begins in 1432."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "sennet.founded",
+     "propose_ms": 92.8,
+     "right": true,
+     "statement": "The history of Sennet as a settlement begins in 1388."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "sennet.population",
+     "propose_ms": 74.3,
+     "right": true,
+     "statement": "Sennet counts 61.5 thousand inhabitants."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 48.9,
+     "right": true,
+     "statement": "Sennet received its town charter in 1510."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 25.0,
+     "right": true,
+     "statement": "The town of Wexcombe has 58,200 inhabitants."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "calder.hearing",
+     "propose_ms": 69.1,
+     "right": true,
+     "statement": "Loss of hearing occurs in roughly 4% of people who have Calder syndrome."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "calder.hearing",
+     "propose_ms": 75.5,
+     "right": true,
+     "statement": "Loss of hearing occurs in roughly 19% of people who have Calder syndrome."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "calder.described",
+     "propose_ms": 71.1,
+     "right": true,
+     "statement": "The earliest clinical report of Calder syndrome dates to 1968."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "calder.described",
+     "propose_ms": 78.7,
+     "right": true,
+     "statement": "The earliest clinical report of Calder syndrome dates to 1954."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.1,
+     "right": false,
+     "statement": "Four percent of Calder syndrome patients lose their hearing."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 50.4,
+     "right": true,
+     "statement": "About 30 percent of patients with Calder syndrome need a wheelchair."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 18.4,
+     "right": true,
+     "statement": "About 6 percent of patients with Brannock syndrome develop hearing loss."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "quill.batch",
+     "propose_ms": 109.4,
+     "right": true,
+     "statement": "Unless configured otherwise, Quillstream groups 500 records into a batch."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "quill.batch",
+     "propose_ms": 162.6,
+     "right": true,
+     "statement": "Unless configured otherwise, Quillstream groups 750 records into a batch."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "quill.version",
+     "propose_ms": 112.4,
+     "right": true,
+     "statement": "The newest production release of Quillstream is version 4.2.0, its maintainers say."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "quill.version",
+     "propose_ms": 62.1,
+     "right": true,
+     "statement": "The newest production release of Quillstream is version 4.3.1, its maintainers say."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 16.5,
+     "right": false,
+     "statement": "Quillstream's current stable build is v4.2.0."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 14.8,
+     "right": true,
+     "statement": "Quillstream retries a failed record up to 5 times."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 15.3,
+     "right": true,
+     "statement": "Tidewell processes records in batches of 250 by default."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "dunmere.mirror",
+     "propose_ms": 68.0,
+     "right": true,
+     "statement": "Dunmere's primary mirror measures 8.2 m in diameter."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "dunmere.mirror",
+     "propose_ms": 97.7,
+     "right": true,
+     "statement": "Dunmere's primary mirror measures 6.5 m in diameter."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "dunmere.altitude",
+     "propose_ms": 84.6,
+     "right": true,
+     "statement": "The domes of the Dunmere Observatory stand 2,635 m above sea level."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "dunmere.altitude",
+     "propose_ms": 156.1,
+     "right": true,
+     "statement": "The domes of the Dunmere Observatory stand 3,100 m above sea level."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 122.3,
+     "right": false,
+     "statement": "The Dunmere Observatory telescope has an 820 centimetre mirror."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "dunmere.mirror",
+     "propose_ms": 93.4,
+     "right": false,
+     "statement": "The dome of the Dunmere Observatory is 34 metres in diameter."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 24.4,
+     "right": true,
+     "statement": "The Halvar Observatory sits at an altitude of 4,200 metres."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "ibrel.length",
+     "propose_ms": 143.5,
+     "right": true,
+     "statement": "Ice of the Ibrel stretches 23 km down the valley."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "ibrel.length",
+     "propose_ms": 83.2,
+     "right": true,
+     "statement": "Ice of the Ibrel stretches 31 km down the valley."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "ibrel.retreat",
+     "propose_ms": 117.6,
+     "right": true,
+     "statement": "Each year the front of the Ibrel Glacier pulls back some 35 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "ibrel.retreat",
+     "propose_ms": 118.0,
+     "right": true,
+     "statement": "Each year the front of the Ibrel Glacier pulls back some 12 m."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 116.1,
+     "right": false,
+     "statement": "The Ibrel Glacier extends for 23,000 metres."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 98.3,
+     "right": true,
+     "statement": "The Ibrel Glacier is up to 600 metres thick."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 37.0,
+     "right": true,
+     "statement": "The Sorvik Glacier is 17 kilometres long."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "fennick.memory",
+     "propose_ms": 96.7,
+     "right": true,
+     "statement": "To build big workspaces Fennick wants 4 GB of RAM or more."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "fennick.memory",
+     "propose_ms": 111.1,
+     "right": true,
+     "statement": "To build big workspaces Fennick wants 12 GB of RAM or more."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "same",
+     "paired_by": "meaning",
+     "paired_with": "fennick.jobs",
+     "propose_ms": 82.7,
+     "right": true,
+     "statement": "The Fennick scheduler allows at most 64 jobs at the same time."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "fennick.jobs",
+     "propose_ms": 145.6,
+     "right": true,
+     "statement": "The Fennick scheduler allows at most 16 jobs at the same time."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 31.0,
+     "right": false,
+     "statement": "Fennick asks for 4,000 MB of memory on large workspaces."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "conflict",
+     "paired_by": "meaning",
+     "paired_with": "fennick.memory",
+     "propose_ms": 119.5,
+     "right": false,
+     "statement": "The Fennick cache is limited to 20 GB on disk by default."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 37.5,
+     "right": true,
+     "statement": "Lathe requires at least 8 GB of memory to build large workspaces."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 33.9,
+     "right": false,
+     "statement": "The largest city on the gulf coast has 310,000 residents."
+    },
+    {
+     "class": "alias",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 21.2,
+     "right": false,
+     "statement": "The tallest structure in the Ostra region rises 186 metres."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 28.0,
+     "right": false,
+     "statement": "Whitlock's indexing daemon listens on port 8080 by default."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 39.2,
+     "right": false,
+     "statement": "The old harbour town on the gulf has 74,000 inhabitants."
+    },
+    {
+     "class": "alias",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 30.5,
+     "right": false,
+     "statement": "The streaming library from the Trellis team batches 500 records by default."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 33.1,
+     "right": false,
+     "statement": "The highest peak of the northern range rises 4,105 metres above sea level."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 29.4,
+     "right": true,
+     "statement": "The river is 389 kilometres long."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 31.8,
+     "right": true,
+     "statement": "The lighthouse was built in 1891."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 33.0,
+     "right": true,
+     "statement": "The satellite orbits at an altitude of 620 kilometres."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 27.4,
+     "right": true,
+     "statement": "The bridge is 1,120 metres long."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 16.4,
+     "right": true,
+     "statement": "The town has 74,000 inhabitants."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 19.1,
+     "right": true,
+     "statement": "The glacier retreats by about 12 metres a year."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 18.4,
+     "right": true,
+     "statement": "The Wexcombe ferry carries 400 passengers on each crossing."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 24.1,
+     "right": true,
+     "statement": "A marathon is 42.195 kilometres long."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 29.0,
+     "right": true,
+     "statement": "The Brannock Prize is worth 50,000 euros."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 27.6,
+     "right": true,
+     "statement": "The Tessera protocol reserves port 443 for encrypted traffic."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 46.7,
+     "right": true,
+     "statement": "The Arlen tunnel was bored in 1987."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 37.4,
+     "right": true,
+     "statement": "Roughly 4 percent of the region's farmland lies fallow."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 32.0,
+     "right": true,
+     "statement": "The default page size of the Lathe database is 500 rows."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 12.8,
+     "right": true,
+     "statement": "A standard shipping container holds 64 pallets."
+    }
+   ],
+   "propose_ms": {
+    "max": 219.02,
+    "median_when": {
+     "not_paired": 33.0,
+     "paired": 92.8
+    },
+    "p50": 75.59,
+    "p95": 145.57
+   },
+   "semantic": true,
+   "summary": {
+    "alias": {
+     "missed": 6,
+     "probes": 6,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 46,
+     "negatives_paired": 3,
+     "pair_precision": 0.958,
+     "pairs_made": 72,
+     "positives": 86,
+     "positives_right": 69,
+     "recall": 0.802
+    },
+    "contradict": {
+     "missed": 1,
+     "probes": 32,
+     "right": 31,
+     "wrong_relation_or_item": 0
+    },
+    "property": {
+     "false_conflict": 3,
+     "false_same": 0,
+     "paired": 3,
+     "probes": 16,
+     "right": 13
+    },
+    "restate": {
+     "missed": 1,
+     "probes": 32,
+     "right": 31,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "units": {
+     "missed": 9,
+     "probes": 16,
+     "right": 7,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 6,
+     "right": 6
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 8,
+     "right": 8
+    }
+   }
+  },
+  "models": {
+   "answer_model": "qwen3-30b-a3b-instruct-2507-fp8",
+   "embed": "qwen3-embedding-0.6b",
+   "rerank": "qwen3-reranker-0.6b"
+  },
+  "order_of_work": "The thresholds, the masking of numbers for the reranker and the name rule were chosen on the development half. The held-out half was then run once without the answer model (3 false pairs of 23, all of the class property). The confirmation by the answer model was added after that result was seen; its prompt uses development examples only, and the held-out half was run with it afterwards (0 false pairs of 23, twice).",
+  "rows_that_differ_between_the_two_confirmed_runs": [],
+  "settings": {
+   "chosen_on": "the development half only",
+   "pair_floor": 0.8,
+   "pair_similarity": 0.6
+  },
+  "words_only": {
+   "benchmark": "contradictions in other words",
+   "by_half": {
+    "development": {
+     "alias": {
+      "missed": 3,
+      "probes": 3,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "all": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": null,
+      "pairs_made": 0,
+      "positives": 43,
+      "positives_right": 0,
+      "recall": 0.0
+     },
+     "contradict": {
+      "missed": 16,
+      "probes": 16,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "property": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "restate": {
+      "missed": 16,
+      "probes": 16,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "subject": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "units": {
+      "missed": 8,
+      "probes": 8,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "unnamed": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 3,
+      "right": 3
+     },
+     "unrelated": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 4,
+      "right": 4
+     }
+    },
+    "held_out": {
+     "alias": {
+      "missed": 3,
+      "probes": 3,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "all": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": null,
+      "pairs_made": 0,
+      "positives": 43,
+      "positives_right": 0,
+      "recall": 0.0
+     },
+     "contradict": {
+      "missed": 16,
+      "probes": 16,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "property": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "restate": {
+      "missed": 16,
+      "probes": 16,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "subject": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 8,
+      "right": 8
+     },
+     "units": {
+      "missed": 8,
+      "probes": 8,
+      "right": 0,
+      "wrong_relation_or_item": 0
+     },
+     "unnamed": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 3,
+      "right": 3
+     },
+     "unrelated": {
+      "false_conflict": 0,
+      "false_same": 0,
+      "paired": 0,
+      "probes": 4,
+      "right": 4
+     }
+    }
+   },
+   "facts": 32,
+   "facts_merged_by_the_write_path": false,
+   "label": "words-only",
+   "probes": 132,
+   "probes_detail": [
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "From its source to the sea the Varnel runs for 412 km."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "From its source to the sea the Varnel runs for 389 km."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The catchment of the Varnel extends over 9,800 km\u00b2."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The catchment of the Varnel extends over 7,150 km\u00b2."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The Varnel flows 256 miles before it reaches the sea."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "At its deepest point the Varnel River is 38 metres deep."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Ostrel River is 520 kilometres long."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The wall of the Brightwater dam reaches a height of 186 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The wall of the Brightwater dam reaches a height of 152 m."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "At peak output the turbines at Brightwater deliver 740 megawatts."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "At peak output the turbines at Brightwater deliver 520 megawatts."
+    },
+    {
+     "class": "units",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Brightwater is a dam 480 feet high."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The crest of the Brightwater dam is 540 metres wide."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Haldane dam stands 201 metres tall."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Some 248,000 residents live in Tessaly, the census found."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Some 310,000 residents live in Tessaly, the census found."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The municipal territory of Tessaly measures 143 km\u00b2."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The municipal territory of Tessaly measures 98 km\u00b2."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Tessaly spreads over 14,300 hectares."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Tessaly has 31,000 residents enrolled at its university."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "At the last census Marlowe had a population of 251,000 residents."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "A staircase of 214 steps leads up the Tolvane tower."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "A staircase of 187 steps leads up the Tolvane tower."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Construction of the Tolvane light was finished in 1874."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Construction of the Tolvane light was finished in 1891."
+    },
+    {
+     "class": "units",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The Tolvane Lighthouse dates from 12 May 1869."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Tolvane Lighthouse was automated in 1983."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Pellham Lighthouse was built in 1902."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The payroll of Hollin & Reeve counts roughly 3,200 people."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The payroll of Hollin & Reeve counts roughly 4,700 people."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Hollin & Reeve took in 610 million euros over the year."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Hollin & Reeve took in 455 million euros over the year."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Yearly sales at Hollin & Reeve came to 0.61 billion euros."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Hollin & Reeve posted a net profit of 48 million euros."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Brandt & Voss employs about 5,100 people."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The Lumen-7 spacecraft circles the Earth 705 km up."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The Lumen-7 spacecraft circles the Earth 620 km up."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The spectrometer on Lumen-7 records 220 bands."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The spectrometer on Lumen-7 records 144 bands."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Lumen-7 flies 705,000 metres above the ground."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Each image taken by Lumen-7 covers a strip 185 kilometres wide."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Corvus-3 orbits at an altitude of 512 kilometres."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Trains on the Marrow Valley line cover 87 km from end to end."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Trains on the Marrow Valley line cover 64 km from end to end."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The rails of the Marrow Valley line lie 760 mm apart."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The rails of the Marrow Valley line lie 1,000 mm apart."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The Marrow Valley track is laid to a width of 0.76 metres."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The longest tunnel on the Marrow Valley railway is 1.9 kilometres."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Thorne Valley railway runs 112 kilometres between Aske and Dunn."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Out of the box, Orbix accepts connections on TCP port 7420."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Out of the box, Orbix accepts connections on TCP port 8080."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Indexing a big repository with Orbix takes 4 GB of RAM or more."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Indexing a big repository with Orbix takes 16 GB of RAM or more."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Orbix wants 4,000 MB of memory for a large repository."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "An Orbix installation takes up 2 GB of disk space."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "By default, the Tessera server listens on port 9300."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "End to end, the Kelder crossing spans 1,340 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "End to end, the Kelder crossing spans 1,120 m."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Cars first drove over the Kelder Bridge in 1987."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Cars first drove over the Kelder Bridge in 1994."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The Kelder Bridge measures 1.34 kilometres."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The towers of the Kelder Bridge are 210 metres high."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Arlen Bridge is 2,050 metres long."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The summit of Avarel lies at an elevation of 3,912 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The summit of Avarel lies at an elevation of 4,105 m."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Nobody stood on top of Mount Avarel until 1911."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Nobody stood on top of Mount Avarel until 1926."
+    },
+    {
+     "class": "units",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Mount Avarel is 11,400 feet high."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The base camp of Mount Avarel lies at 2,400 metres."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Mount Corrin rises 3,480 metres above sea level."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Sennet is home to 61,500 people."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Sennet is home to 74,000 people."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The history of Sennet as a settlement begins in 1432."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The history of Sennet as a settlement begins in 1388."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Sennet counts 61.5 thousand inhabitants."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Sennet received its town charter in 1510."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The town of Wexcombe has 58,200 inhabitants."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Loss of hearing occurs in roughly 4% of people who have Calder syndrome."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Loss of hearing occurs in roughly 19% of people who have Calder syndrome."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The earliest clinical report of Calder syndrome dates to 1968."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The earliest clinical report of Calder syndrome dates to 1954."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Four percent of Calder syndrome patients lose their hearing."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "About 30 percent of patients with Calder syndrome need a wheelchair."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "About 6 percent of patients with Brannock syndrome develop hearing loss."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Unless configured otherwise, Quillstream groups 500 records into a batch."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Unless configured otherwise, Quillstream groups 750 records into a batch."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The newest production release of Quillstream is version 4.2.0, its maintainers say."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The newest production release of Quillstream is version 4.3.1, its maintainers say."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Quillstream's current stable build is v4.2.0."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Quillstream retries a failed record up to 5 times."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Tidewell processes records in batches of 250 by default."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Dunmere's primary mirror measures 8.2 m in diameter."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Dunmere's primary mirror measures 6.5 m in diameter."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The domes of the Dunmere Observatory stand 2,635 m above sea level."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The domes of the Dunmere Observatory stand 3,100 m above sea level."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The Dunmere Observatory telescope has an 820 centimetre mirror."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The dome of the Dunmere Observatory is 34 metres in diameter."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Halvar Observatory sits at an altitude of 4,200 metres."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Ice of the Ibrel stretches 23 km down the valley."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Ice of the Ibrel stretches 31 km down the valley."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Each year the front of the Ibrel Glacier pulls back some 35 m."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Each year the front of the Ibrel Glacier pulls back some 12 m."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The Ibrel Glacier extends for 23,000 metres."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Ibrel Glacier is up to 600 metres thick."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Sorvik Glacier is 17 kilometres long."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "To build big workspaces Fennick wants 4 GB of RAM or more."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "To build big workspaces Fennick wants 12 GB of RAM or more."
+    },
+    {
+     "class": "restate",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The Fennick scheduler allows at most 64 jobs at the same time."
+    },
+    {
+     "class": "contradict",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The Fennick scheduler allows at most 16 jobs at the same time."
+    },
+    {
+     "class": "units",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Fennick asks for 4,000 MB of memory on large workspaces."
+    },
+    {
+     "class": "property",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Fennick cache is limited to 20 GB on disk by default."
+    },
+    {
+     "class": "subject",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Lathe requires at least 8 GB of memory to build large workspaces."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The largest city on the gulf coast has 310,000 residents."
+    },
+    {
+     "class": "alias",
+     "gold": "same",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The tallest structure in the Ostra region rises 186 metres."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "Whitlock's indexing daemon listens on port 8080 by default."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The old harbour town on the gulf has 74,000 inhabitants."
+    },
+    {
+     "class": "alias",
+     "gold": "same",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The streaming library from the Trellis team batches 500 records by default."
+    },
+    {
+     "class": "alias",
+     "gold": "conflict",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": false,
+     "statement": "The highest peak of the northern range rises 4,105 metres above sea level."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The river is 389 kilometres long."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The lighthouse was built in 1891."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The satellite orbits at an altitude of 620 kilometres."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The bridge is 1,120 metres long."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The town has 74,000 inhabitants."
+    },
+    {
+     "class": "unnamed",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The glacier retreats by about 12 metres a year."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Wexcombe ferry carries 400 passengers on each crossing."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "A marathon is 42.195 kilometres long."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Brannock Prize is worth 50,000 euros."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "development",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Tessera protocol reserves port 443 for encrypted traffic."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The Arlen tunnel was bored in 1987."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "Roughly 4 percent of the region's farmland lies fallow."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "The default page size of the Lathe database is 500 rows."
+    },
+    {
+     "class": "unrelated",
+     "gold": "none",
+     "half": "held_out",
+     "outcome": "none",
+     "paired_by": null,
+     "paired_with": null,
+     "propose_ms": 0.0,
+     "right": true,
+     "statement": "A standard shipping container holds 64 pallets."
+    }
+   ],
+   "propose_ms": null,
+   "semantic": false,
+   "summary": {
+    "alias": {
+     "missed": 6,
+     "probes": 6,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 46,
+     "negatives_paired": 0,
+     "pair_precision": null,
+     "pairs_made": 0,
+     "positives": 86,
+     "positives_right": 0,
+     "recall": 0.0
+    },
+    "contradict": {
+     "missed": 32,
+     "probes": 32,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "property": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "restate": {
+     "missed": 32,
+     "probes": 32,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "units": {
+     "missed": 16,
+     "probes": 16,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 6,
+     "right": 6
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 8,
+     "right": 8
+    }
+   }
+  }
+ },
+ "generated_at": "2026-11-24",
+ "host_load": [
+  "01:02:24 up 3 days,  6:51,  1 user,  load average: 5.26, 4.85, 4.34",
+  " 01:03:48 up 3 days,  6:52,  1 user,  load average: 6.80, 5.30, 4.53"
+ ],
+ "index": {
+  "benchmark": "knowledge.query lexical index",
+  "note": "per_call_before_ms is cached=False: tokenise every live statement and build the index for the call, what every call did before the index was kept. Times are the best of the repeats.",
+  "question": "Which Varnel river spans the northern district",
+  "repeats": 5,
+  "results": [
+   {
+    "another_question_ms": 1.04,
+    "bytes_per_statement": 1745,
+    "first_call_after_one_write_ms": 4.16,
+    "first_call_ms": 9.18,
+    "index_bytes_held": 1745061,
+    "matched": 10,
+    "of_which_reading_the_live_statements_ms": 0.69,
+    "per_call_before_ms": 9.17,
+    "repeated_call_ms": 1.08,
+    "results_identical_to_uncached": true,
+    "statements": 1000
+   },
+   {
+    "another_question_ms": 30.16,
+    "bytes_per_statement": 1692,
+    "first_call_after_one_write_ms": 116.07,
+    "first_call_ms": 206.13,
+    "index_bytes_held": 33839075,
+    "matched": 10,
+    "of_which_reading_the_live_statements_ms": 26.15,
+    "per_call_before_ms": 200.24,
+    "repeated_call_ms": 30.69,
+    "results_identical_to_uncached": true,
+    "statements": 20000
+   },
+   {
+    "another_question_ms": 187.25,
+    "bytes_per_statement": 1421,
+    "first_call_after_one_write_ms": 694.92,
+    "first_call_ms": 1149.12,
+    "index_bytes_held": 142145843,
+    "matched": 10,
+    "of_which_reading_the_live_statements_ms": 171.87,
+    "per_call_before_ms": 1136.36,
+    "repeated_call_ms": 193.44,
+    "results_identical_to_uncached": true,
+    "statements": 100000
+   }
+  ]
+ },
+ "what": "Lane K of the open-items round: the lexical index of knowledge.query (W8) and contradictions in other words (W2). scripts/bench_knowledge.py index | contradictions."
+}

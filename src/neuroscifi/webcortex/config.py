@@ -86,6 +86,9 @@ class WebConfig:
     # after one of these, and requests on the wire are cut. The fetches ahead of a task share its request and byte
     # budget, never open a second connection to a site an exchange is in progress with, and are not made at all
     # for tasks under a daily allowance (curiosity, refreshes, MCP); the allowances count unused read-ahead traffic.
+    # What a task's fetches ahead send and the task then does not use has its own allowance (types.Budget.
+    # unused_allowance: a tenth of the budget, at least two requests per page of the window): everything a task
+    # sends is at most max_requests plus that, and with it spent the task reads one page at a time.
     # The one exception to "unchanged": a 429 answered to a page fetched ahead backs its site off at once, so a
     # source an earlier candidate would have redirected to there is not read (the report says so).
     # 1 reads one page at a time for every task, as 0.7.0 did: `nsf web config --set read_ahead=1`.
@@ -104,10 +107,20 @@ class WebConfig:
     # candidates stay provisional and one aggregate question per task points to the console / `nsf web knowledge`.
     max_open_web_questions: int = 10
     max_web_questions_per_task: int = 3
+    # An open web question older than this many days is stale: it stays open and answerable and no longer counts
+    # toward max_open_web_questions, so questions the owner never answers do not stop new ones for ever. 0: every
+    # open question counts (the rule before this setting). knowledge.web_question_load.
+    web_question_stale_days: float = 30.0
     # MCP (`nsf web mcp`): web_research calls per hour per server process, and a daily cap for origin 'mcp' tasks
     # (tasks, requests and bytes of the last 24 h; request/byte budgets are clamped to what is left at submit).
     mcp_research_per_hour: int = 6
     daily_mcp: dict = field(default_factory=lambda: {"tasks": 24, "requests": 400, "bytes": 80_000_000})
+    # ADR-046: a forecast (a knowledge item's confidence, a hypothesis' posterior, the owner's estimate) is read
+    # through what the settled forecasts of its kind show (evolution.recalibrations) to rank the autonomous
+    # investigations its stated value admitted (never to admit or refuse one). The identity until 20 forecasts of
+    # the kind have settled; stored forecasts, verification states, verdicts and answers never change.
+    # Off: `nsf web config --set calibrated_forecasts=false`.
+    calibrated_forecasts: bool = True
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

@@ -53,7 +53,7 @@ from urllib.request import ProxyHandler, build_opener
 
 _DIRECT = build_opener(ProxyHandler({}))      # a loopback service's /metrics is never read through a proxy
 
-from . import monitor, policy
+from . import monitor, policy, shared
 
 CRITICAL_SHARE = 0.25          # at critical pressure the idle timeout is a quarter of the configured one ...
 CRITICAL_FLOOR = 120.0         # ... but never under two minutes
@@ -77,14 +77,17 @@ class Service:
     suggested_minutes: int | None = None
     documented_gib: float | None = None       # memory it takes when loaded (§4), until a load or unload measures it
     background: bool = False         # nobody waits for its reload (the memory models): not announced as "starting"
+    ready: tuple | None = None       # (container port, path) answering 200 once it serves, for one without /metrics
 
 
 def _port(env, default):
     return os.environ.get(env, default)
 
 
-_MEMORY_NAMES = ("NSF_MEMORY_DIR", "NSF_MEMORY_BIND", "NSF_MEMORY_EMBED_PORT", "NSF_MEMORY_RERANK_PORT")
-_MEMORY_LINE = re.compile(r"^(?:export\s+)?(NSF_MEMORY_(?:DIR|BIND|EMBED_PORT|RERANK_PORT))=(.*)$")
+_MEMORY_NAMES = ("NSF_MEMORY_DIR", "NSF_MEMORY_BIND", "NSF_MEMORY_EMBED_PORT", "NSF_MEMORY_RERANK_PORT",
+                 "NSF_MEMORY_SERVER", "NSF_MEMORY_CONTAINER")
+_MEMORY_LINE = re.compile(r"^(?:export\s+)?(NSF_MEMORY_(?:DIR|BIND|EMBED_PORT|RERANK_PORT|SERVER|CONTAINER))=(.*)$")
+_MEMORY_CONTAINER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
 _MEMORY_PLAIN = re.compile(r"^[0-9A-Za-z_.:/\[\]@%+,=~-]*$")       # what a value may hold once it is expanded
 _LOOPBACK = ("127.0.0.1", "::1", "[::1]", "localhost")
 
@@ -122,8 +125,10 @@ def _memory_value(raw, found, environ):
 
 
 def memory_settings(environ=None, repo=None) -> dict:
-    """{"dir", "key_file", "bind", "embed_port", "rerank_port", "ignored", "error"}: where deploy/memory/run.sh puts
-    the two memory models and their key, read the way the script resolves them (review F8: `nsf setup` and the idle
+    """{"dir", "key_file", "bind", "embed_port", "rerank_port", "server", "container", "ignored", "error"}: where
+    deploy/memory/run.sh puts the two memory models and their key, and which server holds them ("single": one
+    process and one container, `container`, for both; "vllm": a vLLM server and a container each), read the way
+    the script resolves them (review F8: `nsf setup` and the idle
     policy looked at the environment only, so an owner's override of a port was seen by the script alone).
 
     As in the script: the environment first, then deploy/memory/memory.env, then the owner's override
@@ -164,9 +169,12 @@ def memory_settings(environ=None, repo=None) -> dict:
     if bind not in _LOOPBACK:
         error, bind = f"NSF_MEMORY_BIND must be loopback (got {bind[:64]}): deploy/memory/run.sh refuses it", "127.0.0.1"
     folder = Path(found["NSF_MEMORY_DIR"])
+    server = found["NSF_MEMORY_SERVER"] if found["NSF_MEMORY_SERVER"] in ("single", "vllm") else "single"
+    shared = found["NSF_MEMORY_CONTAINER"] if _MEMORY_CONTAINER.match(found["NSF_MEMORY_CONTAINER"]) \
+        else "neuroscifi-memory"
     return {"dir": folder, "key_file": folder / "api_key", "bind": bind,
             "embed_port": port("NSF_MEMORY_EMBED_PORT", 18441), "rerank_port": port("NSF_MEMORY_RERANK_PORT", 18442),
-            "ignored": ignored, "error": error}
+            "server": server, "container": shared, "ignored": ignored, "error": error}
 
 
 def _build_services() -> dict:
@@ -174,6 +182,15 @@ def _build_services() -> dict:
         memory = memory_settings()
     except Exception:                 # a settings file must never be why the policy, or an import, fails
         memory = {"embed_port": 18441, "rerank_port": 18442}
+    # One server for both memory models (deploy/memory/server.py, the default) is one container and one unit under
+    # both names: starting either starts it, stopping either stops it, and its /metrics counts the requests of
+    # both, so the two are idle together. Measured, both models in it: 4.4 GiB, 16 to 29 s from start to ready
+    # (docs/quality/evidence/open_items_memory_server.json).
+    single = memory.get("server", "single") == "single"
+    boxes = {name: memory.get("container", "neuroscifi-memory") if single else f"neuroscifi-memory-{name}"
+             for name in ("embed", "rerank")}
+    units = {name: "neuroscifi-memory.service" if single else f"neuroscifi-memory-{name}.service"
+             for name in ("embed", "rerank")}
     return {
         "vllm": Service("vllm", "the local model", "neuroscifi-vllm",
                         ("bash", "{repo}/deploy/vllm/run.sh", "start"), ("bash", "{repo}/deploy/vllm/run.sh", "stop"),
@@ -188,24 +205,29 @@ def _build_services() -> dict:
                        ("bash", "{repo}/deploy/voice/run.sh", "start", "tts"),
                        ("bash", "{repo}/deploy/voice/run.sh", "stop", "tts"),
                        ("bash", "{repo}/deploy/voice/run.sh", "wait", "tts", "900"), "neuroscifi-voice-tts.service",
-                       None, 5.2, 15, 1.5),
+                       None, 5.2, 15, 1.5, ready=("8000/tcp", "/health")),
+        # SearXNG's own start command waits for /healthz; its unit (deploy/install.sh --searxng) is stopped and
+        # started as a unit when it is active, like the others: `nsf web searxng` writes the instance database,
+        # which the account that runs the idle pass in an installed deployment may only read.
         "searxng": Service("searxng", "the search engine", "neuroscifi-searxng",
                            ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "start", "--db", "{db}"),
-                           ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "stop", "--db", "{db}")),
-        # The memory models (deploy/memory; webcortex/semantic.py). Measured on the reference host, each: 18 to 31 s
-        # from start to ready with warm files, 4.4 GiB (docs/quality/evidence/accel_decisions_memory_service.json).
-        "embed": Service("embed", "memory search (the embedding model)", "neuroscifi-memory-embed",
+                           ("{py}", "-m", "neuroscifi.cli", "web", "searxng", "stop", "--db", "{db}"),
+                           unit="neuroscifi-searxng.service", ready=("8080/tcp", "/healthz")),
+        # The memory models (deploy/memory; webcortex/semantic.py). Measured on the reference host as two vLLM
+        # servers, each: 18 to 31 s from start to ready with warm files, 4.4 GiB
+        # (docs/quality/evidence/accel_decisions_memory_service.json).
+        "embed": Service("embed", "memory search (the embedding model)", boxes["embed"],
                          ("bash", "{repo}/deploy/memory/run.sh", "start", "embed"),
                          ("bash", "{repo}/deploy/memory/run.sh", "stop", "embed"),
                          ("bash", "{repo}/deploy/memory/run.sh", "wait", "embed", "600"),
-                         "neuroscifi-memory-embed.service",
+                         units["embed"],
                          f"http://127.0.0.1:{memory['embed_port']}/metrics", 20.0, 15, 4.4,
                          background=True),
-        "rerank": Service("rerank", "memory search (the reranker)", "neuroscifi-memory-rerank",
+        "rerank": Service("rerank", "memory search (the reranker)", boxes["rerank"],
                           ("bash", "{repo}/deploy/memory/run.sh", "start", "rerank"),
                           ("bash", "{repo}/deploy/memory/run.sh", "stop", "rerank"),
                           ("bash", "{repo}/deploy/memory/run.sh", "wait", "rerank", "600"),
-                          "neuroscifi-memory-rerank.service",
+                          units["rerank"],
                           f"http://127.0.0.1:{memory['rerank_port']}/metrics", 20.0, 15, 4.4,
                           background=True),
     }
@@ -297,6 +319,18 @@ def _metrics(url, timeout=2.0) -> dict | None:
     return {"in_flight": sum((v for _, v in in_flight), 0.0), "served": sum((v for _, v in served), 0.0)}
 
 
+def _answers(url, timeout=3.0) -> bool:
+    """Whether a loopback readiness address answers 200 (speech synthesis /health, SearXNG /healthz)."""
+    try:
+        with _DIRECT.open(url, timeout=timeout) as resp:   # noqa: S310 - a loopback URL built from SERVICES
+            return resp.status == 200
+    except (OSError, ValueError):
+        return False
+
+
+READY_WAIT = 60.0          # seconds a running service without a wait command may take to answer (SearXNG's own limit)
+READY_POLL = 2.0
+
 _clock, _monotonic = time.time, time.monotonic      # module-level so tests can give every Idle one fake clock
 
 
@@ -310,8 +344,8 @@ def _run(args, timeout):
 
 @contextmanager
 def _flock(path, mode):
-    path.parent.mkdir(mode=0o700, exist_ok=True)
-    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    shared.ensure_folder(path.parent)
+    fd = shared.open_file(path, os.O_RDWR)
     try:
         fcntl.flock(fd, mode)
         yield fd
@@ -334,7 +368,7 @@ class Idle:
     """The idle policy of one instance (`db_path`); its files live in <db>.resources/ next to the audio beacon."""
 
     def __init__(self, db_path, *, runner=None, clock=None, monotonic=None, services=None, metrics=None,
-                 sample=None, memory=None):
+                 sample=None, memory=None, ready=None, sleep=None):
         self.db_path = Path(db_path)
         self.folder = Path(f"{db_path}.resources")
         self.runner = runner or _run
@@ -343,26 +377,56 @@ class Idle:
         self.read_metrics = metrics or _metrics
         self.sample = sample or (lambda: monitor.sample())
         self.read_memory = memory or (lambda: monitor.memory())     # uncached: a load or unload measures the change
+        self.read_ready = ready or _answers
+        self.sleep = sleep or time.sleep
 
     # ---- files ------------------------------------------------------------------------------------------------
     def _file(self, name) -> Path:
         return self.folder / name
 
     def read(self) -> dict:
+        """The policy's state. The file is in a folder the service account may write (two accounts), so it is read
+        without following a link or blocking, at most shared.READ_LIMIT bytes, and whatever is not of the expected
+        shape is dropped rather than trusted: a malformed file must not stop the pass or the wake command (review
+        F6, L4). What was dropped is kept in `self.problems` and shown by `nsf resources idle`."""
+        problems = []
         try:
-            data = json.loads(self._file("idle.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            data = shared.read_json(self._file("idle.json"))
+        except FileNotFoundError:
             data = {}
-        data = data if isinstance(data, dict) else {}
-        data.setdefault("timeouts", {})
-        data.setdefault("services", {})
+        except (OSError, ValueError) as error:
+            problems.append(f"idle.json unreadable, treated as empty: {type(error).__name__}: {error}"[:200])
+            data = {}
+        return self._clean(data, problems)
+
+    def _clean(self, data, problems) -> dict:
+        if not isinstance(data, dict):
+            problems.append("idle.json is not an object; treated as empty")
+            data = {}
+        timeouts, services = data.get("timeouts", {}), data.get("services", {})
+        if not isinstance(timeouts, dict):
+            problems.append("timeouts is not an object; treated as all off")
+            timeouts = {}
+        if not isinstance(services, dict):
+            problems.append("services is not an object; treated as empty")
+            services = {}
+        for name in list(timeouts):
+            value = timeouts[name]
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                      or not math.isfinite(value) or value <= 0):
+                problems.append(f"timeout of {str(name)[:32]} is not a number of seconds; treated as off")
+                timeouts[name] = None
+        for name in list(services):
+            if not isinstance(services[name], dict):
+                problems.append(f"state of {str(name)[:32]} is not an object; dropped")
+                del services[name]
+        data["timeouts"], data["services"] = timeouts, services
+        self.problems = problems[:20]
         return data
 
     def _write(self, data) -> None:
-        self.folder.mkdir(mode=0o700, exist_ok=True)
-        tmp = self._file("idle.json.tmp")
-        tmp.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
-        os.replace(tmp, self._file("idle.json"))
+        shared.ensure_folder(self.folder)
+        shared.write_text(self._file("idle.json"), json.dumps(data, indent=1, sort_keys=True))
 
     @contextmanager
     def _state(self):
@@ -373,31 +437,34 @@ class Idle:
             self._write(data)
 
     def events(self, limit=20) -> list[dict]:
-        try:
-            lines = self._file("idle-events.jsonl").read_text(encoding="utf-8").splitlines()
-        except OSError:
+        try:   # no link followed, nothing but a plain file, its last READ_LIMIT bytes at most (review L4)
+            lines = shared.read_text(self._file("idle-events.jsonl"), tail=True).splitlines()
+        except (OSError, ValueError):
             return []
         out = []
         for line in lines[-limit:] if limit else lines:
             try:
-                out.append(json.loads(line))
+                event = shared.loads(line)
             except ValueError:
                 continue
+            if isinstance(event, dict):
+                out.append(event)
         return out
 
     def _event(self, service, action, reason, **extra) -> dict:
         event = {"at": round(self.clock(), 3), "service": service, "action": action, "reason": reason, **extra}
-        self.folder.mkdir(mode=0o700, exist_ok=True)
+        shared.ensure_folder(self.folder)
         path = self._file("idle-events.jsonl")
         with _flock(self._file("idle-events.lock"), fcntl.LOCK_EX):
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            fd = shared.open_file(path, os.O_WRONLY | os.O_APPEND)
             with os.fdopen(fd, "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(event, sort_keys=True) + "\n")
-            lines = path.read_text(encoding="utf-8").splitlines()
+            try:
+                lines = shared.read_text(path, tail=True).splitlines()
+            except (OSError, ValueError):
+                lines = []             # replaced by something that is not a file since the append: not trimmed
             if len(lines) > 2 * EVENTS_KEPT:
-                tmp = path.with_suffix(".tmp")
-                tmp.write_text("\n".join(lines[-EVENTS_KEPT:]) + "\n", encoding="utf-8")
-                os.replace(tmp, path)
+                shared.write_text(path, "\n".join(lines[-EVENTS_KEPT:]) + "\n")
         return event
 
     # ---- configuration ----------------------------------------------------------------------------------------
@@ -437,19 +504,83 @@ class Idle:
         running, _, started = (done.stdout or "").strip().partition(" ")
         return {"running": running == "true", "started_at": monitor._ts(started)}
 
+    def answers(self, svc) -> bool | None:
+        """Whether the running service answers: its /metrics is readable (the vLLM servers), or its readiness
+        address answers 200 on the port Docker publishes for it (speech synthesis, SearXNG). None when the service
+        has neither, or the published port cannot be told: it then counts as before, loaded because it runs."""
+        if svc.metrics:
+            return self.read_metrics(svc.metrics) is not None
+        if not svc.ready:
+            return None
+        inside, path = svc.ready
+        done = self.runner(["docker", "port", svc.container, inside], 30)
+        if getattr(done, "returncode", 1) != 0:
+            return None
+        for line in (getattr(done, "stdout", "") or "").splitlines():
+            host, _, port = line.strip().rpartition(":")
+            if host in ("127.0.0.1", "[::1]", "::1", "0.0.0.0", "[::]") and port.isdigit():
+                where = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else "[::1]"
+                return bool(self.read_ready(f"http://{where}:{port}{path}"))
+        return None
+
     def voice_session(self) -> bool:
         return policy.voice_session_active(self.db_path, now=self.clock())
 
-    def running_tasks(self) -> int:
-        if not self.db_path.exists():
-            return 0
-        try:
-            with closing(sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=5)) as db:
-                return db.execute(f"SELECT count(*) FROM web_tasks WHERE status IN ({','.join('?' * len(RUNNING))}) "
-                                  "AND lease_holder IS NOT NULL AND lease_expires_at>=?",
-                                  (*RUNNING, self.clock())).fetchone()[0]
-        except sqlite3.Error:
-            return 0          # no web cortex tables yet: nothing runs
+    def running_tasks(self) -> int | None:
+        """How many research tasks run now (a running stage with a live lease); None when this account cannot
+        tell. The pass then unloads nothing: where the idle policy runs as another account than the one that owns
+        the database (deploy/install.sh --idle), a database it may not read must not read as "nothing runs"."""
+        # The database and its write-ahead log's two files are the service account's (review L5, L4b): SQLite opens
+        # all three, so a link, a FIFO (an open that never returns, on every pass) or a device under any of the three
+        # names is not an answer: each must be a plain file or absent, and nothing is opened otherwise. What remains
+        # is a swap after this look and before SQLite's open, which needs a race; its worst is a pass that hangs
+        # until its unit's TimeoutStartSec and unloads nothing, as an unreadable file would.
+        self.db_problem = None
+        for path in (str(self.db_path), f"{self.db_path}-wal", f"{self.db_path}-shm"):
+            try:
+                kind = os.lstat(path).st_mode
+            except FileNotFoundError:
+                if path == str(self.db_path):
+                    return 0
+                continue
+            except OSError:
+                return None   # the folder itself is closed to this account
+            if not stat.S_ISREG(kind):
+                self.db_problem = f"{os.path.basename(path)} is not a plain file; whether a task runs cannot be told"
+                return None
+        if not os.access(self.db_path, os.R_OK):
+            return None
+        sql = (f"SELECT count(*) FROM web_tasks WHERE status IN ({','.join('?' * len(RUNNING))}) "
+               "AND lease_holder IS NOT NULL AND lease_expires_at>=?")
+        # A reader that may not write beside the database (the operations account: the folder is the service
+        # account's) cannot create the write-ahead log's files. While a process has the database open they exist
+        # and the ordinary read-only open works. When they do not exist nobody has it open, so the file is complete
+        # as it stands and is read as it stands (immutable: no lock file is needed).
+        plain = f"file:{self.db_path}?mode=ro"
+        attempts = [plain]
+        if not os.path.exists(f"{self.db_path}-wal") and not os.access(self.db_path.parent, os.W_OK):
+            attempts.append(f"{plain}&immutable=1")
+        for n, uri in enumerate(attempts):
+            try:
+                with closing(sqlite3.connect(uri, uri=True, timeout=5)) as db:
+                    # Read only, and nothing of the writer's choosing runs here (review L5): no function a view or
+                    # a trigger names is trusted, nothing is written, and web_tasks must be a table, not a view.
+                    db.execute("PRAGMA trusted_schema=OFF")
+                    db.execute("PRAGMA query_only=ON")
+                    kind = db.execute("SELECT type FROM sqlite_schema WHERE name='web_tasks'").fetchone()
+                    if kind is None:
+                        return 0      # no web cortex tables yet: nothing runs
+                    if kind[0] != "table":
+                        return None
+                    return db.execute(sql, (*RUNNING, self.clock())).fetchone()[0]
+            except sqlite3.OperationalError as error:
+                if "no such table" in str(error):
+                    return 0  # no web cortex tables yet: nothing runs
+                if n + 1 == len(attempts):
+                    return None
+            except sqlite3.Error:
+                return None
+        return None
 
     def last_used(self, name) -> float | None:
         try:
@@ -458,12 +589,8 @@ class Idle:
             return None
 
     def touch(self, name) -> None:
-        self.folder.mkdir(mode=0o700, exist_ok=True)
-        path = self._file(f"idle-used-{name}")
-        now = self.clock()
-        with open(path, "a"):
-            pass
-        os.utime(path, (now, now))
+        shared.ensure_folder(self.folder)
+        shared.touch(self._file(f"idle-used-{name}"), self.clock())
 
     # ---- the policy -------------------------------------------------------------------------------------------
     def effective_timeout(self, seconds, level) -> float | None:
@@ -482,15 +609,65 @@ class Idle:
         if self.voice_session():
             blockers.append("a voice session is open")
         tasks = self.running_tasks()
-        if tasks:
+        if tasks is None:
+            blockers.append(getattr(self, "db_problem", None) or
+                            "whether a research task runs cannot be told: this account may not read the instance "
+                            "database (deploy/install.sh --idle-access grants it)")
+        elif tasks:
             blockers.append(f"{tasks} research task(s) running")
         now = self.clock()
-        decisions = {}
+        decisions, decided = {}, {}
         for name, seconds in timeouts.items():
             if seconds is None:
                 continue
+            names = self.group(name)
+            if len(names) > 1:
+                first = decided.get(self.services[name].container)
+                if first is not None:            # one container, one decision: made under its first name
+                    decisions[name] = {"action": "none", "why": f"one container with {first}: decided there"}
+                    continue
+                decided[self.services[name].container] = name
+                seconds = self.group_timeout(name, timeouts)
+                if seconds is None:
+                    off = [other for other in names if timeouts.get(other) is None]
+                    decisions[name] = {"action": "none", "why": f"one container with {', '.join(off)}, whose idle "
+                                       "timeout is off: it is never unloaded while idle"}
+                    continue
             decisions[name] = self._consider(self.services[name], seconds, level, blockers, now)
         return {"enabled": True, "level": level, "blockers": blockers, "decisions": decisions}
+
+    def group(self, name) -> list[str]:
+        """The services that are one container with `name`, in the order of the service list (the single memory
+        server is `embed` and `rerank` at once). The group is the unit of the policy: it is in use while any of its
+        names is, its locks are taken in this order, it is stopped and started once, and every name's state
+        follows it."""
+        box = self.services[name].container
+        return [other for other, svc in self.services.items() if svc.container == box]
+
+    def sharing(self, name) -> list[str]:
+        """group(name) with `name` first."""
+        return [name] + [other for other in self.group(name) if other != name]
+
+    def group_timeout(self, name, timeouts=None) -> float | None:
+        """The idle timeout of the container of `name`: the most conservative of its names. A name set to never
+        unload (off) keeps the container for good; otherwise the longest timeout of the names (review F4)."""
+        timeouts = self.timeouts() if timeouts is None else timeouts
+        values = [timeouts.get(other) for other in self.group(name)]
+        return None if any(v is None for v in values) else max(values)
+
+    def policy_on(self, name, data=None) -> bool:
+        """Whether calls to `name` take its in-use lock and mark their use: the policy is on for any name of its
+        container (a timeout set, or the container unloaded). One name's calls must keep the container from being
+        stopped under them even when only the other name has a timeout (review F4)."""
+        data = self.read() if data is None else data
+        names = self.group(name) if name in self.services else [name]
+        return any(data["timeouts"].get(other) is not None or
+                   (data["services"].get(other) or {}).get("state") == "unloaded" for other in names)
+
+    def _hold_all(self, stack, name, mode) -> None:
+        """The in-use lock of every name of `name`'s container, in the group's order (one order: no deadlock)."""
+        for other in self.group(name):
+            stack.enter_context(_flock(self._file(f"idle-inuse-{other}.lock"), mode))
 
     def _consider(self, svc, seconds, level, blockers, now) -> dict:
         timeout = self.effective_timeout(seconds, level)
@@ -498,7 +675,9 @@ class Idle:
         if not box or not box["running"]:
             return {"action": "none", "why": "not loaded"}
         state = self.read()["services"].get(svc.name, {})
-        uses = [self.last_used(svc.name), box.get("started_at"), state.get("loaded_at"), state.get("served_at")]
+        names = self.group(svc.name)
+        uses = [box.get("started_at"), state.get("loaded_at"), state.get("served_at")]
+        uses += [self.last_used(name) for name in names]
         metrics = self.read_metrics(svc.metrics) if svc.metrics else None
         if metrics is not None:
             if metrics["in_flight"] > 0:
@@ -524,8 +703,9 @@ class Idle:
             reason = f"idle {_minutes(idle_for)} (timeout {_minutes(seconds)}, shortened to {_minutes(timeout)} at " \
                      f"critical memory pressure: {'; '.join(self.sample()['reasons'])})"
         try:
-            with _flock(self._file(f"idle-inuse-{svc.name}.lock"), fcntl.LOCK_EX | fcntl.LOCK_NB):
-                if self.last_used(svc.name) and now - self.last_used(svc.name) < timeout:
+            with ExitStack() as held:           # no request in flight under any name of this container
+                self._hold_all(held, svc.name, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if any(self.last_used(name) and now - self.last_used(name) < timeout for name in names):
                     return {"action": "none", "why": "used while the decision was being made"}
                 return self.unload(svc.name, reason=reason, by="idle policy", _locked=True)
         except BlockingIOError:
@@ -533,10 +713,15 @@ class Idle:
 
     # ---- load and unload --------------------------------------------------------------------------------------
     def unload(self, name, *, reason, by="owner", _locked=False) -> dict:
+        """Stop the service's container. It waits until no call is in flight under any name of that container
+        (review F3: the owner's `nsf resources unload embed` stopped the single memory server under a rerank call);
+        the result names the other names it unloaded too (`also`)."""
         svc = self.services[name]
         if not _locked:
-            with _flock(self._file(f"idle-inuse-{name}.lock"), fcntl.LOCK_EX):   # waits for in-flight calls
+            with ExitStack() as held:           # waits for in-flight calls, under every name of the container
+                self._hold_all(held, name, fcntl.LOCK_EX)
                 return self.unload(name, reason=reason, by=by, _locked=True)
+        also = self.sharing(name)[1:]
         systemd = self._systemd(svc)
         argv = ["systemctl", "--no-ask-password", "stop", svc.unit] if systemd else self._cmd(svc.stop)
         before = self._available()
@@ -547,14 +732,15 @@ class Idle:
         after = self._available() if ok and before is not None else None
         freed = None if after is None else after - before
         event = self._event(name, "unload", reason, by=by, ok=ok, seconds=seconds,
-                            shape="systemd" if systemd else "docker",
+                            shape="systemd" if systemd else "docker", **({"also": also} if also else {}),
                             **({"freed_bytes": freed} if freed and freed > 0 else {}),
                             **({} if ok else {"error": (getattr(done, "stdout", "") or "")[-400:]}))
         if ok:
             with self._state() as data:
-                data["services"].setdefault(name, {}).update(state="unloaded", by=by, at=event["at"],
-                                                             shape="systemd" if systemd else "docker")
-        return {"action": "unload" if ok else "failed", "why": reason, "event": event}
+                for shared in self.group(name):         # one container: every name of it is unloaded now
+                    data["services"].setdefault(shared, {}).update(state="unloaded", by=by, at=event["at"],
+                                                                   shape="systemd" if systemd else "docker")
+        return {"action": "unload" if ok else "failed", "why": reason, "event": event} | ({"also": also} if also else {})
 
     def unloaded_by_policy(self, name) -> bool:
         entry = self.read()["services"].get(name) or {}
@@ -629,28 +815,42 @@ class Idle:
     def load(self, name, *, reason, by="owner", notify=None) -> dict:
         """Start the service with the deploy's commands and wait until it answers; the measured time is recorded."""
         svc = self.services[name]
-        with _flock(self._file(f"idle-load-{name}.lock"), fcntl.LOCK_EX):      # one start at a time, any process
+        first = self.group(name)[0]            # one start at a time per container, any process, under any name
+        with _flock(self._file(f"idle-load-{first}.lock"), fcntl.LOCK_EX):
             box = self.container(svc)
             if box and box["running"]:          # never restart a running service (run.sh start replaces it)
                 # Running is not answering (review F4): a container left behind by a reload that failed or was
                 # killed may still be starting, or crash-looping. It counts as loaded once it answers; one that
                 # does not is stopped, so that "unloaded" stays true and the next attempt starts from nothing.
-                if svc.wait and svc.metrics and self.read_metrics(svc.metrics) is None:
+                # Every service has the rule now: the vLLM servers by their /metrics, speech synthesis and SearXNG by
+                # their readiness address (they had kept "running means loaded").
+                if self.answers(svc) is False:
                     started = self.monotonic()
-                    done = self.runner(self._cmd(svc.wait), 1500)
+                    if svc.wait:
+                        done = self.runner(self._cmd(svc.wait), 1500)
+                    else:                       # no wait command (SearXNG): ask again for as long as its start may
+                        answered = False
+                        while not answered and self.monotonic() - started < READY_WAIT:
+                            self.sleep(READY_POLL)
+                            answered = self.answers(svc) is not False
+                        done = subprocess.CompletedProcess([], 0 if answered else 1,
+                                                           "" if answered else f"{svc.label} runs but did not answer "
+                                                           f"its readiness address within {READY_WAIT:.0f} s")
                     if getattr(done, "returncode", 1) != 0:
                         stopped = self._stop_after_failure(svc, self._systemd(svc))
                         event = self._event(name, "load", reason, by=by, ok=False, found_running=True,
                                             seconds=round(self.monotonic() - started, 1), stopped=stopped,
                                             error=(getattr(done, "stdout", "") or "")[-400:])
                         with self._state() as data:
-                            entry = data["services"].setdefault(name, {})
-                            entry.update(state="unloaded" if entry.get("state") == "unloaded" else "unknown",
-                                         failed_at=event["at"])
+                            for shared in self.group(name):
+                                entry = data["services"].setdefault(shared, {})
+                                entry.update(state="unloaded" if entry.get("state") == "unloaded" else "unknown",
+                                             failed_at=event["at"])
                         return {"action": "failed", "why": "it was running but did not answer", "event": event}
-                with self._state() as data:
-                    data["services"].setdefault(name, {}).update(state="loaded", by="already running",
-                                                                 at=self.clock())
+                with self._state() as data:             # one container: every name of it is loaded
+                    for shared in self.group(name):
+                        data["services"].setdefault(shared, {}).update(state="loaded", by="already running",
+                                                                       at=self.clock())
                 return {"action": "none", "why": "already running"}
             room = self.headroom(name)
             if not room["fits"]:       # refuse rather than start a container the kernel or vLLM will kill
@@ -701,6 +901,9 @@ class Idle:
                 entry.pop("loading", None)
                 if ok:
                     entry.update(state="loaded", by=by, at=event["at"], loaded_at=event["at"])
+                    for shared in self.sharing(name)[1:]:       # one container: its other names answer too
+                        data["services"].setdefault(shared, {}).update(state="loaded", by=by, at=event["at"],
+                                                                       loaded_at=event["at"])
                 else:
                     entry.update(state="unloaded" if entry.get("state") == "unloaded" else "unknown",
                                  failed_at=event["at"])
@@ -741,13 +944,16 @@ class Idle:
             entry = data.get(name) or {}
             used = max((u for u in (self.last_used(name), entry.get("served_at"), entry.get("loaded_at"))
                         if u is not None), default=None)
+            shared = self.sharing(name)[1:]
             services[name] = {
                 "timeout_s": timeouts[name], "suggested_minutes": svc.suggested_minutes,
+                **({"shared_with": shared, "effective_timeout_s": self.group_timeout(name, timeouts)} if shared else {}),
                 "loaded": None if running is None else svc.container in running,
                 "state": entry.get("state"), "state_by": entry.get("by"),
                 "last_used_at": used, "idle_s": None if used is None else round(now - used, 1),
                 "reload_estimate_s": self.estimate(name)}
         return {"automatic": any(v is not None for v in timeouts.values()), "services": services,
+                **({"state_problems": self.problems} if getattr(self, "problems", None) else {}),
                 "critical_share": CRITICAL_SHARE, "events": self.events(limit=20),
                 "how": "nsf resources idle --set vllm=30m --set asr=15m --set tts=15m --set embed=15m --set "
                        "rerank=15m; nsf resources tick (neuroscifi-idle.timer); nsf resources unload|load SERVICE"}
@@ -844,23 +1050,50 @@ def using(db_path, name, *, purpose, notify=None, idle=None, timeout=None):
     {"action": "loading", ...} and the reload finishes in the background (_bounded_load); a reload refused for
     lack of memory yields {"action": "refused", "why"}."""
     idle = idle or (Idle(db_path) if db_path else None)
-    data = idle.read() if idle is not None else {}
-    if idle is None or (data["timeouts"].get(name) is None and
-                        (data["services"].get(name) or {}).get("state") != "unloaded"):
+    if idle is None or not idle.policy_on(name):
         yield None           # the policy is off for this service: no lock, no marker, no file
         return
     with ExitStack() as stack:
+        held = True
         try:
-            stack.enter_context(_flock(idle._file(f"idle-inuse-{name}.lock"), fcntl.LOCK_SH))
-            idle.touch(name)
-            stack.callback(idle.touch, name)
+            if timeout is None:
+                stack.enter_context(_flock(idle._file(f"idle-inuse-{name}.lock"), fcntl.LOCK_SH))
+            else:
+                held = _flock_until(stack, idle._file(f"idle-inuse-{name}.lock"), timeout)
+            if held:
+                idle.touch(name)
+                stack.callback(idle.touch, name)
         except OSError:      # an unwritable folder must never break a call
             pass
+        if not held:
+            # The pass holds the lock exclusively while it stops the service (up to COMMAND_TIMEOUT). A call with a
+            # deadline does not wait past it (review F5): it ends as the service being unloaded, and nothing is said
+            # to have been reloaded.
+            yield {"action": "unloading", "why": f"{idle.services[name].label} is being unloaded while idle and "
+                                                 f"this call could not wait {timeout:.0f} s for it"}
+            return
         if wake_dir() is not None:      # this process may not start services itself: ask, and wait (review F5)
             yield _requested_load(idle, name, purpose=purpose, notify=notify, timeout=timeout)
         else:
             yield idle.ensure_loaded(name, purpose=purpose, notify=notify) if timeout is None else \
                 _bounded_load(idle, name, purpose=purpose, notify=notify, timeout=timeout)
+
+
+LOCK_POLL = 0.05           # seconds between two tries for a lock a call with a deadline may not block on
+
+
+def _flock_until(stack, path, timeout) -> bool:
+    """Take `path`'s lock shared, trying until `timeout` seconds have passed; True once held (released with
+    `stack`), False when the time ran out."""
+    deadline = time.monotonic() + max(0.0, timeout)
+    while True:
+        try:
+            stack.enter_context(_flock(path, fcntl.LOCK_SH | fcntl.LOCK_NB))
+            return True
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(min(LOCK_POLL, max(0.0, deadline - time.monotonic())))
 
 
 _DETACHED: dict = {}                # (db_path, service) -> (the reload process this process started, when)
@@ -898,10 +1131,8 @@ def _just_spawned(idle, name, *, mark=False) -> bool:
     path = idle._file(f"idle-spawned-{name}")
     try:
         if mark:
-            idle.folder.mkdir(mode=0o700, exist_ok=True)
-            with open(path, "a"):
-                pass
-            os.utime(path, (idle.clock(), idle.clock()))
+            shared.ensure_folder(idle.folder)
+            shared.touch(path, idle.clock())
             return True
         return 0 <= idle.clock() - path.stat().st_mtime < SPAWN_GRACE
     except OSError:
@@ -1001,8 +1232,11 @@ class _Requested:
         return None if self.path.exists() else 0
 
 
-WAKE_DIR_MODE = 0o2770     # the request folder: its owner (the account that serves) and its group (who may ask)
+WAKE_DIR_MODE = 0o3770     # the request folder: its owner (the account that serves) and its group (who may ask);
+#                            sticky, so a request is removed by whoever left it or by the folder's owner, nobody else
 STUCK_HOLD = 30.0          # seconds `nsf resources wake` stays when an entry can be neither removed nor moved aside
+WAKE_LINGER = 25.0         # seconds neuroscifi-wake.service stays after it starts: at most 24 starts in the unit's
+#                            10-minute window, under its limit of 30 (tests/test_deploy_units.py keeps the two apart)
 STUCK_PREFIX = ".stuck-"   # hidden, and no *.wake name: systemd's PathExistsGlob= does not see it
 
 
@@ -1118,18 +1352,21 @@ def _serve_once(idle, folder) -> tuple[list[dict], bool]:
         if name not in idle.services:
             out.append({"request": name[:64], "action": "ignored", "why": "not a service of the idle policy"})
             continue
-        waits = _retry_not_due(idle, name)
-        if waits is not None:                # the limit of _background_reload, applied by the one that loads
-            out.append({"service": name, "action": "skipped",
-                        "why": f"not retried within {BACKGROUND_RETRY:.0f} s of: {waits['why']}"[:240]})
-            continue
-        result = idle.ensure_loaded(name, purpose="wake request") or \
-            {"action": "none", "why": "nothing to do: the idle policy has not unloaded it"}
-        out.append({"service": name, "action": result["action"], "why": result.get("why")})
+        try:                                 # one request's failure is that request's (review F6)
+            waits = _retry_not_due(idle, name)
+            if waits is not None:            # the limit of _background_reload, applied by the one that loads
+                out.append({"service": name, "action": "skipped",
+                            "why": f"not retried within {BACKGROUND_RETRY:.0f} s of: {waits['why']}"[:240]})
+                continue
+            result = idle.ensure_loaded(name, purpose="wake request") or \
+                {"action": "none", "why": "nothing to do: the idle policy has not unloaded it"}
+            out.append({"service": name, "action": result["action"], "why": result.get("why")})
+        except Exception as error:
+            out.append({"service": name, "action": "failed", "why": f"{type(error).__name__}: {error}"[:240]})
     return out, stuck
 
 
-def serve_wake_requests(db_path, folder, *, idle=None, hold=STUCK_HOLD, sleep=time.sleep) -> list[dict]:
+def serve_wake_requests(db_path, folder, *, idle=None, hold=STUCK_HOLD, linger=0.0, sleep=time.sleep) -> list[dict]:
     """What neuroscifi-wake.service runs (`nsf resources wake`): take every request out of `folder` and reload the
     service it names, if the idle policy unloaded it and a reload is due. A request is a regular file's name only:
     it is removed first and never opened, a symbolic link is removed without being followed, and a name that is
@@ -1137,23 +1374,41 @@ def serve_wake_requests(db_path, folder, *, idle=None, hold=STUCK_HOLD, sleep=ti
     (WAKE_DIR_MODE; an existing folder's mode and owner are never changed).
 
     Anything else under a request's name is removed or moved aside (_set_aside). If even that fails (a read-only
-    or sticky folder), the path unit would start this command again the moment it exits; so it stays for `hold`
-    seconds, serving the requests that arrive meanwhile, and the unit is started twice a minute at most instead of
-    running into its start limit (review S3)."""
+    folder), the path unit would start this command again the moment it exits; so it stays for `hold` seconds,
+    serving the requests that arrive meanwhile (review S3).
+
+    `linger` (the unit passes WAKE_LINGER): the command stays that long in any case and serves what arrives, within
+    a second. The path unit starts the service once per request that finds it stopped, so without it the number of
+    starts is the asker's to choose: whoever may write the folder (the console's group), or simply three processes
+    asking for six services every 30 s, could start it more than StartLimitBurst times in StartLimitIntervalSec,
+    after which systemd refuses to start it until someone resets it and no request is served at all. Staying
+    WAKE_LINGER seconds bounds the starts by the clock (see WAKE_LINGER), whatever is written into the folder."""
     idle = idle or Idle(db_path)
     folder = Path(folder)
-    try:
-        folder.mkdir(parents=True)
-        os.chmod(folder, WAKE_DIR_MODE)      # just created by this process, so its mode is this process's to set
-    except OSError:
-        pass                                 # it exists (its modes are the installer's or the owner's), or cannot be made
-    out, stuck = _serve_once(idle, folder)
+    out, state = [], {"stuck": False}
+
+    def once(first):
+        try:
+            more, state["stuck"] = _serve_once(idle, folder)
+        except Exception as error:           # nothing that goes wrong may end the command before its linger
+            more, state["stuck"] = [{"action": "failed", "why": f"{type(error).__name__}: {error}"[:240]}], False
+        out.extend(more if first else [item for item in more if item.get("service")])
     waited = 0.0
-    while stuck and waited < hold:
-        sleep(1.0)
-        waited += 1.0
-        more, stuck = _serve_once(idle, folder)
-        out += [item for item in more if item.get("service")]      # the stuck entry itself is reported once
+    try:
+        try:
+            folder.mkdir(parents=True)
+            os.chmod(folder, WAKE_DIR_MODE)  # just created by this process, so its mode is this process's to set
+        except OSError:
+            pass                             # it exists (its modes are the installer's or the owner's), or cannot be made
+        once(True)
+    finally:
+        # The bound on the unit's starts (WAKE_LINGER) holds on every way out (review F6): an error above, a
+        # malformed state file the service account wrote, a request that raised. Otherwise the command would end at
+        # once with the request already removed, and the next request would start it again.
+        while waited < linger or (state["stuck"] and waited < hold):
+            sleep(1.0)
+            waited += 1.0
+            once(False)
     return out
 
 
@@ -1194,9 +1449,7 @@ def using_now(db_path, name, *, purpose, idle=None):
       "unloading"  the idle policy is stopping it at this moment
     """
     idle = idle or (Idle(db_path) if db_path else None)
-    data = idle.read() if idle is not None else {}
-    if idle is None or (data["timeouts"].get(name) is None and
-                        (data["services"].get(name) or {}).get("state") != "unloaded"):
+    if idle is None or not idle.policy_on(name):
         yield None           # the policy is off for this service: no lock, no marker, no file
         return
     with ExitStack() as stack:
@@ -1261,9 +1514,9 @@ def mark_used(db_path, names) -> None:
     if not db_path:
         return
     idle = Idle(db_path)
-    timeouts = idle.timeouts()
+    data = idle.read()
     for name in names:
-        if timeouts.get(name) is not None:
+        if name in idle.services and idle.policy_on(name, data):
             try:
                 idle.touch(name)
             except OSError:

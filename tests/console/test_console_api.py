@@ -346,6 +346,18 @@ def test_expired_learning_events_stay_as_consolidated_readings_over_http(console
     gone = c.ok("POST", "/api/forget", {"kind": "evidence", "target": "w0"})     # by its id, though it expired
     assert gone["status"] == "forgotten" and gone["effects"]["consolidated_deleted"] == 1
     assert c.ok("GET", "/api/epochs/e1/beliefs")["beliefs"]["partners"]["alice"]["n"] == 5
+    # the limit on readings (max_consolidated_rows): quiet below four fifths of it, plain words from there
+    assert "warnings" not in inventory and "warnings" not in inventory["regulation"]
+    assert inventory["regulation"]["config"]["max_consolidated_rows"] == 1_000_000
+    assert "largest_epoch" not in inventory["regulation"]    # the header's request: no belief computation timed
+    largest = c.ok("GET", "/api/inventory?measure=1")["regulation"]["largest_epoch"]     # the overview's request
+    assert largest["epoch"] == "e1" and largest["compute_ms"] > 0
+    assert largest["consolidated_readings"] == 14            # asked after w0's reading was forgotten above
+    with contextlib.closing(store.open_existing(c.path)) as db:
+        store.set_config(db, {"max_consolidated_rows": 14})
+    full = c.ok("GET", "/api/inventory")
+    assert full["warnings"] == full["regulation"]["warnings"] and len(full["warnings"]) == 1
+    assert full["warnings"][0].startswith("The limit on consolidated readings is reached (14 of 14)")
 
 
 def _hold_write_lock(path):

@@ -54,8 +54,8 @@ from urllib.error import URLError
 from urllib.parse import urlencode
 
 from ...instance.errors import ValidationError
-from ..search import REGISTRY_QUERY, Breaker, ProviderError, _canonical, charge, parse_iso_date, strip_html
-from ..types import BudgetExceeded, Query, SearchResult
+from ..search import REGISTRY_QUERY, Breaker, ProviderError, _canonical, ask_gate, charge, parse_iso_date, strip_html
+from ..types import BudgetExceeded, Query, SearchResult, Stopped
 from .openwebsearch import NotLoopback, _clean_url, _is_loopback_host, _port_open, bounded_request, loopback_base
 
 DEFAULT_PORT = 8888
@@ -291,6 +291,7 @@ class SearXNGProvider:
                     return payload, latency
             if attempt == 0:
                 self._sleep(0.5)
+                ask_gate()          # the retry is a new request: not sent after a stop (the first one stays charged)
         raise ProviderError(self.name, f"SearXNG failed twice: {last}", code="searxng_error")
 
     def _parse(self, payload: dict, category: str, since, retrieved_at: float, cached: bool) -> list[SearchResult]:
@@ -357,15 +358,24 @@ class SearXNGProvider:
                              "cache": True})
             return results[:limit]
         try:
+            # inside a gated search (search.ProviderRegistry.search(wanted=...)): after a cancel or with web access
+            # turned off the query is not handed to SearXNG, and nothing is charged for it. One it already has runs
+            # to its end there: the engines' requests are SearXNG's own
+            ask_gate()
             charge(budget, usage, requests=max(1, len(allowed)))   # one upstream request per queried engine
         except BudgetExceeded as exc:
             with self._lock:
                 for engine in allowed:
                     self._breaker(engine).neutral()
             raise ProviderError(self.name, str(exc), retryable=False, code="budget_exhausted") from None
+        except Stopped:
+            with self._lock:
+                for engine in allowed:
+                    self._breaker(engine).neutral()
+            raise
         try:
             payload, latency = self._get(params)
-        except ProviderError:
+        except (ProviderError, Stopped):
             with self._lock:
                 for engine in allowed:
                     self._breaker(engine).neutral()

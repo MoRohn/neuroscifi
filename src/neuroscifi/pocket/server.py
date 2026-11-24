@@ -778,6 +778,11 @@ class PocketServer(ThreadingHTTPServer):
         if beacon is not None:
             beacon.close()                               # an open session's audio state is withdrawn at once
         super().server_close()
+        # Last (review F2): a request still being answered may write its transcript; the hub, once closed, makes
+        # such a write in that request's own thread and starts no writer again.
+        hub = getattr(self, "voice_hub", None)
+        if hub is not None:
+            hub.close()                                  # its transcript writer and task followers end here
 
     def process_request(self, request, client_address):
         conn = _Connection(request, client_address[0])
@@ -1074,6 +1079,10 @@ def open_control(server, db):
 def close_control(control):
     if control is not None:
         sock, path = control
+        try:
+            sock.shutdown(socket.SHUT_RDWR)   # wakes the thread waiting in accept(); close() alone leaves it there
+        except OSError:
+            pass
         sock.close()
         try:
             os.unlink(path)
@@ -1145,7 +1154,9 @@ def listen_lines(bind, port, cert) -> list[str]:
     return lines
 
 
-def main(argv=None):
+def main(argv=None, *, started=None):
+    """`started(server)` is called once the bridge listens: whoever runs it in a thread (a test, an embedding
+    process) ends it with `server.shutdown()`, after which everything below is closed as on a service stop."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--db", default="mobile-private.sqlite")
     p.add_argument("--bind", default="127.0.0.1")
@@ -1327,6 +1338,8 @@ def main(argv=None):
             print(f"Pair another family later without a restart: nsf pocket invite --db {a.db}", flush=True)
             print(f"Add a phone with QR codes: nsf add-phone --pocket-db {a.db}  (or the console's Add a phone)",
                   flush=True)
+        if started is not None:
+            started(server)
         server.serve_forever()
     except KeyboardInterrupt:
         pass

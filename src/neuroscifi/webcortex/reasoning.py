@@ -174,14 +174,70 @@ _OWN_ATTRIBUTION = re.compile(rf"^\s*{_SOURCE_PHRASE},\s*|,?\s*\b{_SOURCE_PHRASE
 _ANSWER_WORD = re.compile(r"^\s*(?:yes|no)\b(?!-)\s*[,;:!\u2014\u2013-]+\s*", re.IGNORECASE)   # never "No-one"
 
 
+# The words after the source word that only name the source: "by" or "from", then a name ("Reuters", "the Ostra
+# Space Agency", "the NumPy security team"). Anything else may be what the sentence says (CUT_WORDS).
+_NAMING_LEAD = re.compile(r"(?:by|from)\s+(?:(?:the|a|an)\s+)?", re.IGNORECASE)
+_NAME_TOKEN = re.compile(r"[^\W\d_][\w&'’.-]*")
+# Words that say what became of a source, not who it is: refused in a name, capitalised or not ("by Orbix Labs
+# Retracted" reads as a name only because of its capital)
+_SOURCE_STATUS = frozenset("""retracted withdrawn disputed contested superseded corrected updated amended revised
+deprecated obsolete outdated archived rescinded revoked cancelled canceled debunked disproven disproved discredited
+refuted unverified unconfirmed alleged purported draft preliminary provisional pending invalid invalidated void
+erroneous incorrect wrong false fake forged hoax satire satirical parody""".split())
+# head nouns of an organisation's name that are also verbs ("the NumPy security team", "the Reuters news desk")
+_ORGANISATION_NOUNS = frozenset("team staff board group panel desk press service office unit council committee "
+                                "project network watch monitor review".split())
+
+
+def _names_the_source(after: str) -> bool:
+    """Whether the words attribution() would remove after the source word (`after`) only name the source further:
+    "by" or "from", an optional article, then at most six words, at least one of them a name (it has a capital
+    letter), and nothing else, punctuation included. Whatever its case, no word may be a number or a number word, a
+    stopword (a preposition, a conjunction, an auxiliary, a pronoun: "for adults", "until further notice", "and was
+    vetoed", "in no case"; "of" and "and" only between two capitalised words: "the Bank of England"), a
+    negation, a word of scope, quantity, time or comparison ("Users Only", "NOT The City", "NumPy Two"), a word of
+    what became of the source ("Orbix Labs Retracted", _SOURCE_STATUS) or a restriction (_restriction); and no word
+    without a capital may be an -ed, -ing or -ly form or a verb (a head
+    noun of an organisation's name excepted: "team", "desk", _ORGANISATION_NOUNS)."""
+    lead = _NAMING_LEAD.match(after)
+    if not lead or _restriction(after) is not None or re.search(r"\d", after):
+        return False
+    words = _NAME_TOKEN.findall(after[lead.end():])
+    if not words or len(words) > 6 or not any(any(ch.isupper() for ch in w) for w in words) or \
+            " ".join(after[lead.end():].split()) != " ".join(words):
+        return False
+    capital = [any(ch.isupper() for ch in w) for w in words]
+    for i, w in enumerate(words):
+        low = w.strip(".'’").casefold()
+        if low in ("of", "and") and 0 < i < len(words) - 1 and capital[i - 1] and capital[i + 1]:
+            continue
+        if low in T.STOPWORDS or low in _ENTAIL_NEG or low in _NEG_WORDS or low in _PREPOSITIONS or \
+                low in _NUMBER_WORDS or low in _SCOPE or low in _QUANTITY_WORDS or low in _TIME or \
+                low in _COMPARATIVE or low in _SOURCE_STATUS:
+            return False
+        if not capital[i] and (low.endswith(("ed", "ing", "ly")) or (low in _verbs() and low not in
+                                                                     _ORGANISATION_NOUNS)):
+            return False                    # a verb form; a name may end so ("Tessaly", "Reading")
+    return True
+
+
 def _cut_with_attribution(text: str) -> str | None:
     """The words attribution() removes from `text` beyond an "according to <source word>" itself, or None. Its
     trailing form reaches up to 40 characters past the source word. Those can name the source further ("a report by
-    Reuters") or be what the sentence says ("... according to the release notes except in versions 2 and 3"), and
-    code cannot tell which; compose() marks such a sentence and the guard refuses it (CUT_WORDS)."""
+    Reuters") or be what the sentence says ("... according to the release notes except in versions 2 and 3").
+    Words that only name the source (_names_the_source; read from the end of the source word's own letters:
+    "according to document|ation by Orbix Labs") are removed as 0.7.0 removed them; for any other words compose()
+    marks the sentence and the guard refuses it (CUT_WORDS)."""
     for m in _OWN_ATTRIBUTION.finditer(text or ""):
-        rest = re.sub(_SOURCE_PHRASE, " ", m.group(0), count=1, flags=re.IGNORECASE).strip(" ,.;:!?")
-        if re.search(r"\w", rest):
+        span = m.group(0)
+        rest = re.sub(_SOURCE_PHRASE, " ", span, count=1, flags=re.IGNORECASE).strip(" ,.;:!?")
+        if not re.search(r"\w", rest):
+            continue
+        source = re.search(_SOURCE_PHRASE, span, re.IGNORECASE)
+        end = source.end() if source else 0
+        while end < len(span) and span[end].isalnum():
+            end += 1
+        if not _names_the_source(span[end:].strip(" ,.;:!?")):
             return rest
     return None
 
@@ -1900,7 +1956,7 @@ def _role_swaps(raw: str, claim_texts) -> list[str]:
     mine, mine_clause = split(raw)
     for claim in claim_texts:
         theirs, their_clause = split(claim)
-        for v in set(mine) & set(theirs):
+        for v in sorted(set(mine) & set(theirs)):          # sorted: the reason lists them in one order everywhere
             if not v.endswith("ed") or v in _BE or mine.count(v) != 1 or theirs.count(v) != 1:
                 continue
             i, k = mine.index(v), theirs.index(v)
@@ -2039,7 +2095,7 @@ def _unentailed(text: str, used, titles, question: str = "") -> list[str]:
                    ", ".join(" ".join(p) for p in sorted(doubled)))
     swaps = _role_swaps(raw, claim_texts)
     if swaps:
-        out.append(f"changes who does what in its cited claims: {', '.join(swaps)}")
+        out.append(f"changes who does what in its cited claims: {', '.join(sorted(dict.fromkeys(swaps)))}")
     return out
 
 
@@ -2372,7 +2428,7 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
         reasons += _meaning_changes(asserted, used)
         tied = _anchor_problems(asserted, used)
         if tied:
-            reasons.append(f"ties a version or name to what its cited claims do not say of it: {'; '.join(tied)}")
+            reasons.append(f"{ANCHOR_TIED}: {'; '.join(tied)}")
         idle = [c["id"] for c in used if len(used) > 1 and not _claim_supports(text, c, question)]
         if idle:
             reasons.append(f"cites {', '.join(idle)}, which support(s) none of what it says")   # C3
@@ -2381,10 +2437,33 @@ def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[di
             reasons.append(f"puts numbers in the opposite order to its cited claims: {'; '.join(swapped)}")
     if safety.scan_injection(text):
         reasons.append("instruction-like text")
+    # The one exemption added after 0.7.0. The anchor rule compares a sentence with its claims clause by clause, and
+    # for a sentence that is one cited claim word for word (restates: one claim, its own text character for
+    # character, the code's attribution and nothing else) it can only find the claim's own structure: "The flaw is
+    # fixed in versions 2 and 3." for that very claim gave "3: says what its cited claims say of something else". So
+    # when that is the sentence's only fault, it is accepted; with any other fault every reason stays, the anchor's
+    # included, exactly as 0.7.0 gave them. Not for a claim whose subject is a bare pronoun ("It is fixed in versions
+    # 2 and 3"): out of its page, "It" attaches to whatever the answer is about.
+    if len(reasons) == 1 and reasons[0].startswith(ANCHOR_TIED) and len(used) == 1 and \
+            not _pronoun_led(used[0]["text"]) and \
+            restates({"text": text, "citations": sorted(set(cites)), "claims": ids}, b):
+        reasons = []
     return text, cites, ids, used, is_hedged, reasons
 
 
 _UNHEDGED = "as fact without hedging"
+# Openers whose referent is on the claim's page, not in the claim: pronouns, pointing and choosing words
+_PRONOUN_LEAD = frozenset("""it its they their them he she his her we this these those that there both such one
+another each neither either other others""".split())
+_PRONOUN_LEAD_PAIRS = frozenset({("the", "latter"), ("the", "former"), ("the", "same"), ("the", "other")})
+
+
+def _pronoun_led(text: str) -> bool:
+    """Whether `text` starts with a word whose referent is on its page ("It", "They", "This", "Those", "Both",
+    "Such", "One", "Another", "Each", "Neither", "Either", "The latter", "The former")."""
+    words = [_e_plain(w) for w in _E_WORD.findall(_clean(_norm(text)))[:2]] + ["", ""]
+    return words[0] in _PRONOUN_LEAD or (words[0], words[1]) in _PRONOUN_LEAD_PAIRS
+ANCHOR_TIED = "ties a version or name to what its cited claims do not say of it"     # the anchor rule's reason
 # One sentence per item: a sentence end followed by more text ("secure. Upgrade now", "secure.Everyone ...").
 _MORE_SENTENCES = re.compile(r"[.!?]+[\"')\]]*(?:\s+\S|(?=[A-Z]))")
 # A closed list of abbreviations whose full stop ends no sentence ("released on Nov. 17, 2026 by U.S.-based ...",
@@ -2428,6 +2507,303 @@ def _attributed(text: str, cites) -> str:
     return lead + (text[0].lower() + text[1:] if m else text)
 
 
+# ---- refusals added after 0.7.0 ------------------------------------------------------------------------------------
+# Each can only refuse a sentence that every check above accepted. guard() judges a sentence exactly as before and
+# asks _refusals() last, so no other sentence's verdict moves and no accepted text changes: the accepted sentences
+# are a subset of what 0.7.0 accepted (tests/inference/test_guard_differential.py holds every recorded input to
+# that). The reasons start with fixed words (REFUSALS) by which the differential tells them from every other reason.
+
+# A cited claim that carries a restriction (an exception or a condition) may be restated only whole. 0.7.0 accepted
+# "Every release is patched." and "... is patched in 2.5.4." for "Every release is patched except 2.5.4 and 2.5.5",
+# and "The bridge is open, according to one source." for "The bridge is open except on Sundays": the entailment
+# check counts words, and a sentence without the exception holds only words of the claim. What a restriction's scope
+# is, code cannot tell ("... except Mondays, and admission is free"), so the rule asks for the one thing it can
+# prove: the claim's own words, unbroken and in order, stand in the sentence.
+RESTRICTION_LOST = ("does not hold {claim} whole, which carries a restriction ('{words}'): a claim with an exception "
+                    "or a condition can only be restated word for word")
+# A word the sentence shares with its cited claims is written as the claims write it. The checks above compare
+# words without their case (stems, names, anchors), so 0.7.0 accepted "Exposure to Co rose" for a claim about CO
+# (carbon monoxide became cobalt), "the us team" for "the US team" and "turkey exports" for "Turkey exports". One
+# difference is allowed: the first letter, where one of the two words starts its sentence ("In 2025 exposure to CO
+# rose." for "Exposure to CO rose in 2025.").
+CASE_CHANGED = ("writes '{word}' where its cited claims write '{theirs}': a changed capital can make another word "
+                "of it")
+# A claim that holds a character nobody sees is not cited. Extraction removes such characters and drops the lines
+# a direction override reorders (text.as_seen), but a claim can reach the guard by another road (a provider's
+# record, a search result, text stored before that), and then its characters are not what a reader of it sees:
+# an override shows "72" as "27", a zero-width character inside "NumPy" or "100" makes two words of one. The
+# sentence is read without such characters (_norm), so 0.7.0 compared a clean sentence with a claim that is not
+# what it looks like.
+UNSEEN_IN_CLAIM = ("rests on characters a reader does not see in {claim} ({points}): what such a claim shows and "
+                   "what it holds can differ")
+# A passive clause whose subject is the agent of the same verb in a cited claim swaps who did what. 0.7.0's role
+# check reads active clauses and passives that both keep their "by" agent; a passive that drops the agent passed:
+# "NumPy 2.5.5 was replaced after the flaw." for "NumPy 2.5.4 was replaced by NumPy 2.5.5 after the flaw",
+# "Trent was robbed." for "Mallory was robbed by Trent" (security review M3).
+PASSIVE_SWAP = ("makes the agent of '{verb}' in {claim} its subject ('{subject}'): who does what is swapped")
+# The other direction: the sentence names as the doer of a verb the one its claim says the verb was done to ("It was
+# Acme Corp that acquired Globex." for "Globex acquired Acme Corp", "Orbix Labs was audited by the library." for
+# "Orbix Labs audited the library").
+ROLE_SWAP = ("makes the one {claim} says was '{verb}' its doer ('{subject}'): who does what is swapped")
+REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM, PASSIVE_SWAP, ROLE_SWAP)
+# Past participles that do not end in -ed, for the passive check
+_PARTICIPLES = frozenset("""beaten bitten blown broken brought built bought caught chosen done drawn driven eaten fallen
+felt found forgiven forgotten frozen given gone grown hidden held hit hurt kept known laid led left lent lost made met
+paid put read ridden rung risen run said seen sent set shaken shot shown shut sold spent spoken stolen struck sung sunk
+taken taught thrown told torn understood won worn woven written""".split())# Exceptions: what follows is taken out of what the claim says.
+_EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|exclusive of|other than|apart from|"
+              r"aside from|save for|barring|but not|besides(?!\s*,)|"
+              r"(?:all|everything|everyone|everybody|anything|anyone|nothing|none|no one|nobody) but")
+# Exceptions written around a quantifier: "every release but 2.5.4", "every release is patched save 2.5.4" (a "save"
+# or "but" within five words after every/all/each/any/no; "save" alone is mostly the verb), and "with 2.5.4
+# excepted".
+_QUANTIFIED_EXCEPTION = re.compile(r"(?<![\w-])(?:every|all|each|any|no)(?:\s+[\w.-]+){1,5}?\s+(but|save)(?![\w-])|"
+                                   r"(?<![\w-])with\s+(?:[^,.;:]|\.(?=\w)){1,40}?\s+(excepted)(?![\w-])",
+                                   re.IGNORECASE)
+# Conditions: the claim holds only under what follows. "when" only in its reduced form ("safe when used with TLS
+# 1.3", "when built from source"), and not the reporting kind ("when asked", "when speaking"); a "when" with its own
+# subject is mostly one of time ("when the ship sank").
+_WHEN_REPORTING = (r"asked|contacted|reached|questioned|pressed|approached|interviewed|queried|speaking|talking|"
+                   r"announcing|discussing|describing|presenting|unveiling|launching|introducing|commenting|"
+                   r"testifying|writing|reporting")
+# A bare "provided" is a condition ("patched provided the option is set") unless a preposition shows it is the verb
+# ("provided by", "provided to"); "assuming" likewise. Both also stand as verbs before an object ("the study
+# provided the first count"), which code cannot tell from the condition: such a claim's sentences are refused.
+_CONDITION = (r"unless|only (?:if|when)|provided that|providing that|(?:as|so) long as|on (?:the )?condition that|"
+              r"provided(?! (?:by|to|with|for|in|as|on|via|from|under|at|through|that)\b)|assuming|subject to|"
+              r"given that|in case|in the event (?:that|of)|"
+              rf"when (?!(?:{_WHEN_REPORTING})\b)(?:\w+ly )?\w+(?:ed|ing)|"
+              r"when (?:built|run|set|shown|given|taken|left|kept|put|made|sent|read)")
+_RESTRICTION = re.compile(rf"(?<![\w-])(?:{_EXCEPTION}|{_CONDITION})(?![\w-])".replace(" ", r"\s+"), re.IGNORECASE)
+# "if" restricts unless it concedes ("even if"), compares ("as if"), asks ("unclear if", "did not say if", "whether
+# or if": the asking word stands right before it) or is an idiom ("if any", "if not all", "if ever", "if so")
+_IF = re.compile(r"(?<![\w-])if(?![\w-])(?!\s+(?:any|ever|so|at\s+all|not\s+(?:all|most|more|every\w*))\b)",
+                 re.IGNORECASE)
+_IF_BEFORE = re.compile(r"\b(?:even|as|what|or|whether|unclear|unknown|uncertain|unsure|sure|certain|know|knows|"
+                        r"known|knew|ask|asks|asked|asking|wonder|wonders|wondered|determine|decide|check|checks|"
+                        r"checked|see|tell|doubt|doubts|doubted|say|says|said|state|specify|show)\s+$", re.IGNORECASE)
+
+
+def _restriction(text: str) -> str | None:
+    """The first restriction `text` carries, as written ("except", "unless", "only if", "when used", "if"), or
+    None. A closed list (_EXCEPTION, _CONDITION, _QUANTIFIED_EXCEPTION) and "if" where it is a condition (_IF,
+    _IF_BEFORE). Left out on
+    purpose: bounds of time ("until", "before", "after", "since", "while" and a "when" with its own subject), whose
+    loss generalises over time and inverts nothing, and "only" and "without", whose loss says less, not more."""
+    found = [(m.start(), m.group(0)) for m in _RESTRICTION.finditer(text or "")]
+    found += [(m.start(m.lastindex), m.group(m.lastindex)) for m in _QUANTIFIED_EXCEPTION.finditer(text or "")]
+    found += [(m.start(), m.group(0)) for m in _IF.finditer(text or "") if not _IF_BEFORE.search(text[:m.start()])]
+    return _SPACE.sub(" ", min(found, key=lambda f: (f[0], -len(f[1])))[1]) if found else None   # longest first
+
+
+def _holds_whole(words: list[str], claim_words: list[str]) -> bool:
+    """Whether `claim_words` stand in `words`, unbroken and in order."""
+    n = len(claim_words)
+    return bool(n) and any(words[i:i + n] == claim_words for i in range(len(words) - n + 1))
+
+
+def _restriction_lost(text: str, used) -> list[str]:
+    """RESTRICTION_LOST for each cited claim that carries a restriction (_restriction) and whose words (letter case,
+    punctuation and bracketed reference marks aside) are not all in the sentence, unbroken and in order."""
+    mine = [w.casefold() for w in _WORD_RX.findall(text)]
+    out = []
+    for c in used:
+        theirs = _inline_refs(_clean(_norm(c["text"])))[0]
+        marker = _restriction(theirs)
+        if marker is not None and not _holds_whole(mine, [w.casefold() for w in _WORD_RX.findall(theirs)]):
+            out.append(RESTRICTION_LOST.format(claim=c["id"], words=marker))
+    return out
+
+
+_RUN = re.compile(r"[^\W\d_]+")      # a run of letters: "Lumen-7" is "Lumen", "NumPy's" is "NumPy" and "s"
+_TITLE_LIKE = 0.7                    # a claim with this share of capitalised words is written as a title is
+# where a word starts its sentence: at the start of the text, after a sentence end, a colon or an opening quote or
+# bracket ('Crossref record: "Predictive coding in the visual cortex ..."')
+_STARTS = re.compile(r"(?:^|[.!?:;\"“‘(\[])[\s\"“‘'(\[]*$")
+
+
+def _own_words(text: str, question: str = "") -> str:
+    """`text` without what code put there: the attribution compose() appends for a weak state (HEDGES), the lead the
+    guard's repair puts in front (_attributed), and the caveat clauses of the closed grammar. What is left is what
+    the sentence says of its claims in the model's (or the claim's) words."""
+    for hedge in HEDGES.values():
+        for who in ("one source", "the cited sources"):
+            tail = f", {hedge.format(who=who)}."
+            if text.endswith(tail):
+                text = text[:-len(tail)]
+    for lead in ("According to one source, ", "According to the cited sources, "):
+        if text.startswith(lead):
+            text = text[len(lead):]
+    return _outside_gaps(text, question)
+
+
+def _case_changed(text: str, used, question: str = "") -> list[str]:
+    """CASE_CHANGED for each word (a run of two or more letters) of the sentence's own words (_own_words) that its
+    cited claims hold only in another case. Not judged:
+      - the form the owner wrote in the question ("numpy" for the claim's "NumPy", when the owner asked about
+        "numpy"); the question's capitals excuse nothing else ("Who ...?" does not make "who" of the claim's "WHO");
+      - a difference in the first letter alone where the sentence's word starts its sentence (_STARTS);
+      - when the claim's form stands in the sentence as well: a function word of the sentence's own beside it
+        ("... from May to September, but this may be out of date": T.STOPWORDS and the guard's auxiliaries and
+        hedge words), and nothing else ("Turkey raised tariffs on turkey" is refused);
+      - when it does not: a difference in the first letter alone where the claim's word starts its sentence, or
+        the claim is written as a title is (_TITLE_LIKE).
+    Only the cited claims say how a word is written: a source's title is a page's label and writes names as the
+    site likes ("numpy | Snyk" beside a sentence about NumPy, kept live)."""
+    folded, lenient = {}, set()          # casefold -> forms the claims write; forms whose first letter is free
+    for c in used:
+        t = _clean(_norm(c["text"]))
+        runs = list(_RUN.finditer(t))
+        capitals = sum(1 for m in runs if m.group(0)[:1].isupper())
+        titled = len(runs) > 3 and capitals >= _TITLE_LIKE * len(runs)
+        for m in runs:
+            folded.setdefault(m.group(0).casefold(), set()).add(m.group(0))
+            if titled or _STARTS.search(t[:m.start()]):
+                lenient.add(m.group(0))
+    asked = {m.group(0) for m in _RUN.finditer(_clean(_norm(question)))}
+    own = _own_words(text, question)
+    mine = {m.group(0) for m in _RUN.finditer(own)}
+    out = []
+    for m in _RUN.finditer(own):
+        w = m.group(0)
+        theirs = folded.get(w.casefold())
+        if len(w) < 2 or not theirs or w in theirs or w in asked:
+            continue                    # as the claims write it, or as the owner wrote it in the question
+        first_letter = [t for t in theirs if w[1:] == t[1:]]
+        if first_letter and _STARTS.search(own[:m.start()]):
+            continue                    # the capital, or the lack of one, of a sentence's first word
+        if theirs & mine:
+            # the claim's form stands in the sentence too, so this is a second word, not the same one re-cased:
+            # the sentence's own function word ("... but this may be out of date"), or another word altogether
+            # ("Turkey raised tariffs on turkey")
+            if w.islower() and (w in T.STOPWORDS or w in _AUX or w in _ENTAIL_META):
+                continue
+        elif any(t in lenient for t in first_letter):
+            continue                    # the claim's word starts its sentence there, or the claim is written as a title
+        out.append(CASE_CHANGED.format(word=w, theirs="/".join(sorted(theirs))))
+    return list(dict.fromkeys(out))
+
+
+def _unseen_in_claims(used) -> list[str]:
+    """UNSEEN_IN_CLAIM for each cited claim whose text holds a character that draws nothing (T.unseen_characters:
+    zero-width and direction characters, soft hyphen, tags, variation selectors, controls)."""
+    out = []
+    for c in used:
+        points = T.unseen_characters(c["text"])
+        if points:
+            out.append(UNSEEN_IN_CLAIM.format(claim=c["id"], points=", ".join(points[:6])))
+    return out
+
+
+_GET = frozenset("get gets got gotten getting".split())
+_ROLE_BETWEEN = frozenset("not never no longer also still already".split())    # "is not affected", "was also hit"
+_ROLE_CUT = frozenset("and or but while whereas".split())   # a clause joined by these has its own subject
+# "It was Acme Corp that acquired Globex" says "Acme Corp acquired Globex": a cleft is read without its frame
+_CLEFT = re.compile(r"(?:^|(?<=[,;:]\s))(?:it|this)\s+(?:is|was)\s+(.{1,80}?)\s+(?:that|who|which)\s+",
+                    re.IGNORECASE)
+
+
+def _roles(text: str):
+    """[(verb, doer words or None, done-to words or None)] for each clause of `text` built on a past form (-ed or
+    _PARTICIPLES). Passive ("be" or "get", with up to two -ly adverbs or "not", "never", "also" … between, then
+    the participle): the words before "be" are the done-to, the words after "by" (a leading article skipped, up to
+    the next stopword) the doer. A participle with "by" after it and no "be" before it ("a language created by Ilse
+    Marten") is a reduced passive: its doer only. Active (the past form with neither): the words before it are the
+    doer, the words after it up to the next stopword (a leading article skipped) the done-to. "Before" reaches back
+    to the start of the clause or to the last "and", "or", "but", "while", "whereas" in it. A cleft is read without
+    its frame (_CLEFT). Words are plain (_e_plain): lower case, numbers kept."""
+    text = _CLEFT.sub(lambda m: m.group(1) + " ", text)
+    cuts = [m.start() for m in _E_CLAUSE.finditer(text)]
+    toks = [(_e_plain(m.group(0)), sum(1 for c in cuts if c <= m.start())) for m in _E_WORD.finditer(text)]
+    words = [w for w, _ in toks]
+
+    def phrase_after(j, clause):
+        out = []
+        for x, c in toks[j:]:
+            if c == clause and not out and x in _DETERMINER:
+                continue
+            if c != clause or x in T.STOPWORDS:
+                break
+            out.append(x)
+        return out
+
+    def words_before(j, clause):
+        out = []
+        for x, c in toks[:j]:
+            if c != clause:
+                continue
+            if x in _ROLE_CUT:
+                out = []
+                continue
+            out.append(x)
+        return out
+    out = []
+    for i, (w, clause) in enumerate(toks):
+        if not (w.endswith("ed") or w in _PARTICIPLES) or w in _BE:
+            continue
+        k = i - 1
+        while k >= 0 and toks[k][1] == clause and k > i - 3 and (words[k].endswith("ly") or words[k] in _ROLE_BETWEEN):
+            k -= 1                              # "was quickly acquired", "is not affected"
+        by = i + 1 < len(words) and words[i + 1] == "by" and toks[i + 1][1] == clause
+        if k >= 0 and toks[k][1] == clause and (words[k] in _BE or words[k] in _GET):
+            done_to = words_before(k, clause)
+            doer = phrase_after(i + 2, clause) if by else None
+        elif by:
+            done_to, doer = None, phrase_after(i + 2, clause)      # a reduced passive: "created by Ilse Marten"
+        else:
+            if i == 0 or toks[i - 1][1] != clause:
+                continue
+            doer = words_before(i, clause)
+            done_to = phrase_after(i + 1, clause) or None
+        out.append((w, doer, done_to))
+    return out
+
+
+def _names_one(mine: frozenset, theirs: frozenset) -> bool:
+    """Whether `mine` names what `theirs` names: the same words, or `theirs` with only numbers or dates more."""
+    return bool(mine) and mine <= theirs and all(any(ch.isdigit() for ch in x) for x in theirs - mine)
+
+
+def _name_key(words) -> frozenset:
+    """The words that name something: no stopword, evidence word or single letter; numbers and versions kept."""
+    return frozenset(w for w in words if w not in T.STOPWORDS and w not in _ENTAIL_META and
+                     (len(w) > 1 or w.isdigit()))
+
+
+def _role_swaps_refused(text: str, used) -> list[str]:
+    """For each clause of the sentence and each clause of a cited claim built on the same past form (_roles):
+    PASSIVE_SWAP when the sentence's done-to names the claim's doer (_names_one: the same words, numbers aside) and
+    not the claim's done-to; ROLE_SWAP when the sentence's doer names the claim's done-to and not its doer. Active
+    and passive on either side, with an adverb, a get-passive or a cleft. The sentence's own attribution ("according
+    to one source") is taken out first."""
+    out = []
+    mine = _roles(_strip_attribution(text))
+    for c in used:
+        for verb, their_doer, their_done_to in _roles(c["text"]):
+            doer_key = _name_key(their_doer or [])
+            done_key = _name_key(their_done_to or [])
+            for my_verb, my_doer, my_done_to in mine:
+                if my_verb != verb:
+                    continue
+                key = _name_key(my_done_to or [])
+                if _names_one(key, doer_key) and not _names_one(key, done_key):
+                    out.append(PASSIVE_SWAP.format(verb=verb, claim=c["id"], subject=" ".join(sorted(key))))
+                key = _name_key(my_doer or [])
+                if _names_one(key, done_key) and not _names_one(key, doer_key):
+                    out.append(ROLE_SWAP.format(verb=verb, claim=c["id"], subject=" ".join(sorted(key))))
+    return list(dict.fromkeys(out))
+
+
+def _refusals(text: str, used, b: dict) -> list[str]:
+    """Why a sentence that passed every check of check_sentence() is refused all the same (REFUSALS), or []. A caveat
+    of the closed grammar asserts nothing of its claims and is never refused here."""
+    question = b.get("question") or ""
+    if not used or insufficiency(text, question):
+        return []
+    return (_unseen_in_claims(used) + _restriction_lost(text, used) + _case_changed(text, used, question) +
+            _role_swaps_refused(text, used))
+
+
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
     """Accepted and rejected model sentences (see the module docstring). A sentence whose ONLY fault is stating an
     unsupported claim plainly, and that restates its cited claim (_restates), is attributed to its source(s)
@@ -2459,7 +2835,11 @@ def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
             earlier.update(cites)
             rejected.append({"text": _clean(s["cut"][0]), "reasons": [CUT_WORDS.format(words=_clean(s["cut"][1], 80))]})
         else:
-            earlier.update(cites)
+            earlier.update(cites)       # counted whether refused or not: later sentences are judged as before
+            refused = _refusals(text, used, b)
+            if refused:
+                rejected.append({"text": text, "reasons": refused})
+                continue
             accepted.append({"text": text, "citations": sorted(set(cites)), "claims": list(dict.fromkeys(ids)),
                              "states": {c["id"]: c["state"] for c in used}, "hedged": is_hedged}
                             | ({"insufficiency": True} if insufficiency(text, b.get("question") or "") else {})

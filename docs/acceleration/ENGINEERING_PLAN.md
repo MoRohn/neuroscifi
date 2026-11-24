@@ -1,11 +1,14 @@
 # Engineering plan: what was changed, what was decided, and what is left
 
-Status: 2026-11-23, branch `nvidia-acceleration-review` (based on `9e4570a`, 0.7.0). Finding numbers refer to
+Status: 2026-11-24. Phases 1 and 2 on `nvidia-acceleration-review` (based on `9e4570a`, 0.7.0), merged to `main` as
+`793a21f`; phase 3 on `open-items-round`, based on `793a21f`. Finding numbers refer to
 [ARCHITECTURE_AUDIT.md](ARCHITECTURE_AUDIT.md) §4; numbers to [PERFORMANCE.md](PERFORMANCE.md).
 
-This page covers two phases. Phase 1 ended with six decisions left to the owner (§4 as it then stood). The owner
+This page covers three phases. Phase 1 ended with six decisions left to the owner (§4 as it then stood). The owner
 delegated them the same day ("analyze the decisions and proceed"); phase 2 decided each on a measurement, built it,
-and put it through independent reviews. Rows added in phase 2 say so.
+and put it through independent reviews. Rows added in phase 2 say so. Phase 3 (2026-11-24) took the open items
+that phase 2 left ("analyze the open items … and proceed"): §5 says what was built, what the reviews found and what
+was left open on purpose; §6 is the list after it.
 
 Order of priority applied: impact × confidence × feasibility ÷ (complexity + risk + maintenance), under the
 directive's hierarchy: correctness and identity first, then reasoning quality, memory, reliability and safety,
@@ -43,7 +46,7 @@ Each row: the smallest change that fixes the finding, how it was accepted, how t
 | 24 | C6 the sparse learner's graph was discarded; C10 the dense learner fails beyond about 100 populations (decision F; C10 found in phase 2) | The edge exchange runs for all receivers at once, bit for bit the lab's loop. The promotion gate has a sixth check no rule can waive: a snapshot must beat a graph with no edges. New individuals are born with `best-learner-v1` beside `gate-v1`: the sparse learner's graph is a candidate and the tolerance is measured against the better learner (ADR-045) | Fit 2.4 times faster at 24 populations, 1.7 at 256; 43,000 random cases identical to the loop; at 160 to 256 populations a working graph (validation error 0.0043) is promoted where `gate-v1` produced one worse than no graph; reproduction 8 of 8; acceptance 7 of 7 | Existing individuals are unchanged. A new one goes back with `nsf graph rules add --builtin gate-v1 --as gate-v1-again --owner-approved` |
 | 25 | C13 a scoring rule with `"bits": [4.0]` validated and then crashed packing (found in phase 2; older) | Bit widths and degrees must be lists of integers | Tests that failed first | Revert |
 | 26 | R11, R12 the reload path (found in phase 2) | A systemd unit the idle policy stopped is started again as that unit (before: `run.sh start`, a second, unsupervised container beside it). A wait does not call a container gone before it could exist (60 s grace). A running container counts as loaded only once it answers, and a start that never becomes ready is stopped. The retry limit and the single start hold across processes | Live with a transient user unit: the old wait died after 130 ms with "container is gone", the fixed one reported ready after 35 s; tests that failed first | Revert |
-| 27 | R13 a model server's key and prompts went to whatever held its loopback port while the container was down (found in phase 2) | Before every request to a loopback port of this deployment's own services, the gateway reads who owns the socket that would accept it (`/proc/net/tcp`); a process of another account gets nothing and the call fails as `unavailable`. `deploy/memory/run.sh` sends its warm-up request only when Docker reports the container publishing the port | Tests with kernel-shaped tables and real sockets; live: a stand-in on the freed port received no request with the key. Limits in §5 item 7 | `NSF_LISTENER_CHECK=0` |
+| 27 | R13 a model server's key and prompts went to whatever held its loopback port while the container was down (found in phase 2) | Before every request to a loopback port of this deployment's own services, the gateway reads who owns the socket that would accept it (`/proc/net/tcp`); a process of another account gets nothing and the call fails as `unavailable`. `deploy/memory/run.sh` sends its warm-up request only when Docker reports the container publishing the port | Tests with kernel-shaped tables and real sockets; live: a stand-in on the freed port received no request with the key. Limits in §5.3 and §6 item 2 | `NSF_LISTENER_CHECK=0` |
 | 28 | W1a, setup (decision C) | `nsf setup` has a `memory` step: when the two memory models answer and no memory setting was made by hand, it switches semantic retrieval on for the individual; without their key file it contacts nothing | Live on a temporary individual: done, then "already done" on the second run; tests | `nsf setup --no-memory`; `nsf web memory config --disable` |
 
 ### Found by the independent reviews of phase 1 and fixed
@@ -79,7 +82,7 @@ fixes again; the web-reading path was read a third time. Each row has a test tha
 | A restore failed on a damaged settings row; the "evidence through #N" number of a question fell at a sweep; an oversized position gave a server error | The restore carries nothing from an unreadable row and says so; the horizon is monotone; a validation error |
 | **A request could be sent after a stop that landed while its connection was being opened** | The gate is asked again on the open connection; nothing is written and nothing counted |
 | **A page fetched ahead that redirected onto the site being read opened a second connection there** | A site is busy while an exchange with it is in progress; the fetch ahead stops and its claim continues from that hop |
-| **The pages fetched ahead of a task each spent the same remaining budget** (12 requests under a budget of 4; 21 under 10; 2.5 MB of unused bodies) | One shared account per task; a fetch ahead starts only with room for robots.txt and the page. 4 under 4; unused requests at most the budget (§5 item 9) |
+| **The pages fetched ahead of a task each spent the same remaining budget** (12 requests under a budget of 4; 21 under 10; 2.5 MB of unused bodies) | One shared account per task; a fetch ahead starts only with room for robots.txt and the page. 4 under 4; unused requests at most the budget, since phase 3 at most an allowance of a tenth of it (§5.1) |
 | A "slow down" answer to a page fetched ahead skipped every other page of the *earlier* site and blamed its crawl delay | Only pages that lead onto the site that asked are left out, and the report names that site and reason. This is the one stated exception to "identical to one page at a time" |
 | A cut the gate did not confirm (one failed read by the watch) was stored as "robots.txt disallows everything" for 24 hours in a fetcher shared by later tasks | A watch that cannot be read cuts nothing; an unconfirmed cut ends as a new error `interrupted` that leaves no verdict, back-off or cache entry |
 | A stop during the reader's TLS handshake left one request charged that was never sent | Refunded on every path where nothing was written |
@@ -95,8 +98,8 @@ fixes again; the web-reading path was read a third time. Each row has a test tha
 |---|---|---|---|---|
 | 15 | W1a lexical memory retrieval | Semantic retrieval: an embedding model's candidates, a reranker's order and floor (`semantic.py`; `deploy/memory/`) | It needs two services and 8.7 GiB of memory, and makes a lookup 107 to 111 ms. Paraphrase recall@1 0.27 → 0.98. Since phase 2 it switches itself on at setup once the services answer (row 28) | `deploy/memory/run.sh start && deploy/memory/run.sh wait`, then `nsf setup --db PATH` (or by hand: `nsf web memory config --enable …` as in the runbook) |
 | 17 | W3 the critique's cost for spoken answers | `critique_voice`: the critique pass can be skipped for spoken answers | It removes marks from a stored report. Since row 19 a spoken answer pays for a critique only when it holds a sentence of the model's own (9 to 11 of 51 tasks) | `nsf llm config --no-critique-voice` |
-| 29 | The memory models were unsupervised and outside the idle policy (decision C) | Units `neuroscifi-memory-embed.service` and `-rerank.service` (`deploy/install.sh --memory`); services `embed` and `rerank` of the idle policy. A lookup that finds a model unloaded is answered from the lexical ranking in 2 to 4 ms with `retrieval.waking`, and the models are back about 20 s later | Units are the owner's to install; an idle timeout releases memory at the price of the first lookups after a pause being lexical | `sudo bash deploy/install.sh --memory --memory-user USER`; `nsf resources idle --set embed=15m --set rerank=15m` |
-| 30 | R10 an unloaded service could not be reloaded on demand from the hardened console and worker units (found in phase 2) | Wake requests: with `NSF_WAKE_DIR` set, the unprivileged process leaves an empty `<service>.wake` file and `neuroscifi-wake.path` / `.service`, running as the account that owns the services, performs the load under the policy's own rules | Needs the units installed and, with two accounts, access the installer does not grant (§5 item 7). **Unverified as installed system units** | `sudo bash deploy/install.sh --idle [--idle-user USER]` |
+| 29 | The memory models were unsupervised and outside the idle policy (decision C) | Units `neuroscifi-memory-embed.service` and `-rerank.service` (`deploy/install.sh --memory`; since phase 3 `neuroscifi-memory.service` for the single server, the default); services `embed` and `rerank` of the idle policy. A lookup that finds a model unloaded is answered from the lexical ranking in 2 to 4 ms with `retrieval.waking`, and the models are back about 20 s later | Units are the owner's to install; an idle timeout releases memory at the price of the first lookups after a pause being lexical | `sudo bash deploy/install.sh --memory --memory-user USER`; `nsf resources idle --set embed=15m --set rerank=15m` |
+| 30 | R10 an unloaded service could not be reloaded on demand from the hardened console and worker units (found in phase 2) | Wake requests: with `NSF_WAKE_DIR` set, the unprivileged process leaves an empty `<service>.wake` file and `neuroscifi-wake.path` / `.service`, running as the account that owns the services, performs the load under the policy's own rules | Needs the units installed. Since phase 3 the installer arranges the access two accounts need (§5.1). **Unverified as installed system units** | `sudo bash deploy/install.sh --idle [--idle-user USER]` |
 | 31 | C6, C10 for individuals created before phase 2 | The built-in rule `best-learner-v1` can be adopted with one command | An existing individual's rule is part of its history and is not changed for it | `nsf graph rules add --builtin best-learner-v1 --owner-approved` |
 
 ## 3. Rejected on measurement
@@ -160,9 +163,9 @@ page fetched ahead is left alone at once, so pages that lead onto that site are 
 reading would have read them, and the report says so; a task's charged requests stay within its budget, but what
 it sends ahead and does not use comes on top, up to the budget again (22 requests reached sites under a budget of
 20 in the reviewer's worst case without owner action, 32 with a deny mid-run; 4 unused beside 350 used on the
-benchmark). The one defect found by the last review pass was fixed and the fix confirmed (`989a384`). Back:
-`nsf web config --set
-read_ahead=1`.
+benchmark). The one defect found by the last review pass was fixed and the fix confirmed (`989a384`). Since
+phase 3 the unused part has an allowance of its own, a tenth of the budget (§5.1). Back:
+`nsf web config --set read_ahead=1`.
 
 **C. The memory models: yes, as a managed service.** Retrieval by meaning (paraphrase recall@1 0.27 → 0.98) is
 worth its memory, but not as two hand-started containers. `nsf setup` finds the two models and switches them on,
@@ -170,7 +173,8 @@ contacts nothing without their key file and never changes a memory setting the o
 `deploy/install.sh --memory` installs two supervised units; with an idle timeout set by the owner the policy
 releases their memory when nobody uses them, and a lookup that finds them unloaded is answered from the lexical
 ranking in 2 to 4 ms while they start again (about 20 s). The footprint itself, 4.6 GiB per service for 1.1 GiB
-of weights, could not be lowered with settings of the pinned image. Building this exposed four older defects of
+of weights, could not be lowered with settings of the pinned image; phase 3 replaced the two servers by one
+process for both models (4.26 GiB in all, §5.1). Building this exposed four older defects of
 the reload path, all fixed (§1 rows 26 and 27, §2 row 30). The NVIDIA embedding NIM remains the owner's licence
 decision; any `/v1/embeddings` endpoint can be configured in place of the local model, and the idle policy and
 the listener check leave such an endpoint alone. Nothing was installed on this host and the containers were
@@ -185,8 +189,9 @@ events expire, with confirmed changes, samples and linked epochs. The audit's sk
 built because counts cannot stay exact (§3). Forgetting stays exact and gained two handles (a reading by its
 position, a camera by its name); a restore neither loses the learning nor returns a forgotten reading, through a
 second generation, and it takes the live file's settings with it. This is retention of what was learned; it is
-not rehearsal or replay, which stay deferred. Costs: about 96 bytes per reading without a cap; belief computation
-now grows with an epoch's age (24 ms per 100,000 readings with a third of them sampled; 0.79 s at a million
+not rehearsal or replay, which stay deferred. Costs: about 96 bytes per reading (since phase 3 under a limit of a
+million by default, §5.1); belief computation now grows
+with an epoch's age (24 ms per 100,000 readings with a third of them sampled; 0.79 s at a million
 readings that were each recorded twice); and a privacy change: a root's name and a sample id now stay in the file
 until the reading is forgotten, where 0.7.0 scrubbed a root when its last event expired. An individual upgraded
 from 0.7.0 gets consolidation on; `docs/operations/MIGRATIONS.md` section 2 says how to opt out before anything
@@ -212,100 +217,146 @@ command (§2 row 31). The byte budget stays 4096, so above 512 populations nothi
 Recorded acceptance evidence was not regenerated: `growth_retention` would differ in nine leaves, listed in
 `accel_decisions_graph_birth_rule.json`, and the first physical test stays on `gate-v1` as preregistered.
 
-## 5. Next engineering priorities
+## 5. Phase 3: the open items
 
-In the order of the directive's hierarchy: correctness first. Each item says why it was not done in this pass.
+On 2026-11-24 the owner asked for the open items of the earlier list of next priorities to be analysed and acted
+on. Each was ruled on before it was built (the ruling is in the second column), built by its own lane, merged, read
+by three independent reviews in parallel (security across all of it; correctness of the web, knowledge, guard and
+calibration work; correctness of the runtime, deployment and instance work), fixed, and read again where a fix
+was security-critical. Branch `open-items-round`, based on `793a21f` (the merge of phases 1 and 2).
 
-1. **Gaps of the sentence guard that are older than this branch**, found while reviewing phase 2 and left alone
-   on purpose: the one attempt to fix one of them is what regressed the guard (§3), so each needs its own
-   adversarial corpus and the differential test as its gate.
-   - A one-version inversion of an exception is accepted: from "every release is patched … except 2.5.4 and
-     2.5.5", the sentence "… is patched … in 2.5.4". "except", "other than" and "apart from" are not read as
-     negation.
-   - A sentence the model itself shortens so that a claim's exception is gone passes ("The bridge is open,
-     according to one source." from "… except on Sundays"). The critique now reads exactly these; it can mark,
-     not remove.
-   - The guard compares words without case ("Co" for "CO") and accepts a clean sentence for a claim that holds a
-     direction-override character.
-   - A supported claim that ends in a bare number after "and", copied word for word, is rejected ("The flaw is
-     fixed in versions 2 and 3."): a faithful sentence lost.
-   - The refusal of §1 row 20 also removes a faithful sentence in which the model names its source further
-     ("… according to a report by Reuters").
-   - An "according to the cited sources" set between commas is not replaced, so one source can be shown with two
-     attributions; the attribution is worded from the sources counted before inline citations are added; reason
-     texts that list words from a set vary in order between processes.
-2. **Read-ahead needed four review passes.** Each of the first three found something in what the pass before
-   had fixed or added (a request after a stop during connect, a second connection through a redirect, the 429
-   exception reaching too far, a continued fetch repeating robots.txt); the fourth approved. It is new, concurrent
-   and on by default, so it is the first place to look if a research run behaves differently from 0.7.0, and
-   `read_ahead=1` is the comparison. Residues stated by the reviews: for a site whose robots.txt redirects to
-   another site's file while that site is being read, robots.txt is sent twice (charged once); a request whose
-   write was cut partway is refunded although some of its bytes reached the server; a continued fetch waits one
-   extra politeness interval; one connection per site holds within one process only.
-3. **Contradictions in other words (W2).** Use the embedding model to propose candidates to
-   `consolidate._existing`; keep the decision in the existing value comparison. Needs its own benchmark of
-   paraphrased contradictions and a held-out set before any threshold is trusted: a false merge would inflate the
-   count of independent sources.
-4. **Graphs.** An existing individual on `gate-v1` still promotes, at 96 and 128 populations, a snapshot at twice
-   the sparse learner's error (it beats no graph, so the new check passes it); only adopting `best-learner-v1`
-   changes that. A graph that is already active and would fail the new check is not demoted. The dense learner's
-   failure itself is not repaired (its cause is a reading of the update, not a proof), and the 1024-population
-   timings were taken under load. Above 512 populations the 4096-byte budget rejects the sparse graph. The other
-   half of C6 is unchanged: no real data source and no consumer of a promoted graph outside the core.
-5. **Consolidation's growth.** No cap on consolidated readings (only `min_free_bytes` stops growth), and belief
-   computation is linear in an epoch's readings. An epoch whose readings all carry sample ids pays about 0.3 s
-   per million readings on every read even when nothing was recorded twice; a maintained list of copied samples
-   would remove that and is a second structure to keep right. A restore reads every consolidated reading of the
-   live file into memory.
-6. **Consolidation's residues.** The prototype's `legacy` status is not bit-exact once readings are consolidated
-   (tested to 1e-12). A camera forgotten while a partner of the same name is held leaves the name in revision,
-   question and decision text. Two files that both live on after a restore issue positions independently, and a
-   restore from a divergent lineage loses learning rather than keeping it. Consolidation depends on the
-   tombstones' id-to-position map, so pruning tombstones would break forgetting by id; tombstones and the
-   deletion log still hold epoch names and event ids in clear, and the digest labels of forgotten cameras and
-   partners can be checked offline against guessed names, because their salt is in the same file. A file migrated
-   by the first build of schema 14 converges in its indexes, not in the first-copy-only readings it already kept
-   (no such file exists outside scratch).
-7. **The reload path in an installed, two-account deployment.** Inside the hardened units every other account
-   reads as one unidentifiable uid, so the listener check refuses nobody there. The idle and wake units run as
-   the account that owns the services and must read the instance database and write `<NSF_DB>.resources/`; the
-   installer does not grant that, and until the owner does, the policy unloads nothing in such an install. A
-   member of the wake folder's group can run the wake unit into its start limit. A model call that cannot read
-   the policy's state does not wait for the reload: it fails once as `unavailable` and a later call succeeds. TTS
-   and SearXNG keep the "running means loaded" rule. `inference/config.py` still resolves the home directory at
-   import; `deploy/vllm/run.sh status` passes the key to curl on its command line.
-8. **A lighter server for the memory models.** Two full vLLM servers cost 4.6 GiB each for 1.1 GiB of weights.
-   Candidates: llama.cpp's CUDA server (an arm64 manifest exists; not pulled, not run on GB10, not checked
-   against the benchmark) and one small process in the pinned image that holds both models. Either needs
-   `scripts/bench_memory.py` as its gate.
-9. **Read-ahead's bounds.** Everything a task sends is at most twice its request budget (charged within the
-   budget, unused read-ahead within the budget again). "One connection per site" holds within one process: a
-   worker and the MCP server can each connect to the same site, and two host names of one site count as two.
-   Searches, records read through a provider's API and a render's sub-requests still notice a configuration
-   change within 2 s, not per request. A throttle slot reserved by a fetch ahead that then stops delays the
-   reader's refetch by one interval; unused traffic of fetches in flight when the process exits is not recorded.
-10. **Close the calibration loop (W7)**, with the offline benchmark's verification accuracy as the gate.
-11. **The critique's remaining marks** are a model's unconfirmed judgement on the 10 to 12 sentences it still
-    reads: 4 marks, of which one reader judged one to name a real shift of meaning. No precision is measured.
-12. **Web questions never expire**: ten that the owner ignores stop new ones until one is answered
-    (`max_open_web_questions`). Noted while deciding E; not changed.
-13. **A TensorRT-LLM comparison** on this model with the harness of this review
+### 5.1 Built
+
+| Open item | Ruling | What was built | Evidence | Back |
+|---|---|---|---|---|
+| Gaps of the sentence guard older than the branch (W12) | Corpus first; each change its own commit, stricter than `307b907` everywhere except one enumerated loosening, proven by the differential | A claim's exception or condition must stand in the sentence whole (`RESTRICTION_LOST`: except, unless, only if, provided that, assuming, subject to, given that and their variants); a word shared with the cited claims keeps their case (`CASE_CHANGED`); extraction removes characters nobody sees and drops the line, or the whole HTML paragraph, that holds a direction control unless the text is right-to-left, and the guard refuses a claim that still holds one (`UNSEEN_IN_CLAIM`); a passive clause that drops or swaps its agent is refused (`PASSIVE_SWAP`); a capitalised status word ("Retracted") is not read as part of a source's name; reasons are listed in one order. The one loosening: a sentence that is exactly one cited claim with the code's attribution is no longer rejected by the anchor rule alone (not for a claim that opens with a bare pronoun). The refusal of §1 row 20 now spares an attribution that only names its source ("… according to a report by Reuters") | 306 adversarial sentences in the gap corpus, each labelled before any change. Over 1,782 inputs recorded from `307b907`'s own code: 1,602 identical, 163 stricter, 17 loosened (all of the proven class, checked by a frozen copy of its rule in the script), 0 different. None of the 1,137 attack-suite inputs and none of the 248 benchmark sentences moved at any commit; a live run refused nothing by these rules (`open_items_guard.json`) | None: refusals only, apart from the proven class |
+| Read-ahead's bounds | Cap what read-ahead may waste; once the cap is spent the task reads one page at a time, which cannot change an outcome. Bring every other request kind under the owner's stop | Unused read-ahead has an allowance of its own: a tenth of the request budget, never less than two requests per page of the window (8 at the defaults), held exactly across the task's fetches ahead. Searches, records read through a provider's API and a render's sub-requests ask the owner's stop before each request. A politeness slot nobody used is given back; a request cut while being written counts if any byte of it left; a paid search stopped before sending is refunded; denying one feed's site stops only that feed | Everything a task sends is at most its budget plus the allowance: 48 at the default budget of 40 (80 before). The reviewers' worst cases: 32 → 25 under a budget of 20, 24 → 17 to 19 under 12. 1,800 random webs with redirecting robots.txt files: 0 differences from one page at a time. Requests after a stop, for every kind: 0. Benchmark p50 0.98 s at 4, unchanged (`open_items_reading.json`) | `nsf web config --set read_ahead=1` |
+| Contradictions in other words (W2) | The memory models only propose a pair; the existing value comparison decides; nothing is decided on similarity alone; a benchmark with a held-out half first | With semantic memory on and an answer model configured: the embedding model proposes candidates, the reranker must agree in both directions, the answer model confirms in one private call per pair (numbers masked), and the value comparison says whether the two agree or contradict. A contradiction is recorded and put to the owner as a question; it never supersedes knowledge or lowers its confidence. A same-value pair is reported (`merged: false`) and not merged: the statement is stored as its own item, as in 0.7.0 (a ruling of the integration, below). A value the owner rejected before is not asked about again | 132 probes over 32 fictional facts (`contradiction_paraphrase.json`). Words only: 0 of 86 found. Shipped: development 33 of 43 right, held out 31 of 43 right and 0 false pairs of 23, in two runs. Without the answer model's confirmation the held-out half had 3 false pairs; the confirmation was added after seeing that, so the held-out figure is of a design revised once (`open_items_knowledge.json`) | `nsf web memory config --no-contradictions` |
+| `knowledge.query` rebuilt its index on every call (W8) | Keep the index; invalidate exactly | The lexical index is kept per individual file for the process and used only while the live statements equal the ones it was built from (one indexed read per query); at most 4 individuals and 120,000 statements per process. Every forget that removes or rewrites knowledge drops it, and the semantic vectors | Repeated query 200 → 31 ms at 20,000 statements, 1,136 → 193 ms at 100,000; results identical to the uncached path over random sequences of writes, forgets and queries on two connections | None needed: results are identical |
+| Web questions never expired | A question left open for 30 days stays open and answerable but stops counting toward the cap | `web_question_stale_days` (default 30) | Tests at the 30-day edge; the per-task cap unchanged | `nsf web config --set web_question_stale_days=0` |
+| The calibration loop (W7) | Close it only where no belief changes; the identity at a cold start; a held-out gain shown first | A forecast is read through how the settled forecasts of its kind fared (ADR-046): the identity below 20 settlements, held to the stated forecast by a prior, monotone, within [0.01, 0.99], computed on read. It **ranks** the autonomous investigations the stated forecasts admit and never admits or refuses one (an independent review found the first version deciding admission; fixed). The thresholds of provisional knowledge and the research-policy weights are not connected | Simulated forecasters, settings chosen on development streams only. Held out: mean squared distance to the true probability 0.0436 → 0.0165, Brier 0.2273 → 0.1999, no stream worse by more than 0.0011. Offline benchmark identical with it on and made inert (`open_items_calibration.json`) | `nsf web config --set calibrated_forecasts=false` |
+| Consolidation's growth | A cap with an early, plain warning; no compaction into counts and no belief cache | `max_consolidated_rows` (default 1,000,000): at the limit a sweep keeps the oldest of its expiring events and the rest expire to nothing, as in 0.7.0; nothing already kept is removed. Warnings from 80 % in the sweep, `nsf regulation`, `nsf birth`, `nsf config` and the console. `nsf regulation` and the console's overview name the largest epoch and time its belief computation, only when asked (the console header, which reloads after every teaching action, does not). A restore reads only the live readings of its archive's own events | Restore peak at a million readings 549 → 232 MiB; the count for the limit 3.6 ms at a million; 54 safeguards broken one at a time, 54 caught (`open_items_consolidation.json`) | `nsf config --max-consolidated-rows 0` |
+| The reload path and the installed two-account deployment | Make the two-account install work as installed and verify it with two real uids | An ownership model (one shared group; the state folder 0710, the database 0640, `<db>.resources/` 2770, the request folder 3770) arranged by `deploy/install.sh --idle`, every step inside the service account's folder run as that account; a polkit rule lets the idle account start and stop exactly the model services' units. The wake unit lingers to serve requests, so its starts are bounded by the clock. TTS and SearXNG count as loaded only once they answer. No home folder needed at import. `deploy/vllm/run.sh status` sends the key on standard input and only to its own container. A reload and the wait for the in-use lock come off the call's own time. The idle account opens shared files without following links and the database read-only with its schema untrusted. The voice hub's close is final and the Pocket control socket's thread ends; the test suite fails a session that leaves a thread of the package running | `scripts/two_account_check.py`, run by the suite in a user namespace with real uids and the real installer: 46 of 46 checks, 5 of them the root-escalation attack, which fail on the code before the fix. Wake unit under a request every 2 s: before, start limit hit with 30 of 35 requests unserved; after, 0 unserved. The polkit rule's own JavaScript evaluated over every action, unit, verb and caller (`open_items_deployment.json`) | `install.sh` without `--idle`; per item, revert |
+| A lighter server for the memory models | One process for both models inside the image already pinned; the default only if the benchmark is equal and latency no worse | `deploy/memory/server.py`: one container on both existing ports, the GPU taken in first-come turns of one forward pass by either model, strict request parsing, at most 32 connections (a 503 beyond, delivered whole), a Docker network of its own. Selected by `NSF_MEMORY_SERVER` (default `single`); `deploy/install.sh --memory` installs its unit (`neuroscifi-memory.service`) or the two vLLM units. The idle policy treats one container under two names as one: an unload waits for calls under either name, and the more conservative of the two timeouts governs | Benchmark every class equal over two runs (paraphrase 0.979, unnamed 0.917); lookup p50 93 to 104 ms, p95 122 to 164 ms; ready 7 to 11 s against 54 to 69 s; 4.26 GiB against 9.33 GiB for the vLLM pair, measured side by side (4.47 GiB on the final server); an interactive embedding behind the largest accepted call 8.0 s → 390 ms (`open_items_memory_server.json`) | `NSF_MEMORY_SERVER=vllm` in `~/.config/neuroscifi/memory/memory.env`, then `deploy/memory/run.sh restart` |
+
+**Rulings made while integrating the lanes**, not in a lane's brief: a same-value pair found by meaning is
+reported, not merged, because the held-out half had been used once to revise the design and a wrong pair of two
+properties that share a value would count its sources as independent support; the largest epoch's belief cost is
+measured only when asked; `install.sh --memory` installs the unit of the configured memory server and the polkit
+rule names all three memory units; two test-only defects were fixed (the Pocket signing test's 121 s margin, which
+the timestamp's truncation could close; the hung-render test, which counted the resource tracker of the `spawn`
+start method as surviving Chromium).
+
+### 5.2 Found by the independent reviews of phase 3 and fixed
+
+Each row has a test that fails on the code before the fix.
+
+| Finding | Fix |
+|---|---|
+| **Critical: `deploy/install.sh --idle-access` gave the service account a path to root.** It ran `chgrp` and `chmod` as root on the database, its `-wal`/`-shm` and `.resources` inside a folder the service account owns, following links; planted links to `/etc/shadow` and `/etc/systemd/system` made them group-readable and group-writable (found by two reviews independently and reproduced with the real installer). Never released: it existed only on the round's branch | Every step inside the service account's folder runs as that account, so the kernel refuses what that account could not do itself; root acts only on root's own paths. The attack is part of the two-account check |
+| A plain re-run of the installer undid the two-account arrangement | A re-run keeps it and says so |
+| The voice hub's transcript writer could outlive `close()` (a write after close; a race between the swap and the stop) | A write after close runs inline; the swap and the stop are one step under the hub's lock |
+| With the single memory server, the owner's unload of one name stopped the shared container under a call of the other; a timeout set for one name governed both | Every name's lock is taken; the more conservative timeout governs |
+| The wait for the in-use lock was not bounded by the call's deadline (1 s asked, 4 s taken) | Bounded; a reload is reported only when one happened |
+| The wake unit's bound held only if the command reached its linger; a malformed state file skipped it | The linger holds on every exit; a malformed file is read as empty and reported |
+| The idle account read files the service account controls through links (a FIFO could hang it, `/dev/zero` exhaust it) and opened its database with the schema trusted | No links, regular files only, size-capped; the database read-only with `trusted_schema=OFF` and `query_only=ON` |
+| A large rerank batch held an interactive embedding past its 2 s budget (8.0 s) | Turns of one forward pass (390 ms) |
+| The memory server's parsing was loose (a duplicate or signed `Content-Length`), it started a thread per connection before the key check, and it logged raw paths | Strict parsing, a connection cap decided before any thread, a log of known routes only |
+| The unused read-ahead allowance could be passed through a race when a fetch ahead was abandoned | The count and the release are one step under the fetch's lock |
+| A direction override between an ordinary `<` and `>` was taken for a tag and survived ("72 mg" in the claim, "27 mg" on the page); other direction marks reordered digits but were only stripped | A tag only where HTML starts one; every direction control drops its line or paragraph unless the text is right-to-left |
+| The restriction rule missed common condition words; a capitalised status word passed as part of a source's name; a passive clause could drop its agent (accepted by `307b907` too) | Added; refused; refused |
+| The differential proved the loosening with the code under test | A frozen copy of the rule in the script |
+| The calibration mapping decided whether a hypothesis was researched, not only its rank | Admission from the stated forecast only |
+| A forgotten statement stayed in the kept index in memory; a paid search stopped before sending still counted against its daily cap | Every forget clears the index and the vectors; refunded |
+| Two flaky tests in the gate (a stale-signature margin; a wake test without its fixture's pin) and a test-fixture thread leak in the browser suite | Fixed in the tests and the fixture |
+| Security re-review (low, and one older medium): a FIFO planted as the database's `-wal`/`-shm` hung the idle pass; deeply nested JSON in a state file crashed it; 32 keep-alive health checks without the key held every memory-server slot; a fake tag inside `<title>` or `<xmp>` hid a direction override; "Both…", "Such…", "The latter…" counted as exact restatements; a claim restated with its roles reversed in the passive was accepted (also by `307b907`); the installer's service-account steps inherited root's terminal | Each fixed with a test that fails on the earlier code: nothing but regular files opened; nesting reported as malformed; an unkeyed answer closes its connection and slots are kept for keyed calls; raw-text elements read as text for the override rule; the openers excluded from the exemption (live and frozen); role reversal refused in either voice; the steps run in their own session with no terminal |
+
+### 5.3 Left open on purpose
+
+| Item | Why |
+|---|---|
+| A TensorRT-LLM comparison | A multi-hour experiment that stops the answer model and changes its quantisation; a research prototype, not a fix ([NVIDIA_ASSESSMENT.md](NVIDIA_ASSESSMENT.md) §5) |
+| Voice continuity across a restart (R8) and an offline outbox in Pocket | Need a real handset and microphone to be validated |
+| Precision of the self-critique's remaining marks | Needs human labels; the marks are shown and never acted on |
+| The dense learner's divergence above about 100 populations; demotion of a graph already active | Changes what is promoted for existing individuals, and no data source exceeds 24 populations |
+| Digest labels of forgotten cameras and partners checkable offline; names and ids in tombstones | Needs a key kept outside the file, and the restore's replay depends on the tombstones |
+| Identifying another account from inside `PrivateUsers=yes` units | Every other account reads as one overflow uid there; the listener check refuses nobody inside them |
+| One connection per site across processes | Coordination between processes for a single-user system; stated as a limit |
+| A belief cache, or a maintained list of copied samples | A second source of truth every forget, sweep, confirmed change and restore must invalidate; not needed below about a million readings, where the cap keeps a file by default |
+
+## 6. Next engineering priorities
+
+In the order of the directive's hierarchy: correctness first. Each item says why it is not done.
+
+1. **Gaps of the sentence guard still open**, each pinned as "open" in the gap corpus so that a fix shows up in
+   the differential: an exception written as a negated phrase ("for all users not on Windows"); a bound of time
+   ("until May 2027": left out of the restriction rule on purpose, because its loss generalises over time and
+   inverts nothing); a group named as an advisory's author ("according to the advisory from Windows Users");
+   a pronoun of the sentence's own beside a capitalised claim word; versions swapped between two clauses of one
+   sentence; adverb, get-passive and cleft forms of a role reversal; an "according to the cited sources" set between commas, and the attribution worded from
+   the sources counted before inline citations (both would change accepted text); a restriction after character
+   600 of a claim (production cuts claims at 420). Right-to-left text: a line that uses a direction mark or
+   isolate is read but never cited in an answer.
+2. **Unverified in the installed deployment**: systemd running the units as system units with `PrivateUsers=yes`;
+   polkitd acting on the rule (its JavaScript is evaluated in a test, not by polkitd); a real root and a real
+   second account beyond the user-namespace check; the idle timer; a real reload through the idle policy against
+   the single memory server. In a two-account install SearXNG's own commands write the instance database, which the
+   idle account may only read, so SearXNG needs an account with both; the installer does not arrange that.
+3. **Read-ahead** stays the first place to look if a research run behaves differently from 0.7.0, and
+   `read_ahead=1` is the comparison. Stated residues: for a site whose robots.txt redirects to another site's file
+   while that site is being read, robots.txt is sent twice (charged once); a continued fetch waits one extra
+   politeness interval; one connection per site holds within one process; a query a metasearch daemon on this
+   computer already holds and a dependency check's registry lookups are outside the owner's stop; unused traffic of
+   fetches in flight when the process exits is not recorded (charged traffic since the last checkpoint is lost the
+   same way).
+4. **Contradictions in other words**: values in other units (11 of 16 missed on the benchmark) and aliases (6 of 6)
+   go undetected; a first word that nothing writes inside a sentence is refused as a name; the held-out figure is
+   of a design revised once, so a fresh set of subjects is the clean test before same-value pairs are merged. The
+   pairing needs the answer model. A subject contained in another's name ("Paris, Texas") is stopped only by the
+   answer model's confirmation.
+5. **Graphs.** An existing individual on `gate-v1` still promotes, at 96 and 128 populations, a snapshot at twice
+   the sparse learner's error; only adopting `best-learner-v1` changes that. A graph already active and failing the
+   new check is not demoted. The dense learner's failure is not repaired. The other half of C6 is unchanged: no
+   real data source and no consumer of a promoted graph outside the core.
+6. **Consolidation.** Belief computation stays linear in an epoch's readings (bounded by the limit): an epoch whose
+   readings all carry sample ids pays about 0.3 s per million readings on every read even when nothing was recorded
+   twice. A restore still reads every tombstone of the live file into memory. The prototype's `legacy` status is not
+   bit-exact once readings are consolidated (tested to 1e-12). A camera forgotten while a partner of the same name
+   is held leaves the name in revision, question and decision text. Two files that both live on after a restore
+   issue positions independently, and a restore from a divergent lineage loses learning rather than keeping it.
+   Tombstones and the deletion log hold epoch names and event ids in clear, and the digest labels of forgotten
+   cameras and partners can be checked offline against guessed names.
+7. **The memory server**: against the vLLM pair the nearest statement is the same for 130 of 130 questions and the
+   reranker's best for 129, but the ten nearest candidates are the same set for 104 of 130 (vLLM against itself:
+   120), a drift below what the benchmark can see. Its containers can still open outbound connections (Docker
+   cannot publish a port from a network without egress); the server opens none. A client that keeps 32 connections
+   with prompt heads fills the cap until each head deadline (10 s) passes.
+8. **Calibration**: the evidence is simulated, because no individual has settled predictions yet; for about 50
+   forecasts after a forecaster's rule reverses, the reading is worse than the stated forecast (0.095 against
+   0.043); settlements are treated as independent. A prediction merely settled by a task that is later forgotten
+   keeps its outcome and still counts.
+9. **The knowledge index and the semantic vectors are per process**: another long-running process keeps a forgotten
+   statement's text until its own next query or exit; a repeated query still reads every live statement (172 ms at
+   100,000).
+10. **The critique's remaining marks** are a model's unconfirmed judgement on the 10 to 11 sentences it still reads
+    (4 or 5 marks a run); no precision is measured.
+11. **A TensorRT-LLM comparison** on this model with the harness of this review
     ([NVIDIA_ASSESSMENT.md](NVIDIA_ASSESSMENT.md) §5).
-14. **Voice continuity across a restart (R8)** and an **offline outbox in Pocket**.
-15. **`knowledge.query` at scale (W8):** it rebuilds its lexical index per call (393 ms at 20k statements).
-16. **Left open from the reviews of phase 1**, each low in impact and stated so it is not rediscovered:
+12. **Voice continuity across a restart (R8)** and an **offline outbox in Pocket**.
+13. **Left open from the reviews of phase 1**, each low in impact and stated so it is not rediscovered:
     - *Voice.* Pressing stop on a reply also silences a reply to a question asked before that reply began to speak
       (it is still shown). Whether stop should let the newer reply through is the owner's call. A final chunk
       retried after the hub failed while closing the utterance is acknowledged as a duplicate.
     - *Resource policy.* An open Pocket voice session counts as a session for as long as the phone keeps it open,
-      so a paired device can keep idle unloading from happening (by design a session counts from start to end;
-      there is no cap per device). Idle unloading is off by default.
-    - *Semantic memory.* A long-running process keeps the text and vector of a statement forgotten in another
-      process until its own next memory lookup or its exit; nothing is on disk.
+      so a paired device can keep idle unloading from happening. Idle unloading is off by default.
     - *Forgetting, older than this review.* A graph revision invalidated by `forget_dataset` keeps its weights and
       metrics (the blob is immutable by trigger), and the dataset's digest survives.
-    - *A call that triggers an idle reload* can take up to twice its timeout (never the old 20 minutes).
+    - *Two older tests are sensitive to a slow runner*: the cross-process race test (now spawned, 50 of 50 runs) and
+      the hung-render test's 3 s allowance for a browser to die. Both kill what outlives them, so a failure ends a
+      CI job instead of hanging it.
 
-Done since phase 1 listed them: idle management of the memory models; unused read-ahead in the daily caps;
-`MIGRATIONS.md` (it said version 1) and `ENVIRONMENT.md` (the key file, the resource settings and the service
-ports).
+Done since phase 2 listed them: the guard gaps listed then; read-ahead's traffic bound and the stop for every
+request kind; contradictions in other words (proposed and asked, not merged); the kept knowledge index; stale web
+questions; the calibration loop where it changes no belief; the cap on consolidated readings and a restore's
+memory; the two-account install, the wake unit's start limit, readiness for TTS and SearXNG, the home folder at
+import, the key on `run.sh status`'s command line, a reload's time; one server for both memory models.

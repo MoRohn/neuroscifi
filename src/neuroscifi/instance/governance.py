@@ -110,6 +110,19 @@ _SCRUB_TABLES = (  # table, scrubbed columns, columns stored as JSON
 )
 
 
+def _drop_in_process_copies():
+    """Drop the statement text this process keeps outside the file: knowledge.query's lexical index and the
+    semantic vectors (review F6). Called by every forget that removes or rewrites knowledge text, so nothing
+    forgotten stays in memory; another process drops its copies at its own next query. A cache cannot fail a
+    forget."""
+    try:
+        from ..webcortex import knowledge, semantic
+        knowledge.clear_index()
+        semantic.clear()
+    except Exception:
+        pass
+
+
 def scrub_roots(db, roots):
     """Replace forgotten roots in belief_revisions, pending, decisions and the Web Cortex text columns (task
     objectives, reports and checkpoints, events, claims, knowledge); delete their changepoints and links.
@@ -143,6 +156,8 @@ def scrub_roots(db, roots):
                     db.execute(f"UPDATE {table} SET {','.join(c + '=?' for c in columns)} WHERE rowid=?",
                                (*new, row[0]))
                     rewritten += 1
+    if rewritten:
+        _drop_in_process_copies()      # a knowledge statement may have held the forgotten name
     return rewritten
 
 
@@ -265,7 +280,9 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
     consolidate: the sweep's expiry with InstanceConfig.consolidation on: each matched event with consent 'learn'
     leaves a consolidated reading (ADR-044), every copy of a sample its own: which copy counts is decided when
     beliefs are read (the earliest), so a forgotten first copy gives way to the next. Every matched event is deleted
-    and tombstoned either way.
+    and tombstoned either way. Under a limit (InstanceConfig.max_consolidated_rows) only as many readings are added
+    as it leaves room for, the oldest events first by their place in the journal; the others expire to nothing, and
+    effects["not_consolidated"] counts them. No reading already kept is ever removed for the limit.
     """
     rows = db.execute(f"SELECT seq,id,epoch,channel,root FROM evidence WHERE {where} ORDER BY seq", params).fetchall()
     folded_rows = drop_consolidated(db, *consolidated, now, reason) if consolidated is not None else []
@@ -279,17 +296,27 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
             f"DELETE FROM changepoints WHERE scope IN ({','.join('?' * len(scopes))})", tuple(scopes)).rowcount}
     if not rows and not folded_rows and not any(derived.values()):
         return None
-    kept = set()
-    if consolidate and rows and has_consolidated(db):
+    kept, turned_away = set(), 0
+    if consolidate and rows and has_consolidated(db) and db.execute(
+            f"SELECT 1 FROM evidence WHERE ({where}) AND consent='learn' LIMIT 1", params).fetchone():
+        # (only a sweep that meets a learning event counts the readings for the limit)
         # A seq is issued once (AUTOINCREMENT; a restore raises the counter past the live file's,
         # checkpoints._replay), so no reading can hold it already; OR IGNORE only keeps a file that broke that rule
         # sweepable.
+        room = store.consolidation_room(db)             # None: no limit
+        if room is None or room >= len(rows):
+            limit, limit_params = "", ()
+        else:                                           # the limit may bite: the oldest events first, by seq
+            limit, limit_params = " ORDER BY seq LIMIT ?", (room,)
+            turned_away = db.execute(f"SELECT count(*) FROM evidence WHERE ({where}) AND consent='learn'",
+                                     params).fetchone()[0]
         db.execute(
             "INSERT OR IGNORE INTO evidence_consolidated(seq,epoch,channel,root,value,sample_id,consolidated_at) "
             f"SELECT seq, epoch, channel, root, bit<>action, sample_id, ? FROM evidence WHERE ({where}) "
-            "AND consent='learn'", (now, *params))
+            f"AND consent='learn'{limit}", (now, *params, *limit_params))
         kept = {r[0] for r in rows} & {seq for (seq,) in db.execute(
             "SELECT seq FROM evidence_consolidated WHERE seq BETWEEN ? AND ?", (rows[0][0], rows[-1][0]))}
+        turned_away = max(0, turned_away - len(kept))
     db.executemany("DELETE FROM evidence WHERE seq=?", [(r[0],) for r in rows])
     db.executemany("INSERT OR IGNORE INTO tombstones(id,seq,epoch,deleted_at,reason) VALUES(?,?,?,?,?)",
                    [(i, seq, epoch, now, reason) for seq, i, epoch, _, _ in rows])
@@ -315,6 +342,8 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
         summary = compute(db, epoch) | {"removed": count, "cause": cause}
         if kept:
             summary["consolidated_now"] = sum(1 for r in rows if r[2] == epoch and r[0] in kept)
+        if turned_away:
+            summary["consolidation_limit_reached"] = True   # some of this sweep's learning events left no reading
         db.execute("INSERT INTO belief_revisions(epoch,state_version,created_at,cause,summary) VALUES(?,?,?,?,?)",
                    (epoch, version, now, cause, _dump(summary)))
     causes = _forget_causes(db, [r[1] for r in rows if r[1] is not None])
@@ -325,6 +354,8 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
         effects["consolidated_deleted"] = len(folded_rows)
     if kept:
         effects["consolidated"] = len(kept)
+    if turned_away:
+        effects["not_consolidated"] = turned_away       # learning events the limit on readings left nothing of
     if linked:
         effects["linked_epochs_revised"] = linked
     if drop_epoch is not None or any(derived.values()):
@@ -521,6 +552,12 @@ def sweep(db, now):
     reading: its seq, epoch, channel, root, corrected reading and sample id, which beliefs keep counting. Its id,
     actor, action and bit, provenance and timestamps go, as do memory-only events and later copies of a sample;
     "consolidated" in the result counts the readings kept. With it off an expired event leaves nothing.
+
+    The file keeps at most InstanceConfig.max_consolidated_rows readings (0 = no limit). A sweep that would pass the
+    limit consolidates the oldest of its learning events, by their place in the journal, until the limit is reached;
+    the rest expire to nothing, as with consolidation off, and "not_consolidated" counts them. "warnings" then says
+    what happened and what the owner can do; from 80 % of the limit it says how close the limit is. The limit never
+    removes a reading that is kept.
     """
     with store.write(db):
         effects = _remove(db, "expires_at IS NOT NULL AND expires_at<=? AND retention!='promoted'", (now,), now,
@@ -541,9 +578,15 @@ def sweep(db, now):
            "checkpoints_stale": stale, "streams_expired": streams}
     if effects and effects.get("consolidated"):
         out["consolidated"] = effects["consolidated"]       # absent while zero
-    problems = [p for p in store.setting_problems(db) if "consolidation" in p or "settings" in p]
+    if effects and effects.get("not_consolidated"):
+        out["not_consolidated"] = effects["not_consolidated"]   # absent while zero
+    problems = [p for p in store.setting_problems(db) if "consolidat" in p or "settings" in p]
+    if effects and (effects.get("consolidated") or effects.get("not_consolidated")):
+        # Only a sweep that met learning events looks at the limit: the usual sweep, which expires nothing, costs
+        # no count of the readings.
+        problems += store.consolidation_warnings(db)
     if problems:
-        out["warnings"] = problems                          # absent for sound settings
+        out["warnings"] = problems                          # absent for sound settings below the warning share
     if effects or streams:
         out["wal_checkpoint"] = store.truncate_wal(db)
     return out
@@ -719,6 +762,7 @@ def _drop_knowledge(db, ids, now):
         db.execute(f"DELETE FROM web_mentions WHERE knowledge_id IN ({marks})", part)
         db.execute(f"DELETE FROM web_events WHERE json_extract(detail,'$.knowledge_id') IN ({marks})", part)
     closed = _forget_pending(db, [f"web:knowledge:{k}" for k in ids], [], now)
+    _drop_in_process_copies()
     return {"knowledge_deleted": ids, "versions_restored": sorted(restored), "versions_relinked": sorted(relinked),
             "pending_closed": closed}
 

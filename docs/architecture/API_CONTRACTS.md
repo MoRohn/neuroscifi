@@ -24,9 +24,11 @@ store.write(db) -> context manager                  # BEGIN IMMEDIATE / COMMIT /
 store.bump_state_version(db) -> int ; store.state_version(db) -> int
 store.bump(db, name, amount=1) ; store.counter(db, name) -> int
 store.config(db) -> InstanceConfig(evidence_ttl_seconds, max_evidence_rows, min_free_bytes, ask_budget_per_epoch,
-                                   ask_budget_window_seconds, consolidation, max_thermal_celsius)
+                                   ask_budget_window_seconds, consolidation, max_consolidated_rows,
+                                   max_thermal_celsius)
 store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [names]}   # owner-settable settings only
-#   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation); ValidationError otherwise. `nsf config` is its CLI.
+#   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation, max_consolidated_rows); ValidationError
+#   otherwise. `nsf config` is its CLI.
 #   Each real change adds a deletion_log row: target_kind "setting", target_id the name, effects {"from", "to",
 #   "state_version"} (from a restore: {"from", "to", "carried_by_restore": true}).
 #
@@ -37,6 +39,22 @@ store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [na
 #   beliefs.explain() factors: "supporting_consolidated", "counterevidence_consolidated" (counted in *_total; the
 #                                                      event lists hold raw events only)
 #   governance.sweep() -> "consolidated"               readings kept by this sweep (one per expired 'learn' event)
+#   governance.sweep() -> "not_consolidated"           'learn' events of this sweep that left nothing because the
+#                                                      limit on readings was reached (the oldest by seq are kept)
+#   InstanceConfig.max_consolidated_rows               the limit: int >= 0, default 1,000,000, 0 = none. Never deletes
+#                                                      a reading. A saved value that is not such an int reads as the
+#                                                      default and is listed by store.setting_problems()
+#   store.consolidation_room(db) -> int | None         readings the limit still has room for (None: no limit)
+#   store.consolidation_warnings(db) -> [str]          at the limit, and from 80 % of it; [] otherwise, without a limit
+#                                                      and while consolidation is off. The same sentences appear as
+#                                                      "warnings" in: store.regulation(), store.inventory() (top
+#                                                      level), `nsf config`, and a sweep that kept or turned away a
+#                                                      reading (beside the setting problems); absent while empty
+#   store.regulation(measure=True)["largest_epoch"]    {"epoch", "consolidated_readings", "compute_ms" (float | None)}:
+#                                                      the epoch with the most readings and what compute() costs
+#                                                      there now; absent while nothing is consolidated or unless
+#                                                      asked (`nsf regulation`; console GET /api/inventory?measure=1,
+#                                                      which the overview sends and the header does not)
 #   forget results, effects["consolidated_deleted"]    consolidated readings a forget removed ("deleted" counts events)
 #   governance.forget_consolidated(db, seq: int, now)  one reading by the seq it is listed under; deletion_log kind
 #                                                      "consolidated", target the seq; 'absent' when no reading has it
@@ -44,11 +62,14 @@ store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [na
 #                                                      its changepoints; deletion_log kind "camera", target
 #                                                      "camera:#<digest>"; effects["derived_deleted"]["changepoints"]
 #   console POST /api/forget {"kind": "consolidated", "target": SEQ (integer)} | {"kind": "camera", "target": ROOT}
-#   deletion_log effects of a sweep: "consolidated"; its belief revision summary: "consolidated_now"
+#   deletion_log effects of a sweep: "consolidated", "not_consolidated"; its belief revision summary:
+#       "consolidated_now", and "consolidation_limit_reached": true when the sweep turned an event away
 #   store.inventory()["memory"]["consolidated_readings"], store.regulation()["consolidated_readings"]  (always present)
 #   checkpoints.restore() -> "evidence_consolidated", "consolidated_removed", "settings_carried" {name: {"from",
 #       "to"}}, "settings_warnings" [str], "scope_changes_removed" int (always present; the settings an owner may
-#       change are the live file's in the copy when valid; changepoints of a camera or partner forgotten since go)
+#       change are the live file's in the copy when valid; changepoints of a camera or partner forgotten since go).
+#       The live file's readings are read for the seqs of the copy's journal only (checkpoints._forgets(db, now,
+#       wanted)); the result is the same as reading all of them
 #   store.valid_setting(name, value) -> bool ; store.setting_problems(db) -> [str]  (saved values set_config would
 #       refuse; such a consolidation value reads as off). governance.sweep() and `nsf config` add "warnings" then.
 #   governance.forget_consolidated / forget_dataset: an id beyond SQLite's integers is a ValidationError
@@ -58,7 +79,7 @@ store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [na
 #   memory.retrieve(db, "consolidated", id=SEQ, epoch=, channel=, root=) -> records with payload
 #       {"seq", "channel", "reading", "sample_id"}, permissions.retention "consolidated"
 #   governance.held_roots(db) -> camera and word roots held as events or consolidated readings
-store.birth(db) -> dict ; store.inventory(db) -> dict ; store.regulation(db, path=None) -> dict
+store.birth(db) -> dict ; store.inventory(db) -> dict ; store.regulation(db, path=None, *, measure=False) -> dict
 store.require_write_allowed(db, path=None)          # raises WritesPaused
 rules.register(db, definition, now, *, created_by)   # caller owns txn; idempotent on identical content
 rules.get(db, version) -> dict ; rules.latest(db) -> str ; rules.listing(db) -> list
@@ -461,9 +482,17 @@ access (the console's systemd unit allows loopback only). Leases prevent double 
 | `{"mode": "semantic", "ranked_by": "rerank", "candidates": int, "dropped_below_floor": int, "floor": float, "models": {"embed", "rerank"}, "cached"?: true}` | ranked by the reranker; an item's `score` is the reranker's (0 to 1); statements under the floor are not returned |
 | `{"mode": "semantic", "ranked_by": "embedding", "candidates": int, "models": {"embed"}, "cached"?: true}` | no reranker configured: ranked by cosine similarity (the item's `score`), nothing cut |
 
+`knowledge.query(db, topic, now, *, limit=10, cached=True)`: the BM25 index of the live statements is kept per
+individual file for the life of the process and used only while the live statements read by the call are exactly
+the ones it was built from; `cached=False` builds it for the call. The result is the same either way.
+`knowledge.clear_index()` drops the process's indexes (`knowledge.forget` calls it).
+
 `nsf web memory [status|config|clear]` prints `{enabled, settings {enabled, candidates, floor, timeout,
-rerank_template}, providers {embed, rerank: {configured, endpoint?, model?, state?, reason?, key_present?}},
-vectors_held_by_this_process, effect, error?}`. A provider's `state` is the gateway's health state, or `"asleep"`
+rerank_template, contradictions, pair_similarity, pair_floor, pair_check}, providers {embed, rerank: {configured,
+endpoint?, model?, state?, reason?, key_present?}}, vectors_held_by_this_process, effect, contradictions, error?}`.
+`contradictions` (a sentence) says whether a new statement is also compared with the stored one that states the same
+property in other words (MEMORY_INTEGRATION §3.1); `nsf web memory config --contradictions|--no-contradictions` sets
+the switch (default on; it acts only while `enabled` is on and both memory models are configured). A provider's `state` is the gateway's health state, or `"asleep"`
 when the idle policy unloaded the local service (not an outage: the next lookup starts it). There is no console
 route for it. `nsf setup --json` reports a `memory` step (`done`, `already done`, `skipped` or `would do`) with
 `models {embed?, rerank?}` when it configured them.
@@ -487,8 +516,39 @@ unaffected.
   sentence is a restatement the record is `{status: "skipped", reason: "nothing to judge: …", judged: 0,
   restatements: N}` and no critique call was made.
 
+- The consolidation summary (`consolidate.run`; the task's `consolidated` event carries its counts) gains, only
+  while semantic memory and its `contradictions` switch are on, `pairing` (`{"mode": "semantic", "asked",
+  "proposed", "models", "confirmed"?, "refused_by_the_answer_model"?, "check"?, "not_asked"?}` or `{"mode":
+  "lexical", "reason", "retry_in_seconds"?, "waking"?}`) and `paired_by_meaning` (`[{key, knowledge_id, relation:
+  "same" | "conflict", similarity, score, score_back}]`). With the switch off the summary has neither key.
+
 `POST /api/web/config` accepts only the four switches listed above; `memory_check` is set with
 `nsf web config --memory-check|--no-memory-check`.
+
+**Forecasts as read (ADR-046).** Additive, nothing renamed or removed:
+- Web setting `calibrated_forecasts` (boolean, default true; `nsf web config --set calibrated_forecasts=false`).
+- `evolution.fit_recalibration(pairs, *, minimum, window, prior_shift, prior_tilt) -> {n, used, minimum, applied,
+  shift, tilt, centre}`; `recalibrate(p, fit) -> float | None` (`p` itself while `applied` is false);
+  `settled_forecasts(db) -> {knowledge|hypothesis|owner: [(forecast, 1.0|0.0), …]}`; `recalibrations(db) ->
+  {kind: fit}` (every fit the identity, with `off: true`, when the setting is off); `prediction_kind(db, id)`;
+  `prequential(pairs) -> {n, adjusted, brier_stated, brier_mapped}`; `recalibration_report(db)`.
+- `nsf knowledge calibration` gains the key `recalibration`: `{enabled, minimum, window, kinds: {kind: {settled,
+  mapping, reads: {"0.1" … "0.9"}, had_it_been_used}}, used_by, off}`. `current` (`evolution.calibration`) and
+  `history` are unchanged and score the forecasts as stated.
+- An `autonomy.candidates` entry of kind `hypothesis_prediction` keeps `forecast` (the stored forecast) and gains
+  `forecast_as_read` when the mapping of its kind changes it; an entry of kind `prediction` gains `forecast` and
+  `forecast_as_read` only in that case. `signals.prediction_uncertainty` is computed from the forecast as read.
+  `info_gain` stays the stated forecast's gain and is what `min_gain` compares; a hypothesis' entry gains
+  `info_gain_as_read` (the gain of its forecast as read, which its `priority` uses) when the two differ. The
+  `decision` event of a queued investigation carries `forecast_as_read` and `info_gain_as_read` when present.
+- No table, column or stored value is added or changed.
+
+**Web question budget.** `knowledge.web_question_load(db, now=None, cfg=None) -> {open, stale, counted, cap,
+stale_after_days, room}` and `knowledge.stale_web_questions(db, now, cfg=None) -> [{id, scope, question, created_at,
+age_days}]`. A web question open longer than `web_question_stale_days` (setting, default 30; 0 = never stale) is
+stale: still open and answerable, not counted toward `max_open_web_questions`. `knowledge.question_room(db, cfg=None,
+now=None)`: without `now` every open question counts. `nsf web status` carries `questions` (the load and
+`stale_questions: [{id, scope, age_days}]`).
 
 **Pocket bridge research actions** (ADR-028). Present only when the bridge runs with `--instance-db` and the
 individual has `enabled` and `pocket_research` on; otherwise 404 like any unknown route. Existing bearer, Origin,
@@ -566,7 +626,20 @@ model calls; `spoken` skips the critique pass when `critique_voice` is off.
 (white space and one final full stop aside) with the attribution the code appended; the critique judges only the
 sentences for which it is false. It is always false for a sentence that cites more than one claim, for a claim that
 holds its own "according to <source>", and for text with characters a reader does not see.
-`reasoning.compose()` and `reasoning.guard()` are those of 0.7.0, with one addition that only refuses: a sentence
-whose own trailing "according to <source> …" would take further words with it is composed and judged as before
-(the item carries `cut: [text as written, the words]`) and, where the guard would accept it, is rejected with
-`reasoning.CUT_WORDS` instead (COGNITIVE_INFERENCE §3).
+`reasoning.compose()` and `reasoning.guard()` are those of 0.7.0 with additions that only refuse, and one proven
+exemption (COGNITIVE_INFERENCE §3). Refusal reasons a rejected sentence can now carry, each the whole reason list of
+a sentence every 0.7.0 check accepted: `reasoning.CUT_WORDS` (its own trailing "according to <source> …" would take
+words with it that do not only name the source; the composed item carries `cut: [text as written, the words]`),
+`reasoning.RESTRICTION_LOST` (a cited claim carries an exception or a condition and is not held whole),
+`reasoning.CASE_CHANGED` (a word of the cited claims written in another case), `reasoning.UNSEEN_IN_CLAIM` (a
+cited claim holds characters a reader does not see), `reasoning.PASSIVE_SWAP` and `reasoning.ROLE_SWAP` (who does
+what is reversed against a cited claim, in either voice); `reasoning.REFUSALS` lists the last five. A sentence that
+is one cited claim word for word, and whose claim does not open with a word whose referent is on its page (a
+pronoun, "Both", "Such", "One", "The latter" …), is not rejected for `reasoning.ANCHOR_TIED` alone. Every
+rejection keeps the shape `{"text", "reasons": [str]}`; reasons that list words list them in one order in every
+process. Extraction (`webcortex/extract.py`, `text.as_seen`, `text.reorders`): a document's `flags` may carry
+`reordered_blocks_removed` (HTML paragraphs dropped because a direction control reorders what they show) and
+`reordered_lines_removed` (lines dropped for the same reason in other text, or loose text in an HTML container),
+and `zero_width_removed` also counts characters that came out of character references. A raw-text element (title,
+textarea, script, style, xmp, …) holding a direction control loses its content. A line of right-to-left text keeps
+its direction marks, embeddings and isolates in `text`.

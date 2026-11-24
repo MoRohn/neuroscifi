@@ -26,6 +26,7 @@ user-asserted facts (web_knowledge provenance 'user_asserted'). Nothing here tou
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import math
 
 from ..instance import store
 from ..instance.errors import Conflict, NotFound, ValidationError
@@ -553,6 +554,165 @@ def calibration(db, *, since=None) -> dict:
                   "skill": round(1 - brier / ref, 6) if ref > 0 else None, "ece": round(ece, 6), "bins": bins}
 
 
+# ---- recalibration: what the settled forecasts say about the next one (ADR-046) ---------------------------------
+# A forecast is a number some rule produced: the confidence of a knowledge item, the posterior of a hypothesis, the
+# owner's own estimate. calibration() measures how such numbers fared; this maps the next forecast of the same kind
+# through what was measured:  logit q = logit p + shift + tilt * (logit p - centre).
+# shift = 0 and tilt = 0 is the forecast as stated, and that is where the estimate starts: it is the maximum of the
+# log-likelihood of the settled outcomes under a Gaussian prior on shift and tilt around 0, so a few settlements move
+# it little, and below RECALIBRATION_MINIMUM settlements it is not moved at all. Computed on read from the settled
+# rows of web_predictions (the rows calibration() reads): no stored parameter, so a prediction a forget removes
+# stops counting at once. docs/knowledge/KNOWLEDGE_EVOLUTION.md section 5 has the measurements behind the numbers.
+
+RECALIBRATION_KINDS = ("knowledge", "hypothesis", "owner")   # one mapping per kind of forecaster
+# The four numbers below were chosen on the development streams of bench/calibration.py (the lowest mean distance
+# to the true probability among the settings that never made a stream worse by more than 0.002) and are reported
+# on its held-out streams: docs/quality/evidence/open_items_calibration.json.
+RECALIBRATION_MINIMUM = 20        # settled forecasts of a kind before any forecast of that kind is adjusted
+RECALIBRATION_WINDOW = 100        # only the most recent settlements count (a forecaster's habits change)
+RECALIBRATION_PRIOR_SHIFT = 16.0  # prior precision of shift: about 64 settlements at even odds weigh as much
+RECALIBRATION_PRIOR_TILT = 16.0   # prior precision of tilt, in the same units
+RECALIBRATION_TILT = (-1.0, 1.0)  # slope 1 + tilt stays in [0, 2]: the mapping never reverses an order
+IDENTITY = {"applied": False, "shift": 0.0, "tilt": 0.0, "centre": 0.0}
+
+
+def _logit(p: float) -> float:
+    p = min(MAX_FORECAST, max(MIN_FORECAST, float(p)))
+    return math.log(p / (1.0 - p))
+
+
+def _sigmoid(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-x)) if x >= 0 else math.exp(x) / (1.0 + math.exp(x))
+
+
+def fit_recalibration(pairs, *, minimum=RECALIBRATION_MINIMUM, window=RECALIBRATION_WINDOW,
+                      prior_shift=RECALIBRATION_PRIOR_SHIFT, prior_tilt=RECALIBRATION_PRIOR_TILT) -> dict:
+    """The mapping for one kind of forecast from its settled (forecast, outcome) pairs, oldest first; outcome 1 =
+    confirmed, 0 = error. {n (pairs given), used (the last `window`), minimum, applied, shift, tilt, centre};
+    applied False (fewer than `minimum` pairs in the window) is the identity. Deterministic: Newton steps from the
+    identity on a concave objective, forecasts grouped by value. prior_tilt None fits the shift alone."""
+    pairs = [(float(p), 1.0 if y else 0.0) for p, y in pairs if state.finite(p) is not None]
+    used = pairs[-int(window):] if window else pairs
+    out = {"n": len(pairs), "used": len(used), "minimum": int(minimum)} | IDENTITY
+    if not used or len(used) < minimum:
+        return out
+    groups: dict = {}
+    for p, y in used:
+        g = groups.setdefault(round(_logit(p), 9), [0.0, 0.0])
+        g[0] += 1.0
+        g[1] += y
+    centre = sum(z * g[0] for z, g in groups.items()) / len(used)
+    rows = [(z, z - centre, g[0], g[1]) for z, g in sorted(groups.items())]
+    lo, hi = RECALIBRATION_TILT
+    tilt_weight = 0.0 if prior_tilt is None else float(prior_tilt)
+    a = c = 0.0
+    for _ in range(60):
+        ga, gc, haa, hac, hcc = -prior_shift * a, -tilt_weight * c, float(prior_shift), 0.0, tilt_weight
+        for z, d, k, wins in rows:
+            s = _sigmoid(z + a + c * d)
+            w = k * s * (1.0 - s)
+            ga += wins - k * s
+            gc += (wins - k * s) * d
+            haa += w
+            hac += w * d
+            hcc += w * d * d
+        det = haa * hcc - hac * hac
+        if prior_tilt is None or det <= 1e-12 or (c <= lo and gc < 0) or (c >= hi and gc > 0):
+            step_a, step_c = ga / haa, 0.0                         # the tilt is fixed: one unknown
+        else:
+            step_a, step_c = (ga * hcc - gc * hac) / det, (gc * haa - ga * hac) / det
+        step_a = max(-2.0, min(2.0, step_a))                       # damped: the first steps can be long
+        new_c = max(lo, min(hi, c + max(-0.5, min(0.5, step_c))))
+        moved = abs(step_a) + abs(new_c - c)
+        a, c = a + step_a, new_c
+        if moved < 1e-10:
+            break
+    return out | {"applied": True, "shift": round(a, 6), "tilt": round(c, 6), "centre": round(centre, 6)}
+
+
+def recalibrate(p, fit) -> float | None:
+    """The forecast `p` as the mapping `fit` (fit_recalibration) reads it, inside [MIN_FORECAST, MAX_FORECAST];
+    `p` itself when the mapping is the identity, None for no forecast."""
+    p = state.finite(p)
+    if p is None or not fit or not fit.get("applied"):
+        return p
+    z = _logit(p)
+    q = _sigmoid(z + fit["shift"] + fit["tilt"] * (z - fit["centre"]))
+    return round(min(MAX_FORECAST, max(MIN_FORECAST, q)), 6)
+
+
+_KIND_SQL = ("CASE WHEN p.knowledge_id IS NOT NULL THEN 'knowledge' WHEN h.origin='owner' THEN 'owner' "
+             "ELSE 'hypothesis' END")
+
+
+def settled_forecasts(db) -> dict:
+    """{kind: [(forecast, outcome 1 or 0), ...] oldest first} of every settled prediction with a forecast: the
+    rows calibration() scores, by who made the forecast ('knowledge': an item's confidence; 'hypothesis': a
+    derived hypothesis' posterior; 'owner': the owner's own estimate, `nsf knowledge hypothesize`)."""
+    out = {kind: [] for kind in RECALIBRATION_KINDS}
+    for kind, p, outcome in db.execute(
+            f"SELECT {_KIND_SQL}, p.probability, p.outcome FROM web_predictions p LEFT JOIN web_hypotheses h ON "
+            "h.id=p.hypothesis_id WHERE p.outcome IN ('confirmed','error') AND p.probability IS NOT NULL "
+            "ORDER BY coalesce(p.checked_at, 0), p.id"):
+        out[kind].append((float(p), 1.0 if outcome == "confirmed" else 0.0))
+    return out
+
+
+def calibrated_forecasts_enabled(db) -> bool:
+    return bool(getattr(state.get_config(db), "calibrated_forecasts", True))
+
+
+def recalibrations(db) -> dict:
+    """{kind: mapping} from the settled forecasts as they are stored now. With the setting `calibrated_forecasts`
+    off every mapping is the identity (and says so)."""
+    if not calibrated_forecasts_enabled(db):
+        return {kind: {"n": None, "used": 0, "minimum": RECALIBRATION_MINIMUM, "off": True} | IDENTITY
+                for kind in RECALIBRATION_KINDS}
+    return {kind: fit_recalibration(pairs) for kind, pairs in settled_forecasts(db).items()}
+
+
+def prediction_kind(db, prediction_id) -> str | None:
+    """Whose forecast a prediction holds (RECALIBRATION_KINDS), or None for no such prediction."""
+    row = db.execute(f"SELECT {_KIND_SQL} FROM web_predictions p LEFT JOIN web_hypotheses h ON h.id=p.hypothesis_id "
+                     "WHERE p.id=?", (prediction_id,)).fetchone()
+    return row[0] if row else None
+
+
+def prequential(pairs, **fit_options) -> dict:
+    """How the mapping would have fared on these settled pairs had it been in use all along: each forecast is
+    mapped with what the pairs before it give, then scored against its own outcome. {n, adjusted (forecasts the
+    mapping changed), brier_stated, brier_mapped}; the two scores are equal while nothing is adjusted."""
+    stated = mapped = 0.0
+    adjusted = 0
+    for i, (p, y) in enumerate(pairs):
+        fit = fit_recalibration(pairs[:i], **fit_options)
+        adjusted += bool(fit["applied"])
+        stated += (p - y) ** 2
+        mapped += (recalibrate(p, fit) - y) ** 2
+    n = len(pairs)
+    return {"n": n, "adjusted": adjusted, "brier_stated": round(stated / n, 6) if n else None,
+            "brier_mapped": round(mapped / n, 6) if n else None}
+
+
+def recalibration_report(db) -> dict:
+    """For `nsf knowledge calibration`: per kind of forecast the mapping in force, what it makes of a few stated
+    forecasts, and how it would have fared on this individual's own settled predictions (prequential)."""
+    fits, settled = recalibrations(db), settled_forecasts(db)
+    kinds = {}
+    for kind in RECALIBRATION_KINDS:
+        fit, pairs = fits[kind], settled[kind][-RECALIBRATION_WINDOW:]
+        kinds[kind] = {"settled": len(settled[kind]), "mapping": fit,
+                       "reads": {f"{p:.1f}": recalibrate(p, fit) for p in (0.1, 0.3, 0.5, 0.7, 0.9)},
+                       "had_it_been_used": prequential(pairs) if pairs else None}
+    return {"enabled": calibrated_forecasts_enabled(db), "minimum": RECALIBRATION_MINIMUM,
+            "window": RECALIBRATION_WINDOW, "kinds": kinds,
+            "used_by": "the order of autonomous research among the candidates admitted from their stated "
+                       "forecasts (autonomy.candidates: the uncertainty of a forecast and the information gain "
+                       "that ranks a hypothesis; never min_gain). Stored forecasts, verification states, verdicts "
+                       "and answers are not changed by it.",
+            "off": "nsf web config --set calibrated_forecasts=false"}
+
+
 def _snapshot(db, kind, value, now) -> int:
     return db.execute("INSERT INTO web_metrics(kind,value,computed_at) VALUES(?,?,?)",
                       (kind, state.dumps(value), now)).lastrowid
@@ -960,7 +1120,8 @@ def _cli_hypothesize(db, a, now):
 
 
 def _cli_calibration(db, a, now):
-    return {"current": calibration(db), "history": calibration_history(db, limit=a.limit)}
+    return {"current": calibration(db), "recalibration": recalibration_report(db),
+            "history": calibration_history(db, limit=a.limit)}
 
 
 _NODE_TABLES = {"knowledge": "web_knowledge", "hypothesis": "web_hypotheses", "prediction": "web_predictions",

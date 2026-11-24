@@ -194,6 +194,49 @@ class ClaimCluster(JsonMixin):
 _CHARGE_LOCK = threading.Lock()   # one lock for every Usage: fetches and searches charge from many threads
 
 
+class Stopped(Exception):
+    """The owner's stop, raised by a task's gate on a thread that is not the run's own: inside a search provider's
+    call (search.ProviderRegistry.search(wanted=...)) or a render's sub-request (browser.BrowserRenderer.render(
+    gate=...)), before a request is sent. `why` says which stop (the task was cancelled, web access was turned
+    off, ...). `denied`: not the task but the host about to be contacted is refused (on the owner's deny list as
+    it is now); the other requests of the task go on. Never a FetchError: it says nothing about the site."""
+
+    def __init__(self, why, *, denied=False):
+        super().__init__(str(why))
+        self.why, self.denied = str(why), bool(denied)
+
+
+def stop_verdict(wanted, url=None) -> Stopped | None:
+    """What a task's gate says now, asked from a thread that is not the run's own: None (go on) or the stop.
+    `wanted(url)` answers a reason, a Stopped (to say `denied`) or nothing; a gate that fails is a stop (nothing
+    goes out past a gate that cannot be read)."""
+    if wanted is None:
+        return None
+    try:
+        why = wanted(url)
+    except Exception as error:
+        return Stopped(f"gate failed ({type(error).__name__})")
+    if not why:
+        return None
+    return why if isinstance(why, Stopped) else Stopped(why)
+
+
+def raising_gate(wanted):
+    """`wanted` as a gate that raises (SafeFetcher.gated, search.ask_gate), or None without one."""
+    if wanted is None:
+        return None
+
+    def ask(url):
+        stop = stop_verdict(wanted, url)
+        if stop is not None:
+            raise stop
+    return ask
+
+
+UNUSED_SHARE = 0.10            # of max_requests / max_bytes: what read-ahead may send or receive unused
+UNUSED_BYTES_FLOOR = 256 * 1024
+
+
 class BudgetExceeded(Exception):
     def __init__(self, resource: str, used, limit):
         super().__init__(f"budget exhausted: {resource} {used} of {limit}")
@@ -205,8 +248,9 @@ class Budget(JsonMixin):
     max_queries: int = 6
     # every network request the task is charged for, incl. API calls and robots.txt: charged <= max_requests.
     # Requests of pages fetched ahead of their turn and then not used are counted apart
-    # (Usage.prefetch_unused_requests) and are on top: they alone never exceed max_requests either, so everything a
-    # task sends is at most 2 x max_requests
+    # (Usage.prefetch_unused_requests) and are on top, within the task's unused allowance (unused_allowance) and
+    # within max_requests itself: so everything a task sends is at most max_requests + the smaller of the two (a
+    # render's sub-requests have their own allowance, max_render_requests)
     max_requests: int = 40
     max_pages: int = 8                # documents acquired (fetched or rendered)
     max_bytes: int = 20_000_000
@@ -224,6 +268,24 @@ class Budget(JsonMixin):
             return replace(base)
         known = {f.name for f in fields(cls)}
         return replace(base, **{k: v for k, v in raw.items() if k in known})
+
+    def unused_allowance(self, window: int) -> tuple[int, int]:
+        """(requests, bytes) the task's read-ahead may send and receive without the task using them, when it reads
+        `window` pages at once (config.read_ahead): UNUSED_SHARE of the budget, and never less than what a full
+        window needs (a robots.txt and a page for each page in flight, which is what the pages ahead hold while
+        they are fetched, and room for one of them to be wasted) / UNUSED_BYTES_FLOOR.
+
+        Requests are held to it exactly (net.SafeFetcher.speculate): what the task's fetches ahead have sent
+        unused, plus what its fetches ahead in flight have sent or hold, never exceeds it, so a fetch ahead that
+        would pass it is not started, and one under way stops before the request (its claim goes on from there on
+        the task's own budget). As unused requests accumulate, fewer pages fit ahead, and with the allowance spent
+        the task reads one page at a time for the rest of the run, which is the same reading, slower.
+        Bytes: no page is fetched ahead once the bytes received ahead and not used have reached the allowance;
+        the pages in flight at that moment still finish (each within the document size limit and the task's
+        max_bytes)."""
+        window = max(1, int(window))
+        return (max(2 * window, int(self.max_requests * UNUSED_SHARE)),
+                max(UNUSED_BYTES_FLOOR, int(self.max_bytes * UNUSED_SHARE)))
 
     def clamp(self, ceiling: "Budget") -> "Budget":
         """Never exceed the owner's configured ceiling."""
