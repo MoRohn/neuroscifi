@@ -200,8 +200,12 @@ idle_access() {
   # database's mode); the folder both write, setgid so that what the idle account creates belongs to the group
   # (the code makes its own files group-writable in such a folder and private elsewhere).
   # $STATE_DIR itself is named by root's /var/lib, which $SVC_USER cannot change, so its path is the real folder.
+  # In a session of its own, with no terminal in reach: stdin is /dev/null and its output goes through a pipe, so
+  # nothing of root's terminal is open in a process the service account may trace or signal (on a host without
+  # ptrace_scope or legacy_tiocsti protections a process could otherwise push keystrokes into root's shell).
   local as_service=(setpriv --reuid="$SVC_USER" --regid="$SVC_USER" --init-groups --reset-env)
   command -v setpriv >/dev/null 2>&1 || as_service=(runuser -u "$SVC_USER" --)
+  if command -v setsid >/dev/null 2>&1; then as_service=(setsid --wait "${as_service[@]}"); fi
   # shellcheck disable=SC2016  # the script is for the inner bash; its $1..$4 are its arguments
   local inside='set -u
 state="$1" db="$2" group="$3" dry="$4" resources="$2.resources" failed=0
@@ -230,7 +234,15 @@ if [ -e "$resources" ] || [ -L "$resources" ]; then
     if [ "$dry" = 1 ]; then
       echo "+ (as the service account) chgrp $group and chmod g+rw: every plain file directly in $resources"
     else
-      find "$resources" -maxdepth 1 -type f -user "$(id -u)" -exec chgrp "$group" {} + -exec chmod g+rw {} + || failed=1
+      if ! errs="$(find "$resources" -maxdepth 1 -type f -user "$(id -u)" -exec chgrp "$group" {} + \
+                   -exec chmod g+rw {} + 2>&1 >/dev/null)"; then
+        case "$errs" in
+          *"No such file or directory"*)   # a file went away between the listing and the change: a service runs
+            echo "changed while it was gone over: some files of $resources came and went (a service writing there?); nothing is wrong with them" >&2
+            [ "$failed" = 1 ] || failed=2 ;;
+          *) printf "%s\n" "$errs" >&2; failed=1 ;;
+        esac
+      fi
     fi
   fi
 else
@@ -241,8 +253,20 @@ fi
 exit "$failed"'
   if [ "$DRY" -eq 1 ]; then
     bash -c "$inside" inside "$STATE_DIR" "$IDLE_DB" "$SVC_USER" 1
-  elif ! "${as_service[@]}" bash -c "$inside" inside "$STATE_DIR" "$IDLE_DB" "$SVC_USER" 0; then
-    die "a step inside $STATE_DIR was refused (above); nothing there was done as root. Look at what $SVC_USER keeps there."
+  else
+    local status again
+    set +e                       # the status is read below; set -e with pipefail would end the script here
+    "${as_service[@]}" bash -c "$inside" inside "$STATE_DIR" "$IDLE_DB" "$SVC_USER" 0 </dev/null 2>&1 | cat
+    status="${PIPESTATUS[0]}"
+    set -e
+    # The steps run one after the other; those before a refused one stay applied (each is one of these steps, so
+    # nothing is half-done), and running --idle-access again does the rest: it is safe to repeat.
+    again="sudo bash deploy/install.sh --idle-access --idle-user $IDLE_USER --db $IDLE_DB"
+    case "$status" in
+      0) ;;
+      2) die "files in $IDLE_DB.resources changed while the installer went over them (a service is using them). The other steps are applied. Run it again, best with the services stopped: $again" ;;
+      *) die "a step inside $STATE_DIR was refused (above); nothing there was done as root. The steps before it stay applied. Look at what $SVC_USER keeps there, then run: $again" ;;
+    esac
   fi
   # The request folder: the idle account owns it (it removes the requests), the service account's group may create
   # files in it, nobody else may enter. Sticky: a request can be removed by whoever left it and by the folder's

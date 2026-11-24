@@ -385,10 +385,14 @@ def inside(repo, prefix, site, rel_python):
                   check=False)
     again = sh(*installer, check=False)              # the real database, with the links planted in its folder
     after_attack = {p: mode(p) for p in victims.values()}
+    said = attacked.stdout + attacked.stderr
     check("a symbolic link the service account planted makes the installer refuse, and changes nothing it points at",
-          attacked.returncode != 0 and "symbolic link" in attacked.stderr and after_attack == before_attack,
-          {"exit": attacked.returncode, "said": attacked.stderr.strip().splitlines()[-3:], "before": before_attack,
+          attacked.returncode != 0 and "symbolic link" in said and after_attack == before_attack,
+          {"exit": attacked.returncode, "said": said.strip().splitlines()[-3:], "before": before_attack,
            "after": after_attack})
+    check("the refusal says the earlier steps stay applied and how to run it again",
+          "steps before it stay applied" in said and f"--idle-access --idle-user {OPS} --db {planted}" in said,
+          said.strip().splitlines()[-2:])
     check("links inside the shared folder are passed over: the installer's run over its files changes no target",
           again.returncode == 0 and after_attack == before_attack,
           {"exit": again.returncode, "hard link made": hard.returncode == 0, "after": after_attack})
@@ -406,6 +410,40 @@ def inside(repo, prefix, site, rel_python):
                  f"{DB}.resources/hard.lock"):
         if os.path.lexists(path):
             os.unlink(path)
+
+    # 3b'. No terminal of root's reaches the service account's steps (security re-review): run the installer on a
+    # terminal (script(1) gives it one) with a wrapper in front of setpriv that records, as the step starts, its
+    # controlling terminal (field 7 of /proc/PID/stat; 0: none), its session and its stdin.
+    wrap = Path(f"{MNT}/wrap")
+    wrap.mkdir(exist_ok=True)
+    real_setpriv = shutil.which("setpriv", path="/usr/bin:/bin:/usr/sbin:/sbin")
+    (wrap / "setpriv").write_text("#!/bin/bash\n"
+                                 f"echo \"tty=$(cut -d' ' -f7 /proc/$$/stat) sid=$(cut -d' ' -f6 /proc/$$/stat) "
+                                 f"installer_sid=$(cut -d' ' -f6 /proc/$PPID/stat) "
+                                 f"stdin=$(readlink /proc/$$/fd/0)\" >> {wrap}/seen\n"
+                                 f"exec {real_setpriv} \"$@\"\n")
+    os.chmod(wrap / "setpriv", 0o755)
+    on_tty = sh("script", "-qec", f"PATH={wrap}:/usr/sbin:/usr/bin:/sbin:/bin " + " ".join(installer), "/dev/null",
+                check=False)
+    seen = (wrap / "seen").read_text().split() if (wrap / "seen").exists() else []
+    fields = dict(item.split("=", 1) for item in seen)
+    check("the service account's steps run with no controlling terminal, in a session of their own, stdin /dev/null",
+          on_tty.returncode == 0 and fields.get("tty") == "0" and fields.get("stdin") == "/dev/null"
+          and fields.get("sid") != fields.get("installer_sid"), {"exit": on_tty.returncode, **fields})
+
+    # 3b''. Files that come and go while the installer goes over the shared folder (a service writing there): any
+    # failure says so plainly and how to run it again, never that the service account did something wrong.
+    churn = subprocess.Popen([*as_svc, "bash", "-c", f"cd {DB}.resources && for i in $(seq 1 4000); do "
+                              "touch churn-$i; rm -f churn-$((i-1)); done; rm -f churn-*"])
+    outcomes = []
+    for _ in range(6):
+        run_ = sh(*installer, check=False)
+        outcomes.append((run_.returncode, (run_.stdout + run_.stderr).strip().splitlines()[-1:]))
+    churn.wait(60)
+    wrong = [o for o in outcomes if o[0] != 0 and not ("changed while" in o[1][0] and "Run it again" in o[1][0])]
+    check("files changing under the installer are reported as such, never as a refusal",
+          not wrong and {p: mode(p) for p in victims.values()} == before_attack,
+          {"runs": len(outcomes), "changed": sum(1 for o in outcomes if o[0] != 0), "wrong": wrong[:2]})
 
     # 3c. A plain run of the installer later (an upgrade, without --idle) keeps the arrangement (review F7).
     plain = sh("bash", f"{repo}/deploy/install.sh", "--dry-run", "--unit-dir", f"{MNT}/units", check=False)
