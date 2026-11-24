@@ -13,9 +13,9 @@ DOCKER_USER_UNITS = ("neuroscifi-vllm.service", "neuroscifi-voice-asr.service", 
 MEMORY_UNITS = {"neuroscifi-memory-embed.service": "embed", "neuroscifi-memory-rerank.service": "rerank",
                 "neuroscifi-memory.service": "all"}
 MEMORY_SERVERS = ("single", "vllm")       # deploy/memory/memory.env: NSF_MEMORY_SERVER
-# What `deploy/install.sh --memory` installs today: the units of the two-server way. The single server's unit,
-# neuroscifi-memory.service, is installed by hand (its header says how) until the installer knows the setting.
-INSTALLED_BY_MEMORY_FLAG = ("neuroscifi-memory-embed.service", "neuroscifi-memory-rerank.service")
+# What `deploy/install.sh --memory` installs, by NSF_MEMORY_SERVER (memory.env, or --memory-server).
+INSTALLED_BY_MEMORY_FLAG = {"single": ("neuroscifi-memory.service",),
+                            "vllm": ("neuroscifi-memory-embed.service", "neuroscifi-memory-rerank.service")}
 
 
 def _memory_env(tmp_path, server, extra=None):
@@ -70,13 +70,20 @@ def test_install_sh_installs_the_memory_units_only_when_asked_and_renders_their_
     script = str(ROOT / "deploy" / "install.sh")
     plain = subprocess.run(["bash", script, "--dry-run", "--unit-dir", str(tmp_path)], capture_output=True, text=True)
     assert plain.returncode == 0 and "neuroscifi-memory-" not in plain.stdout
-    asked = subprocess.run(["bash", script, "--dry-run", "--unit-dir", str(tmp_path), "--memory", "--memory-user",
-                            "nsfmodels"], capture_output=True, text=True)
-    assert asked.returncode == 0
-    for name in INSTALLED_BY_MEMORY_FLAG:
-        line = next(row for row in asked.stdout.splitlines() if row.startswith("+ sed") and f"/{name} >" in row)
-        assert "'s#^User=.*#User=nsfmodels#'" in line and "'s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=" in line
-    assert "installed disabled" in asked.stdout and not list(tmp_path.iterdir())      # a dry run writes nothing
+    shipped = re.search(r"^NSF_MEMORY_SERVER=(\w+)", (ROOT / "deploy" / "memory" / "memory.env").read_text(), re.M)[1]
+    for server, extra in ((shipped, []), ("single", ["--memory-server", "single"]), ("vllm", ["--memory-server", "vllm"])):
+        asked = subprocess.run(["bash", script, "--dry-run", "--unit-dir", str(tmp_path), "--memory", "--memory-user",
+                                "nsfmodels", *extra], capture_output=True, text=True)
+        assert asked.returncode == 0, asked.stderr
+        for name in INSTALLED_BY_MEMORY_FLAG[server]:
+            line = next(row for row in asked.stdout.splitlines() if row.startswith("+ sed") and f"/{name} >" in row)
+            assert "'s#^User=.*#User=nsfmodels#'" in line and "'s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=" in line
+        other = INSTALLED_BY_MEMORY_FLAG["vllm" if server == "single" else "single"]
+        assert not any(f"/{name} >" in asked.stdout for name in other)          # never both kinds
+        assert "installed disabled" in asked.stdout and not list(tmp_path.iterdir())  # a dry run writes nothing
+    bad = subprocess.run(["bash", script, "--dry-run", "--memory", "--memory-user", "nsfmodels", "--memory-server",
+                          "both"], capture_output=True, text=True)
+    assert bad.returncode == 1 and "--memory-server" in bad.stderr
     for user in ("root", "two words", ""):
         refused = subprocess.run(["bash", script, "--dry-run", "--memory", "--memory-user", user], capture_output=True,
                                  text=True, env={"PATH": "/usr/bin:/bin"})

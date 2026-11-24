@@ -201,7 +201,10 @@ def test_the_polkit_rule_allows_the_idle_account_start_and_stop_of_exactly_the_p
     out = _dry("--idle-access", "--idle-user", "nsfmodels").stdout
     rule = "\n".join(line[4:] for line in out.split("(mode 0644):\n", 1)[1].splitlines() if line.startswith("    "))
     units = set(re.findall(r'"(neuroscifi-[a-z-]+\.service)"', rule))
-    assert units == {svc.unit for svc in idle.SERVICES.values() if svc.unit}
+    policy = {svc.unit for svc in idle.SERVICES.values() if svc.unit}
+    memory = {"neuroscifi-memory.service", "neuroscifi-memory-embed.service", "neuroscifi-memory-rerank.service"}
+    # every unit the policy manages, plus the memory units of the other NSF_MEMORY_SERVER way and nothing else
+    assert policy <= units and units - policy <= memory and memory <= units
     assert 'subject.user == "nsfmodels"' in rule and 'var verbs = ["start", "stop"];' in rule
     assert 'action.id == "org.freedesktop.systemd1.manage-units"' in rule
     assert rule.count("polkit.Result.YES") == 1 and "restart" not in rule and "enable" not in rule

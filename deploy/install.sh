@@ -8,7 +8,8 @@
 #
 #   sudo bash deploy/install.sh [--dry-run] [--source DIR | --wheel FILE] [--wheelhouse DIR]
 #                               [--prefix DIR] [--python PYTHON] [--unit-dir DIR] [--web] [--websearch]
-#                               [--searxng] [--llm [--llm-user USER]] [--memory [--memory-user USER]]
+#                               [--searxng] [--llm [--llm-user USER]]
+#                               [--memory [--memory-user USER] [--memory-server single|vllm]]
 #                               [--idle [--idle-user USER] [--db FILE]]
 #   sudo bash deploy/install.sh --idle-access [--idle-user USER] [--db FILE] [--dry-run]
 #
@@ -28,9 +29,12 @@
 #               deploy/vllm/run.sh in the source folder (NSF_REPO); needs docker and the weights (COGNITIVE_INFERENCE §4)
 # --llm-user U  the account the vLLM unit runs as (default: $SUDO_USER); it must be in the docker group and own the
 #               weights and key under its home
-# --memory      also install neuroscifi-memory-embed.service and neuroscifi-memory-rerank.service: the two memory
-#               models (memory search by meaning; MEMORY_INTEGRATION.md §5.1) in docker on 127.0.0.1:18441 and :18442
-#               through deploy/memory/run.sh in the source folder (NSF_REPO); needs docker and the weights
+# --memory      also install the memory models' unit (memory search by meaning; MEMORY_INTEGRATION.md §5.1), in
+#               docker on 127.0.0.1:18441 and :18442 through deploy/memory/run.sh in the source folder (NSF_REPO);
+#               needs docker and the weights. Which unit follows NSF_MEMORY_SERVER of deploy/memory/memory.env:
+#               single (the default) installs neuroscifi-memory.service, one server for both models; vllm installs
+#               neuroscifi-memory-embed.service and neuroscifi-memory-rerank.service
+# --memory-server single|vllm  overrides that setting for the units installed
 # --memory-user U  the account the memory units run as (default: --llm-user, then $SUDO_USER); same conditions
 # --idle        also install the idle policy's units (RESOURCE_SCHEDULING.md §3c): neuroscifi-idle.service and .timer
 #               (the pass that unloads a model service nobody uses; every timeout is off until the owner sets one)
@@ -60,15 +64,18 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$(cd "$HERE/.." && pwd)"
 WHEEL="" WHEELHOUSE="" PREFIX=/opt/neuroscifi PYTHON="" UNIT_DIR=/etc/systemd/system DRY=0 WEB=0 WEBSEARCH=0
-SEARXNG=0 LLM=0 LLM_USER="${SUDO_USER:-}" MEMORY=0 MEMORY_USER="" IDLE=0 IDLE_USER="" ACCESS_ONLY=0 IDLE_DB=""
+SEARXNG=0 LLM=0 LLM_USER="${SUDO_USER:-}" MEMORY=0 MEMORY_USER="" MEMORY_SERVER="" IDLE=0 IDLE_USER="" ACCESS_ONLY=0
+IDLE_DB=""
 SVC_USER=neuroscifi
 STATE_DIR=/var/lib/neuroscifi
 WAKE_DIR=/var/lib/neuroscifi-wake      # beside the state folder, not inside it: the service account owns that one
 CONF_DIR=/etc/neuroscifi
 POLKIT_DIR=/etc/polkit-1/rules.d
 POLKIT_RULE=49-neuroscifi-idle.rules
-# The units the idle policy stops and starts (resources/idle.py SERVICES; tests/test_deploy_units.py keeps them equal).
-IDLE_UNITS="neuroscifi-vllm.service neuroscifi-voice-asr.service neuroscifi-voice-tts.service neuroscifi-searxng.service neuroscifi-memory-embed.service neuroscifi-memory-rerank.service"
+# The units the idle policy stops and starts (resources/idle.py SERVICES; tests/test_deployment_accounts.py checks
+# them). The memory models are one unit or two depending on NSF_MEMORY_SERVER; the rule names all three, so a later
+# change of that setting does not need the rule rewritten (start and stop only, on units that exist or not).
+IDLE_UNITS="neuroscifi-vllm.service neuroscifi-voice-asr.service neuroscifi-voice-tts.service neuroscifi-searxng.service neuroscifi-memory.service neuroscifi-memory-embed.service neuroscifi-memory-rerank.service"
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 die() { echo "install.sh: $*" >&2; exit 1; }
@@ -89,6 +96,7 @@ while [ $# -gt 0 ]; do
     --llm-user) [ $# -ge 2 ] || die "--llm-user needs a value"; LLM_USER="$2"; shift ;;
     --memory) MEMORY=1 ;;
     --memory-user) [ $# -ge 2 ] || die "--memory-user needs a value"; MEMORY_USER="$2"; shift ;;
+    --memory-server) [ $# -ge 2 ] || die "--memory-server needs a value"; MEMORY_SERVER="$2"; shift ;;
     --idle) IDLE=1 ;;
     --idle-user) [ $# -ge 2 ] || die "--idle-user needs a value"; IDLE_USER="$2"; shift ;;
     --idle-access) ACCESS_ONLY=1 ;;
@@ -115,6 +123,11 @@ if [ "$MEMORY" -eq 1 ]; then
   [[ "$MEMORY_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "--memory needs --memory-user USER (a plain account name; got: '$MEMORY_USER')"
   [ "$MEMORY_USER" != root ] || die "--memory-user must not be root"
   [[ "$SOURCE" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "--memory: the source folder path has unexpected characters: $SOURCE"
+  if [ -z "$MEMORY_SERVER" ]; then      # the shipped setting, read as data (never sourced here)
+    MEMORY_SERVER="$(sed -n 's/^NSF_MEMORY_SERVER=\([a-z]*\)[[:space:]]*$/\1/p' "$SOURCE/deploy/memory/memory.env" 2>/dev/null | tail -n 1)"
+    MEMORY_SERVER="${MEMORY_SERVER:-single}"
+  fi
+  case "$MEMORY_SERVER" in single|vllm) ;; *) die "--memory-server must be single or vllm (got: '$MEMORY_SERVER')" ;; esac
 fi
 
 if [ "$IDLE" -eq 1 ] || [ "$ACCESS_ONLY" -eq 1 ]; then
@@ -377,14 +390,16 @@ if [ "$LLM" -eq 1 ]; then
   install_unit neuroscifi-vllm.service "s#^User=.*#User=$LLM_USER#" "s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=$SOURCE#"
 fi
 if [ "$MEMORY" -eq 1 ]; then
-  note "memory models (MEMORY_INTEGRATION.md §5.1): units neuroscifi-memory-embed.service and neuroscifi-memory-rerank.service run $SOURCE/deploy/memory/run.sh as $MEMORY_USER"
+  if [ "$MEMORY_SERVER" = single ]; then MEMORY_UNITS="neuroscifi-memory.service"
+  else MEMORY_UNITS="neuroscifi-memory-embed.service neuroscifi-memory-rerank.service"; fi
+  note "memory models (MEMORY_INTEGRATION.md §5.1, NSF_MEMORY_SERVER=$MEMORY_SERVER): $MEMORY_UNITS run $SOURCE/deploy/memory/run.sh as $MEMORY_USER"
   if [ "$DRY" -eq 0 ]; then
     getent passwd "$MEMORY_USER" >/dev/null || die "--memory-user $MEMORY_USER does not exist"
     [ -f "$SOURCE/deploy/memory/run.sh" ] || die "no deploy/memory/run.sh in $SOURCE"
   fi
   id -nG "$MEMORY_USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker \
     || echo "# warning: $MEMORY_USER is not in the docker group; the units' docker run would fail"
-  for unit in neuroscifi-memory-embed.service neuroscifi-memory-rerank.service; do
+  for unit in $MEMORY_UNITS; do
     install_unit "$unit" "s#^User=.*#User=$MEMORY_USER#" "s#^Environment=NSF_REPO=.*#Environment=NSF_REPO=$SOURCE#"
   done
 fi
@@ -431,4 +446,4 @@ $IDLE_USER now reads $IDLE_DB and shares $IDLE_DB.resources with $SVC_USER (RUNB
 $([ -f "$IDLE_DB" ] || echo "The database does not exist yet: after \`nsf init\`, run  sudo bash deploy/install.sh --idle-access --idle-user $IDLE_USER")
 MSG
 fi
-[ "$MEMORY" -eq 0 ] || echo "neuroscifi-memory-embed.service and neuroscifi-memory-rerank.service are installed disabled: enable them after the weights are in place (RUNBOOK.md, memory search), then run \`nsf setup\` once so the individual uses them."
+[ "$MEMORY" -eq 0 ] || echo "$MEMORY_UNITS installed disabled: enable after the weights are in place (RUNBOOK.md, memory search), then run \`nsf setup\` once so the individual uses them. Never enable both kinds: they hold the same two ports."
