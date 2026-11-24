@@ -2,18 +2,32 @@
 """Differential check of the answer path: compose() and the guard of this tree against a recorded reference.
 
 The guard (webcortex/reasoning.py: compose, attribution, check_sentence, guard and what they call) was attack-tested
-over eight review rounds. A change next to it must not move a single verdict. This script records what a git ref
-does with a fixed set of inputs, and tests/inference/test_guard_differential.py replays the same inputs through the
-working tree and compares every result: the composed sentences, each accepted item (text, citations, claims,
-states, hedged, attributed, insufficiency) and each rejected sentence with its reasons.
+over eight review rounds. A change to it may move a verdict only in a way that is named here and counted by the
+test. This script records what a git ref does with a fixed set of inputs, and
+tests/inference/test_guard_differential.py replays the same inputs through the working tree and compares every
+result: the composed sentences, each accepted item (text, citations, claims, states, hedged, attributed,
+insufficiency) and each rejected sentence with its reasons. Every case is then one of:
 
-Inputs, three kinds:
+  identical   nothing differs
+  stricter    sentences the reference accepted are refused, each with reasons that all start with one of the
+              tree's refusal marks (reasoning.CUT_WORDS, reasoning.REFUSALS); nothing else moved
+  loosened    sentences the reference rejected are accepted, each of a class this script can prove (LOOSENINGS:
+              one class, a sentence that is exactly one cited claim and that the reference rejected by its anchor
+              rule alone); nothing else moved. A case may be stricter for one sentence and loosened for another; it
+              is then counted as loosened
+  different   anything else: the test fails
+
+Inputs, four kinds:
   harvested   every (arguments) the reference's own guard tests pass to reasoning.compose and reasoning.guard
               (tests/inference/test_inference_reasoning.py, tests/webcortex/test_shared_verdict.py at the ref): the
               adversarial sentences of the attack rounds, with their bundles
   review      tests/inference/fixtures/guard_corpus_review.json: the security review's corpora for this branch
   benchmark   tests/inference/fixtures/guard_corpus_benchmark.json: the kept and rejected sentences of the live
               pipeline benchmark runs (fictional corpus), kept ones with the code's attribution taken off again
+  gap         tests/inference/fixtures/guard_corpus_gaps.json: one adversarial corpus per gap of the 0.7.0 guard
+              closed since. Each sentence says what the finished guard must do with it: "reject" (an attack),
+              "accept" (a faithful sentence), "lost" (a faithful sentence refused on purpose: the cost of a rule,
+              pinned) or "open" (a change of meaning still accepted: left open, listed in the docs)
 
   python scripts/guard_differential.py record --ref 307b907          # rewrite the recorded reference
   python scripts/guard_differential.py compare                       # this tree against the recorded reference
@@ -39,6 +53,10 @@ FIXTURES = REPO / "tests" / "inference" / "fixtures"
 REFERENCE = FIXTURES / "guard_reference.json"
 REVIEW = FIXTURES / "guard_corpus_review.json"
 BENCHMARK = FIXTURES / "guard_corpus_benchmark.json"
+GAPS = FIXTURES / "guard_corpus_gaps.json"
+ORIGINS = ("harvested", "review", "benchmark", "gap")
+ANCHOR_REASON = "ties a version or name to what its cited claims do not say of it"
+WANTED = {"reject": "reject", "accept": "accept", "lost": "reject", "open": "accept"}
 GUARD_TESTS = ("tests/inference/test_inference_reasoning.py", "tests/webcortex/test_shared_verdict.py")
 
 # Written into the exported ref and loaded as a pytest plugin: records what the ref's tests pass to the guard.
@@ -136,6 +154,11 @@ def corpus_cases() -> list[dict]:
         cases.append({"origin": f"benchmark:{case['task']}:{k}", "kind": "answer",
                       "input": {"sentences": [{"claims": case["cites"], "text": case["text"]}], "gaps": []},
                       "bundle": b})
+    for k, case in enumerate(json.loads(GAPS.read_text())):
+        b = bundle_of(case["claims"], case.get("q", "Is numpy 2.5.5 secure?"))
+        for j, row in enumerate(case["s"]):
+            cases.append({"origin": f"gap:{case['gap']}:{k}.{j}", "kind": "answer", "expect": row[2],
+                          "input": {"sentences": [{"claims": row[1], "text": row[0]}], "gaps": []}, "bundle": b})
     return cases
 
 
@@ -181,58 +204,104 @@ def record(ref: str) -> dict:
             index[key] = len(bundles)
             bundles.append(case["bundle"])
         packed.append({"origin": case["origin"], "kind": case["kind"], "bundle": index[key], "input": case["input"],
-                       "reference": result})
+                       "reference": result} | ({"expect": case["expect"]} if "expect" in case else {}))
     return {"what": "what compose() and the guard of the reference commit do with each input; see "
                     "scripts/guard_differential.py",
             "ref": ref, "commit": sha, "reference_guard_tests": summary,
             "cases_by_origin": {o: sum(1 for c in packed if c["origin"].split(":")[0] == o)
-                                for o in ("harvested", "review", "benchmark")},
+                                for o in ORIGINS},
             "bundles": bundles, "cases": packed}
 
 
-def only_stricter(reference: dict, now: dict, mark: str) -> bool:
-    """Whether `now` differs from `reference` in one way only: sentences the reference accepted are refused with the
-    reason that starts with `mark` (reasoning.CUT_WORDS), and nothing else moved. That is: the composed sentences
-    are the same (a refused one carries "cut"), the accepted items are the reference's in the same order with some
-    missing and every remaining one identical, and the rejections are the reference's plus one `mark` rejection per
-    missing item."""
-    if "error" in reference or "error" in now or set(reference) != set(now):
+def refusal_marks(reasoning) -> tuple[str, ...]:
+    """The leading words of every reason by which this tree's guard refuses a sentence it otherwise accepts: the
+    text of each template up to its first placeholder or quoted part."""
+    templates = [getattr(reasoning, "CUT_WORDS", "")] + list(getattr(reasoning, "REFUSALS", ()))
+    return tuple(re.split(r"[{']", t)[0] for t in templates if t)
+
+
+def _exact_restatement(reasoning, item: dict, bundle: dict, reference: dict) -> bool:
+    """The one class of sentence this tree may accept where the reference did not: `item` is exactly one cited
+    claim, word for word, with the code's own attribution (reasoning.restates), and the reference rejected that very
+    text for the anchor rule and for nothing else."""
+    if not reasoning.restates(dict(item, attributed=True), bundle):
         return False
+    theirs = [r for r in reference.get("rejected") or [] if r["text"] == item["text"]]
+    return bool(theirs) and all(reason.startswith(ANCHOR_REASON) for r in theirs for reason in r["reasons"])
+
+
+LOOSENINGS = {"restatement": _exact_restatement}
+
+
+def classify(reasoning, reference: dict, now: dict, bundle: dict, marks: tuple[str, ...]) -> tuple[str, dict]:
+    """("identical" | "stricter" | "loosened" | "different", detail). See the module docstring. The composed
+    sentences must be the reference's (a refused one may carry "cut"); the accepted items the two share must be
+    identical and in the same order; an item only the reference accepted must be answered by one rejection whose
+    reasons all start with a refusal mark; an item only this tree accepts must be of a class in LOOSENINGS, and then
+    the reference's rejection of that text is gone; every other rejection is the reference's, reason for reason."""
+    if comparable(now) == comparable(reference):
+        return "identical", {}
+    if "error" in reference or "error" in now or set(reference) != set(now):
+        return "different", {}
     if "composed" in now:
         if [{k: v for k, v in item.items() if k != "cut"} for item in now["composed"]] != reference["composed"]:
-            return False
+            return "different", {}
     if "accepted" not in now:
-        return True                                 # a compose case: the mark is the only difference
-    theirs, missing = iter(reference["accepted"]), 0
-    for item in now["accepted"]:
-        for candidate in theirs:
-            if candidate == item:
-                break
-            missing += 1
-        else:
-            return False                            # an accepted item the reference did not accept, or reordered
-    missing += sum(1 for _ in theirs)
-    cut = [r for r in now["rejected"] if len(r["reasons"]) == 1 and r["reasons"][0].startswith(mark)]
-    kept = [r for r in now["rejected"] if r not in cut]
-    return missing == len(cut) and comparable({"rejected": kept}) == comparable({"rejected": reference["rejected"]})
+        return "stricter", {"refused": 0}           # a compose case: the "cut" mark is the only difference
+    mine, theirs = list(now["accepted"]), list(reference["accepted"])
+    extra = [item for item in mine if item not in theirs]
+    missing = [item for item in theirs if item not in mine]
+    if [x for x in mine if x not in extra] != [x for x in theirs if x not in missing]:
+        return "different", {}
+    classes = []
+    for item in extra:
+        fits = [name for name, test in LOOSENINGS.items() if test(reasoning, item, bundle, reference)]
+        if not fits:
+            return "different", {}
+        classes.append(fits[0])
+    refusals = [r for r in now["rejected"] if r["reasons"] and all(x.startswith(marks) for x in r["reasons"])]
+    kept = [r for r in now["rejected"] if r not in refusals]
+    expected = [r for r in reference["rejected"] if r["text"] not in {item["text"] for item in extra}]
+    if len(refusals) != len(missing) or comparable({"rejected": kept}) != comparable({"rejected": expected}):
+        return "different", {}
+    marks_used = sorted({m for r in refusals for x in r["reasons"] for m in marks if x.startswith(m)})
+    return ("loosened" if extra else "stricter"), {"refused": len(refusals), "marks": marks_used, "classes": classes}
 
 
 def differences(reasoning, reference: dict | None = None) -> dict:
-    """Every recorded input through this tree. {"compared", "identical", "stricter": [...], "different": [...]}:
-    `stricter` holds the cases whose only difference is a sentence refused under reasoning.CUT_WORDS (only_stricter),
-    `different` every other difference, each as {case, origin, kind, input, reference, now}."""
+    """Every recorded input through this tree: {"compared", "identical", "stricter": [...], "loosened": [...],
+    "different": [...]}, each entry {case, origin, kind, input, reference, now, detail} (and "expect" for a case
+    of the gap corpora)."""
     reference = reference or json.loads(REFERENCE.read_text())
-    mark = getattr(reasoning, "CUT_WORDS", "\0").split("'")[0]
-    out = {"compared": len(reference["cases"]), "identical": 0, "stricter": [], "different": []}
+    marks = refusal_marks(reasoning)
+    out = {"compared": len(reference["cases"]), "identical": 0, "stricter": [], "loosened": [], "different": []}
     for n, case in enumerate(reference["cases"]):
-        now = json.loads(json.dumps(verdict(reasoning, case["kind"], case["input"],
-                                            reference["bundles"][case["bundle"]])))
-        if comparable(now) == comparable(case["reference"]):
+        bundle = reference["bundles"][case["bundle"]]
+        now = json.loads(json.dumps(verdict(reasoning, case["kind"], case["input"], bundle)))
+        kind, detail = classify(reasoning, case["reference"], now, bundle, marks)
+        if kind == "identical":
             out["identical"] += 1
             continue
-        entry = {"case": n, "origin": case["origin"], "kind": case["kind"], "input": case["input"],
-                 "reference": case["reference"], "now": now}
-        out["stricter" if only_stricter(case["reference"], now, mark) else "different"].append(entry)
+        out[kind].append({"case": n, "origin": case["origin"], "kind": case["kind"], "input": case["input"],
+                          "reference": case["reference"], "now": now, "detail": detail}
+                         | ({"expect": case["expect"]} if "expect" in case else {}))
+    return out
+
+
+def expectations(reasoning, reference: dict | None = None) -> list[dict]:
+    """The gap corpora through this tree: per sentence {origin, gap, expect, want, got, text, shown, reasons}.
+    `want` is what `expect` means for the finished guard (WANTED), `got` what this tree does."""
+    reference = reference or json.loads(REFERENCE.read_text())
+    out = []
+    for case in reference["cases"]:
+        if "expect" not in case:
+            continue
+        now = verdict(reasoning, case["kind"], case["input"], reference["bundles"][case["bundle"]])
+        got = "accept" if now.get("accepted") else "reject"
+        out.append({"origin": case["origin"], "gap": case["origin"].split(":")[1], "expect": case["expect"],
+                    "want": WANTED[case["expect"]], "got": got, "text": case["input"]["sentences"][0]["text"],
+                    "shown": [x["text"] for x in now.get("accepted") or []],
+                    "reasons": [x for r in now.get("rejected") or [] for x in r["reasons"]]})
     return out
 
 
@@ -302,13 +371,18 @@ def main(argv=None) -> int:
     from neuroscifi.webcortex import reasoning
     result = differences(reasoning)
     by_origin = {}
-    for kind in ("stricter", "different"):
+    for kind in ("stricter", "loosened", "different"):
         for d in result[kind]:
             by_origin.setdefault(kind, {}).setdefault(d["origin"].split(":")[0], 0)
             by_origin[kind][d["origin"].split(":")[0]] += 1
     print(json.dumps({"compared": result["compared"], "identical": result["identical"],
-                      "stricter": len(result["stricter"]), "different": len(result["different"]),
-                      "by_origin": by_origin}))
+                      "stricter": len(result["stricter"]), "loosened": len(result["loosened"]),
+                      "different": len(result["different"]), "by_origin": by_origin}))
+    unmet = {}
+    for e in expectations(reasoning):
+        if e["want"] != e["got"]:
+            unmet[e["gap"]] = unmet.get(e["gap"], 0) + 1
+    print(json.dumps({"gap_expectations_unmet": unmet}))
     for d in result["different"][:20]:
         print(json.dumps(d, indent=1))
     return 1 if result["different"] else 0

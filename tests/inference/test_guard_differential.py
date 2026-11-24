@@ -1,15 +1,19 @@
-"""The answer path gives the verdicts of the attack-tested commit: compose() and the guard of this tree against the
-recorded reference (scripts/guard_differential.py, tests/inference/fixtures/guard_reference.json).
+"""The answer path against the attack-tested commit: compose() and the guard of this tree against the recorded
+reference (scripts/guard_differential.py, tests/inference/fixtures/guard_reference.json).
 
-Why this exists. The critique scope (reasoning.restates) was added beside the guard, and two later fixes reached
-into compose() and the guard's anchor rule. The final security pass found that both moved verdicts: a sentence
-inverting "... except 2.5.4 and 2.5.5" was accepted, and a claim's own "according to the official advisory of
-evilcorp" was kept in the answer as if it were support. The answer path was put back to what 307b907 does, and this
-test holds it there: 1,476 inputs (every argument the guard's own tests of that commit pass to compose() and the
-guard, the security review's corpora, and the live benchmark's sentences), each compared in full.
+Why this exists. The guard is the last check between fetched web text and what an answer states. A fix made beside
+it once moved verdicts unnoticed (a sentence inverting "... except 2.5.4 and 2.5.5" was accepted; a claim's own
+"according to the official advisory of evilcorp" was kept as if it were support), and was withdrawn. Since then
+every change to the answer path is held to this test: 1,689 inputs (every argument the guard's own tests of
+307b907 pass to compose() and the guard, the security review's corpora, the live benchmark's sentences, and one
+adversarial corpus per gap closed since), each compared in full.
 
-One difference is allowed, and only in the refusing direction: a sentence whose own "according to <source> ..."
-would take further words with it is refused (reasoning.CUT_WORDS) where 307b907 showed it without them.
+A verdict may differ from 307b907 in two named ways only (scripts/guard_differential.py, classify):
+  stricter   a sentence 307b907 accepted is refused, with reasons that all start with a refusal mark
+             (reasoning.CUT_WORDS, reasoning.REFUSALS);
+  loosened   a sentence 307b907 rejected is accepted, of a class the script proves (none yet).
+The gap corpora say what the finished guard must do with each of their sentences; UNMET counts, per gap, the
+sentences this tree does not yet treat so, and goes to zero gap by gap.
 """
 import importlib.util
 import json
@@ -25,6 +29,11 @@ _spec = importlib.util.spec_from_file_location("guard_differential", SCRIPT)
 gd = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gd)
 
+GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording")
+# Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
+UNMET = {"restriction": 43, "case": 21, "unseen": 18, "restatement": 8, "cut": 10, "wording": 0}
+CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
+
 
 @pytest.fixture(scope="module")
 def reference():
@@ -36,64 +45,110 @@ def result(reference):
     return gd.differences(reasoning, reference)
 
 
+@pytest.fixture(scope="module")
+def expected(reference):
+    return gd.expectations(reasoning, reference)
+
+
 def texts(items):
     return [x["text"] for x in items]
 
 
-def test_the_reference_is_the_attack_tested_commit_and_its_inputs_are_of_three_kinds(reference):
+def origin(d):
+    return d["origin"].split(":")[0]
+
+
+def test_the_reference_is_the_attack_tested_commit_and_its_inputs_are_of_four_kinds(reference):
     assert reference["commit"] == "307b9070f973be63b1cdbd8da222da8114bd32d6"
     assert reference["reference_guard_tests"] == "827 passed"          # that commit's own guard tests, while recording
-    assert reference["cases_by_origin"] == {"harvested": 1137, "review": 91, "benchmark": 248}
-    assert len(reference["cases"]) == 1476
+    assert reference["cases_by_origin"] == {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 214}
+    assert len(reference["cases"]) == 1690
     kinds = {c["kind"] for c in reference["cases"]}
     assert kinds == {"compose", "guard", "answer"}
 
 
-def test_no_verdict_and_no_accepted_text_differs_from_the_reference(result):
+def test_no_verdict_differs_from_the_reference_except_in_the_named_ways(result):
     """Every input: the same composed sentences, the same accepted items in full, the same rejections and reasons;
-    or, for the cases counted as stricter, exactly that minus sentences refused under CUT_WORDS."""
+    or stricter, or loosened, as scripts/guard_differential.py defines them. Nothing else."""
     assert result["different"] == [], json.dumps(result["different"][:3], indent=1)[:4000]
-    assert result["identical"] + len(result["stricter"]) == result["compared"] == 1476
+    assert result["identical"] + len(result["stricter"]) + len(result["loosened"]) == result["compared"] == 1690
 
 
 def test_the_guards_own_attack_sentences_and_the_benchmarks_sentences_are_answered_identically(result):
-    """All 1,137 inputs of the attack rounds and all 248 benchmark sentences: identical, no stricter case among
-    them. So no sentence the benchmark kept is lost to the one added refusal."""
-    assert [d["origin"] for d in result["stricter"] if not d["origin"].startswith("review")] == []
+    """All 1,137 inputs of the attack rounds and all 248 benchmark sentences: identical. No sentence the benchmark
+    kept is lost to a refusal, and no attack sentence is accepted that 307b907 rejected."""
+    assert [d["origin"] for d in result["stricter"] + result["loosened"] if origin(d) in ("harvested", "benchmark")] == []
     assert result["identical"] >= 1137 + 248
 
 
 def test_what_is_stricter_is_a_subset_with_identical_text(result):
     """Each stricter case: every item accepted now was accepted by the reference, identically; whatever is missing
-    was refused for the words its attribution would drop; no other rejection changed."""
-    mark = reasoning.CUT_WORDS.split("'")[0]
-    assert len(result["stricter"]) == 17
+    was refused with reasons that all start with a refusal mark; no other rejection changed."""
+    marks = gd.refusal_marks(reasoning)
+    assert marks == (CUT_MARK,)
     refused = 0
     for d in result["stricter"]:
         now, ref = d["now"], d["reference"]
         assert all(item in ref["accepted"] for item in now["accepted"]), d["case"]
-        assert len(now["accepted"]) <= len(ref["accepted"])
-        new = [r for r in now["rejected"] if r not in ref["rejected"]
-               and gd.comparable({"rejected": [r]}) not in [gd.comparable({"rejected": [x]}) for x in ref["rejected"]]]
-        assert all(r["reasons"][0].startswith(mark) and len(r["reasons"]) == 1 for r in new), d["case"]
+        new = [r for r in now["rejected"]
+               if gd.comparable({"rejected": [r]}) not in [gd.comparable({"rejected": [x]}) for x in ref["rejected"]]]
+        assert all(r["reasons"] and all(x.startswith(marks) for x in r["reasons"]) for r in new), d["case"]
         assert len(new) == len(ref["accepted"]) - len(now["accepted"])
         refused += len(new)
-    assert refused == 16                                # in 13 cases; the other 4 carry the mark on a sentence the
-    #                                                     guard rejects for its own reasons, as before
+    by_origin = {}
+    for d in result["stricter"]:
+        by_origin[origin(d)] = by_origin.get(origin(d), 0) + 1
+    assert by_origin == {"review": 17, "gap": 26}
+    assert refused == 16 + 26
+    assert result["loosened"] == []
 
 
 def test_the_differential_reports_a_guard_that_accepts_more(monkeypatch, reference):
-    """The test can fail: without the anchor rule, verdicts move and are reported as different, never as stricter."""
+    """The test can fail: without the anchor rule, verdicts move and are reported as different, never as stricter
+    or loosened."""
     monkeypatch.setattr(reasoning, "_anchor_problems", lambda text, used: [])
     moved = gd.differences(reasoning, reference)
-    assert len(moved["different"]) > 20 and {d["origin"].split(":")[0] for d in moved["different"]} >= {"harvested",
-                                                                                                         "review"}
+    assert len(moved["different"]) > 20 and {origin(d) for d in moved["different"]} >= {"harvested", "review"}
 
 
 def test_the_differential_reports_a_changed_accepted_text(monkeypatch, reference):
     monkeypatch.setitem(reasoning.HEDGES, "insufficient", "as {who} says")
     moved = gd.differences(reasoning, reference)
     assert len(moved["different"]) > 20
+
+
+def test_a_refusal_with_an_unknown_reason_is_a_difference_not_a_stricter_case(reference):
+    """A sentence refused for a reason that is not one of the tree's refusal marks is reported as different."""
+    case = next(c for c in reference["cases"] if origin(c) == "benchmark" and c["reference"].get("accepted"))
+    bundle = reference["bundles"][case["bundle"]]
+    now = json.loads(json.dumps(case["reference"]))
+    gone = now["accepted"].pop()
+    now["rejected"].append({"text": gone["text"], "reasons": ["refused for a reason of its own"]})
+    assert gd.classify(reasoning, case["reference"], now, bundle, gd.refusal_marks(reasoning))[0] == "different"
+    now["rejected"][-1]["reasons"] = [reasoning.CUT_WORDS.format(words="x")]
+    assert gd.classify(reasoning, case["reference"], now, bundle, gd.refusal_marks(reasoning))[0] == "stricter"
+
+
+# ---- the gap corpora ---------------------------------------------------------------------------------------------
+
+def test_each_gap_has_its_own_corpus_recorded_against_the_reference(reference, expected):
+    sizes = {}
+    for e in expected:
+        sizes[e["gap"]] = sizes.get(e["gap"], 0) + 1
+    assert sizes == {"restriction": 69, "case": 36, "unseen": 35, "restatement": 36, "cut": 33, "wording": 5}
+    assert all(sizes[g] >= 30 for g in GAPS if g != "wording")       # wording moves no verdict: five witnesses
+    labels = {e["expect"] for e in expected}
+    assert labels == {"reject", "accept", "lost", "open"}
+    # every sentence is recorded with what 307b907 does with it, by running that commit (never by hand)
+    assert all("reference" in c for c in reference["cases"] if "expect" in c)
+
+
+@pytest.mark.parametrize("gap", GAPS)
+def test_the_sentences_of_a_gap_corpus_not_yet_treated_as_it_says(gap, expected):
+    """UNMET[gap] sentences of the corpus are not yet treated as the corpus says; 0 for a gap that is closed."""
+    unmet = [e for e in expected if e["gap"] == gap and e["want"] != e["got"]]
+    assert len(unmet) == UNMET[gap], "\n".join(f"{e['expect']}: got {e['got']}: {e['text']!r} {e['reasons']}"
+                                               for e in unmet)[:6000]
 
 
 # ---- the final review's attacks, by name ---------------------------------------------------------------------------
@@ -111,8 +166,7 @@ def test_the_differential_reports_a_changed_accepted_text(monkeypatch, reference
 ])
 def test_a_sentence_that_inverts_an_exception_over_two_versions_is_rejected(claim, sentence):
     """Final review FP-H1: accepted for a while by an exemption added to the anchor rule; with a supported claim no
-    hedge is added, so the answer stated it as fact. (The one-version form, "... in 2.5.4.", passes at 307b907 too:
-    an older gap in how "except" is read, recorded in the reference and listed as open.)"""
+    hedge is added, so the answer stated it as fact."""
     b = one_claim("supported", (1, 2), text=claim, question="Is numpy 2.5.5 secure?")
     items = reasoning.compose({"sentences": [{"claims": ["C1"], "text": sentence}]}, b)
     ok, bad = reasoning.guard(items, b)
