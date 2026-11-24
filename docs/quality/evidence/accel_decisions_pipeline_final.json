@@ -1,0 +1,584 @@
+{
+ "benchmark": "scripts/bench_pipeline.py, 51 tasks of the offline corpus through the real orchestrator with the live model",
+ "command": "python scripts/bench_pipeline.py --url http://127.0.0.1:8811/v1 --model qwen3-30b-a3b-instruct-2507-fp8 --key-file <key file> --texts [--config '{\"critique_restatements\": true}' | --config '{\"self_critique\": false}']",
+ "conditions": "host load average 3.6 at the start and 1.8 at the end; no other job used the GPU; runs in the order default, every sentence, off, default again",
+ "generated_at": "2026-11-23",
+ "model": "qwen3-30b-a3b-instruct-2507-fp8",
+ "reading": "Model answers and kept sentences vary by one or two between runs of the same setting (temperature 0.1, no seed); the critique removed no sentence in any run.",
+ "runs": {
+  "all": {
+   "setting": "critique_restatements on (every kept sentence judged, as in 0.7.0)",
+   "summary": {
+    "abstentions": 3,
+    "answer_call": {
+     "completion_tokens": {
+      "mean": 100.039,
+      "n": 51,
+      "p50": 54.0,
+      "p95": 221.0,
+      "p99": 255.5
+     },
+     "first_token_ms": {
+      "mean": 181.239,
+      "n": 51,
+      "p50": 174.6,
+      "p95": 253.15,
+      "p99": 263.1
+     },
+     "latency_ms": {
+      "mean": 2222.753,
+      "n": 51,
+      "p50": 1241.9,
+      "p95": 4724.85,
+      "p99": 5475.55
+     },
+     "prompt_tokens": {
+      "mean": 1171.667,
+      "n": 51,
+      "p50": 1084.0,
+      "p95": 1661.5,
+      "p99": 1841.0
+     },
+     "tokens_per_second": {
+      "mean": 49.502,
+      "n": 51,
+      "p50": 49.46,
+      "p95": 50.675,
+      "p99": 51.625
+     }
+    },
+    "critique_call": {
+     "completion_tokens": {
+      "mean": 89.489,
+      "n": 45,
+      "p50": 76.0,
+      "p95": 158.2,
+      "p99": 174.16
+     },
+     "latency_ms": {
+      "mean": 1983.184,
+      "n": 45,
+      "p50": 1712.6,
+      "p95": 3384.12,
+      "p99": 3722.9
+     },
+     "prompt_tokens": {
+      "mean": 836.289,
+      "n": 45,
+      "p50": 702.0,
+      "p95": 1569.2,
+      "p99": 1682.76
+     }
+    },
+    "critique_flags": {
+     "flagged": 49,
+     "flagged_restating_their_claims": 45,
+     "flags_by_problem": {
+      "missing_hedge": 4,
+      "overstated": 19,
+      "unsupported": 26
+     },
+     "kept_sentences": 90,
+     "reading": "restating = reasoning.restates: the cited claims word for word with the attribution the code appended for their states. A mark on such a sentence is a false alarm",
+     "restating_their_claims": 80,
+     "tasks_with_a_sentence_of_the_models_own": 9
+    },
+    "critique_outcomes": {
+     "calls_made": 45,
+     "ran": 45,
+     "sentences_flagged": 49,
+     "sentences_judged": 90,
+     "sentences_removed": 0,
+     "skipped_why": {},
+     "status": {
+      "ok": 45
+     }
+    },
+    "kept_sentences_per_model_answer": {
+     "mean": 2.0,
+     "n": 45,
+     "p50": 1.0,
+     "p95": 5.0,
+     "p99": 5.0
+    },
+    "model_answers": 45,
+    "model_call_errors": {},
+    "orchestration_s": {
+     "mean": 0.187,
+     "n": 51,
+     "p50": 0.172,
+     "p95": 0.338,
+     "p99": 0.401
+    },
+    "prefix_cache": {
+     "research_answer": {
+      "cached_share": 0.969,
+      "cached_tokens": 57920,
+      "calls": 51,
+      "prompt_tokens": 59755
+     },
+     "research_critique": {
+      "cached_share": 0.937,
+      "cached_tokens": 35264,
+      "calls": 45,
+      "prompt_tokens": 37633
+     }
+    },
+    "reasoning_status": {
+     "model": 45,
+     "rejected": 6
+    },
+    "sentences": {
+     "kept": 90,
+     "refused_cut_words": 0,
+     "rejected": 22
+    },
+    "share_of_wall": {
+     "answer_call": 0.534,
+     "critique_call": 0.421,
+     "orchestration": 0.045
+    },
+    "task_status": {
+     "completed": 51
+    },
+    "tasks": 51,
+    "wall_s_tasks_with_model_calls": {
+     "mean": 4.16,
+     "n": 51,
+     "p50": 2.912,
+     "p95": 8.145,
+     "p99": 9.01
+    }
+   }
+  },
+  "default": {
+   "setting": "default (the critique reads only sentences of the model's own)",
+   "summary": {
+    "abstentions": 4,
+    "answer_call": {
+     "completion_tokens": {
+      "mean": 98.627,
+      "n": 51,
+      "p50": 53.0,
+      "p95": 228.0,
+      "p99": 282.5
+     },
+     "first_token_ms": {
+      "mean": 182.941,
+      "n": 51,
+      "p50": 181.1,
+      "p95": 264.25,
+      "p99": 267.4
+     },
+     "latency_ms": {
+      "mean": 2185.763,
+      "n": 51,
+      "p50": 1269.6,
+      "p95": 4907.9,
+      "p99": 6010.9
+     },
+     "prompt_tokens": {
+      "mean": 1171.667,
+      "n": 51,
+      "p50": 1084.0,
+      "p95": 1661.5,
+      "p99": 1841.0
+     },
+     "tokens_per_second": {
+      "mean": 49.798,
+      "n": 51,
+      "p50": 49.77,
+      "p95": 51.065,
+      "p99": 51.855
+     }
+    },
+    "critique_call": {
+     "completion_tokens": {
+      "mean": 67.3,
+      "n": 10,
+      "p50": 69.5,
+      "p95": 83.6,
+      "p99": 87.92
+     },
+     "latency_ms": {
+      "mean": 1532.16,
+      "n": 10,
+      "p50": 1533.3,
+      "p95": 1853.355,
+      "p99": 1904.511
+     },
+     "prompt_tokens": {
+      "mean": 708.7,
+      "n": 10,
+      "p50": 634.5,
+      "p95": 1127.95,
+      "p99": 1260.79
+     }
+    },
+    "critique_flags": {
+     "flagged": 5,
+     "flagged_restating_their_claims": 0,
+     "flags_by_problem": {
+      "overstated": 1,
+      "unsupported": 4
+     },
+     "kept_sentences": 86,
+     "reading": "restating = reasoning.restates: the cited claims word for word with the attribution the code appended for their states. A mark on such a sentence is a false alarm",
+     "restating_their_claims": 75,
+     "tasks_with_a_sentence_of_the_models_own": 10
+    },
+    "critique_outcomes": {
+     "calls_made": 10,
+     "ran": 10,
+     "sentences_flagged": 5,
+     "sentences_judged": 11,
+     "sentences_removed": 0,
+     "skipped_why": {
+      "restatements_only": 34
+     },
+     "status": {
+      "ok": 10,
+      "skipped": 34
+     }
+    },
+    "kept_sentences_per_model_answer": {
+     "mean": 1.955,
+     "n": 44,
+     "p50": 1.0,
+     "p95": 4.85,
+     "p99": 5.0
+    },
+    "model_answers": 44,
+    "model_call_errors": {},
+    "orchestration_s": {
+     "mean": 0.211,
+     "n": 51,
+     "p50": 0.208,
+     "p95": 0.35,
+     "p99": 0.395
+    },
+    "prefix_cache": {
+     "research_answer": {
+      "cached_share": 0.969,
+      "cached_tokens": 57920,
+      "calls": 51,
+      "prompt_tokens": 59755
+     },
+     "research_critique": {
+      "cached_share": 0.948,
+      "cached_tokens": 6720,
+      "calls": 10,
+      "prompt_tokens": 7087
+     }
+    },
+    "reasoning_status": {
+     "model": 44,
+     "rejected": 7
+    },
+    "sentences": {
+     "kept": 86,
+     "refused_cut_words": 0,
+     "rejected": 23
+    },
+    "share_of_wall": {
+     "answer_call": 0.81,
+     "critique_call": 0.111,
+     "orchestration": 0.078
+    },
+    "task_status": {
+     "completed": 51
+    },
+    "tasks": 51,
+    "wall_s_tasks_with_model_calls": {
+     "mean": 2.698,
+     "n": 51,
+     "p50": 1.813,
+     "p95": 6.145,
+     "p99": 7.167
+    }
+   }
+  },
+  "default2": {
+   "setting": "default, second run",
+   "summary": {
+    "abstentions": 4,
+    "answer_call": {
+     "completion_tokens": {
+      "mean": 97.569,
+      "n": 51,
+      "p50": 53.0,
+      "p95": 214.5,
+      "p99": 262.5
+     },
+     "first_token_ms": {
+      "mean": 177.629,
+      "n": 51,
+      "p50": 171.3,
+      "p95": 262.55,
+      "p99": 267.2
+     },
+     "latency_ms": {
+      "mean": 2162.592,
+      "n": 51,
+      "p50": 1228.7,
+      "p95": 4620.6,
+      "p99": 5601.5
+     },
+     "prompt_tokens": {
+      "mean": 1171.667,
+      "n": 51,
+      "p50": 1084.0,
+      "p95": 1661.5,
+      "p99": 1841.0
+     },
+     "tokens_per_second": {
+      "mean": 49.701,
+      "n": 51,
+      "p50": 49.69,
+      "p95": 51.05,
+      "p99": 51.715
+     }
+    },
+    "critique_call": {
+     "completion_tokens": {
+      "mean": 66.6,
+      "n": 10,
+      "p50": 69.5,
+      "p95": 83.6,
+      "p99": 87.92
+     },
+     "latency_ms": {
+      "mean": 1513.82,
+      "n": 10,
+      "p50": 1509.75,
+      "p95": 1860.055,
+      "p99": 1913.371
+     },
+     "prompt_tokens": {
+      "mean": 703.9,
+      "n": 10,
+      "p50": 634.5,
+      "p95": 1106.35,
+      "p99": 1256.47
+     }
+    },
+    "critique_flags": {
+     "flagged": 4,
+     "flagged_restating_their_claims": 0,
+     "flags_by_problem": {
+      "overstated": 1,
+      "unsupported": 3
+     },
+     "kept_sentences": 86,
+     "reading": "restating = reasoning.restates: the cited claims word for word with the attribution the code appended for their states. A mark on such a sentence is a false alarm",
+     "restating_their_claims": 75,
+     "tasks_with_a_sentence_of_the_models_own": 10
+    },
+    "critique_outcomes": {
+     "calls_made": 10,
+     "ran": 10,
+     "sentences_flagged": 4,
+     "sentences_judged": 11,
+     "sentences_removed": 0,
+     "skipped_why": {
+      "restatements_only": 34
+     },
+     "status": {
+      "ok": 10,
+      "skipped": 34
+     }
+    },
+    "kept_sentences_per_model_answer": {
+     "mean": 1.955,
+     "n": 44,
+     "p50": 1.0,
+     "p95": 4.85,
+     "p99": 5.0
+    },
+    "model_answers": 44,
+    "model_call_errors": {},
+    "orchestration_s": {
+     "mean": 0.19,
+     "n": 51,
+     "p50": 0.176,
+     "p95": 0.321,
+     "p99": 0.385
+    },
+    "prefix_cache": {
+     "research_answer": {
+      "cached_share": 0.969,
+      "cached_tokens": 57920,
+      "calls": 51,
+      "prompt_tokens": 59755
+     },
+     "research_critique": {
+      "cached_share": 0.955,
+      "cached_tokens": 6720,
+      "calls": 10,
+      "prompt_tokens": 7039
+     }
+    },
+    "reasoning_status": {
+     "model": 44,
+     "rejected": 7
+    },
+    "sentences": {
+     "kept": 86,
+     "refused_cut_words": 0,
+     "rejected": 23
+    },
+    "share_of_wall": {
+     "answer_call": 0.816,
+     "critique_call": 0.112,
+     "orchestration": 0.072
+    },
+    "task_status": {
+     "completed": 51
+    },
+    "tasks": 51,
+    "wall_s_tasks_with_model_calls": {
+     "mean": 2.649,
+     "n": 51,
+     "p50": 1.868,
+     "p95": 5.742,
+     "p99": 6.405
+    }
+   }
+  },
+  "off": {
+   "setting": "self_critique off",
+   "summary": {
+    "abstentions": 4,
+    "answer_call": {
+     "completion_tokens": {
+      "mean": 100.549,
+      "n": 51,
+      "p50": 53.0,
+      "p95": 219.5,
+      "p99": 255.5
+     },
+     "first_token_ms": {
+      "mean": 172.951,
+      "n": 51,
+      "p50": 168.9,
+      "p95": 254.3,
+      "p99": 260.65
+     },
+     "latency_ms": {
+      "mean": 2223.551,
+      "n": 51,
+      "p50": 1213.3,
+      "p95": 4750.65,
+      "p99": 5470.15
+     },
+     "prompt_tokens": {
+      "mean": 1171.667,
+      "n": 51,
+      "p50": 1084.0,
+      "p95": 1661.5,
+      "p99": 1841.0
+     },
+     "tokens_per_second": {
+      "mean": 49.59,
+      "n": 51,
+      "p50": 49.67,
+      "p95": 50.765,
+      "p99": 51.6
+     }
+    },
+    "critique_call": {
+     "completion_tokens": {
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+     },
+     "latency_ms": {
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+     },
+     "prompt_tokens": {
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+     }
+    },
+    "critique_flags": {
+     "flagged": 0,
+     "flagged_restating_their_claims": 0,
+     "flags_by_problem": {},
+     "kept_sentences": 89,
+     "reading": "restating = reasoning.restates: the cited claims word for word with the attribution the code appended for their states. A mark on such a sentence is a false alarm",
+     "restating_their_claims": 77,
+     "tasks_with_a_sentence_of_the_models_own": 11
+    },
+    "critique_outcomes": {
+     "calls_made": 0,
+     "ran": 0,
+     "sentences_flagged": 0,
+     "sentences_judged": 0,
+     "sentences_removed": 0,
+     "skipped_why": {},
+     "status": {}
+    },
+    "kept_sentences_per_model_answer": {
+     "mean": 1.978,
+     "n": 45,
+     "p50": 1.0,
+     "p95": 4.8,
+     "p99": 5.0
+    },
+    "model_answers": 45,
+    "model_call_errors": {},
+    "orchestration_s": {
+     "mean": 0.182,
+     "n": 51,
+     "p50": 0.167,
+     "p95": 0.334,
+     "p99": 0.41
+    },
+    "prefix_cache": {
+     "research_answer": {
+      "cached_share": 0.969,
+      "cached_tokens": 57920,
+      "calls": 51,
+      "prompt_tokens": 59755
+     }
+    },
+    "reasoning_status": {
+     "model": 45,
+     "rejected": 6
+    },
+    "sentences": {
+     "kept": 89,
+     "refused_cut_words": 0,
+     "rejected": 23
+    },
+    "share_of_wall": {
+     "answer_call": 0.924,
+     "critique_call": 0.0,
+     "orchestration": 0.076
+    },
+    "task_status": {
+     "completed": 51
+    },
+    "tasks": 51,
+    "wall_s_tasks_with_model_calls": {
+     "mean": 2.405,
+     "n": 51,
+     "p50": 1.315,
+     "p95": 4.952,
+     "p99": 5.749
+    }
+   }
+  }
+ },
+ "tree": "7bf522c (every lane and review fix merged except the last read-ahead fix, which does not touch the reasoning step)",
+ "url": "http://127.0.0.1:8811/v1"
+}

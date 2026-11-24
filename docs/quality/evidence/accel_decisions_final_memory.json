@@ -1,0 +1,347 @@
+{
+ "generated_at": "2026-11-23",
+ "lexical": {
+  "benchmark": "memory-retrieval",
+  "by_half": {
+   "development": {
+    "all_answerable": {
+     "mrr": 0.715,
+     "queries": 54,
+     "recall_at_1": 0.593,
+     "recall_at_3": 0.824
+    },
+    "near": {
+     "mrr": 0.944,
+     "not_found": 0,
+     "queries": 24,
+     "recall_at_1": 0.917,
+     "recall_at_3": 1.0
+    },
+    "noname": {
+     "mrr": 0.5,
+     "not_found": 3,
+     "queries": 6,
+     "recall_at_1": 0.5,
+     "recall_at_3": 0.417
+    },
+    "none": {
+     "false_positive_rate": 1.0,
+     "queries": 5,
+     "returned_something": 5
+    },
+    "para": {
+     "mrr": 0.54,
+     "not_found": 0,
+     "queries": 24,
+     "recall_at_1": 0.292,
+     "recall_at_3": 0.75
+    },
+    "query_ms": {
+     "max": 0.848,
+     "p50": 0.688,
+     "p95": 0.731
+    },
+    "topic": {
+     "all_facts_on_top": 1.0,
+     "other_subjects_returned_mean": 0.0,
+     "queries": 6,
+     "recall_of_facts": 1.0
+    }
+   },
+   "held_out": {
+    "all_answerable": {
+     "mrr": 0.713,
+     "queries": 54,
+     "recall_at_1": 0.574,
+     "recall_at_3": 0.824
+    },
+    "near": {
+     "mrr": 0.958,
+     "not_found": 0,
+     "queries": 24,
+     "recall_at_1": 0.917,
+     "recall_at_3": 1.0
+    },
+    "noname": {
+     "mrr": 0.5,
+     "not_found": 3,
+     "queries": 6,
+     "recall_at_1": 0.5,
+     "recall_at_3": 0.417
+    },
+    "none": {
+     "false_positive_rate": 1.0,
+     "queries": 5,
+     "returned_something": 5
+    },
+    "para": {
+     "mrr": 0.521,
+     "not_found": 0,
+     "queries": 24,
+     "recall_at_1": 0.25,
+     "recall_at_3": 0.75
+    },
+    "query_ms": {
+     "max": 0.713,
+     "p50": 0.687,
+     "p95": 0.707
+    },
+    "topic": {
+     "all_facts_on_top": 1.0,
+     "other_subjects_returned_mean": 0.0,
+     "queries": 6,
+     "recall_of_facts": 1.0
+    }
+   }
+  },
+  "environment": {
+   "cpu_count": 20,
+   "git_commit": "33334db",
+   "git_dirty": true,
+   "host_digest": "382a803dcc0d",
+   "machine": "aarch64",
+   "packages": {
+    "lxml": "6.1.3",
+    "markdownify": "1.2.4",
+    "neuroscifi": "0.5.0",
+    "playwright": "1.64.1",
+    "pypdf": "7.1.1",
+    "scrapling": "0.5.1",
+    "trafilatura": "2.3.1"
+   },
+   "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+   "python": "3.12.16",
+   "sqlite": "3.53.1"
+  },
+  "facts": 48,
+  "facts_merged_by_the_write_path": [],
+  "first_query_ms": 20.2,
+  "generated_at": "2026-11-24T01:48:05Z",
+  "label": "final-lexical",
+  "limit": 10,
+  "semantic_config": null,
+  "summary": {
+   "all_answerable": {
+    "mrr": 0.714,
+    "queries": 108,
+    "recall_at_1": 0.583,
+    "recall_at_3": 0.824
+   },
+   "near": {
+    "mrr": 0.951,
+    "not_found": 0,
+    "queries": 48,
+    "recall_at_1": 0.917,
+    "recall_at_3": 1.0
+   },
+   "noname": {
+    "mrr": 0.5,
+    "not_found": 6,
+    "queries": 12,
+    "recall_at_1": 0.5,
+    "recall_at_3": 0.417
+   },
+   "none": {
+    "false_positive_rate": 1.0,
+    "queries": 10,
+    "returned_something": 10
+   },
+   "para": {
+    "mrr": 0.53,
+    "not_found": 0,
+    "queries": 48,
+    "recall_at_1": 0.271,
+    "recall_at_3": 0.75
+   },
+   "query_ms": {
+    "max": 0.848,
+    "p50": 0.687,
+    "p95": 0.713
+   },
+   "topic": {
+    "all_facts_on_top": 1.0,
+    "other_subjects_returned_mean": 0.0,
+    "queries": 12,
+    "recall_of_facts": 1.0
+   }
+  },
+  "version": 1
+ },
+ "semantic": {
+  "benchmark": "memory-retrieval",
+  "by_half": {
+   "development": {
+    "all_answerable": {
+     "mrr": 0.972,
+     "queries": 54,
+     "recall_at_1": 0.963,
+     "recall_at_3": 0.981
+    },
+    "near": {
+     "mrr": 1.0,
+     "not_found": 0,
+     "queries": 24,
+     "recall_at_1": 1.0,
+     "recall_at_3": 1.0
+    },
+    "noname": {
+     "mrr": 0.833,
+     "not_found": 1,
+     "queries": 6,
+     "recall_at_1": 0.833,
+     "recall_at_3": 0.833
+    },
+    "none": {
+     "false_positive_rate": 0.2,
+     "queries": 5,
+     "returned_something": 1
+    },
+    "para": {
+     "mrr": 0.979,
+     "not_found": 0,
+     "queries": 24,
+     "recall_at_1": 0.958,
+     "recall_at_3": 1.0
+    },
+    "query_ms": {
+     "max": 297.949,
+     "p50": 103.327,
+     "p95": 194.588
+    },
+    "topic": {
+     "all_facts_on_top": 1.0,
+     "other_subjects_returned_mean": 0.5,
+     "queries": 6,
+     "recall_of_facts": 1.0
+    }
+   },
+   "held_out": {
+    "all_answerable": {
+     "mrr": 1.0,
+     "queries": 54,
+     "recall_at_1": 1.0,
+     "recall_at_3": 0.991
+    },
+    "near": {
+     "mrr": 1.0,
+     "not_found": 0,
+     "queries": 24,
+     "recall_at_1": 1.0,
+     "recall_at_3": 1.0
+    },
+    "noname": {
+     "mrr": 1.0,
+     "not_found": 0,
+     "queries": 6,
+     "recall_at_1": 1.0,
+     "recall_at_3": 0.917
+    },
+    "none": {
+     "false_positive_rate": 0.4,
+     "queries": 5,
+     "returned_something": 2
+    },
+    "para": {
+     "mrr": 1.0,
+     "not_found": 0,
+     "queries": 24,
+     "recall_at_1": 1.0,
+     "recall_at_3": 1.0
+    },
+    "query_ms": {
+     "max": 224.274,
+     "p50": 116.703,
+     "p95": 157.362
+    },
+    "topic": {
+     "all_facts_on_top": 1.0,
+     "other_subjects_returned_mean": 0.0,
+     "queries": 6,
+     "recall_of_facts": 1.0
+    }
+   }
+  },
+  "environment": {
+   "cpu_count": 20,
+   "git_commit": "33334db",
+   "git_dirty": true,
+   "host_digest": "382a803dcc0d",
+   "machine": "aarch64",
+   "packages": {
+    "lxml": "6.1.3",
+    "markdownify": "1.2.4",
+    "neuroscifi": "0.5.0",
+    "playwright": "1.64.1",
+    "pypdf": "7.1.1",
+    "scrapling": "0.5.1",
+    "trafilatura": "2.3.1"
+   },
+   "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+   "python": "3.12.16",
+   "sqlite": "3.53.1"
+  },
+  "facts": 48,
+  "facts_merged_by_the_write_path": [],
+  "first_query_ms": 242.2,
+  "generated_at": "2026-11-24T01:48:05Z",
+  "label": "final-semantic",
+  "limit": 10,
+  "semantic_config": {
+   "candidates": 10,
+   "embed_model": "qwen3-embedding-0.6b",
+   "enabled": true,
+   "floor": 0.02,
+   "rerank_model": "qwen3-reranker-0.6b",
+   "rerank_template": "qwen3",
+   "timeout": 2.0
+  },
+  "summary": {
+   "all_answerable": {
+    "mrr": 0.986,
+    "queries": 108,
+    "recall_at_1": 0.981,
+    "recall_at_3": 0.986
+   },
+   "near": {
+    "mrr": 1.0,
+    "not_found": 0,
+    "queries": 48,
+    "recall_at_1": 1.0,
+    "recall_at_3": 1.0
+   },
+   "noname": {
+    "mrr": 0.917,
+    "not_found": 1,
+    "queries": 12,
+    "recall_at_1": 0.917,
+    "recall_at_3": 0.875
+   },
+   "none": {
+    "false_positive_rate": 0.3,
+    "queries": 10,
+    "returned_something": 3
+   },
+   "para": {
+    "mrr": 0.99,
+    "not_found": 0,
+    "queries": 48,
+    "recall_at_1": 0.979,
+    "recall_at_3": 1.0
+   },
+   "query_ms": {
+    "max": 297.949,
+    "p50": 113.106,
+    "p95": 168.384
+   },
+   "topic": {
+    "all_facts_on_top": 1.0,
+    "other_subjects_returned_mean": 0.25,
+    "queries": 12,
+    "recall_of_facts": 1.0
+   }
+  },
+  "version": 1
+ },
+ "tree": "33334db",
+ "what": "Memory retrieval benchmark on the final code, quiet host: scripts/bench_memory.py with the two memory services started through deploy/memory/run.sh (stopped and removed afterwards), and without them"
+}
