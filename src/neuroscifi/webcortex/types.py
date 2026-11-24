@@ -194,6 +194,45 @@ class ClaimCluster(JsonMixin):
 _CHARGE_LOCK = threading.Lock()   # one lock for every Usage: fetches and searches charge from many threads
 
 
+class Stopped(Exception):
+    """The owner's stop, raised by a task's gate on a thread that is not the run's own: inside a search provider's
+    call (search.ProviderRegistry.search(wanted=...)) or a render's sub-request (browser.BrowserRenderer.render(
+    gate=...)), before a request is sent. `why` says which stop (the task was cancelled, web access was turned
+    off, ...). `denied`: not the task but the host about to be contacted is refused (on the owner's deny list as
+    it is now); the other requests of the task go on. Never a FetchError: it says nothing about the site."""
+
+    def __init__(self, why, *, denied=False):
+        super().__init__(str(why))
+        self.why, self.denied = str(why), bool(denied)
+
+
+def stop_verdict(wanted, url=None) -> Stopped | None:
+    """What a task's gate says now, asked from a thread that is not the run's own: None (go on) or the stop.
+    `wanted(url)` answers a reason, a Stopped (to say `denied`) or nothing; a gate that fails is a stop (nothing
+    goes out past a gate that cannot be read)."""
+    if wanted is None:
+        return None
+    try:
+        why = wanted(url)
+    except Exception as error:
+        return Stopped(f"gate failed ({type(error).__name__})")
+    if not why:
+        return None
+    return why if isinstance(why, Stopped) else Stopped(why)
+
+
+def raising_gate(wanted):
+    """`wanted` as a gate that raises (SafeFetcher.gated, search.ask_gate), or None without one."""
+    if wanted is None:
+        return None
+
+    def ask(url):
+        stop = stop_verdict(wanted, url)
+        if stop is not None:
+            raise stop
+    return ask
+
+
 UNUSED_SHARE = 0.10            # of max_requests / max_bytes: what read-ahead may send or receive unused
 UNUSED_BYTES_FLOOR = 256 * 1024
 

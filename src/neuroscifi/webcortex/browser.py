@@ -29,6 +29,11 @@ Contract
   Defence in depth for traffic that bypasses routing: all DNS inside Chromium resolves to NOTFOUND, a dead proxy
   is configured, and WebRTC may not use non-proxied UDP. Chromium therefore never opens a
   socket to the page's hosts itself.
+- Stops: with `render(gate=...)` every sub-request asks the task's gate before each of its network steps
+  (SafeFetcher.gated on the render thread): after the task was cancelled or web access turned off no sub-request is
+  sent (outcome 'refused', code 'stopped', and the later ones without asking), one to a host denied meanwhile is
+  refused as 'blocked_policy', and one on the wire is cut. Chromium itself opens no socket (below), so nothing of a
+  render reaches a site except through that gate.
 - Bounded: one wall-clock `timeout` per render; the rendered body is capped at the fetcher's max_bytes. If the
   render thread is still busy RENDER_GRACE seconds after the timeout, a watchdog SIGKILLs the Playwright driver
   and every process below it (Chromium and its helpers), so a hung render leaks neither a browser nor a thread
@@ -51,7 +56,7 @@ import time
 from urllib.parse import urlsplit
 
 from .net import _charge, _redact, check_url
-from .types import _CHARGE_LOCK, Budget, BudgetExceeded, FetchError, FetchResult, Usage
+from .types import _CHARGE_LOCK, Budget, BudgetExceeded, FetchError, FetchResult, Stopped, Usage, raising_gate
 
 CHROMIUM_ARGS = [
     "--disable-extensions", "--disable-background-networking", "--disable-sync", "--disable-default-apps",
@@ -155,10 +160,18 @@ class BrowserRenderer:
             return True, f"playwright chromium at {bundled}"
         return False, "no chromium found (install chromium or set NSF_CHROMIUM)"
 
-    def render(self, url, *, budget, usage, main: FetchResult | None = None, timeout=None) -> FetchResult:
+    def render(self, url, *, budget, usage, main: FetchResult | None = None, timeout=None, gate=None) -> FetchResult:
         """`main`: the FetchResult of `url` the caller already fetched (purpose='page'); it is not fetched or
         charged again. Without it the page is fetched here. `timeout` may shorten (never lengthen) self.timeout,
-        e.g. to what is left of the task's time budget."""
+        e.g. to what is left of the task's time budget.
+
+        `gate`: (wanted, scope) of the task this render is for (orchestrator._Run.elsewhere). `wanted(url)`, safe
+        on the render thread, answers a types.Stopped or None; `scope(ask)` is entered on the render thread, so
+        every sub-request asks before each of its network steps (SafeFetcher.gated) and one on the wire is cut.
+        A sub-request stopped because its host is denied now is refused like any policy refusal (code
+        'blocked_policy'); the task's own stop (cancelled, web access off) refuses it with code 'stopped' and
+        every later sub-request without asking again, so nothing more is sent. The page then finishes loading from
+        what it has; the caller sees 'stopped' in last_events and acts on it."""
         limit = self.timeout if timeout is None else max(1.0, min(self.timeout, float(timeout)))
         ok, reason = self.available()
         if not ok:
@@ -176,8 +189,8 @@ class BrowserRenderer:
                            max_bytes=max(0, budget.max_bytes - usage.bytes), max_browser_sessions=0)
         spent = Usage()
         box: dict = {}
-        worker = threading.Thread(target=self._render_thread, args=(main, allowance, spent, box, limit), daemon=True,
-                                  name="webcortex-render")
+        worker = threading.Thread(target=self._render_thread, args=(main, allowance, spent, box, limit, gate),
+                                  daemon=True, name="webcortex-render")
         worker.start()
         try:
             worker.join(limit + RENDER_GRACE)
@@ -196,9 +209,14 @@ class BrowserRenderer:
         return box["result"]
 
     # ---- inside the render thread (Playwright's sync API must not share a thread with an asyncio loop) -------
-    def _render_thread(self, main, budget, usage, box, limit=None):
+    def _render_thread(self, main, budget, usage, box, limit=None, gate=None):
         try:
-            box["result"] = self._render(main, budget, usage, box, limit)
+            if gate is None:
+                box["result"] = self._render(main, budget, usage, box, limit)
+            else:
+                wanted, scope = gate
+                with scope(raising_gate(wanted)):
+                    box["result"] = self._render(main, budget, usage, box, limit)
         except BaseException as error:          # handed back to the calling thread
             box["error"] = error
 
@@ -212,7 +230,7 @@ class BrowserRenderer:
         deadline = started + limit
         events: list[dict] = []
         self.last_events = events
-        state = {"exhausted": None, "main_served": False}
+        state = {"exhausted": None, "main_served": False, "stopped": None}
         policy = self.fetcher.policy
 
         def handle(route):
@@ -233,6 +251,10 @@ class BrowserRenderer:
                 why = "frame"
             elif blocked_domain(parts.hostname):
                 why = "tracker"
+            if state["stopped"] and not why:     # the task was stopped: nothing more is asked for or sent
+                record.update(outcome="refused", code="stopped")
+                route.abort("blockedbyclient")
+                return
             if why or (request.method not in ("GET", "HEAD") or parts.scheme.lower() not in ("http", "https")
                        or state["exhausted"] or time.monotonic() > deadline):
                 record["outcome"] = "aborted"
@@ -250,6 +272,14 @@ class BrowserRenderer:
             except BudgetExceeded as error:
                 state["exhausted"] = error
                 record.update(outcome="refused", code="budget_exhausted")
+                route.abort("blockedbyclient")
+                return
+            except Stopped as stop:               # the task's gate (render(gate=...)), before a request was sent
+                if stop.denied:                   # this host only: refused like any policy refusal
+                    record.update(outcome="refused", code="blocked_policy")
+                else:
+                    state["stopped"] = stop
+                    record.update(outcome="refused", code="stopped")
                 route.abort("blockedbyclient")
                 return
             record["outcome"] = "served"

@@ -58,7 +58,14 @@ configuration (at most every CONFIG_RECHECK seconds): web access turned off stop
 newly denied domain is skipped. Inside a page fetch the same is asked before every network step (_Run.fetch,
 still_wanted: the cancel flag and the configuration read at that moment), and a fetch made ahead of its turn asks
 its own gate (_Lookout), so no request starts after a cancel, after web access was turned off or to a host denied
-meanwhile. A task forgotten while it runs stops at its next fenced write and writes nothing.
+meanwhile. The requests a task sends from other threads ask as well, each before it is sent: the search providers'
+calls (_Run.search: ProviderRegistry.search(wanted=, scope=)) and a render's sub-requests (BrowserRenderer.render(
+gate=)) ask the _Lookout through _Run.elsewhere, and a record read through a provider's API on the run's own
+thread goes through the run's gate like a page (_Run.through_gate). A stop one of those gates saw is raised on the
+run's thread right after (stopped_elsewhere). What still waits for the run's next check: a query a metasearch
+daemon on this host already has (its engines' requests are its own), and the registry lookups of a dependency
+check (deps.check, its own threads and budget). A task forgotten while it runs stops at its next fenced write and
+writes nothing.
 Leases name the holder's host digest, pid and process start time: a dead worker on this host does not hold its task
 (cancel, resume, requeue and the worker act at once; task JSON carries `worker_alive` and `origin_label`). An
 identical submission while one is queued or running returns that task (`deduplicated: true`).
@@ -86,7 +93,7 @@ from ..instance import store
 from ..instance.errors import Conflict, LeaseHeld, ValidationError
 from . import state, temporal
 from .types import (FETCH_ERROR_CODES, MODES, TERMINAL_STATES, Budget, BudgetExceeded, Claim, ClaimCluster, Document,
-                    FetchError, FetchResult, QueryPlan, SearchResult, Usage)
+                    FetchError, FetchResult, QueryPlan, SearchResult, Stopped, Usage)
 
 LEASE_SECONDS = 600.0
 AUTHORIZED_DISCLOSURE = "owner-approved-disclosure"
@@ -188,6 +195,9 @@ def denied_by(deny_list, url) -> str | None:
                  (host == d.strip(".").lower() or host.endswith("." + d.strip(".").lower()))), None)
 
 
+SITE_DENIED = "the site was denied"
+
+
 class _Lookout:
     """What a run's fetches ask from threads other than the reader's: the gate of its read-ahead fetches
     (SafeFetcher.speculate(wanted=...)) and the watch of its own requests on the wire (SafeFetcher.gated(watch=...)).
@@ -217,9 +227,15 @@ class _Lookout:
             return "the task was cancelled"
         if not cfg.enabled:
             return "web access was turned off"
-        if denied_by(cfg.deny_domains, url) is not None:
-            return "the site was denied"
+        if url and denied_by(cfg.deny_domains, url) is not None:
+            return SITE_DENIED
         return None
+
+    def verdict(self, url=None):
+        """The same answer as a types.Stopped (None: go on), for the gates of threads that raise it (a search
+        provider's call, a render's sub-request): `denied` when only the host asked about is refused."""
+        why = self(url)
+        return Stopped(why, denied=why == SITE_DENIED) if why else None
 
     def close(self):
         with self.lock:
@@ -852,7 +868,9 @@ class _Run:
             except _OutOfTime:
                 self.limit("time budget exhausted before searching")
                 break
-            outcome = self.services.registry.search(plan, budget=self.budget, usage=self.usage, sent=self.save)
+            outcome = self.search(plan)
+            if any(str(f.get("error") or "").startswith("stopped") for f in outcome.failures):
+                self.stopped_elsewhere()         # the owner's stop, seen by a search's gate: raised here
             self.renew()
             seen = {r["url"] for r in results}
             results += [r.to_json() for r in outcome.results if r.url not in seen]
@@ -878,6 +896,26 @@ class _Run:
             self.limit("query budget exhausted: some planned queries were not sent")
         self.done("discovering", plan=plan.to_json(), results=results, attempts=attempts[:200])
         return True
+
+    def search(self, plan):
+        """registry.search for this run, gated: before each query, each provider's call and each request a provider
+        sends, the run's _Lookout is asked (elsewhere()), so nothing more is sent after a cancel or once web
+        access is off, and nothing to an API host denied meanwhile. A registry that takes no gate is called as
+        before (its searches then notice a stop at the run's next check)."""
+        import inspect
+        search = self.services.registry.search
+        extra = {}
+        try:
+            accepts = inspect.signature(search).parameters
+        except (TypeError, ValueError):
+            accepts = {}
+        if "wanted" in accepts:
+            wanted, scope = self.elsewhere()
+            if wanted is not None:
+                extra["wanted"] = wanted
+                if "scope" in accepts:
+                    extra["scope"] = scope
+        return search(plan, budget=self.budget, usage=self.usage, sent=self.save, **extra)
 
     def dependency_check(self, assessment):
         """"Latest releases affecting <this system>" (intent.dependency_question): the `nsf web deps` logic instead
@@ -1061,7 +1099,8 @@ class _Run:
             takes_intro = False
         whole = {"intro": False} if takes_intro and _ORIGIN_QUESTION.search(self.objective or "") else {}
         try:
-            found = article(r.title, budget=self.budget, usage=self.usage, lang=meta.get("language") or "en", **whole)
+            found = self.through_gate(lambda: article(r.title, budget=self.budget, usage=self.usage,
+                                                      lang=meta.get("language") or "en", **whole))
         except ProviderError as exc:
             code = exc.code if exc.code in FETCH_ERROR_CODES else "http_error"
             raise FetchError(code, r.url, f"wikipedia {exc.code}: {str(exc.detail)[:200]}") from None
@@ -1117,13 +1156,45 @@ class _Run:
         still_wanted, so no lookup starts and no request is sent after a cancel, after web access was turned off or
         to a host denied meanwhile, and a request already on the wire is cut within net.STOP_POLL seconds. A host
         denied meanwhile is that page's FetchError('blocked_policy')."""
+        return self.through_gate(lambda: self.services.fetcher.fetch(url, purpose=purpose, budget=self.budget,
+                                                                     usage=self.usage))
+
+    def through_gate(self, call):
+        """`call()` with every fetch it makes on this thread inside the run's gate, as fetch() does: a page, and
+        also a record read through a provider's API (wikipedia()), whose requests are the task's all the same."""
         try:
             with self.gate():
-                return self.services.fetcher.fetch(url, purpose=purpose, budget=self.budget, usage=self.usage)
+                return call()
         except _Denied as stop:
             raise self.denied_meanwhile(stop) from None
         finally:
             self.flush_deferred()
+
+    def elsewhere(self):
+        """The run's gate for the threads that are not its own and still send its requests: the search providers'
+        calls (ProviderRegistry.search(wanted=, scope=)) and a render's sub-requests (BrowserRenderer.render(
+        gate=)). Returns (wanted, scope), or (None, None) when there is no file to read the owner's stops from.
+        `wanted(url)` answers from the run's _Lookout at that moment: a types.Stopped (cancelled, forgotten or
+        taken over, web access off; `denied` when only that URL's host is on the deny list now) or None.
+        `scope(ask)` puts the calling thread's fetches under SafeFetcher.gated with `ask` as the gate and the
+        lookout as the watch of requests on the wire; nothing for a fetcher that cannot ask."""
+        lookout = self.watch()
+        if lookout is None:
+            return None, None
+        gated = getattr(self.services.fetcher, "gated", None)
+
+        def scope(ask):
+            from contextlib import nullcontext
+            return gated(ask, lookout) if gated is not None else nullcontext()
+        return lookout.verdict, scope
+
+    def stopped_elsewhere(self):
+        """A gate of another thread reported a stop (a search provider, a render's sub-request): raise it here, on
+        the run's own thread, as the stop it is (check: cancelled, the lease, regulation, time; the owner's web
+        configuration read now). Returns when nothing stops the run any more (the stop was withdrawn, or it was
+        one host's denial, which the new deny list now applied covers)."""
+        self.check()
+        self.recheck_config(force=True)
 
     def gate(self):
         """Context manager around fetches this run makes on its own thread: SafeFetcher.gated with still_wanted as
@@ -1292,9 +1363,18 @@ class _Run:
         except (TypeError, ValueError):
             accepts = {}
         extra = {"timeout": timeout} if timeout is not None and "timeout" in accepts else {}
-        if "main" in accepts:
-            return renderer.render(url, budget=self.budget, usage=self.usage, main=result, **extra)
-        return renderer.render(url, budget=self.budget, usage=self.usage, **extra)
+        if "gate" in accepts:        # the render's sub-requests ask the run's gate before each request
+            wanted, scope = self.elsewhere()
+            if wanted is not None:
+                extra["gate"] = (wanted, scope)
+        try:
+            if "main" in accepts:
+                return renderer.render(url, budget=self.budget, usage=self.usage, main=result, **extra)
+            return renderer.render(url, budget=self.budget, usage=self.usage, **extra)
+        finally:
+            if any(e.get("code") == "stopped" for e in (getattr(renderer, "last_events", None) or [])
+                   if isinstance(e, dict)):
+                self.stopped_elsewhere()     # the owner's stop, seen by a sub-request's gate: raised here
 
     def render_outcome(self, renderer, url) -> dict:
         """The render event, from the renderer's sub-request log; records the limitations (W-08)."""
@@ -2259,7 +2339,10 @@ def _execute(db, task_id, services, *, resume):
         needs_web = True
         if not run.is_done("discovering"):
             run.stage("discovering")
-            needs_web = run.discover()
+            try:
+                needs_web = run.discover()
+            finally:
+                run.close_lookout()          # the searches' gate (run.search); read() makes its own
         elif not (run.checkpoint.get("assessment") or {}).get("needs_web", True):
             needs_web = False
         if not needs_web:

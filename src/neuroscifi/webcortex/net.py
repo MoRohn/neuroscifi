@@ -83,6 +83,8 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
   must be callable from another thread). What had arrived of a cut read-ahead request counts as unused. A claim
   waiting for its read-ahead fetch asks the caller's gate every STOP_POLL seconds as well. A request charged and
   then never written (the stop came during the handshake) is not counted, on either path.
+  The same gate serves the fetches a task makes on other threads: a search provider's API and feed requests and a
+  render's sub-requests run inside gated() with a gate that raises types.Stopped (orchestrator._Run.elsewhere).
   A read-ahead fetch fails closed: a gate it cannot read is a stop. The reader's `watch` does not: a watch that
   cannot be read is no answer (the reader's own gate still fails closed before every step), and a cut its gate
   does not confirm (the stop was withdrawn within the poll) is FetchError('interrupted'), which is nobody's

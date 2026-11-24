@@ -45,8 +45,8 @@ import urllib.request
 
 from ...instance.errors import ValidationError
 from ..config import USER_AGENT
-from ..types import BudgetExceeded, Query, SearchResult
-from ..search import Breaker, ProviderError, charge, parse_iso_date, strip_html
+from ..types import BudgetExceeded, Query, SearchResult, Stopped
+from ..search import Breaker, ProviderError, ask_gate, charge, parse_iso_date, strip_html
 
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 MAX_QUERY_CHARS = 512
@@ -337,6 +337,15 @@ class OpenWebSearchProvider:
             if not allowed:
                 attempts.append({"engine": engine, "ok": False, "n": 0, "error": "circuit_open", "latency": 0.0})
                 continue
+            try:
+                # inside a gated search (search.ProviderRegistry.search(wanted=...)): after a cancel or with web
+                # access turned off nothing more is handed to the daemon, and nothing is charged for it. A call the
+                # daemon already has runs to its end there: the engine's request is the daemon's own
+                ask_gate()
+            except Stopped:
+                with self._lock:
+                    self._breaker(engine).neutral()
+                raise
             try:
                 charge(budget, usage, requests=1)   # the daemon makes one upstream request per engine call
             except BudgetExceeded as exc:

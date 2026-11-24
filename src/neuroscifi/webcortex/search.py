@@ -24,6 +24,14 @@ Neither do failures caused by our own politeness: a `rate_limited` error that ca
 backoff still in force after a 429/503, a Crawl-delay slot beyond the timeout, a 429 with Retry-After) is us
 waiting as asked, not the provider failing; counting it would hold the circuit open long after the backoff ends.
 
+Stops (`search(wanted=, scope=)`): with the task's gate, nothing is sent for a stopped task. The gate is asked before
+each query is charged, before each further round of a query, on every provider's thread before the provider is
+called, before every network step of a fetch a provider makes through SafeFetcher (`scope`), and by `ask_gate()`
+before each request a provider sends on its own (the metasearch daemons on this host: before the charge, so a
+query not handed over is not charged). A stop is the outcome code 'stopped' of that call or of the queries not
+sent; like 'interrupted' (a request cut on a stop that was then withdrawn) it never moves a breaker. Nothing is
+raised: the caller knows what the stop means.
+
 Providers may also expose:
   `accepts(query) -> bool`   the provider does not handle this query form (e.g. PyPI and a sentence); not called
   `general_web: bool`        see the empty-answer rule
@@ -39,6 +47,7 @@ from __future__ import annotations
 
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from datetime import datetime, timezone
 import html
 import re
@@ -49,14 +58,15 @@ from typing import Protocol, runtime_checkable
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ..instance.errors import ValidationError
-from .types import BudgetExceeded, FetchError, Query, QueryPlan, SearchOutcome, SearchResult
+from .types import (BudgetExceeded, FetchError, Query, QueryPlan, SearchOutcome, SearchResult, Stopped, raising_gate,
+                    stop_verdict)
 
 RRF_K = 60
 HEALTH_WINDOW = 6 * 3600.0   # "healthy" needs a successful call at most this old (T1-11)
 GENERAL_KINDS = ("web", "news")
 # Error codes that say nothing about a provider's health: never move a breaker.
 NON_HEALTH_CODES = frozenset({"budget_exhausted", "disabled", "blocked_policy", "blocked_robots", "circuit_open",
-                              "not_applicable", "daily_cap"})
+                              "not_applicable", "daily_cap", "stopped", "interrupted"})
 # Registry lookups ("pypi:numpy", "osv:PyPI:x@1.0") are never re-sent to general web search when nobody answers.
 REGISTRY_QUERY = re.compile(r"^(?:pypi|npm|osv|github):\S", re.I)
 _USAGE_LOCK = threading.Lock()   # Usage.charge is not atomic; discovery charges go through this lock
@@ -82,6 +92,19 @@ class SearchProvider(Protocol):
 
     def search(self, query: Query, limit: int, *, budget, usage) -> list[SearchResult]:
         ...
+
+
+# The gate of the search call running on this thread (ProviderRegistry.search(wanted=...)), for providers whose
+# requests do not go through SafeFetcher (the loopback metasearch daemons): they call ask_gate() before each one.
+_GATE = threading.local()
+
+
+def ask_gate(url=None) -> None:
+    """Before a request a provider sends without SafeFetcher: raises types.Stopped when the task this search is for
+    was stopped (cancelled, web access turned off). Nothing outside a gated search."""
+    ask = getattr(_GATE, "ask", None)
+    if ask is not None:
+        ask(url)
 
 
 def charge(budget, usage, **amounts) -> None:
@@ -293,6 +316,8 @@ class Breaker:
 # ---- registry ------------------------------------------------------------------------------------------------
 
 def _error_code(exc: BaseException) -> tuple[str, str]:
+    if isinstance(exc, Stopped):
+        return "stopped", exc.why
     if isinstance(exc, ProviderError):
         return exc.code, exc.detail
     if isinstance(exc, BudgetExceeded):
@@ -435,12 +460,26 @@ class ProviderRegistry:
                     primary = getattr(by_name[primary], "fallback_for", None)
         return out
 
-    def _call(self, provider, query: Query, limit: int, budget, usage) -> dict:
+    def _call(self, provider, query: Query, limit: int, budget, usage, wanted=None, scope=None) -> dict:
+        """One provider's search, on a pool thread. With `wanted` (search()), the thread is gated for the call: the
+        gate is asked before the provider is called, before every network step of every fetch the provider makes
+        through SafeFetcher (`scope`), and by ask_gate() before a request a provider sends on its own. A stop is the
+        outcome 'stopped' (a NON_HEALTH_CODE: it says nothing about the provider)."""
         started = time.perf_counter()
         out = {"provider": provider.name, "results": [], "error": None, "code": None, "engine_attempts": [],
                "polite": False}
+        ask = raising_gate(wanted)
         try:
-            results = provider.search(query, limit, budget=budget, usage=usage)
+            if ask is None:
+                results = provider.search(query, limit, budget=budget, usage=usage)
+            else:
+                _GATE.ask = ask
+                try:
+                    with (scope(ask) if scope is not None else nullcontext()):
+                        ask(None)
+                        results = provider.search(query, limit, budget=budget, usage=usage)
+                finally:
+                    _GATE.ask = None
             out["results"] = [r for r in (results or []) if isinstance(r, SearchResult)][:limit]
         except Exception as exc:   # every failure is recorded on the outcome, never raised past the registry
             out["code"], out["error"] = _error_code(exc)
@@ -449,7 +488,8 @@ class ProviderRegistry:
         out["engine_attempts"] = list(getattr(provider, "last_attempts", None) or [])
         return out
 
-    def _round(self, pool, providers, query, limit, budget, usage, attempts, failures, lists, qi) -> list[dict]:
+    def _round(self, pool, providers, query, limit, budget, usage, attempts, failures, lists, qi, wanted=None,
+               scope=None) -> list[dict]:
         runnable = []
         for provider in providers:
             if self._allow(provider.name):
@@ -459,7 +499,7 @@ class ProviderRegistry:
                          "error": "circuit_open", "latency": 0.0}
                 attempts.append(entry)
                 failures.append(entry)
-        calls = [pool.submit(self._call, p, query, limit, budget, usage) for p in runnable]
+        calls = [pool.submit(self._call, p, query, limit, budget, usage, wanted, scope) for p in runnable]
         done = [f.result() for f in calls]
         anyone_found = any(d["results"] for d in done)
         for provider, d in zip(runnable, done):
@@ -495,9 +535,18 @@ class ProviderRegistry:
                     lists.append((qi, provider.name, engine, group))
         return done
 
-    def search(self, plan: QueryPlan, *, budget, usage, per_query: int = 8, sent=None) -> SearchOutcome:
+    def search(self, plan: QueryPlan, *, budget, usage, per_query: int = 8, sent=None, wanted=None,
+               scope=None) -> SearchOutcome:
         """`sent`, when given, is called after each query is charged and before it is dispatched (the orchestrator
-        persists the usage there, so a worker killed mid-search leaves every search it sent counted: T5-07)."""
+        persists the usage there, so a worker killed mid-search leaves every search it sent counted: T5-07).
+
+        `wanted(url)` is the task's gate, callable from any thread: a reason (or a types.Stopped) when the task was
+        stopped, else None. It is asked here before each query is charged and before each further round of a
+        query, and on every provider's thread before the provider is called and before each request it sends
+        (_call); `scope(ask)` is a context manager entered on those threads (the orchestrator passes
+        SafeFetcher.gated, so fetches a provider makes ask before every network step and are cut on the wire). A
+        stop ends the search: the queries not sent are one failure entry ('stopped: <why>'), nothing is raised, and
+        the caller, which knows what the stop means, acts on it."""
         per_query = max(1, min(int(per_query), 20))
         attempts: list[dict] = []
         failures: list[dict] = []
@@ -513,6 +562,11 @@ class ProviderRegistry:
         with ThreadPoolExecutor(max_workers=max(1, int(budget.max_concurrency)),
                                 thread_name_prefix="webcortex-search") as pool:
             for qi, query in enumerate(queries):
+                stop = stop_verdict(wanted)
+                if stop is not None:
+                    failures.append({"provider": None, "engine": None, "query": query.text, "ok": False, "n": 0,
+                                     "error": f"stopped: {stop.why}", "latency": 0.0})
+                    break
                 if self._clock() - started > budget.max_seconds:
                     failures.append({"provider": None, "engine": None, "query": query.text, "ok": False, "n": 0,
                                      "error": "budget_exhausted: seconds", "latency": 0.0})
@@ -532,11 +586,12 @@ class ProviderRegistry:
                     continue
                 deferred = self._deferred(providers)
                 first = [p for p in providers if p not in deferred]
-                done = self._round(pool, first, query, per_query, budget, usage, attempts, failures, lists, qi)
+                done = self._round(pool, first, query, per_query, budget, usage, attempts, failures, lists, qi,
+                                   wanted, scope)
                 tried = {p.name for p in first}
                 while deferred:          # one tier at a time: a fallback runs after its primary found nothing
                     tier = [p for p in deferred if p.fallback_for in tried]
-                    if not tier:
+                    if not tier or stop_verdict(wanted) is not None:
                         break
                     deferred = [p for p in deferred if p not in tier]
                     found = {d["provider"] for d in done if d["results"]}
@@ -544,14 +599,15 @@ class ProviderRegistry:
                     tried |= {p.name for p in tier}
                     if tier:
                         done += self._round(pool, tier, query, per_query, budget, usage, attempts, failures, lists,
-                                            qi)
+                                            qi, wanted, scope)
                 if query.kind != "web" and not any(d["results"] for d in done) and not REGISTRY_QUERY.match(query.text):
                     # fallback: specialist providers produced nothing usable -> general web providers
                     fallback = [p for p in self._candidates(Query(query.text, "web", query.since, query.site,
                                                                   query.language, query.purpose),
                                                             exclude={p.name for p in providers})]
-                    if fallback:
-                        self._round(pool, fallback, query, per_query, budget, usage, attempts, failures, lists, qi)
+                    if fallback and stop_verdict(wanted) is None:
+                        self._round(pool, fallback, query, per_query, budget, usage, attempts, failures, lists, qi,
+                                    wanted, scope)
         return SearchOutcome(results=fuse(lists), attempts=attempts, failures=failures)
 
 
@@ -601,4 +657,5 @@ def fuse(lists: list[tuple]) -> list[SearchResult]:
 
 
 __all__ = ["SearchProvider", "ProviderError", "ProviderRegistry", "Breaker", "canonical_url", "fuse", "charge",
+           "ask_gate",
            "strip_html", "parse_iso_date", "date_string", "RRF_K", "NON_HEALTH_CODES", "REGISTRY_QUERY"]
