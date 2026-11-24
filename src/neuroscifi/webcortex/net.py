@@ -1149,6 +1149,12 @@ class SafeFetcher:
                 self._inflight.pop(key, None)
             flight.event.set()
 
+    def written(self) -> int:
+        """Requests this thread's own fetches have written so far (any part of them left this process). A caller
+        whose fetch was stopped compares it with the count before the fetch to know whether anything went out,
+        e.g. to give back a paid query that was never sent (providers.brave)."""
+        return getattr(self._gate, "written", 0)
+
     def gated(self, ask, watch=None):
         """Context manager: while inside it, every fetch this thread makes calls `ask(url)` before each of its
         network steps (a name lookup, opening a connection, writing the request on it: robots.txt, the page, every
@@ -1756,8 +1762,11 @@ class SafeFetcher:
             else:
                 written = True
             finally:
-                if written and spec is not None:
-                    spec.sent()
+                if written:
+                    if spec is not None:
+                        spec.sent()
+                    else:
+                        self._gate.written = getattr(self._gate, "written", 0) + 1
             raw = conn.getresponse()
             status = raw.status
             response_headers: dict = {}

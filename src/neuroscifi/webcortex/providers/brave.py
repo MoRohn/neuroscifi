@@ -51,7 +51,7 @@ from urllib.parse import urlencode
 
 from ..config import DEFAULT_PROVIDER_DAILY_QUERIES
 from ..search import REGISTRY_QUERY, ProviderError, _canonical, parse_iso_date, strip_html
-from ..types import BudgetExceeded, FetchError, Query, SearchResult
+from ..types import BudgetExceeded, FetchError, Query, SearchResult, Stopped
 from . import keys
 from .openwebsearch import _clean_url
 
@@ -188,6 +188,8 @@ class BraveProvider:
         except keys.CapReached as exc:
             raise self._fail("daily_cap", str(exc), retryable=False) from None
         url = f"{self.BASE}{PATHS[engine]}?{urlencode(params)}"
+        written = getattr(self.fetcher, "written", None)
+        before = written() if written is not None else None
         try:
             result = self.fetcher.fetch(url, headers={"X-Subscription-Token": key, "Accept": "application/json"},
                                         purpose="api", budget=budget, usage=usage)
@@ -195,6 +197,13 @@ class BraveProvider:
             if _unbilled(exc):
                 self.ledger.refund()
             raise self._fetch_error(exc, key) from None
+        except Stopped:
+            # the owner's stop (the search's gate, search.ProviderRegistry.search(wanted=...)). Given back only
+            # when the fetcher says no byte of the request left this thread: a stop that cut a request on the wire
+            # follows one Brave may bill, and keeps its count (as does a fetcher that cannot say)
+            if before is not None and written() == before:
+                self.ledger.refund()
+            raise
         if result.status != 200:
             if not 200 <= result.status < 300:
                 self.ledger.refund()

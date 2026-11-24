@@ -592,3 +592,28 @@ def test_corpus_provider_runs_are_unchanged_by_the_gate(tmp_path):
         assert runs[0] == runs[1] and runs[0][0] == "completed"
     finally:
         web.stop()
+
+
+def test_a_feed_hosts_denial_stops_that_feed_only_and_a_cancel_stops_all(web, tmp_path):
+    """types.Stopped(denied=True) is about one host: the provider's other feeds are still read. A cancel stops the
+    provider's call."""
+    rss = ("<rss><channel><item><title>Zephyr compiler 4.2.0 released</title><link>https://b.example/z</link>"
+           "<description>the Zephyr compiler</description></item></channel></rss>")
+    for host in ("a.example", "b.example"):
+        web.add(host, "/robots.txt", ROBOTS, content_type="text/plain")
+        web.add(host, "/feed.xml", rss, content_type="application/rss+xml")
+    fetcher = fetcher_for(web, tmp_path)
+    provider = FeedProvider(["http://a.example/feed.xml", "http://b.example/feed.xml"], fetcher=fetcher)
+
+    def deny_a(url):
+        if url and "a.example" in url:
+            raise Stopped("the site was denied", denied=True)
+    with fetcher.gated(deny_a):
+        results = provider.search(Query("zephyr compiler"), 5, budget=Budget(), usage=Usage())
+    assert results and {r["host"] for r in web.log} == {"b.example"}
+    attempts = {a["engine"]: a for a in provider.last_attempts}
+    assert attempts["http://a.example/feed.xml"]["error"].startswith("blocked_policy")
+    assert attempts["http://b.example/feed.xml"]["ok"]
+    with fetcher.gated(stop_now), pytest.raises(Stopped):
+        FeedProvider(["http://a.example/feed.xml", "http://b.example/feed.xml"], fetcher=fetcher).search(
+            Query("zephyr compiler"), 5, budget=Budget(), usage=Usage())
