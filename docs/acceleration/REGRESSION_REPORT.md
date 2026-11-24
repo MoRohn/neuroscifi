@@ -1,13 +1,15 @@
 # Compatibility and regression report
 
-Status: 2026-11-23, branch `nvidia-acceleration-review` against `9e4570a` (0.7.0). This page says, capability by
+Status: 2026-11-24. Phases 1 and 2: branch `nvidia-acceleration-review` against `9e4570a` (0.7.0), merged to `main`
+as `793a21f`. Phase 3: branch `open-items-round` against `793a21f`. This page says, capability by
 capability, how each was checked after the changes and what the check covers. "Verified" means a test or a
 measurement ran and passed on this branch; "unverified" means the environment could not check it, and is never
 counted as passed.
 
 The branch has two phases: the review itself, and the six decisions the owner then delegated
 ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §4). Phase 2 changed more of what the system does than phase 1,
-including four defaults, so §2 to §4 say for each row which phase touched it.
+including four defaults, so §2 to §4 say for each row which phase touched it. Phase 3, the open items that phase 2
+left ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §5), has its own rows at the end of §2 and items 23 to 33 of §3.
 
 ## 1. Suites
 
@@ -61,6 +63,25 @@ Tests that the phase-2 lanes themselves added and later rewrote during review (t
 critique-scope file, the listener and wake tests) are not listed: they did not exist at `9e4570a`.
 `tests/inference/test_inference_reasoning.py`, the guard's own suite, is byte for byte the file of `307b907`.
 
+**Tests changed in phase 3.** Every existing test (one that existed at `793a21f`) that a lane or the integration
+changed; none lost an assertion.
+
+| Test | Change | Why |
+|---|---|---|
+| `tests/inference/test_inference_critique_scope.py`: the test that "what the model shortens itself passes the guard"; two tests that used "… by Reuters" as the refused attribution | The first now asserts the refusal; the other two use "… by the operator" | The first asserted a guard gap that phase 3 closed (a claim's exception must survive). "by Reuters" only names a source, which the narrowed refusal now spares |
+| `tests/webcortex/test_read_ahead.py`, the committed random-web fuzz | Two assertions added (unused ≤ the allowance; traffic ≤ budget + allowance) | The new bound |
+| `tests/test_resources_wake.py`, `tests/test_deploy_units.py` (the installer's dry-run line) | The request folder's mode 2770 → 3770; one more existing mode in the "left alone" loop; one import line (the idle tests' pin) | The sticky bit: nobody removes another account's request. The import gives the wake tests the pin their borrowed fixtures need |
+| `tests/test_resources_idle.py` | The fake host answers `docker port`, maps SearXNG's unit and passes readiness to `Idle`; an autouse fixture pins the existing tests to one container per memory model; `memory_settings`' exact dictionary gains `server` and `container` | Readiness for TTS and SearXNG; the existing tests were written for two memory servers, and the single server is now the default |
+| `tests/test_deploy_units.py`, the memory script's tests and the installer's | Run for both serving modes; the refusal list of single mode differs (`foreground` and `foreground all` are valid there); the mode passed through an override file; the installer test follows what `--memory` installs in each mode | The single server; `install.sh --memory` installs the unit of the configured server |
+| `tests/test_deployment_accounts.py`, the polkit rule test | The rule names every unit the policy manages plus the memory units of the other mode | The rule must not need rewriting when the serving mode changes |
+| `tests/webcortex/test_autonomy.py::test_two_concurrent_autonomous_investigations_at_most_across_processes` | Its children are spawned (`race_helper.race`), joined for 60 s; every assertion kept | A child forked from a multi-threaded test process can inherit a held lock; 50 of 50 runs on a busy core |
+| `tests/webcortex/test_browser.py::test_hung_render_kills_driver_and_chromium` | Counts only processes started by the render | It counted every descendant of the test process, and the spawned race test leaves the resource tracker for the process's life: the test failed in every full run that ran it later |
+| `tests/test_pocket_signing.py::test_signed_node_requests_and_their_refusals` | The stale-signature cases are 122 s out, not 121 s | The client truncates a timestamp to whole seconds, so a request built 121 s ahead could arrive 120.x s ahead, inside the 120 s window; it failed about one run in three under load |
+| `tests/test_phone_setup.py`, `tests/e2e/test_phone_setup_e2e.py`, `tests/voice/conftest.py`, `tests/e2e/conftest.py` (the Pocket bridge fixture) | Teardown stops or closes what the test started (bridges, the voice hub, the audio beacon) | The suite now fails a session that leaves a thread of the package running |
+
+The guard's own suite at `307b907`, `tests/inference/test_inference_reasoning.py`, and
+`tests/webcortex/test_shared_verdict.py` are unchanged.
+
 ## 2. Capability matrix
 
 | Capability | Touched by this branch | How it was checked | Result |
@@ -94,7 +115,14 @@ critique-scope file, the listener and wake tests) are not listed: they did not e
 | Presence entity: states, motion, light and dark, accessibility (axe) | No product change | Browser suite (`tests/e2e/test_presence.py` 18 of 18; the full suite) | Verified |
 | CLI contracts | Added: `nsf web memory`, switches on `nsf web config` and `nsf llm config`. Phase 2 added: `nsf config`, `nsf forget consolidated`, `nsf forget camera`, `nsf memory consolidated`, `nsf graph rules add --builtin`, `nsf resources wake`, `nsf resources load --on-demand`, `nsf setup --no-memory`, `nsf llm config --critique-restatements`, `nsf init --ask-window-days / --no-consolidation`. Removed: none | CLI tests; `nsf setup` tests | Verified |
 | Deploy scripts | vLLM flags; `wait`; new `deploy/memory`. Phase 2: the wait's grace for a container that does not exist yet (three scripts), the memory script's warm-up request and port check, four new units, `deploy/install.sh --memory` and `--idle` | `bash -n`; the vLLM container restarted through `run.sh` twelve times in phase 1 and returned to healthy each time (not restarted in phase 2); the memory containers started, served and were stopped repeatedly (about ten times in the first round of phase 2 alone); unit tests of the scripts against a fake Docker; `systemd-analyze security --offline` 1.6 for the memory units, as the ASR unit | Verified on this host for the memory script. `deploy/install.sh` beyond `--dry-run` and every systemd unit as an installed system unit: **unverified** (not installed here, as in 0.7.0). The wait's grace for the answer-model and speech scripts: unit-tested only |
-| Services not started by this review | SearXNG, ASR, TTS containers | Left running untouched; health checks green before and after | Verified |
+| Services not started by this review | SearXNG, ASR, TTS containers | Left running untouched; health checks green before and after. Phase 3: one probe inside the SearXNG container by a lane, killed; SearXNG healthy with 0 restarts | Verified |
+| **Phase 3.** The sentence guard and extraction | New refusals (a lost restriction, a changed case, characters a reader does not see or that reorder the text, a passive role swap, status words in a source's name); one proven loosening (an exact restatement); extraction drops reordered lines and paragraphs | `scripts/guard_differential.py` against `307b907` over 1,782 inputs: 0 different; the gap corpus, every sentence as labelled; the guard suite of `307b907` unchanged and passing; offline benchmark metrics unchanged | Verified; stricter by design (§3 item 23) |
+| Read-ahead and the owner's stop for every request kind | Unused allowance; searches, provider record reads and render sub-requests gated per request; slot give-back; partial-write counting; Brave refund | 1,800 random webs: 0 differences from one page at a time; stop tests for every kind; the reviewers' worst-case scripts; offline benchmark identical at 1 and 4 | Verified |
+| Knowledge: kept index, contradictions in other words, stale web questions | Yes | Random sequences of writes, forgets and queries on two connections against the uncached path; the contradiction benchmark with a held-out half; the switch off gives the summary of an individual never configured, byte for byte; tests at the 30-day edge | Verified; contradictions are asked, never decided |
+| Calibration (ADR-046) | A reading of forecasts used to rank autonomous research | Identity below 20 settlements (the offline benchmark identical with it on and inert); admission unchanged with the mapping on and off; 14 safeguards broken one at a time, 14 caught | Verified on simulated forecasters only |
+| Consolidation limit, restore memory | Yes | 30 tests; 54 safeguards broken one at a time, 54 caught; the 80-seed twin test unchanged; a restore's result unchanged with the narrower read | Verified |
+| Installed two-account deployment | Ownership model, installer, polkit rule, wake linger, readiness, home folder, key off the command line, deadlines, thread hygiene | `scripts/two_account_check.py` with real uids and the real installer in a user namespace (46 checks, the root-escalation attack among them); the polkit rule's JavaScript over every combination; transient user units | Verified in the namespace. **Unverified** under systemd and polkitd, as real root, with a real second account |
+| Memory server | One process for both models; the idle policy's shared container | `scripts/bench_memory.py` equal in every class; 64 server tests with a fake model; idle tests for the shared container; live `nsf setup` memory step on a temporary individual | Verified on this host. **Unverified**: as an installed unit; a real reload through the idle policy |
 
 ## 3. Behaviour that changed on purpose
 
@@ -156,6 +184,35 @@ Phase 2, the owner's decisions and what followed from them:
     it**; the call fails as `unavailable`. Off: `NSF_LISTENER_CHECK=0`.
 22. **A forgotten partner's change markers are deleted with it**, as a forgotten camera's are.
 
+Added in phase 3:
+
+23. **The guard refuses more**: a sentence that loses its claim's exception or condition, writes a claim's word in
+    another case, cites a claim that holds characters a reader does not see or that reorder the text, swaps or drops
+    a passive clause's agent, or names a source with a status word. 7 faithful sentences of the gap corpus are
+    refused on purpose, none of the benchmark's. No switch: refusals only.
+24. **One sentence class the guard rejected is accepted**: a sentence that is exactly one cited claim with the code's
+    attribution, rejected before by the anchor rule alone (17 of 1,782 recorded inputs). A claim that opens with a
+    bare pronoun is excluded.
+25. **Extraction drops text**: a line, or the whole HTML paragraph, that holds a direction override or another
+    direction control is not read, unless the text is right-to-left, where the line is read but never cited.
+26. **Read-ahead stops early** once a task's unused requests reach its allowance (a tenth of the budget); the task
+    then reads one page at a time. Off: `nsf web config --set read_ahead=1`.
+27. **Searches, provider record reads and a render's sub-requests stop** at the owner's cancel, web-off or deny before
+    each request. No switch: the old timing contradicted the stated property.
+28. **A contradiction stated in other words is recorded and asked** when semantic memory and an answer model are
+    configured; a same-value pair is reported, not merged. Off: `nsf web memory config --no-contradictions`.
+29. **A web question open for 30 days no longer counts toward the cap** of open web questions; it stays open and
+    answerable. Off: `nsf web config --set web_question_stale_days=0`.
+30. **Autonomous investigations are ranked by forecasts as read** through their settled history once 20 of a kind
+    have settled; which are admitted is unchanged. Off: `nsf web config --set calibrated_forecasts=false`.
+31. **At a million consolidated readings** (the default limit) an expiring event leaves nothing, as in 0.7.0, and
+    the owner is warned from 80 %. Off: `nsf config --max-consolidated-rows 0`.
+32. **The memory models are served by one process** (`NSF_MEMORY_SERVER=single`); the idle policy treats its two
+    names as one container. Off: `NSF_MEMORY_SERVER=vllm`, then `deploy/memory/run.sh restart`.
+33. **The installer arranges a two-account deployment** with `--idle` (shared group, modes, a polkit rule for
+    starting and stopping the model services' units), and a re-run keeps it. A call that triggers a reload no
+    longer takes more than its own time.
+
 Additive contract changes (new optional fields, no removed or renamed field): `retrieval` in the knowledge query
 result; `memory_check` in the needs-web decision event; `abstained` in `reasoning`; new readings in
 `GET /api/resources`; `provider`, `priority`, `cached_tokens` in ledger rows; `prefetch_unused_*` in task usage
@@ -172,6 +229,15 @@ of beliefs, sweeps, forgets, inventory and restores (`consolidated`, `consolidat
 `beats_no_graph` and `no_graph_validation_mse` in a candidate's metrics, the sixth entry of a gate decision's
 checks, and the optional rule parts `pack_candidates.learned_sparse` and `pack_reference`. They are listed with
 their shapes in `docs/architecture/API_CONTRACTS.md`.
+
+Added in phase 3, also additive: the guard's refusal reasons (`RESTRICTION_LOST`, `CASE_CHANGED`,
+`UNSEEN_IN_CLAIM`, `PASSIVE_SWAP`) and the extraction flags `reordered_lines_removed` and `reordered_blocks_removed`;
+the fetch outcome `stopped` of searches and providers; `pairing`, `paired_by_meaning` (with `merged` and `held`) in
+a consolidation summary and the setting `contradictions`; `questions` in `nsf web status`; `recalibration` in
+`nsf knowledge calibration`, `forecast_as_read` and `info_gain_as_read` in autonomy candidates and decisions, the
+setting `calibrated_forecasts`; `max_consolidated_rows`, `warnings`, `not_consolidated` and, when asked,
+`largest_epoch` in instance results; `shared_with`, `effective_timeout_s` and `state_problems` in `nsf resources`;
+the setting `web_question_stale_days`.
 
 ## 4. Edge and recovery scenarios
 
@@ -199,4 +265,10 @@ their shapes in `docs/architecture/API_CONTRACTS.md`.
 | A memory model unloaded, starting, or refusing to start while lookups arrive from several processes | Idle tests; live with the real containers | A lexical answer at once, one reload, one retry per 30 s |
 | A request folder holding a directory, a symlink or an entry that cannot be removed | Wake tests; a transient user unit | Removed or set aside; the unit does not loop |
 | A scoring rule with non-integer or non-list bit widths | Rule tests | Refused at validation |
+| Phase 3: links planted by the service account where the installer acts as root (database, `-wal`, `.resources` → `/etc/shadow`, `/etc/systemd/system`); what a race on the `find` step could do at worst | `scripts/two_account_check.py` in a user namespace with real uids | Refused by the kernel; targets unchanged (on the code before the fix they became group-readable and writable). A hard link to such a target could not be created there (`protected_hardlinks`) |
+| A FIFO, a link to `/dev/zero` or an oversized file where the idle account reads shared state; a malformed `idle.json` | Idle and wake tests | Not opened, or refused by size; a malformed file read as empty and reported; the wake unit's linger holds |
+| The owner unloads one memory name while a call runs under the other; one name's timeout off | Idle tests for the shared container | The unload waits for the call; the container is never released while idle |
+| 32 slow or held connections, a 4 MiB body to a full memory server, duplicate or signed `Content-Length` | Memory server tests with a fake model (200 runs beside a CPU burner for the refusals) | 503 delivered whole beyond the cap; malformed heads refused; no thread made for a refused connection |
+| A forget from this process or a restore while the kept knowledge index is warm; a write by another process | Index tests, one per forget kind; a subprocess write | The index is dropped or rebuilt; results equal to the uncached path |
+| A sweep that crosses the consolidation limit partway; the limit lowered below what is kept | Limit tests | Oldest first up to the limit, the rest expire; nothing kept is removed |
 | GPU memory exhaustion; a failed image upgrade and rollback; days of wall-clock autonomy | — | **Unverified** in this review (the first two were not provoked on a shared host; the third is the owner's running soak, left untouched) |

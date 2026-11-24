@@ -82,7 +82,9 @@ applicable), or a measured TensorRT-LLM result on this model (§5).
   as the answer model, with their own settings rows. Any endpoint that speaks `/v1/embeddings` or `/v1/rerank` can
   stand in, NVIDIA's embedding NIM included. After the owner's decision they are run as a managed service
   (`nsf setup` switches them on, supervised units, release when idle); an endpoint the owner points elsewhere is
-  left alone by the idle policy ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §4 C).
+  left alone by the idle policy ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §4 C). Since phase 3 one process
+  inside the same pinned image serves both models by default (4.26 GiB against 9.33 GiB for two vLLM servers, the
+  same benchmark result); the two vLLM servers remain selectable (`NSF_MEMORY_SERVER=vllm`).
 - **Telemetry.** The ledger records the provider, the priority and, when the server reports them, the prompt tokens
   served from the prefix cache; `nsf resources` reports the server's queue, prefill and decode times.
 
@@ -92,7 +94,7 @@ applicable), or a measured TensorRT-LLM result on this model (§5).
 |---|---|---|
 | TensorRT-LLM against vLLM on this model | Needs the answer model stopped, a second copy of the weights in a quantisation TensorRT-LLM documents for it (NVFP4), and a full answer-quality replay; a multi-hour experiment with a model-quality change inside it | `scripts/bench_inference.py` and `scripts/bench_pipeline.py` against a `trtllm-serve` endpoint on another port, same prompts, then the guard survival replay |
 | NVIDIA embedding NIM against Qwen3-Embedding | Licence acceptance and an NGC key are the owner's | `nsf web memory config --embed-url …` at the NIM's port, then `scripts/bench_memory.py` |
-| A lighter server for the two memory models (4.6 GiB each under vLLM for 1.1 GiB of weights; no setting of the pinned image lowers it) | Outside the decision that was delegated. `text-embeddings-inference` publishes CUDA images for amd64 only; `ghcr.io/ggml-org/llama.cpp:server-cuda` lists a linux/arm64 manifest (MIT) that was **not pulled or run**: whether its CUDA build runs on GB10, and whether GGUF builds of the two models reproduce the benchmark with the reranker's prompt, is unverified | Pin the image by digest, serve both models, then `scripts/bench_memory.py` against the numbers of [PERFORMANCE.md](PERFORMANCE.md) §4 |
+| A lighter server for the two memory models (4.6 GiB each under vLLM for 1.1 GiB of weights; no setting of the pinned image lowers it) | **Done in phase 3** without a new image: one process in the pinned image serves both (`deploy/memory/server.py`; [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §5.1), so the candidates below were not needed. Before that: outside the decision that was delegated. `text-embeddings-inference` publishes CUDA images for amd64 only; `ghcr.io/ggml-org/llama.cpp:server-cuda` lists a linux/arm64 manifest (MIT) that was **not pulled or run**: whether its CUDA build runs on GB10, and whether GGUF builds of the two models reproduce the benchmark with the reranker's prompt, is unverified | Pin the image by digest, serve both models, then `scripts/bench_memory.py` against the numbers of [PERFORMANCE.md](PERFORMANCE.md) §4 |
 | Triton backends in the arm64 image | No use for the answer; not pulled (10 GB) | `docker run --rm nvcr.io/nvidia/tritonserver:26.10-py3 ls /opt/tritonserver/backends` |
 | NVIDIA's validation of this operating system | NVIDIA validates DGX OS and Ubuntu | None available; the containers that run here are evidence for those containers only |
 
