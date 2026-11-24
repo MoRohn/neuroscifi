@@ -1580,7 +1580,11 @@ class _Run:
         have done exactly the same. `ahead` (candidate index -> URL) gains the fetches started. Each fetch ahead
         asks the run's _Lookout before every network step, so none sends a request after a cancel, after web access
         was turned off or to a host denied meanwhile; together they send no request and read no byte the task's
-        budget has no room for; and none opens a connection to a site an exchange is in progress with."""
+        budget has no room for; and none opens a connection to a site an exchange is in progress with.
+        What they send and the task then does not use stays within the task's unused allowance
+        (Budget.unused_allowance(window)): the fetcher starts a fetch ahead only while its request part has room
+        for one, so as unused requests accumulate fewer pages are fetched ahead, and with the allowance spent
+        (requests or bytes) this returns at once and the run reads one page at a time from there on."""
         from .extract import canonical_url
         fetcher = self.services.fetcher
         if self.watch() is None:         # no gate to ask at request time: nothing is fetched ahead
@@ -1591,6 +1595,9 @@ class _Run:
         requests_left = self.budget.max_requests - self.usage.requests - self.usage.prefetch_unused_requests
         if self.budget.max_bytes - self.usage.bytes - self.usage.prefetch_unused_bytes <= 0:
             return
+        allowance = self.budget.unused_allowance(window)
+        if self.usage.prefetch_unused_requests + 2 > allowance[0] or self.usage.prefetch_unused_bytes >= allowance[1]:
+            return                       # the unused allowance is spent: one page at a time from here on
         timely = self.timely()
         hosts = set()
         for j in range(i, len(picked)):
@@ -1609,7 +1616,8 @@ class _Run:
                     or r.provider in SNIPPET_ONLY or (timely and self.stale(r.published_at)):
                 continue
             hosts.add(host)
-            if fetcher.speculate(r.url, purpose="page", usage=self.usage, budget=self.budget, wanted=self.lookout):
+            if fetcher.speculate(r.url, purpose="page", usage=self.usage, budget=self.budget, wanted=self.lookout,
+                                 allowance=allowance):
                 ahead[j] = r.url
 
     def drop_prefetched(self, ahead, below=None):

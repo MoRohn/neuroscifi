@@ -56,10 +56,20 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
   which it then holds from the start. One that runs out of room at a later request (a redirect chain) stops before
   that request; its claim replays what it sent and goes on from that hop on the task's own budget (nothing is
   fetched twice; a stop inside a robots.txt walk that has already sent a request is the exception: that fetch is
-  not continued, and its claim fetches as usual). So: charged <= max_requests, sent ahead unused <= max_requests,
-  and everything a task sends is at most twice max_requests (reachable: every fetch ahead unusable after the
-  whole budget went ahead); the unused part is what a fetch ahead sent before it became unusable (the policy
-  changed, a back-off, cut by the reader reaching its site, a page the reader passed by).
+  not continued, and its claim fetches as usual). The unused part is what a fetch ahead sent before it became
+  unusable (the policy changed, a back-off, cut by the reader reaching its site, a page the reader passed by).
+  It has an allowance of its own (speculate(allowance=...), Budget.unused_allowance: a tenth of the budget, never
+  less than a full window needs). Requests: what the task's fetches ahead have sent unused, plus what those not
+  yet claimed or abandoned have sent or hold, stays within it at every moment: a fetch ahead is not started
+  without room for a typical fetch there, and one under way stops before a request that would pass it and is
+  continued by its claim, exactly like one that ran out of the budget's room. A request charged and not yet known
+  to have gone out when its fetch is abandoned stays held until its exchange ends, so it is in the account all
+  along, as held or as unused. Bytes: no fetch ahead is started once the bytes received ahead and not used have
+  reached the allowance's byte part; those in flight then still finish, each within the document limit and the
+  task's max_bytes. So: charged <= max_requests, sent ahead unused <= the allowance's requests, and everything a
+  task sends is at most max_requests plus its unused allowance; with the allowance spent nothing is fetched ahead
+  and the task reads one page at a time. (A caller that gives no allowance keeps the older bound: unused <=
+  max_requests, at most twice max_requests in all.)
 - Stops (gated, speculate(wanted=...)): before every network step of a fetch the fetcher asks whether the fetch
   is still wanted: before each name lookup, before each connection is opened (after the politeness wait) and once
   more when the connection is open, immediately before the request is written on it (robots.txt, the page, every
@@ -474,12 +484,16 @@ class _Speculation:
     contacted keep their throttle slots and any Retry-After backoff at once: politeness never waits for a claim.
 
     `wanted(url)` is the task's gate, asked before every network step (ask): a reason to stop, or None. `budget` is
-    the task's budget: a request the task could not be charged for now is not sent (_OverBudget)."""
+    the task's budget: a request the task could not be charged for now is not sent (_OverBudget). `allowance` is
+    the task's unused allowance (Budget.unused_allowance; with a budget only): a request that would take what the
+    task's fetches ahead have sent unused, or have sent and hold in flight, past its request part is not sent
+    either (_OverBudget, the same stop)."""
     bytes = 0       # _read_body bounds a read by budget.max_bytes - usage.bytes: unbounded here (_UNBOUNDED)
 
-    def __init__(self, url, usage, fetcher, *, budget=None, wanted=None, purpose="page"):
+    def __init__(self, url, usage, fetcher, *, budget=None, wanted=None, purpose="page", allowance=None):
         self.url, self.usage, self.fetcher, self.policy = url, usage, fetcher, fetcher.policy
         self.budget, self.wanted, self.purpose = budget, wanted, purpose
+        self.allowance = allowance if budget is not None else None
         self.reserved = 0                 # requests held from the start (TYPICAL_FETCH), used before any more is taken
         self.recorded = 0                 # requests recorded so far
         self.hop = None                   # the redirect hop under way (_request): where a claim goes on from
@@ -547,7 +561,8 @@ class _Speculation:
         """Record a charge in order. Once abandoned, or once the fetcher's policy changed, refuse it so no further
         request is sent; bytes that already arrived then count as unused. A request the task's request budget has
         no room for is refused as _OverBudget and not sent. Room is the task's, not this fetch's: what the task was
-        charged, what its fetches ahead sent unused, and what all its fetches ahead in flight hold."""
+        charged, what its fetches ahead sent unused, and what all its fetches ahead in flight hold. The same for
+        the task's unused allowance, which the last two alone must stay within."""
         with self.lock:
             if self.abandoned:
                 if bytes:
@@ -560,8 +575,9 @@ class _Speculation:
                     held = self.fetcher._ahead.setdefault(id(self.usage), [0, 0])
                     # what it held from the start is used first; only requests beyond that take new room
                     more = max(0, self.recorded + requests - self.reserved) - max(0, self.recorded - self.reserved)
-                    if more and self.usage.requests + self.usage.prefetch_unused_requests + held[0] + more \
-                            > self.budget.max_requests:
+                    ahead = self.usage.prefetch_unused_requests + held[0] + more    # sent unused, or sent and held
+                    if more and (self.usage.requests + ahead > self.budget.max_requests
+                                 or (self.allowance is not None and ahead > self.allowance[0])):
                         raise _OverBudget("requests")
                     held[0] += more
                     self.held[0] += more
@@ -608,17 +624,21 @@ class _Speculation:
             self.events.append(("cut", wire, identity, declared, limit))
         raise _OverBudget("bytes")
 
-    def release(self) -> None:
+    def release(self, keep=0) -> None:
         """Give up what this fetch holds of the task's budget in fetcher._ahead: when it is claimed (its charges are
-        on the task's Usage by then) or abandoned (what it sent counts as unused by then). Harmless twice."""
+        on the task's Usage by then) or abandoned (what it sent counts as unused by then). Harmless twice.
+        `keep`: requests that stay held (abandon(): a request recorded and not yet known to have gone out is neither
+        counted as unused nor given back until its exchange ends, so the task's room never looks larger than it
+        is in between)."""
         with self.fetcher._lock:
             held = self.fetcher._ahead.get(id(self.usage))
+            give = max(0, self.held[0] - keep)
             if held is not None:
-                held[0] -= self.held[0]
+                held[0] -= give
                 held[1] -= self.held[1]
                 if held[0] <= 0 and held[1] <= 0:
                     del self.fetcher._ahead[id(self.usage)]
-            self.held = [0, 0]
+            self.held = [self.held[0] - give, 0]
 
     def unsend(self) -> None:
         """The request recorded last was never written on a connection (the fetch was stopped while the connection
@@ -662,12 +682,18 @@ class _Speculation:
 
     def on_wire(self, watchdog):
         """The exchange about to use the wire (None: it ended). False when the fetch was abandoned meanwhile: the
-        caller must not send."""
+        caller must not send. When the exchange of an abandoned fetch ends, the request abandon() had left held is
+        settled: sent() has counted it as unused if it went out, and its room goes back now either way."""
         with self.lock:
             self.wire = watchdog
-            if watchdog is None:
+            ended = watchdog is None
+            if ended:
                 self.pending = False
-            return not (self.abandoned or self.halted)
+            wanted = not (self.abandoned or self.halted)
+            settle = ended and self.abandoned
+        if settle:
+            self.release()
+        return wanted
 
     def sent(self):
         """The request recorded last went out. Abandoned in the meantime (abandon() had left it out, not knowing
@@ -682,7 +708,8 @@ class _Speculation:
         """Drop the fetch: what it sent and received (or only `events`, the part a claim did not use) counts as
         unused prefetch on the task's Usage, a fetch still running sends nothing more, and its request on the wire
         is cut (the connection is shut down). A request recorded but not sent yet is left out; sent() counts it if
-        it still goes out before the cut."""
+        it still goes out before the cut, and until its exchange ends (on_wire(None)) it stays held in the task's
+        account, so that request is in the account at every moment, as held or as unused."""
         with self.lock:
             if self.abandoned:
                 return
@@ -693,7 +720,7 @@ class _Speculation:
             wire.abort()
         self.usage.charge_unused(requests=sum(1 for e in spent if e[0] == "request") - unsent,
                                  bytes=sum(e[1] for e in spent if e[0] in ("bytes", "cut")))
-        self.release()        # after the count: the task's room never looks larger than it is
+        self.release(keep=unsent)        # after the count: the task's room never looks larger than it is
 
 
 def _fits(spec: _Speculation, budget, usage) -> bool:
@@ -1114,7 +1141,7 @@ class SafeFetcher:
         if ask is not None:
             ask(url)
 
-    def speculate(self, url, *, purpose="page", usage=None, budget=None, wanted=None) -> bool:
+    def speculate(self, url, *, purpose="page", usage=None, budget=None, wanted=None, allowance=None) -> bool:
         """Start fetching `url` now, on its own thread, for a fetch(url, purpose=purpose, usage=usage) the caller
         expects to make soon (the reader's read-ahead, orchestrator._Run.prefetch). Nothing of it is charged,
         cached or remembered until that fetch claims it, and it is used only when a fetch made at that moment would
@@ -1123,18 +1150,24 @@ class SafeFetcher:
         to any fetch. `wanted(url)`: the task's gate, called on the fetch's thread before each of its network steps;
         a reason (or an exception) stops the fetch there. `budget`: the task's budget, shared by all its fetches
         ahead; the fetch is started only when it has room for a typical fetch (TYPICAL_FETCH requests), which it
-        holds from then on. Returns whether a fetch was started (not for purposes that are never cached, not
-        twice, not without that room)."""
+        holds from then on. `allowance` (with a budget): the task's unused allowance, (requests, bytes)
+        (Budget.unused_allowance): the same room must be left in its request part by what the task's fetches ahead
+        have sent unused and what those in flight have sent or hold, and nothing is started once the bytes received
+        ahead and not used have reached its byte part. Returns whether a fetch was started (not for purposes that
+        are never cached, not twice, not without that room)."""
         if purpose not in CACHED_PURPOSES or usage is None:
             return False
         key = (url, purpose, id(usage))
-        spec = _Speculation(url, usage, self, budget=budget, wanted=wanted, purpose=purpose)
+        spec = _Speculation(url, usage, self, budget=budget, wanted=wanted, purpose=purpose, allowance=allowance)
+        allowance = spec.allowance
         with self._lock:
             if key in self._speculations:
                 return False
             if budget is not None:
                 held = self._ahead.setdefault(id(usage), [0, 0])
-                if usage.requests + usage.prefetch_unused_requests + held[0] + TYPICAL_FETCH > budget.max_requests:
+                ahead = usage.prefetch_unused_requests + held[0] + TYPICAL_FETCH
+                if usage.requests + ahead > budget.max_requests or (allowance is not None and (
+                        ahead > allowance[0] or usage.prefetch_unused_bytes >= allowance[1])):
                     if held[0] <= 0 and held[1] <= 0:
                         del self._ahead[id(usage)]
                     return False

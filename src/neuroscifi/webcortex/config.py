@@ -86,6 +86,9 @@ class WebConfig:
     # after one of these, and requests on the wire are cut. The fetches ahead of a task share its request and byte
     # budget, never open a second connection to a site an exchange is in progress with, and are not made at all
     # for tasks under a daily allowance (curiosity, refreshes, MCP); the allowances count unused read-ahead traffic.
+    # What a task's fetches ahead send and the task then does not use has its own allowance (types.Budget.
+    # unused_allowance: a tenth of the budget, at least two requests per page of the window): everything a task
+    # sends is at most max_requests plus that, and with it spent the task reads one page at a time.
     # The one exception to "unchanged": a 429 answered to a page fetched ahead backs its site off at once, so a
     # source an earlier candidate would have redirected to there is not read (the report says so).
     # 1 reads one page at a time for every task, as 0.7.0 did: `nsf web config --set read_ahead=1`.
