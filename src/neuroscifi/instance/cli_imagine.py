@@ -61,16 +61,33 @@ def _forecast(db, args, now):
                              population=args.population, action=action)
 
 
+SCM_LIMIT = 1 << 20      # bytes of an `nsf imagine scm` question file read at most
+
+
 def _scm(args):
+    """One question from a JSON file: read bounded and without blocking (a FIFO or a device is refused), and any
+    malformed question is a one-line error, never a traceback (review1 S8)."""
     from .. import causal
+    from ..resources import shared
     try:
-        query = _json_arg(args.file.read_text(encoding="utf-8"), str(args.file))
+        text = shared.read_text(args.file.resolve(), limit=SCM_LIMIT)
+    except shared.NotAFile:
+        raise ValidationError(f"cannot read {args.file}: not a plain file") from None
     except OSError as error:
-        raise ValidationError(f"cannot read {args.file}: {error.strerror}") from None
+        raise ValidationError(f"cannot read {args.file}: {error.strerror or error}") from None
+    except ValueError:
+        raise ValidationError(f"{args.file} is larger than {SCM_LIMIT} bytes") from None
+    try:
+        query = _json_arg(text, str(args.file))
+    except RecursionError:
+        raise ValidationError(f"{args.file} is nested too deeply to be read") from None
     try:
         return causal.answer(query)
     except ValueError as error:
         raise ValidationError(str(error)) from None
+    except (KeyError, TypeError, AttributeError, IndexError, ZeroDivisionError, RecursionError,
+            OverflowError) as error:
+        raise ValidationError(f"the question in {args.file} is malformed ({type(error).__name__})") from None
 
 
 def _scenarios(db, args, now):

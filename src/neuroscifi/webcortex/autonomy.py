@@ -921,10 +921,19 @@ def after_task(db, task_id, now) -> dict | None:
     signals = {"new_verified": len(findings["new_verified"]), "resolved_contradictions": len(resolved),
                "settled_predictions": sum(1 for s in settled if s.get("outcome") == "confirmed"),
                "prediction_errors": sum(1 for s in settled if s.get("outcome") == "error")}
-    salience, salience_inputs = _candidate_salience(db, task_id)
+    # the salience of what the task found (broadcast.score over the findings) and, when it carried one, its
+    # candidate's own pre-task salience record (ADR-051): the higher of the two, so a finding is never judged only
+    # by what was expected of it before the task ran (review1 A7); the inputs name both
+    salience, salience_inputs = broadcast.score("autonomy.finding", signals)
+    candidate, candidate_inputs = _candidate_salience(db, task_id)
+    if candidate is not None:
+        salience_inputs = {"rule": "max(finding salience, candidate salience)",
+                           "finding": {"score": salience, **salience_inputs},
+                           "candidate": {"score": candidate, **candidate_inputs}}
+        salience = max(salience, candidate)
     with store.write(db):
         # selective broadcast (ADR-053): mode off (the default) delivers exactly as before. The salience is the
-        # candidate's own salience record (ADR-051) when it carried one; broadcast.score's local one otherwise.
+        # higher of the findings' own (broadcast.score) and the candidate's salience record.
         offered = broadcast.offer(db, "autonomy.finding", now=now, signals=signals, scope=scope, task_id=task_id,
                                   deliver=lambda: knowledge.open_question(db, scope, text, now),
                                   salience=salience, salience_inputs=salience_inputs)

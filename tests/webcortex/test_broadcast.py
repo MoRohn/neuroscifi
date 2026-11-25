@@ -108,10 +108,44 @@ def test_a_finding_takes_the_salience_record_its_candidate_carried(individual, c
         assert entry["salience"] == pytest.approx(0.2212, abs=1e-4) and entry["outcome"] == "local"
         assert "source" not in (entry["inputs"] or {})
         return
-    assert entry["salience"] == carried and entry["inputs"]["source"] == autonomy.SALIENCE_SOURCE
-    assert entry["inputs"]["explanation"] == record["explanation"]
+    # review1 A7: the higher of what the task found (0.221 here) and what its candidate carried, both named
+    assert entry["salience"] == pytest.approx(max(carried, 0.2212), abs=1e-4)
+    assert entry["inputs"]["candidate"]["source"] == autonomy.SALIENCE_SOURCE
+    assert entry["inputs"]["candidate"]["explanation"] == record["explanation"]
+    assert entry["inputs"]["finding"]["score"] == pytest.approx(0.2212, abs=1e-4)
     assert entry["outcome"] == ("broadcast" if carried >= 0.5 else "local")
     assert (found["pending_id"] is not None) == (carried >= 0.5)
+
+
+def test_a_salient_finding_is_not_held_back_by_its_candidates_low_prior(individual):
+    """review1 A7: a task queued with a low salience (0.1) that then found two wrong predictions (0.699) is judged by
+    what it found: broadcast (it was kept local before, by the candidate's pre-task score alone)."""
+    db, _ = individual
+    store.set_config(db, {"broadcast": "on"}, T0)
+    task = finished(db, [(1, "error"), (2, "error")])
+    with store.write(db):
+        state.log_event(db, task["id"], "decision", {"autonomy": {"kind": "stale", "key": "zephyr", "salience": {
+            "score": 0.1, "signals": {}, "weights": {}, "explanation": "salience 0.100"}}}, T0)
+    found = autonomy.after_task(db, task["id"], T0 + 5)
+    [entry] = decisions(db, task["id"], "broadcast")
+    assert entry["salience"] == pytest.approx(0.6988, abs=1e-4) and entry["outcome"] == "broadcast"
+    assert found["pending_id"] is not None
+
+
+def test_log_mode_shows_when_the_hourly_limit_would_hold_a_finding(individual, monkeypatch):
+    """review1 A8: in mode log every offer is delivered ("delivered"), so the limit has to count what on would have
+    broadcast; it used to count outcomes and never showed the limit."""
+    db, _ = individual
+    store.set_config(db, {"broadcast": "log", "broadcast_threshold": 0.0}, T0)
+    monkeypatch.setattr(broadcast, "MAX_PER_HOUR", 2)
+    entries = []
+    for i in range(3):
+        task = finished(db, [(i, "confirmed")], now=T0 + i, objective=f"Zephyr release {i}")
+        autonomy.after_task(db, task["id"], T0 + 10 + i)
+        entries.append(decisions(db, task["id"], "broadcast")[0])
+    assert [e["outcome"] for e in entries] == ["delivered"] * 3                  # log changes no delivery
+    assert [e["would"] for e in entries] == ["broadcast", "broadcast", "local"]
+    assert entries[2]["reason"].startswith("rate limit: 2 broadcasts")
 
 
 def test_the_hourly_limit_keeps_the_rest_local(individual, monkeypatch):

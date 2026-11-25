@@ -357,6 +357,7 @@ Loopback only (`127.0.0.1`), started with `nsf console --db PATH [--port 8766]`.
 | Method | Route | Service call |
 |---|---|---|
 | GET | /api/inventory | store.inventory + store.regulation (+ `self`, `self_short` with `?self=1`, §13) |
+| GET | /api/self | `{state_version, self, self_short}`: the self-description in its own request (§13) |
 | GET | /api/imagined | imagined.listing, read-only (`?kind=`, `?limit=` 1–100; §13) |
 | GET | /api/epochs | epochs plus evidence counts |
 | GET | /api/epochs/{e}/beliefs | beliefs.explain |
@@ -857,17 +858,21 @@ presence.aggregator.arbitrate(cands) -> cands sorted by rank, then newest     # 
 presence.activity.track(activity, *, subsystem, purpose, task_id=None, clock=..., priority="tool", secondary=(),
                         publish=None)          # publish=<db path>: <db>.resources/inflight-<pid>.json
 presence.activity.remote(db_path, now=None) -> [entries of other live processes]
+    # a file is read only when this account or the database's owner owns it, its "pid" is the pid in its name and
+    # its "started" is that process's start time (/proc/<pid>/stat); a remote entry ranks at most "tool" (review1 S4)
 ```
 
 | Surface | Result |
 |---|---|
-| console `GET /api/inventory?self=1` | adds `self` (the owner record) and `self_short` ([str]); without it, unchanged |
+| console `GET /api/inventory?self=1` | adds `self` (the owner record) and `self_short` ([str]); without it, unchanged. Kept for older pages: the console's overview asks `GET /api/self` |
+| console `GET /api/self` | `{state_version, self, self_short}`, or `self: null` with `self_error` when the record cannot be built at all; 400 for any query parameter. A part of the record that cannot be read is that field with `value: null` and `error` (review1 A1); the record is read in one read transaction (A4) |
 | console `GET /api/imagined[?kind=K&limit=N]` | `imagined.listing` (labelled "imagined, not evidence"); 400 for an unknown kind or a limit outside 1–100; read-only (POST 405) |
 | console `POST /api/web/config {"pocket_recent": bool}` | the web setting `pocket_recent` (default false) |
 | Pocket `self_status` `{}` | a research route (gated, signed and limited like the others; 404 while research is off): 200 `{record (scope "family"), short}`; 400 for any body key |
-| MCP tool `self_status` `{short?: bool}` | the owner record, or `{short}`; read-only annotations; behind the untrusted header like every tool result |
-| voice intent `self_status` ("what are you doing", "what's your status", "status report") | a reply of `short` sentences, label "NeuroSciFi status from its own records (no model involved)"; a Pocket device hears its family scope |
+| MCP tool `self_status` `{short?: bool}` | the record in scope `agent` (the owner's own research only: tasks, questions, goals and recent research with `family IS NULL`; no file path; task objectives, goals, knowledge and contradiction keys and autonomy objectives inside `safety.untrusted` envelopes), or `{short}`; read-only annotations; behind the untrusted header like every tool result. MCP `web_task` / `web_evidence` answer "No research task" for a Pocket family's task (review1 S1, S5) |
+| voice intent `self_status` ("status report", "status", and with the owner's `status_questions` on also "what are you doing", "what's your status") | a reply of `short` sentences, label "NeuroSciFi status from its own records (no model involved)"; a Pocket device hears its family scope |
+| voice setting `status_questions` (owner only; default false) | off: a status question that started research before the command existed ("what are you working on?") still starts research; on: it gets the short self-description (review1 A15) |
 | `nsf self [--short] [--db]` | the owner record, or `{"short": [...]}` |
 | `nsf config --broadcast off\|log\|on --broadcast-threshold X` | InstanceConfig.broadcast ("off" default) and broadcast_threshold (0–1, default 0.5); owner-settable, carried by restore; a damaged value reads as the default and is listed by store.setting_problems() |
-| voice setting `resume_follow` (owner only; default true) | R8: the session context keeps `follow_task_id` while a spoken question's answer is awaited; the principal's next session (another process after a restart) follows it again and delivers the answer once |
+| voice setting `resume_follow` (owner only; default true) | R8: the session context keeps `follow_task_id` and `follow_by` (the following hub) while a spoken question's answer is awaited; the principal's next session (another process after a restart) follows it again. The answer goes to the person's session open when it is ready; the delivery is claimed in the database (`transcripts.clear_follow`), which takes the task off every session of the person, so it is delivered once across processes; a follower that gives up clears it too; a task that finished before the previous session ended (its follower alive) or more than 24 h ago is not picked up; "before the restart" only when the following hub is gone. Off: nothing is written (review1 A9, A10, A15, S9) |
 | Presence (`docs/presence/COGNITIVE_STATE_MAPPING.md`) | activities planning, predicting, simulating, analyzing, interpreting, executing from real rows; `sources.writes = "paused"` while writes are paused; worker model calls through `inflight-<pid>.json` |
