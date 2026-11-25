@@ -173,6 +173,8 @@ def claims_of(*texts):
     ("NASA signed the Lumen-7 agreement", "Nasa signed the Lumen-7 agreement.", "Nasa", "NASA"),  # more than a first letter
     ("NASA signed the Lumen-7 agreement", "NASA signed the lumen-7 agreement.", "lumen", "Lumen"),
     ("Turkey raised tariffs on poultry", "Turkey raised tariffs on turkey.", "turkey", "Turkey"),  # a second word
+    ("US sanctions hit the firm in 2025", "US sanctions hit us in 2025.", "us", "US"),   # a pronoun of its own
+    ("IT staff patched the servers in May", "IT staff patched it in May.", "it", "IT"),
 ])
 def test_a_word_of_the_claims_in_another_case_is_a_change(claim, sentence, word, theirs):
     assert reasoning._case_changed(sentence, claims_of(claim), "q") == [
@@ -191,6 +193,10 @@ def test_a_word_of_the_claims_in_another_case_is_a_change(claim, sentence, word,
     ("The U.S. team shipped it", "The u.s. team shipped it.", "q"),                  # single letters are not judged
     ("The tower is 72 metres tall", "The tower is 72 metres tall, according to one source.", "q"),
     ("Open Source tools found the flaw", "Open Source tools found the flaw, according to one source.", "q"),
+    ("US sanctions hit the firm in 2025, and it lost its contracts",                  # the claim writes "it" itself
+     "US sanctions hit the firm in 2025, and it lost its contracts.", "q"),
+    ("The lighthouse at MAY Point is open in May", "The lighthouse at MAY Point is open in May, but it may close.",
+     "q"),                                                                            # not a pronoun: excused as before
 ])
 def test_what_the_case_rule_does_not_judge(claim, sentence, question):
     assert reasoning._case_changed(sentence, claims_of(claim), question) == []

@@ -2643,6 +2643,10 @@ def _restriction_lost(text: str, used) -> list[str]:
     return out
 
 
+# A pronoun beside the claim's acronym of the same letters is the sentence's own word for someone the claims do not
+# name ("US sanctions hit us" for "US sanctions hit the firm"): not excused as a function word
+_PERSONAL_PRONOUNS = frozenset("i me my mine we us our ours you your yours he him his she her hers it its they them "
+                               "their theirs".split())
 _RUN = re.compile(r"[^\W\d_]+")      # a run of letters: "Lumen-7" is "Lumen", "NumPy's" is "NumPy" and "s"
 _TITLE_LIKE = 0.7                    # a claim with this share of capitalised words is written as a title is
 # where a word starts its sentence: at the start of the text, after a sentence end, a colon or an opening quote or
@@ -2673,7 +2677,8 @@ def _case_changed(text: str, used, question: str = "") -> list[str]:
       - a difference in the first letter alone where the sentence's word starts its sentence (_STARTS);
       - when the claim's form stands in the sentence as well: a function word of the sentence's own beside it
         ("... from May to September, but this may be out of date": T.STOPWORDS and the guard's auxiliaries and
-        hedge words), and nothing else ("Turkey raised tariffs on turkey" is refused);
+        hedge words), and nothing else ("Turkey raised tariffs on turkey" is refused); a personal pronoun is not
+        excused beside an acronym the claims write only in capitals ("US sanctions hit us", "IT staff patched it");
       - when it does not: a difference in the first letter alone where the claim's word starts its sentence, or
         the claim is written as a title is (_TITLE_LIKE).
     Only the cited claims say how a word is written: a source's title is a page's label and writes names as the
@@ -2704,7 +2709,8 @@ def _case_changed(text: str, used, question: str = "") -> list[str]:
             # the claim's form stands in the sentence too, so this is a second word, not the same one re-cased:
             # the sentence's own function word ("... but this may be out of date"), or another word altogether
             # ("Turkey raised tariffs on turkey")
-            if w.islower() and (w in T.STOPWORDS or w in _AUX or w in _ENTAIL_META):
+            if w.islower() and (w in T.STOPWORDS or w in _AUX or w in _ENTAIL_META) and \
+                    not (w in _PERSONAL_PRONOUNS and all(len(x) > 1 and x.isupper() for x in theirs)):
                 continue
         elif any(t in lenient for t in first_letter):
             continue                    # the claim's word starts its sentence there, or the claim is written as a title
